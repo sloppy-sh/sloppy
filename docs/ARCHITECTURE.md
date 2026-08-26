@@ -330,9 +330,12 @@ Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/c
   The file is regenerated, so this is a documented post-generate patch step, not an edit
   somebody makes once and loses.
 - **`scripts/tauri.sh`** bakes env and raises a Cloudflare dev tunnel, so a physical iPad
-  reaches the local API and syr instance on one origin. `vite.config.ts` reads
-  `TAURI_DEV_HOST` and binds to the LAN address with a separate HMR port during mobile dev;
-  `svelte.config.js` uses `adapter-static` with `fallback: 'index.html'`.
+  off this LAN reaches the local API on an https origin iOS will talk to. Sign-in needs the
+  syr instance on that same origin, which is a route the API fronts rather than a second
+  tunnel; until that route exists, device sign-in needs a syr instance the device can
+  already reach. `vite.config.ts` reads `TAURI_DEV_HOST` and binds to the LAN address with a
+  separate HMR port during mobile dev; `svelte.config.js` uses `adapter-static` with
+  `fallback: 'index.html'`.
 
 **Apple Pencil, precisely.** Tauri v2 on iOS renders through `WKWebView`, so Pencil arrives
 as Pointer Events: `pointerType === 'pen'`, `pressure`, `tiltX`/`tiltY`,

@@ -62,5 +62,13 @@ if (yaml !== before) writeFileSync(projectYml, yaml);
 
 for (const dir of UNTRACKED_SOURCE_DIRS) mkdirSync(join(appleDir, dir), { recursive: true });
 
-execFileSync('xcodegen', ['generate'], { cwd: appleDir, stdio: 'inherit' });
+try {
+	execFileSync('xcodegen', ['generate'], { cwd: appleDir, stdio: 'inherit' });
+} catch (error) {
+	fail(
+		error.code === 'ENOENT'
+			? 'xcodegen is not installed (brew install xcodegen)'
+			: 'xcodegen refused the spec — its own complaint is above'
+	);
+}
 console.log(yaml === before ? '── Xcode project already patched' : '── Xcode project patched');

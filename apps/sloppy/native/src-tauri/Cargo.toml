@@ -45,8 +45,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-safe-area-insets-css = "0.2"
 
-# DESIGN.md's one modal, as a real system sheet floated over the webview. macOS
-# is desktop and still gets one, so this is keyed on target OS and not `mobile`.
+# The platform presentation DESIGN.md § Layout's one modal reaches for. Keyed on
+# target OS rather than `mobile`, because macOS is desktop and still gets it.
 [target.'cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))'.dependencies]
 tauri-plugin-system-components = "0.1.8"
 

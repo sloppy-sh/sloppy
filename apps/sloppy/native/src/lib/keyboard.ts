@@ -85,7 +85,7 @@ export function trackKeyboardInset(): () => void {
 		const open = occlusion > KEYBOARD_FLOOR;
 
 		root.style.setProperty('--kb-inset-bottom', `${Math.round(lift)}px`);
-		keyboard.set(open, Math.round(occlusion));
+		keyboard.set(open, open ? Math.round(occlusion) : 0);
 
 		if (!open) {
 			const published = publishedSafeBottom();

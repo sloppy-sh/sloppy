@@ -13,6 +13,8 @@ pnpm tauri:dev        # desktop
 pnpm ios:dev          # iOS / iPadOS simulator or device
 pnpm android:dev      # Android emulator or device
 pnpm dev              # just the frontend, in a browser, on :8040
+
+SLOPPY_LOCAL_MODE=true pnpm ios:dev   # …carrying the on-device graph engine
 ```
 
 All of them go through [`scripts/tauri.sh`](scripts/tauri.sh), which keeps the Xcode
@@ -36,7 +38,7 @@ All from the monorepo-root `.env`; a shell variable of the same name wins.
 | Variable                            | Default                                                    | What it decides                                                             |
 | ----------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.              |
-| `SLOPPY_LOCAL_MODE`                 | on for `dev`, else off                                     | Compiles in the on-device graph engine, and tells the frontend it is there. |
+| `SLOPPY_LOCAL_MODE`                 | off                                                        | Compiles in the on-device graph engine, and tells the frontend it is there. |
 | `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Raise a Cloudflare tunnel to the local API for a device on another network. |
 
 `PUBLIC_SLOPPY_API_URL` is the web shell's variable too — one origin, set once, obeyed by

@@ -6,11 +6,19 @@
 //! unchanged against it, and nothing here sees a table name except as an opaque
 //! string inside a query it was handed.
 //!
-//! **Wire contract.** JSON has no record id, so one crosses in both directions
-//! tagged as `{"$rid":[table,key]}` — a caller binding an id into `vars` must
-//! tag it that way, and must revive the same tag out of a result, or it holds a
-//! plain object where `@sloppy/types`' `z.instanceof(RecordId)` expects a class.
-//! Everything else Sloppy stores is plain JSON.
+//! **Wire contract.** A stored `RecordId` crosses in both directions tagged as
+//! `{"$rid":[table,key]}` — a one-key object whose `$rid` is a two-element
+//! array, recognised at any depth; anything that merely resembles it stays
+//! data. Binding an id means writing that tag, and reading one back means
+//! turning it into `@sloppy/types`' `RecordIdSchema` class, which no JSON
+//! encoding does on its own.
+//!
+//! Nothing else is tagged, so a value JSON cannot spell — a datetime, a
+//! duration, a decimal — leaves as the string the SDK renders it to and comes
+//! back as that string, not as the type it was. What makes an untagged
+//! transport enough is that Sloppy stores none of them: docs/ARCHITECTURE.md
+//! § "Data model" rules every column to a string, a number, a bool or a
+//! collection of those, timestamps included.
 
 use serde_json::{Number as JsonNumber, Value as JsonValue};
 use surrealdb::engine::local::{Db, SurrealKv};
@@ -224,21 +232,28 @@ mod tests {
         (db, dir)
     }
 
-    /// The id `@sloppy/data` actually writes — `node:{ created_by, id }`, with a
-    /// `parent` holding another one — through SurrealDB and back.
+    /// The two id forms `@sloppy/data` writes together — the composite
+    /// `node:{ created_by, id }` as the row's own key, and the `<did>/<ulid>`
+    /// ref a column points with (docs/ARCHITECTURE.md § "Data model") — through
+    /// SurrealDB and back.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_composite_record_id_survives_the_store_and_the_json_hop() {
         let (db, _dir) = store().await;
         let root = rid("node", json!({ "created_by": DID, "id": "01ROOT" }));
         let child = rid("node", json!({ "created_by": DID, "id": "01CHILD" }));
+        let root_ref = json!(format!("{DID}/01ROOT"));
 
-        run(&db, "CREATE $id SET address = '1'", json!({ "id": root }))
-            .await
-            .unwrap();
         run(
             &db,
-            "CREATE $id SET address = '1a', parent = $parent",
-            json!({ "id": child, "parent": root }),
+            "CREATE $id SET address = '1', depth = 1",
+            json!({ "id": root }),
+        )
+        .await
+        .unwrap();
+        run(
+            &db,
+            "CREATE $id SET address = '1a', depth = 2, parent = $parent",
+            json!({ "id": child, "parent": root_ref }),
         )
         .await
         .unwrap();
@@ -252,7 +267,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(out[0][0]["id"], child);
-        assert_eq!(out[0][0]["parent"], root);
+        assert_eq!(out[0][0]["parent"], root_ref);
     }
 
     /// A bound id that no row carries still has to come back as the same id:
@@ -288,13 +303,15 @@ mod tests {
         }
     }
 
-    /// A record id nested inside the collections a node row is made of.
+    /// A record id nested inside the arrays and objects a result set is made
+    /// of — where nesting actually happens, since a node's own columns point
+    /// with refs rather than with ids.
     #[tokio::test(flavor = "multi_thread")]
     async fn a_nested_record_id_survives() {
         let (db, _dir) = store().await;
         let value = json!({
-            "links": [rid("node", json!({ "created_by": DID, "id": "01A" }))],
-            "origin": { "ref": rid("node", json!("01B")) }
+            "rows": [{ "id": rid("node", json!({ "created_by": DID, "id": "01A" })) }],
+            "deeper": { "id": rid("block", json!("01B")) }
         });
         let out = run(&db, "RETURN $v", json!({ "v": value })).await.unwrap();
         assert_eq!(out[0], value);

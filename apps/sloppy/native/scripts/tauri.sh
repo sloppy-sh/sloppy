@@ -43,7 +43,6 @@ fi
 
 # ── Local mode: one value, both halves ───────────────────────────────────────
 SLOPPY_LOCAL_MODE="${SLOPPY_LOCAL_MODE:-$(read_env SLOPPY_LOCAL_MODE)}"
-if [[ -z "$SLOPPY_LOCAL_MODE" && "$ACTION" == "dev" ]]; then SLOPPY_LOCAL_MODE=true; fi
 if is_true "$SLOPPY_LOCAL_MODE"; then LOCAL_MODE=true; else LOCAL_MODE=false; fi
 
 export PUBLIC_ENABLE_LOCAL_MODE="$LOCAL_MODE"
@@ -55,10 +54,9 @@ fi
 # iOS refuses plain http to an arbitrary host, so the LAN address is no help
 # either; it has to be an https origin.
 #
-# TODO(apps/sloppy/api): docs/ARCHITECTURE.md § "Native shell" has this one
-# origin also carrying syr, which sign-in needs — the device's browser cannot
-# reach a syr instance on this LAN either. Fronting it is a route on the API,
-# not a second tunnel, or the origin stops being one.
+# TODO(apps/sloppy/api): sign-in needs the syr instance on this same origin —
+# the device's browser cannot reach one on this LAN either. Fronting it is a
+# route on the API, not a second tunnel, or the origin stops being one.
 SLOPPY_DEV_TUNNEL="${SLOPPY_DEV_TUNNEL:-$(read_env SLOPPY_DEV_TUNNEL)}"
 CF_TUNNEL_NAME="${CF_TUNNEL_NAME:-$(read_env CF_TUNNEL_NAME)}"
 CF_TUNNEL_HOSTNAME="${CF_TUNNEL_HOSTNAME:-$(read_env CF_TUNNEL_HOSTNAME)}"
