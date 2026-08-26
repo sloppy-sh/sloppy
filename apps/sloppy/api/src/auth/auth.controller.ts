@@ -35,10 +35,10 @@ import {
  * Signing in with the syr identity somebody already has —
  * docs/ARCHITECTURE.md § "Auth: Platform Delegation v0.1".
  *
- * The callback below lands on this API and never on a shell, because syr
- * requires `callback_url` to sit on `platform_origin`. What happens next
- * depends only on whether the shell shares this origin: the browser can be
- * given the session outright, and everything else is handed the code to spend.
+ * The callback below lands on this API and never on a shell, under the origin
+ * rule `AuthService.platformOrigin` holds. What happens next depends only on
+ * whether the shell shares this origin: the browser can be given the session
+ * outright, and everything else is handed the code to spend.
  *
  * Every route is `@Public()`: they are how a session begins, and `/auth/me`
  * answers "nobody" rather than refusing, so the first visit is not an error.

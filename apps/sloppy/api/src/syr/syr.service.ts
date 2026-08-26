@@ -54,9 +54,9 @@ export interface CodeExchange {
   platform_origin: string;
 }
 
-// TODO(m1/auth): promote `delegation_id` into SyrPlatformTokenRequestSchema.
-// syr's token endpoint rejects a request without it, and the sibling IdP
-// builds its own token endpoint from that schema.
+// TODO(foundation): syr's token endpoint rejects a request without
+// `delegation_id`, so the shared schema is not yet the copy of the wire it
+// documents itself to be. Delete this extension once the field lands there.
 const TokenRequestSchema = SyrPlatformTokenRequestSchema.extend({
   delegation_id: z.string().min(1),
 });
@@ -152,10 +152,6 @@ export class SyrService {
     return url.toString();
   }
 
-  /**
-   * `callback_url` must be byte-identical to the one the consent request
-   * carried — syr compares the strings, not the URLs.
-   */
   async exchangeCode(
     instanceUrl: string,
     exchange: CodeExchange,
