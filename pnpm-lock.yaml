@@ -119,6 +119,9 @@ importers:
       '@sloppy/data':
         specifier: workspace:*
         version: link:../../../packages/ts/data
+      '@sloppy/idp':
+        specifier: workspace:*
+        version: link:../../../packages/ts/idp
       '@sloppy/types':
         specifier: workspace:*
         version: link:../../../packages/ts/types
@@ -333,6 +336,40 @@ importers:
       '@sloppy/types':
         specifier: workspace:*
         version: link:../types
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.3
+      surrealdb:
+        specifier: 'catalog:'
+        version: 2.0.8(tslib@2.8.1)(typescript@6.0.2)
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(typescript@6.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+
+  packages/ts/idp:
+    dependencies:
+      '@noble/curves':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
+      zod:
+        specifier: 'catalog:'
+        version: 4.3.6
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.5.0
+        version: 2.5.0
       '@types/node':
         specifier: ^24.10.1
         version: 24.13.3
@@ -876,6 +913,14 @@ packages:
         optional: true
       '@nestjs/platform-express':
         optional: true
+
+  '@noble/curves@2.3.0':
+    resolution: {integrity: sha512-v7cY+4oWYPQszRj6ZFGzTVL7uP2TaLo1xMhWHzYC5wj0ZhOXQ5x+sBre8rF3hi8cAoi0bh1qXoovoOkdFtvqEg==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/hashes@2.3.0':
+    resolution: {integrity: sha512-oN+QwyX7VSHotibwubG3kpzbwKrfnyR6OOO+3Nk/53ADL7FmgHHz4TgrbaYKvvOw09u6QTx0oiH1cNCIOuN0CQ==}
+    engines: {node: '>= 20.19.0'}
 
   '@oxc-project/types@0.123.0':
     resolution: {integrity: sha512-YtECP/y8Mj1lSHiUWGSRzy/C6teUKlS87dEfuVKT09LgQbUsBW1rNg+MiJ4buGu3yuADV60gbIvo9/HplA56Ew==}
@@ -4219,6 +4264,12 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@nestjs/platform-express': 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)
+
+  '@noble/curves@2.3.0':
+    dependencies:
+      '@noble/hashes': 2.3.0
+
+  '@noble/hashes@2.3.0': {}
 
   '@oxc-project/types@0.123.0': {}
 
