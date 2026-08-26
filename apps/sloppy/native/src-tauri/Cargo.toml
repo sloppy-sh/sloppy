@@ -1,0 +1,59 @@
+[package]
+name = "sloppy-native"
+version = "0.0.1"
+description = "Sloppy — a Zettelkasten-structured, socially-shareable knowledge graph"
+authors = ["sloppy.sh"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "sloppy_native_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# The on-device graph engine (src/db.rs). OFF by default: surrealdb is ~60 MB of
+# native library per ABI, and a build that talks to a server should not carry it.
+# `scripts/tauri.sh` turns this on from the same value it hands the frontend as
+# PUBLIC_ENABLE_LOCAL_MODE, so the two halves cannot disagree.
+local-mode = ["dep:surrealdb", "dep:tokio"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Sign-in leaves for the system browser and comes back as a sloppy:// URL. The
+# two plugins are one round trip, and it is the same one on every platform.
+tauri-plugin-deep-link = "2"
+tauri-plugin-opener = "2"
+# A presigned blob lives on an origin that grants this webview no CORS, so
+# `runtime.assetBytes` reads those bytes out here instead.
+tauri-plugin-http = "2"
+# On-disk SurrealKV under the app-data directory, reached over the db_* commands.
+# Held to the same minor line as the server image in docker-compose.yml: the
+# repositories in @sloppy/data run against both, so SurrealQL has to mean the
+# same thing on-device as it does against a server.
+surrealdb = { version = "~3.1", default-features = false, features = [
+	"kv-surrealkv",
+], optional = true }
+tokio = { version = "1", features = ["sync"], optional = true }
+
+# Android's WebView reports env(safe-area-inset-bottom) as 0 for the 3-button nav
+# bar, so the real WindowInsets are read natively and published as CSS vars.
+# DESIGN.md § "The four inset vars".
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-safe-area-insets-css = "0.2"
+
+# DESIGN.md's one modal is a real system sheet here — a UIKit sheet on Apple, a
+# Material bottom sheet on Android — floated over the webview rather than drawn
+# inside it. macOS is desktop, so this is keyed on target OS and not on `mobile`.
+[target.'cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))'.dependencies]
+tauri-plugin-system-components = "0.1.8"
+
+# A second launch (the OS opening a sloppy:// link) must reach the running
+# process instead of starting another. The "deep-link" feature is what re-emits
+# the URL through the deep-link plugin.
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

@@ -1,0 +1,8 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "apple",
+	"description": "iOS, iPadOS and macOS, where DESIGN.md's one modal is a real system sheet floated over the webview rather than drawn inside it — so it keeps the system's own drag, detents and dismissal, which an HTML sheet has to imitate and never quite does.",
+	"platforms": ["iOS", "macOS"],
+	"windows": ["main"],
+	"permissions": ["system-components:default"]
+}

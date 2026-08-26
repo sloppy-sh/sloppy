@@ -1,0 +1,15 @@
+/* The design system is @sloppy/ui's; DESIGN.md is its spec. What is left here is
+   only what a webview inside a native process needs and a browser tab does not. */
+@import '@sloppy/ui/styles';
+
+/* Self-hosted so the two faces DESIGN.md § Typography names are the ones that
+   render offline, on the first frame, with no request to anybody. */
+@import '@fontsource-variable/inter/index.css';
+@import '@fontsource-variable/jetbrains-mono/index.css';
+
+/* iOS rubber-band makes a page that fits the screen look scrollable, and on a
+   canvas it reads as the graph slipping its moorings. */
+html,
+body {
+	overscroll-behavior: none;
+}

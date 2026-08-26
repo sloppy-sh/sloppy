@@ -1,0 +1,53 @@
+# @sloppy/native
+
+The Tauri shell. It boots the app and answers the questions a webview inside a native
+process answers differently from a browser tab — where the API is, how a sign-in leaves and
+comes back, what the system bars measure, whether an on-device graph engine is compiled in.
+Everything else is `@sloppy/app-core`, exactly as on the web. docs/ARCHITECTURE.md
+§ "Native shell" is the spec.
+
+## Running it
+
+```sh
+pnpm tauri:dev        # desktop
+pnpm ios:dev          # iOS / iPadOS simulator or device
+pnpm android:dev      # Android emulator or device
+pnpm dev              # just the frontend, in a browser, on :5174
+```
+
+All of them go through [`scripts/tauri.sh`](scripts/tauri.sh), which keeps the Xcode
+project patched and local mode's two halves in step.
+**[XCODE_PROJECT.md](XCODE_PROJECT.md) is required reading before touching that project** —
+`tauri ios init` regenerates it as an iPhone app with no URL scheme, every time.
+
+A first run on either mobile platform needs the project generated once:
+
+```sh
+pnpm tauri ios init
+pnpm tauri android init
+```
+
+## What it reads
+
+All from the monorepo-root `.env`; a shell variable of the same name wins.
+
+| Variable                            | Default                 | What it decides                                                             |
+| ----------------------------------- | ----------------------- | --------------------------------------------------------------------------- |
+| `PUBLIC_API_URL`                    | `http://localhost:8020` | The API's **origin**. `@sloppy/client` owns the path after it.              |
+| `SLOPPY_LOCAL_MODE`                 | on for `dev`, else off  | Compiles in the on-device graph engine, and tells the frontend it is there. |
+| `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                     | Raise a Cloudflare tunnel to the local API for a device on another network. |
+
+`SLOPPY_LOCAL_MODE` drives the Cargo `local-mode` feature and the frontend's
+`PUBLIC_ENABLE_LOCAL_MODE` from one value, so the two cannot disagree about whether an
+embedded engine exists. It is off by default for a build because SurrealDB alone is ~60 MB
+per ABI.
+
+## Checking it
+
+```sh
+pnpm check                                       # svelte-check
+cargo fmt --check --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+```
+
+Clippy over the on-device engine needs its feature on: add `--features local-mode`.

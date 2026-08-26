@@ -1,0 +1,21 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "default",
+	"description": "Every platform. Signing in leaves for the system browser, because a webview cannot host somebody else's sign-in page, and returns as a sloppy:// link. Remote bytes are read outside the webview's CORS, which a blob host does not grant us. The http scope stays wide on purpose: a self-hosted Sloppy and the syr instance it delegates to live on origins nobody can enumerate ahead of time.",
+	"windows": ["main"],
+	"permissions": [
+		"core:default",
+		"opener:default",
+		"deep-link:default",
+		"deep-link:allow-get-current",
+		{
+			"identifier": "http:default",
+			"allow": [
+				{ "url": "https://**" },
+				{ "url": "https://**:*" },
+				{ "url": "http://**" },
+				{ "url": "http://**:*" }
+			]
+		}
+	]
+}
