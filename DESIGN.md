@@ -8,6 +8,11 @@ something.
 Read alongside [`PRODUCT.md`](PRODUCT.md). Components are shadcn-svelte wherever one
 fits; we don't hand-roll what shadcn already does well.
 
+> **Status.** None of this is built yet. Every file, token, set and test named below is a
+> specification for a later milestone to write, not a description of the tree — where this
+> document says a file "lives" somewhere or a test "holds" a floor, read it as an
+> obligation. See the [README](README.md) for what is actually in the tree.
+
 ## The feeling
 
 A surface you can put a half-formed thought on without tidying up first. Plain type,
@@ -62,8 +67,8 @@ the Tailwind v4 `@theme inline` mapping. The app root layout sets the attributes
 prefs store before content renders (inline head script) so there is no flash of the wrong
 theme.
 
-**Adding a dark theme means touching every hardcoded dark roster, not just the CSS:** the
-`DARK_THEMES` set in the prefs store, the dark set in any component harness, and the
+**Adding a dark theme will mean touching every hardcoded dark roster, not just the CSS:**
+the `DARK_THEMES` set in the prefs store, the dark set in any component harness, and the
 inline `const dark = …` check in **both** shells' `app.html` boot scripts. Miss that last
 one and the theme paints its dark surfaces with light-mode `dark:` variants for one frame
 on every cold load.
@@ -218,12 +223,16 @@ further**: the reader has asked to see sets, and the tree is momentarily the bac
 
 ### Contrast is measured, not assumed
 
-Ratios in this document are targets until a test holds them. `token-contrast.test.ts` in
-`@sloppy/ui` is the file of record: it sweeps every theme × accent and every theme ×
-facet-slot pairing, measures on the **quantised** colour (both sides converted to sRGB and
-rounded to 8 bits per channel, which is what a screen actually paints), and holds the 3:1
-mark floor and the 0.03 separation floor. A figure quoted anywhere in this repo without a
-test behind it is a target, and should say so.
+Ratios in this document are targets until a test holds them, and today all of them are
+targets: nothing measures them yet. `token-contrast.test.ts` in `@sloppy/ui` will be the
+file of record — sweeping every theme × accent and every theme × facet-slot pairing,
+measuring on the **quantised** colour (both sides converted to sRGB and rounded to 8 bits
+per channel, which is what a screen actually paints), and holding the 3:1 mark floor and
+the 0.03 separation floor. It is the first thing `@sloppy/ui` owes, because until it runs,
+a palette whose slots have converged is caught by nothing.
+
+A figure quoted anywhere in this repo without a test behind it is a target, and should say
+so.
 
 ## Typography
 

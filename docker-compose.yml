@@ -1,7 +1,7 @@
-# Dev backing services only — the database, the object store, and a DB browser.
-# The API and the clients run on the host (`pnpm dev`), and the native app always
-# does. Nothing here needs a .env: every value has a dev default, so a fresh
-# clone comes up with `docker compose up -d`.
+# Dev backing services only — the database and the object store. The API and the
+# clients run on the host (`pnpm dev`), and the native app always does. Nothing
+# here needs a .env: every value has a dev default, so a fresh clone comes up with
+# `docker compose up -d`.
 #
 # Every published port is overridable and offset from syr's own dev stack, which
 # uses 8000 / 8333 / 9001 / 8091. Verifying Platform Delegation means running
@@ -36,11 +36,16 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # S3-compatible object storage. Sloppy's own blobs (a raster of an ink stroke
-  # before it is handed to syr, an export) land here; a published node's media
-  # goes to syr, not to this bucket. The API creates the bucket on startup.
-  # All objects are private — the API mints short-lived presigned URLs, and CORS
-  # is set here because community MinIO only honours the env var.
+  # S3-compatible object storage — MinIO, not the SeaweedFS the plan named: syr
+  # has already migrated off SeaweedFS, and Sloppy hands blobs to syr, so one S3
+  # implementation across both stacks keeps a presign → PUT → complete round trip
+  # meaning the same thing on each side.
+  #
+  # Sloppy's own blobs (a raster of an ink stroke before it is handed to syr, an
+  # export) land here; a published node's media goes to syr, not to this bucket.
+  # The API creates the bucket on startup. All objects are private — the API mints
+  # short-lived presigned URLs, and CORS is set here because community MinIO only
+  # honours the env var.
   minio:
     container_name: sloppy-minio
     image: minio/minio:latest
@@ -62,14 +67,4 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
-    restart: unless-stopped
-
-  # Surrealist — visual IDE for SurrealDB.
-  surrealist:
-    container_name: sloppy-surrealist
-    image: surrealdb/surrealist:latest
-    ports:
-      - "${SURREALIST_PORT:-8192}:8080"
-    depends_on:
-      - surrealdb
     restart: unless-stopped

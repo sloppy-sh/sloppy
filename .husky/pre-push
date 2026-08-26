@@ -1,3 +1,4 @@
-# The CI format + lint gates, before code leaves the machine. Type-checking
-# (svelte-check / tsc) is left to CI on purpose: too slow for every push.
+# The format + lint gates, before code leaves the machine. Type-checking
+# (svelte-check / tsc) is too slow to run on every push and is owed by a CI
+# workflow that does not exist yet — until it does, `pnpm check` is manual.
 pnpm format:check && pnpm lint

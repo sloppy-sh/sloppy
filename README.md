@@ -49,27 +49,26 @@ labels, blocks and ink are Sloppy's own. That split is not a preference — see
 
 ## Run it
 
-Requires Node ≥ 20 and pnpm 10 (`corepack use pnpm@10.29.3`).
+Requires Node ≥ 20 and `corepack enable`. The pnpm version is pinned in `package.json`,
+so corepack fetches that one.
 
 ```bash
 pnpm install
-pnpm stack:up      # SurrealDB + object storage + Surrealist, in Docker
+pnpm stack:up      # SurrealDB + object storage, in Docker
 pnpm dev           # every app and package, via Turbo
 ```
 
 `pnpm stack:up` needs no `.env` — every value has a dev default. The published ports are
 offset from syr's own dev stack so the two can run side by side:
 
-| Service            | URL                       |
-| ------------------ | ------------------------- |
-| SurrealDB          | `ws://localhost:8010/rpc` |
-| Object storage     | http://localhost:9010     |
-| Storage console    | http://localhost:9011     |
-| Surrealist (DB UI) | http://localhost:8192     |
+| Service         | URL                       |
+| --------------- | ------------------------- |
+| SurrealDB       | `ws://localhost:8010/rpc` |
+| Object storage  | http://localhost:9010     |
+| Storage console | http://localhost:9011     |
 
-Override any of them with `SURREALDB_PORT`, `S3_PORT`, `S3_CONSOLE_PORT`,
-`SURREALIST_PORT`. `pnpm stack:down` takes it back down; `db/` and `s3/` hold the volumes
-and are disposable.
+Override any of them with `SURREALDB_PORT`, `S3_PORT`, `S3_CONSOLE_PORT`. `pnpm
+stack:down` takes it back down; `db/` and `s3/` hold the volumes and are disposable.
 
 ## Common tasks
 

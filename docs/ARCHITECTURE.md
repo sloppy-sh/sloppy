@@ -45,7 +45,7 @@ sloppy/
 │   └── rust/                            — shared crates (Cargo)
 ├── docs/
 ├── scripts/
-├── docker-compose.yml   (dev stack: SurrealDB, object storage, Surrealist)
+├── docker-compose.yml   (dev stack: SurrealDB + object storage)
 ├── pnpm-workspace.yaml  (workspace globs + the version catalog)
 ├── turbo.json
 ├── biome.json           (which packages Biome owns; Prettier owns the rest)
