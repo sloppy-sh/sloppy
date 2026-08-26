@@ -5,7 +5,12 @@
 // response shapes here are asserted against those schemas in `contracts.test.ts`
 // rather than merely written to look alike.
 
-import { DidSyrSchema, SyrScopeSchema, TimestampSchema } from "@sloppy/types";
+import {
+  DidSyrSchema,
+  type SyrScope,
+  SyrScopeSchema,
+  TimestampSchema,
+} from "@sloppy/types";
 import { z } from "zod";
 
 /** Bounded because the instance stores it and hands it back on the redirect. */
@@ -69,10 +74,16 @@ export type Profile = z.infer<typeof ProfileSchema>;
 
 // ── Platform Delegation, the instance's half ──────────────────────────────
 
+/** What a platform that names no scopes is taken to be asking for. */
+export const DEFAULT_SCOPES: readonly SyrScope[] = [
+  "identity:read",
+  "profile:read",
+];
+
 /**
  * Opening a consent request. `platform_name` defaults to the origin's hostname
- * and `scopes` to what the spec's consent page defaults to, so a platform that
- * sends neither still gets a delegation it can use.
+ * and `scopes` to `DEFAULT_SCOPES`, so a platform that sends neither still gets
+ * a delegation it can use.
  */
 export const ConsentRequestSchema = z.object({
   platform_origin: HttpUrlSchema,
@@ -108,18 +119,25 @@ export type ConsentApproval = z.infer<typeof ConsentApprovalSchema>;
 export const ConsentOutcomeSchema = z.object({ redirect_url: z.url() });
 export type ConsentOutcome = z.infer<typeof ConsentOutcomeSchema>;
 
+// Word for word what syr answers a token request missing these, because the
+// only reader is the app's server and it arrives holding syr's documentation.
+const CODE_AND_ID = "code and delegation_id are required";
+const ORIGIN_AND_CALLBACK = "platform_origin and callback_url are required";
+
 /**
  * `callback_url` is compared byte for byte against the one consent was opened
- * with — a trailing slash is a different callback. `delegation_id` is optional
- * only here, where the code alone identifies the request: syr proper answers
- * 400 without it, so a caller that leaves it out can talk to this instance and
- * to no other.
+ * with — a trailing slash is a different callback. `delegation_id` is what the
+ * request is looked up BY, exactly as syr looks it up, so a code alone will not
+ * open somebody else's request even if it is guessed.
  */
 export const TokenRequestSchema = z.object({
-  code: z.string().min(1),
-  callback_url: z.url(),
-  platform_origin: z.url(),
-  delegation_id: z.string().min(1).optional(),
+  code: z.string(CODE_AND_ID).min(1, CODE_AND_ID).max(128, CODE_AND_ID),
+  delegation_id: z
+    .string(CODE_AND_ID)
+    .min(1, CODE_AND_ID)
+    .max(128, CODE_AND_ID),
+  callback_url: z.url(ORIGIN_AND_CALLBACK),
+  platform_origin: z.url(ORIGIN_AND_CALLBACK),
 });
 export type TokenRequest = z.infer<typeof TokenRequestSchema>;
 

@@ -104,7 +104,7 @@ export class IdentityController {
   }
 
   @Public()
-  @Get("identity/:did/profile")
+  @Get("public/profile/:did")
   async profile(@Param("did") did: string): Promise<PublicRecord<Profile>> {
     return {
       status: "success",
@@ -115,11 +115,36 @@ export class IdentityController {
   /** Empty because this provider stores no media yet.
    *  TODO(M3 media track): serve the blobs behind image and ink blocks here. */
   @Public()
-  @Get("identity/:did/uploads")
+  @Get("public/uploads/:did")
   async uploads(
     @Param("did") did: string,
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
+  ): Promise<PublicListing<never>> {
+    return this.emptyPageFor(did, limit, offset);
+  }
+
+  /**
+   * Empty forever rather than not yet: what somebody writes here is nodes and
+   * blocks in Sloppy's own tables, never a syr record — AI.md § "Sloppy's
+   * Vocabulary Stays Out of the Identity Store". The routes exist because the
+   * manifest names them, and a 404 where a manifest points reads as a broken
+   * instance rather than as an identity with nothing to show.
+   */
+  @Public()
+  @Get(["public/posts/:did", "public/stories/:did"])
+  async syrOwnRecords(
+    @Param("did") did: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ): Promise<PublicListing<never>> {
+    return this.emptyPageFor(did, limit, offset);
+  }
+
+  private async emptyPageFor(
+    did: string,
+    limit?: string,
+    offset?: string,
   ): Promise<PublicListing<never>> {
     await requireIdentity(this.idp.context, decodeURIComponent(did));
     return emptyPage(limit, offset);

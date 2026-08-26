@@ -254,15 +254,43 @@ describe.skipIf(!listening)(`the provider against ${ENDPOINT.href}`, () => {
       PASSWORD,
     );
     const code = new URL(redirect_url).searchParams.get("code") as string;
-
-    await exchangeToken(ctx, {
+    const exchange = {
       code,
+      delegation_id: prompt.challenge_id,
       callback_url: CALLBACK,
       platform_origin: PLATFORM_ORIGIN,
+    };
+
+    await exchangeToken(ctx, exchange);
+    await expect(exchangeToken(ctx, exchange)).rejects.toMatchObject({
+      code: "invalid_code",
     });
+  });
+
+  it("looks the request up by id, so a code alone opens nothing", async () => {
+    const { did } = await register(ctx, {
+      username: someone(),
+      password: PASSWORD,
+    });
+    const open = () =>
+      openConsent(ctx, did, {
+        platform_origin: PLATFORM_ORIGIN,
+        callback_url: CALLBACK,
+      });
+    const mine = await open();
+    const other = await open();
+    const { redirect_url } = await approveConsent(
+      ctx,
+      did,
+      mine.challenge_id,
+      PASSWORD,
+    );
+    await approveConsent(ctx, did, other.challenge_id, PASSWORD);
+
     await expect(
       exchangeToken(ctx, {
-        code,
+        code: new URL(redirect_url).searchParams.get("code") as string,
+        delegation_id: other.challenge_id,
         callback_url: CALLBACK,
         platform_origin: PLATFORM_ORIGIN,
       }),
@@ -287,6 +315,7 @@ describe.skipIf(!listening)(`the provider against ${ENDPOINT.href}`, () => {
     await expect(
       exchangeToken(ctx, {
         code: new URL(redirect_url).searchParams.get("code") as string,
+        delegation_id: prompt.challenge_id,
         callback_url: `${CALLBACK}/`,
         platform_origin: PLATFORM_ORIGIN,
       }),

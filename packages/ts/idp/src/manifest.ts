@@ -2,8 +2,40 @@
 // in the ecosystem a consumer may assume; everything else it needs is a URL it
 // reads out of one of them. Which means these two builders decide where every
 // endpoint below lives, and a consumer never has to be told.
+//
+// A reader may drop what it does not use, and `@sloppy/types`' schemas do — a
+// syr consumer running ahead of us stays readable that way. A WRITER has no
+// such latitude: syr and slyng mark `api` and the posts and stories endpoints
+// required, and reject a manifest without them. So the served shapes below
+// widen the readers, and it is these that the builders are held to.
 
-import type { SyrIdentityManifest, SyrInstanceManifest } from "@sloppy/types";
+import {
+  SyrIdentityManifestSchema,
+  SyrInstanceManifestSchema,
+} from "@sloppy/types";
+import { z } from "zod";
+
+export const ServedInstanceManifestSchema = SyrInstanceManifestSchema.extend({
+  api: z.object({
+    public_profile: z.url(),
+    public_posts: z.url(),
+    public_stories: z.url(),
+    public_uploads: z.url(),
+  }),
+});
+export type ServedInstanceManifest = z.infer<
+  typeof ServedInstanceManifestSchema
+>;
+
+export const ServedIdentityManifestSchema = SyrIdentityManifestSchema.extend({
+  endpoints: SyrIdentityManifestSchema.shape.endpoints.extend({
+    posts: z.url(),
+    stories: z.url(),
+  }),
+});
+export type ServedIdentityManifest = z.infer<
+  typeof ServedIdentityManifestSchema
+>;
 
 export interface DidDocument {
   "@context": string[];
@@ -23,24 +55,35 @@ export interface DidDocument {
   }>;
 }
 
+/** Where the provider's routes hang, under the API's own `/api` prefix. The
+ *  manifests are built from this, and so is the consent page it points at. */
+export function providerApiBase(baseUrl: string): string {
+  return `${normalizeBaseUrl(baseUrl)}/api/idp`;
+}
+
 /** Where this instance's own endpoints live under its public URL. Callers pass
  *  the base; nothing here reads configuration. */
-export function instanceManifest(baseUrl: string): SyrInstanceManifest {
+export function instanceManifest(baseUrl: string): ServedInstanceManifest {
   const base = normalizeBaseUrl(baseUrl);
+  const api = providerApiBase(base);
+  const reads = `${api}/public`;
   return {
     name: "syr",
     public_url: base,
+    api: {
+      public_profile: `${reads}/profile`,
+      public_posts: `${reads}/posts`,
+      public_stories: `${reads}/stories`,
+      public_uploads: `${reads}/uploads`,
+    },
     identity_manifest_template: `${base}/.well-known/syr/{did}`,
     platform: {
-      // TODO(M1 app-core page track): render this page. It is where an app sends
-      // a person to approve a delegation, and no route answers it yet, so local
-      // sign-in dead-ends here.
-      consent: `${base}/auth/platform-consent`,
-      token: `${base}/api/idp/platform/token`,
-      sign: `${base}/api/idp/platform/sign`,
-      challenge: `${base}/api/idp/platform/challenge`,
-      delegations: `${base}/api/idp/platform/delegations`,
-      revoke: `${base}/api/idp/platform/revoke`,
+      consent: `${api}/consent`,
+      token: `${api}/platform/token`,
+      sign: `${api}/platform/sign`,
+      challenge: `${api}/platform/challenge`,
+      delegations: `${api}/platform/delegations`,
+      revoke: `${api}/platform/revoke`,
     },
   };
 }
@@ -48,20 +91,25 @@ export function instanceManifest(baseUrl: string): SyrInstanceManifest {
 export function identityManifest(
   baseUrl: string,
   did: string,
-): SyrIdentityManifest {
+): ServedIdentityManifest {
   const base = normalizeBaseUrl(baseUrl);
-  const identity = `${base}/api/idp/identity/${encodeURIComponent(did)}`;
+  const api = providerApiBase(base);
+  const reads = `${api}/public`;
+  const encoded = encodeURIComponent(did);
   return {
     version: 1,
     did,
     provider: base,
     endpoints: {
-      profile: `${identity}/profile`,
-      uploads: `${identity}/uploads`,
-      did_document: `${identity}/document`,
+      profile: `${reads}/profile/${encoded}`,
+      posts: `${reads}/posts/${encoded}`,
+      stories: `${reads}/stories/${encoded}`,
+      uploads: `${reads}/uploads/${encoded}`,
+      did_document: `${api}/identity/${encoded}/document`,
     },
-    // TODO(M1 app-core page track): render this page; no route answers it yet.
-    web_profile: `${base}/u/${encodeURIComponent(did)}`,
+    // TODO(M4 publish-and-pull): serve a person's public page here. It is where
+    // a browser resolving this identity is sent, and no route answers it yet.
+    web_profile: `${base}/u/${encoded}`,
   };
 }
 

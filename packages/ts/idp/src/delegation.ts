@@ -27,6 +27,7 @@ import {
   type ConsentOutcome,
   type ConsentPrompt,
   type ConsentRequest,
+  DEFAULT_SCOPES,
   type DelegationListing,
   DelegationStatementSchema,
   type RevokeOutcome,
@@ -39,7 +40,7 @@ import { generateKeypair, sign, wipe } from "./keys.js";
 import { sealSeed, withSealedSeed } from "./sealing.js";
 import {
   attachConsentCode,
-  consumeConsentCode,
+  consumeConsent,
   createConsent,
   createDelegation,
   deleteConsent,
@@ -54,7 +55,6 @@ import {
 import { issueToken, readToken, subjectOf } from "./tokens.js";
 
 const PLATFORM_KIND = "platform";
-const DEFAULT_SCOPES: SyrScope[] = ["identity:read", "profile:read"];
 
 export interface PlatformGrant {
   did: string;
@@ -88,7 +88,7 @@ export async function openConsent(
     platform_origin: request.platform_origin,
     platform_name: request.platform_name ?? origin.hostname,
     callback_url: request.callback_url,
-    scopes: request.scopes ?? DEFAULT_SCOPES,
+    scopes: request.scopes ?? [...DEFAULT_SCOPES],
     state: request.state,
     created_at: nowIso(),
     expires_at: isoIn(CONSENT_TTL_SECONDS),
@@ -154,6 +154,8 @@ export async function approveConsent(
 
   const callback = new URL(consent.callback_url);
   callback.searchParams.set("code", code);
+  // syr's name for the consent request's own id, and what the exchange below
+  // looks the request up by.
   callback.searchParams.set("delegation_id", challengeId);
   if (consent.state) callback.searchParams.set("state", consent.state);
   return { redirect_url: callback.toString() };
@@ -182,7 +184,12 @@ export async function exchangeToken(
   ctx: IdpContext,
   request: TokenRequest,
 ): Promise<SyrPlatformTokenResponse> {
-  const consent = await consumeConsentCode(ctx.db, request.code, nowIso());
+  const consent = await consumeConsent(
+    ctx.db,
+    request.delegation_id,
+    request.code,
+    nowIso(),
+  );
   if (
     !consent ||
     consent.platform_origin !== request.platform_origin ||

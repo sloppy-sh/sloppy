@@ -3,8 +3,9 @@ import {
   identityManifest,
   instanceManifest,
   requireIdentity,
+  type ServedIdentityManifest,
+  type ServedInstanceManifest,
 } from "@sloppy/idp";
-import type { SyrIdentityManifest, SyrInstanceManifest } from "@sloppy/types";
 import { Public } from "../auth/public.decorator";
 import { IdpExceptionFilter } from "./idp-request";
 import { IdpService } from "./idp.service";
@@ -26,14 +27,14 @@ export class WellKnownController {
   @Public()
   @Get("syr")
   @Header("Cache-Control", "public, max-age=300")
-  instance(): SyrInstanceManifest {
+  instance(): ServedInstanceManifest {
     return instanceManifest(this.idp.context.publicUrl);
   }
 
   @Public()
   @Get("syr/:did")
   @Header("Cache-Control", "public, max-age=300")
-  async identity(@Param("did") did: string): Promise<SyrIdentityManifest> {
+  async identity(@Param("did") did: string): Promise<ServedIdentityManifest> {
     const context = this.idp.context;
     const identity = await requireIdentity(context, decodeURIComponent(did));
     return identityManifest(context.publicUrl, identity.did);

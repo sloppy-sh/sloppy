@@ -46,8 +46,6 @@ export const IDENTITY_SCHEMA = `
   -- signature has to be able to find out that it was revoked.
   DEFINE INDEX IF NOT EXISTS idp_delegation_did_origin ON idp_delegation FIELDS did, platform_origin;
   DEFINE INDEX IF NOT EXISTS idp_consent_did ON idp_consent FIELDS did;
-  -- The token exchange arrives holding only the code.
-  DEFINE INDEX IF NOT EXISTS idp_consent_code ON idp_consent FIELDS code;
 `;
 
 const DEFINE_TABLE = /DEFINE TABLE\s+(?:IF NOT EXISTS\s+)?(\w+)/g;
@@ -308,20 +306,21 @@ export async function deleteConsent(db: Surreal, id: RecordId): Promise<void> {
 }
 
 /**
- * Trade a code for the consent it belongs to, exactly once. The delete is the
- * claim: two callers racing the same code both run the statement, and only the
- * one whose DELETE returned a row may go on to mint a token.
+ * Trade a consent's id and code for the consent itself, exactly once. The
+ * delete is the claim: two callers racing the same code both run the statement,
+ * and only the one whose DELETE returned a row may go on to mint a token.
  */
-export async function consumeConsentCode(
+export async function consumeConsent(
   db: Surreal,
+  consentId: string,
   code: string,
   now: string,
 ): Promise<ConsentRow | null> {
   const [rows] = await db.query<[ConsentRow[]]>(
     `DELETE idp_consent
-       WHERE code = $code AND expires_at > $now
+       WHERE id = $id AND code = $code AND expires_at > $now
        RETURN BEFORE;`,
-    { code, now },
+    { id: new RecordId("idp_consent", consentId), code, now },
   );
   return rows?.[0] ?? null;
 }

@@ -1,13 +1,20 @@
-// The manifests are parsed with the schemas Sloppy uses to read SOMEBODY
-// ELSE'S instance. That is the whole test: if what this instance publishes will
-// not go through `@sloppy/types`' reader, it is not a syr instance.
+// The manifests are parsed twice: with the schemas Sloppy uses to read SOMEBODY
+// ELSE'S instance, and with the wider served shapes that carry what syr and
+// slyng refuse a manifest for omitting. Passing only the first is how an
+// instance ends up published in a dialect nobody but us accepts.
 
 import {
   SyrIdentityManifestSchema,
   SyrInstanceManifestSchema,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { didDocument, identityManifest, instanceManifest } from "./manifest.js";
+import {
+  didDocument,
+  identityManifest,
+  instanceManifest,
+  ServedIdentityManifestSchema,
+  ServedInstanceManifestSchema,
+} from "./manifest.js";
 
 const BASE = "https://sloppy.example";
 const DID = "did:syr:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp";
@@ -17,6 +24,16 @@ describe("the instance manifest", () => {
     expect(() =>
       SyrInstanceManifestSchema.parse(instanceManifest(BASE)),
     ).not.toThrow();
+  });
+
+  it("carries the api block a syr reader requires", () => {
+    const { api } = ServedInstanceManifestSchema.parse(instanceManifest(BASE));
+    expect(Object.keys(api).sort()).toEqual([
+      "public_posts",
+      "public_profile",
+      "public_stories",
+      "public_uploads",
+    ]);
   });
 
   it("declares every platform endpoint the delegation flow needs", () => {
@@ -50,6 +67,29 @@ describe("the identity manifest", () => {
     expect(() =>
       SyrIdentityManifestSchema.parse(identityManifest(BASE, DID)),
     ).not.toThrow();
+  });
+
+  it("carries the endpoints a syr reader requires", () => {
+    const { endpoints } = ServedIdentityManifestSchema.parse(
+      identityManifest(BASE, DID),
+    );
+    expect(Object.keys(endpoints).sort()).toEqual([
+      "did_document",
+      "posts",
+      "profile",
+      "stories",
+      "uploads",
+    ]);
+  });
+
+  it("hangs each listing under the base the instance advertises", () => {
+    const { api } = instanceManifest(BASE);
+    const { endpoints } = identityManifest(BASE, DID);
+    const encoded = encodeURIComponent(DID);
+    expect(endpoints.profile).toBe(`${api.public_profile}/${encoded}`);
+    expect(endpoints.posts).toBe(`${api.public_posts}/${encoded}`);
+    expect(endpoints.stories).toBe(`${api.public_stories}/${encoded}`);
+    expect(endpoints.uploads).toBe(`${api.public_uploads}/${encoded}`);
   });
 
   it("escapes the DID into every endpoint that carries one", () => {
