@@ -313,9 +313,9 @@ for a compound prompt, not an optimization to reach for when a task looks big.
   rather than looping forever. A contested track is held OUT of the merge tournament —
   nothing gets merged on a timer.
 - **Restart the dev stack** so the developer can review the result running live, and
-  report what changed per system. `docker restart` leaves the previous ready-marker in
-  place, so check its **mtime** rather than its existence — a stale marker is how a
-  rebuild reports a false green.
+  report what changed per system. Readiness is `docker compose ps` reporting **healthy**
+  for the backing services plus each host dev server's own ready line — never the exit
+  code of the restart, which returns while the containers are still `starting`.
 
 ### Which model runs which role
 

@@ -36,19 +36,18 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # S3-compatible object storage — MinIO, not the SeaweedFS the plan named: syr
-  # has already migrated off SeaweedFS, and Sloppy hands blobs to syr, so one S3
-  # implementation across both stacks keeps a presign → PUT → complete round trip
-  # meaning the same thing on each side.
+  # S3-compatible object storage. MinIO because syr runs MinIO and Sloppy hands
+  # its blobs to syr: one S3 implementation across both stacks keeps a
+  # presign → PUT → complete round trip meaning the same thing on each side.
   #
   # Sloppy's own blobs (a raster of an ink stroke before it is handed to syr, an
   # export) land here; a published node's media goes to syr, not to this bucket.
-  # The API creates the bucket on startup. All objects are private — the API mints
-  # short-lived presigned URLs, and CORS is set here because community MinIO only
-  # honours the env var.
+  # No API exists yet; when it lands it creates the bucket on startup and keeps
+  # every object private, handing out short-lived presigned URLs. CORS is set
+  # here because community MinIO only honours the env var.
   minio:
     container_name: sloppy-minio
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-sloppy-access-key}

@@ -373,10 +373,13 @@ Scroll chrome is part of the theme, not the OS's. Both halves live in `@sloppy/u
 
 ## Components
 
-shadcn-svelte vocabulary, consistent across the app. Add via the CLI
-(`pnpm --filter @sloppy/ui add <component>`); don't hand-roll what shadcn covers. Every
-interactive element ships default/hover/focus/active/disabled/loading states. Empty states
-invite; they don't apologize. Icons: lucide, one weight.
+shadcn-svelte vocabulary, consistent across the app. Add via the CLI:
+`pnpm --filter @sloppy/ui run add <component>`, which invokes `@sloppy/ui`'s
+`"add": "shadcn-svelte add"` script. `run` is not optional — without it, `add` is pnpm's
+own installer and quietly downloads an npm package named `<component>` instead. Until
+`@sloppy/ui` exists, `pnpm dlx shadcn-svelte add <component>`. Don't hand-roll what shadcn
+covers. Every interactive element ships default/hover/focus/active/disabled/loading
+states. Empty states invite; they don't apologize. Icons: lucide, one weight.
 
 ## Motion
 
