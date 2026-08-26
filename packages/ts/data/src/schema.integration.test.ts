@@ -1,0 +1,180 @@
+// Runs `SCHEMA` and `STATEMENTS` against a real SurrealDB, because everything
+// they claim is a claim about a server: an index the planner honours, a column
+// the engine refuses to overwrite, a type it refuses to coerce. None of it is
+// observable from the string literal.
+//
+// It is also the compatibility check on the pairing in `pnpm-workspace.yaml`
+// (the `surrealdb` client) and `docker-compose.yml` (the server image). Bump
+// either half against the other and this file is where it shows.
+//
+// Skipped when nothing is listening, so a clone without the dev stack still
+// runs `pnpm test`. `docker compose up -d` is what turns it on.
+
+import { createConnection } from "node:net";
+import { RecordId, Surreal, Table } from "surrealdb";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { STATEMENTS } from "./purge.js";
+import { defineCoreSchema, SLOPPY_TABLES } from "./schema.js";
+
+const ENDPOINT = new URL(
+  process.env.SLOPPY_SURREALDB_URL ?? "ws://127.0.0.1:8010/rpc",
+);
+const USER = process.env.SURREALDB_USER ?? "root";
+const PASS = process.env.SURREALDB_PASS ?? "sloppy-dev-password";
+
+const NAMESPACE = "sloppy_test";
+const DATABASE = `schema_${Date.now()}`;
+
+const ALICE = "did:syr:z6MkAliceAliceAliceAliceAliceAlice";
+const BOB = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob";
+
+type NodeRow = ReturnType<typeof nodeRow>;
+
+function nodeRow(did: string, address: string, localId: string) {
+  return {
+    id: new RecordId("node", { created_by: did, id: localId }),
+    created_by: did,
+    address,
+    origin: `${did}/${localId}`,
+    title: "",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+/**
+ * Whether anything is listening — a TCP probe and nothing more, so the only
+ * thing that can skip this suite is an absent server. Everything past the
+ * socket, the client's own version gate included, is the pairing under test and
+ * has to fail the run rather than quietly excuse it. The client cannot answer
+ * this itself: `connect()` to a refused port never settles.
+ */
+const listening = await new Promise<boolean>((resolve) => {
+  const socket = createConnection({
+    host: ENDPOINT.hostname,
+    port: Number(ENDPOINT.port) || (ENDPOINT.protocol === "wss:" ? 443 : 80),
+  });
+  const settle = (answer: boolean) => {
+    socket.destroy();
+    resolve(answer);
+  };
+  socket.setTimeout(1000);
+  socket.once("connect", () => settle(true));
+  socket.once("timeout", () => settle(false));
+  socket.once("error", () => settle(false));
+});
+
+describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
+  let db: Surreal;
+
+  async function read(id: RecordId): Promise<NodeRow> {
+    const row = await db.select<NodeRow>(id);
+    if (!row) throw new Error(`nothing stored at ${id.toString()}`);
+    return row;
+  }
+
+  beforeAll(async () => {
+    db = new Surreal();
+    await db.connect(ENDPOINT.href);
+    await db.signin({ username: USER, password: PASS });
+    await db.use({ namespace: NAMESPACE, database: DATABASE });
+    await defineCoreSchema(db);
+    // Twice, because it runs on every boot and a second run must be a no-op
+    // rather than an error the caller has to know to swallow.
+    await defineCoreSchema(db);
+  });
+
+  afterAll(async () => {
+    if (!db) return;
+    await db.query(`REMOVE DATABASE IF EXISTS ${DATABASE};`);
+    await db.close();
+  });
+
+  it("declares every table it says it does", async () => {
+    const [info] =
+      await db.query<[{ tables: Record<string, string> }]>("INFO FOR DB;");
+    expect(Object.keys(info.tables).sort()).toEqual([...SLOPPY_TABLES].sort());
+  });
+
+  it("round-trips a row through the client's typed writes", async () => {
+    // The pairing check. A client that cannot speak the server's protocol
+    // reports success and stores a bare id, so the assertion is on the readback
+    // and not on what the write returned.
+    const row = nodeRow(ALICE, "1", "01JROUNDTRIP0000000000000A");
+    await db.create(row.id).content(row);
+
+    const stored = await read(row.id);
+    expect(stored.address).toBe("1");
+    expect(stored.created_by).toBe(ALICE);
+    expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("keeps address, created_by and created_at as first written", async () => {
+    const row = nodeRow(BOB, "2", "01JIMMUTABLE00000000000000");
+    await db.create(row.id).content(row);
+
+    await db.update(row.id).merge({
+      address: "9",
+      created_by: ALICE,
+      created_at: "2030-01-01T00:00:00.000Z",
+      updated_at: "2026-06-01T00:00:00.000Z",
+    });
+
+    const merged = await read(row.id);
+    expect(merged.address).toBe("2");
+    expect(merged.created_by).toBe(BOB);
+    expect(merged.created_at).toBe("2026-01-01T00:00:00.000Z");
+    expect(merged.updated_at).toBe("2026-06-01T00:00:00.000Z");
+
+    // CONTENT replaces the whole document, which is the shape that would drop
+    // an immutable column rather than merely reassign it.
+    await db
+      .update(row.id)
+      .content({ ...row, address: "9", created_by: ALICE });
+    const replaced = await read(row.id);
+    expect(replaced.address).toBe("2");
+    expect(replaced.created_by).toBe(BOB);
+  });
+
+  it("refuses a second node at an address its owner already used", async () => {
+    const first = nodeRow(ALICE, "3", "01JUNIQUEFIRST000000000000");
+    await db.create(first.id).content(first);
+
+    const clash = nodeRow(ALICE, "3", "01JUNIQUESECOND00000000000");
+    await expect(db.create(clash.id).content(clash)).rejects.toThrow();
+
+    // Another author holding the same address is the normal federated case.
+    const peer = nodeRow(BOB, "3", "01JUNIQUEPEER0000000000000");
+    await expect(db.create(peer.id).content(peer)).resolves.toBeDefined();
+  });
+
+  it("refuses a timestamp that is not a string", async () => {
+    // The whole point of TYPE string: `time::now()` is the natural thing to
+    // reach for, and the client decodes what it stores to a class that fails
+    // `TimestampSchema` on the way back out.
+    await expect(
+      db.query(
+        `CREATE $id CONTENT { created_by: $did, address: "4",
+           created_at: time::now(), updated_at: time::now() };`,
+        {
+          id: new RecordId("node", {
+            created_by: ALICE,
+            id: "01JDATETIME000000000000000",
+          }),
+          did: ALICE,
+        },
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("purges one author and leaves the other whole", async () => {
+    const before = await db.select<NodeRow>(new Table("node"));
+    expect(before.some((row) => row.created_by === BOB)).toBe(true);
+
+    await db.query(STATEMENTS.join("\n"), { did: ALICE });
+
+    const after = await db.select<NodeRow>(new Table("node"));
+    expect(after.some((row) => row.created_by === ALICE)).toBe(false);
+    expect(after.some((row) => row.created_by === BOB)).toBe(true);
+  });
+});

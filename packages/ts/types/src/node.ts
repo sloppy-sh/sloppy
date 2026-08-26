@@ -1,10 +1,7 @@
 // A node: one thought, and its place in the sequence of thought that produced
-// it. The address is the protocol — see `address.ts` and AI.md.
-//
-// There is no `depth` column, and there is not meant to be one. Depth, the
-// angular sector and subtree membership are all functions of the address, and
-// `address.ts` is where they live: a stored copy would be a second answer with
-// no author, disagreeing with the function the day the function moves.
+// it. The address is the protocol — see `address.ts` and AI.md § "The Address
+// Is the Protocol", which is also why there is no `depth` field here: depth,
+// the angular sector and subtree membership are functions of the address.
 
 import { z } from "zod";
 import { AddressSchema } from "./address.js";

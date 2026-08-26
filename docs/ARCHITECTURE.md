@@ -210,18 +210,24 @@ The rules AI.md's foundation-wave section states, applied here:
   of the rule: the same instant written two widths is two byte strings, and a signature is
   over the bytes. Lexicographic order over these strings is chronological order, so
   `ORDER BY created_at` needs nothing further.
-- **Nothing derivable from the address is stored.** There is no `depth` column: depth, the
-  angular sector and subtree membership are functions in `address.ts`, and a stored copy
-  would be a second answer with no author. A read that wants "the top three levels" filters
-  on the addresses it already has.
+- **Nothing derivable from the address is stored** — AI.md § "The Address Is the Protocol"
+  states the rule. There is therefore no `depth` column: depth, the angular sector and
+  subtree membership are functions in `address.ts`. The read that would want one is the
+  graph's level-of-detail pass, and `node_owner_origin` serves it — a region loads as a
+  whole tree and every row already carries the address depth comes from. An absolute depth
+  column would not serve it in any case: level of detail collapses a subtree past a
+  threshold measured from the node being looked at, and that number differs per focus.
 - `schema.ts` is one contiguous string literal, so it is foundation-wave territory rather
   than per-track. Production SurrealDB serves only `DEFINE`d tables; dev does not enforce
   it, so an undeclared table passes locally and fails in production.
 
 Tables are `SCHEMALESS`, and `DEFINE FIELD` is spent only where the database has to enforce
-something the application cannot be trusted to: `node.address` and every table's
-`created_by`, both made immutable with `VALUE $before OR $value`. That is what keeps a later
-track from having to edit the shared literal to add a field.
+something the application cannot be trusted to. Three things qualify, all of them stated
+above: `node.address` and every table's `created_by`, made immutable with
+`VALUE $before OR $value`; and `created_at` / `updated_at` as `TYPE string`, which is what
+makes a write in the wrong encoding fail at the write. `created_at` is immutable too, being
+a field of the signed payload. Everything else is a plain column, which is what keeps a
+later track from having to edit the shared literal to add a field.
 
 **`ord` as a fractional index and composite record ids are both chosen with the future CRDT
 layer in mind** — they are the two things that would otherwise have to be retrofitted.
@@ -302,6 +308,10 @@ a block type and an annotation layer here, not the product itself.
 
 - `pnpm check`, `pnpm lint`, `pnpm test` from the root via turbo; `cargo fmt --check` and
   `cargo clippy -D warnings` against `src-tauri`.
+- **The schema against a running server.** Immutability, the unique index and the timestamp
+  type are claims about an engine, not about a string, so `@sloppy/data` asserts them over
+  the dev stack. The suite skips when nothing is listening and fails when something is: it
+  is also what catches a `surrealdb` client and a server image that no longer pair.
 - **Address determinism as a property test** — two simulated peers, identical creation
   sequences, byte-identical addresses. This is the protocol claim; prove it, never assert it.
 - **syr round trip** — bring up syr's own docker-compose, complete Platform Delegation end

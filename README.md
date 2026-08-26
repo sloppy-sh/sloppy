@@ -82,6 +82,10 @@ pnpm format        # write formatting
 pnpm test          # run tests
 ```
 
+`@sloppy/data`'s schema tests run against the dev SurrealDB and skip when nothing is
+listening, so `pnpm stack:up` before `pnpm test` is what exercises the table definitions,
+the indexes and the purge for real. `SLOPPY_SURREALDB_URL` points them elsewhere.
+
 ## Formatting: who owns what
 
 **Biome owns the pure TS/JS packages; Prettier owns everything Svelte.** The two sets are

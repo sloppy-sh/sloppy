@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type Address,
+  type AddressSegment,
   addressDepth,
   addressSector,
   childAddress,
@@ -48,6 +49,42 @@ describe("the grammar", () => {
     for (const value of ["1", "27", "1a", "1z1", "1aa1", "3zz9aa"]) {
       expect(formatAddress(parseAddress(value))).toBe(value);
     }
+  });
+
+  it("refuses segments that spell a different address than they describe", () => {
+    // Every list here concatenates into a perfectly valid address of the wrong
+    // depth, so the failure a caller needs is loud, not a returned string.
+    for (const segments of [
+      [
+        { kind: "number", ordinal: 1 },
+        { kind: "number", ordinal: 2 },
+      ],
+      [
+        { kind: "number", ordinal: 1 },
+        { kind: "letter", ordinal: 1 },
+        { kind: "letter", ordinal: 2 },
+      ],
+      [...parseAddress("2"), ...parseAddress("1")],
+      // A zero or fractional ordinal renders to nothing, or to its floor.
+      [
+        { kind: "number", ordinal: 1 },
+        { kind: "letter", ordinal: 0 },
+        { kind: "number", ordinal: 2 },
+      ],
+      [
+        { kind: "number", ordinal: 1 },
+        { kind: "letter", ordinal: 1.5 },
+      ],
+    ] satisfies AddressSegment[][]) {
+      expect(() => formatAddress(segments)).toThrow(InvalidAddressError);
+    }
+  });
+
+  it("refuses an empty segment list and a letter-led one", () => {
+    expect(() => formatAddress([])).toThrow(InvalidAddressError);
+    expect(() => formatAddress([{ kind: "letter", ordinal: 1 }])).toThrow(
+      InvalidAddressError,
+    );
   });
 
   it("reads letters as bijective base-26", () => {

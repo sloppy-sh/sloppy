@@ -26,6 +26,10 @@ catalog:
   # The SurrealDB client. @sloppy/types validates RecordId with `z.instanceof`,
   # so every package that hands one to another must resolve the same copy of the
   # class or the check fails on a value that is correct.
+  #
+  # This is half a pair; the other half is the server image in
+  # docker-compose.yml. @sloppy/data's schema test runs against that image and
+  # is where moving either half without the other shows up.
   surrealdb: 2.0.8
 
   # The Svelte toolchain. web, native and every Svelte package compile against

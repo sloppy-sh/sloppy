@@ -71,10 +71,27 @@ export function formatAddress(segments: readonly AddressSegment[]): Address {
         ? String(segment.ordinal)
         : letterLabel(segment.ordinal);
   }
-  if (!ADDRESS_PATTERN.test(out)) {
-    throw new InvalidAddressError(out, "segments do not spell an address");
-  }
+  const fault = segmentFault(segments);
+  if (fault !== null) throw new InvalidAddressError(out, fault);
   return out;
+}
+
+// Checked over the segments rather than over the string they spell, because the
+// string cannot show the damage: two same-kind segments in a row concatenate
+// into ONE segment, and `[{number,1},{number,2}]` spells "12" — a valid address
+// with a different depth, parent and sector than the caller described.
+function segmentFault(segments: readonly AddressSegment[]): string | null {
+  if (segments.length === 0) return "an address has at least one segment";
+  for (const [index, segment] of segments.entries()) {
+    const expected: SegmentKind = index % 2 === 0 ? "number" : "letter";
+    if (segment.kind !== expected) {
+      return `segment ${index + 1} is a ${segment.kind} where the grammar alternates to a ${expected}`;
+    }
+    if (!Number.isSafeInteger(segment.ordinal) || segment.ordinal < 1) {
+      return `segment ${index + 1} has ordinal ${segment.ordinal}, and ordinals start at 1`;
+    }
+  }
+  return null;
 }
 
 /**

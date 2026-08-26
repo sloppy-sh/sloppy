@@ -17,24 +17,12 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 }
 
 /**
- * Tables stay SCHEMALESS, and `DEFINE FIELD` is spent only where the database
- * has to enforce something the application cannot be trusted to. Three things
- * qualify:
+ * Tables stay SCHEMALESS. The only `DEFINE FIELD`s are the three invariants the
+ * database has to hold itself: `address` and `created_by` immutable, and the
+ * timestamps `TYPE string`. Everything else is a plain column, which is what
+ * lets a later track add a field without editing this shared literal.
  *
- *   - `address` — the protocol claim. A peer somewhere is holding it, so an
- *     UPDATE that rewrites one is not a data change, it is a broken citation in
- *     somebody else's graph. `VALUE $before OR $value` keeps the value the row
- *     was created with; on create `$before` is NONE, so the new value lands.
- *   - `created_by` — the purge deletes by this column, so a row that could
- *     change owner could walk out of its owner's deletion.
- *   - `created_at` / `updated_at` — `TYPE string` is what leaves the ISO-8601
- *     of `TimestampSchema` as the only encoding a timestamp can have here: a
- *     branch that reaches for `time::now()` fails on its own first write rather
- *     than on somebody else's first read. `created_at` is immutable too, being
- *     a field of the signed node payload.
- *
- * Everything else is a plain column, which is what lets a later track add a
- * field without editing this shared literal.
+ * docs/ARCHITECTURE.md § "Data model" says why each of the three.
  */
 export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
