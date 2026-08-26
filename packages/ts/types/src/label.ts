@@ -23,8 +23,7 @@ export const LabelDimensionSchema = OwnedEntitySchema.extend({
   values: z.array(z.string().min(1).max(64)).default([]),
   /**
    * Which hue slot this dimension paints in when it is the active lens. Absent
-   * means the slot falls out of declaration order, which is what DESIGN.md
-   * specifies — set it only to pin a dimension to a colour somebody chose.
+   * means declaration order picks the slot; DESIGN.md § Hue states both rules.
    */
   color_slot: FacetSlotSchema.optional(),
 });

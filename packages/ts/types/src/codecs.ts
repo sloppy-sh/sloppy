@@ -1,9 +1,8 @@
 // Composite record ids, and the two conversions that cross the wire.
 //
-// Every user-owned row is keyed `table:{ created_by: <did>, id: <ulid> }`. The
-// owner is part of the key rather than a column alone, so a row is globally
-// unique the moment it is written — which is what lets a peer hold somebody
-// else's node without renaming it. Modelled on syr's `codecs.ts`.
+// Every user-owned row is keyed `table:{ created_by: <did>, id: <ulid> }`;
+// docs/ARCHITECTURE.md § "Data model" says why the owner is half of the key
+// rather than a column alone. Modelled on syr's `codecs.ts`.
 
 import { RecordId } from "surrealdb";
 import { ulid } from "ulid";

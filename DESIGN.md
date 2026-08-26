@@ -177,10 +177,15 @@ Obsidian failure with extra steps.
 - A **dimension** owns a hue slot; a **value** owns a position on that slot's ramp. So
   `domain:biology` and `domain:chemistry` are visibly siblings, and switching from the
   `domain` lens to the `status` lens recolours the whole canvas at once.
-- Slots are `--facet-1 … --facet-8`, assigned to dimensions in declaration order. **A new
-  dimension is a slot, not a new token** — the same rule AI.md states for data shapes,
-  applied to the palette. Past eight, slots repeat and the lens bar carries the written
-  dimension name, which it does anyway.
+- Slots are `--facet-1 … --facet-8`, assigned to dimensions in declaration order by
+  default. **A new dimension is a slot, not a new token** — the same rule AI.md states for
+  data shapes, applied to the palette. Past eight, slots repeat and the lens bar carries
+  the written dimension name, which it does anyway.
+- **A dimension may pin its slot**, and a pin is honoured before declaration order fills
+  what is left (`label_dimension.color_slot`; absent means declaration order). Hue is the
+  channel a reader builds a habit around, and once somebody has decided `status` is the
+  red lens, the order they happened to create their dimensions in does not outrank that. A
+  pin chooses among the eight; it never adds a ninth.
 - Every slot owes **3:1 against the surface** on every theme, because a node fill carrying
   meaning alone is a graphical object. Every slot also owes a minimum OKLab distance of
   **0.03 from every other slot** on the same theme — a palette whose slots have converged

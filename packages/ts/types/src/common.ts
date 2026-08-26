@@ -14,9 +14,8 @@ export const RecordIdSchema: z.ZodType<RecordId> = z.instanceof(RecordId, {
 /**
  * ISO-8601 UTC at fixed millisecond precision — the one encoding a timestamp
  * has in the row, on the wire, and inside a signed payload. The precision is
- * pinned rather than merely permitted: the same instant written two widths is
- * two byte strings, and a signature is over the bytes. docs/ARCHITECTURE.md
- * § "Data model" says why there is only the one encoding.
+ * pinned rather than merely permitted; docs/ARCHITECTURE.md § "Data model" says
+ * why there is only the one encoding, and why it is one width.
  */
 export const TimestampSchema = z.iso.datetime({ precision: 3 });
 export type Timestamp = z.infer<typeof TimestampSchema>;
@@ -67,9 +66,8 @@ export type BaseEntity = z.infer<typeof BaseEntitySchema>;
 /**
  * A row somebody owns. `created_by` repeats the owner half of the composite
  * record id as a flat, immutable column, and it is the column the per-user
- * purge deletes by — reaching a row through its parent instead leaves every
- * orphan behind. docs/ARCHITECTURE.md § "Data model" says why the flat copy is
- * necessary.
+ * purge deletes by; docs/ARCHITECTURE.md § "Data model" says why the flat copy
+ * and that sweep are both necessary.
  */
 export const OwnedEntitySchema = BaseEntitySchema.extend({
   created_by: DidSyrSchema,
