@@ -1,0 +1,3 @@
+# The CI format + lint gates, before code leaves the machine. Type-checking
+# (svelte-check / tsc) is left to CI on purpose: too slow for every push.
+pnpm format:check && pnpm lint

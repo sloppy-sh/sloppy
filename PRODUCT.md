@@ -1,0 +1,105 @@
+# Product
+
+## Register
+
+product
+
+## Users
+
+One person thinking, and the people they let read over their shoulder.
+
+- **The thinker** — someone accumulating a body of thought over years: a researcher, a
+  student, a writer, an engineer keeping a design journal. They want to put a half-formed
+  idea down _now_, in the place it actually sprang from, without first deciding which
+  folder it belongs in. They come back a year later and need the graph to have kept its
+  shape. They may never publish a single node.
+- **The peer** — someone who follows a thinker's DID and pulls a published subtree into
+  their own graph as a foreign, read-only region. They read, they comment, they branch
+  their own thinking off what they found. The pulled region keeps its original addresses,
+  so they can cite it back and the author knows exactly which node they meant.
+- **The annotator** — the same two people on a tablet with a pencil. They ink over the
+  canvas to think spatially, and ink inside a node when a diagram is the note.
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the hosted, self-hosted and
+fully-local modes that serve all three.
+
+## Product Purpose
+
+Sloppy helps a person grow a body of thought whose **shape survives being read by
+somebody else**. Every node's address derives from where the thought came from, by rules
+that are the same on every peer, so a subtree collapses identically on your screen and
+mine and a citation still resolves in ten years.
+
+Success is when someone puts down a messy thought in four seconds and finds it two years
+later by following the trail it grew out of — and when a stranger pulls that trail in and
+it lands in a shape they can read.
+
+It is a thinking tool that happens to be social, not a social network that happens to
+hold notes.
+
+## Brand Personality
+
+Quiet, exacting, and unbothered. Ink on good paper. The name is the promise: **the input
+is allowed to be sloppy, because the structure is what is rigorous.** Sloppy never asks
+you to tidy up before you are allowed to write, and never congratulates you for writing.
+It speaks plainly, shows the address, and gets out of the way. Dry rather than warm;
+precise rather than clever. A good notebook does not have opinions about your handwriting.
+
+## Anti-references
+
+- **Notion-shaped page trees** — a hierarchy you must commit to before the thought
+  exists, and a database schema decided by whoever made the template.
+- **Obsidian's graph view as decoration** — a pretty hairball that means nothing to
+  anyone but its owner, because no two people's graphs share a shape.
+- **"Second brain" productivity-guru PKM** — systems sold as discipline, note-taking as
+  self-improvement, the implication that you are behind on your own thoughts.
+- **Social feeds and engagement metrics on thinking** — like counts, follower numbers as
+  a scoreboard, anything that makes a half-formed idea feel like a post that underperformed.
+- **"AI-made" sameness** — purple gradients, glassmorphism for its own sake, chrome that
+  shows off instead of serving.
+
+## Design Principles
+
+1. **The graph is the protagonist.** The canvas gets the focus and the space; chrome
+   recedes to the edges and disappears when there is nothing to do. Every element earns
+   its pixels or it is removed.
+2. **Sloppy in, structured out.** Capture is one gesture and demands nothing: no title, no
+   folder, no label. The address is assigned for you, from where you were when you wrote.
+   Structure is something the protocol supplies, never a tax charged at the door.
+3. **The address is permanent, and the interface says so.** An address is shown wherever
+   it helps somebody navigate or cite, and moving a node never changes it. A UI that
+   implies notes can be re-filed is lying about the protocol.
+4. **Pulled is never mistaken for yours.** A foreign region reads as foreign at a glance
+   and at every zoom level, by more than colour. Whose thought this is, is never a
+   question the reader has to work out.
+5. **Publishing is a deliberate act, described truthfully.** Nothing leaves by default.
+   What publishing exposes, and what it cannot take back once a peer has pulled it, is
+   said plainly at the moment of the decision and nowhere else.
+6. **Mobile and tablet first.** Every surface is designed at phone width and then given
+   room. Desktop is the same product with more space, never the same product plus
+   features the phone does not get.
+7. **Legible before beautiful.** Ten thousand nodes that stay readable beat a hundred that
+   look impressive. Level of detail, collapse and lensing exist so the canvas never draws
+   more than a person can read.
+
+## Accessibility & Inclusion
+
+Target WCAG 2.2 AA as a floor.
+
+- **The graph has a non-visual equal, not a fallback.** The canvas is drawn with WebGL, so
+  it is invisible to a screen reader by construction. A DOM outline — addresses, titles,
+  labels, parent and children, keyboard-navigable — is a first-class way to move through
+  the graph, kept in step with the canvas and shipped alongside it. It is not a degraded
+  mode; a sighted keyboard user should be able to prefer it.
+- **Provenance and facet are never carried by colour alone.** Own / published / pulled and
+  every label dimension also carry a shape, an edge treatment, or a written label, so the
+  graph stays readable to a person who cannot separate two hues.
+- Full keyboard operability, semantic landmarks, and AA contrast on every theme × accent
+  pairing we ship. Hues drawn as marks — a node fill, an edge, a facet chip — owe the 3:1
+  non-text floor and are measured against it, not eyeballed.
+- **Ink degrades, it never gates.** Pointer-event features that only exist on newer
+  WebKit (coalesced and predicted events) are feature-detected; a device without them
+  draws a rougher line, not a disabled block. Nothing in the product requires a pencil.
+- Respect `prefers-reduced-motion` and `prefers-color-scheme` (first visit only, until a
+  preference is saved). Reduced motion means the layout settles to its final positions
+  without animating — never that positions are left unsettled.

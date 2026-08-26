@@ -1,0 +1,55 @@
+packages:
+  # `apps/*/*`, NOT `apps/**/*`. Every app manifest lives at exactly
+  # apps/<product>/<surface>, so the two globs match the same set — but the
+  # recursive form makes pnpm AND turbo walk everything beneath them, and that
+  # includes the Tauri crate's `src-tauri/target`. In Pendi, the repo these
+  # conventions come from, that directory was 52 GB and ~185,000 files of Cargo
+  # output. Workspace discovery does not consult .gitignore, so the walk ran on
+  # every pnpm and turbo invocation; over a macOS bind mount it cost 15-17s each
+  # time. Measured there: cold package build 227s -> 49s, cold check
+  # 275s -> 74s, a no-change watcher cycle 29s -> 4s. Sloppy grows the same
+  # directory the moment the native shell lands, so the glob is narrow from day
+  # one rather than after the first slow build.
+  - "apps/*/*"
+  - "packages/ts/*"
+# Rust crates live under packages/rust/ and in apps/sloppy/native/src-tauri.
+# Cargo manages both; pnpm never sees them.
+
+# A version earns a catalog entry by having more than one consumer. Anything a
+# single package owns stays in that package's manifest.
+catalog:
+  # Wire contracts and the forms over them: @sloppy/types is Zod-first, and
+  # every mutating surface is a superform over the same schema.
+  zod: 4.3.6
+  sveltekit-superforms: 2.30.0
+
+  # The Svelte toolchain. web, native and every Svelte package compile against
+  # one version of each of these or they disagree about what a component is.
+  svelte: 5.55.2
+  svelte-check: 4.4.6
+  "@sveltejs/kit": 2.57.0
+  "@sveltejs/vite-plugin-svelte": 7.0.0
+  "@sveltejs/adapter-static": 3.0.10
+  vite: 8.0.7
+  tailwindcss: 4.2.2
+  "@tailwindcss/vite": 4.2.2
+  typescript: 6.0.2
+
+  # Prettier owns everything Svelte (see biome.json for the other half of the
+  # split). The plugins must move with the binary — a plugin built against a
+  # different Prettier major fails with a bare `getVisitorKeys` error.
+  prettier: 3.8.1
+  prettier-plugin-svelte: 3.5.1
+  prettier-plugin-tailwindcss: 0.7.2
+
+  eslint: 10.4.0
+  "@eslint/js": 10.0.1
+  eslint-config-prettier: 10.1.8
+  eslint-plugin-svelte: 3.17.0
+  typescript-eslint: 8.58.1
+  globals: 17.4.0
+
+onlyBuiltDependencies:
+  - "@tailwindcss/oxide"
+  - esbuild
+  - sharp

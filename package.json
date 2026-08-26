@@ -1,0 +1,38 @@
+{
+  "name": "sloppy",
+  "version": "0.0.1",
+  "description": "Sloppy — a Zettelkasten-structured, socially-shareable knowledge graph",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "husky",
+    "dev": "turbo dev",
+    "dev:api": "pnpm --filter @sloppy/api dev",
+    "dev:web": "pnpm --filter @sloppy/web dev",
+    "dev:native": "pnpm --filter @sloppy/native tauri:dev",
+    "build": "turbo build",
+    "build:packages": "turbo build --filter='./packages/ts/*'",
+    "preview": "turbo preview",
+    "format": "turbo format",
+    "format:check": "turbo format:check",
+    "lint": "turbo lint",
+    "check": "turbo check",
+    "test": "turbo test",
+    "stack:up": "docker compose up -d",
+    "stack:down": "docker compose down"
+  },
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.29.3",
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.3",
+    "prettier": "catalog:",
+    "prettier-plugin-svelte": "catalog:",
+    "prettier-plugin-tailwindcss": "catalog:",
+    "turbo": "^2.9.16"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
