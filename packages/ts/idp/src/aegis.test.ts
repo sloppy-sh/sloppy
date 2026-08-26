@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  type AegisBundle,
   AegisDecryptionError,
   createAegisBundle,
   decryptAegisBundle,
@@ -8,12 +9,41 @@ import {
 import { encodePublicKey } from "./encoding.js";
 import { generateKeypair } from "./keys.js";
 
+// Minted by syr's own `syr-crypto-aegis::create_aegis_bundle` from the seed and
+// password below. Regenerate it there — one minted here would prove only that
+// we agree with ourselves.
+const SYR_REFERENCE_BUNDLE: AegisBundle = {
+  pub: "z6MkneMkZqwqRiU5mJzSG3kDwzt9P8C59N4NGTfBLfSGE7c7",
+  salt: "9MoyATyuqrosA4jqfh1mEQ",
+  nonce: "yIvba2pZMynXGcLE",
+  ct: "Ij_lSOuU-o50IboAsQxEsb4pklPhBHXxYZhyA9C4RrQ",
+  tag: "PEvDVgjZDEKfhOH6v_1uaA",
+  kdf: { mem: 65536, it: 3, par: 1 },
+};
+const SYR_REFERENCE_SEED = Uint8Array.from({ length: 32 }, (_, i) => i + 1);
+// Escapes, not literals: a combining acute and an "fi" ligature, so the bundle
+// above opens only under the same NFKC folding syr applies.
+const SYR_REFERENCE_PASSWORD = "cafe\u0301-\uFB01xture";
+
 describe("the Aegis bundle", () => {
+  it("opens one syr wrote", () => {
+    expect(
+      decryptAegisBundle(SYR_REFERENCE_BUNDLE, SYR_REFERENCE_PASSWORD),
+    ).toEqual(SYR_REFERENCE_SEED);
+  });
+
+  it("labels a bundle with the same key syr derives from that seed", () => {
+    const bundle = createAegisBundle(
+      SYR_REFERENCE_SEED,
+      SYR_REFERENCE_PASSWORD,
+    );
+    expect(bundle.pub).toBe(SYR_REFERENCE_BUNDLE.pub);
+  });
+
   it("gives back exactly the seed it was given", () => {
     const { privateKey, publicKey } = generateKeypair();
     const bundle = createAegisBundle(privateKey, "correct horse battery");
     expect(bundle.kdf).toEqual({ mem: 65536, it: 3, par: 1 });
-    // syr's field widths, which an instance on the other side reads by offset.
     expect(Buffer.from(bundle.salt, "base64url")).toHaveLength(16);
     expect(Buffer.from(bundle.nonce, "base64url")).toHaveLength(12);
     expect(Buffer.from(bundle.tag, "base64url")).toHaveLength(16);

@@ -32,6 +32,9 @@ export function instanceManifest(baseUrl: string): SyrInstanceManifest {
     public_url: base,
     identity_manifest_template: `${base}/.well-known/syr/{did}`,
     platform: {
+      // TODO(M1 app-core page track): render this page. It is where an app sends
+      // a person to approve a delegation, and no route answers it yet, so local
+      // sign-in dead-ends here.
       consent: `${base}/auth/platform-consent`,
       token: `${base}/api/idp/platform/token`,
       sign: `${base}/api/idp/platform/sign`,
@@ -57,6 +60,7 @@ export function identityManifest(
       uploads: `${identity}/uploads`,
       did_document: `${identity}/document`,
     },
+    // TODO(M1 app-core page track): render this page; no route answers it yet.
     web_profile: `${base}/u/${encodeURIComponent(did)}`,
   };
 }
