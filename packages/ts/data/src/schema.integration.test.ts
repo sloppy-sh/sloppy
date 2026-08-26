@@ -33,12 +33,22 @@ const BOB = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob";
 
 type NodeRow = ReturnType<typeof nodeRow>;
 
-function nodeRow(did: string, address: string, localId: string) {
+// `depth` and `origin` are passed rather than derived from `address`, because
+// deriving them here would re-implement the two things the row is meant to be
+// checked against. @sloppy/types owns that derivation and tests it.
+function nodeRow(
+  did: string,
+  address: string,
+  localId: string,
+  depth = 1,
+  origin = `${did}/${localId}`,
+) {
   return {
     id: new RecordId("node", { created_by: did, id: localId }),
     created_by: did,
     address,
-    origin: `${did}/${localId}`,
+    depth,
+    origin,
     title: "",
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
@@ -112,29 +122,39 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
   });
 
-  it("keeps address, created_by and created_at as first written", async () => {
-    const row = nodeRow(BOB, "2", "01JNEVERCHANGES00000000000");
+  it("keeps address, depth, created_by and created_at as first written", async () => {
+    const row = nodeRow(BOB, "2a", "01JNEVERCHANGES00000000000", 2);
     await db.create(row.id).content(row);
 
     await db.update(row.id).merge({
       address: "9",
+      depth: 7,
       created_by: AVA,
       created_at: "2030-01-01T00:00:00.000Z",
       updated_at: "2026-06-01T00:00:00.000Z",
     });
 
     const merged = await read(row.id);
-    expect(merged.address).toBe("2");
+    expect(merged.address).toBe("2a");
+    expect(merged.depth).toBe(2);
     expect(merged.created_by).toBe(BOB);
     expect(merged.created_at).toBe("2026-01-01T00:00:00.000Z");
     expect(merged.updated_at).toBe("2026-06-01T00:00:00.000Z");
 
     // CONTENT replaces the whole document, which is the shape that would drop
     // an immutable column rather than merely reassign it.
-    await db.update(row.id).content({ ...row, address: "9", created_by: AVA });
+    await db
+      .update(row.id)
+      .content({ ...row, address: "9", depth: 7, created_by: AVA });
     const replaced = await read(row.id);
-    expect(replaced.address).toBe("2");
+    expect(replaced.address).toBe("2a");
+    expect(replaced.depth).toBe(2);
     expect(replaced.created_by).toBe(BOB);
+  });
+
+  it("refuses a depth no address could produce", async () => {
+    const row = nodeRow(AVA, "5", "01JBADDEPTH000000000000000", 0);
+    await expect(db.create(row.id).content(row)).rejects.toThrow();
   });
 
   it("refuses a second node at an address its owner already used", async () => {
@@ -155,7 +175,7 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     // `TimestampSchema` on the way back out.
     await expect(
       db.query(
-        `CREATE $id CONTENT { created_by: $did, address: "4",
+        `CREATE $id CONTENT { created_by: $did, address: "4", depth: 1,
            created_at: time::now(), updated_at: time::now() };`,
         {
           id: new RecordId("node", {
@@ -166,6 +186,47 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
         },
       ),
     ).rejects.toThrow();
+  });
+
+  it("reads a region bounded by depth, from the index", async () => {
+    // The read `node.depth` exists for: a viewport wants the levels around a
+    // focus, not the whole tree. `depth(focus)` is known before the query is
+    // sent, so a threshold relative to the focus arrives here absolute.
+    const origin = `${AVA}/01JBRANCHBASE0000000000000`;
+    const branch: [address: string, localId: string][] = [
+      ["6", "01JBRANCHBASE0000000000000"],
+      ["6a", "01JBRANCH10000000000000000"],
+      ["6a1", "01JBRANCH20000000000000000"],
+      ["6a1a", "01JBRANCH30000000000000000"],
+      ["6a1a1", "01JBRANCH40000000000000000"],
+    ];
+    for (const [index, [address, localId]] of branch.entries()) {
+      const row = nodeRow(AVA, address, localId, index + 1, origin);
+      await db.create(row.id).content(row);
+    }
+    // A second region of the same author's, at a depth the slice covers, so a
+    // read that ignored `origin` would have to come back wrong.
+    const peer = nodeRow(AVA, "7", "01JBRANCHPEER0000000000000", 1);
+    await db.create(peer.id).content(peer);
+
+    const SLICE = `SELECT depth FROM node
+       WHERE created_by = $did AND origin = $origin AND depth <= $max
+       ORDER BY depth`;
+    const bound = { did: AVA, origin, max: 3 };
+
+    // The rows alone would come back right from an index that stopped at the
+    // leading pair — the server would just read the whole region and drop what
+    // the viewport never asked for, which is the one outcome the third column
+    // exists to avoid. So the claim is about the plan: the bound has to be part
+    // of the index access, and a Filter carrying it would mean it is not.
+    const [plan] = await db.query(`${SLICE} EXPLAIN;`, bound);
+    const explained = JSON.stringify(plan);
+    expect(explained).toContain('"index":"node_owner_origin_depth"');
+    expect(explained).toContain("LessThanEqual");
+    expect(explained).not.toContain('"operator":"Filter"');
+
+    const [sliced] = await db.query<[{ depth: number }[]]>(`${SLICE};`, bound);
+    expect(sliced.map((row) => row.depth)).toEqual([1, 2, 3]);
   });
 
   it("purges one author and leaves the other whole", async () => {

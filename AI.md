@@ -53,9 +53,11 @@ cannot migrate.
   the protocol claim, so it ships as a property test over generated operation
   sequences, not as a handful of hand-picked cases.
 - **Anything derived from an address is derived, never stored.** The angular sector a
-  subtree radiates into, its collapse key, its depth — all of them are functions of the
-  address. Persisting one creates a second copy of a truth that no longer has a single
-  author, and it will disagree with the function the day the function changes.
+  subtree radiates into, its collapse key — both are functions of the address. Persisting
+  one creates a second copy of a truth that no longer has a single author, and it will
+  disagree with the function the day the function changes. `node.depth` is the one ratified
+  exception; `docs/ARCHITECTURE.md` § "Data model" carries the ruling and the conditions it
+  is held to.
 - **A change to the addressing rules is a protocol break, and is treated as one.** It
   does not land inside a feature commit. If implementation shows a rule is wrong, stop
   and say so.

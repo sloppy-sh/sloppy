@@ -17,12 +17,13 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 }
 
 /**
- * Tables stay SCHEMALESS. The only `DEFINE FIELD`s are the three invariants the
- * database has to hold itself: `address` and `created_by` immutable, and the
- * timestamps `TYPE string`. Everything else is a plain column, which is what
- * lets a later track add a field without editing this shared literal.
+ * Tables stay SCHEMALESS. The only `DEFINE FIELD`s are the invariants the
+ * database has to hold itself: `address`, `depth` and `created_by` immutable,
+ * `depth` a positive `int`, and the timestamps `TYPE string`. Everything else
+ * is a plain column, which is what lets a later track add a field without
+ * editing this shared literal.
  *
- * docs/ARCHITECTURE.md § "Data model" says why each of the three.
+ * docs/ARCHITECTURE.md § "Data model" says why each of them.
  */
 export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
@@ -31,6 +32,10 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
 
   DEFINE FIELD IF NOT EXISTS address ON node TYPE string VALUE $before OR $value;
+  -- Typed and bounded because it is read as a range: a depth stored as a string
+  -- would order lexicographically, and one counted from the wrong end would put
+  -- a root at 0, which is a level no threshold below can reach.
+  DEFINE FIELD IF NOT EXISTS depth ON node TYPE int ASSERT $value > 0 VALUE $before OR $value;
 
   DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string VALUE $before OR $value;
   DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string VALUE $before OR $value;
@@ -62,8 +67,11 @@ export const SCHEMA = `
   DEFINE INDEX IF NOT EXISTS node_owner_address ON node FIELDS created_by, address UNIQUE;
   -- The children of a node, which is how the graph walks down a branch.
   DEFINE INDEX IF NOT EXISTS node_owner_parent ON node FIELDS created_by, parent;
-  -- A whole tree at once, for a subtree publish and for a pulled region.
-  DEFINE INDEX IF NOT EXISTS node_owner_origin ON node FIELDS created_by, origin;
+  -- A region, whole or sliced. The leading pair reads a tree, for a subtree
+  -- publish and for a pulled region; a trailing AND depth <= $max bounds it to
+  -- the levels around a focus, which is the read the depth column exists for.
+  -- One index rather than two, because the pair is this one's prefix.
+  DEFINE INDEX IF NOT EXISTS node_owner_origin_depth ON node FIELDS created_by, origin, depth;
 
   -- A node's stack, already in order. Leading with node rather than created_by
   -- because a reference names its owner: reading a node's blocks binds one

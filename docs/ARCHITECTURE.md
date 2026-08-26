@@ -156,6 +156,7 @@ without renaming it. A **ref** below is how one row points at another: the strin
 node:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
   address     string    Folgezettel, immutable
+  depth       int       the address's segment count; a root is 1, immutable
   parent      ref?      absent on a root
   origin      ref       the root of this node's tree; a root is its own origin
   title       string
@@ -210,23 +211,37 @@ The rules AI.md's foundation-wave section states, applied here:
   of the rule: the same instant written two widths is two byte strings, and a signature is
   over the bytes. Lexicographic order over these strings is chronological order, so
   `ORDER BY created_at` needs nothing further.
-- **Nothing derivable from the address is stored** — AI.md § "The Address Is the Protocol"
-  states the rule. There is therefore no `depth` column: depth, the angular sector and
-  subtree membership are functions in `address.ts`. The read that would want one is the
-  graph's level-of-detail pass, and `node_owner_origin` serves it — a region loads as a
-  whole tree and every row already carries the address depth comes from. An absolute depth
-  column would not serve it in any case: level of detail collapses a subtree past a
-  threshold measured from the node being looked at, and that number differs per focus.
+- **Nothing derivable from the address is stored, except `depth`** — AI.md § "The Address
+  Is the Protocol" states the rule, and this is the one ratified exception to it. The
+  angular sector and subtree membership stay functions in `address.ts`.
+
+  The read that buys the exception is level of detail. It collapses a subtree past a
+  threshold measured from the node in focus, which reads at first like something a stored
+  absolute cannot serve — but `depth(focus)` is known before the query is sent, so the
+  relative threshold arrives absolute:
+  `created_by = $did AND origin = $origin AND depth <= $max`. Without the column, a peer
+  pulling a foreign region fetches the whole tree and filters on the client, which is
+  exactly the case the mobile-first stance optimises for. The cost is one integer and one
+  index now; the alternative is a migration on the protocol's core table later.
+
+  A second copy of a truth is only safe while it cannot drift, so the exception is
+  conditioned on holding `depth = parseAddress(address).length` by construction. `depth` is
+  written from `addressDepth()` and nothing else, a test asserts the equality over generated
+  addresses, and the column is immutable, `TYPE int` and `ASSERT $value > 0` — a root is 1,
+  never 0, so no level sits below every threshold.
+
 - `schema.ts` is one contiguous string literal, so it is foundation-wave territory rather
   than per-track. Production SurrealDB serves only `DEFINE`d tables; dev does not enforce
   it, so an undeclared table passes locally and fails in production.
 
 Tables are `SCHEMALESS`, and `DEFINE FIELD` is spent only where the database has to enforce
-something the application cannot be trusted to. Three things qualify, all of them stated
+something the application cannot be trusted to. Four things qualify, all of them stated
 above: `node.address` and every table's `created_by`, made immutable with
-`VALUE $before OR $value`; and `created_at` / `updated_at` as `TYPE string`, which is what
-makes a write in the wrong encoding fail at the write. `created_at` is immutable too, being
-a field of the signed payload. Everything else is a plain column, which is what keeps a
+`VALUE $before OR $value`; `created_at` / `updated_at` as `TYPE string`, which is what
+makes a write in the wrong encoding fail at the write; and `node.depth`, immutable like the
+address it mirrors and `TYPE int ASSERT $value > 0`, because it is read as a range and a
+range is where a string or a zero would go wrong quietly. `created_at` is immutable too,
+being a field of the signed payload. Everything else is a plain column, which is what keeps a
 later track from having to edit the shared literal to add a field.
 
 **`ord` as a fractional index and composite record ids are both chosen with the future CRDT

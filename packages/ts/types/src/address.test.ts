@@ -134,10 +134,10 @@ describe("assignment", () => {
     expect(parentAddress("1aa")).toBe("1");
   });
 
-  it("counts generations", () => {
-    expect(addressDepth("1")).toBe(0);
-    expect(addressDepth("1a")).toBe(1);
-    expect(addressDepth("1a1a")).toBe(3);
+  it("counts segments, from 1 at a root", () => {
+    expect(addressDepth("1")).toBe(1);
+    expect(addressDepth("1a")).toBe(2);
+    expect(addressDepth("1a1a")).toBe(4);
   });
 });
 

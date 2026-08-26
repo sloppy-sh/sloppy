@@ -122,9 +122,12 @@ export function parentAddress(address: Address): Address | null {
   return formatAddress(segments.slice(0, -1));
 }
 
-/** Generations below the root: `1` is 0, `1a` is 1, `1a1` is 2. */
+/**
+ * Segment count, so a root is 1. Pinned rather than merely chosen: `node.depth`
+ * stores this number, and rows on other people's machines already hold it.
+ */
 export function addressDepth(address: Address): number {
-  return parseAddress(address).length - 1;
+  return parseAddress(address).length;
 }
 
 /**

@@ -1,7 +1,6 @@
 // A node: one thought, and its place in the sequence of thought that produced
 // it. The address is the protocol — see `address.ts` and AI.md § "The Address
-// Is the Protocol", which is also why there is no `depth` field here: depth,
-// the angular sector and subtree membership are functions of the address.
+// Is the Protocol".
 
 import { z } from "zod";
 import { AddressSchema } from "./address.js";
@@ -11,6 +10,12 @@ import { LabelSetSchema } from "./label.js";
 export const NodeSchema = OwnedEntitySchema.extend({
   /** Assigned at creation and never rewritten. `schema.ts` enforces this. */
   address: AddressSchema,
+  /**
+   * `addressDepth(address)`, and a writer must keep it so. A value derived from
+   * an address is otherwise never stored; docs/ARCHITECTURE.md § "Data model"
+   * carries the ruling that makes this one an exception.
+   */
+  depth: z.int().positive(),
   /** Absent on a root. */
   parent: OwnedRefSchema.optional(),
   /** The root of this node's tree; a root node is its own origin. */
@@ -44,10 +49,10 @@ export const CreateNodeRequestSchema = z.object({
 export type CreateNodeRequest = z.infer<typeof CreateNodeRequestSchema>;
 
 /**
- * `address` and `origin` are absent because they are immutable, and `published`
- * because publishing is its own act with its own consequences. `parent` is
- * absent because a move writes an alias rather than a new address, and that
- * mechanism does not exist yet.
+ * `address`, `depth` and `origin` are absent because they are immutable, and
+ * `published` because publishing is its own act with its own consequences.
+ * `parent` is absent because a move writes an alias rather than a new address,
+ * and that mechanism does not exist yet.
  */
 export const UpdateNodeRequestSchema = z.object({
   title: z.string().max(512).optional(),
