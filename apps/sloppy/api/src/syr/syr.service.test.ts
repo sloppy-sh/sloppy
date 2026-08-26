@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Logger,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DidSyrSchema } from "@sloppy/types";
@@ -221,6 +222,23 @@ describe("whether a delegation still stands", () => {
     );
   });
 
+  // syr wraps this listing in `{ data }` and slyng returns the bare array;
+  // both are real instances somebody's identity can live on. Only a listing
+  // actually read can answer "active", so this is the shape that proves it.
+  it("reads the listing wrapped or bare", async () => {
+    for (const body of [
+      { data: [{ delegate_public_key: KEY }] },
+      [{ delegate_public_key: KEY }],
+    ]) {
+      instance({ "/api/platform/delegations": { body } });
+
+      await expect(new SyrService().delegationState(DELEGATION)).resolves.toBe(
+        "active",
+      );
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("is ended once it is revoked", async () => {
     instance(
       listing([
@@ -253,19 +271,29 @@ describe("whether a delegation still stands", () => {
     );
   });
 
-  it("is unknown where the instance said nothing we could read", async () => {
+  // A delegation stuck at "unknown" never signs anybody out, so the one thing
+  // it must not be is quiet.
+  it("is unknown where the instance said nothing we could read, and says so", async () => {
+    const warn = vi
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => {});
+
     for (const answers of [
       { "/api/platform/delegations": new Error("ECONNREFUSED") },
       { "/api/platform/delegations": { status: 500, body: {} } },
       { "/api/platform/delegations": { body: { data: "not a list" } } },
+      { "/api/platform/delegations": { body: "not a listing at all" } },
     ] satisfies Record<string, Answer>[]) {
+      warn.mockClear();
       instance(answers);
 
       await expect(new SyrService().delegationState(DELEGATION)).resolves.toBe(
         "unknown",
       );
+      expect(warn).toHaveBeenCalled();
       vi.unstubAllGlobals();
     }
+    warn.mockRestore();
   });
 
   it("asks about the identity that holds it", async () => {

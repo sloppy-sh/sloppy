@@ -98,6 +98,24 @@ describe("the guard every route runs behind", () => {
     );
   });
 
+  // A cookie nobody can decode is one somebody is stuck with, and the route
+  // that clears it is behind this guard.
+  it("treats a cookie it cannot read as nobody, not as a failure", async () => {
+    const { guard: publicRoute, resolve } = guard(true, SESSION);
+    const { context: ctx, request } = context({ cookie: "sloppy_session=%zz" });
+
+    await expect(publicRoute.canActivate(ctx)).resolves.toBe(true);
+    expect(request.viewer).toBeUndefined();
+    expect(resolve).not.toHaveBeenCalled();
+
+    const { guard: protectedRoute } = guard(false, SESSION);
+    await expect(
+      protectedRoute.canActivate(
+        context({ cookie: "sloppy_session=%zz" }).context,
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it("still looks for a session on a public route, so `me` can answer", async () => {
     const { guard: subject } = guard(true, SESSION);
     const { context: ctx, request } = context({ authorization: "Bearer good" });

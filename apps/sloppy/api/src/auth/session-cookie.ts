@@ -23,13 +23,25 @@ export function readCredential(req: Request): string | undefined {
 /** Express parses cookies only with middleware `main.ts` does not install. */
 function readCookie(header: unknown, name: string): string | undefined {
   if (typeof header !== "string") return undefined;
+  // A jar can carry several cookies of one name — anything on a shared parent
+  // domain may write one — so an unusable value is skipped rather than
+  // answering for the ones behind it.
   for (const pair of header.split(";")) {
     const eq = pair.indexOf("=");
     if (eq < 0) continue;
     if (pair.slice(0, eq).trim() !== name) continue;
-    return decodeURIComponent(pair.slice(eq + 1).trim()) || undefined;
+    const value = decodedOrNothing(pair.slice(eq + 1).trim());
+    if (value) return value;
   }
   return undefined;
+}
+
+function decodedOrNothing(value: string): string | undefined {
+  try {
+    return decodeURIComponent(value) || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function setSessionCookie(

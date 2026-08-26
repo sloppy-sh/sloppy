@@ -8,14 +8,18 @@
 
 const ANDROID_PACKAGE = "sh.sloppy.app";
 
-function escapeAttribute(value: string): string {
+function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;");
 }
 
-export function handOffPage(target: string, fallbackUrl: string): string {
+export function handOffPage(
+  target: string,
+  fallbackUrl: string,
+  heading: string,
+): string {
   const query = new URL(target).search;
   const intent =
     `intent://auth/callback${query}#Intent;scheme=sloppy;package=${ANDROID_PACKAGE};` +
@@ -25,8 +29,8 @@ export function handOffPage(target: string, fallbackUrl: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0;url=${escapeAttribute(target)}">
-<title>Signed in</title>
+<meta http-equiv="refresh" content="0;url=${escapeHtml(target)}">
+<title>${escapeHtml(heading)}</title>
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center;
@@ -40,9 +44,9 @@ export function handOffPage(target: string, fallbackUrl: string): string {
 </head>
 <body>
 <main>
-<h1>You're signed in</h1>
+<h1>${escapeHtml(heading)}</h1>
 <p>Sloppy should open on its own. If it doesn't, open it here.</p>
-<a id="open" href="${escapeAttribute(target)}">Open Sloppy</a>
+<a id="open" href="${escapeHtml(target)}">Open Sloppy</a>
 </main>
 <script>
 (function () {

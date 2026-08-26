@@ -102,15 +102,14 @@ export class AuthController {
     // A shell on another origin cannot be handed a cookie, so it is handed the
     // code instead and finishes at `/auth/exchange`.
     if (!target.startsWith("/")) {
-      const handOff = withParams(target, {
-        sloppy_code: code,
-        sloppy_state: this.auth.issueHandOff(consent.inst, delegationId),
-      });
-      if (isDeepLink(handOff)) {
-        res.status(200).type("html").send(handOffPage(handOff, this.homeUrl));
-      } else {
-        res.redirect(handOff);
-      }
+      this.leave(
+        res,
+        withParams(target, {
+          sloppy_code: code,
+          sloppy_state: this.auth.issueHandOff(consent.inst, delegationId),
+        }),
+        "You're signed in",
+      );
       return;
     }
 
@@ -178,6 +177,22 @@ export class AuthController {
   }
 
   private giveUp(res: Response, target: string, message: string): void {
-    res.redirect(withParams(target, { sloppy_error: message }));
+    this.leave(
+      res,
+      withParams(target, { sloppy_error: message }),
+      "Back to Sloppy",
+    );
+  }
+
+  /** The one way out of the callback, so no ending is left in the browser. */
+  private leave(res: Response, target: string, heading: string): void {
+    if (isDeepLink(target)) {
+      res
+        .status(200)
+        .type("html")
+        .send(handOffPage(target, this.homeUrl, heading));
+    } else {
+      res.redirect(target);
+    }
   }
 }

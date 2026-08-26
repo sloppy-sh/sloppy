@@ -54,24 +54,29 @@ export interface CodeExchange {
   platform_origin: string;
 }
 
-/**
- * syr's token endpoint additionally requires the `delegation_id` the consent
- * callback carried, which `SyrPlatformTokenRequestSchema` does not declare.
- */
+// TODO(m1/auth): promote `delegation_id` into SyrPlatformTokenRequestSchema.
+// syr's token endpoint rejects a request without it, and the sibling IdP
+// builds its own token endpoint from that schema.
 const TokenRequestSchema = SyrPlatformTokenRequestSchema.extend({
   delegation_id: z.string().min(1),
 });
 
 /** Absent `revoked_at` / `expires_at` mean the delegation still stands. */
-const DelegationListSchema = z.object({
-  data: z.array(
-    z.object({
-      delegate_public_key: z.string(),
-      revoked_at: z.iso.datetime().optional(),
-      expires_at: z.iso.datetime().optional(),
-    }),
-  ),
+const DelegationSchema = z.object({
+  delegate_public_key: z.string(),
+  revoked_at: z.iso.datetime().optional(),
+  expires_at: z.iso.datetime().optional(),
 });
+type DelegationEntry = z.infer<typeof DelegationSchema>;
+
+/**
+ * Two syr instances in the wild disagree on whether this listing is wrapped,
+ * and the spec settles neither, so read it either way.
+ */
+const DelegationListSchema = z.union([
+  z.array(DelegationSchema),
+  z.object({ data: z.array(DelegationSchema) }).transform(({ data }) => data),
+]);
 
 /** A person typed this; take a bare hostname and give back an origin. */
 export function normalizeInstanceUrl(value: string): string {
@@ -200,32 +205,54 @@ export class SyrService {
    * afternoon, and that difference decides whether somebody gets signed out.
    */
   async delegationState(delegation: Delegation): Promise<DelegationState> {
-    let response: Response;
-    try {
-      const { delegations } = await this.platform(delegation.syr_instance_url);
-      const url = new URL(delegations);
-      url.searchParams.set("did", delegation.did);
-      response = await fetch(url, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-    } catch {
-      return "unknown";
-    }
-    if (!response.ok) return "unknown";
+    const listing = await this.listDelegations(delegation);
+    if (!listing) return "unknown";
 
-    const listing = DelegationListSchema.safeParse(
-      await response.json().catch(() => null),
-    );
-    if (!listing.success) return "unknown";
-
-    const held = listing.data.data.find(
+    const held = listing.find(
       (entry) => entry.delegate_public_key === delegation.delegate_public_key,
     );
     if (!held || held.revoked_at) return "ended";
     if (held.expires_at && Date.parse(held.expires_at) <= Date.now())
       return "ended";
     return "active";
+  }
+
+  private async listDelegations(
+    delegation: Delegation,
+  ): Promise<DelegationEntry[] | null> {
+    const inst = delegation.syr_instance_url;
+    let response: Response;
+    try {
+      const { delegations } = await this.platform(inst);
+      const url = new URL(delegations);
+      url.searchParams.set("did", delegation.did);
+      response = await fetch(url, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `${inst} did not list its delegations: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
+    if (!response.ok) {
+      this.logger.warn(
+        `${inst} answered ${response.status} listing its delegations`,
+      );
+      return null;
+    }
+
+    const listing = DelegationListSchema.safeParse(
+      await response.json().catch(() => null),
+    );
+    if (!listing.success) {
+      this.logger.warn(
+        `${inst} listed its delegations in a shape Sloppy cannot read`,
+      );
+      return null;
+    }
+    return listing.data;
   }
 
   private async readJson(

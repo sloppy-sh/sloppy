@@ -42,10 +42,20 @@ describe("reading the credential off a request", () => {
       { authorization: "Bearer   " },
       { cookie: "theme=dark" },
       { cookie: "sloppy_session=" },
+      { cookie: "sloppy_session=%zz" },
+      { cookie: "sloppy_session=%E0%A4%A" },
     ];
 
     for (const headers of nothing) {
       expect(readCredential(request(headers))).toBeUndefined();
     }
+  });
+
+  it("reads past a jar entry nobody could have presented", () => {
+    expect(
+      readCredential(
+        request({ cookie: "sloppy_session=%zz; sloppy_session=abc123" }),
+      ),
+    ).toBe("abc123");
   });
 });
