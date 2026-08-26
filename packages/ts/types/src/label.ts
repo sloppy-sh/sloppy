@@ -35,7 +35,7 @@ export const CreateLabelDimensionRequestSchema = LabelDimensionSchema.omit({
   created_at: true,
   updated_at: true,
 });
-export type CreateLabelDimensionRequest = z.infer<
+export type CreateLabelDimensionRequest = z.input<
   typeof CreateLabelDimensionRequestSchema
 >;
 
@@ -45,6 +45,6 @@ export type CreateLabelDimensionRequest = z.infer<
  */
 export const UpdateLabelDimensionRequestSchema =
   CreateLabelDimensionRequestSchema.partial();
-export type UpdateLabelDimensionRequest = z.infer<
+export type UpdateLabelDimensionRequest = z.input<
   typeof UpdateLabelDimensionRequestSchema
 >;

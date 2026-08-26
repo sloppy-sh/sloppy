@@ -1,6 +1,25 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  // Strict env mode: a variable missing from this list never reaches a task,
+  // however the shell set it — so every variable the workspace reads belongs
+  // here, and hashing them is what stops a cached pass from being replayed
+  // against a different database.
+  "globalEnv": [
+    "NODE_ENV",
+    "PUBLIC_URL",
+    "SLOPPY_ALLOWED_ORIGINS",
+    "SLOPPY_API_PORT",
+    "SLOPPY_LOCAL_IDP",
+    "SLOPPY_SURREALDB_URL",
+    "SURREALDB_DATABASE",
+    "SURREALDB_NAMESPACE",
+    "SURREALDB_PASS",
+    "SURREALDB_USER"
+  ],
+  // The other route the same values arrive by: dotenv loads the repo-root .env
+  // in-process, where turbo cannot see it.
+  "globalDependencies": [".env"],
   "tasks": {
     "dev": {
       "cache": false,
@@ -8,8 +27,7 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["build/**", "dist/**", "dist-js/**"],
-      "env": ["PORT"]
+      "outputs": ["build/**", "dist/**", "dist-js/**"]
     },
     "preview": {
       "dependsOn": ["build"],

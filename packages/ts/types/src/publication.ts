@@ -32,7 +32,7 @@ export type Publication = z.infer<typeof PublicationSchema>;
 export const CreatePublicationRequestSchema = z.object({
   root: OwnedRefSchema,
 });
-export type CreatePublicationRequest = z.infer<
+export type CreatePublicationRequest = z.input<
   typeof CreatePublicationRequestSchema
 >;
 

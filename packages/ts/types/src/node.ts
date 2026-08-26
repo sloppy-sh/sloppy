@@ -79,7 +79,7 @@ export const CreateNodeRequestSchema = z.object({
   title: z.string().max(512).default(""),
   labels: LabelSetSchema.default({}),
 });
-export type CreateNodeRequest = z.infer<typeof CreateNodeRequestSchema>;
+export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
 /**
  * `address`, `depth` and `origin` are absent because they are immutable, and
@@ -92,4 +92,4 @@ export const UpdateNodeRequestSchema = z.object({
   labels: LabelSetSchema.optional(),
   links: z.array(OwnedRefSchema).optional(),
 });
-export type UpdateNodeRequest = z.infer<typeof UpdateNodeRequestSchema>;
+export type UpdateNodeRequest = z.input<typeof UpdateNodeRequestSchema>;

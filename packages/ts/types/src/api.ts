@@ -89,7 +89,7 @@ export const StartLoginRequestSchema = z.object({
   instance_url: z.url(),
   redirect: z.string().min(1).optional(),
 });
-export type StartLoginRequest = z.infer<typeof StartLoginRequestSchema>;
+export type StartLoginRequest = z.input<typeof StartLoginRequestSchema>;
 
 export const ConsentRedirectSchema = z.object({ consent_url: z.url() });
 export type ConsentRedirect = z.infer<typeof ConsentRedirectSchema>;
@@ -103,7 +103,7 @@ export const ExchangeSessionRequestSchema = z.object({
   code: z.string().min(1),
   state: z.string().min(1),
 });
-export type ExchangeSessionRequest = z.infer<
+export type ExchangeSessionRequest = z.input<
   typeof ExchangeSessionRequestSchema
 >;
 

@@ -2,9 +2,9 @@ import { type DynamicModule, Module } from "@nestjs/common";
 
 /**
  * The embedded identity provider — syr's wire contracts, served by this API, so
- * the app works with no network at all. docs/ARCHITECTURE.md § "Local-only
- * mode"; it is a dynamic module because the gate has to live inside it, which
- * is also why `env.ts` runs before any module is required.
+ * the app works with no network at all. The gate on what it registers lives in
+ * this module, hence the dynamic form. docs/ARCHITECTURE.md § "Local-only mode",
+ * § "Monorepo layout".
  *
  * TODO(M1 idp track): read `localIdpEnabled()` here and register behind it.
  * Nothing is gated yet, because there is nothing yet to register.

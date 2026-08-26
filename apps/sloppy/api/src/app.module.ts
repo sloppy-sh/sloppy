@@ -8,12 +8,9 @@ import { IdpModule } from "./idp/idp.module";
 import { NodeModule } from "./node/node.module";
 
 /**
- * The whole application, wired once.
- *
- * **This file is closed.** Every milestone fills a module below rather than
- * adding one here, because a shared import list is the file four branches all
- * edit and then all conflict on. A feature that seems to need a new top-level
- * module belongs inside one of these.
+ * The whole application, wired once. **This file is closed:** a milestone fills
+ * one of the modules below rather than adding another to the list.
+ * docs/ARCHITECTURE.md § "Monorepo layout".
  */
 @Module({
   imports: [

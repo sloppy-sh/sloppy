@@ -56,7 +56,7 @@ export const CreateBlockRequestSchema = z.object({
   content: z.string().default(""),
   data: z.unknown().optional(),
 });
-export type CreateBlockRequest = z.infer<typeof CreateBlockRequestSchema>;
+export type CreateBlockRequest = z.input<typeof CreateBlockRequestSchema>;
 
 /** `after` absent leaves the position alone; `null` moves the block to the top. */
 export const UpdateBlockRequestSchema = z.object({
@@ -65,4 +65,4 @@ export const UpdateBlockRequestSchema = z.object({
   content: z.string().optional(),
   data: z.unknown().optional(),
 });
-export type UpdateBlockRequest = z.infer<typeof UpdateBlockRequestSchema>;
+export type UpdateBlockRequest = z.input<typeof UpdateBlockRequestSchema>;
