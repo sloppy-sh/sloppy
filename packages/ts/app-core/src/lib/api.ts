@@ -9,11 +9,12 @@ import { SloppyClient } from '@sloppy/client';
 import { runtime } from './runtime.js';
 
 /**
- * The full `SloppyClient` surface, structurally. A remote backend IS the
- * client; the native shell's on-device adapter implements the same shape over
- * the embedded engine, with {@link serverOnly} for what it cannot serve.
+ * The full `SloppyClient` surface, structurally: mapped over its public keys so
+ * an on-device adapter satisfies it by shape and never by cast. A remote
+ * backend IS the client; the native shell's adapter implements the same shape
+ * over the embedded engine, with {@link serverOnly} for what it cannot serve.
  */
-export type SloppyApi = SloppyClient;
+export type SloppyApi = { [K in keyof SloppyClient]: SloppyClient[K] };
 
 /** Thrown by an on-device adapter for something that genuinely needs a server. */
 export class ServerRequiredError extends Error {

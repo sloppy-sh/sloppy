@@ -98,7 +98,8 @@ brightnesses.
 
 card/popover sit ~+0.015 L above surface; border/input are the surface hue at low chroma;
 muted is 0.035 L off the surface **toward the ink** — down on a light theme, up on a dark
-one, because a well dug below Graphite's page is where a skeleton disappears. Keep chroma
+one, because a well dug below Graphite's page is where a skeleton disappears;
+`token-contrast.test.ts` holds that step on every theme. Keep chroma
 ≤0.02 on neutrals — the surfaces are a ground for
 the graph's colour, and a tinted ground shifts every hue drawn on it. Radius is moderate
 (`--radius: 0.625rem`): unfussy, not soft.
@@ -294,6 +295,13 @@ so.
 - **Remove-empty chrome (hard rule).** A component renders only when it has something to
   do. An empty graph shows one line and one action, never a bare toolbar or "0 nodes".
   Loading uses skeletons shaped like the thing, not spinners.
+- **On a coarse pointer the long press belongs to the app, not to the selection.** Touch
+  surfaces carry `user-select: none` and no callout app-wide, so a long press can drag a
+  node or open a row instead of raising the selection magnifier and a Copy / Look Up bar
+  over the UI. Inputs and `contenteditable` are exempt. **Anything else a person should be
+  able to copy has to ask**, with `select-text` (or `select-all`), which restores the
+  callout with it — so a surface built for reading a node rather than editing one asks,
+  and a canvas or a chrome control does not.
 - Spacing varies for rhythm (section gaps > intra-section gaps); avoid uniform padding.
 
 ## The four inset vars

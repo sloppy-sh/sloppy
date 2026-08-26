@@ -45,7 +45,9 @@ export interface SloppyClientOptions {
   /** A getter, so re-pointing the app re-points a client already in flight. */
   token?: TokenSource;
   fetch?: typeof fetch;
-  /** Fired once, on the first 401 — the session is gone; sign out app-wide. */
+  /** Fired once per credential the server rejects — the session is gone; sign
+   *  out app-wide. Signing back in re-arms it, so the second expiry in one app
+   *  lifetime is reported like the first. */
   onAuthInvalid?: () => void;
 }
 
@@ -68,7 +70,7 @@ export class SloppyClient {
   private readonly token?: TokenSource;
   private readonly fetchImpl: typeof fetch;
   private readonly onAuthInvalid?: () => void;
-  private authInvalidFired = false;
+  private authInvalidFor: string | null = null;
 
   constructor(options: SloppyClientOptions = {}) {
     this.token = options.token;
@@ -82,8 +84,11 @@ export class SloppyClient {
 
   private async request(path: string, init?: RequestInit): Promise<Response> {
     const headers = new Headers(init?.headers);
-    const token = this.currentToken();
-    if (token) headers.set("authorization", `Bearer ${token}`);
+    // The anonymous credential is still a credential: a same-origin cookie
+    // session rides the request with no bearer token, and its rejection ends a
+    // session the same way.
+    const credential = this.currentToken() ?? "";
+    if (credential) headers.set("authorization", `Bearer ${credential}`);
     headers.set("accept", "application/json");
     const res = await this.fetchImpl(apiUrl(path), {
       // A cookie session only exists where the API shares the page's origin.
@@ -93,8 +98,12 @@ export class SloppyClient {
       ...init,
       headers,
     });
-    if (res.status === 401 && this.onAuthInvalid && !this.authInvalidFired) {
-      this.authInvalidFired = true;
+    if (
+      res.status === 401 &&
+      this.onAuthInvalid &&
+      this.authInvalidFor !== credential
+    ) {
+      this.authInvalidFor = credential;
       this.onAuthInvalid();
     }
     return res;

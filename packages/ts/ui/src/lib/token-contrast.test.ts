@@ -134,6 +134,14 @@ describe('token contrast', () => {
 		).toBeGreaterThanOrEqual(7);
 	});
 
+	// DESIGN.md § "Theme presets": muted is 0.035 L off the surface toward the ink.
+	it.each(THEMES)('%s: muted is one step off the surface, toward the ink', (theme) => {
+		const resolved = tokens(theme, 'indigo');
+		const surface = color(resolved, '--background').l;
+		const toward = color(resolved, '--foreground').l > surface ? 0.035 : -0.035;
+		expect(color(resolved, '--muted').l).toBeCloseTo(surface + toward, 3);
+	});
+
 	it.each(THEMES)('%s: secondary text clears AA on the page and on muted', (theme) => {
 		const resolved = tokens(theme, 'indigo');
 		const dim = color(resolved, '--muted-foreground');

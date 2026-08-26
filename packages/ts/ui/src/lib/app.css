@@ -22,19 +22,15 @@
 :root {
 	--radius: 0.625rem;
 
-	/* One family for chrome, node titles and block text. A notebook does not
-	   change typeface to make a heading feel important. The webfonts are
-	   self-hosted by the shells; these stacks stand alone until they load. */
+	/* DESIGN.md § Typography is the contract for both faces. The webfonts are
+	   self-hosted by the shells, so these stacks stand alone until they load;
+	   reach the address face through the `.address` utility, which carries the
+	   tabular figures with it. */
 	--font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-	/* An address is scanned and compared character by character, so `1a1` against
-	   `1al` must never be a question the reader has to resolve. Use it through
-	   the `.address` utility, which carries the tabular figures with it. */
 	--font-address: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-	/* The two ends the graph's depth ramp mixes between. They are the theme's own
-	   ink and paper rather than a second pair, so the ramp inverts on a dark theme
-	   with no second table. @sloppy/graph reads them once per theme change and
-	   converts; pixi takes numbers, not CSS strings. */
+	/* The two ends the graph's depth ramp mixes between; @sloppy/graph reads them
+	   on theme change and converts. DESIGN.md § "Lightness — depth". */
 	--graph-ink: var(--foreground);
 	--graph-paper: var(--background);
 }
@@ -60,13 +56,7 @@
 	--input: oklch(0.895 0.008 85);
 }
 
-/* ══ Theme: Graphite (dark default) — pencil on slate, cool by design ══════
-   Paper is a warm object and pencil is a cool mark; the pairing is what keeps
-   the two defaults from reading as one theme at two brightnesses.
-
-   `muted` sits 0.035 off the surface, the step DESIGN.md sets — but UPWARD on
-   the dark families, because a well below Graphite's page is where a skeleton
-   disappears. The distance is the rule; the direction is toward the ink. */
+/* ══ Theme: Graphite (dark default) — pencil on slate ══════════════════════ */
 :root[data-theme='graphite'],
 .dark:root[data-theme='graphite'] {
 	--background: oklch(0.215 0.008 260);
@@ -118,7 +108,7 @@
 	--popover-foreground: oklch(0.985 0 0);
 	--secondary: oklch(0.26 0 0);
 	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.24 0 0);
+	--muted: oklch(0.18 0 0);
 	--muted-foreground: oklch(0.708 0 0);
 	--accent: oklch(0.28 0 0);
 	--accent-foreground: oklch(0.985 0 0);
@@ -140,7 +130,7 @@
 	--popover-foreground: oklch(0.13 0 0);
 	--secondary: oklch(0.94 0 0);
 	--secondary-foreground: oklch(0.13 0 0);
-	--muted: oklch(0.94 0 0);
+	--muted: oklch(0.955 0 0);
 	--muted-foreground: oklch(0.36 0 0);
 	--accent: oklch(0.93 0 0);
 	--accent-foreground: oklch(0.13 0 0);
@@ -151,14 +141,9 @@
 }
 
 /* ══ The graph's hue slots ═════════════════════════════════════════════════
-   A dimension owns a slot; a value owns a position on that slot's ramp. Eight
-   hues, evenly spread, at ONE lightness per theme family — lightness carries
-   genealogical depth and may not also carry facet, or the canvas has two
-   meanings in one channel and reads as decoration.
-
-   Assigned to dimensions by declaration order unless a dimension pins a slot;
-   a pin chooses among the eight and never adds a ninth (DESIGN.md § Hue).
-   The floors both families are held to are in `token-contrast.test.ts`. */
+   Eight, and a new dimension takes one rather than adding a ninth. DESIGN.md
+   § "Hue — facets, and only under a lens" is the contract; the floors both
+   families are held to are in `token-contrast.test.ts`. */
 :root,
 :root[data-theme='paper'],
 :root[data-theme='light'],
@@ -188,14 +173,10 @@
 }
 
 /* ══ Accents ══════════════════════════════════════════════════════════════
-   Chrome only. An accent never colours a node, an edge or a facet — a theme
-   choice that changed what the data appears to say would be a bug.
-
-   `--primary` is tuned as a FILL with `--primary-foreground` on top.
-   `--primary-mark` is the same colour asked to carry meaning alone — an icon,
-   a rule, a chart stroke drawn straight on a surface — which is a different
-   floor. It is the identity wherever the fill already clears it, and only the
-   pairing that falls short is corrected, in lightness only, below. */
+   DESIGN.md § "Accent presets" is the contract. `--primary` is tuned as a FILL
+   with `--primary-foreground` on top; `--primary-mark` is the same colour asked
+   to carry meaning alone — an icon, a rule, a chart stroke drawn straight on a
+   surface — which is a different floor, so draw those with the mark. */
 :root,
 :root[data-accent='indigo'] {
 	--primary: oklch(0.52 0.14 265);
@@ -234,13 +215,10 @@
    that sets the theme and forgets the class gets dark surfaces with a dark
    accent rather than dark surfaces with a light one. The class stays what
    Tailwind's `dark:` variants read. */
+:root[data-theme='graphite'][data-accent='indigo'],
+:root[data-theme='dark'][data-accent='indigo'],
 :root[data-theme='graphite']:not([data-accent]),
 :root[data-theme='dark']:not([data-accent]) {
-	--primary: oklch(0.62 0.14 265);
-	--primary-foreground: oklch(0.16 0.01 80);
-}
-:root[data-theme='graphite'][data-accent='indigo'],
-:root[data-theme='dark'][data-accent='indigo'] {
 	--primary: oklch(0.62 0.14 265);
 	--primary-foreground: oklch(0.16 0.01 80);
 }
@@ -275,19 +253,14 @@
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 
-/* The mark is the accent itself wherever the accent already clears its floor,
-   which is 34 of the 35 theme × accent pairings. */
+/* The mark is the accent itself wherever the accent already clears its floor. */
 :root {
 	--primary-mark: var(--primary);
 	--ring: var(--primary);
 }
 
-/* The one that does not: Ochre on the light family is the palest accent in the
-   system and reads 2.90:1 as a solid mark on Paper. Same hue, same chroma,
-   moved in lightness by the smallest step that clears 3:1 on every light
-   surface. Written as the pairings it corrects rather than as an exclusion, so
-   the extractor `token-contrast.test.ts` reads the file with can see it; the
-   bare-root twin shares this body and so cannot disagree with it. */
+/* The one that does not: Ochre on the light family, moved in lightness alone.
+   DESIGN.md § "Contrast is measured, not assumed" carries the ruling. */
 :root[data-theme='paper'][data-accent='ochre'],
 :root[data-theme='light'][data-accent='ochre'],
 :root[data-theme='contrast'][data-accent='ochre'],
@@ -296,21 +269,10 @@
 }
 
 /* ══ Style axis: Hardline ══════════════════════════════════════════════════
-   The third axis, and the only structural one: hard ink edges, blurless offset
-   shadows, a tighter radius. A style may not name a colour — it DERIVES its
-   edge from the active theme's own foreground, which lands near-black on a
-   light theme and near-white on a dark one. Opaque by construction (mixed
-   toward --background, never alpha), because a translucent edge picks up
-   whatever it is composited over.
-
-   This block sits after every [data-theme] block and carries a `.dark:root`
-   twin: the dark families declare --border at 0,3,0 specificity, so the plain
-   `:root[data-style]` form at 0,2,0 would lose to them outright.
-
-   Component-level rules — the `data-slot` reaches into controls that only
-   sometimes show a border, and the geometry a 2px edge takes back from a
-   track — land with the components themselves; DESIGN.md § "Style presets"
-   states what each owes. */
+   DESIGN.md § "Style presets" is the contract. The `.dark:root` twin is not
+   redundant: the dark families declare --border at 0,3,0 specificity, so the
+   plain `:root[data-style]` form at 0,2,0 would lose to them outright — which
+   is also why this block sits after every [data-theme] block. */
 :root[data-style='hardline'],
 .dark:root[data-style='hardline'] {
 	--radius: 0.375rem;
@@ -464,9 +426,8 @@
 		scrollbar-width: thin;
 	}
 	html {
-		/* Scroll chrome is part of the theme, not the OS's, and it arrives by
-		   inheritance: `scrollbar-color` covers page, panels, dialogs and
-		   textareas from one declaration, so new code needs no class. */
+		/* Inherited, so one declaration covers page, panels, dialogs and textareas
+		   and new code needs no class. DESIGN.md § Scrolling. */
 		--scrollbar-thumb: color-mix(in oklab, var(--foreground) 20%, transparent);
 		--scrollbar-thumb-hover: color-mix(in oklab, var(--foreground) 32%, transparent);
 		scrollbar-color: var(--scrollbar-thumb) transparent;
@@ -509,9 +470,7 @@
 		overflow-x: hidden;
 	}
 
-	/* On touch, a long press is a gesture the app owns — drag a node, open a
-	   row — not an invitation to select text. Left alone, WebKit answers every
-	   one with the selection magnifier and a Copy / Look Up bar over the UI.
+	/* DESIGN.md § Layout gives the long press to the app on coarse pointers.
 	   `-webkit-touch-callout` is the separate iOS switch for the long-press
 	   action sheet; `user-select` alone does not silence it. */
 	@media (hover: none) and (pointer: coarse) {
@@ -530,7 +489,7 @@
 	}
 }
 
-/* Half a hatch on its own: `select-text` says nothing about
+/* The opt-in's other half: `select-text` says nothing about
    `-webkit-touch-callout`, which inherits — so an opted-in region would be
    selectable with no Copy bar to act on the selection. Unlayered, so it lands
    after the utility it pairs with. */
@@ -539,9 +498,7 @@
 	-webkit-touch-callout: default;
 }
 
-/* Every address in the product, at every size. Tabular figures are part of the
-   contract: a column of addresses that does not align is a column nobody
-   scans. */
+/* Every address in the product, at every size — DESIGN.md § Typography. */
 @utility address {
 	font-family: var(--font-address);
 	font-variant-numeric: tabular-nums;
@@ -549,28 +506,11 @@
 }
 
 /* ══ The four inset vars ═══════════════════════════════════════════════════
-   Bottom-edge chrome must clear the system nav bar, and the platform will not
-   tell you how on its own. DESIGN.md § "The four inset vars" is the contract;
-   the four utilities below carry its four formulas so no surface re-derives
-   one. NONE of these vars is given a `:root` default on purpose — each is
-   published by the code that can measure it, and its ABSENCE is the signal the
-   fallbacks below are written against.
-
-     --safe-area-inset-bottom  the real OS bar height, published by the native
-                               shell (Android's WebView reports
-                               env(safe-area-inset-bottom) as 0 for the 3-button
-                               nav bar) and owned across keyboard transitions by
-                               the `keyboard` store in @sloppy/app-core.
-     --kb-inset-bottom         how far a bottom-anchored element must lift to
-                               clear the keyboard. NOT the keyboard's height,
-                               and 0 when WebKit pans instead of resizing — so
-                               never read it to ask whether the keyboard is up.
-                               That is the `keyboard` store, always.
-     --sysnav-inset-bottom     the space the floating nav pill occupies, set BY
-                               the pill and therefore unset wherever it is
-                               hidden. It clears the pill, never the OS bar.
-     --app-chrome-top          the height of the in-flow chrome a shell renders
-                               above the page, published BY that chrome. */
+   DESIGN.md § "The four inset vars" is the contract; the four utilities below
+   carry its four formulas so no surface re-derives one. NONE of the vars is
+   given a `:root` default on purpose — each is published by the code that can
+   measure it, and its ABSENCE is the signal the fallbacks below are written
+   against. */
 
 /** Bottom padding that clears the OS bar. Never bare `env(...)`: WebKit ties
     that value to the keyboard, so a raw probe reads a keyboard-sized number and
@@ -588,9 +528,9 @@
 	);
 }
 
-/** A composer riding above the keyboard. The breath belongs INSIDE the bar
-    term: that term goes to 0 while the keyboard is up, and the lift is itself 0
-    in the panned case. */
+/** A composer riding above the keyboard. The breath sits INSIDE the bar term
+    because that term is 0 while the keyboard is up, and the lift is itself 0 in
+    the panned case. */
 @utility lift-above-keyboard {
 	bottom: max(
 		var(--kb-inset-bottom, 0px),
@@ -598,21 +538,17 @@
 	);
 }
 
-/** A surface that fills what is left of the viewport. Subtract the chrome
-    UNCONDITIONALLY — the two shells gate chrome differently, so a route exempt
-    on one is often not exempt on the other, and the fallback is the no-chrome
-    height to the pixel. */
+/** A surface that fills what is left of the viewport, chrome subtracted
+    UNCONDITIONALLY — the fallback is the no-chrome height to the pixel. */
 @utility viewport-fit {
 	height: calc(100dvh - var(--app-chrome-top, 0px) - env(safe-area-inset-top, 0px));
 }
 
 /* ══ Scroll-edge fade ══════════════════════════════════════════════════════
-   Overflowing content dissolves at its parent's edges instead of hard-clipping
-   — the affordance that says "there's more this way". A MASK, not a colour
-   overlay, so it works on any theme without naming a background; which is also
-   why it goes on the inner scroller and never on the surface that owns the
-   background. Tune with `[--scroll-fade:2rem]`; cancel with
-   `sm:scroll-fade-none` where the region stops scrolling.
+   DESIGN.md § Scrolling is the contract, including where these may be applied:
+   a MASK makes the element itself translucent at its edges, so it goes on the
+   inner scroller and never on the surface that owns the background. Tune with
+   `[--scroll-fade:2rem]`; cancel with `sm:scroll-fade-none`.
 
    The ramp is eased rather than linear: a linear ramp keeps content ~visible
    right up to the boundary and then just stops, which reads as a hard edge. */
@@ -699,11 +635,9 @@
 	-webkit-mask-image: none;
 }
 
-/* Viewport edges take a scrim, not a mask: the scroller there is the viewport
-   itself, so content sliding under the status bar or the home indicator has to
-   fade into the surface rather than make the surface translucent. Solid across
-   the safe-area inset, then a short fade. Non-interactive by construction; the
-   caller stacks it under the nav pill. */
+/* Solid across the safe-area inset, then a short fade. Non-interactive by
+   construction; the caller stacks it under the nav pill. DESIGN.md § Scrolling
+   says why a viewport edge takes a scrim and not a mask. */
 @utility edge-scrim-t {
 	pointer-events: none;
 	position: fixed;
