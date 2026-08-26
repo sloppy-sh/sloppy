@@ -83,6 +83,12 @@ export type SyrIdentityManifest = z.infer<typeof SyrIdentityManifestSchema>;
  */
 export const SyrPlatformTokenRequestSchema = z.object({
   code: z.string().min(1),
+  /**
+   * The callback carries this beside the code, and syr refuses the exchange
+   * without it — it looks the delegation up by id rather than searching for the
+   * code, so the two are not interchangeable.
+   */
+  delegation_id: z.string().min(1),
   callback_url: z.url(),
   platform_origin: z.url(),
 });

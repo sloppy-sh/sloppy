@@ -42,6 +42,12 @@ catalog:
   # ui and app-core both ship through svelte-package, and a library built by one
   # version and type-checked against another disagrees about its own .d.ts.
   "@sveltejs/package": 2.5.7
+
+  # The faces app.css names. Both shells ship them, and a shell a minor behind
+  # renders the same page in a different metric — the drift is visible, not
+  # theoretical: web and native reached M1 pinned 5.2.8 and 5.2.5.
+  "@fontsource-variable/inter": 5.2.8
+  "@fontsource-variable/jetbrains-mono": 5.2.8
   vite: 8.0.7
   tailwindcss: 4.2.2
   "@tailwindcss/vite": 4.2.2
