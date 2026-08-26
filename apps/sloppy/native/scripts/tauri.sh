@@ -58,11 +58,11 @@ fi
 
 # ── Local mode: one value, both halves ───────────────────────────────────────
 SLOPPY_LOCAL_MODE="${SLOPPY_LOCAL_MODE:-$(read_env SLOPPY_LOCAL_MODE)}"
-if [[ -z "$SLOPPY_LOCAL_MODE" ]]; then
-	if [[ "$ACTION" == "dev" ]]; then SLOPPY_LOCAL_MODE=true; else SLOPPY_LOCAL_MODE=false; fi
-fi
-export PUBLIC_ENABLE_LOCAL_MODE="$SLOPPY_LOCAL_MODE"
-if is_true "$SLOPPY_LOCAL_MODE" && [[ "$ACTION" == "dev" || "$ACTION" == "build" ]]; then
+if [[ -z "$SLOPPY_LOCAL_MODE" && "$ACTION" == "dev" ]]; then SLOPPY_LOCAL_MODE=true; fi
+if is_true "$SLOPPY_LOCAL_MODE"; then LOCAL_MODE=true; else LOCAL_MODE=false; fi
+
+export PUBLIC_ENABLE_LOCAL_MODE="$LOCAL_MODE"
+if [[ "$LOCAL_MODE" == true ]] && [[ "$ACTION" == "dev" || "$ACTION" == "build" ]]; then
 	set -- "$@" --features local-mode
 fi
 

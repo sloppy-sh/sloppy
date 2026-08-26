@@ -6,7 +6,7 @@
 	"license": "UNLICENSED",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev --port 5174 --strictPort",
+		"dev": "vite dev --port 8040 --strictPort",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",

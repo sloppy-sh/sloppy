@@ -11,15 +11,14 @@ export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	// The monorepo root holds the one .env both shells and the API read.
 	envDir: '../../..',
-	// TAURI_ENV_ is what makes `src/lib/platform.ts`'s constants compile-time:
-	// with the prefix exposed, the target platform is a literal at build time and
-	// the branches for every other platform are eliminated.
+	// TAURI_ENV_ is what `src/lib/platform.ts` reads — docs/ARCHITECTURE.md
+	// § "The two files that carry the platform seam".
 	envPrefix: ['VITE_', 'PUBLIC_', 'TAURI_ENV_'],
 	build: { target: 'esnext' },
 	server: {
-		port: 5174,
+		port: 8040,
 		strictPort: true,
 		host: host || false,
-		hmr: host ? { protocol: 'ws', host, port: 5175 } : undefined
+		hmr: host ? { protocol: 'ws', host, port: 8041 } : undefined
 	}
 });

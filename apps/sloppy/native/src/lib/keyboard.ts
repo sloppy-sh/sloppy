@@ -37,7 +37,9 @@ function envSafeAreaBottom(): number {
 	return h;
 }
 
-/** Starts tracking; the returned function stops it and releases both vars. */
+/** Starts tracking; the returned function stops it and releases
+ *  `--kb-inset-bottom`. `--safe-area-inset-bottom` stays published, because the
+ *  plugin that owns it is still running. */
 export function trackKeyboardInset(): () => void {
 	const vv = typeof window !== 'undefined' ? window.visualViewport : undefined;
 	if (!vv) return () => {};

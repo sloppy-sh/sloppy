@@ -9,14 +9,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { LOCAL_MODE_AVAILABLE } from './local-mode';
+import { TAURI_PLATFORM } from './platform';
+
+/** An Android emulator's loopback is the emulated device itself; 10.0.2.2 is
+ *  the machine it runs on. */
+const DEV_API_ORIGIN =
+	TAURI_PLATFORM === 'android' ? 'http://10.0.2.2:8020' : 'http://localhost:8020';
 
 /** An ORIGIN, never a path — `@sloppy/client` owns everything after it. No
  *  hosted Sloppy exists yet, so the fallback is the API's own dev default
  *  (`AppConfigService`) and a fresh clone runs with no .env at all. */
-const API_HOST = String(import.meta.env.PUBLIC_API_URL || 'http://localhost:8020').replace(
-	/\/+$/,
-	''
-);
+const API_HOST = String(import.meta.env.PUBLIC_API_URL || DEV_API_ORIGIN).replace(/\/+$/, '');
 
 async function nativeAssetBytes(url: string): Promise<ArrayBuffer> {
 	// Only a remote host needs the hop out of the webview; a data: URL or a
