@@ -1,27 +1,25 @@
 #!/usr/bin/env node
 /**
- * Teach the generated Xcode project the two things `tauri ios init` does not
- * know about Sloppy: that its primary device is an iPad, and that it answers a
- * `sloppy://` URL. XCODE_PROJECT.md says what each costs when it is missing.
- *
- * It edits `gen/apple/project.yml` and regenerates from it, because `Info.plist`
- * and the pbxproj are both outputs of that file — and because `tauri ios init`
- * rewrites it from scratch, so an edit made by hand lasts until the next init.
- * `scripts/tauri.sh` therefore runs this for every `ios` command.
- *
- * Idempotent, and loud rather than silent: if an anchor is missing the generator
- * has changed shape, and a failed build is much cheaper than an iPad running a
- * phone-shaped app that nobody notices.
+ * Re-applies the two corrections `tauri ios init` cannot know about — the iPad
+ * target and the `sloppy://` scheme — to `gen/apple/project.yml`, then
+ * regenerates the project from it. Idempotent, and loud rather than silent: a
+ * missing anchor means the generator changed shape. XCODE_PROJECT.md is the doc
+ * of record.
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const nativeDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const appleDir = join(nativeDir, 'src-tauri', 'gen', 'apple');
 const projectYml = join(appleDir, 'project.yml');
+
+/** Target sources that no clone carries: `Externals` is build output and
+ *  gitignored, `assets` is empty until something is put in it, and git carries
+ *  no empty directory. xcodegen rejects the whole spec if either is absent. */
+const UNTRACKED_SOURCE_DIRS = ['Externals', 'assets'];
 
 const fail = (message) => {
 	console.error(`✗ ${message}`);
@@ -51,8 +49,6 @@ if (!/^\s*TARGETED_DEVICE_FAMILY:/m.test(yaml)) {
 }
 
 if (!/^\s*CFBundleURLTypes:/m.test(yaml)) {
-	// Sits beside the other Info.plist properties, so xcodegen writes it every
-	// time rather than it being an edit to the plist that the next generate eats.
 	const anchor = /^(\s*)(LSRequiresIPhoneOS:.*)$/m;
 	if (!anchor.test(yaml)) fail('project.yml has no LSRequiresIPhoneOS to anchor to');
 	const [, pad] = yaml.match(anchor);
@@ -63,6 +59,8 @@ if (!/^\s*CFBundleURLTypes:/m.test(yaml)) {
 }
 
 if (yaml !== before) writeFileSync(projectYml, yaml);
+
+for (const dir of UNTRACKED_SOURCE_DIRS) mkdirSync(join(appleDir, dir), { recursive: true });
 
 execFileSync('xcodegen', ['generate'], { cwd: appleDir, stdio: 'inherit' });
 console.log(yaml === before ? '── Xcode project already patched' : '── Xcode project patched');

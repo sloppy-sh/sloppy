@@ -21,9 +21,8 @@ behaviour. Nothing errors — it just quietly ships the wrong app.
 
 ## 2. `sloppy://` has to reach the app
 
-Signing in leaves for the system browser, because a webview cannot host somebody else's
-sign-in page, and comes back as a `sloppy://` URL. Android takes the scheme from the
-manifest the deep-link plugin generates; **iOS takes it from `CFBundleURLTypes`, which
+Sign-in returns from the system browser as a `sloppy://` URL. Android takes the scheme from
+the manifest the deep-link plugin generates; **iOS takes it from `CFBundleURLTypes`, which
 nothing generates**. Without it the browser has nowhere to hand the URL, and sign-in on the
 one platform this app is built for ends on a dead page.
 
@@ -54,7 +53,5 @@ grep -c 'TARGETED_DEVICE_FAMILY = "1,2"' $APP/sloppy-native.xcodeproj/project.pb
 
 `iOS.minimumSystemVersion` is **16.0**, set in `src-tauri/tauri.conf.json` and carried into
 `project.yml` as `deploymentTarget` by the generator itself. The Apple Pencil APIs that
-make ink smooth rather than polygonal — `altitudeAngle`, `getCoalescedEvents()`,
-`getPredictedEvents()` — arrived in Safari 18.2 and are feature-detected instead. Raising
-the floor to 18.2 would trade every iPad that cannot update for a stroke that is merely
-nicer; docs/ARCHITECTURE.md § "Native shell" carries the ruling.
+arrived in Safari 18.2 are feature-detected instead; docs/ARCHITECTURE.md § "Native shell"
+carries the ruling.

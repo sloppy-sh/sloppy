@@ -11,6 +11,7 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"test": "cargo test --manifest-path src-tauri/Cargo.toml --features local-mode",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
@@ -21,8 +22,8 @@
 		"android:dev": "bash ./scripts/tauri.sh android dev"
 	},
 	"dependencies": {
-		"@fontsource-variable/inter": "^5.2.5",
-		"@fontsource-variable/jetbrains-mono": "^5.2.5",
+		"@fontsource-variable/inter": "^5.2.8",
+		"@fontsource-variable/jetbrains-mono": "^5.2.8",
 		"@saurl/tauri-plugin-safe-area-insets-css-api": "^0.1.0",
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/ui": "workspace:*",

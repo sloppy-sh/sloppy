@@ -6,8 +6,7 @@
  * ('darwin' | 'windows' | 'linux' | 'android' | 'ios'); a plain `vite dev` in a
  * browser leaves it unset, which reads as desktop.
  */
-export const TAURI_PLATFORM: string =
-	(import.meta.env.TAURI_ENV_PLATFORM as string | undefined) ?? 'desktop';
+export const TAURI_PLATFORM: string = import.meta.env.TAURI_ENV_PLATFORM ?? 'desktop';
 
 export const IS_MOBILE = TAURI_PLATFORM === 'android' || TAURI_PLATFORM === 'ios';
 

@@ -19,7 +19,7 @@ const DEV_API_ORIGIN =
 /** An ORIGIN, never a path — `@sloppy/client` owns everything after it. No
  *  hosted Sloppy exists yet, so the fallback is the API's own dev default
  *  (`AppConfigService`) and a fresh clone runs with no .env at all. */
-const API_HOST = String(import.meta.env.PUBLIC_API_URL || DEV_API_ORIGIN).replace(/\/+$/, '');
+const API_HOST = (import.meta.env.PUBLIC_SLOPPY_API_URL || DEV_API_ORIGIN).replace(/\/+$/, '');
 
 async function nativeAssetBytes(url: string): Promise<ArrayBuffer> {
 	// Only a remote host needs the hop out of the webview; a data: URL or a
@@ -34,8 +34,7 @@ export function initNativeRuntime(): void {
 	initRuntime({
 		apiHost: () => API_HOST,
 		assetBytes: nativeAssetBytes,
-		// A webview cannot host somebody else's sign-in page, so consent opens in
-		// the system browser and returns through `deep-link.ts`.
+		// The return leg is `deep-link.ts`.
 		openExternal: (url) => openUrl(url),
 		// Only a build carrying the on-device engine has anything on disk to erase.
 		wipeLocal: LOCAL_MODE_AVAILABLE ? () => invoke<void>('db_wipe') : undefined

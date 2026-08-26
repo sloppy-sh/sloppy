@@ -20,7 +20,9 @@ project patched and local mode's two halves in step.
 **[XCODE_PROJECT.md](XCODE_PROJECT.md) is required reading before touching that project** —
 `tauri ios init` regenerates it as an iPhone app with no URL scheme, every time.
 
-A first run on either mobile platform needs the project generated once:
+`src-tauri/gen/` is committed, so a clone builds without generating anything. What a fresh
+_machine_ still needs is the mobile Rust targets and the toolchain check, which is what
+init is for:
 
 ```sh
 pnpm tauri ios init
@@ -33,21 +35,18 @@ All from the monorepo-root `.env`; a shell variable of the same name wins.
 
 | Variable                            | Default                                                    | What it decides                                                             |
 | ----------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `PUBLIC_API_URL`                    | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.              |
+| `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.              |
 | `SLOPPY_LOCAL_MODE`                 | on for `dev`, else off                                     | Compiles in the on-device graph engine, and tells the frontend it is there. |
 | `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Raise a Cloudflare tunnel to the local API for a device on another network. |
 
-`SLOPPY_LOCAL_MODE` drives the Cargo `local-mode` feature and the frontend's
-`PUBLIC_ENABLE_LOCAL_MODE` from one value, so the two cannot disagree about whether an
-embedded engine exists. It is off by default for a build because SurrealDB alone is ~60 MB
-per ABI.
+`PUBLIC_SLOPPY_API_URL` is the web shell's variable too — one origin, set once, obeyed by
+both surfaces.
 
 ## Checking it
 
 ```sh
 pnpm check                                       # svelte-check
+pnpm test                                        # the on-device engine's round trip
 cargo fmt --check --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+cargo clippy --manifest-path src-tauri/Cargo.toml --features local-mode -- -D warnings
 ```
-
-Clippy over the on-device engine needs its feature on: add `--features local-mode`.

@@ -1,25 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The wrapper behind `pnpm tauri`. Three things the bare CLI cannot do:
-#
-#   1. Local mode from ONE value. SLOPPY_LOCAL_MODE drives both the Cargo
-#      `local-mode` feature (which compiles in the embedded engine) and
-#      PUBLIC_ENABLE_LOCAL_MODE (which the frontend reads), so the app can never
-#      believe in an engine the binary was built without. Default: on for `dev`,
-#      off for a build — surrealdb is ~60 MB per ABI.
-#
-#   2. The Xcode project's two corrections — the iPad target and the sloppy://
-#      scheme. `tauri ios init` regenerates gen/apple/project.yml from scratch
-#      every time, so scripts/patch-xcode-project.mjs runs for every `ios`
-#      command. XCODE_PROJECT.md says what each is for.
-#
-#   3. A public https origin for the API during mobile dev. An iPad on another
-#      network cannot reach this machine's localhost, and iOS refuses plain http
-#      to an arbitrary host, so a Cloudflare tunnel to the local API is baked in
-#      as PUBLIC_API_URL. OPT-IN (SLOPPY_DEV_TUNNEL / CF_TUNNEL_NAME): a device
-#      on the same Wi-Fi needs none of it. UNVERIFIED — this path has never been
-#      run against a device here.
+# The wrapper behind `pnpm tauri`. It re-patches the Xcode project before every
+# `ios` command (XCODE_PROJECT.md), derives both halves of local mode from
+# SLOPPY_LOCAL_MODE (docs/ARCHITECTURE.md § "Local-only mode"), and can front the
+# local API on a public https origin for a device that is not on this LAN.
 #
 # Values come from the monorepo-root .env; a shell variable of the same name wins.
 
@@ -67,6 +52,13 @@ if [[ "$LOCAL_MODE" == true ]] && [[ "$ACTION" == "dev" || "$ACTION" == "build" 
 fi
 
 # ── A reachable API for a device on somebody else's network ──────────────────
+# iOS refuses plain http to an arbitrary host, so the LAN address is no help
+# either; it has to be an https origin.
+#
+# TODO(apps/sloppy/api): docs/ARCHITECTURE.md § "Native shell" has this one
+# origin also carrying syr, which sign-in needs — the device's browser cannot
+# reach a syr instance on this LAN either. Fronting it is a route on the API,
+# not a second tunnel, or the origin stops being one.
 SLOPPY_DEV_TUNNEL="${SLOPPY_DEV_TUNNEL:-$(read_env SLOPPY_DEV_TUNNEL)}"
 CF_TUNNEL_NAME="${CF_TUNNEL_NAME:-$(read_env CF_TUNNEL_NAME)}"
 CF_TUNNEL_HOSTNAME="${CF_TUNNEL_HOSTNAME:-$(read_env CF_TUNNEL_HOSTNAME)}"
@@ -145,9 +137,9 @@ if wants_tunnel; then
 	}
 
 	# An origin, never a path: @sloppy/client owns everything after it.
-	export PUBLIC_API_URL="$TUNNEL_URL"
+	export PUBLIC_SLOPPY_API_URL="$TUNNEL_URL"
 	echo "── Sloppy mobile dev ────────────────────────────────"
-	echo "   API   $TUNNEL_URL   baked in as PUBLIC_API_URL"
+	echo "   API   $TUNNEL_URL   baked in as PUBLIC_SLOPPY_API_URL"
 	echo "─────────────────────────────────────────────────────"
 
 	# A child, not exec, so the trap still tears the tunnel down.

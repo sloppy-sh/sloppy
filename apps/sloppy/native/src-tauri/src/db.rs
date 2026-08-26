@@ -2,17 +2,15 @@
 //! SurrealKV store in the app-data directory, reached from the webview over
 //! three table-agnostic commands. docs/ARCHITECTURE.md § "Local-only mode".
 //!
-//! **This is a transport and holds no schema.** `@sloppy/data`'s repositories,
-//! `schema.ts` and `purge.ts` stay in TypeScript and run unchanged against it;
-//! nothing here sees a table name except as an opaque string inside a query it
-//! was handed.
+//! A transport that holds no schema: `@sloppy/data` stays in TypeScript and runs
+//! unchanged against it, and nothing here sees a table name except as an opaque
+//! string inside a query it was handed.
 //!
-//! One SurrealDB value has to survive the JSON hop in both directions: a record
-//! id. `@sloppy/types` validates one with `z.instanceof(RecordId)`, so a bare
-//! `"node:abc"` string would fail a check on a value that is correct. It is
-//! tagged symmetrically as `{"$rid":[table,key]}` and revived on the way back,
-//! which leaves the repositories holding exactly what the SDK would have given
-//! them. Everything else Sloppy stores is plain JSON.
+//! **Wire contract.** JSON has no record id, so one crosses in both directions
+//! tagged as `{"$rid":[table,key]}` — a caller binding an id into `vars` must
+//! tag it that way, and must revive the same tag out of a result, or it holds a
+//! plain object where `@sloppy/types`' `z.instanceof(RecordId)` expects a class.
+//! Everything else Sloppy stores is plain JSON.
 
 use serde_json::{Number as JsonNumber, Value as JsonValue};
 use surrealdb::engine::local::{Db, SurrealKv};
@@ -44,6 +42,7 @@ fn rid_key_to_json(k: RecordIdKey) -> JsonValue {
         RecordIdKey::Object(o) => {
             JsonValue::Object(o.into_iter().map(|(k, v)| (k, value_to_json(v))).collect())
         }
+        // Query syntax, never a stored key: nothing can SELECT one back out.
         RecordIdKey::Range(_) => JsonValue::Null,
     }
 }
@@ -163,15 +162,9 @@ pub async fn db_open(app: AppHandle, ns: String, db: String) -> Result<(), Strin
     Ok(())
 }
 
-/// Run SurrealQL and return the per-statement results array — exactly the shape
-/// the SDK's `db.query()` gives, so `const [rows] = await db.query(...)` in
-/// `@sloppy/data` reads the same either way.
-#[tauri::command]
-pub async fn db_query(sql: String, vars: JsonValue) -> Result<JsonValue, String> {
-    let guard = DB.read().await;
-    let db = guard.as_ref().ok_or("the on-device graph is not open")?;
+async fn run(db: &Surreal<Db>, sql: &str, vars: JsonValue) -> Result<JsonValue, String> {
     let mut resp = db
-        .query(&sql)
+        .query(sql)
         .bind(vars_to_variables(vars))
         .await
         .map_err(|e| e.to_string())?
@@ -186,6 +179,16 @@ pub async fn db_query(sql: String, vars: JsonValue) -> Result<JsonValue, String>
     Ok(JsonValue::Array(out))
 }
 
+/// Run SurrealQL and return the per-statement results array — exactly the shape
+/// the SDK's `db.query()` gives, so `const [rows] = await db.query(...)` in
+/// `@sloppy/data` reads the same either way.
+#[tauri::command]
+pub async fn db_query(sql: String, vars: JsonValue) -> Result<JsonValue, String> {
+    let guard = DB.read().await;
+    let db = guard.as_ref().ok_or("the on-device graph is not open")?;
+    run(db, &sql, vars).await
+}
+
 /// Erase the on-device graph: drop the connection, then remove the bytes.
 /// `runtime.wipeLocal` is the seam this answers.
 #[tauri::command]
@@ -198,5 +201,102 @@ pub async fn db_wipe(app: AppHandle) -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const DID: &str = "did:syr:z6MkAlice";
+
+    fn rid(table: &str, key: JsonValue) -> JsonValue {
+        json!({ "$rid": [table, key] })
+    }
+
+    async fn store() -> (Surreal<Db>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db = Surreal::new::<SurrealKv>(dir.path().to_str().expect("utf-8 temp path"))
+            .await
+            .expect("open the store");
+        db.use_ns("sloppy").use_db("test").await.expect("select db");
+        (db, dir)
+    }
+
+    /// The id `@sloppy/data` actually writes — `node:{ created_by, id }`, with a
+    /// `parent` holding another one — through SurrealDB and back.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_composite_record_id_survives_the_store_and_the_json_hop() {
+        let (db, _dir) = store().await;
+        let root = rid("node", json!({ "created_by": DID, "id": "01ROOT" }));
+        let child = rid("node", json!({ "created_by": DID, "id": "01CHILD" }));
+
+        run(&db, "CREATE $id SET address = '1'", json!({ "id": root }))
+            .await
+            .unwrap();
+        run(
+            &db,
+            "CREATE $id SET address = '1a', parent = $parent",
+            json!({ "id": child, "parent": root }),
+        )
+        .await
+        .unwrap();
+
+        let out = run(
+            &db,
+            "SELECT id, parent FROM node WHERE address = '1a'",
+            JsonValue::Null,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out[0][0]["id"], child);
+        assert_eq!(out[0][0]["parent"], root);
+    }
+
+    /// A bound id that no row carries still has to come back as the same id:
+    /// this is the half a returned row cannot exercise.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn every_record_id_key_shape_survives_a_bound_variable() {
+        let (db, _dir) = store().await;
+        for key in [
+            json!("plain"),
+            json!(42),
+            json!(["subtree", 3]),
+            json!({ "created_by": DID, "id": "01ULID" }),
+        ] {
+            let id = rid("node", key);
+            let out = run(&db, "RETURN $id", json!({ "id": id })).await.unwrap();
+            assert_eq!(out[0], id);
+        }
+    }
+
+    /// `{"$rid": …}` in the agreed shape is the only object with a meaning; one
+    /// that merely resembles it is data.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_object_that_is_not_the_tag_stays_an_object() {
+        let (db, _dir) = store().await;
+        for value in [
+            json!({ "$rid": "node:abc" }),
+            json!({ "$rid": ["node"] }),
+            json!({ "$rid": ["node", "abc"], "labels": {} }),
+            json!({ "dimension": "domain", "value": "biology" }),
+        ] {
+            let out = run(&db, "RETURN $v", json!({ "v": value })).await.unwrap();
+            assert_eq!(out[0], value);
+        }
+    }
+
+    /// A record id nested inside the collections a node row is made of.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_nested_record_id_survives() {
+        let (db, _dir) = store().await;
+        let value = json!({
+            "links": [rid("node", json!({ "created_by": DID, "id": "01A" }))],
+            "origin": { "ref": rid("node", json!("01B")) }
+        });
+        let out = run(&db, "RETURN $v", json!({ "v": value })).await.unwrap();
+        assert_eq!(out[0], value);
     }
 }
