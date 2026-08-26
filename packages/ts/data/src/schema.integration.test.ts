@@ -11,6 +11,7 @@
 // runs `pnpm test`. `docker compose up -d` is what turns it on.
 
 import { createConnection } from "node:net";
+import { DidSyrSchema, OwnedRefSchema, UlidSchema } from "@sloppy/types";
 import { RecordId, Surreal, Table } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { STATEMENTS } from "./purge.js";
@@ -25,13 +26,19 @@ const PASS = process.env.SURREALDB_PASS ?? "sloppy-dev-password";
 const NAMESPACE = "sloppy_test";
 const DATABASE = `schema_${Date.now()}`;
 
-// A DID's method-specific part is base58btc and a ULID is Crockford base32;
-// both drop the ambiguous letters, so neither "Alice" nor "ROUNDTRIP" is a
-// string anyone could hold. Fixtures other packages will copy have to parse.
-const AVA = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
-const BOB = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob";
+// Other packages will copy these fixtures into code paths that parse, so every
+// identifier here is minted through the schema that will parse it there.
+const AVA = DidSyrSchema.parse("did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva");
+const BOB = DidSyrSchema.parse("did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob");
 
 type NodeRow = ReturnType<typeof nodeRow>;
+
+function nodeId(did: string, localId: string): RecordId {
+  return new RecordId("node", {
+    created_by: did,
+    id: UlidSchema.parse(localId),
+  });
+}
 
 // `depth` and `origin` are passed rather than derived from `address`, because
 // deriving them here would re-implement the two things the row is meant to be
@@ -44,11 +51,11 @@ function nodeRow(
   origin = `${did}/${localId}`,
 ) {
   return {
-    id: new RecordId("node", { created_by: did, id: localId }),
+    id: nodeId(did, localId),
     created_by: did,
     address,
     depth,
-    origin,
+    origin: OwnedRefSchema.parse(origin),
     title: "",
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
@@ -122,7 +129,7 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
   });
 
-  it("refuses to reassign address, depth, created_by or created_at", async () => {
+  it("holds address, depth, created_by and created_at through every write shape", async () => {
     const row = nodeRow(BOB, "2a", "01JNEVERCHANGES00000000000", 2);
     await db.create(row.id).content(row);
 
@@ -135,15 +142,21 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
       await expect(db.update(row.id).merge(reassignment)).rejects.toThrow();
     }
 
-    // CONTENT replaces the whole document, which is the shape that would drop
-    // an immutable column rather than merely reassign it.
+    // CONTENT replaces the whole document, so it has two shapes MERGE does not:
+    // a changed value, and an absent column.
     await expect(
       db
         .update(row.id)
         .content({ ...row, address: "9", depth: 7, created_by: AVA }),
     ).rejects.toThrow();
+    await db.update(row.id).content({
+      title: "written without them",
+      updated_at: "2026-06-01T00:00:00.000Z",
+    });
 
     const stored = await read(row.id);
+    expect(stored.title).toBe("written without them");
+    expect(stored.origin).toBeUndefined();
     expect(stored.address).toBe("2a");
     expect(stored.depth).toBe(2);
     expect(stored.created_by).toBe(BOB);
@@ -153,7 +166,7 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
   it("takes a whole-row rewrite that leaves the immutable columns alone", async () => {
     // What a repository save looks like: the full document, immutable columns
     // and all, with one field different. Re-sending a value is not a change.
-    const row = nodeRow(BOB, "2b", "01JWHOLEROWREWRITE00000000", 2);
+    const row = nodeRow(BOB, "2b", "01JRESAVE00000000000000000", 2);
     await db.create(row.id).content(row);
 
     await db.update(row.id).content({
@@ -201,21 +214,14 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
       db.query(
         `CREATE $id CONTENT { created_by: $did, address: "4", depth: 1,
            created_at: time::now(), updated_at: time::now() };`,
-        {
-          id: new RecordId("node", {
-            created_by: AVA,
-            id: "01JDATETYPE000000000000000",
-          }),
-          did: AVA,
-        },
+        { id: nodeId(AVA, "01JDATETYPE000000000000000"), did: AVA },
       ),
     ).rejects.toThrow();
   });
 
   it("reads a region bounded by depth, from the index", async () => {
-    // The read `node.depth` exists for: a viewport wants the levels around a
-    // focus, not the whole tree. `depth(focus)` is known before the query is
-    // sent, so a threshold relative to the focus arrives here absolute.
+    // The read that buys `node.depth`; docs/ARCHITECTURE.md § "Data model"
+    // carries the ruling and the conditions it is held to.
     const origin = `${AVA}/01JBRANCHBASE0000000000000`;
     const branch: [address: string, localId: string][] = [
       ["6", "01JBRANCHBASE0000000000000"],

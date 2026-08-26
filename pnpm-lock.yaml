@@ -56,6 +56,9 @@ importers:
       '@biomejs/biome':
         specifier: 2.5.0
         version: 2.5.0
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
       '@types/node':
         specifier: ^24.10.1
         version: 24.13.3

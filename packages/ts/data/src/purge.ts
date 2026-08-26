@@ -1,9 +1,7 @@
 /**
  * Erasing one person's graph. Every statement binds `$did`, their syr DID, and
- * deletes BY the `created_by` column rather than by walking down from a parent
- * row — a sweep that reaches rows through their parent leaves every orphan
- * behind, permanently, and an orphan here is somebody's writing still answering
- * on a public URL after they asked to be gone.
+ * deletes BY `created_by` rather than by walking down from a parent row;
+ * docs/ARCHITECTURE.md § "Data model" says why that is the only safe sweep.
  *
  * Caller-owned and deliberately NOT here:
  *
