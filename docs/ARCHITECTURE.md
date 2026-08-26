@@ -144,39 +144,71 @@ viewer's IP to the author's instance. The pattern is Slyng's
 ## Data model
 
 Own SurrealDB, repository pattern, no ORM — the house pattern across Pendi, syr and Slyng.
+The schemas are `@sloppy/types`; the table definitions and the purge are `@sloppy/data`.
+
+A row's key is composite — `table:{ created_by: <did>, id: <ulid> }` — so it is globally
+unique the moment it is written, which is what lets a peer hold somebody else's node
+without renaming it. A **ref** below is how one row points at another: the string
+`<did>/<ulid>`, the form the reference already travels in.
 
 ```
 node:{ created_by: <did>, id: <ulid> }
-  address        string        Folgezettel, immutable
-  node_did       string        denormalized scalar for indexing (see below)
-  parent, origin RecordId
-  depth          int
-  title          string
-  labels         object        { dimension: value }
-  links          RecordId[]    non-genealogical associative links
-  published      bool
+  created_by  did       the owner, flat and immutable
+  address     string    Folgezettel, immutable
+  parent      ref?      absent on a root
+  origin      ref       the root of this node's tree; a root is its own origin
+  title       string
+  labels      object    { dimension: value }
+  links       ref[]     non-genealogical associative links
+  published   bool
   content_signature, signed_payload_json, signing_device_public_key
 
 block:{ created_by: <did>, id: <ulid> }
-  node   RecordId
-  ord    string      fractional index — reorder without renumbering
-  type   paragraph | heading | list | todo | code | image | ink | embed
-  content markdown with :emoji: / ::sticker:: shortcodes
-  ink?   { strokes: [...], raster_upload_id }
+  created_by  did
+  node        ref
+  ord         string    fractional index — reorder without renumbering
+  type        paragraph | heading | list | todo | code | image | ink | embed
+  content     markdown with :emoji: / ::sticker:: shortcodes
+  data?       the type's own payload — InkBlockData for `ink`, nothing for `paragraph`
 
 label_dimension:{ created_by: <did>, id: <ulid> }
-  name, values[], color
+  created_by  did
+  name        string
+  values      string[]
+  color_slot  1–8?      the --facet-N slot; absent means declaration order (DESIGN.md)
+
+publication:{ created_by: <did>, id: <ulid> }
+  created_by    did
+  root          ref       the subtree this makes readable
+  root_address  string    what a peer cites
 ```
 
-Three rules AI.md's foundation-wave section states, applied here:
+The rules AI.md's foundation-wave section states, applied here:
 
 - Every user-owned table has `created_by` and is purged by it. Purging through a parent row
-  leaks every orphan, permanently.
-- `node_did` exists because **SurrealDB will not use a composite index whose second column
-  is a nested path**, and the id is composite.
+  leaks every orphan, permanently. `schema.ts` makes the column immutable, so ownership
+  cannot be reassigned out from under the sweep.
+- **`created_by` is a top-level column and not just the `created_by` inside the key**,
+  because SurrealDB will not use a composite index whose second column is a nested path.
+  Every index leads with it, which is what lets one index serve the user-scoped read and
+  the purge both.
+- **A link is a ref, not a SurrealDB record link.** Measured on 3.1.3: an index on a column
+  holding a _composite_ record id still enforces `UNIQUE`, but the planner never chooses
+  it — `EXPLAIN` gives a TableScan for an equality on such a column and an IndexScan for
+  the same equality on a string. So the composite id is the row's own key and nothing
+  else's column.
+- **Nothing derivable from the address is stored.** There is no `depth` column: depth, the
+  angular sector and subtree membership are functions in `address.ts`, and a stored copy
+  would be a second answer with no author. A read that wants "the top three levels" filters
+  on the addresses it already has.
 - `schema.ts` is one contiguous string literal, so it is foundation-wave territory rather
   than per-track. Production SurrealDB serves only `DEFINE`d tables; dev does not enforce
   it, so an undeclared table passes locally and fails in production.
+
+Tables are `SCHEMALESS`, and `DEFINE FIELD` is spent only where the database has to enforce
+something the application cannot be trusted to: `node.address` and every table's
+`created_by`, both made immutable with `VALUE $before OR $value`. That is what keeps a later
+track from having to edit the shared literal to add a field.
 
 **`ord` as a fractional index and composite record ids are both chosen with the future CRDT
 layer in mind** — they are the two things that would otherwise have to be retrofitted.

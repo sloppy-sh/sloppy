@@ -1,0 +1,44 @@
+{
+  "name": "@sloppy/data",
+  "version": "0.0.1",
+  "description": "Sloppy's SurrealDB data layer — the table definitions and the per-user purge, shared by the hosted API (remote SurrealDB) and the native app (embedded engine). See docs/ARCHITECTURE.md.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.mts",
+        "require": "./dist/index.d.ts"
+      },
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false .",
+    "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
+  },
+  "peerDependencies": {
+    "surrealdb": ">=2.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "surrealdb": "catalog:",
+    "tsdown": "^0.22.14",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  }
+}

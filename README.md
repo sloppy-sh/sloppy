@@ -21,27 +21,29 @@ Mobile and tablet are the primary surface. Desktop is the same product with more
 
 ## Status
 
-**The workspace exists; the product does not yet.** What is in the tree today is the build
-foundation — the conventions, the pnpm + Turborepo workspace, the formatter split, and the
-dev stack. `apps/` and `packages/` are created by the milestones that follow, so
-`pnpm dev` currently has nothing to run.
+**The vocabulary exists; the product does not yet.** What is in the tree today is the build
+foundation — the conventions, the pnpm + Turborepo workspace, the formatter split, the dev
+stack — plus the two packages every later branch reads from: `@sloppy/types` (the address
+protocol and the node/block/label/publication schemas) and `@sloppy/data` (the table
+definitions and the per-user purge). The apps and the remaining packages are created by the
+milestones that follow, so `pnpm dev` currently has nothing to run; `pnpm test` does.
 
 ## Stack
 
-pnpm + Turborepo monorepo. Nothing in this table exists yet except the workspace itself.
+pnpm + Turborepo monorepo. The two rows marked ✓ are in the tree; the rest are ahead.
 
-| Path                   | Package            | Tech                                              |
-| ---------------------- | ------------------ | ------------------------------------------------- |
-| `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                        |
-| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             |
-| `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop) |
-| `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                |
-| `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                       |
-| `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call         |
-| `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens          |
-| `packages/ts/data`     | `@sloppy/data`     | SurrealDB repositories, schema, purge             |
-| `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                |
-| `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode        |
+| Path                   | Package            | Tech                                              |     |
+| ---------------------- | ------------------ | ------------------------------------------------- | --- |
+| `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                        |     |
+| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             |     |
+| `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop) |     |
+| `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                | ✓   |
+| `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                       |     |
+| `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call         |     |
+| `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens          |     |
+| `packages/ts/data`     | `@sloppy/data`     | SurrealDB repositories, schema, purge             | ✓   |
+| `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                |     |
+| `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode        |     |
 
 Identity, profiles, media blobs, emoji and reactions come from **syr**; nodes, addresses,
 labels, blocks and ink are Sloppy's own. That split is not a preference — see

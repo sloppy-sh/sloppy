@@ -23,6 +23,11 @@ catalog:
   zod: 4.3.6
   sveltekit-superforms: 2.30.0
 
+  # The SurrealDB client. @sloppy/types validates RecordId with `z.instanceof`,
+  # so every package that hands one to another must resolve the same copy of the
+  # class or the check fails on a value that is correct.
+  surrealdb: 2.0.8
+
   # The Svelte toolchain. web, native and every Svelte package compile against
   # one version of each of these or they disagree about what a component is.
   svelte: 5.55.2
