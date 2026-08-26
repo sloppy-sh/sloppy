@@ -62,18 +62,41 @@ const defaultAssetBytes = async (url: string): Promise<ArrayBuffer> => {
 
 const TOKEN_KEY = 'sloppy_token';
 
-let memToken: string | undefined =
-	typeof localStorage !== 'undefined' ? (localStorage.getItem(TOKEN_KEY) ?? undefined) : undefined;
+/**
+ * Existing and being readable are different things: a browser told to block site
+ * data throws on the accessor itself, so `typeof localStorage` is not a guard —
+ * it throws too. This runs at module scope, so an unguarded read loses the whole
+ * app at import for anyone with cookies off. They get a session that lasts the
+ * life of the tab instead.
+ */
+function storedToken(): string | undefined {
+	try {
+		return localStorage.getItem(TOKEN_KEY) ?? undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function storeToken(v: string | undefined): void {
+	try {
+		if (v === undefined) localStorage.removeItem(TOKEN_KEY);
+		else localStorage.setItem(TOKEN_KEY, v);
+	} catch {
+		// Memory already holds it; persisting is the only thing lost.
+	}
+}
+
+let memToken: string | undefined = storedToken();
 
 const localStorageToken: AppRuntime['token'] = {
 	get: () => memToken,
 	set: (v) => {
 		memToken = v;
-		if (typeof localStorage !== 'undefined') localStorage.setItem(TOKEN_KEY, v);
+		storeToken(v);
 	},
 	clear: () => {
 		memToken = undefined;
-		if (typeof localStorage !== 'undefined') localStorage.removeItem(TOKEN_KEY);
+		storeToken(undefined);
 	}
 };
 

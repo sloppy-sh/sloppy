@@ -10,10 +10,8 @@ import { AppConfigService } from "../config/app-config.service";
 
 /**
  * The one connection to Sloppy's own store, and the one place the schema is
- * applied. `defineCoreSchema` is idempotent and runs on every boot because
- * production SurrealDB serves only `DEFINE`d tables while the dev stack does
- * not enforce that — a table that was never defined passes locally and fails
- * where it matters.
+ * applied — `defineCoreSchema` is idempotent and runs on every boot.
+ * `docs/ARCHITECTURE.md` § "Data model" says why it must.
  */
 @Injectable()
 export class DbService implements OnModuleInit, OnModuleDestroy {
