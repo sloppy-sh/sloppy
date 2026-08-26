@@ -12,8 +12,6 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test": "vitest run",
-		"test:watch": "vitest",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."
@@ -23,7 +21,6 @@
 		"@fontsource-variable/jetbrains-mono": "^5.2.8",
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/client": "workspace:*",
-		"@sloppy/types": "workspace:*",
 		"@sloppy/ui": "workspace:*"
 	},
 	"devDependencies": {
@@ -37,7 +34,6 @@
 		"eslint-config-prettier": "catalog:",
 		"eslint-plugin-svelte": "catalog:",
 		"globals": "catalog:",
-		"happy-dom": "^20.0.11",
 		"prettier": "catalog:",
 		"prettier-plugin-svelte": "catalog:",
 		"prettier-plugin-tailwindcss": "catalog:",
@@ -46,7 +42,6 @@
 		"tailwindcss": "catalog:",
 		"typescript": "catalog:",
 		"typescript-eslint": "catalog:",
-		"vite": "catalog:",
-		"vitest": "^4.1.11"
+		"vite": "catalog:"
 	}
 }

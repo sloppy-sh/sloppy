@@ -5,9 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<title>Sloppy</title>
 		<script>
-			// The saved look, applied before the first paint — DESIGN.md § Theme. A
-			// module cannot do this: it runs after the page has already painted the
-			// wrong theme once.
+			// The saved look, applied before the first paint — DESIGN.md § Theme.
 			var root = document.documentElement;
 			var osDark = matchMedia('(prefers-color-scheme: dark)').matches;
 			var saved = {};

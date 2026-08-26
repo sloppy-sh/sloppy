@@ -12,11 +12,6 @@ lives on a server. `runtime.ts` in `@sloppy/app-core` states what each absence d
 the API mounts, and the dev server proxies that prefix to the API on `SLOPPY_API_PORT`.
 Set `PUBLIC_SLOPPY_API_URL` to point the app at somebody else's instance instead.
 
-**`src/lib/screens/` is on loan.** Every screen belongs in `@sloppy/app-core`, so that
-the native shell renders the same one rather than a second copy of it; they sit here
-only until that package's page tree exists, and the routes already import them the way
-they will import it.
-
 ```
 pnpm --filter @sloppy/web dev      # needs the API and the dev stack up
 pnpm --filter @sloppy/web build    # static site into build/
