@@ -21,9 +21,8 @@ export default defineConfig(({ mode }) => {
 			// Sloppy's own block: 8010 the database, 8020 the API.
 			port: 8030,
 			strictPort: true,
-			// The app and the API share an origin wherever this is deployed, which
-			// is what lets a session ride the request. In dev they are two
-			// processes, so the dev server stands in for that origin.
+			// The app and the API share an origin wherever this is deployed. In
+			// dev they are two processes, so the dev server stands in for it.
 			proxy: {
 				[API_PREFIX]: `http://localhost:${env.SLOPPY_API_PORT || 8020}`
 			}

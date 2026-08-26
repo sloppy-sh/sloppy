@@ -1,6 +1,6 @@
 <script lang="ts">
-	import '@fontsource-variable/inter';
-	import '@fontsource-variable/jetbrains-mono';
+	import '@fontsource-variable/inter/index.css';
+	import '@fontsource-variable/jetbrains-mono/index.css';
 	import '../app.css';
 	import { initRuntime } from '@sloppy/app-core';
 

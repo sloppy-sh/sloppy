@@ -17,8 +17,8 @@
 		"format:check": "prettier --check ."
 	},
 	"dependencies": {
-		"@fontsource-variable/inter": "^5.2.8",
-		"@fontsource-variable/jetbrains-mono": "^5.2.8",
+		"@fontsource-variable/inter": "catalog:",
+		"@fontsource-variable/jetbrains-mono": "catalog:",
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/client": "workspace:*",
 		"@sloppy/ui": "workspace:*"
