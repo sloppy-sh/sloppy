@@ -122,34 +122,58 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
   });
 
-  it("keeps address, depth, created_by and created_at as first written", async () => {
+  it("refuses to reassign address, depth, created_by or created_at", async () => {
     const row = nodeRow(BOB, "2a", "01JNEVERCHANGES00000000000", 2);
     await db.create(row.id).content(row);
 
-    await db.update(row.id).merge({
-      address: "9",
-      depth: 7,
-      created_by: AVA,
-      created_at: "2030-01-01T00:00:00.000Z",
-      updated_at: "2026-06-01T00:00:00.000Z",
-    });
-
-    const merged = await read(row.id);
-    expect(merged.address).toBe("2a");
-    expect(merged.depth).toBe(2);
-    expect(merged.created_by).toBe(BOB);
-    expect(merged.created_at).toBe("2026-01-01T00:00:00.000Z");
-    expect(merged.updated_at).toBe("2026-06-01T00:00:00.000Z");
+    for (const reassignment of [
+      { address: "9" },
+      { depth: 7 },
+      { created_by: AVA },
+      { created_at: "2030-01-01T00:00:00.000Z" },
+    ]) {
+      await expect(db.update(row.id).merge(reassignment)).rejects.toThrow();
+    }
 
     // CONTENT replaces the whole document, which is the shape that would drop
     // an immutable column rather than merely reassign it.
-    await db
-      .update(row.id)
-      .content({ ...row, address: "9", depth: 7, created_by: AVA });
-    const replaced = await read(row.id);
-    expect(replaced.address).toBe("2a");
-    expect(replaced.depth).toBe(2);
-    expect(replaced.created_by).toBe(BOB);
+    await expect(
+      db
+        .update(row.id)
+        .content({ ...row, address: "9", depth: 7, created_by: AVA }),
+    ).rejects.toThrow();
+
+    const stored = await read(row.id);
+    expect(stored.address).toBe("2a");
+    expect(stored.depth).toBe(2);
+    expect(stored.created_by).toBe(BOB);
+    expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("takes a whole-row rewrite that leaves the immutable columns alone", async () => {
+    // What a repository save looks like: the full document, immutable columns
+    // and all, with one field different. Re-sending a value is not a change.
+    const row = nodeRow(BOB, "2b", "01JWHOLEROWREWRITE00000000", 2);
+    await db.create(row.id).content(row);
+
+    await db.update(row.id).content({
+      ...row,
+      title: "rewritten",
+      updated_at: "2026-06-01T00:00:00.000Z",
+    });
+
+    const stored = await read(row.id);
+    expect(stored.title).toBe("rewritten");
+    expect(stored.updated_at).toBe("2026-06-01T00:00:00.000Z");
+    expect(stored.address).toBe("2b");
+  });
+
+  it("holds a column immutable whatever it already holds, empty included", async () => {
+    const row = nodeRow(BOB, "", "01JEMPTYADDRESS00000000000", 1);
+    await db.create(row.id).content(row);
+
+    await expect(db.update(row.id).merge({ address: "8" })).rejects.toThrow();
+    expect((await read(row.id)).address).toBe("");
   });
 
   it("refuses a depth no address could produce", async () => {

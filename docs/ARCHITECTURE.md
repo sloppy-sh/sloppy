@@ -226,9 +226,11 @@ The rules AI.md's foundation-wave section states, applied here:
 
   A second copy of a truth is only safe while it cannot drift, so the exception is
   conditioned on holding `depth = parseAddress(address).length` by construction. `depth` is
-  written from `addressDepth()` and nothing else, a test asserts the equality over generated
-  addresses, and the column is immutable, `TYPE int` and `ASSERT $value > 0` — a root is 1,
-  never 0, so no level sits below every threshold.
+  written from `addressDepth()` and nothing else; `parseNode()` in `@sloppy/types` is where
+  every row is held to the equality, in both directions, because the column is immutable and
+  a row that gets past it is wrong for as long as it exists. `ASSERT $value > 0` pins the
+  convention on top of that: a root is 1, so a writer that counted from the other end fails
+  at its first write rather than mis-slicing every region it goes on to store.
 
 - `schema.ts` is one contiguous string literal, so it is foundation-wave territory rather
   than per-track. Production SurrealDB serves only `DEFINE`d tables; dev does not enforce
@@ -236,13 +238,22 @@ The rules AI.md's foundation-wave section states, applied here:
 
 Tables are `SCHEMALESS`, and `DEFINE FIELD` is spent only where the database has to enforce
 something the application cannot be trusted to. Four things qualify, all of them stated
-above: `node.address` and every table's `created_by`, made immutable with
-`VALUE $before OR $value`; `created_at` / `updated_at` as `TYPE string`, which is what
-makes a write in the wrong encoding fail at the write; and `node.depth`, immutable like the
-address it mirrors and `TYPE int ASSERT $value > 0`, because it is read as a range and a
-range is where a string or a zero would go wrong quietly. `created_at` is immutable too,
-being a field of the signed payload. Everything else is a plain column, which is what keeps a
-later track from having to edit the shared literal to add a field.
+above: `node.address` and every table's `created_by`, made immutable with `READONLY`;
+`created_at` / `updated_at` as `TYPE string`, which is what makes a write in the wrong
+encoding fail at the write; and `node.depth`, immutable like the address it mirrors and
+`TYPE int ASSERT $value > 0`, because it is read as a range and a range is where a string or
+a zero would go wrong quietly. `created_at` is immutable too, being a field of the signed
+payload. Everything else is a plain column, which is what keeps a later track from having to
+edit the shared literal to add a field.
+
+**`READONLY` and not the `VALUE $before OR $value` idiom**, measured on 3.1.3: that idiom
+keeps the old value only while the old value is truthy, so a row first written with `""` in
+one of these columns is freely mutable ever after — and a `created_by` reassigned out from
+under the purge is somebody's writing still answering after they asked to be gone. `READONLY`
+refuses whatever the column holds, and refuses loudly, the stance the `UNIQUE` address index
+already takes. Re-sending a value unchanged is not a change and still goes through, and a
+`CONTENT` that omits the column keeps it, so a whole-row save needs no list of which columns
+are immutable.
 
 **`ord` as a fractional index and composite record ids are both chosen with the future CRDT
 layer in mind** — they are the two things that would otherwise have to be retrofitted.

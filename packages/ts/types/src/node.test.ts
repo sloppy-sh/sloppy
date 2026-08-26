@@ -7,7 +7,7 @@ import {
   parseAddress,
   siblingAddress,
 } from "./address.js";
-import { NodeSchema } from "./node.js";
+import { NodeDepthMismatchError, NodeSchema, parseNode } from "./node.js";
 
 const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 const ULID = "01JSPREAD00000000000000000";
@@ -49,9 +49,9 @@ describe("depth against the address it duplicates", () => {
   });
 
   it("reaches a row unchanged, and starts at 1 on a root", () => {
-    expect(NodeSchema.parse(row("1")).depth).toBe(1);
+    expect(parseNode(row("1")).depth).toBe(1);
     for (const address of spread(500)) {
-      const node = NodeSchema.parse(row(address));
+      const node = parseNode(row(address));
       expect(node.depth).toBe(parseAddress(node.address).length);
     }
   });
@@ -60,6 +60,15 @@ describe("depth against the address it duplicates", () => {
     const depths = new Set(spread(500).map(addressDepth));
     expect(Math.min(...depths)).toBe(1);
     expect(Math.max(...depths)).toBeGreaterThan(5);
+  });
+
+  it("is refused at the row boundary when it disagrees with the address", () => {
+    for (const address of spread(200)) {
+      const wrong = addressDepth(address) + 1;
+      expect(() => parseNode(row(address, wrong))).toThrow(
+        NodeDepthMismatchError,
+      );
+    }
   });
 
   it("refuses a number no address could produce", () => {

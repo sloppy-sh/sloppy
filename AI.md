@@ -393,7 +393,7 @@ will need, and is expected to** — not to defer it as somebody's later problem:
   - **Every user-owned table needs a `created_by` column and must be purged by it.**
     Purging through a parent row leaks every orphan, permanently.
   - **SurrealDB will not use a composite index whose second column is a nested path**, so
-    denormalize a top-level scalar beside the object — the way `node` stores `node_did`
+    denormalize a top-level scalar beside the object — the way `node` stores `created_by`
     beside its composite id.
 - **Request DTOs** (`Create*Request` / `Update*Request`) for every new entity. These are
   the shared contract between a form and the API, and they can only drift if each surface

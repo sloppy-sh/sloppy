@@ -38,9 +38,8 @@ export type CreatePublicationRequest = z.infer<
 
 /**
  * One node as a peer receives it. Rows travel by `<did>/<ulid>` reference
- * rather than by record id, and carry no `depth`: depth, sector and subtree
- * membership are all functions of the address, and shipping a second copy of
- * one invites the two to disagree.
+ * rather than by record id, and carry no `depth`: a reader computes it, along
+ * with the sector and subtree membership, from the address.
  */
 export const PublishedNodeSchema = z.object({
   ref: OwnedRefSchema,

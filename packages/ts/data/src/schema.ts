@@ -18,10 +18,10 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 
 /**
  * Tables stay SCHEMALESS. The only `DEFINE FIELD`s are the invariants the
- * database has to hold itself: `address`, `depth` and `created_by` immutable,
- * `depth` a positive `int`, and the timestamps `TYPE string`. Everything else
- * is a plain column, which is what lets a later track add a field without
- * editing this shared literal.
+ * database has to hold itself: `address`, `depth`, `created_by` and
+ * `created_at` immutable, `depth` a positive `int`, and the timestamps
+ * `TYPE string`. Everything else is a plain column, which is what lets a later
+ * track add a field without editing this shared literal.
  *
  * docs/ARCHITECTURE.md § "Data model" says why each of them.
  */
@@ -31,21 +31,18 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS label_dimension SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
 
-  DEFINE FIELD IF NOT EXISTS address ON node TYPE string VALUE $before OR $value;
-  -- Typed and bounded because it is read as a range: a depth stored as a string
-  -- would order lexicographically, and one counted from the wrong end would put
-  -- a root at 0, which is a level no threshold below can reach.
-  DEFINE FIELD IF NOT EXISTS depth ON node TYPE int ASSERT $value > 0 VALUE $before OR $value;
+  DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS depth ON node TYPE int ASSERT $value > 0 READONLY;
 
-  DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string VALUE $before OR $value;
-  DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string VALUE $before OR $value;
-  DEFINE FIELD IF NOT EXISTS created_by ON label_dimension TYPE string VALUE $before OR $value;
-  DEFINE FIELD IF NOT EXISTS created_by ON publication TYPE string VALUE $before OR $value;
+  DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON label_dimension TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON publication TYPE string READONLY;
 
-  DEFINE FIELD IF NOT EXISTS created_at ON node TYPE string VALUE $before OR $value;
-  DEFINE FIELD IF NOT EXISTS created_at ON block TYPE string VALUE $before OR $value;
-  DEFINE FIELD IF NOT EXISTS created_at ON label_dimension TYPE string VALUE $before OR $value;
-  DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string VALUE $before OR $value;
+  DEFINE FIELD IF NOT EXISTS created_at ON node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON label_dimension TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON block TYPE string;

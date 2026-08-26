@@ -3,7 +3,7 @@
 // Is the Protocol".
 
 import { z } from "zod";
-import { AddressSchema } from "./address.js";
+import { addressDepth, AddressSchema } from "./address.js";
 import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { LabelSetSchema } from "./label.js";
 
@@ -11,9 +11,9 @@ export const NodeSchema = OwnedEntitySchema.extend({
   /** Assigned at creation and never rewritten. `schema.ts` enforces this. */
   address: AddressSchema,
   /**
-   * `addressDepth(address)`, and a writer must keep it so. A value derived from
-   * an address is otherwise never stored; docs/ARCHITECTURE.md § "Data model"
-   * carries the ruling that makes this one an exception.
+   * `addressDepth(address)`. A value derived from an address is otherwise never
+   * stored; docs/ARCHITECTURE.md § "Data model" carries the ruling that makes
+   * this one an exception, and `parseNode` is the boundary it is held at.
    */
   depth: z.int().positive(),
   /** Absent on a root. */
@@ -34,6 +34,39 @@ export const NodeSchema = OwnedEntitySchema.extend({
   signing_device_public_key: z.string().optional(),
 });
 export type Node = z.infer<typeof NodeSchema>;
+
+export function nodeDepthMatchesAddress(
+  node: Pick<Node, "address" | "depth">,
+): boolean {
+  return node.depth === addressDepth(node.address);
+}
+
+export class NodeDepthMismatchError extends Error {
+  constructor(address: string, stored: number, actual: number) {
+    super(
+      `Address ${JSON.stringify(address)} is ${actual} deep; the row stores ${stored}`,
+    );
+    this.name = "NodeDepthMismatchError";
+  }
+}
+
+/**
+ * Every node row crosses this, in both directions: a writer's before it is
+ * stored, a reader's after it comes back. `NodeSchema` cannot refuse a `depth`
+ * disagreeing with its `address`, and the column is immutable, so a wrong row
+ * that gets past here is wrong for as long as it exists.
+ */
+export function parseNode(row: unknown): Node {
+  const node = NodeSchema.parse(row);
+  if (!nodeDepthMatchesAddress(node)) {
+    throw new NodeDepthMismatchError(
+      node.address,
+      node.depth,
+      addressDepth(node.address),
+    );
+  }
+  return node;
+}
 
 /**
  * Create a node. The server mints the id and assigns the address: a client that
