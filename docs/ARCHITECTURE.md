@@ -149,7 +149,8 @@ The schemas are `@sloppy/types`; the table definitions and the purge are `@slopp
 A row's key is composite — `table:{ created_by: <did>, id: <ulid> }` — so it is globally
 unique the moment it is written, which is what lets a peer hold somebody else's node
 without renaming it. A **ref** below is how one row points at another: the string
-`<did>/<ulid>`, the form the reference already travels in.
+`<did>/<ulid>`, the form the reference already travels in. Every row also carries
+`created_at` and `updated_at` as **iso** — see the timestamp rule below.
 
 ```
 node:{ created_by: <did>, id: <ulid> }
@@ -161,6 +162,8 @@ node:{ created_by: <did>, id: <ulid> }
   labels      object    { dimension: value }
   links       ref[]     non-genealogical associative links
   published   bool
+  created_at  iso       immutable — it is a field of the signed payload
+  updated_at  iso
   content_signature, signed_payload_json, signing_device_public_key
 
 block:{ created_by: <did>, id: <ulid> }
@@ -197,6 +200,16 @@ The rules AI.md's foundation-wave section states, applied here:
   it — `EXPLAIN` gives a TableScan for an equality on such a column and an IndexScan for
   the same equality on a string. So the composite id is the row's own key and nothing
   else's column.
+- **A timestamp is an ISO-8601 UTC string at millisecond precision** — `TimestampSchema`
+  in `@sloppy/types`, minted by `nowIso()` — in the row, on the wire to a peer, and inside
+  a signed payload. It is one encoding rather than two because the alternative has no
+  quiet failure mode: the pinned `surrealdb` client decodes a stored datetime to its own
+  `DateTime` class, for which `instanceof Date` is false, so a row written with
+  `time::now()` is a row no reader can validate. `schema.ts` therefore defines the columns
+  `TYPE string`, which makes such a write fail where it is made. Fixed precision is part
+  of the rule: the same instant written two widths is two byte strings, and a signature is
+  over the bytes. Lexicographic order over these strings is chronological order, so
+  `ORDER BY created_at` needs nothing further.
 - **Nothing derivable from the address is stored.** There is no `depth` column: depth, the
   angular sector and subtree membership are functions in `address.ts`, and a stored copy
   would be a second answer with no author. A read that wants "the top three levels" filters

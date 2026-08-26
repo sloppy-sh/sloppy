@@ -7,8 +7,7 @@
 
 import { RecordId } from "surrealdb";
 import { ulid } from "ulid";
-import { z } from "zod";
-import type { OwnedRef } from "./common.js";
+import type { OwnedRef, Timestamp } from "./common.js";
 
 interface CompositeId {
   created_by: string;
@@ -79,10 +78,9 @@ export function recordIdFromOwnedRef(table: string, ref: OwnedRef): RecordId {
   );
 }
 
-/** ISO-8601 on the wire, `Date` in the database. */
-export const isoDatetimeToDate = z.codec(z.iso.datetime(), z.date(), {
-  decode: (iso) => new Date(iso),
-  encode: (date) => date.toISOString(),
-});
+/** The one mint for `created_at` and `updated_at`. Satisfies `TimestampSchema`. */
+export function nowIso(): Timestamp {
+  return new Date().toISOString();
+}
 
 export { ulid } from "ulid";

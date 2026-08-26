@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { STATEMENTS, USER_PURGE_TABLES } from "./purge.js";
-import { SLOPPY_TABLES } from "./schema.js";
+import { SCHEMA, SLOPPY_TABLES } from "./schema.js";
+
+describe("the tables the schema declares", () => {
+  it("are all of them", () => {
+    // SLOPPY_TABLES is read out of SCHEMA, and a pattern that stopped matching
+    // would empty it silently — taking the purge coverage test below with it.
+    expect(SLOPPY_TABLES).toHaveLength(
+      (SCHEMA.match(/DEFINE TABLE/g) ?? []).length,
+    );
+    expect(SLOPPY_TABLES.length).toBeGreaterThan(0);
+  });
+});
 
 describe("the per-user purge", () => {
   it("sweeps every table the schema defines", () => {
-    // A table added to schema.ts and forgotten here does not fail anywhere
-    // else: it just keeps somebody's rows after they asked to be gone.
+    // A table declared and then forgotten here fails nowhere else: it just
+    // keeps somebody's rows after they asked to be gone.
     for (const table of SLOPPY_TABLES) {
       expect(USER_PURGE_TABLES.has(table)).toBe(true);
     }

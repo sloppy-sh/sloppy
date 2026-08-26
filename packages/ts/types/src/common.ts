@@ -12,9 +12,14 @@ export const RecordIdSchema: z.ZodType<RecordId> = z.instanceof(RecordId, {
 });
 export type RecordIdValue = z.infer<typeof RecordIdSchema>;
 
-export const TimestampSchema = z.instanceof(Date, {
-  message: "Expected a Date",
-});
+/**
+ * ISO-8601 UTC at fixed millisecond precision — the one encoding a timestamp
+ * has in the row, on the wire, and inside a signed payload. The precision is
+ * pinned rather than merely permitted: the same instant written two widths is
+ * two byte strings, and a signature is over the bytes. `nowIso()` mints one;
+ * docs/ARCHITECTURE.md § "Data model" says why there is only the one encoding.
+ */
+export const TimestampSchema = z.iso.datetime({ precision: 3 });
 export type Timestamp = z.infer<typeof TimestampSchema>;
 
 /**
@@ -36,15 +41,9 @@ export const UlidSchema = z
 export type Ulid = z.infer<typeof UlidSchema>;
 
 /**
- * How one row points at another: `<did>/<ulid>`.
- *
- * A string rather than a SurrealDB record link, which is the shape it looks
- * like it should be. Measured on 3.1.3: an index on a column holding a
- * COMPOSITE record id still enforces UNIQUE but is never chosen by the query
- * planner, so `WHERE node = $node` falls back to a full table scan — the same
- * family as the nested-path rule in AI.md, and the reason `created_by` is a
- * column too. A reference also has to survive JSON to reach a peer, and this is
- * already the form it travels in.
+ * How one row points at another: `<did>/<ulid>`, deliberately a string and not
+ * the SurrealDB record link it looks like it should be. docs/ARCHITECTURE.md
+ * § "Data model" says why.
  */
 export const OwnedRefSchema = z
   .string()
@@ -63,11 +62,10 @@ export type BaseEntity = z.infer<typeof BaseEntitySchema>;
 
 /**
  * A row somebody owns. `created_by` repeats the owner half of the composite
- * record id on purpose: SurrealDB will not use a composite index whose second
- * column is a nested path, and this is the column the per-user purge deletes by
- * — reaching a row through its parent instead leaves every orphan behind.
- * `schema.ts` makes it immutable, so ownership cannot be reassigned out from
- * under the purge.
+ * record id as a flat, immutable column, and it is the column the per-user
+ * purge deletes by — reaching a row through its parent instead leaves every
+ * orphan behind. docs/ARCHITECTURE.md § "Data model" says why the flat copy is
+ * necessary.
  */
 export const OwnedEntitySchema = BaseEntitySchema.extend({
   created_by: DidSyrSchema,

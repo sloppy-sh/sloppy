@@ -8,7 +8,12 @@
 import { z } from "zod";
 import { AddressSchema } from "./address.js";
 import { BlockTypeSchema } from "./block.js";
-import { DidSyrSchema, OwnedEntitySchema, OwnedRefSchema } from "./common.js";
+import {
+  DidSyrSchema,
+  OwnedEntitySchema,
+  OwnedRefSchema,
+  TimestampSchema,
+} from "./common.js";
 import { LabelSetSchema } from "./label.js";
 
 /**
@@ -45,8 +50,8 @@ export const PublishedNodeSchema = z.object({
   title: z.string(),
   labels: LabelSetSchema,
   links: z.array(OwnedRefSchema),
-  created_at: z.iso.datetime(),
-  updated_at: z.iso.datetime(),
+  created_at: TimestampSchema,
+  updated_at: TimestampSchema,
   /**
    * Present when the author signed this node through their syr instance. A
    * reader that cannot verify a signature still renders the node; a reader that

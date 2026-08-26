@@ -18,7 +18,7 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 
 /**
  * Tables stay SCHEMALESS, and `DEFINE FIELD` is spent only where the database
- * has to enforce something the application cannot be trusted to. Two things
+ * has to enforce something the application cannot be trusted to. Three things
  * qualify:
  *
  *   - `address` — the protocol claim. A peer somewhere is holding it, so an
@@ -27,29 +27,41 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
  *     was created with; on create `$before` is NONE, so the new value lands.
  *   - `created_by` — the purge deletes by this column, so a row that could
  *     change owner could walk out of its owner's deletion.
+ *   - `created_at` / `updated_at` — `TYPE string` is what leaves the ISO-8601
+ *     of `TimestampSchema` as the only encoding a timestamp can have here: a
+ *     branch that reaches for `time::now()` fails on its own first write rather
+ *     than on somebody else's first read. `created_at` is immutable too, being
+ *     a field of the signed node payload.
  *
  * Everything else is a plain column, which is what lets a later track add a
  * field without editing this shared literal.
  */
-const SCHEMA = `
+export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS block SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS label_dimension SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
 
   DEFINE FIELD IF NOT EXISTS address ON node TYPE string VALUE $before OR $value;
+
   DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string VALUE $before OR $value;
   DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string VALUE $before OR $value;
   DEFINE FIELD IF NOT EXISTS created_by ON label_dimension TYPE string VALUE $before OR $value;
   DEFINE FIELD IF NOT EXISTS created_by ON publication TYPE string VALUE $before OR $value;
 
-  -- Every column indexed below is a TOP-LEVEL STRING, including the ones that
-  -- point at another row. Measured on 3.1.3: an index whose column holds a
-  -- COMPOSITE record id still enforces UNIQUE, but the planner never chooses
-  -- it -- EXPLAIN returns a TableScan for an equality on such a column, and an
-  -- IndexScan for the same equality on a string. So a link is stored as the
-  -- did/ulid reference it travels as, and a composite record id is the row's
-  -- own key and nothing else's column.
+  DEFINE FIELD IF NOT EXISTS created_at ON node TYPE string VALUE $before OR $value;
+  DEFINE FIELD IF NOT EXISTS created_at ON block TYPE string VALUE $before OR $value;
+  DEFINE FIELD IF NOT EXISTS created_at ON label_dimension TYPE string VALUE $before OR $value;
+  DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string VALUE $before OR $value;
+
+  DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON block TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON label_dimension TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON publication TYPE string;
+
+  -- Every indexed column is a TOP-LEVEL STRING, including the ones that point
+  -- at another row: a composite record id is a row's own key and never another
+  -- row's column. docs/ARCHITECTURE.md § "Data model" says why.
   --
   -- Most indexes below LEAD with created_by, which is what lets one index serve
   -- both the user-scoped read and the purge; a separate single-column
@@ -79,10 +91,13 @@ const SCHEMA = `
   DEFINE INDEX IF NOT EXISTS publication_owner_root ON publication FIELDS created_by, root UNIQUE;
 `;
 
-/** Every table this file defines. */
+const DEFINE_TABLE = /DEFINE TABLE\s+(?:IF NOT EXISTS\s+)?(\w+)/g;
+
+/**
+ * Every table `SCHEMA` defines, read out of it. Adding a table is one edit, and
+ * the purge's coverage test is over this list, so a table cannot be declared
+ * and left unswept.
+ */
 export const SLOPPY_TABLES: readonly string[] = [
-  "node",
-  "block",
-  "label_dimension",
-  "publication",
-];
+  ...SCHEMA.matchAll(DEFINE_TABLE),
+].map(([, table]) => table);

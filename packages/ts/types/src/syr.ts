@@ -9,7 +9,8 @@
 // rejected, so an instance running ahead of us stays readable.
 
 import { z } from "zod";
-import { DidSyrSchema } from "./common.js";
+import { AddressSchema } from "./address.js";
+import { DidSyrSchema, TimestampSchema, UlidSchema } from "./common.js";
 
 /**
  * What Sloppy asks for. A response may name a scope this version does not,
@@ -155,9 +156,10 @@ export type SyrPlatformChallengeResponse = z.infer<
 export const NodeSignedPayloadV1Schema = z.object({
   type: z.literal("sloppy-node@v1"),
   did: DidSyrSchema,
-  node_id: z.string().min(1),
-  address: z.string().min(1),
+  /** The ULID half of the node's key. `did` above is the other half. */
+  node_id: UlidSchema,
+  address: AddressSchema,
   title: z.string(),
-  created_at: z.string(),
+  created_at: TimestampSchema,
 });
 export type NodeSignedPayloadV1 = z.infer<typeof NodeSignedPayloadV1Schema>;
