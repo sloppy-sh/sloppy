@@ -26,11 +26,12 @@ foundation and the seams every later branch reads: `@sloppy/types` (the address 
 the node/block/label/publication schemas, and the API's wire shapes), `@sloppy/data` (the
 table definitions and the per-user purge), `@sloppy/client` (the whole method surface, over
 `fetch`), `@sloppy/app-core` (the platform seam and the api proxy), `@sloppy/ui` (the design
-tokens) and `@sloppy/api` (a NestJS skeleton whose feature modules are empty).
+tokens) and `@sloppy/api` (a NestJS API that signs people in through syr; its node and
+block modules are still empty).
 
-So `pnpm dev:api` serves a health check and nothing else, and there are no shells to run
-yet. `pnpm test` is real: it holds the address protocol, the schema against a live
-SurrealDB, and the design system's contrast floors.
+So `pnpm dev` brings up the web shell over an API that can start a session and little
+else, and there is no graph to put in it yet. `pnpm test` is real: it holds the address
+protocol, the schema against a live SurrealDB, and the design system's contrast floors.
 
 ## Stack
 
@@ -39,7 +40,7 @@ pnpm + Turborepo monorepo. The rows marked ✓ are in the tree; the rest are ahe
 | Path                   | Package            | Tech                                              |     |
 | ---------------------- | ------------------ | ------------------------------------------------- | --- |
 | `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                        | ✓   |
-| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             |     |
+| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             | ✓   |
 | `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop) |     |
 | `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                | ✓   |
 | `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                       | ✓   |
@@ -80,6 +81,10 @@ The API runs on the host, not in Docker: `pnpm dev:api` serves http://localhost:
 (`SLOPPY_API_PORT`), and `GET /api/health` answers 200 when it can reach the database and
 503 when it cannot. It reads the repo-root `.env` if there is one, and every value it needs
 has a dev default that matches the stack above.
+
+The web shell serves http://localhost:8030 and proxies `/api` to the API, so the two share
+an origin the way a deployment does. Signing in needs `PUBLIC_URL` naming that origin —
+[`apps/sloppy/web/README.md`](apps/sloppy/web/README.md) says why.
 
 ## Common tasks
 
