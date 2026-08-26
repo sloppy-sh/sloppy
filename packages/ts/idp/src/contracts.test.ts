@@ -21,12 +21,19 @@ const ORIGIN = "https://sloppy.example";
 const CALLBACK = "https://sloppy.example/auth/callback";
 
 describe("what Sloppy sends is what this instance accepts", () => {
-  it("takes the token request, which carries no delegation id", () => {
-    const sent = SyrPlatformTokenRequestSchema.parse({
-      code: "abc",
-      callback_url: CALLBACK,
-      platform_origin: ORIGIN,
-    });
+  it("takes the token request syr itself requires, delegation id and all", () => {
+    // TODO(foundation): syr's token endpoint answers 400 without
+    // `delegation_id`, so `SyrPlatformTokenRequestSchema` is not yet the copy
+    // of the wire it says it is. It is a hard contract, so the field is added
+    // by a ruling above the tracks; until then this is what actually goes out.
+    const sent = {
+      ...SyrPlatformTokenRequestSchema.parse({
+        code: "abc",
+        callback_url: CALLBACK,
+        platform_origin: ORIGIN,
+      }),
+      delegation_id: "01JRQ0000000000000000000",
+    };
     expect(() => TokenRequestSchema.parse(sent)).not.toThrow();
   });
 

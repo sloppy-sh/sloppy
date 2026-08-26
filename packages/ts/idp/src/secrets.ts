@@ -11,8 +11,8 @@ const MINIMUM_LENGTH = 32;
 export interface IdpSecrets {
   /** HMAC key for session and platform access tokens. */
   tokenSigning: Buffer;
-  /** Passphrase the delegate keys' Aegis bundles are sealed under. */
-  delegateSealing: string;
+  /** AES-256-GCM key the delegate seeds are sealed under. */
+  delegateSealing: Buffer;
 }
 
 export function deriveIdpSecrets(rootSecret: string): IdpSecrets {
@@ -23,10 +23,7 @@ export function deriveIdpSecrets(rootSecret: string): IdpSecrets {
   }
   return {
     tokenSigning: subkey(rootSecret, "sloppy-idp:token-signing:v1"),
-    delegateSealing: subkey(
-      rootSecret,
-      "sloppy-idp:delegate-sealing:v1",
-    ).toString("hex"),
+    delegateSealing: subkey(rootSecret, "sloppy-idp:delegate-sealing:v1"),
   };
 }
 

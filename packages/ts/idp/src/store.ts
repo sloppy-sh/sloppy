@@ -9,6 +9,7 @@
 import { ulid } from "@sloppy/types";
 import { RecordId, type Surreal } from "surrealdb";
 import type { AegisBundle } from "./aegis.js";
+import type { SealedSeed } from "./sealing.js";
 
 export const IDENTITY_SCHEMA = `
   DEFINE TABLE IF NOT EXISTS idp_identity SCHEMALESS;
@@ -107,8 +108,8 @@ export interface DelegationRow {
   scope: "platform";
   /** Multibase of the delegate public key — what a verifier checks against. */
   public_key: string;
-  /** The delegate seed, sealed under this instance's own secret. */
-  aegis_delegate: AegisBundle;
+  /** The delegate seed, sealed under this instance's own key. */
+  sealed_delegate: SealedSeed;
   /** The root key's signature over `canonical_delegation`. */
   signature: string;
   canonical_delegation: string;

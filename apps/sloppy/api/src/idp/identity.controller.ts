@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Req,
   UseFilters,
   UseGuards,
@@ -17,6 +18,8 @@ import {
   logout,
   type Profile,
   profileOf,
+  type PublicListing,
+  type PublicRecord,
   register,
   RegisterRequestSchema,
   requireIdentity,
@@ -26,6 +29,27 @@ import { Public } from "../auth/public.decorator";
 import { IdpExceptionFilter, type IdpRequest, parseBody } from "./idp-request";
 import { IdpSessionGuard } from "./idp.guards";
 import { IdpService } from "./idp.service";
+
+// syr's own bounds on a public listing, so the same request against a real
+// instance and against this one is answered the same way.
+const DEFAULT_PAGE_SIZE = 24;
+const MAX_PAGE_SIZE = 100;
+
+function emptyPage(limit?: string, offset?: string): PublicListing<never> {
+  const asked = Number.parseInt(limit ?? "", 10);
+  return {
+    status: "success",
+    data: [],
+    pagination: {
+      limit: Number.isNaN(asked)
+        ? DEFAULT_PAGE_SIZE
+        : Math.min(MAX_PAGE_SIZE, Math.max(1, asked)),
+      offset: Math.max(0, Number.parseInt(offset ?? "", 10) || 0),
+      total: 0,
+      has_more: false,
+    },
+  };
+}
 
 /**
  * Accounts held by this instance, and the public reads a stranger makes about
@@ -81,22 +105,23 @@ export class IdentityController {
 
   @Public()
   @Get("identity/:did/profile")
-  async profile(@Param("did") did: string): Promise<Profile> {
-    return profileOf(this.idp.context, decodeURIComponent(did));
+  async profile(@Param("did") did: string): Promise<PublicRecord<Profile>> {
+    return {
+      status: "success",
+      data: await profileOf(this.idp.context, decodeURIComponent(did)),
+    };
   }
 
-  /** Declared by the identity manifest, and empty because this provider stores
-   *  no media yet. TODO(M2 media track): serve the blobs behind image and ink
-   *  blocks from here. */
+  /** Empty because this provider stores no media yet.
+   *  TODO(M3 media track): serve the blobs behind image and ink blocks here. */
   @Public()
   @Get("identity/:did/uploads")
   async uploads(
     @Param("did") did: string,
-  ): Promise<{ did: string; uploads: never[]; total: number }> {
-    const identity = await requireIdentity(
-      this.idp.context,
-      decodeURIComponent(did),
-    );
-    return { did: identity.did, uploads: [], total: 0 };
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ): Promise<PublicListing<never>> {
+    await requireIdentity(this.idp.context, decodeURIComponent(did));
+    return emptyPage(limit, offset);
   }
 }

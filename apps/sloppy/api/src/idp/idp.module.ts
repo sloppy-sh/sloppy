@@ -1,5 +1,6 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 import { localIdpEnabled } from "../config/app-config.service";
+import { ConsentController } from "./consent.controller";
 import { IdentityController } from "./identity.controller";
 import { IdpSessionGuard, PlatformTokenGuard } from "./idp.guards";
 import { IdpService } from "./idp.service";
@@ -21,6 +22,7 @@ export class IdpModule {
       controllers: [
         WellKnownController,
         IdentityController,
+        ConsentController,
         PlatformController,
       ],
       providers: [IdpService, IdpSessionGuard, PlatformTokenGuard],

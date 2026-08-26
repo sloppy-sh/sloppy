@@ -15,7 +15,7 @@ import {
   type SyrScope,
 } from "@sloppy/types";
 import { randomUUID } from "node:crypto";
-import { AegisDecryptionError, createAegisBundle, withSeed } from "./aegis.js";
+import { AegisDecryptionError, withSeed } from "./aegis.js";
 import { canonicalize, type JsonValue } from "./canonical.js";
 import {
   CONSENT_TTL_SECONDS,
@@ -27,14 +27,16 @@ import {
   type ConsentOutcome,
   type ConsentPrompt,
   type ConsentRequest,
-  type DelegationInfo,
+  type DelegationListing,
   DelegationStatementSchema,
+  type RevokeOutcome,
   type TokenRequest,
 } from "./contracts.js";
 import { encodeMultibase, encodePublicKey } from "./encoding.js";
 import { IdpError } from "./errors.js";
 import { profileOf, requireIdentity } from "./identity.js";
 import { generateKeypair, sign, wipe } from "./keys.js";
+import { sealSeed, withSealedSeed } from "./sealing.js";
 import {
   attachConsentCode,
   consumeConsentCode,
@@ -134,7 +136,7 @@ export async function approveConsent(
         : mintDelegation({
             did,
             rootSeed,
-            sealingSecret: ctx.secrets.delegateSealing,
+            sealingKey: ctx.secrets.delegateSealing,
             platformOrigin: consent.platform_origin,
             platformName: consent.platform_name,
           }),
@@ -271,7 +273,7 @@ export async function revoke(
   ctx: IdpContext,
   did: string,
   platformOrigin: string,
-): Promise<void> {
+): Promise<RevokeOutcome> {
   const delegation = await findActiveDelegation(
     ctx.db,
     did,
@@ -280,6 +282,7 @@ export async function revoke(
   );
   if (!delegation) throw noDelegation();
   await revokeDelegation(ctx.db, delegation.id, nowIso());
+  return { status: "revoked" };
 }
 
 /** Public: this is what a stranger verifying a signature reads. It carries no
@@ -287,19 +290,21 @@ export async function revoke(
 export async function delegationsOf(
   ctx: IdpContext,
   did: string,
-): Promise<DelegationInfo[]> {
+): Promise<DelegationListing> {
   const rows = await listDelegations(ctx.db, did);
-  return rows.map((row) => ({
-    delegate_public_key: row.public_key,
-    platform_origin: row.platform_origin,
-    platform_name: row.platform_name,
-    scope: row.scope,
-    created_at: row.created_at,
-    revoked_at: row.revoked_at,
-    expires_at: row.expires_at,
-    statement: row.canonical_delegation,
-    statement_signature: row.signature,
-  }));
+  return {
+    data: rows.map((row) => ({
+      delegate_public_key: row.public_key,
+      platform_origin: row.platform_origin,
+      platform_name: row.platform_name,
+      scope: row.scope,
+      created_at: row.created_at,
+      revoked_at: row.revoked_at,
+      expires_at: row.expires_at,
+      statement: row.canonical_delegation,
+      statement_signature: row.signature,
+    })),
+  };
 }
 
 function prompt(row: ConsentRow, displayName: string | null): ConsentPrompt {
@@ -323,7 +328,7 @@ function prompt(row: ConsentRow, displayName: string | null): ConsentPrompt {
 function mintDelegation(params: {
   did: string;
   rootSeed: Uint8Array;
-  sealingSecret: string;
+  sealingKey: Buffer;
   platformOrigin: string;
   platformName: string;
 }): Omit<DelegationRow, "id"> {
@@ -346,10 +351,7 @@ function mintDelegation(params: {
       platform_name: params.platformName,
       scope: "platform",
       public_key: publicKey,
-      aegis_delegate: createAegisBundle(
-        delegate.privateKey,
-        params.sealingSecret,
-      ),
+      sealed_delegate: sealSeed(delegate.privateKey, params.sealingKey),
       signature: encodeMultibase(sign(canonical, params.rootSeed)),
       canonical_delegation: canonical,
       created_at: createdAt,
@@ -364,8 +366,8 @@ function signWithDelegate(
   delegation: DelegationRow,
   message: string,
 ): string {
-  return withSeed(
-    delegation.aegis_delegate,
+  return withSealedSeed(
+    delegation.sealed_delegate,
     ctx.secrets.delegateSealing,
     (seed) => encodeMultibase(sign(message, seed)),
   );

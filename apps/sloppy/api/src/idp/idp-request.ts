@@ -36,10 +36,29 @@ export function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
 export class IdpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     if (!isIdpError(exception)) throw exception;
-    host
-      .switchToHttp()
-      .getResponse<Response>()
-      .status(exception.status)
-      .json({ message: exception.message, code: exception.code });
+    respond(host, exception.status, {
+      message: exception.message,
+      code: exception.code,
+    });
   }
+}
+
+/**
+ * The same failure, on the endpoints the manifest declares. syr's consumers
+ * branch on `error` and show `error_description`, so the codes have to arrive
+ * under those names — the same codes under ours would parse as nothing.
+ */
+@Catch()
+export class SyrExceptionFilter implements ExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost): void {
+    if (!isIdpError(exception)) throw exception;
+    respond(host, exception.status, {
+      error: exception.code,
+      error_description: exception.message,
+    });
+  }
+}
+
+function respond(host: ArgumentsHost, status: number, body: object): void {
+  host.switchToHttp().getResponse<Response>().status(status).json(body);
 }

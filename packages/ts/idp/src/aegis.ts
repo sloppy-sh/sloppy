@@ -1,4 +1,5 @@
-// Aegis (CIGP v1) — how a 32-byte Ed25519 seed is held at rest.
+// Aegis (CIGP v1) — how a root seed is held at rest, under its owner's
+// password. A delegate seed is not one of these; `sealing.ts` says why.
 //
 // This is syr's at-rest format, reproduced byte for byte: Argon2id over the
 // NFKC-normalized password, AES-256-GCM with the additional data `cigp:v1`,

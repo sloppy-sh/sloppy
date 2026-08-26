@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   HttpCode,
-  Param,
   Post,
   Query,
   Req,
@@ -11,19 +10,12 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import {
-  approveConsent,
   ChallengeRequestSchema,
-  ConsentApprovalSchema,
-  type ConsentOutcome,
-  type ConsentPrompt,
-  ConsentRequestSchema,
-  type DelegationInfo,
+  type DelegationListing,
   delegationsOf,
-  denyConsent,
   exchangeToken,
   IdpError,
-  openConsent,
-  readConsent,
+  type RevokeOutcome,
   RevokeRequestSchema,
   revoke,
   SignRequestSchema,
@@ -37,7 +29,7 @@ import type {
   SyrPlatformTokenResponse,
 } from "@sloppy/types";
 import { Public } from "../auth/public.decorator";
-import { IdpExceptionFilter, type IdpRequest, parseBody } from "./idp-request";
+import { type IdpRequest, parseBody, SyrExceptionFilter } from "./idp-request";
 import { IdpSessionGuard, PlatformTokenGuard } from "./idp.guards";
 import { IdpService } from "./idp.service";
 
@@ -49,86 +41,14 @@ import { IdpService } from "./idp.service";
  * These paths are not to be assumed by a caller — `/.well-known/syr` is where a
  * consumer learns them.
  */
-@Controller("idp")
-@UseFilters(IdpExceptionFilter)
+@Controller("idp/platform")
+@UseFilters(SyrExceptionFilter)
 export class PlatformController {
   constructor(private readonly idp: IdpService) {}
 
-  // ── The person deciding ─────────────────────────────────────────────────
-
-  @Public()
-  @UseGuards(IdpSessionGuard)
-  @Post("consent")
-  async open(
-    @Req() request: IdpRequest,
-    @Body() body: unknown,
-  ): Promise<ConsentPrompt> {
-    return openConsent(
-      this.idp.context,
-      request.idpSession!.did,
-      parseBody(ConsentRequestSchema, body),
-    );
-  }
-
-  @Public()
-  @UseGuards(IdpSessionGuard)
-  @Get("consent/:challengeId")
-  async read(
-    @Req() request: IdpRequest,
-    @Param("challengeId") challengeId: string,
-  ): Promise<ConsentPrompt> {
-    return readConsent(this.idp.context, request.idpSession!.did, challengeId);
-  }
-
-  @Public()
-  @UseGuards(IdpSessionGuard)
-  @HttpCode(200)
-  @Post("consent/:challengeId/approve")
-  async approve(
-    @Req() request: IdpRequest,
-    @Param("challengeId") challengeId: string,
-    @Body() body: unknown,
-  ): Promise<ConsentOutcome> {
-    return approveConsent(
-      this.idp.context,
-      request.idpSession!.did,
-      challengeId,
-      parseBody(ConsentApprovalSchema, body).password,
-    );
-  }
-
-  @Public()
-  @UseGuards(IdpSessionGuard)
-  @HttpCode(200)
-  @Post("consent/:challengeId/deny")
-  async deny(
-    @Req() request: IdpRequest,
-    @Param("challengeId") challengeId: string,
-  ): Promise<ConsentOutcome> {
-    return denyConsent(this.idp.context, request.idpSession!.did, challengeId);
-  }
-
-  @Public()
-  @UseGuards(IdpSessionGuard)
-  @HttpCode(200)
-  @Post("platform/revoke")
-  async revoke(
-    @Req() request: IdpRequest,
-    @Body() body: unknown,
-  ): Promise<{ ok: true }> {
-    await revoke(
-      this.idp.context,
-      request.idpSession!.did,
-      parseBody(RevokeRequestSchema, body).platform_origin,
-    );
-    return { ok: true };
-  }
-
-  // ── The app ─────────────────────────────────────────────────────────────
-
   @Public()
   @HttpCode(200)
-  @Post("platform/token")
+  @Post("token")
   async token(@Body() body: unknown): Promise<SyrPlatformTokenResponse> {
     return exchangeToken(this.idp.context, parseBody(TokenRequestSchema, body));
   }
@@ -136,7 +56,7 @@ export class PlatformController {
   @Public()
   @UseGuards(PlatformTokenGuard)
   @HttpCode(200)
-  @Post("platform/sign")
+  @Post("sign")
   sign(
     @Req() request: IdpRequest,
     @Body() body: unknown,
@@ -151,7 +71,7 @@ export class PlatformController {
   @Public()
   @UseGuards(PlatformTokenGuard)
   @HttpCode(200)
-  @Post("platform/challenge")
+  @Post("challenge")
   challenge(
     @Req() request: IdpRequest,
     @Body() body: unknown,
@@ -173,11 +93,9 @@ export class PlatformController {
     return signChallenge(this.idp.context, delegation, asked.challenge);
   }
 
-  // ── Anyone verifying a signature ────────────────────────────────────────
-
   @Public()
-  @Get("platform/delegations")
-  async delegations(@Query("did") did?: string): Promise<DelegationInfo[]> {
+  @Get("delegations")
+  async delegations(@Query("did") did?: string): Promise<DelegationListing> {
     if (!did) {
       throw new IdpError(
         400,
@@ -186,5 +104,22 @@ export class PlatformController {
       );
     }
     return delegationsOf(this.idp.context, did);
+  }
+
+  /** Guarded by the person's session, not by a platform token: an app must not
+   *  be able to disconnect itself, or anybody else. */
+  @Public()
+  @UseGuards(IdpSessionGuard)
+  @HttpCode(200)
+  @Post("revoke")
+  async revoke(
+    @Req() request: IdpRequest,
+    @Body() body: unknown,
+  ): Promise<RevokeOutcome> {
+    return revoke(
+      this.idp.context,
+      request.idpSession!.did,
+      parseBody(RevokeRequestSchema, body).platform_origin,
+    );
   }
 }

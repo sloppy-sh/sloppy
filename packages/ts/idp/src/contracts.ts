@@ -110,8 +110,10 @@ export type ConsentOutcome = z.infer<typeof ConsentOutcomeSchema>;
 
 /**
  * `callback_url` is compared byte for byte against the one consent was opened
- * with — a trailing slash is a different callback. `delegation_id` rides along
- * because syr's callback returns it, but the code alone identifies the request.
+ * with — a trailing slash is a different callback. `delegation_id` is optional
+ * only here, where the code alone identifies the request: syr proper answers
+ * 400 without it, so a caller that leaves it out can talk to this instance and
+ * to no other.
  */
 export const TokenRequestSchema = z.object({
   code: z.string().min(1),
@@ -176,3 +178,32 @@ export const DelegationStatementSchema = z.object({
   createdAt: TimestampSchema,
 });
 export type DelegationStatement = z.infer<typeof DelegationStatementSchema>;
+
+// ── How an answer is wrapped ──────────────────────────────────────────────
+//
+// syr and slyng disagree here: slyng returns the delegation list bare, and says
+// `success` where syr says `revoked`. Sloppy follows syr — slyng consumes this
+// contract, syr defines it, and a stranger verifying a signature arrives
+// holding the definition.
+
+export const DelegationListingSchema = z.object({
+  data: z.array(DelegationInfoSchema),
+});
+export type DelegationListing = z.infer<typeof DelegationListingSchema>;
+
+export const RevokeOutcomeSchema = z.object({ status: z.literal("revoked") });
+export type RevokeOutcome = z.infer<typeof RevokeOutcomeSchema>;
+
+export interface PublicRecord<T> {
+  status: "success";
+  data: T;
+}
+
+export interface PublicListing<T> extends PublicRecord<T[]> {
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    has_more: boolean;
+  };
+}

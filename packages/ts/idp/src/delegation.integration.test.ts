@@ -167,6 +167,8 @@ describe.skipIf(!listening)(`the provider against ${ENDPOINT.href}`, () => {
 
     const token = await exchangeToken(ctx, {
       code: code as string,
+      // What the callback carries, and what syr proper insists on.
+      delegation_id: callback.searchParams.get("delegation_id") as string,
       callback_url: CALLBACK,
       platform_origin: PLATFORM_ORIGIN,
     });
@@ -215,12 +217,17 @@ describe.skipIf(!listening)(`the provider against ${ENDPOINT.href}`, () => {
       }),
     ).toBe(false);
 
-    await revoke(ctx, did, PLATFORM_ORIGIN);
+    expect(await revoke(ctx, did, PLATFORM_ORIGIN)).toEqual({
+      status: "revoked",
+    });
     expect(await resolvePlatformToken(ctx, token.access_token)).toBeNull();
-    const [listed] = await delegationsOf(ctx, did);
+    const listing = await delegationsOf(ctx, did);
+    const [listed] = listing.data;
     expect(listed.revoked_at).toBeTruthy();
     // The public listing must never carry anything that could sign.
-    expect(JSON.stringify(listed)).not.toContain("aegis");
+    expect(JSON.stringify(listing)).not.toContain(
+      grant.delegation.sealed_delegate.ct,
+    );
     // But it must carry enough for a stranger to check the chain themselves.
     expect(
       verifyDelegationStatement({

@@ -6,16 +6,16 @@ describe("the derived secrets", () => {
     const once = deriveIdpSecrets("z".repeat(48));
     const again = deriveIdpSecrets("z".repeat(48));
     expect(once.tokenSigning).toEqual(again.tokenSigning);
-    expect(once.delegateSealing).toBe(again.delegateSealing);
+    expect(once.delegateSealing).toEqual(again.delegateSealing);
   });
 
   it("gives each job its own key", () => {
     const { tokenSigning, delegateSealing } = deriveIdpSecrets("z".repeat(48));
-    expect(delegateSealing).not.toBe(tokenSigning.toString("hex"));
+    expect(delegateSealing).not.toEqual(tokenSigning);
   });
 
   it("separates two instances", () => {
-    expect(deriveIdpSecrets("a".repeat(32)).delegateSealing).not.toBe(
+    expect(deriveIdpSecrets("a".repeat(32)).delegateSealing).not.toEqual(
       deriveIdpSecrets("b".repeat(32)).delegateSealing,
     );
   });
