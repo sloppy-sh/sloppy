@@ -9,6 +9,7 @@ import {
   SyrInstanceManifestSchema,
   type SyrPlatformSignResponse,
   SyrPlatformSignResponseSchema,
+  type SyrPlatformTokenRequest,
   SyrPlatformTokenRequestSchema,
   type SyrPlatformTokenResponse,
   SyrPlatformTokenResponseSchema,
@@ -46,20 +47,6 @@ export interface ConsentRequest {
   scopes: readonly SyrScope[];
   state: string;
 }
-
-export interface CodeExchange {
-  code: string;
-  delegation_id: string;
-  callback_url: string;
-  platform_origin: string;
-}
-
-// TODO(foundation): syr's token endpoint rejects a request without
-// `delegation_id`, so the shared schema is not yet the copy of the wire it
-// documents itself to be. Delete this extension once the field lands there.
-const TokenRequestSchema = SyrPlatformTokenRequestSchema.extend({
-  delegation_id: z.string().min(1),
-});
 
 /** Absent `revoked_at` / `expires_at` mean the delegation still stands. */
 const DelegationSchema = z.object({
@@ -154,19 +141,20 @@ export class SyrService {
 
   async exchangeCode(
     instanceUrl: string,
-    exchange: CodeExchange,
+    exchange: SyrPlatformTokenRequest,
   ): Promise<SyrPlatformTokenResponse> {
     const { token } = await this.platform(instanceUrl);
+    const failure = "Sign-in did not finish. Start again from Sloppy.";
     const body = await this.readJson(
       token,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(TokenRequestSchema.parse(exchange)),
+        body: JSON.stringify(SyrPlatformTokenRequestSchema.parse(exchange)),
       },
-      "Sign-in did not finish. Start again from Sloppy.",
+      failure,
     );
-    return SyrPlatformTokenResponseSchema.parse(body);
+    return this.readShape(SyrPlatformTokenResponseSchema, body, token, failure);
   }
 
   async signContent(
@@ -175,6 +163,8 @@ export class SyrService {
     payloadType?: string,
   ): Promise<SyrPlatformSignResponse> {
     const { sign } = await this.platform(delegation.syr_instance_url);
+    const failure =
+      "That could not be saved to your identity right now. Try again.";
     const body = await this.readJson(
       sign,
       {
@@ -188,9 +178,9 @@ export class SyrService {
           ...(payloadType ? { payload_type: payloadType } : {}),
         }),
       },
-      "That could not be saved to your identity right now. Try again.",
+      failure,
     );
-    return SyrPlatformSignResponseSchema.parse(body);
+    return this.readShape(SyrPlatformSignResponseSchema, body, sign, failure);
   }
 
   /**
@@ -249,6 +239,23 @@ export class SyrService {
       return null;
     }
     return listing.data;
+  }
+
+  private readShape<T extends z.ZodType>(
+    schema: T,
+    body: unknown,
+    url: string,
+    failure: string,
+  ): z.infer<T> {
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      const why = parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; ");
+      this.logger.warn(`${url} answered a shape Sloppy cannot read: ${why}`);
+      throw new ServiceUnavailableException(failure);
+    }
+    return parsed.data;
   }
 
   private async readJson(

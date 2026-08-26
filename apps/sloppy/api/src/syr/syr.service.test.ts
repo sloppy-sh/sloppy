@@ -176,6 +176,29 @@ describe("exchanging the code", () => {
       }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
+
+  // A `200` carrying something else is the failure an operator has the least
+  // to go on, so it is the one that must reach the log rather than a stack
+  // trace.
+  it("gives up the same way, in words and in the log, on a token it cannot read", async () => {
+    const warn = vi
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => {});
+    instance({
+      "/api/platform/token": { body: { ...TOKENS, expires_in: "a day" } },
+    });
+
+    await expect(
+      new SyrService().exchangeCode(INSTANCE, {
+        code: "the-code",
+        delegation_id: "the-delegation",
+        callback_url: "https://sloppy.sh/api/auth/callback",
+        platform_origin: "https://sloppy.sh",
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
 
 describe("signing on somebody's behalf", () => {
@@ -206,6 +229,19 @@ describe("signing on somebody's behalf", () => {
       payload: { title: "a node" },
       payload_type: "sloppy-node@v1",
     });
+  });
+
+  it("gives up on a signature it cannot read", async () => {
+    const warn = vi
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => {});
+    instance({ "/api/platform/sign": { body: { signature: "zSignature" } } });
+
+    await expect(
+      new SyrService().signContent(DELEGATION, { title: "a node" }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

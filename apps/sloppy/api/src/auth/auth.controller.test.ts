@@ -1,4 +1,7 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import type { Response } from "express";
 import { describe, expect, it, vi } from "vitest";
 import { AuthController } from "./auth.controller";
@@ -32,6 +35,46 @@ function response() {
   } as unknown as Response;
   return { res, sent };
 }
+
+describe("starting sign-in", () => {
+  const CONSENT = "https://syr.is/auth/platform-consent";
+
+  // A shell forwarding `?redirect=` sends the empty string when there is
+  // nothing to forward.
+  it("goes on without a redirect it could never honour", async () => {
+    const consentRedirect = vi.fn().mockResolvedValue(CONSENT);
+    const auth = controller({ consentRedirect });
+
+    for (const redirect of ["", 0, null, {}]) {
+      await expect(
+        auth.login({ instance_url: "syr.is", redirect }),
+      ).resolves.toEqual({ consent_url: CONSENT });
+      expect(consentRedirect).toHaveBeenLastCalledWith({
+        instance_url: "https://syr.is",
+      });
+    }
+  });
+
+  it("carries a redirect somebody did name", async () => {
+    const consentRedirect = vi.fn().mockResolvedValue(CONSENT);
+
+    await controller({ consentRedirect }).login({
+      instance_url: "syr.is",
+      redirect: DEEP_LINK,
+    });
+
+    expect(consentRedirect).toHaveBeenCalledWith({
+      instance_url: "https://syr.is",
+      redirect: DEEP_LINK,
+    });
+  });
+
+  it("still asks for the instance where none was named", async () => {
+    await expect(
+      controller({}).login({ redirect: DEEP_LINK }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
 
 describe("leaving the callback", () => {
   it("hands a shell the code to spend, on a page the browser will follow", async () => {

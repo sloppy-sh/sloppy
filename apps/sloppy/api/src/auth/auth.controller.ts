@@ -52,12 +52,13 @@ export class AuthController {
   @Post("login")
   async login(@Body() body: unknown): Promise<ConsentRedirect> {
     const raw = (body ?? {}) as { instance_url?: unknown; redirect?: unknown };
+    const redirect = typeof raw.redirect === "string" ? raw.redirect : "";
     const request = StartLoginRequestSchema.safeParse({
       instance_url:
         typeof raw.instance_url === "string"
           ? normalizeInstanceUrl(raw.instance_url)
           : raw.instance_url,
-      ...(typeof raw.redirect === "string" ? { redirect: raw.redirect } : {}),
+      ...(redirect ? { redirect } : {}),
     });
     if (!request.success) {
       throw new BadRequestException(
