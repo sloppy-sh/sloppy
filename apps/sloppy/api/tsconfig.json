@@ -1,0 +1,36 @@
+{
+  // `node10` resolution with a deprecation waiver, deliberately. The API is
+  // CommonJS (Nest's decorators need tsc's own emit), and `surrealdb` publishes
+  // an ESM-flavoured `.d.ts` beside a real CJS `require` condition — so `node16`
+  // refuses at compile time an import Node resolves at runtime without
+  // complaint. `node10` reads the `types` field and lets the runtime's own
+  // conditions do their job.
+  //
+  // TypeScript 7 drops this mode. When it lands, the fix is the API going ESM,
+  // not a second copy of surrealdb's types.
+  //
+  // No `incremental`: `nest build` wipes dist first, so a surviving
+  // .tsbuildinfo makes tsc report everything up to date and emit nothing, and
+  // the build exits 0 with no dist at all.
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "6.0",
+    "target": "ES2023",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

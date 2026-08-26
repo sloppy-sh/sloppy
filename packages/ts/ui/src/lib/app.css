@@ -1,0 +1,746 @@
+/* Sloppy's design system. Consumers import it as `@sloppy/ui/styles`.
+   DESIGN.md is the spec; this file is its implementation and adds no rule of
+   its own. Three orthogonal axes on <html>:
+
+     data-theme  → neutral/surface tokens   (paper | graphite | light | dark | contrast)
+     data-accent → --primary and its family (indigo | moss | rust | sea | iris | ochre | slate)
+     data-style  → how surfaces are DRAWN   (default | hardline); structural, never colour
+
+   Bare :root carries the Paper + Indigo defaults, so first paint is right
+   before the prefs store has set an attribute. */
+@import 'tailwindcss';
+/* The enter/exit utilities shadcn-svelte components animate with. */
+@import 'tw-animate-css';
+
+/* app.css ships to dist/app.css; scan the built components next to it so their
+   utility classes survive tree-shaking in the consuming app's Tailwind build. */
+@source '../dist';
+
+/* Dark-family themes carry the `dark` class on <html> so `dark:` variants work. */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+	--radius: 0.625rem;
+
+	/* One family for chrome, node titles and block text. A notebook does not
+	   change typeface to make a heading feel important. The webfonts are
+	   self-hosted by the shells; these stacks stand alone until they load. */
+	--font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	/* An address is scanned and compared character by character, so `1a1` against
+	   `1al` must never be a question the reader has to resolve. Use it through
+	   the `.address` utility, which carries the tabular figures with it. */
+	--font-address: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+	/* The two ends the graph's depth ramp mixes between. They are the theme's own
+	   ink and paper rather than a second pair, so the ramp inverts on a dark theme
+	   with no second table. @sloppy/graph reads them once per theme change and
+	   converts; pixi takes numbers, not CSS strings. */
+	--graph-ink: var(--foreground);
+	--graph-paper: var(--background);
+}
+
+/* ══ Theme: Paper (light default) — a notebook page, faintly warm ══════════ */
+:root,
+:root[data-theme='paper'] {
+	--background: oklch(0.972 0.006 85);
+	--foreground: oklch(0.26 0.015 70);
+	--card: oklch(0.987 0.005 85);
+	--card-foreground: oklch(0.26 0.015 70);
+	--popover: oklch(0.992 0.005 85);
+	--popover-foreground: oklch(0.26 0.015 70);
+	--secondary: oklch(0.937 0.01 82);
+	--secondary-foreground: oklch(0.26 0.015 70);
+	--muted: oklch(0.937 0.008 85);
+	--muted-foreground: oklch(0.5 0.018 70);
+	--accent: oklch(0.925 0.012 82);
+	--accent-foreground: oklch(0.26 0.015 70);
+	--destructive: oklch(0.55 0.19 27);
+	--destructive-foreground: oklch(0.99 0.004 85);
+	--border: oklch(0.895 0.008 85);
+	--input: oklch(0.895 0.008 85);
+}
+
+/* ══ Theme: Graphite (dark default) — pencil on slate, cool by design ══════
+   Paper is a warm object and pencil is a cool mark; the pairing is what keeps
+   the two defaults from reading as one theme at two brightnesses.
+
+   `muted` sits 0.035 off the surface, the step DESIGN.md sets — but UPWARD on
+   the dark families, because a well below Graphite's page is where a skeleton
+   disappears. The distance is the rule; the direction is toward the ink. */
+:root[data-theme='graphite'],
+.dark:root[data-theme='graphite'] {
+	--background: oklch(0.215 0.008 260);
+	--foreground: oklch(0.905 0.006 250);
+	--card: oklch(0.23 0.008 260);
+	--card-foreground: oklch(0.905 0.006 250);
+	--popover: oklch(0.235 0.008 260);
+	--popover-foreground: oklch(0.905 0.006 250);
+	--secondary: oklch(0.275 0.008 260);
+	--secondary-foreground: oklch(0.905 0.006 250);
+	--muted: oklch(0.25 0.008 260);
+	--muted-foreground: oklch(0.7 0.01 255);
+	--accent: oklch(0.29 0.009 260);
+	--accent-foreground: oklch(0.905 0.006 250);
+	--destructive: oklch(0.68 0.17 27);
+	--destructive-foreground: oklch(0.16 0.01 80);
+	--border: oklch(0.31 0.009 260);
+	--input: oklch(0.31 0.009 260);
+}
+
+/* ══ Theme: Light — clean and neutral ══════════════════════════════════════ */
+:root[data-theme='light'] {
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.145 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.145 0 0);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.145 0 0);
+	--secondary: oklch(0.965 0 0);
+	--secondary-foreground: oklch(0.145 0 0);
+	--muted: oklch(0.965 0 0);
+	--muted-foreground: oklch(0.5 0 0);
+	--accent: oklch(0.955 0 0);
+	--accent-foreground: oklch(0.145 0 0);
+	--destructive: oklch(0.55 0.19 27);
+	--destructive-foreground: oklch(0.99 0.004 85);
+	--border: oklch(0.918 0 0);
+	--input: oklch(0.918 0 0);
+}
+
+/* ══ Theme: Dark — neutral night ═══════════════════════════════════════════ */
+:root[data-theme='dark'],
+.dark:root[data-theme='dark'] {
+	--background: oklch(0.145 0 0);
+	--foreground: oklch(0.985 0 0);
+	--card: oklch(0.16 0 0);
+	--card-foreground: oklch(0.985 0 0);
+	--popover: oklch(0.165 0 0);
+	--popover-foreground: oklch(0.985 0 0);
+	--secondary: oklch(0.26 0 0);
+	--secondary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.24 0 0);
+	--muted-foreground: oklch(0.708 0 0);
+	--accent: oklch(0.28 0 0);
+	--accent-foreground: oklch(0.985 0 0);
+	--destructive: oklch(0.68 0.17 27);
+	--destructive-foreground: oklch(0.16 0.01 80);
+	--border: oklch(0.3 0 0);
+	--input: oklch(0.3 0 0);
+}
+
+/* ══ Theme: High contrast — the accessibility theme ════════════════════════
+   It keeps its promise everywhere, including on the edges and the scrollbar:
+   a faint tint is coziness this theme explicitly trades away. */
+:root[data-theme='contrast'] {
+	--background: oklch(0.99 0 0);
+	--foreground: oklch(0.13 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.13 0 0);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.13 0 0);
+	--secondary: oklch(0.94 0 0);
+	--secondary-foreground: oklch(0.13 0 0);
+	--muted: oklch(0.94 0 0);
+	--muted-foreground: oklch(0.36 0 0);
+	--accent: oklch(0.93 0 0);
+	--accent-foreground: oklch(0.13 0 0);
+	--destructive: oklch(0.48 0.2 27);
+	--destructive-foreground: oklch(0.99 0.004 85);
+	--border: oklch(0.72 0 0);
+	--input: oklch(0.72 0 0);
+}
+
+/* ══ The graph's hue slots ═════════════════════════════════════════════════
+   A dimension owns a slot; a value owns a position on that slot's ramp. Eight
+   hues, evenly spread, at ONE lightness per theme family — lightness carries
+   genealogical depth and may not also carry facet, or the canvas has two
+   meanings in one channel and reads as decoration.
+
+   Assigned to dimensions by declaration order unless a dimension pins a slot;
+   a pin chooses among the eight and never adds a ninth (DESIGN.md § Hue).
+   The floors both families are held to are in `token-contrast.test.ts`. */
+:root,
+:root[data-theme='paper'],
+:root[data-theme='light'],
+:root[data-theme='contrast'] {
+	--facet-1: oklch(0.61 0.13 25);
+	--facet-2: oklch(0.61 0.13 70);
+	--facet-3: oklch(0.61 0.13 115);
+	--facet-4: oklch(0.61 0.13 160);
+	--facet-5: oklch(0.61 0.13 205);
+	--facet-6: oklch(0.61 0.13 250);
+	--facet-7: oklch(0.61 0.13 295);
+	--facet-8: oklch(0.61 0.13 340);
+}
+
+:root[data-theme='graphite'],
+.dark:root[data-theme='graphite'],
+:root[data-theme='dark'],
+.dark:root[data-theme='dark'] {
+	--facet-1: oklch(0.54 0.13 25);
+	--facet-2: oklch(0.54 0.13 70);
+	--facet-3: oklch(0.54 0.13 115);
+	--facet-4: oklch(0.54 0.13 160);
+	--facet-5: oklch(0.54 0.13 205);
+	--facet-6: oklch(0.54 0.13 250);
+	--facet-7: oklch(0.54 0.13 295);
+	--facet-8: oklch(0.54 0.13 340);
+}
+
+/* ══ Accents ══════════════════════════════════════════════════════════════
+   Chrome only. An accent never colours a node, an edge or a facet — a theme
+   choice that changed what the data appears to say would be a bug.
+
+   `--primary` is tuned as a FILL with `--primary-foreground` on top.
+   `--primary-mark` is the same colour asked to carry meaning alone — an icon,
+   a rule, a chart stroke drawn straight on a surface — which is a different
+   floor. It is the identity wherever the fill already clears it, and only the
+   pairing that falls short is corrected, in lightness only, below. */
+:root,
+:root[data-accent='indigo'] {
+	--primary: oklch(0.52 0.14 265);
+	--primary-foreground: oklch(0.99 0.004 85);
+}
+:root[data-accent='moss'] {
+	--primary: oklch(0.55 0.09 145);
+	--primary-foreground: oklch(0.99 0.004 85);
+}
+:root[data-accent='rust'] {
+	--primary: oklch(0.56 0.13 45);
+	--primary-foreground: oklch(0.99 0.004 85);
+}
+:root[data-accent='sea'] {
+	--primary: oklch(0.58 0.1 210);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-accent='iris'] {
+	--primary: oklch(0.55 0.13 300);
+	--primary-foreground: oklch(0.99 0.004 85);
+}
+:root[data-accent='ochre'] {
+	--primary: oklch(0.66 0.12 80);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-accent='slate'] {
+	--primary: oklch(0.5 0.02 265);
+	--primary-foreground: oklch(0.99 0.004 85);
+}
+
+/* On the dark families every accent is lifted 0.10 L and takes ink rather than
+   paper on top, which is what keeps a fill legible against a dark ground.
+
+   Keyed on `data-theme` and NOT on the `dark` class, even though the dark
+   families carry both. One attribute then decides the whole palette, so a shell
+   that sets the theme and forgets the class gets dark surfaces with a dark
+   accent rather than dark surfaces with a light one. The class stays what
+   Tailwind's `dark:` variants read. */
+:root[data-theme='graphite']:not([data-accent]),
+:root[data-theme='dark']:not([data-accent]) {
+	--primary: oklch(0.62 0.14 265);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-theme='graphite'][data-accent='indigo'],
+:root[data-theme='dark'][data-accent='indigo'] {
+	--primary: oklch(0.62 0.14 265);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-theme='graphite'][data-accent='moss'],
+:root[data-theme='dark'][data-accent='moss'] {
+	--primary: oklch(0.65 0.09 145);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-theme='graphite'][data-accent='rust'],
+:root[data-theme='dark'][data-accent='rust'] {
+	--primary: oklch(0.66 0.13 45);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-theme='graphite'][data-accent='sea'],
+:root[data-theme='dark'][data-accent='sea'] {
+	--primary: oklch(0.68 0.1 210);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-theme='graphite'][data-accent='iris'],
+:root[data-theme='dark'][data-accent='iris'] {
+	--primary: oklch(0.65 0.13 300);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-theme='graphite'][data-accent='ochre'],
+:root[data-theme='dark'][data-accent='ochre'] {
+	--primary: oklch(0.76 0.12 80);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+:root[data-theme='graphite'][data-accent='slate'],
+:root[data-theme='dark'][data-accent='slate'] {
+	--primary: oklch(0.6 0.02 265);
+	--primary-foreground: oklch(0.16 0.01 80);
+}
+
+/* The mark is the accent itself wherever the accent already clears its floor,
+   which is 34 of the 35 theme × accent pairings. */
+:root {
+	--primary-mark: var(--primary);
+	--ring: var(--primary);
+}
+
+/* The one that does not: Ochre on the light family is the palest accent in the
+   system and reads 2.90:1 as a solid mark on Paper. Same hue, same chroma,
+   moved in lightness by the smallest step that clears 3:1 on every light
+   surface. Written as the pairings it corrects rather than as an exclusion, so
+   the extractor `token-contrast.test.ts` reads the file with can see it; the
+   bare-root twin shares this body and so cannot disagree with it. */
+:root[data-theme='paper'][data-accent='ochre'],
+:root[data-theme='light'][data-accent='ochre'],
+:root[data-theme='contrast'][data-accent='ochre'],
+:root:not([data-theme])[data-accent='ochre'] {
+	--primary-mark: oklch(0.63 0.12 80);
+}
+
+/* ══ Style axis: Hardline ══════════════════════════════════════════════════
+   The third axis, and the only structural one: hard ink edges, blurless offset
+   shadows, a tighter radius. A style may not name a colour — it DERIVES its
+   edge from the active theme's own foreground, which lands near-black on a
+   light theme and near-white on a dark one. Opaque by construction (mixed
+   toward --background, never alpha), because a translucent edge picks up
+   whatever it is composited over.
+
+   This block sits after every [data-theme] block and carries a `.dark:root`
+   twin: the dark families declare --border at 0,3,0 specificity, so the plain
+   `:root[data-style]` form at 0,2,0 would lose to them outright.
+
+   Component-level rules — the `data-slot` reaches into controls that only
+   sometimes show a border, and the geometry a 2px edge takes back from a
+   track — land with the components themselves; DESIGN.md § "Style presets"
+   states what each owes. */
+:root[data-style='hardline'],
+.dark:root[data-style='hardline'] {
+	--radius: 0.375rem;
+	--border: color-mix(in oklab, var(--foreground) 88%, var(--background));
+}
+
+/* `--input` is deliberately not redefined: in shadcn the token does double duty
+   as a border colour AND a fill, so overriding it turns an off switch into a
+   solid ink pill. The edge goes on the border utility instead, which reaches
+   hand-rolled markup too. The `:not()` pair is an affordance guard, not
+   tidiness — these rules are unlayered and would otherwise outrank
+   `focus-visible:border-ring` and `aria-invalid:border-destructive`. */
+:root[data-style='hardline'] .border-input:not(:focus-visible):not([aria-invalid='true']) {
+	border-color: var(--border);
+}
+
+/* The edge language, over Tailwind's own width utilities. These rules are
+   unlayered and Tailwind's utilities live in `@layer utilities`, so they win
+   outright whatever the specificity — which is why every width-0 cancel has to
+   be restated here, and why the families run all-sides → axis → per-side,
+   mirroring Tailwind's emit order. Without that, `border border-l-0` grows back
+   the side it removed. */
+:root[data-style='hardline'] .border {
+	border-width: 2px;
+}
+:root[data-style='hardline'] .border-0 {
+	border-width: 0;
+}
+/* Container boxes carry the weight on the far edges — 2/4/4/2, so the outline
+   itself does what an offset shadow does elsewhere without the box drifting off
+   it. Scoped by radius, which is the container convention: controls sit at
+   `rounded-lg` and below and keep the even 2px edge. The `:not()` chains are
+   load-bearing and source order cannot stand in for them — two class selectors
+   put these a specificity step above the width-0 cancels, so a container that
+   removed a side would grow it back at 4px. */
+:root[data-style='hardline']
+	:is(.rounded-xl, .rounded-2xl).border:not(.border-0):not(.border-x-0):not(.border-r-0) {
+	border-right-width: 4px;
+}
+:root[data-style='hardline']
+	:is(.rounded-xl, .rounded-2xl).border:not(.border-0):not(.border-y-0):not(.border-b-0) {
+	border-bottom-width: 4px;
+}
+:root[data-style='hardline'] .border-x {
+	border-inline-width: 2px;
+}
+:root[data-style='hardline'] .border-x-0 {
+	border-inline-width: 0;
+}
+:root[data-style='hardline'] .border-y {
+	border-block-width: 2px;
+}
+:root[data-style='hardline'] .border-y-0 {
+	border-block-width: 0;
+}
+:root[data-style='hardline'] .border-t {
+	border-top-width: 2px;
+}
+:root[data-style='hardline'] .border-t-0 {
+	border-top-width: 0;
+}
+:root[data-style='hardline'] .border-r {
+	border-right-width: 2px;
+}
+:root[data-style='hardline'] .border-r-0 {
+	border-right-width: 0;
+}
+:root[data-style='hardline'] .border-b {
+	border-bottom-width: 2px;
+}
+:root[data-style='hardline'] .border-b-0 {
+	border-bottom-width: 0;
+}
+:root[data-style='hardline'] .border-l {
+	border-left-width: 2px;
+}
+:root[data-style='hardline'] .border-l-0 {
+	border-left-width: 0;
+}
+
+/* Elevation becomes displacement: no blur, no spread, the surface offset from
+   its own shadow. Written to `--tw-shadow` — the variable the utility composes
+   into box-shadow — so a ring on the same element survives, and the
+   `--tw-shadow-color` fallback keeps `shadow-<color>` recolouring. */
+:root[data-style='hardline'] .shadow-2xs {
+	--tw-shadow: 1px 1px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='hardline'] :is(.shadow-xs, .shadow-sm) {
+	--tw-shadow: 2px 2px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='hardline'] .shadow-md {
+	--tw-shadow: 3px 3px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='hardline'] .shadow-lg {
+	--tw-shadow: 4px 4px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='hardline'] .shadow-xl {
+	--tw-shadow: 6px 6px 0 0 var(--tw-shadow-color, var(--border));
+}
+:root[data-style='hardline'] .shadow-2xl {
+	--tw-shadow: 8px 8px 0 0 var(--tw-shadow-color, var(--border));
+}
+
+@theme inline {
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+
+	--font-sans: var(--font-sans);
+	--font-address: var(--font-address);
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-primary-mark: var(--primary-mark);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	--color-graph-ink: var(--graph-ink);
+	--color-graph-paper: var(--graph-paper);
+	--color-facet-1: var(--facet-1);
+	--color-facet-2: var(--facet-2);
+	--color-facet-3: var(--facet-3);
+	--color-facet-4: var(--facet-4);
+	--color-facet-5: var(--facet-5);
+	--color-facet-6: var(--facet-6);
+	--color-facet-7: var(--facet-7);
+	--color-facet-8: var(--facet-8);
+}
+
+@layer base {
+	* {
+		border-color: var(--border);
+		outline-color: var(--ring);
+		/* Not inherited, so it rides the universal rule: every scroller thin. */
+		scrollbar-width: thin;
+	}
+	html {
+		/* Scroll chrome is part of the theme, not the OS's, and it arrives by
+		   inheritance: `scrollbar-color` covers page, panels, dialogs and
+		   textareas from one declaration, so new code needs no class. */
+		--scrollbar-thumb: color-mix(in oklab, var(--foreground) 20%, transparent);
+		--scrollbar-thumb-hover: color-mix(in oklab, var(--foreground) 32%, transparent);
+		scrollbar-color: var(--scrollbar-thumb) transparent;
+	}
+	:root[data-theme='contrast'] {
+		--scrollbar-thumb: color-mix(in oklab, var(--foreground) 55%, transparent);
+		--scrollbar-thumb-hover: color-mix(in oklab, var(--foreground) 75%, transparent);
+	}
+	:root[data-style='hardline'] {
+		--scrollbar-thumb: color-mix(in oklab, var(--foreground) 70%, transparent);
+		--scrollbar-thumb-hover: var(--foreground);
+	}
+	/* The Tauri WKWebView shells. Engines that support the standard properties
+	   above ignore these. */
+	::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-thumb {
+		background-color: var(--scrollbar-thumb);
+		border-radius: 9999px;
+		border: 2px solid transparent;
+		background-clip: content-box;
+	}
+	::-webkit-scrollbar-thumb:hover {
+		background-color: var(--scrollbar-thumb-hover);
+	}
+	::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+	body {
+		background-color: var(--background);
+		color: var(--foreground);
+		font-family: var(--font-sans);
+		/* A stray wide element must never make the whole page scroll sideways on
+		   a phone. Scroll regions manage their own overflow. */
+		overflow-x: hidden;
+	}
+
+	/* On touch, a long press is a gesture the app owns — drag a node, open a
+	   row — not an invitation to select text. Left alone, WebKit answers every
+	   one with the selection magnifier and a Copy / Look Up bar over the UI.
+	   `-webkit-touch-callout` is the separate iOS switch for the long-press
+	   action sheet; `user-select` alone does not silence it. */
+	@media (hover: none) and (pointer: coarse) {
+		:root {
+			-webkit-user-select: none;
+			user-select: none;
+			-webkit-touch-callout: none;
+		}
+		input,
+		textarea,
+		[contenteditable]:not([contenteditable='false']) {
+			-webkit-user-select: text;
+			user-select: text;
+			-webkit-touch-callout: default;
+		}
+	}
+}
+
+/* Half a hatch on its own: `select-text` says nothing about
+   `-webkit-touch-callout`, which inherits — so an opted-in region would be
+   selectable with no Copy bar to act on the selection. Unlayered, so it lands
+   after the utility it pairs with. */
+.select-text,
+.select-all {
+	-webkit-touch-callout: default;
+}
+
+/* Every address in the product, at every size. Tabular figures are part of the
+   contract: a column of addresses that does not align is a column nobody
+   scans. */
+@utility address {
+	font-family: var(--font-address);
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: 'tnum' 1;
+}
+
+/* ══ The four inset vars ═══════════════════════════════════════════════════
+   Bottom-edge chrome must clear the system nav bar, and the platform will not
+   tell you how on its own. DESIGN.md § "The four inset vars" is the contract;
+   the four utilities below carry its four formulas so no surface re-derives
+   one. NONE of these vars is given a `:root` default on purpose — each is
+   published by the code that can measure it, and its ABSENCE is the signal the
+   fallbacks below are written against.
+
+     --safe-area-inset-bottom  the real OS bar height, published by the native
+                               shell (Android's WebView reports
+                               env(safe-area-inset-bottom) as 0 for the 3-button
+                               nav bar) and owned across keyboard transitions by
+                               the `keyboard` store in @sloppy/app-core.
+     --kb-inset-bottom         how far a bottom-anchored element must lift to
+                               clear the keyboard. NOT the keyboard's height,
+                               and 0 when WebKit pans instead of resizing — so
+                               never read it to ask whether the keyboard is up.
+                               That is the `keyboard` store, always.
+     --sysnav-inset-bottom     the space the floating nav pill occupies, set BY
+                               the pill and therefore unset wherever it is
+                               hidden. It clears the pill, never the OS bar.
+     --app-chrome-top          the height of the in-flow chrome a shell renders
+                               above the page, published BY that chrome. */
+
+/** Bottom padding that clears the OS bar. Never bare `env(...)`: WebKit ties
+    that value to the keyboard, so a raw probe reads a keyboard-sized number and
+    strands whatever padded by it. */
+@utility pad-bottom-safe {
+	padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+/** …and the floating nav pill on top of it. Unset where the pill is hidden, so
+    the surface takes the bar alone. */
+@utility clear-sysnav {
+	padding-bottom: calc(
+		var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) +
+			var(--sysnav-inset-bottom, 0px)
+	);
+}
+
+/** A composer riding above the keyboard. The breath belongs INSIDE the bar
+    term: that term goes to 0 while the keyboard is up, and the lift is itself 0
+    in the panned case. */
+@utility lift-above-keyboard {
+	bottom: max(
+		var(--kb-inset-bottom, 0px),
+		calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 0.5rem)
+	);
+}
+
+/** A surface that fills what is left of the viewport. Subtract the chrome
+    UNCONDITIONALLY — the two shells gate chrome differently, so a route exempt
+    on one is often not exempt on the other, and the fallback is the no-chrome
+    height to the pixel. */
+@utility viewport-fit {
+	height: calc(100dvh - var(--app-chrome-top, 0px) - env(safe-area-inset-top, 0px));
+}
+
+/* ══ Scroll-edge fade ══════════════════════════════════════════════════════
+   Overflowing content dissolves at its parent's edges instead of hard-clipping
+   — the affordance that says "there's more this way". A MASK, not a colour
+   overlay, so it works on any theme without naming a background; which is also
+   why it goes on the inner scroller and never on the surface that owns the
+   background. Tune with `[--scroll-fade:2rem]`; cancel with
+   `sm:scroll-fade-none` where the region stops scrolling.
+
+   The ramp is eased rather than linear: a linear ramp keeps content ~visible
+   right up to the boundary and then just stops, which reads as a hard edge. */
+@utility scroll-fade-x {
+	mask-image: linear-gradient(
+		to right,
+		transparent,
+		rgb(0 0 0 / 0.08) calc(var(--scroll-fade, 1.5rem) * 0.3),
+		rgb(0 0 0 / 0.35) calc(var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.75) calc(var(--scroll-fade, 1.5rem) * 0.8),
+		#000 var(--scroll-fade, 1.5rem),
+		#000 calc(100% - var(--scroll-fade, 1.5rem)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		transparent
+	);
+	-webkit-mask-image: linear-gradient(
+		to right,
+		transparent,
+		rgb(0 0 0 / 0.08) calc(var(--scroll-fade, 1.5rem) * 0.3),
+		rgb(0 0 0 / 0.35) calc(var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.75) calc(var(--scroll-fade, 1.5rem) * 0.8),
+		#000 var(--scroll-fade, 1.5rem),
+		#000 calc(100% - var(--scroll-fade, 1.5rem)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		transparent
+	);
+}
+@utility scroll-fade-y {
+	mask-image: linear-gradient(
+		to bottom,
+		transparent,
+		rgb(0 0 0 / 0.08) calc(var(--scroll-fade, 1.5rem) * 0.3),
+		rgb(0 0 0 / 0.35) calc(var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.75) calc(var(--scroll-fade, 1.5rem) * 0.8),
+		#000 var(--scroll-fade, 1.5rem),
+		#000 calc(100% - var(--scroll-fade, 1.5rem)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		transparent
+	);
+	-webkit-mask-image: linear-gradient(
+		to bottom,
+		transparent,
+		rgb(0 0 0 / 0.08) calc(var(--scroll-fade, 1.5rem) * 0.3),
+		rgb(0 0 0 / 0.35) calc(var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.75) calc(var(--scroll-fade, 1.5rem) * 0.8),
+		#000 var(--scroll-fade, 1.5rem),
+		#000 calc(100% - var(--scroll-fade, 1.5rem)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		transparent
+	);
+}
+/* One-sided, for a scroller whose start edge is anchored content that must stay
+   legible at rest. */
+@utility scroll-fade-r {
+	mask-image: linear-gradient(
+		to right,
+		#000,
+		#000 calc(100% - var(--scroll-fade, 1.5rem)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		transparent
+	);
+	-webkit-mask-image: linear-gradient(
+		to right,
+		#000,
+		#000 calc(100% - var(--scroll-fade, 1.5rem)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		transparent
+	);
+}
+@utility scroll-fade-none {
+	mask-image: none;
+	-webkit-mask-image: none;
+}
+
+/* Viewport edges take a scrim, not a mask: the scroller there is the viewport
+   itself, so content sliding under the status bar or the home indicator has to
+   fade into the surface rather than make the surface translucent. Solid across
+   the safe-area inset, then a short fade. Non-interactive by construction; the
+   caller stacks it under the nav pill. */
+@utility edge-scrim-t {
+	pointer-events: none;
+	position: fixed;
+	inset-inline: 0;
+	top: 0;
+	height: calc(env(safe-area-inset-top, 0px) + var(--edge-scrim, 0.85rem));
+	background: linear-gradient(
+		to bottom,
+		var(--background),
+		var(--background) calc(100% - var(--edge-scrim, 0.85rem)),
+		color-mix(in srgb, var(--background) 75%, transparent)
+			calc(100% - var(--edge-scrim, 0.85rem) * 0.8),
+		color-mix(in srgb, var(--background) 35%, transparent)
+			calc(100% - var(--edge-scrim, 0.85rem) * 0.55),
+		color-mix(in srgb, var(--background) 8%, transparent)
+			calc(100% - var(--edge-scrim, 0.85rem) * 0.3),
+		transparent
+	);
+}
+@utility edge-scrim-b {
+	pointer-events: none;
+	position: fixed;
+	inset-inline: 0;
+	bottom: 0;
+	height: calc(
+		var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--edge-scrim, 0.85rem)
+	);
+	background: linear-gradient(
+		to top,
+		var(--background),
+		var(--background) calc(100% - var(--edge-scrim, 0.85rem)),
+		color-mix(in srgb, var(--background) 75%, transparent)
+			calc(100% - var(--edge-scrim, 0.85rem) * 0.8),
+		color-mix(in srgb, var(--background) 35%, transparent)
+			calc(100% - var(--edge-scrim, 0.85rem) * 0.55),
+		color-mix(in srgb, var(--background) 8%, transparent)
+			calc(100% - var(--edge-scrim, 0.85rem) * 0.3),
+		transparent
+	);
+}

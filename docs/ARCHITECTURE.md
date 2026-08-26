@@ -58,6 +58,12 @@ load-bearing rather than tidy. `pnpm-workspace.yaml` carries the measurements.
 **The shells are ~200-line boots.** Everything product-shaped lives in `@sloppy/app-core`.
 One codebase serves web and native only for as long as that holds.
 
+**`apps/sloppy/api/src/app.module.ts` is closed.** A milestone fills one of the feature
+modules it already imports — auth, idp, node, block — rather than adding another to the
+list, because a shared import list is the one file every branch edits and then every branch
+conflicts on. `IdpModule` is a dynamic module for the same reason: local mode is gated on
+whether it registers anything, and that decision has to live inside it.
+
 ## The two files that carry the platform seam
 
 - **`app-core/src/lib/runtime.ts`** — an `AppRuntime` interface where **the absence of
@@ -211,6 +217,13 @@ The rules AI.md's foundation-wave section states, applied here:
   of the rule: the same instant written two widths is two byte strings, and a signature is
   over the bytes. Lexicographic order over these strings is chronological order, so
   `ORDER BY created_at` needs nothing further.
+- **A row crosses the wire as a view of itself**, with the composite key replaced by the
+  `<did>/<ulid>` ref the row is already pointed at by. `@sloppy/types`' `api.ts` derives
+  `NodeView`, `BlockView`, `LabelDimensionView` and `PublicationView` from the entity
+  schemas and converts with `entityView()`, so the wire cannot drift from the row. The
+  substitution is what makes a row expressible as JSON at all: the key is a SurrealDB
+  `RecordId`, and no JSON encoding round-trips back into the class that validates one.
+  `PublishedSubtree` is the separate, deliberately narrower shape a foreign reader gets.
 - **Nothing derivable from the address is stored, except `depth`** — AI.md § "The Address
   Is the Protocol" states the rule, and this is the one ratified exception to it. The
   angular sector and subtree membership stay functions in `address.ts`.

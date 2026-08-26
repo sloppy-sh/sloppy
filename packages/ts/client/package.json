@@ -1,0 +1,44 @@
+{
+  "name": "@sloppy/client",
+  "version": "0.0.1",
+  "description": "Backend-agnostic SloppyClient over fetch — one method surface for the hosted API, a self-hosted one, and the native shell's embedded server.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.mts",
+        "require": "./dist/index.d.ts"
+      },
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false .",
+    "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
+  },
+  "dependencies": {
+    "@sloppy/types": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "tsdown": "^0.22.14",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  }
+}

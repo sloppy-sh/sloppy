@@ -1,0 +1,43 @@
+{
+  "name": "@sloppy/api",
+  "version": "0.0.1",
+  "description": "Sloppy API — nodes, addresses, labels, blocks and ink, over Sloppy's own SurrealDB. Hosted and self-hostable. See docs/ARCHITECTURE.md.",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "nest start",
+    "start:prod": "node dist/main",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false .",
+    "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/platform-express": "^11.0.1",
+    "@sloppy/data": "workspace:*",
+    "@sloppy/types": "workspace:*",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "surrealdb": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.1",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.10.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  }
+}

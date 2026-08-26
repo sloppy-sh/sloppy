@@ -1,6 +1,7 @@
 node_modules
 dist
 dist-js
+.dist-staging
 build
 .svelte-kit
 .env

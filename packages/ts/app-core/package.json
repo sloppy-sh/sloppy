@@ -1,0 +1,72 @@
+{
+	"name": "@sloppy/app-core",
+	"version": "0.0.1",
+	"description": "The shared Sloppy application — every page, component, store and API call the web and native shells render. See docs/ARCHITECTURE.md.",
+	"type": "module",
+	"svelte": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"!dist/**/*.test.*",
+		"!dist/**/*.spec.*"
+	],
+	"sideEffects": [
+		"**/*.css"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"svelte": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./pages/*": {
+			"types": "./dist/pages/*.svelte.d.ts",
+			"svelte": "./dist/pages/*.svelte",
+			"default": "./dist/pages/*.svelte"
+		},
+		"./components/*": {
+			"types": "./dist/components/*.svelte.d.ts",
+			"svelte": "./dist/components/*.svelte",
+			"default": "./dist/components/*.svelte"
+		}
+	},
+	"scripts": {
+		"dev": "vite dev",
+		"build": "svelte-kit sync && svelte-package -o .dist-staging && node ../../../scripts/replace-dist.mjs",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest",
+		"lint": "prettier --check . && eslint .",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"peerDependencies": {
+		"@sveltejs/kit": "^2.0.0",
+		"svelte": "^5.0.0"
+	},
+	"dependencies": {
+		"@sloppy/client": "workspace:*",
+		"@sloppy/types": "workspace:*",
+		"@sloppy/ui": "workspace:*"
+	},
+	"devDependencies": {
+		"@eslint/js": "catalog:",
+		"@sveltejs/kit": "catalog:",
+		"@sveltejs/package": "catalog:",
+		"@sveltejs/vite-plugin-svelte": "catalog:",
+		"eslint": "catalog:",
+		"eslint-config-prettier": "catalog:",
+		"eslint-plugin-svelte": "catalog:",
+		"globals": "catalog:",
+		"prettier": "catalog:",
+		"prettier-plugin-svelte": "catalog:",
+		"svelte": "catalog:",
+		"svelte-check": "catalog:",
+		"typescript": "catalog:",
+		"typescript-eslint": "catalog:",
+		"vite": "catalog:",
+		"vitest": "^4.1.11"
+	}
+}

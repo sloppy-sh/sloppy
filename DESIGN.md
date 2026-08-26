@@ -8,10 +8,13 @@ something.
 Read alongside [`PRODUCT.md`](PRODUCT.md). Components are shadcn-svelte wherever one
 fits; we don't hand-roll what shadcn already does well.
 
-> **Status.** None of this is built yet. Every file, token, set and test named below is a
-> specification for a later milestone to write, not a description of the tree — where this
-> document says a file "lives" somewhere or a test "holds" a floor, read it as an
-> obligation. See the [README](README.md) for what is actually in the tree.
+> **Status.** The token layer is built and the rest is not. `packages/ts/ui/src/lib/app.css`
+> carries the three axes, the theme, accent and style presets, the graph's hue slots, the
+> scroll chrome and the four inset formulas; `token-contrast.test.ts` beside it measures the
+> floors below rather than asserting them. Everything else named here — the components,
+> `ResponsiveModal`, the font axis, the prefs store, the graph's own colour conversion — is
+> still a specification for a later milestone, not a description of the tree. See the
+> [README](README.md) for what is actually in the tree.
 
 ## The feeling
 
@@ -67,6 +70,12 @@ the Tailwind v4 `@theme inline` mapping. The app root layout sets the attributes
 prefs store before content renders (inline head script) so there is no flash of the wrong
 theme.
 
+A correction that applies to a set of themes is written as the pairings it corrects, never
+as a `:not()` exclusion: `token-contrast.test.ts` reads the stylesheet and skips `:not()`,
+so an exclusion-only rule would go unmeasured. Where a `:not()` twin is needed anyway — the
+bare-root case, which carries no attribute to match on — it shares one declaration body
+with its positive siblings, so the two cannot disagree.
+
 **Adding a dark theme will mean touching every hardcoded dark roster, not just the CSS:**
 the `DARK_THEMES` set in the prefs store, the dark set in any component harness, and the
 inline `const dark = …` check in **both** shells' `app.html` boot scripts. Miss that last
@@ -88,7 +97,9 @@ cool mark, and the pairing keeps the two defaults from reading as one theme at t
 brightnesses.
 
 card/popover sit ~+0.015 L above surface; border/input are the surface hue at low chroma;
-muted is surface −0.035 L. Keep chroma ≤0.02 on neutrals — the surfaces are a ground for
+muted is 0.035 L off the surface **toward the ink** — down on a light theme, up on a dark
+one, because a well dug below Graphite's page is where a skeleton disappears. Keep chroma
+≤0.02 on neutrals — the surfaces are a ground for
 the graph's colour, and a tinted ground shifts every hue drawn on it. Radius is moderate
 (`--radius: 0.625rem`): unfussy, not soft.
 
@@ -228,13 +239,21 @@ further**: the reader has asked to see sets, and the tree is momentarily the bac
 
 ### Contrast is measured, not assumed
 
-Ratios in this document are targets until a test holds them, and today all of them are
-targets: nothing measures them yet. `token-contrast.test.ts` in `@sloppy/ui` will be the
-file of record — sweeping every theme × accent and every theme × facet-slot pairing,
-measuring on the **quantised** colour (both sides converted to sRGB and rounded to 8 bits
-per channel, which is what a screen actually paints), and holding the 3:1 mark floor and
-the 0.03 separation floor. It is the first thing `@sloppy/ui` owes, because until it runs,
-a palette whose slots have converged is caught by nothing.
+Ratios in this document are targets until a test holds them. `token-contrast.test.ts` in
+`@sloppy/ui` is the file of record, and it runs: it sweeps every theme × accent and every
+theme × facet-slot pairing, measures on the **quantised** colour (both sides converted to
+sRGB and rounded to 8 bits per channel, which is what a screen actually paints), and holds
+the 3:1 mark floor and the 0.03 separation floor — on `--background`, `--card` and
+`--popover` alike, because most marks are not drawn on the page. It reads the tokens out of
+`app.css` itself; a table of them beside the stylesheet would be a copy that drifts.
+
+One accent needs a correction today, and only one: Ochre on the light family reads 2.90:1
+as a solid mark on Paper, so `--primary-mark` moves it in lightness alone. Every other
+pairing is handed back its own colour untouched.
+
+**A floor this file does not name is a floor nothing measures.** Small accent TEXT owes
+4.5:1 and no member of the mark family reaches it — the mark floor is for graphical objects
+and large text.
 
 A figure quoted anywhere in this repo without a test behind it is a target, and should say
 so.

@@ -39,6 +39,9 @@ catalog:
   "@sveltejs/kit": 2.57.0
   "@sveltejs/vite-plugin-svelte": 7.0.0
   "@sveltejs/adapter-static": 3.0.10
+  # ui and app-core both ship through svelte-package, and a library built by one
+  # version and type-checked against another disagrees about its own .d.ts.
+  "@sveltejs/package": 2.5.7
   vite: 8.0.7
   tailwindcss: 4.2.2
   "@tailwindcss/vite": 4.2.2

@@ -21,26 +21,30 @@ Mobile and tablet are the primary surface. Desktop is the same product with more
 
 ## Status
 
-**The vocabulary exists; the product does not yet.** What is in the tree today is the build
-foundation — the conventions, the pnpm + Turborepo workspace, the formatter split, the dev
-stack — plus the two packages every later branch reads from: `@sloppy/types` (the address
-protocol and the node/block/label/publication schemas) and `@sloppy/data` (the table
-definitions and the per-user purge). The apps and the remaining packages are created by the
-milestones that follow, so `pnpm dev` currently has nothing to run; `pnpm test` does.
+**The contracts exist; the product does not yet.** What is in the tree today is the build
+foundation and the seams every later branch reads: `@sloppy/types` (the address protocol,
+the node/block/label/publication schemas, and the API's wire shapes), `@sloppy/data` (the
+table definitions and the per-user purge), `@sloppy/client` (the whole method surface, over
+`fetch`), `@sloppy/app-core` (the platform seam and the api proxy), `@sloppy/ui` (the design
+tokens) and `@sloppy/api` (a NestJS skeleton whose feature modules are empty).
+
+So `pnpm dev:api` serves a health check and nothing else, and there are no shells to run
+yet. `pnpm test` is real: it holds the address protocol, the schema against a live
+SurrealDB, and the design system's contrast floors.
 
 ## Stack
 
-pnpm + Turborepo monorepo. The two rows marked ✓ are in the tree; the rest are ahead.
+pnpm + Turborepo monorepo. The rows marked ✓ are in the tree; the rest are ahead.
 
 | Path                   | Package            | Tech                                              |     |
 | ---------------------- | ------------------ | ------------------------------------------------- | --- |
-| `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                        |     |
+| `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                        | ✓   |
 | `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             |     |
 | `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop) |     |
 | `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                | ✓   |
-| `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                       |     |
-| `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call         |     |
-| `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens          |     |
+| `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                       | ✓   |
+| `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call         | ✓   |
+| `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens          | ✓   |
 | `packages/ts/data`     | `@sloppy/data`     | SurrealDB repositories, schema, purge             | ✓   |
 | `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                |     |
 | `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode        |     |
@@ -71,6 +75,11 @@ offset from syr's own dev stack so the two can run side by side:
 
 Override any of them with `SURREALDB_PORT`, `S3_PORT`, `S3_CONSOLE_PORT`. `pnpm
 stack:down` takes it back down; `db/` and `s3/` hold the volumes and are disposable.
+
+The API runs on the host, not in Docker: `pnpm dev:api` serves http://localhost:8020
+(`SLOPPY_API_PORT`), and `GET /api/health` answers 200 when it can reach the database and
+503 when it cannot. It reads the repo-root `.env` if there is one, and every value it needs
+has a dev default that matches the stack above.
 
 ## Common tasks
 
