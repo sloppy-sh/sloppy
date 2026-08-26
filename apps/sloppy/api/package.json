@@ -22,6 +22,7 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@sloppy/data": "workspace:*",
+    "@sloppy/idp": "workspace:*",
     "@sloppy/types": "workspace:*",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
