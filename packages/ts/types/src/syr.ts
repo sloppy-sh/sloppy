@@ -1,9 +1,8 @@
 // syr's wire contracts, as Sloppy consumes them.
 //
-// This is the one file allowed to name the vendor: it exists to speak syr's
-// dialect, and everything it produces is normalized into shapes elsewhere in
-// this package that do not. Mirrors syr's own `identity-manifest.ts` and
-// `platform-delegation.ts`; it is a copy of the wire, not of the source.
+// This is the one file that speaks syr's wire dialect — request and response
+// shapes syr defines and we only read. Mirrors syr's own `identity-manifest.ts`
+// and `platform-delegation.ts`; it is a copy of the wire, not of the source.
 //
 // These are somebody else's responses. Unknown keys are dropped rather than
 // rejected, so an instance running ahead of us stays readable.

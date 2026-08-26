@@ -10,17 +10,21 @@ import { z } from "zod";
 export const RecordIdSchema: z.ZodType<RecordId> = z.instanceof(RecordId, {
   message: "Expected a SurrealDB RecordId",
 });
-export type RecordIdValue = z.infer<typeof RecordIdSchema>;
 
 /**
  * ISO-8601 UTC at fixed millisecond precision — the one encoding a timestamp
  * has in the row, on the wire, and inside a signed payload. The precision is
  * pinned rather than merely permitted: the same instant written two widths is
- * two byte strings, and a signature is over the bytes. `nowIso()` mints one;
- * docs/ARCHITECTURE.md § "Data model" says why there is only the one encoding.
+ * two byte strings, and a signature is over the bytes. docs/ARCHITECTURE.md
+ * § "Data model" says why there is only the one encoding.
  */
 export const TimestampSchema = z.iso.datetime({ precision: 3 });
 export type Timestamp = z.infer<typeof TimestampSchema>;
+
+/** The one mint for `created_at` and `updated_at`. */
+export function nowIso(): Timestamp {
+  return new Date().toISOString();
+}
 
 /**
  * A syr identity. The method-specific part is a multibase base58btc-encoded

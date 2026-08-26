@@ -7,7 +7,7 @@
 
 import { RecordId } from "surrealdb";
 import { ulid } from "ulid";
-import type { OwnedRef, Timestamp } from "./common.js";
+import type { OwnedRef } from "./common.js";
 
 interface CompositeId {
   created_by: string;
@@ -76,11 +76,6 @@ export function recordIdFromOwnedRef(table: string, ref: OwnedRef): RecordId {
     ref.slice(0, separator),
     ref.slice(separator + 1),
   );
-}
-
-/** The one mint for `created_at` and `updated_at`. Satisfies `TimestampSchema`. */
-export function nowIso(): Timestamp {
-  return new Date().toISOString();
 }
 
 export { ulid } from "ulid";

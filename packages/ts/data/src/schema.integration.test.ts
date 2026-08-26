@@ -25,7 +25,10 @@ const PASS = process.env.SURREALDB_PASS ?? "sloppy-dev-password";
 const NAMESPACE = "sloppy_test";
 const DATABASE = `schema_${Date.now()}`;
 
-const ALICE = "did:syr:z6MkAliceAliceAliceAliceAliceAlice";
+// A DID's method-specific part is base58btc and a ULID is Crockford base32;
+// both drop the ambiguous letters, so neither "Alice" nor "ROUNDTRIP" is a
+// string anyone could hold. Fixtures other packages will copy have to parse.
+const AVA = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 const BOB = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob";
 
 type NodeRow = ReturnType<typeof nodeRow>;
@@ -100,22 +103,22 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     // The pairing check. A client that cannot speak the server's protocol
     // reports success and stores a bare id, so the assertion is on the readback
     // and not on what the write returned.
-    const row = nodeRow(ALICE, "1", "01JROUNDTRIP0000000000000A");
+    const row = nodeRow(AVA, "1", "01JREADBACK000000000000000");
     await db.create(row.id).content(row);
 
     const stored = await read(row.id);
     expect(stored.address).toBe("1");
-    expect(stored.created_by).toBe(ALICE);
+    expect(stored.created_by).toBe(AVA);
     expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
   });
 
   it("keeps address, created_by and created_at as first written", async () => {
-    const row = nodeRow(BOB, "2", "01JIMMUTABLE00000000000000");
+    const row = nodeRow(BOB, "2", "01JNEVERCHANGES00000000000");
     await db.create(row.id).content(row);
 
     await db.update(row.id).merge({
       address: "9",
-      created_by: ALICE,
+      created_by: AVA,
       created_at: "2030-01-01T00:00:00.000Z",
       updated_at: "2026-06-01T00:00:00.000Z",
     });
@@ -128,23 +131,21 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
 
     // CONTENT replaces the whole document, which is the shape that would drop
     // an immutable column rather than merely reassign it.
-    await db
-      .update(row.id)
-      .content({ ...row, address: "9", created_by: ALICE });
+    await db.update(row.id).content({ ...row, address: "9", created_by: AVA });
     const replaced = await read(row.id);
     expect(replaced.address).toBe("2");
     expect(replaced.created_by).toBe(BOB);
   });
 
   it("refuses a second node at an address its owner already used", async () => {
-    const first = nodeRow(ALICE, "3", "01JUNIQUEFIRST000000000000");
+    const first = nodeRow(AVA, "3", "01JADDRESSTAKEN00000000000");
     await db.create(first.id).content(first);
 
-    const clash = nodeRow(ALICE, "3", "01JUNIQUESECOND00000000000");
+    const clash = nodeRow(AVA, "3", "01JADDRESSRETAKE0000000000");
     await expect(db.create(clash.id).content(clash)).rejects.toThrow();
 
     // Another author holding the same address is the normal federated case.
-    const peer = nodeRow(BOB, "3", "01JUNIQUEPEER0000000000000");
+    const peer = nodeRow(BOB, "3", "01JADDRESSPEER000000000000");
     await expect(db.create(peer.id).content(peer)).resolves.toBeDefined();
   });
 
@@ -158,10 +159,10 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
            created_at: time::now(), updated_at: time::now() };`,
         {
           id: new RecordId("node", {
-            created_by: ALICE,
-            id: "01JDATETIME000000000000000",
+            created_by: AVA,
+            id: "01JDATETYPE000000000000000",
           }),
-          did: ALICE,
+          did: AVA,
         },
       ),
     ).rejects.toThrow();
@@ -171,10 +172,10 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);
 
-    await db.query(STATEMENTS.join("\n"), { did: ALICE });
+    await db.query(STATEMENTS.join("\n"), { did: AVA });
 
     const after = await db.select<NodeRow>(new Table("node"));
-    expect(after.some((row) => row.created_by === ALICE)).toBe(false);
+    expect(after.some((row) => row.created_by === AVA)).toBe(false);
     expect(after.some((row) => row.created_by === BOB)).toBe(true);
   });
 });
