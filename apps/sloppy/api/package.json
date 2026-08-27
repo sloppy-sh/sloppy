@@ -9,6 +9,7 @@
     "dev": "nest start --watch",
     "start": "nest start",
     "start:prod": "node dist/main",
+    "seed": "nest build && node dist/seed/main",
     "check": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
