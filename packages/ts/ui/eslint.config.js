@@ -16,9 +16,15 @@ export default defineConfig(
 	svelte.configs.prettier,
 	{
 		languageOptions: { globals: { ...globals.browser, ...globals.node } },
-		// typescript-eslint asks for this off on TS projects: tsc already knows
-		// what is defined, and the rule reports globals it cannot see.
-		rules: { 'no-undef': 'off' }
+		rules: {
+			// typescript-eslint asks for this off on TS projects: tsc already knows
+			// what is defined, and the rule reports globals it cannot see.
+			'no-undef': 'off',
+			// Nothing here owns a route. A component in this package renders the
+			// `href` its caller hands it, and the caller is the one with a router to
+			// resolve against.
+			'svelte/no-navigation-without-resolve': 'off'
+		}
 	},
 	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
