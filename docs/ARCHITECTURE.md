@@ -416,10 +416,13 @@ internals. Use a separate `ready` flag for post-mount UI.
 
 ## Putting a note in a facet
 
-`LabelAssigner`, from `@sloppy/ui/facets`, is the one surface that edits a note's labels. It
-is **controlled and does not persist**:
+`LabelAssigner`, from `@sloppy/ui/facets`, is the one surface that edits a note's labels. The
+package's exports map is `"./*" → dist/components/ui/*/index.js`, so it lives at
+`src/lib/components/ui/facets/` and needs no new exports entry. It is **controlled and does
+not persist**:
 
 ```ts
+dimensions: LabelDimensionView[];   // what may be assigned; the host reads `labels.dimensions`
 value: LabelSet;                    // the note's labels now; `{}` is a note with none
 onchange: (next: LabelSet) => void; // the COMPLETE next set, never a delta
 busy?: boolean;                     // a save is in flight; refuse a second edit
@@ -427,8 +430,13 @@ busy?: boolean;                     // a save is in flight; refuse a second edit
 
 The page that owns the note writes it, through `nodes.update`. The assigner writing for
 itself would race the save path, the optimistic state and the error copy that page already
-owns, and two writers to one node is the bug that costs a person their edit. It reads the
-available dimensions from the `labels` store directly, so nothing passes them in.
+owns, and two writers to one node is the bug that costs a person their edit.
+
+**`dimensions` is a prop rather than a store read, and that is structural.** `@sloppy/ui`
+is depended on _by_ `@sloppy/app-core`, so a component here reaching into app-core's
+`labels` store would close the loop `ui → app-core → ui`, which the workspace has no build
+order for. Every component in this package takes its data as props for that reason — see
+`GraphSurface` and `BlockStack`.
 
 **The page owns the trigger; the assigner is only the surface behind it.** A component that
 mounted its own floating control would fight the layout of whatever hosts it — the note page
