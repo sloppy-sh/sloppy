@@ -273,8 +273,8 @@ describe('what a note keeps when it is left', () => {
 const surface = (): HTMLElement => target.querySelector('.sloppy-prose') as HTMLElement;
 
 describe('the writing controls', () => {
-	// Pinned to the viewport they covered whatever the page put under the note,
-	// at every width, with no scroll that reached it.
+	// Pinned to the viewport they cover whatever the page puts under the note, at
+	// every width, with no scroll that reaches it.
 	it('sit in the note rather than over the page', () => {
 		open([block({ type: 'paragraph', content: 'a thought' })]);
 		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
@@ -386,6 +386,19 @@ describe('a picture in a note', () => {
 		expect(written.created).toEqual([
 			expect.objectContaining({ type: 'image', data: { upload_id: `${OWNER}/01OLD` } })
 		]);
+	});
+
+	it('says so when it cannot be drawn, rather than showing an empty frame', async () => {
+		open([block({ type: 'image', data: { upload_id: `${OWNER}/01UP` } })]);
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+
+		const image = target.querySelector('.sloppy-picture-image') as HTMLImageElement;
+		expect(target.querySelector('.sloppy-picture-note')?.textContent).toBe('');
+
+		image.dispatchEvent(new Event('error'));
+
+		expect(target.querySelector('.sloppy-picture-note')?.textContent).toContain("didn't load");
 	});
 });
 

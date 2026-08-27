@@ -185,11 +185,13 @@ reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks thei
 store for it as them; nothing else can, and it is not listed among an identity's public
 uploads. `GET /api/media/uploads` lists the ones they put in a note, newest first, so a
 picture can be used twice without being sent twice — the same folder decides what is in
-it, so nothing from a profile is. That route needs the reader's session, and an `<img>` carries no credential
-across origins — so `SloppyClient.ownPicture` answers with the address itself where the
-API shares the page's origin and with the fetched bytes anywhere else. It is the only way
-one of these draws, which is why a `MediaAsset` carries an `upload_id` and no address at
-all: who may read a picture is the store's answer, not the row's.
+it, so nothing from a profile is. That route needs the reader's session and an `<img>`
+sends none, so `SloppyClient.ownPicture` fetches the bytes with the reader's own
+credential and hands back something the browser can draw from memory. On the web shell
+that session is a token and not a cookie — sign-in there finishes through the hand-off in
+`auth.controller.ts`, so an address alone would reach this route as a stranger. It is the
+only way one of these draws, which is why a `MediaAsset` carries an `upload_id` and no
+address at all: who may read a picture is the store's answer, not the row's.
 
 **Open gap, and the milestone that owns it: publishing a subtree does not yet make its
 pictures reachable.** A peer who pulls a published subtree today gets addresses that

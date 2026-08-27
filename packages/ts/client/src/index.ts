@@ -428,18 +428,14 @@ export class SloppyClient {
    * until its subtree is published and so are its pictures, so this is the only
    * way one of them draws.
    *
-   * Where the API shares the page's origin the address is the whole answer,
-   * because the session cookie rides the request. Anywhere else an `<img>`
-   * carries no credential, so the bytes are fetched with the caller's token and
-   * served from memory — which is what `release` frees. Call it when the
-   * picture comes off the screen; it is a no-op on the same-origin answer.
+   * An `<img>` sends no credential of its own and this route needs one, so the
+   * bytes are fetched with the caller's and served from memory — which is what
+   * `release` frees. Call it when the picture comes off the screen.
    */
   async ownPicture(
     uploadId: MediaAsset["upload_id"],
   ): Promise<{ src: string; release: () => void }> {
     const path = `/media/uploads${refPath(uploadId)}`;
-    if (isSameOrigin()) return { src: apiUrl(path), release: () => {} };
-
     const res = await this.request(path, {
       method: "GET",
       headers: { accept: "image/*" },

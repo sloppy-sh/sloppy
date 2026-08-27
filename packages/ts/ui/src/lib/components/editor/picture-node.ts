@@ -14,6 +14,8 @@ import { placeBlock } from './placement.js';
 
 export const PICTURE_NODE = 'picture';
 
+const COULD_NOT_DRAW = "This picture didn't load. Open the note again in a moment.";
+
 /** The payload of a block whose type is `image`; `@sloppy/types`' `block.ts`
  *  says how a type-specific payload attaches. */
 export interface PictureBlockData {
@@ -221,7 +223,7 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 						note.textContent = '';
 					} catch {
 						if (drawn !== wanted) return;
-						note.textContent = "This picture didn't load. Open the note again in a moment.";
+						note.textContent = COULD_NOT_DRAW;
 					}
 				}
 
@@ -250,6 +252,12 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 					}
 					void draw();
 				}
+
+				image.addEventListener('error', () => {
+					if (current.attrs.uploadId && image.getAttribute('src')) {
+						note.textContent = COULD_NOT_DRAW;
+					}
+				});
 
 				description.addEventListener('input', () => apply({ alt: description.value }));
 

@@ -663,9 +663,8 @@
 		</div>
 	{/if}
 
-	<!-- Sticky rather than fixed, and inside the writing surface: a bar over the
-	     viewport covers whatever the page puts under the note, at every width,
-	     with no scroll that reaches it. -->
+	<!-- Inside the writing surface: a bar over the viewport covers whatever the
+	     page puts under the note, at every width, with no scroll that reaches it. -->
 	{#if ready && editing}
 		<div
 			class="sticky lift-above-keyboard z-40 mx-auto w-full max-w-[34rem] rounded-full border bg-card/95 px-1.5 py-1 shadow-lg backdrop-blur"
