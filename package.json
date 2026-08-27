@@ -23,7 +23,7 @@
     "stack:up": "docker compose up -d --build",
     "stack:down": "docker compose down",
     "stack:logs": "docker compose logs -f",
-    "stack:reset": "docker compose down -v"
+    "stack:reset": "docker compose down -v && rm -rf db/data s3/data"
   },
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.29.3",

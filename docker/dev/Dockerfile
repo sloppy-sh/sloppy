@@ -31,7 +31,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile --offline
 
 # The shared @sloppy/* packages are deliberately NOT built here. `packages-watch`
-# builds them into the volumes all three services share, so there is one copy,
-# always fresh, and a new package under packages/ts needs no wiring in this file.
+# builds them into the volumes all three services share, so there is one copy and
+# it is always fresh.
 
 EXPOSE 8030

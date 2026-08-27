@@ -98,13 +98,14 @@ the running container. Changing a dependency does: anything that moves `pnpm-loc
 the package builder, and the log says so as it happens.
 
 ```bash
-pnpm stack:up      # the same stack, detached
+pnpm stack:up      # the same stack, detached — nothing is watched, so edits sit
 pnpm stack:logs    # follow it
 pnpm stack:down    # stop it
-pnpm stack:reset   # stop it and throw away the volumes: db, storage, package builds
+pnpm stack:reset   # stop it and delete the lot: database, storage, package builds
 ```
 
-`db/` and `s3/` hold the datastore volumes and are disposable.
+`db/` and `s3/` are where the datastores keep their files; `stack:reset` is what
+empties them.
 
 ### The native shell, and running on the host
 
@@ -116,6 +117,10 @@ pnpm install
 pnpm dev           # one terminal: the stack, API on 8020
 pnpm dev:native    # another: the native shell against it
 ```
+
+`pnpm dev:native` builds the shared `@sloppy/*` packages once as it starts and then holds
+that copy: the containers go on watching them, the native shell does not. Re-run it after
+an edit under `packages/ts`.
 
 `pnpm dev:host` runs every dev server here instead, through Turbo, the way they all ran
 before any of this was containerised; `pnpm dev:api` and `pnpm dev:web` run one each.
@@ -131,6 +136,10 @@ pnpm lint          # biome + eslint, per package
 pnpm format        # write formatting
 pnpm test          # run tests
 ```
+
+Run the heavy ones — a forced rebuild, the whole suite — against a detached stack rather
+than an attached `pnpm dev`. They write thousands of files at once, and under that much
+churn the watcher can miss an edit or recreate the containers under you.
 
 The integration suites run against the dev SurrealDB and skip when nothing is listening, so
 `pnpm stack:up` before `pnpm test` is what exercises the table definitions, the indexes and

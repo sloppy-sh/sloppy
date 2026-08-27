@@ -32,7 +32,8 @@ x-env-file: &env-file
 # `packages-watch` is the only writer; `api` and `web` resolve `@sloppy/types`
 # and its siblings through `dist/`, and without a shared mount each container
 # would go on reading the copy it was built with while the watcher rebuilt one
-# nobody else can see.
+# nobody else can see. A new package under packages/ts is wired in twice: a mount
+# here, and the volume it names at the foot of this file.
 x-package-dist: &package-dist
   - app-core-dist:/app/packages/ts/app-core/dist
   - client-dist:/app/packages/ts/client/dist
