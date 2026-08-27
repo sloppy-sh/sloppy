@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/layout-worker.ts"],
   format: ["esm", "cjs"],
   dts: true,
   // Never delete dist under a running dev server: vite serves these files live
