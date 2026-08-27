@@ -5,6 +5,7 @@
 	import { trackKeyboardInset } from '$lib/keyboard';
 	import { IS_MOBILE } from '$lib/platform';
 	import { initNativeRuntime } from '$lib/runtime';
+	import Frame from '@sloppy/app-core/pages/frame';
 
 	let { children } = $props();
 
@@ -21,4 +22,4 @@
 	});
 </script>
 
-{@render children()}
+<Frame>{@render children()}</Frame>

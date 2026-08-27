@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { initRuntime } from '@sloppy/app-core';
+	import Frame from '@sloppy/app-core/pages/frame';
 
 	let { children } = $props();
 
@@ -9,4 +10,4 @@
 	initRuntime({ apiHost: () => import.meta.env.PUBLIC_SLOPPY_API_URL ?? '' });
 </script>
 
-{@render children()}
+<Frame>{@render children()}</Frame>

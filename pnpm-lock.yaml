@@ -338,9 +338,15 @@ importers:
 
   packages/ts/app-core:
     dependencies:
+      '@lucide/svelte':
+        specifier: ^0.561.0
+        version: 0.561.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))
       '@sloppy/client':
         specifier: workspace:*
         version: link:../client
+      '@sloppy/graph':
+        specifier: workspace:*
+        version: link:../graph
       '@sloppy/types':
         specifier: workspace:*
         version: link:../types
@@ -446,6 +452,25 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
 
+  packages/ts/graph:
+    dependencies:
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.5.0
+        version: 2.5.0
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(typescript@6.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+
   packages/ts/idp:
     dependencies:
       '@noble/curves':
@@ -510,6 +535,12 @@ importers:
       '@lucide/svelte':
         specifier: ^0.561.0
         version: 0.561.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      '@sloppy/graph':
+        specifier: workspace:*
+        version: link:../graph
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
       bits-ui:
         specifier: ^2.19.0
         version: 2.19.0(@internationalized/date@3.12.3)(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))
