@@ -1,0 +1,32 @@
+# What never belongs in the build context. `src-tauri/target` alone is tens of
+# gigabytes; sending it to the daemon costs minutes before a single layer runs.
+.git
+.claude
+
+# Installed and built on the image's own platform — a macOS node_modules or a
+# stale dist copied in would shadow the Linux one the image just installed.
+**/node_modules
+**/dist
+**/.dist-staging
+**/build
+**/.svelte-kit
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+
+# Rust and the generated native projects. Nothing in any container builds Tauri.
+**/target
+apps/sloppy/native/src-tauri/gen
+
+# The dev stack's own volume trees.
+db
+s3
+
+# Secrets and local configuration never get baked into an image; the developer's
+# `.env` reaches the containers through compose instead.
+.env
+.env.*
+secrets
+
+*.log
+.DS_Store

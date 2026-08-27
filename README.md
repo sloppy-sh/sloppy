@@ -57,39 +57,75 @@ labels, blocks and ink are Sloppy's own. That split is not a preference — see
 
 ## Run it
 
-Requires Node ≥ 20 and `corepack enable`. The pnpm version is pinned in `package.json`,
-so corepack fetches that one.
+Requires Docker. `corepack enable` too, for the native shell and the workspace scripts —
+the pnpm version is pinned in `package.json`, so corepack fetches that one.
 
 ```bash
-pnpm install
-pnpm stack:up      # SurrealDB + object storage, in Docker
-pnpm dev           # every app and package, via Turbo
+pnpm dev           # the whole stack, in Docker, watching your source
 ```
 
-`pnpm stack:up` needs no `.env` — every value has a dev default. The published ports are
-offset from syr's own dev stack so the two can run side by side:
+That is the loop: the database, object storage, the shared `@sloppy/*` builds, the API
+and the web shell, all in containers. Edit a file on this machine and whatever owns it
+reacts — the API comes back up, the web app hot-reloads, a shared package rebuilds and
+lands in both. Nothing needs a `.env`: every value has a dev default. Ctrl-C stops it.
 
 | Service         | URL                       |
 | --------------- | ------------------------- |
+| Web shell       | http://localhost:8030     |
+| API             | http://localhost:8020/api |
 | SurrealDB       | `ws://localhost:8010/rpc` |
 | Object storage  | http://localhost:9010     |
 | Storage console | http://localhost:9011     |
 
-Override any of them with `SURREALDB_PORT`, `S3_PORT`, `S3_CONSOLE_PORT`. `pnpm
-stack:down` takes it back down; `db/` and `s3/` hold the volumes and are disposable.
+The web shell is the address Sloppy is used at: it forwards `/api` and the syr discovery
+paths to the API, so the app and the API share an origin the way a deployment does.
+`GET /api/health` answers 200 when the API can reach the database and 503 when it cannot.
 
-The API runs on the host, not in Docker: `pnpm dev:api` serves http://localhost:8020
-(`SLOPPY_API_PORT`), and `GET /api/health` answers 200 when it can reach the database and
-503 when it cannot. It reads the repo-root `.env` if there is one, and every value it needs
-has a dev default that matches the stack above.
+Sign-in works from a clone with nothing else running: in dev the API also serves identity
+itself (`SLOPPY_LOCAL_IDP`, on by default in `docker-compose.yml`), so an identity can be
+made and used with no syr instance anywhere — see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode". Set it to `0` to
+require an instance elsewhere.
 
-The web shell serves http://localhost:8030 and proxies `/api` to the API, so the two share
-an origin the way a deployment does. Signing in needs `PUBLIC_URL` naming that origin —
+The datastore ports are overridable with `SURREALDB_PORT`, `S3_PORT` and
+`S3_CONSOLE_PORT`, offset from syr's own dev stack so both can run at once. 8020 and 8030
+are fixed: sign-in comes back to the address in `PUBLIC_URL`, and those two are what it
+names.
+
+**One thing costs a rebuild.** A source edit costs nothing — it is copied straight into
+the running container. Changing a dependency does: anything that moves `pnpm-lock.yaml`
+(or the root `package.json`) rebuilds the image and recreates the API, the web shell and
+the package builder, and the log says so as it happens.
+
+```bash
+pnpm stack:up      # the same stack, detached — nothing is watched, so edits sit
+pnpm stack:logs    # follow it
+pnpm stack:down    # stop it
+pnpm stack:reset   # stop it and delete the lot: database, storage, package builds
+```
+
+`db/` and `s3/` are where the datastores keep their files; `stack:reset` is what
+empties them.
+
+### The native shell, and running on the host
+
+Tauri builds an OS app, so `@sloppy/native` cannot run in a container. It runs here and
+talks to the API in Docker, which is where it looks by default:
+
+```bash
+pnpm install
+pnpm dev           # one terminal: the stack, API on 8020
+pnpm dev:native    # another: the native shell against it
+```
+
+`pnpm dev:native` builds the shared `@sloppy/*` packages once as it starts and then holds
+that copy: the containers go on watching them, the native shell does not. Re-run it after
+an edit under `packages/ts`.
+
+`pnpm dev:host` runs every dev server here instead, through Turbo, the way they all ran
+before any of this was containerised; `pnpm dev:api` and `pnpm dev:web` run one each.
+Sign-in on that path needs `PUBLIC_URL` naming the web shell's origin —
 [`apps/sloppy/web/README.md`](apps/sloppy/web/README.md) says why.
-
-Set `SLOPPY_LOCAL_IDP=true` (with `SLOPPY_IDP_SECRET`) and the API also serves identity
-itself, at `PUBLIC_URL`. Sign in against that address and Sloppy needs no syr instance and
-no network — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode".
 
 ## Common tasks
 
@@ -100,6 +136,10 @@ pnpm lint          # biome + eslint, per package
 pnpm format        # write formatting
 pnpm test          # run tests
 ```
+
+Run the heavy ones — a forced rebuild, the whole suite — against a detached stack rather
+than an attached `pnpm dev`. They write thousands of files at once, and under that much
+churn the watcher can miss an edit or recreate the containers under you.
 
 The integration suites run against the dev SurrealDB and skip when nothing is listening, so
 `pnpm stack:up` before `pnpm test` is what exercises the table definitions, the indexes and
