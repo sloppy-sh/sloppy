@@ -31,6 +31,18 @@ describe("where a block lands", () => {
     expect(compareOrd("a2", ordAfter(stack, ref(3)))).toBe(-1);
   });
 
+  it("lands past both blocks holding the same place", () => {
+    const twinned: Placed[] = [
+      { ref: ref(1), ord: "a0" },
+      { ref: ref(2), ord: "a1" },
+      { ref: ref(3), ord: "a1" },
+      { ref: ref(4), ord: "a2" },
+    ];
+    const ord = ordAfter(twinned, ref(2));
+    expect(compareOrd("a1", ord)).toBe(-1);
+    expect(compareOrd(ord, "a2")).toBe(-1);
+  });
+
   it("refuses a neighbour that is not in this stack", () => {
     expect(() => ordAfter(stack, ref(9))).toThrow(UnknownNeighbourError);
   });
