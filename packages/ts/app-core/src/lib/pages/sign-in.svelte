@@ -39,9 +39,16 @@
 
 <svelte:head><title>Sign in · Sloppy</title></svelte:head>
 
-<div class="min-h-dvh px-5 pt-16 pb-24 sm:px-8">
-	<div class="mx-auto w-full max-w-md space-y-10">
-		<h1 class="text-3xl font-semibold tracking-tight">Sloppy</h1>
+<div
+	class="pad-bottom-safe min-h-dvh px-5 pt-[max(4rem,calc(env(safe-area-inset-top)+3rem))] sm:px-8"
+>
+	<div class="mx-auto w-full max-w-md space-y-10 pb-24">
+		<div class="space-y-3">
+			<h1 class="text-3xl font-semibold tracking-tight">Sloppy</h1>
+			<p class="text-muted-foreground">
+				One thought, then the one it leads to. Sign in with the account you already have.
+			</p>
+		</div>
 
 		<form class="space-y-4" onsubmit={begin}>
 			<div class="space-y-2">
@@ -62,12 +69,14 @@
 				<p class="text-sm text-destructive" role="alert">{problem ?? refused}</p>
 			{/if}
 
-			<Button type="submit" disabled={leaving} class="h-11 w-full">Continue</Button>
+			<Button type="submit" disabled={leaving} aria-busy={leaving} class="h-11 w-full">
+				{leaving ? 'Taking you there…' : 'Continue'}
+			</Button>
 		</form>
 
 		<a
 			href="/settings"
-			class="inline-block text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+			class="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
 		>
 			Settings
 		</a>
