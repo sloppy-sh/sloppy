@@ -5,7 +5,7 @@
 // pairs, because the ramp is a function and a function is what has to hold.
 
 import { describe, expect, it } from "vitest";
-import { contrastRatio, type Oklch, parseCssColor } from "./color.js";
+import { contrastRatio, type Oklch, parseCssColor, toOklab } from "./color.js";
 import { buildPalette, DEPTH_STEPS, MARK_FLOOR } from "./palette.js";
 
 const themes: { name: string; ink: string; paper: string }[] = [
@@ -93,11 +93,32 @@ describe("facet ramps", () => {
 
   it("gives each value on a ramp its own colour", () => {
     for (let slot = 1; slot <= 8; slot++) {
-      const seen = new Set<number>();
-      for (let index = 0; index < 6; index++) {
-        seen.add(palette.facet(slot as 1, index, 6));
+      for (const count of [2, 3, 5, 6, 8, 12, 20]) {
+        const seen = new Set<number>();
+        for (let index = 0; index < count; index++) {
+          seen.add(palette.facet(slot as 1, index, count));
+        }
+        expect(seen.size, `slot ${slot}, ${count} values`).toBe(count);
       }
-      expect(seen.size, `slot ${slot}`).toBe(6);
+    }
+  });
+
+  // A ramp whose steps have converged passes every contrast check and has
+  // quietly stopped being a language — the same failure DESIGN.md § Hue names
+  // for the slots, one level down.
+  it("keeps adjacent values a readable step apart", () => {
+    for (let slot = 1; slot <= 8; slot++) {
+      for (const count of [2, 3, 5, 8, 12]) {
+        for (let index = 1; index < count; index++) {
+          const gap = oklabDistance(
+            rgb(palette.facet(slot as 1, index - 1, count)),
+            rgb(palette.facet(slot as 1, index, count)),
+          );
+          expect(gap, `slot ${slot}, value ${index}/${count}`).toBeGreaterThan(
+            0.03,
+          );
+        }
+      }
     }
   });
 
@@ -135,4 +156,10 @@ describe("a theme whose tokens have not resolved", () => {
 function rgb(packed: number): Oklch {
   const hex = packed.toString(16).padStart(6, "0");
   return parseCssColor(`#${hex}`)!;
+}
+
+function oklabDistance(a: Oklch, b: Oklch): number {
+  const p = toOklab(a);
+  const q = toOklab(b);
+  return Math.hypot(p.l - q.l, p.a - q.a, p.b - q.b);
 }

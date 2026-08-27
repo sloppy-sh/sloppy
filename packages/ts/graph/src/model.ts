@@ -20,8 +20,14 @@ const EDGE_DECAY = 0.8;
 const EDGE_MIN = 34;
 const LINK_DISTANCE = 520;
 
+/**
+ * How hard a node is held to where it belongs. Genealogically that is a nudge —
+ * the seed fixes the shape and the force pass resolves the crowding. Under a
+ * lens it has to be the dominant force, because a lens that recoloured the same
+ * arrangement would not have answered anything.
+ */
 const SEED_ANCHOR = 0.035;
-const CLUSTER_ANCHOR = 0.09;
+const CLUSTER_ANCHOR = 0.45;
 
 export interface GraphNodeAttributes {
   index: number;

@@ -79,7 +79,11 @@ export function attachGestures(
       return;
     }
 
-    element.setPointerCapture(event.pointerId);
+    // Throws for a pointer the element never saw go down, which a synthetic
+    // event and a pointer the platform has already cancelled both are.
+    try {
+      element.setPointerCapture(event.pointerId);
+    } catch {}
     const target = handlers.hitTest(viewport.toWorld(at.x, at.y));
     active.set(event.pointerId, {
       type: event.pointerType,

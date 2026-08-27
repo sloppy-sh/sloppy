@@ -24,9 +24,13 @@ export const DEPTH_STEPS = 6;
 /** DESIGN.md § "Contrast is measured": a node fill carries meaning alone. */
 export const MARK_FLOOR = 3;
 
-/** Lightness spread across one slot's ramp, and the step it is built from. */
-const VALUE_SPREAD = 0.3;
-const VALUE_STEP = 0.06;
+/**
+ * Lightness across one slot's ramp, and the step it is built from. The step
+ * clears the OKLab separation DESIGN.md § Hue sets for slots, so two values of
+ * one dimension read as siblings without reading as the same answer.
+ */
+const VALUE_SPREAD = 0.36;
+const VALUE_STEP = 0.09;
 
 const UNTHEMED_INK: Oklch = { l: 0.15, c: 0, h: 0 };
 const UNTHEMED_PAPER: Oklch = { l: 1, c: 0, h: 0 };

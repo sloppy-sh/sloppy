@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@sloppy/graph bench</title>
+    <style>
+      /* A stand-in host. `app.css` in @sloppy/ui is the theme of record; these
+         are plausible ends and eight spaced hues, so the renderer has tokens to
+         read without this file holding a copy of the design system. */
+      :root {
+        --graph-ink: oklch(0.21 0.01 60);
+        --graph-paper: oklch(0.98 0.006 85);
+        --facet-1: oklch(0.61 0.13 25);
+        --facet-2: oklch(0.61 0.13 70);
+        --facet-3: oklch(0.61 0.13 115);
+        --facet-4: oklch(0.61 0.13 160);
+        --facet-5: oklch(0.61 0.13 205);
+        --facet-6: oklch(0.61 0.13 250);
+        --facet-7: oklch(0.61 0.13 295);
+        --facet-8: oklch(0.61 0.13 340);
+        --font-address: ui-monospace, monospace;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--graph-paper);
+        color: var(--graph-ink);
+        font: 14px/1.5 system-ui, sans-serif;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      #report {
+        position: fixed;
+        inset: auto auto 0 0;
+        max-height: 60vh;
+        max-width: min(560px, 100vw);
+        overflow: auto;
+        margin: 12px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: color-mix(in oklab, var(--graph-paper) 88%, transparent);
+        box-shadow: 0 1px 24px rgb(0 0 0 / 0.12);
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        white-space: pre;
+      }
+      #controls {
+        position: fixed;
+        inset: 12px 12px auto auto;
+        display: flex;
+        gap: 6px;
+      }
+      button {
+        font: inherit;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in oklab, var(--graph-ink) 25%, transparent);
+        background: transparent;
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="controls"></div>
+    <pre id="report">starting…</pre>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

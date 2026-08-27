@@ -35,7 +35,14 @@ const TEXTURE_RESOLUTION = 4;
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
 const LABEL_MIN_RADIUS = 7;
+/** How far past that a label hangs on, so a pinch does not strobe them. */
+const LABEL_HYSTERESIS = 0.75;
+/** Slots that may change hands in one frame. */
+const LABEL_RETEXT_BUDGET = 6;
 const LABEL_GAP = 6;
+const LABEL_LINE = 15;
+/** A title long enough to crowd its neighbours off the canvas is not a title. */
+const TITLE_CHARS = 32;
 
 const EDGE_WIDTH = 1.2;
 const LINK_DASH = 9;
@@ -88,7 +95,7 @@ export class GraphScene {
   private positions = new Float32Array(0);
   private edgePairs: number[] = [];
   private linkPairs: number[] = [];
-  private labelRefs: (string | null)[] = [];
+  private readonly labelSlots = new Map<string, number>();
   private lensActive = false;
 
   private positionsDirty = true;
@@ -354,7 +361,7 @@ export class GraphScene {
       frames: this.frameSamples.length,
       drawn: this.marks.length,
       edges: this.edgePairs.length / 2 + this.linkPairs.length / 2,
-      labels: this.labelRefs.filter((ref) => ref !== null).length,
+      labels: this.labelSlots.size,
     };
   }
 
@@ -429,7 +436,7 @@ export class GraphScene {
 
     this.fills.update();
     this.rings.update();
-    this.labelRefs = this.labelPool.map(() => null);
+    this.labelSlots.clear();
     for (const slot of this.labelPool) {
       slot.address.visible = false;
       slot.title.visible = false;
@@ -496,50 +503,111 @@ export class GraphScene {
     this.lastEdgeScale = this.viewport.scale;
   }
 
+  /**
+   * Setting a `Text`'s string re-rasterises it, and that is by far the most
+   * expensive thing a frame here can do — a pinch that re-seats every slot costs
+   * more than drawing everything else put together. So a mark keeps the slot it
+   * had, holds it through a margin either side of the threshold, and only a few
+   * slots may change hands in any one frame.
+   */
   private layoutLabels(): void {
     const view = visibleBounds(this.viewport, this.width, this.height, 80);
+    const held = this.labelSlots;
+    const enter = LABEL_MIN_RADIUS / this.viewport.scale;
+    const leave = enter * LABEL_HYSTERESIS;
+
     const wanted: Mark[] = [];
     for (const mark of this.marks) {
-      if (mark.radius * this.viewport.scale < LABEL_MIN_RADIUS) continue;
+      if (mark.radius < (held.has(mark.ref) ? leave : enter)) continue;
       const x = this.positions[mark.index * 2];
       const y = this.positions[mark.index * 2 + 1];
       if (x < view.minX || x > view.maxX || y < view.minY || y > view.maxY) {
         continue;
       }
       wanted.push(mark);
-      if (wanted.length > MAX_LABELS * 4) break;
     }
     wanted.sort((a, b) => b.radius - a.radius);
+    wanted.length = Math.min(wanted.length, MAX_LABELS);
+    const keeping = new Set(wanted.map((mark) => mark.ref));
 
+    for (const [ref, at] of held) {
+      if (keeping.has(ref)) continue;
+      held.delete(ref);
+      this.labelPool[at].address.visible = false;
+      this.labelPool[at].title.visible = false;
+    }
+
+    const taken = new Set(held.values());
+    const free: number[] = [];
+    for (let at = 0; at < this.labelPool.length; at++) {
+      if (!taken.has(at)) free.push(at);
+    }
+
+    let budget = LABEL_RETEXT_BUDGET;
+    for (const mark of wanted) {
+      if (held.has(mark.ref) || budget <= 0) continue;
+      const at = free.pop();
+      if (at === undefined) break;
+      budget -= 1;
+      const slot = this.labelPool[at];
+      slot.address.text = addressCaption(mark.attributes);
+      slot.title.text = shorten(mark.attributes.title.trim(), TITLE_CHARS);
+      held.set(mark.ref, at);
+    }
+
+    // Placed biggest first, and a label that would land on one already placed is
+    // dropped for this frame rather than overprinted. It keeps its slot, so the
+    // next pan brings it back without paying to rasterise it again.
     const fill = this.options.palette.ink;
-    this.labelPool.forEach((slot, at) => {
-      const mark = wanted[at];
-      if (!mark) {
-        slot.address.visible = false;
-        slot.title.visible = false;
-        this.labelRefs[at] = null;
-        return;
-      }
-      // Re-rasterising a run costs more than every other thing this frame does,
-      // so it happens when the slot changes hands and not once more.
-      if (this.labelRefs[at] !== mark.ref) {
-        slot.address.text = addressCaption(mark.attributes);
-        slot.title.text = mark.attributes.title.trim();
-        this.labelRefs[at] = mark.ref;
-      }
+    const placed: number[] = [];
+    for (const mark of wanted) {
+      const at = held.get(mark.ref);
+      if (at === undefined) continue;
+      const slot = this.labelPool[at];
       const screen = this.viewport.toScreen(
         this.positions[mark.index * 2],
         this.positions[mark.index * 2 + 1],
       );
       const left = screen.x + mark.radius * this.viewport.scale + LABEL_GAP;
+      const width =
+        slot.address.width +
+        (slot.title.text === "" ? 0 : LABEL_GAP + slot.title.width);
+
+      if (overlaps(placed, left, screen.y, width)) {
+        slot.address.visible = false;
+        slot.title.visible = false;
+        continue;
+      }
+      placed.push(left, screen.y, width);
+
       slot.address.position.set(left, screen.y);
       slot.address.tint = fill;
       slot.address.visible = true;
       slot.title.position.set(left + slot.address.width + LABEL_GAP, screen.y);
       slot.title.tint = fill;
       slot.title.visible = slot.title.text !== "";
-    });
+    }
   }
+}
+
+/** `placed` is a flat `[left, midY, width, …]`; boxes are one line tall. */
+function overlaps(
+  placed: readonly number[],
+  left: number,
+  midY: number,
+  width: number,
+): boolean {
+  for (let at = 0; at < placed.length; at += 3) {
+    if (Math.abs(placed[at + 1] - midY) >= LABEL_LINE) continue;
+    if (left < placed[at] + placed[at + 2] && placed[at] < left + width) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function shorten(text: string, limit: number): string {
+  return text.length <= limit ? text : `${text.slice(0, limit - 1).trimEnd()}…`;
 }
 
 function addressCaption(attributes: GraphNodeAttributes): string {

@@ -20,6 +20,11 @@ import type { Point } from "./viewport.js";
 /** Genealogy edges pull harder than the links that cross them. */
 const GENEALOGY_SPRING = 0.55;
 const LINK_SPRING = 0.12;
+/**
+ * DESIGN.md § Edges: under a lens the tree is momentarily the background. It
+ * dims, and it also has to stop pulling, or the sets never come apart.
+ */
+const GENEALOGY_SPRING_UNDER_LENS = 0.05;
 
 export interface GraphMountOptions extends GraphSurfaceProps {
   /**
@@ -54,6 +59,8 @@ export interface GraphHandle {
   focusOn(ref: OwnedRef): void;
   fit(): void;
   stats(): GraphStats | null;
+  /** Start a fresh timing window, so `stats` describes one thing at a time. */
+  resetStats(): void;
 }
 
 /**
@@ -95,7 +102,12 @@ export function mountGraph(
   let autoFolded = 0;
   let mountedKey = options.remountKey;
   let destroyed = false;
-  let firstFit = true;
+  /**
+   * Keep the whole field framed while it settles, and stop the moment the
+   * reader moves the viewport — a canvas that re-frames itself under somebody's
+   * finger is worse than one that starts off-centre.
+   */
+  let framing = true;
 
   const layout = new LayoutClient({
     createWorker: options.createLayoutWorker,
@@ -103,10 +115,7 @@ export function mountGraph(
       if (event.epoch !== epoch) return;
       settled = event.settled;
       scene?.setPositions(event.positions);
-      if (firstFit && scene) {
-        firstFit = false;
-        scene.fit();
-      }
+      if (framing) scene?.fit();
     },
   });
 
@@ -142,7 +151,7 @@ export function mountGraph(
           anchorStrength: node.anchorStrength,
         };
       }),
-      edges: edgeInputs(model),
+      edges: edgeInputs(model, props.lens !== null),
     });
   };
 
@@ -184,7 +193,10 @@ export function mountGraph(
           pin(target, built.positionOf(index), false);
         }
       },
-      onViewportChange: () => built.invalidate(),
+      onViewportChange: () => {
+        framing = false;
+        built.invalidate();
+      },
       onInk: props.onInkPointer,
     });
     rebuild();
@@ -212,14 +224,17 @@ export function mountGraph(
 
   return {
     update(next) {
+      // A lens moves every node into a new cluster. Keeping the viewport where
+      // it was would answer the reader's question off the edge of the screen.
+      const relensed = next.lens?.dimension.ref !== props.lens?.dimension.ref;
       const remounting = next.remountKey !== mountedKey;
       props = next;
       if (next.focus !== undefined && next.focus !== focus) focus = next.focus;
       if (remounting) {
         mountedKey = next.remountKey;
         focus = next.focus;
-        firstFit = true;
       }
+      if (remounting || relensed) framing = true;
       rebuild();
     },
     destroy() {
@@ -245,6 +260,9 @@ export function mountGraph(
     fit() {
       scene?.fit();
     },
+    resetStats() {
+      scene?.resetStats();
+    },
     stats() {
       if (!scene) return null;
       const frames = scene.stats();
@@ -260,7 +278,7 @@ export function mountGraph(
   };
 }
 
-function edgeInputs(model: ReturnType<typeof buildModel>) {
+function edgeInputs(model: ReturnType<typeof buildModel>, underLens: boolean) {
   const inputs: {
     source: number;
     target: number;
@@ -272,7 +290,12 @@ function edgeInputs(model: ReturnType<typeof buildModel>) {
       source: model.graph.getNodeAttributes(source).index,
       target: model.graph.getNodeAttributes(target).index,
       distance: attributes.distance,
-      strength: attributes.kind === "link" ? LINK_SPRING : GENEALOGY_SPRING,
+      strength:
+        attributes.kind === "link"
+          ? LINK_SPRING
+          : underLens
+            ? GENEALOGY_SPRING_UNDER_LENS
+            : GENEALOGY_SPRING,
     });
   });
   return inputs;
