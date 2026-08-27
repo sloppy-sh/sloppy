@@ -1,6 +1,6 @@
 import type { OwnedRef } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
-import { nodeHref, refFromPath } from './routes.js';
+import { activeRouteId, APP_ROUTES, nodeHref, refFromPath } from './routes.js';
 
 const REF = 'did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc/01JQ0R2S3T4U5V6W7X8Y9ZABC';
 
@@ -19,4 +19,20 @@ describe('nodeHref / refFromPath', () => {
 			expect(refFromPath(path)).toBeNull();
 		}
 	);
+});
+
+describe('activeRouteId', () => {
+	it.each([
+		['/', 'graph'],
+		['/labels/domain', 'labels'],
+		[nodeHref(REF as OwnedRef), 'graph']
+	])('reads %s as %s', (path, id) => {
+		expect(activeRouteId(path)).toBe(id);
+	});
+
+	it('names its own route for every entry the nav shows', () => {
+		for (const route of APP_ROUTES) {
+			expect(activeRouteId(route.href)).toBe(route.id);
+		}
+	});
 });

@@ -1,10 +1,34 @@
 /**
- * The URL a note is cited by, and its inverse. Both shells mount
- * `/n/[did]/[ulid]` on it, and the graph reads the note it is showing back out
- * of the address bar — so the two spellings have to be one function each.
+ * Where the app's pages live, and the URL a note is cited by. Both shells mount
+ * their route tree on this list and on `nodeHref`, so a page exists in one
+ * place and the two surfaces cannot drift apart.
  */
 
+import Network from '@lucide/svelte/icons/network';
+import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
+import Tags from '@lucide/svelte/icons/tags';
+import UserRound from '@lucide/svelte/icons/user-round';
 import type { OwnedRef } from '@sloppy/types';
+import type { NavItem } from '@sloppy/ui';
+
+/** In the order they are shown. `id` is what {@link activeRouteId} answers. */
+export const APP_ROUTES: NavItem[] = [
+	{ id: 'graph', label: 'Graph', href: '/', icon: Network },
+	{ id: 'labels', label: 'Labels', href: '/labels', icon: Tags },
+	{ id: 'profile', label: 'You', href: '/profile', icon: UserRound },
+	{ id: 'settings', label: 'Settings', href: '/settings', icon: SlidersHorizontal }
+];
+
+/** Reachable with no account — DESIGN.md § Persistence, on appearance. */
+export const OPEN_ROUTES = ['/sign-in', '/settings'];
+
+/** The graph is the fallback because every note sits on it. */
+export function activeRouteId(path: string): string {
+	const match = APP_ROUTES.filter((route) => route.href !== '/').find(
+		(route) => path === route.href || path.startsWith(`${route.href}/`)
+	);
+	return match?.id ?? 'graph';
+}
 
 export function nodeHref(ref: OwnedRef): string {
 	const cut = ref.lastIndexOf('/');

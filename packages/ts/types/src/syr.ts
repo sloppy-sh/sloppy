@@ -168,3 +168,68 @@ export const NodeSignedPayloadV1Schema = z.object({
   created_at: TimestampSchema,
 });
 export type NodeSignedPayloadV1 = z.infer<typeof NodeSignedPayloadV1Schema>;
+
+/**
+ * Every syr API response is wrapped in an envelope; the payload is under
+ * `data`. The listing endpoints add `pagination` beside it, which nothing here
+ * reads — a caller that needs a second page asks for one by offset.
+ */
+export function syrEnvelope<T extends z.ZodType>(
+  data: T,
+): z.ZodObject<{ data: T }> {
+  return z.object({ data });
+}
+
+/**
+ * What `POST {endpoints.uploads-owner}` answers: where to PUT the bytes, and
+ * where they will read back from. `signedUrl` is single-use and expires; the
+ * bytes behind `finalUrl` do not.
+ */
+export const SyrUploadTicketSchema = z.object({
+  signedUrl: z.url(),
+  finalUrl: z.url(),
+  uploadDid: DidSyrSchema,
+  uploadLocalId: z.string().min(1),
+});
+export type SyrUploadTicket = z.infer<typeof SyrUploadTicketSchema>;
+
+/**
+ * An upload row. `url` is null until the upload is completed, and `status` is
+ * `finalizing` on an instance whose object store has not shown the bytes yet —
+ * the caller asks again rather than treating it as a failure.
+ */
+export const SyrUploadSchema = z.object({
+  filename: z.string(),
+  mime_type: z.string(),
+  size: z.int().nonnegative(),
+  url: z.url().nullable().optional(),
+  status: z.string().optional(),
+  metadata: z
+    .object({
+      width: z.int().positive().optional(),
+      height: z.int().positive().optional(),
+    })
+    .optional(),
+});
+export type SyrUpload = z.infer<typeof SyrUploadSchema>;
+
+/** `did` is null on an account whose identity has not been minted yet. */
+export const SyrProfileSchema = z.object({
+  did: DidSyrSchema.nullable(),
+  username: z.string(),
+  display_name: z.string().nullable().optional(),
+  bio: z.string().nullable().optional(),
+  avatar_url: z.url().nullable().optional(),
+  banner_url: z.url().nullable().optional(),
+});
+export type SyrProfile = z.infer<typeof SyrProfileSchema>;
+
+/** The owner's view of one catalog entry. `local_id` pairs with `did` as its key. */
+export const SyrEmojiSchema = z.object({
+  did: DidSyrSchema,
+  local_id: z.string().min(1),
+  shortcode: z.string(),
+  url: z.url(),
+  is_sticker: z.boolean().default(false),
+});
+export type SyrEmoji = z.infer<typeof SyrEmojiSchema>;

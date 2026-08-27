@@ -5,9 +5,7 @@
 
 	// The chrome and the gate every page sits inside. Both shells mount it from
 	// their root layout, which is all a shell knows about any of this.
-	import Network from '@lucide/svelte/icons/network';
-	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
-	import { AppShell, type NavItem } from '@sloppy/ui';
+	import { AppShell } from '@sloppy/ui';
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
@@ -16,26 +14,18 @@
 	import { keyboard } from '../keyboard.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
-	import { refFromPath } from './routes.js';
+	import { activeRouteId, APP_ROUTES, OPEN_ROUTES, refFromPath } from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
-
-	/** Reachable with no account — DESIGN.md § Persistence, on appearance. */
-	const OPEN_ROUTES = ['/sign-in', '/settings'];
 
 	/** Signing in leaves the app entirely, so the note somebody came for has to
 	 *  outlive this document. */
 	const CITED = 'sloppy.cited';
 
-	const NAV: NavItem[] = [
-		{ id: 'graph', label: 'Graph', href: '/', icon: Network },
-		{ id: 'settings', label: 'Settings', href: '/settings', icon: SlidersHorizontal }
-	];
-
 	// Annotated because SvelteKit types `pathname` against THIS package's route
 	// tree, and the real one is the shells'.
 	const path: string = $derived(page.url.pathname);
-	const activeId = $derived(path === '/settings' ? 'settings' : 'graph');
+	const activeId = $derived(activeRouteId(path));
 	/** A page mounted a tick before the redirect below would spend a request on a
 	 *  credential we already know is missing. */
 	const admitted = $derived(session.ready && (session.signedIn || OPEN_ROUTES.includes(path)));
@@ -105,6 +95,6 @@
 	});
 </script>
 
-<AppShell items={NAV} {activeId} showNav={session.signedIn} keyboardOpen={keyboard.open}>
+<AppShell items={APP_ROUTES} {activeId} showNav={session.signedIn} keyboardOpen={keyboard.open}>
 	{#if admitted}{@render children()}{/if}
 </AppShell>

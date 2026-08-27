@@ -9,6 +9,7 @@ import {
 import { type DidSyr, type OwnedRef, OwnedRefSchema } from "@sloppy/types";
 import type { z } from "zod";
 import type { AuthedRequest } from "../auth/authed-request";
+import type { Delegation } from "../syr/syr.service";
 
 /** `AuthGuard` has already refused a request without one; this is the type
  *  narrowing, not a second check. */
@@ -16,6 +17,17 @@ export function viewerDid(request: AuthedRequest): DidSyr {
   const did = request.viewer?.did;
   if (!did) throw new UnauthorizedException("Sign in to continue.");
   return did;
+}
+
+/**
+ * What a route needs to act on the person's identity store as them. Held apart
+ * from {@link viewerDid} because it carries the delegated token: a route that
+ * only names the caller must not be handed a credential it could echo.
+ */
+export function viewerDelegation(request: AuthedRequest): Delegation {
+  const delegation = request.delegation;
+  if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+  return delegation;
 }
 
 export function parseBody<S extends z.ZodType>(

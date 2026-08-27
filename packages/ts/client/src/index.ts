@@ -6,19 +6,29 @@
 import {
   type BlockView,
   BlockViewSchema,
+  type CompleteUploadRequest,
   type ConsentRedirect,
   ConsentRedirectSchema,
+  type CopyEmojiRequest,
   type CreateBlockRequest,
+  type CreateEmojiRequest,
   type CreateLabelDimensionRequest,
   type CreateNodeRequest,
   type CreatePublicationRequest,
+  type CreateUploadRequest,
+  type CustomEmoji,
+  CustomEmojiSchema,
   type ExchangeSessionRequest,
   type HealthReport,
   HealthReportSchema,
   type LabelDimensionView,
   LabelDimensionViewSchema,
+  type MediaAsset,
+  MediaAssetSchema,
   type NodeView,
   type OwnedRef,
+  type ProfileView,
+  ProfileViewSchema,
   type PublicationView,
   PublicationViewSchema,
   type PublishedSubtree,
@@ -29,6 +39,9 @@ import {
   type UpdateBlockRequest,
   type UpdateLabelDimensionRequest,
   type UpdateNodeRequest,
+  type UpdateProfileRequest,
+  type UploadTicket,
+  UploadTicketSchema,
   type Viewer,
   ViewerSchema,
   parseNodeView,
@@ -38,6 +51,7 @@ import { apiUrl, isSameOrigin } from "./host.js";
 
 export * from "./errors.js";
 export * from "./host.js";
+export * from "./upload.js";
 
 export type TokenSource = string | (() => string | undefined);
 
@@ -52,7 +66,7 @@ export interface SloppyClientOptions {
 }
 
 /** A ref split into the two path segments a route binds it as. */
-function refPath(ref: OwnedRef): string {
+function refPath(ref: string): string {
   const separator = ref.lastIndexOf("/");
   if (separator < 1)
     throw new Error(`Expected a <did>/<ulid> reference: ${ref}`);
@@ -380,5 +394,77 @@ export class SloppyClient {
     _rootAddress: string,
   ): Promise<PublishedSubtree> {
     return notImplemented("Pulling a peer's subtree");
+  }
+
+  // ── Media ────────────────────────────────────────────────────────────────
+
+  /**
+   * Where to send a file, and where it will read back from. `uploadFile` in
+   * this package drives all three steps; a caller that has bytes rather than a
+   * `File` uses this and {@link completeUpload} directly.
+   */
+  async createUpload(request: CreateUploadRequest): Promise<UploadTicket> {
+    return UploadTicketSchema.parse(
+      await this.send("POST", "/media/uploads", request),
+    );
+  }
+
+  async completeUpload(request: CompleteUploadRequest): Promise<MediaAsset> {
+    return MediaAssetSchema.parse(
+      await this.send("POST", "/media/uploads/complete", request),
+    );
+  }
+
+  // ── Profile ──────────────────────────────────────────────────────────────
+
+  async profile(): Promise<ProfileView> {
+    return ProfileViewSchema.parse(
+      await this.json("/profile/me", { method: "GET" }),
+    );
+  }
+
+  async updateProfile(request: UpdateProfileRequest): Promise<ProfileView> {
+    return ProfileViewSchema.parse(
+      await this.send("PATCH", "/profile/me", request),
+    );
+  }
+
+  /** Somebody else, as the reader's own instance can resolve them. */
+  async profileOf(did: string): Promise<ProfileView> {
+    return ProfileViewSchema.parse(
+      await this.json(`/profile/${encodeURIComponent(did)}`, { method: "GET" }),
+    );
+  }
+
+  // ── Emoji ────────────────────────────────────────────────────────────────
+
+  async ownEmoji(): Promise<CustomEmoji[]> {
+    const body = await this.json("/emoji/me", { method: "GET" });
+    return (body as unknown[]).map((e) => CustomEmojiSchema.parse(e));
+  }
+
+  /** The catalog a note's author wrote their `:shortcode:` against. */
+  async emojiOf(did: string): Promise<CustomEmoji[]> {
+    const body = await this.json(`/emoji/${encodeURIComponent(did)}`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map((e) => CustomEmojiSchema.parse(e));
+  }
+
+  /** The picture is uploaded first; this names it. */
+  async addEmoji(request: CreateEmojiRequest): Promise<CustomEmoji> {
+    return CustomEmojiSchema.parse(
+      await this.send("POST", "/emoji/me", request),
+    );
+  }
+
+  async copyEmoji(request: CopyEmojiRequest): Promise<CustomEmoji> {
+    return CustomEmojiSchema.parse(
+      await this.send("POST", "/emoji/me/copies", request),
+    );
+  }
+
+  async removeEmoji(emojiId: CustomEmoji["emoji_id"]): Promise<void> {
+    await this.del(`/emoji/me${refPath(emojiId)}`);
   }
 }
