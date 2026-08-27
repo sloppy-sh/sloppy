@@ -1,0 +1,8 @@
+{
+	"$schema": "../gen/schemas/mobile-schema.json",
+	"identifier": "mobile",
+	"description": "Android and iOS. The system bars are only measurable natively: Android's WebView reports env(safe-area-inset-bottom) as 0 for the 3-button nav bar, so without this every bottom-pinned surface would sit under it.",
+	"platforms": ["android", "iOS"],
+	"windows": ["main"],
+	"permissions": ["safe-area-insets-css:default"]
+}
