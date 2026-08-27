@@ -1,5 +1,6 @@
 <script lang="ts">
 	// The list `:` opens, anchored to the caret. Its state is EmojiCompletions.
+	import { isCustomEmoji } from '../../emoji/catalog.js';
 	import type { EmojiCompletions } from './emoji-suggestion.svelte.js';
 
 	let { completions }: { completions: EmojiCompletions } = $props();
@@ -37,7 +38,11 @@
 					completions.pick(emoji);
 				}}
 			>
-				<span class="text-lg leading-none">{emoji.char}</span>
+				{#if isCustomEmoji(emoji)}
+					<img src={emoji.src} alt="" class="size-5 shrink-0 object-contain" />
+				{:else}
+					<span class="w-5 shrink-0 text-lg leading-none">{emoji.char}</span>
+				{/if}
 				<span class="truncate text-muted-foreground">{emoji.shortcode}</span>
 			</button>
 		{/each}

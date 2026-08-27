@@ -4,18 +4,19 @@
 import { Extension } from '@tiptap/core';
 import { PluginKey } from '@tiptap/pm/state';
 import Suggestion from '@tiptap/suggestion';
-import { searchEmoji, type UnicodeEmoji } from '../../emoji/catalog.js';
+import { searchEmoji, type CustomEmojiEntry, type EmojiEntry } from '../../emoji/catalog.js';
+import { emojiInsert } from './emoji-node.js';
 
 const SHOWN = 12;
 
 export class EmojiCompletions {
 	open = $state(false);
-	items = $state<UnicodeEmoji[]>([]);
+	items = $state<EmojiEntry[]>([]);
 	index = $state(0);
 	rect = $state<DOMRect | null>(null);
-	#choose: ((emoji: UnicodeEmoji) => void) | null = null;
+	#choose: ((emoji: EmojiEntry) => void) | null = null;
 
-	show(items: UnicodeEmoji[], choose: (emoji: UnicodeEmoji) => void, rect: DOMRect | null): void {
+	show(items: EmojiEntry[], choose: (emoji: EmojiEntry) => void, rect: DOMRect | null): void {
 		this.items = items;
 		this.index = Math.min(this.index, Math.max(0, items.length - 1));
 		this.rect = rect;
@@ -33,7 +34,7 @@ export class EmojiCompletions {
 		this.#choose = null;
 	}
 
-	pick(emoji: UnicodeEmoji): void {
+	pick(emoji: EmojiEntry): void {
 		this.#choose?.(emoji);
 	}
 
@@ -62,12 +63,15 @@ export class EmojiCompletions {
 
 const emojiSuggestionKey = new PluginKey('emojiSuggestion');
 
-export function EmojiSuggestion(completions: EmojiCompletions) {
+export function EmojiSuggestion(
+	completions: EmojiCompletions,
+	custom: () => readonly CustomEmojiEntry[]
+) {
 	return Extension.create({
 		name: 'emojiSuggestion',
 		addProseMirrorPlugins() {
 			return [
-				Suggestion<UnicodeEmoji>({
+				Suggestion<EmojiEntry>({
 					editor: this.editor,
 					pluginKey: emojiSuggestionKey,
 					char: ':',
@@ -76,7 +80,8 @@ export function EmojiSuggestion(completions: EmojiCompletions) {
 					// does not break the match and close the list.
 					allowToIncludeChar: true,
 					startOfLine: false,
-					items: ({ query }) => searchEmoji(query.startsWith(':') ? query.slice(1) : query, SHOWN),
+					items: ({ query }) =>
+						searchEmoji(query.startsWith(':') ? query.slice(1) : query, SHOWN, custom()),
 					command: ({ editor, props }) => {
 						// The live document, not the passed range: that closure can be a
 						// keystroke behind, and replacing the wrong span eats the query.
@@ -90,6 +95,7 @@ export function EmojiSuggestion(completions: EmojiCompletions) {
 						);
 						const typed = before.match(/:{1,2}[^\s:]*$/);
 						const from = typed ? to - typed[0].length : to;
+						const entry = emojiInsert(props, !!typed && typed[0].startsWith('::'));
 						editor
 							.chain()
 							.focus()
@@ -97,9 +103,10 @@ export function EmojiSuggestion(completions: EmojiCompletions) {
 								{
 									type: 'emoji',
 									attrs: {
-										name: props.shortcode,
-										char: props.char,
-										sticker: !!typed && typed[0].startsWith('::')
+										name: entry.shortcode,
+										char: entry.char,
+										src: entry.src,
+										sticker: entry.sticker
 									}
 								},
 								{ type: 'text', text: ' ' }

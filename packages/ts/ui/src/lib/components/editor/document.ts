@@ -9,6 +9,7 @@ import { Extension, type JSONContent } from '@tiptap/core';
 import type { MarkdownManager } from '@tiptap/markdown';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { PICTURE_NODE, pictureDataFrom, type PictureBlockData } from './picture-node.js';
 
 export const INK_NODE = 'ink';
 
@@ -22,7 +23,8 @@ export const BLOCK_NODES = [
 	'codeBlock',
 	'blockquote',
 	'horizontalRule',
-	INK_NODE
+	INK_NODE,
+	PICTURE_NODE
 ] as const;
 
 const TYPE_BY_NODE: Partial<Record<string, BlockType>> = {
@@ -31,7 +33,8 @@ const TYPE_BY_NODE: Partial<Record<string, BlockType>> = {
 	orderedList: 'list',
 	taskList: 'todo',
 	codeBlock: 'code',
-	[INK_NODE]: 'ink'
+	[INK_NODE]: 'ink',
+	[PICTURE_NODE]: 'image'
 };
 
 /** Prose the enum does not name — a quote, a rule — keeps its Markdown as a paragraph. */
@@ -95,6 +98,30 @@ export function inkDataOf(node: ProseMirrorNode): InkBlockData {
 	};
 }
 
+/** Undefined until the bytes have landed and the block has an upload to name. */
+export function pictureDataOf(node: ProseMirrorNode): PictureBlockData | undefined {
+	return pictureDataFrom({
+		upload_id: node.attrs.uploadId,
+		width: node.attrs.width,
+		height: node.attrs.height,
+		alt: node.attrs.alt
+	});
+}
+
+function pictureNodeFrom(block: BlockView, data: PictureBlockData): JSONContent {
+	return {
+		type: PICTURE_NODE,
+		attrs: {
+			blockUid: nextUid(),
+			blockRef: block.ref,
+			uploadId: data.upload_id,
+			alt: data.alt ?? '',
+			width: data.width ?? null,
+			height: data.height ?? null
+		}
+	};
+}
+
 function inkNodeFrom(block: BlockView): JSONContent {
 	const parsed = InkBlockDataSchema.safeParse(block.data);
 	const data: InkBlockData = parsed.success
@@ -137,6 +164,13 @@ export function openBlocks(blocks: readonly BlockView[], manager: MarkdownManage
 	for (const block of blocks) {
 		if (block.type === 'ink') {
 			content.push(inkNodeFrom(block));
+			continue;
+		}
+		if (block.type === 'image') {
+			// A row naming no upload has no picture to draw, so it is carried
+			// untouched rather than opened as an empty one and saved back over.
+			const picture = pictureDataFrom(block.data);
+			if (picture) content.push(pictureNodeFrom(block, picture));
 			continue;
 		}
 		if (!WRITABLE_TYPES.has(block.type)) continue;
@@ -203,6 +237,11 @@ export function docBlocks(doc: ProseMirrorNode, manager: MarkdownManager): DocBl
 		const ref = (node.attrs.blockRef as OwnedRef | null) ?? null;
 		if (node.type.name === INK_NODE) {
 			blocks.push({ uid, ref, type: 'ink', content: '', data: inkDataOf(node) });
+			return;
+		}
+		if (node.type.name === PICTURE_NODE) {
+			const picture = pictureDataOf(node);
+			if (picture) blocks.push({ uid, ref, type: 'image', content: '', data: picture });
 			return;
 		}
 		const content = manager.serialize(node.toJSON() as JSONContent).trim();
