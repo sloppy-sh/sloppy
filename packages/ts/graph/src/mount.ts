@@ -121,7 +121,14 @@ export function mountGraph(
 
   const budget: LodBudget = { ...DEFAULT_BUDGET, ...options.lod };
 
-  const rebuild = (): void => {
+  /**
+   * `relayout` false re-reads the model without disturbing the simulation: the
+   * drawn set and its order are a function of the props, so when only the
+   * palette has moved the worker's positions still belong to these nodes. A
+   * theme change that restarted the settle would shake the whole graph to
+   * change its colour.
+   */
+  const rebuild = (relayout = true): void => {
     if (!scene) return;
     const lod = applyLod(props.nodes, props.collapsed, focus, budget);
     autoFolded = lod.folded.size;
@@ -134,6 +141,8 @@ export function mountGraph(
     });
 
     scene.setModel(model, props.lens !== null);
+    if (!relayout) return;
+
     epoch += 1;
     settled = false;
     layout.send({
@@ -213,7 +222,7 @@ export function mountGraph(
   const themes = new MutationObserver(() => {
     palette = readPalette(host);
     scene?.setPalette(palette);
-    rebuild();
+    rebuild(false);
   });
   themes.observe(document.documentElement, {
     attributes: true,

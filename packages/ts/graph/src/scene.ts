@@ -210,9 +210,12 @@ export class GraphScene {
     return this.app.renderer.screen.height;
   }
 
+  /** Edges, links and labels. Mark fills live on the model, so they arrive
+   *  with the next {@link setModel}. */
   setPalette(palette: GraphPalette): void {
     this.options = { ...this.options, palette };
-    this.modelDirty = true;
+    this.lastEdgeScale = 0;
+    this.positionsDirty = true;
   }
 
   /**

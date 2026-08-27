@@ -261,6 +261,10 @@ for (const [label, action] of [
   controls.append(button);
 }
 
-Object.assign(window, { __fit: fit, __lens: cycleLens });
+Object.assign(window, {
+  __fit: fit,
+  __lens: cycleLens,
+  __stats: () => handle.stats(),
+});
 
 void run();
