@@ -1,11 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Req } from "@nestjs/common";
-import {
-  DidSyrSchema,
-  type ProfileView,
-  UpdateProfileRequestSchema,
-} from "@sloppy/types";
+import { type ProfileView, UpdateProfileRequestSchema } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
-import { parseBody, parsePatch, viewerDelegation } from "../node/request";
+import { didOrRefuse, parsePatch, viewerDelegation } from "../node/request";
 import { ProfileService } from "./profile.service";
 
 @Controller("profile")
@@ -15,10 +11,7 @@ export class ProfileController {
   @Get("me")
   me(@Req() req: AuthedRequest): Promise<ProfileView> {
     const delegation = viewerDelegation(req);
-    return this.profiles.read(
-      delegation.syr_instance_url,
-      parseBody(DidSyrSchema, delegation.did),
-    );
+    return this.profiles.read(delegation.syr_instance_url, delegation.did);
   }
 
   @Patch("me")
@@ -44,7 +37,7 @@ export class ProfileController {
   ): Promise<ProfileView> {
     return this.profiles.read(
       viewerDelegation(req).syr_instance_url,
-      parseBody(DidSyrSchema, decodeURIComponent(did)),
+      didOrRefuse(did),
     );
   }
 }

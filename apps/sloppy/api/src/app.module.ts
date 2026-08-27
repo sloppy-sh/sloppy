@@ -12,10 +12,8 @@ import { ProfileModule } from "./profile/profile.module";
 
 /**
  * The whole application, wired once. A milestone fills one of the modules
- * below; a new entry earns its place by owning a concern none of them does —
- * the three at the foot of this list stand between Sloppy and the identity
- * store, which is nothing the graph modules above them know about.
- * docs/ARCHITECTURE.md § "Monorepo layout".
+ * below rather than adding another; an entry earns its place only by owning a
+ * concern none of the others does. docs/ARCHITECTURE.md § "Monorepo layout".
  */
 @Module({
   imports: [

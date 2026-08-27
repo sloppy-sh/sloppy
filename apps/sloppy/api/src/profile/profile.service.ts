@@ -1,13 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import type {
-  DidSyr,
   ProfileView,
   SyrProfile,
   UpdateProfileRequest,
 } from "@sloppy/types";
 import { type Delegation, SyrService } from "../syr/syr.service";
 
-function viewOf(did: DidSyr, profile: SyrProfile): ProfileView {
+function viewOf(did: string, profile: SyrProfile): ProfileView {
   return {
     did,
     username: profile.username,
@@ -33,7 +32,7 @@ export class ProfileService {
    * identity; resolving a stranger's provider is what pulling a subtree does,
    * and it hands the DID here once it has.
    */
-  async read(instanceUrl: string, did: DidSyr): Promise<ProfileView> {
+  async read(instanceUrl: string, did: string): Promise<ProfileView> {
     return viewOf(did, await this.syr.readProfile(instanceUrl, did));
   }
 
@@ -44,6 +43,6 @@ export class ProfileService {
     patch: UpdateProfileRequest,
   ): Promise<ProfileView> {
     await this.syr.updateProfile(delegation, patch);
-    return this.read(delegation.syr_instance_url, delegation.did as DidSyr);
+    return this.read(delegation.syr_instance_url, delegation.did);
   }
 }

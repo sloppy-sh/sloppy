@@ -1,5 +1,5 @@
 // Reading a remote picture into memory, for the one case that is not a render:
-// taking a copy of it. `asset.controller.ts` streams instead, because nothing
+// taking a copy of it. `proxy.controller.ts` streams instead, because nothing
 // there ever needs the whole file at once.
 
 import {

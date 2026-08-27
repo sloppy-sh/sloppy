@@ -4,7 +4,6 @@ import {
   Get,
   HttpException,
   HttpStatus,
-  Injectable,
   Logger,
   Query,
   Req,
@@ -22,7 +21,6 @@ const PROXY_TIMEOUT_MS = 10_000;
 const RATE_CAPACITY = 300;
 const RATE_REFILL_PER_SEC = 5;
 
-@Injectable()
 class ProxyRate {
   private readonly buckets = new Map<string, { tokens: number; at: number }>();
 

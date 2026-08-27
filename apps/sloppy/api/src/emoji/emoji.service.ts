@@ -3,7 +3,6 @@ import type {
   CopyEmojiRequest,
   CreateEmojiRequest,
   CustomEmoji,
-  DidSyr,
   SyrEmoji,
 } from "@sloppy/types";
 import { AppConfigService } from "../config/app-config.service";
@@ -43,7 +42,7 @@ export class EmojiService {
     return (await this.syr.listOwnEmoji(delegation)).map(viewOf);
   }
 
-  async listFor(instanceUrl: string, did: DidSyr): Promise<CustomEmoji[]> {
+  async listFor(instanceUrl: string, did: string): Promise<CustomEmoji[]> {
     return (await this.syr.listPublicEmoji(instanceUrl, did)).map(viewOf);
   }
 

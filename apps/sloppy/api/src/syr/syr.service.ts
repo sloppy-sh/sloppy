@@ -367,15 +367,14 @@ export class SyrService {
   }
 
   /**
-   * Step three, once the bytes have been PUT. An instance whose store has not
-   * shown them yet answers `finalizing` rather than a failure, and that is
-   * passed straight back so the caller asks again instead of giving up.
+   * Step three, once the bytes have been PUT. `null` where the instance's own
+   * store has not shown them yet — not a failure, and the caller asks again.
    */
   async completeUpload(
     delegation: Delegation,
     upload: { did: string; localId: string },
     measured: { width?: number; height?: number; sha256?: string },
-  ): Promise<SyrUpload> {
+  ): Promise<SyrUpload | null> {
     const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/uploads`;
     const failure = "That file did not finish uploading. Try again.";
     const body = await this.asPerson(
@@ -393,7 +392,7 @@ export class SyrService {
       failure,
     );
     if (z.object({ status: z.literal("finalizing") }).safeParse(body).success) {
-      return { filename: "", mime_type: "", size: 0, status: "finalizing" };
+      return null;
     }
     return this.readShape(syrEnvelope(SyrUploadSchema), body, url, failure)
       .data;

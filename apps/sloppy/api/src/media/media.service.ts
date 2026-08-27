@@ -40,6 +40,7 @@ export function roleLimits(role: MediaRole): {
 /** How long to keep asking a store that has not seen the bytes land yet. */
 const FINALIZE_ATTEMPTS = 5;
 const FINALIZE_DELAY_MS = 1500;
+const SEND_TIMEOUT_MS = 30_000;
 
 function megabytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
@@ -119,6 +120,7 @@ export class MediaService {
       method: "PUT",
       headers: ticket.upload_headers,
       body: file.bytes as BodyInit,
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
     if (!sent.ok) {
       throw new BadRequestException("That file could not be added. Try again.");
@@ -148,7 +150,7 @@ export class MediaService {
         upload,
         measured,
       );
-      if (stored.status !== "finalizing" && stored.url) {
+      if (stored?.url) {
         return {
           upload_id: request.upload_id,
           url: stored.url,

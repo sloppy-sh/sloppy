@@ -57,6 +57,10 @@ function put(
   onProgress?: UploadProgress,
 ): Promise<void> {
   return new Promise((done, fail) => {
+    if (stop.aborted) {
+      fail(new Error("That file was not added."));
+      return;
+    }
     const request = new XMLHttpRequest();
     request.open("PUT", url, true);
     for (const [name, value] of Object.entries(headers)) {

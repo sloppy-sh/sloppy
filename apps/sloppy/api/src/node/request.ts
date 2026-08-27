@@ -6,7 +6,12 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { type DidSyr, type OwnedRef, OwnedRefSchema } from "@sloppy/types";
+import {
+  type DidSyr,
+  DidSyrSchema,
+  type OwnedRef,
+  OwnedRefSchema,
+} from "@sloppy/types";
 import type { z } from "zod";
 import type { AuthedRequest } from "../auth/authed-request";
 import type { Delegation } from "../syr/syr.service";
@@ -63,6 +68,14 @@ export function parsePatch<S extends z.ZodType>(
       .filter((field) => field in parsed)
       .map((field) => [field, parsed[field]]),
   ) as Partial<z.output<S>>;
+}
+
+/** An identity named in a path. A person never types one — it arrives from a
+ *  link — so a malformed one is a page that is not there. */
+export function didOrRefuse(raw: string): DidSyr {
+  const parsed = DidSyrSchema.safeParse(decodeURIComponent(raw));
+  if (!parsed.success) throw new NotFoundException("That person is not here.");
+  return parsed.data;
 }
 
 /** `null` rather than a refusal, for a route where "gone" is an answer. */

@@ -12,10 +12,9 @@ import {
   CopyEmojiRequestSchema,
   CreateEmojiRequestSchema,
   type CustomEmoji,
-  DidSyrSchema,
 } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
-import { parseBody, viewerDelegation } from "../node/request";
+import { didOrRefuse, parseBody, viewerDelegation } from "../node/request";
 import { EmojiService } from "./emoji.service";
 
 @Controller("emoji")
@@ -68,7 +67,7 @@ export class EmojiController {
   ): Promise<CustomEmoji[]> {
     return this.emoji.listFor(
       viewerDelegation(req).syr_instance_url,
-      parseBody(DidSyrSchema, decodeURIComponent(did)),
+      didOrRefuse(did),
     );
   }
 }
