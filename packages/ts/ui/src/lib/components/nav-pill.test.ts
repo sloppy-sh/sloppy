@@ -2,13 +2,25 @@
 import HouseIcon from '@lucide/svelte/icons/house';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { stubResizeObserver } from './dom.test-support.js';
+import { stubMediaQuery, stubResizeObserver } from './dom.test-support.js';
+import type { Person } from './identity/person.js';
 import NavPill, { type NavPillProps } from './nav-pill.svelte';
 
 const ITEMS = [
 	{ id: 'graph', label: 'Graph', href: '/', icon: HouseIcon },
 	{ id: 'labels', label: 'Labels', href: '/labels', icon: HouseIcon }
 ];
+
+const ADA: Person = {
+	displayName: 'Ada Lovelace',
+	handle: 'ada',
+	bio: null,
+	avatar: '/api/proxy?ref=avatar',
+	banner: null
+};
+
+const you = (nav: HTMLElement) =>
+	[...nav.querySelectorAll('a')].find((link) => link.textContent?.includes('You'));
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
@@ -70,6 +82,36 @@ describe('the nav pill', () => {
 		for (const link of nav.querySelectorAll('a')) {
 			expect(link.className).toContain('min-h-11');
 		}
+	});
+
+	it('shows the person on their own destination instead of a glyph', () => {
+		stubMediaQuery(() => false);
+		const nav = render({
+			items: [
+				...ITEMS,
+				{ id: 'profile', label: 'You', href: '/profile', icon: HouseIcon, person: ADA }
+			]
+		});
+		expect(you(nav)?.querySelector('img')?.src).toContain('ref=avatar');
+		expect(you(nav)?.querySelector('svg')).toBeNull();
+	});
+
+	it('falls back to their initials, not to the glyph, before they choose a picture', () => {
+		stubMediaQuery(() => false);
+		const nav = render({
+			items: [
+				...ITEMS,
+				{
+					id: 'profile',
+					label: 'You',
+					href: '/profile',
+					icon: HouseIcon,
+					person: { ...ADA, avatar: null }
+				}
+			]
+		});
+		expect(you(nav)?.textContent).toContain('AL');
+		expect(you(nav)?.querySelector('svg')).toBeNull();
 	});
 
 	it('draws an action beside the destinations only when there is one', () => {

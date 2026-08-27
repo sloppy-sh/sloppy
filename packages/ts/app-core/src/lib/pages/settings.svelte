@@ -3,9 +3,12 @@
 	   to the shells, so this package has no manifest for `resolve()` to check
 	   against. */
 
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
 		ACCENT_LABELS,
 		ACCENTS,
@@ -20,6 +23,11 @@
 	let leaving = $state(false);
 
 	const instance = $derived(session.viewer ? new URL(session.viewer.syr_instance_url).host : null);
+	const profile = $derived(people.me);
+
+	$effect(() => {
+		if (session.signedIn && !people.me) void people.read().catch(() => {});
+	});
 
 	async function signOut() {
 		leaving = true;
@@ -28,6 +36,7 @@
 		} finally {
 			nodes.clear();
 			labels.clear();
+			people.hold(null);
 			leaving = false;
 		}
 	}
@@ -98,6 +107,15 @@
 
 		<div class="space-y-3 border-t border-border pt-8">
 			{#if session.signedIn}
+				{#if profile}
+					<a
+						href="/profile"
+						class="-mx-2 flex min-h-14 items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors duration-150 ease-out hover:bg-muted/70 motion-reduce:transition-none"
+					>
+						<PersonChip person={personFrom(profile)} />
+						<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+					</a>
+				{/if}
 				<p class="text-sm text-muted-foreground">
 					Your identity lives at <span class="text-foreground select-text">{instance}</span>.
 				</p>

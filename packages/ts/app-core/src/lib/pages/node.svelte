@@ -22,6 +22,7 @@
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
 	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -360,6 +361,8 @@
 				aria-label="Title"
 				class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-semibold tracking-tight placeholder:text-muted-foreground/60 focus-visible:outline-none"
 			></textarea>
+
+			<NoteAuthor did={node.created_by} />
 
 			{#if unsaved?.ref === ref}
 				<p class="text-sm text-destructive" role="alert">{unsaved.message}</p>
