@@ -630,12 +630,20 @@ export class SyrService {
       );
       throw new ServiceUnavailableException(failure);
     }
+    const body = await response.text().catch(() => "");
     if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      this.logger.warn(`${url} answered ${response.status} ${detail}`);
-      throw this.refusal(response.status, detail, failure);
+      this.logger.warn(`${url} answered ${response.status} ${body}`);
+      throw this.refusal(response.status, body, failure);
     }
-    return response.json();
+    // A store reporting a change it made sends no body — a 204 on one instance,
+    // an empty 200 on another. Neither is JSON, and both read as `null` here.
+    if (!body.trim()) return null;
+    try {
+      return JSON.parse(body);
+    } catch {
+      this.logger.warn(`${url} answered something that is not JSON`);
+      throw new ServiceUnavailableException(failure);
+    }
   }
 
   /**
@@ -644,6 +652,11 @@ export class SyrService {
    * somebody back into a wall. Only a 5xx — the instance itself failing — keeps
    * the retry, and the store's own sentence is preferred over ours wherever it
    * wrote one for a person.
+   *
+   * The two refusals a caller does something different about keep the status
+   * they arrived with: a surface offers to reconnect the account on 403 and
+   * treats 404 as the outcome it was asking for, and both are indistinguishable
+   * once they are one 400.
    */
   private refusal(
     status: number,
@@ -653,16 +666,31 @@ export class SyrService {
     if (status >= 500 || status === 429) {
       return new ServiceUnavailableException(failure);
     }
-    return new HttpException(said(body) ?? failure, HttpStatus.BAD_REQUEST);
+    const kept =
+      status === HttpStatus.FORBIDDEN || status === HttpStatus.NOT_FOUND;
+    const answer = kept ? status : HttpStatus.BAD_REQUEST;
+    const wrote = said(body);
+    return new HttpException(
+      {
+        statusCode: answer,
+        message: wrote.message ?? failure,
+        ...(wrote.code ? { code: wrote.code } : {}),
+      },
+      answer,
+    );
   }
 }
 
-/** syr answers a refusal with `{ message }`; anything else is for a log. */
-function said(body: string): string | null {
+/** syr answers a refusal with `{ message }` for a person and, where the reason
+ *  is one a caller can act on, a `code` for the caller. */
+function said(body: string): { message?: string; code?: string } {
   const parsed = z
-    .object({ message: z.string().min(1).max(300) })
+    .object({
+      message: z.string().min(1).max(300).optional(),
+      code: z.string().min(1).max(64).optional(),
+    })
     .safeParse(parseJson(body));
-  return parsed.success ? parsed.data.message : null;
+  return parsed.success ? parsed.data : {};
 }
 
 function parseJson(body: string): unknown {

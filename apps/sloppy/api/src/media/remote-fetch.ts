@@ -7,7 +7,11 @@ import {
   HttpException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { fetchReachable, ownOrigin } from "./remote-host";
+import {
+  fetchReachable,
+  ownOrigin,
+  type ReachableResponse,
+} from "./remote-host";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -60,8 +64,8 @@ async function read(
   target: string,
   policy: { allowPrivate: boolean; publicUrl: string },
   signal: AbortSignal,
-): Promise<Response> {
-  let response: Response;
+): Promise<ReachableResponse> {
+  let response: ReachableResponse;
   try {
     response = await fetchReachable(
       target,
@@ -85,7 +89,7 @@ async function read(
 }
 
 async function collect(
-  response: Response,
+  response: ReachableResponse,
   maxBytes: number,
   stop: AbortController,
 ): Promise<Uint8Array> {

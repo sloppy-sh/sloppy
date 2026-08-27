@@ -12,7 +12,7 @@ import type { AddressInfo } from "node:net";
 import { ForbiddenException } from "@nestjs/common";
 import { afterEach, describe, expect, it } from "vitest";
 import { readRemotePicture } from "./remote-fetch";
-import { fetchReachable } from "./remote-host";
+import { fetchReachable, isReachableRemoteHost } from "./remote-host";
 
 const PNG = "image/png";
 const open = { allowPrivate: true };
@@ -47,6 +47,34 @@ afterEach(async () => {
 });
 
 const METADATA = "http://169.254.169.254/latest/meta-data/";
+
+/** Resolves to loopback on every machine that has a hosts file, and is not
+ *  spelled the way the name check knows to refuse — so what settles it is the
+ *  address it resolves to, which is the whole claim below. */
+const NAMED_LOOPBACK = "localhost.";
+
+describe("the address behind a name", () => {
+  async function named(): Promise<string> {
+    const origin = await serving({
+      "/x": head(200, { "content-type": PNG }),
+    });
+    return `http://${NAMED_LOOPBACK}:${new URL(origin).port}/x`;
+  }
+
+  it("refuses a name that resolves where the policy will not go", async () => {
+    const target = await named();
+    expect(isReachableRemoteHost(NAMED_LOOPBACK, closed)).toBe(true);
+
+    await expect(fetchReachable(target, closed, {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it("reaches one whose address the policy allows", async () => {
+    const answer = await fetchReachable(await named(), open, {});
+    expect(answer.status).toBe(200);
+  });
+});
 
 describe("following a redirect", () => {
   it("checks the address it is sent to, not only the one it was given", async () => {

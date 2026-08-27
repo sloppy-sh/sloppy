@@ -2,8 +2,13 @@
 // fetches was named by somebody else's note, so the answer decides whether a
 // stranger can aim this instance at its own network.
 
+import { type LookupAllOptions, lookup as resolveHost } from "node:dns";
 import { isIP } from "node:net";
 import { ForbiddenException } from "@nestjs/common";
+// Both from the same copy: Node's own `fetch` is undici, but refuses a
+// dispatcher built by a separately installed one — and a dispatcher is the only
+// place a connection's address check can live.
+import { Agent, type RequestInit, type Response, fetch } from "undici";
 
 /** Refused whatever the deployment says: the cloud metadata service, multicast
  *  and the ranges that are never a real host. */
@@ -40,9 +45,10 @@ function privateV6(ip: string): boolean {
  * not have: two instances on one LAN are a real test, and the same permission
  * in production is a stranger reading this network through Sloppy.
  *
- * A hostname is allowed on its face. Pinning it through DNS is the missing
- * half of this — a name that resolves into the private range still gets
- * fetched, so this bounds the damage rather than closing it.
+ * A name is not settled here, because a name is not an address:
+ * `metadata.google.internal` and a wildcard host pointed at loopback both pass
+ * this and are refused by `fetchReachable`, which applies this same answer to
+ * what the name resolves to and connects to nothing else.
  */
 export function isReachableRemoteHost(
   host: string,
@@ -76,17 +82,15 @@ export function reachableUrl(
   target: string,
   policy: { allowPrivate: boolean; ownOrigin?: string },
 ): URL {
-  const refuse = () =>
-    new ForbiddenException("That picture could not be loaded.");
   let url: URL;
   try {
     url = new URL(target);
   } catch {
-    throw refuse();
+    throw refused();
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw refuse();
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw refused();
   if (policy.ownOrigin && url.origin === policy.ownOrigin) return url;
-  if (!isReachableRemoteHost(url.hostname, policy)) throw refuse();
+  if (!isReachableRemoteHost(url.hostname, policy)) throw refused();
   return url;
 }
 
@@ -105,6 +109,54 @@ export interface HostPolicy {
   ownOrigin?: string;
 }
 
+export type ReachableResponse = Response;
+
+function refused(): ForbiddenException {
+  return new ForbiddenException("That picture could not be loaded.");
+}
+
+/** Thrown in the connection's own resolution step, so it reaches the caller
+ *  under a `fetch failed` it has to look inside. */
+class RefusedAddress extends Error {}
+
+/**
+ * A connection that resolves the name itself, refuses unless **every** address
+ * it resolves to passes the policy, and then connects to one of those — so the
+ * address a fetch reaches is the address that was checked, and a second
+ * resolution cannot answer differently in between.
+ */
+function pinnedTo(allowPrivate: boolean): Agent {
+  return new Agent({
+    connect: {
+      lookup(host, options, done) {
+        const all: LookupAllOptions = { ...options, all: true };
+        resolveHost(host, all, (err, entries) => {
+          if (err) return done(err, "", 0);
+          const reaches = (entry: { address: string }) =>
+            isReachableRemoteHost(entry.address, { allowPrivate });
+          if (entries.length === 0 || !entries.every(reaches)) {
+            return done(new RefusedAddress(host), "", 0);
+          }
+          if (options.all) return done(null, entries);
+          done(null, entries[0].address, entries[0].family);
+        });
+      },
+    },
+  });
+}
+
+const PINNED = {
+  strict: pinnedTo(false),
+  permissive: pinnedTo(true),
+};
+
+/** `undefined` for this instance's own address, whose exemption `reachableUrl`
+ *  states and which a resolved-address policy would otherwise overrule. */
+function connectionFor(at: URL, policy: HostPolicy): Agent | undefined {
+  if (policy.ownOrigin && at.origin === policy.ownOrigin) return undefined;
+  return policy.allowPrivate ? PINNED.permissive : PINNED.strict;
+}
+
 /** Enough to follow a store that moved its bucket, not enough to be walked
  *  around a network on. */
 const MAX_REDIRECTS = 3;
@@ -119,19 +171,43 @@ export async function fetchReachable(
   target: string,
   policy: HostPolicy,
   init: RequestInit,
-): Promise<Response> {
+): Promise<ReachableResponse> {
   let at = reachableUrl(target, policy);
   for (let hop = 0; ; hop++) {
-    const response = await fetch(at, { ...init, redirect: "manual" });
+    const response = await connect(at, policy, init);
     const location = response.headers.get("location");
     if (!isRedirect(response.status) || !location) return response;
 
     await response.body?.cancel().catch(() => undefined);
-    if (hop >= MAX_REDIRECTS) {
-      throw new ForbiddenException("That picture could not be loaded.");
-    }
+    if (hop >= MAX_REDIRECTS) throw refused();
     at = reachableUrl(new URL(location, at).toString(), policy);
   }
+}
+
+async function connect(
+  at: URL,
+  policy: HostPolicy,
+  init: RequestInit,
+): Promise<ReachableResponse> {
+  try {
+    return await fetch(at, {
+      ...init,
+      redirect: "manual",
+      dispatcher: connectionFor(at, policy),
+    });
+  } catch (error) {
+    if (refusedAddress(error)) throw refused();
+    throw error;
+  }
+}
+
+function refusedAddress(error: unknown): boolean {
+  let at: unknown = error;
+  while (at instanceof Error) {
+    if (at instanceof RefusedAddress) return true;
+    at = at.cause;
+  }
+  return false;
 }
 
 function isRedirect(status: number): boolean {

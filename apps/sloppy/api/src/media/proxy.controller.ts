@@ -13,7 +13,11 @@ import type { Response } from "express";
 import type { AuthedRequest } from "../auth/authed-request";
 import { Public } from "../auth/public.decorator";
 import { AppConfigService } from "../config/app-config.service";
-import { fetchReachable, ownOrigin } from "./remote-host";
+import {
+  fetchReachable,
+  ownOrigin,
+  type ReachableResponse,
+} from "./remote-host";
 
 const MAX_PROXY_BYTES = 32 * 1024 * 1024;
 const PROXY_TIMEOUT_MS = 10_000;
@@ -87,7 +91,7 @@ export class ProxyController {
     const stop = new AbortController();
     const timer = setTimeout(() => stop.abort(), PROXY_TIMEOUT_MS);
 
-    let upstream: globalThis.Response;
+    let upstream: ReachableResponse;
     try {
       upstream = await fetchReachable(
         target,

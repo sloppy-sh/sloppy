@@ -1,7 +1,7 @@
 {
   "name": "@sloppy/api",
   "version": "0.0.1",
-  "description": "Sloppy API \u2014 nodes, addresses, labels, blocks and ink, over Sloppy's own SurrealDB. Hosted and self-hostable. See docs/ARCHITECTURE.md.",
+  "description": "Sloppy API — nodes, addresses, labels, blocks and ink, over Sloppy's own SurrealDB. Hosted and self-hostable. See docs/ARCHITECTURE.md.",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
@@ -31,6 +31,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "surrealdb": "catalog:",
+    "undici": "^7.29.0",
     "zod": "catalog:"
   },
   "devDependencies": {

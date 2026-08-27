@@ -32,7 +32,9 @@ const DELEGATION = {
   access_token: "the-delegated-token",
 };
 
-type Answer = { status?: number; body?: unknown } | Error;
+/** `text` is what an instance sent when it is not the JSON `body` would be —
+ *  including nothing at all, which is how a store reports a change it made. */
+type Answer = { status?: number; body?: unknown; text?: string } | Error;
 
 /** One fake instance, answering by path. Records what it was asked. */
 function instance(answers: Record<string, Answer> = {}) {
@@ -46,8 +48,12 @@ function instance(answers: Record<string, Answer> = {}) {
         ? { body: MANIFEST }
         : { status: 404, body: {} });
     if (answer instanceof Error) throw answer;
-    return new Response(JSON.stringify(answer.body ?? {}), {
-      status: answer.status ?? 200,
+    const status = answer.status ?? 200;
+    const sent =
+      answer.text ??
+      (answer.body === undefined ? null : JSON.stringify(answer.body));
+    return new Response(status === 204 ? null : sent, {
+      status,
       headers: { "content-type": "application/json" },
     });
   });
@@ -432,7 +438,7 @@ describe("handing a file to somebody's store", () => {
       new SyrService().createUpload(DELEGATION, A_FILE),
     ).rejects.toMatchObject({
       status: 400,
-      response: "You have used all of your space.",
+      response: { message: "You have used all of your space." },
     });
   });
 
@@ -441,6 +447,59 @@ describe("handing a file to somebody's store", () => {
 
     await expect(
       new SyrService().createUpload(DELEGATION, A_FILE),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});
+
+describe("a change the store made, and what it left a caller to work with", () => {
+  const EMOJI = `/api/emojis/${encodeURIComponent(DID)}/01JEMOJI`;
+  const remove = () =>
+    new SyrService().deleteEmoji(DELEGATION, { did: DID, localId: "01JEMOJI" });
+
+  // A route that deletes and then fails to say so is a surface reporting an
+  // error over a list that is already correct. Instances differ on whether
+  // "done, nothing to report" is a 204 or an empty 200; neither is JSON.
+  it.each([
+    { status: 204 },
+    { status: 200, text: "" },
+  ])("reads an answer with no body as done (%o)", async (answer) => {
+    instance({ [EMOJI]: answer });
+    await expect(remove()).resolves.toBeUndefined();
+  });
+
+  // "Reconnect your account" is a different thing to do next than "that could
+  // not be saved", and they are the same 400 unless the status survives.
+  it("keeps the status and the code where the account needs reconnecting", async () => {
+    instance({
+      [EMOJI]: {
+        status: 403,
+        body: {
+          code: "insufficient_scope",
+          message: "Connect this app to your account again.",
+        },
+      },
+    });
+
+    await expect(remove()).rejects.toMatchObject({
+      status: 403,
+      response: {
+        code: "insufficient_scope",
+        message: "Connect this app to your account again.",
+      },
+    });
+  });
+
+  it("keeps a missing target missing, so deleting twice is one outcome", async () => {
+    instance({ [EMOJI]: { status: 404, body: { message: "Not there." } } });
+    await expect(remove()).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("does not read an answer that is not JSON at all", async () => {
+    vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+    instance({ "/api/user/profile": { text: "<html>nope" } });
+
+    await expect(
+      new SyrService().updateProfile(DELEGATION, { display_name: "A" }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
