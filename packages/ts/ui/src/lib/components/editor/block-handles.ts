@@ -41,8 +41,10 @@ function indexOf(rows: readonly Row[], uid: string): number {
 	return rows.findIndex((row) => row.node.attrs.blockUid === uid);
 }
 
-/** False where the block was already where it was asked to go. */
+/** False where the block was already where it was asked to go, and where the
+ *  note was closed before the drag over it ended. */
 function move(view: EditorView, uid: string, to: number): boolean {
+	if (view.isDestroyed) return false;
 	const rows = rowsOf(view);
 	const from = indexOf(rows, uid);
 	const at = Math.max(0, Math.min(rows.length - 1, to));
@@ -94,6 +96,7 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 	let frame = 0;
 
 	function aim(): void {
+		if (view.isDestroyed) return;
 		const rows = rowsOf(view);
 		slot = slotAt(rows, y);
 		const across = view.dom.getBoundingClientRect();
