@@ -70,8 +70,8 @@ describe('the session', () => {
 		session.adopt(VIEWER, 'a-live-token');
 		answer();
 		await asking;
-		expect(session.viewer?.did).toBe(VIEWER.did);
-		expect(session.loading).toBe(false);
+		expect(session.signedIn).toBe(true);
+		expect(await session.load()).toEqual(VIEWER);
 	});
 
 	it('does not hand a later ask the request the consent round-trip outran', async () => {

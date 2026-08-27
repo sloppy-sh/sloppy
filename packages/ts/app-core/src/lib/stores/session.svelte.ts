@@ -14,9 +14,8 @@ class SessionStore {
 	#ready = $state(false);
 	#loading = $state(false);
 	#inflight: Promise<Viewer | null> | null = null;
-	// A sign-out or a sign-in that lands while `me()` is in flight must not be
-	// undone by its answer, which the server may have sent before either reached
-	// it.
+	// A session change that lands while `me()` is in flight must not be undone by
+	// its answer, which the server may have sent before the change reached it.
 	#epoch = 0;
 
 	get viewer(): Viewer | null {
