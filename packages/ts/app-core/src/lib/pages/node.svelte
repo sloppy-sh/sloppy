@@ -38,7 +38,8 @@
 	let blocks = $state<BlockView[]>([]);
 	let loading = $state(true);
 	let unreachable = $state<string | null>(null);
-	let unsaved = $state<string | null>(null);
+	/** The note whose title would not save, and what to tell the person writing it. */
+	let unsaved = $state<{ ref: OwnedRef; message: string } | null>(null);
 	let adding = $state(false);
 	let refused = $state<string | null>(null);
 	let titleField = $state<HTMLTextAreaElement | null>(null);
@@ -99,13 +100,16 @@
 
 	async function saveTitle(): Promise<void> {
 		const draft = typed;
-		if (!draft || draft.ref !== ref || draft.title === node?.title) return;
+		if (!draft || draft.title === nodes.get(draft.ref)?.title) return;
 		try {
-			await nodes.update(ref, { title: draft.title });
+			await nodes.update(draft.ref, { title: draft.title });
 			if (typed === draft) typed = null;
-			unsaved = null;
+			if (unsaved?.ref === draft.ref) unsaved = null;
 		} catch (error) {
-			unsaved = serverMessage(error) ?? 'Sloppy could not save that title. Try again in a moment.';
+			unsaved = {
+				ref: draft.ref,
+				message: serverMessage(error) ?? 'Sloppy could not save that title. Try again in a moment.'
+			};
 		}
 	}
 
@@ -181,7 +185,9 @@
 				class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-semibold tracking-tight placeholder:text-muted-foreground/60 focus-visible:outline-none"
 			></textarea>
 
-			{#if unsaved}<p class="text-sm text-destructive" role="alert">{unsaved}</p>{/if}
+			{#if unsaved?.ref === ref}
+				<p class="text-sm text-destructive" role="alert">{unsaved.message}</p>
+			{/if}
 		</header>
 
 		{#if loading}

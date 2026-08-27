@@ -22,7 +22,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
-	import { pushState, replaceState } from '$app/navigation';
+	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -100,13 +100,20 @@
 		}
 	}
 
-	onMount(() => {
-		// A note reached by its address arrives in the URL and nowhere else; from
-		// here on the history entry is the only place the open note is read from.
+	// A note reached by its address arrives in the URL and nowhere else, at either
+	// moment this page can arrive at one: mounting on it, or a navigation landing
+	// on it — which settles `page.state` last, after any mount it caused.
+	function openCited(): void {
 		const cited = refFromPath(page.url.pathname);
 		if (cited && !page.state.note) replaceState('', { note: cited });
+	}
+
+	onMount(() => {
+		openCited();
 		void loadGraph();
 	});
+
+	afterNavigate(openCited);
 
 	// Re-runs as the cache fills, so a note reached by its address arrives with
 	// the branch that leads to it already open.
