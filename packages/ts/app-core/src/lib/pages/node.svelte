@@ -20,13 +20,13 @@
 
 	let {
 		ref,
-		naming = false,
+		naming = null,
 		onOpen,
 		onClose
 	}: {
 		ref: OwnedRef;
-		/** This note has only just been written; the caret belongs in its title. */
-		naming?: boolean;
+		/** The note just written, whose title is still to be given, if it is this one. */
+		naming?: OwnedRef | null;
 		onOpen: (ref: OwnedRef, fresh?: boolean) => void;
 		onClose: () => void;
 	} = $props();
@@ -49,8 +49,15 @@
 
 	const byOrd = (a: BlockView, b: BlockView) => compareOrd(a.ord, b.ord);
 
+	// The modal claims focus for itself one frame after it mounts, so the caret
+	// can only be put in the title the frame after that.
 	$effect(() => {
-		if (naming) titleField?.focus();
+		const field = titleField;
+		if (naming !== ref || !field) return;
+		let frame = requestAnimationFrame(() => {
+			frame = requestAnimationFrame(() => field.focus());
+		});
+		return () => cancelAnimationFrame(frame);
 	});
 
 	/** A title wraps rather than scrolling out of sight, so the box follows it. */
@@ -175,32 +182,37 @@
 			></textarea>
 
 			{#if unsaved}<p class="text-sm text-destructive" role="alert">{unsaved}</p>{/if}
-			{#if unreachable}<p class="text-sm text-destructive" role="alert">{unreachable}</p>{/if}
 		</header>
 
-		<BlockStack
-			{node}
-			{blocks}
-			onCreate={async (request: CreateBlockRequest) => {
-				const block = await api.createBlock(request);
-				blocks = [...blocks, block].sort(byOrd);
-				return block;
-			}}
-			onUpdate={async (block: OwnedRef, request: UpdateBlockRequest) => {
-				const saved = await api.updateBlock(block, request);
-				blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
-				return saved;
-			}}
-			onRemove={async (block: OwnedRef) => {
-				await api.deleteBlock(block);
-				blocks = blocks.filter((b) => b.ref !== block);
-			}}
-			onReorder={async (block: OwnedRef, after: OwnedRef | null) => {
-				const saved = await api.updateBlock(block, { after });
-				blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
-				return saved;
-			}}
-		/>
+		{#if loading}
+			<Skeleton class="h-24 w-full" />
+		{:else if unreachable}
+			<p class="text-sm text-destructive" role="alert">{unreachable}</p>
+		{:else}
+			<BlockStack
+				{node}
+				{blocks}
+				onCreate={async (request: CreateBlockRequest) => {
+					const block = await api.createBlock(request);
+					blocks = [...blocks, block].sort(byOrd);
+					return block;
+				}}
+				onUpdate={async (block: OwnedRef, request: UpdateBlockRequest) => {
+					const saved = await api.updateBlock(block, request);
+					blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
+					return saved;
+				}}
+				onRemove={async (block: OwnedRef) => {
+					await api.deleteBlock(block);
+					blocks = blocks.filter((b) => b.ref !== block);
+				}}
+				onReorder={async (block: OwnedRef, after: OwnedRef | null) => {
+					const saved = await api.updateBlock(block, { after });
+					blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
+					return saved;
+				}}
+			/>
+		{/if}
 
 		<div class="space-y-3 border-t border-border pt-6">
 			{#if children.length > 0}

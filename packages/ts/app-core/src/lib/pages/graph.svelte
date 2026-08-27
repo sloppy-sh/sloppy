@@ -270,6 +270,6 @@
 	class="sm:max-w-2xl"
 >
 	{#if open}
-		<Note ref={open} naming={open === naming} onOpen={show} onClose={hide} />
+		<Note ref={open} {naming} onOpen={show} onClose={hide} />
 	{/if}
 </ResponsiveModal>
