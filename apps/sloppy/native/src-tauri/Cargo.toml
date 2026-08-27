@@ -26,7 +26,6 @@ serde_json = "1"
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
 # What `runtime.assetBytes` reaches a blob host through.
-tauri-plugin-http = "2"
 # Held to the same minor line as the server image in docker-compose.yml: the
 # repositories in @sloppy/data run against both, so SurrealQL has to mean the
 # same thing on-device as it does against a server.
