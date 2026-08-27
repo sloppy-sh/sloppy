@@ -1,8 +1,7 @@
 <script lang="ts">
-	import Node from '@sloppy/app-core/pages/node';
-	import type { PageProps } from './$types';
-
-	let { params }: PageProps = $props();
+	// A note's address, cited. The graph reads which note out of the URL and
+	// opens it over itself.
+	import Graph from '@sloppy/app-core/pages/graph';
 </script>
 
-<Node did={params.did} ulid={params.ulid} />
+<Graph />

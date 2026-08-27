@@ -1,0 +1,212 @@
+import type { NodeView, OwnedRef } from "@sloppy/types";
+import { describe, expect, it } from "vitest";
+import { drawnNodes, type GraphLens } from "./contract.js";
+import { makeCorpus } from "./corpus.test-support.js";
+import { applyLod } from "./lod.js";
+import { buildModel, facetOrder } from "./model.js";
+import { buildPalette } from "./palette.js";
+
+const corpus = makeCorpus();
+const palette = buildPalette({
+  ink: "oklch(0.21 0.01 60)",
+  paper: "oklch(0.98 0.006 85)",
+  facets: Array.from(
+    { length: 8 },
+    (_, slot) => `oklch(0.61 0.13 ${25 + slot * 45})`,
+  ),
+});
+
+const status = corpus.dimensions.find((d) => d.name === "status")!;
+const lens: GraphLens = { dimension: status, slot: 2 };
+
+const drawn = drawnNodes(
+  corpus.nodes,
+  applyLod(corpus.nodes, new Set<OwnedRef>(), undefined).collapsed,
+);
+
+describe("buildModel", () => {
+  const model = buildModel(drawn, {
+    lens: null,
+    palette,
+    viewer: corpus.owner,
+  });
+
+  it("holds every drawn node, in the order it was handed them", () => {
+    expect(model.order).toEqual(drawn.map((entry) => entry.node.ref));
+    expect(model.graph.order).toBe(drawn.length);
+  });
+
+  it("draws a genealogical edge only where both ends are drawn", () => {
+    const present = new Set(model.order);
+    let expected = 0;
+    for (const { node } of drawn) {
+      if (node.parent !== undefined && present.has(node.parent)) expected += 1;
+    }
+    let found = 0;
+    model.graph.forEachEdge((_e, attributes) => {
+      if (attributes.kind === "genealogy") found += 1;
+    });
+    expect(found).toBe(expected);
+  });
+
+  it("never draws a link to a node that is not there, or to itself", () => {
+    model.graph.forEachEdge((_e, attributes, source, target) => {
+      expect(source).not.toBe(target);
+      expect(model.graph.hasNode(source)).toBe(true);
+      expect(model.graph.hasNode(target)).toBe(true);
+      expect(attributes.distance).toBeGreaterThan(0);
+    });
+  });
+
+  it("counts a node's drawn children, which is what a collapse folds", () => {
+    for (const ref of model.order) {
+      const expected = drawn.filter(
+        (entry) => entry.node.parent === ref,
+      ).length;
+      expect(model.graph.getNodeAttributes(ref).children).toBe(expected);
+    }
+  });
+
+  // DESIGN.md § Form: provenance must survive greyscale and full zoom-out, so
+  // it is the shape the scene picks, never the fill.
+  it("reads provenance off the viewer, not off the colour", () => {
+    for (const ref of model.order) {
+      const node = model.graph.getNodeAttributes(ref);
+      const source = drawn.find((entry) => entry.node.ref === ref)!.node;
+      const expected =
+        source.created_by !== corpus.owner
+          ? "pulled"
+          : source.published
+            ? "published"
+            : "own";
+      expect(node.provenance).toBe(expected);
+    }
+    const kinds = new Set(
+      model.order.map((ref) => model.graph.getNodeAttributes(ref).provenance),
+    );
+    expect(kinds).toEqual(new Set(["own", "published", "pulled"]));
+  });
+
+  it("claims nothing as the reader's own when there is no reader", () => {
+    const anonymous = buildModel(drawn, { lens: null, palette });
+    const kinds = new Set(
+      anonymous.order.map(
+        (ref) => anonymous.graph.getNodeAttributes(ref).provenance,
+      ),
+    );
+    expect(kinds.has("pulled")).toBe(false);
+  });
+
+  it("sizes a mega-node by what it folded, and bounds it", () => {
+    const megas = drawn.filter((entry) => entry.folded > 0);
+    expect(megas.length).toBeGreaterThan(0);
+    const radii = megas.map((entry) => ({
+      folded: entry.folded,
+      radius: model.graph.getNodeAttributes(entry.node.ref).radius,
+    }));
+    const leaf = drawn.find((entry) => entry.folded === 0);
+    if (leaf) {
+      const leafRadius = model.graph.getNodeAttributes(leaf.node.ref).radius;
+      for (const mega of radii) expect(mega.radius).toBeGreaterThan(leafRadius);
+    }
+    for (const mega of radii) expect(mega.radius).toBeLessThanOrEqual(46);
+    const sorted = [...radii].sort((a, b) => a.folded - b.folded);
+    for (let at = 1; at < sorted.length; at++) {
+      expect(sorted[at].radius).toBeGreaterThanOrEqual(sorted[at - 1].radius);
+    }
+  });
+});
+
+describe("under a lens", () => {
+  const model = buildModel(drawn, { lens, palette, viewer: corpus.owner });
+
+  // DESIGN.md § Hue: with no lens the graph is monochrome, and colour appearing
+  // means the reader asked a question of it.
+  it("colours by facet, where the genealogical view colours by depth", () => {
+    const plain = buildModel(drawn, {
+      lens: null,
+      palette,
+      viewer: corpus.owner,
+    });
+    const labelled = model.order.filter(
+      (ref) => model.graph.getNodeAttributes(ref).facet !== undefined,
+    );
+    expect(labelled.length).toBeGreaterThan(0);
+
+    for (const ref of labelled) {
+      const under = model.graph.getNodeAttributes(ref);
+      const at = model.facets.indexOf(under.facet!);
+      expect(under.fill).toBe(palette.facet(2, at, model.facets.length));
+    }
+    for (const ref of plain.order) {
+      const bare = plain.graph.getNodeAttributes(ref);
+      expect(bare.fill).toBe(palette.depth(bare.depth));
+      expect(bare.facet).toBeUndefined();
+    }
+  });
+
+  it("gives one value one colour across the whole region", () => {
+    const byValue = new Map<string, number>();
+    for (const ref of model.order) {
+      const node = model.graph.getNodeAttributes(ref);
+      if (node.facet === undefined) continue;
+      const seen = byValue.get(node.facet);
+      if (seen === undefined) byValue.set(node.facet, node.fill);
+      else expect(node.fill).toBe(seen);
+    }
+    expect(new Set(byValue.values()).size).toBe(byValue.size);
+  });
+
+  it("recedes a node the lens has nothing to say about", () => {
+    const unset = model.order.filter(
+      (ref) => model.graph.getNodeAttributes(ref).facet === undefined,
+    );
+    expect(unset.length).toBeGreaterThan(0);
+    for (const ref of unset) {
+      expect(model.graph.getNodeAttributes(ref).fill).toBe(palette.unlabelled);
+    }
+  });
+
+  it("pulls each value's nodes to one place", () => {
+    const homes = new Map<string | undefined, { x: number; y: number }>();
+    for (const ref of model.order) {
+      const node = model.graph.getNodeAttributes(ref);
+      const anchor = { x: node.anchorX, y: node.anchorY };
+      const seen = homes.get(node.facet);
+      if (seen === undefined) homes.set(node.facet, anchor);
+      else expect(anchor).toEqual(seen);
+    }
+    expect(homes.size).toBeGreaterThan(1);
+  });
+});
+
+describe("facetOrder", () => {
+  it("puts what the reader declared first, then what the region carries", () => {
+    const invented: NodeView = {
+      ...corpus.nodes[0],
+      ref: `${corpus.owner}/00000000000000000000000009` as OwnedRef,
+      labels: { status: "zzz-later" },
+    };
+    const order = facetOrder(
+      [...drawn, { node: invented, collapsed: false, folded: 0 }],
+      lens,
+    );
+    expect(order.slice(0, status.values.length)).toEqual(status.values);
+    expect(order.at(-1)).toBe("zzz-later");
+  });
+});
+
+describe("carrying positions across an update", () => {
+  it("leaves a node that was already drawn where it was", () => {
+    const keep = new Map(
+      drawn.slice(0, 10).map((entry) => [entry.node.ref, { x: 7, y: -3 }]),
+    );
+    const model = buildModel(drawn, { lens: null, palette, keep });
+    for (const [ref] of keep) {
+      const node = model.graph.getNodeAttributes(ref);
+      expect([node.x, node.y]).toEqual([7, -3]);
+    }
+    const fresh = model.graph.getNodeAttributes(drawn[20].node.ref);
+    expect([fresh.x, fresh.y]).not.toEqual([7, -3]);
+  });
+});

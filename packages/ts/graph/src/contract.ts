@@ -3,6 +3,7 @@
 // surface owns pan, zoom and drag.
 
 import type {
+  DidSyr,
   FacetSlot,
   LabelDimensionView,
   NodeView,
@@ -30,11 +31,28 @@ export interface GraphSurfaceProps {
    * drag must never remount, or the viewport is lost on every gesture.
    */
   remountKey?: string;
+  /**
+   * Who is reading. DESIGN.md § Form draws provenance, and without this every
+   * node reads as the reader's own — so a surface that leaves it out is saying
+   * nothing about provenance rather than saying something wrong.
+   */
+  viewer?: DidSyr;
+  /**
+   * Where the reader is looking. Level of detail is measured in hops from here
+   * (`lod.ts`); absent means the whole graph, folded by generation.
+   */
+  focus?: OwnedRef;
   onOpenNode: (ref: OwnedRef) => void;
   /** Draw this mega-node's subtree instead of folding it. */
   onExpand: (ref: OwnedRef) => void;
   /** Fold this node's subtree into a mega-node. */
   onCollapse: (ref: OwnedRef) => void;
+  /**
+   * Every pen event over the canvas, with the point it lands on in graph
+   * coordinates so a stroke stays where it was drawn through a pan or a zoom.
+   * Absent means this surface has nothing to ink into, and a stylus pans.
+   */
+  onInkPointer?: (event: PointerEvent, world: { x: number; y: number }) => void;
 }
 
 export interface DrawnNode {
