@@ -118,11 +118,10 @@ fn json_to_value(j: JsonValue) -> Value {
         JsonValue::Object(map) => {
             if map.len() == 1 {
                 if let Some(JsonValue::Array(pair)) = map.get("$rid") {
-                    if pair.len() == 2 {
-                        let table = pair[0].as_str().unwrap_or_default().to_string();
+                    if let [JsonValue::String(table), key] = pair.as_slice() {
                         return Value::RecordId(RecordId::new(
-                            table,
-                            json_to_rid_key(pair[1].clone()),
+                            table.clone(),
+                            json_to_rid_key(key.clone()),
                         ));
                     }
                 }
@@ -295,6 +294,7 @@ mod tests {
         for value in [
             json!({ "$rid": "node:abc" }),
             json!({ "$rid": ["node"] }),
+            json!({ "$rid": [1, 2] }),
             json!({ "$rid": ["node", "abc"], "labels": {} }),
             json!({ "dimension": "domain", "value": "biology" }),
         ] {

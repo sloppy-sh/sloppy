@@ -35,11 +35,11 @@ pnpm tauri android init
 
 All from the monorepo-root `.env`; a shell variable of the same name wins.
 
-| Variable                            | Default                                                    | What it decides                                                             |
-| ----------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.              |
-| `SLOPPY_LOCAL_MODE`                 | off                                                        | Compiles in the on-device graph engine, and tells the frontend it is there. |
-| `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Raise a Cloudflare tunnel to the local API for a device on another network. |
+| Variable                            | Default                                                    | What it decides                                                              |
+| ----------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.               |
+| `SLOPPY_LOCAL_MODE`                 | off                                                        | Compiles in the on-device graph engine, and tells the frontend it is there.  |
+| `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Front the local API on the https origin a physical device needs to reach it. |
 
 `PUBLIC_SLOPPY_API_URL` is the web shell's variable too — one origin, set once, obeyed by
 both surfaces.

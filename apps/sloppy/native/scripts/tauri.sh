@@ -4,7 +4,7 @@ set -euo pipefail
 # The wrapper behind `pnpm tauri`. It re-patches the Xcode project before every
 # `ios` command (XCODE_PROJECT.md), derives both halves of local mode from
 # SLOPPY_LOCAL_MODE (docs/ARCHITECTURE.md § "Local-only mode"), and can front the
-# local API on a public https origin for a device that is not on this LAN.
+# local API on the public https origin a physical device needs.
 #
 # Values come from the monorepo-root .env; a shell variable of the same name wins.
 
@@ -50,9 +50,9 @@ if [[ "$LOCAL_MODE" == true ]] && [[ "$ACTION" == "dev" || "$ACTION" == "build" 
 	set -- "$@" --features local-mode
 fi
 
-# ── A reachable API for a device on somebody else's network ──────────────────
-# iOS refuses plain http to an arbitrary host, so the LAN address is no help
-# either; it has to be an https origin.
+# ── A reachable API for a physical device ────────────────────────────────────
+# An https origin, because iOS refuses plain http to a LAN address as readily as
+# to a remote one — docs/ARCHITECTURE.md § "Native shell" carries the why.
 #
 # TODO(apps/sloppy/api): sign-in needs the syr instance on this same origin —
 # the device's browser cannot reach one on this LAN either. Fronting it is a
@@ -68,14 +68,20 @@ wants_tunnel() {
 		{ is_true "${SLOPPY_DEV_TUNNEL:-}" || [[ -n "$CF_TUNNEL_NAME" ]]; }
 }
 
+# Only the API answers /api/health with a report: Cloudflare's edge replies on its
+# own for a hostname it has not published, so "something replied" proves nothing.
+api_answers() {
+	local body
+	body="$(curl -s --max-time 5 "${1}/api/health" || true)"
+	[[ "$body" == *'"checks"'* ]]
+}
+
 if wants_tunnel; then
 	command -v cloudflared >/dev/null 2>&1 || {
 		echo "✗ cloudflared is not installed (brew install cloudflared)" >&2
 		exit 1
 	}
-	# Any HTTP reply means the API is answering; `curl -f` would read a 404 as a
-	# failure, while a refused connection still fails here.
-	curl -s -o /dev/null --max-time 3 "http://localhost:${API_PORT}/api/health" || {
+	api_answers "http://localhost:${API_PORT}" || {
 		echo "✗ The API isn't answering on :${API_PORT} — start it first (pnpm dev:api)" >&2
 		exit 1
 	}
@@ -83,6 +89,16 @@ if wants_tunnel; then
 	LOG="$(mktemp -t sloppy-tunnel.XXXXXX)"
 	TUNNEL_PID=""
 	TUNNEL_URL=""
+	reachable=""
+
+	# cloudflared's own answer to "is the edge holding my connection", off the
+	# metrics server it logs at startup — no DNS, no round trip back through the
+	# edge, so it is the one readiness signal this host can actually observe.
+	cloudflared_connected() {
+		local metrics
+		metrics="$(sed -n 's/.*metrics server on \([0-9.]*:[0-9]*\).*/\1/p' "$LOG" | tail -1)"
+		[[ -n "$metrics" ]] && curl -sf -o /dev/null --max-time 2 "http://${metrics}/ready"
+	}
 
 	if [[ -n "$CF_TUNNEL_NAME" ]]; then
 		# A named tunnel is stable across runs and prints no URL of its own, so its
@@ -93,7 +109,8 @@ if wants_tunnel; then
 		}
 		TUNNEL_URL="https://${CF_TUNNEL_HOSTNAME#*://}"
 		TUNNEL_URL="${TUNNEL_URL%/}"
-		if curl -s -o /dev/null --max-time 3 "$TUNNEL_URL/api/health"; then
+		if api_answers "$TUNNEL_URL"; then
+			reachable=1
 			echo "── Reusing the running tunnel '$CF_TUNNEL_NAME' → $TUNNEL_URL"
 		else
 			echo "── Starting tunnel '$CF_TUNNEL_NAME' → $TUNNEL_URL"
@@ -115,29 +132,44 @@ if wants_tunnel; then
 	}
 	trap cleanup EXIT INT TERM
 
-	ready=""
-	for _ in $(seq 1 30); do
-		if [[ -z "$CF_TUNNEL_NAME" ]]; then
-			# A quick tunnel prints its assigned hostname once the edge connects.
-			TUNNEL_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1 || true)"
-		fi
-		if [[ -n "$TUNNEL_URL" ]] &&
-			curl -s -o /dev/null --max-time 3 "$TUNNEL_URL/api/health"; then
-			ready=1
-			break
-		fi
-		sleep 1
-	done
-	[[ -n "$ready" ]] || {
-		echo "✗ The tunnel never answered end to end; cloudflared said:" >&2
-		cat "$LOG" >&2
-		exit 1
-	}
+	if [[ -n "$TUNNEL_PID" ]]; then
+		connected=""
+		for _ in $(seq 1 60); do
+			kill -0 "$TUNNEL_PID" 2>/dev/null || break
+			if [[ -z "$CF_TUNNEL_NAME" ]]; then
+				# A quick tunnel prints its assigned hostname once the edge issues it.
+				TUNNEL_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1 || true)"
+			fi
+			if [[ -n "$TUNNEL_URL" ]] && cloudflared_connected; then
+				connected=1
+				break
+			fi
+			sleep 1
+		done
+		[[ -n "$connected" ]] || {
+			echo "✗ cloudflared never reached the Cloudflare edge; it said:" >&2
+			cat "$LOG" >&2
+			exit 1
+		}
+
+		# The edge publishes a fresh hostname minutes after it accepts the connection
+		# behind it, and the device resolves that name over its own network — so this
+		# is a report on what one host can see, never a gate.
+		for _ in $(seq 1 5); do
+			if api_answers "$TUNNEL_URL"; then
+				reachable=1
+				break
+			fi
+			sleep 2
+		done
+	fi
 
 	# An origin, never a path: @sloppy/client owns everything after it.
 	export PUBLIC_SLOPPY_API_URL="$TUNNEL_URL"
 	echo "── Sloppy mobile dev ────────────────────────────────"
 	echo "   API   $TUNNEL_URL   baked in as PUBLIC_SLOPPY_API_URL"
+	[[ -n "$reachable" ]] ||
+		echo "   …not answering from this machine yet; the device may get there first"
 	echo "─────────────────────────────────────────────────────"
 
 	# A child, not exec, so the trap still tears the tunnel down.
