@@ -12,6 +12,8 @@ const PRESS_MS = 480;
 const WHEEL_ZOOM = 0.0016;
 const PINCH_ZOOM = 0.008;
 
+export type InkPointer = (event: PointerEvent, world: Point) => void;
+
 export interface GestureHandlers {
   /** What is under this world point, if anything. */
   hitTest(world: Point): string | null;
@@ -23,10 +25,12 @@ export interface GestureHandlers {
   onDragEnd(target: string): void;
   onViewportChange(): void;
   /**
-   * Absent means this surface has nothing to ink into, and a stylus falls back
-   * to panning rather than doing nothing at all.
+   * Where a pen stroke goes, asked as the pen goes down so a stroke finishes
+   * through the handler that took its first event. `undefined` is a surface
+   * with nothing to ink into, and a stylus falls back to panning rather than
+   * doing nothing at all.
    */
-  onInk?: (event: PointerEvent, world: Point) => void;
+  inkTarget(): InkPointer | undefined;
 }
 
 interface Tracked {
@@ -46,6 +50,7 @@ export function attachGestures(
   handlers: GestureHandlers,
 ): () => void {
   const active = new Map<number, Tracked>();
+  const strokes = new Map<number, InkPointer>();
   let rect = element.getBoundingClientRect();
   let pinchSpan = 0;
   let dragging: { id: number; target: string } | null = null;
@@ -68,14 +73,13 @@ export function attachGestures(
   const touches = (): Tracked[] =>
     [...active.values()].filter((entry) => entry.type !== "pen");
 
-  const inks = (event: PointerEvent): boolean =>
-    event.pointerType === "pen" && handlers.onInk !== undefined;
-
   const onPointerDown = (event: PointerEvent): void => {
     refreshRect();
     const at = local(event);
-    if (inks(event)) {
-      handlers.onInk?.(event, viewport.toWorld(at.x, at.y));
+    const ink = event.pointerType === "pen" ? handlers.inkTarget() : undefined;
+    if (ink) {
+      strokes.set(event.pointerId, ink);
+      ink(event, viewport.toWorld(at.x, at.y));
       return;
     }
 
@@ -117,9 +121,10 @@ export function attachGestures(
   };
 
   const onPointerMove = (event: PointerEvent): void => {
-    if (inks(event)) {
+    const stroke = strokes.get(event.pointerId);
+    if (stroke) {
       const at = local(event);
-      handlers.onInk?.(event, viewport.toWorld(at.x, at.y));
+      stroke(event, viewport.toWorld(at.x, at.y));
       return;
     }
     const entry = active.get(event.pointerId);
@@ -162,9 +167,11 @@ export function attachGestures(
   };
 
   const onPointerUp = (event: PointerEvent): void => {
-    if (inks(event)) {
+    const stroke = strokes.get(event.pointerId);
+    if (stroke) {
+      strokes.delete(event.pointerId);
       const at = local(event);
-      handlers.onInk?.(event, viewport.toWorld(at.x, at.y));
+      stroke(event, viewport.toWorld(at.x, at.y));
       return;
     }
     const entry = active.get(event.pointerId);
@@ -211,6 +218,7 @@ export function attachGestures(
 
   return () => {
     cancelPress();
+    strokes.clear();
     element.removeEventListener("pointerdown", onPointerDown);
     element.removeEventListener("pointermove", onPointerMove);
     element.removeEventListener("pointerup", onPointerUp);

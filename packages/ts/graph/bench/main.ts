@@ -36,7 +36,6 @@ const controls = document.getElementById("controls") as HTMLElement;
 
 const lines: string[] = [];
 const samples: Sample[] = [];
-const nothingCollapsed: ReadonlySet<string> = new Set();
 
 function say(line: string): void {
   lines.push(line);
@@ -56,17 +55,25 @@ const withWorker = !new URLSearchParams(location.search).has("inline");
 let lens: GraphLens | null = null;
 let handle: GraphHandle;
 
-// Nothing is pre-collapsed: level of detail is what bounds the field, and a
-// host that folded it first would be measuring its own policy instead of this
-// package's.
+// Starts empty: level of detail is what bounds the field, and a host that
+// folded it first would be measuring its own policy instead of this package's.
+const collapsed = new Set<string>();
+
 const props = (): GraphMountOptions => ({
   nodes: corpus.nodes,
-  collapsed: nothingCollapsed,
+  collapsed,
   lens,
   viewer: corpus.owner,
   onOpenNode: (ref) => say(`open ${ref.slice(-8)}`),
-  onExpand: () => handle.update(props()),
-  onCollapse: () => handle.update(props()),
+  onExpand: (ref) => {
+    say(`expand ${ref.slice(-8)}`);
+    if (collapsed.delete(ref)) handle.update(props());
+  },
+  onCollapse: (ref) => {
+    say(`collapse ${ref.slice(-8)}`);
+    collapsed.add(ref);
+    handle.update(props());
+  },
   createLayoutWorker: withWorker ? () => new LayoutWorker() : undefined,
 });
 

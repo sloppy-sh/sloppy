@@ -99,7 +99,7 @@ export function mountGraph(
   let focus = options.focus;
   let epoch = 0;
   let settled = false;
-  let autoFolded = 0;
+  let budgetFolded: ReadonlySet<OwnedRef> = new Set();
   let mountedKey = options.remountKey;
   let destroyed = false;
   /**
@@ -119,7 +119,7 @@ export function mountGraph(
     },
   });
 
-  const budget: LodBudget = { ...DEFAULT_BUDGET, ...options.lod };
+  const lodBudget = (): LodBudget => ({ ...DEFAULT_BUDGET, ...props.lod });
 
   /**
    * `relayout` false re-reads the model without disturbing the simulation: the
@@ -130,8 +130,8 @@ export function mountGraph(
    */
   const rebuild = (relayout = true): void => {
     if (!scene) return;
-    const lod = applyLod(props.nodes, props.collapsed, focus, budget);
-    autoFolded = lod.folded.size;
+    const lod = applyLod(props.nodes, props.collapsed, focus, lodBudget());
+    budgetFolded = lod.folded;
 
     const model = buildModel(drawnNodes(props.nodes, lod.collapsed), {
       lens: props.lens,
@@ -181,14 +181,16 @@ export function mountGraph(
         if (target === null) return;
         const node = built.attributesOf(target);
         if (!node) return;
+        const ref = target as OwnedRef;
         if (node.collapsed) {
           // Opening a mega-node moves the focus to it, so the budget measures
           // from where the reader just looked and the subtree has room to draw.
-          focus = target as OwnedRef;
-          props.onExpand(target as OwnedRef);
+          focus = ref;
+          props.onExpand(ref);
+          if (budgetFolded.has(ref)) rebuild();
           return;
         }
-        props.onOpenNode(target as OwnedRef);
+        props.onOpenNode(ref);
       },
       onPress: (target) => {
         if (built.hasDrawnChildren(target))
@@ -206,7 +208,7 @@ export function mountGraph(
         framing = false;
         built.invalidate();
       },
-      onInk: props.onInkPointer,
+      inkTarget: () => props.onInkPointer,
     });
     rebuild();
   };
@@ -279,8 +281,8 @@ export function mountGraph(
         frames,
         layout: layout.mode,
         drawn: frames.drawn,
-        maxDrawn: budget.maxDrawn,
-        autoFolded,
+        maxDrawn: lodBudget().maxDrawn,
+        autoFolded: budgetFolded.size,
         settled,
       };
     },

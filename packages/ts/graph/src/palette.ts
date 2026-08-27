@@ -47,8 +47,10 @@ export interface GraphPalette {
   facet(slot: FacetSlot, index: number, count: number): number;
   /** A node whose labels leave the active lens's dimension unset. */
   unlabelled: number;
-  /** Genealogical edges. DESIGN.md § Edges dims them further under a lens. */
-  edge: number;
+  /**
+   * Genealogical edges draw {@link depth} at these alphas — DESIGN.md § Edges,
+   * which also dims them further under a lens.
+   */
   edgeAlpha: number;
   edgeAlphaUnderLens: number;
   /** Associative links, drawn above the tree because they cross it. */
@@ -119,7 +121,6 @@ export function buildPalette(tokens: PaletteTokens): GraphPalette {
     // The mark furthest from the ink end, so a node the lens has nothing to say
     // about recedes without leaving the family the rest of the canvas is in.
     unlabelled: depthRamp[DEPTH_STEPS],
-    edge: depthRamp[Math.floor(DEPTH_STEPS / 2)],
     edgeAlpha: 0.24,
     edgeAlphaUnderLens: 0.08,
     link: toRgb24(ink),

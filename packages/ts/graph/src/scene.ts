@@ -16,9 +16,10 @@ import type {
   Text,
   Texture,
 } from "pixi.js";
+import { clamp } from "./color.js";
 import type { GraphNodeAttributes } from "./model.js";
 import type { BuiltModel } from "./model.js";
-import type { GraphPalette } from "./palette.js";
+import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
 import {
   type Bounds,
   type Point,
@@ -93,7 +94,8 @@ export class GraphScene {
   private model: BuiltModel | null = null;
   private marks: Mark[] = [];
   private positions = new Float32Array(0);
-  private edgePairs: number[] = [];
+  /** Genealogy edges as index pairs, one bucket per step of the depth ramp. */
+  private edgesByDepth: number[][] = [];
   private linkPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
   private lensActive = false;
@@ -243,14 +245,22 @@ export class GraphScene {
     });
 
     const byRef = new Map(model.order.map((ref, index) => [ref, index]));
-    this.edgePairs = [];
+    this.edgesByDepth = Array.from({ length: DEPTH_STEPS + 1 }, () => []);
     this.linkPairs = [];
     model.graph.forEachEdge((_edge, attributes, source, target) => {
       const a = byRef.get(source);
       const b = byRef.get(target);
       if (a === undefined || b === undefined) return;
-      const into = attributes.kind === "link" ? this.linkPairs : this.edgePairs;
-      into.push(a, b);
+      if (attributes.kind === "link") {
+        this.linkPairs.push(a, b);
+        return;
+      }
+      const deeper = Math.max(
+        model.graph.getNodeAttributes(source).depth,
+        model.graph.getNodeAttributes(target).depth,
+      );
+      const depth = clamp(Math.round(deeper), 1, DEPTH_STEPS + 1);
+      this.edgesByDepth[depth - 1].push(a, b);
     });
 
     this.modelDirty = true;
@@ -355,6 +365,10 @@ export class GraphScene {
   }
 
   stats(): FrameStats {
+    const genealogy = this.edgesByDepth.reduce(
+      (total, pairs) => total + pairs.length,
+      0,
+    );
     return {
       cpuP50: percentile(this.cpuSamples, 0.5),
       cpuP95: percentile(this.cpuSamples, 0.95),
@@ -363,7 +377,7 @@ export class GraphScene {
       frameP95: percentile(this.frameSamples, 0.95),
       frames: this.frameSamples.length,
       drawn: this.marks.length,
-      edges: this.edgePairs.length / 2 + this.linkPairs.length / 2,
+      edges: (genealogy + this.linkPairs.length) / 2,
       labels: this.labelSlots.size,
     };
   }
@@ -466,20 +480,24 @@ export class GraphScene {
     const { palette } = this.options;
     const width = Math.min(12, Math.max(0.5, EDGE_WIDTH / this.viewport.scale));
 
+    const edgeAlpha = this.lensActive
+      ? palette.edgeAlphaUnderLens
+      : palette.edgeAlpha;
     this.edges.clear();
-    for (let at = 0; at < this.edgePairs.length; at += 2) {
-      const a = this.edgePairs[at] * 2;
-      const b = this.edgePairs[at + 1] * 2;
-      this.edges.moveTo(this.positions[a], this.positions[a + 1]);
-      this.edges.lineTo(this.positions[b], this.positions[b + 1]);
-    }
-    if (this.edgePairs.length > 0) {
+    this.edgesByDepth.forEach((pairs, step) => {
+      if (pairs.length === 0) return;
+      for (let at = 0; at < pairs.length; at += 2) {
+        const a = pairs[at] * 2;
+        const b = pairs[at + 1] * 2;
+        this.edges.moveTo(this.positions[a], this.positions[a + 1]);
+        this.edges.lineTo(this.positions[b], this.positions[b + 1]);
+      }
       this.edges.stroke({
-        color: palette.edge,
-        alpha: this.lensActive ? palette.edgeAlphaUnderLens : palette.edgeAlpha,
+        color: palette.depth(step + 1),
+        alpha: edgeAlpha,
         width,
       });
-    }
+    });
 
     this.links.clear();
     const dash = LINK_DASH / this.viewport.scale;
