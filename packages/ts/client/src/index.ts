@@ -199,22 +199,21 @@ export class SloppyClient {
 
   /**
    * Where this Sloppy's own identities live, for somebody who has none
-   * anywhere; `undefined` on an instance that only ever delegates elsewhere.
-   * Asked of the API rather than read off the page's origin, which the shells
-   * do not share.
+   * anywhere. Asked of the API rather than read off the page's origin, which
+   * the shells do not share.
+   *
+   * `undefined` means this instance only ever delegates elsewhere; a rejection
+   * means the answer could not be had. A caller that shows the two the same way
+   * hides the only way in on an instance that has one.
    */
   async ownInstance(): Promise<string | undefined> {
-    try {
-      const body = (await this.json("/auth/own-instance", {
-        method: "GET",
-      })) as {
-        instance_url?: unknown;
-      } | null;
-      const url = body?.instance_url;
-      return typeof url === "string" && url ? url : undefined;
-    } catch {
-      return undefined;
-    }
+    const body = (await this.json("/auth/own-instance", {
+      method: "GET",
+    })) as {
+      instance_url?: unknown;
+    } | null;
+    const url = body?.instance_url;
+    return typeof url === "string" && url ? url : undefined;
   }
 
   /**

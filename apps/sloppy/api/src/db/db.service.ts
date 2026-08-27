@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   Logger,
   type OnModuleDestroy,
@@ -24,9 +25,11 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
   private static readonly PROBE_TIMEOUT_MS = 2000;
 
   private readonly logger = new Logger(DbService.name);
-  private readonly db = new Surreal();
 
-  constructor(private readonly config: AppConfigService) {}
+  constructor(
+    private readonly config: AppConfigService,
+    @Inject(Surreal) private readonly db: Surreal,
+  ) {}
 
   /** The live handle. Repositories take this and hold nothing else. */
   get handle(): Surreal {
@@ -36,12 +39,26 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     const { url, username, password, namespace, database } =
       this.config.surreal;
-    await this.db.connect(url);
-    await this.db.signin({ username, password });
+    await this.db.connect(url, {
+      // Handed over rather than spent through `signin()`: `signin()` opts the
+      // session out of the driver's own renewal for the life of the connection,
+      // and a root token lasts an hour. Without this the connection drops to
+      // anonymous — every query failing until somebody restarts the process.
+      authentication: { username, password },
+    });
+    // Not named to `connect` above, which would select them before it
+    // authenticates, and an anonymous select cannot create what a first boot
+    // against an empty store needs creating.
     await this.db.use({ namespace, database });
     await defineCoreSchema(this.db);
     this.logger.log(
       `Connected to SurrealDB at ${url} (${namespace}/${database})`,
+    );
+    this.db.subscribe("reconnecting", () =>
+      this.logger.warn("Lost the SurrealDB connection; reconnecting"),
+    );
+    this.db.subscribe("connected", () =>
+      this.logger.log("SurrealDB connection restored"),
     );
   }
 
