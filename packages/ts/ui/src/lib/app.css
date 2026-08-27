@@ -584,27 +584,27 @@
 	mask-image: linear-gradient(
 		to bottom,
 		transparent,
-		rgb(0 0 0 / 0.08) calc(var(--scroll-fade, 1.5rem) * 0.3),
-		rgb(0 0 0 / 0.35) calc(var(--scroll-fade, 1.5rem) * 0.55),
-		rgb(0 0 0 / 0.75) calc(var(--scroll-fade, 1.5rem) * 0.8),
-		#000 var(--scroll-fade, 1.5rem),
-		#000 calc(100% - var(--scroll-fade, 1.5rem)),
-		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
-		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
-		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		rgb(0 0 0 / 0.08) calc(var(--fade-start, 0px) * 0.3),
+		rgb(0 0 0 / 0.35) calc(var(--fade-start, 0px) * 0.55),
+		rgb(0 0 0 / 0.75) calc(var(--fade-start, 0px) * 0.8),
+		#000 var(--fade-start, 0px),
+		#000 calc(100% - var(--fade-end, 0px)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--fade-start, 0px) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--fade-start, 0px) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--fade-start, 0px) * 0.3),
 		transparent
 	);
 	-webkit-mask-image: linear-gradient(
 		to bottom,
 		transparent,
-		rgb(0 0 0 / 0.08) calc(var(--scroll-fade, 1.5rem) * 0.3),
-		rgb(0 0 0 / 0.35) calc(var(--scroll-fade, 1.5rem) * 0.55),
-		rgb(0 0 0 / 0.75) calc(var(--scroll-fade, 1.5rem) * 0.8),
-		#000 var(--scroll-fade, 1.5rem),
-		#000 calc(100% - var(--scroll-fade, 1.5rem)),
-		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
-		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
-		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		rgb(0 0 0 / 0.08) calc(var(--fade-start, 0px) * 0.3),
+		rgb(0 0 0 / 0.35) calc(var(--fade-start, 0px) * 0.55),
+		rgb(0 0 0 / 0.75) calc(var(--fade-start, 0px) * 0.8),
+		#000 var(--fade-start, 0px),
+		#000 calc(100% - var(--fade-end, 0px)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--fade-start, 0px) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--fade-start, 0px) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--fade-start, 0px) * 0.3),
 		transparent
 	);
 }
@@ -614,19 +614,19 @@
 	mask-image: linear-gradient(
 		to right,
 		#000,
-		#000 calc(100% - var(--scroll-fade, 1.5rem)),
-		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
-		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
-		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		#000 calc(100% - var(--fade-end, 0px)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--fade-start, 0px) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--fade-start, 0px) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--fade-start, 0px) * 0.3),
 		transparent
 	);
 	-webkit-mask-image: linear-gradient(
 		to right,
 		#000,
-		#000 calc(100% - var(--scroll-fade, 1.5rem)),
-		rgb(0 0 0 / 0.75) calc(100% - var(--scroll-fade, 1.5rem) * 0.8),
-		rgb(0 0 0 / 0.35) calc(100% - var(--scroll-fade, 1.5rem) * 0.55),
-		rgb(0 0 0 / 0.08) calc(100% - var(--scroll-fade, 1.5rem) * 0.3),
+		#000 calc(100% - var(--fade-end, 0px)),
+		rgb(0 0 0 / 0.75) calc(100% - var(--fade-start, 0px) * 0.8),
+		rgb(0 0 0 / 0.35) calc(100% - var(--fade-start, 0px) * 0.55),
+		rgb(0 0 0 / 0.08) calc(100% - var(--fade-start, 0px) * 0.3),
 		transparent
 	);
 }
