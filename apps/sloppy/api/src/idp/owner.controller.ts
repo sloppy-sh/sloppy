@@ -25,6 +25,7 @@ import {
   makeFolder,
   openUpload,
   type Profile,
+  type PublicListing,
   ProfilePatchSchema,
   removeEmoji,
   requireUpload,
@@ -32,6 +33,7 @@ import {
   UploadCompleteSchema,
   UploadCreateSchema,
   type UploadTicket,
+  uploadsUnder,
 } from "@sloppy/idp";
 import type { SyrEmoji } from "@sloppy/types";
 import type { Response } from "express";
@@ -44,7 +46,7 @@ import {
 } from "./idp-request";
 import { PlatformTokenGuard } from "./idp.guards";
 import { IdpService } from "./idp.service";
-import { pageOf, type UploadView, uploadView } from "./public-page";
+import { listing, pageOf, type UploadView, uploadView } from "./public-page";
 
 /**
  * What an app holding a delegation may do with the person's own files, emoji
@@ -89,6 +91,23 @@ export class OwnerController {
         parseBody(FolderCreateSchema, body),
       ),
     };
+  }
+
+  @Get("uploads")
+  async uploads(
+    @Req() req: IdpRequest,
+    @Query("folder_id") folderId?: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ): Promise<PublicListing<UploadView>> {
+    const page = pageOf(limit, offset);
+    const { rows, total } = await uploadsUnder(
+      this.idp.context,
+      req.platform!.did,
+      folderId,
+      page,
+    );
+    return listing(rows.map(uploadView), page, total);
   }
 
   @Post("uploads")

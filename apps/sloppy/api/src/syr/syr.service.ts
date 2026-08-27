@@ -14,6 +14,8 @@ import {
   SyrIdentityManifestSchema,
   type SyrInstanceManifest,
   SyrInstanceManifestSchema,
+  type SyrOwnedUpload,
+  SyrOwnedUploadSchema,
   type SyrPlatformSignResponse,
   SyrPlatformSignResponseSchema,
   type SyrPlatformTokenRequest,
@@ -413,6 +415,36 @@ export class SyrService {
     }
     return this.readShape(syrEnvelope(SyrUploadSchema), body, url, failure)
       .data;
+  }
+
+  /**
+   * What the person has in one of their folders, newest first. The sort is
+   * asked for rather than assumed: syr answers by whichever field the request
+   * names, and its default is not this one.
+   */
+  async listUploads(
+    delegation: Delegation,
+    folderPath: readonly string[],
+    limit: number,
+  ): Promise<SyrOwnedUpload[]> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    const folder = await this.folderAt(delegation, folderPath);
+    const url =
+      `${base}/uploads?folder_id=${encodeURIComponent(folder)}` +
+      `&limit=${limit}&sort_field=created_at&sort_order=desc`;
+    const failure = "We could not read your pictures. Try again in a moment.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "GET" },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrOwnedUploadSchema)),
+      body,
+      url,
+      failure,
+    ).data;
   }
 
   /** One of the caller's own uploads, so a route can act on what is actually

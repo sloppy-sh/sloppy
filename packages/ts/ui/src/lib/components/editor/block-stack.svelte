@@ -88,7 +88,9 @@
 
 	/** The note's author, whose emoji catalog its shortcodes were written against. */
 	const author = $derived(node.ref.slice(0, node.ref.lastIndexOf('/')));
-	const catalog = $derived(emojiCatalogs.of(author, emoji?.catalog));
+	const catalog = $derived(emojiCatalogs.of(author, emoji.catalog));
+	/** The reader's own, which is what they can put into a note and change. */
+	const ownCatalog = $derived(emojiCatalogs.of(emoji.mine, emoji.catalog));
 
 	/** What the API is believed to hold, in its order; kept true op by op. */
 	let saved: SavedBlock[] = [];
@@ -302,7 +304,7 @@
 	 *  stack, so a note is never stored pointing at bytes that never arrived. */
 	function sendPicture(file: File): void {
 		const current = editor;
-		if (!current || !media) return;
+		if (!current) return;
 		const preview = URL.createObjectURL(file);
 		current.chain().focus().insertPicture({ preview }).run();
 		const send = media.send(file, (fraction) => retouch(current, preview, { progress: fraction }));
@@ -453,7 +455,7 @@
 					TaskItem.configure({ nested: true }),
 					BlockIdentity,
 					EmojiNode(() => catalog),
-					EmojiSuggestion(completions, () => catalog),
+					EmojiSuggestion(completions, () => ownCatalog),
 					InkNode,
 					PictureNode(() => media)
 				],
@@ -537,13 +539,13 @@
 		shortcode: string;
 		kind: 'emoji' | 'sticker';
 	}): Promise<void> {
-		await emoji?.add?.(entry);
-		emojiCatalogs.forget(author);
+		await emoji.add(entry);
+		emojiCatalogs.forget(emoji.mine);
 	}
 
 	async function removeEmoji(id: string): Promise<void> {
-		await emoji?.remove?.(id);
-		emojiCatalogs.forget(author);
+		await emoji.remove(id);
+		emojiCatalogs.forget(emoji.mine);
 	}
 
 	function startDrawing(): void {
@@ -616,9 +618,7 @@
 			on: marks.code,
 			run: () => editor?.chain().focus().toggleCodeBlock().run()
 		},
-		...(media
-			? [{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) }]
-			: []),
+		{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) },
 		{ id: 'emoji', label: 'Emoji', icon: Smile, run: () => (pickerOpen = true) },
 		{ id: 'draw', label: 'Draw', icon: PenLine, run: startDrawing }
 	]);
@@ -680,18 +680,16 @@
 {/if}
 <EmojiPicker
 	bind:open={pickerOpen}
-	custom={catalog}
+	custom={ownCatalog}
 	onpick={insertEmoji}
-	onadd={emoji?.add ? addEmoji : undefined}
-	onremove={emoji?.remove ? removeEmoji : undefined}
+	onadd={addEmoji}
+	onremove={removeEmoji}
 />
-{#if media}
-	<MediaPicker
-		bind:open={mediaOpen}
-		{media}
-		onpick={(choice) => ('file' in choice ? sendPicture(choice.file) : usePicture(choice.held))}
-	/>
-{/if}
+<MediaPicker
+	bind:open={mediaOpen}
+	{media}
+	onpick={(choice) => ('file' in choice ? sendPicture(choice.file) : usePicture(choice.held))}
+/>
 
 <style>
 	:global(.sloppy-prose) {

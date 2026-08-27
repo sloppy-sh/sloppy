@@ -10,6 +10,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { NoteMedia, ShownPicture } from './contract.js';
+import { placeBlock } from './placement.js';
 
 export const PICTURE_NODE = 'picture';
 
@@ -43,6 +44,9 @@ export interface PictureInsert {
 	alt?: string;
 	width?: number | null;
 	height?: number | null;
+	/** An object URL for the file itself, which the node owns from here: it
+	 *  revokes it once the picture draws from its upload instead, and when the
+	 *  node goes. A caller must not revoke it or use it anywhere else. */
 	preview?: string | null;
 }
 
@@ -128,6 +132,7 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 				let current = node;
 				let shown: ShownPicture | null = null;
 				let drawn: string | null = null;
+				let held: string | null = null;
 
 				const dom = document.createElement('div');
 				dom.className = 'sloppy-picture';
@@ -177,6 +182,11 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 					shown = null;
 				}
 
+				function drop(): void {
+					if (held) URL.revokeObjectURL(held);
+					held = null;
+				}
+
 				/** The address is asked for once per upload, and only for the owner. */
 				async function draw(): Promise<void> {
 					const uploadId = current.attrs.uploadId as string | null;
@@ -186,11 +196,13 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 					drawn = wanted;
 					if (preview && !uploadId) {
 						free();
+						held = preview;
 						image.src = preview;
 						return;
 					}
 					if (!uploadId) {
 						free();
+						drop();
 						image.removeAttribute('src');
 						return;
 					}
@@ -205,6 +217,7 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 						free();
 						shown = picture;
 						image.src = picture.src;
+						drop();
 						note.textContent = '';
 					} catch {
 						if (drawn !== wanted) return;
@@ -260,7 +273,10 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 					},
 					selectNode: () => dom.classList.add('is-selected'),
 					deselectNode: () => dom.classList.remove('is-selected'),
-					destroy: () => free(),
+					destroy: () => {
+						free();
+						drop();
+					},
 					stopEvent: () => true,
 					ignoreMutation: () => true
 				};
@@ -271,8 +287,8 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 			return {
 				insertPicture:
 					(entry: PictureInsert) =>
-					({ commands }) =>
-						commands.insertContent({
+					({ commands, state }) => {
+						const { at, content } = placeBlock(state, {
 							type: this.name,
 							attrs: {
 								uploadId: entry.uploadId ?? null,
@@ -283,7 +299,9 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 								progress: entry.uploadId ? null : 0,
 								failure: null
 							}
-						})
+						});
+						return commands.insertContentAt(at, content);
+					}
 			};
 		},
 

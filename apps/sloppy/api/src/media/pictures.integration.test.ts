@@ -15,7 +15,11 @@ import { createServer as createHttpServer } from "node:http";
 import { type AddressInfo, createConnection, createServer } from "node:net";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
-import { CustomEmojiSchema, MediaAssetSchema } from "@sloppy/types";
+import {
+  CustomEmojiSchema,
+  MediaAssetSchema,
+  OwnedMediaAssetSchema,
+} from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
 import { RATE_CAPACITY } from "./proxy.controller";
@@ -248,6 +252,26 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     const listed = (await open.json()) as { data: { filename: string }[] };
     expect(listed.data.map((one) => one.filename)).not.toContain("private.png");
   });
+
+  // Using a picture twice means finding the one already sent, and the folder a
+  // role lands in is what separates a note's pictures from a profile's.
+  scenario(
+    "lists the pictures a person put in a note, and only those",
+    async () => {
+      const inANote = await upload("block", "listed.png");
+      await upload("avatar", "not-listed.png");
+
+      const { status, body } = await read("GET", "/api/media/uploads");
+      expect(status).toBe(200);
+      const listed = OwnedMediaAssetSchema.array().parse(body);
+      expect(listed.map((one) => one.filename)).toContain("listed.png");
+      expect(listed.map((one) => one.filename)).not.toContain("not-listed.png");
+      expect(listed[0].upload_id).toBe(inANote.upload_id);
+      expect(JSON.stringify(listed)).not.toContain("/api/idp/blob/");
+
+      expect((await fetch(`${base}/api/media/uploads`)).status).toBe(401);
+    },
+  );
 
   scenario("serves that picture back to the person who owns it", async () => {
     const asset = await upload("block", "mine.png");

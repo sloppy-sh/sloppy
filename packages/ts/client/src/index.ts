@@ -26,6 +26,8 @@ import {
   type MediaAsset,
   MediaAssetSchema,
   type NodeView,
+  type OwnedMediaAsset,
+  OwnedMediaAssetSchema,
   type OwnedRef,
   type ProfileView,
   ProfileViewSchema,
@@ -413,6 +415,12 @@ export class SloppyClient {
     return MediaAssetSchema.parse(
       await this.send("POST", "/media/uploads/complete", request),
     );
+  }
+
+  /** The pictures the caller has already put in a note, newest first. */
+  async ownPictures(): Promise<OwnedMediaAsset[]> {
+    const body = await this.json("/media/uploads", { method: "GET" });
+    return (body as unknown[]).map((a) => OwnedMediaAssetSchema.parse(a));
   }
 
   /**

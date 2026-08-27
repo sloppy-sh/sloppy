@@ -17,8 +17,8 @@ class EmojiCatalogs {
 	/**
 	 * Safe to read while rendering: one nothing has fetched answers empty and
 	 * starts loading, and whatever read it runs again when the catalog lands.
-	 * An identity whose catalog cannot be read has none, which is what somebody
-	 * who uploaded no emoji has too.
+	 * A read that failed is not an answer, so it is not kept — an instance
+	 * having a bad minute must not blank somebody's emoji for the tab's life.
 	 */
 	of(did: string | undefined, load: LoadCatalog | undefined): readonly CustomEmojiEntry[] {
 		if (!did) return EMPTY;
@@ -28,7 +28,7 @@ class EmojiCatalogs {
 			this.#loading.add(did);
 			void load(did)
 				.then((entries) => this.#held.set(did, entries))
-				.catch(() => this.#held.set(did, EMPTY))
+				.catch(() => undefined)
 				.finally(() => this.#loading.delete(did));
 		}
 		return EMPTY;

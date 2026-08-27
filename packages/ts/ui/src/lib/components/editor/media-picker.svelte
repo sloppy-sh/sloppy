@@ -1,7 +1,6 @@
 <script lang="ts">
 	// Getting a picture into a note: one chosen from the device, or one already
-	// in the person's own store. `./contract.ts` says what either half is handed,
-	// and what an absent library means.
+	// in the person's own store. `./contract.ts` says what either half is handed.
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import type { HeldPicture, NoteMedia, ShownPicture } from './contract.js';
@@ -35,12 +34,12 @@
 	}
 
 	$effect(() => {
-		const list = media.library;
-		if (!open || !list) return;
+		if (!open) return;
 		let live = true;
 		reading = true;
 		unreadable = false;
-		void list()
+		void media
+			.library()
 			.then((pictures) => {
 				if (!live) return;
 				held = pictures;
@@ -123,46 +122,44 @@
 			</button>
 		</div>
 
-		{#if media.library}
-			<div class="space-y-2">
-				<p class="text-xs tracking-wide text-muted-foreground uppercase">Already in your notes</p>
-				{#if reading}
-					<p class="py-6 text-center text-sm text-muted-foreground">Looking…</p>
-				{:else if unreadable}
-					<p class="py-6 text-center text-sm text-muted-foreground">
-						Sloppy could not read these just now. Try again in a moment.
-					</p>
-				{:else if held.length === 0}
-					<p class="py-6 text-center text-sm text-muted-foreground">
-						Pictures you add to a note show up here.
-					</p>
-				{:else}
-					<div
-						class="grid max-h-[40vh] grid-cols-3 gap-2 overflow-y-auto scroll-fade-y [--scroll-fade:1rem] sm:grid-cols-4"
-					>
-						{#each held as picture (picture.upload_id)}
-							<button
-								type="button"
-								title={picture.filename}
-								aria-label={picture.filename}
-								onclick={() => {
-									onpick({ held: picture });
-									open = false;
-								}}
-								class="aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out hover:border-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-							>
-								{#if thumbnails[picture.upload_id]}
-									<img
-										src={thumbnails[picture.upload_id]}
-										alt={picture.filename}
-										class="size-full object-cover"
-									/>
-								{/if}
-							</button>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		{/if}
+		<div class="space-y-2">
+			<p class="text-xs tracking-wide text-muted-foreground uppercase">Already in your notes</p>
+			{#if reading}
+				<p class="py-6 text-center text-sm text-muted-foreground">Looking…</p>
+			{:else if unreadable}
+				<p class="py-6 text-center text-sm text-muted-foreground">
+					Sloppy could not read these just now. Try again in a moment.
+				</p>
+			{:else if held.length === 0}
+				<p class="py-6 text-center text-sm text-muted-foreground">
+					Pictures you add to a note show up here.
+				</p>
+			{:else}
+				<div
+					class="grid max-h-[40vh] grid-cols-3 gap-2 overflow-y-auto scroll-fade-y [--scroll-fade:1rem] sm:grid-cols-4"
+				>
+					{#each held as picture (picture.upload_id)}
+						<button
+							type="button"
+							title={picture.filename}
+							aria-label={picture.filename}
+							onclick={() => {
+								onpick({ held: picture });
+								open = false;
+							}}
+							class="aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out hover:border-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						>
+							{#if thumbnails[picture.upload_id]}
+								<img
+									src={thumbnails[picture.upload_id]}
+									alt={picture.filename}
+									class="size-full object-cover"
+								/>
+							{/if}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	</div>
 </ResponsiveModal>

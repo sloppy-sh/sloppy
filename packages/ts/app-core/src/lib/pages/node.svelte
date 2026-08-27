@@ -15,8 +15,10 @@
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onDestroy } from 'svelte';
 	import { api } from '../api.js';
+	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { session } from '../stores/session.svelte.js';
 
 	let {
 		ref,
@@ -34,6 +36,7 @@
 	const node = $derived(nodes.get(ref));
 	const children = $derived(nodes.children(ref));
 	const facets = $derived(Object.entries(node?.labels ?? {}));
+	const emoji = $derived(noteEmoji(session.viewer?.did ?? ''));
 
 	let blocks = $state<BlockView[]>([]);
 	let loading = $state(true);
@@ -198,6 +201,8 @@
 			<BlockStack
 				{node}
 				{blocks}
+				{emoji}
+				media={noteMedia}
 				onCreate={async (request: CreateBlockRequest) => {
 					const block = await api.createBlock(request);
 					blocks = [...blocks, block].sort(byOrd);

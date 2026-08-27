@@ -41,6 +41,21 @@ export function resolveEmoji(
 	return custom.find((entry) => entry.shortcode.toLowerCase() === code) ?? byShortcode.get(code);
 }
 
+/** One entry per shortcode, the catalog's ahead of Unicode's — the same
+ *  precedence {@link resolveEmoji} applies, so what a search offers is what
+ *  writing the name would give. */
+function claimants(custom: readonly CustomEmojiEntry[]): EmojiEntry[] {
+	const seen = new Set<string>();
+	const all: EmojiEntry[] = [];
+	for (const entry of [...custom, ...byShortcode.values()]) {
+		const code = entry.shortcode.toLowerCase();
+		if (seen.has(code)) continue;
+		seen.add(code);
+		all.push(entry);
+	}
+	return all;
+}
+
 /** Shortcode matches first, then keyword matches; both ranked prefix before
  *  substring, and a catalog entry ahead of the Unicode set at every tier. */
 export function searchEmoji(
@@ -48,7 +63,7 @@ export function searchEmoji(
 	limit = 24,
 	custom: readonly CustomEmojiEntry[] = []
 ): EmojiEntry[] {
-	const all: EmojiEntry[] = [...custom, ...byShortcode.values()];
+	const all = claimants(custom);
 	const q = query.trim().toLowerCase();
 	if (!q) return all.slice(0, limit);
 

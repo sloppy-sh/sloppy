@@ -217,6 +217,14 @@ export const SyrUploadSchema = z.object({
 });
 export type SyrUpload = z.infer<typeof SyrUploadSchema>;
 
+/** One row of an owner's own listing, which adds the two halves of the id an
+ *  upload is cited by — a read of a single upload already knows them. */
+export const SyrOwnedUploadSchema = SyrUploadSchema.extend({
+  did: DidSyrSchema,
+  local_id: z.string().min(1),
+});
+export type SyrOwnedUpload = z.infer<typeof SyrOwnedUploadSchema>;
+
 /** `did` is null on an account whose identity has not been minted yet. */
 export const SyrProfileSchema = z.object({
   did: DidSyrSchema.nullable(),

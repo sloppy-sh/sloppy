@@ -3,8 +3,9 @@
 // `type` with a renderer; none of them is a field here.
 //
 // This package reaches no API, so everything that talks to one arrives as a
-// capability. Each is optional, and its ABSENCE is what turns the surface that
-// needs it off — a shell leaves one out to say the surface cannot serve it.
+// capability. Every one of them is required: a surface somebody writes in can
+// send a picture and use the emoji they have, and an optional capability is a
+// feature a shell can leave out without anything saying so.
 
 import type {
 	BlockView,
@@ -44,25 +45,21 @@ export interface NoteMedia {
 	send(file: File, progress: (fraction: number) => void): SendingPicture;
 	/** A note's picture is private, so only its owner can be answered. */
 	picture(uploadId: MediaAsset['upload_id']): Promise<ShownPicture>;
-	/**
-	 * What the person has already put in a note, newest first — so a picture can
-	 * be used twice without being sent twice.
-	 *
-	 * Declared, not yet servable: nothing lists an identity's own uploads back to
-	 * them, so every shell leaves this out today and the picker offers sending
-	 * alone. Closing it is a route on the API and a method on `@sloppy/client`.
-	 */
-	library?(): Promise<HeldPicture[]>;
+	/** What the person has already put in a note, newest first — so a picture can
+	 *  be used twice without being sent twice. */
+	library(): Promise<HeldPicture[]>;
 }
 
 export interface NoteEmoji {
+	/** Whose catalog is the person's own: what the picker offers under "Yours",
+	 *  and what {@link add} and {@link remove} act on. A note somebody else wrote
+	 *  still resolves its shortcodes against ITS author's catalog. */
+	mine: string;
 	/** What that identity's own instance serves, with `src` already resolved into
 	 *  something an `<img>` may load. */
 	catalog(did: string): Promise<readonly CustomEmojiEntry[]>;
-	/** Absent → a catalog is readable here but cannot be added to. */
-	add?(entry: { file: File; shortcode: string; kind: CustomEmojiKind }): Promise<void>;
-	/** Absent → an entry cannot be taken back out of the catalog here. */
-	remove?(id: CustomEmojiEntry['id']): Promise<void>;
+	add(entry: { file: File; shortcode: string; kind: CustomEmojiKind }): Promise<void>;
+	remove(id: CustomEmojiEntry['id']): Promise<void>;
 }
 
 export interface BlockStackProps {
@@ -75,9 +72,6 @@ export interface BlockStackProps {
 	onRemove: (ref: OwnedRef) => Promise<void>;
 	/** `null` moves the block to the top of the stack. */
 	onReorder: (ref: OwnedRef, after: OwnedRef | null) => Promise<BlockView>;
-	/** Absent → a note takes no pictures and nothing offers to add one. */
-	media?: NoteMedia;
-	/** Absent → the Unicode set is the whole of what a `:shortcode:` can name,
-	 *  and one naming a picture stays written as the text it was typed as. */
-	emoji?: NoteEmoji;
+	media: NoteMedia;
+	emoji: NoteEmoji;
 }

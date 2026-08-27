@@ -21,6 +21,7 @@ import {
   type FolderRow,
   listFolders,
   listPublicUploads,
+  listUploadsIn,
   updateUpload,
   type UploadRow,
 } from "./store.js";
@@ -265,6 +266,22 @@ export async function acceptUpload(
     );
   }
   return updateUpload(ctx.db, row.id, { status: "completed" });
+}
+
+/**
+ * What the person themselves has in a folder. syr answers the same request
+ * sorted by whichever field was asked for; this store has one order — newest
+ * first — which is the one Sloppy asks for.
+ */
+export async function uploadsUnder(
+  ctx: IdpContext,
+  did: string,
+  folderId: string | null | undefined,
+  page: { limit: number; offset: number },
+): Promise<{ rows: UploadRow[]; total: number }> {
+  const folder = folderKey(folderId);
+  if (folder !== ROOT) await ownFolder(ctx, did, folder);
+  return listUploadsIn(ctx.db, did, folder, page);
 }
 
 export async function publicUploadsOf(

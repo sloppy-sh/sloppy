@@ -7,7 +7,7 @@ import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import BlockStack from './block-stack.svelte';
 import type { NoteEmoji, NoteMedia } from './contract.js';
-import { NOTE, OWNER, block, ref, stubCanvas } from './editor.test-support.js';
+import { NOTE, OWNER, block, noEmoji, noMedia, ref, stubCanvas } from './editor.test-support.js';
 
 interface Written {
 	created: CreateBlockRequest[];
@@ -25,7 +25,8 @@ function open(blocks: BlockView[], able: { media?: NoteMedia; emoji?: NoteEmoji 
 	mounted = mount(BlockStack, {
 		target,
 		props: {
-			...able,
+			media: able.media ?? noMedia(),
+			emoji: able.emoji ?? noEmoji(),
 			node: NOTE,
 			blocks,
 			onCreate: async (request: CreateBlockRequest) => {
@@ -50,6 +51,13 @@ function open(blocks: BlockView[], able: { media?: NoteMedia; emoji?: NoteEmoji 
 function close(): void {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
+}
+
+/** Every block row the document currently describes, by node kind. */
+function topLevel(of: Editor): string[] {
+	const names: string[] = [];
+	of.state.doc.forEach((child) => names.push(child.type.name));
+	return names;
 }
 
 /** TipTap hangs the editor off the element it writes into. */
@@ -286,12 +294,12 @@ describe('a picture in a note', () => {
 		const landed = new Promise<MediaAsset>((resolve) => (land = resolve));
 		const reported: number[] = [];
 		const media: NoteMedia = {
+			...noMedia(),
 			send: (_file, report) => {
 				report(0.5);
 				reported.push(0.5);
 				return { asset: landed, cancel: () => {} };
-			},
-			picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} })
+			}
 		};
 		return { media, reported, land: (asset: MediaAsset) => land(asset) };
 	}
@@ -330,6 +338,55 @@ describe('a picture in a note', () => {
 			})
 		]);
 	});
+
+	// A picture nested in a list item is below the top level, where neither the
+	// save plan nor the send that fills it can find it again.
+	it('stands on its own even when the writing was in a list', async () => {
+		const { media, land } = sender();
+		open([block({ type: 'list', content: '- one\n- two' })], { media });
+		const of = writingIn();
+		of.commands.setTextSelection(of.state.doc.content.size - 4);
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+		await choose(new File(['x'], 'kite.png', { type: 'image/png' }));
+
+		expect(of.state.doc.firstChild?.type.name).toBe('bulletList');
+		expect(topLevel(of)).toContain('picture');
+
+		land({ upload_id: `${OWNER}/01UP`, mime_type: 'image/png', size: 1 });
+		await vi.advanceTimersByTimeAsync(4000);
+
+		expect(written.created.map((row) => row.type)).toEqual(['image']);
+		expect(written.updated).toEqual([]);
+	});
+
+	it('offers what is already in a note, and uses one without sending it again', async () => {
+		open([], {
+			media: {
+				...noMedia(),
+				library: async () => [
+					{ upload_id: `${OWNER}/01OLD`, filename: 'kite.png', mime_type: 'image/png', size: 9 }
+				]
+			}
+		});
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+		[...target.querySelectorAll('button')]
+			.find((button) => button.getAttribute('aria-label') === 'Picture')
+			?.click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+
+		const held = document.body.querySelector('button[aria-label="kite.png"]') as HTMLButtonElement;
+		expect(held).not.toBeNull();
+		held.click();
+		await vi.advanceTimersByTimeAsync(4000);
+
+		expect(written.created).toEqual([
+			expect.objectContaining({ type: 'image', data: { upload_id: `${OWNER}/01OLD` } })
+		]);
+	});
 });
 
 describe('a shortcode its author uploaded a picture for', () => {
@@ -337,7 +394,7 @@ describe('a shortcode its author uploaded a picture for', () => {
 
 	it('draws the picture, and is still stored as the shortcode', async () => {
 		open([block({ type: 'paragraph', content: 'look :parrot: look' })], {
-			emoji: { catalog: async () => CATALOG }
+			emoji: noEmoji(CATALOG)
 		});
 		await vi.advanceTimersByTimeAsync(0);
 		flushSync();

@@ -20,4 +20,12 @@ export { default as NavPill, type NavAction, type NavItem } from './components/n
 
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
-export type { BlockStackProps } from './components/editor/contract.js';
+export type {
+	BlockStackProps,
+	HeldPicture,
+	NoteEmoji,
+	NoteMedia,
+	SendingPicture,
+	ShownPicture
+} from './components/editor/contract.js';
+export type { CustomEmojiEntry } from './emoji/catalog.js';

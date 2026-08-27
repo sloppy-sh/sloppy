@@ -148,7 +148,8 @@ are `@sloppy/idp`'s `files.ts` and `emojis.ts`.
   never exposed to the internet and an asset URL stays valid for the upload's life.
 - **A folder named `public` is the whole access rule.** An upload under one is readable by
   anyone and is listed by `GET /api/idp/public/uploads/{did}`; anything else answers only
-  its owner's token. Which folder a role writes into is § "Pictures" below.
+  its owner's token, including `GET /api/idp/uploads`, which lists one folder back to the
+  person who owns it. Which folder a role writes into is § "Pictures" below.
 - **`upload_url` is opaque by contract.** This provider signs a URL to its own route
   rather than presigning an S3 one; `@sloppy/types`' `media.ts` is written so a caller
   cannot tell the difference.
@@ -182,7 +183,9 @@ policy:
 **A note is private until its subtree is published, so its pictures are too.** The owner
 reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks their own
 store for it as them; nothing else can, and it is not listed among an identity's public
-uploads. That route needs the reader's session, and an `<img>` carries no credential
+uploads. `GET /api/media/uploads` lists the ones they put in a note, newest first, so a
+picture can be used twice without being sent twice — the same folder decides what is in
+it, so nothing from a profile is. That route needs the reader's session, and an `<img>` carries no credential
 across origins — so `SloppyClient.ownPicture` answers with the address itself where the
 API shares the page's origin and with the fetched bytes anywhere else. It is the only way
 one of these draws, which is why a `MediaAsset` carries an `upload_id` and no address at

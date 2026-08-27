@@ -31,10 +31,8 @@
 		/** This person's own catalog, `src` already resolved for an `<img>`. */
 		custom?: readonly CustomEmojiEntry[];
 		onpick: (entry: EmojiEntry, sticker: boolean) => void;
-		/** Absent → the catalog is offered here but cannot be added to. */
-		onadd?: (entry: { file: File; shortcode: string; kind: CustomEmojiKind }) => Promise<void>;
-		/** Absent → nothing can be taken back out of the catalog here. */
-		onremove?: (id: CustomEmojiEntry['id']) => Promise<void>;
+		onadd: (entry: { file: File; shortcode: string; kind: CustomEmojiKind }) => Promise<void>;
+		onremove: (id: CustomEmojiEntry['id']) => Promise<void>;
 	} = $props();
 
 	let query = $state('');
@@ -69,7 +67,7 @@
 		adding = true;
 		refused = null;
 		try {
-			await onadd?.({ file, shortcode: typed, kind: asSticker ? 'sticker' : 'emoji' });
+			await onadd({ file, shortcode: typed, kind: asSticker ? 'sticker' : 'emoji' });
 			shortcode = '';
 			asSticker = false;
 		} catch (error) {
@@ -111,10 +109,10 @@
 	<div
 		class="max-h-[50vh] overflow-y-auto scroll-fade-y px-4 pb-[max(1rem,var(--safe-area-inset-bottom,env(safe-area-inset-bottom)))] [--scroll-fade:1rem]"
 	>
-		{#if !query.trim() && (custom.length > 0 || onadd)}
+		{#if !query.trim()}
 			<div class="flex items-baseline justify-between gap-3 pt-2 pb-1.5">
 				<p class="text-xs tracking-wide text-muted-foreground uppercase">Yours</p>
-				{#if onremove && custom.length > 0}
+				{#if custom.length > 0}
 					<button
 						type="button"
 						class="text-xs text-muted-foreground hover:text-foreground"
@@ -125,50 +123,48 @@
 				{/if}
 			</div>
 
-			{#if onadd}
-				<div class="mb-2 flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-2.5">
-					<div class="min-w-36 flex-1 space-y-1">
-						<Label for="emoji-shortcode" class="text-xs text-muted-foreground">Name</Label>
-						<Input
-							id="emoji-shortcode"
-							bind:value={shortcode}
-							placeholder="party_parrot"
-							class="h-9"
-							aria-invalid={typed.length > 0 && !named}
-						/>
-					</div>
-					<div class="flex h-9 shrink-0 items-center gap-2">
-						<Switch id="emoji-as-sticker" bind:checked={asSticker} />
-						<Label for="emoji-as-sticker" class="text-sm text-muted-foreground">Always large</Label>
-					</div>
-					<input
-						bind:this={chooser}
-						type="file"
-						accept={ACCEPT}
-						class="sr-only"
-						onchange={(event) => {
-							const input = event.currentTarget;
-							const file = input.files?.[0];
-							input.value = '';
-							if (file) void add(file);
-						}}
+			<div class="mb-2 flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-2.5">
+				<div class="min-w-36 flex-1 space-y-1">
+					<Label for="emoji-shortcode" class="text-xs text-muted-foreground">Name</Label>
+					<Input
+						id="emoji-shortcode"
+						bind:value={shortcode}
+						placeholder="party_parrot"
+						class="h-9"
+						aria-invalid={typed.length > 0 && !named}
 					/>
-					<Button
-						size="sm"
-						class="h-9 shrink-0"
-						disabled={!named || taken || adding}
-						onclick={() => chooser?.click()}
-					>
-						{adding ? 'Adding…' : 'Add a picture'}
-					</Button>
 				</div>
-				{#if typed.length > 0 && !named}
-					<p class="pb-2 text-xs text-muted-foreground">2 to 32 letters, digits or underscores.</p>
-				{:else if taken}
-					<p class="pb-2 text-xs text-muted-foreground">You already have one by that name.</p>
-				{/if}
-				{#if refused}<p class="pb-2 text-xs text-destructive" role="alert">{refused}</p>{/if}
+				<div class="flex h-9 shrink-0 items-center gap-2">
+					<Switch id="emoji-as-sticker" bind:checked={asSticker} />
+					<Label for="emoji-as-sticker" class="text-sm text-muted-foreground">Always large</Label>
+				</div>
+				<input
+					bind:this={chooser}
+					type="file"
+					accept={ACCEPT}
+					class="sr-only"
+					onchange={(event) => {
+						const input = event.currentTarget;
+						const file = input.files?.[0];
+						input.value = '';
+						if (file) void add(file);
+					}}
+				/>
+				<Button
+					size="sm"
+					class="h-9 shrink-0"
+					disabled={!named || taken || adding}
+					onclick={() => chooser?.click()}
+				>
+					{adding ? 'Adding…' : 'Add a picture'}
+				</Button>
+			</div>
+			{#if typed.length > 0 && !named}
+				<p class="pb-2 text-xs text-muted-foreground">2 to 32 letters, digits or underscores.</p>
+			{:else if taken}
+				<p class="pb-2 text-xs text-muted-foreground">You already have one by that name.</p>
 			{/if}
+			{#if refused}<p class="pb-2 text-xs text-destructive" role="alert">{refused}</p>{/if}
 
 			{#if custom.length > 0}
 				<div class="grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))]">
@@ -196,8 +192,6 @@
 						{/if}
 					{/each}
 				</div>
-			{:else if !onadd}
-				<p class="pb-2 text-xs text-muted-foreground">Nothing here yet.</p>
 			{/if}
 		{/if}
 
@@ -221,6 +215,6 @@
 		''}: will show the name again instead of the picture."
 	confirmLabel="Remove"
 	onconfirm={async () => {
-		if (dropping) await onremove?.(dropping.id);
+		if (dropping) await onremove(dropping.id);
 	}}
 />
