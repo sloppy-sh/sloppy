@@ -2,20 +2,18 @@
 // describes, with the middle one going straight from the device to wherever the
 // ticket points — the bytes never travel through Sloppy.
 
-import type {
-  CompleteUploadRequest,
-  CreateUploadRequest,
-  MediaAsset,
-  MediaRole,
-  UploadTicket,
-} from "@sloppy/types";
+import type { CreateUploadRequest, MediaAsset, MediaRole } from "@sloppy/types";
+import type { SloppyClient } from "./index.js";
 
-/** The two ends of the three steps. Narrower than `SloppyClient` on purpose: an
- *  on-device adapter that implements the API by shape can send a file too. */
-export interface UploadTarget {
-  createUpload(request: CreateUploadRequest): Promise<UploadTicket>;
-  completeUpload(request: CompleteUploadRequest): Promise<MediaAsset>;
-}
+/**
+ * What sending a file needs of the client. The pair rather than the class, so
+ * `@sloppy/app-core`'s api port — which is `SloppyClient`'s public shape and
+ * not an instance of it — satisfies it by shape and never by cast.
+ */
+export type UploadClient = Pick<
+  SloppyClient,
+  "createUpload" | "completeUpload"
+>;
 
 export interface UploadHandle {
   readonly asset: Promise<MediaAsset>;
@@ -94,7 +92,7 @@ function put(
 }
 
 export function uploadFile(
-  client: UploadTarget,
+  client: UploadClient,
   file: File,
   options: { role: MediaRole; onProgress?: UploadProgress },
 ): UploadHandle {

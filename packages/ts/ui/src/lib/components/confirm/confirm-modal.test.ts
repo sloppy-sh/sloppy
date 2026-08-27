@@ -91,6 +91,17 @@ describe('the confirmation surface', () => {
 		expect(button('Delete')?.disabled).toBe(false);
 	});
 
+	it('says why it failed inside the question, not behind it', async () => {
+		open({
+			refused: 'Sloppy could not remove that dimension. Try again in a moment.',
+			onconfirm: () => Promise.reject(new Error('nope'))
+		});
+		button('Delete')?.click();
+		await settle();
+		const dialog = document.body.querySelector('[role="dialog"]');
+		expect(dialog?.textContent).toContain('Sloppy could not remove that dimension');
+	});
+
 	it('refuses a second answer while the first is still running', async () => {
 		let asked = 0;
 		let finish = () => {};
