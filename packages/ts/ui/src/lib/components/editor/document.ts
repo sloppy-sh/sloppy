@@ -255,6 +255,31 @@ function sameData(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * Where in `values` one longest strictly increasing run sits. Everything off it
+ * is what has to move for the whole to be in order, which is what keeps one
+ * block dragged across the stack to one `ord` rather than one per block it
+ * passed.
+ */
+function longestRun(values: readonly number[]): number[] {
+	const tails: number[] = [];
+	const before: number[] = [];
+	values.forEach((value, index) => {
+		let low = 0;
+		let high = tails.length;
+		while (low < high) {
+			const middle = (low + high) >> 1;
+			if (values[tails[middle]] < value) low = middle + 1;
+			else high = middle;
+		}
+		before[index] = low > 0 ? tails[low - 1] : -1;
+		tails[low] = index;
+	});
+	const run: number[] = [];
+	for (let index = tails.at(-1) ?? -1; index >= 0; index = before[index]) run.push(index);
+	return run.reverse();
+}
+
+/**
  * What has to reach the API for the rows to say what the document says. Creates
  * and updates come first in document order, then any move, then the deletions —
  * an anchor is still there when the block that names it is placed.
@@ -297,13 +322,17 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 
 	const order = saved.filter((row) => kept.has(row.ref)).map((row) => row.ref);
 	const wanted = next.flatMap((_, index) => (rowFor[index] ? [index] : []));
+	const staying = new Set(
+		longestRun(wanted.map((at) => order.indexOf((rowFor[at] as SavedBlock).ref)))
+	);
 	wanted.forEach((at, index) => {
-		const ref = (rowFor[at] as SavedBlock).ref;
-		if (order[index] === ref) return;
-		order.splice(order.indexOf(ref), 1);
-		order.splice(index, 0, ref);
+		if (staying.has(index)) return;
 		const before = next[at - 1];
-		ops.push({ kind: 'reorder', ref, after: before ? before.uid : null });
+		ops.push({
+			kind: 'reorder',
+			ref: (rowFor[at] as SavedBlock).ref,
+			after: before ? before.uid : null
+		});
 	});
 
 	for (const row of saved) {

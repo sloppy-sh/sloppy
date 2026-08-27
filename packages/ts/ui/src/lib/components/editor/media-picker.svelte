@@ -7,6 +7,12 @@
 
 	const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 
+	/** A note's picture is read whole, so the grid reads only what somebody is
+	 *  looking at and a few at a time: a screenful of originals at once is how a
+	 *  phone loses the tab. */
+	const AHEAD_PX = 240;
+	const AT_ONCE = 3;
+
 	let {
 		open = $bindable(false),
 		media,
@@ -26,11 +32,22 @@
 
 	/** What each thumbnail holds, by the upload it is of. */
 	let shown: Record<string, ShownPicture> = {};
+	/** The tile standing for each picture, so a scroll can ask what is in view. */
+	let tiles: { node: HTMLElement; picture: HeldPicture }[] = [];
+	let grid: HTMLElement | null = null;
+	let asked: string[] = [];
+	let waiting: HeldPicture[] = [];
+	let fetching = 0;
+	/** Bumped when the grid is emptied, so a read still in the air is dropped. */
+	let era = 0;
 
 	function forget(): void {
+		era += 1;
 		for (const picture of Object.values(shown)) picture.release();
 		shown = {};
 		thumbnails = {};
+		asked = [];
+		waiting = [];
 	}
 
 	$effect(() => {
@@ -41,9 +58,7 @@
 		void media
 			.library()
 			.then((pictures) => {
-				if (!live) return;
-				held = pictures;
-				for (const picture of pictures) void thumbnail(picture, () => live);
+				if (live) held = pictures;
 			})
 			.catch(() => {
 				if (live) unreadable = true;
@@ -57,18 +72,64 @@
 		};
 	});
 
-	async function thumbnail(picture: HeldPicture, live: () => boolean): Promise<void> {
-		try {
-			const drawn = await media.picture(picture.upload_id);
-			if (!live()) {
-				drawn.release();
-				return;
-			}
-			shown[picture.upload_id] = drawn;
-			thumbnails = { ...thumbnails, [picture.upload_id]: drawn.src };
-		} catch {
-			// One that will not draw is simply not offered.
+	function want(picture: HeldPicture): void {
+		if (asked.includes(picture.upload_id)) return;
+		asked.push(picture.upload_id);
+		waiting.push(picture);
+	}
+
+	function pump(): void {
+		while (fetching < AT_ONCE && waiting.length > 0) {
+			const picture = waiting.shift() as HeldPicture;
+			const mine = era;
+			fetching += 1;
+			void media
+				.picture(picture.upload_id)
+				.then((drawn) => {
+					if (mine !== era) {
+						drawn.release();
+						return;
+					}
+					shown[picture.upload_id] = drawn;
+					thumbnails = { ...thumbnails, [picture.upload_id]: drawn.src };
+				})
+				// One that will not draw is simply not offered.
+				.catch(() => undefined)
+				.finally(() => {
+					fetching -= 1;
+					if (mine === era) pump();
+				});
 		}
+	}
+
+	function reach(): void {
+		if (!grid) return;
+		const box = grid.getBoundingClientRect();
+		for (const { node, picture } of tiles) {
+			const at = node.getBoundingClientRect();
+			if (at.top <= box.bottom + AHEAD_PX && at.bottom >= box.top - AHEAD_PX) want(picture);
+		}
+		pump();
+	}
+
+	// Attached on both halves rather than bound: either can mount first, and a
+	// tile is measured against the grid.
+	function scroller(node: HTMLElement) {
+		grid = node;
+		reach();
+		return () => {
+			if (grid === node) grid = null;
+		};
+	}
+
+	function tile(picture: HeldPicture) {
+		return (node: HTMLElement) => {
+			tiles.push({ node, picture });
+			reach();
+			return () => {
+				tiles = tiles.filter((held) => held.node !== node);
+			};
+		};
 	}
 
 	function take(file: File | null | undefined): void {
@@ -137,6 +198,8 @@
 			{:else}
 				<div
 					class="grid max-h-[40vh] grid-cols-3 gap-2 overflow-y-auto scroll-fade-y [--scroll-fade:1rem] sm:grid-cols-4"
+					onscroll={reach}
+					{@attach scroller}
 				>
 					{#each held as picture (picture.upload_id)}
 						<button
@@ -148,6 +211,7 @@
 								open = false;
 							}}
 							class="aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out hover:border-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+							{@attach tile(picture)}
 						>
 							{#if thumbnails[picture.upload_id]}
 								<img

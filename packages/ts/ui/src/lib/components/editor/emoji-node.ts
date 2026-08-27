@@ -14,6 +14,8 @@ import {
 } from '../../emoji/catalog.js';
 import { emojiShortcode } from '../../emoji/tokenize.js';
 
+export const EMOJI_NODE = 'emoji';
+
 export interface EmojiInsert {
 	shortcode: string;
 	char: string;
@@ -42,12 +44,38 @@ declare module '@tiptap/core' {
 }
 
 /** The document's own spelling of an insert; `name` is the shortcode. */
-const attrsOf = (entry: EmojiInsert) => ({
+export interface EmojiAttrs {
+	name: string;
+	char: string;
+	src: string;
+	sticker: boolean;
+}
+
+const attrsOf = (entry: EmojiInsert): EmojiAttrs => ({
 	name: entry.shortcode,
 	char: entry.char,
 	src: entry.src,
 	sticker: entry.sticker
 });
+
+/**
+ * What an emoji already in a document should carry once `custom` claims its
+ * shortcode; undefined where nothing claims it or where it already draws from
+ * the claim. A catalog that has not arrived yet is indistinguishable from an
+ * empty one, so this only ever goes the one way — `../../emoji/catalog.ts`
+ * states the precedence a Unicode glyph would otherwise take back.
+ */
+export function reclaimEmoji(
+	attrs: Record<string, unknown>,
+	custom: readonly CustomEmojiEntry[]
+): EmojiAttrs | undefined {
+	const name = String(attrs.name ?? '');
+	const claim = custom.find((entry) => entry.shortcode.toLowerCase() === name.toLowerCase());
+	if (!claim) return undefined;
+	const next = attrsOf(emojiInsert(claim, attrs.sticker === true));
+	const same = next.name === attrs.name && next.src === attrs.src && next.sticker === attrs.sticker;
+	return same ? undefined : next;
+}
 
 const written = (attrs: { name?: string; sticker?: boolean }) =>
 	emojiShortcode(attrs.name ?? '', !!attrs.sticker);
@@ -60,7 +88,7 @@ const markdownSpec = {
 
 export function EmojiNode(custom: () => readonly CustomEmojiEntry[]) {
 	return Node.create({
-		name: 'emoji',
+		name: EMOJI_NODE,
 		group: 'inline',
 		inline: true,
 		atom: true,

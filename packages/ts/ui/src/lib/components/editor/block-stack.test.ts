@@ -13,6 +13,7 @@ interface Written {
 	created: CreateBlockRequest[];
 	updated: { ref: OwnedRef; content?: string; type?: string }[];
 	removed: OwnedRef[];
+	moved: { ref: OwnedRef; after: OwnedRef | null }[];
 }
 
 let target: HTMLElement;
@@ -41,7 +42,10 @@ function open(blocks: BlockView[], able: { media?: NoteMedia; emoji?: NoteEmoji 
 			onRemove: async (block: OwnedRef) => {
 				written.removed.push(block);
 			},
-			onReorder: async () => ({}) as BlockView
+			onReorder: async (block: OwnedRef, after: OwnedRef | null) => {
+				written.moved.push({ ref: block, after });
+				return {} as BlockView;
+			}
 		}
 	});
 	flushSync();
@@ -84,7 +88,7 @@ function penEvent(type: string, x: number, y: number, pressure = 0.5): PointerEv
 }
 
 beforeEach(() => {
-	written = { created: [], updated: [], removed: [] };
+	written = { created: [], updated: [], removed: [], moved: [] };
 	answering = null;
 	stubResizeObserver();
 	stubMediaQuery(() => false);
@@ -128,7 +132,7 @@ describe('opening a note', () => {
 	it('writes nothing back for a note nobody has touched', async () => {
 		open([block({ type: 'paragraph', content: 'left alone' })]);
 		await vi.advanceTimersByTimeAsync(5000);
-		expect(written).toEqual({ created: [], updated: [], removed: [] });
+		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
 	});
 
 	it('leaves a shortcode inside code exactly as it was written', async () => {
@@ -403,19 +407,146 @@ describe('a picture in a note', () => {
 });
 
 describe('a shortcode its author uploaded a picture for', () => {
-	const CATALOG = [{ id: 'e1', shortcode: 'parrot', src: '/proxy?ref=parrot', sticker: false }];
+	// `seedling` on purpose: Unicode claims that name too, and a note opens
+	// before its author's catalog answers, so the first pass has only the
+	// Unicode set to resolve against.
+	const CATALOG = [{ id: 'e1', shortcode: 'seedling', src: '/proxy?ref=seedling', sticker: false }];
 
 	it('draws the picture, and is still stored as the shortcode', async () => {
-		open([block({ type: 'paragraph', content: 'look :parrot: look' })], {
+		open([block({ type: 'paragraph', content: 'look :seedling: look' })], {
 			emoji: noEmoji(CATALOG)
 		});
 		await vi.advanceTimersByTimeAsync(0);
 		flushSync();
 
 		const drawn = target.querySelector('img.sloppy-emoji-picture');
-		expect(drawn?.getAttribute('src')).toBe('/proxy?ref=parrot');
+		expect(drawn?.getAttribute('src')).toBe('/proxy?ref=seedling');
+		expect(target.querySelector('.sloppy-prose')?.textContent).not.toContain('🌱');
 		expect(writingIn().storage.markdown.manager.serialize(writingIn().getJSON())).toContain(
-			':parrot:'
+			':seedling:'
 		);
+	});
+
+	it('writes nothing back for a note that only had its emoji drawn', async () => {
+		open([block({ type: 'paragraph', content: 'look :seedling: look' })], {
+			emoji: noEmoji(CATALOG)
+		});
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
+	});
+
+	it('leaves a name the catalog does not claim as the emoji Unicode gives it', async () => {
+		open([block({ type: 'paragraph', content: 'a spark :fire: of it' })], {
+			emoji: noEmoji(CATALOG)
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+
+		expect(target.querySelector('[data-emoji="fire"]')?.textContent).toBe('🔥');
+		expect(target.querySelector('img.sloppy-emoji-picture')).toBeNull();
+	});
+});
+
+describe('putting a block somewhere else in the stack', () => {
+	/** Rows 40 tall and stacked, so a drag has somewhere to aim at. */
+	function stacked(): void {
+		const flat = Element.prototype.getBoundingClientRect;
+		Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+			const rows = [...target.querySelectorAll('.sloppy-prose > [data-block-uid]')];
+			const index = rows.indexOf(this);
+			if (index < 0) return flat.call(this);
+			const top = index * 40;
+			return { left: 0, right: 320, width: 320, top, bottom: top + 40, height: 40 } as DOMRect;
+		};
+	}
+
+	const grips = (): HTMLButtonElement[] => [
+		...target.querySelectorAll<HTMLButtonElement>('[data-block-handle]')
+	];
+
+	const stack = (): (string | null)[] =>
+		[...target.querySelectorAll('.sloppy-prose > p')].map((row) => row.textContent);
+
+	function finger(type: string, y: number): PointerEvent {
+		const event = new Event(type, { bubbles: true, cancelable: true });
+		Object.assign(event, {
+			pointerId: 2,
+			pointerType: 'touch',
+			button: 0,
+			clientX: 10,
+			clientY: y
+		});
+		return event as PointerEvent;
+	}
+
+	const press = (key: string): KeyboardEvent =>
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+	const three = (): BlockView[] => [
+		block({ type: 'paragraph', content: 'one' }),
+		block({ type: 'paragraph', content: 'two' }),
+		block({ type: 'paragraph', content: 'three' })
+	];
+
+	it('lands where a finger drops it, and writes the one move', async () => {
+		const blocks = three();
+		open(blocks);
+		stacked();
+
+		grips()[0].dispatchEvent(finger('pointerdown', 20));
+		window.dispatchEvent(finger('pointermove', 130));
+		window.dispatchEvent(finger('pointerup', 130));
+		flushSync();
+
+		expect(stack()).toEqual(['two', 'three', 'one']);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.moved).toEqual([{ ref: blocks[0].ref, after: blocks[2].ref }]);
+	});
+
+	it('writes nothing for a block dropped back where it was', async () => {
+		open(three());
+		stacked();
+
+		grips()[1].dispatchEvent(finger('pointerdown', 60));
+		window.dispatchEvent(finger('pointermove', 70));
+		window.dispatchEvent(finger('pointerup', 70));
+		flushSync();
+
+		expect(stack()).toEqual(['one', 'two', 'three']);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.moved).toEqual([]);
+	});
+
+	it('moves on the arrow keys too, for anyone reaching it without a pointer', async () => {
+		const blocks = three();
+		open(blocks);
+
+		grips()[2].focus();
+		grips()[2].dispatchEvent(press('ArrowUp'));
+		flushSync();
+
+		expect(stack()).toEqual(['one', 'three', 'two']);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.moved).toEqual([{ ref: blocks[2].ref, after: blocks[0].ref }]);
+	});
+
+	// The handle is rebuilt where the block landed, so the one that was under the
+	// finger is a different element by then, and an unfocused one announces nothing.
+	it('keeps the handle it was moved by, saying where the block is now', () => {
+		open(three());
+
+		grips()[2].focus();
+		grips()[2].dispatchEvent(press('ArrowUp'));
+		flushSync();
+
+		const held = document.activeElement as HTMLElement;
+		expect(held.dataset.blockHandle).toBeDefined();
+		expect(held.getAttribute('aria-label')).toBe('Move block 2 of 3');
+	});
+
+	it('offers no handle on a note with nothing to put in order', () => {
+		open([block({ type: 'paragraph', content: 'only this' })]);
+		expect(grips()).toEqual([]);
 	});
 });

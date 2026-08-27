@@ -239,6 +239,27 @@ describe('what has to reach the API', () => {
 		).toEqual([{ kind: 'reorder', ref: 'a/C', after: null }]);
 	});
 
+	// One drag is one `ord`, however far the block travelled: every block it
+	// passed kept its place relative to the others and so has nothing to write.
+	it('writes one move for a block dragged past every other block', () => {
+		expect(
+			planSave(
+				[
+					row('u1', 'a/A', 'one'),
+					row('u2', 'a/B', 'two'),
+					row('u3', 'a/C', 'three'),
+					row('u4', 'a/D', 'four')
+				],
+				[
+					doc('u2', 'a/B', 'two'),
+					doc('u3', 'a/C', 'three'),
+					doc('u4', 'a/D', 'four'),
+					doc('u1', 'a/A', 'one')
+				]
+			)
+		).toEqual([{ kind: 'reorder', ref: 'a/A', after: 'u4' }]);
+	});
+
 	it('treats a row pasted in from another note as a new block here', () => {
 		expect(planSave([], [doc('u1', 'somewhere/ELSE', 'borrowed')])).toEqual([
 			{ kind: 'create', uid: 'u1', after: null, type: 'paragraph', content: 'borrowed' }

@@ -27,6 +27,7 @@
 	import type { EmojiEntry } from '../../emoji/catalog.js';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 	import { tokenizeContent } from '../../emoji/tokenize.js';
+	import { BlockHandles } from './block-handles.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		BlockIdentity,
@@ -38,7 +39,7 @@
 		type SavedBlock
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
-	import { emojiInsert, EmojiNode } from './emoji-node.js';
+	import { emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
 	import EmojiSuggestionPopup from './emoji-suggestion-popup.svelte';
 	import { EmojiCompletions, EmojiSuggestion } from './emoji-suggestion.svelte.js';
 	import { InkNode } from './ink-node.js';
@@ -227,6 +228,11 @@
 	/**
 	 * Turns the shortcodes a note is stored with back into the emoji they name.
 	 * Code is left as it was written: `:fire:` in a snippet is part of the snippet.
+	 *
+	 * Runs again for every catalog that lands after the note opened, and an emoji
+	 * already drawn is part of what it re-reads: a note opens before its author's
+	 * catalog answers, so a shortcode Unicode also claims is a glyph by the time
+	 * the picture it names arrives.
 	 */
 	function showEmoji(current: Editor): void {
 		const literal = (child: ProseMirrorNode) =>
@@ -234,6 +240,14 @@
 		let tr: ReturnType<typeof current.state.tr.replaceWith> | null = null;
 		current.state.doc.descendants((child, pos) => {
 			if (literal(child)) return false;
+			if (child.type.name === EMOJI_NODE) {
+				const claimed = reclaimEmoji(child.attrs, catalog);
+				if (claimed) {
+					tr ??= current.state.tr;
+					tr.setNodeMarkup(tr.mapping.map(pos), undefined, claimed);
+				}
+				return false;
+			}
 			if (!child.isText || !child.text) return;
 			for (const token of tokenizeContent(child.text, catalog)) {
 				if (token.kind !== 'emoji') continue;
@@ -374,7 +388,8 @@
 
 	function onPenDown(event: PointerEvent): void {
 		if (event.pointerType !== 'pen' || !surface || !wet || !editor) return;
-		if ((event.target as HTMLElement | null)?.closest('[data-ink-block]')) return;
+		if ((event.target as HTMLElement | null)?.closest('[data-ink-block],[data-block-handle]'))
+			return;
 		event.preventDefault();
 		clearTimeout(settling);
 		capturePointer(surface, event.pointerId);
@@ -454,6 +469,7 @@
 					TaskList,
 					TaskItem.configure({ nested: true }),
 					BlockIdentity,
+					BlockHandles,
 					EmojiNode(() => catalog),
 					EmojiSuggestion(completions, () => ownCatalog),
 					InkNode,
@@ -628,21 +644,23 @@
 <svelte:document onvisibilitychange={whenHidden} />
 
 <div class="space-y-2">
-	<div bind:this={surface} class="relative">
-		<div bind:this={host}></div>
-		<canvas
-			bind:this={wet}
-			class="pointer-events-none absolute inset-0 size-full text-foreground"
-			aria-hidden="true"
-		></canvas>
-		{#if empty && ready}
-			<p
-				class="pointer-events-none absolute top-0 left-0 text-base text-muted-foreground select-none"
+	<div class="block-gutter">
+		<div bind:this={surface} class="relative">
+			<div bind:this={host}></div>
+			<canvas
+				bind:this={wet}
+				class="pointer-events-none absolute inset-0 size-full text-foreground"
 				aria-hidden="true"
-			>
-				Start writing.
-			</p>
-		{/if}
+			></canvas>
+			{#if empty && ready}
+				<p
+					class="pointer-events-none absolute top-0 left-0 text-base text-muted-foreground select-none"
+					aria-hidden="true"
+				>
+					Start writing.
+				</p>
+			{/if}
+		</div>
 	</div>
 
 	<p class="min-h-5 text-right text-xs text-muted-foreground" role="status">
@@ -691,13 +709,78 @@
 />
 
 <style>
+	.block-gutter {
+		--block-gutter: 1.75rem;
+		padding-left: var(--block-gutter);
+	}
 	:global(.sloppy-prose) {
 		outline: none;
 		font-size: 1rem;
 		line-height: 1.7;
 	}
-	:global(.sloppy-prose > * + *) {
+	/* A handle stands between the two blocks it separates, so the gap it would
+	   otherwise take is left to the block, exactly as it is without handles. */
+	:global(.sloppy-prose > * + *:not(.sloppy-row)) {
 		margin-top: 0.85em;
+	}
+	:global(.sloppy-prose > .sloppy-row:first-child + *) {
+		margin-top: 0;
+	}
+	:global(.sloppy-row) {
+		position: relative;
+		height: 0;
+	}
+	:global(.sloppy-row-handle) {
+		position: absolute;
+		top: 0;
+		left: calc(var(--block-gutter, 1.75rem) * -1);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: 1.75rem;
+		border-radius: calc(var(--radius) - 4px);
+		color: var(--muted-foreground);
+		opacity: 0.4;
+		cursor: grab;
+		/* The browser must not claim the gesture: a drag here is not a scroll,
+		   and on a coarse pointer it is not a text selection either. */
+		touch-action: none;
+		user-select: none;
+		-webkit-user-select: none;
+		transition:
+			opacity 150ms ease-out,
+			background-color 150ms ease-out;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global(.sloppy-row-handle) {
+			transition: none;
+		}
+	}
+	:global(.sloppy-row-handle:hover),
+	:global(.sloppy-row-handle:focus-visible),
+	:global(.sloppy-row-handle.is-dragging) {
+		opacity: 1;
+		background: var(--muted);
+	}
+	:global(.sloppy-row-handle.is-dragging) {
+		cursor: grabbing;
+	}
+	:global(.sloppy-row-handle:focus-visible) {
+		outline: 2px solid var(--ring);
+		outline-offset: 1px;
+	}
+	:global(.sloppy-row-handle svg) {
+		width: 1rem;
+		height: 1rem;
+	}
+	:global(.sloppy-drop-line) {
+		position: fixed;
+		z-index: 50;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--primary);
+		pointer-events: none;
 	}
 	:global(.sloppy-prose h1) {
 		font-size: 1.5rem;
