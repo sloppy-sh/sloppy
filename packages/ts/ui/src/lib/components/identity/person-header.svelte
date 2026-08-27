@@ -5,6 +5,7 @@
 	import { cn } from '$lib/utils.js';
 	import Avatar from './avatar.svelte';
 	import { nameOf, type Person } from './person.js';
+	import Picture from './picture.svelte';
 
 	let {
 		person,
@@ -21,13 +22,7 @@
 <div class={cn('space-y-3', className)}>
 	<div class="h-28 w-full overflow-hidden rounded-lg bg-muted sm:h-40">
 		{#if person.banner}
-			<img
-				src={person.banner}
-				alt=""
-				decoding="async"
-				class="size-full object-cover"
-				draggable="false"
-			/>
+			<Picture src={person.banner} class="size-full" />
 		{/if}
 	</div>
 

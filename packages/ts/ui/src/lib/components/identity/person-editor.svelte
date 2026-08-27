@@ -10,11 +10,13 @@
 	import { cn } from '$lib/utils.js';
 	import Avatar from './avatar.svelte';
 	import type { Person, PictureRole } from './person.js';
+	import Picture from './picture.svelte';
 
 	let {
 		person,
 		replacing = null,
 		saving = false,
+		refused = null,
 		onPicture,
 		onSave,
 		onCancel,
@@ -24,6 +26,9 @@
 		/** The picture being replaced right now, if one is. */
 		replacing?: PictureRole | null;
 		saving?: boolean;
+		/** What was refused, shown beside the control that asked for it: the
+		 *  picker named by `picture`, or the save when that is null. */
+		refused?: { picture: PictureRole | null; message: string } | null;
 		onPicture: (role: PictureRole, file: File) => void;
 		/** Empty means they cleared the field. */
 		onSave: (edits: { displayName: string; bio: string }) => void;
@@ -68,6 +73,9 @@
 	>
 		{replacing === role ? 'Adding…' : label}
 	</Button>
+	{#if refused?.picture === role}
+		<p class="basis-full text-sm text-destructive" role="alert">{refused.message}</p>
+	{/if}
 {/snippet}
 
 <form
@@ -83,7 +91,7 @@
 			class="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg bg-muted sm:h-40"
 		>
 			{#if person.banner}
-				<img src={person.banner} alt="" class="size-full object-cover" draggable="false" />
+				<Picture src={person.banner} class="size-full" />
 			{:else}
 				<ImageIcon class="size-6 text-muted-foreground/60" aria-hidden="true" />
 			{/if}
@@ -93,7 +101,7 @@
 
 	<div class="space-y-2">
 		<p class="text-sm leading-none font-medium">Picture</p>
-		<div class="flex items-center gap-4">
+		<div class="flex flex-wrap items-center gap-4">
 			<Avatar {person} size={64} class="border border-border" />
 			{@render picker('avatar', 'Change picture')}
 		</div>
@@ -115,6 +123,10 @@
 		<Textarea id="person-bio" bind:value={bio} maxlength={BIO_MAX} rows={3} />
 		<p class="text-right text-xs text-muted-foreground">{bio.length}/{BIO_MAX}</p>
 	</div>
+
+	{#if refused && !refused.picture}
+		<p class="text-sm text-destructive" role="alert">{refused.message}</p>
+	{/if}
 
 	<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 		<Button

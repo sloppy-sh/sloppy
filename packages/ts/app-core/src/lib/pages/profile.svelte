@@ -1,60 +1,3 @@
-<script lang="ts" module>
-	import { proxied } from '@sloppy/client';
-	import type { ProfileView } from '@sloppy/types';
-	import type { Person } from '@sloppy/ui';
-	import { api } from '../api.js';
-
-	// Who the signed-in person is, as their identity store reports them. Cached
-	// and never kept as a copy of record — AI.md § "Sloppy's Vocabulary Stays
-	// Out of the Identity Store".
-	let held = $state<ProfileView | null>(null);
-	let asking: Promise<ProfileView> | null = null;
-	// A sign-out that lands while a read is in flight must not be undone by its
-	// answer, which belongs to whoever just left.
-	let epoch = 0;
-
-	/** What is already known, for a surface that will not wait for a read. */
-	export function knownPerson(): ProfileView | null {
-		return held;
-	}
-
-	/** Deduped: every surface may call it on mount. */
-	export function readPerson(): Promise<ProfileView> {
-		if (held) return Promise.resolve(held);
-		if (asking) return asking;
-		const at = epoch;
-		const request: Promise<ProfileView> = api
-			.profile()
-			.then((profile) => {
-				if (at === epoch) held = profile;
-				return profile;
-			})
-			.finally(() => {
-				if (asking === request) asking = null;
-			});
-		asking = request;
-		return request;
-	}
-
-	/** The store's answer after a change, or `null` when the person signs out. */
-	export function holdPerson(profile: ProfileView | null): void {
-		epoch += 1;
-		asking = null;
-		held = profile;
-	}
-
-	/** Their pictures resolved for an `<img>`; the rest is the store's own answer. */
-	export function personFrom(profile: ProfileView): Person {
-		return {
-			displayName: profile.display_name,
-			handle: profile.username,
-			bio: profile.bio,
-			avatar: profile.avatar_src && proxied(profile.avatar_src),
-			banner: profile.banner_src && proxied(profile.banner_src)
-		};
-	}
-</script>
-
 <script lang="ts">
 	// How somebody appears to anyone who pulls a note of theirs, and the one
 	// place they change it.
@@ -65,22 +8,25 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
+	import { api } from '../api.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { people, personFrom } from '../stores/people.svelte.js';
 
 	let editing = $state(false);
 	let saving = $state(false);
 	let replacing = $state<PictureRole | null>(null);
 	/** Their profile is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
-	/** A change was refused while the page is fine; it sits beside the form. */
-	let refused = $state<string | null>(null);
+	/** A change was refused while the page is fine; the editor puts it beside the
+	 *  control that asked for it. */
+	let refused = $state<{ picture: PictureRole | null; message: string } | null>(null);
 	/** False until every branch is in, because a branch still missing would put a
 	 *  smaller graph on the page than the person has. */
 	let measured = $state(false);
 
 	const shown = $derived.by(() => {
-		const profile = knownPerson();
+		const profile = people.me;
 		return profile && { profile, person: personFrom(profile) };
 	});
 
@@ -104,7 +50,7 @@
 	async function readProfile(): Promise<void> {
 		unreachable = null;
 		try {
-			await readPerson();
+			await people.read();
 		} catch (error) {
 			unreachable =
 				serverMessage(error) ?? 'Sloppy could not read your profile. Try again in a moment.';
@@ -126,7 +72,7 @@
 		saving = true;
 		refused = null;
 		try {
-			holdPerson(
+			people.hold(
 				await api.updateProfile({
 					display_name: edits.displayName.trim() || null,
 					bio: edits.bio.trim() || null
@@ -134,7 +80,10 @@
 			);
 			editing = false;
 		} catch (error) {
-			refused = serverMessage(error) ?? 'That could not be saved. Try again.';
+			refused = {
+				picture: null,
+				message: serverMessage(error) ?? 'That could not be saved. Try again.'
+			};
 		} finally {
 			saving = false;
 		}
@@ -144,14 +93,14 @@
 	 *  somebody navigated away from. */
 	async function replace(role: PictureRole, file: File): Promise<void> {
 		if (!file.type.startsWith('image/')) {
-			refused = 'Choose an image file.';
+			refused = { picture: role, message: 'Choose an image file.' };
 			return;
 		}
 		replacing = role;
 		refused = null;
 		try {
 			const asset = await uploadFile(api, file, { role }).asset;
-			holdPerson(
+			people.hold(
 				await api.updateProfile(
 					role === 'avatar'
 						? { avatar_upload_id: asset.upload_id }
@@ -159,7 +108,10 @@
 				)
 			);
 		} catch (error) {
-			refused = serverMessage(error) ?? 'That picture could not be added. Try again.';
+			refused = {
+				picture: role,
+				message: serverMessage(error) ?? 'That picture could not be added. Try again.'
+			};
 		} finally {
 			replacing = null;
 		}
@@ -192,9 +144,13 @@
 				person={shown.person}
 				{replacing}
 				{saving}
+				{refused}
 				onPicture={replace}
 				onSave={save}
-				onCancel={() => (editing = false)}
+				onCancel={() => {
+					refused = null;
+					editing = false;
+				}}
 			/>
 		{:else}
 			<PersonHeader person={shown.person}>
@@ -216,10 +172,6 @@
 				<h2 class="text-sm font-medium">Your identity</h2>
 				<p class="address text-sm break-all select-text">{shown.profile.did}</p>
 			</section>
-		{/if}
-
-		{#if refused}
-			<p class="text-sm text-destructive" role="alert">{refused}</p>
 		{/if}
 	</div>
 </div>

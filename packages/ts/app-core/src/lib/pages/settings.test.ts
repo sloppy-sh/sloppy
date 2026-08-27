@@ -3,7 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DID, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
 import { session } from '../stores/session.svelte.js';
-import { holdPerson, knownPerson } from './profile.svelte';
+import { people } from '../stores/people.svelte.js';
 import Settings from './settings.svelte';
 
 const STORED: ProfileView = {
@@ -40,7 +40,7 @@ beforeEach(() => {
 		writable: true,
 		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
 	});
-	holdPerson(null);
+	people.hold(null);
 	api = useFakeApi();
 	api.on('GET /profile/me', () => STORED);
 	api.on('POST /auth/logout', () => ({}));
@@ -83,7 +83,7 @@ describe('settings', () => {
 		await settle();
 		button('Sign out').click();
 		await settle();
-		expect(knownPerson()).toBeNull();
+		expect(people.me).toBeNull();
 		expect(target.textContent).not.toContain('Ada Lovelace');
 	});
 });

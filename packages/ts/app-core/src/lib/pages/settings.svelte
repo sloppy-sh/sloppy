@@ -6,9 +6,9 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
-	import { holdPerson, knownPerson, personFrom, readPerson } from './profile.svelte';
 	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
 		ACCENT_LABELS,
 		ACCENTS,
@@ -23,10 +23,10 @@
 	let leaving = $state(false);
 
 	const instance = $derived(session.viewer ? new URL(session.viewer.syr_instance_url).host : null);
-	const profile = $derived(knownPerson());
+	const profile = $derived(people.me);
 
 	$effect(() => {
-		if (session.signedIn && !knownPerson()) void readPerson().catch(() => {});
+		if (session.signedIn && !people.me) void people.read().catch(() => {});
 	});
 
 	async function signOut() {
@@ -36,7 +36,7 @@
 		} finally {
 			nodes.clear();
 			labels.clear();
-			holdPerson(null);
+			people.hold(null);
 			leaving = false;
 		}
 	}

@@ -3,7 +3,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
-import Profile, { holdPerson } from './profile.svelte';
+import { people } from '../stores/people.svelte.js';
+import Profile from './profile.svelte';
 
 const ROOT = ref(1);
 
@@ -61,7 +62,7 @@ function button(labelled: string): HTMLButtonElement {
 beforeEach(() => {
 	stubBrowser();
 	nodes.clear();
-	holdPerson(null);
+	people.hold(null);
 	api = useFakeApi();
 	api.on('GET /profile/me', () => STORED);
 	api.on('GET /nodes', (url) =>

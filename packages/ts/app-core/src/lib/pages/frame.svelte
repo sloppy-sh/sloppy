@@ -12,9 +12,10 @@
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { keyboard } from '../keyboard.svelte.js';
+	import { people, personFrom } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
-	import { activeRouteId, APP_ROUTES, OPEN_ROUTES, refFromPath } from './routes.js';
+	import { activeRouteId, navRoutes, OPEN_ROUTES, refFromPath } from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -29,6 +30,7 @@
 	/** A page mounted a tick before the redirect below would spend a request on a
 	 *  credential we already know is missing. */
 	const admitted = $derived(session.ready && (session.signedIn || OPEN_ROUTES.includes(path)));
+	const me = $derived(people.me && personFrom(people.me));
 
 	/**
 	 * A shell that caught the consent callback itself is handed a code to spend
@@ -93,8 +95,12 @@
 		if (cited && cited !== path) void goto(cited);
 		else if (path === '/sign-in') void goto('/');
 	});
+
+	$effect(() => {
+		if (session.signedIn && !people.me) void people.read().catch(() => {});
+	});
 </script>
 
-<AppShell items={APP_ROUTES} {activeId} showNav={session.signedIn} keyboardOpen={keyboard.open}>
+<AppShell items={navRoutes(me)} {activeId} showNav={session.signedIn} keyboardOpen={keyboard.open}>
 	{#if admitted}{@render children()}{/if}
 </AppShell>

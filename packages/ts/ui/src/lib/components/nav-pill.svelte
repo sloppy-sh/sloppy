@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import type { Component } from 'svelte';
+	import type { Person } from './identity/person.js';
 
 	export interface NavItem {
 		/** Stable across renders; also what {@link NavPillProps.activeId} names. */
@@ -7,6 +8,8 @@
 		label: string;
 		href: string;
 		icon: Component;
+		/** Whoever the destination is; their picture stands where the icon would. */
+		person?: Person;
 		/** Absent where there is nothing to count; 0 draws nothing either. */
 		badge?: number;
 	}
@@ -33,6 +36,7 @@
 
 <script lang="ts">
 	import { cn } from '$lib/utils.js';
+	import Avatar from './identity/avatar.svelte';
 
 	let {
 		items,
@@ -97,7 +101,11 @@
 			)}
 		>
 			<span class="relative flex">
-				<item.icon class="size-5" />
+				{#if item.person}
+					<Avatar person={item.person} size={20} />
+				{:else}
+					<item.icon class="size-5" />
+				{/if}
 				{#if item.badge}
 					<span
 						class="absolute -top-1 -right-2 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground"
