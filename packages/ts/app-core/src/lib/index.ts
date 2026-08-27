@@ -6,3 +6,19 @@ export type { SloppyApi } from './api.js';
 export { initRuntime, runtime } from './runtime.js';
 export type { AppRuntime, DeploymentMode } from './runtime.js';
 export { keyboard } from './keyboard.svelte.js';
+
+export { serverMessage } from './stores/errors.js';
+export { session } from './stores/session.svelte.js';
+export {
+	ACCENT_LABELS,
+	ACCENTS,
+	prefs,
+	STYLE_LABELS,
+	STYLES,
+	THEME_LABELS,
+	THEMES
+} from './stores/prefs.svelte.js';
+export type { Accent, Prefs, Style, Theme } from './stores/prefs.svelte.js';
+export { nodes } from './stores/nodes.svelte.js';
+export type { NodeRegion, RegionState } from './stores/nodes.svelte.js';
+export { labels } from './stores/labels.svelte.js';

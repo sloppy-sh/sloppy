@@ -60,6 +60,7 @@
 		"eslint-config-prettier": "catalog:",
 		"eslint-plugin-svelte": "catalog:",
 		"globals": "catalog:",
+		"jsdom": "^30.0.1",
 		"prettier": "catalog:",
 		"prettier-plugin-svelte": "catalog:",
 		"svelte": "catalog:",
