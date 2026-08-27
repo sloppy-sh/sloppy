@@ -433,6 +433,12 @@ would race the save path, the optimistic state and the error copy that page alre
 two writers to one node is the bug that costs a person their edit. `onassign` returning a
 promise is what lets the picker hold its own pending state while the host saves.
 
+**`onassign` must REJECT when the save fails, and set `refused` before it does.** The
+rejection is the whole failure signal: the picker catches it, and that catch is the only
+thing that renders the message. A host that resolves on failure gets a chip that snaps
+silently back to its old value with nothing said to the person who tapped it — the type
+`Promise<void>` cannot express this, which is why it is written down.
+
 **`dimensions` and `slotFor` are props rather than store reads, and that is structural.**
 `@sloppy/ui` is depended on _by_ `@sloppy/app-core`, so a component here reaching into
 app-core's `labels` store would close the loop `ui → app-core → ui`, which the workspace has
