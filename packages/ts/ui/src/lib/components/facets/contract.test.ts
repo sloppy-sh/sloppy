@@ -49,7 +49,47 @@ describe('what a draft asks of a dimension', () => {
 
 	it('says nothing changed when nothing did', () => {
 		const changes = valueChanges(['seed'], [{ was: 'seed', now: 'seed' }]);
-		expect(changes).toEqual({ after: ['seed'], renames: [], bridge: ['seed'], merges: [] });
+		expect(changes).toEqual({
+			after: ['seed'],
+			renames: [],
+			bridge: ['seed'],
+			settled: ['seed'],
+			merges: []
+		});
+	});
+
+	it('lets go of the old name once the notes are off it', () => {
+		const changes = valueChanges(
+			['seed', 'growing'],
+			[
+				{ was: 'seed', now: 'sprout' },
+				{ was: 'growing', now: 'growing' }
+			]
+		);
+		expect(changes.settled).toEqual(['sprout', 'growing']);
+	});
+
+	it('holds on to a removed value the renames do not empty', () => {
+		const changes = valueChanges(
+			['seed', 'growing', 'settled'],
+			[
+				{ was: 'seed', now: 'sprout' },
+				{ was: 'growing', now: 'growing' }
+			]
+		);
+		expect(changes.settled).toEqual(['sprout', 'growing', 'settled']);
+		expect(changes.after).toEqual(['sprout', 'growing']);
+	});
+
+	it('keeps both names of a trade, since each is carried by the other half', () => {
+		const changes = valueChanges(
+			['red', 'blue'],
+			[
+				{ was: 'red', now: 'blue' },
+				{ was: 'blue', now: 'red' }
+			]
+		);
+		expect(changes.settled).toEqual(['blue', 'red']);
 	});
 
 	it('reads two values traded for each other as two renames, not a merge', () => {

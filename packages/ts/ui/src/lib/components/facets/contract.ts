@@ -57,6 +57,13 @@ export interface ValueChanges {
 	 * the notes onto it, and only then drops the old one.
 	 */
 	bridge: string[];
+	/**
+	 * What the dimension holds the moment every rename has landed: {@link after}
+	 * plus the values the draft drops that notes may still carry. Narrowing to
+	 * {@link after} is a write of its own, so a removal the API refuses leaves
+	 * the rename standing rather than the bridge.
+	 */
+	settled: string[];
 	/** Empty unless the draft collapses values the dimension already holds. */
 	merges: ValueMerge[];
 }
@@ -86,5 +93,12 @@ export function valueChanges(
 		if (from.length > 1 || (from.length === 1 && keepsItsOwn)) merges.push({ into, from });
 	}
 
-	return { after, renames, bridge: [...new Set([...before, ...after])], merges };
+	const dropped = before.filter((value) => !vacated.has(value) && !after.includes(value));
+	return {
+		after,
+		renames,
+		bridge: [...new Set([...before, ...after])],
+		settled: [...after, ...dropped],
+		merges
+	};
 }

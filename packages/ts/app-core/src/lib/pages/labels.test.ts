@@ -37,9 +37,18 @@ function body(init: RequestInit | undefined): Record<string, unknown> {
 	return JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
 }
 
+/** A refusal in the API's own words, which is what the page has to pass on. */
+function refuse(message: string): Response {
+	return new Response(JSON.stringify({ message }), {
+		status: 409,
+		headers: { 'content-type': 'application/json' }
+	});
+}
+
 /** The API's own rules, so the page is exercised against what it really faces:
- *  a dimension rename carries its key across every note that holds it, and a
- *  value nothing carries any more simply goes. */
+ *  a dimension rename carries its key across every note that holds it, a value
+ *  nothing carries any more simply goes, and one that notes still carry, or a
+ *  name already taken, is refused. */
 function serve(): void {
 	api.on('GET /label-dimensions', () => dimensions.map((one) => ({ ...one })));
 	api.on('GET /nodes', (url) => {
@@ -53,6 +62,21 @@ function serve(): void {
 			const patch = body(init);
 			const held = dimensions.find((other) => other.ref === one.ref)!;
 			const renamed = typeof patch.name === 'string' && patch.name !== held.name;
+			if (renamed && dimensions.some((other) => other.name === patch.name)) {
+				return refuse(`You already have a "${String(patch.name)}" dimension.`);
+			}
+			if (Array.isArray(patch.values)) {
+				const kept = patch.values as string[];
+				const carried = graph.filter((carrier) => {
+					const value = carrier.labels[held.name];
+					return value !== undefined && held.values.includes(value) && !kept.includes(value);
+				}).length;
+				if (carried > 0) {
+					return refuse(
+						`${carried} ${carried === 1 ? 'note is' : 'notes are'} still labelled with a value you are removing. Relabel them first.`
+					);
+				}
+			}
 			const before = held.name;
 			Object.assign(held, patch);
 			if (renamed) {
@@ -284,7 +308,8 @@ describe('the intersection a rename leaves behind', () => {
 		await openPage();
 		chip('confidence', 'settled').click();
 		flushSync();
-		expect(document.body.textContent).toContain('0 notes across 0 branches');
+		expect(document.body.textContent).toContain('No note carries all of those');
+		expect(document.body.textContent).not.toContain('0 notes');
 
 		button('Edit confidence').click();
 		flushSync();
@@ -294,6 +319,55 @@ describe('the intersection a rename leaves behind', () => {
 		await settle();
 
 		expect(chip('confidence', 'Any').checked).toBe(true);
+	});
+});
+
+describe('a save the API refuses once the rename has landed', () => {
+	beforeEach(() => {
+		dimensions = [dimension(10, 'confidence', { values: ['hunch', 'working', 'settled'] })];
+		graph = graphOf([
+			{ confidence: 'hunch' },
+			{ confidence: 'hunch' },
+			{ confidence: 'working' },
+			{ confidence: 'settled' }
+		]);
+	});
+
+	it('says why the removal was refused, and keeps the rename it did make', async () => {
+		await openPage();
+		button('Edit confidence').click();
+		flushSync();
+		type(rows()[0], 'guess');
+		button('Remove settled').click();
+		flushSync();
+		button('Save').click();
+		await settle();
+
+		expect(dialog()?.textContent).toContain(
+			'1 note is still labelled with a value you are removing'
+		);
+		expect(dialog()?.textContent).not.toContain('Save again to finish the rest');
+		expect(labelsOn('confidence')).toEqual(['guess', 'guess', 'working', 'settled']);
+		expect(dimensions[0].values).toEqual(['guess', 'working', 'settled']);
+	});
+
+	it('says why the name was refused, and keeps the rename it did make', async () => {
+		dimensions = [
+			dimension(10, 'confidence', { values: ['hunch', 'working', 'settled'] }),
+			dimension(11, 'topic', { values: ['ink'] })
+		];
+		await openPage();
+		button('Edit confidence').click();
+		flushSync();
+		type(rows()[0], 'guess');
+		type(document.body.querySelector('input[placeholder="domain"]')!, 'topic');
+		button('Save').click();
+		await settle();
+
+		expect(dialog()?.textContent).toContain('You already have a "topic" dimension');
+		expect(labelsOn('confidence')).toEqual(['guess', 'guess', 'working', 'settled']);
+		expect(dimensions[0].name).toBe('confidence');
+		expect(dimensions[0].values).toEqual(['guess', 'working', 'settled']);
 	});
 });
 
@@ -332,6 +406,30 @@ describe('collapsing two values onto one', () => {
 
 		expect(labelsOn('confidence')).toEqual(['settled', 'settled', 'settled', 'hunch']);
 		expect(dimensions[0].values).toEqual(['hunch', 'settled']);
+	});
+});
+
+describe('a dimension with no values yet', () => {
+	beforeEach(() => {
+		dimensions = [dimension(10, 'empty', { values: [] })];
+		graph = graphOf([{}, {}, {}, {}]);
+	});
+
+	it('asks nothing and offers to colour nothing', async () => {
+		await openPage();
+
+		expect(document.body.textContent).toContain('No values yet, so nothing can be sorted along it');
+		expect(document.body.textContent).not.toContain('Find notes');
+		expect(document.body.textContent).not.toContain('Colour the graph by this');
+	});
+
+	it('can still be turned off while it is the lens', async () => {
+		prefs.set('lens', 'empty');
+		await openPage();
+
+		button('Colouring the graph').click();
+		flushSync();
+		expect(prefs.current.lens).toBe(null);
 	});
 });
 

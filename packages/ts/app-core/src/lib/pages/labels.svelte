@@ -82,6 +82,7 @@
 		return out;
 	});
 
+	const askable = $derived(dimensions.filter((dimension) => dimension.values.length > 0));
 	const asked = $derived(Object.entries(query));
 	/** `null` where nothing has been asked, which is not the same as no answer. */
 	const matches = $derived(
@@ -149,21 +150,22 @@
 	async function save(draft: DimensionDraft): Promise<void> {
 		const target = editing;
 		editorRefused = null;
+		let moving: { ref: OwnedRef; labels: LabelSet }[] = [];
 		let relabelled = 0;
 		try {
-			const { after, renames, bridge } = valueChanges(target?.values ?? [], draft.values);
+			const { after, renames, bridge, settled } = valueChanges(target?.values ?? [], draft.values);
 			if (!target) {
 				await labels.create({ name: draft.name, values: after, color_slot: draft.color_slot });
 				return;
 			}
 			// Bucketed before the first write: two renames that cross would otherwise
 			// sweep up the notes an earlier one has just moved.
-			const moving = renames.flatMap(({ from, to }) =>
+			moving = renames.flatMap(({ from, to }) =>
 				all
 					.filter((node) => node.labels[target.name] === from)
 					.map((node) => ({ ref: node.ref, labels: { ...node.labels, [target.name]: to } }))
 			);
-			if (renames.length > 0) {
+			if (moving.length > 0) {
 				await labels.update(target.ref, { values: bridge });
 				for (let at = 0; at < moving.length; at += RELABELLED_AT_ONCE) {
 					const batch = await Promise.allSettled(
@@ -175,6 +177,7 @@
 					const stopped = batch.find((one) => one.status === 'rejected');
 					if (stopped) throw stopped.reason;
 				}
+				await labels.update(target.ref, { values: settled });
 			}
 			const renamed = draft.name !== target.name;
 			await labels.update(target.ref, {
@@ -187,11 +190,10 @@
 			// cached here is a set of stale labels until they are read again.
 			if (renamed) await read(true);
 		} catch (error) {
-			editorRefused =
-				relabelled > 0
-					? 'Some notes were relabelled before that stopped. Save again to finish the rest.'
-					: (serverMessage(error) ??
-						'Sloppy could not save that dimension. Try again in a moment.');
+			const partly = relabelled > 0 && relabelled < moving.length;
+			editorRefused = partly
+				? 'Some notes were relabelled before that stopped. Save again to finish the rest.'
+				: (serverMessage(error) ?? 'Sloppy could not save that dimension. Try again in a moment.');
 			throw error;
 		}
 	}
@@ -348,83 +350,93 @@
 								</p>
 							{/if}
 
-							<button
-								type="button"
-								aria-pressed={reading}
-								onclick={() => labels.setLens(reading ? null : dimension.name)}
-								style={reading && slot !== undefined ? `color: var(--facet-${slot})` : undefined}
-								class={cn(
-									'inline-flex min-h-11 items-center rounded-md text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none',
-									reading ? 'font-medium' : 'text-muted-foreground hover:text-foreground'
-								)}
-							>
-								{reading ? 'Colouring the graph' : 'Colour the graph by this'}
-							</button>
+							<!-- A lens whose values have all gone paints nothing, and still has
+						     to be switchable off. -->
+							{#if dimension.values.length > 0 || reading}
+								<button
+									type="button"
+									aria-pressed={reading}
+									onclick={() => labels.setLens(reading ? null : dimension.name)}
+									style={reading && slot !== undefined ? `color: var(--facet-${slot})` : undefined}
+									class={cn(
+										'inline-flex min-h-11 items-center rounded-md text-sm transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none',
+										reading ? 'font-medium' : 'text-muted-foreground hover:text-foreground'
+									)}
+								>
+									{reading ? 'Colouring the graph' : 'Colour the graph by this'}
+								</button>
+							{/if}
 						</li>
 					{/each}
 				</ul>
 			</section>
 
-			<section class="space-y-4">
-				<div class="space-y-1">
-					<h2 class="text-lg font-medium">Find notes</h2>
-					<p class="text-sm text-muted-foreground">
-						The notes in every answer you pick, from wherever they sit in the graph.
-					</p>
-				</div>
-
-				{#each dimensions as dimension (dimension.ref)}
-					<FacetValues
-						{dimension}
-						slot={labels.slotFor(dimension.name)}
-						value={query[dimension.name] ?? null}
-						emptyLabel="Any"
-						onchange={(value) => ask(dimension.name, value)}
-					/>
-				{/each}
-
-				{#if matches}
-					<div class="space-y-2 border-t border-border pt-4">
+			{#if askable.length > 0}
+				<section class="space-y-4">
+					<div class="space-y-1">
+						<h2 class="text-lg font-medium">Find notes</h2>
 						<p class="text-sm text-muted-foreground">
-							{count(matches.length, 'note', 'notes')} across {count(
-								branches,
-								'branch',
-								'branches'
-							)}
+							The notes in every answer you pick, from wherever they sit in the graph.
 						</p>
-						<ul class="space-y-0.5">
-							{#each matches.slice(0, LISTED) as node (node.ref)}
-								<li class="flex items-center gap-2">
-									<a
-										href={nodeHref(node.ref)}
-										class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-									>
-										<span class="address shrink-0 text-sm text-muted-foreground">
-											{node.address}
-										</span>
-										<span class="min-w-0 flex-1 truncate">{node.title || 'Untitled'}</span>
-									</a>
-									<Button
-										variant="ghost"
-										class="h-11 shrink-0 px-3 text-sm"
-										onclick={() => {
-											labelRefused = null;
-											labelling = node.ref;
-										}}
-									>
-										Labels
-									</Button>
-								</li>
-							{/each}
-						</ul>
-						{#if matches.length > LISTED}
-							<p class="px-2 text-sm text-muted-foreground">
-								{count(matches.length - LISTED, 'more note', 'more notes')} not listed.
-							</p>
-						{/if}
 					</div>
-				{/if}
-			</section>
+
+					{#each askable as dimension (dimension.ref)}
+						<FacetValues
+							{dimension}
+							slot={labels.slotFor(dimension.name)}
+							value={query[dimension.name] ?? null}
+							emptyLabel="Any"
+							onchange={(value) => ask(dimension.name, value)}
+						/>
+					{/each}
+
+					{#if matches?.length === 0}
+						<p class="border-t border-border pt-4 text-sm text-muted-foreground">
+							No note carries all of those. Set one back to Any to widen it.
+						</p>
+					{:else if matches}
+						<div class="space-y-2 border-t border-border pt-4">
+							<p class="text-sm text-muted-foreground">
+								{count(matches.length, 'note', 'notes')} across {count(
+									branches,
+									'branch',
+									'branches'
+								)}
+							</p>
+							<ul class="space-y-0.5">
+								{#each matches.slice(0, LISTED) as node (node.ref)}
+									<li class="flex items-center gap-2">
+										<a
+											href={nodeHref(node.ref)}
+											class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+										>
+											<span class="address shrink-0 text-sm text-muted-foreground">
+												{node.address}
+											</span>
+											<span class="min-w-0 flex-1 truncate">{node.title || 'Untitled'}</span>
+										</a>
+										<Button
+											variant="ghost"
+											class="h-11 shrink-0 px-3 text-sm"
+											onclick={() => {
+												labelRefused = null;
+												labelling = node.ref;
+											}}
+										>
+											Labels
+										</Button>
+									</li>
+								{/each}
+							</ul>
+							{#if matches.length > LISTED}
+								<p class="px-2 text-sm text-muted-foreground">
+									{count(matches.length - LISTED, 'more note', 'more notes')} not listed.
+								</p>
+							{/if}
+						</div>
+					{/if}
+				</section>
+			{/if}
 		{/if}
 	</div>
 </div>
