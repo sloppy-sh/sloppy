@@ -26,6 +26,28 @@ export class AppConfigService {
     return this.config.get("PUBLIC_URL", `http://localhost:${this.port}`);
   }
 
+  /**
+   * What is in front of this instance, so `req.ip` is the reader's address
+   * rather than the last hop's. A count is how many proxies forward to us — the
+   * safe form, because only the hop that many back is read and a forged
+   * `x-forwarded-for` cannot reach it. A comma-separated list of addresses or
+   * subnets works too; `false` is an instance nothing forwards to.
+   *
+   * Unset in development this trusts the private network, because the web
+   * shell's dev server stands in for the shared origin. Unset in production it
+   * trusts nothing: an operator who puts a proxy in front says so.
+   */
+  get trustedProxies(): number | string | false {
+    const configured = (
+      this.config.get<string>("SLOPPY_TRUSTED_PROXIES") ?? ""
+    ).trim();
+    if (!configured) {
+      return this.isProduction ? false : "loopback, linklocal, uniquelocal";
+    }
+    const hops = Number(configured);
+    return Number.isInteger(hops) && hops >= 0 ? hops : configured;
+  }
+
   /** Origins allowed to make a credentialed request, beyond the shells' own. */
   get allowedOrigins(): string[] {
     return (this.config.get<string>("SLOPPY_ALLOWED_ORIGINS") ?? "")

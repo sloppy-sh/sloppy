@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { DidSyrSchema } from "./common.js";
+import { AssetAddressSchema } from "./media.js";
 
 /**
  * `username` is what the store holds; `display_name` is what the person chose
@@ -16,8 +17,8 @@ export const ProfileViewSchema = z.object({
   username: z.string(),
   display_name: z.string().nullable(),
   bio: z.string().nullable(),
-  avatar_url: z.url().nullable(),
-  banner_url: z.url().nullable(),
+  avatar_src: AssetAddressSchema.nullable(),
+  banner_src: AssetAddressSchema.nullable(),
 });
 export type ProfileView = z.infer<typeof ProfileViewSchema>;
 
@@ -28,11 +29,15 @@ export const BIO_MAX = 500;
  * A patch, and only a patch: an absent key leaves that field as it was, and an
  * explicit `null` clears it. The two are not interchangeable — sending
  * `{ bio: null }` erases a bio, sending `{}` does not.
+ *
+ * A picture is named by the upload it arrived on, never by an address: an
+ * address would let a caller point their own profile at a machine of their
+ * choosing and have Sloppy fetch it for every reader.
  */
 export const UpdateProfileRequestSchema = z.object({
   display_name: z.string().max(DISPLAY_NAME_MAX).nullable().optional(),
   bio: z.string().max(BIO_MAX).nullable().optional(),
-  avatar_url: z.url().nullable().optional(),
-  banner_url: z.url().nullable().optional(),
+  avatar_upload_id: z.string().min(1).nullable().optional(),
+  banner_upload_id: z.string().min(1).nullable().optional(),
 });
 export type UpdateProfileRequest = z.input<typeof UpdateProfileRequestSchema>;

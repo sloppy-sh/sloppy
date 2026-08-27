@@ -83,7 +83,6 @@ describe("asking for somewhere to put a file", () => {
 
     expect(ticket.upload_id).toBe(`${DID}/01ABC`);
     expect(ticket.upload_url).toBe("https://blobs.example/put?sig=1");
-    expect(ticket.asset_url).toBe("https://blobs.example/wave.png");
     expect(ticket.upload_headers).toEqual({ "content-type": "image/png" });
   });
 });
@@ -114,9 +113,10 @@ describe("saying the bytes are there", () => {
     const asset = await answering;
 
     expect(completeUpload).toHaveBeenCalledTimes(2);
+    // No address: where the bytes actually live is the store's, and handing it
+    // to a reader is what tells that machine who is reading.
     expect(asset).toEqual({
       upload_id: `${DID}/01ABC`,
-      url: "https://blobs.example/wave.png",
       mime_type: "image/png",
       size: 1024,
       width: 64,

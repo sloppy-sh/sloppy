@@ -12,11 +12,12 @@
 // `pnpm test`. `docker compose up -d` is what turns it on.
 
 import { createConnection, createServer } from "node:net";
-import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { CustomEmojiSchema, MediaAssetSchema } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
+import { RATE_CAPACITY } from "./proxy.controller";
 
 const DB_ENDPOINT = new URL(
   process.env.SLOPPY_SURREALDB_URL ?? "ws://127.0.0.1:8010/rpc",
@@ -74,7 +75,7 @@ function freePort(): Promise<number> {
 
 describe("a picture through Sloppy's routes and its own provider", () => {
   let listening = false;
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let base: string;
   let cookie: string;
   let did: string;
@@ -98,6 +99,12 @@ describe("a picture through Sloppy's routes and its own provider", () => {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+  }
+
+  /** An address the API minted is a path under it, so a reader spells the rest
+   *  — `proxied()` in `@sloppy/client` is the shells' half of this. */
+  function shown(src: string): string {
+    return `${base}/api${src}`;
   }
 
   async function read(method: string, path: string, body?: unknown) {
@@ -152,10 +159,16 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     });
 
     const { AppModule } = await import("../app.module");
-    app = await NestFactory.create(AppModule, { logger: false });
+    app = await NestFactory.create<NestExpressApplication>(AppModule, {
+      logger: false,
+    });
     app.setGlobalPrefix("api", {
       exclude: ["/.well-known/syr", "/.well-known/syr/:did"],
     });
+    // As `main.ts` does it: the asset route rations fetches per caller, and who
+    // the caller is depends on this.
+    const { AppConfigService } = await import("../config/app-config.service");
+    app.set("trust proxy", app.get(AppConfigService).trustedProxies);
     await app.listen(port, "127.0.0.1");
 
     const post = (path: string, body: unknown, token?: string) =>
@@ -210,20 +223,23 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     await app.close();
   });
 
-  scenario("takes a file and answers where it will be read from", async () => {
-    const asset = await upload("block", "pixel.png");
-    expect(asset.mime_type).toBe("image/png");
-    expect(asset.size).toBe(PIXEL.byteLength);
-    expect(asset.url.startsWith(base)).toBe(true);
-  });
+  scenario(
+    "takes a file and names it by the upload it arrived on",
+    async () => {
+      const asset = await upload("block", "pixel.png");
+      expect(asset.mime_type).toBe("image/png");
+      expect(asset.size).toBe(PIXEL.byteLength);
+      // The store's own address is never handed out: it is what tells the machine
+      // holding a picture who is looking at it.
+      expect(JSON.stringify(asset)).not.toContain("/api/idp/blob/");
+    },
+  );
 
   // A note is private until its subtree is published, and the folder a picture
   // lands in is the store's whole access rule — so this is the check, not the
   // route's own answer to a request that carried a session.
   scenario("keeps a note's picture away from a stranger", async () => {
-    const asset = await upload("block", "private.png");
-
-    expect((await fetch(asset.url)).status).toBe(404);
+    await upload("block", "private.png");
 
     const open = await fetch(
       `${base}/api/idp/public/uploads/${encodeURIComponent(did)}`,
@@ -268,8 +284,52 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     const { AssetLinks } = await import("./asset-link");
     const link = app.get(AssetLinks).to(`${base}/api/health`);
 
-    const refused = await fetch(link);
+    const refused = await fetch(shown(link));
     expect(refused.status).toBe(502);
+  });
+
+  // A ration exists to bound what a stranger can make this instance fetch, so
+  // a link it never minted must not spend one — otherwise a caller holding no
+  // link at all empties the ration of whoever shares their bucket.
+  scenario("spends no ration on a link it did not mint", async () => {
+    const from = { "x-forwarded-for": "203.0.113.20" };
+    const flood = await Promise.all(
+      Array.from({ length: RATE_CAPACITY * 2 }, (_, n) =>
+        fetch(`${base}/api/proxy?ref=made-up-${n}`, { headers: from }).then(
+          (one) => one.status,
+        ),
+      ),
+    );
+    expect(new Set(flood)).toEqual(new Set([403]));
+
+    const avatar = await upload("avatar", "still-loads.png");
+    await read("PATCH", "/api/profile/me", {
+      avatar_upload_id: avatar.upload_id,
+    });
+    const { body } = await read("GET", "/api/profile/me");
+
+    const still = await fetch(shown(body.avatar_src), { headers: from });
+    expect(still.status).toBe(200);
+  });
+
+  // One reader's fetch loop must not fall on everybody else's pictures, which
+  // is only true while the instance can tell readers apart — behind a proxy
+  // that means `trust proxy`, which `main.ts` sets.
+  scenario("rations fetches per caller, and tells callers apart", async () => {
+    const { AssetLinks } = await import("./asset-link");
+    // Refused before a socket is opened, whatever the deployment allows, so
+    // this spends rations and reaches nothing.
+    const link = shown(app.get(AssetLinks).to("http://169.254.169.254/x.png"));
+    const asReader = (ip: string) => ({ headers: { "x-forwarded-for": ip } });
+
+    // At once, so the steady refill cannot keep up with the loop.
+    const flood = await Promise.all(
+      Array.from({ length: RATE_CAPACITY * 2 }, () =>
+        fetch(link, asReader("203.0.113.1")).then((one) => one.status),
+      ),
+    );
+    expect(flood).toContain(429);
+    expect((await fetch(link, asReader("203.0.113.2"))).status).toBe(403);
   });
 
   scenario("adds an emoji, lists it, and removes it", async () => {
@@ -327,7 +387,7 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     const saved = await read("PATCH", "/api/profile/me", {
       display_name: "A Painter",
       bio: "Draws things",
-      avatar_url: avatar.url,
+      avatar_upload_id: avatar.upload_id,
     });
     expect(saved.status).toBe(200);
     expect(saved.body).toMatchObject({
@@ -337,7 +397,7 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     });
 
     const read_back = await read("GET", "/api/profile/me");
-    expect(new URL(read_back.body.avatar_url).pathname).toBe("/api/proxy");
+    expect(read_back.body.avatar_src.startsWith("/proxy?ref=")).toBe(true);
     // What a reader is handed is an address here, never the store's own.
     expect(read_back.text).not.toContain("/api/idp/blob/");
   });
@@ -347,14 +407,15 @@ describe("a picture through Sloppy's routes and its own provider", () => {
   // the store's.
   scenario("shows an avatar to a reader who has no session", async () => {
     const avatar = await upload("avatar", "hello.png");
-    await read("PATCH", "/api/profile/me", { avatar_url: avatar.url });
+    await read("PATCH", "/api/profile/me", {
+      avatar_upload_id: avatar.upload_id,
+    });
     const { body } = await read("GET", "/api/profile/me");
 
-    expect(new URL(body.avatar_url).pathname).toBe("/api/proxy");
-    const shown = await fetch(body.avatar_url);
-    expect(shown.status).toBe(200);
-    expect(shown.headers.get("content-type")).toBe("image/png");
-    expect(Buffer.from(await shown.arrayBuffer()).equals(PIXEL)).toBe(true);
+    const drawn = await fetch(shown(body.avatar_src));
+    expect(drawn.status).toBe(200);
+    expect(drawn.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await drawn.arrayBuffer()).equals(PIXEL)).toBe(true);
 
     const open = await fetch(
       `${base}/api/idp/public/uploads/${encodeURIComponent(did)}`,
@@ -363,19 +424,73 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     expect(listed.data.map((one) => one.filename)).toContain("hello.png");
   });
 
-  // The picture it was shown is the only address a surface holds, so sending
-  // that back has to save the picture rather than a link to this instance.
-  scenario("saves a picture a surface sent back as it was shown", async () => {
-    const avatar = await upload("avatar", "again.png");
-    await read("PATCH", "/api/profile/me", { avatar_url: avatar.url });
-    const shown = (await read("GET", "/api/profile/me")).body.avatar_url;
+  // A profile picture is one of the caller's own uploads and nothing else, so
+  // an address they typed cannot become one — Sloppy would fetch it for every
+  // reader of that profile, from an address that is this instance's.
+  scenario("takes no address for a profile picture", async () => {
+    const avatar = await upload("avatar", "kept.png");
+    await read("PATCH", "/api/profile/me", {
+      avatar_upload_id: avatar.upload_id,
+    });
+    const before = (await read("GET", "/api/profile/me")).body.avatar_src;
 
-    await read("PATCH", "/api/profile/me", { avatar_url: shown });
+    await read("PATCH", "/api/profile/me", {
+      avatar_url: "https://example.com/not-an-image",
+      avatar_src: "https://example.com/not-an-image",
+    });
 
+    const after = await read("GET", "/api/profile/me");
+    expect(after.body.avatar_src).toBe(before);
     const held = await read(
       "GET",
       `/api/idp/public/profile/${encodeURIComponent(did)}`,
     );
-    expect(held.body.data.avatar_url).toBe(avatar.url);
+    expect(held.body.data.avatar_url).not.toContain("example.com");
+  });
+
+  scenario("clears a profile picture when it is asked to", async () => {
+    const avatar = await upload("avatar", "gone.png");
+    await read("PATCH", "/api/profile/me", {
+      avatar_upload_id: avatar.upload_id,
+    });
+    expect(
+      (await read("GET", "/api/profile/me")).body.avatar_src,
+    ).not.toBeNull();
+
+    await read("PATCH", "/api/profile/me", { avatar_upload_id: null });
+    expect((await read("GET", "/api/profile/me")).body.avatar_src).toBeNull();
+  });
+
+  // Copying names an entry in somebody's catalog, so the bytes that arrive are
+  // the ones the reader was shown rather than whatever an address answered.
+  scenario("copies an emoji by naming the one that was shown", async () => {
+    const asset = await upload("emoji", "borrowed.png");
+    const shortcode = `borrowed${Date.now().toString(36)}`;
+    const added = await read("POST", "/api/emoji/me", {
+      shortcode,
+      kind: "emoji",
+      upload_id: asset.upload_id,
+    });
+    const source = CustomEmojiSchema.parse(added.body);
+
+    const copied = await read("POST", "/api/emoji/me/copies", {
+      shortcode: `${shortcode}2`,
+      kind: "emoji",
+      source_emoji_id: source.emoji_id,
+    });
+    expect(copied.status).toBe(201);
+    const copy = CustomEmojiSchema.parse(copied.body);
+    expect(copy.emoji_id).not.toBe(source.emoji_id);
+
+    const drawn = await fetch(shown(copy.src));
+    expect(drawn.status).toBe(200);
+    expect(Buffer.from(await drawn.arrayBuffer()).equals(PIXEL)).toBe(true);
+
+    const refused = await read("POST", "/api/emoji/me/copies", {
+      shortcode: `${shortcode}3`,
+      kind: "emoji",
+      source_emoji_id: `${did}/not-an-entry`,
+    });
+    expect(refused.status).toBe(400);
   });
 });

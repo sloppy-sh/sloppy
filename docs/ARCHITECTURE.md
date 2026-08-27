@@ -183,8 +183,10 @@ policy:
 reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks their own
 store for it as them; nothing else can, and it is not listed among an identity's public
 uploads. That route needs the reader's session, and an `<img>` carries no credential
-across origins — so a shell that is not same-origin with the API fetches the bytes and
-renders those instead, through `AppRuntime.assetBytes`.
+across origins — so `SloppyClient.ownPicture` answers with the address itself where the
+API shares the page's origin and with the fetched bytes anywhere else. It is the only way
+one of these draws, which is why a `MediaAsset` carries an `upload_id` and no address at
+all: who may read a picture is the store's answer, not the row's.
 
 **Open gap, and the milestone that owns it: publishing a subtree does not yet make its
 pictures reachable.** A peer who pulls a published subtree today gets addresses that
@@ -194,19 +196,38 @@ close it deliberately: an address a peer already holds is load-bearing (AI.md §
 Address Is the Protocol"), so a URL minted public cannot quietly become private later.
 That is why the default is private now and widened at publish, never the other way round.
 
-**Every renderable address is minted by the API.** `AssetLinks`
-(`api/src/media/asset-link.ts`) signs the address a picture actually lives at, and
-`GET /api/proxy` fetches what the signature names and nothing a caller typed — so a route
+**Every renderable address is minted by the API, and none of them is a URL.** `AssetLinks`
+(`api/src/media/asset-link.ts`) signs the address a picture actually lives at and hands
+back a path — `/proxy?ref=…` — because this instance answers at several addresses and
+cannot see which of them a shell can reach: a web shell forwards `/api` from its own
+origin, the native shell dials a host and port a person configured. An origin chosen here
+would be a guess, and on a phone a wrong one. `proxied()` in `@sloppy/client`'s `host.ts`
+is the client half: it resolves a minted path against the host this shell reaches, and
+sends anything absolute — a look-alike from a peer included — to the asset route unsigned,
+where it is refused rather than fetched.
+
+`GET /api/proxy` fetches what the signature names and nothing a caller typed, so a route
 that has to be public (an `<img>` carries no credential) is still not somewhere a stranger
 can aim this instance. It refuses anything the far end answers with that is not one of the
 image types `media.service.ts` enumerates, because a signature alone would still let a
-redirect launder a document.
-
-`proxied()` in `@sloppy/client`'s `host.ts` is the client half: it passes a minted address
-through and refuses to render anything else raw. Which addresses the route will connect to
-is `api/src/media/remote-host.ts` — **every** redirect hop is checked there, not only the
+redirect launder a document. Which addresses it will connect to is
+`api/src/media/remote-host.ts` — **every** redirect hop is checked there, not only the
 address a link named, and a credential is dropped the moment a hop leaves the origin it
 was for.
+
+**Nothing a caller sends names a picture by address.** A profile and an emoji name an
+upload or a catalog entry, and the API reads the address back out of the caller's own
+store — otherwise a signed-in caller could have this instance mint a durable public link
+for a URL of their choosing and fetch it from this instance's address for every reader.
+
+**The route rations fetches per caller**, which is what stands between a public route and
+a stranger's fetch loop. A link this instance did not mint spends nothing, so a caller
+holding no link cannot empty anybody's ration. Who the caller is comes from the session,
+or from `req.ip` — and behind a reverse proxy that is the proxy unless the instance is
+told otherwise, which would put every anonymous reader on one shared ration.
+`SLOPPY_TRUSTED_PROXIES` is that setting: how many proxies forward here, or which
+addresses they have. Development trusts the private network by default, because the web
+shell's dev server stands in for the shared origin.
 
 ## Data model
 

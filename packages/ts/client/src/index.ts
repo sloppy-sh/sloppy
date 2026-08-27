@@ -103,7 +103,7 @@ export class SloppyClient {
     // session the same way.
     const credential = this.currentToken() ?? "";
     if (credential) headers.set("authorization", `Bearer ${credential}`);
-    headers.set("accept", "application/json");
+    if (!headers.has("accept")) headers.set("accept", "application/json");
     const res = await this.fetchImpl(apiUrl(path), {
       // A cookie session only exists where the API shares the page's origin.
       // Everywhere else the bearer token above is the whole of the credential,
@@ -413,6 +413,34 @@ export class SloppyClient {
     return MediaAssetSchema.parse(
       await this.send("POST", "/media/uploads/complete", request),
     );
+  }
+
+  /**
+   * One of the caller's own pictures, ready for an `<img>`. A note is private
+   * until its subtree is published and so are its pictures, so this is the only
+   * way one of them draws.
+   *
+   * Where the API shares the page's origin the address is the whole answer,
+   * because the session cookie rides the request. Anywhere else an `<img>`
+   * carries no credential, so the bytes are fetched with the caller's token and
+   * served from memory — which is what `release` frees. Call it when the
+   * picture comes off the screen; it is a no-op on the same-origin answer.
+   */
+  async ownPicture(
+    uploadId: MediaAsset["upload_id"],
+  ): Promise<{ src: string; release: () => void }> {
+    const path = `/media/uploads${refPath(uploadId)}`;
+    if (isSameOrigin()) return { src: apiUrl(path), release: () => {} };
+
+    const res = await this.request(path, {
+      method: "GET",
+      headers: { accept: "image/*" },
+    });
+    if (!res.ok) {
+      throw this.error(res, path, await res.text().catch(() => ""));
+    }
+    const src = URL.createObjectURL(await res.blob());
+    return { src, release: () => URL.revokeObjectURL(src) };
   }
 
   // ── Profile ──────────────────────────────────────────────────────────────

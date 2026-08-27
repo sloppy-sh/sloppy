@@ -224,6 +224,20 @@ export const SyrProfileSchema = z.object({
 });
 export type SyrProfile = z.infer<typeof SyrProfileSchema>;
 
+/**
+ * What a store is sent to change a profile. An absent key leaves that field
+ * alone and an explicit `null` clears it, which is why every field is both
+ * nullable and optional. The pictures are addresses in that store, resolved
+ * from the upload the caller named — `ProfileService` is where that happens.
+ */
+export const SyrProfilePatchSchema = z.object({
+  display_name: z.string().nullable().optional(),
+  bio: z.string().nullable().optional(),
+  avatar_url: z.url().nullable().optional(),
+  banner_url: z.url().nullable().optional(),
+});
+export type SyrProfilePatch = z.infer<typeof SyrProfilePatchSchema>;
+
 /** The owner's view of one catalog entry. `local_id` pairs with `did` as its key. */
 export const SyrEmojiSchema = z.object({
   did: DidSyrSchema,

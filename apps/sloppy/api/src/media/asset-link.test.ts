@@ -1,31 +1,25 @@
 import type { ConfigService } from "@nestjs/config";
 import { describe, expect, it } from "vitest";
-import type { AppConfigService } from "../config/app-config.service";
 import { AssetLinks } from "./asset-link";
 
-const HERE = "https://sloppy.example";
 const PICTURE = "https://blobs.peer.example/a.png";
 
 function links(secret = "a-session-secret-long-enough-to-be-one"): AssetLinks {
-  return new AssetLinks(
-    { publicUrl: HERE } as AppConfigService,
-    {
-      get: () => secret,
-    } as unknown as ConfigService,
-  );
+  return new AssetLinks({ get: () => secret } as unknown as ConfigService);
 }
 
 function refIn(link: string): string {
-  return new URL(link).searchParams.get("ref") ?? "";
+  return new URLSearchParams(link.slice(link.indexOf("?"))).get("ref") ?? "";
 }
 
 describe("the address a picture is rendered from", () => {
-  it("is on this instance, and carries what it stands for", () => {
+  // This instance answers at more than one address — a shell forwarding /api,
+  // the port the native app dials — and only the shell knows which of them it
+  // can reach. An origin minted here would be a guess at that.
+  it("is a path under the API, and carries what it stands for", () => {
     const link = links().to(PICTURE);
-    const at = new URL(link);
 
-    expect(at.origin).toBe(HERE);
-    expect(at.pathname).toBe("/api/proxy");
+    expect(link.startsWith("/proxy?ref=")).toBe(true);
     expect(link).not.toContain("blobs.peer.example");
   });
 
@@ -58,19 +52,5 @@ describe("the address a picture is rendered from", () => {
     expect(mine.target(`${forged}.${signature}`)).toBeNull();
     expect(mine.target(undefined)).toBeNull();
     expect(mine.target("")).toBeNull();
-  });
-
-  // A surface only ever holds links, so saving a picture means sending one back.
-  it("resolves a link of its own, and leaves anything else alone", () => {
-    const mine = links();
-
-    expect(mine.unwrap(mine.to(PICTURE))).toBe(PICTURE);
-    expect(mine.unwrap(PICTURE)).toBe(PICTURE);
-    expect(mine.unwrap(`${HERE}/api/proxy?ref=nonsense`)).toBe(
-      `${HERE}/api/proxy?ref=nonsense`,
-    );
-    expect(mine.unwrap("https://elsewhere.example/api/proxy?ref=x")).toBe(
-      "https://elsewhere.example/api/proxy?ref=x",
-    );
   });
 });

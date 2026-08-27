@@ -56,8 +56,6 @@ export const UploadTicketSchema = z.object({
   upload_url: z.url(),
   /** Sent verbatim on the PUT. A store that signed a header expects it back. */
   upload_headers: z.record(z.string(), z.string()),
-  /** Where the bytes read back from once the upload is completed. */
-  asset_url: z.url(),
 });
 export type UploadTicket = z.infer<typeof UploadTicketSchema>;
 
@@ -68,13 +66,25 @@ export const CompleteUploadRequestSchema = z.object({
 export type CompleteUploadRequest = z.input<typeof CompleteUploadRequestSchema>;
 
 /**
- * A blob that is there. `url` is the author's instance, so every render of it
- * goes through Sloppy's own asset route — `proxied()` in `@sloppy/client` — or
- * the viewer's address reaches the author's server.
+ * Where a picture is loaded from: a path under Sloppy's API, which `proxied()`
+ * in `@sloppy/client` resolves against the host this shell reaches its instance
+ * at. Never absolute — the API cannot see which of its addresses a shell can
+ * reach, and a picture loaded from anywhere else tells the machine holding it
+ * who is reading.
+ */
+export const AssetAddressSchema = z
+  .string()
+  .regex(/^\/[a-z]/, "Expected an address on this instance");
+export type AssetAddress = z.infer<typeof AssetAddressSchema>;
+
+/**
+ * A blob that is there, named by the upload it arrived on rather than by an
+ * address. Who may read it is the store's answer and not this row's, so where
+ * it renders from is asked separately: `ownPicture` in `@sloppy/client` is what
+ * turns one of the caller's own into something an `<img>` can load.
  */
 export const MediaAssetSchema = z.object({
   upload_id: z.string().min(1),
-  url: z.url(),
   mime_type: z.string(),
   size: z.int().nonnegative(),
   width: z.int().positive().nullable().optional(),

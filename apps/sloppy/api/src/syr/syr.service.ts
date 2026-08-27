@@ -21,6 +21,7 @@ import {
   type SyrPlatformTokenResponse,
   SyrPlatformTokenResponseSchema,
   type SyrProfile,
+  type SyrProfilePatch,
   SyrProfileSchema,
   type SyrScope,
   type SyrUpload,
@@ -28,7 +29,6 @@ import {
   type SyrUploadTicket,
   SyrUploadTicketSchema,
   syrEnvelope,
-  type UpdateProfileRequest,
 } from "@sloppy/types";
 import { z } from "zod";
 
@@ -327,7 +327,7 @@ export class SyrService {
 
   async updateProfile(
     delegation: Delegation,
-    patch: UpdateProfileRequest,
+    patch: SyrProfilePatch,
   ): Promise<void> {
     const base = await this.ownerApiBase(delegation.syr_instance_url);
     await this.asPerson(

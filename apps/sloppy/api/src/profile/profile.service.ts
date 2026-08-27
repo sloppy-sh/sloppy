@@ -2,9 +2,11 @@ import { Injectable } from "@nestjs/common";
 import type {
   ProfileView,
   SyrProfile,
+  SyrProfilePatch,
   UpdateProfileRequest,
 } from "@sloppy/types";
 import { AssetLinks } from "../media/asset-link";
+import { MediaService } from "../media/media.service";
 import { type Delegation, SyrService } from "../syr/syr.service";
 
 /**
@@ -17,6 +19,7 @@ import { type Delegation, SyrService } from "../syr/syr.service";
 export class ProfileService {
   constructor(
     private readonly syr: SyrService,
+    private readonly media: MediaService,
     private readonly links: AssetLinks,
   ) {}
 
@@ -37,8 +40,8 @@ export class ProfileService {
       username: profile.username,
       display_name: profile.display_name ?? null,
       bio: profile.bio ?? null,
-      avatar_url: profile.avatar_url ? this.links.to(profile.avatar_url) : null,
-      banner_url: profile.banner_url ? this.links.to(profile.banner_url) : null,
+      avatar_src: profile.avatar_url ? this.links.to(profile.avatar_url) : null,
+      banner_src: profile.banner_url ? this.links.to(profile.banner_url) : null,
     };
   }
 
@@ -48,21 +51,28 @@ export class ProfileService {
     delegation: Delegation,
     patch: UpdateProfileRequest,
   ): Promise<ProfileView> {
-    await this.syr.updateProfile(delegation, {
-      ...patch,
-      ...this.pictureIn(patch, "avatar_url"),
-      ...this.pictureIn(patch, "banner_url"),
-    });
+    const sent: SyrProfilePatch = {};
+    if ("display_name" in patch) sent.display_name = patch.display_name;
+    if ("bio" in patch) sent.bio = patch.bio;
+    if ("avatar_upload_id" in patch) {
+      sent.avatar_url = await this.stored(delegation, patch.avatar_upload_id);
+    }
+    if ("banner_upload_id" in patch) {
+      sent.banner_url = await this.stored(delegation, patch.banner_upload_id);
+    }
+    await this.syr.updateProfile(delegation, sent);
     return this.read(delegation.syr_instance_url, delegation.did);
   }
 
-  /** What the store keeps is the address the picture actually lives at, so a
-   *  surface sending back the link it was shown still saves the picture. */
-  private pictureIn(
-    patch: UpdateProfileRequest,
-    field: "avatar_url" | "banner_url",
-  ): Partial<UpdateProfileRequest> {
-    const sent = patch[field];
-    return sent ? { [field]: this.links.unwrap(sent) } : {};
+  /**
+   * Where one of the caller's own uploads actually lives, or `null` to clear
+   * the picture. Read back from their store rather than taken from the request,
+   * so a profile can only ever point at a picture that identity holds.
+   */
+  private async stored(
+    delegation: Delegation,
+    uploadId: string | null | undefined,
+  ): Promise<string | null> {
+    return uploadId ? this.media.ownPicture(delegation, uploadId) : null;
   }
 }

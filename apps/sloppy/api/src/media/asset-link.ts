@@ -4,8 +4,8 @@
 import { randomBytes } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import type { AssetAddress } from "@sloppy/types";
 import { SignedTokens } from "../auth/signed-token";
-import { AppConfigService } from "../config/app-config.service";
 
 /** Long enough that a page left open all week still draws its pictures, short
  *  enough that a link somebody copied out of one stops working. */
@@ -17,7 +17,7 @@ const REMINT_AFTER_MS = LINK_TTL_MS / 2;
 const REMEMBERED = 4096;
 
 /**
- * Every renderable link Sloppy hands out is minted here, and the asset route
+ * Every renderable address Sloppy hands out is minted here, and the asset route
  * fetches nothing else — which is what stops a public route from being a
  * general-purpose web proxy for whoever finds it.
  *
@@ -28,12 +28,12 @@ export class AssetLinks {
   private readonly links: SignedTokens<{ u: string }>;
   /** One address, one link, while that link stays fresh — a new one on every
    *  read would send the reader back for a picture they already have. */
-  private readonly minted = new Map<string, { link: string; at: number }>();
+  private readonly minted = new Map<
+    string,
+    { link: AssetAddress; at: number }
+  >();
 
-  constructor(
-    private readonly app: AppConfigService,
-    config: ConfigService,
-  ) {
+  constructor(config: ConfigService) {
     // The instance's session key; `AuthService` warns when it is unset.
     const key =
       config.get<string>("SLOPPY_SESSION_SECRET") ??
@@ -41,15 +41,18 @@ export class AssetLinks {
     this.links = new SignedTokens(key, LINK_TTL_MS);
   }
 
-  /** Where a reader loads `url` from, so its host learns this instance's
-   *  address and never theirs. Absolute, because the shells do not share an
-   *  origin with the API. */
-  to(url: string): string {
+  /**
+   * Where a reader loads `url` from, so its host learns this instance's address
+   * and never theirs. Under the API rather than at an origin: this instance
+   * answers at several — a shell forwarding `/api`, the port the native app
+   * dials — and only the shell knows which of them it can reach.
+   */
+  to(url: string): AssetAddress {
     const now = Date.now();
     const held = this.minted.get(url);
     if (held && now - held.at < REMINT_AFTER_MS) return held.link;
 
-    const link = `${this.base}?ref=${encodeURIComponent(this.links.issue({ u: url }))}`;
+    const link = `/proxy?ref=${encodeURIComponent(this.links.issue({ u: url }))}`;
     this.minted.set(url, { link, at: now });
     this.forget(now);
     return link;
@@ -58,22 +61,6 @@ export class AssetLinks {
   /** What a link vouches for, or null for one this instance did not mint. */
   target(ref: string | undefined): string | null {
     return (ref ? this.links.verify(ref)?.u : null) ?? null;
-  }
-
-  /**
-   * A link back into the address it stands for; anything else unchanged. A
-   * surface only ever holds links, so one arriving in a request is somebody
-   * naming the picture they were shown.
-   */
-  unwrap(url: string): string {
-    if (!url.startsWith(`${this.base}?`)) return url;
-    try {
-      return (
-        this.target(new URL(url).searchParams.get("ref") ?? undefined) ?? url
-      );
-    } catch {
-      return url;
-    }
   }
 
   /** Stale entries first; then the oldest, because a `Map` hands them back in
@@ -87,9 +74,5 @@ export class AssetLinks {
       if (this.minted.size <= REMEMBERED) break;
       this.minted.delete(url);
     }
-  }
-
-  private get base(): string {
-    return `${this.app.publicUrl.replace(/\/+$/, "")}/api/proxy`;
   }
 }

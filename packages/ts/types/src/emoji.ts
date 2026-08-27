@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { DidSyrSchema } from "./common.js";
+import { AssetAddressSchema } from "./media.js";
 
 /** Letters, digits and underscores, as `:shortcode:` is written in a block. */
 export const EMOJI_SHORTCODE_PATTERN = /^[a-z0-9_]{2,32}$/i;
@@ -30,8 +31,7 @@ export const CustomEmojiSchema = z.object({
   did: DidSyrSchema,
   shortcode: EmojiShortcodeSchema,
   kind: CustomEmojiKindSchema,
-  /** The author's store, so every render of it goes through `proxied()`. */
-  url: z.url(),
+  src: AssetAddressSchema,
 });
 export type CustomEmoji = z.infer<typeof CustomEmojiSchema>;
 
@@ -48,10 +48,13 @@ export type CreateEmojiRequest = z.input<typeof CreateEmojiRequestSchema>;
  * Take one seen on somebody else's note into your own catalog. The bytes are
  * re-uploaded under the caller's identity, so the copy survives the original
  * being deleted and does not call on a stranger's server to render.
+ *
+ * The original is named by its `emoji_id`, so what is copied is an entry in
+ * that identity's catalog and never an address the caller chose.
  */
 export const CopyEmojiRequestSchema = z.object({
   shortcode: EmojiShortcodeSchema,
   kind: CustomEmojiKindSchema,
-  source_url: z.url(),
+  source_emoji_id: z.string().min(1),
 });
 export type CopyEmojiRequest = z.input<typeof CopyEmojiRequestSchema>;

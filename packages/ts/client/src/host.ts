@@ -37,49 +37,30 @@ export function isSameOrigin(): boolean {
 }
 
 /**
- * The address to render a remote asset from. Viewing a federated node must
- * never leak the viewer's IP to the author's instance, so every URL that came
+ * The address to render a picture from. Viewing a federated node must never
+ * leak the viewer's IP to the author's instance, so every address that came
  * from somebody else's graph goes through here before it reaches an `<img>` or
  * a `fetch`; AI.md § "Sloppy's Vocabulary Stays Out of the Identity Store"
  * states the rule.
  *
- * Every renderable link the API hands out is already an asset-route address,
- * and those pass straight through. An address the API did not mint is sent to
- * that route unsigned, where it is refused rather than fetched — so a picture
- * nothing vouched for fails to draw instead of reaching a stranger's machine.
+ * A `MediaAsset`-shaped address the API minted is a path under the API, and it
+ * lands on whichever host this shell reaches its instance at. An absolute URL —
+ * including a look-alike from a peer — is sent to the asset route unsigned,
+ * where it is refused rather than fetched, so a picture nothing vouched for
+ * fails to draw instead of reaching a stranger's machine.
  *
- * Anything that is not an absolute http(s) URL — a data URL, a bundled asset —
- * is already local and is handed back untouched.
+ * Anything else — a data URL, a bundled asset — is already local and is handed
+ * back untouched.
  */
-export function proxied(url: string): string {
-  if (!/^https?:\/\//i.test(url)) return url;
-  return isAssetRoute(url)
-    ? url
-    : apiUrl(`/proxy?url=${encodeURIComponent(url)}`);
+export function proxied(src: string): string {
+  if (isAssetRoute(src)) return apiUrl(src);
+  if (!/^https?:\/\//i.test(src)) return src;
+  return apiUrl(`/proxy?url=${encodeURIComponent(src)}`);
 }
 
-/** The origin is half the test: a peer is free to answer with a URL shaped
- *  like this one, and passing that through is the leak the route prevents. */
-function isAssetRoute(url: string): boolean {
-  try {
-    const at = new URL(url);
-    return (
-      at.origin === apiOrigin() &&
-      at.pathname === `${API_PREFIX}/proxy` &&
-      at.searchParams.has("ref")
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** `undefined` where there is no page and no configured host, which vouches
- *  for nothing rather than for everything. */
-function apiOrigin(): string | undefined {
-  if (!base) return globalThis.location?.origin;
-  try {
-    return new URL(base).origin;
-  } catch {
-    return undefined;
-  }
+/** The API's own asset route, as the API's `AssetLinks` mints it. Having no
+ *  origin is the whole point: an absolute address is somebody else's host, even
+ *  when it is spelled like this one. */
+function isAssetRoute(src: string): boolean {
+  return src.startsWith("/proxy?ref=");
 }

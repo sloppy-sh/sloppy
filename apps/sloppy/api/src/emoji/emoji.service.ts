@@ -48,7 +48,7 @@ export class EmojiService {
       did: entry.did,
       shortcode: entry.shortcode,
       kind: entry.is_sticker ? "sticker" : "emoji",
-      url: this.links.to(entry.url),
+      src: this.links.to(entry.url),
     };
   }
 
@@ -82,33 +82,30 @@ export class EmojiService {
   }
 
   async remove(delegation: Delegation, emojiId: string): Promise<void> {
-    const cut = emojiId.lastIndexOf("/");
-    if (cut < 1) throw new BadRequestException("That emoji is already gone.");
-    await this.syr.deleteEmoji(delegation, {
-      did: emojiId.slice(0, cut),
-      localId: emojiId.slice(cut + 1),
-    });
+    await this.syr.deleteEmoji(delegation, splitEmojiId(emojiId));
   }
 
   /**
    * One seen on somebody else's note, taken into the caller's own catalog. The
    * bytes are re-uploaded under their identity, so the copy outlives the
    * original and renders without calling on a stranger's machine.
+   *
+   * What is copied is an entry in that identity's own catalog, looked up here:
+   * an address off the request would make this a way to have Sloppy fetch
+   * whatever the caller named.
    */
   async copy(
     delegation: Delegation,
     request: CopyEmojiRequest,
   ): Promise<CustomEmoji> {
     const limits = roleLimits("emoji");
-    const picture = await readRemotePicture(
-      this.links.unwrap(request.source_url),
-      {
-        allowPrivate: !this.config.isProduction,
-        publicUrl: this.config.publicUrl,
-        maxBytes: limits.maxBytes,
-        mimeTypes: limits.mimeTypes,
-      },
-    );
+    const source = await this.sourceOf(delegation, request.source_emoji_id);
+    const picture = await readRemotePicture(source.url, {
+      allowPrivate: !this.config.isProduction,
+      publicUrl: this.config.publicUrl,
+      maxBytes: limits.maxBytes,
+      mimeTypes: limits.mimeTypes,
+    });
     const stored = await this.media.store(delegation, {
       role: "emoji",
       filename: request.shortcode,
@@ -125,4 +122,32 @@ export class EmojiService {
       }),
     );
   }
+
+  /** The entry the reader was actually shown, from the catalog of the identity
+   *  that published it. */
+  private async sourceOf(
+    delegation: Delegation,
+    emojiId: string,
+  ): Promise<SyrEmoji> {
+    const source = splitEmojiId(emojiId);
+    const catalog = await this.syr.listPublicEmoji(
+      delegation.syr_instance_url,
+      source.did,
+    );
+    const entry = catalog.find((one) => one.local_id === source.localId);
+    if (!entry) {
+      throw new BadRequestException("That emoji is no longer there to copy.");
+    }
+    return entry;
+  }
+}
+
+/** `<did>/<local id>`: the pair a catalog keys an entry by, carried as one
+ *  opaque token so nothing outside here has to know it is two. */
+function splitEmojiId(emojiId: string): { did: string; localId: string } {
+  const cut = emojiId.lastIndexOf("/");
+  if (cut < 1 || cut === emojiId.length - 1) {
+    throw new BadRequestException("That emoji is not there.");
+  }
+  return { did: emojiId.slice(0, cut), localId: emojiId.slice(cut + 1) };
 }

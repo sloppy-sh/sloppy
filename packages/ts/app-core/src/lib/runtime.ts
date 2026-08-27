@@ -30,12 +30,6 @@ export interface AppRuntime {
 		clear(): void;
 	};
 	fetchImpl(): typeof fetch;
-	/** Separate from {@link fetchImpl} because the WebView's own `fetch` is
-	 *  CORS-bound and a blob host is not our origin: the native shell routes this
-	 *  through the Tauri HTTP plugin instead. Absent → plain `fetch`, which is
-	 *  correct on web, where every remote asset already arrives through
-	 *  `proxied()`. */
-	assetBytes?(url: string): Promise<ArrayBuffer>;
 	/** Absent → a rejected session surfaces wherever it was noticed. Present →
 	 *  the shell signs out app-wide. */
 	onAuthInvalid?(): void;
@@ -53,12 +47,6 @@ export interface AppRuntime {
 	 *  hides. */
 	wipeLocal?(): Promise<void>;
 }
-
-const defaultAssetBytes = async (url: string): Promise<ArrayBuffer> => {
-	const res = await globalThis.fetch(url);
-	if (!res.ok) throw new Error(`asset fetch ${res.status} for ${url}`);
-	return res.arrayBuffer();
-};
 
 const TOKEN_KEY = 'sloppy_token';
 
@@ -104,8 +92,7 @@ let current: AppRuntime = {
 	apiHost: () => '',
 	mode: () => 'hosted',
 	token: localStorageToken,
-	fetchImpl: () => globalThis.fetch.bind(globalThis),
-	assetBytes: defaultAssetBytes
+	fetchImpl: () => globalThis.fetch.bind(globalThis)
 };
 
 /**
@@ -132,7 +119,6 @@ export const runtime = {
 		clear: () => current.token.clear()
 	},
 	fetchImpl: () => current.fetchImpl(),
-	assetBytes: (url: string): Promise<ArrayBuffer> => (current.assetBytes ?? defaultAssetBytes)(url),
 	authInvalid: () => current.onAuthInvalid?.(),
 	openExternal: (): AppRuntime['openExternal'] => current.openExternal,
 	createApi: (): SloppyApi | undefined => current.createApi?.(),

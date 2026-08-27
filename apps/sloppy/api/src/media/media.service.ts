@@ -62,6 +62,15 @@ export function folderPathFor(role: MediaRole): readonly string[] {
   return ROLE_FOLDERS[role];
 }
 
+/**
+ * A completed upload as its store describes it. `url` is where the bytes
+ * actually live, which is why nothing outside this API ever sees one: handing
+ * it to a reader is what tells that machine who is reading.
+ */
+export interface StoredBlob extends MediaAsset {
+  url: string;
+}
+
 /** How long to keep asking a store that has not seen the bytes land yet. An
  *  upload that did land and was given up on is a file the person is told to
  *  send again, and a first copy nobody will ever look at. */
@@ -124,7 +133,6 @@ export class MediaService {
       upload_id: `${ticket.uploadDid}/${ticket.uploadLocalId}`,
       upload_url: ticket.signedUrl,
       upload_headers: { "content-type": request.mime_type },
-      asset_url: ticket.finalUrl,
     };
   }
 
@@ -141,7 +149,7 @@ export class MediaService {
       mimeType: string;
       bytes: Uint8Array;
     },
-  ): Promise<MediaAsset> {
+  ): Promise<StoredBlob> {
     const ticket = await this.createUpload(delegation, {
       role: file.role,
       filename: file.filename,
@@ -157,7 +165,7 @@ export class MediaService {
     if (!sent.ok) {
       throw new BadRequestException("That file could not be added. Try again.");
     }
-    return this.completeUpload(delegation, { upload_id: ticket.upload_id });
+    return this.finalize(delegation, ticket.upload_id);
   }
 
   /**
@@ -177,16 +185,27 @@ export class MediaService {
     return stored.url;
   }
 
+  async completeUpload(
+    delegation: Delegation,
+    request: CompleteUploadRequest,
+  ): Promise<MediaAsset> {
+    const { url: _storeAddress, ...asset } = await this.finalize(
+      delegation,
+      request.upload_id,
+    );
+    return asset;
+  }
+
   /**
    * Told the bytes are there. A store that has not seen them yet is asked
    * again rather than believed, because "not yet" and "never" look the same
    * from one answer and only one of them is worth telling somebody about.
    */
-  async completeUpload(
+  private async finalize(
     delegation: Delegation,
-    request: CompleteUploadRequest,
-  ): Promise<MediaAsset> {
-    const upload = splitUploadId(request.upload_id);
+    uploadId: string,
+  ): Promise<StoredBlob> {
+    const upload = splitUploadId(uploadId);
     const until = Date.now() + FINALIZE_WINDOW_MS;
     let wait = FIRST_FINALIZE_DELAY_MS;
 
@@ -194,7 +213,7 @@ export class MediaService {
       const stored = await this.syr.completeUpload(delegation, upload);
       if (stored?.url) {
         return {
-          upload_id: request.upload_id,
+          upload_id: uploadId,
           url: stored.url,
           mime_type: stored.mime_type,
           size: stored.size,
