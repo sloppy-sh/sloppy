@@ -9,7 +9,7 @@ import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 import Tags from '@lucide/svelte/icons/tags';
 import UserRound from '@lucide/svelte/icons/user-round';
 import type { OwnedRef } from '@sloppy/types';
-import type { NavItem } from '@sloppy/ui';
+import type { NavItem, Person } from '@sloppy/ui';
 
 /** In the order they are shown. `id` is what {@link activeRouteId} answers. */
 export const APP_ROUTES: NavItem[] = [
@@ -18,6 +18,12 @@ export const APP_ROUTES: NavItem[] = [
 	{ id: 'profile', label: 'You', href: '/profile', icon: UserRound },
 	{ id: 'settings', label: 'Settings', href: '/settings', icon: SlidersHorizontal }
 ];
+
+/** The same destinations, with the signed-in person standing on their own. */
+export function navRoutes(person: Person | null): NavItem[] {
+	if (!person) return APP_ROUTES;
+	return APP_ROUTES.map((route) => (route.id === 'profile' ? { ...route, person } : route));
+}
 
 /** Reachable with no account — DESIGN.md § Persistence, on appearance. */
 export const OPEN_ROUTES = ['/sign-in', '/settings'];

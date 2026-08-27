@@ -5,6 +5,16 @@
 import type { CreateUploadRequest, MediaAsset, MediaRole } from "@sloppy/types";
 import type { SloppyClient } from "./index.js";
 
+/**
+ * What sending a file needs of the client. The pair rather than the class, so
+ * `@sloppy/app-core`'s api port — which is `SloppyClient`'s public shape and
+ * not an instance of it — satisfies it by shape and never by cast.
+ */
+export type UploadClient = Pick<
+  SloppyClient,
+  "createUpload" | "completeUpload"
+>;
+
 export interface UploadHandle {
   readonly asset: Promise<MediaAsset>;
   /** Stops the send. The `asset` promise rejects. */
@@ -82,7 +92,7 @@ function put(
 }
 
 export function uploadFile(
-  client: SloppyClient,
+  client: UploadClient,
   file: File,
   options: { role: MediaRole; onProgress?: UploadProgress },
 ): UploadHandle {
