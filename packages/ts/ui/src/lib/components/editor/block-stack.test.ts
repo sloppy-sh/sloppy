@@ -16,6 +16,8 @@ interface Written {
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let written: Written;
+/** Set to keep every create in flight until the test lets it answer. */
+let answering: Promise<void> | null;
 
 function open(blocks: BlockView[]) {
 	mounted = mount(BlockStack, {
@@ -25,6 +27,7 @@ function open(blocks: BlockView[]) {
 			blocks,
 			onCreate: async (request: CreateBlockRequest) => {
 				written.created.push(request);
+				if (answering) await answering;
 				return block({ ...request, type: request.type, ref: ref() });
 			},
 			onUpdate: async (block: OwnedRef, request: Record<string, unknown>) => {
@@ -71,6 +74,7 @@ function penEvent(type: string, x: number, y: number, pressure = 0.5): PointerEv
 
 beforeEach(() => {
 	written = { created: [], updated: [], removed: [] };
+	answering = null;
 	stubResizeObserver();
 	stubMediaQuery(() => false);
 	stubCanvas();
@@ -113,6 +117,26 @@ describe('opening a note', () => {
 		open([block({ type: 'paragraph', content: 'left alone' })]);
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(written).toEqual({ created: [], updated: [], removed: [] });
+	});
+
+	it('leaves a shortcode inside code exactly as it was written', async () => {
+		open([
+			block({ type: 'code', content: '```\ngit commit -m ":fire: remove dead code"\n```' }),
+			block({ type: 'paragraph', content: 'type `:fire:` to get a flame' })
+		]);
+		expect(document.querySelector('pre')?.textContent).toBe(
+			'git commit -m ":fire: remove dead code"'
+		);
+		expect(document.querySelector('p code')?.textContent).toBe(':fire:');
+		expect(document.querySelector('[data-emoji]')).toBeNull();
+
+		writingIn().commands.insertContentAt(1, 'sudo ');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.created).toEqual([]);
+		expect(written.removed).toEqual([]);
+		expect(written.updated.map((row) => row.content)).toEqual([
+			'```\nsudo git commit -m ":fire: remove dead code"\n```'
+		]);
 	});
 });
 
@@ -193,6 +217,24 @@ describe('what a note keeps when it is left', () => {
 		close();
 		await vi.advanceTimersByTimeAsync(0);
 		expect(written.created.map((row) => row.type)).toEqual(['ink']);
+	});
+
+	it('makes a block once when the note is closed while it is still being made', async () => {
+		let answer = () => {};
+		answering = new Promise<void>((resolve) => (answer = resolve));
+
+		open([block({ type: 'paragraph', content: 'a thought' })]);
+		const of = writingIn();
+		of.commands.setTextSelection(of.state.doc.content.size - 1);
+		of.commands.splitBlock();
+		of.commands.insertContent('and another');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(written.created.map((row) => row.content)).toEqual(['and another']);
+
+		close();
+		answer();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(written.created.map((row) => row.content)).toEqual(['and another']);
 	});
 
 	it('writes what is unsaved when the app goes to the background', async () => {

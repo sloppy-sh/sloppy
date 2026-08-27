@@ -84,9 +84,9 @@ export class StrokeInProgress {
 		return added;
 	}
 
-	/** Null when the contact never moved enough to be a mark. */
-	finish(): InkStroke | null {
-		return this.points.length > 0 ? { points: [...this.points], width: this.width } : null;
+	/** A pen put down and lifted without moving is a dot, and a dot is a mark. */
+	finish(): InkStroke {
+		return { points: [...this.points], width: this.width };
 	}
 }
 

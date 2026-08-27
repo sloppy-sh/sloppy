@@ -64,6 +64,8 @@ export interface DocBlock {
 
 /** What a row holds, as far as the surface knows: the last thing it saw saved. */
 export interface SavedBlock {
+	/** The document node this row answers for; `ref` is only where it ended up. */
+	uid: string;
 	ref: OwnedRef;
 	type: BlockType;
 	content: string;
@@ -149,7 +151,12 @@ export function openBlocks(blocks: readonly BlockView[], manager: MarkdownManage
 			};
 		});
 		if (nodes.length > 1) {
-			divided.set(block.ref, { ref: block.ref, type: block.type, content: block.content ?? '' });
+			divided.set(block.ref, {
+				uid: nodes[0].attrs?.blockUid as string,
+				ref: block.ref,
+				type: block.type,
+				content: block.content ?? ''
+			});
 		}
 		content.push(...nodes);
 	}
@@ -170,7 +177,13 @@ export function openBlocks(blocks: readonly BlockView[], manager: MarkdownManage
 				}
 				const row = read.get(block.ref);
 				if (row) {
-					rows.push({ ref: block.ref, type: row.type, content: row.content, data: row.data });
+					rows.push({
+						uid: row.uid,
+						ref: block.ref,
+						type: row.type,
+						content: row.content,
+						data: row.data
+					});
 				}
 			}
 			return rows;
@@ -208,13 +221,19 @@ function sameData(a: unknown, b: unknown): boolean {
  * an anchor is still there when the block that names it is placed.
  */
 export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]): SaveOp[] {
-	const byRef = new Map(saved.map((block) => [block.ref, block]));
+	const byRef = new Map(saved.map((row) => [row.ref, row]));
+	const byUid = new Map(saved.map((row) => [row.uid, row]));
+	// A block still carries its uid when the create that made it landed too late
+	// to stamp the ref back into the document, so it is answered for, not remade.
+	const rowFor = next.map(
+		(block) => (block.ref ? byRef.get(block.ref) : undefined) ?? byUid.get(block.uid)
+	);
 	const kept = new Set<OwnedRef>();
 	const ops: SaveOp[] = [];
 
 	let previousUid: string | null = null;
-	for (const block of next) {
-		const row = block.ref ? byRef.get(block.ref) : undefined;
+	next.forEach((block, index) => {
+		const row = rowFor[index];
 		if (!row) {
 			ops.push({
 				kind: 'create',
@@ -235,16 +254,16 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 			}
 		}
 		previousUid = block.uid;
-	}
+	});
 
 	const order = saved.filter((row) => kept.has(row.ref)).map((row) => row.ref);
-	const wanted = next.filter((block) => block.ref && kept.has(block.ref));
-	wanted.forEach((block, index) => {
-		const ref = block.ref as OwnedRef;
+	const wanted = next.flatMap((_, index) => (rowFor[index] ? [index] : []));
+	wanted.forEach((at, index) => {
+		const ref = (rowFor[at] as SavedBlock).ref;
 		if (order[index] === ref) return;
 		order.splice(order.indexOf(ref), 1);
 		order.splice(index, 0, ref);
-		const before = next[next.indexOf(block) - 1];
+		const before = next[at - 1];
 		ops.push({ kind: 'reorder', ref, after: before ? before.uid : null });
 	});
 
@@ -269,8 +288,6 @@ export interface BlockWriter {
 	remove(ref: OwnedRef): Promise<void>;
 	/** The row a new block became, so the document can carry it from here on. */
 	placed(uid: string, ref: OwnedRef): void;
-	/** True once the surface has moved to another note and none of this matters. */
-	abandoned?(): boolean;
 }
 
 function place(saved: SavedBlock[], after: OwnedRef | null, row: SavedBlock): void {
@@ -290,11 +307,11 @@ export async function runSave(
 	writer: BlockWriter
 ): Promise<void> {
 	const refs = new Map<string, OwnedRef>();
+	for (const row of saved) refs.set(row.uid, row.ref);
 	for (const block of next) if (block.ref) refs.set(block.uid, block.ref);
 	const anchor = (uid: string | null) => (uid && refs.get(uid)) ?? null;
 
 	for (const op of ops) {
-		if (writer.abandoned?.()) return;
 		if (op.kind === 'create') {
 			const after = anchor(op.after);
 			const ref = await writer.create({
@@ -303,10 +320,9 @@ export async function runSave(
 				content: op.content,
 				...(op.data === undefined ? {} : { data: op.data })
 			});
-			if (writer.abandoned?.()) return;
 			refs.set(op.uid, ref);
+			place(saved, after, { uid: op.uid, ref, type: op.type, content: op.content, data: op.data });
 			writer.placed(op.uid, ref);
-			place(saved, after, { ref, type: op.type, content: op.content, data: op.data });
 		} else if (op.kind === 'update') {
 			const changes = {
 				...(op.type === undefined ? {} : { type: op.type }),
@@ -314,18 +330,15 @@ export async function runSave(
 				...(op.data === undefined ? {} : { data: op.data })
 			};
 			await writer.update(op.ref, changes);
-			if (writer.abandoned?.()) return;
 			const row = saved.find((row) => row.ref === op.ref);
 			if (row) Object.assign(row, changes);
 		} else if (op.kind === 'reorder') {
 			const after = anchor(op.after);
 			await writer.reorder(op.ref, after);
-			if (writer.abandoned?.()) return;
 			const at = saved.findIndex((row) => row.ref === op.ref);
 			if (at >= 0) place(saved, after, saved.splice(at, 1)[0]);
 		} else {
 			await writer.remove(op.ref);
-			if (writer.abandoned?.()) return;
 			const at = saved.findIndex((row) => row.ref === op.ref);
 			if (at >= 0) saved.splice(at, 1);
 		}

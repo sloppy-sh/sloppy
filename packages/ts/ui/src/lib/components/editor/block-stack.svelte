@@ -19,6 +19,7 @@
 	import { Editor } from '@tiptap/core';
 	import { TaskItem, TaskList } from '@tiptap/extension-list';
 	import { Markdown } from '@tiptap/markdown';
+	import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 	import StarterKit from '@tiptap/starter-kit';
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -32,7 +33,6 @@
 		planSave,
 		runSave,
 		type DocBlock,
-		type SaveOp,
 		type SavedBlock
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
@@ -96,34 +96,48 @@
 	/** One trip to the API, holding everything it needs to outlive this surface. */
 	interface Write {
 		note: OwnedRef;
+		/** The document it was read from, stamped with the row each new block became. */
+		from: Editor;
 		rows: SavedBlock[];
 		next: DocBlock[];
-		ops: SaveOp[];
 	}
+
+	/** The trip still in the air, so the next one queues behind it rather than racing it. */
+	let inFlight: Promise<void> = Promise.resolve();
 
 	function plan(): Write | null {
 		const current = editor;
 		if (!current || current.isDestroyed) return null;
-		const next = docBlocks(current.state.doc, manager(current));
-		return { note: writingTo, rows: saved, next, ops: planSave(saved, next) };
+		return {
+			note: writingTo,
+			from: current,
+			rows: saved,
+			next: docBlocks(current.state.doc, manager(current))
+		};
 	}
 
-	function run(write: Write, live: () => boolean): Promise<void> {
-		return runSave(write.ops, write.rows, write.next, {
-			create: (request) =>
-				onCreate({
-					node: write.note,
-					type: request.type,
-					content: request.content,
-					...(request.after ? { after: request.after } : {}),
-					...(request.data === undefined ? {} : { data: request.data })
-				}).then((created) => created.ref),
-			update: (ref, changes) => onUpdate(ref, changes).then(() => undefined),
-			reorder: (ref, after) => onReorder(ref, after).then(() => undefined),
-			remove: (ref) => onRemove(ref),
-			placed: stamp,
-			abandoned: () => !live()
+	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
+	function run(write: Write): Promise<void> {
+		const trip = inFlight.then(async () => {
+			const ops = planSave(write.rows, write.next);
+			if (ops.length === 0) return;
+			await runSave(ops, write.rows, write.next, {
+				create: (request) =>
+					onCreate({
+						node: write.note,
+						type: request.type,
+						content: request.content,
+						...(request.after ? { after: request.after } : {}),
+						...(request.data === undefined ? {} : { data: request.data })
+					}).then((created) => created.ref),
+				update: (ref, changes) => onUpdate(ref, changes).then(() => undefined),
+				reorder: (ref, after) => onReorder(ref, after).then(() => undefined),
+				remove: (ref) => onRemove(ref),
+				placed: (uid, ref) => stamp(write.from, uid, ref)
+			});
 		});
+		inFlight = trip.catch(() => undefined);
+		return trip;
 	}
 
 	function scheduleSave(delay: number): void {
@@ -149,7 +163,7 @@
 		changedAt = 0;
 		saveState = 'saving';
 		try {
-			await run(write, () => mine === era);
+			await run(write);
 			if (mine === era) saveState = 'saved';
 		} catch {
 			if (mine === era) {
@@ -178,18 +192,17 @@
 	}
 
 	/** Writes back which row a just-created block became, without waking a save. */
-	function stamp(uid: string, ref: OwnedRef): void {
-		const current = editor;
-		if (!current || current.isDestroyed) return;
-		let tr: ReturnType<typeof current.state.tr.setNodeMarkup> | null = null;
-		current.state.doc.forEach((child, pos) => {
+	function stamp(from: Editor, uid: string, ref: OwnedRef): void {
+		if (from.isDestroyed) return;
+		let tr: ReturnType<typeof from.state.tr.setNodeMarkup> | null = null;
+		from.state.doc.forEach((child, pos) => {
 			if (child.attrs.blockUid !== uid || child.attrs.blockRef === ref) return;
-			tr = (tr ?? current.state.tr).setNodeMarkup(pos, undefined, {
+			tr = (tr ?? from.state.tr).setNodeMarkup(pos, undefined, {
 				...child.attrs,
 				blockRef: ref
 			});
 		});
-		if (tr) current.view.dispatch(quiet(tr));
+		if (tr) from.view.dispatch(quiet(tr));
 	}
 
 	/** A change to the document that is bookkeeping, not writing. */
@@ -197,10 +210,16 @@
 		return tr.setMeta('addToHistory', false).setMeta('preventUpdate', true);
 	}
 
-	/** Turns the shortcodes a note is stored with back into the glyphs they name. */
+	/**
+	 * Turns the shortcodes a note is stored with back into the glyphs they name.
+	 * Code is left as it was written: `:fire:` in a snippet is part of the snippet.
+	 */
 	function showEmoji(current: Editor): void {
+		const literal = (child: ProseMirrorNode) =>
+			child.type.spec.code === true || child.marks.some((mark) => mark.type.spec.code === true);
 		let tr: ReturnType<typeof current.state.tr.replaceWith> | null = null;
 		current.state.doc.descendants((child, pos) => {
+			if (literal(child)) return false;
 			if (!child.isText || !child.text) return;
 			for (const token of tokenizeContent(child.text)) {
 				if (token.kind !== 'emoji') continue;
@@ -302,7 +321,7 @@
 	}
 
 	function onPenUp(): void {
-		const done = stroke?.finish() ?? null;
+		const done = stroke?.finish();
 		stroke = null;
 		if (!done) return;
 		pending = [...pending, done];
@@ -374,6 +393,7 @@
 				onSelectionUpdate: refreshMarks
 			});
 			editor = created;
+			inFlight = Promise.resolve();
 			const stack = openBlocks(blocks, manager(created));
 			created.commands.setContent(stack.doc, { emitUpdate: false });
 			showEmoji(created);
@@ -412,7 +432,7 @@
 				created.destroy();
 				// The last write of a note being left: no surface stays open for a
 				// failure to be reported on, or retried from.
-				if (last?.ops.length) void run(last, () => true).catch(() => undefined);
+				if (last) void run(last).catch(() => undefined);
 			};
 		});
 	});

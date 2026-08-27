@@ -182,7 +182,8 @@ describe('a split is a new block, and the old one keeps its row', () => {
 	});
 });
 
-const row = (ref: string, content: string): SavedBlock => ({
+const row = (uid: string, ref: string, content: string): SavedBlock => ({
+	uid,
 	ref: ref as SavedBlock['ref'],
 	type: 'paragraph',
 	content
@@ -196,25 +197,25 @@ const doc = (uid: string, ref: string | null, content: string): DocBlock => ({
 
 describe('what has to reach the API', () => {
 	it('says nothing when nothing moved or changed', () => {
-		expect(planSave([row('a/A', 'one')], [doc('u1', 'a/A', 'one')])).toEqual([]);
+		expect(planSave([row('u1', 'a/A', 'one')], [doc('u1', 'a/A', 'one')])).toEqual([]);
 	});
 
 	it('reports only the field that changed', () => {
-		expect(planSave([row('a/A', 'one')], [doc('u1', 'a/A', 'two')])).toEqual([
+		expect(planSave([row('u1', 'a/A', 'one')], [doc('u1', 'a/A', 'two')])).toEqual([
 			{ kind: 'update', ref: 'a/A', content: 'two' }
 		]);
 	});
 
 	it('deletes a row the document no longer has', () => {
-		expect(planSave([row('a/A', 'one'), row('a/B', 'two')], [doc('u1', 'a/A', 'one')])).toEqual([
-			{ kind: 'remove', ref: 'a/B' }
-		]);
+		expect(
+			planSave([row('u1', 'a/A', 'one'), row('u2', 'a/B', 'two')], [doc('u1', 'a/A', 'one')])
+		).toEqual([{ kind: 'remove', ref: 'a/B' }]);
 	});
 
 	it('anchors a new block to the block it follows, even a new one', () => {
 		expect(
 			planSave(
-				[row('a/A', 'one')],
+				[row('u1', 'a/A', 'one')],
 				[doc('u1', 'a/A', 'one'), doc('u2', null, 'two'), doc('u3', null, 'three')]
 			)
 		).toEqual([
@@ -225,14 +226,14 @@ describe('what has to reach the API', () => {
 
 	it('anchors a block written above everything to nothing', () => {
 		expect(
-			planSave([row('a/A', 'one')], [doc('u2', null, 'new'), doc('u1', 'a/A', 'one')])
+			planSave([row('u1', 'a/A', 'one')], [doc('u2', null, 'new'), doc('u1', 'a/A', 'one')])
 		).toEqual([{ kind: 'create', uid: 'u2', after: null, type: 'paragraph', content: 'new' }]);
 	});
 
 	it('moves a block that changed places rather than rewriting the stack', () => {
 		expect(
 			planSave(
-				[row('a/A', 'one'), row('a/B', 'two'), row('a/C', 'three')],
+				[row('u1', 'a/A', 'one'), row('u2', 'a/B', 'two'), row('u3', 'a/C', 'three')],
 				[doc('u3', 'a/C', 'three'), doc('u1', 'a/A', 'one'), doc('u2', 'a/B', 'two')]
 			)
 		).toEqual([{ kind: 'reorder', ref: 'a/C', after: null }]);
@@ -241,6 +242,22 @@ describe('what has to reach the API', () => {
 	it('treats a row pasted in from another note as a new block here', () => {
 		expect(planSave([], [doc('u1', 'somewhere/ELSE', 'borrowed')])).toEqual([
 			{ kind: 'create', uid: 'u1', after: null, type: 'paragraph', content: 'borrowed' }
+		]);
+	});
+
+	it('makes no second row for a block whose create landed after the document was read', () => {
+		expect(planSave([row('u2', 'a/B', 'two')], [doc('u2', null, 'two')])).toEqual([]);
+	});
+
+	it('still moves such a block, and writes what changed in it', () => {
+		expect(
+			planSave(
+				[row('u1', 'a/A', 'one'), row('u2', 'a/B', 'two')],
+				[doc('u2', null, 'two, revised'), doc('u1', 'a/A', 'one')]
+			)
+		).toEqual([
+			{ kind: 'update', ref: 'a/B', content: 'two, revised' },
+			{ kind: 'reorder', ref: 'a/B', after: null }
 		]);
 	});
 });
@@ -266,7 +283,7 @@ describe('carrying a plan out', () => {
 	}
 
 	it('anchors each new block to the row the one before it became', async () => {
-		const saved = [row('a/A', 'one')];
+		const saved = [row('u1', 'a/A', 'one')];
 		const next = [doc('u1', 'a/A', 'one'), doc('u2', null, 'two'), doc('u3', null, 'three')];
 		const writer = recorder(['a/B', 'a/C']);
 		await runSave(planSave(saved, next), saved, next, writer);
@@ -282,19 +299,9 @@ describe('carrying a plan out', () => {
 		).rejects.toThrow();
 		expect(saved.map((r) => r.ref)).toEqual(['a/A']);
 
-		next[0].ref = 'a/A' as DocBlock['ref'];
 		expect(planSave(saved, next)).toEqual([
 			{ kind: 'create', uid: 'u2', after: 'u1', type: 'paragraph', content: 'two' },
 			{ kind: 'create', uid: 'u3', after: 'u2', type: 'paragraph', content: 'three' }
 		]);
-	});
-
-	it('stops the moment the surface has moved to another note', async () => {
-		const saved: SavedBlock[] = [];
-		const next = [doc('u1', null, 'one'), doc('u2', null, 'two')];
-		const writer = { ...recorder(['a/A', 'a/B']), abandoned: () => true };
-		await runSave(planSave(saved, next), saved, next, writer);
-		expect(writer.calls).toEqual([]);
-		expect(saved).toEqual([]);
 	});
 });

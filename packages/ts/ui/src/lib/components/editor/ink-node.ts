@@ -188,7 +188,7 @@ export const InkNode = Node.create({
 			});
 
 			function settle(): void {
-				const stroke = wet?.finish() ?? null;
+				const stroke = wet?.finish();
 				wet = null;
 				if (!stroke) {
 					redraw();
