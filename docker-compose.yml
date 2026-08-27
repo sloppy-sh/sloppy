@@ -1,13 +1,216 @@
-# Dev backing services only — the database and the object store. The API and the
-# clients run on the host (`pnpm dev`), and the native app always does. Nothing
-# here needs a .env: every value has a dev default, so a fresh clone comes up with
-# `docker compose up -d`.
+# The whole dev stack: the database, the object store, the shared @sloppy/*
+# builds, the API and the web shell. `pnpm dev` brings it up watching the source,
+# so an edit on the host lands in the container and the process that owns it
+# reacts — nothing here is started or restarted by hand.
 #
-# Every published port is overridable and offset from syr's own dev stack, which
+#   web → http://localhost:8030      API → http://localhost:8020/api
+#
+# Only the native shell stays on the host: Tauri builds and runs an OS app, and
+# there is no container for that. It points `pnpm dev:native` at the API above.
+#
+# Nothing here needs a .env: every value has a dev default, so a fresh clone
+# comes up with one command. A .env you do keep is read for every service.
+#
+# The datastore ports are overridable and offset from syr's own dev stack, which
 # uses 8000 / 8333 / 9001 / 8091. Verifying Platform Delegation means running
 # both stacks at once, so the defaults must not collide.
+name: sloppy
+
+x-dev-image: &dev-image
+  image: sloppy-dev
+  build:
+    context: .
+    dockerfile: docker/dev/Dockerfile
+
+# The developer's own values, where they keep some. Absent, the defaults below
+# stand on their own — hence `required: false`.
+x-env-file: &env-file
+  - path: .env
+    required: false
+
+# One copy of every shared package's build, mounted into all three services.
+# `packages-watch` is the only writer; `api` and `web` resolve `@sloppy/types`
+# and its siblings through `dist/`, and without a shared mount each container
+# would go on reading the copy it was built with while the watcher rebuilt one
+# nobody else can see.
+x-package-dist: &package-dist
+  - app-core-dist:/app/packages/ts/app-core/dist
+  - client-dist:/app/packages/ts/client/dist
+  - data-dist:/app/packages/ts/data/dist
+  - graph-dist:/app/packages/ts/graph/dist
+  - idp-dist:/app/packages/ts/idp/dist
+  - types-dist:/app/packages/ts/types/dist
+  - ui-dist:/app/packages/ts/ui/dist
 
 services:
+  # The shared @sloppy/* packages, rebuilt as they are edited. `api` and `web`
+  # wait on this one being healthy, so neither ever starts against a package
+  # that is half-built or missing.
+  packages-watch:
+    <<: *dev-image
+    container_name: sloppy-packages-watch
+    command: sh -c "pnpm build:packages && touch /tmp/packages-ready && exec pnpm build:packages:watch"
+    env_file: *env-file
+    environment:
+      # pnpm's verify-deps-before-run auto-install has no TTY in here; without
+      # this it tries to be interactive and the service restart-loops.
+      CI: "true"
+    volumes: *package-dist
+    healthcheck:
+      # True only once the FIRST build has landed — the flag is written after it
+      # returns, not when the watcher starts.
+      test: ["CMD-SHELL", "test -f /tmp/packages-ready"]
+      interval: 3s
+      timeout: 2s
+      retries: 100
+      start_period: 5s
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./packages/ts
+          target: /app/packages/ts
+          ignore:
+            - node_modules/
+            - dist/
+            - .dist-staging/
+            - .svelte-kit/
+            - .turbo/
+        # A dependency change is the one edit that needs a new image, and pnpm
+        # writes the lockfile for every one of them — so this is the trigger,
+        # rather than a list of manifests that would have to grow with the
+        # workspace. All three services name the SAME rebuild paths on purpose:
+        # they share one image, so a rebuild scoped to fewer of them recreates
+        # the rest and leaves them stopped.
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+        - action: rebuild
+          path: ./package.json
+
+  # NestJS API — nodes, addresses, labels, blocks and ink.
+  api:
+    <<: *dev-image
+    container_name: sloppy-api
+    command: pnpm --filter @sloppy/api dev
+    env_file: *env-file
+    environment:
+      # The one address a browser knows this instance by. Sign-in comes back to
+      # it, so it names the web shell's origin: the shell forwards /api and the
+      # syr discovery paths straight here, the way a deployment serves both from
+      # one host.
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8030}
+      # ...and the API listens on THAT origin's port in here, so `localhost:8030`
+      # means the same thing in this container as it does in the browser. Signing
+      # in through this instance's own provider has the API read its own syr
+      # manifest and then POST to the endpoint that manifest names — both at
+      # PUBLIC_URL. On any other port in here, those calls reach nothing.
+      SLOPPY_API_PORT: "8030"
+      SLOPPY_SURREALDB_URL: ws://surrealdb:8000/rpc
+      SURREALDB_USER: ${SURREALDB_USER:-root}
+      SURREALDB_PASS: ${SURREALDB_PASS:-sloppy-dev-password}
+      # On by default in dev: it is what lets a fresh clone create an identity
+      # and sign in with no syr instance anywhere.
+      SLOPPY_LOCAL_IDP: ${SLOPPY_LOCAL_IDP:-1}
+      # Dev keys, and they look it. Unset, both are regenerated per boot, which
+      # signs everybody out on every restart — and every account made through
+      # the embedded provider stops working with them.
+      SLOPPY_IDP_SECRET: ${SLOPPY_IDP_SECRET:-sloppy-dev-identity-secret-change-me}
+      SLOPPY_SESSION_SECRET: ${SLOPPY_SESSION_SECRET:-sloppy-dev-session-secret-change-me}
+      CI: "true" # see packages-watch — non-interactive pnpm auto-install
+    ports:
+      # Where the API answers directly: `/api/health`, and the native shell,
+      # which runs on the host because Tauri builds an OS app.
+      - "8020:8030"
+    volumes: *package-dist
+    depends_on:
+      packages-watch:
+        condition: service_healthy
+      surrealdb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8030/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+    develop:
+      watch:
+        # `sync+restart`, and not the plain `sync` the web shell gets:
+        # `nest start --watch` recompiles when a file lands, but it starts the
+        # new process without retiring the old one, which keeps the port and
+        # goes on answering. The API would look healthy while serving the code
+        # you just changed away. Restarting the container is what retires it.
+        - action: sync+restart
+          path: ./apps/sloppy/api
+          target: /app/apps/sloppy/api
+          ignore:
+            - node_modules/
+            - dist/
+        - action: rebuild # see packages-watch — the same paths on every service
+          path: ./pnpm-lock.yaml
+        - action: rebuild
+          path: ./package.json
+
+  # SvelteKit web shell. Its dev server stands in for the shared origin: it
+  # forwards the API prefix and the syr discovery paths to `api`.
+  web:
+    <<: *dev-image
+    container_name: sloppy-web
+    command: pnpm --filter @sloppy/web dev
+    env_file: *env-file
+    environment:
+      # What the dev server forwards to. Not `localhost`, which in here is this
+      # container rather than the API's.
+      SLOPPY_API_ORIGIN: http://api:8030
+      CI: "true" # see packages-watch — non-interactive pnpm auto-install
+    ports:
+      # Published on the same port vite listens on, so the HMR client reaches
+      # the dev server at the address the page was loaded from.
+      - "8030:8030"
+    volumes: *package-dist
+    depends_on:
+      packages-watch:
+        condition: service_healthy
+      api:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8030/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    develop:
+      watch:
+        # Vite owns the reload: a synced file is what HMR reacts to, and it
+        # restarts itself when its own config changes. `sync+restart` would
+        # throw the module graph away and full-reload the page on every
+        # keystroke.
+        - action: sync
+          path: ./apps/sloppy/web
+          target: /app/apps/sloppy/web
+          ignore:
+            - node_modules/
+            - build/
+            - .svelte-kit/
+        - action: rebuild # see packages-watch — the same paths on every service
+          path: ./pnpm-lock.yaml
+        - action: rebuild
+          path: ./package.json
+
   # SurrealDB v3 — Sloppy's own store: nodes, addresses, labels, blocks, ink.
   # Identity and blobs live in syr and are never written here.
   # RocksDB is the proven on-disk backend; SurrealKV is the newer alternative
@@ -54,7 +257,7 @@ services:
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-sloppy-secret-key}
       # tauri://localhost and http://tauri.localhost are the native shell's own
       # origins; a webview PUT fails CORS without them.
-      MINIO_API_CORS_ALLOW_ORIGIN: ${S3_CORS_ORIGINS:-http://localhost:5173,tauri://localhost,http://tauri.localhost}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${S3_CORS_ORIGINS:-http://localhost:8030,tauri://localhost,http://tauri.localhost}
     ports:
       - "${S3_PORT:-9010}:9000"
       - "${S3_CONSOLE_PORT:-9011}:9001"
@@ -67,3 +270,12 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+volumes:
+  app-core-dist:
+  client-dist:
+  data-dist:
+  graph-dist:
+  idp-dist:
+  types-dist:
+  ui-dist:

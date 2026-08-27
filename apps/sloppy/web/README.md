@@ -17,7 +17,11 @@ sign-in callback from `PUBLIC_URL`, and syr sends the person back to whatever th
 Left at its default the callback names the API's own port, which is where sign-in ends —
 on the API rather than back in the app.
 
+The containerised stack (`pnpm dev`) sets both — `PUBLIC_URL` and, because `localhost` in
+a container is not the API's host, `SLOPPY_API_ORIGIN` for the proxy above. Running the
+processes here instead means saying the first one yourself:
+
 ```
-PUBLIC_URL=http://localhost:8030 pnpm dev   # from the repo root, both processes
-pnpm --filter @sloppy/web build             # static site into build/
+PUBLIC_URL=http://localhost:8030 pnpm dev:host   # from the repo root, every dev server
+pnpm --filter @sloppy/web build                  # static site into build/
 ```
