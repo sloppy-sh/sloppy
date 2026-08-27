@@ -47,6 +47,17 @@ import {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  /**
+   * Where somebody with no identity anywhere can make one, or `null` where this
+   * Sloppy only ever delegates. Asked through the API rather than read off the
+   * origin, because the shells reach an instance that may share neither.
+   */
+  @Public()
+  @Get("own-instance")
+  ownInstance(): { instance_url: string | null } {
+    return { instance_url: this.auth.ownInstanceUrl() };
+  }
+
   @Public()
   @HttpCode(200)
   @Post("login")

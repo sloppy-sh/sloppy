@@ -14,16 +14,27 @@
 	let instance = $state('');
 	let leaving = $state(false);
 	let problem = $state<string | null>(null);
+	let here = $state<string | undefined>(undefined);
 
 	const refused = $derived(page.url.searchParams.get('sloppy_error'));
 
+	// Somebody with no identity anywhere has to be offered one, or the only way
+	// in is an address they would have to be told.
+	$effect(() => {
+		api.ownInstance().then((url) => (here = url));
+	});
+
 	async function begin(event: SubmitEvent) {
 		event.preventDefault();
+		await go(instance.trim());
+	}
+
+	async function go(instanceUrl: string) {
 		leaving = true;
 		problem = null;
 		try {
 			const { consent_url } = await api.startLogin({
-				instance_url: instance.trim(),
+				instance_url: instanceUrl,
 				redirect: `${location.origin}/`
 			});
 			const open = runtime.openExternal();
@@ -45,10 +56,25 @@
 	<div class="mx-auto w-full max-w-md space-y-10 pb-24">
 		<div class="space-y-3">
 			<h1 class="text-3xl font-semibold tracking-tight">Sloppy</h1>
-			<p class="text-muted-foreground">
-				One thought, then the one it leads to. Sign in with the account you already have.
-			</p>
+			<p class="text-muted-foreground">One thought, then the one it leads to.</p>
 		</div>
+
+		{#if here}
+			<div class="space-y-3">
+				<Button type="button" disabled={leaving} class="h-11 w-full" onclick={() => go(here!)}>
+					Start here
+				</Button>
+				<p class="text-sm text-muted-foreground">
+					Make an identity on this Sloppy, or sign in with one you already have.
+				</p>
+			</div>
+
+			<div class="flex items-center gap-3" aria-hidden="true">
+				<span class="h-px flex-1 bg-border"></span>
+				<span class="text-xs text-muted-foreground">or</span>
+				<span class="h-px flex-1 bg-border"></span>
+			</div>
+		{/if}
 
 		<form class="space-y-4" onsubmit={begin}>
 			<div class="space-y-2">

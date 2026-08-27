@@ -131,20 +131,44 @@ export function consentPage(apiBase: string): string {
     return list;
   }
 
-  function signIn(problem) {
+  /** Both doors lead here: a grant, then the app's request, then the review. */
+  function entered(session) {
+    token = session.access_token;
+    return post('/consent', {
+      platform_origin: platformOrigin,
+      platform_name: params.get('platform_name') || undefined,
+      callback_url: callbackUrl,
+      scopes: scopes,
+      state: state
+    }, token).then(function (opened) { request = opened; review(); });
+  }
+
+  function elsewhere(text, go) {
+    var link = el('button', text);
+    link.type = 'button';
+    link.className = 'quiet';
+    link.addEventListener('click', go);
+    return link;
+  }
+
+  function door(mode, problem) {
+    var making = mode === 'make';
     var form = document.createElement('form');
-    var name = field('Name', 'text', 'username');
-    var secret = field('Password', 'password', 'current-password');
-    var go = el('button', 'Continue');
+    var name = field('Name', 'text', making ? 'username' : 'username');
+    var secret = field('Password', 'password', making ? 'new-password' : 'current-password');
+    var go = el('button', making ? 'Create and connect' : 'Continue');
     go.type = 'submit';
 
     var nodes = [
-      el('h1', 'Sign in to continue'),
-      el('p', appName + ' is waiting to connect to your account.'),
+      el('h1', making ? 'Create an identity' : 'Sign in to continue'),
+      el('p', making
+        ? 'It lives on this instance, and it is yours to take elsewhere.'
+        : appName + ' is waiting to connect to your account.'),
       scopeList(scopes),
       name.wrap,
       secret.wrap
     ];
+    if (making) nodes.push(el('p', 'At least 12 characters.'));
     if (problem) nodes.push(problemLine(problem));
     nodes.push(go);
     form.append.apply(form, nodes);
@@ -152,26 +176,23 @@ export function consentPage(apiBase: string): string {
     form.addEventListener('submit', function (event) {
       event.preventDefault();
       go.disabled = true;
-      go.textContent = 'Signing in…';
+      go.textContent = making ? 'Creating…' : 'Signing in…';
       who = name.input.value;
       password = secret.input.value;
-      post('/login', { username: who, password: password })
-        .then(function (session) {
-          token = session.access_token;
-          return post('/consent', {
-            platform_origin: platformOrigin,
-            platform_name: params.get('platform_name') || undefined,
-            callback_url: callbackUrl,
-            scopes: scopes,
-            state: state
-          }, token);
-        })
-        .then(function (opened) { request = opened; review(); })
-        .catch(function (error) { signIn(error.message); });
+      post(making ? '/register' : '/login', { username: who, password: password })
+        .then(entered)
+        .catch(function (error) { door(mode, error.message); });
     });
 
-    show([form]);
+    show([form, elsewhere(
+      making ? 'I already have an identity' : 'Create an identity here',
+      function () { door(making ? 'have' : 'make'); }
+    )]);
     name.input.focus();
+  }
+
+  function signIn(problem) {
+    door('have', problem);
   }
 
   function review(problem) {

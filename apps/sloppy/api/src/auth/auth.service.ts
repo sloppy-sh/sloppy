@@ -2,7 +2,10 @@ import { randomBytes } from "node:crypto";
 import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Session, StartLoginRequest } from "@sloppy/types";
-import { AppConfigService } from "../config/app-config.service";
+import {
+  AppConfigService,
+  localIdpEnabled,
+} from "../config/app-config.service";
 import type { DelegationState } from "../syr/syr.service";
 import { SyrService } from "../syr/syr.service";
 import { isAllowedRedirect } from "./redirect-target";
@@ -67,6 +70,16 @@ export class AuthService {
     const key = secret ?? randomBytes(32).toString("hex");
     this.consent = new SignedTokens(key, CONSENT_TTL_MS);
     this.handOff = new SignedTokens(key, HAND_OFF_TTL_MS);
+  }
+
+  /**
+   * This Sloppy's own provider, for somebody who has no identity anywhere, or
+   * `null` where it only delegates. Offering an address a person would
+   * otherwise have to be told is the difference between a first run that ends
+   * in an account and one that ends at a form.
+   */
+  ownInstanceUrl(): string | null {
+    return localIdpEnabled() ? this.platformOrigin : null;
   }
 
   /**

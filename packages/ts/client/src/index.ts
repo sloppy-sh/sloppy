@@ -184,6 +184,26 @@ export class SloppyClient {
   // ── Auth ─────────────────────────────────────────────────────────────────
 
   /**
+   * Where this Sloppy's own identities live, for somebody who has none
+   * anywhere; `undefined` on an instance that only ever delegates elsewhere.
+   * Asked of the API rather than read off the page's origin, which the shells
+   * do not share.
+   */
+  async ownInstance(): Promise<string | undefined> {
+    try {
+      const body = (await this.json("/auth/own-instance", {
+        method: "GET",
+      })) as {
+        instance_url?: unknown;
+      } | null;
+      const url = body?.instance_url;
+      return typeof url === "string" && url ? url : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Step one of Platform Delegation: the API reads the instance's manifest and
    * hands back where to send the person for consent. Where that URL is opened
    * is the shell's call — `AppRuntime.openExternal` in `@sloppy/app-core`.
