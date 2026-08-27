@@ -8,7 +8,7 @@ import { ForbiddenException } from "@nestjs/common";
 // Both from the same copy: Node's own `fetch` is undici, but refuses a
 // dispatcher built by a separately installed one — and a dispatcher is the only
 // place a connection's address check can live.
-import { Agent, type RequestInit, type Response, fetch } from "undici";
+import { Agent, Headers, type RequestInit, type Response, fetch } from "undici";
 
 /** Refused whatever the deployment says: the cloud metadata service, multicast
  *  and the ranges that are never a real host. */
@@ -173,15 +173,26 @@ export async function fetchReachable(
   init: RequestInit,
 ): Promise<ReachableResponse> {
   let at = reachableUrl(target, policy);
+  const authorizedOrigin = at.origin;
+  let carried = init;
   for (let hop = 0; ; hop++) {
-    const response = await connect(at, policy, init);
+    const response = await connect(at, policy, carried);
     const location = response.headers.get("location");
     if (!isRedirect(response.status) || !location) return response;
 
     await response.body?.cancel().catch(() => undefined);
     if (hop >= MAX_REDIRECTS) throw refused();
     at = reachableUrl(new URL(location, at).toString(), policy);
+    // A redirect is a second address chosen by whoever answered the first, so
+    // a credential meant for the store must not travel to it.
+    if (at.origin !== authorizedOrigin) carried = unauthorized(carried);
   }
+}
+
+function unauthorized(init: RequestInit): RequestInit {
+  const headers = new Headers(init.headers);
+  headers.delete("authorization");
+  return { ...init, headers };
 }
 
 async function connect(

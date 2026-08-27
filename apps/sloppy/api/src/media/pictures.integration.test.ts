@@ -217,24 +217,60 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     expect(asset.url.startsWith(base)).toBe(true);
   });
 
-  scenario(
-    "serves it back through the asset route, and nowhere else",
-    async () => {
-      const asset = await upload("block", "shown.png");
+  // A note is private until its subtree is published, and the folder a picture
+  // lands in is the store's whole access rule — so this is the check, not the
+  // route's own answer to a request that carried a session.
+  scenario("keeps a note's picture away from a stranger", async () => {
+    const asset = await upload("block", "private.png");
 
-      const shown = await fetch(
-        `${base}/api/proxy?url=${encodeURIComponent(asset.url)}`,
-      );
-      expect(shown.status).toBe(200);
-      expect(shown.headers.get("content-type")).toBe("image/png");
-      expect(Buffer.from(await shown.arrayBuffer()).equals(PIXEL)).toBe(true);
+    expect((await fetch(asset.url)).status).toBe(404);
 
+    const open = await fetch(
+      `${base}/api/idp/public/uploads/${encodeURIComponent(did)}`,
+    );
+    const listed = (await open.json()) as { data: { filename: string }[] };
+    expect(listed.data.map((one) => one.filename)).not.toContain("private.png");
+  });
+
+  scenario("serves that picture back to the person who owns it", async () => {
+    const asset = await upload("block", "mine.png");
+
+    const shown = await call("GET", `/api/media/uploads/${asset.upload_id}`);
+    expect(shown.status).toBe(200);
+    expect(shown.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await shown.arrayBuffer()).equals(PIXEL)).toBe(true);
+
+    expect(
+      (await fetch(`${base}/api/media/uploads/${asset.upload_id}`)).status,
+    ).toBe(401);
+  });
+
+  scenario("fetches nothing an address alone asked for", async () => {
+    // The open web, and this network, through a route that has to be public.
+    for (const target of [
+      "https://example.com/",
+      "http://169.254.169.254/latest/meta-data/",
+    ]) {
       const refused = await fetch(
-        `${base}/api/proxy?url=${encodeURIComponent("http://169.254.169.254/latest/meta-data/")}`,
+        `${base}/api/proxy?url=${encodeURIComponent(target)}`,
       );
       expect(refused.status).toBe(403);
-    },
-  );
+      expect(await refused.text()).not.toContain("<html");
+    }
+
+    expect((await fetch(`${base}/api/proxy`)).status).toBe(403);
+    expect((await fetch(`${base}/api/proxy?ref=made-up`)).status).toBe(403);
+  });
+
+  // Signing alone still lets a link launder a document if the far end answers
+  // with one.
+  scenario("refuses a link of its own that answers with a page", async () => {
+    const { AssetLinks } = await import("./asset-link");
+    const link = app.get(AssetLinks).to(`${base}/api/health`);
+
+    const refused = await fetch(link);
+    expect(refused.status).toBe(502);
+  });
 
   scenario("adds an emoji, lists it, and removes it", async () => {
     const asset = await upload("emoji", "wave.png");
@@ -298,10 +334,48 @@ describe("a picture through Sloppy's routes and its own provider", () => {
       did,
       display_name: "A Painter",
       bio: "Draws things",
-      avatar_url: avatar.url,
     });
 
     const read_back = await read("GET", "/api/profile/me");
-    expect(read_back.body.avatar_url).toBe(avatar.url);
+    expect(new URL(read_back.body.avatar_url).pathname).toBe("/api/proxy");
+    // What a reader is handed is an address here, never the store's own.
+    expect(read_back.text).not.toContain("/api/idp/blob/");
+  });
+
+  // A peer resolving a DID has to see the avatar, so this one IS in the open —
+  // and it is the address the profile answers with that a reader loads, never
+  // the store's.
+  scenario("shows an avatar to a reader who has no session", async () => {
+    const avatar = await upload("avatar", "hello.png");
+    await read("PATCH", "/api/profile/me", { avatar_url: avatar.url });
+    const { body } = await read("GET", "/api/profile/me");
+
+    expect(new URL(body.avatar_url).pathname).toBe("/api/proxy");
+    const shown = await fetch(body.avatar_url);
+    expect(shown.status).toBe(200);
+    expect(shown.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await shown.arrayBuffer()).equals(PIXEL)).toBe(true);
+
+    const open = await fetch(
+      `${base}/api/idp/public/uploads/${encodeURIComponent(did)}`,
+    );
+    const listed = (await open.json()) as { data: { filename: string }[] };
+    expect(listed.data.map((one) => one.filename)).toContain("hello.png");
+  });
+
+  // The picture it was shown is the only address a surface holds, so sending
+  // that back has to save the picture rather than a link to this instance.
+  scenario("saves a picture a surface sent back as it was shown", async () => {
+    const avatar = await upload("avatar", "again.png");
+    await read("PATCH", "/api/profile/me", { avatar_url: avatar.url });
+    const shown = (await read("GET", "/api/profile/me")).body.avatar_url;
+
+    await read("PATCH", "/api/profile/me", { avatar_url: shown });
+
+    const held = await read(
+      "GET",
+      `/api/idp/public/profile/${encodeURIComponent(did)}`,
+    );
+    expect(held.body.data.avatar_url).toBe(avatar.url);
   });
 });

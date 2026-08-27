@@ -390,14 +390,16 @@ describe("handing a file to somebody's store", () => {
 
   // syr parses the complete call's body with a schema naming three keys and
   // drops the rest, so dimensions sent there reach no reader at all.
+  const ANYWHERE = ["sloppy", "notes"];
+
   it("sends the dimensions with the ticket, where the store keeps them", async () => {
     const { calls } = store();
 
-    await new SyrService().createUpload(DELEGATION, {
-      ...A_FILE,
-      width: 800,
-      height: 600,
-    });
+    await new SyrService().createUpload(
+      DELEGATION,
+      { ...A_FILE, width: 800, height: 600 },
+      ANYWHERE,
+    );
 
     expect(posted(calls, UPLOADS)).toMatchObject({
       metadata: { width: 800, height: 600 },
@@ -406,17 +408,18 @@ describe("handing a file to somebody's store", () => {
 
   it("leaves the dimensions out where nothing measured them", async () => {
     const { calls } = store();
-    await new SyrService().createUpload(DELEGATION, A_FILE);
+    await new SyrService().createUpload(DELEGATION, A_FILE, ANYWHERE);
     expect(posted(calls, UPLOADS)).not.toHaveProperty("metadata");
   });
 
-  it("puts a role's blobs where a peer may read them", async () => {
+  it("makes the folders the caller named, outermost first", async () => {
     const { calls } = store();
 
-    await new SyrService().createUpload(DELEGATION, {
-      ...A_FILE,
-      role: "avatar",
-    });
+    await new SyrService().createUpload(DELEGATION, A_FILE, [
+      "public",
+      "sloppy",
+      "avatar",
+    ]);
 
     const made = calls
       .filter((c) => c.url === FOLDERS && c.init?.method === "POST")
@@ -435,7 +438,7 @@ describe("handing a file to somebody's store", () => {
     });
 
     await expect(
-      new SyrService().createUpload(DELEGATION, A_FILE),
+      new SyrService().createUpload(DELEGATION, A_FILE, ANYWHERE),
     ).rejects.toMatchObject({
       status: 400,
       response: { message: "You have used all of your space." },
@@ -446,7 +449,7 @@ describe("handing a file to somebody's store", () => {
     store({ "/api/uploads": { status: 503, body: {} } });
 
     await expect(
-      new SyrService().createUpload(DELEGATION, A_FILE),
+      new SyrService().createUpload(DELEGATION, A_FILE, ANYWHERE),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });

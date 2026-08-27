@@ -82,7 +82,25 @@ export function identityPurgeStatements(): string[] {
   return IDENTITY_TABLES.map((table) => `DELETE ${table} WHERE did = $did;`);
 }
 
-export async function purgeIdentity(db: Surreal, did: string): Promise<void> {
+/**
+ * `removeBlob` is a parameter and not an option, because the rows are only half
+ * of what an identity left behind: a sweep that erases the uploads and keeps
+ * their bytes has not deleted anybody's pictures. The object store belongs to
+ * the API, so the caller is what knows how to reach it.
+ *
+ * Bytes first: a row still naming a key is what lets a second attempt finish
+ * the job after a store that was down for the first.
+ */
+export async function purgeIdentity(
+  db: Surreal,
+  did: string,
+  removeBlob: (key: string) => Promise<void>,
+): Promise<void> {
+  const [rows] = await db.query<[{ key: string }[]]>(
+    `SELECT key FROM idp_upload WHERE did = $did;`,
+    { did },
+  );
+  for (const row of rows ?? []) await removeBlob(row.key);
   await db.query(identityPurgeStatements().join("\n"), { did });
 }
 

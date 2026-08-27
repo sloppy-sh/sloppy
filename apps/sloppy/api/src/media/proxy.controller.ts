@@ -1,10 +1,9 @@
-import { Readable } from "node:stream";
 import {
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
-  Logger,
   Query,
   Req,
   Res,
@@ -13,14 +12,12 @@ import type { Response } from "express";
 import type { AuthedRequest } from "../auth/authed-request";
 import { Public } from "../auth/public.decorator";
 import { AppConfigService } from "../config/app-config.service";
-import {
-  fetchReachable,
-  ownOrigin,
-  type ReachableResponse,
-} from "./remote-host";
+import { AssetLinks } from "./asset-link";
+import { IMAGE_MIME_TYPES } from "./media.service";
+import { relayPicture } from "./picture-relay";
+import { ownOrigin } from "./remote-host";
 
 const MAX_PROXY_BYTES = 32 * 1024 * 1024;
-const PROXY_TIMEOUT_MS = 10_000;
 /** Per caller, refilled steadily: a page of a pulled graph loads many at once. */
 const RATE_CAPACITY = 300;
 const RATE_REFILL_PER_SEC = 5;
@@ -57,11 +54,14 @@ class ProxyRate {
 }
 
 /**
- * Every remote picture a note renders is fetched here first, so the machine
- * that holds it learns this instance's address and never the reader's — AI.md
- * § "Sloppy's Vocabulary Stays Out of the Identity Store". `proxied()` in
- * `@sloppy/client` is the other half; a raw remote URL in an `<img>` is the bug
- * this route exists to prevent.
+ * Where a picture anyone may read is loaded from, so the machine that holds it
+ * learns this instance's address and never the reader's — AI.md § "Sloppy's
+ * Vocabulary Stays Out of the Identity Store".
+ *
+ * The address to fetch comes out of the signed link and never off the query, so
+ * a route that has to be public is still not somewhere a stranger can aim this
+ * instance. `AssetLinks` mints them; `proxied()` in `@sloppy/client` is what
+ * carries one to an `<img>`.
  *
  * Public because an `<img>` cannot present a credential, and the native shell's
  * origin carries no cookie — so the rate limit below falls back to the caller's
@@ -69,15 +69,17 @@ class ProxyRate {
  */
 @Controller("proxy")
 export class ProxyController {
-  private readonly logger = new Logger(ProxyController.name);
   private readonly rate = new ProxyRate();
 
-  constructor(private readonly config: AppConfigService) {}
+  constructor(
+    private readonly config: AppConfigService,
+    private readonly links: AssetLinks,
+  ) {}
 
   @Public()
   @Get()
   async asset(
-    @Query("url") target: string,
+    @Query("ref") ref: string | undefined,
     @Req() req: AuthedRequest,
     @Res() res: Response,
   ): Promise<void> {
@@ -88,83 +90,20 @@ export class ProxyController {
       );
     }
 
-    const stop = new AbortController();
-    const timer = setTimeout(() => stop.abort(), PROXY_TIMEOUT_MS);
-
-    let upstream: ReachableResponse;
-    try {
-      upstream = await fetchReachable(
-        target,
-        {
-          allowPrivate: !this.config.isProduction,
-          ownOrigin: ownOrigin(this.config.publicUrl),
-        },
-        {
-          signal: stop.signal,
-          // Nothing about the reader travels with this: no agent, no language,
-          // no cookie. The whole point is that the far end learns nothing.
-          headers: { accept: "image/*,*/*;q=0.8" },
-        },
-      );
-    } catch (err) {
-      clearTimeout(timer);
-      if (err instanceof HttpException) throw err;
-      this.logger.warn(
-        `${target} did not answer: ${err instanceof Error ? err.message : err}`,
-      );
-      throw new HttpException(
-        "That picture could not be loaded.",
-        HttpStatus.BAD_GATEWAY,
-      );
+    const target = this.links.target(ref);
+    if (!target) {
+      throw new ForbiddenException("That picture could not be loaded.");
     }
 
-    if (!upstream.ok || !upstream.body) {
-      clearTimeout(timer);
-      throw new HttpException(
-        "That picture could not be loaded.",
-        HttpStatus.BAD_GATEWAY,
-      );
-    }
-
-    const declared = Number(upstream.headers.get("content-length"));
-    if (Number.isFinite(declared) && declared > MAX_PROXY_BYTES) {
-      clearTimeout(timer);
-      stop.abort();
-      throw new HttpException(
-        "That picture is too big to show.",
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
-    }
-
-    res.status(HttpStatus.OK);
-    res.setHeader(
-      "content-type",
-      upstream.headers.get("content-type") ?? "application/octet-stream",
-    );
-    // Served from this origin, so a document type would run as this origin.
-    res.setHeader("content-security-policy", "sandbox; default-src 'none'");
-    res.setHeader("x-content-type-options", "nosniff");
-    res.setHeader("cache-control", "private, max-age=300");
-
-    let sent = 0;
-    const body = Readable.fromWeb(upstream.body as never);
-    body.on("data", (chunk: Buffer) => {
-      sent += chunk.length;
-      // The declared length can be absent or a lie, so the cap is enforced on
-      // what actually arrives. The head is already out by here; ending the
-      // response truncates the picture rather than reporting a size.
-      if (sent > MAX_PROXY_BYTES) {
-        stop.abort();
-        body.destroy();
-        res.end();
-      }
+    await relayPicture(res, target, {
+      policy: {
+        allowPrivate: !this.config.isProduction,
+        ownOrigin: ownOrigin(this.config.publicUrl),
+      },
+      maxBytes: MAX_PROXY_BYTES,
+      mimeTypes: IMAGE_MIME_TYPES,
+      cacheControl: "private, max-age=300",
     });
-    body.on("end", () => clearTimeout(timer));
-    body.on("error", () => {
-      clearTimeout(timer);
-      res.end();
-    });
-    body.pipe(res);
   }
 
   /** The address Express resolved, never a header — `x-forwarded-for` is

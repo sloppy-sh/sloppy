@@ -110,7 +110,7 @@ export class SyrService {
     string,
     { at: number; manifest: SyrIdentityManifest }
   >();
-  /** Keyed by instance, identity and role. Folders are never renamed away from
+  /** Keyed by instance, identity and path. Folders are never renamed away from
    *  under us, so a hit stays true for this process's life. */
   private readonly folders = new Map<string, string>();
 
@@ -338,10 +338,16 @@ export class SyrService {
     );
   }
 
-  /** Step one of three: where to send the bytes, and where they will live. */
+  /**
+   * Step one of three: where to send the bytes, and where they will live.
+   * `folderPath` is the caller's, because who may read a blob is decided by the
+   * folder it lands in and that is Sloppy's policy rather than syr's dialect —
+   * `folderPathFor` in `media/media.service.ts`.
+   */
   async createUpload(
     delegation: Delegation,
     request: CreateUploadRequest,
+    folderPath: readonly string[],
   ): Promise<SyrUploadTicket> {
     const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/uploads`;
     const failure = "That file could not be added. Try again.";
@@ -366,7 +372,7 @@ export class SyrService {
                 },
               }
             : {}),
-          folder_id: await this.sharedFolder(delegation, request.role),
+          folder_id: await this.folderAt(delegation, folderPath),
         }),
       },
       failure,
@@ -516,23 +522,18 @@ export class SyrService {
     return base;
   }
 
-  /**
-   * The folder a role's blobs land in. Anything under a folder named `public`
-   * is readable by a peer, which is what a pulled note and a federated emoji
-   * both need; the rest of the path is there so a person browsing their own
-   * files can see what put them there.
-   */
-  private async sharedFolder(
+  /** The innermost folder of a path, creating whatever is not there yet. */
+  private async folderAt(
     delegation: Delegation,
-    role: string,
+    path: readonly string[],
   ): Promise<string> {
-    const key = `${delegation.syr_instance_url}|${delegation.did}|${role}`;
+    const key = `${delegation.syr_instance_url}|${delegation.did}|${path.join("/")}`;
     const known = this.folders.get(key);
     if (known) return known;
 
     let folder = "";
     let parent: string | null = null;
-    for (const name of ["public", "sloppy", role]) {
+    for (const name of path) {
       folder = await this.findOrCreateFolder(delegation, name, parent);
       parent = folder;
     }

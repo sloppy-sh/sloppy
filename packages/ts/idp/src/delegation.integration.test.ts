@@ -403,7 +403,7 @@ describe.skipIf(!listening)(`the provider against ${ENDPOINT.href}`, () => {
     });
     await approveConsent(ctx, did, prompt.challenge_id, PASSWORD);
 
-    await purgeIdentity(ctx.db, did);
+    await purgeIdentity(ctx.db, did, async () => {});
 
     for (const table of IDENTITY_TABLES) {
       const [rows] = await ctx.db.query<[unknown[]]>(

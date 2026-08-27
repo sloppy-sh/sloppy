@@ -6,6 +6,7 @@ import type {
   SyrEmoji,
 } from "@sloppy/types";
 import { AppConfigService } from "../config/app-config.service";
+import { AssetLinks } from "../media/asset-link";
 import {
   MediaService,
   roleLimits,
@@ -13,16 +14,6 @@ import {
 } from "../media/media.service";
 import { readRemotePicture } from "../media/remote-fetch";
 import { type Delegation, SyrService } from "../syr/syr.service";
-
-function viewOf(entry: SyrEmoji): CustomEmoji {
-  return {
-    emoji_id: `${entry.did}/${entry.local_id}`,
-    did: entry.did,
-    shortcode: entry.shortcode,
-    kind: entry.is_sticker ? "sticker" : "emoji",
-    url: entry.url,
-  };
-}
 
 /**
  * Emoji catalogs belong to an identity, not to Sloppy — AI.md § "Sloppy's
@@ -36,14 +27,29 @@ export class EmojiService {
     private readonly syr: SyrService,
     private readonly media: MediaService,
     private readonly config: AppConfigService,
+    private readonly links: AssetLinks,
   ) {}
 
   async listOwn(delegation: Delegation): Promise<CustomEmoji[]> {
-    return (await this.syr.listOwnEmoji(delegation)).map(viewOf);
+    return (await this.syr.listOwnEmoji(delegation)).map((e) => this.viewOf(e));
   }
 
   async listFor(instanceUrl: string, did: string): Promise<CustomEmoji[]> {
-    return (await this.syr.listPublicEmoji(instanceUrl, did)).map(viewOf);
+    return (await this.syr.listPublicEmoji(instanceUrl, did)).map((e) =>
+      this.viewOf(e),
+    );
+  }
+
+  /** The picture comes back as an address on this instance: rendering somebody
+   *  else's `:shortcode:` must not reach the machine that holds it. */
+  private viewOf(entry: SyrEmoji): CustomEmoji {
+    return {
+      emoji_id: `${entry.did}/${entry.local_id}`,
+      did: entry.did,
+      shortcode: entry.shortcode,
+      kind: entry.is_sticker ? "sticker" : "emoji",
+      url: this.links.to(entry.url),
+    };
   }
 
   /**
@@ -64,7 +70,7 @@ export class EmojiService {
         "That picture has not finished uploading yet.",
       );
     }
-    return viewOf(
+    return this.viewOf(
       await this.syr.createEmoji(delegation, {
         shortcode: request.shortcode,
         url: stored.url,
@@ -94,19 +100,22 @@ export class EmojiService {
     request: CopyEmojiRequest,
   ): Promise<CustomEmoji> {
     const limits = roleLimits("emoji");
-    const picture = await readRemotePicture(request.source_url, {
-      allowPrivate: !this.config.isProduction,
-      publicUrl: this.config.publicUrl,
-      maxBytes: limits.maxBytes,
-      mimeTypes: limits.mimeTypes,
-    });
+    const picture = await readRemotePicture(
+      this.links.unwrap(request.source_url),
+      {
+        allowPrivate: !this.config.isProduction,
+        publicUrl: this.config.publicUrl,
+        maxBytes: limits.maxBytes,
+        mimeTypes: limits.mimeTypes,
+      },
+    );
     const stored = await this.media.store(delegation, {
       role: "emoji",
       filename: request.shortcode,
       mimeType: picture.mimeType,
       bytes: picture.bytes,
     });
-    return viewOf(
+    return this.viewOf(
       await this.syr.createEmoji(delegation, {
         shortcode: request.shortcode,
         url: stored.url,

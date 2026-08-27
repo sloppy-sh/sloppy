@@ -2,7 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import type { CreateUploadRequest } from "@sloppy/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Delegation, SyrService } from "../syr/syr.service";
-import { MediaService, splitUploadId } from "./media.service";
+import { folderPathFor, MediaService, splitUploadId } from "./media.service";
 
 const DID = "did:syr:z6MkuVRBZ1913zrZgc4nnA3Zs9MEEf84VUN8kgTD6QoqNiu9";
 
@@ -34,6 +34,17 @@ describe("splitUploadId", () => {
 
   it.each(["", "/", "no-separator", `${DID}/`])("refuses %s", (id) => {
     expect(() => splitUploadId(id)).toThrow(BadRequestException);
+  });
+});
+
+describe("where a role's blobs land", () => {
+  // A folder named `public` is the store's whole access rule, and a note is
+  // private until its subtree is published.
+  it("keeps a note's pictures out of the open, and puts the rest in it", () => {
+    expect(folderPathFor("block")[0]).not.toBe("public");
+    for (const role of ["avatar", "banner", "emoji"] as const) {
+      expect(folderPathFor(role)[0]).toBe("public");
+    }
   });
 });
 

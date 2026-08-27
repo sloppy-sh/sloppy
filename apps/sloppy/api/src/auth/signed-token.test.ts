@@ -51,6 +51,15 @@ describe("a signed token", () => {
     expect(codec.consume(token)).toBeNull();
   });
 
+  it("takes it as many times as it is shown where nothing spends it", () => {
+    const codec = tokens();
+    const token = codec.issue({ inst: "https://syr.is" });
+
+    expect(codec.verify(token)).toEqual({ inst: "https://syr.is" });
+    expect(codec.verify(token)).toEqual({ inst: "https://syr.is" });
+    expect(codec.consume(token)).not.toBeNull();
+  });
+
   it("refuses one older than its lifetime", () => {
     vi.useFakeTimers();
     try {

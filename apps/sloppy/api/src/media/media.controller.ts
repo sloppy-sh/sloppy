@@ -1,13 +1,17 @@
-import { Body, Controller, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Req, Res } from "@nestjs/common";
 import {
   CompleteUploadRequestSchema,
   CreateUploadRequestSchema,
   type MediaAsset,
   type UploadTicket,
 } from "@sloppy/types";
+import type { Response } from "express";
 import type { AuthedRequest } from "../auth/authed-request";
+import { AppConfigService } from "../config/app-config.service";
 import { parseBody, viewerDelegation } from "../node/request";
-import { MediaService } from "./media.service";
+import { IMAGE_MIME_TYPES, MediaService, roleLimits } from "./media.service";
+import { relayPicture } from "./picture-relay";
+import { ownOrigin } from "./remote-host";
 
 /**
  * The two ends of an upload. The middle — the bytes — goes from the device
@@ -15,7 +19,10 @@ import { MediaService } from "./media.service";
  */
 @Controller("media")
 export class MediaController {
-  constructor(private readonly media: MediaService) {}
+  constructor(
+    private readonly media: MediaService,
+    private readonly config: AppConfigService,
+  ) {}
 
   @Post("uploads")
   create(
@@ -37,5 +44,36 @@ export class MediaController {
       viewerDelegation(req),
       parseBody(CompleteUploadRequestSchema, body),
     );
+  }
+
+  /**
+   * A picture from one of the caller's own notes. It is not readable by anyone
+   * else, so it is fetched from their store as them and only ever for a request
+   * carrying their session — unlike `/proxy`, which serves what a stranger may
+   * read too.
+   */
+  @Get("uploads/:did/:localId")
+  async picture(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const delegation = viewerDelegation(req);
+    const picture = await this.media.ownPicture(
+      delegation,
+      `${decodeURIComponent(did)}/${decodeURIComponent(localId)}`,
+    );
+
+    await relayPicture(res, picture, {
+      policy: {
+        allowPrivate: !this.config.isProduction,
+        ownOrigin: ownOrigin(this.config.publicUrl),
+      },
+      maxBytes: roleLimits("block").maxBytes,
+      mimeTypes: IMAGE_MIME_TYPES,
+      cacheControl: "private, max-age=300",
+      headers: { authorization: `Bearer ${delegation.access_token}` },
+    });
   }
 }

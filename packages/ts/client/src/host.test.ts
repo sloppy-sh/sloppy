@@ -26,4 +26,22 @@ describe("host", () => {
     );
     expect(proxied("/favicon.svg")).toBe("/favicon.svg");
   });
+
+  it("hands an address the API minted straight to the picture", () => {
+    setHost("https://sloppy.example");
+    const minted = "https://sloppy.example/api/proxy?ref=signed-token";
+
+    expect(proxied(minted)).toBe(minted);
+  });
+
+  // Somebody else is free to answer with a URL shaped like ours, and rendering
+  // that one raw is the leak the asset route exists to prevent.
+  it("does not take a look-alike from anywhere but the API", () => {
+    setHost("https://sloppy.example");
+    const impostor = "https://peer.example/api/proxy?ref=signed-token";
+
+    expect(proxied(impostor)).toBe(
+      `https://sloppy.example/api/proxy?url=${encodeURIComponent(impostor)}`,
+    );
+  });
 });

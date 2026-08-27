@@ -416,7 +416,7 @@ describe.skipIf(!listening)(`the file store against ${ENDPOINT.href}`, () => {
     });
   });
 
-  it("takes the files and the emoji with the identity they belong to", async () => {
+  it("takes the bytes, the files and the emoji with the identity they belong to", async () => {
     const did = await someone();
     const ticket = await openUpload(ctx, did, {
       filename: "a.png",
@@ -436,7 +436,11 @@ describe.skipIf(!listening)(`the file store against ${ENDPOINT.href}`, () => {
       size: BYTES.size,
     });
 
-    await purgeIdentity(ctx.db, did);
+    const erased: string[] = [];
+    await purgeIdentity(ctx.db, did, async (key) => {
+      erased.push(key);
+    });
+    expect(erased).toEqual([expect.stringContaining(ticket.uploadLocalId)]);
 
     for (const table of IDENTITY_TABLES) {
       const [rows] = await ctx.db.query<[unknown[]]>(

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   type CompleteUploadRequest,
   type CreateUploadRequest,
@@ -13,7 +17,7 @@ import { type Delegation, SyrService } from "../syr/syr.service";
  * Sloppy's, and they exist so a file that will be refused is refused before
  * somebody spends a minute uploading it.
  */
-const IMAGE_MIME_TYPES = [
+export const IMAGE_MIME_TYPES = [
   "image/png",
   "image/jpeg",
   "image/gif",
@@ -35,6 +39,27 @@ export function roleLimits(role: MediaRole): {
   mimeTypes: readonly string[];
 } {
   return ROLE_LIMITS[role];
+}
+
+/**
+ * Where a role's blobs land in the person's own file store. A folder named
+ * `public` is that store's whole access rule, so only what a stranger has to be
+ * able to read goes under one: a peer resolving a DID needs the avatar and the
+ * banner, and a federated emoji has to render for everybody. A note is private
+ * until its subtree is published, so its pictures are not public either.
+ *
+ * docs/ARCHITECTURE.md § "Pictures" carries the ruling, and the gap publishing
+ * still has to close.
+ */
+const ROLE_FOLDERS: Record<MediaRole, readonly string[]> = {
+  block: ["sloppy", "notes"],
+  avatar: ["public", "sloppy", "avatar"],
+  banner: ["public", "sloppy", "banner"],
+  emoji: ["public", "sloppy", "emoji"],
+};
+
+export function folderPathFor(role: MediaRole): readonly string[] {
+  return ROLE_FOLDERS[role];
 }
 
 /** How long to keep asking a store that has not seen the bytes land yet. An
@@ -90,7 +115,11 @@ export class MediaService {
       );
     }
 
-    const ticket = await this.syr.createUpload(delegation, request);
+    const ticket = await this.syr.createUpload(
+      delegation,
+      request,
+      folderPathFor(request.role),
+    );
     return {
       upload_id: `${ticket.uploadDid}/${ticket.uploadLocalId}`,
       upload_url: ticket.signedUrl,
@@ -129,6 +158,23 @@ export class MediaService {
       throw new BadRequestException("That file could not be added. Try again.");
     }
     return this.completeUpload(delegation, { upload_id: ticket.upload_id });
+  }
+
+  /**
+   * Where one of the caller's own pictures actually lives. The caller names an
+   * upload rather than an address, so nothing here can be pointed at a machine
+   * the person's store does not hold.
+   */
+  async ownPicture(delegation: Delegation, uploadId: string): Promise<string> {
+    const upload = splitUploadId(uploadId);
+    if (upload.did !== delegation.did) {
+      throw new NotFoundException("That picture is not there.");
+    }
+    const stored = await this.syr.readUpload(delegation, upload);
+    if (!stored.url) {
+      throw new NotFoundException("That picture is not there.");
+    }
+    return stored.url;
   }
 
   /**

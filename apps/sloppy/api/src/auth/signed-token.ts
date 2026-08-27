@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
- * A short-lived, single-use token that carries its own payload:
+ * A short-lived token that carries its own payload:
  * `<base64url(json)>.<hmac>`. Nothing is stored to issue one, so it survives a
  * restart and works across several API processes.
  *
@@ -9,8 +9,9 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * docs/ARCHITECTURE.md § "Auth: Platform Delegation v0.1" says why a query
  * parameter on that URL would not survive the round trip.
  *
- * Single use is enforced in memory, so a replay reaching another process is
- * bounded by the TTL alone. Keep the TTL short.
+ * A token is read one of two ways, and the caller picks: {@link consume} spends
+ * it, {@link verify} does not. Single use is enforced in memory, so a replay
+ * reaching another process is bounded by the TTL alone. Keep the TTL short.
  */
 export class SignedTokens<T extends object> {
   private readonly consumed = new Map<string, number>();
@@ -32,7 +33,20 @@ export class SignedTokens<T extends object> {
     return `${encoded}.${this.sign(encoded)}`;
   }
 
+  /** Spends the token: a second presentation of it answers null. */
   consume(token: string): T | null {
+    const payload = this.verify(token);
+    if (!payload) return null;
+
+    this.prune();
+    if (this.consumed.has(token)) return null;
+    this.consumed.set(token, Date.now());
+    return payload;
+  }
+
+  /** Leaves the token spendable, for one presented on every load of a picture
+   *  rather than redeemed once. */
+  verify(token: string): T | null {
     const [encoded, signature, ...rest] = token.split(".");
     if (!encoded || !signature || rest.length) return null;
 
@@ -49,10 +63,6 @@ export class SignedTokens<T extends object> {
     }
     if (typeof envelope?.t !== "number" || Date.now() - envelope.t > this.ttlMs)
       return null;
-
-    this.prune();
-    if (this.consumed.has(token)) return null;
-    this.consumed.set(token, Date.now());
 
     const { n: _nonce, t: _issuedAt, ...payload } = envelope;
     return payload as T;

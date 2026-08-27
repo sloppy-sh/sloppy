@@ -4,18 +4,8 @@ import type {
   SyrProfile,
   UpdateProfileRequest,
 } from "@sloppy/types";
+import { AssetLinks } from "../media/asset-link";
 import { type Delegation, SyrService } from "../syr/syr.service";
-
-function viewOf(did: string, profile: SyrProfile): ProfileView {
-  return {
-    did,
-    username: profile.username,
-    display_name: profile.display_name ?? null,
-    bio: profile.bio ?? null,
-    avatar_url: profile.avatar_url ?? null,
-    banner_url: profile.banner_url ?? null,
-  };
-}
 
 /**
  * Profiles are the identity store's, read on demand and never written down
@@ -25,7 +15,10 @@ function viewOf(did: string, profile: SyrProfile): ProfileView {
  */
 @Injectable()
 export class ProfileService {
-  constructor(private readonly syr: SyrService) {}
+  constructor(
+    private readonly syr: SyrService,
+    private readonly links: AssetLinks,
+  ) {}
 
   /**
    * Anyone's, by DID. The instance is the one Sloppy already knows holds that
@@ -33,7 +26,20 @@ export class ProfileService {
    * and it hands the DID here once it has.
    */
   async read(instanceUrl: string, did: string): Promise<ProfileView> {
-    return viewOf(did, await this.syr.readProfile(instanceUrl, did));
+    return this.viewOf(did, await this.syr.readProfile(instanceUrl, did));
+  }
+
+  /** The pictures come back as addresses on this instance: a reader loading a
+   *  profile must not reach the machine that holds them. */
+  private viewOf(did: string, profile: SyrProfile): ProfileView {
+    return {
+      did,
+      username: profile.username,
+      display_name: profile.display_name ?? null,
+      bio: profile.bio ?? null,
+      avatar_url: profile.avatar_url ? this.links.to(profile.avatar_url) : null,
+      banner_url: profile.banner_url ? this.links.to(profile.banner_url) : null,
+    };
   }
 
   /** Read back rather than assembled from the patch: the store is free to
@@ -42,7 +48,21 @@ export class ProfileService {
     delegation: Delegation,
     patch: UpdateProfileRequest,
   ): Promise<ProfileView> {
-    await this.syr.updateProfile(delegation, patch);
+    await this.syr.updateProfile(delegation, {
+      ...patch,
+      ...this.pictureIn(patch, "avatar_url"),
+      ...this.pictureIn(patch, "banner_url"),
+    });
     return this.read(delegation.syr_instance_url, delegation.did);
+  }
+
+  /** What the store keeps is the address the picture actually lives at, so a
+   *  surface sending back the link it was shown still saves the picture. */
+  private pictureIn(
+    patch: UpdateProfileRequest,
+    field: "avatar_url" | "banner_url",
+  ): Partial<UpdateProfileRequest> {
+    const sent = patch[field];
+    return sent ? { [field]: this.links.unwrap(sent) } : {};
   }
 }
