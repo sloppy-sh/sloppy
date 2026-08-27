@@ -20,3 +20,16 @@ export { default as NavPill, type NavAction, type NavItem } from './components/n
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
 export type { BlockStackProps } from './components/editor/contract.js';
+
+export { default as DimensionEditor } from './components/facets/dimension-editor.svelte';
+export { default as FacetLegend } from './components/facets/facet-legend.svelte';
+export { default as FacetValues } from './components/facets/facet-values.svelte';
+export { default as LabelPicker } from './components/facets/label-picker.svelte';
+export { valueChanges } from './components/facets/contract.js';
+export type {
+	DimensionDraft,
+	EditedValue,
+	LabelPickerProps,
+	SlotLookup,
+	ValueChanges
+} from './components/facets/contract.js';
