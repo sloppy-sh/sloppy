@@ -32,3 +32,6 @@ secrets/
 
 # Claude Code — personal, machine-specific settings (local paths, per-user allowlist)
 .claude/settings.local.json
+# Agent worktrees: real checkouts of this repo, which `git add -A` otherwise
+# stages as embedded repositories.
+.claude/worktrees/

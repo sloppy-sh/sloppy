@@ -4,6 +4,7 @@
 // vocabulary Sloppy adds on top of them.
 
 export { cn } from './utils.js';
+export { scrollFade } from './scroll-fade.svelte.js';
 export type {
 	WithElementRef,
 	WithoutChild,
