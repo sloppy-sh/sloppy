@@ -17,6 +17,13 @@ export { default as ConfirmModal } from './components/confirm/confirm-modal.svel
 export { default as AppShell } from './components/app-shell.svelte';
 export { default as NavPill, type NavAction, type NavItem } from './components/nav-pill.svelte';
 
+export { default as PersonAvatar } from './components/identity/avatar.svelte';
+export { default as PersonChip } from './components/identity/person-chip.svelte';
+export { default as PersonHeader } from './components/identity/person-header.svelte';
+export { default as PersonEditor } from './components/identity/person-editor.svelte';
+export { initialsOf, nameOf } from './components/identity/person.js';
+export type { Person, PictureRole } from './components/identity/person.js';
+
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
 export type { BlockStackProps } from './components/editor/contract.js';
