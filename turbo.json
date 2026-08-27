@@ -28,6 +28,10 @@
   // The other route the same values arrive by: dotenv loads the repo-root .env
   // in-process, where turbo cannot see it.
   "globalDependencies": [".env"],
+  // `^build` alone is a dependency's build, not this package's own. Anything that
+  // resolves a workspace import through `dist` must also wait for `build` here, or
+  // `--force` runs them concurrently and the reader sees a `dist` being rewritten
+  // under it — which reads as a flaky test rather than a race.
   "tasks": {
     "dev": {
       "cache": false,
@@ -44,11 +48,11 @@
     },
     "lint": {
       "outputs": [],
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build", "build"]
     },
     "check": {
       "outputs": [],
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build", "build"]
     },
     "format": {
       "outputs": [],
@@ -59,7 +63,7 @@
       "dependsOn": ["^build"]
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "build"],
       "outputs": []
     }
   }
