@@ -15,3 +15,7 @@ export { overlay } from './components/overlay.svelte.js';
 export { default as ResponsiveModal } from './components/responsive-modal.svelte';
 export { default as AppShell } from './components/app-shell.svelte';
 export { default as NavPill, type NavAction, type NavItem } from './components/nav-pill.svelte';
+
+export { default as GraphSurface } from './components/graph/graph-surface.svelte';
+export { default as BlockStack } from './components/editor/block-stack.svelte';
+export type { BlockStackProps } from './components/editor/contract.js';

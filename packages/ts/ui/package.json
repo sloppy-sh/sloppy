@@ -52,6 +52,8 @@
 	},
 	"dependencies": {
 		"@lucide/svelte": "^0.561.0",
+		"@sloppy/graph": "workspace:*",
+		"@sloppy/types": "workspace:*",
 		"bits-ui": "^2.19.0",
 		"clsx": "^2.1.1",
 		"svelte-sonner": "^1.2.1",
