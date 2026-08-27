@@ -215,10 +215,22 @@ redirect launder a document. Which addresses it will connect to is
 address a link named, and a credential is dropped the moment a hop leaves the origin it
 was for.
 
+**How much it will carry is enforced on the bytes that arrive**, because a declared length
+is the far end's claim and can be absent. A body that runs past the cap has its transfer
+dropped: the head is out by then, so there is no status left to say it with, and a
+truncated file delivered as a whole one is worse than a broken image. `picture-relay.ts`
+drives the writes from one place for exactly this reason — a cap that ends the response
+while something else is still piping into it ends the process instead of the transfer.
+
 **Nothing a caller sends names a picture by address.** A profile and an emoji name an
 upload or a catalog entry, and the API reads the address back out of the caller's own
 store — otherwise a signed-in caller could have this instance mint a durable public link
 for a URL of their choosing and fetch it from this instance's address for every reader.
+**Owning a picture is not enough to use it for anything**, either: `ownPicture` is told
+what the picture is about to be used AS, and a note's picture named as an avatar or a
+banner is refused. A profile is read by strangers, so accepting one would write a private
+blob's address into a public record and leave a picture nobody — its owner included — can
+see.
 
 **The route rations fetches per caller**, which is what stands between a public route and
 a stranger's fetch loop. A link this instance did not mint spends nothing, so a caller

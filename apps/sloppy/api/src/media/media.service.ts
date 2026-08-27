@@ -62,6 +62,10 @@ export function folderPathFor(role: MediaRole): readonly string[] {
   return ROLE_FOLDERS[role];
 }
 
+export function roleIsPublic(role: MediaRole): boolean {
+  return ROLE_FOLDERS[role].includes("public");
+}
+
 /**
  * A completed upload as its store describes it. `url` is where the bytes
  * actually live, which is why nothing outside this API ever sees one: handing
@@ -172,8 +176,16 @@ export class MediaService {
    * Where one of the caller's own pictures actually lives. The caller names an
    * upload rather than an address, so nothing here can be pointed at a machine
    * the person's store does not hold.
+   *
+   * `role` is what the picture is about to be used AS: owning one is not
+   * enough to put it on a profile, because a profile is read by strangers and
+   * a note's picture is not.
    */
-  async ownPicture(delegation: Delegation, uploadId: string): Promise<string> {
+  async ownPicture(
+    delegation: Delegation,
+    uploadId: string,
+    role: MediaRole,
+  ): Promise<string> {
     const upload = splitUploadId(uploadId);
     if (upload.did !== delegation.did) {
       throw new NotFoundException("That picture is not there.");
@@ -181,6 +193,11 @@ export class MediaService {
     const stored = await this.syr.readUpload(delegation, upload);
     if (!stored.url) {
       throw new NotFoundException("That picture is not there.");
+    }
+    if (roleIsPublic(role) && stored.is_public === false) {
+      throw new BadRequestException(
+        "That picture cannot be used here. Add it again from your device.",
+      );
     }
     return stored.url;
   }

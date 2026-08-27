@@ -63,6 +63,7 @@ export class MediaController {
     const picture = await this.media.ownPicture(
       delegation,
       `${decodeURIComponent(did)}/${decodeURIComponent(localId)}`,
+      "block",
     );
 
     await relayPicture(res, picture, {

@@ -2,6 +2,7 @@
 // routes that do it: anybody's public asset, and the caller's own private one.
 
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { HttpException, HttpStatus, Logger } from "@nestjs/common";
 import type { Response } from "express";
 import {
@@ -83,25 +84,48 @@ export async function relayPicture(
   res.setHeader("x-content-type-options", "nosniff");
   res.setHeader("cache-control", options.cacheControl);
 
-  let sent = 0;
-  const body = Readable.fromWeb(upstream.body as never);
-  body.on("data", (chunk: Buffer) => {
-    sent += chunk.length;
-    // The declared length can be absent or a lie, so the cap is enforced on
-    // what actually arrives. The head is already out by here; ending the
-    // response truncates the picture rather than reporting a size.
-    if (sent > options.maxBytes) {
-      stop.abort();
-      body.destroy();
-      res.end();
+  try {
+    await pipeline(
+      Readable.fromWeb(upstream.body as never),
+      cappedAt(options.maxBytes),
+      res,
+    );
+  } catch (err) {
+    // The head is out by here, so there is no status left to say it with:
+    // dropping the connection is what tells a reader the picture is not whole.
+    res.destroy();
+    if (!readerLeft(err)) {
+      logger.warn(
+        `${target} was cut short: ${err instanceof Error ? err.message : err}`,
+      );
     }
-  });
-  body.on("end", () => clearTimeout(timer));
-  body.on("error", () => {
+  } finally {
     clearTimeout(timer);
-    res.end();
-  });
-  body.pipe(res);
+    stop.abort();
+  }
+}
+
+/** The declared length can be absent or a lie, so the cap is enforced on what
+ *  actually arrives. */
+function cappedAt(maxBytes: number) {
+  return async function* (
+    chunks: AsyncIterable<Buffer>,
+  ): AsyncGenerator<Buffer> {
+    let sent = 0;
+    for await (const chunk of chunks) {
+      sent += chunk.length;
+      if (sent > maxBytes) throw new Error("more bytes than the cap allows");
+      yield chunk;
+    }
+  };
+}
+
+/** Someone closing the tab mid-picture is how a reader stops one loading, and
+ *  says nothing about the far end. */
+function readerLeft(err: unknown): boolean {
+  return (
+    (err as NodeJS.ErrnoException | null)?.code === "ERR_STREAM_PREMATURE_CLOSE"
+  );
 }
 
 function unavailable(): HttpException {

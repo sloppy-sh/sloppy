@@ -204,6 +204,10 @@ export const SyrUploadSchema = z.object({
   size: z.int().nonnegative(),
   url: z.url().nullable().optional(),
   status: z.string().optional(),
+  /** Whether a stranger may read the bytes. Absent where a store does not say,
+   *  which is not the same as `false`: a caller that must not accept a private
+   *  blob refuses only what a store has told it is one. */
+  is_public: z.boolean().optional(),
   metadata: z
     .object({
       width: z.int().positive().optional(),

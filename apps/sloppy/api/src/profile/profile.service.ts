@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type {
+  MediaRole,
   ProfileView,
   SyrProfile,
   SyrProfilePatch,
@@ -55,10 +56,18 @@ export class ProfileService {
     if ("display_name" in patch) sent.display_name = patch.display_name;
     if ("bio" in patch) sent.bio = patch.bio;
     if ("avatar_upload_id" in patch) {
-      sent.avatar_url = await this.stored(delegation, patch.avatar_upload_id);
+      sent.avatar_url = await this.stored(
+        delegation,
+        patch.avatar_upload_id,
+        "avatar",
+      );
     }
     if ("banner_upload_id" in patch) {
-      sent.banner_url = await this.stored(delegation, patch.banner_upload_id);
+      sent.banner_url = await this.stored(
+        delegation,
+        patch.banner_upload_id,
+        "banner",
+      );
     }
     await this.syr.updateProfile(delegation, sent);
     return this.read(delegation.syr_instance_url, delegation.did);
@@ -72,7 +81,8 @@ export class ProfileService {
   private async stored(
     delegation: Delegation,
     uploadId: string | null | undefined,
+    role: MediaRole,
   ): Promise<string | null> {
-    return uploadId ? this.media.ownPicture(delegation, uploadId) : null;
+    return uploadId ? this.media.ownPicture(delegation, uploadId, role) : null;
   }
 }

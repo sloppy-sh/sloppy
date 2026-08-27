@@ -11,7 +11,8 @@
 // Skipped when nothing is listening, so a clone without the dev stack still runs
 // `pnpm test`. `docker compose up -d` is what turns it on.
 
-import { createConnection, createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
+import { type AddressInfo, createConnection, createServer } from "node:net";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { CustomEmojiSchema, MediaAssetSchema } from "@sloppy/types";
@@ -278,6 +279,47 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     expect((await fetch(`${base}/api/proxy?ref=made-up`)).status).toBe(403);
   });
 
+  // A far end answering with more than the route will carry is the one case
+  // where the cap has to act after the head is already out, and the instance
+  // holding somebody's avatar is not ours to trust with how much it sends.
+  scenario(
+    "keeps serving after a far end sends more than it will",
+    async () => {
+      const { AssetLinks } = await import("./asset-link");
+      const chunk = Buffer.alloc(1024 * 1024, 0x41);
+      const flood = createHttpServer((_req, res) => {
+        res.writeHead(200, { "content-type": "image/png" });
+        const push = () => {
+          while (!res.destroyed && !res.writableEnded) {
+            if (!res.write(chunk)) {
+              res.once("drain", push);
+              return;
+            }
+          }
+        };
+        push();
+      });
+      await new Promise<void>((ready) => flood.listen(0, "127.0.0.1", ready));
+      const at = `http://127.0.0.1:${(flood.address() as AddressInfo).port}/x.png`;
+
+      try {
+        const answer = await fetch(shown(app.get(AssetLinks).to(at)));
+        const carried = await answer.arrayBuffer().catch(() => null);
+        expect(carried).toBeNull();
+      } finally {
+        flood.closeAllConnections();
+        await new Promise((closed) => flood.close(closed));
+      }
+
+      const avatar = await upload("avatar", "after-the-flood.png");
+      await read("PATCH", "/api/profile/me", {
+        avatar_upload_id: avatar.upload_id,
+      });
+      const { body } = await read("GET", "/api/profile/me");
+      expect((await fetch(shown(body.avatar_src))).status).toBe(200);
+    },
+  );
+
   // Signing alone still lets a link launder a document if the far end answers
   // with one.
   scenario("refuses a link of its own that answers with a page", async () => {
@@ -446,6 +488,30 @@ describe("a picture through Sloppy's routes and its own provider", () => {
       `/api/idp/public/profile/${encodeURIComponent(did)}`,
     );
     expect(held.body.data.avatar_url).not.toContain("example.com");
+  });
+
+  // A profile is read by strangers and a note's picture is not readable by
+  // them, so accepting one would leave a picture that nobody — its owner
+  // included — can see, and hand every reader of that profile its address.
+  scenario("takes no picture from a note as a profile picture", async () => {
+    const avatar = await upload("avatar", "kept-mine.png");
+    await read("PATCH", "/api/profile/me", {
+      avatar_upload_id: avatar.upload_id,
+    });
+    const before = (await read("GET", "/api/profile/me")).body.avatar_src;
+
+    const inANote = await upload("block", "in-a-note.png");
+    const refused = await read("PATCH", "/api/profile/me", {
+      avatar_upload_id: inANote.upload_id,
+    });
+    expect(refused.status).toBe(400);
+
+    expect((await read("GET", "/api/profile/me")).body.avatar_src).toBe(before);
+    const held = await read(
+      "GET",
+      `/api/idp/public/profile/${encodeURIComponent(did)}`,
+    );
+    expect(held.text).not.toContain(inANote.upload_id.split("/")[1]);
   });
 
   scenario("clears a profile picture when it is asked to", async () => {

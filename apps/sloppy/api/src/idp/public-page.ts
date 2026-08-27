@@ -46,6 +46,7 @@ export interface UploadView {
   mime_type: string;
   size: number;
   status: string;
+  is_public: boolean;
   /** Null until the bytes have landed. */
   url: string | null;
   metadata?: { width?: number; height?: number };
@@ -61,6 +62,7 @@ export function uploadView(row: UploadRow): UploadView {
     mime_type: row.mime_type,
     size: row.size,
     status: row.status,
+    is_public: row.is_public,
     url: row.status === "completed" ? row.url : null,
     ...(row.metadata ? { metadata: row.metadata } : {}),
   };
