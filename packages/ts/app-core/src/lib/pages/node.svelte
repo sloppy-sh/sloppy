@@ -4,23 +4,26 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Tags from '@lucide/svelte/icons/tags';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import {
 		compareOrd,
 		type BlockView,
 		type CreateBlockRequest,
+		type LabelSet,
 		type NodeView,
 		type OwnedRef,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
-	import { BlockStack, ConfirmModal } from '@sloppy/ui';
+	import { BlockStack, ConfirmModal, LabelPicker, scrollFade } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { api } from '../api.js';
+	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 
@@ -61,6 +64,9 @@
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
 
+	let assigning = $state(false);
+	let labelRefused = $state<string | null>(null);
+
 	/** Kept until it is stored, so a save that fails still has it to try again. */
 	let typed = $state<{ ref: OwnedRef; title: string } | null>(null);
 	const title = $derived(typed?.ref === ref ? typed.title : (node?.title ?? ''));
@@ -99,13 +105,15 @@
 		return counted;
 	});
 
-	const consequence = $derived(
-		descendants === 0
-			? 'It goes for good.'
-			: descendants === 1
-				? 'It goes for good, and so does the one note that grew out of it.'
-				: `It goes for good, and so do the ${descendants.toLocaleString()} notes that grew out of it.`
-	);
+	const consequence = $derived.by(() => {
+		// A number nothing has counted yet would be a promise this cannot keep.
+		if (!node || !nodes.status({ origin: node.origin }).loaded) {
+			return 'It goes for good, and so does everything written under it.';
+		}
+		if (descendants === 0) return 'It goes for good.';
+		if (descendants === 1) return 'It goes for good, and so does the one note that grew out of it.';
+		return `It goes for good, and so do the ${descendants.toLocaleString()} notes that grew out of it.`;
+	});
 
 	const needle = $derived(query.trim().toLowerCase());
 	const SHOWN = 10;
@@ -173,6 +181,8 @@
 		removing = false;
 		undeletable = null;
 		linkRefused = null;
+		assigning = false;
+		labelRefused = null;
 		void (async () => {
 			try {
 				const [, stack] = await Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
@@ -234,6 +244,19 @@
 			linkRefused = serverMessage(error) ?? whenItFails;
 		} finally {
 			linking = false;
+		}
+	}
+
+	async function assign(picked: LabelSet): Promise<void> {
+		labelRefused = null;
+		try {
+			await nodes.update(ref, { labels: picked });
+		} catch (error) {
+			// The picker puts its chips back on a rejection and shows `labelRefused`;
+			// swallowing this would leave a label that never saved looking saved.
+			labelRefused =
+				serverMessage(error) ?? 'Sloppy could not save that label. Try again in a moment.';
+			throw error;
 		}
 	}
 
@@ -376,7 +399,7 @@
 		<div class="space-y-3 border-t border-border pt-6">
 			{#if children.length > 0}
 				<h2 class="text-sm font-medium text-muted-foreground">Continues into</h2>
-				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto">
+				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
 					{#each children as child (child.ref)}
 						<li>{@render row(child, () => onOpen(child.ref))}</li>
 					{/each}
@@ -392,9 +415,28 @@
 		</div>
 
 		<div class="space-y-3 border-t border-border pt-6">
+			{#if assigning}
+				<LabelPicker
+					dimensions={labels.dimensions}
+					labels={node.labels}
+					slotFor={(dimension: string) => labels.slotFor(dimension)}
+					onassign={assign}
+					refused={labelRefused}
+					manageHref="/labels"
+				/>
+				<Button variant="ghost" class="h-11" onclick={() => (assigning = false)}>Done</Button>
+			{:else}
+				<Button variant="outline" class="h-11" onclick={() => (assigning = true)}>
+					<Tags class="size-4" />
+					Label this note
+				</Button>
+			{/if}
+		</div>
+
+		<div class="space-y-3 border-t border-border pt-6">
 			{#if linked.length > 0}
 				<h2 class="text-sm font-medium text-muted-foreground">Links to</h2>
-				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto">
+				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
 					{#each linked as { target, note: to } (target)}
 						<li class="flex items-center gap-1">
 							{#if to}
@@ -423,7 +465,7 @@
 
 			{#if backlinks.length > 0}
 				<h2 class="text-sm font-medium text-muted-foreground">Linked from</h2>
-				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto">
+				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
 					{#each backlinks as from (from.ref)}
 						<li>{@render row(from, () => onOpen(from.ref))}</li>
 					{/each}
@@ -447,14 +489,18 @@
 						{#if found.length === 0}
 							<p class="px-2 py-1 text-sm text-muted-foreground">Nothing here matches that.</p>
 						{:else}
-							<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto">
+							<ul
+								aria-label="Notes you can link to"
+								class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
+								{@attach scrollFade('y')}
+							>
 								{#each found.slice(0, SHOWN) as match (match.ref)}
 									<li>{@render row(match, () => link(match.ref))}</li>
 								{/each}
 							</ul>
 							{#if found.length > SHOWN}
 								<p class="px-2 text-xs text-muted-foreground">
-									More notes match than fit here. Keep typing to narrow it.
+									Not everything that matches is here. Keep typing to narrow it.
 								</p>
 							{/if}
 						{/if}

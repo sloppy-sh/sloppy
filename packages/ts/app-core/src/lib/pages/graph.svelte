@@ -18,7 +18,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { GraphLens } from '@sloppy/graph';
 	import type { NodeView } from '@sloppy/types';
-	import { cn, GraphSurface, ResponsiveModal } from '@sloppy/ui';
+	import { cn, GraphSurface, ResponsiveModal, scrollFade } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
@@ -229,6 +229,7 @@
 				{#if labels.dimensions.length > 0}
 					<div
 						class="scroll-fade-x -mx-1 flex gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none]"
+						{@attach scrollFade('x')}
 					>
 						<button
 							type="button"
