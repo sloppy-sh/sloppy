@@ -281,6 +281,14 @@ label_dimension:{ created_by: <did>, id: <ulid> }
   values      string[]
   color_slot  1–8?      the --facet-N slot; absent means declaration order (DESIGN.md)
 
+**A deleted note leaves its inbound links behind.** `links` is an array of refs on the
+*linking* node, so removing a note cannot reach the notes that pointed at it — deletion takes
+the subtree, not the mentions. The note surface renders a missing target honestly ("A note
+that is no longer here.") with its own unlink control, so nobody is shown a row that waits
+forever, but nothing sweeps the stale refs. Whichever milestone adds a sweep owns deciding
+whether it runs on delete or on read; until then the stored array is a superset of what
+resolves.
+
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
   root          ref       the subtree this makes readable
