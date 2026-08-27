@@ -281,6 +281,14 @@ label_dimension:{ created_by: <did>, id: <ulid> }
   values      string[]
   color_slot  1–8?      the --facet-N slot; absent means declaration order (DESIGN.md)
 
+**A deleted note leaves its inbound links behind.** `links` is an array of refs on the
+*linking* node, so removing a note cannot reach the notes that pointed at it — deletion takes
+the subtree, not the mentions. The note surface renders a missing target honestly ("A note
+that is no longer here.") with its own unlink control, so nobody is shown a row that waits
+forever, but nothing sweeps the stale refs. Whichever milestone adds a sweep owns deciding
+whether it runs on delete or on read; until then the stored array is a superset of what
+resolves.
+
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
   root          ref       the subtree this makes readable
@@ -416,30 +424,36 @@ internals. Use a separate `ready` flag for post-mount UI.
 
 ## Putting a note in a facet
 
-`LabelAssigner`, from `@sloppy/ui/facets`, is the one surface that edits a note's labels. It
-lives at `src/lib/components/facets/`, which the package's `"./*"` pattern does not reach —
-that pattern resolves `@sloppy/ui/<x>` to `dist/components/ui/<x>/`, for the shadcn
-primitives — so `"./facets"` is an explicit entry in the exports map. It is **controlled and
-does not persist**:
+`LabelPicker`, in `@sloppy/ui`'s `components/facets/`, is the one surface that edits a note's
+labels. It is **controlled and does not persist**:
 
 ```ts
-dimensions: LabelDimensionView[];   // what may be assigned; the host reads `labels.dimensions`
-value: LabelSet;                    // the note's labels now; `{}` is a note with none
-onchange: (next: LabelSet) => void; // the COMPLETE next set, never a delta
-busy?: boolean;                     // a save is in flight; refuse a second edit
+dimensions: readonly LabelDimensionView[]; // in declaration order — the order slots were handed out
+labels: LabelSet;                          // what the note carries now
+slotFor: (dimension: string) => FacetSlot | undefined;
+onassign: (labels: LabelSet) => Promise<void>; // the WHOLE set, never a delta
+refused?: string | null;                   // the server's own words for a set that would not save
+manageHref?: string;                       // where a reader with nothing declared goes to declare one
 ```
 
-The page that owns the note writes it, through `nodes.update`. The assigner writing for
-itself would race the save path, the optimistic state and the error copy that page already
-owns, and two writers to one node is the bug that costs a person their edit.
+The page that owns the note writes it, through `nodes.update`. The picker writing for itself
+would race the save path, the optimistic state and the error copy that page already owns, and
+two writers to one node is the bug that costs a person their edit. `onassign` returning a
+promise is what lets the picker hold its own pending state while the host saves.
 
-**`dimensions` is a prop rather than a store read, and that is structural.** `@sloppy/ui`
-is depended on _by_ `@sloppy/app-core`, so a component here reaching into app-core's
-`labels` store would close the loop `ui → app-core → ui`, which the workspace has no build
-order for. Every component in this package takes its data as props for that reason — see
-`GraphSurface` and `BlockStack`.
+**`onassign` must REJECT when the save fails, and set `refused` before it does.** The
+rejection is the whole failure signal: the picker catches it, and that catch is the only
+thing that renders the message. A host that resolves on failure gets a chip that snaps
+silently back to its old value with nothing said to the person who tapped it — the type
+`Promise<void>` cannot express this, which is why it is written down.
 
-**The page owns the trigger; the assigner is only the surface behind it.** A component that
+**`dimensions` and `slotFor` are props rather than store reads, and that is structural.**
+`@sloppy/ui` is depended on _by_ `@sloppy/app-core`, so a component here reaching into
+app-core's `labels` store would close the loop `ui → app-core → ui`, which the workspace has
+no build order for. Every component in this package takes its data as props for that reason —
+see `GraphSurface` and `BlockStack`. The host passes `labels.dimensions` and `labels.slotFor`.
+
+**The page owns the trigger; the picker is only the surface behind it.** A component that
 mounted its own floating control would fight the layout of whatever hosts it — the note page
 is already reconciling a fixed-position editor toolbar in the same region.
 

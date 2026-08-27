@@ -100,6 +100,9 @@ export class FakeApi {
 		if (!route)
 			return new Response('{"message":"Nothing lives at that address."}', { status: 404 });
 		const body = await route(url, init);
+		// A route that answers with a Response is refusing in the server's own
+		// words, which is the only way a suite can exercise what a person is told.
+		if (body instanceof Response) return body;
 		return new Response(body === undefined ? '' : JSON.stringify(body), {
 			status: 200,
 			headers: { 'content-type': 'application/json' }

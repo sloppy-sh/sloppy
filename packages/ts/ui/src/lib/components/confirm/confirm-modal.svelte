@@ -14,6 +14,9 @@
 		cancelLabel = 'Cancel',
 		/** False where the act is merely irreversible rather than destructive. */
 		destructive = true,
+		/** Why the act did not land, in the caller's words — it is the one holding
+		 *  the server's. Shown here because this surface is over the page. */
+		refused = null,
 		onconfirm
 	}: {
 		open?: boolean;
@@ -22,6 +25,7 @@
 		confirmLabel: string;
 		cancelLabel?: string;
 		destructive?: boolean;
+		refused?: string | null;
 		onconfirm: () => void | Promise<void>;
 	} = $props();
 
@@ -33,8 +37,7 @@
 			await onconfirm();
 			open = false;
 		} catch {
-			// Left open, so the same button tries again. Saying what went wrong is
-			// the caller's — it is the one holding the server's own words.
+			// Left open, so the same button tries again; `refused` is what to say.
 		} finally {
 			working = false;
 		}
@@ -42,6 +45,9 @@
 </script>
 
 <ResponsiveModal bind:open {title} {description}>
+	{#if refused}
+		<p class="px-2 pt-4 text-sm text-destructive" role="alert">{refused}</p>
+	{/if}
 	<div class="flex flex-col-reverse gap-2 px-2 pt-4 sm:flex-row sm:justify-end">
 		<Button variant="outline" class="h-11 sm:h-9" disabled={working} onclick={() => (open = false)}>
 			{cancelLabel}
