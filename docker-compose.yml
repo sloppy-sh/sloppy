@@ -92,7 +92,11 @@ services:
   api:
     <<: *dev-image
     container_name: sloppy-api
-    command: pnpm --filter @sloppy/api dev
+    command: node scripts/restart-on-package-build.mjs apps/sloppy/api pnpm --filter @sloppy/api dev
+    # Every restart orphans a process or two, and pid 1 is the only thing that
+    # can reap them. Without an init that is the command itself, which does not,
+    # so they accumulate as zombies for as long as the stack is up.
+    init: true
     env_file: *env-file
     environment:
       # The one address a browser knows this instance by. Sign-in comes back to
@@ -143,12 +147,11 @@ services:
     restart: unless-stopped
     develop:
       watch:
-        # `sync+restart`, and not the plain `sync` the web shell gets:
-        # `nest start --watch` recompiles when a file lands, but it starts the
-        # new process without retiring the old one, which keeps the port and
-        # goes on answering. The API would look healthy while serving the code
-        # you just changed away. Restarting the container is what retires it.
-        - action: sync+restart
+        # This app's own source, and only it. A shared package reaches the API
+        # through the dist volumes above, where the command watches for the
+        # build to land; a rule for packages/ts here would restart on the EDIT
+        # instead, which is before `packages-watch` has rebuilt anything.
+        - action: sync
           path: ./apps/sloppy/api
           target: /app/apps/sloppy/api
           ignore:
