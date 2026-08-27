@@ -289,6 +289,24 @@ describe('the writing controls', () => {
 		expect(bar?.closest('.fixed')).toBeNull();
 		expect(bar?.closest('.sticky')).not.toBeNull();
 	});
+
+	// At phone width the bar is narrower than its actions, and what falls off the
+	// end of a rail is a feature nobody finds.
+	it('keeps what puts something in the note out of the rail that scrolls', () => {
+		open([block({ type: 'paragraph', content: 'a thought' })]);
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+
+		const bar = target.querySelector('[role="toolbar"]') as HTMLElement;
+		const rail = bar.querySelector('.overflow-x-auto') as HTMLElement;
+		const control = (label: string) => bar.querySelector(`button[aria-label="${label}"]`);
+
+		for (const label of ['Picture', 'Emoji', 'Draw']) {
+			expect(control(label), label).not.toBeNull();
+			expect(rail.contains(control(label)), label).toBe(false);
+		}
+		expect(rail.contains(control('Bold'))).toBe(true);
+	});
 });
 
 describe('a picture in a note', () => {

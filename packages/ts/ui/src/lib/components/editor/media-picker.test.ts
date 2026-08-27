@@ -92,12 +92,14 @@ describe('the pictures already in a note', () => {
 		await open(shelf(library(6)));
 
 		expect(tiles()).toHaveLength(6);
-		expect(read).toEqual([upload(0)]);
+		expect(read).toEqual([upload(0), upload(1)]);
 
 		scrolled = 2000;
 		(tiles()[0].parentElement as HTMLElement).dispatchEvent(new Event('scroll'));
+		land(read[0]);
+		await settle();
 
-		expect(read).toEqual([upload(0), upload(1), upload(2)]);
+		expect(read).toEqual([upload(0), upload(1), upload(2), upload(3)]);
 	});
 
 	// Every one of these is a whole original, and a phone asked for a grid of

@@ -570,7 +570,7 @@
 		editor.chain().focus().insertInk({ width, height: NEW_INK_HEIGHT }).run();
 	}
 
-	const actions = $derived<EditorAction[]>([
+	const formatting = $derived<EditorAction[]>([
 		{
 			id: 'bold',
 			label: 'Bold',
@@ -633,7 +633,10 @@
 			icon: Code,
 			on: marks.code,
 			run: () => editor?.chain().focus().toggleCodeBlock().run()
-		},
+		}
+	]);
+
+	const inserts = $derived<EditorAction[]>([
 		{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) },
 		{ id: 'emoji', label: 'Emoji', icon: Smile, run: () => (pickerOpen = true) },
 		{ id: 'draw', label: 'Draw', icon: PenLine, run: startDrawing }
@@ -687,7 +690,7 @@
 		<div
 			class="sticky lift-above-keyboard z-40 mx-auto w-full max-w-[34rem] rounded-full border bg-card/95 px-1.5 py-1 shadow-lg backdrop-blur"
 		>
-			<Toolbar {actions} />
+			<Toolbar {formatting} {inserts} />
 		</div>
 	{/if}
 </div>
@@ -718,12 +721,12 @@
 		font-size: 1rem;
 		line-height: 1.7;
 	}
-	/* A handle stands between the two blocks it separates, so the gap it would
-	   otherwise take is left to the block, exactly as it is without handles. */
-	:global(.sloppy-prose > * + *:not(.sloppy-row)) {
+	:global(.sloppy-prose > * + *) {
 		margin-top: 0.85em;
 	}
-	:global(.sloppy-prose > .sloppy-row:first-child + *) {
+	/* The gap between two blocks is taken by the handle standing between them, so
+	   the handle sits on its own block rather than in the space above it. */
+	:global(.sloppy-prose > .sloppy-row + *) {
 		margin-top: 0;
 	}
 	:global(.sloppy-row) {
@@ -859,6 +862,9 @@
 		line-height: 1.1;
 	}
 	:global(.sloppy-emoji-picture) {
+		/* Tailwind's preflight draws every img as a block, which would put an
+		   emoji on a line of its own in the middle of a sentence. */
+		display: inline-block;
 		font-size: 1em;
 		width: auto;
 		height: 1.35em;

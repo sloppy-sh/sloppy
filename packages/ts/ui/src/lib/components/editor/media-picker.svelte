@@ -10,7 +10,6 @@
 	/** A note's picture is read whole, so the grid reads only what somebody is
 	 *  looking at and a few at a time: a screenful of originals at once is how a
 	 *  phone loses the tab. */
-	const AHEAD_PX = 240;
 	const AT_ONCE = 3;
 
 	let {
@@ -107,7 +106,8 @@
 		const box = grid.getBoundingClientRect();
 		for (const { node, picture } of tiles) {
 			const at = node.getBoundingClientRect();
-			if (at.top <= box.bottom + AHEAD_PX && at.bottom >= box.top - AHEAD_PX) want(picture);
+			// One tile past each edge, so a scroll arrives on a row already drawn.
+			if (at.top - at.height <= box.bottom && at.bottom + at.height >= box.top) want(picture);
 		}
 		pump();
 	}
