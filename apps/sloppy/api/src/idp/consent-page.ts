@@ -29,6 +29,8 @@ const STYLES = `
   ul { margin: 0 0 1.5rem; padding-left: 1.1rem; }
   li { margin-bottom: 0.35rem; }
   label { display: block; font-size: 0.875rem; margin-bottom: 1rem; }
+  label span { opacity: 0.55; font-weight: 400; }
+  small { display: block; margin-top: 0.35rem; opacity: 0.6; line-height: 1.4; }
   input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.35rem;
           padding: 0.7rem 0.85rem; border-radius: 0.6rem; font: inherit;
           border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
@@ -100,16 +102,20 @@ export function consentPage(apiBase: string): string {
     return p;
   }
 
-  function field(label, type, autocomplete) {
+  function field(label, type, autocomplete, opts) {
+    var options = opts || {};
     var wrap = el('label', label);
     var input = document.createElement('input');
     input.type = type;
     input.autocomplete = autocomplete;
-    input.required = true;
+    input.required = !options.optional;
+    if (options.placeholder) input.placeholder = options.placeholder;
+    if (options.minlength) input.minLength = options.minlength;
+    if (options.optional) wrap.appendChild(el('span', ' (optional)'));
     wrap.appendChild(input);
+    if (options.hint) wrap.appendChild(el('small', options.hint));
     return { wrap: wrap, input: input };
   }
-
   function post(path, body, bearer) {
     var headers = { 'content-type': 'application/json' };
     if (bearer) headers.authorization = 'Bearer ' + bearer;
@@ -154,32 +160,63 @@ export function consentPage(apiBase: string): string {
   function door(mode, problem) {
     var making = mode === 'make';
     var form = document.createElement('form');
-    var name = field('Name', 'text', making ? 'username' : 'username');
-    var secret = field('Password', 'password', making ? 'new-password' : 'current-password');
+
+    var name = making
+      ? field('Username', 'text', 'username', {
+          placeholder: 'alice',
+          hint: '3\u201332 characters: lowercase letters, numbers, dashes and underscores. This is the handle a peer resolves.'
+        })
+      : field('Username', 'text', 'username', { placeholder: 'alice' });
+    var shown = making
+      ? field('Display name', 'text', 'name', {
+          placeholder: 'Alice',
+          optional: true,
+          hint: 'What people see. You can change it later.'
+        })
+      : null;
+    var secret = field('Password', 'password', making ? 'new-password' : 'current-password', {
+      placeholder: '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022',
+      minlength: making ? 12 : undefined,
+      hint: making ? 'At least 12 characters.' : undefined
+    });
+    var again = making
+      ? field('Confirm password', 'password', 'new-password', {
+          placeholder: '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'
+        })
+      : null;
+
     var go = el('button', making ? 'Create and connect' : 'Continue');
     go.type = 'submit';
 
     var nodes = [
       el('h1', making ? 'Create an identity' : 'Sign in to continue'),
       el('p', making
-        ? 'It lives on this instance, and it is yours to take elsewhere.'
+        ? 'It lives on this instance, and the DID it mints is yours to take elsewhere.'
         : appName + ' is waiting to connect to your account.'),
       scopeList(scopes),
-      name.wrap,
-      secret.wrap
+      name.wrap
     ];
-    if (making) nodes.push(el('p', 'At least 12 characters.'));
+    if (shown) nodes.push(shown.wrap);
+    nodes.push(secret.wrap);
+    if (again) nodes.push(again.wrap);
     if (problem) nodes.push(problemLine(problem));
     nodes.push(go);
     form.append.apply(form, nodes);
 
     form.addEventListener('submit', function (event) {
       event.preventDefault();
+      if (again && secret.input.value !== again.input.value) {
+        again.input.value = '';
+        door(mode, 'Those passwords are different. Type the second one again.');
+        return;
+      }
       go.disabled = true;
-      go.textContent = making ? 'Creating…' : 'Signing in…';
+      go.textContent = making ? 'Creating\u2026' : 'Signing in\u2026';
       who = name.input.value;
       password = secret.input.value;
-      post(making ? '/register' : '/login', { username: who, password: password })
+      var body = { username: who, password: password };
+      if (shown && shown.input.value.trim()) body.display_name = shown.input.value.trim();
+      post(making ? '/register' : '/login', body)
         .then(entered)
         .catch(function (error) { door(mode, error.message); });
     });
@@ -214,7 +251,7 @@ export function consentPage(apiBase: string): string {
 
     var nodes = [
       el('h1', 'Connect ' + request.platform_name + '?'),
-      el('p', 'Signed in as ' + who + '. It will be able to:'),
+      el('p', 'Signed in as ' + (request.display_name || who) + '. It will be able to:'),
       scopeList(request.scopes)
     ];
     if (problem) nodes.push(problemLine(problem));
