@@ -96,6 +96,20 @@ describe('the node cache', () => {
 		expect(nodes.get(ROOT)).toBeDefined();
 	});
 
+	it('is not repopulated by a node created just before it was cleared', async () => {
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		api.on('POST /nodes', async () => {
+			await held;
+			return node(9, '3');
+		});
+		const creating = nodes.create({ title: 'a thought' });
+		nodes.clear();
+		answer();
+		await creating;
+		expect(nodes.get(ref(9))).toBeUndefined();
+	});
+
 	it('keeps a sibling whose address merely starts with the same characters', async () => {
 		nodes.clear();
 		api.on('GET /nodes', () => [

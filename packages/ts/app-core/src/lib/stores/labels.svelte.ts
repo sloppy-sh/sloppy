@@ -142,8 +142,9 @@ class LabelsStore {
 	}
 
 	async create(request: CreateLabelDimensionRequest): Promise<LabelDimensionView> {
+		const epoch = this.#epoch;
 		const dimension = await api.createLabelDimension(request);
-		this.#byRef.set(dimension.ref, dimension);
+		if (epoch === this.#epoch) this.#byRef.set(dimension.ref, dimension);
 		return dimension;
 	}
 
@@ -153,8 +154,10 @@ class LabelsStore {
 	 * caller reloads the region it is showing.
 	 */
 	async update(ref: OwnedRef, request: UpdateLabelDimensionRequest): Promise<LabelDimensionView> {
+		const epoch = this.#epoch;
 		const before = this.#byRef.get(ref);
 		const dimension = await api.updateLabelDimension(ref, request);
+		if (epoch !== this.#epoch) return dimension;
 		this.#byRef.set(dimension.ref, dimension);
 		if (before && prefs.current.lens === before.name && before.name !== dimension.name) {
 			this.setLens(dimension.name);
@@ -163,8 +166,10 @@ class LabelsStore {
 	}
 
 	async remove(ref: OwnedRef): Promise<void> {
+		const epoch = this.#epoch;
 		const dimension = this.#byRef.get(ref);
 		await api.deleteLabelDimension(ref);
+		if (epoch !== this.#epoch) return;
 		this.#byRef.delete(ref);
 		if (dimension && prefs.current.lens === dimension.name) this.setLens(null);
 	}

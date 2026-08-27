@@ -161,14 +161,16 @@ class NodesStore {
 	}
 
 	async create(request: CreateNodeRequest): Promise<NodeView> {
+		const epoch = this.#epoch;
 		const node = await api.createNode(request);
-		this.#byRef.set(node.ref, node);
+		if (epoch === this.#epoch) this.#byRef.set(node.ref, node);
 		return node;
 	}
 
 	async update(ref: OwnedRef, request: UpdateNodeRequest): Promise<NodeView> {
+		const epoch = this.#epoch;
 		const node = await api.updateNode(ref, request);
-		this.#byRef.set(node.ref, node);
+		if (epoch === this.#epoch) this.#byRef.set(node.ref, node);
 		return node;
 	}
 

@@ -61,6 +61,20 @@ describe('the label dimensions', () => {
 		expect(labels.slotFor('unpinned')).toBeGreaterThanOrEqual(1);
 		expect(labels.slotFor('unpinned')).toBeLessThanOrEqual(FACET_SLOT_COUNT);
 	});
+
+	it('is not repopulated by a dimension created just before it was cleared', async () => {
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		api.on('POST /label-dimensions', async () => {
+			await held;
+			return dimension(9, 'medium');
+		});
+		const creating = labels.create({ name: 'medium', values: [] });
+		labels.clear();
+		answer();
+		await creating;
+		expect(labels.byName('medium')).toBeUndefined();
+	});
 });
 
 describe('the lens', () => {
