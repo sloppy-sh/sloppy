@@ -9,6 +9,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { BlockIdentity, docBlocks, openBlocks, type SavedBlock } from './document.js';
 import { EmojiNode } from './emoji-node.js';
 import { InkNode } from './ink-node.js';
+import { PictureNode } from './picture-node.js';
 
 export const OWNER = 'did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc';
 
@@ -78,8 +79,9 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 			TaskList,
 			TaskItem.configure({ nested: true }),
 			BlockIdentity,
-			EmojiNode,
-			InkNode
+			EmojiNode(() => []),
+			InkNode,
+			PictureNode(() => undefined)
 		]
 	});
 	const manager = editor.storage.markdown.manager;

@@ -305,3 +305,39 @@ describe('carrying a plan out', () => {
 		]);
 	});
 });
+
+describe('a picture in a note', () => {
+	const UPLOAD = 'did:syr:z6Mk1/01ABCDEF';
+
+	it('opens as the block it was stored as, and is written back unchanged', () => {
+		const of = open([
+			block({ type: 'image', data: { upload_id: UPLOAD, width: 40, height: 20, alt: 'a kite' } })
+		]);
+		expect(rows(of)).toEqual([
+			expect.objectContaining({
+				type: 'image',
+				content: '',
+				data: { upload_id: UPLOAD, width: 40, height: 20, alt: 'a kite' }
+			})
+		]);
+		expect(planSave(opened, rows(of))).toEqual([]);
+	});
+
+	// Otherwise a note is stored pointing at bytes that may never arrive.
+	it('is not a row while the file is still on its way', () => {
+		const of = open();
+		of.commands.insertPicture({ preview: 'blob:sloppy/1' });
+		expect(rows(of).some((row) => row.type === 'image')).toBe(false);
+
+		of.commands.insertPicture({ uploadId: UPLOAD, width: 40, height: 20 });
+		expect(rows(of).filter((row) => row.type === 'image')).toHaveLength(1);
+	});
+
+	// A row nothing can be drawn from is carried, not opened as an empty one and
+	// saved back over.
+	it('leaves a row naming no file exactly as it was found', () => {
+		const of = open([block({ type: 'image', data: {} })]);
+		expect(rows(of).some((row) => row.type === 'image')).toBe(false);
+		expect(planSave(opened, rows(of))).toEqual([]);
+	});
+});

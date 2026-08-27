@@ -3,13 +3,13 @@
 // legitimately contain colons are claimed before any shortcode pattern runs, or
 // a `did:syr:…` loses its middle to `:syr:`.
 
-import { emojiFor, type UnicodeEmoji } from './catalog.js';
+import { resolveEmoji, type CustomEmojiEntry, type EmojiEntry } from './catalog.js';
 
 export type ContentToken =
 	| { kind: 'text'; start: number; end: number; value: string }
 	| { kind: 'link'; start: number; end: number; url: string }
 	| { kind: 'did'; start: number; end: number; did: string }
-	| { kind: 'emoji'; start: number; end: number; emoji: UnicodeEmoji; sticker: boolean };
+	| { kind: 'emoji'; start: number; end: number; emoji: EmojiEntry; sticker: boolean };
 
 const DID_RE = /\bdid:[a-z0-9]+:[A-Za-z0-9._%-]+/g;
 // slyng linkifies what is left over at the end; a URL is claimed up front here
@@ -33,7 +33,11 @@ function claim(spans: Span[], start: number, end: number): boolean {
 	return !spans.some((span) => start < span.end && end > span.start);
 }
 
-export function tokenizeContent(content: string): ContentToken[] {
+/** `custom` is the catalog the text's AUTHOR wrote against, not the reader's. */
+export function tokenizeContent(
+	content: string,
+	custom: readonly CustomEmojiEntry[] = []
+): ContentToken[] {
 	if (!content) return [];
 
 	const spans: Span[] = [];
@@ -58,7 +62,7 @@ export function tokenizeContent(content: string): ContentToken[] {
 	}
 	// Stickers before emoji: `::x::` contains `:x:`, and whichever runs first wins.
 	for (const match of content.matchAll(STICKER_RE)) {
-		const emoji = emojiFor(match[1]);
+		const emoji = resolveEmoji(match[1], custom);
 		if (!emoji) continue;
 		const start = match.index;
 		push(start, start + match[0].length, {
@@ -71,7 +75,7 @@ export function tokenizeContent(content: string): ContentToken[] {
 	}
 	for (const match of content.matchAll(EMOJI_RE)) {
 		if (content[match.index - 1] === ':') continue;
-		const emoji = emojiFor(match[1]);
+		const emoji = resolveEmoji(match[1], custom);
 		if (!emoji) continue;
 		const start = match.index;
 		push(start, start + match[0].length, {

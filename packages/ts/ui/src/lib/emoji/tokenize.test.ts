@@ -1,14 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { emojiFor, searchEmoji } from './catalog.js';
+import {
+	isCustomEmoji,
+	resolveEmoji,
+	searchEmoji,
+	type CustomEmojiEntry,
+	type EmojiEntry
+} from './catalog.js';
 import { tokenizeContent } from './tokenize.js';
 
 const kinds = (content: string) => tokenizeContent(content).map((t) => t.kind);
 
+const glyph = (entry: EmojiEntry | undefined) =>
+	entry && !isCustomEmoji(entry) ? entry.char : undefined;
+
+const MINE: CustomEmojiEntry[] = [
+	{ id: 'e1', shortcode: 'party_parrot', src: '/proxy?ref=parrot', sticker: false },
+	{ id: 'e2', shortcode: 'fire', src: '/proxy?ref=my-fire', sticker: true }
+];
+
 describe('the catalog', () => {
 	it('resolves a shortcode to its character', () => {
-		expect(emojiFor('seedling')?.char).toBe('🌱');
-		expect(emojiFor('SEEDLING')?.char).toBe('🌱');
-		expect(emojiFor('not_an_emoji')).toBeUndefined();
+		expect(glyph(resolveEmoji('seedling'))).toBe('🌱');
+		expect(glyph(resolveEmoji('SEEDLING'))).toBe('🌱');
+		expect(resolveEmoji('not_an_emoji')).toBeUndefined();
 	});
 
 	it('ranks a shortcode prefix above a keyword match', () => {
@@ -17,7 +31,16 @@ describe('the catalog', () => {
 	});
 
 	it('finds an emoji by an alias nobody would guess the formal name for', () => {
-		expect(searchEmoji('thumbsup')[0].char).toBe('👍');
+		expect(glyph(searchEmoji('thumbsup')[0])).toBe('👍');
+	});
+
+	it('answers with the picture somebody uploaded for a name Unicode also claims', () => {
+		expect(resolveEmoji('fire', MINE)).toBe(MINE[1]);
+		expect(glyph(resolveEmoji('fire'))).toBe('🔥');
+	});
+
+	it('offers what a person uploaded before the set everybody has', () => {
+		expect(searchEmoji('party', 5, MINE)[0]).toBe(MINE[0]);
 	});
 });
 
@@ -25,7 +48,7 @@ describe('tokenizing stored text', () => {
 	it('reads a single-colon shortcode as an inline emoji', () => {
 		expect(tokenizeContent('a :fire: thought')).toEqual([
 			{ kind: 'text', start: 0, end: 2, value: 'a ' },
-			{ kind: 'emoji', start: 2, end: 8, emoji: emojiFor('fire'), sticker: false },
+			{ kind: 'emoji', start: 2, end: 8, emoji: resolveEmoji('fire'), sticker: false },
 			{ kind: 'text', start: 8, end: 16, value: ' thought' }
 		]);
 	});
@@ -63,6 +86,11 @@ describe('tokenizing stored text', () => {
 
 	it('does not let the single-colon pattern eat half a sticker', () => {
 		expect(tokenizeContent('::fire::').map((t) => t.end)).toEqual([8]);
+	});
+
+	it("reads a shortcode against the author's catalog, not the Unicode set", () => {
+		const [token] = tokenizeContent('::fire::', MINE);
+		expect(token).toMatchObject({ kind: 'emoji', emoji: MINE[1], sticker: true });
 	});
 
 	it('covers the whole input exactly once, in order', () => {

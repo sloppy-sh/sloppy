@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import type { BlockView, CreateBlockRequest, InkStroke, OwnedRef } from '@sloppy/types';
+import type { BlockView, CreateBlockRequest, InkStroke, MediaAsset, OwnedRef } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import BlockStack from './block-stack.svelte';
-import { NOTE, block, ref, stubCanvas } from './editor.test-support.js';
+import type { NoteEmoji, NoteMedia } from './contract.js';
+import { NOTE, OWNER, block, ref, stubCanvas } from './editor.test-support.js';
 
 interface Written {
 	created: CreateBlockRequest[];
@@ -19,10 +21,11 @@ let written: Written;
 /** Set to keep every create in flight until the test lets it answer. */
 let answering: Promise<void> | null;
 
-function open(blocks: BlockView[]) {
+function open(blocks: BlockView[], able: { media?: NoteMedia; emoji?: NoteEmoji } = {}) {
 	mounted = mount(BlockStack, {
 		target,
 		props: {
+			...able,
 			node: NOTE,
 			blocks,
 			onCreate: async (request: CreateBlockRequest) => {
@@ -87,6 +90,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	close();
+	emojiCatalogs.forget(OWNER);
 	Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
 	// Discarded on the fake clock rather than handed to the real one: a teardown
 	// timer that outlives this file lands in whichever file runs next.
@@ -254,5 +258,94 @@ describe('what a note keeps when it is left', () => {
 			await vi.advanceTimersByTimeAsync(200);
 		}
 		expect(written.updated.map((row) => row.content)).toEqual(['...............a thought']);
+	});
+});
+
+/** The writing area itself, rather than the editor hung off it. */
+const surface = (): HTMLElement => target.querySelector('.sloppy-prose') as HTMLElement;
+
+describe('the writing controls', () => {
+	// Pinned to the viewport they covered whatever the page put under the note,
+	// at every width, with no scroll that reached it.
+	it('sit in the note rather than over the page', () => {
+		open([block({ type: 'paragraph', content: 'a thought' })]);
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+
+		const bar = target.querySelector('[role="toolbar"]');
+		expect(bar).not.toBeNull();
+		expect(bar?.closest('.fixed')).toBeNull();
+		expect(bar?.closest('.sticky')).not.toBeNull();
+	});
+});
+
+describe('a picture in a note', () => {
+	/** A send the test lets land when it chooses. */
+	function sender() {
+		let land: (asset: MediaAsset) => void = () => {};
+		const landed = new Promise<MediaAsset>((resolve) => (land = resolve));
+		const reported: number[] = [];
+		const media: NoteMedia = {
+			send: (_file, report) => {
+				report(0.5);
+				reported.push(0.5);
+				return { asset: landed, cancel: () => {} };
+			},
+			picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} })
+		};
+		return { media, reported, land: (asset: MediaAsset) => land(asset) };
+	}
+
+	async function choose(file: File): Promise<void> {
+		const control = [...target.querySelectorAll('button')].find(
+			(button) => button.getAttribute('aria-label') === 'Picture'
+		);
+		control?.click();
+		flushSync();
+		const chooser = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+		Object.defineProperty(chooser, 'files', { configurable: true, value: [file] });
+		chooser.dispatchEvent(new Event('change', { bubbles: true }));
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+	}
+
+	it('is on the page at once, and a block only once the file has landed', async () => {
+		const { media, reported, land } = sender();
+		open([], { media });
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+		await choose(new File(['x'], 'kite.png', { type: 'image/png' }));
+
+		expect(target.querySelector('[data-picture-block]')).not.toBeNull();
+		expect(reported).toEqual([0.5]);
+		expect(written.created).toEqual([]);
+
+		land({ upload_id: `${OWNER}/01UP`, mime_type: 'image/png', size: 1, width: 40, height: 20 });
+		await vi.advanceTimersByTimeAsync(4000);
+
+		expect(written.created).toEqual([
+			expect.objectContaining({
+				type: 'image',
+				data: { upload_id: `${OWNER}/01UP`, width: 40, height: 20 }
+			})
+		]);
+	});
+});
+
+describe('a shortcode its author uploaded a picture for', () => {
+	const CATALOG = [{ id: 'e1', shortcode: 'parrot', src: '/proxy?ref=parrot', sticker: false }];
+
+	it('draws the picture, and is still stored as the shortcode', async () => {
+		open([block({ type: 'paragraph', content: 'look :parrot: look' })], {
+			emoji: { catalog: async () => CATALOG }
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+
+		const drawn = target.querySelector('img.sloppy-emoji-picture');
+		expect(drawn?.getAttribute('src')).toBe('/proxy?ref=parrot');
+		expect(writingIn().storage.markdown.manager.serialize(writingIn().getJSON())).toContain(
+			':parrot:'
+		);
 	});
 });
