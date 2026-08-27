@@ -26,11 +26,13 @@ foundation and the seams every later branch reads: `@sloppy/types` (the address 
 the node/block/label/publication schemas, and the API's wire shapes), `@sloppy/data` (the
 table definitions and the per-user purge), `@sloppy/client` (the whole method surface, over
 `fetch`), `@sloppy/app-core` (the platform seam and the api proxy), `@sloppy/ui` (the design
-tokens) and `@sloppy/api` (a NestJS skeleton whose feature modules are empty).
+tokens), `@sloppy/idp` (syr's wire contracts and crypto, served by the API when it is asked
+to be the identity provider itself) and `@sloppy/api` (a NestJS API that signs people in
+through syr; its node and block modules are still empty).
 
-So `pnpm dev:api` serves a health check and nothing else, and there are no shells to run
-yet. `pnpm test` is real: it holds the address protocol, the schema against a live
-SurrealDB, and the design system's contrast floors.
+So `pnpm dev` brings up the web shell over an API that can start a session and little
+else, and there is no graph to put in it yet. `pnpm test` is real: it holds the address
+protocol, the schema against a live SurrealDB, and the design system's contrast floors.
 
 ## Stack
 
@@ -39,7 +41,7 @@ pnpm + Turborepo monorepo. The rows marked ✓ are in the tree; the rest are ahe
 | Path                   | Package            | Tech                                              |     |
 | ---------------------- | ------------------ | ------------------------------------------------- | --- |
 | `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                        | ✓   |
-| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             |     |
+| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             | ✓   |
 | `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop) |     |
 | `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                | ✓   |
 | `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                       | ✓   |
@@ -47,7 +49,7 @@ pnpm + Turborepo monorepo. The rows marked ✓ are in the tree; the rest are ahe
 | `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens          | ✓   |
 | `packages/ts/data`     | `@sloppy/data`     | SurrealDB repositories, schema, purge             | ✓   |
 | `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                |     |
-| `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode        |     |
+| `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode        | ✓   |
 
 Identity, profiles, media blobs, emoji and reactions come from **syr**; nodes, addresses,
 labels, blocks and ink are Sloppy's own. That split is not a preference — see
@@ -81,6 +83,14 @@ The API runs on the host, not in Docker: `pnpm dev:api` serves http://localhost:
 503 when it cannot. It reads the repo-root `.env` if there is one, and every value it needs
 has a dev default that matches the stack above.
 
+The web shell serves http://localhost:8030 and proxies `/api` to the API, so the two share
+an origin the way a deployment does. Signing in needs `PUBLIC_URL` naming that origin —
+[`apps/sloppy/web/README.md`](apps/sloppy/web/README.md) says why.
+
+Set `SLOPPY_LOCAL_IDP=true` (with `SLOPPY_IDP_SECRET`) and the API also serves identity
+itself, at `PUBLIC_URL`. Sign in against that address and Sloppy needs no syr instance and
+no network — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode".
+
 ## Common tasks
 
 ```bash
@@ -91,9 +101,10 @@ pnpm format        # write formatting
 pnpm test          # run tests
 ```
 
-`@sloppy/data`'s schema tests run against the dev SurrealDB and skip when nothing is
-listening, so `pnpm stack:up` before `pnpm test` is what exercises the table definitions,
-the indexes and the purge for real. `SLOPPY_SURREALDB_URL` points them elsewhere.
+The integration suites run against the dev SurrealDB and skip when nothing is listening, so
+`pnpm stack:up` before `pnpm test` is what exercises the table definitions, the indexes and
+the purge, the delegation round trip, and Sloppy signing in against its own provider for
+real. `SLOPPY_SURREALDB_URL` points them elsewhere.
 
 ## Formatting: who owns what
 

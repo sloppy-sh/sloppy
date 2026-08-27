@@ -9,6 +9,15 @@ catalogs:
     '@eslint/js':
       specifier: 10.0.1
       version: 10.0.1
+    '@fontsource-variable/inter':
+      specifier: 5.2.8
+      version: 5.2.8
+    '@fontsource-variable/jetbrains-mono':
+      specifier: 5.2.8
+      version: 5.2.8
+    '@sveltejs/adapter-static':
+      specifier: 3.0.10
+      version: 3.0.10
     '@sveltejs/kit':
       specifier: 2.57.0
       version: 2.57.0
@@ -110,6 +119,9 @@ importers:
       '@sloppy/data':
         specifier: workspace:*
         version: link:../../../packages/ts/data
+      '@sloppy/idp':
+        specifier: workspace:*
+        version: link:../../../packages/ts/idp
       '@sloppy/types':
         specifier: workspace:*
         version: link:../../../packages/ts/types
@@ -156,6 +168,173 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+
+  apps/sloppy/native:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@fontsource-variable/jetbrains-mono':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@saurl/tauri-plugin-safe-area-insets-css-api':
+        specifier: ^0.1.0
+        version: 0.1.0
+      '@sloppy/app-core':
+        specifier: workspace:*
+        version: link:../../../packages/ts/app-core
+      '@sloppy/ui':
+        specifier: workspace:*
+        version: link:../../../packages/ts/ui
+      '@tauri-apps/api':
+        specifier: ^2.5.0
+        version: 2.11.1
+      '@tauri-apps/plugin-deep-link':
+        specifier: ^2.4.0
+        version: 2.4.9
+      '@tauri-apps/plugin-http':
+        specifier: ^2.5.9
+        version: 2.5.9
+      '@tauri-apps/plugin-opener':
+        specifier: ^2.5.0
+        version: 2.5.4
+    devDependencies:
+      '@eslint/js':
+        specifier: 'catalog:'
+        version: 10.0.1(eslint@10.4.0(jiti@2.7.0))
+      '@sveltejs/adapter-static':
+        specifier: 'catalog:'
+        version: 3.0.10(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))
+      '@sveltejs/kit':
+        specifier: 'catalog:'
+        version: 2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@sveltejs/vite-plugin-svelte':
+        specifier: 'catalog:'
+        version: 7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@tailwindcss/vite':
+        specifier: 'catalog:'
+        version: 4.2.2(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@tauri-apps/cli':
+        specifier: ^2.5.0
+        version: 2.11.4
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.3
+      eslint:
+        specifier: 'catalog:'
+        version: 10.4.0(jiti@2.7.0)
+      eslint-config-prettier:
+        specifier: 'catalog:'
+        version: 10.1.8(eslint@10.4.0(jiti@2.7.0))
+      eslint-plugin-svelte:
+        specifier: 'catalog:'
+        version: 3.17.0(eslint@10.4.0(jiti@2.7.0))(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      globals:
+        specifier: 'catalog:'
+        version: 17.4.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.8.1
+      prettier-plugin-svelte:
+        specifier: 'catalog:'
+        version: 3.5.1(prettier@3.8.1)(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      prettier-plugin-tailwindcss:
+        specifier: 'catalog:'
+        version: 0.7.2(prettier-plugin-svelte@3.5.1(prettier@3.8.1)(svelte@5.55.2(@typescript-eslint/types@8.58.1)))(prettier@3.8.1)
+      svelte:
+        specifier: 'catalog:'
+        version: 5.55.2(@typescript-eslint/types@8.58.1)
+      svelte-check:
+        specifier: 'catalog:'
+        version: 4.4.6(picomatch@4.0.7)(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 4.2.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.58.1(eslint@10.4.0(jiti@2.7.0))(typescript@6.0.2)
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)
+
+  apps/sloppy/web:
+    dependencies:
+      '@fontsource-variable/inter':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@fontsource-variable/jetbrains-mono':
+        specifier: 'catalog:'
+        version: 5.2.8
+      '@sloppy/app-core':
+        specifier: workspace:*
+        version: link:../../../packages/ts/app-core
+      '@sloppy/client':
+        specifier: workspace:*
+        version: link:../../../packages/ts/client
+      '@sloppy/ui':
+        specifier: workspace:*
+        version: link:../../../packages/ts/ui
+    devDependencies:
+      '@eslint/js':
+        specifier: 'catalog:'
+        version: 10.0.1(eslint@10.4.0(jiti@2.7.0))
+      '@sveltejs/adapter-static':
+        specifier: 'catalog:'
+        version: 3.0.10(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))
+      '@sveltejs/kit':
+        specifier: 'catalog:'
+        version: 2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@sveltejs/vite-plugin-svelte':
+        specifier: 'catalog:'
+        version: 7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@tailwindcss/vite':
+        specifier: 'catalog:'
+        version: 4.2.2(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.3
+      eslint:
+        specifier: 'catalog:'
+        version: 10.4.0(jiti@2.7.0)
+      eslint-config-prettier:
+        specifier: 'catalog:'
+        version: 10.1.8(eslint@10.4.0(jiti@2.7.0))
+      eslint-plugin-svelte:
+        specifier: 'catalog:'
+        version: 3.17.0(eslint@10.4.0(jiti@2.7.0))(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      globals:
+        specifier: 'catalog:'
+        version: 17.4.0
+      prettier:
+        specifier: 'catalog:'
+        version: 3.8.1
+      prettier-plugin-svelte:
+        specifier: 'catalog:'
+        version: 3.5.1(prettier@3.8.1)(svelte@5.55.2(@typescript-eslint/types@8.58.1))
+      prettier-plugin-tailwindcss:
+        specifier: 'catalog:'
+        version: 0.7.2(prettier-plugin-svelte@3.5.1(prettier@3.8.1)(svelte@5.55.2(@typescript-eslint/types@8.58.1)))(prettier@3.8.1)
+      svelte:
+        specifier: 'catalog:'
+        version: 5.55.2(@typescript-eslint/types@8.58.1)
+      svelte-check:
+        specifier: 'catalog:'
+        version: 4.4.6(picomatch@4.0.7)(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 4.2.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.58.1(eslint@10.4.0(jiti@2.7.0))(typescript@6.0.2)
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)
 
   packages/ts/app-core:
     dependencies:
@@ -248,6 +427,40 @@ importers:
       '@sloppy/types':
         specifier: workspace:*
         version: link:../types
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.3
+      surrealdb:
+        specifier: 'catalog:'
+        version: 2.0.8(tslib@2.8.1)(typescript@6.0.2)
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(typescript@6.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.2
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+
+  packages/ts/idp:
+    dependencies:
+      '@noble/curves':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@noble/hashes':
+        specifier: ^2.3.0
+        version: 2.3.0
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
+      zod:
+        specifier: 'catalog:'
+        version: 4.3.6
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.5.0
+        version: 2.5.0
       '@types/node':
         specifier: ^24.10.1
         version: 24.13.3
@@ -514,6 +727,12 @@ packages:
   '@eslint/plugin-kit@0.7.2':
     resolution: {integrity: sha512-+CNAzxglkrpNf/kKywqQfk74QjtceuOE7Qm+AF8miRvPF/wmmK5+OJOgVh3AVTT3RP2mH3+FOaxlE5v72owk0A==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  '@fontsource-variable/inter@5.2.8':
+    resolution: {integrity: sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ==}
+
+  '@fontsource-variable/jetbrains-mono@5.2.8':
+    resolution: {integrity: sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -786,6 +1005,14 @@ packages:
       '@nestjs/platform-express':
         optional: true
 
+  '@noble/curves@2.3.0':
+    resolution: {integrity: sha512-v7cY+4oWYPQszRj6ZFGzTVL7uP2TaLo1xMhWHzYC5wj0ZhOXQ5x+sBre8rF3hi8cAoi0bh1qXoovoOkdFtvqEg==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/hashes@2.3.0':
+    resolution: {integrity: sha512-oN+QwyX7VSHotibwubG3kpzbwKrfnyR6OOO+3Nk/53ADL7FmgHHz4TgrbaYKvvOw09u6QTx0oiH1cNCIOuN0CQ==}
+    engines: {node: '>= 20.19.0'}
+
   '@oxc-project/types@0.123.0':
     resolution: {integrity: sha512-YtECP/y8Mj1lSHiUWGSRzy/C6teUKlS87dEfuVKT09LgQbUsBW1rNg+MiJ4buGu3yuADV60gbIvo9/HplA56Ew==}
 
@@ -995,6 +1222,9 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
+  '@saurl/tauri-plugin-safe-area-insets-css-api@0.1.0':
+    resolution: {integrity: sha512-cZbOexV7OSBvgGECrqInA7daoCRLG5wGcUy/zrRIDaqXVKP6THdLWwsC5Ho6UD0lsxr8O4+zd1PPFJwrlHxTYg==}
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -1012,6 +1242,11 @@ packages:
     resolution: {integrity: sha512-wgKggnhZVL9Bfx1OaKKTrYY9BFRk6C8UAkQNUcIv1+llzYrIqy+RZm5HPKzn0NpEBvTVhTqB4kQyllZywsRBRQ==}
     peerDependencies:
       acorn: ^8.9.0
+
+  '@sveltejs/adapter-static@3.0.10':
+    resolution: {integrity: sha512-7D9lYFWJmB7zxZyTE/qxjksvMqzMuYrrsyh1f4AlZqeZeACPRySjbC3aFiY55wb1tWUaKOQG9PVbm74JcN2Iew==}
+    peerDependencies:
+      '@sveltejs/kit': ^2.0.0
 
   '@sveltejs/kit@2.57.0':
     resolution: {integrity: sha512-TMiqCTy9ZW4KBHvmTgeWU/hF6jcFpeMgR+9ekE06uhhGnbUZ7wpIY6l1Uk4ThRzlWYJnCVfzmtVNaHaDjaSiSg==}
@@ -1136,6 +1371,94 @@ packages:
     resolution: {integrity: sha512-mEiF5HO1QqCLXoNEfXVA1Tzo+cYsrqV7w9Juj2wdUFyW07JRenqMG225MvPwr3ZD9N1bFQj46X7r33iHxLUW0w==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
+
+  '@tauri-apps/api@2.11.1':
+    resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
+
+  '@tauri-apps/cli-darwin-arm64@2.11.4':
+    resolution: {integrity: sha512-1ryOF3ZhpZ/nemHV5zVwBQBz9jDGKmKPvWPADOhc83ig0P4bMc2iER4NbC6r9sjeIZ6RVQ4g3RZIYvezhcl4TQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tauri-apps/cli-darwin-x64@2.11.4':
+    resolution: {integrity: sha512-uFsGQAAfuyz1k/yGLmkWfkBlgKAqZfxqlHmLWx81QU27RJWfmbNHCIq8T8w1e+VClleIuZUjpHWfoE4E3DLo3A==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tauri-apps/cli-linux-arm-gnueabihf@2.11.4':
+    resolution: {integrity: sha512-IaHZn5CdBL21oUmjiVOS1ctw6Ip1O0pjp70FwOWmYz1myWe0SY96ZIj2FYf7pT0m8bI2h/hrs5ZbEXXh44/MkQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+
+  '@tauri-apps/cli-linux-arm64-gnu@2.11.4':
+    resolution: {integrity: sha512-N41/ukTRVe6XSuUTESuFdGeOW2i7k62tK+6gHK5Kd5/q5RPvvi19GaWAVPPb9u95HSGmTChSolBfzynUsssFaA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tauri-apps/cli-linux-arm64-musl@2.11.4':
+    resolution: {integrity: sha512-v277UnT/fB64xAfSroL5N3Km3tLmvATWqJJw/wRI+g6o+HkeD0slyE7gOhNs1MbjE41R7bQOTxMVoL3aomUJmw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@tauri-apps/cli-linux-riscv64-gnu@2.11.4':
+    resolution: {integrity: sha512-qqgNkQ2u1yZHxjhxsZaxUtRDW8dIqIYm33rx/mzwQv0SfY9x1B+iraj8vWeFiXjjSVVhEMepXSOts1TqPzvXNQ==}
+    engines: {node: '>= 10'}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tauri-apps/cli-linux-x64-gnu@2.11.4':
+    resolution: {integrity: sha512-2VRNWl84FOH0m2giiDkO2h0QXlcMJeX+zJDpI5kDIQAx6s+geF3v48F4DXfJez4GS/FdoDGnPnw1C2iYGbQ7bQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tauri-apps/cli-linux-x64-musl@2.11.4':
+    resolution: {integrity: sha512-o9GyhYor/nc7xarmwDE3ka2szuW3uuZzXjHWh64Q8YX5AtSgxdQkFWzrY4O8KiGtVNvFBI14H3Q49Qj5TOIP/A==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@tauri-apps/cli-win32-arm64-msvc@2.11.4':
+    resolution: {integrity: sha512-ld5Ehb598m0VkYyylRPNeCFsBe/km0jxis6KgMpl3IGY6I/i1RwQXO05I1AsXUXO2WC6AvB/Lw4qTf/asiuEiQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@tauri-apps/cli-win32-ia32-msvc@2.11.4':
+    resolution: {integrity: sha512-12Hxi0XX/H5VFxO/bGgHkFWhml9VMgEOu9CidjeCeTNQ1l6fpUlbiGgSP7CLI3PFtW9/FfbeHieZ+kyWK5H7CA==}
+    engines: {node: '>= 10'}
+    cpu: [ia32]
+    os: [win32]
+
+  '@tauri-apps/cli-win32-x64-msvc@2.11.4':
+    resolution: {integrity: sha512-+vDiqBIU5dMISg/wNvX3sF+ZHfgJGJ5T0AcO+EHNXV9GGAG+P5fzodlDXD3QdKCRgZxMoCm5PPvj3BqLNjBthw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@tauri-apps/cli@2.11.4':
+    resolution: {integrity: sha512-R8xGtMpwyetawSqm9kYOuMmEqkhUbvcUy8n0aNXIxollKBLESUu5f4Fx+64hgASYm1H+jSWq6jCW6zqTnH6hqQ==}
+    engines: {node: '>= 10'}
+    hasBin: true
+
+  '@tauri-apps/plugin-deep-link@2.4.9':
+    resolution: {integrity: sha512-u0SKOUHnJ1wqeqXsDFq2+kASCBj9xxbG0g9XZWPy9SOmU4wXtp6b/wiYpm6oH6/5fBTQsLqnLhIvqLBRpgHJlA==}
+
+  '@tauri-apps/plugin-http@2.5.9':
+    resolution: {integrity: sha512-lCiY0+vs4HvIUSvZrBs8TC3TiCB0MOPRmiUjTq4prW7SlcJE2jdLeT6KBsJrT9Tlplufl7W1pY6SFAO3gCWxDA==}
+
+  '@tauri-apps/plugin-opener@2.5.4':
+    resolution: {integrity: sha512-1HnPkb+AmgO29HBazm4uPLKB+r7zzcTBW1d0fyYp1uP+jwtpoiNDGKMMzz58SFp49nOIrxdE3aUJtT57lfO9CQ==}
 
   '@tokenizer/inflate@0.4.1':
     resolution: {integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==}
@@ -3816,6 +4139,10 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
+  '@fontsource-variable/inter@5.2.8': {}
+
+  '@fontsource-variable/jetbrains-mono@5.2.8': {}
+
   '@humanfs/core@0.19.2':
     dependencies:
       '@humanfs/types': 0.15.0
@@ -4120,6 +4447,12 @@ snapshots:
     optionalDependencies:
       '@nestjs/platform-express': 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)
 
+  '@noble/curves@2.3.0':
+    dependencies:
+      '@noble/hashes': 2.3.0
+
+  '@noble/hashes@2.3.0': {}
+
   '@oxc-project/types@0.123.0': {}
 
   '@oxc-project/types@0.147.0': {}
@@ -4228,6 +4561,10 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
+  '@saurl/tauri-plugin-safe-area-insets-css-api@0.1.0':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
+
   '@standard-schema/spec@1.1.0': {}
 
   '@surrealdb/cbor@2.0.0-alpha.4': {}
@@ -4242,6 +4579,10 @@ snapshots:
   '@sveltejs/acorn-typescript@1.0.13(acorn@8.18.0)':
     dependencies:
       acorn: 8.18.0
+
+  '@sveltejs/adapter-static@3.0.10(@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))':
+    dependencies:
+      '@sveltejs/kit': 2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
 
   '@sveltejs/kit@2.57.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.2(@typescript-eslint/types@8.58.1))(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)))(svelte@5.55.2(@typescript-eslint/types@8.58.1))(typescript@6.0.2)(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))':
     dependencies:
@@ -4350,6 +4691,67 @@ snapshots:
       '@tailwindcss/oxide': 4.2.2
       tailwindcss: 4.2.2
       vite: 8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)
+
+  '@tauri-apps/api@2.11.1': {}
+
+  '@tauri-apps/cli-darwin-arm64@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-darwin-x64@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-arm-gnueabihf@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-arm64-gnu@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-arm64-musl@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-riscv64-gnu@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-x64-gnu@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-x64-musl@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-win32-arm64-msvc@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-win32-ia32-msvc@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli-win32-x64-msvc@2.11.4':
+    optional: true
+
+  '@tauri-apps/cli@2.11.4':
+    optionalDependencies:
+      '@tauri-apps/cli-darwin-arm64': 2.11.4
+      '@tauri-apps/cli-darwin-x64': 2.11.4
+      '@tauri-apps/cli-linux-arm-gnueabihf': 2.11.4
+      '@tauri-apps/cli-linux-arm64-gnu': 2.11.4
+      '@tauri-apps/cli-linux-arm64-musl': 2.11.4
+      '@tauri-apps/cli-linux-riscv64-gnu': 2.11.4
+      '@tauri-apps/cli-linux-x64-gnu': 2.11.4
+      '@tauri-apps/cli-linux-x64-musl': 2.11.4
+      '@tauri-apps/cli-win32-arm64-msvc': 2.11.4
+      '@tauri-apps/cli-win32-ia32-msvc': 2.11.4
+      '@tauri-apps/cli-win32-x64-msvc': 2.11.4
+
+  '@tauri-apps/plugin-deep-link@2.4.9':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
+
+  '@tauri-apps/plugin-http@2.5.9':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
+
+  '@tauri-apps/plugin-opener@2.5.4':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
 
   '@tokenizer/inflate@0.4.1':
     dependencies:

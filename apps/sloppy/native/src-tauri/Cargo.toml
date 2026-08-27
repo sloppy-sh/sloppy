@@ -1,0 +1,55 @@
+[package]
+name = "sloppy-native"
+version = "0.0.1"
+description = "Sloppy — a Zettelkasten-structured, socially-shareable knowledge graph"
+authors = ["sloppy.sh"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "sloppy_native_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# The on-device graph engine (src/db.rs), off by default: surrealdb is ~60 MB of
+# native library per ABI. docs/ARCHITECTURE.md § "Local-only mode".
+local-mode = ["dep:surrealdb", "dep:tokio"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The sign-in round trip: out through opener, back through deep-link.
+tauri-plugin-deep-link = "2"
+tauri-plugin-opener = "2"
+# What `runtime.assetBytes` reaches a blob host through.
+tauri-plugin-http = "2"
+# Held to the same minor line as the server image in docker-compose.yml: the
+# repositories in @sloppy/data run against both, so SurrealQL has to mean the
+# same thing on-device as it does against a server.
+surrealdb = { version = "~3.1", default-features = false, features = [
+	"kv-surrealkv",
+], optional = true }
+tokio = { version = "1", features = ["sync"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# Android's WebView reports env(safe-area-inset-bottom) as 0 for the 3-button nav
+# bar, so the real WindowInsets are read natively and published as CSS vars.
+# DESIGN.md § "The four inset vars".
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-safe-area-insets-css = "0.2"
+
+# The platform presentation DESIGN.md § Layout's one modal reaches for. Keyed on
+# target OS rather than `mobile`, because macOS is desktop and still gets it.
+[target.'cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))'.dependencies]
+tauri-plugin-system-components = "0.1.8"
+
+# "deep-link" is what re-emits a forwarded URL through the deep-link plugin.
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

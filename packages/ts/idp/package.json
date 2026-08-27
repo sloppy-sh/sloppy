@@ -1,0 +1,51 @@
+{
+  "name": "@sloppy/idp",
+  "version": "0.0.1",
+  "description": "The embedded identity provider — syr's wire contracts, crypto and identity store, so Sloppy can be a syr instance with no network at all. See docs/ARCHITECTURE.md.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.mts",
+        "require": "./dist/index.d.ts"
+      },
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false .",
+    "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
+  },
+  "dependencies": {
+    "@noble/curves": "^2.3.0",
+    "@noble/hashes": "^2.3.0",
+    "@sloppy/types": "workspace:*",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "surrealdb": ">=2.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "@types/node": "^24.10.1",
+    "surrealdb": "catalog:",
+    "tsdown": "^0.22.14",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  }
+}
