@@ -43,16 +43,13 @@
 {#if dimensions.length > 0}
 	<div class="space-y-4">
 		{#each dimensions as dimension (dimension.ref)}
-			<div class="space-y-1.5">
-				<p class="text-sm font-medium">{dimension.name}</p>
-				<FacetValues
-					{dimension}
-					slot={slotFor(dimension.name)}
-					value={shown[dimension.name] ?? null}
-					emptyLabel="None"
-					onchange={(value) => void choose(dimension.name, value)}
-				/>
-			</div>
+			<FacetValues
+				{dimension}
+				slot={slotFor(dimension.name)}
+				value={shown[dimension.name] ?? null}
+				emptyLabel="None"
+				onchange={(value) => void choose(dimension.name, value)}
+			/>
 		{/each}
 
 		{#if failed}

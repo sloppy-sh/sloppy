@@ -32,6 +32,8 @@
 	/** Enough to see what an intersection caught without rendering a graph's
 	 *  worth of rows. */
 	const LISTED = 50;
+	/** A value can be on every note in the graph, and a rename moves all of them. */
+	const RELABELLED_AT_ONCE = 24;
 
 	let loading = $state(true);
 	let unreachable = $state<string | null>(null);
@@ -100,6 +102,13 @@
 		return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 	}
 
+	function losing(dimension: string): string {
+		const held = carrying(dimension);
+		if (held === 0) return 'Nothing is sorted along it yet.';
+		if (held === 1) return '1 note is sorted along it. The note stays; that label leaves it.';
+		return `${count(held, 'note', 'notes')} are sorted along it. Those notes stay; that label leaves them.`;
+	}
+
 	async function read(fresh: boolean): Promise<void> {
 		loading = !labels.loaded;
 		unreachable = null;
@@ -150,13 +159,16 @@
 			if (renames.length > 0) {
 				await labels.update(target.ref, { values: bridge });
 				for (const { from, to } of renames) {
-					await Promise.all(
-						all
-							.filter((node) => node.labels[target.name] === from)
-							.map((node) =>
-								nodes.update(node.ref, { labels: { ...node.labels, [target.name]: to } })
-							)
-					);
+					const carriers = all.filter((node) => node.labels[target.name] === from);
+					for (let at = 0; at < carriers.length; at += RELABELLED_AT_ONCE) {
+						await Promise.all(
+							carriers
+								.slice(at, at + RELABELLED_AT_ONCE)
+								.map((node) =>
+									nodes.update(node.ref, { labels: { ...node.labels, [target.name]: to } })
+								)
+						);
+					}
 				}
 			}
 			const renamed = draft.name !== target.name;
@@ -269,9 +281,11 @@
 								></span>
 								<div class="min-w-0 flex-1">
 									<p class="font-medium">{dimension.name}</p>
-									<p class="text-sm text-muted-foreground">
-										{count(held, 'note', 'notes')} sorted along it
-									</p>
+									{#if held > 0}
+										<p class="text-sm text-muted-foreground">
+											{count(held, 'note', 'notes')} sorted along it
+										</p>
+									{/if}
 								</div>
 								<Button
 									variant="ghost"
@@ -333,22 +347,18 @@
 				<div class="space-y-1">
 					<h2 class="text-lg font-medium">Find notes</h2>
 					<p class="text-sm text-muted-foreground">
-						Answer more than one dimension and you get the notes in all of them at once, from
-						wherever they sit in the graph.
+						The notes in every answer you pick, from wherever they sit in the graph.
 					</p>
 				</div>
 
 				{#each dimensions as dimension (dimension.ref)}
-					<div class="space-y-1.5">
-						<p class="text-sm font-medium">{dimension.name}</p>
-						<FacetValues
-							{dimension}
-							slot={labels.slotFor(dimension.name)}
-							value={query[dimension.name] ?? null}
-							emptyLabel="Any"
-							onchange={(value) => ask(dimension.name, value)}
-						/>
-					</div>
+					<FacetValues
+						{dimension}
+						slot={labels.slotFor(dimension.name)}
+						value={query[dimension.name] ?? null}
+						emptyLabel="Any"
+						onchange={(value) => ask(dimension.name, value)}
+					/>
 				{/each}
 
 				{#if matches}
@@ -402,9 +412,7 @@
 <ConfirmModal
 	bind:open={confirming}
 	title="Delete {removing?.name}?"
-	description={removing && carrying(removing.name) > 0
-		? `${count(carrying(removing.name), 'note is', 'notes are')} sorted along it. Those notes stay; that label leaves them.`
-		: 'Nothing is sorted along it yet.'}
+	description={removing ? losing(removing.name) : ''}
 	confirmLabel="Delete"
 	onconfirm={remove}
 />

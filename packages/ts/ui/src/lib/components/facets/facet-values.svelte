@@ -41,7 +41,7 @@
 </script>
 
 <fieldset class="min-w-0" {disabled}>
-	<legend class="sr-only">{dimension.name}</legend>
+	<legend class="mb-1.5 text-sm font-medium">{dimension.name}</legend>
 	<div class="-mx-1 flex gap-1.5 overflow-x-auto scroll-fade-x px-1 py-0.5 [scrollbar-width:none]">
 		<label class="shrink-0 cursor-pointer">
 			<input
