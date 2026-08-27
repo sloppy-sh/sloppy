@@ -414,6 +414,26 @@ re-render strokes still see the drawing.
 **TipTap's editor instance must not be `$state`** — Svelte's deep proxy corrupts its
 internals. Use a separate `ready` flag for post-mount UI.
 
+## Putting a note in a facet
+
+`LabelAssigner`, from `@sloppy/ui/facets`, is the one surface that edits a note's labels. It
+is **controlled and does not persist**:
+
+```ts
+value: LabelSet;                    // the note's labels now; `{}` is a note with none
+onchange: (next: LabelSet) => void; // the COMPLETE next set, never a delta
+busy?: boolean;                     // a save is in flight; refuse a second edit
+```
+
+The page that owns the note writes it, through `nodes.update`. The assigner writing for
+itself would race the save path, the optimistic state and the error copy that page already
+owns, and two writers to one node is the bug that costs a person their edit. It reads the
+available dimensions from the `labels` store directly, so nothing passes them in.
+
+**The page owns the trigger; the assigner is only the surface behind it.** A component that
+mounted its own floating control would fight the layout of whatever hosts it — the note page
+is already reconciling a fixed-position editor toolbar in the same region.
+
 ## Native shell
 
 Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/cli ^2.5.0`).
