@@ -16,11 +16,16 @@
 	import { keyboard } from '../keyboard.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
+	import { refFromPath } from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
 
 	/** Reachable with no account — DESIGN.md § Persistence, on appearance. */
 	const OPEN_ROUTES = ['/sign-in', '/settings'];
+
+	/** Signing in leaves the app entirely, so the note somebody came for has to
+	 *  outlive this document. */
+	const CITED = 'sloppy.cited';
 
 	const NAV: NavItem[] = [
 		{ id: 'graph', label: 'Graph', href: '/', icon: Network },
@@ -49,6 +54,24 @@
 		}
 	}
 
+	function holdCited(note: string): void {
+		try {
+			sessionStorage.setItem(CITED, note);
+		} catch {
+			// Storage turned off costs the citation, not the sign-in.
+		}
+	}
+
+	function claimCited(): string | null {
+		try {
+			const note = sessionStorage.getItem(CITED);
+			sessionStorage.removeItem(CITED);
+			return note;
+		} catch {
+			return null;
+		}
+	}
+
 	function stripHandOff(): void {
 		const url = new URL(page.url);
 		for (const key of ['sloppy_code', 'sloppy_state']) url.searchParams.delete(key);
@@ -69,12 +92,16 @@
 
 	$effect(() => {
 		if (!session.ready) return;
-		if (!session.signedIn && !OPEN_ROUTES.includes(path)) {
+		if (!session.signedIn) {
+			if (OPEN_ROUTES.includes(path)) return;
+			if (refFromPath(path)) holdCited(path);
 			const trouble = page.url.searchParams.get('sloppy_error');
 			void goto(trouble ? `/sign-in?sloppy_error=${encodeURIComponent(trouble)}` : '/sign-in');
-		} else if (session.signedIn && path === '/sign-in') {
-			void goto('/');
+			return;
 		}
+		const cited = claimCited();
+		if (cited && cited !== path) void goto(cited);
+		else if (path === '/sign-in') void goto('/');
 	});
 </script>
 

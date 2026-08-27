@@ -3,7 +3,6 @@
 	   to the shells, so this package has no manifest for `resolve()` to check
 	   against. */
 
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { Button } from '@sloppy/ui/button';
 	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -24,10 +23,13 @@
 
 	async function signOut() {
 		leaving = true;
-		await session.signOut();
-		nodes.clear();
-		labels.clear();
-		leaving = false;
+		try {
+			await session.signOut();
+		} finally {
+			nodes.clear();
+			labels.clear();
+			leaving = false;
+		}
 	}
 </script>
 
@@ -55,16 +57,7 @@
 	<div
 		class="mx-auto w-full max-w-2xl space-y-10 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-12 sm:px-8"
 	>
-		<div class="space-y-6">
-			<a
-				href="/"
-				class="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-			>
-				<ArrowLeft class="size-4" />
-				Graph
-			</a>
-			<h1 class="text-3xl font-semibold tracking-tight">Settings</h1>
-		</div>
+		<h1 class="text-3xl font-semibold tracking-tight">Settings</h1>
 
 		<fieldset class="space-y-3">
 			<legend class="text-sm font-medium">Theme</legend>
@@ -106,13 +99,13 @@
 		<div class="space-y-3 border-t border-border pt-8">
 			{#if session.signedIn}
 				<p class="text-sm text-muted-foreground">
-					Signed in at <span class="text-foreground select-text">{instance}</span>.
+					Your identity lives at <span class="text-foreground select-text">{instance}</span>.
 				</p>
 				<Button variant="ghost" onclick={signOut} disabled={leaving} class="h-11 px-0">
 					Sign out
 				</Button>
 			{:else}
-				<p class="text-sm text-muted-foreground">You are not signed in.</p>
+				<p class="text-sm text-muted-foreground">Your graph opens once you sign in.</p>
 				<a
 					href="/sign-in"
 					class="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline"
