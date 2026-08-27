@@ -8,6 +8,15 @@ FROM node:24-slim
 
 WORKDIR /app
 
+# `ps`, which Debian slim omits. The API's dev loop is a tree kill: Nest runs
+# the app under /bin/sh and, on a rebuild, reads the tree from `ps` to kill the
+# shell and the server together. With no `ps` it finds no children and kills
+# only the shell — the server survives holding the port, its replacement exits
+# EADDRINUSE, and the API answers healthily with the code you just changed away.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends procps \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
