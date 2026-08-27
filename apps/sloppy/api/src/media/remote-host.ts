@@ -41,6 +41,24 @@ function privateV6(ip: string): boolean {
 }
 
 /**
+ * The v4 address a v6 literal reaches, or `null`. `::ffff:127.0.0.1` is
+ * loopback wearing a v6 coat and the checks above do not see it — neither does
+ * the hex spelling of the same thing, nor the deprecated `::127.0.0.1`. The
+ * connection lands on the v4 host either way, so the v4 answer is the one that
+ * governs.
+ */
+function embeddedV4(ip: string): string | null {
+  const h = ip.toLowerCase();
+  const dotted = /^[0-9a-f:]*:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(h);
+  if (dotted) return dotted[1];
+  const hex = /^[0:]*:f{4}:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+  if (!hex) return null;
+  const high = Number.parseInt(hex[1], 16);
+  const low = Number.parseInt(hex[2], 16);
+  return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+}
+
+/**
  * `allowPrivate` is what a development machine needs and a deployment must
  * not have: two instances on one LAN are a real test, and the same permission
  * in production is a stranger reading this network through Sloppy.
@@ -64,6 +82,11 @@ export function isReachableRemoteHost(
     return privateV4(h) ? options.allowPrivate : true;
   }
   if (kind === 6) {
+    const mapped = embeddedV4(h);
+    if (mapped) {
+      if (alwaysRefusedV4(mapped)) return false;
+      return privateV4(mapped) ? options.allowPrivate : true;
+    }
     if (alwaysRefusedV6(h)) return false;
     return privateV6(h) ? options.allowPrivate : true;
   }

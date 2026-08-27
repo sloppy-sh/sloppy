@@ -13,6 +13,10 @@ describe("isReachableRemoteHost", () => {
     "255.255.255.255",
     "fe80::1",
     "ff02::1",
+    // A mapped literal reaches the v4 host, so the v4 answer governs it.
+    "::ffff:169.254.169.254",
+    "::ffff:a9fe:a9fe",
+    "::ffff:0.0.0.0",
   ])("refuses %s whatever the deployment allows", (host) => {
     expect(isReachableRemoteHost(host, strict)).toBe(false);
     expect(isReachableRemoteHost(host, permissive)).toBe(false);
@@ -27,6 +31,12 @@ describe("isReachableRemoteHost", () => {
     "100.64.0.1",
     "::1",
     "fd00::1",
+    "::ffff:127.0.0.1",
+    "::ffff:7f00:1",
+    "0:0:0:0:0:ffff:127.0.0.1",
+    "::127.0.0.1",
+    "::ffff:10.1.2.3",
+    "::ffff:192.168.1.1",
     "localhost",
     "minio.localhost",
   ])("refuses %s in production and allows it in development", (host) => {
@@ -38,6 +48,7 @@ describe("isReachableRemoteHost", () => {
     "203.0.113.5",
     "8.8.8.8",
     "2606:4700::1111",
+    "::ffff:8.8.8.8",
     "syr.example",
   ])("reaches %s either way", (host) => {
     expect(isReachableRemoteHost(host, strict)).toBe(true);
