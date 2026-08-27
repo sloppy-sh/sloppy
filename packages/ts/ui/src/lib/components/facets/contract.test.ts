@@ -49,6 +49,83 @@ describe('what a draft asks of a dimension', () => {
 
 	it('says nothing changed when nothing did', () => {
 		const changes = valueChanges(['seed'], [{ was: 'seed', now: 'seed' }]);
-		expect(changes).toEqual({ after: ['seed'], renames: [], bridge: ['seed'] });
+		expect(changes).toEqual({ after: ['seed'], renames: [], bridge: ['seed'], merges: [] });
+	});
+
+	it('reads two values traded for each other as two renames, not a merge', () => {
+		const changes = valueChanges(
+			['red', 'blue'],
+			[
+				{ was: 'red', now: 'blue' },
+				{ was: 'blue', now: 'red' }
+			]
+		);
+		expect(changes.renames).toEqual([
+			{ from: 'red', to: 'blue' },
+			{ from: 'blue', to: 'red' }
+		]);
+		expect(changes.merges).toEqual([]);
+		expect(changes.after).toEqual(['blue', 'red']);
+	});
+
+	it('reads a chain of renames as a chain, not a merge', () => {
+		const changes = valueChanges(
+			['a', 'b'],
+			[
+				{ was: 'a', now: 'b' },
+				{ was: 'b', now: 'c' }
+			]
+		);
+		expect(changes.renames).toEqual([
+			{ from: 'a', to: 'b' },
+			{ from: 'b', to: 'c' }
+		]);
+		expect(changes.merges).toEqual([]);
+	});
+});
+
+describe('a draft that puts two values under one name', () => {
+	it('names the merge when a value is typed onto one that stays', () => {
+		const changes = valueChanges(
+			['inkling', 'working', 'settled'],
+			[
+				{ was: 'inkling', now: 'inkling' },
+				{ was: 'working', now: 'settled' },
+				{ was: 'settled', now: 'settled' }
+			]
+		);
+		expect(changes.merges).toEqual([{ into: 'settled', from: ['working'] }]);
+		expect(changes.after).toEqual(['inkling', 'settled']);
+	});
+
+	it('names the merge when the value being landed on was removed from the list', () => {
+		const changes = valueChanges(['a', 'b'], [{ was: 'a', now: 'b' }]);
+		expect(changes.merges).toEqual([{ into: 'b', from: ['a'] }]);
+	});
+
+	it('names the merge when two values are typed onto a third', () => {
+		const changes = valueChanges(
+			['a', 'b'],
+			[
+				{ was: 'a', now: 'c' },
+				{ was: 'b', now: 'c' }
+			]
+		);
+		expect(changes.merges).toEqual([{ into: 'c', from: ['a', 'b'] }]);
+		expect(changes.renames).toEqual([
+			{ from: 'a', to: 'c' },
+			{ from: 'b', to: 'c' }
+		]);
+	});
+
+	it('keeps both names on the dimension while the notes are moved', () => {
+		const changes = valueChanges(
+			['working', 'settled'],
+			[
+				{ was: 'working', now: 'settled' },
+				{ was: 'settled', now: 'settled' }
+			]
+		);
+		expect(changes.bridge).toEqual(expect.arrayContaining(['working', 'settled']));
 	});
 });

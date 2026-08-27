@@ -11,5 +11,6 @@ export type {
 	EditedValue,
 	LabelPickerProps,
 	SlotLookup,
-	ValueChanges
+	ValueChanges,
+	ValueMerge
 } from './contract.js';

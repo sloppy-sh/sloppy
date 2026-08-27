@@ -39,6 +39,14 @@ export interface DimensionDraft {
 	color_slot?: FacetSlot;
 }
 
+/** Values the draft puts under one name. Every note carrying one of {@link from}
+ *  ends up labelled {@link into}, and which one it held is not kept. */
+export interface ValueMerge {
+	into: string;
+	/** In the order the draft listed them; never holds {@link into} itself. */
+	from: string[];
+}
+
 export interface ValueChanges {
 	/** The list the dimension ends up holding, trimmed and deduplicated. */
 	after: string[];
@@ -49,6 +57,8 @@ export interface ValueChanges {
 	 * the notes onto it, and only then drops the old one.
 	 */
 	bridge: string[];
+	/** Empty unless the draft collapses values the dimension already holds. */
+	merges: ValueMerge[];
 }
 
 export function valueChanges(
@@ -57,13 +67,24 @@ export function valueChanges(
 ): ValueChanges {
 	const after: string[] = [];
 	const renames: { from: string; to: string }[] = [];
+	/** Which of the dimension's own values each name ends up holding. */
+	const landing = new Map<string, string[]>();
 	for (const value of draft) {
 		const now = value.now.trim();
-		if (!now || after.includes(now)) continue;
-		after.push(now);
-		if (value.was !== undefined && value.was !== now && before.includes(value.was)) {
-			renames.push({ from: value.was, to: now });
-		}
+		if (!now) continue;
+		if (!after.includes(now)) after.push(now);
+		if (value.was === undefined || !before.includes(value.was)) continue;
+		landing.set(now, [...(landing.get(now) ?? []), value.was]);
+		if (value.was !== now) renames.push({ from: value.was, to: now });
 	}
-	return { after, renames, bridge: [...new Set([...before, ...after])] };
+
+	const vacated = new Set(renames.map((rename) => rename.from));
+	const merges: ValueMerge[] = [];
+	for (const [into, sources] of landing) {
+		const from = sources.filter((source) => source !== into);
+		const keepsItsOwn = before.includes(into) && !vacated.has(into);
+		if (from.length > 1 || (from.length === 1 && keepsItsOwn)) merges.push({ into, from });
+	}
+
+	return { after, renames, bridge: [...new Set([...before, ...after])], merges };
 }

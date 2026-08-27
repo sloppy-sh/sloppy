@@ -28,6 +28,7 @@ function open(props: Record<string, unknown> = {}) {
 		target,
 		props: {
 			open: true,
+			carrying: new Map<string, number>(),
 			onsave: (draft: DimensionDraft) => {
 				drafts.push({ ...draft, values: draft.values.map((value) => ({ ...value })) });
 				return Promise.resolve();
@@ -136,5 +137,92 @@ describe('declaring and editing a dimension', () => {
 	it('does not offer a way back once a hue is pinned', () => {
 		open({ dimension: { ...STATUS, color_slot: 3 } });
 		expect(document.body.textContent).not.toContain('Pick for me');
+	});
+});
+
+describe('a draft that would put two values under one name', () => {
+	const carrying = new Map([
+		['seed', 12],
+		['growing', 1]
+	]);
+
+	it('asks before it relabels, and says how many notes move', () => {
+		open({ dimension: STATUS, carrying });
+		type(values()[0], 'growing');
+		button('Save')?.click();
+		flushSync();
+		expect(drafts).toEqual([]);
+		expect(document.body.textContent).toContain('Merge into growing?');
+		expect(document.body.textContent).toContain('12 notes labelled seed become growing.');
+	});
+
+	it('counts one note as one note', () => {
+		open({ dimension: STATUS, carrying });
+		type(values()[1], 'seed');
+		button('Save')?.click();
+		flushSync();
+		expect(document.body.textContent).toContain('1 note labelled growing becomes seed.');
+	});
+
+	it('goes back to the values without touching a note', () => {
+		open({ dimension: STATUS, carrying });
+		type(values()[0], 'growing');
+		button('Save')?.click();
+		flushSync();
+		button('Back')?.click();
+		flushSync();
+		expect(drafts).toEqual([]);
+		expect(values().map((one) => one.value)).toEqual(['growing', 'growing']);
+	});
+
+	it('saves the draft once the merge is answered', async () => {
+		open({ dimension: STATUS, carrying });
+		type(values()[0], 'growing');
+		button('Save')?.click();
+		flushSync();
+		button('Merge and save')?.click();
+		await settle();
+		expect(drafts[0].values).toEqual([
+			{ was: 'seed', now: 'growing' },
+			{ was: 'growing', now: 'growing' }
+		]);
+	});
+
+	it('says why a merge would not save, where the question was asked', async () => {
+		open({
+			dimension: STATUS,
+			carrying,
+			refused: 'Sloppy could not save that dimension. Try again in a moment.',
+			onsave: () => Promise.reject(new Error('nope'))
+		});
+		type(values()[0], 'growing');
+		button('Save')?.click();
+		flushSync();
+		button('Merge and save')?.click();
+		await settle();
+		expect(document.body.textContent).toContain('Sloppy could not save that dimension');
+		expect(button('Merge and save')).toBeDefined();
+	});
+
+	it('does not ask where the values it collapses are on no notes', async () => {
+		open({ dimension: STATUS, carrying: new Map() });
+		type(values()[0], 'growing');
+		button('Save')?.click();
+		await settle();
+		expect(drafts).toHaveLength(1);
+	});
+
+	it('does not ask a dimension being declared for the first time', async () => {
+		open();
+		type(field('input[placeholder="domain"]')!, 'status');
+		button('Add a value')?.click();
+		flushSync();
+		type(values()[0], 'seed');
+		button('Add a value')?.click();
+		flushSync();
+		type(values()[1], 'seed');
+		button('Add dimension')?.click();
+		await settle();
+		expect(drafts).toHaveLength(1);
 	});
 });

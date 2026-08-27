@@ -37,8 +37,7 @@
 
 	let loading = $state(true);
 	let unreachable = $state<string | null>(null);
-	/** An act failed while the page is fine; it sits beside the act. */
-	let refused = $state<string | null>(null);
+	let removeRefused = $state<string | null>(null);
 	let editing = $state<LabelDimensionView | undefined>(undefined);
 	let editorOpen = $state(false);
 	let editorRefused = $state<string | null>(null);
@@ -150,25 +149,31 @@
 	async function save(draft: DimensionDraft): Promise<void> {
 		const target = editing;
 		editorRefused = null;
+		let relabelled = 0;
 		try {
 			const { after, renames, bridge } = valueChanges(target?.values ?? [], draft.values);
 			if (!target) {
 				await labels.create({ name: draft.name, values: after, color_slot: draft.color_slot });
 				return;
 			}
+			// Bucketed before the first write: two renames that cross would otherwise
+			// sweep up the notes an earlier one has just moved.
+			const moving = renames.flatMap(({ from, to }) =>
+				all
+					.filter((node) => node.labels[target.name] === from)
+					.map((node) => ({ ref: node.ref, labels: { ...node.labels, [target.name]: to } }))
+			);
 			if (renames.length > 0) {
 				await labels.update(target.ref, { values: bridge });
-				for (const { from, to } of renames) {
-					const carriers = all.filter((node) => node.labels[target.name] === from);
-					for (let at = 0; at < carriers.length; at += RELABELLED_AT_ONCE) {
-						await Promise.all(
-							carriers
-								.slice(at, at + RELABELLED_AT_ONCE)
-								.map((node) =>
-									nodes.update(node.ref, { labels: { ...node.labels, [target.name]: to } })
-								)
-						);
-					}
+				for (let at = 0; at < moving.length; at += RELABELLED_AT_ONCE) {
+					const batch = await Promise.allSettled(
+						moving
+							.slice(at, at + RELABELLED_AT_ONCE)
+							.map(({ ref, labels: next }) => nodes.update(ref, { labels: next }))
+					);
+					relabelled += batch.filter((one) => one.status === 'fulfilled').length;
+					const stopped = batch.find((one) => one.status === 'rejected');
+					if (stopped) throw stopped.reason;
 				}
 			}
 			const renamed = draft.name !== target.name;
@@ -177,19 +182,38 @@
 				values: after,
 				color_slot: draft.color_slot
 			});
+			followRename(target.name, draft.name, renames, after);
 			// The API carries the key across every note that held it, so what is
 			// cached here is a set of stale labels until they are read again.
 			if (renamed) await read(true);
 		} catch (error) {
 			editorRefused =
-				serverMessage(error) ?? 'Sloppy could not save that dimension. Try again in a moment.';
+				relabelled > 0
+					? 'Some notes were relabelled before that stopped. Save again to finish the rest.'
+					: (serverMessage(error) ??
+						'Sloppy could not save that dimension. Try again in a moment.');
 			throw error;
 		}
 	}
 
+	/** Find notes asks in names, so a rename carries the question over rather than
+	 *  leaving it on one nothing holds. */
+	function followRename(
+		dimensionWas: string,
+		dimensionNow: string,
+		values: readonly { from: string; to: string }[],
+		kept: readonly string[]
+	): void {
+		const asked = query[dimensionWas];
+		if (asked === undefined) return;
+		delete query[dimensionWas];
+		const now = values.find((rename) => rename.from === asked)?.to ?? asked;
+		if (kept.includes(now)) query[dimensionNow] = now;
+	}
+
 	function confirmRemove(dimension: LabelDimensionView): void {
 		removing = dimension;
-		refused = null;
+		removeRefused = null;
 		confirming = true;
 	}
 
@@ -201,7 +225,7 @@
 			delete query[target.name];
 			await read(true);
 		} catch (error) {
-			refused =
+			removeRefused =
 				serverMessage(error) ?? 'Sloppy could not remove that dimension. Try again in a moment.';
 			throw error;
 		}
@@ -339,8 +363,6 @@
 						</li>
 					{/each}
 				</ul>
-
-				{#if refused}<p class="text-sm text-destructive" role="alert">{refused}</p>{/if}
 			</section>
 
 			<section class="space-y-4">
@@ -407,13 +429,20 @@
 	</div>
 </div>
 
-<DimensionEditor bind:open={editorOpen} dimension={editing} onsave={save} refused={editorRefused} />
+<DimensionEditor
+	bind:open={editorOpen}
+	dimension={editing}
+	carrying={(editing && counts.get(editing.name)) || new Map()}
+	onsave={save}
+	refused={editorRefused}
+/>
 
 <ConfirmModal
 	bind:open={confirming}
 	title="Delete {removing?.name}?"
 	description={removing ? losing(removing.name) : ''}
 	confirmLabel="Delete"
+	refused={removeRefused}
 	onconfirm={remove}
 />
 
