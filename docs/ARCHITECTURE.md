@@ -59,11 +59,13 @@ load-bearing rather than tidy. `pnpm-workspace.yaml` carries the measurements.
 **The shells are ~200-line boots.** Everything product-shaped lives in `@sloppy/app-core`.
 One codebase serves web and native only for as long as that holds.
 
-**`apps/sloppy/api/src/app.module.ts` is closed.** A milestone fills one of the feature
-modules it already imports — auth, idp, node, block — rather than adding another to the
-list, because a shared import list is the one file every branch edits and then every branch
-conflicts on. `IdpModule` is a dynamic module for the same reason: local mode is gated on
-whether it registers anything, and that decision has to live inside it.
+**`apps/sloppy/api/src/app.module.ts` is a foundation file.** A shared import list is the
+one file every branch edits and then every branch conflicts on, so a milestone fills one of
+the feature modules it already imports — auth, idp, node, block, media, profile, emoji —
+and a new entry is added in the foundation wave, before any track forks, or not at all. An
+entry earns its place only by owning a concern none of the others does. `IdpModule` is a
+dynamic module for a related reason: local mode is gated on whether it registers anything,
+and that decision has to live inside it.
 
 ## The two files that carry the platform seam
 
@@ -133,6 +135,27 @@ its crypto. The Nest module is gated on `SLOPPY_LOCAL_IDP`, and the embedded Sur
 gated on a Cargo `local-mode` feature driven from **the same variable** as the frontend
 flag, so the two cannot drift. Off by default.
 
+**The embedded provider holds files, emoji and a profile, because a provider that does not
+is not one.** Avatars, banners, emoji and block pictures are syr's to keep (the table
+above), so an instance whose identity provider serves no `/uploads`, `/folders`, `/emojis`
+or `/user/profile` has no media, no custom emoji and no editable profile at all — the
+routes that answer are `api/src/idp/{owner,blob}.controller.ts` and the rules behind them
+are `@sloppy/idp`'s `files.ts` and `emojis.ts`.
+
+- **The bytes go to object storage; the row goes to SurrealDB.** `idp_upload` names where
+  a blob sits and what it is; `BlobStore` is the S3 client that holds it. Every object is
+  private and reads are served by `GET /api/idp/blob/{did}/{localId}`, so the store is
+  never exposed to the internet and an asset URL stays valid for the upload's life.
+- **A folder named `public` is the whole access rule.** An upload under one is readable by
+  anyone and is listed by `GET /api/idp/public/uploads/{did}`; anything else answers only
+  its owner's token. Which folder a role writes into is § "Pictures" below.
+- **`upload_url` is opaque by contract.** This provider signs a URL to its own route
+  rather than presigning an S3 one; `@sloppy/types`' `media.ts` is written so a caller
+  cannot tell the difference.
+- **Scopes are recorded on the delegation and enforced.** `posts:write` is what the
+  consent screen asks for and what every write above checks — a delegation without it can
+  read and nothing more.
+
 ### Federating the graph
 
 syr federation is **pull-only** — no relay, no firehose. Follow a DID → resolve
@@ -144,9 +167,79 @@ their subtree in as a foreign, read-only region **with its addresses intact** �
 deterministic address is what makes a pulled subtree land in a known shape rather than as
 an opaque blob.
 
-**`proxied()` on every remote asset.** Viewing a federated node must never leak the
-viewer's IP to the author's instance. The pattern is Slyng's
-(`app-core/.../utils/proxy.ts` → `api/src/proxy/proxy.controller.ts`).
+## Pictures
+
+Who may read a picture is decided once, by the folder its bytes land in, and everything
+else follows from that. `folderPathFor` in `api/src/media/media.service.ts` is the whole
+policy:
+
+| Role                       | Folder            | Who can read it                                          |
+| -------------------------- | ----------------- | -------------------------------------------------------- |
+| `avatar`, `banner`         | `public/sloppy/…` | anyone — a peer resolving the DID has to see them        |
+| `emoji`                    | `public/sloppy/…` | anyone — a federated `:shortcode:` renders for everybody |
+| `block` (a note's picture) | `sloppy/notes`    | its owner alone                                          |
+
+**A note is private until its subtree is published, so its pictures are too.** The owner
+reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks their own
+store for it as them; nothing else can, and it is not listed among an identity's public
+uploads. That route needs the reader's session, and an `<img>` carries no credential
+across origins — so `SloppyClient.ownPicture` answers with the address itself where the
+API shares the page's origin and with the fetched bytes anywhere else. It is the only way
+one of these draws, which is why a `MediaAsset` carries an `upload_id` and no address at
+all: who may read a picture is the store's answer, not the row's.
+
+**Open gap, and the milestone that owns it: publishing a subtree does not yet make its
+pictures reachable.** A peer who pulls a published subtree today gets addresses that
+answer 404, because the bytes sit outside `public/`. Federation-side publishing is what
+has to close this — by moving or re-publishing a published node's blobs — and it must
+close it deliberately: an address a peer already holds is load-bearing (AI.md § "The
+Address Is the Protocol"), so a URL minted public cannot quietly become private later.
+That is why the default is private now and widened at publish, never the other way round.
+
+**Every renderable address is minted by the API, and none of them is a URL.** `AssetLinks`
+(`api/src/media/asset-link.ts`) signs the address a picture actually lives at and hands
+back a path — `/proxy?ref=…` — because this instance answers at several addresses and
+cannot see which of them a shell can reach: a web shell forwards `/api` from its own
+origin, the native shell dials a host and port a person configured. An origin chosen here
+would be a guess, and on a phone a wrong one. `proxied()` in `@sloppy/client`'s `host.ts`
+is the client half: it resolves a minted path against the host this shell reaches, and
+sends anything absolute — a look-alike from a peer included — to the asset route unsigned,
+where it is refused rather than fetched.
+
+`GET /api/proxy` fetches what the signature names and nothing a caller typed, so a route
+that has to be public (an `<img>` carries no credential) is still not somewhere a stranger
+can aim this instance. It refuses anything the far end answers with that is not one of the
+image types `media.service.ts` enumerates, because a signature alone would still let a
+redirect launder a document. Which addresses it will connect to is
+`api/src/media/remote-host.ts` — **every** redirect hop is checked there, not only the
+address a link named, and a credential is dropped the moment a hop leaves the origin it
+was for.
+
+**How much it will carry is enforced on the bytes that arrive**, because a declared length
+is the far end's claim and can be absent. A body that runs past the cap has its transfer
+dropped: the head is out by then, so there is no status left to say it with, and a
+truncated file delivered as a whole one is worse than a broken image. `picture-relay.ts`
+drives the writes from one place for exactly this reason — a cap that ends the response
+while something else is still piping into it ends the process instead of the transfer.
+
+**Nothing a caller sends names a picture by address.** A profile and an emoji name an
+upload or a catalog entry, and the API reads the address back out of the caller's own
+store — otherwise a signed-in caller could have this instance mint a durable public link
+for a URL of their choosing and fetch it from this instance's address for every reader.
+**Owning a picture is not enough to use it for anything**, either: `ownPicture` is told
+what the picture is about to be used AS, and a note's picture named as an avatar or a
+banner is refused. A profile is read by strangers, so accepting one would write a private
+blob's address into a public record and leave a picture nobody — its owner included — can
+see.
+
+**The route rations fetches per caller**, which is what stands between a public route and
+a stranger's fetch loop. A link this instance did not mint spends nothing, so a caller
+holding no link cannot empty anybody's ration. Who the caller is comes from the session,
+or from `req.ip` — and behind a reverse proxy that is the proxy unless the instance is
+told otherwise, which would put every anonymous reader on one shared ration.
+`SLOPPY_TRUSTED_PROXIES` is that setting: how many proxies forward here, or which
+addresses they have. Development trusts the private network by default, because the web
+shell's dev server stands in for the shared origin.
 
 ## Data model
 
@@ -199,6 +292,12 @@ The rules AI.md's foundation-wave section states, applied here:
 - Every user-owned table has `created_by` and is purged by it. Purging through a parent row
   leaks every orphan, permanently. `schema.ts` makes the column immutable, so ownership
   cannot be reassigned out from under the sweep.
+- **Erasing an identity erases its bytes too, and the signature says so.**
+  `purgeIdentity` in `@sloppy/idp`'s `store.ts` takes the object-store removal as a
+  parameter, because a sweep that drops the upload rows and leaves the objects has not
+  deleted anybody's pictures — and the store belongs to the API, not to the package that
+  owns the rows. The rows go second, so a store that was down for the first attempt leaves
+  a second one something to work from.
 - **`created_by` is a top-level column and not just the `created_by` inside the key**,
   because SurrealDB will not use a composite index whose second column is a nested path.
   Every index leads with it, which is what lets one index serve the user-scoped read and

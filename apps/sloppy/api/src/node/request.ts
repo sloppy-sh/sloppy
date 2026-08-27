@@ -6,9 +6,15 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { type DidSyr, type OwnedRef, OwnedRefSchema } from "@sloppy/types";
+import {
+  type DidSyr,
+  DidSyrSchema,
+  type OwnedRef,
+  OwnedRefSchema,
+} from "@sloppy/types";
 import type { z } from "zod";
 import type { AuthedRequest } from "../auth/authed-request";
+import type { Delegation } from "../syr/syr.service";
 
 /** `AuthGuard` has already refused a request without one; this is the type
  *  narrowing, not a second check. */
@@ -16,6 +22,17 @@ export function viewerDid(request: AuthedRequest): DidSyr {
   const did = request.viewer?.did;
   if (!did) throw new UnauthorizedException("Sign in to continue.");
   return did;
+}
+
+/**
+ * What a route needs to act on the person's identity store as them. Held apart
+ * from {@link viewerDid} because it carries the delegated token: a route that
+ * only names the caller must not be handed a credential it could echo.
+ */
+export function viewerDelegation(request: AuthedRequest): Delegation {
+  const delegation = request.delegation;
+  if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+  return delegation;
 }
 
 export function parseBody<S extends z.ZodType>(
@@ -51,6 +68,14 @@ export function parsePatch<S extends z.ZodType>(
       .filter((field) => field in parsed)
       .map((field) => [field, parsed[field]]),
   ) as Partial<z.output<S>>;
+}
+
+/** An identity named in a path. A person never types one — it arrives from a
+ *  link — so a malformed one is a page that is not there. */
+export function didOrRefuse(raw: string): DidSyr {
+  const parsed = DidSyrSchema.safeParse(decodeURIComponent(raw));
+  if (!parsed.success) throw new NotFoundException("That person is not here.");
+  return parsed.data;
 }
 
 /** `null` rather than a refusal, for a route where "gone" is an answer. */

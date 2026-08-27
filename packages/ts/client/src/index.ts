@@ -6,19 +6,29 @@
 import {
   type BlockView,
   BlockViewSchema,
+  type CompleteUploadRequest,
   type ConsentRedirect,
   ConsentRedirectSchema,
+  type CopyEmojiRequest,
   type CreateBlockRequest,
+  type CreateEmojiRequest,
   type CreateLabelDimensionRequest,
   type CreateNodeRequest,
   type CreatePublicationRequest,
+  type CreateUploadRequest,
+  type CustomEmoji,
+  CustomEmojiSchema,
   type ExchangeSessionRequest,
   type HealthReport,
   HealthReportSchema,
   type LabelDimensionView,
   LabelDimensionViewSchema,
+  type MediaAsset,
+  MediaAssetSchema,
   type NodeView,
   type OwnedRef,
+  type ProfileView,
+  ProfileViewSchema,
   type PublicationView,
   PublicationViewSchema,
   type PublishedSubtree,
@@ -29,6 +39,9 @@ import {
   type UpdateBlockRequest,
   type UpdateLabelDimensionRequest,
   type UpdateNodeRequest,
+  type UpdateProfileRequest,
+  type UploadTicket,
+  UploadTicketSchema,
   type Viewer,
   ViewerSchema,
   parseNodeView,
@@ -38,6 +51,7 @@ import { apiUrl, isSameOrigin } from "./host.js";
 
 export * from "./errors.js";
 export * from "./host.js";
+export * from "./upload.js";
 
 export type TokenSource = string | (() => string | undefined);
 
@@ -52,7 +66,7 @@ export interface SloppyClientOptions {
 }
 
 /** A ref split into the two path segments a route binds it as. */
-function refPath(ref: OwnedRef): string {
+function refPath(ref: string): string {
   const separator = ref.lastIndexOf("/");
   if (separator < 1)
     throw new Error(`Expected a <did>/<ulid> reference: ${ref}`);
@@ -89,7 +103,7 @@ export class SloppyClient {
     // session the same way.
     const credential = this.currentToken() ?? "";
     if (credential) headers.set("authorization", `Bearer ${credential}`);
-    headers.set("accept", "application/json");
+    if (!headers.has("accept")) headers.set("accept", "application/json");
     const res = await this.fetchImpl(apiUrl(path), {
       // A cookie session only exists where the API shares the page's origin.
       // Everywhere else the bearer token above is the whole of the credential,
@@ -380,5 +394,105 @@ export class SloppyClient {
     _rootAddress: string,
   ): Promise<PublishedSubtree> {
     return notImplemented("Pulling a peer's subtree");
+  }
+
+  // ── Media ────────────────────────────────────────────────────────────────
+
+  /**
+   * Where to send a file, and where it will read back from. `uploadFile` in
+   * this package drives all three steps; a caller that has bytes rather than a
+   * `File` uses this and {@link completeUpload} directly.
+   */
+  async createUpload(request: CreateUploadRequest): Promise<UploadTicket> {
+    return UploadTicketSchema.parse(
+      await this.send("POST", "/media/uploads", request),
+    );
+  }
+
+  async completeUpload(request: CompleteUploadRequest): Promise<MediaAsset> {
+    return MediaAssetSchema.parse(
+      await this.send("POST", "/media/uploads/complete", request),
+    );
+  }
+
+  /**
+   * One of the caller's own pictures, ready for an `<img>`. A note is private
+   * until its subtree is published and so are its pictures, so this is the only
+   * way one of them draws.
+   *
+   * Where the API shares the page's origin the address is the whole answer,
+   * because the session cookie rides the request. Anywhere else an `<img>`
+   * carries no credential, so the bytes are fetched with the caller's token and
+   * served from memory — which is what `release` frees. Call it when the
+   * picture comes off the screen; it is a no-op on the same-origin answer.
+   */
+  async ownPicture(
+    uploadId: MediaAsset["upload_id"],
+  ): Promise<{ src: string; release: () => void }> {
+    const path = `/media/uploads${refPath(uploadId)}`;
+    if (isSameOrigin()) return { src: apiUrl(path), release: () => {} };
+
+    const res = await this.request(path, {
+      method: "GET",
+      headers: { accept: "image/*" },
+    });
+    if (!res.ok) {
+      throw this.error(res, path, await res.text().catch(() => ""));
+    }
+    const src = URL.createObjectURL(await res.blob());
+    return { src, release: () => URL.revokeObjectURL(src) };
+  }
+
+  // ── Profile ──────────────────────────────────────────────────────────────
+
+  async profile(): Promise<ProfileView> {
+    return ProfileViewSchema.parse(
+      await this.json("/profile/me", { method: "GET" }),
+    );
+  }
+
+  async updateProfile(request: UpdateProfileRequest): Promise<ProfileView> {
+    return ProfileViewSchema.parse(
+      await this.send("PATCH", "/profile/me", request),
+    );
+  }
+
+  /** Somebody else, as the reader's own instance can resolve them. */
+  async profileOf(did: string): Promise<ProfileView> {
+    return ProfileViewSchema.parse(
+      await this.json(`/profile/${encodeURIComponent(did)}`, { method: "GET" }),
+    );
+  }
+
+  // ── Emoji ────────────────────────────────────────────────────────────────
+
+  async ownEmoji(): Promise<CustomEmoji[]> {
+    const body = await this.json("/emoji/me", { method: "GET" });
+    return (body as unknown[]).map((e) => CustomEmojiSchema.parse(e));
+  }
+
+  /** The catalog a note's author wrote their `:shortcode:` against. */
+  async emojiOf(did: string): Promise<CustomEmoji[]> {
+    const body = await this.json(`/emoji/${encodeURIComponent(did)}`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map((e) => CustomEmojiSchema.parse(e));
+  }
+
+  /** The picture is uploaded first; this names it. */
+  async addEmoji(request: CreateEmojiRequest): Promise<CustomEmoji> {
+    return CustomEmojiSchema.parse(
+      await this.send("POST", "/emoji/me", request),
+    );
+  }
+
+  async copyEmoji(request: CopyEmojiRequest): Promise<CustomEmoji> {
+    return CustomEmojiSchema.parse(
+      await this.send("POST", "/emoji/me/copies", request),
+    );
+  }
+
+  async removeEmoji(emojiId: CustomEmoji["emoji_id"]): Promise<void> {
+    await this.del(`/emoji/me${refPath(emojiId)}`);
   }
 }

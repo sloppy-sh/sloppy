@@ -16,7 +16,7 @@ const SCOPE_WORDS: Record<SyrScope, string> = {
   "identity:verify": "Prove it is really you",
   "profile:read": "See your name and picture",
   "posts:read": "Read what you write",
-  "posts:write": "Write in your name",
+  "posts:write": "Write in your name, and change your name, pictures and files",
 };
 
 const STYLES = `

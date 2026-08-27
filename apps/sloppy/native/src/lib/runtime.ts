@@ -6,7 +6,6 @@
 
 import { initRuntime } from '@sloppy/app-core';
 import { invoke } from '@tauri-apps/api/core';
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { LOCAL_MODE_AVAILABLE } from './local-mode';
 import { TAURI_PLATFORM } from './platform';
@@ -21,19 +20,9 @@ const DEV_API_ORIGIN =
  *  (`AppConfigService`) and a fresh clone runs with no .env at all. */
 const API_HOST = (import.meta.env.PUBLIC_SLOPPY_API_URL || DEV_API_ORIGIN).replace(/\/+$/, '');
 
-async function nativeAssetBytes(url: string): Promise<ArrayBuffer> {
-	// Only a remote host needs the hop out of the webview; a data: URL or a
-	// bundled asset is already ours and the webview's own fetch reaches it.
-	const remote = /^https?:\/\//i.test(url);
-	const res = remote ? await tauriFetch(url) : await globalThis.fetch(url);
-	if (!res.ok) throw new Error(`asset fetch ${res.status} for ${url}`);
-	return res.arrayBuffer();
-}
-
 export function initNativeRuntime(): void {
 	initRuntime({
 		apiHost: () => API_HOST,
-		assetBytes: nativeAssetBytes,
 		// The return leg is `deep-link.ts`.
 		openExternal: (url) => openUrl(url),
 		// Only a build carrying the on-device engine has anything on disk to erase.

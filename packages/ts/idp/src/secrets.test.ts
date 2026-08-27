@@ -10,8 +10,9 @@ describe("the derived secrets", () => {
   });
 
   it("gives each job its own key", () => {
-    const { tokenSigning, delegateSealing } = deriveIdpSecrets("z".repeat(48));
-    expect(delegateSealing).not.toEqual(tokenSigning);
+    const keys = Object.values(deriveIdpSecrets("z".repeat(48)));
+    const distinct = new Set(keys.map((key) => key.toString("hex")));
+    expect(distinct.size).toBe(keys.length);
   });
 
   it("separates two instances", () => {

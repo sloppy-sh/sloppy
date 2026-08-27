@@ -36,10 +36,12 @@ export default defineConfig(({ mode }) => {
 			// server bound to loopback.
 			host: true,
 			// The app and the API share an origin wherever this is deployed. In
-			// dev they are two processes, so the dev server stands in for it.
+			// dev they are two processes, so the dev server stands in for it —
+			// including forwarding who is asking, which the API rations the
+			// public asset route by.
 			proxy: {
-				[API_PREFIX]: api,
-				[DISCOVERY_PREFIX]: api
+				[API_PREFIX]: { target: api, xfwd: true },
+				[DISCOVERY_PREFIX]: { target: api, xfwd: true }
 			}
 		},
 		preview: { port: 8030, strictPort: true }

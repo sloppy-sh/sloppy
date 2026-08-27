@@ -28,7 +28,14 @@ const HAND_OFF_TTL_MS = 2 * 60 * 1000;
  */
 const RECHECK_MS = 5 * 60 * 1000;
 
-const SCOPES = ["identity:read", "profile:read"] as const;
+/**
+ * Sloppy signs notes as the person, keeps their pictures in their own file
+ * store and their emoji in their own catalog, and saves the name and pictures
+ * they choose — so `posts:write` is asked for up front. syr's scope vocabulary
+ * has no finer word for it, and asking for less than Sloppy does would make the
+ * consent screen a lie.
+ */
+const SCOPES = ["identity:read", "profile:read", "posts:write"] as const;
 
 /** Where a person lands when they named nowhere in particular. */
 export const HOME = "/";

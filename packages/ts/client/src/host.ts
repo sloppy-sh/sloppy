@@ -37,16 +37,30 @@ export function isSameOrigin(): boolean {
 }
 
 /**
- * Route a remote asset through our own proxy. Viewing a federated node must
- * never leak the viewer's IP to the author's instance, so every URL that came
+ * The address to render a picture from. Viewing a federated node must never
+ * leak the viewer's IP to the author's instance, so every address that came
  * from somebody else's graph goes through here before it reaches an `<img>` or
  * a `fetch`; AI.md § "Sloppy's Vocabulary Stays Out of the Identity Store"
  * states the rule.
  *
- * Anything that is not an absolute http(s) URL — a data URL, a bundled asset —
- * is already local and is handed back untouched.
+ * A `MediaAsset`-shaped address the API minted is a path under the API, and it
+ * lands on whichever host this shell reaches its instance at. An absolute URL —
+ * including a look-alike from a peer — is sent to the asset route unsigned,
+ * where it is refused rather than fetched, so a picture nothing vouched for
+ * fails to draw instead of reaching a stranger's machine.
+ *
+ * Anything else — a data URL, a bundled asset — is already local and is handed
+ * back untouched.
  */
-export function proxied(url: string): string {
-  if (!/^https?:\/\//i.test(url)) return url;
-  return apiUrl(`/proxy?url=${encodeURIComponent(url)}`);
+export function proxied(src: string): string {
+  if (isAssetRoute(src)) return apiUrl(src);
+  if (!/^https?:\/\//i.test(src)) return src;
+  return apiUrl(`/proxy?url=${encodeURIComponent(src)}`);
+}
+
+/** The API's own asset route, as the API's `AssetLinks` mints it. Having no
+ *  origin is the whole point: an absolute address is somebody else's host, even
+ *  when it is spelled like this one. */
+function isAssetRoute(src: string): boolean {
+  return src.startsWith("/proxy?ref=");
 }

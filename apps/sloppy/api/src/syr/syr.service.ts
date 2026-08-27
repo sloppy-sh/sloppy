@@ -1,10 +1,17 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import {
+  type CreateUploadRequest,
+  type SyrEmoji,
+  SyrEmojiSchema,
+  type SyrIdentityManifest,
+  SyrIdentityManifestSchema,
   type SyrInstanceManifest,
   SyrInstanceManifestSchema,
   type SyrPlatformSignResponse,
@@ -13,7 +20,15 @@ import {
   SyrPlatformTokenRequestSchema,
   type SyrPlatformTokenResponse,
   SyrPlatformTokenResponseSchema,
+  type SyrProfile,
+  type SyrProfilePatch,
+  SyrProfileSchema,
   type SyrScope,
+  type SyrUpload,
+  SyrUploadSchema,
+  type SyrUploadTicket,
+  SyrUploadTicketSchema,
+  syrEnvelope,
 } from "@sloppy/types";
 import { z } from "zod";
 
@@ -65,6 +80,9 @@ const DelegationListSchema = z.union([
   z.object({ data: z.array(DelegationSchema) }).transform(({ data }) => data),
 ]);
 
+/** A folder in somebody's own file store, as the instance serialises one. */
+const FolderSchema = z.object({ id: z.string(), name: z.string() });
+
 /** A person typed this; take a bare hostname and give back an origin. */
 export function normalizeInstanceUrl(value: string): string {
   const trimmed = value.trim();
@@ -88,6 +106,13 @@ export class SyrService {
     string,
     { at: number; manifest: SyrInstanceManifest }
   >();
+  private readonly identityManifests = new Map<
+    string,
+    { at: number; manifest: SyrIdentityManifest }
+  >();
+  /** Keyed by instance, identity and path. Folders are never renamed away from
+   *  under us, so a hit stays true for this process's life. */
+  private readonly folders = new Map<string, string>();
 
   async manifest(instanceUrl: string): Promise<SyrInstanceManifest> {
     const cached = this.manifests.get(instanceUrl);
@@ -241,6 +266,337 @@ export class SyrService {
     return listing.data;
   }
 
+  // ── The identity store: profile, media and emoji ──────────────────────────
+
+  /**
+   * A single identity's manifest, `/.well-known/syr/{did}` — where the profile
+   * and the catalogs a stranger may read live, as that identity's own instance
+   * declares them.
+   */
+  async identityManifest(
+    instanceUrl: string,
+    did: string,
+  ): Promise<SyrIdentityManifest> {
+    const key = `${instanceUrl}|${did}`;
+    const cached = this.identityManifests.get(key);
+    if (cached && Date.now() - cached.at < MANIFEST_TTL_MS)
+      return cached.manifest;
+
+    const template = (await this.manifest(instanceUrl))
+      .identity_manifest_template;
+    const url = template.replace("{did}", encodeURIComponent(did));
+    const failure = "We could not read that identity. Try again in a moment.";
+    const body = await this.readJson(
+      url,
+      { headers: { accept: "application/json" } },
+      failure,
+    );
+    const manifest = this.readShape(
+      SyrIdentityManifestSchema,
+      body,
+      url,
+      failure,
+    );
+    const now = Date.now();
+    for (const [at, entry] of this.identityManifests) {
+      if (now - entry.at >= MANIFEST_TTL_MS) this.identityManifests.delete(at);
+    }
+    this.identityManifests.set(key, { at: now, manifest });
+    return manifest;
+  }
+
+  /**
+   * Anyone may read this: it is the document a peer resolving the DID gets, so
+   * a pulled note renders with its author's name and picture.
+   */
+  async readProfile(instanceUrl: string, did: string): Promise<SyrProfile> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    const failure = "We could not read that profile. Try again in a moment.";
+    const body = await this.readJson(
+      endpoints.profile,
+      { headers: { accept: "application/json" } },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(SyrProfileSchema),
+      body,
+      endpoints.profile,
+      failure,
+    ).data;
+  }
+
+  async updateProfile(
+    delegation: Delegation,
+    patch: SyrProfilePatch,
+  ): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/user/profile`,
+      { method: "PATCH", body: JSON.stringify(patch) },
+      "Your profile could not be saved. Try again.",
+    );
+  }
+
+  /**
+   * Step one of three: where to send the bytes, and where they will live.
+   * `folderPath` is the caller's, because who may read a blob is decided by the
+   * folder it lands in and that is Sloppy's policy rather than syr's dialect —
+   * `folderPathFor` in `media/media.service.ts`.
+   */
+  async createUpload(
+    delegation: Delegation,
+    request: CreateUploadRequest,
+    folderPath: readonly string[],
+  ): Promise<SyrUploadTicket> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/uploads`;
+    const failure = "That file could not be added. Try again.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          filename: request.filename,
+          mime_type: request.mime_type,
+          size: request.size,
+          ...(request.sha256 ? { sha256: request.sha256 } : {}),
+          // The only call that carries them: syr's own complete endpoint parses
+          // its body with a schema that names three keys and drops the rest, so
+          // dimensions sent there are thrown away without an error.
+          ...(request.width || request.height
+            ? {
+                metadata: {
+                  ...(request.width ? { width: request.width } : {}),
+                  ...(request.height ? { height: request.height } : {}),
+                },
+              }
+            : {}),
+          folder_id: await this.folderAt(delegation, folderPath),
+        }),
+      },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(SyrUploadTicketSchema),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
+  /**
+   * Step three, once the bytes have been PUT. `null` where the instance's own
+   * store has not shown them yet — not a failure, and the caller asks again.
+   */
+  async completeUpload(
+    delegation: Delegation,
+    upload: { did: string; localId: string },
+  ): Promise<SyrUpload | null> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/uploads`;
+    const failure = "That file did not finish uploading. Try again.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          did: upload.did,
+          local_id: upload.localId,
+          status: "completed",
+        }),
+      },
+      failure,
+    );
+    if (z.object({ status: z.literal("finalizing") }).safeParse(body).success) {
+      return null;
+    }
+    return this.readShape(syrEnvelope(SyrUploadSchema), body, url, failure)
+      .data;
+  }
+
+  /** One of the caller's own uploads, so a route can act on what is actually
+   *  stored rather than on what a client says is. */
+  async readUpload(
+    delegation: Delegation,
+    upload: { did: string; localId: string },
+  ): Promise<SyrUpload> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    const url = `${base}/uploads/${encodeURIComponent(upload.did)}/${encodeURIComponent(upload.localId)}`;
+    const failure = "We could not find that file. Try adding it again.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "GET" },
+      failure,
+    );
+    return this.readShape(syrEnvelope(SyrUploadSchema), body, url, failure)
+      .data;
+  }
+
+  async listOwnEmoji(delegation: Delegation): Promise<SyrEmoji[]> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/emojis?limit=100`;
+    const failure = "We could not read your emoji. Try again in a moment.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "GET" },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrEmojiSchema)),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
+  /** Anyone's catalog, as that identity's own instance publishes it. An empty
+   *  answer where the manifest names no such endpoint: nothing to show is the
+   *  same outcome as an instance that does not host emoji. */
+  async listPublicEmoji(instanceUrl: string, did: string): Promise<SyrEmoji[]> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    if (!endpoints.public_emojis) return [];
+    const url = `${endpoints.public_emojis}?limit=100`;
+    const failure = "We could not read that emoji set. Try again in a moment.";
+    const body = await this.readJson(
+      url,
+      { headers: { accept: "application/json" } },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrEmojiSchema)),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
+  async createEmoji(
+    delegation: Delegation,
+    entry: {
+      shortcode: string;
+      url: string;
+      mime_type: string;
+      size: number;
+      is_sticker: boolean;
+    },
+  ): Promise<SyrEmoji> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/emojis`;
+    const failure = "That emoji could not be added. Try again.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "POST", body: JSON.stringify({ ...entry, scope: "user" }) },
+      failure,
+    );
+    return this.readShape(syrEnvelope(SyrEmojiSchema), body, url, failure).data;
+  }
+
+  async deleteEmoji(
+    delegation: Delegation,
+    emoji: { did: string; localId: string },
+  ): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/emojis/${encodeURIComponent(emoji.did)}/${encodeURIComponent(emoji.localId)}`,
+      { method: "DELETE" },
+      "That emoji could not be removed. Try again.",
+    );
+  }
+
+  /**
+   * Where the instance's authenticated routes hang, read off `platform.token`
+   * rather than assumed from the origin — an instance is free to mount its API
+   * under a prefix, and the manifest reveals that prefix nowhere else.
+   */
+  private async ownerApiBase(instanceUrl: string): Promise<string> {
+    const { token } = await this.platform(instanceUrl);
+    const base = token.replace(/\/platform\/token\/?$/, "");
+    if (base === token) {
+      throw new ServiceUnavailableException(
+        "That instance cannot hold files for Sloppy yet.",
+      );
+    }
+    return base;
+  }
+
+  /** The innermost folder of a path, creating whatever is not there yet. */
+  private async folderAt(
+    delegation: Delegation,
+    path: readonly string[],
+  ): Promise<string> {
+    const key = `${delegation.syr_instance_url}|${delegation.did}|${path.join("/")}`;
+    const known = this.folders.get(key);
+    if (known) return known;
+
+    let folder = "";
+    let parent: string | null = null;
+    for (const name of path) {
+      folder = await this.findOrCreateFolder(delegation, name, parent);
+      parent = folder;
+    }
+    this.folders.set(key, folder);
+    return folder;
+  }
+
+  private async findOrCreateFolder(
+    delegation: Delegation,
+    name: string,
+    parent: string | null,
+  ): Promise<string> {
+    const base = `${await this.ownerApiBase(delegation.syr_instance_url)}/folders`;
+    const failure = "That file could not be added. Try again.";
+    const listing = await this.asPerson(
+      delegation,
+      `${base}?parent_id=${encodeURIComponent(parent ?? "")}`,
+      { method: "GET" },
+      failure,
+    );
+    const held = z
+      .object({ data: z.object({ folders: z.array(FolderSchema) }) })
+      .safeParse(listing);
+    const found = held.success
+      ? held.data.data.folders.find((f) => f.name === name)
+      : undefined;
+    if (found) return found.id;
+
+    const created = await this.asPerson(
+      delegation,
+      base,
+      { method: "POST", body: JSON.stringify({ name, parent_id: parent }) },
+      failure,
+    );
+    return this.readShape(syrEnvelope(FolderSchema), created, base, failure)
+      .data.id;
+  }
+
+  /**
+   * A request the instance is meant to read as the person rather than as
+   * Sloppy. The delegated token is the whole of that claim, so it goes on this
+   * request and into no response.
+   */
+  private async asPerson(
+    delegation: Delegation,
+    url: string,
+    init: RequestInit,
+    failure: string,
+  ): Promise<unknown> {
+    return this.readJson(
+      url,
+      {
+        ...init,
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: `Bearer ${delegation.access_token}`,
+        },
+      },
+      failure,
+    );
+  }
+
   private readShape<T extends z.ZodType>(
     schema: T,
     body: unknown,
@@ -275,11 +631,73 @@ export class SyrService {
       );
       throw new ServiceUnavailableException(failure);
     }
+    const body = await response.text().catch(() => "");
     if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      this.logger.warn(`${url} answered ${response.status} ${detail}`);
+      this.logger.warn(`${url} answered ${response.status} ${body}`);
+      throw this.refusal(response.status, body, failure);
+    }
+    // A store reporting a change it made sends no body — a 204 on one instance,
+    // an empty 200 on another. Neither is JSON, and both read as `null` here.
+    if (!body.trim()) return null;
+    try {
+      return JSON.parse(body);
+    } catch {
+      this.logger.warn(`${url} answered something that is not JSON`);
       throw new ServiceUnavailableException(failure);
     }
-    return response.json();
+  }
+
+  /**
+   * An instance that refused on its own terms is passed through: a full store
+   * and a rejected file will refuse the same way forever, and "try again" sends
+   * somebody back into a wall. Only a 5xx — the instance itself failing — keeps
+   * the retry, and the store's own sentence is preferred over ours wherever it
+   * wrote one for a person.
+   *
+   * The two refusals a caller does something different about keep the status
+   * they arrived with: a surface offers to reconnect the account on 403 and
+   * treats 404 as the outcome it was asking for, and both are indistinguishable
+   * once they are one 400.
+   */
+  private refusal(
+    status: number,
+    body: string,
+    failure: string,
+  ): HttpException {
+    if (status >= 500 || status === 429) {
+      return new ServiceUnavailableException(failure);
+    }
+    const kept =
+      status === HttpStatus.FORBIDDEN || status === HttpStatus.NOT_FOUND;
+    const answer = kept ? status : HttpStatus.BAD_REQUEST;
+    const wrote = said(body);
+    return new HttpException(
+      {
+        statusCode: answer,
+        message: wrote.message ?? failure,
+        ...(wrote.code ? { code: wrote.code } : {}),
+      },
+      answer,
+    );
+  }
+}
+
+/** syr answers a refusal with `{ message }` for a person and, where the reason
+ *  is one a caller can act on, a `code` for the caller. */
+function said(body: string): { message?: string; code?: string } {
+  const parsed = z
+    .object({
+      message: z.string().min(1).max(300).optional(),
+      code: z.string().min(1).max(64).optional(),
+    })
+    .safeParse(parseJson(body));
+  return parsed.success ? parsed.data : {};
+}
+
+function parseJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
   }
 }

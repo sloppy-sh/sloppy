@@ -217,7 +217,11 @@ describe("Sloppy signing in against its own provider", () => {
     const { url, params } = await consentParams();
     expect(url.origin + url.pathname).toBe(`${base}/api/idp/consent`);
     expect(params.callback_url).toBe(`${base}/api/auth/callback`);
-    expect(params.scopes).toEqual(["identity:read", "profile:read"]);
+    expect(params.scopes).toEqual([
+      "identity:read",
+      "profile:read",
+      "posts:write",
+    ]);
   });
 
   scenario(
