@@ -5,14 +5,16 @@ import { Injectable } from "@nestjs/common";
 import {
   type LabelDimension,
   LabelDimensionSchema,
-  nowIso,
   type OwnedRef,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
 import { DbService } from "../db/db.service";
+import { replacement } from "../node/patch";
+
+const PATCHABLE = ["name", "values", "color_slot"] as const;
 
 export type LabelDimensionPatch = Partial<
-  Pick<LabelDimension, "name" | "values" | "color_slot">
+  Pick<LabelDimension, (typeof PATCHABLE)[number]>
 >;
 
 @Injectable()
@@ -52,13 +54,10 @@ export class LabelRepository {
     ref: OwnedRef,
     changes: LabelDimensionPatch,
   ): Promise<LabelDimension | null> {
+    const set = replacement(PATCHABLE, changes);
     const [rows] = await this.query(
-      "UPDATE $id MERGE $changes WHERE created_by = $did RETURN AFTER",
-      {
-        id: recordIdFromOwnedRef("label_dimension", ref),
-        did,
-        changes: { ...changes, updated_at: nowIso() },
-      },
+      `UPDATE $id SET ${set.clause} WHERE created_by = $did RETURN AFTER`,
+      { id: recordIdFromOwnedRef("label_dimension", ref), did, ...set.vars },
     );
     const row = rows[0];
     return row === undefined ? null : LabelDimensionSchema.parse(row);

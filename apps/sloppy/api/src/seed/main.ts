@@ -41,19 +41,19 @@ function readOptions(argv: readonly string[]): Options {
   return options;
 }
 
-/** Accounts this instance serves identity for, newest last. Absent entirely on
- *  an instance that delegates identity elsewhere. */
+/** Accounts this instance serves identity for, newest last. An instance that
+ *  delegates identity elsewhere never grows the table, so it has none. */
 async function localAccounts(
   db: DbService,
 ): Promise<{ did: string; username: string }[]> {
-  try {
-    const [rows] = await db.handle.query<[{ did: string; username: string }[]]>(
-      "SELECT did, username FROM idp_account ORDER BY created_at",
-    );
-    return rows ?? [];
-  } catch {
-    return [];
-  }
+  const [defined] =
+    await db.handle.query<[{ tables: Record<string, string> }]>("INFO FOR DB");
+  if (!("idp_account" in defined.tables)) return [];
+  // 3.1.3 refuses an ORDER BY over a field the projection leaves out.
+  const [rows] = await db.handle.query<
+    [{ did: string; username: string; created_at: string }[]]
+  >("SELECT did, username, created_at FROM idp_account ORDER BY created_at");
+  return rows.map(({ did, username }) => ({ did, username }));
 }
 
 async function resolveDid(db: DbService, options: Options): Promise<string> {

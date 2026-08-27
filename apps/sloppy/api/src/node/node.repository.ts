@@ -16,9 +16,12 @@ import {
 } from "@sloppy/types";
 import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
+import { replacement } from "./patch";
 
-/** What `UPDATE … MERGE` may carry; the immutable columns are absent by type. */
-export type NodePatch = Partial<Pick<Node, "title" | "labels" | "links">>;
+const PATCHABLE = ["title", "labels", "links"] as const;
+
+/** What a PATCH may carry; the immutable columns are absent by type. */
+export type NodePatch = Partial<Pick<Node, (typeof PATCHABLE)[number]>>;
 
 @Injectable()
 export class NodeRepository {
@@ -109,16 +112,13 @@ export class NodeRepository {
     ref: OwnedRef,
     changes: NodePatch,
   ): Promise<Node | null> {
+    const set = replacement(PATCHABLE, changes);
     // The owner is part of the statement, not a check on what comes back: a
     // reference names its owner, so anybody could otherwise write a row by
     // asking for it by name.
     const [rows] = await this.query(
-      "UPDATE $id MERGE $changes WHERE created_by = $did RETURN AFTER",
-      {
-        id: recordIdFromOwnedRef("node", ref),
-        did,
-        changes: { ...changes, updated_at: nowIso() },
-      },
+      `UPDATE $id SET ${set.clause} WHERE created_by = $did RETURN AFTER`,
+      { id: recordIdFromOwnedRef("node", ref), did, ...set.vars },
     );
     const row = rows[0];
     return row === undefined ? null : parseNode(row);

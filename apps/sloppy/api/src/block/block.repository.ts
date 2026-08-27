@@ -6,15 +6,15 @@ import {
   type Block,
   BlockSchema,
   compareOrd,
-  nowIso,
   type OwnedRef,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
 import { DbService } from "../db/db.service";
+import { replacement } from "../node/patch";
 
-export type BlockPatch = Partial<
-  Pick<Block, "ord" | "type" | "content" | "data">
->;
+const PATCHABLE = ["ord", "type", "content", "data"] as const;
+
+export type BlockPatch = Partial<Pick<Block, (typeof PATCHABLE)[number]>>;
 
 @Injectable()
 export class BlockRepository {
@@ -57,13 +57,10 @@ export class BlockRepository {
     ref: OwnedRef,
     changes: BlockPatch,
   ): Promise<Block | null> {
+    const set = replacement(PATCHABLE, changes);
     const [rows] = await this.query(
-      "UPDATE $id MERGE $changes WHERE created_by = $did RETURN AFTER",
-      {
-        id: recordIdFromOwnedRef("block", ref),
-        did,
-        changes: { ...changes, updated_at: nowIso() },
-      },
+      `UPDATE $id SET ${set.clause} WHERE created_by = $did RETURN AFTER`,
+      { id: recordIdFromOwnedRef("block", ref), did, ...set.vars },
     );
     const row = rows[0];
     return row === undefined ? null : BlockSchema.parse(row);

@@ -529,6 +529,32 @@ describe("the domain routes", () => {
       );
     });
 
+    scenario(
+      "takes the data a block is given for its whole payload",
+      async () => {
+        const drawn = await newNode(ada, { title: "A note with ink" });
+        const strokes = [
+          { points: [{ x: 0, y: 0, pressure: 0.5, t: 0 }], width: 2 },
+        ];
+        const inked = (await ok("POST", "/blocks", ada, {
+          node: drawn.ref,
+          type: "ink",
+          data: { strokes, width: 320, height: 240, raster_upload_id: "gone" },
+        })) as BlockView;
+        expect(inked.data).toEqual({
+          strokes,
+          width: 320,
+          height: 240,
+          raster_upload_id: "gone",
+        });
+
+        const redrawn = (await ok("PATCH", `/blocks/${at(inked.ref)}`, ada, {
+          data: { strokes: [], width: 320, height: 240 },
+        })) as BlockView;
+        expect(redrawn.data).toEqual({ strokes: [], width: 320, height: 240 });
+      },
+    );
+
     scenario("refuses a neighbour from another note", async () => {
       const elsewhere = await newNode(ada, { title: "Elsewhere" });
       const stray = (await ok("POST", "/blocks", ada, {
@@ -602,6 +628,43 @@ describe("the domain routes", () => {
         (node) => node.labels.ripeness !== undefined,
       );
       expect(left).toEqual([]);
+    });
+
+    scenario("takes the labels a note is given for its whole set", async () => {
+      await ok("POST", "/label-dimensions", ada, {
+        name: "domain",
+        values: ["biology", "music"],
+      });
+      await ok("POST", "/label-dimensions", ada, {
+        name: "shape",
+        values: ["question"],
+      });
+      const note = await newNode(ada, {
+        title: "Two facets",
+        labels: { domain: "biology", shape: "question" },
+      });
+
+      const relabelled = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        labels: { domain: "music" },
+      })) as NodeView;
+      expect(relabelled.labels).toEqual({ domain: "music" });
+
+      await ok("PATCH", `/nodes/${at(note.ref)}`, ada, { labels: {} });
+      expect(
+        ((await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView).labels,
+      ).toEqual({});
+    });
+
+    scenario("leaves the labels alone when a patch says nothing", async () => {
+      const note = await newNode(ada, {
+        title: "Renamed only",
+        labels: { domain: "biology" },
+      });
+      const retitled = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        title: "Retitled",
+      })) as NodeView;
+      expect(retitled.title).toBe("Retitled");
+      expect(retitled.labels).toEqual({ domain: "biology" });
     });
   });
 
@@ -683,7 +746,7 @@ describe("the domain routes", () => {
       expect(orphans).toEqual([]);
     });
 
-    scenario("does not hand a removed address to the next note", async () => {
+    scenario("does not reuse an address taken out of the middle", async () => {
       const root = await newNode(ada, { title: "No reuse" });
       const first = await newNode(ada, { parent: root.ref, title: "First" });
       const second = await newNode(ada, { parent: root.ref, title: "Second" });
