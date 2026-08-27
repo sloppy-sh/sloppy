@@ -42,8 +42,11 @@
 
 <fieldset class="min-w-0" {disabled}>
 	<legend class="mb-1.5 text-sm font-medium">{dimension.name}</legend>
+	<!-- `relative` on each chip is load-bearing: an `sr-only` input is absolutely
+	     positioned, and without a containing block it resolves against the body,
+	     escaping this scroller's clip and widening the whole page sideways. -->
 	<div class="-mx-1 flex gap-1.5 overflow-x-auto scroll-fade-x px-1 py-0.5 [scrollbar-width:none]">
-		<label class="shrink-0 cursor-pointer">
+		<label class="relative shrink-0 cursor-pointer">
 			<input
 				type="radio"
 				name={group}
@@ -56,7 +59,7 @@
 
 		{#each dimension.values as option (option)}
 			{@const on = value === option}
-			<label class="shrink-0 cursor-pointer">
+			<label class="relative shrink-0 cursor-pointer">
 				<input
 					type="radio"
 					name={group}
