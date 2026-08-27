@@ -17,7 +17,10 @@ const DID_RE = /\bdid:[a-z0-9]+:[A-Za-z0-9._%-]+/g;
 // shortcode and the link is rewritten on the next save.
 const URL_RE = /\bhttps?:\/\/[^\s<>]+/g;
 const STICKER_RE = /::([a-zA-Z0-9_+-]+)::/g;
-const EMOJI_RE = /(?<!:):([a-zA-Z0-9_+-]+):(?!:)/g;
+// The opening colon is checked in the loop rather than with a lookbehind:
+// Safari gained lookbehind in 16.4 and the app supports iOS 16.0, where a
+// lookbehind literal throws at parse and takes the whole note surface with it.
+const EMOJI_RE = /:([a-zA-Z0-9_+-]+):(?!:)/g;
 const URL_TRAILING = /[.,;:!?)\]}'"]+$/;
 
 interface Span {
@@ -67,6 +70,7 @@ export function tokenizeContent(content: string): ContentToken[] {
 		});
 	}
 	for (const match of content.matchAll(EMOJI_RE)) {
+		if (content[match.index - 1] === ':') continue;
 		const emoji = emojiFor(match[1]);
 		if (!emoji) continue;
 		const start = match.index;

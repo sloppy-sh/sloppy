@@ -83,6 +83,12 @@ export const EmojiNode = Node.create({
 			new InputRule({
 				find,
 				handler: ({ state, range, match }) => {
+					// A colon already in front makes this the tail of `::code::`, which
+					// the sticker rule owns. Read back rather than using a lookbehind:
+					// Safari gained those in 16.4 and the app supports iOS 16.0, where
+					// the literal throws at parse and takes the note surface with it.
+					if (!sticker && state.doc.textBetween(Math.max(0, range.from - 1), range.from) === ':')
+						return null;
 					const emoji = emojiFor(match[1]);
 					if (!emoji) return null;
 					state.tr.replaceWith(
@@ -93,7 +99,7 @@ export const EmojiNode = Node.create({
 					return undefined;
 				}
 			});
-		return [rule(/::([a-zA-Z0-9_+-]+)::$/, true), rule(/(?<!:):([a-zA-Z0-9_+-]+):$/, false)];
+		return [rule(/::([a-zA-Z0-9_+-]+)::$/, true), rule(/:([a-zA-Z0-9_+-]+):$/, false)];
 	},
 
 	addCommands() {
