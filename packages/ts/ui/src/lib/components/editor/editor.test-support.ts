@@ -6,7 +6,7 @@ import { Editor } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
-import { BlockIdentity, docFromBlocks } from './document.js';
+import { BlockIdentity, docBlocks, openBlocks, type SavedBlock } from './document.js';
 import { EmojiNode } from './emoji-node.js';
 import { InkNode } from './ink-node.js';
 
@@ -63,7 +63,11 @@ export function stubCanvas(): void {
 	})) as unknown as HTMLCanvasElement['getContext'];
 }
 
-export function makeEditor(blocks: readonly BlockView[] = []): Editor {
+/** The editor and the baseline it opened with, exactly as the surface takes them. */
+export function makeEditor(blocks: readonly BlockView[] = []): {
+	editor: Editor;
+	saved: SavedBlock[];
+} {
 	const element = document.createElement('div');
 	document.body.appendChild(element);
 	const editor = new Editor({
@@ -78,8 +82,8 @@ export function makeEditor(blocks: readonly BlockView[] = []): Editor {
 			InkNode
 		]
 	});
-	editor.commands.setContent(docFromBlocks(blocks, editor.storage.markdown.manager), {
-		emitUpdate: false
-	});
-	return editor;
+	const manager = editor.storage.markdown.manager;
+	const opening = openBlocks(blocks, manager);
+	editor.commands.setContent(opening.doc, { emitUpdate: false });
+	return { editor, saved: opening.baseline(docBlocks(editor.state.doc, manager)) };
 }

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { BlockView, CreateBlockRequest, InkStroke, OwnedRef } from '@sloppy/types';
+import type { Editor } from '@tiptap/core';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
@@ -40,6 +41,20 @@ function open(blocks: BlockView[]) {
 	return mounted;
 }
 
+function close(): void {
+	if (mounted) unmount(mounted, { outro: false });
+	mounted = undefined;
+}
+
+/** TipTap hangs the editor off the element it writes into. */
+const writingIn = (): Editor =>
+	(target.querySelector('.sloppy-prose') as unknown as { editor: Editor }).editor;
+
+function background(): void {
+	Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+	document.dispatchEvent(new Event('visibilitychange'));
+}
+
 function penEvent(type: string, x: number, y: number, pressure = 0.5): PointerEvent {
 	const event = new Event(type, { bubbles: true, cancelable: true });
 	Object.assign(event, {
@@ -61,16 +76,14 @@ beforeEach(() => {
 	stubCanvas();
 	Element.prototype.getBoundingClientRect = () =>
 		({ left: 0, top: 0, width: 320, height: 240, right: 320, bottom: 240 }) as DOMRect;
-	Element.prototype.setPointerCapture = () => {};
-	Element.prototype.releasePointerCapture = () => {};
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	vi.useFakeTimers();
 });
 
 afterEach(() => {
-	if (mounted) unmount(mounted, { outro: false });
-	mounted = undefined;
+	close();
+	Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
 	// Discarded on the fake clock rather than handed to the real one: a teardown
 	// timer that outlives this file lands in whichever file runs next.
 	vi.clearAllTimers();
@@ -153,5 +166,51 @@ describe('a pen on the writing surface', () => {
 		touch('pointerup', 80);
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(written.created).toEqual([]);
+	});
+});
+
+describe('what a note keeps when it is left', () => {
+	it('writes what was typed when the note is closed before the writing pauses', async () => {
+		open([block({ type: 'paragraph', content: 'a thought' })]);
+		writingIn().commands.insertContentAt(1, 'more of ');
+		await vi.advanceTimersByTimeAsync(100);
+		expect(written.updated).toEqual([]);
+
+		close();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(written.updated.map((row) => row.content)).toEqual(['more of a thought']);
+	});
+
+	it('keeps a drawing the pen has only just put down', async () => {
+		open([]);
+		const surface = target.querySelector('div.relative') as HTMLElement;
+		surface.dispatchEvent(penEvent('pointerdown', 40, 60, 0.2));
+		surface.dispatchEvent(penEvent('pointermove', 90, 100, 0.7));
+		surface.dispatchEvent(penEvent('pointerup', 90, 100, 0.7));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(written.created).toEqual([]);
+
+		close();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(written.created.map((row) => row.type)).toEqual(['ink']);
+	});
+
+	it('writes what is unsaved when the app goes to the background', async () => {
+		open([block({ type: 'paragraph', content: 'a thought' })]);
+		writingIn().commands.insertContentAt(1, 'more of ');
+		await vi.advanceTimersByTimeAsync(100);
+
+		background();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(written.updated.map((row) => row.content)).toEqual(['more of a thought']);
+	});
+
+	it('writes what is still being typed rather than waiting for a pause that never comes', async () => {
+		open([block({ type: 'paragraph', content: 'a thought' })]);
+		for (let keystroke = 0; keystroke < 20; keystroke += 1) {
+			writingIn().commands.insertContentAt(1, '.');
+			await vi.advanceTimersByTimeAsync(200);
+		}
+		expect(written.updated.map((row) => row.content)).toEqual(['...............a thought']);
 	});
 });

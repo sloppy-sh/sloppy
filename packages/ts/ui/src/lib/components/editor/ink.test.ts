@@ -143,8 +143,6 @@ describe('drawing into a block that is already there', () => {
 		stubCanvas();
 		Element.prototype.getBoundingClientRect = () =>
 			({ left: 100, top: 50, width: 300, height: 100, right: 400, bottom: 150 }) as DOMRect;
-		Element.prototype.setPointerCapture = () => {};
-		Element.prototype.releasePointerCapture = () => {};
 	});
 
 	afterEach(() => {
@@ -166,7 +164,9 @@ describe('drawing into a block that is already there', () => {
 	}
 
 	it('adds what the pen drew to the block, pressure and all', () => {
-		editor = makeEditor([block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })]);
+		editor = makeEditor([
+			block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })
+		]).editor;
 		draw(canvasOf(editor), [
 			{ x: 110, y: 60, pressure: 0.2, at: 0 },
 			{ x: 150, y: 90, pressure: 0.7, at: 16 },
@@ -181,7 +181,9 @@ describe('drawing into a block that is already there', () => {
 	});
 
 	it('lets a finger past, so the page still scrolls over a drawing', () => {
-		editor = makeEditor([block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })]);
+		editor = makeEditor([
+			block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })
+		]).editor;
 		const canvas = canvasOf(editor);
 		const touch = (type: string, x: number) => {
 			const event = pen({ x, y: 60, type });
@@ -197,7 +199,9 @@ describe('drawing into a block that is already there', () => {
 	});
 
 	it('grows the block when the pen runs past the bottom of it', () => {
-		editor = makeEditor([block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })]);
+		editor = makeEditor([
+			block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })
+		]).editor;
 		draw(canvasOf(editor), [
 			{ x: 110, y: 60, at: 0 },
 			{ x: 150, y: 149, at: 16 }

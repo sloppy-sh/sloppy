@@ -43,6 +43,16 @@ export function nibWidth(
 	return base * (0.35 + 1.3 * point.pressure) * (1 + 0.4 * lean);
 }
 
+/** Keeps a stroke alive when the pen wanders off the surface it started on. */
+export function capturePointer(target: Element, pointerId: number): void {
+	try {
+		target.setPointerCapture(pointerId);
+	} catch {
+		// A pointer the platform is not tracking throws rather than refusing, and a
+		// stroke drawn without capture is still a stroke.
+	}
+}
+
 /** One stroke as it is being laid down, in the capture surface's own units. */
 export class StrokeInProgress {
 	readonly points: InkPoint[] = [];

@@ -9,6 +9,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import {
 	NIB_WIDTH,
 	StrokeInProgress,
+	capturePointer,
 	drawStroke,
 	drawStrokes,
 	prepareCanvas,
@@ -165,7 +166,7 @@ export const InkNode = Node.create({
 			canvas.addEventListener('pointerdown', (event) => {
 				if (event.pointerType === 'touch' || !editor.isEditable) return;
 				event.preventDefault();
-				canvas.setPointerCapture(event.pointerId);
+				capturePointer(canvas, event.pointerId);
 				wet = new StrokeInProgress(event, surface(), NIB_WIDTH);
 				redraw();
 			});

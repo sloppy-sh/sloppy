@@ -28,9 +28,11 @@
 	import {
 		BlockIdentity,
 		docBlocks,
-		docFromBlocks,
+		openBlocks,
 		planSave,
 		runSave,
+		type DocBlock,
+		type SaveOp,
 		type SavedBlock
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
@@ -41,6 +43,7 @@
 	import {
 		NIB_WIDTH,
 		StrokeInProgress,
+		capturePointer,
 		drawStroke,
 		prepareCanvas,
 		strokeBounds,
@@ -51,6 +54,8 @@
 	let { node, blocks, onCreate, onUpdate, onRemove, onReorder }: BlockStackProps = $props();
 
 	const SAVE_AFTER_MS = 700;
+	/** However long the writing runs on, no change waits longer than this to be written. */
+	const SAVE_WITHIN_MS = 3000;
 	const RETRY_AFTER_MS = 4000;
 	/** How long the pen may rest before the strokes so far settle into a block. */
 	const SETTLE_AFTER_MS = 900;
@@ -78,6 +83,8 @@
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 	let saving = false;
 	let again = false;
+	/** When the oldest unwritten change was made; 0 once nothing is waiting. */
+	let changedAt = 0;
 	/** Bumped when the surface is rebuilt for another node, so a save in flight stops. */
 	let era = 0;
 	/** The note this surface is writing into, captured with the surface itself. */
@@ -86,18 +93,26 @@
 	const manager = (of: Editor) => of.storage.markdown.manager;
 
 	// ── Saving ───────────────────────────────────────────────────────────────
-	function scheduleSave(delay = SAVE_AFTER_MS): void {
-		clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => void save(), delay);
+	/** One trip to the API, holding everything it needs to outlive this surface. */
+	interface Write {
+		note: OwnedRef;
+		rows: SavedBlock[];
+		next: DocBlock[];
+		ops: SaveOp[];
 	}
 
-	async function apply(mine: number): Promise<void> {
-		const current = editor!;
+	function plan(): Write | null {
+		const current = editor;
+		if (!current || current.isDestroyed) return null;
 		const next = docBlocks(current.state.doc, manager(current));
-		await runSave(planSave(saved, next), saved, next, {
+		return { note: writingTo, rows: saved, next, ops: planSave(saved, next) };
+	}
+
+	function run(write: Write, live: () => boolean): Promise<void> {
+		return runSave(write.ops, write.rows, write.next, {
 			create: (request) =>
 				onCreate({
-					node: writingTo,
+					node: write.note,
 					type: request.type,
 					content: request.content,
 					...(request.after ? { after: request.after } : {}),
@@ -107,21 +122,34 @@
 			reorder: (ref, after) => onReorder(ref, after).then(() => undefined),
 			remove: (ref) => onRemove(ref),
 			placed: stamp,
-			abandoned: () => mine !== era
+			abandoned: () => !live()
 		});
 	}
 
+	function scheduleSave(delay: number): void {
+		clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => void save(), delay);
+	}
+
+	/** A change waits for the writing to pause, but never past its own deadline. */
+	function saveSoon(): void {
+		changedAt ||= Date.now();
+		scheduleSave(Math.max(0, Math.min(SAVE_AFTER_MS, changedAt + SAVE_WITHIN_MS - Date.now())));
+	}
+
 	async function save(): Promise<void> {
-		if (!editor || editor.isDestroyed) return;
 		if (saving) {
 			again = true;
 			return;
 		}
+		const write = plan();
+		if (!write) return;
 		const mine = era;
 		saving = true;
+		changedAt = 0;
 		saveState = 'saving';
 		try {
-			await apply(mine);
+			await run(write, () => mine === era);
 			if (mine === era) saveState = 'saved';
 		} catch {
 			if (mine === era) {
@@ -135,6 +163,18 @@
 			again = false;
 			scheduleSave(0);
 		}
+	}
+
+	/** Everything resting — a stroke, a keystroke — written now rather than on a timer. */
+	function flush(): void {
+		clearTimeout(settling);
+		settle();
+		clearTimeout(saveTimer);
+		void save();
+	}
+
+	function whenHidden(): void {
+		if (document.visibilityState === 'hidden') flush();
 	}
 
 	/** Writes back which row a just-created block became, without waking a save. */
@@ -240,7 +280,7 @@
 		if ((event.target as HTMLElement | null)?.closest('[data-ink-block]')) return;
 		event.preventDefault();
 		clearTimeout(settling);
-		surface.setPointerCapture(event.pointerId);
+		capturePointer(surface, event.pointerId);
 		stroke = new StrokeInProgress(event, penSurface(), NIB_WIDTH);
 		repaintPen();
 	}
@@ -327,23 +367,17 @@
 				onUpdate: () => {
 					empty = created.isEmpty;
 					refreshMarks();
-					scheduleSave();
+					saveSoon();
 				},
 				onFocus: keepToolbar,
 				onBlur: dropToolbar,
 				onSelectionUpdate: refreshMarks
 			});
 			editor = created;
-			created.commands.setContent(docFromBlocks(blocks, manager(created)), { emitUpdate: false });
+			const stack = openBlocks(blocks, manager(created));
+			created.commands.setContent(stack.doc, { emitUpdate: false });
 			showEmoji(created);
-			saved = docBlocks(created.state.doc, manager(created))
-				.filter((block) => block.ref)
-				.map((block) => ({
-					ref: block.ref as OwnedRef,
-					type: block.type,
-					content: block.content,
-					data: block.data
-				}));
+			saved = stack.baseline(docBlocks(created.state.doc, manager(created)));
 			ready = true;
 			empty = created.isEmpty;
 			saveState = 'idle';
@@ -362,17 +396,23 @@
 				frame.removeEventListener('pointermove', onPenMove);
 				frame.removeEventListener('pointerup', onPenUp);
 				frame.removeEventListener('pointercancel', onPenUp);
+				clearTimeout(settling);
+				settle();
+				const last = plan();
 				era += 1;
 				again = false;
 				saving = false;
+				changedAt = 0;
 				clearTimeout(saveTimer);
-				clearTimeout(settling);
 				pending = [];
 				stroke = null;
 				ready = false;
 				editing = false;
 				editor = null;
 				created.destroy();
+				// The last write of a note being left: no surface stays open for a
+				// failure to be reported on, or retried from.
+				if (last?.ops.length) void run(last, () => true).catch(() => undefined);
 			};
 		});
 	});
@@ -461,6 +501,7 @@
 </script>
 
 <svelte:window onresize={repaintPen} />
+<svelte:document onvisibilitychange={whenHidden} />
 
 <div class="space-y-2">
 	<div bind:this={surface} class="relative">

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { InkBlockData, OwnedRef } from '@sloppy/types';
+import type { BlockType, BlockView, InkBlockData, OwnedRef } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
@@ -7,6 +7,8 @@ import { docBlocks, planSave, runSave, type DocBlock, type SavedBlock } from './
 import { block, makeEditor, stubCanvas } from './editor.test-support.js';
 
 let editor: Editor | undefined;
+/** What the API holds for the stack `open` was handed. */
+let opened: SavedBlock[] = [];
 
 beforeEach(() => {
 	stubResizeObserver();
@@ -16,19 +18,61 @@ beforeEach(() => {
 afterEach(() => {
 	editor?.destroy();
 	editor = undefined;
+	opened = [];
 	document.body.innerHTML = '';
 });
 
 function open(blocks = [] as ReturnType<typeof block>[]) {
-	editor = makeEditor(blocks);
-	return editor;
+	const made = makeEditor(blocks);
+	editor = made.editor;
+	opened = made.saved;
+	return made.editor;
 }
 
 const rows = (of: Editor): DocBlock[] => docBlocks(of.state.doc, of.storage.markdown.manager);
-const savedFrom = (of: Editor): SavedBlock[] =>
-	rows(of)
-		.filter((row) => row.ref)
-		.map((row) => ({ ref: row.ref!, type: row.type, content: row.content, data: row.data }));
+
+/** A stack of rows that answers the way the API does, so a whole round can run. */
+function stack(initial: BlockView[]) {
+	const held = initial;
+	const at = (ref: OwnedRef) => held.findIndex((row) => row.ref === ref);
+	const put = (after: OwnedRef | null, row: BlockView) =>
+		held.splice((after ? at(after) : -1) + 1, 0, row);
+	return {
+		held,
+		read: () => held.map((row) => [row.type, row.content] as const),
+		writer: {
+			create: async (request: {
+				after: OwnedRef | null;
+				type: BlockType;
+				content: string;
+				data?: unknown;
+			}) => {
+				const made = block(request);
+				put(request.after, made);
+				return made.ref;
+			},
+			update: async (ref: OwnedRef, changes: Record<string, unknown>) => {
+				Object.assign(held[at(ref)], changes);
+			},
+			reorder: async (ref: OwnedRef, after: OwnedRef | null) => {
+				put(after, held.splice(at(ref), 1)[0]);
+			},
+			remove: async (ref: OwnedRef) => {
+				held.splice(at(ref), 1);
+			},
+			placed: () => {}
+		}
+	};
+}
+
+/** One open-edit-close round, with no memory carried across it but the rows. */
+async function round(of: ReturnType<typeof stack>, edit: (editor: Editor) => void = () => {}) {
+	const made = makeEditor(of.held);
+	edit(made.editor);
+	const next = rows(made.editor);
+	await runSave(planSave(made.saved, next), made.saved, next, of.writer);
+	made.editor.destroy();
+}
 
 describe('a stack opened as one document', () => {
 	it('gives each kind of block back as the type it was stored as', () => {
@@ -46,8 +90,15 @@ describe('a stack opened as one document', () => {
 	});
 
 	it('has nothing to save the moment it opens', () => {
-		const of = open([block({ type: 'paragraph', content: 'unchanged' })]);
-		expect(planSave(savedFrom(of), rows(of))).toEqual([]);
+		const of = open([
+			block({ type: 'heading', content: '## Where a thought begins' }),
+			block({ type: 'paragraph', content: 'It begins beside another one.' }),
+			block({ type: 'list', content: '- first\n- second' }),
+			block({ type: 'todo', content: '- [ ] ask about it' }),
+			block({ type: 'code', content: '```ts\nconst a = 1;\n```' }),
+			block({ type: 'ink', data: { strokes: [], width: 400, height: 120 } })
+		]);
+		expect(planSave(opened, rows(of))).toEqual([]);
 	});
 
 	it('does not make a row out of the blank line waiting to be typed in', () => {
@@ -68,13 +119,45 @@ describe('a stack opened as one document', () => {
 		expect(row.data).toEqual({ strokes: data.strokes, width: 400, height: 120 });
 	});
 
-	it('answers a row whose Markdown is two blocks by writing two rows', () => {
+	it('answers a row whose Markdown is two blocks by cutting it down and writing the rest', () => {
 		const stored = block({ type: 'paragraph', content: 'one\n\ntwo' });
 		const of = open([stored]);
 		const read = rows(of);
 		expect(read.map((row) => row.content)).toEqual(['one', 'two']);
-		expect(planSave(savedFrom(of), read)).toEqual([
+		expect(planSave(opened, read)).toEqual([
+			{ kind: 'update', ref: stored.ref, content: 'one' },
 			{ kind: 'create', uid: read[1].uid, after: read[0].uid, type: 'paragraph', content: 'two' }
+		]);
+	});
+
+	it('splits such a row once, however many times the note is opened and written', async () => {
+		const of = stack([block({ type: 'paragraph', content: 'one\n\ntwo' })]);
+		for (let pass = 0; pass < 3; pass += 1) await round(of);
+		expect(of.read()).toEqual([
+			['paragraph', 'one'],
+			['paragraph', 'two']
+		]);
+	});
+
+	it('carries a kind it has no node for untouched, rather than making prose of it', async () => {
+		const of = stack([
+			block({ type: 'image', content: '![a sketch](https://example.com/a.png)' }),
+			block({ type: 'paragraph', content: 'beside it' }),
+			block({ type: 'embed', content: 'https://example.com/thing' })
+		]);
+		const drawn = open(of.held);
+		expect(rows(drawn).map((row) => row.content)).toEqual(['beside it']);
+
+		for (let pass = 0; pass < 3; pass += 1) {
+			await round(of, (editor) => {
+				editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+				editor.commands.insertContent('!');
+			});
+		}
+		expect(of.read()).toEqual([
+			['image', '![a sketch](https://example.com/a.png)'],
+			['paragraph', 'beside it!!!'],
+			['embed', 'https://example.com/thing']
 		]);
 	});
 });
@@ -82,7 +165,7 @@ describe('a stack opened as one document', () => {
 describe('a split is a new block, and the old one keeps its row', () => {
 	it('makes the second half a create and leaves the first alone', () => {
 		const of = open([block({ type: 'paragraph', content: 'before after' })]);
-		const saved = savedFrom(of);
+		const saved = opened;
 		of.commands.setTextSelection(8);
 		of.commands.splitBlock();
 

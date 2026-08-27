@@ -31,7 +31,6 @@ const TYPE_BY_NODE: Partial<Record<string, BlockType>> = {
 	orderedList: 'list',
 	taskList: 'todo',
 	codeBlock: 'code',
-	image: 'image',
 	[INK_NODE]: 'ink'
 };
 
@@ -39,6 +38,15 @@ const TYPE_BY_NODE: Partial<Record<string, BlockType>> = {
 export function blockTypeOf(nodeName: string): BlockType {
 	return TYPE_BY_NODE[nodeName] ?? 'paragraph';
 }
+
+/** The kinds a row can be written back as: one for every node this document has. */
+const WRITABLE_TYPES: ReadonlySet<BlockType> = new Set<BlockType>([
+	'paragraph',
+	...Object.values(TYPE_BY_NODE).filter((type): type is BlockType => type !== undefined)
+]);
+
+/** Only these carry `blockUid` and `blockRef`, so only these can be a row. */
+const IDENTIFIED_NODES: ReadonlySet<string> = new Set(BLOCK_NODES);
 
 let sequence = 0;
 function nextUid(): string {
@@ -103,20 +111,36 @@ function inkNodeFrom(block: BlockView): JSONContent {
 	};
 }
 
+export interface Opened {
+	doc: JSONContent;
+	/**
+	 * What the API holds for the rows this document answers for, in its order.
+	 * `opened` is {@link docBlocks} of the document once the editor has it.
+	 */
+	baseline(opened: readonly DocBlock[]): SavedBlock[];
+}
+
 /**
- * The document a stack of rows opens as. A row whose Markdown holds more than
- * one top-level node keeps the first as itself; the rest become their own rows
- * the next time the note is written to.
+ * The document a stack of rows opens as, and the truth a save plan is measured
+ * against. A row this surface has no node for, or whose Markdown opens as
+ * something that cannot hold a row's identity, is in neither, and so is carried
+ * untouched. A row whose Markdown opens as several nodes keeps the first as
+ * itself and is baselined as stored, so the first save truncates it to that
+ * node and writes out the rest.
  */
-export function docFromBlocks(blocks: readonly BlockView[], manager: MarkdownManager): JSONContent {
+export function openBlocks(blocks: readonly BlockView[], manager: MarkdownManager): Opened {
 	const content: JSONContent[] = [];
+	const divided = new Map<OwnedRef, SavedBlock>();
+
 	for (const block of blocks) {
 		if (block.type === 'ink') {
 			content.push(inkNodeFrom(block));
 			continue;
 		}
+		if (!WRITABLE_TYPES.has(block.type)) continue;
 		const parsed = manager.parse(block.content ?? '').content ?? [];
 		const nodes = parsed.length > 0 ? parsed : [{ type: 'paragraph' }];
+		if (!nodes.every((node) => IDENTIFIED_NODES.has(node.type ?? ''))) continue;
 		nodes.forEach((node, index) => {
 			node.attrs = {
 				...node.attrs,
@@ -124,12 +148,34 @@ export function docFromBlocks(blocks: readonly BlockView[], manager: MarkdownMan
 				blockRef: index === 0 ? block.ref : null
 			};
 		});
+		if (nodes.length > 1) {
+			divided.set(block.ref, { ref: block.ref, type: block.type, content: block.content ?? '' });
+		}
 		content.push(...nodes);
 	}
 	if (content.length === 0) {
 		content.push({ type: 'paragraph', attrs: { blockUid: nextUid(), blockRef: null } });
 	}
-	return { type: 'doc', content };
+
+	return {
+		doc: { type: 'doc', content },
+		baseline(opened) {
+			const read = new Map(opened.flatMap((row) => (row.ref ? [[row.ref, row] as const] : [])));
+			const rows: SavedBlock[] = [];
+			for (const block of blocks) {
+				const held = divided.get(block.ref);
+				if (held) {
+					rows.push(held);
+					continue;
+				}
+				const row = read.get(block.ref);
+				if (row) {
+					rows.push({ ref: block.ref, type: row.type, content: row.content, data: row.data });
+				}
+			}
+			return rows;
+		}
+	};
 }
 
 /**
