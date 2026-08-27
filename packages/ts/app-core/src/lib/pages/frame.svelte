@@ -31,6 +31,9 @@
 	// tree, and the real one is the shells'.
 	const path: string = $derived(page.url.pathname);
 	const activeId = $derived(path === '/settings' ? 'settings' : 'graph');
+	/** A page mounted a tick before the redirect below would spend a request on a
+	 *  credential we already know is missing. */
+	const admitted = $derived(session.ready && (session.signedIn || OPEN_ROUTES.includes(path)));
 
 	/**
 	 * A shell that caught the consent callback itself is handed a code to spend
@@ -76,5 +79,5 @@
 </script>
 
 <AppShell items={NAV} {activeId} showNav={session.signedIn} keyboardOpen={keyboard.open}>
-	{#if session.ready}{@render children()}{/if}
+	{#if admitted}{@render children()}{/if}
 </AppShell>

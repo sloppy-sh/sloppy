@@ -1,2 +1,8 @@
 @import '@sloppy/ui/styles';
 @import './fonts.css';
+
+/* Every page this shell renders is built in @sloppy/app-core, and Tailwind never
+   walks node_modules on its own — so the utility classes those pages use would
+   be tree-shaken out of this build. @sloppy/ui declares its own dist the same
+   way; a package cannot declare it for its consumer. */
+@source '../node_modules/@sloppy/app-core/dist';

@@ -48,10 +48,10 @@
 				<button
 					type="button"
 					onclick={() => onOpenNode(node.ref)}
-					class="flex min-h-11 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 				>
 					<span class="shrink-0 address text-sm text-muted-foreground">{node.address}</span>
-					<span class="flex-1 truncate">{node.title || 'Untitled'}</span>
+					<span class="min-w-0 flex-1 truncate">{node.title || 'Untitled'}</span>
 					{#if lens}
 						{@const value = node.labels[lens.dimension.name]}
 						{#if value}

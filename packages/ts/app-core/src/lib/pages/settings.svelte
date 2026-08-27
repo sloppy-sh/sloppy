@@ -103,24 +103,6 @@
 			</div>
 		</fieldset>
 
-		{#if labels.dimensions.length > 0}
-			<fieldset class="space-y-3">
-				<legend class="text-sm font-medium">Lens</legend>
-				<div class="flex flex-wrap gap-2">
-					{@render choice('lens', '', 'No lens', labels.lens === null, () => labels.setLens(null))}
-					{#each labels.dimensions as dimension (dimension.ref)}
-						{@render choice(
-							'lens',
-							dimension.name,
-							dimension.name,
-							labels.lens?.ref === dimension.ref,
-							() => labels.setLens(dimension.name)
-						)}
-					{/each}
-				</div>
-			</fieldset>
-		{/if}
-
 		<div class="space-y-3 border-t border-border pt-8">
 			{#if session.signedIn}
 				<p class="text-sm text-muted-foreground">

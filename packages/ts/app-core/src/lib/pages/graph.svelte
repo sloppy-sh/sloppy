@@ -82,68 +82,72 @@
 <svelte:head><title>Sloppy</title></svelte:head>
 
 <div class="viewport-fit flex flex-col">
-	<header class="shrink-0 space-y-3 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-3 sm:px-8">
-		<h1 class="sr-only">Your graph</h1>
-		{#if !loading && !problem}
-			<p class="text-sm text-muted-foreground">{summary}</p>
-		{/if}
+	<header class="shrink-0 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-3 sm:px-8">
+		<div class="mx-auto w-full max-w-3xl space-y-3">
+			<h1 class="sr-only">Your graph</h1>
+			{#if !loading && !problem}
+				<p class="text-sm text-muted-foreground">{summary}</p>
+			{/if}
 
-		{#if labels.dimensions.length > 0}
-			<div
-				class="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-0.5 scroll-fade-x [scrollbar-width:none]"
-			>
-				<button
-					type="button"
-					aria-pressed={lens === null}
-					onclick={() => labels.setLens(null)}
-					class={cn(
-						lensClass,
-						lens === null
-							? 'border-foreground/30'
-							: 'border-transparent text-muted-foreground hover:text-foreground'
-					)}
+			{#if labels.dimensions.length > 0}
+				<div
+					class="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-0.5 scroll-fade-x [scrollbar-width:none]"
 				>
-					No lens
-				</button>
-				{#each labels.dimensions as dimension (dimension.ref)}
-					{@const on = lens?.dimension.ref === dimension.ref}
 					<button
 						type="button"
-						aria-pressed={on}
-						onclick={() => labels.setLens(dimension.name)}
-						style={on && lens ? `color: var(--facet-${lens.slot})` : undefined}
+						aria-pressed={lens === null}
+						onclick={() => labels.setLens(null)}
 						class={cn(
 							lensClass,
-							on
-								? 'border-current'
+							lens === null
+								? 'border-foreground/30'
 								: 'border-transparent text-muted-foreground hover:text-foreground'
 						)}
 					>
-						{dimension.name}
+						No lens
 					</button>
-				{/each}
-			</div>
-		{/if}
+					{#each labels.dimensions as dimension (dimension.ref)}
+						{@const on = lens?.dimension.ref === dimension.ref}
+						<button
+							type="button"
+							aria-pressed={on}
+							onclick={() => labels.setLens(dimension.name)}
+							style={on && lens ? `color: var(--facet-${lens.slot})` : undefined}
+							class={cn(
+								lensClass,
+								on
+									? 'border-current'
+									: 'border-transparent text-muted-foreground hover:text-foreground'
+							)}
+						>
+							{dimension.name}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	</header>
 
-	<div class="min-h-0 flex-1 overflow-y-auto px-3 pt-1 clear-sysnav scroll-fade-y sm:px-6">
-		{#if loading}
-			<div class="space-y-2 px-2">
-				{#each Array.from({ length: 6 }, (_, row) => row) as row (row)}
-					<Skeleton class="h-11 w-full" />
-				{/each}
-			</div>
-		{:else if problem}
-			<p class="px-2 text-sm text-destructive" role="alert">{problem}</p>
-		{:else}
-			<GraphSurface
-				nodes={visible}
-				{collapsed}
-				{lens}
-				onOpenNode={(ref) => void goto(nodeHref(ref))}
-				onExpand={(ref) => expanded.add(ref)}
-				onCollapse={(ref) => expanded.delete(ref)}
-			/>
-		{/if}
+	<div class="min-h-0 flex-1 overflow-y-auto px-4 pt-1 clear-sysnav sm:px-7">
+		<div class="mx-auto w-full max-w-3xl">
+			{#if loading}
+				<div class="space-y-2 px-2">
+					{#each Array.from({ length: 6 }, (_, row) => row) as row (row)}
+						<Skeleton class="h-11 w-full" />
+					{/each}
+				</div>
+			{:else if problem}
+				<p class="px-2 text-sm text-destructive" role="alert">{problem}</p>
+			{:else}
+				<GraphSurface
+					nodes={visible}
+					{collapsed}
+					{lens}
+					onOpenNode={(ref) => void goto(nodeHref(ref))}
+					onExpand={(ref) => expanded.add(ref)}
+					onCollapse={(ref) => expanded.delete(ref)}
+				/>
+			{/if}
+		</div>
 	</div>
 </div>
