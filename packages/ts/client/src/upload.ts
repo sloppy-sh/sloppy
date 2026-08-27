@@ -89,18 +89,22 @@ export function uploadFile(
   const stop = new AbortController();
 
   const asset = (async (): Promise<MediaAsset> => {
-    // Before the ticket, so the store can be told what to expect and refuse
-    // bytes that do not match.
-    const sha256 = await digestOf(file);
+    // Both before the ticket: the digest so the store can refuse bytes that do
+    // not match, and the size so it records them where every later reader —
+    // another device, a peer who pulled the note — can find them.
+    const [sha256, measured] = await Promise.all([
+      digestOf(file),
+      measure(file),
+    ]);
     const request: CreateUploadRequest = {
       role: options.role,
       filename: file.name,
       mime_type: file.type || "application/octet-stream",
       size: file.size,
       ...(sha256 ? { sha256 } : {}),
+      ...measured,
     };
     const ticket = await client.createUpload(request);
-    const measured = measure(file);
     await put(
       ticket.upload_url,
       ticket.upload_headers,
@@ -110,7 +114,6 @@ export function uploadFile(
     );
     return client.completeUpload({
       upload_id: ticket.upload_id,
-      ...(await measured),
       ...(sha256 ? { sha256 } : {}),
     });
   })();

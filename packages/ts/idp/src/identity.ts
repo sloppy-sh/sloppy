@@ -21,6 +21,7 @@ import {
 import type {
   LoginRequest,
   Profile,
+  ProfilePatch,
   RegisterRequest,
   SessionGrant,
 } from "./contracts.js";
@@ -28,6 +29,7 @@ import { encodePublicKey, deriveDid } from "./encoding.js";
 import { IdpError } from "./errors.js";
 import { generateKeypair, wipe } from "./keys.js";
 import {
+  type AccountRow,
   createAccount,
   createIdentity,
   createSession,
@@ -37,6 +39,7 @@ import {
   findIdentity,
   findSession,
   type IdentityRow,
+  mergeAccountProfile,
 } from "./store.js";
 import { issueToken, readToken, subjectOf } from "./tokens.js";
 
@@ -139,12 +142,33 @@ export async function profileOf(
 ): Promise<Profile> {
   const account = await findAccountByDid(ctx.db, did);
   if (!account) throw unknownIdentity();
+  return profileView(account);
+}
+
+/**
+ * What the person chose to be called, and the pictures they chose. `username`
+ * is not here: it is what a peer resolves, and changing it is a different
+ * decision with different consequences.
+ */
+export async function updateProfile(
+  ctx: IdpContext,
+  did: string,
+  patch: ProfilePatch,
+): Promise<Profile> {
+  const account = await findAccountByDid(ctx.db, did);
+  if (!account) throw unknownIdentity();
+  if (Object.keys(patch).length === 0) return profileView(account);
+  return profileView(await mergeAccountProfile(ctx.db, account.id, patch));
+}
+
+function profileView(account: AccountRow): Profile {
   return {
-    did,
+    did: account.did,
     username: account.username,
-    display_name: account.display_name,
-    avatar_url: null,
-    bio: null,
+    display_name: account.display_name ?? null,
+    avatar_url: account.avatar_url ?? null,
+    banner_url: account.banner_url ?? null,
+    bio: account.bio ?? null,
   };
 }
 

@@ -4,9 +4,10 @@
 
 import {
   BadRequestException,
+  HttpException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { ownOrigin, reachableUrl } from "./remote-host";
+import { fetchReachable, ownOrigin } from "./remote-host";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -19,8 +20,10 @@ export interface RemotePicture {
  * Fetched by this instance rather than by the device, so taking a copy of
  * somebody's emoji does not tell their instance who took it.
  *
- * Refuses anything past `maxBytes` on what actually arrives, not on what the
- * far end declared — a length header is somebody else's claim.
+ * The far end chose this address and it chooses how much it sends, so the cap
+ * is enforced as the bytes arrive: a length header is somebody else's claim,
+ * and a body with no header at all must not be able to name this process's
+ * memory ceiling.
  */
 export async function readRemotePicture(
   target: string,
@@ -31,37 +34,77 @@ export async function readRemotePicture(
     mimeTypes: readonly string[];
   },
 ): Promise<RemotePicture> {
-  const url = reachableUrl(target, {
-    allowPrivate: policy.allowPrivate,
-    ownOrigin: ownOrigin(policy.publicUrl),
-  });
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await read(target, policy, stop.signal);
+    const mimeType = (response.headers.get("content-type") ?? "")
+      .split(";")[0]
+      .trim();
+    if (!policy.mimeTypes.includes(mimeType)) {
+      throw new BadRequestException(
+        "That file type cannot be used here. Try a PNG, JPEG, GIF or WebP.",
+      );
+    }
+    if (Number(response.headers.get("content-length")) > policy.maxBytes) {
+      throw tooBig();
+    }
+    return { bytes: await collect(response, policy.maxBytes, stop), mimeType };
+  } finally {
+    clearTimeout(timer);
+    stop.abort();
+  }
+}
 
+async function read(
+  target: string,
+  policy: { allowPrivate: boolean; publicUrl: string },
+  signal: AbortSignal,
+): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(url, {
-      redirect: "follow",
-      headers: { accept: "image/*" },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-  } catch {
+    response = await fetchReachable(
+      target,
+      {
+        allowPrivate: policy.allowPrivate,
+        ownOrigin: ownOrigin(policy.publicUrl),
+      },
+      { headers: { accept: "image/*" }, signal },
+    );
+  } catch (error) {
+    // A refused address is already an answer for a person; anything else here
+    // is the far end failing to answer at all.
+    if (error instanceof HttpException) throw error;
     throw new ServiceUnavailableException("That picture could not be loaded.");
   }
   if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
     throw new BadRequestException("That picture could not be loaded.");
   }
+  return response;
+}
 
-  const mimeType = (response.headers.get("content-type") ?? "")
-    .split(";")[0]
-    .trim();
-  if (!policy.mimeTypes.includes(mimeType)) {
-    throw new BadRequestException(
-      "That file type cannot be used here. Try a PNG, JPEG, GIF or WebP.",
-    );
+async function collect(
+  response: Response,
+  maxBytes: number,
+  stop: AbortController,
+): Promise<Uint8Array> {
+  if (!response.body) {
+    throw new BadRequestException("That picture could not be loaded.");
   }
+  const chunks: Uint8Array[] = [];
+  let held = 0;
+  for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
+    held += chunk.byteLength;
+    if (held > maxBytes) {
+      stop.abort();
+      throw tooBig();
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > policy.maxBytes) {
-    throw new BadRequestException("That picture is too big to copy.");
-  }
-  return { bytes, mimeType };
+function tooBig(): BadRequestException {
+  return new BadRequestException("That picture is too big to copy.");
 }

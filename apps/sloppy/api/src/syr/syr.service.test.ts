@@ -167,6 +167,8 @@ describe("exchanging the code", () => {
   it("gives up where the instance refuses the code", async () => {
     instance({ "/api/platform/token": { status: 400, body: {} } });
 
+    // A spent code is spent for good, so this is not the failure "try again"
+    // describes — 4xx from the instance is an answer, not an outage.
     await expect(
       new SyrService().exchangeCode(INSTANCE, {
         code: "spent",
@@ -174,7 +176,7 @@ describe("exchanging the code", () => {
         callback_url: "https://sloppy.sh/api/auth/callback",
         platform_origin: "https://sloppy.sh",
       }),
-    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   // A `200` carrying something else is the failure an operator has the least
@@ -340,5 +342,105 @@ describe("whether a delegation still stands", () => {
       c.url.startsWith(MANIFEST.platform.delegations),
     );
     expect(new URL(String(asked?.url)).searchParams.get("did")).toBe(DID);
+  });
+});
+
+describe("handing a file to somebody's store", () => {
+  const FOLDERS = `${INSTANCE}/api/folders`;
+  const UPLOADS = `${INSTANCE}/api/uploads`;
+
+  function store(extra: Record<string, Answer> = {}) {
+    return instance({
+      // The fake answers by path, so this one is read as an empty listing by
+      // the GET and as the folder it created by the POST that follows it.
+      "/api/folders": {
+        body: { data: { folders: [], id: "folder", name: "public" } },
+      },
+      "/api/uploads": {
+        body: {
+          data: {
+            signedUrl: `${INSTANCE}/put/here`,
+            finalUrl: `${INSTANCE}/read/here`,
+            uploadDid: DID,
+            uploadLocalId: "01JUPLOAD",
+          },
+        },
+      },
+      ...extra,
+    });
+  }
+
+  function posted(calls: { url: string; init?: RequestInit }[], to: string) {
+    const call = calls.find((c) => c.url === to && c.init?.method === "POST");
+    return JSON.parse(String(call?.init?.body));
+  }
+
+  const A_FILE = {
+    role: "block",
+    filename: "a.png",
+    mime_type: "image/png",
+    size: 1024,
+  } as const;
+
+  // syr parses the complete call's body with a schema naming three keys and
+  // drops the rest, so dimensions sent there reach no reader at all.
+  it("sends the dimensions with the ticket, where the store keeps them", async () => {
+    const { calls } = store();
+
+    await new SyrService().createUpload(DELEGATION, {
+      ...A_FILE,
+      width: 800,
+      height: 600,
+    });
+
+    expect(posted(calls, UPLOADS)).toMatchObject({
+      metadata: { width: 800, height: 600 },
+    });
+  });
+
+  it("leaves the dimensions out where nothing measured them", async () => {
+    const { calls } = store();
+    await new SyrService().createUpload(DELEGATION, A_FILE);
+    expect(posted(calls, UPLOADS)).not.toHaveProperty("metadata");
+  });
+
+  it("puts a role's blobs where a peer may read them", async () => {
+    const { calls } = store();
+
+    await new SyrService().createUpload(DELEGATION, {
+      ...A_FILE,
+      role: "avatar",
+    });
+
+    const made = calls
+      .filter((c) => c.url === FOLDERS && c.init?.method === "POST")
+      .map((c) => JSON.parse(String(c.init?.body)).name);
+    expect(made).toEqual(["public", "sloppy", "avatar"]);
+  });
+
+  // A store that has run out of room refuses the same way forever, so telling
+  // somebody to try again sends them back into the same wall.
+  it("passes on what the store said, and does not call it temporary", async () => {
+    store({
+      "/api/uploads": {
+        status: 413,
+        body: { message: "You have used all of your space." },
+      },
+    });
+
+    await expect(
+      new SyrService().createUpload(DELEGATION, A_FILE),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: "You have used all of your space.",
+    });
+  });
+
+  it("still asks again where the instance itself is having a bad day", async () => {
+    store({ "/api/uploads": { status: 503, body: {} } });
+
+    await expect(
+      new SyrService().createUpload(DELEGATION, A_FILE),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });

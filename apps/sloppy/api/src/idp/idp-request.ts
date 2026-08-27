@@ -3,7 +3,13 @@ import {
   Catch,
   type ExceptionFilter,
 } from "@nestjs/common";
-import { type DelegationRow, IdpError, isIdpError } from "@sloppy/idp";
+import {
+  type DelegationRow,
+  grantAllows,
+  IdpError,
+  isIdpError,
+  type PlatformGrant,
+} from "@sloppy/idp";
 import type { Request, Response } from "express";
 import type { z } from "zod";
 
@@ -26,6 +32,23 @@ export function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
     "invalid_request",
     parsed.error.issues[0]?.message ?? "Check what you entered and try again.",
   );
+}
+
+/**
+ * The delegation behind a route that changes something, refused where the
+ * person never approved this app for writing. Reading is what every delegation
+ * carries; writing is what the consent screen asked about by name.
+ */
+export function writingPlatform(request: IdpRequest): PlatformGrant {
+  const grant = request.platform!;
+  if (!grantAllows(grant, "posts:write")) {
+    throw new IdpError(
+      403,
+      "insufficient_scope",
+      "Connect this app to your account again to let it make changes.",
+    );
+  }
+  return grant;
 }
 
 /**

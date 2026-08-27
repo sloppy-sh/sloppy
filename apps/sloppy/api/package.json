@@ -1,7 +1,7 @@
 {
   "name": "@sloppy/api",
   "version": "0.0.1",
-  "description": "Sloppy API — nodes, addresses, labels, blocks and ink, over Sloppy's own SurrealDB. Hosted and self-hostable. See docs/ARCHITECTURE.md.",
+  "description": "Sloppy API \u2014 nodes, addresses, labels, blocks and ink, over Sloppy's own SurrealDB. Hosted and self-hostable. See docs/ARCHITECTURE.md.",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
@@ -18,6 +18,7 @@
     "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.980.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",

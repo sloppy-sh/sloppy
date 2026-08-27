@@ -51,6 +51,7 @@ import {
   findDelegationById,
   listDelegations,
   revokeDelegation,
+  setDelegationScopes,
 } from "./store.js";
 import { issueToken, readToken, subjectOf } from "./tokens.js";
 
@@ -139,6 +140,7 @@ export async function approveConsent(
             sealingKey: ctx.secrets.delegateSealing,
             platformOrigin: consent.platform_origin,
             platformName: consent.platform_name,
+            scopes: consent.scopes,
           }),
     );
   } catch (error) {
@@ -147,7 +149,11 @@ export async function approveConsent(
     }
     throw error;
   }
+  // Approving is what grants the scopes, so an app the person is reconnecting
+  // gets the set they just read rather than the set they read the first time.
   if (minted) await createDelegation(ctx.db, minted);
+  else if (existing)
+    await setDelegationScopes(ctx.db, existing.id, consent.scopes);
 
   const code = randomUUID();
   await attachConsentCode(ctx.db, consent.id, code);
@@ -247,6 +253,16 @@ export async function resolvePlatformToken(
   return { did: delegation.did, delegation };
 }
 
+/**
+ * Whether the person approved this app for `scope`. A delegation minted before
+ * the instance recorded them is read as `DEFAULT_SCOPES`, so an old grant can
+ * still see but cannot write — nobody agreed to more than that.
+ */
+export function grantAllows(grant: PlatformGrant, scope: SyrScope): boolean {
+  const granted = grant.delegation.scopes ?? DEFAULT_SCOPES;
+  return granted.includes(scope);
+}
+
 export function signPayload(
   ctx: IdpContext,
   delegation: DelegationRow,
@@ -338,6 +354,7 @@ function mintDelegation(params: {
   sealingKey: Buffer;
   platformOrigin: string;
   platformName: string;
+  scopes: string[];
 }): Omit<DelegationRow, "id"> {
   const delegate = generateKeypair();
   try {
@@ -361,6 +378,7 @@ function mintDelegation(params: {
       sealed_delegate: sealSeed(delegate.privateKey, params.sealingKey),
       signature: encodeMultibase(sign(canonical, params.rootSeed)),
       canonical_delegation: canonical,
+      scopes: params.scopes,
       created_at: createdAt,
     };
   } finally {

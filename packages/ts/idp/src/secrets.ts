@@ -13,6 +13,9 @@ export interface IdpSecrets {
   tokenSigning: Buffer;
   /** AES-256-GCM key the delegate seeds are sealed under. */
   delegateSealing: Buffer;
+  /** HMAC key for the single-use URL an upload's bytes may be sent to. Its own
+   *  key so a ticket can never be presented where a session is expected. */
+  uploadTicket: Buffer;
 }
 
 export function deriveIdpSecrets(rootSecret: string): IdpSecrets {
@@ -24,6 +27,7 @@ export function deriveIdpSecrets(rootSecret: string): IdpSecrets {
   return {
     tokenSigning: subkey(rootSecret, "sloppy-idp:token-signing:v1"),
     delegateSealing: subkey(rootSecret, "sloppy-idp:delegate-sealing:v1"),
+    uploadTicket: subkey(rootSecret, "sloppy-idp:upload-ticket:v1"),
   };
 }
 

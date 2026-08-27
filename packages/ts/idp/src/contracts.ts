@@ -68,9 +68,25 @@ export const ProfileSchema = z.object({
   username: z.string(),
   display_name: z.string().nullable(),
   avatar_url: z.string().nullable(),
+  banner_url: z.string().nullable(),
   bio: z.string().nullable(),
 });
 export type Profile = z.infer<typeof ProfileSchema>;
+
+const NAME_TOO_LONG = "That name is too long.";
+
+/**
+ * A patch: an absent key leaves that field alone, and an explicit `null` clears
+ * it. `@sloppy/types`' `UpdateProfileRequestSchema` is the same contract read
+ * from the consumer's side.
+ */
+export const ProfilePatchSchema = z.object({
+  display_name: z.string().max(64, NAME_TOO_LONG).nullable().optional(),
+  bio: z.string().max(500, "That bio is too long.").nullable().optional(),
+  avatar_url: z.url().nullable().optional(),
+  banner_url: z.url().nullable().optional(),
+});
+export type ProfilePatch = z.infer<typeof ProfilePatchSchema>;
 
 // ── Platform Delegation, the instance's half ──────────────────────────────
 

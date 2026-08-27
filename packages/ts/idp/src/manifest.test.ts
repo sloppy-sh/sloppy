@@ -29,6 +29,7 @@ describe("the instance manifest", () => {
   it("carries the api block a syr reader requires", () => {
     const { api } = ServedInstanceManifestSchema.parse(instanceManifest(BASE));
     expect(Object.keys(api).sort()).toEqual([
+      "public_emojis",
       "public_posts",
       "public_profile",
       "public_stories",
@@ -77,6 +78,7 @@ describe("the identity manifest", () => {
       "did_document",
       "posts",
       "profile",
+      "public_emojis",
       "stories",
       "uploads",
     ]);
@@ -90,6 +92,7 @@ describe("the identity manifest", () => {
     expect(endpoints.posts).toBe(`${api.public_posts}/${encoded}`);
     expect(endpoints.stories).toBe(`${api.public_stories}/${encoded}`);
     expect(endpoints.uploads).toBe(`${api.public_uploads}/${encoded}`);
+    expect(endpoints.public_emojis).toBe(`${api.public_emojis}/${encoded}`);
   });
 
   it("escapes the DID into every endpoint that carries one", () => {

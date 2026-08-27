@@ -38,6 +38,14 @@ export const CreateUploadRequestSchema = z.object({
    * telling the store to verify, and one that omits it is not.
    */
   sha256: Sha256HexSchema.optional(),
+  /**
+   * Only the uploader has the file, so only it can measure one; a store that
+   * does not decode images has no other way to learn them. Absent where the
+   * uploader could not measure, and then no reader ever learns them — which is
+   * why they are sent HERE, before the bytes, rather than after.
+   */
+  width: z.int().positive().optional(),
+  height: z.int().positive().optional(),
 });
 export type CreateUploadRequest = z.input<typeof CreateUploadRequestSchema>;
 
@@ -53,15 +61,8 @@ export const UploadTicketSchema = z.object({
 });
 export type UploadTicket = z.infer<typeof UploadTicketSchema>;
 
-/**
- * Dimensions are the uploader's, because only it has the file: a store that
- * does not decode images has no other way to learn them, and one that does is
- * free to ignore these.
- */
 export const CompleteUploadRequestSchema = z.object({
   upload_id: z.string().min(1),
-  width: z.int().positive().optional(),
-  height: z.int().positive().optional(),
   sha256: Sha256HexSchema.optional(),
 });
 export type CompleteUploadRequest = z.input<typeof CompleteUploadRequestSchema>;

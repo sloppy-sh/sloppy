@@ -99,3 +99,47 @@ export function ownOrigin(publicUrl: string): string | undefined {
     return undefined;
   }
 }
+
+export interface HostPolicy {
+  allowPrivate: boolean;
+  ownOrigin?: string;
+}
+
+/** Enough to follow a store that moved its bucket, not enough to be walked
+ *  around a network on. */
+const MAX_REDIRECTS = 3;
+
+/**
+ * A remote read where **every hop** is checked, not just the first. A `302`
+ * from an allowed host is a second address chosen by the same stranger who
+ * chose the first, so following one on the platform's behalf would hand back
+ * exactly the reach `reachableUrl` refuses.
+ */
+export async function fetchReachable(
+  target: string,
+  policy: HostPolicy,
+  init: RequestInit,
+): Promise<Response> {
+  let at = reachableUrl(target, policy);
+  for (let hop = 0; ; hop++) {
+    const response = await fetch(at, { ...init, redirect: "manual" });
+    const location = response.headers.get("location");
+    if (!isRedirect(response.status) || !location) return response;
+
+    await response.body?.cancel().catch(() => undefined);
+    if (hop >= MAX_REDIRECTS) {
+      throw new ForbiddenException("That picture could not be loaded.");
+    }
+    at = reachableUrl(new URL(location, at).toString(), policy);
+  }
+}
+
+function isRedirect(status: number): boolean {
+  return (
+    status === 301 ||
+    status === 302 ||
+    status === 303 ||
+    status === 307 ||
+    status === 308
+  );
+}

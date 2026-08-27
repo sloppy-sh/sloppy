@@ -37,9 +37,12 @@ export function roleLimits(role: MediaRole): {
   return ROLE_LIMITS[role];
 }
 
-/** How long to keep asking a store that has not seen the bytes land yet. */
-const FINALIZE_ATTEMPTS = 5;
-const FINALIZE_DELAY_MS = 1500;
+/** How long to keep asking a store that has not seen the bytes land yet. An
+ *  upload that did land and was given up on is a file the person is told to
+ *  send again, and a first copy nobody will ever look at. */
+const FINALIZE_WINDOW_MS = 5 * 60 * 1000;
+const FIRST_FINALIZE_DELAY_MS = 1500;
+const LAST_FINALIZE_DELAY_MS = 10_000;
 const SEND_TIMEOUT_MS = 30_000;
 
 function megabytes(bytes: number): string {
@@ -138,34 +141,31 @@ export class MediaService {
     request: CompleteUploadRequest,
   ): Promise<MediaAsset> {
     const upload = splitUploadId(request.upload_id);
-    const measured = {
-      ...(request.width ? { width: request.width } : {}),
-      ...(request.height ? { height: request.height } : {}),
-      ...(request.sha256 ? { sha256: request.sha256 } : {}),
-    };
+    const until = Date.now() + FINALIZE_WINDOW_MS;
+    let wait = FIRST_FINALIZE_DELAY_MS;
 
-    for (let attempt = 1; ; attempt++) {
-      const stored = await this.syr.completeUpload(
-        delegation,
-        upload,
-        measured,
-      );
+    for (;;) {
+      const stored = await this.syr.completeUpload(delegation, upload);
       if (stored?.url) {
         return {
           upload_id: request.upload_id,
           url: stored.url,
           mime_type: stored.mime_type,
           size: stored.size,
-          width: stored.metadata?.width ?? request.width ?? null,
-          height: stored.metadata?.height ?? request.height ?? null,
+          // The store's answer, never the uploader's: a second device and a
+          // peer who pulled the note read this row too, and they were never
+          // holding the file to measure it.
+          width: stored.metadata?.width ?? null,
+          height: stored.metadata?.height ?? null,
         };
       }
-      if (attempt >= FINALIZE_ATTEMPTS) {
+      if (Date.now() + wait >= until) {
         throw new BadRequestException(
           "That file is taking longer than expected. Try adding it again.",
         );
       }
-      await new Promise((done) => setTimeout(done, FINALIZE_DELAY_MS));
+      await new Promise((done) => setTimeout(done, wait));
+      wait = Math.min(wait * 2, LAST_FINALIZE_DELAY_MS);
     }
   }
 }

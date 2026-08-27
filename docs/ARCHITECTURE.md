@@ -58,11 +58,13 @@ load-bearing rather than tidy. `pnpm-workspace.yaml` carries the measurements.
 **The shells are ~200-line boots.** Everything product-shaped lives in `@sloppy/app-core`.
 One codebase serves web and native only for as long as that holds.
 
-**`apps/sloppy/api/src/app.module.ts` is closed.** A milestone fills one of the feature
-modules it already imports — auth, idp, node, block — rather than adding another to the
-list, because a shared import list is the one file every branch edits and then every branch
-conflicts on. `IdpModule` is a dynamic module for the same reason: local mode is gated on
-whether it registers anything, and that decision has to live inside it.
+**`apps/sloppy/api/src/app.module.ts` is a foundation file.** A shared import list is the
+one file every branch edits and then every branch conflicts on, so a milestone fills one of
+the feature modules it already imports — auth, idp, node, block, media, profile, emoji —
+and a new entry is added in the foundation wave, before any track forks, or not at all. An
+entry earns its place only by owning a concern none of the others does. `IdpModule` is a
+dynamic module for a related reason: local mode is gated on whether it registers anything,
+and that decision has to live inside it.
 
 ## The two files that carry the platform seam
 
@@ -132,6 +134,27 @@ its crypto. The Nest module is gated on `SLOPPY_LOCAL_IDP`, and the embedded Sur
 gated on a Cargo `local-mode` feature driven from **the same variable** as the frontend
 flag, so the two cannot drift. Off by default.
 
+**The embedded provider holds files, emoji and a profile, because a provider that does not
+is not one.** Avatars, banners, emoji and block pictures are syr's to keep (the table
+above), so an instance whose identity provider serves no `/uploads`, `/folders`, `/emojis`
+or `/user/profile` has no media, no custom emoji and no editable profile at all — the
+routes that answer are `api/src/idp/{owner,blob}.controller.ts` and the rules behind them
+are `@sloppy/idp`'s `files.ts` and `emojis.ts`.
+
+- **The bytes go to object storage; the row goes to SurrealDB.** `idp_upload` names where
+  a blob sits and what it is; `BlobStore` is the S3 client that holds it. Every object is
+  private and reads are served by `GET /api/idp/blob/{did}/{localId}`, so the store is
+  never exposed to the internet and an asset URL stays valid for the upload's life.
+- **A folder named `public` is the whole access rule.** An upload under one is readable by
+  anyone, which is what a pulled note and a federated emoji both need; anything else
+  answers only its owner's token. Sloppy writes into `public/sloppy/{role}`.
+- **`upload_url` is opaque by contract.** This provider signs a URL to its own route
+  rather than presigning an S3 one; `@sloppy/types`' `media.ts` is written so a caller
+  cannot tell the difference.
+- **Scopes are recorded on the delegation and enforced.** `posts:write` is what the
+  consent screen asks for and what every write above checks — a delegation without it can
+  read and nothing more.
+
 ### Federating the graph
 
 syr federation is **pull-only** — no relay, no firehose. Follow a DID → resolve
@@ -144,8 +167,10 @@ deterministic address is what makes a pulled subtree land in a known shape rathe
 an opaque blob.
 
 **`proxied()` on every remote asset.** Viewing a federated node must never leak the
-viewer's IP to the author's instance. The pattern is Slyng's
-(`app-core/.../utils/proxy.ts` → `api/src/proxy/proxy.controller.ts`).
+viewer's IP to the author's instance. `proxied()` is `@sloppy/client`'s `host.ts`; the
+route it points at is `api/src/media/proxy.controller.ts`, and which addresses that route
+will fetch from is `api/src/media/remote-host.ts` — **every** redirect hop is checked
+there, not only the address a note named.
 
 ## Data model
 

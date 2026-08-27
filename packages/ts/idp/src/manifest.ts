@@ -21,6 +21,7 @@ export const ServedInstanceManifestSchema = SyrInstanceManifestSchema.extend({
     public_posts: z.url(),
     public_stories: z.url(),
     public_uploads: z.url(),
+    public_emojis: z.url(),
   }),
 });
 export type ServedInstanceManifest = z.infer<
@@ -31,6 +32,7 @@ export const ServedIdentityManifestSchema = SyrIdentityManifestSchema.extend({
   endpoints: SyrIdentityManifestSchema.shape.endpoints.extend({
     posts: z.url(),
     stories: z.url(),
+    public_emojis: z.url(),
   }),
 });
 export type ServedIdentityManifest = z.infer<
@@ -75,6 +77,7 @@ export function instanceManifest(baseUrl: string): ServedInstanceManifest {
       public_posts: `${reads}/posts`,
       public_stories: `${reads}/stories`,
       public_uploads: `${reads}/uploads`,
+      public_emojis: `${reads}/emojis`,
     },
     identity_manifest_template: `${base}/.well-known/syr/{did}`,
     platform: {
@@ -105,6 +108,7 @@ export function identityManifest(
       posts: `${reads}/posts/${encoded}`,
       stories: `${reads}/stories/${encoded}`,
       uploads: `${reads}/uploads/${encoded}`,
+      public_emojis: `${reads}/emojis/${encoded}`,
       did_document: `${api}/identity/${encoded}/document`,
     },
     // TODO(M4 publish-and-pull): serve a person's public page here. It is where

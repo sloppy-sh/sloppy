@@ -17,6 +17,9 @@ export const IDENTITY_SCHEMA = `
   DEFINE TABLE IF NOT EXISTS idp_session SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS idp_delegation SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS idp_consent SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS idp_folder SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS idp_upload SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS idp_emoji SCHEMALESS;
 
   -- The owner column every sweep below deletes by, immutable for the reason
   -- @sloppy/data makes created_by immutable: a row reassigned out from under
@@ -26,6 +29,9 @@ export const IDENTITY_SCHEMA = `
   DEFINE FIELD IF NOT EXISTS did ON idp_session TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS did ON idp_delegation TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS did ON idp_consent TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS did ON idp_folder TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS did ON idp_upload TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS did ON idp_emoji TYPE string READONLY;
 
   -- Timestamps are strings here for the same reason they are everywhere else in
   -- Sloppy; docs/ARCHITECTURE.md § "Data model" carries the ruling.
@@ -34,6 +40,9 @@ export const IDENTITY_SCHEMA = `
   DEFINE FIELD IF NOT EXISTS created_at ON idp_session TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON idp_delegation TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON idp_consent TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON idp_folder TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON idp_upload TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON idp_emoji TYPE string READONLY;
 
   -- One identity per DID, and one account per name: both are what a stranger
   -- resolves, so a second row claiming either has to fail at the write.
@@ -46,6 +55,13 @@ export const IDENTITY_SCHEMA = `
   -- signature has to be able to find out that it was revoked.
   DEFINE INDEX IF NOT EXISTS idp_delegation_did_origin ON idp_delegation FIELDS did, platform_origin;
   DEFINE INDEX IF NOT EXISTS idp_consent_did ON idp_consent FIELDS did;
+
+  -- One folder per name under a parent, and one shortcode per identity: both
+  -- are looked up by that pair, and two rows answering to it is a coin toss.
+  -- Root is the empty string rather than NONE so the index covers it too.
+  DEFINE INDEX IF NOT EXISTS idp_folder_did_parent_name ON idp_folder FIELDS did, parent_id, name UNIQUE;
+  DEFINE INDEX IF NOT EXISTS idp_emoji_did_shortcode ON idp_emoji FIELDS did, shortcode UNIQUE;
+  DEFINE INDEX IF NOT EXISTS idp_upload_did ON idp_upload FIELDS did;
 `;
 
 const DEFINE_TABLE = /DEFINE TABLE\s+(?:IF NOT EXISTS\s+)?(\w+)/g;
@@ -83,11 +99,63 @@ export interface IdentityRow {
   created_at: string;
 }
 
-export interface AccountRow {
+/** The fields a person may change about themselves. Absent is "never set" and
+ *  null is "cleared"; both read back as null. */
+export type AccountProfile = {
+  display_name?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
+  banner_url?: string | null;
+};
+
+export interface AccountRow extends AccountProfile {
   id: RecordId;
   did: string;
   username: string;
   display_name: string | null;
+  created_at: string;
+}
+
+/** A folder in somebody's own file store. `parent_id` is the empty string at
+ *  the root, which is what the unique index above needs it to be. */
+export interface FolderRow {
+  id: RecordId;
+  did: string;
+  name: string;
+  parent_id: string;
+  created_at: string;
+}
+
+/**
+ * A blob this instance holds. `url` is where it reads back from once the bytes
+ * have landed and is stable for the row's life; `key` is where they sit in the
+ * object store, which nothing outside the store may be told.
+ */
+export interface UploadRow {
+  id: RecordId;
+  did: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  sha256?: string;
+  folder_id: string;
+  key: string;
+  url: string;
+  is_public: boolean;
+  /** `pending` until the bytes arrive; `completed` once they have. */
+  status: "pending" | "completed";
+  metadata?: { width?: number; height?: number };
+  created_at: string;
+}
+
+export interface EmojiRow {
+  id: RecordId;
+  did: string;
+  shortcode: string;
+  url: string;
+  mime_type: string;
+  size: number;
+  is_sticker: boolean;
   created_at: string;
 }
 
@@ -111,6 +179,10 @@ export interface DelegationRow {
   /** The root key's signature over `canonical_delegation`. */
   signature: string;
   canonical_delegation: string;
+  /** What the person approved this app for, re-recorded on every approval.
+   *  Absent on a delegation minted before the instance kept them, which is
+   *  read as the read-only default rather than as everything. */
+  scopes?: string[];
   created_at: string;
   revoked_at?: string;
   expires_at?: string;
@@ -192,6 +264,146 @@ export async function findAccountByDid(
   );
 }
 
+export async function mergeAccountProfile(
+  db: Surreal,
+  id: RecordId,
+  patch: AccountProfile,
+): Promise<AccountRow> {
+  return db.update<AccountRow>(id).merge(patch);
+}
+
+export async function findFolder(
+  db: Surreal,
+  did: string,
+  parentId: string,
+  name: string,
+): Promise<FolderRow | null> {
+  return first<FolderRow>(
+    db,
+    `SELECT * FROM idp_folder
+       WHERE did = $did AND parent_id = $parentId AND name = $name LIMIT 1;`,
+    { did, parentId, name },
+  );
+}
+
+export async function listFolders(
+  db: Surreal,
+  did: string,
+  parentId: string,
+): Promise<FolderRow[]> {
+  const [rows] = await db.query<[FolderRow[]]>(
+    `SELECT * FROM idp_folder
+       WHERE did = $did AND parent_id = $parentId ORDER BY name;`,
+    { did, parentId },
+  );
+  return rows ?? [];
+}
+
+export async function createFolder(
+  db: Surreal,
+  row: Omit<FolderRow, "id">,
+): Promise<FolderRow> {
+  return db.create<FolderRow>(newId("idp_folder")).content(row);
+}
+
+export async function findFolderById(
+  db: Surreal,
+  folderId: string,
+): Promise<FolderRow | null> {
+  return (
+    (await db.select<FolderRow>(new RecordId("idp_folder", folderId))) ?? null
+  );
+}
+
+export async function createUpload(
+  db: Surreal,
+  row: Omit<UploadRow, "id">,
+  localId: string,
+): Promise<UploadRow> {
+  return db.create<UploadRow>(new RecordId("idp_upload", localId)).content(row);
+}
+
+export async function findUpload(
+  db: Surreal,
+  localId: string,
+): Promise<UploadRow | null> {
+  return (
+    (await db.select<UploadRow>(new RecordId("idp_upload", localId))) ?? null
+  );
+}
+
+export async function updateUpload(
+  db: Surreal,
+  id: RecordId,
+  patch: Partial<Omit<UploadRow, "id" | "did" | "created_at">>,
+): Promise<UploadRow> {
+  return db.update<UploadRow>(id).merge(patch);
+}
+
+/** Completed uploads only, and public ones only: this answers a stranger. */
+export async function listPublicUploads(
+  db: Surreal,
+  did: string,
+  page: { limit: number; offset: number },
+): Promise<{ rows: UploadRow[]; total: number }> {
+  const [rows, counted] = await db.query<[UploadRow[], { total: number }[]]>(
+    `SELECT * FROM idp_upload
+       WHERE did = $did AND is_public = true AND status = 'completed'
+       ORDER BY created_at DESC LIMIT $limit START $offset;
+     SELECT count() AS total FROM idp_upload
+       WHERE did = $did AND is_public = true AND status = 'completed'
+       GROUP ALL;`,
+    { did, limit: page.limit, offset: page.offset },
+  );
+  return { rows: rows ?? [], total: counted?.[0]?.total ?? 0 };
+}
+
+export async function createEmoji(
+  db: Surreal,
+  row: Omit<EmojiRow, "id">,
+): Promise<EmojiRow> {
+  return db.create<EmojiRow>(newId("idp_emoji")).content(row);
+}
+
+export async function listEmoji(
+  db: Surreal,
+  did: string,
+  page: { limit: number; offset: number },
+): Promise<{ rows: EmojiRow[]; total: number }> {
+  const [rows, counted] = await db.query<[EmojiRow[], { total: number }[]]>(
+    `SELECT * FROM idp_emoji WHERE did = $did
+       ORDER BY shortcode LIMIT $limit START $offset;
+     SELECT count() AS total FROM idp_emoji WHERE did = $did GROUP ALL;`,
+    { did, limit: page.limit, offset: page.offset },
+  );
+  return { rows: rows ?? [], total: counted?.[0]?.total ?? 0 };
+}
+
+export async function findEmojiByShortcode(
+  db: Surreal,
+  did: string,
+  shortcode: string,
+): Promise<EmojiRow | null> {
+  return first<EmojiRow>(
+    db,
+    "SELECT * FROM idp_emoji WHERE did = $did AND shortcode = $shortcode LIMIT 1;",
+    { did, shortcode },
+  );
+}
+
+export async function findEmoji(
+  db: Surreal,
+  localId: string,
+): Promise<EmojiRow | null> {
+  return (
+    (await db.select<EmojiRow>(new RecordId("idp_emoji", localId))) ?? null
+  );
+}
+
+export async function deleteEmoji(db: Surreal, id: RecordId): Promise<void> {
+  await db.delete(id);
+}
+
 export async function createSession(
   db: Surreal,
   row: Omit<SessionRow, "id">,
@@ -263,6 +475,14 @@ export async function listDelegations(
     { did },
   );
   return rows ?? [];
+}
+
+export async function setDelegationScopes(
+  db: Surreal,
+  id: RecordId,
+  scopes: string[],
+): Promise<void> {
+  await db.update(id).merge({ scopes });
 }
 
 export async function revokeDelegation(

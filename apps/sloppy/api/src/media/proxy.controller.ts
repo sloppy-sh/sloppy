@@ -13,19 +13,23 @@ import type { Response } from "express";
 import type { AuthedRequest } from "../auth/authed-request";
 import { Public } from "../auth/public.decorator";
 import { AppConfigService } from "../config/app-config.service";
-import { ownOrigin, reachableUrl } from "./remote-host";
+import { fetchReachable, ownOrigin } from "./remote-host";
 
 const MAX_PROXY_BYTES = 32 * 1024 * 1024;
 const PROXY_TIMEOUT_MS = 10_000;
 /** Per caller, refilled steadily: a page of a pulled graph loads many at once. */
 const RATE_CAPACITY = 300;
 const RATE_REFILL_PER_SEC = 5;
+/** A bucket back at capacity is the same as no bucket, so it is dropped —
+ *  otherwise every caller ever seen is remembered for the process's life. */
+const RATE_IDLE_MS = (RATE_CAPACITY / RATE_REFILL_PER_SEC) * 1000;
 
 class ProxyRate {
   private readonly buckets = new Map<string, { tokens: number; at: number }>();
 
   take(caller: string): boolean {
     const now = Date.now();
+    this.evict(now);
     const bucket = this.buckets.get(caller) ?? {
       tokens: RATE_CAPACITY,
       at: now,
@@ -39,6 +43,12 @@ class ProxyRate {
     if (bucket.tokens < 1) return false;
     bucket.tokens -= 1;
     return true;
+  }
+
+  private evict(now: number): void {
+    for (const [caller, bucket] of this.buckets) {
+      if (now - bucket.at >= RATE_IDLE_MS) this.buckets.delete(caller);
+    }
   }
 }
 
@@ -74,26 +84,29 @@ export class ProxyController {
       );
     }
 
-    const remote = reachableUrl(target, {
-      allowPrivate: !this.config.isProduction,
-      ownOrigin: ownOrigin(this.config.publicUrl),
-    }).toString();
     const stop = new AbortController();
     const timer = setTimeout(() => stop.abort(), PROXY_TIMEOUT_MS);
 
     let upstream: globalThis.Response;
     try {
-      upstream = await fetch(remote, {
-        signal: stop.signal,
-        redirect: "follow",
-        // Nothing about the reader travels with this: no agent, no language,
-        // no cookie. The whole point is that the far end learns nothing.
-        headers: { accept: "image/*,*/*;q=0.8" },
-      });
+      upstream = await fetchReachable(
+        target,
+        {
+          allowPrivate: !this.config.isProduction,
+          ownOrigin: ownOrigin(this.config.publicUrl),
+        },
+        {
+          signal: stop.signal,
+          // Nothing about the reader travels with this: no agent, no language,
+          // no cookie. The whole point is that the far end learns nothing.
+          headers: { accept: "image/*,*/*;q=0.8" },
+        },
+      );
     } catch (err) {
       clearTimeout(timer);
+      if (err instanceof HttpException) throw err;
       this.logger.warn(
-        `${remote} did not answer: ${err instanceof Error ? err.message : err}`,
+        `${target} did not answer: ${err instanceof Error ? err.message : err}`,
       );
       throw new HttpException(
         "That picture could not be loaded.",
@@ -150,12 +163,10 @@ export class ProxyController {
     body.pipe(res);
   }
 
+  /** The address Express resolved, never a header — `x-forwarded-for` is
+   *  whatever the caller typed unless a trusted proxy set it, and this is the
+   *  only thing standing between a public route and a stranger's fetch loop. */
   private caller(req: AuthedRequest): string {
-    if (req.viewer?.did) return req.viewer.did;
-    const forwarded = req.headers["x-forwarded-for"];
-    const first = Array.isArray(forwarded)
-      ? forwarded[0]
-      : forwarded?.split(",")[0]?.trim();
-    return first || req.ip || "anonymous";
+    return req.viewer?.did ?? req.ip ?? "anonymous";
   }
 }

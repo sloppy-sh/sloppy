@@ -50,6 +50,27 @@ export class AppConfigService {
     };
   }
 
+  /** Where the embedded provider keeps the blobs it is given. The defaults
+   *  match `docker-compose.yml`, so a fresh clone needs no `.env`. */
+  get objectStore(): {
+    endpoint: string;
+    region: string;
+    bucket: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+  } {
+    return {
+      endpoint: this.config.get("S3_ENDPOINT", "http://localhost:9010"),
+      region: this.config.get("S3_REGION", "us-east-1"),
+      bucket: this.config.get("S3_BUCKET", "sloppy"),
+      accessKeyId: this.config.get("S3_ACCESS_KEY_ID", "sloppy-access-key"),
+      secretAccessKey: this.config.get(
+        "S3_SECRET_ACCESS_KEY",
+        "sloppy-secret-key",
+      ),
+    };
+  }
+
   get localIdpEnabled(): boolean {
     return localIdpEnabled();
   }

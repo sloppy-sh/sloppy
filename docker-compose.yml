@@ -117,6 +117,13 @@ services:
       # the embedded provider stops working with them.
       SLOPPY_IDP_SECRET: ${SLOPPY_IDP_SECRET:-sloppy-dev-identity-secret-change-me}
       SLOPPY_SESSION_SECRET: ${SLOPPY_SESSION_SECRET:-sloppy-dev-session-secret-change-me}
+      # Where the embedded provider keeps the blobs it is handed. Only the API
+      # ever addresses the store, so this is the container's name for it rather
+      # than the host's.
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-sloppy}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-sloppy-access-key}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-sloppy-secret-key}
       CI: "true" # see packages-watch — non-interactive pnpm auto-install
     ports:
       # Where the API answers directly: `/api/health`, and the native shell,
@@ -127,6 +134,8 @@ services:
       packages-watch:
         condition: service_healthy
       surrealdb:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test:
@@ -244,11 +253,12 @@ services:
   # its blobs to syr: one S3 implementation across both stacks keeps a
   # presign → PUT → complete round trip meaning the same thing on each side.
   #
-  # Sloppy's own blobs (a raster of an ink stroke before it is handed to syr, an
-  # export) land here; a published node's media goes to syr, not to this bucket.
-  # No API exists yet; when it lands it creates the bucket on startup and keeps
-  # every object private, handing out short-lived presigned URLs. CORS is set
-  # here because community MinIO only honours the env var.
+  # This is where the EMBEDDED provider keeps what it is given — an avatar, a
+  # banner, an emoji, the picture behind a block. An instance that delegates
+  # identity to a real syr puts none of that here; it goes to that instance.
+  # The API creates the bucket on startup and every object in it stays private:
+  # bytes reach a browser through the API, which is what lets a store hold a
+  # blob without being exposed to the internet itself.
   minio:
     container_name: sloppy-minio
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -256,9 +266,6 @@ services:
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-sloppy-access-key}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-sloppy-secret-key}
-      # tauri://localhost and http://tauri.localhost are the native shell's own
-      # origins; a webview PUT fails CORS without them.
-      MINIO_API_CORS_ALLOW_ORIGIN: ${S3_CORS_ORIGINS:-http://localhost:8030,tauri://localhost,http://tauri.localhost}
     ports:
       - "${S3_PORT:-9010}:9000"
       - "${S3_CONSOLE_PORT:-9011}:9001"

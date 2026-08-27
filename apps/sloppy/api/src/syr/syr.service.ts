@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -353,6 +355,17 @@ export class SyrService {
           mime_type: request.mime_type,
           size: request.size,
           ...(request.sha256 ? { sha256: request.sha256 } : {}),
+          // The only call that carries them: syr's own complete endpoint parses
+          // its body with a schema that names three keys and drops the rest, so
+          // dimensions sent there are thrown away without an error.
+          ...(request.width || request.height
+            ? {
+                metadata: {
+                  ...(request.width ? { width: request.width } : {}),
+                  ...(request.height ? { height: request.height } : {}),
+                },
+              }
+            : {}),
           folder_id: await this.sharedFolder(delegation, request.role),
         }),
       },
@@ -373,7 +386,6 @@ export class SyrService {
   async completeUpload(
     delegation: Delegation,
     upload: { did: string; localId: string },
-    measured: { width?: number; height?: number; sha256?: string },
   ): Promise<SyrUpload | null> {
     const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/uploads`;
     const failure = "That file did not finish uploading. Try again.";
@@ -386,7 +398,6 @@ export class SyrService {
           did: upload.did,
           local_id: upload.localId,
           status: "completed",
-          ...measured,
         }),
       },
       failure,
@@ -622,8 +633,42 @@ export class SyrService {
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
       this.logger.warn(`${url} answered ${response.status} ${detail}`);
-      throw new ServiceUnavailableException(failure);
+      throw this.refusal(response.status, detail, failure);
     }
     return response.json();
+  }
+
+  /**
+   * An instance that refused on its own terms is passed through: a full store
+   * and a rejected file will refuse the same way forever, and "try again" sends
+   * somebody back into a wall. Only a 5xx — the instance itself failing — keeps
+   * the retry, and the store's own sentence is preferred over ours wherever it
+   * wrote one for a person.
+   */
+  private refusal(
+    status: number,
+    body: string,
+    failure: string,
+  ): HttpException {
+    if (status >= 500 || status === 429) {
+      return new ServiceUnavailableException(failure);
+    }
+    return new HttpException(said(body) ?? failure, HttpStatus.BAD_REQUEST);
+  }
+}
+
+/** syr answers a refusal with `{ message }`; anything else is for a log. */
+function said(body: string): string | null {
+  const parsed = z
+    .object({ message: z.string().min(1).max(300) })
+    .safeParse(parseJson(body));
+  return parsed.success ? parsed.data.message : null;
+}
+
+function parseJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
   }
 }

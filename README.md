@@ -83,9 +83,9 @@ paths to the API, so the app and the API share an origin the way a deployment do
 
 Sign-in works from a clone with nothing else running: in dev the API also serves identity
 itself (`SLOPPY_LOCAL_IDP`, on by default in `docker-compose.yml`), so an identity can be
-made and used with no syr instance anywhere — see
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode". Set it to `0` to
-require an instance elsewhere.
+made and used with no syr instance anywhere — pictures, a name, and a set of emoji
+included. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode". Set it
+to `0` to require an instance elsewhere.
 
 The datastore ports are overridable with `SURREALDB_PORT`, `S3_PORT` and
 `S3_CONSOLE_PORT`, offset from syr's own dev stack so both can run at once. 8020 and 8030

@@ -13,6 +13,7 @@ import {
 import {
   type DidDocument,
   didDocument,
+  emojiCatalog,
   LoginRequestSchema,
   login,
   logout,
@@ -20,36 +21,18 @@ import {
   profileOf,
   type PublicListing,
   type PublicRecord,
+  publicUploadsOf,
   register,
   RegisterRequestSchema,
   requireIdentity,
   type SessionGrant,
 } from "@sloppy/idp";
+import type { SyrEmoji } from "@sloppy/types";
 import { Public } from "../auth/public.decorator";
 import { IdpExceptionFilter, type IdpRequest, parseBody } from "./idp-request";
 import { IdpSessionGuard } from "./idp.guards";
 import { IdpService } from "./idp.service";
-
-// syr's own bounds on a public listing, so the same request against a real
-// instance and against this one is answered the same way.
-const DEFAULT_PAGE_SIZE = 24;
-const MAX_PAGE_SIZE = 100;
-
-function emptyPage(limit?: string, offset?: string): PublicListing<never> {
-  const asked = Number.parseInt(limit ?? "", 10);
-  return {
-    status: "success",
-    data: [],
-    pagination: {
-      limit: Number.isNaN(asked)
-        ? DEFAULT_PAGE_SIZE
-        : Math.min(MAX_PAGE_SIZE, Math.max(1, asked)),
-      offset: Math.max(0, Number.parseInt(offset ?? "", 10) || 0),
-      total: 0,
-      has_more: false,
-    },
-  };
-}
+import { listing, pageOf, type UploadView, uploadView } from "./public-page";
 
 /**
  * Accounts held by this instance, and the public reads a stranger makes about
@@ -112,16 +95,40 @@ export class IdentityController {
     };
   }
 
-  /** Empty because this provider stores no media yet.
-   *  TODO(M3 media track): serve the blobs behind image and ink blocks here. */
+  /** What this identity keeps in the open: the pictures behind a note anyone
+   *  may read, and the ones a peer needs to render a subtree they pulled. */
   @Public()
   @Get("public/uploads/:did")
   async uploads(
     @Param("did") did: string,
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
-  ): Promise<PublicListing<never>> {
-    return this.emptyPageFor(did, limit, offset);
+  ): Promise<PublicListing<UploadView>> {
+    const owner = await this.ownDid(did);
+    const page = pageOf(limit, offset);
+    const { rows, total } = await publicUploadsOf(
+      this.idp.context,
+      owner,
+      page,
+    );
+    return listing(rows.map(uploadView), page, total);
+  }
+
+  @Public()
+  @Get("public/emojis/:did")
+  async emojis(
+    @Param("did") did: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ): Promise<PublicListing<SyrEmoji>> {
+    const owner = await this.ownDid(did);
+    const page = pageOf(limit, offset);
+    const { entries, total } = await emojiCatalog(
+      this.idp.context,
+      owner,
+      page,
+    );
+    return listing(entries, page, total);
   }
 
   /**
@@ -146,7 +153,14 @@ export class IdentityController {
     limit?: string,
     offset?: string,
   ): Promise<PublicListing<never>> {
-    await requireIdentity(this.idp.context, decodeURIComponent(did));
-    return emptyPage(limit, offset);
+    await this.ownDid(did);
+    return listing([], pageOf(limit, offset), 0);
+  }
+
+  /** Refuses first, so a DID this instance does not hold reads as unknown
+   *  rather than as somebody with nothing to show. */
+  private async ownDid(did: string): Promise<string> {
+    return (await requireIdentity(this.idp.context, decodeURIComponent(did)))
+      .did;
   }
 }
