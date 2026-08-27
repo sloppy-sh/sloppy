@@ -14,8 +14,9 @@ class SessionStore {
 	#ready = $state(false);
 	#loading = $state(false);
 	#inflight: Promise<Viewer | null> | null = null;
-	// A sign-out that lands while `me()` is in flight must not be undone by its
-	// answer, which the server may have sent before the sign-out reached it.
+	// A sign-out or a sign-in that lands while `me()` is in flight must not be
+	// undone by its answer, which the server may have sent before either reached
+	// it.
 	#epoch = 0;
 
 	get viewer(): Viewer | null {
@@ -72,9 +73,12 @@ class SessionStore {
 
 	/** After a shell exchanges a consent callback for a session itself. */
 	adopt(viewer: Viewer, token: string): void {
+		this.#epoch++;
 		runtime.token.set(token);
 		this.#viewer = viewer;
 		this.#ready = true;
+		this.#loading = false;
+		this.#inflight = null;
 	}
 
 	async signOut(): Promise<void> {

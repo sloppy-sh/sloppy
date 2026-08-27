@@ -82,6 +82,20 @@ describe('the node cache', () => {
 		expect(nodes.region({ origin: ROOT })).toEqual([]);
 	});
 
+	it('is not repopulated by a node whose creation lands after it was cleared', async () => {
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		api.on('POST /nodes', async () => {
+			await held;
+			return node(9, '3');
+		});
+		const creating = nodes.create({ title: 'a thought' });
+		nodes.clear();
+		answer();
+		await creating;
+		expect(nodes.region()).toEqual([]);
+	});
+
 	it('lists children in address order', async () => {
 		await nodes.load({ origin: ROOT });
 		expect(nodes.children(ROOT).map((n) => n.address)).toEqual(['1a']);

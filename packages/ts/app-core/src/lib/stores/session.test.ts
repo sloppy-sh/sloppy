@@ -59,6 +59,36 @@ describe('the session', () => {
 		expect(session.signedIn).toBe(false);
 	});
 
+	it('is not signed back out by an answer that lands after the consent round-trip', async () => {
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		api.on('GET /auth/me', async () => {
+			await held;
+			return undefined;
+		});
+		const asking = session.refresh();
+		session.adopt(VIEWER, 'a-live-token');
+		answer();
+		await asking;
+		expect(session.viewer?.did).toBe(VIEWER.did);
+		expect(session.loading).toBe(false);
+	});
+
+	it('does not hand a later ask the request the consent round-trip outran', async () => {
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		api.on('GET /auth/me', async () => {
+			await held;
+			return undefined;
+		});
+		const asking = session.refresh();
+		session.adopt(VIEWER, 'a-live-token');
+		const later = session.load();
+		answer();
+		await asking;
+		expect((await later)?.did).toBe(VIEWER.did);
+	});
+
 	it('drops the credential when signing out', async () => {
 		runtime.token.set('a-live-token');
 		await session.refresh();

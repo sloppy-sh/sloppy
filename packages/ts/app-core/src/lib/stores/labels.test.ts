@@ -1,4 +1,4 @@
-import { FACET_SLOT_COUNT } from '@sloppy/types';
+import { FACET_SLOT_COUNT, type OwnedRef } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { dimension, useFakeApi, type FakeApi } from './fake-api.test-support.js';
 import { labels } from './labels.svelte.js';
@@ -8,6 +8,11 @@ let api: FakeApi;
 
 function serve(list: ReturnType<typeof dimension>[]) {
 	api.on('GET /label-dimensions', () => list);
+}
+
+/** The path `SloppyClient` builds for one dimension. */
+function route(ref: OwnedRef): string {
+	return `/label-dimensions/${ref.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 beforeEach(() => {
@@ -60,6 +65,24 @@ describe('the label dimensions', () => {
 		await labels.load();
 		expect(labels.slotFor('unpinned')).toBeGreaterThanOrEqual(1);
 		expect(labels.slotFor('unpinned')).toBeLessThanOrEqual(FACET_SLOT_COUNT);
+	});
+
+	it('is not repopulated by a rename that lands after they were cleared', async () => {
+		await labels.load();
+		labels.setLens('status');
+		const target = labels.byName('status')!.ref;
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		api.on(`PATCH ${route(target)}`, async () => {
+			await held;
+			return dimension(2, 'state');
+		});
+		const renaming = labels.update(target, { name: 'state' });
+		labels.clear();
+		answer();
+		await renaming;
+		expect(labels.dimensions).toEqual([]);
+		expect(prefs.current.lens).toBe('status');
 	});
 });
 
