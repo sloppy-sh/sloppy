@@ -136,6 +136,7 @@ export function mountGraph(
     });
 
     scene.setModel(model, props.selection.length > 0);
+    scene.setPicking(props.picking ?? null);
     if (!relayout) return;
 
     epoch += 1;
@@ -185,6 +186,11 @@ export function mountGraph(
           if (budgetFolded.has(ref)) rebuild();
           return;
         }
+        const picking = props.picking;
+        if (picking) {
+          if (ref !== picking.from) picking.onPick(ref);
+          return;
+        }
         props.onOpenNode(ref);
       },
       onPress: (target) => {
@@ -232,7 +238,14 @@ export function mountGraph(
     update(next) {
       const remounting = next.remountKey !== mountedKey;
       const moved = layoutMoved(props, next);
+      const asking = next.picking?.from !== props.picking?.from;
       props = next;
+      // The canvas comes to the note the choice is being made for, so the reader
+      // is never asked to pick against a viewport they left somewhere else.
+      if (asking && next.picking) {
+        framing = false;
+        scene?.centreOn(next.picking.from);
+      }
       if (next.focus !== undefined && next.focus !== focus) focus = next.focus;
       if (remounting) {
         mountedKey = next.remountKey;

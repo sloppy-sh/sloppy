@@ -9,8 +9,14 @@
 	let {
 		opened,
 		fresh = true,
-		onclose
-	}: { opened: OwnedRef; fresh?: boolean; onclose?: () => void } = $props();
+		onclose,
+		onlink
+	}: {
+		opened: OwnedRef;
+		fresh?: boolean;
+		onclose?: () => void;
+		onlink?: () => void;
+	} = $props();
 
 	let showing = $state(untrack(() => opened));
 	let naming = $state<OwnedRef | null>(untrack(() => (fresh ? opened : null)));
@@ -24,6 +30,7 @@
 			showing = ref;
 			naming = written ? ref : null;
 		}}
+		onLinkOnGraph={() => onlink?.()}
 		onClose={() => onclose?.()}
 	/>
 </ResponsiveModal>

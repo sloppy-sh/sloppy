@@ -1,5 +1,6 @@
 import type { OwnedRef, Tag } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { GraphPickMarks } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
 import type { LayoutCommand } from "./layout/protocol.js";
@@ -19,6 +20,9 @@ class StandInScene {
   selecting = false;
   /** What the next hit test finds, which is how a test aims a tap. */
   under: string | null = null;
+  /** The choice the canvas was last told to outline. */
+  picking: GraphPickMarks | null = null;
+  centred: string[] = [];
 
   static async create(): Promise<StandInScene> {
     StandInScene.latest = new StandInScene();
@@ -28,6 +32,14 @@ class StandInScene {
   setModel(model: BuiltModel, selecting: boolean): void {
     this.model = model;
     this.selecting = selecting;
+  }
+
+  setPicking(picking: GraphPickMarks | null): void {
+    this.picking = picking;
+  }
+
+  centreOn(ref: string): void {
+    this.centred.push(ref);
   }
 
   attributesOf(ref: string) {
@@ -74,7 +86,6 @@ class StandInScene {
   setPalette(): void {}
   fit(): void {}
   invalidate(): void {}
-  centreOn(): void {}
   resetStats(): void {}
   destroy(): void {}
 }
@@ -358,5 +369,101 @@ describe("selecting tags", () => {
     });
 
     expect(graph.starts()).toBe(before + 1);
+  });
+});
+
+// The graph IS the picker: linking is pointing at the note you mean, on the
+// canvas that already shows where it sits and what it grew out of.
+describe("picking a note on the canvas", () => {
+  const plain = (graph: Awaited<ReturnType<typeof mount>>, but?: OwnedRef) =>
+    graph
+      .model()
+      .order.find(
+        (ref) =>
+          ref !== but && !graph.model().graph.getNodeAttributes(ref).collapsed,
+      )!;
+
+  /** A mounted graph the host has just asked a choice of, `from` pointing at
+   *  `other` already where `linked`. */
+  async function asking({ linked = false } = {}) {
+    const graph = await mount();
+    const from = plain(graph);
+    const other = plain(graph, from);
+    const picked: OwnedRef[] = [];
+    const marks = {
+      from,
+      taken: new Set(linked ? [other] : []),
+      onPick: (ref: OwnedRef) => picked.push(ref),
+    };
+    graph.handle.update({ ...graph.props, picking: marks });
+    return { graph, from, other, picked, marks };
+  }
+
+  it("picks the note under a tap instead of opening it", async () => {
+    const { graph, picked, other } = await asking();
+
+    graph.tap(other);
+
+    expect(picked).toEqual([other]);
+    expect(graph.opened).toEqual([]);
+  });
+
+  // A self-link is not a link, and the canvas says so by outlining that note
+  // rather than by refusing the tap after it lands.
+  it("never picks the note the choice is being made for", async () => {
+    const { graph, from, picked } = await asking();
+
+    graph.tap(from);
+
+    expect(picked).toEqual([]);
+    expect(graph.opened).toEqual([]);
+  });
+
+  // Finding the note is half of pointing at it, so a fold still opens.
+  it("still opens a mega-node under a tap", async () => {
+    const { graph, picked } = await asking();
+    const mega = firstMegaNode(graph.model());
+
+    graph.tap(mega);
+
+    expect(graph.expanded).toEqual([mega]);
+    expect(picked).toEqual([]);
+  });
+
+  it("outlines the note pointed from and the ones it already points at", async () => {
+    const { graph, from, other } = await asking({ linked: true });
+
+    expect(graph.scene.picking?.from).toBe(from);
+    expect(graph.scene.picking?.taken.has(other)).toBe(true);
+  });
+
+  // A pick a taken note answers is the reader saying the link they want is the
+  // one already there; what must never follow is a second copy of it.
+  it("picks a note it already points at, so the tap is not a dead end", async () => {
+    const { graph, other, picked } = await asking({ linked: true });
+
+    graph.tap(other);
+
+    expect(picked).toEqual([other]);
+  });
+
+  // The reader may have left the viewport anywhere; the note they are pointing
+  // FROM is what the choice is about, so it is what the canvas comes to — once.
+  it("brings the canvas to the note the choice is being made for", async () => {
+    const { graph, from, marks } = await asking();
+
+    graph.handle.update({ ...graph.props, picking: { ...marks } });
+
+    expect(graph.scene.centred).toEqual([from]);
+  });
+
+  it("goes back to opening a note when the choice is over", async () => {
+    const { graph, other } = await asking();
+
+    graph.handle.update({ ...graph.props, picking: undefined });
+    graph.tap(other);
+
+    expect(graph.opened).toEqual([other]);
+    expect(graph.scene.picking).toBeNull();
   });
 });

@@ -46,10 +46,18 @@
 	let railHeight = $state(0);
 	/** The note just written, whose title is still waiting to be given. */
 	let naming = $state<OwnedRef | null>(null);
+	/** The note a link is being pointed FROM, while the graph is the picker. */
+	let pointing = $state<OwnedRef | null>(null);
+	/** Where the reader has got to while looking for the note they mean: the one
+	 *  they are pointing from, and then whichever mega-node they opened. */
+	let looking = $state<OwnedRef | null>(null);
+	let pointRefused = $state<string | null>(null);
+	let linking = $state(false);
 
 	const roots = $derived(nodes.region());
 	const open = $derived(page.state.note ?? null);
 	const openNode = $derived(open ? nodes.get(open) : undefined);
+	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	const populated = $derived(!loading && !unreachable && roots.length > 0);
 
 	/** Depth-first from the roots, which is address order without re-deriving it. */
@@ -146,6 +154,46 @@
 		replaceState('/', {});
 	}
 
+	/** The note steps aside so the graph it belongs to can answer the question. */
+	function pointFrom(from: OwnedRef): void {
+		pointRefused = null;
+		pointing = from;
+		looking = from;
+		hide();
+	}
+
+	function stopPointing(): void {
+		const from = pointing;
+		pointing = null;
+		looking = null;
+		pointRefused = null;
+		if (from) show(from);
+	}
+
+	/** Tapping a note it already points at is not a second link; it is the
+	 *  reader saying the one they want is the one already there. */
+	async function pointAt(target: OwnedRef): Promise<void> {
+		const from = pointing;
+		const note = from ? nodes.get(from) : undefined;
+		if (!from || !note || linking) return;
+		linking = true;
+		pointRefused = null;
+		try {
+			if (!note.links.includes(target)) {
+				await nodes.update(from, { links: [...note.links, target] });
+			}
+		} catch (error) {
+			pointRefused =
+				serverMessage(error) ?? 'Sloppy could not add that link. Try again in a moment.';
+			return;
+		} finally {
+			linking = false;
+		}
+		pointing = null;
+		looking = null;
+		show(from);
+	}
+
 	/** A branch of its own. A note that continues one is written from inside it. */
 	async function writeBranch(): Promise<void> {
 		if (creating) return;
@@ -193,6 +241,12 @@
 
 <svelte:head><title>Sloppy</title></svelte:head>
 
+<svelte:window
+	onkeydown={(event) => {
+		if (pointing && event.key === 'Escape') stopPointing();
+	}}
+/>
+
 <div class="viewport-fit relative">
 	<h1 class="sr-only">Your graph</h1>
 
@@ -206,9 +260,19 @@
 				{collapsed}
 				{selection}
 				viewer={session.viewer?.did}
-				focus={open ?? undefined}
+				focus={open ?? looking ?? undefined}
+				picking={pointing && pointingNote
+					? {
+							from: pointing,
+							taken: new Set(pointingNote.links),
+							onPick: (ref) => void pointAt(ref)
+						}
+					: undefined}
 				onOpenNode={show}
-				onExpand={(ref) => folded.delete(ref)}
+				onExpand={(ref) => {
+					folded.delete(ref);
+					if (pointing) looking = ref;
+				}}
 				onCollapse={(ref) => folded.add(ref)}
 			/>
 		</div>
@@ -254,28 +318,48 @@
 			class="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background to-transparent pt-[max(0.75rem,env(safe-area-inset-top))] pb-5"
 		>
 			<div class="pointer-events-auto mx-auto w-full max-w-4xl space-y-2 px-3 sm:px-6">
-				<div class="flex items-center gap-3">
-					<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</p>
-					<Button
-						variant="outline"
-						class="h-9 shrink-0 rounded-full"
-						disabled={creating}
-						onclick={writeBranch}
-					>
-						<Plus class="size-4" />
-						New branch
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						class="size-9 shrink-0 rounded-full"
-						aria-label="Number a new branch"
-						disabled={creating}
-						onclick={startNumbering}
-					>
-						<Hash class="size-4" />
-					</Button>
-				</div>
+				{#if pointing}
+					<div class="flex items-center gap-3">
+						<p class="min-w-0 flex-1 text-sm">
+							Tap a note to link it to <span class="address">{pointingNote?.address}</span>
+						</p>
+						<Button
+							variant="outline"
+							class="h-9 shrink-0 rounded-full"
+							disabled={linking}
+							onclick={stopPointing}
+						>
+							Never mind
+						</Button>
+					</div>
+
+					{#if pointRefused}
+						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
+					{/if}
+				{:else}
+					<div class="flex items-center gap-3">
+						<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</p>
+						<Button
+							variant="outline"
+							class="h-9 shrink-0 rounded-full"
+							disabled={creating}
+							onclick={writeBranch}
+						>
+							<Plus class="size-4" />
+							New branch
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-9 shrink-0 rounded-full"
+							aria-label="Number a new branch"
+							disabled={creating}
+							onclick={startNumbering}
+						>
+							<Hash class="size-4" />
+						</Button>
+					</div>
+				{/if}
 
 				{#if tags.all.length > 0 || selection.length > 0}
 					<TagRail tags={tags.all} selected={selection} onselect={(next) => tags.select(next)} />
@@ -343,6 +427,6 @@
 	class="sm:max-w-2xl"
 >
 	{#if open}
-		<Note ref={open} {naming} onOpen={show} onClose={hide} />
+		<Note ref={open} {naming} onOpen={show} onLinkOnGraph={() => pointFrom(open)} onClose={hide} />
 	{/if}
 </ResponsiveModal>

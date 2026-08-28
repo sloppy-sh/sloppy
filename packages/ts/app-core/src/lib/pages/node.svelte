@@ -16,8 +16,9 @@
 		type Tag,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
-	import { BlockStack, ConfirmModal, NotePicker, scrollFade, TagField } from '@sloppy/ui';
+	import { BlockStack, ConfirmModal, scrollFade, TagField } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -33,12 +34,15 @@
 		ref,
 		naming = null,
 		onOpen,
+		onLinkOnGraph,
 		onClose
 	}: {
 		ref: OwnedRef;
 		/** The note just written, whose title is still to be given, if it is this one. */
 		naming?: OwnedRef | null;
 		onOpen: (ref: OwnedRef, fresh?: boolean) => void;
+		/** Hand the choice of what to link to over to the graph. */
+		onLinkOnGraph: () => void;
 		onClose: () => void;
 	} = $props();
 
@@ -59,7 +63,8 @@
 	let removing = $state(false);
 	let undeletable = $state<string | null>(null);
 
-	let picking = $state(false);
+	/** Typed into the field that reaches a note by the address a person cites. */
+	let cited = $state('');
 	let linking = $state(false);
 	let linkRefused = $state<string | null>(null);
 	/** The server's own words when a retag was refused, for the field to show. */
@@ -92,6 +97,23 @@
 	const backlinks = $derived(
 		everyNote.filter((note) => note.ref !== ref && note.links.includes(ref))
 	);
+
+	/** Enough to recognise the one meant, never a list to browse. */
+	const MATCHES = 6;
+
+	const citable = $derived.by(() => {
+		const needle = cited.trim().toLowerCase();
+		if (!needle) return [];
+		const already = new Set(node?.links ?? []);
+		return everyNote
+			.filter(
+				(note) =>
+					note.ref !== ref &&
+					!already.has(note.ref) &&
+					(note.address.startsWith(needle) || note.title.toLowerCase().includes(needle))
+			)
+			.slice(0, MATCHES);
+	});
 
 	const descendants = $derived.by(() => {
 		let counted = 0;
@@ -160,7 +182,7 @@
 		let live = true;
 		loading = true;
 		unreachable = null;
-		picking = false;
+		cited = '';
 		removing = false;
 		undeletable = null;
 		linkRefused = null;
@@ -460,18 +482,39 @@
 				</ul>
 			{/if}
 
-			<Button variant="outline" class="h-11" disabled={linking} onclick={() => (picking = true)}>
+			<Button variant="outline" class="h-11" disabled={linking} onclick={onLinkOnGraph}>
 				<Link2 class="size-4" />
 				Link to another note
 			</Button>
 
-			<NotePicker
-				bind:open={picking}
-				notes={everyNote}
-				title="Link to a note"
-				pickable={(note) => note.ref !== ref && !(node?.links ?? []).includes(note.ref)}
-				onpick={(note) => void link(note.ref)}
+			<Input
+				bind:value={cited}
+				class="h-11"
+				placeholder="Or link by title or address"
+				aria-label="Link by title or address"
+				autocapitalize="none"
+				autocomplete="off"
+				spellcheck="false"
 			/>
+
+			{#if citable.length > 0}
+				<ul
+					aria-label="Notes to link to"
+					class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
+					{@attach scrollFade('y')}
+				>
+					{#each citable as note (note.ref)}
+						<li>
+							{@render row(note, () => {
+								cited = '';
+								void link(note.ref);
+							})}
+						</li>
+					{/each}
+				</ul>
+			{:else if cited.trim()}
+				<p class="px-2 text-sm text-muted-foreground">Nothing here matches that.</p>
+			{/if}
 
 			{#if linkRefused}<p class="text-sm text-destructive" role="alert">{linkRefused}</p>{/if}
 		</div>
