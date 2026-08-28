@@ -46,3 +46,28 @@ export const TagsSchema = z
     `A note carries at most ${MAX_TAGS_PER_NODE} tags.`,
   );
 export type Tags = z.infer<typeof TagsSchema>;
+
+/**
+ * The hue slots a selected tag borrows, drawn as `--facet-1 … --facet-8` in
+ * `@sloppy/ui`'s `app.css`. DESIGN.md § "Hue — the tags you selected, and only
+ * those" is the contract, and `token-contrast.test.ts` holds this list against
+ * the stylesheet's.
+ */
+export const TAG_HUE_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export type TagHueSlot = (typeof TAG_HUE_SLOTS)[number];
+
+/**
+ * The slot each tag borrows, from a selection in the order it was selected. A
+ * tag absent from the map is not selected, and draws no hue at all.
+ */
+export function assignTagHueSlots(
+  selection: readonly Tag[],
+): Map<Tag, TagHueSlot> {
+  const slots = new Map<Tag, TagHueSlot>();
+  for (const tag of selection) {
+    if (!slots.has(tag)) {
+      slots.set(tag, TAG_HUE_SLOTS[slots.size % TAG_HUE_SLOTS.length]);
+    }
+  }
+  return slots;
+}

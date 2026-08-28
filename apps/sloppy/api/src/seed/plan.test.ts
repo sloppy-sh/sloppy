@@ -19,7 +19,7 @@ for (const root of plan.roots) {
   });
 }
 
-const SUBJECTS = new Set(TOPICS.map((topic) => topic.domain));
+const SUBJECTS = new Set(TOPICS.map((topic) => topic.tag));
 
 function carrying(...tags: string[]): PlannedNode[] {
   return all.filter((node) => tags.every((tag) => node.tags.includes(tag)));

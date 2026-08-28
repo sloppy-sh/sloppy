@@ -3,8 +3,8 @@
 // somebody's Zettelkasten rather than like filler.
 
 export interface Topic {
-  /** The `domain` label every note in this tree leans toward. */
-  domain: string;
+  /** The tag every note in this tree leans toward. */
+  tag: string;
   /** The root note's own title — the thought the branch springs from. */
   thesis: string;
   subjects: readonly string[];
@@ -15,7 +15,7 @@ export interface Topic {
 
 export const TOPICS: readonly Topic[] = [
   {
-    domain: "cities",
+    tag: "cities",
     thesis: "A city remembers what it was told to forget",
     subjects: [
       "a demolished terrace",
@@ -71,7 +71,7 @@ export const TOPICS: readonly Topic[] = [
     ],
   },
   {
-    domain: "biology",
+    tag: "biology",
     thesis: "A cell is a decision the body already made",
     subjects: [
       "a slime mould",
@@ -127,7 +127,7 @@ export const TOPICS: readonly Topic[] = [
     ],
   },
   {
-    domain: "computation",
+    tag: "computation",
     thesis: "Every index is a bet about the question you will ask",
     subjects: [
       "a B-tree with a wrong leading column",
@@ -183,7 +183,7 @@ export const TOPICS: readonly Topic[] = [
     ],
   },
   {
-    domain: "language",
+    tag: "language",
     thesis: "Grammar is the fossil record of what mattered",
     subjects: [
       "an irregular verb",
@@ -239,7 +239,7 @@ export const TOPICS: readonly Topic[] = [
     ],
   },
   {
-    domain: "economics",
+    tag: "economics",
     thesis: "Money is a promise with a stranger's face on it",
     subjects: [
       "a tally stick",
@@ -295,7 +295,7 @@ export const TOPICS: readonly Topic[] = [
     ],
   },
   {
-    domain: "music",
+    tag: "music",
     thesis: "A rhythm is an argument you can dance to",
     subjects: [
       "a clave pattern",

@@ -192,6 +192,8 @@ Obsidian failure with extra steps.
   — a tag exists exactly as long as a note carries it.
 - **Selection order assigns the slot, and the tag rail shows that order**, so the legend
   and the canvas cannot disagree about which colour answers which question.
+  `assignTagHueSlots` in `@sloppy/types` is where that mapping is made, and the only
+  place it is.
 - **A note carrying more than one selected tag draws in the earliest-selected one's hue.**
   One mark, one hue: mixing or striping makes the channel ambiguous, and the rail already
   says which sets a note is in.

@@ -77,7 +77,7 @@ function growTree(
 ): PlannedNode {
   const root: PlannedNode = {
     title: topic.thesis,
-    tags: settle([...tagsFor(random, topic, 1, "claim"), topic.domain]),
+    tags: settle([...tagsFor(random, topic, 1, "claim"), topic.tag]),
     blocks: blocksFor(random, topic, 1, true),
     children: [],
   };
@@ -197,7 +197,7 @@ function tagsFor(
 ): string[] {
   const tags: string[] = [];
 
-  if (random() < 0.92) tags.push(topic.domain);
+  if (random() < 0.92) tags.push(topic.tag);
   // A fifth of a tree's notes also carry somebody else's subject, which is what
   // makes selecting two tags worth doing: the set has to cut ACROSS the
   // genealogy rather than redraw it.
@@ -205,7 +205,7 @@ function tagsFor(
     tags.push(
       pick(
         random,
-        TOPICS.map((other) => other.domain),
+        TOPICS.map((other) => other.tag),
       ),
     );
   }

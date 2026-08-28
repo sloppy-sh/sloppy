@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MAX_TAGS_PER_NODE, TAG_MAX_LENGTH, TagsSchema } from "./tag.js";
+import {
+  assignTagHueSlots,
+  MAX_TAGS_PER_NODE,
+  TAG_HUE_SLOTS,
+  TAG_MAX_LENGTH,
+  TagsSchema,
+} from "./tag.js";
 
 const VOCABULARY = [
   "biology",
@@ -116,5 +122,34 @@ describe("a note's tags", () => {
     );
     const typed = [...distinct, ...distinct.map((tag) => tag.toUpperCase())];
     expect(TagsSchema.parse(typed)).toHaveLength(MAX_TAGS_PER_NODE);
+  });
+});
+
+describe("the hue a selected tag borrows", () => {
+  it("hands the slots out in selection order, and starts over past the last", () => {
+    const selection = Array.from(
+      { length: TAG_HUE_SLOTS.length * 3 + 1 },
+      (_, i) => `t${i}`,
+    );
+    const slots = assignTagHueSlots(selection);
+    for (const [at, tag] of selection.entries()) {
+      expect(slots.get(tag), tag).toBe(
+        TAG_HUE_SLOTS[at % TAG_HUE_SLOTS.length],
+      );
+    }
+  });
+
+  it("spends one slot on a tag however often the selection names it", () => {
+    const slots = assignTagHueSlots(["biology", "seed", "biology", "question"]);
+    expect([...slots]).toEqual([
+      ["biology", TAG_HUE_SLOTS[0]],
+      ["seed", TAG_HUE_SLOTS[1]],
+      ["question", TAG_HUE_SLOTS[2]],
+    ]);
+  });
+
+  it("has no slot for a tag nobody selected", () => {
+    expect(assignTagHueSlots([]).size).toBe(0);
+    expect(assignTagHueSlots(["biology"]).get("seed")).toBeUndefined();
   });
 });
