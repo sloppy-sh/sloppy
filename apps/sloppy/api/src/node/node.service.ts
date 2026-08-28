@@ -12,6 +12,7 @@ import {
   type CreateNodeRequestSchema,
   createOwnedRecordId,
   entityView,
+  isRootAddress,
   type Node,
   type NodeView,
   nowIso,
@@ -61,14 +62,13 @@ export class NodeService {
   }
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
-    const parent = request.parent
-      ? await this.nodes.find(did, request.parent)
-      : null;
-    if (request.parent && !parent) {
-      throw new BadRequestException("The note this springs from is not here.");
-    }
+    const parent = await this.parentFor(did, request.from);
+    const named =
+      request.from?.relation === "root" ? request.from.address : null;
     return this.creations.run(`${did}|${parent?.address ?? ""}`, () =>
-      this.write(did, parent, request),
+      named === null
+        ? this.write(did, parent, request)
+        : this.writeAt(did, named, request),
     );
   }
 
@@ -89,6 +89,50 @@ export class NodeService {
     await this.nodes.remove(did, await this.nodes.subtree(did, node));
   }
 
+  /**
+   * The node the new one hangs under. A note placed `after` another takes the
+   * same parent as that one, which is what makes `1a` → `1b` and `1` → `2` the
+   * same act at two depths.
+   */
+  private async parentFor(
+    did: string,
+    from: CreateRequest["from"],
+  ): Promise<Node | null> {
+    if (!from || from.relation === "root") return null;
+    const anchor = await this.nodes.find(did, from.note);
+    if (!anchor) {
+      throw new BadRequestException(
+        from.relation === "under"
+          ? "The note this springs from is not here."
+          : "The note this follows is not here.",
+      );
+    }
+    if (from.relation === "under") return anchor;
+    if (!anchor.parent) return null;
+    const parent = await this.nodes.find(did, anchor.parent);
+    if (!parent) {
+      throw new BadRequestException("The note this follows is not here.");
+    }
+    return parent;
+  }
+
+  /** A branch at the number its author picked, which nothing else may hold. */
+  private async writeAt(
+    did: string,
+    address: Address,
+    request: CreateRequest,
+  ): Promise<NodeView> {
+    if (await this.nodes.addressTaken(did, address)) throw taken(address);
+    try {
+      return entityView(
+        await this.nodes.insert(newNode(did, address, null, request)),
+      );
+    } catch (err) {
+      if (await this.nodes.addressTaken(did, address)) throw taken(address);
+      throw err;
+    }
+  }
+
   private async write(
     did: string,
     parent: Node | null,
@@ -99,6 +143,13 @@ export class NodeService {
         parent?.address ?? null,
         await this.nodes.childAddresses(did, parent),
       );
+      // A branch the server numbers has to be one a person could have named,
+      // or the branch after it would have no number left to take.
+      if (parent === null && !isRootAddress(address)) {
+        throw new BadRequestException(
+          "There is no number left after your highest branch. Number a lower one.",
+        );
+      }
       try {
         return entityView(
           await this.nodes.insert(newNode(did, address, parent, request)),
@@ -111,6 +162,12 @@ export class NodeService {
       }
     }
   }
+}
+
+function taken(address: Address): BadRequestException {
+  return new BadRequestException(
+    `You already have a branch numbered ${address}. Pick another number.`,
+  );
 }
 
 function newNode(

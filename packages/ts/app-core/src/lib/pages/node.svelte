@@ -2,8 +2,9 @@
 	// One note's interior, shown over the graph it belongs to. The address is at
 	// the top because it is what a person cites and a peer resolves.
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import Link2 from '@lucide/svelte/icons/link-2';
-	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import {
@@ -15,9 +16,8 @@
 		type Tag,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
-	import { BlockStack, ConfirmModal, scrollFade, TagField } from '@sloppy/ui';
+	import { BlockStack, ConfirmModal, NotePicker, scrollFade, TagField } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
-	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onDestroy } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -59,9 +59,7 @@
 	let removing = $state(false);
 	let undeletable = $state<string | null>(null);
 
-	let searching = $state(false);
-	let query = $state('');
-	let searchField = $state<HTMLInputElement | null>(null);
+	let picking = $state(false);
 	let linking = $state(false);
 	let linkRefused = $state<string | null>(null);
 	/** The server's own words when a retag was refused, for the field to show. */
@@ -117,19 +115,6 @@
 		return `It goes for good, and so do the ${descendants.toLocaleString()} notes that grew out of it.`;
 	});
 
-	const needle = $derived(query.trim().toLowerCase());
-	const SHOWN = 10;
-	const found = $derived.by(() => {
-		if (!needle) return [];
-		const already = new Set(node?.links ?? []);
-		return everyNote.filter(
-			(note) =>
-				note.ref !== ref &&
-				!already.has(note.ref) &&
-				(note.address.startsWith(needle) || note.title.toLowerCase().includes(needle))
-		);
-	});
-
 	// The modal claims focus for itself one frame after it mounts, so the caret
 	// can only be put in the title the frame after that.
 	$effect(() => {
@@ -139,10 +124,6 @@
 			frame = requestAnimationFrame(() => field.focus());
 		});
 		return () => cancelAnimationFrame(frame);
-	});
-
-	$effect(() => {
-		if (searching) searchField?.focus();
 	});
 
 	// A link may point at a note that has since gone, and a row that waits on one
@@ -179,7 +160,7 @@
 		let live = true;
 		loading = true;
 		unreachable = null;
-		stopSearching();
+		picking = false;
 		removing = false;
 		undeletable = null;
 		linkRefused = null;
@@ -217,22 +198,19 @@
 		}
 	}
 
-	async function writeChild(): Promise<void> {
+	/** The two ways a note is written from this one: one under it, or the one
+	 *  that comes after it. The server derives the address from either. */
+	async function write(relation: 'under' | 'after'): Promise<void> {
 		if (adding) return;
 		adding = true;
 		refused = null;
 		try {
-			onOpen((await nodes.create({ parent: ref })).ref, true);
+			onOpen((await nodes.create({ from: { relation, note: ref } })).ref, true);
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
 			adding = false;
 		}
-	}
-
-	function stopSearching(): void {
-		searching = false;
-		query = '';
 	}
 
 	async function relink(links: OwnedRef[], whenItFails: string): Promise<void> {
@@ -266,7 +244,6 @@
 	async function link(target: OwnedRef): Promise<void> {
 		const before = node?.links;
 		if (!before) return;
-		stopSearching();
 		await relink([...before, target], 'Sloppy could not add that link. Try again in a moment.');
 	}
 
@@ -398,7 +375,7 @@
 
 		<div class="space-y-3 border-t border-border pt-6">
 			{#if children.length > 0}
-				<h2 class="text-sm font-medium text-muted-foreground">Continues into</h2>
+				<h2 class="text-sm font-medium text-muted-foreground">Under this</h2>
 				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
 					{#each children as child (child.ref)}
 						<li>{@render row(child, () => onOpen(child.ref))}</li>
@@ -406,10 +383,26 @@
 				</ul>
 			{/if}
 
-			<Button variant="outline" class="h-11" disabled={adding} onclick={writeChild}>
-				<Plus class="size-4" />
-				{children.length > 0 ? 'Another note under this' : 'Write a note under this'}
-			</Button>
+			<div class="flex flex-col gap-2 sm:flex-row">
+				<Button
+					variant="outline"
+					class="h-11 sm:flex-1"
+					disabled={adding}
+					onclick={() => write('under')}
+				>
+					<CornerDownRight class="size-4" />
+					A note under this
+				</Button>
+				<Button
+					variant="outline"
+					class="h-11 sm:flex-1"
+					disabled={adding}
+					onclick={() => write('after')}
+				>
+					<ArrowRight class="size-4" />
+					The next note
+				</Button>
+			</div>
 
 			{#if refused}<p class="text-sm text-destructive" role="alert">{refused}</p>{/if}
 		</div>
@@ -467,46 +460,18 @@
 				</ul>
 			{/if}
 
-			{#if searching}
-				<div class="space-y-2">
-					<div class="flex items-center gap-2">
-						<Input
-							bind:ref={searchField}
-							bind:value={query}
-							class="h-11"
-							placeholder="Title or address"
-							aria-label="Find a note to link to"
-						/>
-						<Button variant="ghost" class="h-11 shrink-0" onclick={stopSearching}>Cancel</Button>
-					</div>
+			<Button variant="outline" class="h-11" disabled={linking} onclick={() => (picking = true)}>
+				<Link2 class="size-4" />
+				Link to another note
+			</Button>
 
-					{#if needle}
-						{#if found.length === 0}
-							<p class="px-2 py-1 text-sm text-muted-foreground">Nothing here matches that.</p>
-						{:else}
-							<ul
-								aria-label="Notes you can link to"
-								class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
-								{@attach scrollFade('y')}
-							>
-								{#each found.slice(0, SHOWN) as match (match.ref)}
-									<li>{@render row(match, () => link(match.ref))}</li>
-								{/each}
-							</ul>
-							{#if found.length > SHOWN}
-								<p class="px-2 text-xs text-muted-foreground">
-									Not everything that matches is here. Keep typing to narrow it.
-								</p>
-							{/if}
-						{/if}
-					{/if}
-				</div>
-			{:else}
-				<Button variant="outline" class="h-11" onclick={() => (searching = true)}>
-					<Link2 class="size-4" />
-					Link to another note
-				</Button>
-			{/if}
+			<NotePicker
+				bind:open={picking}
+				notes={everyNote}
+				title="Link to a note"
+				pickable={(note) => note.ref !== ref && !(node?.links ?? []).includes(note.ref)}
+				onpick={(note) => void link(note.ref)}
+			/>
 
 			{#if linkRefused}<p class="text-sm text-destructive" role="alert">{linkRefused}</p>{/if}
 		</div>

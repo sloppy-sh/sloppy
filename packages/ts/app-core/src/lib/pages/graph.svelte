@@ -15,10 +15,12 @@
 
 	// The home surface: the whole graph, the tags it is lit by, and the note that
 	// opens over it. DESIGN.md § Layout — the graph is the page.
+	import Hash from '@lucide/svelte/icons/hash';
 	import Plus from '@lucide/svelte/icons/plus';
-	import type { NodeView } from '@sloppy/types';
+	import { RootAddressSchema, type NodeView } from '@sloppy/types';
 	import { GraphSurface, ResponsiveModal, TagRail } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
@@ -36,6 +38,10 @@
 	/** An action failed while the graph is fine; it sits beside the graph. */
 	let refused = $state<string | null>(null);
 	let creating = $state(false);
+	/** Naming a branch's number, which is the one address a person picks. */
+	let numbering = $state(false);
+	let branchNumber = $state('');
+	let numberRefused = $state<string | null>(null);
 	/** What the rail covers, so the graph frames itself into what is left. */
 	let railHeight = $state(0);
 	/** The note just written, whose title is still waiting to be given. */
@@ -153,6 +159,36 @@
 			creating = false;
 		}
 	}
+
+	function startNumbering(): void {
+		branchNumber = '';
+		numberRefused = null;
+		numbering = true;
+	}
+
+	/** Through the schema the API refuses by, so both say the same thing. */
+	async function writeNumberedBranch(): Promise<void> {
+		if (creating) return;
+		const picked = RootAddressSchema.safeParse(branchNumber.trim());
+		if (!picked.success) {
+			numberRefused = picked.error.issues[0].message;
+			return;
+		}
+		creating = true;
+		numberRefused = null;
+		try {
+			const written = await nodes.create({
+				from: { relation: 'root', address: picked.data }
+			});
+			numbering = false;
+			show(written.ref, true);
+		} catch (error) {
+			numberRefused =
+				serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
+		} finally {
+			creating = false;
+		}
+	}
 </script>
 
 <svelte:head><title>Sloppy</title></svelte:head>
@@ -195,9 +231,14 @@
 						<p class="text-lg leading-relaxed">
 							Your graph starts with one note, and everything else grows out of it.
 						</p>
-						<Button class="h-11" disabled={creating} onclick={writeBranch}>
-							Write the first note
-						</Button>
+						<div class="flex flex-col items-center gap-2">
+							<Button class="h-11" disabled={creating} onclick={writeBranch}>
+								Write the first note
+							</Button>
+							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
+								Number it yourself
+							</Button>
+						</div>
 						{#if refused}
 							<p class="text-sm text-destructive" role="alert">{refused}</p>
 						{/if}
@@ -224,6 +265,16 @@
 						<Plus class="size-4" />
 						New branch
 					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-9 shrink-0 rounded-full"
+						aria-label="Number a new branch"
+						disabled={creating}
+						onclick={startNumbering}
+					>
+						<Hash class="size-4" />
+					</Button>
 				</div>
 
 				{#if tags.all.length > 0 || selection.length > 0}
@@ -237,6 +288,50 @@
 		</div>
 	{/if}
 </div>
+
+<ResponsiveModal
+	bind:open={numbering}
+	title="Number a new branch"
+	description="Everything you write under it grows from the number you pick."
+>
+	<div class="space-y-3 px-2 pt-4">
+		<Input
+			bind:value={branchNumber}
+			class="h-11"
+			inputmode="numeric"
+			autocomplete="off"
+			placeholder="7"
+			aria-label="Number"
+			onkeydown={(e) => {
+				if (e.key !== 'Enter') return;
+				e.preventDefault();
+				void writeNumberedBranch();
+			}}
+		/>
+
+		{#if numberRefused}
+			<p class="text-sm text-destructive" role="alert">{numberRefused}</p>
+		{/if}
+
+		<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+			<Button
+				variant="outline"
+				class="h-11 sm:h-9"
+				disabled={creating}
+				onclick={() => (numbering = false)}
+			>
+				Cancel
+			</Button>
+			<Button
+				class="h-11 sm:h-9"
+				disabled={creating || branchNumber.trim() === ''}
+				onclick={writeNumberedBranch}
+			>
+				Write it
+			</Button>
+		</div>
+	</div>
+</ResponsiveModal>
 
 <ResponsiveModal
 	open={open !== null}

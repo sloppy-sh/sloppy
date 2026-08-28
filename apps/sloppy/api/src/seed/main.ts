@@ -116,7 +116,9 @@ async function main(): Promise<void> {
       parent: OwnedRef | undefined,
     ): Promise<void> => {
       const node = await nodes.create(did, {
-        ...(parent ? { parent } : {}),
+        ...(parent
+          ? { from: { relation: "under" as const, note: parent } }
+          : {}),
         title: planned.title,
         tags: planned.tags,
       });
