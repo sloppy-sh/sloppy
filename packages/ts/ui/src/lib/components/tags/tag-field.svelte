@@ -4,7 +4,6 @@
 	// graph completes as they type, and everything else is just a word.
 	import X from '@lucide/svelte/icons/x';
 	import { type Tag, TagSchema, TagsSchema } from '@sloppy/types';
-	import { onDestroy } from 'svelte';
 	import { cn } from '$lib/utils.js';
 
 	let {
@@ -85,24 +84,12 @@
 		await save(shown.filter((held) => held !== tag));
 	}
 
-	let committing: number | null = null;
-
-	// Blur lands before the click that caused it, so committing what is in the
-	// field straight away turns a tapped suggestion into two tags — the
-	// half-typed one and the one they picked. `add` empties the field first, so a
-	// frame later there is nothing left to commit.
+	// Blur lands before the click that caused it, and that click may be opening
+	// another note. Committing in the same task is what keeps the word on the
+	// note it was typed on.
 	function commitOnBlur(): void {
-		committing = requestAnimationFrame(() => {
-			committing = null;
-			if (typed.trim() !== '') void add(typed);
-		});
+		if (typed.trim() !== '') void add(typed);
 	}
-
-	// The note can close between the blur and that frame — closing it is what
-	// blurred the field — and there would be no note left for `add` to tag.
-	onDestroy(() => {
-		if (committing !== null) cancelAnimationFrame(committing);
-	});
 
 	function onkeydown(event: KeyboardEvent): void {
 		if (event.key === 'Enter' || event.key === ' ') {
@@ -194,9 +181,12 @@
 				aria-selected={at === active}
 				class={cn('rounded-md', at === active && 'bg-muted/60')}
 			>
+				<!-- Taking the caret would blur the field, and the half-typed word
+				     would commit as a tag of its own beside the one being chosen. -->
 				<button
 					type="button"
 					tabindex="-1"
+					onmousedown={(event) => event.preventDefault()}
 					onclick={() => void add(match)}
 					class="flex min-h-11 w-full items-center px-2 text-left text-sm"
 				>

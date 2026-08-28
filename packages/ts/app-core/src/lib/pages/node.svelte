@@ -183,6 +183,7 @@
 		removing = false;
 		undeletable = null;
 		linkRefused = null;
+		tagRefused = null;
 		void (async () => {
 			try {
 				const [, stack] = await Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
@@ -414,13 +415,17 @@
 		</div>
 
 		<div class="border-t border-border pt-6">
-			<TagField
-				tags={node.tags}
-				{suggestions}
-				onchange={retag}
-				refused={tagRefused}
-				placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
-			/>
+			<!-- The field belongs to the note: a word half-typed into it, and a
+			     refusal it is still showing, must not follow the reader to the next. -->
+			{#key ref}
+				<TagField
+					tags={node.tags}
+					{suggestions}
+					onchange={retag}
+					refused={tagRefused}
+					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
+				/>
+			{/key}
 		</div>
 
 		<div class="space-y-3 border-t border-border pt-6">

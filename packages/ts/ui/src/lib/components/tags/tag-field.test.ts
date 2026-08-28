@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import TagField from './tag-field.svelte';
 
 let target: HTMLElement;
@@ -104,11 +104,13 @@ describe('writing a tag', () => {
 		expect(field.value).toBe('cell biology');
 	});
 
-	it('commits what is left in the field when it loses focus', async () => {
+	// In the same task as the blur, so whatever the tap that caused it goes on to
+	// do — opening another note, closing this one — cannot get there first.
+	it('commits what is left in the field the moment it loses focus', () => {
 		const field = render();
 		type(field, 'method');
 		field.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-		await vi.waitFor(() => expect(saved).toEqual([['method']]));
+		expect(saved).toEqual([['method']]);
 	});
 
 	it('does nothing on Enter with an empty field', () => {
@@ -181,17 +183,33 @@ describe('completing from what is already in the graph', () => {
 		expect(saved).toEqual([['bio']]);
 	});
 
-	it('agrees with the blur, which commits the typed word too', async () => {
+	it('agrees with the blur, which commits the typed word too', () => {
 		const field = render({ suggestions });
 		type(field, 'bio');
 		field.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-		await vi.waitFor(() => expect(saved).toEqual([['bio']]));
+		expect(saved).toEqual([['bio']]);
 	});
 
 	it('commits the one that was clicked', () => {
 		const field = render({ suggestions });
 		type(field, 'bio');
 		(target.querySelector('[role="option"] button') as HTMLButtonElement).click();
+		flushSync();
+		expect(saved).toEqual([['biology']]);
+	});
+
+	// Otherwise the blur that tapping one causes would commit the half-typed
+	// word first, and the note would come away with two tags instead of one.
+	it('keeps the caret in the field when one is tapped', () => {
+		const field = render({ suggestions });
+		type(field, 'bio');
+		const option = target.querySelector('[role="option"] button') as HTMLButtonElement;
+		const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+		option.dispatchEvent(down);
+		flushSync();
+
+		expect(down.defaultPrevented).toBe(true);
+		option.click();
 		flushSync();
 		expect(saved).toEqual([['biology']]);
 	});
@@ -221,18 +239,6 @@ describe('completing from what is already in the graph', () => {
 		} finally {
 			document.removeEventListener('keydown', listen);
 		}
-	});
-});
-
-describe('when the note closes under it', () => {
-	it('does not tag a note that is no longer there', async () => {
-		const field = render();
-		type(field, 'method');
-		field.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-		unmount(mounted!, { outro: false });
-		mounted = undefined;
-		await new Promise((settle) => requestAnimationFrame(() => requestAnimationFrame(settle)));
-		expect(saved).toEqual([]);
 	});
 });
 
