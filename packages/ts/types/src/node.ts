@@ -85,13 +85,19 @@ export type NodePlacement = z.infer<typeof NodePlacementSchema>;
  * one a `root` placement names: a client that could name a node's place under
  * another could mint a citation into somebody else's graph.
  *
- * An absent `from` opens a branch at the next number.
+ * An absent `from` opens a branch at the next number. An unknown field beside
+ * it is refused rather than dropped: an address is assigned once and never
+ * rewritten, so a caller that placed a note through a field this route no
+ * longer reads would be handed a permanent place it did not ask for.
  */
-export const CreateNodeRequestSchema = z.object({
-  from: NodePlacementSchema.optional(),
-  title: z.string().max(512).default(""),
-  tags: TagsSchema.default([]),
-});
+export const CreateNodeRequestSchema = z.strictObject(
+  {
+    from: NodePlacementSchema.optional(),
+    title: z.string().max(512).default(""),
+    tags: TagsSchema.default([]),
+  },
+  { error: "Sloppy is out of date. Update it and try again." },
+);
 export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
 /**

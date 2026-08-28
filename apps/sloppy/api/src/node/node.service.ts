@@ -12,6 +12,7 @@ import {
   type CreateNodeRequestSchema,
   createOwnedRecordId,
   entityView,
+  isRootAddress,
   type Node,
   type NodeView,
   nowIso,
@@ -142,6 +143,13 @@ export class NodeService {
         parent?.address ?? null,
         await this.nodes.childAddresses(did, parent),
       );
+      // A branch the server numbers has to be one a person could have named,
+      // or the branch after it would have no number left to take.
+      if (parent === null && !isRootAddress(address)) {
+        throw new BadRequestException(
+          "There is no number left after your highest branch. Number a lower one.",
+        );
+      }
       try {
         return entityView(
           await this.nodes.insert(newNode(did, address, parent, request)),

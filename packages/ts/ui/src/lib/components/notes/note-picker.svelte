@@ -73,6 +73,12 @@
 
 	const SHOWN = 200;
 
+	// Cleared as the sheet opens rather than as it closes, which would empty the
+	// list out from under it while it animates away.
+	$effect(() => {
+		if (open) typed = '';
+	});
+
 	function toggle(ref: OwnedRef): void {
 		if (expanded.has(ref)) expanded.delete(ref);
 		else expanded.add(ref);
@@ -80,7 +86,6 @@
 
 	function pick(note: NodeView): void {
 		open = false;
-		typed = '';
 		onpick(note);
 	}
 
@@ -180,7 +185,7 @@
 
 			{#if shown.length > SHOWN}
 				<p class="shrink-0 px-2 text-xs text-muted-foreground">
-					Not everything that matches is here. Keep typing to narrow it.
+					Not everything is here. Type to narrow the list.
 				</p>
 			{/if}
 		{/if}

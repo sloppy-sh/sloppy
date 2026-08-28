@@ -317,18 +317,38 @@ describe("the domain routes", () => {
       }
     });
 
-    scenario("ignores an address a client tries to name", async () => {
+    scenario("refuses a body that names a place of its own", async () => {
       const parent = await newNode(ada, { title: "Names its own children" });
-      const minted = await newNode(ada, {
-        from: springsFrom(parent),
-        title: "Not yours to name",
-        address: "9999",
-        depth: 42,
-        origin: "did:syr:z6MkNot/00000000000000000000000000",
-      });
+      for (const named of [
+        { address: "9999", depth: 42 },
+        { origin: "did:syr:z6MkNot/00000000000000000000000000" },
+      ]) {
+        const answer = await call("POST", "/nodes", ada, {
+          from: springsFrom(parent),
+          title: "Not yours to name",
+          ...named,
+        });
+        expect(answer.status, `${JSON.stringify(named)} was accepted`).toBe(
+          400,
+        );
+      }
+
+      const minted = await newNode(ada, { from: springsFrom(parent) });
       expect(minted.address).toBe(`${parent.address}a`);
       expect(minted.depth).toBe(addressDepth(minted.address as Address));
       expect(minted.origin).toBe(parent.ref);
+    });
+
+    scenario("refuses the shape that used to place a note", async () => {
+      const parent = await newNode(ada, { title: "Still asked for by name" });
+      // A client on the old shape asked for a note under that one; the branch
+      // it would silently open instead keeps its address forever.
+      const answer = await call("POST", "/nodes", ada, {
+        parent: parent.ref,
+        title: "Under this, once",
+      });
+      expect(answer.status).toBe(400);
+      expect(JSON.stringify(answer.body)).toContain("out of date");
     });
 
     scenario("refuses a note that is not there to place against", async () => {

@@ -52,12 +52,17 @@ export function isAddress(value: unknown): value is Address {
   return typeof value === "string" && ADDRESS_PATTERN.test(value);
 }
 
-/** Whether `value` addresses a root — a branch nobody's note sprang out of. */
+/**
+ * Whether `value` addresses a root — a branch nobody's note sprang out of. The
+ * bound is on the successor rather than on the number itself: the branch after
+ * this one is `ordinal + 1`, so a number nothing can follow is a branch that
+ * could never be continued.
+ */
 export function isRootAddress(value: unknown): value is Address {
   return (
     typeof value === "string" &&
     ROOT_ADDRESS_PATTERN.test(value) &&
-    Number.isSafeInteger(Number(value))
+    Number.isSafeInteger(Number(value) + 1)
   );
 }
 

@@ -40,6 +40,22 @@ describe("the number a branch is named with", () => {
   it("refuses a number too large to compare exactly", () => {
     expect(isRootAddress("9".repeat(30))).toBe(false);
   });
+
+  it("accepts only a number the next branch can follow", () => {
+    const last = String(Number.MAX_SAFE_INTEGER);
+    expect(isRootAddress(last)).toBe(false);
+    expect(() => siblingAddress(last)).toThrow(InvalidAddressError);
+
+    for (const value of [
+      "1",
+      "7",
+      "4096",
+      String(Number.MAX_SAFE_INTEGER - 1),
+    ]) {
+      expect(isRootAddress(value)).toBe(true);
+      expect(() => siblingAddress(value)).not.toThrow();
+    }
+  });
 });
 
 describe("the grammar", () => {

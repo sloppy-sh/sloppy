@@ -231,9 +231,14 @@
 						<p class="text-lg leading-relaxed">
 							Your graph starts with one note, and everything else grows out of it.
 						</p>
-						<Button class="h-11" disabled={creating} onclick={writeBranch}>
-							Write the first note
-						</Button>
+						<div class="flex flex-col items-center gap-2">
+							<Button class="h-11" disabled={creating} onclick={writeBranch}>
+								Write the first note
+							</Button>
+							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
+								Number it yourself
+							</Button>
+						</div>
 						{#if refused}
 							<p class="text-sm text-destructive" role="alert">{refused}</p>
 						{/if}
