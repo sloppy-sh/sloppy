@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushSync, mount, unmount } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import type { HeldPicture, NoteMedia, ShownPicture } from './contract.js';
 import { noMedia, OWNER } from './editor.test-support.js';
@@ -84,7 +84,25 @@ afterEach(() => {
 	mounted = undefined;
 	target.remove();
 	document.body.innerHTML = '';
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 });
+
+/** A platform that can cut a picture down, which jsdom on its own cannot. */
+function cutsDown(): void {
+	vi.stubGlobal('fetch', async () => ({ blob: async () => new Blob() }));
+	vi.stubGlobal('createImageBitmap', async () => ({
+		width: 1400,
+		height: 700,
+		close: () => {}
+	}));
+	vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+		drawImage: () => {}
+	} as unknown as CanvasRenderingContext2D);
+	vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done) => done(new Blob()));
+	URL.createObjectURL = () => 'blob:tile';
+	URL.revokeObjectURL = () => {};
+}
 
 describe('the pictures already in a note', () => {
 	it('reads only what somebody can see, and the rest as they scroll to it', async () => {
@@ -114,6 +132,18 @@ describe('the pictures already in a note', () => {
 		await settle();
 
 		expect(read).toHaveLength(4);
+	});
+
+	it('holds a tile rather than the whole picture it was cut from', async () => {
+		cutsDown();
+		laidOut(0, 0);
+		await open(shelf(library(1)));
+
+		land(read[0]);
+		await settle();
+
+		expect(document.body.querySelector('img')?.getAttribute('src')).toBe('blob:tile');
+		expect(released).toEqual([upload(0)]);
 	});
 
 	it('lets go of what it held once the picker is shut', async () => {

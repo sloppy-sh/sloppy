@@ -4,6 +4,7 @@
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import type { HeldPicture, NoteMedia, ShownPicture } from './contract.js';
+	import { tileSized } from './thumbnail.js';
 
 	const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 
@@ -84,6 +85,7 @@
 			fetching += 1;
 			void media
 				.picture(picture.upload_id)
+				.then(tileSized)
 				.then((drawn) => {
 					if (mine !== era) {
 						drawn.release();
