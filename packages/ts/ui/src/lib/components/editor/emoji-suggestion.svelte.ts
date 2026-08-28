@@ -5,7 +5,7 @@ import { Extension } from '@tiptap/core';
 import { PluginKey } from '@tiptap/pm/state';
 import Suggestion from '@tiptap/suggestion';
 import { searchEmoji, type CustomEmojiEntry, type EmojiEntry } from '../../emoji/catalog.js';
-import { emojiInsert } from './emoji-node.js';
+import { citedLarge, emojiInsert } from './emoji-node.js';
 
 const SHOWN = 12;
 
@@ -95,7 +95,8 @@ export function EmojiSuggestion(
 						);
 						const typed = before.match(/:{1,2}[^\s:]*$/);
 						const from = typed ? to - typed[0].length : to;
-						const entry = emojiInsert(props, !!typed && typed[0].startsWith('::'));
+						const large = !!typed && typed[0].startsWith('::');
+						const entry = emojiInsert(props, citedLarge(props, large));
 						editor
 							.chain()
 							.focus()

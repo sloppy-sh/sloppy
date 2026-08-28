@@ -39,7 +39,7 @@
 		type SavedBlock
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
-	import { emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
+	import { citedLarge, emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
 	import EmojiSuggestionPopup from './emoji-suggestion-popup.svelte';
 	import { EmojiCompletions, EmojiSuggestion } from './emoji-suggestion.svelte.js';
 	import { InkNode } from './ink-node.js';
@@ -546,8 +546,12 @@
 		if (current) untrack(() => showEmoji(current));
 	});
 
-	function insertEmoji(entry: EmojiEntry, sticker: boolean): void {
-		editor?.chain().focus().insertEmoji(emojiInsert(entry, sticker)).run();
+	function insertEmoji(entry: EmojiEntry, large: boolean): void {
+		editor
+			?.chain()
+			.focus()
+			.insertEmoji(emojiInsert(entry, citedLarge(entry, large)))
+			.run();
 	}
 
 	async function addEmoji(entry: {

@@ -454,6 +454,18 @@ describe('a shortcode its author uploaded a picture for', () => {
 		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
 	});
 
+	it('keeps the small form a note was written in, whatever the catalog says', async () => {
+		open([block({ type: 'paragraph', content: 'look :seedling: look' })], {
+			emoji: noEmoji([{ ...CATALOG[0], sticker: true }])
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+		writingIn().commands.insertContentAt(1, 'X');
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(written.updated.map((row) => row.content)).toEqual(['Xlook :seedling: look']);
+	});
+
 	it('leaves a name the catalog does not claim as the emoji Unicode gives it', async () => {
 		open([block({ type: 'paragraph', content: 'a spark :fire: of it' })], {
 			emoji: noEmoji(CATALOG)

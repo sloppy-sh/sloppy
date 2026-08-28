@@ -23,16 +23,21 @@ export interface EmojiInsert {
 	sticker: boolean;
 }
 
-/** How an entry from either catalog goes into the document. A picture the
- *  author means to draw big is cited big, and the syntax carries that alone. */
+/** How an entry from either catalog goes into the document, in the form the
+ *  caller cites it in. */
 export function emojiInsert(entry: EmojiEntry, sticker: boolean): EmojiInsert {
 	const custom = isCustomEmoji(entry);
 	return {
 		shortcode: entry.shortcode,
 		char: custom ? '' : entry.char,
 		src: custom ? entry.src : '',
-		sticker: sticker || (custom && entry.sticker)
+		sticker
 	};
+}
+
+/** Which form a pick writes, for an entry a person chose rather than typed. */
+export function citedLarge(entry: EmojiEntry, large: boolean): boolean {
+	return large || (isCustomEmoji(entry) && entry.sticker);
 }
 
 declare module '@tiptap/core' {

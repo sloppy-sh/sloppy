@@ -14,7 +14,8 @@ export interface CustomEmojiEntry {
 	id: string;
 	shortcode: string;
 	src: string;
-	/** How big it draws, and so which syntax cites it: `::code::` over `:code:`. */
+	/** Which syntax a pick of it writes: `::code::` over `:code:`. How big it
+	 *  draws follows from that, and from nothing else. */
 	sticker: boolean;
 }
 
