@@ -260,6 +260,60 @@ describe('what has to reach the API', () => {
 		).toEqual([{ kind: 'reorder', ref: 'a/A', after: 'u4' }]);
 	});
 
+	// The order the writer sees is the order the note is stored in, whatever they
+	// did to reach it — dragging a block and then typing a new one under it is
+	// two ordinary steps, and it is the batch where a create anchors on a row the
+	// same batch also moves.
+	it('leaves the stack in the order the document is in, for any edit reaching one save', async () => {
+		let seed = 0x9e3779b9;
+		const upto = (bound: number): number => {
+			seed = (seed * 1664525 + 1013904223) >>> 0;
+			return Math.floor((seed / 0x1_0000_0000) * bound);
+		};
+
+		for (let trial = 0; trial < 2000; trial++) {
+			const saved = Array.from({ length: 2 + upto(6) }, (_, at) =>
+				row(`u${at}`, `a/row ${at}`, `row ${at}`)
+			);
+			const next: DocBlock[] = saved.map((held) => doc(held.uid, held.ref, held.content));
+			let minted = 0;
+			for (let edit = 0, edits = 1 + upto(4); edit < edits; edit++) {
+				const pick = upto(3);
+				if (pick === 0 && next.length > 1) {
+					next.splice(upto(next.length), 0, ...next.splice(upto(next.length), 1));
+				} else if (pick === 1) {
+					const made = `new ${minted++}`;
+					next.splice(upto(next.length + 1), 0, doc(made, null, made));
+				} else if (next.length > 1) {
+					next.splice(upto(next.length), 1);
+				}
+			}
+
+			// The API, as a list that only ever places a row after another one. A
+			// row is its own content here, and every ref names the content it holds.
+			const held = saved.map((row) => row.content);
+			const at = (ref: OwnedRef) => held.indexOf(ref.slice(2));
+			const place = (after: OwnedRef | null, content: string) =>
+				held.splice((after ? at(after) : -1) + 1, 0, content);
+			const writer = {
+				create: async (request: { after: OwnedRef | null; content: string }) => {
+					place(request.after, request.content);
+					return `a/${request.content}` as OwnedRef;
+				},
+				update: async () => {},
+				reorder: async (ref: OwnedRef, after: OwnedRef | null) => {
+					place(after, held.splice(at(ref), 1)[0]);
+				},
+				remove: async (ref: OwnedRef) => void held.splice(at(ref), 1),
+				placed: () => {}
+			};
+
+			const mine = saved.map((row) => ({ ...row }));
+			await runSave(planSave(mine, next), mine, next, writer);
+			expect({ trial, held }).toEqual({ trial, held: next.map((block) => block.content) });
+		}
+	});
+
 	it('treats a row pasted in from another note as a new block here', () => {
 		expect(planSave([], [doc('u1', 'somewhere/ELSE', 'borrowed')])).toEqual([
 			{ kind: 'create', uid: 'u1', after: null, type: 'paragraph', content: 'borrowed' }

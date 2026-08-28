@@ -280,9 +280,10 @@ function longestRun(values: readonly number[]): number[] {
 }
 
 /**
- * What has to reach the API for the rows to say what the document says. Creates
- * and updates come first in document order, then any move, then the deletions —
- * an anchor is still there when the block that names it is placed.
+ * What has to reach the API for the rows to say what the document says. A
+ * create and a move both name the block they are to follow, so both are emitted
+ * in document order and the deletions last — the anchor a block names is then
+ * already where the document wants it.
  */
 export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]): SaveOp[] {
 	const byRef = new Map(saved.map((row) => [row.ref, row]));
@@ -293,8 +294,17 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 		(block) => (block.ref ? byRef.get(block.ref) : undefined) ?? byUid.get(block.uid)
 	);
 	const kept = new Set<OwnedRef>();
-	const ops: SaveOp[] = [];
+	for (const row of rowFor) if (row) kept.add(row.ref);
 
+	const order = saved.filter((row) => kept.has(row.ref)).map((row) => row.ref);
+	const wanted = next.flatMap((_, index) => (rowFor[index] ? [index] : []));
+	const staying = new Set(
+		longestRun(wanted.map((at) => order.indexOf((rowFor[at] as SavedBlock).ref))).map(
+			(place) => wanted[place]
+		)
+	);
+
+	const ops: SaveOp[] = [];
 	let previousUid: string | null = null;
 	next.forEach((block, index) => {
 		const row = rowFor[index];
@@ -308,7 +318,6 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 				...(block.data === undefined ? {} : { data: block.data })
 			});
 		} else {
-			kept.add(row.ref);
 			const change: SaveOp = { kind: 'update', ref: row.ref };
 			if (row.type !== block.type) change.type = block.type;
 			if (row.content !== block.content) change.content = block.content;
@@ -316,23 +325,9 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 			if (change.type !== undefined || change.content !== undefined || change.data !== undefined) {
 				ops.push(change);
 			}
+			if (!staying.has(index)) ops.push({ kind: 'reorder', ref: row.ref, after: previousUid });
 		}
 		previousUid = block.uid;
-	});
-
-	const order = saved.filter((row) => kept.has(row.ref)).map((row) => row.ref);
-	const wanted = next.flatMap((_, index) => (rowFor[index] ? [index] : []));
-	const staying = new Set(
-		longestRun(wanted.map((at) => order.indexOf((rowFor[at] as SavedBlock).ref)))
-	);
-	wanted.forEach((at, index) => {
-		if (staying.has(index)) return;
-		const before = next[at - 1];
-		ops.push({
-			kind: 'reorder',
-			ref: (rowFor[at] as SavedBlock).ref,
-			after: before ? before.uid : null
-		});
 	});
 
 	for (const row of saved) {
