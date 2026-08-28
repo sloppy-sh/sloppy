@@ -4,7 +4,7 @@ import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import { docBlocks } from './document.js';
-import { block, makeEditor, stubCanvas } from './editor.test-support.js';
+import { block, makeEditor, section, stubCanvas } from './editor.test-support.js';
 import { StrokeInProgress, nibWidth, strokeBounds, translateStrokes } from './ink.js';
 
 const SURFACE = { left: 100, top: 50, scale: 1 };
@@ -135,8 +135,17 @@ describe('placing a drawing', () => {
 	});
 });
 
-describe('drawing into a block that is already there', () => {
+describe('drawing into a drawing that is already there', () => {
 	let editor: Editor | undefined;
+
+	/** A section holding one drawing, and what that drawing holds afterwards. */
+	const drawing = () => makeEditor([block({ content: blank() })]).editor;
+	const blank = () => section({ type: 'ink', attrs: { strokes: [], width: 300, height: 100 } });
+	const drawn = (of: Editor) =>
+		docBlocks(of.state.doc)[0].content.content[0].attrs as {
+			strokes: InkStroke[];
+			height: number;
+		};
 
 	beforeEach(() => {
 		stubResizeObserver();
@@ -163,27 +172,22 @@ describe('drawing into a block that is already there', () => {
 		canvas.dispatchEvent(pen({ ...samples[samples.length - 1], type: 'pointerup' }));
 	}
 
-	it('adds what the pen drew to the block, pressure and all', () => {
-		editor = makeEditor([
-			block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })
-		]).editor;
+	it('adds what the pen drew to the drawing, pressure and all', () => {
+		editor = drawing();
 		draw(canvasOf(editor), [
 			{ x: 110, y: 60, pressure: 0.2, at: 0 },
 			{ x: 150, y: 90, pressure: 0.7, at: 16 },
 			{ x: 200, y: 120, pressure: 0.95, at: 32 }
 		]);
 
-		const [row] = docBlocks(editor.state.doc, editor.storage.markdown.manager);
-		const strokes = (row.data as { strokes: InkStroke[] }).strokes;
+		const { strokes } = drawn(editor);
 		expect(strokes).toHaveLength(1);
 		expect(strokes[0].points.map((p) => p.pressure)).toEqual([0.2, 0.7, 0.95]);
 		expect(strokes[0].points.map((p) => p.x)).toEqual([10, 50, 100]);
 	});
 
 	it('lets a finger past, so the page still scrolls over a drawing', () => {
-		editor = makeEditor([
-			block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })
-		]).editor;
+		editor = drawing();
 		const canvas = canvasOf(editor);
 		const touch = (type: string, x: number) => {
 			const event = pen({ x, y: 60, type });
@@ -194,19 +198,15 @@ describe('drawing into a block that is already there', () => {
 		touch('pointermove', 180);
 		touch('pointerup', 180);
 
-		const [row] = docBlocks(editor.state.doc, editor.storage.markdown.manager);
-		expect((row.data as { strokes: InkStroke[] }).strokes).toHaveLength(0);
+		expect(drawn(editor).strokes).toHaveLength(0);
 	});
 
-	it('grows the block when the pen runs past the bottom of it', () => {
-		editor = makeEditor([
-			block({ type: 'ink', data: { strokes: [], width: 300, height: 100 } })
-		]).editor;
+	it('grows the drawing when the pen runs past the bottom of it', () => {
+		editor = drawing();
 		draw(canvasOf(editor), [
 			{ x: 110, y: 60, at: 0 },
 			{ x: 150, y: 149, at: 16 }
 		]);
-		const [row] = docBlocks(editor.state.doc, editor.storage.markdown.manager);
-		expect((row.data as { height: number }).height).toBeGreaterThan(100);
+		expect(drawn(editor).height).toBeGreaterThan(100);
 	});
 });

@@ -1,5 +1,5 @@
 // Ink: what a pen leaves behind, and how it is drawn back. Strokes are the
-// record (`InkBlockData` in @sloppy/types); a canvas is only ever a view of them.
+// record (`InkElementData` in @sloppy/types); a canvas is only ever a view of them.
 
 import type { InkPoint, InkStroke } from '@sloppy/types';
 

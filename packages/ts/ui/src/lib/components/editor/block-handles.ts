@@ -1,6 +1,6 @@
-// Putting a block somewhere else in the note's stack. `./document.ts` owns the
-// correspondence this rests on — a top-level node IS a block row — so a move
-// here becomes one `reorder` in the next save plan and one `ord` on the wire.
+// Putting a section somewhere else in the note's stack. `./document.ts` owns
+// the correspondence this rests on — a section IS a block row — so a move here
+// becomes one `reorder` in the next save plan and one `ord` on the wire.
 //
 // Pointer events rather than HTML5 drag-and-drop, which never starts from a
 // touch: a phone is the primary surface here, not the fallback.
@@ -19,7 +19,7 @@ const GRIP =
 
 /** How far a press has to travel before it is a drag rather than a tap. */
 const NUDGE = 4;
-/** How long a finger has to rest before it is holding the block rather than
+/** How long a finger has to rest before it is holding the section rather than
  *  starting a scroll, and how far it may wobble while it rests. */
 const HOLD_MS = 350;
 const WOBBLE = 10;
@@ -45,7 +45,7 @@ function indexOf(rows: readonly Row[], uid: string): number {
 	return rows.findIndex((row) => row.node.attrs.blockUid === uid);
 }
 
-/** False where the block was already where it was asked to go, and where the
+/** False where the section was already where it was asked to go, and where the
  *  note was closed before the drag over it ended. */
 function move(view: EditorView, uid: string, to: number): boolean {
 	if (view.isDestroyed) return false;
@@ -78,7 +78,7 @@ function scrollerOf(from: HTMLElement): HTMLElement | null {
 	return null;
 }
 
-/** Where the block would land, counted as gaps: `0` is above the first row. */
+/** Where the section would land, counted as gaps: `0` is above the first row. */
 function slotAt(rows: readonly Row[], y: number): number {
 	const boxes = rows.map((row) => row.dom?.getBoundingClientRect());
 	for (const [index, box] of boxes.entries()) {
@@ -128,7 +128,7 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 	}
 
 	/** `touch-action: pan-y` leaves the scroll to the browser, and only a
-	 *  non-passive `touchmove` takes it back once the block is held. */
+	 *  non-passive `touchmove` takes it back once the section is held. */
 	function refuse(event: TouchEvent): void {
 		event.preventDefault();
 	}
@@ -167,7 +167,7 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 		button.classList.remove('is-dragging');
 		if (!dragging || slot < 0) return;
 		const from = indexOf(rowsOf(view), uid);
-		// A block dropped into either gap it already touches has not moved.
+		// A section dropped into either gap it already touches has not moved.
 		if (from < 0 || slot === from || slot === from + 1) return;
 		move(view, uid, slot < from ? slot : slot - 1);
 	}
@@ -198,7 +198,7 @@ function handleFor(view: EditorView, uid: string, index: number, total: number):
 	button.type = 'button';
 	button.className = 'sloppy-row-handle';
 	button.dataset.blockHandle = uid;
-	button.setAttribute('aria-label', `Move block ${index + 1} of ${total}`);
+	button.setAttribute('aria-label', `Move section ${index + 1} of ${total}`);
 	button.title = 'Drag to move, or use the arrow keys';
 	button.innerHTML = GRIP;
 	button.addEventListener('pointerdown', (event) => drag(view, button, uid, event));
@@ -220,7 +220,7 @@ function handles(state: EditorState): DecorationSet {
 		widgets.push(
 			Decoration.widget(pos, (view) => handleFor(view, uid, at, total), {
 				side: -1,
-				// Held across every edit that leaves this block where it is, so the
+				// Held across every edit that leaves this section where it is, so the
 				// handle under the pointer is not rebuilt on every keystroke.
 				key: `${uid}:${at}:${total}`,
 				ignoreSelection: true,

@@ -18,6 +18,7 @@ import {
   addressDepth,
   type BlockView,
   compareAddresses,
+  MAX_DOCUMENT_NESTING,
   type NodeView,
   type OwnedRef,
   type TagCount,
@@ -467,24 +468,30 @@ describe("the domain routes", () => {
     const stack = async (): Promise<BlockView[]> =>
       (await ok("GET", `/nodes/${at(node.ref)}/blocks`, ada)) as BlockView[];
 
+    /** A section of plain prose, one paragraph per line. */
+    const prose = (...lines: string[]) => ({
+      type: "doc",
+      content: lines.map((line) => ({
+        type: "paragraph",
+        content: [{ type: "text", text: line }],
+      })),
+    });
+
     scenario("stacks blocks in the order they were placed", async () => {
       node = await newNode(ada, { title: "A note with an interior" });
       const first = (await ok("POST", "/blocks", ada, {
         node: node.ref,
-        type: "heading",
-        content: "## The first thing",
+        content: prose("The first thing."),
       })) as BlockView;
       const second = (await ok("POST", "/blocks", ada, {
         node: node.ref,
         after: first.ref,
-        type: "paragraph",
-        content: "Then a paragraph.",
+        content: prose("Then a second thought."),
       })) as BlockView;
       const third = (await ok("POST", "/blocks", ada, {
         node: node.ref,
         after: second.ref,
-        type: "list",
-        content: "- one\n- two",
+        content: prose("And a third."),
       })) as BlockView;
 
       expect((await stack()).map((block) => block.ref)).toEqual([
@@ -496,8 +503,7 @@ describe("the domain routes", () => {
       const wedged = (await ok("POST", "/blocks", ada, {
         node: node.ref,
         after: first.ref,
-        type: "paragraph",
-        content: "Wedged in.",
+        content: prose("Wedged in."),
       })) as BlockView;
       expect((await stack()).map((block) => block.ref)).toEqual([
         first.ref,
@@ -523,11 +529,11 @@ describe("the domain routes", () => {
 
     scenario("edits and removes a block", async () => {
       const blocks = await stack();
+      const rewritten = prose("Rewritten.", "At more length than before.");
       const edited = (await ok("PATCH", `/blocks/${at(blocks[1].ref)}`, ada, {
-        content: "Rewritten.",
-        type: "paragraph",
+        content: rewritten,
       })) as BlockView;
-      expect(edited.content).toBe("Rewritten.");
+      expect(edited.content).toEqual(rewritten);
 
       expect(
         (await call("DELETE", `/blocks/${at(blocks[0].ref)}`, ada)).status,
@@ -537,44 +543,87 @@ describe("the domain routes", () => {
       );
     });
 
-    scenario(
-      "takes the data a block is given for its whole payload",
-      async () => {
-        const drawn = await newNode(ada, { title: "A note with ink" });
-        const strokes = [
-          { points: [{ x: 0, y: 0, pressure: 0.5, t: 0 }], width: 2 },
-        ];
-        const inked = (await ok("POST", "/blocks", ada, {
-          node: drawn.ref,
-          type: "ink",
-          data: { strokes, width: 320, height: 240, raster_upload_id: "gone" },
-        })) as BlockView;
-        expect(inked.data).toEqual({
-          strokes,
-          width: 320,
-          height: 240,
-          raster_upload_id: "gone",
-        });
+    // A section is many elements, drawings included, and the store keeps the
+    // whole document rather than the part it can name.
+    scenario("keeps everything written into one section", async () => {
+      const drawn = await newNode(ada, { title: "A note with ink" });
+      const section = {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 2 },
+            content: [{ type: "text", text: "Where the line goes" }],
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Two paragraphs and a drawing." }],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "This one." }] },
+          {
+            type: "ink",
+            attrs: {
+              strokes: [
+                { points: [{ x: 0, y: 0, pressure: 0.5, t: 0 }], width: 2 },
+              ],
+              width: 320,
+              height: 240,
+              raster_upload_id: null,
+            },
+          },
+        ],
+      };
+      const written = (await ok("POST", "/blocks", ada, {
+        node: drawn.ref,
+        content: section,
+      })) as BlockView;
+      expect(written.content).toEqual(section);
 
-        const redrawn = (await ok("PATCH", `/blocks/${at(inked.ref)}`, ada, {
-          data: { strokes: [], width: 320, height: 240 },
-        })) as BlockView;
-        expect(redrawn.data).toEqual({ strokes: [], width: 320, height: 240 });
-      },
-    );
+      const [read] = (await ok(
+        "GET",
+        `/nodes/${at(drawn.ref)}/blocks`,
+        ada,
+      )) as BlockView[];
+      expect(read.content).toEqual(section);
+    });
+
+    scenario("starts a section with nothing in it", async () => {
+      const empty = await newNode(ada, { title: "Nothing written yet" });
+      const block = (await ok("POST", "/blocks", ada, {
+        node: empty.ref,
+      })) as BlockView;
+      expect(block.content).toEqual({ type: "doc", content: [] });
+    });
+
+    // Nested this far the store stops answering at all, so without a refusal
+    // the route never replies and the surface saves forever. Only a running
+    // server tells a refusal from a silence.
+    scenario("refuses a section nested past what it can hold", async () => {
+      const note = await newNode(ada, { title: "Indented past the bound" });
+      let attrs: Record<string, unknown> = {};
+      for (let level = 4; level <= MAX_DOCUMENT_NESTING * 3; level += 1) {
+        attrs = { held: attrs };
+      }
+      const answer = await call("POST", "/blocks", ada, {
+        node: note.ref,
+        content: { type: "doc", content: [{ type: "paragraph", attrs }] },
+      });
+      expect(answer.status).toBe(400);
+      expect((answer.body as { message: string }).message).toMatch(
+        /nested too deeply/,
+      );
+    });
 
     scenario("refuses a neighbour from another note", async () => {
       const elsewhere = await newNode(ada, { title: "Elsewhere" });
       const stray = (await ok("POST", "/blocks", ada, {
         node: elsewhere.ref,
-        type: "paragraph",
-        content: "Stray.",
+        content: prose("Stray."),
       })) as BlockView;
       const answer = await call("POST", "/blocks", ada, {
         node: node.ref,
         after: stray.ref,
-        type: "paragraph",
-        content: "Nowhere to go.",
+        content: prose("Nowhere to go."),
       });
       expect(answer.status).toBe(400);
     });
@@ -621,14 +670,13 @@ describe("the domain routes", () => {
       "names the field on every route that shares the refusal",
       async () => {
         const note = await newNode(ada, { title: "Somewhere to put a block" });
-        const badType = await call("POST", "/blocks", ada, {
+        const badContent = await call("POST", "/blocks", ada, {
           node: note.ref,
-          type: "not-a-kind",
-          content: "",
+          content: "# Not a document",
         });
-        expect(badType.status).toBe(400);
-        expect((badType.body as { message: string }).message).toMatch(
-          /^Type — /,
+        expect(badContent.status).toBe(400);
+        expect((badContent.body as { message: string }).message).toMatch(
+          /^Content — /,
         );
 
         const longTitle = await call("POST", "/nodes", ada, {
@@ -743,8 +791,15 @@ describe("the domain routes", () => {
       const under = await newNode(ada, { parent: doomed.ref, title: "Under" });
       const block = (await ok("POST", "/blocks", ada, {
         node: under.ref,
-        type: "paragraph",
-        content: "Goes with it.",
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Goes with it." }],
+            },
+          ],
+        },
       })) as BlockView;
 
       expect(

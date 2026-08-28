@@ -1,9 +1,9 @@
 <script lang="ts">
-	// A node's interior: one writing surface whose top-level nodes ARE the block
-	// rows. `./document.ts` owns that correspondence, `./contract.ts` the props.
+	// A node's interior: one writing surface whose sections ARE the block rows.
+	// `./document.ts` owns that correspondence, `./contract.ts` the props.
 	//
-	// A pen drawing anywhere on this surface settles into an ink block where it
-	// was drawn; there is no drawing mode to find (DESIGN.md § The canvas).
+	// A pen drawing anywhere on this surface settles into a drawing where it was
+	// made; there is no drawing mode to find (DESIGN.md § The canvas).
 	import Bold from '@lucide/svelte/icons/bold';
 	import Code from '@lucide/svelte/icons/code';
 	import Heading1 from '@lucide/svelte/icons/heading-1';
@@ -14,12 +14,12 @@
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListOrdered from '@lucide/svelte/icons/list-ordered';
 	import PenLine from '@lucide/svelte/icons/pen-line';
+	import Plus from '@lucide/svelte/icons/plus';
 	import Quote from '@lucide/svelte/icons/quote';
 	import Smile from '@lucide/svelte/icons/smile';
 	import type { InkStroke, OwnedRef } from '@sloppy/types';
 	import { Editor } from '@tiptap/core';
 	import { TaskItem, TaskList } from '@tiptap/extension-list';
-	import { Markdown } from '@tiptap/markdown';
 	import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 	import StarterKit from '@tiptap/starter-kit';
 	import { untrack } from 'svelte';
@@ -30,7 +30,6 @@
 	import { BlockHandles } from './block-handles.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
-		BlockIdentity,
 		docBlocks,
 		openBlocks,
 		planSave,
@@ -54,7 +53,9 @@
 		translateStrokes
 	} from './ink.js';
 	import MediaPicker from './media-picker.svelte';
+	import { afterElement, endOfNote } from './placement.js';
 	import { PICTURE_NODE, PictureNode } from './picture-node.js';
+	import { NoteDocument, SectionNode } from './section-node.js';
 	import Toolbar, { type EditorAction } from './toolbar.svelte';
 
 	let { node, blocks, onCreate, onUpdate, onRemove, onReorder, media, emoji }: BlockStackProps =
@@ -64,7 +65,7 @@
 	/** However long the writing runs on, no change waits longer than this to be written. */
 	const SAVE_WITHIN_MS = 3000;
 	const RETRY_AFTER_MS = 4000;
-	/** How long the pen may rest before the strokes so far settle into a block. */
+	/** How long the pen may rest before the strokes so far settle into a drawing. */
 	const SETTLE_AFTER_MS = 900;
 	const INK_PADDING = 12;
 	/** How much of the writing surface the controls stand over. */
@@ -106,8 +107,6 @@
 	/** The note this surface is writing into, captured with the surface itself. */
 	let writingTo: OwnedRef = untrack(() => node.ref);
 
-	const manager = (of: Editor) => of.storage.markdown.manager;
-
 	// ── Saving ───────────────────────────────────────────────────────────────
 	/** One trip to the API, holding everything it needs to outlive this surface. */
 	interface Write {
@@ -124,12 +123,7 @@
 	function plan(): Write | null {
 		const current = editor;
 		if (!current || current.isDestroyed) return null;
-		return {
-			note: writingTo,
-			from: current,
-			rows: saved,
-			next: docBlocks(current.state.doc, manager(current))
-		};
+		return { note: writingTo, from: current, rows: saved, next: docBlocks(current.state.doc) };
 	}
 
 	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
@@ -141,12 +135,10 @@
 				create: (request) =>
 					onCreate({
 						node: write.note,
-						type: request.type,
 						content: request.content,
-						...(request.after ? { after: request.after } : {}),
-						...(request.data === undefined ? {} : { data: request.data })
+						...(request.after ? { after: request.after } : {})
 					}).then((created) => created.ref),
-				update: (ref, changes) => onUpdate(ref, changes).then(() => undefined),
+				update: (ref, content) => onUpdate(ref, { content }).then(() => undefined),
 				reorder: (ref, after) => onReorder(ref, after).then(() => undefined),
 				remove: (ref) => onRemove(ref),
 				placed: (uid, ref) => stamp(write.from, uid, ref)
@@ -305,7 +297,7 @@
 	function retouch(from: Editor, preview: string, attrs: Record<string, unknown>): boolean {
 		if (from.isDestroyed) return false;
 		let tr: ReturnType<typeof from.state.tr.setNodeMarkup> | null = null;
-		from.state.doc.forEach((child, pos) => {
+		from.state.doc.descendants((child, pos) => {
 			if (child.type.name !== PICTURE_NODE || child.attrs.preview !== preview) return;
 			tr = (tr ?? from.state.tr).setNodeMarkup(pos, undefined, { ...child.attrs, ...attrs });
 		});
@@ -314,9 +306,9 @@
 		return true;
 	}
 
-	/** The file is on the page at once and the block only when it has landed —
-	 *  `docBlocks` in `./document.ts` keeps one with nothing to name out of the
-	 *  stack, so a note is never stored pointing at bytes that never arrived. */
+	/** The file is on the page at once and in the note only when it has landed —
+	 *  `storedPicture` in `./picture-node.ts` is what leaves one with nothing to
+	 *  name out of what is written down. */
 	function sendPicture(file: File): void {
 		const current = editor;
 		if (!current) return;
@@ -342,7 +334,7 @@
 				live = send;
 				const asset = await send.asset;
 				const placed = retouch(current, preview, {
-					uploadId: asset.upload_id,
+					upload_id: asset.upload_id,
 					width: asset.width ?? null,
 					height: asset.height ?? null,
 					progress: null
@@ -367,7 +359,7 @@
 			?.chain()
 			.focus()
 			.insertPicture({
-				uploadId: picture.upload_id,
+				upload_id: picture.upload_id,
 				width: picture.width ?? null,
 				height: picture.height ?? null
 			})
@@ -439,18 +431,17 @@
 		settling = setTimeout(settle, SETTLE_AFTER_MS);
 	}
 
-	/** Where in the note the ink was drawn: after the block its top sits on. */
+	/** Where in the note the ink was drawn: after the element its top sits on,
+	 *  inside that element's section. */
 	function positionFor(y: number): number {
 		const current = editor!;
-		const end = current.state.doc.content.size;
 		try {
 			const rect = wet!.getBoundingClientRect();
 			const found = current.view.posAtCoords({ left: rect.left + 8, top: rect.top + y });
-			if (!found) return end;
-			const at = current.state.doc.resolve(found.inside >= 0 ? found.inside : found.pos);
-			return at.depth === 0 ? found.pos : at.after(1);
+			if (!found) return endOfNote(current.state);
+			return afterElement(current.state.doc.resolve(found.pos)) ?? endOfNote(current.state);
 		} catch {
-			return end;
+			return endOfNote(current.state);
 		}
 	}
 
@@ -481,11 +472,11 @@
 			const created = new Editor({
 				element,
 				extensions: [
-					StarterKit,
-					Markdown,
+					StarterKit.configure({ document: false }),
+					NoteDocument,
+					SectionNode,
 					TaskList,
 					TaskItem.configure({ nested: true }),
-					BlockIdentity,
 					BlockHandles,
 					EmojiNode(() => catalog),
 					EmojiSuggestion(completions, () => ownCatalog),
@@ -509,10 +500,10 @@
 			});
 			editor = created;
 			inFlight = Promise.resolve();
-			const stack = openBlocks(blocks, manager(created));
+			const stack = openBlocks(blocks, created.schema);
 			created.commands.setContent(stack.doc, { emitUpdate: false });
 			showEmoji(created);
-			saved = stack.baseline(docBlocks(created.state.doc, manager(created)));
+			saved = stack.baseline(docBlocks(created.state.doc));
 			ready = true;
 			empty = created.isEmpty;
 			saveState = 'idle';
@@ -591,6 +582,10 @@
 		editor.chain().focus().insertInk({ width, height: NEW_INK_HEIGHT }).run();
 	}
 
+	function addSection(): void {
+		editor?.chain().focus().addSection().run();
+	}
+
 	const formatting = $derived<EditorAction[]>([
 		{
 			id: 'bold',
@@ -667,7 +662,7 @@
 <svelte:window onresize={repaintPen} />
 <svelte:document onvisibilitychange={whenHidden} />
 
-<div class="space-y-2">
+<div class="note-body space-y-2">
 	<div class="block-gutter">
 		<div bind:this={surface} class="relative">
 			<div bind:this={host}></div>
@@ -686,6 +681,11 @@
 			{/if}
 		</div>
 	</div>
+
+	<Button variant="ghost" class="add-section" onclick={addSection}>
+		<Plus aria-hidden="true" />
+		Add a section
+	</Button>
 
 	<p class="min-h-5 text-right text-xs text-muted-foreground" role="status">
 		{#if saveState === 'saving'}
@@ -733,9 +733,11 @@
 />
 
 <style>
-	.block-gutter {
+	.note-body {
 		--block-gutter: 1.75rem;
 		--block-line: 1.75rem;
+	}
+	.block-gutter {
 		padding-left: var(--block-gutter);
 	}
 	:global(.sloppy-prose) {
@@ -743,13 +745,28 @@
 		font-size: 1rem;
 		line-height: 1.7;
 	}
-	:global(.sloppy-prose > * + *) {
+	/* A section is a ruled band, and the rule is the only structure the note
+	   draws — DESIGN.md § "A block reads as a section". */
+	:global(.sloppy-prose > section) {
+		padding-block: 0.6rem;
+		border-bottom: 1px solid var(--border);
+	}
+	:global(.sloppy-prose > section:last-of-type) {
+		border-bottom: none;
+	}
+	:global(.sloppy-prose section > * + *) {
 		margin-top: 0.85em;
 	}
-	/* The gap between two blocks is taken by the handle standing between them, so
-	   the handle sits on its own block rather than in the space above it. */
+	/* The gap above a section is taken by the handle standing in it, so the
+	   handle sits on the section's first line rather than in the space above it. */
 	:global(.sloppy-prose > .sloppy-row + *) {
 		margin-top: 0;
+	}
+	:global(.add-section) {
+		width: 100%;
+		justify-content: flex-start;
+		color: var(--muted-foreground);
+		padding-left: var(--block-gutter, 1.75rem);
 	}
 	:global(.sloppy-row) {
 		position: relative;
@@ -786,9 +803,9 @@
 	}
 	/* A drag is a sustained contact, so the whole gutter is the target and the
 	   gutter widens to hold one a finger can find. The grip drawn inside it keeps
-	   its size, and stays on the line of the block it moves. */
+	   its size, and stays on the line of the section it moves. */
 	@media (any-pointer: coarse) {
-		.block-gutter {
+		.note-body {
 			--block-gutter: 2.5rem;
 		}
 		:global(.sloppy-row-handle) {

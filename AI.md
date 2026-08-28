@@ -32,8 +32,9 @@ Two orthogonal axes:
 
 A subtree collapses into a **mega-node** that expands on tap. **Selecting tags
 highlights the notes that carry them and dims the rest** — highlight, not filter, so
-the shape of the graph survives the question. Node interiors are block stacks,
-including **ink blocks** drawn with the Apple Pencil.
+the shape of the graph survives the question. A node's interior is a stack of
+**blocks**, each one a section its author added deliberately and wrote as many
+paragraphs, lists, pictures and Apple-Pencil drawings into as they liked.
 
 **Platform stance: mobile and tablet are the primary surface.** Desktop is the mobile
 UI given more room, never the mobile UI minus features.
@@ -63,6 +64,31 @@ cannot migrate.
 - **A change to the addressing rules is a protocol break, and is treated as one.** It
   does not land inside a feature commit. If implementation shows a rule is wrong, stop
   and say so.
+
+## A Block Is a Section (required)
+
+**A block is a visible section of a note, and a person adds one deliberately.** It is
+its own bounded region on the page with a handle that reorders it. Inside it they write
+freely: many paragraphs, headings, lists, todos, code, pictures, ink. **Enter makes a
+new paragraph inside the block, never a new block.** A second block is what you add when
+the next thing is a separate thought, and that is what makes the handle mean something —
+you reorder sections, not sentences.
+
+- **Nothing creates a block as a side effect of typing.** A surface that maps one editor
+  node to one row has rebuilt the model this rule exists to forbid.
+- **A block stores the editor's own document**, TipTap/ProseMirror JSON, losslessly.
+  Markdown cannot carry ink strokes or picture metadata, and one payload column cannot
+  describe a section with three drawings in it. The cost is accepted and stated: the
+  stored shape is the editor's, so an editor change is a migration.
+- **The element kinds live one level down**, inside that document. Storage does not
+  enumerate them: `BlockDocumentSchema` bounds a document by shape, so a kind this build
+  has no renderer for is carried untouched rather than refused. A new kind is a node the
+  editor knows and a renderer, never a column on the row.
+- **The genealogical axis, tags, addresses and the graph are untouched by this.** It is
+  the note interior and nothing else.
+
+docs/ARCHITECTURE.md § "Blocks and ink" carries the storage contract and the bound the
+stored document is validated against.
 
 ## Architecture
 
@@ -128,11 +154,11 @@ leaked brand name is debt every future provider pays.
 - **Model the axis, not the brand.** A capability keys off what it IS — `local` vs
   `delegated` identity, `own` vs `pulled` provenance — not off the product that happens
   to provide it today. Don't conflate "which provider" with "which mode".
-- **The same rule governs Sloppy's own open sets.** Block `type`
-  (`paragraph | heading | list | todo | code | image | ink | embed`) is an enum for
-  exactly this reason: a new block kind is a new value and a renderer, never a column. A
-  field named `inkStrokes` hanging off every block would be the same mistake wearing our
-  own brand.
+- **The same rule governs Sloppy's own open sets.** The kinds of ELEMENT a block's
+  document holds — a paragraph, a list, a drawing, a picture — are an open set for
+  exactly this reason: a new kind is a node the editor knows and a renderer, never a
+  column. A field named `inkStrokes` hanging off every block would be the same mistake
+  wearing our own brand.
 - **No brand token in a hardcoded branch, wire enum value, or SurrealQL column.** Prefer
   a predicate or a set (`isDelegatedIdentity(kind)`) over
   `mode !== 'syr' && mode !== 'local'`; name events for the concept.

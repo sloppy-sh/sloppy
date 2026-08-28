@@ -34,7 +34,7 @@ sloppy/
 │       └── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
 ├── packages/
 │   ├── ts/
-│   │   ├── types/     @sloppy/types     — Zod schemas: node, block, tag, ink stroke,
+│   │   ├── types/     @sloppy/types     — Zod schemas: node, block, document, tag, ink stroke,
 │   │   │                                  publication, syr wire contracts
 │   │   ├── client/    @sloppy/client    — backend-agnostic SloppyClient over fetch
 │   │   ├── app-core/  @sloppy/app-core  — ALL pages, components, stores, the api layer, the runtime seam
@@ -276,9 +276,7 @@ block:{ created_by: <did>, id: <ulid> }
   created_by  did
   node        ref
   ord         string    fractional index — reorder without renumbering
-  type        paragraph | heading | list | todo | code | image | ink | embed
-  content     markdown with :emoji: / ::sticker:: shortcodes
-  data?       the type's own payload — InkBlockData for `ink`, nothing for `paragraph`
+  content     object    the section's whole document, as the editor wrote it
 
 **A deleted note leaves its inbound links behind.** `links` is an array of refs on the
 *linking* node, so removing a note cannot reach the notes that pointed at it — deletion takes
@@ -414,11 +412,60 @@ implementation notes.
 
 ## Blocks and ink
 
-**TipTap 3 + `@tiptap/markdown`, storing Markdown.** Slyng's `post-editor` was itself
-ported from Pendi's `journal-editor`, so we extend that lineage rather than start over:
-the WYSIWYG surface, `emoji-node.ts` (a TipTap inline atom serializing back to
-`:code:`/`::code::`), `emoji-suggestion`, and `media-node.ts` with its upload-in-progress →
-final-URL replacement and durable-ref pattern.
+**A block is a section, and it holds a whole document.** AI.md § "A Block Is a Section"
+is the ruling; this is what it costs and what it buys. One `block` row carries one
+TipTap/ProseMirror document — as many paragraphs, headings, lists, drawings and pictures
+as somebody wrote into that section — and a note is an ordered stack of those rows.
+Adding one is an explicit act, so the row count is the number of sections a person made
+rather than the number of times they pressed Enter, and the drag handle moves a thought
+rather than a line.
+
+**The stored shape is the editor's own, stored losslessly.** Markdown cannot carry ink
+strokes or a picture's dimensions, and a single side-payload column cannot describe a
+section holding three drawings; converting on the way in and out is what forces both
+compromises. The cost is a real one and is accepted: a change to the editor's node schema
+is a migration of stored documents, not a rendering detail.
+
+**`BlockDocumentSchema` bounds it by shape, never by vocabulary.** It checks that a
+document is a `doc` whose nodes each name a `type` and nest under `content`, `marks` and
+`attrs` — the whole of ProseMirror's JSON encoding — and it reads no further. Enumerating
+the editor's node types here would make every editor change a schema change, and would
+refuse the documents stored before it; accepting `unknown` would let a malformed value
+reach a renderer that cannot defend itself. So an element kind this version has no
+renderer for still parses and is carried untouched, and an `attrs` payload — an ink
+element's strokes, a picture's upload id — is validated by whichever renderer claims it,
+not at the storage boundary. Keys outside ProseMirror's five are dropped on parse.
+
+**A renderer's claim is a predicate, registered where the stack is opened.** `readsAsInk`
+answers for `InkElementData`, and `document.ts` maps it to the `ink` element; a kind
+nobody claims is simply carried. An element whose attributes its own renderer will not
+take is then treated exactly as a kind we have no renderer for — the row is carried
+untouched and the note opens around it — rather than reaching a node view that will
+draw it and fail, which takes the whole interior with it.
+
+**Depth is the one thing bounded by size rather than shape.** SurrealDB's JavaScript
+driver stops answering a write once a value nests past ninety-six objects and arrays:
+the promise it returned never settles, so a save hangs instead of failing and the note
+sits on "Saving…" for the life of the surface. `MAX_DOCUMENT_NESTING` is 48 — half of
+what was measured, so the bound holds even if a driver version spends its levels
+differently, and it still takes a list indented ten times. It counts every level rather
+than every element, because `attrs` is where an unbounded payload would otherwise hide.
+
+**`section` is the only node a note's document holds at the top, and one section is one
+row.** `document.ts` in `@sloppy/ui` owns that correspondence: it opens a stack as one
+document, reads the rows back out of it, and works out what has to reach the API.
+`section-node.ts` is what makes Enter behave — the node is `isolating`, so a split stays
+inside it and a join cannot pull the section before it in, and `addSection` is the only
+thing that makes another. A section with nothing in it is not a row until it is one: the
+empty section a new note opens on never becomes one on its own, and a section already
+saved keeps its row when it is emptied.
+
+**TipTap 3 for the surface.** Slyng's `post-editor` was itself ported from Pendi's
+`journal-editor`, so we extend that lineage rather than start over: the WYSIWYG surface,
+`emoji-node.ts` (a TipTap inline atom holding the shortcode it was written as),
+`emoji-suggestion`, and `media-node.ts` with its upload-in-progress → final-URL
+replacement and durable-ref pattern. Markdown shorthands are still how prose is typed;
+`@tiptap/markdown` is gone with the storage format that needed it.
 
 The emoji tokenizer's ordering is load-bearing and must be carried across: **mention spans
 are captured first** (a `did:syr:…` contains colons that would false-match `:syr:`),
@@ -426,7 +473,8 @@ stickers before emoji, then linkify. Size comes from the syntax used, not a stor
 
 **`InkNode` is new.** A TipTap atom holding stroke data (point, pressure, tilt, timestamp)
 rendered to canvas, with a rasterized PNG pushed to syr blob storage so peers who cannot
-re-render strokes still see the drawing.
+re-render strokes still see the drawing. It is an element inside a block's document, so a
+section can hold several drawings and prose between them.
 
 **TipTap's editor instance must not be `$state`** — Svelte's deep proxy corrupts its
 internals. Use a separate `ready` flag for post-mount UI.
@@ -500,7 +548,7 @@ last three landed in **Safari 18.2** and are what make ink smooth rather than po
 There is **no simultaneous pen + touch** (WebKit drives one input type at a time), which is
 what the gesture split in DESIGN.md is built on. There are **no Pencil Pro gestures** on
 the web layer. Latency will not match native PencilKit, which is acceptable because ink is
-a block type and an annotation layer here, not the product itself.
+an element inside a block and an annotation layer here, not the product itself.
 
 ## Verification
 

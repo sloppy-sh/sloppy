@@ -1,6 +1,6 @@
 // Fills one identity's graph with something worth looking at: thousands of
 // notes, deep chains and wide sibling runs, tags that cut across the genealogy,
-// and block stacks with real prose in them.
+// and interiors divided into sections with real prose in them.
 //
 //   pnpm --filter @sloppy/api seed [--did <did>] [--fresh] [--nodes <n>]
 //
@@ -129,8 +129,7 @@ async function main(): Promise<void> {
         const created = await blocks.create(did, {
           node: node.ref,
           ...(after ? { after } : {}),
-          type: block.type,
-          content: block.content,
+          content: block,
         });
         after = created.ref;
         blocksWritten++;

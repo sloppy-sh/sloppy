@@ -2,9 +2,10 @@
 //
 // Deterministic: one integer seed decides every title, tag and branch, so two
 // runs of `pnpm --filter @sloppy/api seed` produce the same graph and a bug in
-// it can be reproduced.
+// it can be reproduced. The interiors are drawn from a second stream off that
+// same seed, so rewriting how a section is written cannot reshape the graph.
 
-import type { BlockType } from "@sloppy/types";
+import type { BlockDocument, DocumentNode } from "@sloppy/types";
 import {
   FOLLOWING_TEMPLATES,
   LIST_TEMPLATES,
@@ -15,16 +16,23 @@ import {
   type Topic,
 } from "./corpus";
 
-export interface PlannedBlock {
-  type: BlockType;
-  content: string;
+/** What the seed writes into a section. It fills a graph with prose, not
+ *  pictures — `elementNode` turns each of these into the element the editor
+ *  would have written. */
+type SeededElement = "paragraph" | "heading" | "list" | "todo" | "code";
+
+/** One line for a piece of prose, one per item for a list. */
+interface PlannedElement {
+  type: SeededElement;
+  lines: string[];
 }
 
 export interface PlannedNode {
   title: string;
   /** Already the set the store will hold: lowercased, deduplicated, sorted. */
   tags: string[];
-  blocks: PlannedBlock[];
+  /** One document per section, holding everything written inside it. */
+  blocks: BlockDocument[];
   children: PlannedNode[];
 }
 
@@ -55,9 +63,12 @@ const MAX_DEPTH = 9;
 
 export function planGraph(nodeTarget: number, seed = 0x5104_9713): GraphPlan {
   const random = mulberry32(seed);
+  const prose = mulberry32(seed ^ 0x9e37_79b9);
   const used = new Set<string>();
   const perTree = Math.ceil(nodeTarget / TOPICS.length);
-  const roots = TOPICS.map((topic) => growTree(random, used, topic, perTree));
+  const roots = TOPICS.map((topic) =>
+    growTree(random, prose, used, topic, perTree),
+  );
 
   return {
     roots,
@@ -71,6 +82,7 @@ export function planGraph(nodeTarget: number, seed = 0x5104_9713): GraphPlan {
 
 function growTree(
   random: () => number,
+  prose: () => number,
   used: Set<string>,
   topic: Topic,
   target: number,
@@ -78,7 +90,7 @@ function growTree(
   const root: PlannedNode = {
     title: topic.thesis,
     tags: settle([...tagsFor(random, topic, 1, "claim"), topic.tag]),
-    blocks: blocksFor(random, topic, 1, true),
+    blocks: blocksFor(prose, topic, 1, true),
     children: [],
   };
   let planted = 1;
@@ -96,7 +108,7 @@ function growTree(
     if (depth >= MAX_DEPTH) continue;
     const width = Math.min(widthAt(random, depth), target - planted);
     for (let i = 0; i < width; i++) {
-      node.children.push(plant(random, used, topic, depth + 1));
+      node.children.push(plant(random, prose, used, topic, depth + 1));
       planted++;
     }
     for (let i = node.children.length - 1; i >= 0; i--) {
@@ -128,6 +140,7 @@ function widthAt(random: () => number, depth: number): number {
 
 function plant(
   random: () => number,
+  prose: () => number,
   used: Set<string>,
   topic: Topic,
   depth: number,
@@ -136,7 +149,7 @@ function plant(
   return {
     title,
     tags: tagsFor(random, topic, depth, kind),
-    blocks: blocksFor(random, topic, depth, false),
+    blocks: blocksFor(prose, topic, depth, false),
     children: [],
   };
 }
@@ -239,53 +252,112 @@ function ripenessFor(random: () => number, depth: number): string {
 }
 
 function blocksFor(
-  random: () => number,
+  prose: () => number,
   topic: Topic,
   depth: number,
   isRoot: boolean,
-): PlannedBlock[] {
-  if (!isRoot && random() > 0.62) return [];
-  const blocks: PlannedBlock[] = [];
-  if (isRoot || random() < 0.22) {
-    blocks.push({
+): BlockDocument[] {
+  if (!isRoot && prose() > 0.62) return [];
+  const sections = isRoot || prose() < 0.4 ? 3 : 2;
+  return Array.from({ length: sections }, (_, index) =>
+    documentOf(sectionFor(prose, topic, depth, index === 0)),
+  );
+}
+
+/** A section is one thought written out: a heading over a few paragraphs, and
+ *  sometimes a list or a question to come back to. */
+function sectionFor(
+  prose: () => number,
+  topic: Topic,
+  depth: number,
+  opening: boolean,
+): PlannedElement[] {
+  const elements: PlannedElement[] = [];
+  if (opening || prose() < 0.45) {
+    elements.push({
       type: "heading",
-      content: `## ${sentenceCase(pick(random, topic.subjects))}`,
+      lines: [sentenceCase(pick(prose, topic.subjects))],
     });
   }
-  const paragraphs = isRoot ? 2 : 1 + Math.floor(random() * 2);
+  const paragraphs = 1 + Math.floor(prose() * 3);
   for (let i = 0; i < paragraphs; i++) {
-    blocks.push({
+    elements.push({
       type: "paragraph",
-      content: fill(random, pick(random, PARAGRAPH_TEMPLATES), topic),
+      lines: [fill(prose, pick(prose, PARAGRAPH_TEMPLATES), topic)],
     });
   }
-  const extra = random();
-  if (extra < 0.18) {
-    const items = 3 + Math.floor(random() * 3);
-    blocks.push({
+  const extra = prose();
+  if (extra < 0.2) {
+    const items = 3 + Math.floor(prose() * 3);
+    elements.push({
       type: "list",
-      content: Array.from(
-        { length: items },
-        () => `- ${fill(random, pick(random, LIST_TEMPLATES), topic)}`,
-      ).join("\n"),
+      lines: Array.from({ length: items }, () =>
+        fill(prose, pick(prose, LIST_TEMPLATES), topic),
+      ),
     });
-  } else if (extra < 0.26) {
-    blocks.push({
+  } else if (extra < 0.28) {
+    elements.push({
       type: "todo",
-      content: `- [ ] ${fill(random, pick(random, QUESTION_TEMPLATES), topic)}`,
+      lines: [fill(prose, pick(prose, QUESTION_TEMPLATES), topic)],
     });
-  } else if (extra < 0.3 && depth > 2) {
-    blocks.push({
+  } else if (extra < 0.34 && depth > 2) {
+    elements.push({
       type: "code",
-      content: [
-        "```sql",
+      lines: [
         "SELECT address, title FROM node",
         "  WHERE created_by = $did AND origin = $origin AND depth <= 3;",
-        "```",
-      ].join("\n"),
+      ],
     });
   }
-  return blocks;
+  return elements;
+}
+
+function documentOf(elements: readonly PlannedElement[]): BlockDocument {
+  return { type: "doc", content: elements.map(elementNode) };
+}
+
+/** The seed writes what the editor would have written, because that is what a
+ *  block stores. */
+function elementNode(element: PlannedElement): DocumentNode {
+  switch (element.type) {
+    case "heading":
+      return {
+        type: "heading",
+        attrs: { level: 2 },
+        content: text(element.lines[0]),
+      };
+    case "paragraph":
+      return { type: "paragraph", content: text(element.lines[0]) };
+    case "list":
+      return { type: "bulletList", content: element.lines.map(listItem) };
+    case "todo":
+      return { type: "taskList", content: element.lines.map(taskItem) };
+    case "code":
+      return {
+        type: "codeBlock",
+        attrs: { language: "sql" },
+        content: text(element.lines.join("\n")),
+      };
+  }
+}
+
+function text(line: string): DocumentNode[] {
+  return [{ type: "text", text: line }];
+}
+
+function listItem(line: string): DocumentNode {
+  return {
+    type: "listItem",
+    content: [{ type: "paragraph", content: text(line) }],
+  };
+}
+
+function taskItem(line: string): DocumentNode {
+  return {
+    type: "taskItem",
+    attrs: { checked: false },
+    content: [{ type: "paragraph", content: text(line) }],
+  };
 }
 
 function fill(random: () => number, template: string, topic: Topic): string {

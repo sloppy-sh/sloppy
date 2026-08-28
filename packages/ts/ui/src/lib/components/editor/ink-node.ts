@@ -1,5 +1,6 @@
-// The drawing that lives in a note as one more block. Its record is the strokes
-// (`InkBlockData` in @sloppy/types); this node holds them and draws them.
+// A drawing, as one element of a section. Its record is the strokes
+// (`InkElementData` in @sloppy/types, which is what these attributes are); this
+// node holds them and draws them.
 //
 // Touch is left alone so the page still pans under a drawing — DESIGN.md
 // § The canvas.
@@ -17,6 +18,8 @@ import {
 } from './ink.js';
 import { placeBlock } from './placement.js';
 
+export const INK_NODE = 'ink';
+
 export interface InkInsert {
 	width: number;
 	height: number;
@@ -30,11 +33,6 @@ declare module '@tiptap/core' {
 		};
 	}
 }
-
-const markdownSpec = {
-	markdownName: 'ink',
-	renderMarkdown: (): string => ''
-} as Record<string, unknown>;
 
 const GROWTH_MARGIN = 24;
 
@@ -56,7 +54,7 @@ function quietButton(label: string): HTMLButtonElement {
 }
 
 export const InkNode = Node.create({
-	name: 'ink',
+	name: INK_NODE,
 	group: 'block',
 	atom: true,
 	selectable: true,
@@ -79,7 +77,7 @@ export const InkNode = Node.create({
 				parseHTML: (el) => Number(el.getAttribute('data-height')) || 200,
 				renderHTML: (attrs) => ({ 'data-height': String(attrs.height) })
 			},
-			rasterUploadId: { default: null, rendered: false }
+			raster_upload_id: { default: null, rendered: false }
 		};
 	},
 
@@ -233,7 +231,7 @@ export const InkNode = Node.create({
 			return {
 				dom,
 				update: (updated) => {
-					if (updated.type.name !== 'ink') return false;
+					if (updated.type.name !== INK_NODE) return false;
 					current = updated;
 					redraw();
 					return true;
@@ -262,7 +260,5 @@ export const InkNode = Node.create({
 					return commands.insertContentAt(at, content);
 				}
 		};
-	},
-
-	...markdownSpec
+	}
 });

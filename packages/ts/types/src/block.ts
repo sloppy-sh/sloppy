@@ -1,19 +1,10 @@
-// A node's interior: an ordered stack of blocks.
+// A node's interior: an ordered stack of blocks. A block is a section somebody
+// added deliberately, and it holds however many elements they write into it —
+// docs/ARCHITECTURE.md § "Blocks and ink".
 
 import { z } from "zod";
 import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
-
-export const BlockTypeSchema = z.enum([
-  "paragraph",
-  "heading",
-  "list",
-  "todo",
-  "code",
-  "image",
-  "ink",
-  "embed",
-]);
-export type BlockType = z.infer<typeof BlockTypeSchema>;
+import { BlockDocumentSchema, emptyDocument } from "./document.js";
 
 export const BlockSchema = OwnedEntitySchema.extend({
   node: OwnedRefSchema,
@@ -23,16 +14,8 @@ export const BlockSchema = OwnedEntitySchema.extend({
    * the stack untouched. Ordered by `compareOrd`, never by parsing it.
    */
   ord: z.string().min(1),
-  type: BlockTypeSchema,
-  /** Markdown, carrying `:emoji:` and `::sticker::` shortcodes verbatim. */
-  content: z.string().default(""),
-  /**
-   * Whatever this block's type needs beyond text — `InkBlockData` for `ink`,
-   * nothing at all for `paragraph`. One opaque column rather than a column per
-   * type: a new block kind is a value and a renderer, never a schema change,
-   * and the renderer that owns the type owns the shape.
-   */
-  data: z.unknown().optional(),
+  /** The whole section, as the editor wrote it. */
+  content: BlockDocumentSchema.default(emptyDocument),
 });
 export type Block = z.infer<typeof BlockSchema>;
 
@@ -46,23 +29,20 @@ export function compareOrd(a: string, b: string): number {
 }
 
 /**
- * Create a block. `after` names the block it follows, and the server derives
+ * Create a block — the only way a section comes into being, and never as a side
+ * effect of typing. `after` names the block it follows, and the server derives
  * `ord` from that neighbour and the next one; absent, the block lands first.
  */
 export const CreateBlockRequestSchema = z.object({
   node: OwnedRefSchema,
   after: OwnedRefSchema.optional(),
-  type: BlockTypeSchema,
-  content: z.string().default(""),
-  data: z.unknown().optional(),
+  content: BlockDocumentSchema.default(emptyDocument),
 });
 export type CreateBlockRequest = z.input<typeof CreateBlockRequestSchema>;
 
 /** `after` absent leaves the position alone; `null` moves the block to the top. */
 export const UpdateBlockRequestSchema = z.object({
   after: OwnedRefSchema.nullable().optional(),
-  type: BlockTypeSchema.optional(),
-  content: z.string().optional(),
-  data: z.unknown().optional(),
+  content: BlockDocumentSchema.optional(),
 });
 export type UpdateBlockRequest = z.input<typeof UpdateBlockRequestSchema>;

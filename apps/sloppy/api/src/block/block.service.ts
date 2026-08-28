@@ -57,9 +57,7 @@ export class BlockService {
           created_by: did,
           node: request.node,
           ord,
-          type: request.type,
           content: request.content,
-          ...(request.data === undefined ? {} : { data: request.data }),
           created_at: now,
           updated_at: now,
         }),
@@ -76,9 +74,7 @@ export class BlockService {
     if (!block) throw new NotFoundException("That block is not here.");
 
     const changes: BlockPatch = {};
-    if (request.type !== undefined) changes.type = request.type;
     if (request.content !== undefined) changes.content = request.content;
-    if (request.data !== undefined) changes.data = request.data;
 
     if (request.after === undefined) {
       return entityView(await this.save(did, ref, changes));

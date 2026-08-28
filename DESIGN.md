@@ -291,6 +291,18 @@ so.
   sheet on phone, a docked side panel at ≥900px — same component, same props, the branch
   **latched for the component's life** so a rotation mid-edit never remounts the editor and
   loses a caret.
+- **A block reads as a section, not a paragraph.** Each is a bounded region of the page —
+  a ruled band with its own handle — quiet enough that a note of three sections still
+  reads as one page. Everything inside is ordinary prose; the boundary is the only
+  structure the note draws.
+- **Adding a section is a control somebody taps.** AI.md § "A Block Is a Section" is the
+  rule; the design consequence is that the affordance is visible at the end of the stack
+  rather than hidden behind a keystroke or a slash menu. Where the control sits is what it
+  promises, so the section lands there too — at the end, never wherever the caret was
+  left.
+- **The handle is the promise a section makes.** It drags a whole thought, so it rides
+  the section's edge and stays at rest until a pointer or focus reaches it. A handle per
+  line would say the wrong thing about what moves.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** Native sheet on iOS, bottom sheet on phone,
