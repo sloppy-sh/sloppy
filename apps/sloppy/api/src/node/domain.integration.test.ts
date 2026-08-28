@@ -314,6 +314,10 @@ describe("the domain routes", () => {
       expect(addresses[19]).toBe(`${parent.address}t`);
     });
 
+    // Two identities, ~16 sequential round trips each. AI.md makes this the proof
+    // that address assignment is deterministic, so it must not go red merely
+    // because the suite around it is busy — a protocol test nobody trusts is one
+    // everybody reads past.
     scenario(
       "assigns the same addresses to two identities applying the same sequence",
       async () => {
@@ -337,6 +341,7 @@ describe("the domain routes", () => {
         const second = await signIn(`peerb${Date.now().toString(36)}`);
         expect(await run(first)).toEqual(await run(second));
       },
+      30_000,
     );
   });
 

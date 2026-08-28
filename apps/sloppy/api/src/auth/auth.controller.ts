@@ -80,7 +80,19 @@ export class AuthController {
         "Enter the address of the instance your identity lives on.",
       );
     }
-    return { consent_url: await this.auth.consentRedirect(request.data) };
+    try {
+      return { consent_url: await this.auth.consentRedirect(request.data) };
+    } catch (err) {
+      // Reaching our OWN provider and failing is this instance being unwell, not
+      // a bad address — and the person who pressed "Start here" never typed one,
+      // so telling them to check it sends them to fix the wrong thing.
+      if (request.data.instance_url === this.auth.ownInstanceUrl()) {
+        throw new ServiceUnavailableException(
+          "Sloppy could not set up an account just now. Try again in a moment.",
+        );
+      }
+      throw err;
+    }
   }
 
   @Public()
