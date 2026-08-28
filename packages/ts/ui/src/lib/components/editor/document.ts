@@ -3,15 +3,31 @@
 // IS a block: `blockUid` identifies one across an edit and `blockRef` names the
 // row it was loaded from.
 
-import type { BlockDocument, BlockView, DocumentNode, OwnedRef } from '@sloppy/types';
+import {
+	type BlockDocument,
+	type BlockView,
+	type DocumentNode,
+	type OwnedRef,
+	readsAsInk
+} from '@sloppy/types';
 import type { JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
+import { INK_NODE } from './ink-node.js';
 import { PICTURE_NODE, storedPicture } from './picture-node.js';
 import { nextUid, SECTION_NODE } from './section-node.js';
 
 /** How an element is written down, where that is not simply how it stands. */
 const STORED_AS: Partial<Record<string, (node: DocumentNode) => DocumentNode | null>> = {
 	[PICTURE_NODE]: storedPicture
+};
+
+/**
+ * Whether an element's own module can read its `attrs`. `BlockDocumentSchema`
+ * carries that payload without reading it, so this is where it is read —
+ * docs/ARCHITECTURE.md § "Blocks and ink".
+ */
+const CLAIMED_BY: Partial<Record<string, (attrs: unknown) => boolean>> = {
+	[INK_NODE]: readsAsInk
 };
 
 export interface DocBlock {
@@ -73,9 +89,11 @@ function sameDocument(a: BlockDocument, b: BlockDocument): boolean {
 	return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** False for an element kind, or a mark, this build has no renderer for. */
+/** False for an element this build cannot draw: a kind or a mark it has no
+ *  renderer for, or attributes the renderer that owns them will not take. */
 function readable(node: DocumentNode, schema: Schema): boolean {
 	if (!schema.nodes[node.type]) return false;
+	if (CLAIMED_BY[node.type]?.(node.attrs) === false) return false;
 	if (node.marks?.some((mark) => !schema.marks[mark.type])) return false;
 	return (node.content ?? []).every((child) => readable(child, schema));
 }
@@ -109,9 +127,9 @@ export interface Opened {
 
 /**
  * The document a stack of rows opens as, and the truth a save plan is measured
- * against. A row holding an element kind this build has no renderer for is in
- * neither, and so is carried untouched. A note with no rows yet opens as one
- * empty section, which becomes a row when something is written into it.
+ * against. A row holding an element this build cannot read is in neither, and
+ * so is carried untouched. A note with no rows yet opens as one empty section,
+ * which becomes a row when something is written into it.
  */
 export function openBlocks(blocks: readonly BlockView[], schema: Schema): Opened {
 	const content: JSONContent[] = [];

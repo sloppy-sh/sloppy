@@ -433,9 +433,23 @@ the editor's node types here would make every editor change a schema change, and
 refuse the documents stored before it; accepting `unknown` would let a malformed value
 reach a renderer that cannot defend itself. So an element kind this version has no
 renderer for still parses and is carried untouched, and an `attrs` payload — an ink
-element's strokes, a picture's upload id — is validated by whichever renderer claims it
-(`InkElementData`), not at the storage boundary. Keys outside ProseMirror's five are
-dropped on parse.
+element's strokes, a picture's upload id — is validated by whichever renderer claims it,
+not at the storage boundary. Keys outside ProseMirror's five are dropped on parse.
+
+**A renderer's claim is a predicate, registered where the stack is opened.** `readsAsInk`
+answers for `InkElementData`, and `document.ts` maps it to the `ink` element; a kind
+nobody claims is simply carried. An element whose attributes its own renderer will not
+take is then treated exactly as a kind we have no renderer for — the row is carried
+untouched and the note opens around it — rather than reaching a node view that will
+draw it and fail, which takes the whole interior with it.
+
+**Depth is the one thing bounded by size rather than shape.** SurrealDB's JavaScript
+driver stops answering a write once a value nests past ninety-six objects and arrays:
+the promise it returned never settles, so a save hangs instead of failing and the note
+sits on "Saving…" for the life of the surface. `MAX_DOCUMENT_NESTING` is 48 — half of
+what was measured, so the bound holds even if a driver version spends its levels
+differently, and it still takes a list indented ten times. It counts every level rather
+than every element, because `attrs` is where an unbounded payload would otherwise hide.
 
 **`section` is the only node a note's document holds at the top, and one section is one
 row.** `document.ts` in `@sloppy/ui` owns that correspondence: it opens a stack as one

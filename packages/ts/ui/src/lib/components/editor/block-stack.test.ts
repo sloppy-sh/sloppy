@@ -185,6 +185,21 @@ describe('opening a note', () => {
 		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
 	});
 
+	it('opens a note around a drawing it cannot read, and leaves that one alone', async () => {
+		open([
+			block({
+				content: section(...text('the thought it was drawn beside'), {
+					type: 'ink',
+					attrs: { strokes: 'not strokes', width: 400, height: 120 }
+				})
+			}),
+			prose('the section after it')
+		]);
+		expect(document.querySelector('.sloppy-prose')?.textContent).toBe('the section after it');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
+	});
+
 	it('leaves a shortcode inside code exactly as it was written', async () => {
 		open([
 			block({

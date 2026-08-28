@@ -18,6 +18,8 @@ import {
 } from './ink.js';
 import { placeBlock } from './placement.js';
 
+export const INK_NODE = 'ink';
+
 export interface InkInsert {
 	width: number;
 	height: number;
@@ -52,7 +54,7 @@ function quietButton(label: string): HTMLButtonElement {
 }
 
 export const InkNode = Node.create({
-	name: 'ink',
+	name: INK_NODE,
 	group: 'block',
 	atom: true,
 	selectable: true,
@@ -229,7 +231,7 @@ export const InkNode = Node.create({
 			return {
 				dom,
 				update: (updated) => {
-					if (updated.type.name !== 'ink') return false;
+					if (updated.type.name !== INK_NODE) return false;
 					current = updated;
 					redraw();
 					return true;

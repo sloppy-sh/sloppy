@@ -40,6 +40,28 @@ export const DocumentNodeSchema: z.ZodType<DocumentNode, DocumentNode> = z.lazy(
 );
 
 /**
+ * How deep a document may nest, counting every object and array level — an
+ * element, its `content`, and whatever an `attrs` payload holds. Past
+ * ninety-six of them the database driver stops answering a write at all, so
+ * the bound sits at half that; docs/ARCHITECTURE.md § "Blocks and ink" carries
+ * the measurement.
+ */
+export const MAX_DOCUMENT_NESTING = 48;
+
+function nesting(value: unknown): number {
+  let deepest = 0;
+  const pending: { value: unknown; depth: number }[] = [{ value, depth: 1 }];
+  for (let at = pending.pop(); at; at = pending.pop()) {
+    if (at.value === null || typeof at.value !== "object") continue;
+    if (at.depth > deepest) deepest = at.depth;
+    for (const child of Object.values(at.value)) {
+      pending.push({ value: child, depth: at.depth + 1 });
+    }
+  }
+  return deepest;
+}
+
+/**
  * The document one block stores. Bounded by shape and not by vocabulary: an
  * element kind this version has no renderer for still parses, and an `attrs`
  * payload is carried without being read. docs/ARCHITECTURE.md § "Blocks and
@@ -47,7 +69,21 @@ export const DocumentNodeSchema: z.ZodType<DocumentNode, DocumentNode> = z.lazy(
  */
 export const BlockDocumentSchema = z.object({
   type: z.literal("doc"),
-  content: z.array(DocumentNodeSchema).default(() => []),
+  // The bound rides the array rather than the document, so `BlockDocumentSchema`
+  // keeps the `.omit()`/`.partial()` a refinement on an object schema takes away.
+  content: z
+    .array(DocumentNodeSchema)
+    .check((ctx) => {
+      // One level deeper than its content: the document node holding it.
+      if (1 + nesting(ctx.value) <= MAX_DOCUMENT_NESTING) return;
+      ctx.issues.push({
+        code: "custom",
+        input: ctx.value,
+        message:
+          "This section is nested too deeply to save. Pull a few levels back out and try again.",
+      });
+    })
+    .default(() => []),
 });
 export type BlockDocument = z.infer<typeof BlockDocumentSchema>;
 

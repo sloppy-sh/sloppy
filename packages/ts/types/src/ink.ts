@@ -44,14 +44,15 @@ export const InkElementDataSchema = z.object({
   height: z.number().positive(),
   /**
    * A syr upload holding a raster of these strokes, so a reader that cannot
-   * re-render them still sees the drawing. Absent until the raster lands, which
-   * it may never do — the strokes are the record.
+   * re-render them still sees the drawing. Absent — or `null`, which is how an
+   * editor attribute with nothing in it is written down — until the raster
+   * lands, which it may never do: the strokes are the record.
    */
-  raster_upload_id: z.string().min(1).optional(),
+  raster_upload_id: z.string().min(1).nullish(),
 });
 export type InkElementData = z.infer<typeof InkElementDataSchema>;
 
-/** Read an element's attributes as ink. Throws unless they are. */
-export function parseInkElementData(data: unknown): InkElementData {
-  return InkElementDataSchema.parse(data);
+/** Whether an element's attributes are a drawing this build can draw. */
+export function readsAsInk(attrs: unknown): boolean {
+  return InkElementDataSchema.safeParse(attrs).success;
 }

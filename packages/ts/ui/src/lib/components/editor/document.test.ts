@@ -160,6 +160,23 @@ describe('a stack of sections opened as one document', () => {
 		expect(of.read()).toEqual([[''], ['beside it!!!']]);
 		expect(of.held[0].content.content[0]).toEqual({ type: 'sketchpad', attrs: { later: true } });
 	});
+
+	it('carries a drawing it cannot read, and opens the rest of the note around it', async () => {
+		const unreadable = { type: 'ink', attrs: { strokes: 'not strokes', width: 400, height: 120 } };
+		const of = stack([
+			block({ content: section(...text('where it begins'), unreadable) }),
+			block({ content: section(...text('beside it')) })
+		]);
+		const drawn = open(of.held);
+		expect(rows(drawn).map((row) => wording(row.content))).toEqual([['beside it']]);
+
+		await round(of, (editor) => {
+			editor.commands.setTextSelection(editor.state.doc.content.size - 2);
+			editor.commands.insertContent('!');
+		});
+		expect(of.read()).toEqual([['where it begins', ''], ['beside it!']]);
+		expect(of.held[0].content.content[1]).toEqual(unreadable);
+	});
 });
 
 describe('Enter, inside a section', () => {

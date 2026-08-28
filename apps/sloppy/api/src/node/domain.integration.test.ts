@@ -18,6 +18,7 @@ import {
   addressDepth,
   type BlockView,
   compareAddresses,
+  MAX_DOCUMENT_NESTING,
   type NodeView,
   type OwnedRef,
   type TagCount,
@@ -592,6 +593,25 @@ describe("the domain routes", () => {
         node: empty.ref,
       })) as BlockView;
       expect(block.content).toEqual({ type: "doc", content: [] });
+    });
+
+    // Nested this far the store stops answering at all, so without a refusal
+    // the route never replies and the surface saves forever. Only a running
+    // server tells a refusal from a silence.
+    scenario("refuses a section nested past what it can hold", async () => {
+      const note = await newNode(ada, { title: "Indented past the bound" });
+      let attrs: Record<string, unknown> = {};
+      for (let level = 4; level <= MAX_DOCUMENT_NESTING * 3; level += 1) {
+        attrs = { held: attrs };
+      }
+      const answer = await call("POST", "/blocks", ada, {
+        node: note.ref,
+        content: { type: "doc", content: [{ type: "paragraph", attrs }] },
+      });
+      expect(answer.status).toBe(400);
+      expect((answer.body as { message: string }).message).toMatch(
+        /nested too deeply/,
+      );
     });
 
     scenario("refuses a neighbour from another note", async () => {
