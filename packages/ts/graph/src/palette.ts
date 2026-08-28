@@ -107,7 +107,7 @@ export function buildPalette(tokens: PaletteTokens): GraphPalette {
     tag: (slot) => hues[clamp(slot - 1, 0, hues.length - 1)] ?? depth(1),
     edgeAlpha: 0.24,
     edgeAlphaWhileSelecting: 0.08,
-    unselectedAlpha: 0.22,
+    unselectedAlpha: 0.34,
     link: toRgb24(ink),
     linkAlpha: 0.34,
   };

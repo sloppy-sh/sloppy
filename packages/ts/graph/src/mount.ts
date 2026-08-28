@@ -286,6 +286,10 @@ export function mountGraph(
  * Whether anything the layout reads has moved. `selection` is deliberately not
  * one of them: DESIGN.md § Hue answers a tag question in colour, and a field
  * that re-settled under the reader would be answering it somewhere else.
+ *
+ * `lod` is read field by field because a host naturally writes that bag inline
+ * and a fresh object each render is not a moved budget. The collections are
+ * compared by identity, which is what a `$derived` gives them.
  */
 function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
   return (
@@ -293,7 +297,8 @@ function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
     a.collapsed !== b.collapsed ||
     a.viewer !== b.viewer ||
     a.focus !== b.focus ||
-    a.lod !== b.lod
+    a.lod?.depth !== b.lod?.depth ||
+    a.lod?.maxDrawn !== b.lod?.maxDrawn
   );
 }
 

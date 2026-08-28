@@ -320,6 +320,22 @@ describe("selecting tags", () => {
     ).not.toHaveLength(0);
   });
 
+  // A host writes its budget inline, so a fresh object every render is the
+  // normal case and not a moved bound — reading it by identity would settle the
+  // whole field again on every tick of the rail.
+  it("reads the budget by what it says, not by which object said it", async () => {
+    const graph = await mount({ lod: { depth: 3, maxDrawn: 60 } });
+    const before = graph.starts();
+
+    graph.handle.update({
+      ...graph.props,
+      selection,
+      lod: { depth: 3, maxDrawn: 60 },
+    });
+
+    expect(graph.starts()).toBe(before);
+  });
+
   it("tells the scene a selection is on, so the tree recedes behind it", async () => {
     const graph = await mount();
     expect(graph.scene.selecting).toBe(false);

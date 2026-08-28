@@ -50,8 +50,15 @@ function timed<T>(name: string, work: () => T): T {
 }
 
 const corpus = timed("build corpus (2,400 notes)", () => makeCorpus());
+const asked = new URLSearchParams(location.search);
 /** `?inline` measures what a surface that cannot start a worker settles like. */
-const withWorker = !new URLSearchParams(location.search).has("inline");
+const withWorker = !asked.has("inline");
+/**
+ * `?drawn=N` lifts the level-of-detail bound, which otherwise decides the mark
+ * count before any of this does — the way to measure a pass at a size the
+ * product never draws, rather than measuring the budget.
+ */
+const maxDrawn = Number(asked.get("drawn")) || undefined;
 let selection: Tag[] = [];
 let handle: GraphHandle;
 
@@ -75,6 +82,7 @@ const props = (): GraphMountOptions => ({
     handle.update(props());
   },
   createLayoutWorker: withWorker ? () => new LayoutWorker() : undefined,
+  lod: maxDrawn === undefined ? undefined : { maxDrawn, depth: 99 },
 });
 
 const frame = (): Promise<number> =>
