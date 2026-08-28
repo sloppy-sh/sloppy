@@ -22,4 +22,3 @@ export {
 export type { Accent, Prefs, Style, Theme } from './stores/prefs.svelte.js';
 export { nodes } from './stores/nodes.svelte.js';
 export type { NodeRegion, RegionState } from './stores/nodes.svelte.js';
-export { labels } from './stores/labels.svelte.js';

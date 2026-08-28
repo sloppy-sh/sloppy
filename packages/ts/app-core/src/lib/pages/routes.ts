@@ -6,7 +6,6 @@
 
 import Network from '@lucide/svelte/icons/network';
 import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
-import Tags from '@lucide/svelte/icons/tags';
 import UserRound from '@lucide/svelte/icons/user-round';
 import type { OwnedRef } from '@sloppy/types';
 import type { NavItem, Person } from '@sloppy/ui';
@@ -14,7 +13,6 @@ import type { NavItem, Person } from '@sloppy/ui';
 /** In the order they are shown. `id` is what {@link activeRouteId} answers. */
 export const APP_ROUTES: NavItem[] = [
 	{ id: 'graph', label: 'Graph', href: '/', icon: Network },
-	{ id: 'labels', label: 'Labels', href: '/labels', icon: Tags },
 	{ id: 'profile', label: 'You', href: '/profile', icon: UserRound },
 	{ id: 'settings', label: 'Settings', href: '/settings', icon: SlidersHorizontal }
 ];
