@@ -76,11 +76,26 @@ describe("a note's tags", () => {
     expect(TagsSchema.parse([composed, decomposed])).toHaveLength(1);
   });
 
-  it("refuse anything that is not one word", () => {
+  it("hold a tag that is more than one word", () => {
+    expect(TagsSchema.parse(["machine learning"])).toEqual([
+      "machine learning",
+    ]);
+    // A run of space, a tab and a newline all read as the one space a person
+    // meant, so what they typed twice is one tag and not two.
     for (const written of [
-      "two words",
-      "tab\tbed",
-      "line\nbreak",
+      "machine  learning",
+      "machine\tlearning",
+      "machine\nlearning",
+    ]) {
+      expect(TagsSchema.parse([written]), written).toEqual([
+        "machine learning",
+      ]);
+    }
+    expect(TagsSchema.parse([" padded "])).toEqual(["padded"]);
+  });
+
+  it("refuse what a reader could not tell apart", () => {
+    for (const written of [
       "   ",
       "",
       // Invisible, and so a tag that reads as `biology` and matches nothing.

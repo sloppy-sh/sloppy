@@ -92,9 +92,8 @@
 	}
 
 	function onkeydown(event: KeyboardEvent): void {
-		if (event.key === 'Enter' || event.key === ' ') {
-			// A tag never contains a space, so the space bar is a second Enter and
-			// two words typed in a row become two tags rather than one refusal.
+		if (event.key === 'Enter') {
+			// Enter alone: a tag holds spaces, so the space bar types one.
 			if (typed.trim() === '') return;
 			event.preventDefault();
 			void add(chosen ?? typed);

@@ -69,12 +69,19 @@ describe('writing a tag', () => {
 		expect(field.value).toBe('');
 	});
 
-	// A tag never contains a space, so the space bar can only mean "that's one".
-	it('commits on the space bar too, so two words become two tags', () => {
+	// Enter alone ends a tag, so the space bar is free to type one.
+	it('takes a tag of more than one word', () => {
 		const field = render({ tags: ['biology'] as Tag[] });
-		type(field, 'seed');
+		type(field, 'machine learning');
+		press(field, 'Enter');
+		expect(saved).toEqual([['biology', 'machine learning']]);
+	});
+
+	it('does not commit on the space bar', () => {
+		const field = render();
+		type(field, 'machine');
 		press(field, ' ');
-		expect(saved).toEqual([['biology', 'seed']]);
+		expect(saved).toEqual([]);
 	});
 
 	// `TagsSchema` is a set: the API stores one copy, so the field shows one.
@@ -97,11 +104,11 @@ describe('writing a tag', () => {
 	// sentence a person reads here is the one the server would have sent.
 	it("refuses a tag in the schema's own words, and keeps what was pasted", () => {
 		const field = render();
-		type(field, 'cell biology');
+		type(field, 'bio\u200blogy');
 		press(field, 'Enter');
 		expect(saved).toEqual([]);
-		expect(alert()).toBe('A tag is one word, with no spaces in it.');
-		expect(field.value).toBe('cell biology');
+		expect(alert()).toBe('A tag cannot hold hidden characters.');
+		expect(field.value).toBe('bio\u200blogy');
 	});
 
 	// In the same task as the blur, so whatever the tap that caused it goes on to

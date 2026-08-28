@@ -90,7 +90,7 @@ describe('the saved look', () => {
 	it('brings a saved selection back in the order it was made', () => {
 		localStorage.setItem(
 			'sloppy_prefs',
-			JSON.stringify({ tags: ['seed', 'BIOLOGY', 'seed', 'not a tag', 7] })
+			JSON.stringify({ tags: ['seed', 'BIOLOGY', 'seed', 'bio\u200blogy', 7] })
 		);
 		prefs.init();
 		expect(prefs.current.tags).toEqual(['seed', 'biology']);

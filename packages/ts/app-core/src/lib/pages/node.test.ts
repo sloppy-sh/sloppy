@@ -499,9 +499,9 @@ describe('tagging a note', () => {
 
 	it('leaves a refused word behind with the note it was refused on', async () => {
 		await openNote(SECOND);
-		typeTag('cell biology');
+		typeTag('bio\u200blogy');
 		commit();
-		expect(screen()).toContain('A tag is one word');
+		expect(screen()).toContain('A tag cannot hold hidden characters.');
 
 		tapRow('Membranes');
 		await settle();

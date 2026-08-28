@@ -590,9 +590,13 @@ describe("the domain routes", () => {
       });
       expect(note.tags).toEqual(["biology", "r\u00e9veil"]);
 
-      expect(
-        (await call("POST", "/nodes", ada, { tags: ["two words"] })).status,
-      ).toBe(400);
+      // A tag holds spaces, and a run of them is the one space it was meant to be.
+      const spaced = await newNode(ada, {
+        title: "Spaced",
+        tags: ["machine  learning"],
+      });
+      expect(spaced.tags).toEqual(["machine learning"]);
+
       expect(
         (await call("POST", "/nodes", ada, { tags: ["   "] })).status,
       ).toBe(400);
@@ -603,11 +607,11 @@ describe("the domain routes", () => {
     // names an index nobody typed.
     scenario("refuses a tag in words a person can act on", async () => {
       const refused = await call("POST", "/nodes", ada, {
-        tags: ["two words"],
+        tags: ["bio\u200blogy"],
       });
       expect(refused.status).toBe(400);
       expect((refused.body as { message: string }).message).toBe(
-        "Tags — A tag is one word, with no spaces in it.",
+        "Tags — A tag cannot hold hidden characters.",
       );
     });
 
