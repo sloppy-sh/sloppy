@@ -1,4 +1,4 @@
-import type { Surreal } from "surrealdb";
+import { ConnectionUnavailableError, type Surreal } from "surrealdb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppConfigService } from "../config/app-config.service";
 import { DbService } from "./db.service";
@@ -33,18 +33,34 @@ function connection() {
   };
 }
 
+const running: DbService[] = [];
+
+function serving(db: ReturnType<typeof connection>): DbService {
+  const service = new DbService(
+    { surreal: SURREAL } as AppConfigService,
+    db as unknown as Surreal,
+  );
+  running.push(service);
+  return service;
+}
+
 async function opened(): Promise<{
   db: ReturnType<typeof connection>;
   service: DbService;
 }> {
   const db = connection();
-  const service = new DbService(
-    { surreal: SURREAL } as AppConfigService,
-    db as unknown as Surreal,
-  );
-  await service.onModuleInit();
+  const service = serving(db);
+  service.onModuleInit();
+  await service.whenOpen();
   return { db, service };
 }
+
+// Left running, a service goes on retrying on real timers that hold this
+// process open — which is the point of them, and would hang the suite.
+afterEach(async () => {
+  for (const service of running.splice(0)) await service.onModuleDestroy();
+  vi.useRealTimers();
+});
 
 // The driver renews an expired session on its own, but only for credentials it
 // was given at `connect()` and only while nothing else has authenticated the
@@ -82,9 +98,46 @@ describe("opening the one connection", () => {
   });
 });
 
-describe("a connection that is gone", () => {
-  afterEach(() => vi.useRealTimers());
+describe("a store that is not there when the API starts", () => {
+  // The API is the only way into the product, so a boot that waits for the
+  // store is one where an outage leaves nothing listening at all — no sign-in,
+  // no health, and no word of why.
+  it("does not hold up the rest of the boot", async () => {
+    const db = connection();
+    db.connect.mockRejectedValue(new Error("connection refused"));
+    const service = serving(db);
 
+    service.onModuleInit();
+    await vi.waitFor(() => expect(db.connect).toHaveBeenCalled());
+
+    expect(() => service.handle).toThrow(ConnectionUnavailableError);
+    expect(await service.reachable()).toBe(false);
+  });
+
+  it("is waited for by a caller with nothing else to do", async () => {
+    const db = connection();
+    let refuse = true;
+    db.connect.mockImplementation(async () => {
+      if (refuse) throw new Error("connection refused");
+      return true as const;
+    });
+    const service = serving(db);
+    service.onModuleInit();
+
+    let open = false;
+    void service.whenOpen().then(() => {
+      open = true;
+    });
+    await vi.waitFor(() => expect(db.connect).toHaveBeenCalled());
+    expect(open).toBe(false);
+
+    refuse = false;
+    await service.whenOpen();
+    expect(open).toBe(true);
+  });
+});
+
+describe("a connection that is gone", () => {
   it("is replaced without anybody restarting anything", async () => {
     const { db } = await opened();
 
@@ -102,6 +155,44 @@ describe("a connection that is gone", () => {
     await vi.waitFor(() =>
       expect(db.query.mock.calls.length).toBeGreaterThan(applied),
     );
+  });
+
+  // The session table and the identity tables are registered by their own
+  // modules, and a reopen that leaves them behind is an API that answers every
+  // route with a table that does not exist.
+  it("applies the schema every module registered, not only the core one", async () => {
+    const db = connection();
+    const service = serving(db);
+    const mine = vi.fn(async () => {});
+    service.defineOnOpen(mine);
+
+    service.onModuleInit();
+    await service.whenOpen();
+    expect(mine).toHaveBeenCalledTimes(1);
+
+    db.publish("disconnected");
+    await vi.waitFor(() => expect(mine).toHaveBeenCalledTimes(2));
+  });
+
+  it("is refused work until the schema is on the store it just opened", async () => {
+    const db = connection();
+    const service = serving(db);
+    let define!: () => void;
+    const held = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          define = resolve;
+        }),
+    );
+    service.defineOnOpen(held);
+
+    service.onModuleInit();
+    await vi.waitFor(() => expect(held).toHaveBeenCalled());
+    expect(() => service.handle).toThrow(ConnectionUnavailableError);
+
+    define();
+    await service.whenOpen();
+    expect(() => service.handle).not.toThrow();
   });
 
   // The driver's own loop stops after five tries, and an outage of a minute is

@@ -7,6 +7,7 @@ import { SessionStore } from "./session.store";
 function silent(): SessionStore {
   const never = () => new Promise(() => {});
   return new SessionStore({
+    defineOnOpen: () => undefined,
     handle: { select: never, delete: never, query: never },
   } as unknown as DbService);
 }

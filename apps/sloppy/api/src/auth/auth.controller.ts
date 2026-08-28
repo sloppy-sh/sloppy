@@ -174,7 +174,7 @@ export class AuthController {
       if (credential) await this.auth.signOut(credential);
     } catch {
       throw new ServiceUnavailableException(
-        "You're signed out here. Sloppy could not sign you out everywhere — try again in a moment.",
+        "You're signed out here. Sloppy could not finish signing you out — try again in a moment.",
       );
     }
     return {};

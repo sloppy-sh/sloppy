@@ -13,17 +13,13 @@ function reason(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    // Unreffed: a retry being waited out must not hold the process open.
-    setTimeout(resolve, ms).unref();
-  });
-}
+/** Applied to every connection this service opens. */
+export type DefineSchema = (db: Surreal) => Promise<unknown>;
 
 /**
- * The one connection to Sloppy's own store, and the one place the schema is
- * applied — `defineCoreSchema` is idempotent and runs on every open.
- * `docs/ARCHITECTURE.md` § "Data model" says why it must.
+ * The one connection to Sloppy's own store, and the one place a schema is
+ * applied — the core tables and every module's own, on every open.
+ * `docs/ARCHITECTURE.md` § "Data model" says why they must be idempotent.
  */
 @Injectable()
 export class DbService implements OnModuleInit, OnModuleDestroy {
@@ -43,8 +39,12 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
   private static readonly RETRY_DELAY_MAX_MS = 5000;
 
   private readonly logger = new Logger(DbService.name);
+  private readonly schemas: DefineSchema[] = [defineCoreSchema];
+  private readonly waiting: Array<() => void> = [];
+  private ready = false;
   private opening = false;
   private closing = false;
+  private wake: (() => void) | undefined;
 
   constructor(
     private readonly config: AppConfigService,
@@ -53,22 +53,43 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * The live connection. Repositories take this and hold nothing else, and it
-   * refuses rather than hand back one that is not open: work put to a connection
-   * the driver is still opening is neither sent nor failed, so the request
-   * behind it is never answered.
+   * refuses rather than hand back one that is not ready: work put to a
+   * connection the driver is still opening is neither sent nor failed, and a
+   * store whose schema is not on it yet answers that its tables do not exist.
    */
   get handle(): Surreal {
-    if (this.db.status !== "connected") throw new ConnectionUnavailableError();
+    if (!this.ready || this.db.status !== "connected")
+      throw new ConnectionUnavailableError();
     return this.db;
   }
 
-  async onModuleInit(): Promise<void> {
+  /**
+   * Registered before the first open, and applied to every open after it: a
+   * store rebuilt while this service was away comes back with nothing on it.
+   */
+  defineOnOpen(schema: DefineSchema): void {
+    this.schemas.push(schema);
+  }
+
+  /** For a one-shot caller with nothing to do until the store answers. A
+   *  request never waits on this — it is refused while the store is away. */
+  whenOpen(): Promise<void> {
+    if (this.ready) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.waiting.push(resolve);
+    });
+  }
+
+  onModuleInit(): void {
     this.db.subscribe("disconnected", () => this.reopen());
-    await this.keepOpening();
+    // Not awaited: the API listens whether or not the store is there. Awaited,
+    // an outage at boot costs the product every route into it, sign-in included.
+    void this.keepOpening();
   }
 
   async onModuleDestroy(): Promise<void> {
     this.closing = true;
+    this.wake?.();
     await this.db.close();
   }
 
@@ -88,15 +109,15 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
 
   private reopen(): void {
     if (this.closing || this.opening) return;
+    this.ready = false;
     this.logger.warn("Lost the SurrealDB connection");
     void this.keepOpening();
   }
 
   /**
    * Opening is this service's job, not the driver's — which is told at `connect`
-   * not to try. Its loop gives up after a fixed budget and never looks again,
-   * and what it restores is a session, so a store rebuilt while it was away
-   * comes back with no schema on it. Neither state recovers short of a restart.
+   * not to try, because its loop gives up after a fixed budget and never looks
+   * again.
    */
   private async keepOpening(): Promise<void> {
     if (this.opening) return;
@@ -110,27 +131,32 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
             DbService.OPEN_TIMEOUT_MS,
             "opening the SurrealDB connection",
           );
-          return;
+          break;
         } catch (err) {
           this.logger.warn(`SurrealDB is not open yet: ${reason(err)}`);
-          await sleep(delay);
+          await this.sleep(delay);
           delay = Math.min(delay * 2, DbService.RETRY_DELAY_MAX_MS);
         }
       }
     } finally {
       this.opening = false;
     }
+    // Resumed after the loop has let go of `opening`, or a caller that acts on
+    // the connection and loses it finds the reopen guarded out.
+    if (this.ready) for (const resume of this.waiting.splice(0)) resume();
   }
 
   private async open(): Promise<void> {
     const { url, username, password, namespace, database } =
       this.config.surreal;
+    this.ready = false;
     await this.connectOrFail(url, { username, password });
     // Not named to `connect`, which would select them before it authenticates,
     // and an anonymous select cannot create what a first boot against an empty
     // store needs creating.
     await this.db.use({ namespace, database });
-    await defineCoreSchema(this.db);
+    for (const schema of this.schemas) await schema(this.db);
+    this.ready = true;
     this.logger.log(
       `Connected to SurrealDB at ${url} (${namespace}/${database})`,
     );
@@ -169,6 +195,18 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
     } finally {
       heard();
     }
+  }
+
+  /** Ref'd deliberately: a process that exits while it is retrying exits
+   *  reporting success, and nothing restarts that. Shutdown cuts it short. */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      this.wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
   }
 
   private async bounded<T>(

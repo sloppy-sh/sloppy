@@ -40,6 +40,8 @@ const TOKEN_SECONDS = 5;
 const NAMESPACE = "sloppy_test";
 const DATABASE = `renewal_${Date.now()}`;
 const OUTAGE_DATABASE = `outage_${Date.now()}`;
+const REBUILT_DATABASE = `rebuilt_${Date.now()}`;
+const PROBE_TABLE = "resilience_probe";
 const USERNAME = `renewal_${Date.now().toString(36)}`;
 const PASSWORD = randomBytes(24).toString("base64url");
 
@@ -132,6 +134,23 @@ async function freePort(): Promise<number> {
   return chosen;
 }
 
+/** What the store says it has — asked of the store, not of this process. */
+async function defines(service: DbService, table: string): Promise<boolean> {
+  const [info] =
+    await service.handle.query<[{ tables: Record<string, string> }]>(
+      "INFO FOR DB",
+    );
+  return table in info.tables;
+}
+
+async function wipe(database: string): Promise<void> {
+  const admin = new Surreal();
+  await admin.connect(ENDPOINT.toString(), { authentication: ROOT });
+  await admin.use({ namespace: NAMESPACE });
+  await admin.query(`REMOVE DATABASE IF EXISTS ${database};`);
+  await admin.close();
+}
+
 function serving(url: string, database: string): DbService {
   return new DbService(
     {
@@ -184,7 +203,8 @@ describe("a connection older than its access token", () => {
       } as AppConfigService,
       new Surreal(),
     );
-    await service.onModuleInit();
+    service.onModuleInit();
+    await service.whenOpen();
     await expect(service.handle.query("RETURN true")).resolves.toBeDefined();
 
     await sleep((TOKEN_SECONDS + 4) * 1000);
@@ -196,7 +216,6 @@ describe("a connection older than its access token", () => {
 
 describe("a connection whose server goes away", () => {
   let listening = false;
-  let admin: Surreal | undefined;
   let gate: Gate | undefined;
   let service: DbService | undefined;
 
@@ -207,12 +226,7 @@ describe("a connection whose server goes away", () => {
   afterAll(async () => {
     await service?.onModuleDestroy();
     await gate?.shut();
-    if (!listening) return;
-    admin = new Surreal();
-    await admin.connect(ENDPOINT.toString(), { authentication: ROOT });
-    await admin.use({ namespace: NAMESPACE });
-    await admin.query(`REMOVE DATABASE IF EXISTS ${OUTAGE_DATABASE};`);
-    await admin.close();
+    if (listening) await wipe(OUTAGE_DATABASE);
   }, 30_000);
 
   it("serves again once the server is back, with nothing restarted", async (ctx) => {
@@ -221,7 +235,8 @@ describe("a connection whose server goes away", () => {
     gate = new Gate(await freePort(), ENDPOINT);
     await gate.open();
     service = serving(`ws://127.0.0.1:${gate.port}/rpc`, OUTAGE_DATABASE);
-    await service.onModuleInit();
+    service.onModuleInit();
+    await service.whenOpen();
     expect(await service.reachable()).toBe(true);
 
     await gate.shut();
@@ -240,5 +255,46 @@ describe("a connection whose server goes away", () => {
     await gate.open();
     expect(await eventually(() => service!.reachable(), 30_000)).toBe(true);
     await expect(service.handle.query("RETURN true")).resolves.toBeDefined();
+  }, 120_000);
+});
+
+describe("a store rebuilt while the connection was away", () => {
+  let listening = false;
+  let gate: Gate | undefined;
+  let service: DbService | undefined;
+
+  beforeAll(async () => {
+    listening = await reachable(ENDPOINT);
+  }, 30_000);
+
+  afterAll(async () => {
+    await service?.onModuleDestroy();
+    await gate?.shut();
+    if (listening) await wipe(REBUILT_DATABASE);
+  }, 30_000);
+
+  // Every table a module registers is defined by whoever opens the connection,
+  // or a store that came back empty is connected to and never filled in: the
+  // API reports itself healthy and answers every route with a table that does
+  // not exist, until somebody restarts it by hand.
+  it("has the schema put back on it, with nothing restarted", async (ctx) => {
+    ctx.skip(!listening, "the dev stack is not up");
+
+    gate = new Gate(await freePort(), ENDPOINT);
+    await gate.open();
+    service = serving(`ws://127.0.0.1:${gate.port}/rpc`, REBUILT_DATABASE);
+    service.defineOnOpen((db) =>
+      db.query(`DEFINE TABLE IF NOT EXISTS ${PROBE_TABLE} SCHEMALESS;`),
+    );
+    service.onModuleInit();
+    await service.whenOpen();
+    expect(await defines(service, PROBE_TABLE)).toBe(true);
+
+    await gate.shut();
+    await wipe(REBUILT_DATABASE);
+    await gate.open();
+
+    expect(await eventually(() => service!.reachable(), 30_000)).toBe(true);
+    expect(await defines(service, PROBE_TABLE)).toBe(true);
   }, 120_000);
 });

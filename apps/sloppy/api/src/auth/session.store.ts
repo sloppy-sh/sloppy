@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Injectable, type OnModuleInit } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import {
   type DidSyr,
   type Timestamp,
@@ -93,7 +93,7 @@ function keyFor(credential: string): RecordId {
 }
 
 @Injectable()
-export class SessionStore implements OnModuleInit {
+export class SessionStore {
   /**
    * Every read here is behind the guard that runs before every route, so a call
    * left unsettled is the whole API stopping — including the public routes
@@ -103,10 +103,8 @@ export class SessionStore implements OnModuleInit {
    */
   private static readonly TIMEOUT_MS = 2000;
 
-  constructor(private readonly db: DbService) {}
-
-  async onModuleInit(): Promise<void> {
-    await this.db.handle.query(SESSION_SCHEMA);
+  constructor(private readonly db: DbService) {
+    db.defineOnOpen((store) => store.query(SESSION_SCHEMA));
   }
 
   async issue(session: NewSession): Promise<IssuedSession> {

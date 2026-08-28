@@ -181,6 +181,10 @@ describe("Sloppy signing in against its own provider", () => {
     });
     await app.listen(port, "127.0.0.1");
 
+    // The API listens before the store is open; these routes need it open.
+    const { DbService: Store } = await import("../db/db.service");
+    await app.get(Store).whenOpen();
+
     const { SyrService: Syr } = await import("../syr/syr.service");
     syr = app.get(Syr);
 

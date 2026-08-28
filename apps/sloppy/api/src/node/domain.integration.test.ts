@@ -210,6 +210,10 @@ describe("the domain routes", () => {
     });
     await app.listen(port, "127.0.0.1");
 
+    // The API listens before the store is open; these routes need it open.
+    const { DbService: Store } = await import("../db/db.service");
+    await app.get(Store).whenOpen();
+
     ada = await signIn(`ada${Date.now().toString(36)}`);
     bram = await signIn(`bram${Date.now().toString(36)}`);
   }, 60_000);

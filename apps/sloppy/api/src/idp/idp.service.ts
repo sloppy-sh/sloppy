@@ -1,9 +1,5 @@
 import { randomBytes } from "node:crypto";
-import {
-  Injectable,
-  Logger,
-  type OnApplicationBootstrap,
-} from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   defineIdentitySchema,
@@ -26,7 +22,7 @@ import { DbService } from "../db/db.service";
  * registered.
  */
 @Injectable()
-export class IdpService implements OnApplicationBootstrap {
+export class IdpService {
   private readonly logger = new Logger(IdpService.name);
   private readonly secrets: IdpSecrets;
 
@@ -36,6 +32,7 @@ export class IdpService implements OnApplicationBootstrap {
     private readonly db: DbService,
   ) {
     this.secrets = deriveIdpSecrets(this.rootSecret());
+    db.defineOnOpen(defineIdentitySchema);
   }
 
   get context(): IdpContext {
@@ -44,12 +41,6 @@ export class IdpService implements OnApplicationBootstrap {
       secrets: this.secrets,
       publicUrl: normalizeBaseUrl(this.config.publicUrl),
     };
-  }
-
-  /** After every module has initialised, so the connection this runs on is the
-   *  one `DbService` opened rather than one that happens to be ready. */
-  async onApplicationBootstrap(): Promise<void> {
-    await defineIdentitySchema(this.db.handle);
   }
 
   private rootSecret(): string {
