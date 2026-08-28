@@ -1,13 +1,12 @@
-// A picture in a note, as one more block. What is STORED is the upload it came
-// from and never an address: a note is private until its subtree is published
-// and so is its picture, so where one draws from is asked per reader —
-// docs/ARCHITECTURE.md § "Pictures".
+// A picture in a note, as one element of a section. What is STORED is the
+// upload it came from and never an address: a note is private until its subtree
+// is published and so is its picture, so where one draws from is asked per
+// reader — docs/ARCHITECTURE.md § "Pictures".
 //
 // While the bytes are still going the node holds the file itself, so the
-// picture is on the page from the moment it is chosen. `docBlocks` in
-// `./document.ts` is what keeps such a node out of the stack until it has an
-// upload to name.
+// picture is on the page from the moment it is chosen.
 
+import type { DocumentNode } from '@sloppy/types';
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { NoteMedia, ShownPicture } from './contract.js';
 import { placeBlock } from './placement.js';
@@ -16,33 +15,30 @@ export const PICTURE_NODE = 'picture';
 
 const COULD_NOT_DRAW = "This picture didn't load. Open the note again in a moment.";
 
-/** The payload of a block whose type is `image`; `@sloppy/types`' `block.ts`
- *  says how a type-specific payload attaches. */
-export interface PictureBlockData {
-	upload_id: string;
-	width?: number;
-	height?: number;
-	alt?: string;
-}
-
-/** Undefined for a payload that names no upload, which is not a picture yet. */
-export function pictureDataFrom(data: unknown): PictureBlockData | undefined {
-	if (typeof data !== 'object' || data === null) return undefined;
-	const row = data as Record<string, unknown>;
-	if (typeof row.upload_id !== 'string' || !row.upload_id) return undefined;
+/**
+ * How a picture is written into a section's document: the upload, and what it
+ * takes to lay the page out. Null while the bytes are still on their way, so a
+ * note is never stored pointing at bytes that never arrived.
+ */
+export function storedPicture(node: DocumentNode): DocumentNode | null {
+	const attrs = node.attrs ?? {};
+	if (typeof attrs.upload_id !== 'string' || !attrs.upload_id) return null;
 	const size = (value: unknown) =>
 		typeof value === 'number' && value > 0 ? Math.round(value) : undefined;
 	return {
-		upload_id: row.upload_id,
-		...(size(row.width) ? { width: size(row.width) } : {}),
-		...(size(row.height) ? { height: size(row.height) } : {}),
-		...(typeof row.alt === 'string' && row.alt ? { alt: row.alt } : {})
+		type: node.type,
+		attrs: {
+			upload_id: attrs.upload_id,
+			...(size(attrs.width) ? { width: size(attrs.width) } : {}),
+			...(size(attrs.height) ? { height: size(attrs.height) } : {}),
+			...(typeof attrs.alt === 'string' && attrs.alt ? { alt: attrs.alt } : {})
+		}
 	};
 }
 
 export interface PictureInsert {
 	/** Absent while the bytes are still going; {@link preview} draws until then. */
-	uploadId?: string | null;
+	upload_id?: string | null;
 	alt?: string;
 	width?: number | null;
 	height?: number | null;
@@ -59,11 +55,6 @@ declare module '@tiptap/core' {
 		};
 	}
 }
-
-const markdownSpec = {
-	markdownName: PICTURE_NODE,
-	renderMarkdown: (): string => ''
-} as Record<string, unknown>;
 
 function quietButton(label: string): HTMLButtonElement {
 	const button = document.createElement('button');
@@ -88,10 +79,10 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 
 		addAttributes() {
 			return {
-				uploadId: {
+				upload_id: {
 					default: null,
 					parseHTML: (el) => el.getAttribute('data-upload'),
-					renderHTML: (attrs) => (attrs.uploadId ? { 'data-upload': attrs.uploadId } : {})
+					renderHTML: (attrs) => (attrs.upload_id ? { 'data-upload': attrs.upload_id } : {})
 				},
 				alt: {
 					default: '',
@@ -191,7 +182,7 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 
 				/** The address is asked for once per upload, and only for the owner. */
 				async function draw(): Promise<void> {
-					const uploadId = current.attrs.uploadId as string | null;
+					const uploadId = current.attrs.upload_id as string | null;
 					const preview = current.attrs.preview as string | null;
 					const wanted = uploadId ?? preview;
 					if (drawn === wanted) return;
@@ -240,7 +231,7 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 					}
 
 					const progress = current.attrs.progress as number | null;
-					const sending = progress !== null && !current.attrs.uploadId;
+					const sending = progress !== null && !current.attrs.upload_id;
 					meter.style.display = sending ? '' : 'none';
 					filled.style.width = `${Math.round(Math.min(1, Math.max(0, progress ?? 0)) * 100)}%`;
 					dom.classList.toggle('is-sending', sending);
@@ -254,7 +245,7 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 				}
 
 				image.addEventListener('error', () => {
-					if (current.attrs.uploadId && image.getAttribute('src')) {
+					if (current.attrs.upload_id && image.getAttribute('src')) {
 						note.textContent = COULD_NOT_DRAW;
 					}
 				});
@@ -299,20 +290,18 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 						const { at, content } = placeBlock(state, {
 							type: this.name,
 							attrs: {
-								uploadId: entry.uploadId ?? null,
+								upload_id: entry.upload_id ?? null,
 								alt: entry.alt ?? '',
 								width: entry.width ?? null,
 								height: entry.height ?? null,
 								preview: entry.preview ?? null,
-								progress: entry.uploadId ? null : 0,
+								progress: entry.upload_id ? null : 0,
 								failure: null
 							}
 						});
 						return commands.insertContentAt(at, content);
 					}
 			};
-		},
-
-		...markdownSpec
+		}
 	});
 }

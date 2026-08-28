@@ -1,6 +1,5 @@
 // What a node's interior is handed and how it saves — docs/ARCHITECTURE.md
-// § "Blocks and ink". Every kind of block, ink and pictures included, is a
-// `type` with a renderer; none of them is a field here.
+// § "Blocks and ink".
 //
 // This package reaches no API, so everything that talks to one arrives as a
 // capability. Every one of them is required: a surface somebody writes in can

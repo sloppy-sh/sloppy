@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
-import type { BlockView, CreateBlockRequest, InkStroke, MediaAsset, OwnedRef } from '@sloppy/types';
+import type {
+	BlockDocument,
+	BlockView,
+	CreateBlockRequest,
+	DocumentNode,
+	InkStroke,
+	MediaAsset,
+	OwnedRef
+} from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,13 +15,36 @@ import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import BlockStack from './block-stack.svelte';
 import type { NoteEmoji, NoteMedia } from './contract.js';
-import { NOTE, OWNER, block, noEmoji, noMedia, ref, stubCanvas } from './editor.test-support.js';
+import {
+	NOTE,
+	OWNER,
+	block,
+	noEmoji,
+	noMedia,
+	ref,
+	section,
+	stubCanvas,
+	text
+} from './editor.test-support.js';
 
 interface Written {
 	created: CreateBlockRequest[];
-	updated: { ref: OwnedRef; content?: string; type?: string }[];
+	updated: { ref: OwnedRef; content?: BlockDocument }[];
 	removed: OwnedRef[];
 	moved: { ref: OwnedRef; after: OwnedRef | null }[];
+}
+
+/** The elements of a section, by kind. */
+const kinds = (content: BlockDocument | undefined): string[] =>
+	(content?.content ?? []).map((element) => element.type);
+
+/** What a section says, one line per element. */
+const wording = (content: BlockDocument | undefined): string[] =>
+	(content?.content ?? []).map((element) => reading(element));
+
+function reading(element: DocumentNode): string {
+	if (element.text !== undefined) return element.text;
+	return (element.content ?? []).map(reading).join('');
 }
 
 let target: HTMLElement;
@@ -33,7 +64,7 @@ function open(blocks: BlockView[], able: { media?: NoteMedia; emoji?: NoteEmoji 
 			onCreate: async (request: CreateBlockRequest) => {
 				written.created.push(request);
 				if (answering) await answering;
-				return block({ ...request, type: request.type, ref: ref() });
+				return block({ content: request.content as BlockDocument, ref: ref() });
 			},
 			onUpdate: async (block: OwnedRef, request: Record<string, unknown>) => {
 				written.updated.push({ ref: block, ...request });
@@ -57,10 +88,10 @@ function close(): void {
 	mounted = undefined;
 }
 
-/** Every block row the document currently describes, by node kind. */
-function topLevel(of: Editor): string[] {
+/** Every element of the note's first section, by kind. */
+function elements(of: Editor): string[] {
 	const names: string[] = [];
-	of.state.doc.forEach((child) => names.push(child.type.name));
+	of.state.doc.firstChild?.forEach((child) => names.push(child.type.name));
 	return names;
 }
 
@@ -114,33 +145,64 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
+const prose = (words: string) => block({ content: section(...text(words)) });
+
 describe('opening a note', () => {
-	it('shows what is written in it, as what it is', () => {
+	it('shows one section as many elements, each as what it is', () => {
 		open([
-			block({ type: 'heading', content: '## A place to start' }),
-			block({ type: 'todo', content: '- [x] read it again' })
+			block({
+				content: section(
+					{
+						type: 'heading',
+						attrs: { level: 2 },
+						content: [{ type: 'text', text: 'A place to start' }]
+					},
+					...text('and a line under it'),
+					{
+						type: 'taskList',
+						content: [
+							{ type: 'taskItem', attrs: { checked: true }, content: text('read it again') }
+						]
+					}
+				)
+			})
 		]);
+		expect(document.querySelectorAll('section')).toHaveLength(1);
 		expect(document.querySelector('h2')?.textContent).toBe('A place to start');
 		expect(document.querySelector('input[type="checkbox"]')).not.toBeNull();
 	});
 
 	it('shows a stored shortcode as the emoji it names', () => {
-		open([block({ type: 'paragraph', content: 'a spark :fire: of it' })]);
+		open([prose('a spark :fire: of it')]);
 		const glyph = document.querySelector('[data-emoji="fire"]');
 		expect(glyph?.textContent).toBe('🔥');
 		expect(document.querySelector('.sloppy-prose')?.textContent).not.toContain(':fire:');
 	});
 
 	it('writes nothing back for a note nobody has touched', async () => {
-		open([block({ type: 'paragraph', content: 'left alone' })]);
+		open([prose('left alone')]);
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
 	});
 
 	it('leaves a shortcode inside code exactly as it was written', async () => {
 		open([
-			block({ type: 'code', content: '```\ngit commit -m ":fire: remove dead code"\n```' }),
-			block({ type: 'paragraph', content: 'type `:fire:` to get a flame' })
+			block({
+				content: section(
+					{
+						type: 'codeBlock',
+						content: [{ type: 'text', text: 'git commit -m ":fire: remove dead code"' }]
+					},
+					{
+						type: 'paragraph',
+						content: [
+							{ type: 'text', text: 'type ' },
+							{ type: 'text', marks: [{ type: 'code' }], text: ':fire:' },
+							{ type: 'text', text: ' to get a flame' }
+						]
+					}
+				)
+			})
 		]);
 		expect(document.querySelector('pre')?.textContent).toBe(
 			'git commit -m ":fire: remove dead code"'
@@ -148,19 +210,25 @@ describe('opening a note', () => {
 		expect(document.querySelector('p code')?.textContent).toBe(':fire:');
 		expect(document.querySelector('[data-emoji]')).toBeNull();
 
-		writingIn().commands.insertContentAt(1, 'sudo ');
+		writingIn().commands.insertContentAt(2, 'sudo ');
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(written.created).toEqual([]);
 		expect(written.removed).toEqual([]);
-		expect(written.updated.map((row) => row.content)).toEqual([
-			'```\nsudo git commit -m ":fire: remove dead code"\n```'
+		expect(written.updated.map((row) => wording(row.content)[0])).toEqual([
+			'sudo git commit -m ":fire: remove dead code"'
 		]);
 	});
 });
 
+/** The drawing in the one section a pen test writes, and what it holds. */
+const inked = (content: BlockDocument | undefined) =>
+	(content?.content ?? []).find((element) => element.type === 'ink')?.attrs as
+		| { strokes: InkStroke[]; width: number; height: number }
+		| undefined;
+
 describe('a pen on the writing surface', () => {
-	it('leaves a drawing in the note where it was drawn, with no mode to find', async () => {
-		open([block({ type: 'paragraph', content: 'a thought' })]);
+	it('leaves a drawing in the section it was drawn in, with no mode to find', async () => {
+		open([prose('a thought')]);
 		const surface = target.querySelector('div.relative') as HTMLElement;
 
 		surface.dispatchEvent(penEvent('pointerdown', 40, 60, 0.2));
@@ -170,14 +238,13 @@ describe('a pen on the writing surface', () => {
 
 		await vi.advanceTimersByTimeAsync(5000);
 
-		expect(written.created).toHaveLength(1);
-		const drawing = written.created[0];
-		expect(drawing.type).toBe('ink');
-		expect(drawing.content).toBe('');
-		const data = drawing.data as { strokes: InkStroke[]; width: number; height: number };
-		expect(data.strokes).toHaveLength(1);
-		expect(data.strokes[0].points.map((point) => point.pressure)).toEqual([0.2, 0.7, 0.95]);
-		expect(data.width).toBe(320);
+		expect(written.created).toEqual([]);
+		expect(written.updated).toHaveLength(1);
+		expect(kinds(written.updated[0].content)).toContain('ink');
+		const drawing = inked(written.updated[0].content);
+		expect(drawing?.strokes).toHaveLength(1);
+		expect(drawing?.strokes[0].points.map((point) => point.pressure)).toEqual([0.2, 0.7, 0.95]);
+		expect(drawing?.width).toBe(320);
 	});
 
 	it('gathers the strokes drawn in one sitting into a single drawing', async () => {
@@ -192,7 +259,7 @@ describe('a pen on the writing surface', () => {
 		await vi.advanceTimersByTimeAsync(5000);
 
 		expect(written.created).toHaveLength(1);
-		expect((written.created[0].data as { strokes: InkStroke[] }).strokes).toHaveLength(2);
+		expect(inked(written.created[0].content as BlockDocument)?.strokes).toHaveLength(2);
 	});
 
 	it('leaves a finger alone, so the note still scrolls', async () => {
@@ -213,14 +280,14 @@ describe('a pen on the writing surface', () => {
 
 describe('what a note keeps when it is left', () => {
 	it('writes what was typed when the note is closed before the writing pauses', async () => {
-		open([block({ type: 'paragraph', content: 'a thought' })]);
-		writingIn().commands.insertContentAt(1, 'more of ');
+		open([prose('a thought')]);
+		writingIn().commands.insertContentAt(2, 'more of ');
 		await vi.advanceTimersByTimeAsync(100);
 		expect(written.updated).toEqual([]);
 
 		close();
 		await vi.advanceTimersByTimeAsync(0);
-		expect(written.updated.map((row) => row.content)).toEqual(['more of a thought']);
+		expect(written.updated.map((row) => wording(row.content)[0])).toEqual(['more of a thought']);
 	});
 
 	it('keeps a drawing the pen has only just put down', async () => {
@@ -234,44 +301,49 @@ describe('what a note keeps when it is left', () => {
 
 		close();
 		await vi.advanceTimersByTimeAsync(0);
-		expect(written.created.map((row) => row.type)).toEqual(['ink']);
+		expect(written.created.map((row) => kinds(row.content as BlockDocument))).toEqual([
+			['paragraph', 'ink']
+		]);
 	});
 
-	it('makes a block once when the note is closed while it is still being made', async () => {
+	it('makes a section once when the note is closed while it is still being made', async () => {
 		let answer = () => {};
 		answering = new Promise<void>((resolve) => (answer = resolve));
 
-		open([block({ type: 'paragraph', content: 'a thought' })]);
+		open([prose('a thought')]);
 		const of = writingIn();
-		of.commands.setTextSelection(of.state.doc.content.size - 1);
-		of.commands.splitBlock();
+		of.commands.addSection();
 		of.commands.insertContent('and another');
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(written.created.map((row) => row.content)).toEqual(['and another']);
+		expect(written.created.map((row) => wording(row.content as BlockDocument))).toEqual([
+			['and another']
+		]);
 
 		close();
 		answer();
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(written.created.map((row) => row.content)).toEqual(['and another']);
+		expect(written.created).toHaveLength(1);
 	});
 
 	it('writes what is unsaved when the app goes to the background', async () => {
-		open([block({ type: 'paragraph', content: 'a thought' })]);
-		writingIn().commands.insertContentAt(1, 'more of ');
+		open([prose('a thought')]);
+		writingIn().commands.insertContentAt(2, 'more of ');
 		await vi.advanceTimersByTimeAsync(100);
 
 		background();
 		await vi.advanceTimersByTimeAsync(0);
-		expect(written.updated.map((row) => row.content)).toEqual(['more of a thought']);
+		expect(written.updated.map((row) => wording(row.content)[0])).toEqual(['more of a thought']);
 	});
 
 	it('writes what is still being typed rather than waiting for a pause that never comes', async () => {
-		open([block({ type: 'paragraph', content: 'a thought' })]);
+		open([prose('a thought')]);
 		for (let keystroke = 0; keystroke < 20; keystroke += 1) {
-			writingIn().commands.insertContentAt(1, '.');
+			writingIn().commands.insertContentAt(2, '.');
 			await vi.advanceTimersByTimeAsync(200);
 		}
-		expect(written.updated.map((row) => row.content)).toEqual(['...............a thought']);
+		expect(written.updated.map((row) => wording(row.content)[0])).toEqual([
+			'...............a thought'
+		]);
 	});
 });
 
@@ -282,7 +354,7 @@ describe('the writing controls', () => {
 	// Pinned to the viewport they cover whatever the page puts under the note, at
 	// every width, with no scroll that reaches it.
 	it('sit in the note rather than over the page', () => {
-		open([block({ type: 'paragraph', content: 'a thought' })]);
+		open([prose('a thought')]);
 		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 		flushSync();
 
@@ -295,7 +367,7 @@ describe('the writing controls', () => {
 	// At phone width the bar is narrower than its actions, and what falls off the
 	// end of a rail is a feature nobody finds.
 	it('keeps what puts something in the note out of the rail that scrolls', () => {
-		open([block({ type: 'paragraph', content: 'a thought' })]);
+		open([prose('a thought')]);
 		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 		flushSync();
 
@@ -357,33 +429,51 @@ describe('a picture in a note', () => {
 		land({ upload_id: `${OWNER}/01UP`, mime_type: 'image/png', size: 1, width: 40, height: 20 });
 		await vi.advanceTimersByTimeAsync(4000);
 
-		expect(written.created).toEqual([
-			expect.objectContaining({
-				type: 'image',
-				data: { upload_id: `${OWNER}/01UP`, width: 40, height: 20 }
-			})
-		]);
+		expect(written.created).toHaveLength(1);
+		expect(
+			(written.created[0].content as BlockDocument).content.find(
+				(element) => element.type === 'picture'
+			)
+		).toEqual({
+			type: 'picture',
+			attrs: { upload_id: `${OWNER}/01UP`, width: 40, height: 20 }
+		});
 	});
 
-	// A picture nested in a list item is below the top level, where neither the
-	// save plan nor the send that fills it can find it again.
+	// A picture nested in a list item is below the section's own elements, where
+	// neither the save plan nor the send that fills it can find it again.
 	it('stands on its own even when the writing was in a list', async () => {
 		const { media, land } = sender();
-		open([block({ type: 'list', content: '- one\n- two' })], { media });
+		open(
+			[
+				block({
+					content: section({
+						type: 'bulletList',
+						content: [
+							{ type: 'listItem', content: text('one') },
+							{ type: 'listItem', content: text('two') }
+						]
+					})
+				})
+			],
+			{ media }
+		);
 		const of = writingIn();
-		of.commands.setTextSelection(of.state.doc.content.size - 4);
+		of.commands.setTextSelection(of.state.doc.content.size - 5);
 		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 		flushSync();
 		await choose(new File(['x'], 'kite.png', { type: 'image/png' }));
 
-		expect(of.state.doc.firstChild?.type.name).toBe('bulletList');
-		expect(topLevel(of)).toContain('picture');
+		expect(elements(of)[0]).toBe('bulletList');
+		expect(elements(of)).toContain('picture');
 
 		land({ upload_id: `${OWNER}/01UP`, mime_type: 'image/png', size: 1 });
 		await vi.advanceTimersByTimeAsync(4000);
 
-		expect(written.created.map((row) => row.type)).toEqual(['image']);
-		expect(written.updated).toEqual([]);
+		expect(written.created).toEqual([]);
+		expect(written.updated.map((row) => kinds(row.content))).toEqual([
+			['bulletList', 'picture', 'paragraph']
+		]);
 	});
 
 	it('offers what is already in a note, and uses one without sending it again', async () => {
@@ -409,9 +499,12 @@ describe('a picture in a note', () => {
 		held.click();
 		await vi.advanceTimersByTimeAsync(4000);
 
-		expect(written.created).toEqual([
-			expect.objectContaining({ type: 'image', data: { upload_id: `${OWNER}/01OLD` } })
-		]);
+		expect(written.created).toHaveLength(1);
+		expect(
+			(written.created[0].content as BlockDocument).content.find(
+				(element) => element.type === 'picture'
+			)
+		).toEqual({ type: 'picture', attrs: { upload_id: `${OWNER}/01OLD` } });
 	});
 
 	it('sends the picture at the size a note draws it, not the whole original', async () => {
@@ -434,11 +527,17 @@ describe('a picture in a note', () => {
 
 		land({ upload_id: `${OWNER}/01UP`, mime_type: 'image/webp', size: 300_000 });
 		await vi.advanceTimersByTimeAsync(4000);
-		expect(written.created.map((row) => row.type)).toEqual(['image']);
+		expect(written.created.map((row) => kinds(row.content as BlockDocument))).toEqual([
+			['paragraph', 'picture', 'paragraph']
+		]);
 	});
 
 	it('says so when it cannot be drawn, rather than showing an empty frame', async () => {
-		open([block({ type: 'image', data: { upload_id: `${OWNER}/01UP` } })]);
+		open([
+			block({
+				content: section({ type: 'picture', attrs: { upload_id: `${OWNER}/01UP` } })
+			})
+		]);
 		await vi.advanceTimersByTimeAsync(0);
 		flushSync();
 
@@ -457,46 +556,45 @@ describe('a shortcode its author uploaded a picture for', () => {
 	// Unicode set to resolve against.
 	const CATALOG = [{ id: 'e1', shortcode: 'seedling', src: '/proxy?ref=seedling', sticker: false }];
 
-	it('draws the picture, and is still stored as the shortcode', async () => {
-		open([block({ type: 'paragraph', content: 'look :seedling: look' })], {
-			emoji: noEmoji(CATALOG)
-		});
+	/** Every emoji in a section, by the shortcode it was written as. */
+	const named = (content: BlockDocument | undefined): unknown[] =>
+		(content?.content ?? []).flatMap((element) =>
+			(element.content ?? [])
+				.filter((run) => run.type === 'emoji')
+				.map((run) => [run.attrs?.name, run.attrs?.sticker])
+		);
+
+	it('draws the picture, and keeps the shortcode it was written as', async () => {
+		open([prose('look :seedling: look')], { emoji: noEmoji(CATALOG) });
 		await vi.advanceTimersByTimeAsync(0);
 		flushSync();
 
 		const drawn = target.querySelector('img.sloppy-emoji-picture');
 		expect(drawn?.getAttribute('src')).toBe('/proxy?ref=seedling');
 		expect(target.querySelector('.sloppy-prose')?.textContent).not.toContain('🌱');
-		expect(writingIn().storage.markdown.manager.serialize(writingIn().getJSON())).toContain(
-			':seedling:'
-		);
 	});
 
 	it('writes nothing back for a note that only had its emoji drawn', async () => {
-		open([block({ type: 'paragraph', content: 'look :seedling: look' })], {
-			emoji: noEmoji(CATALOG)
-		});
+		open([prose('look :seedling: look')], { emoji: noEmoji(CATALOG) });
 		await vi.advanceTimersByTimeAsync(5000);
 
 		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
 	});
 
 	it('keeps the small form a note was written in, whatever the catalog says', async () => {
-		open([block({ type: 'paragraph', content: 'look :seedling: look' })], {
+		open([prose('look :seedling: look')], {
 			emoji: noEmoji([{ ...CATALOG[0], sticker: true }])
 		});
 		await vi.advanceTimersByTimeAsync(0);
 		flushSync();
-		writingIn().commands.insertContentAt(1, 'X');
+		writingIn().commands.insertContentAt(2, 'X');
 		await vi.advanceTimersByTimeAsync(5000);
 
-		expect(written.updated.map((row) => row.content)).toEqual(['Xlook :seedling: look']);
+		expect(written.updated.map((row) => named(row.content))).toEqual([[['seedling', false]]]);
 	});
 
 	it('leaves a name the catalog does not claim as the emoji Unicode gives it', async () => {
-		open([block({ type: 'paragraph', content: 'a spark :fire: of it' })], {
-			emoji: noEmoji(CATALOG)
-		});
+		open([prose('a spark :fire: of it')], { emoji: noEmoji(CATALOG) });
 		await vi.advanceTimersByTimeAsync(0);
 		flushSync();
 
@@ -505,8 +603,8 @@ describe('a shortcode its author uploaded a picture for', () => {
 	});
 });
 
-describe('putting a block somewhere else in the stack', () => {
-	/** Rows 40 tall and stacked, so a drag has somewhere to aim at. */
+describe('putting a section somewhere else in the stack', () => {
+	/** Sections 40 tall and stacked, so a drag has somewhere to aim at. */
 	function stacked(): void {
 		const flat = Element.prototype.getBoundingClientRect;
 		Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
@@ -523,7 +621,7 @@ describe('putting a block somewhere else in the stack', () => {
 	];
 
 	const stack = (): (string | null)[] =>
-		[...target.querySelectorAll('.sloppy-prose > p')].map((row) => row.textContent);
+		[...target.querySelectorAll('.sloppy-prose > section')].map((row) => row.textContent);
 
 	function pointer(pointerType: string) {
 		return (type: string, y: number): PointerEvent => {
@@ -535,17 +633,13 @@ describe('putting a block somewhere else in the stack', () => {
 	const finger = pointer('touch');
 	const mouse = pointer('mouse');
 
-	/** How long a finger rests on a handle before it is holding the block. */
+	/** How long a finger rests on a handle before it is holding the section. */
 	const HELD_MS = 350;
 
 	const press = (key: string): KeyboardEvent =>
 		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
 
-	const three = (): BlockView[] => [
-		block({ type: 'paragraph', content: 'one' }),
-		block({ type: 'paragraph', content: 'two' }),
-		block({ type: 'paragraph', content: 'three' })
-	];
+	const three = (): BlockView[] => [prose('one'), prose('two'), prose('three')];
 
 	it('lands where a finger that held it drops it, and writes the one move', async () => {
 		const blocks = three();
@@ -580,7 +674,7 @@ describe('putting a block somewhere else in the stack', () => {
 		expect(written.moved).toEqual([]);
 	});
 
-	it('writes nothing for a block dropped back where it was', async () => {
+	it('writes nothing for a section dropped back where it was', async () => {
 		open(three());
 		stacked();
 
@@ -596,7 +690,7 @@ describe('putting a block somewhere else in the stack', () => {
 	});
 
 	// Nothing to hold for: a mouse drag is not competing with a scroll.
-	it('picks the block up the moment a mouse pulls it', async () => {
+	it('picks the section up the moment a mouse pulls it', async () => {
 		const blocks = three();
 		open(blocks);
 		stacked();
@@ -635,11 +729,11 @@ describe('putting a block somewhere else in the stack', () => {
 
 		const held = document.activeElement as HTMLElement;
 		expect(held.dataset.blockHandle).toBeDefined();
-		expect(held.getAttribute('aria-label')).toBe('Move block 2 of 3');
+		expect(held.getAttribute('aria-label')).toBe('Move section 2 of 3');
 	});
 
 	it('offers no handle on a note with nothing to put in order', () => {
-		open([block({ type: 'paragraph', content: 'only this' })]);
+		open([prose('only this')]);
 		expect(grips()).toEqual([]);
 	});
 });

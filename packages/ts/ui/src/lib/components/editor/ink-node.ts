@@ -1,5 +1,6 @@
-// The drawing that lives in a note as one more block. Its record is the strokes
-// (`InkBlockData` in @sloppy/types); this node holds them and draws them.
+// A drawing, as one element of a section. Its record is the strokes
+// (`InkElementData` in @sloppy/types, which is what these attributes are); this
+// node holds them and draws them.
 //
 // Touch is left alone so the page still pans under a drawing — DESIGN.md
 // § The canvas.
@@ -30,11 +31,6 @@ declare module '@tiptap/core' {
 		};
 	}
 }
-
-const markdownSpec = {
-	markdownName: 'ink',
-	renderMarkdown: (): string => ''
-} as Record<string, unknown>;
 
 const GROWTH_MARGIN = 24;
 
@@ -79,7 +75,7 @@ export const InkNode = Node.create({
 				parseHTML: (el) => Number(el.getAttribute('data-height')) || 200,
 				renderHTML: (attrs) => ({ 'data-height': String(attrs.height) })
 			},
-			rasterUploadId: { default: null, rendered: false }
+			raster_upload_id: { default: null, rendered: false }
 		};
 	},
 
@@ -262,7 +258,5 @@ export const InkNode = Node.create({
 					return commands.insertContentAt(at, content);
 				}
 		};
-	},
-
-	...markdownSpec
+	}
 });

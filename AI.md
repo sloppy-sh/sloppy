@@ -80,8 +80,10 @@ you reorder sections, not sentences.
   Markdown cannot carry ink strokes or picture metadata, and one payload column cannot
   describe a section with three drawings in it. The cost is accepted and stated: the
   stored shape is the editor's, so an editor change is a migration.
-- **The element kinds live one level down**, inside that document — `ElementType` in
-  `@sloppy/types`, never a column on the row.
+- **The element kinds live one level down**, inside that document. Storage does not
+  enumerate them: `BlockDocumentSchema` bounds a document by shape, so a kind this build
+  has no renderer for is carried untouched rather than refused. A new kind is a node the
+  editor knows and a renderer, never a column on the row.
 - **The genealogical axis, tags, addresses and the graph are untouched by this.** It is
   the note interior and nothing else.
 
@@ -153,10 +155,10 @@ leaked brand name is debt every future provider pays.
   `delegated` identity, `own` vs `pulled` provenance — not off the product that happens
   to provide it today. Don't conflate "which provider" with "which mode".
 - **The same rule governs Sloppy's own open sets.** The kinds of ELEMENT a block's
-  document holds — `ElementType`, `paragraph | heading | list | todo | code | image |
-ink | embed` — are an enum for exactly this reason: a new kind is a new value and a
-  renderer, never a column. A field named `inkStrokes` hanging off every block would be
-  the same mistake wearing our own brand.
+  document holds — a paragraph, a list, a drawing, a picture — are an open set for
+  exactly this reason: a new kind is a node the editor knows and a renderer, never a
+  column. A field named `inkStrokes` hanging off every block would be the same mistake
+  wearing our own brand.
 - **No brand token in a hardcoded branch, wire enum value, or SurrealQL column.** Prefer
   a predicate or a set (`isDelegatedIdentity(kind)`) over
   `mode !== 'syr' && mode !== 'local'`; name events for the concept.

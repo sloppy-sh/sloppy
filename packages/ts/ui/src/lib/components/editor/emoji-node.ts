@@ -85,12 +85,6 @@ export function reclaimEmoji(
 const written = (attrs: { name?: string; sticker?: boolean }) =>
 	emojiShortcode(attrs.name ?? '', !!attrs.sticker);
 
-const markdownSpec = {
-	markdownName: 'emoji',
-	renderMarkdown: (node: { attrs?: { name?: string; sticker?: boolean } }): string =>
-		written(node.attrs ?? {})
-} as Record<string, unknown>;
-
 export function EmojiNode(custom: () => readonly CustomEmojiEntry[]) {
 	return Node.create({
 		name: EMOJI_NODE,
@@ -185,8 +179,6 @@ export function EmojiNode(custom: () => readonly CustomEmojiEntry[]) {
 					({ commands }) =>
 						commands.insertContent({ type: this.name, attrs: attrsOf(entry) })
 			};
-		},
-
-		...markdownSpec
+		}
 	});
 }

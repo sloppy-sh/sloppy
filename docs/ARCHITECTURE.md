@@ -437,12 +437,21 @@ element's strokes, a picture's upload id — is validated by whichever renderer 
 (`InkElementData`), not at the storage boundary. Keys outside ProseMirror's five are
 dropped on parse.
 
-**TipTap 3 + `@tiptap/markdown` for the surface.** Slyng's `post-editor` was itself
-ported from Pendi's `journal-editor`, so we extend that lineage rather than start over:
-the WYSIWYG surface, `emoji-node.ts` (a TipTap inline atom serializing back to
-`:code:`/`::code::`), `emoji-suggestion`, and `media-node.ts` with its upload-in-progress →
-final-URL replacement and durable-ref pattern. Markdown remains how prose is typed and
-pasted; it is no longer how it is stored.
+**`section` is the only node a note's document holds at the top, and one section is one
+row.** `document.ts` in `@sloppy/ui` owns that correspondence: it opens a stack as one
+document, reads the rows back out of it, and works out what has to reach the API.
+`section-node.ts` is what makes Enter behave — the node is `isolating`, so a split stays
+inside it and a join cannot pull the section before it in, and `addSection` is the only
+thing that makes another. A section with nothing in it is not a row until it is one: the
+empty section a new note opens on never becomes one on its own, and a section already
+saved keeps its row when it is emptied.
+
+**TipTap 3 for the surface.** Slyng's `post-editor` was itself ported from Pendi's
+`journal-editor`, so we extend that lineage rather than start over: the WYSIWYG surface,
+`emoji-node.ts` (a TipTap inline atom holding the shortcode it was written as),
+`emoji-suggestion`, and `media-node.ts` with its upload-in-progress → final-URL
+replacement and durable-ref pattern. Markdown shorthands are still how prose is typed;
+`@tiptap/markdown` is gone with the storage format that needed it.
 
 The emoji tokenizer's ordering is load-bearing and must be carried across: **mention spans
 are captured first** (a `did:syr:…` contains colons that would false-match `:syr:`),

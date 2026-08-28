@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import type { BlockType, BlockView, InkBlockData, OwnedRef } from '@sloppy/types';
+import type { BlockDocument, BlockView, OwnedRef } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import { docBlocks, planSave, runSave, type DocBlock, type SavedBlock } from './document.js';
-import { block, makeEditor, stubCanvas } from './editor.test-support.js';
+import { block, makeEditor, section, stubCanvas, text } from './editor.test-support.js';
 
 let editor: Editor | undefined;
 /** What the API holds for the stack `open` was handed. */
@@ -22,14 +22,18 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-function open(blocks = [] as ReturnType<typeof block>[]) {
+function open(blocks = [] as BlockView[]) {
 	const made = makeEditor(blocks);
 	editor = made.editor;
 	opened = made.saved;
 	return made.editor;
 }
 
-const rows = (of: Editor): DocBlock[] => docBlocks(of.state.doc, of.storage.markdown.manager);
+const rows = (of: Editor): DocBlock[] => docBlocks(of.state.doc);
+
+/** The words in a section, in order, so a test can say what it means. */
+const wording = (content: BlockDocument): string[] =>
+	content.content.map((element) => element.content?.map((run) => run.text ?? '').join('') ?? '');
 
 /** A stack of rows that answers the way the API does, so a whole round can run. */
 function stack(initial: BlockView[]) {
@@ -39,20 +43,15 @@ function stack(initial: BlockView[]) {
 		held.splice((after ? at(after) : -1) + 1, 0, row);
 	return {
 		held,
-		read: () => held.map((row) => [row.type, row.content] as const),
+		read: () => held.map((row) => wording(row.content)),
 		writer: {
-			create: async (request: {
-				after: OwnedRef | null;
-				type: BlockType;
-				content: string;
-				data?: unknown;
-			}) => {
-				const made = block(request);
+			create: async (request: { after: OwnedRef | null; content: BlockDocument }) => {
+				const made = block({ content: request.content });
 				put(request.after, made);
 				return made.ref;
 			},
-			update: async (ref: OwnedRef, changes: Record<string, unknown>) => {
-				Object.assign(held[at(ref)], changes);
+			update: async (ref: OwnedRef, content: BlockDocument) => {
+				held[at(ref)] = { ...held[at(ref)], content };
 			},
 			reorder: async (ref: OwnedRef, after: OwnedRef | null) => {
 				put(after, held.splice(at(ref), 1)[0]);
@@ -74,125 +73,166 @@ async function round(of: ReturnType<typeof stack>, edit: (editor: Editor) => voi
 	made.editor.destroy();
 }
 
-describe('a stack opened as one document', () => {
-	it('gives each kind of block back as the type it was stored as', () => {
-		const stored = [
-			block({ type: 'heading', content: '## Where a thought begins' }),
-			block({ type: 'paragraph', content: 'It begins beside another one.' }),
-			block({ type: 'list', content: '- first\n- second' }),
-			block({ type: 'todo', content: '- [ ] ask about it' }),
-			block({ type: 'code', content: '```ts\nconst a = 1;\n```' })
-		];
-		const read = rows(open(stored));
-		expect(read.map((row) => row.type)).toEqual(['heading', 'paragraph', 'list', 'todo', 'code']);
-		expect(read.map((row) => row.content)).toEqual(stored.map((row) => row.content));
-		expect(read.map((row) => row.ref)).toEqual(stored.map((row) => row.ref));
+const INK = {
+	type: 'ink',
+	attrs: {
+		strokes: [{ points: [{ x: 1, y: 2, pressure: 0.4, t: 0 }], width: 2 }],
+		width: 400,
+		height: 120,
+		raster_upload_id: null
+	}
+};
+
+describe('a stack of sections opened as one document', () => {
+	const written = section(
+		{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Where it begins' }] },
+		...text('It begins beside another one.', 'And carries on.'),
+		{
+			type: 'bulletList',
+			content: [{ type: 'listItem', content: text('first') }]
+		}
+	);
+
+	it('gives a whole section back exactly as it was stored', () => {
+		const stored = block({ content: written });
+		const read = rows(open([stored]));
+		expect(read).toHaveLength(1);
+		expect(read[0].content).toEqual(written);
+		expect(read[0].ref).toBe(stored.ref);
 	});
 
 	it('has nothing to save the moment it opens', () => {
 		const of = open([
-			block({ type: 'heading', content: '## Where a thought begins' }),
-			block({ type: 'paragraph', content: 'It begins beside another one.' }),
-			block({ type: 'list', content: '- first\n- second' }),
-			block({ type: 'todo', content: '- [ ] ask about it' }),
-			block({ type: 'code', content: '```ts\nconst a = 1;\n```' }),
-			block({ type: 'ink', data: { strokes: [], width: 400, height: 120 } })
+			block({ content: written }),
+			block({ content: section(...text('A second thought.'), INK) })
 		]);
 		expect(planSave(opened, rows(of))).toEqual([]);
 	});
 
-	it('does not make a row out of the blank line waiting to be typed in', () => {
-		const of = open();
-		expect(rows(of)).toEqual([]);
+	it('makes no row out of the empty section a new note opens on', () => {
+		expect(rows(open())).toEqual([]);
 	});
 
-	it('keeps a drawing as its strokes, not as text', () => {
-		const data: InkBlockData = {
-			strokes: [{ points: [{ x: 1, y: 2, pressure: 0.4, t: 0 }], width: 2 }],
-			width: 400,
-			height: 120
-		};
-		const of = open([block({ type: 'ink', data })]);
+	// The store hands an element's attributes back in its own key order, so a
+	// note opens with attributes ordered differently from the way the editor
+	// writes them. Comparing the two as text would rewrite every note on sight.
+	it('writes nothing back for a section whose attributes come back in another order', () => {
+		const of = open([
+			block({
+				content: section(
+					{ type: 'heading', content: [{ type: 'text', text: 'Reordered' }], attrs: { level: 2 } },
+					{
+						type: 'ink',
+						attrs: {
+							height: 120,
+							raster_upload_id: null,
+							strokes: [{ points: [{ pressure: 0.4, t: 0, x: 1, y: 2 }], width: 2 }],
+							width: 400
+						}
+					}
+				)
+			})
+		]);
+		expect(planSave(opened, rows(of))).toEqual([]);
+	});
+
+	it('keeps a drawing as its strokes, inside the section it was made in', () => {
+		const of = open([block({ content: section(...text('a thought'), INK) })]);
 		const [row] = rows(of);
-		expect(row.type).toBe('ink');
-		expect(row.content).toBe('');
-		expect(row.data).toEqual({ strokes: data.strokes, width: 400, height: 120 });
+		expect(row.content.content.map((element) => element.type)).toEqual(['paragraph', 'ink']);
+		expect(row.content.content[1].attrs).toEqual(INK.attrs);
 	});
 
-	it('answers a row whose Markdown is two blocks by cutting it down and writing the rest', () => {
-		const stored = block({ type: 'paragraph', content: 'one\n\ntwo' });
-		const of = open([stored]);
-		const read = rows(of);
-		expect(read.map((row) => row.content)).toEqual(['one', 'two']);
-		expect(planSave(opened, read)).toEqual([
-			{ kind: 'update', ref: stored.ref, content: 'one' },
-			{ kind: 'create', uid: read[1].uid, after: read[0].uid, type: 'paragraph', content: 'two' }
-		]);
-	});
-
-	it('splits such a row once, however many times the note is opened and written', async () => {
-		const of = stack([block({ type: 'paragraph', content: 'one\n\ntwo' })]);
-		for (let pass = 0; pass < 3; pass += 1) await round(of);
-		expect(of.read()).toEqual([
-			['paragraph', 'one'],
-			['paragraph', 'two']
-		]);
-	});
-
-	it('carries a kind it has no node for untouched, rather than making prose of it', async () => {
+	it('carries a row holding a kind it has no renderer for, rather than rewriting it', async () => {
 		const of = stack([
-			block({ type: 'image', content: '![a sketch](https://example.com/a.png)' }),
-			block({ type: 'paragraph', content: 'beside it' }),
-			block({ type: 'embed', content: 'https://example.com/thing' })
+			block({ content: section({ type: 'sketchpad', attrs: { later: true } }) }),
+			block({ content: section(...text('beside it')) })
 		]);
 		const drawn = open(of.held);
-		expect(rows(drawn).map((row) => row.content)).toEqual(['beside it']);
+		expect(rows(drawn).map((row) => wording(row.content))).toEqual([['beside it']]);
 
 		for (let pass = 0; pass < 3; pass += 1) {
 			await round(of, (editor) => {
-				editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+				editor.commands.setTextSelection(editor.state.doc.content.size - 2);
 				editor.commands.insertContent('!');
 			});
 		}
-		expect(of.read()).toEqual([
-			['image', '![a sketch](https://example.com/a.png)'],
-			['paragraph', 'beside it!!!'],
-			['embed', 'https://example.com/thing']
-		]);
+		expect(of.read()).toEqual([[''], ['beside it!!!']]);
+		expect(of.held[0].content.content[0]).toEqual({ type: 'sketchpad', attrs: { later: true } });
 	});
 });
 
-describe('a split is a new block, and the old one keeps its row', () => {
-	it('makes the second half a create and leaves the first alone', () => {
-		const of = open([block({ type: 'paragraph', content: 'before after' })]);
+describe('Enter, inside a section', () => {
+	it('makes another paragraph in the same section rather than another block', () => {
+		const stored = block({ content: section(...text('beforeafter')) });
+		const of = open([stored]);
 		const saved = opened;
 		of.commands.setTextSelection(8);
 		of.commands.splitBlock();
 
 		const read = rows(of);
-		expect(read.map((row) => row.content)).toEqual(['before', 'after']);
+		expect(read).toHaveLength(1);
 		expect(read[0].ref).toBe(saved[0].ref);
-		expect(read[1].ref).toBeNull();
-		expect(read[0].uid).not.toBe(read[1].uid);
-
+		expect(wording(read[0].content)).toEqual(['before', 'after']);
 		expect(planSave(saved, read)).toEqual([
-			{ kind: 'update', ref: saved[0].ref, content: 'before' },
-			{ kind: 'create', uid: read[1].uid, after: read[0].uid, type: 'paragraph', content: 'after' }
+			{ kind: 'update', ref: saved[0].ref, content: read[0].content }
 		]);
+	});
+
+	it('leaves the stack one section however many times it is pressed', () => {
+		const of = open([block({ content: section(...text('one')) })]);
+		for (let press = 0; press < 5; press += 1) {
+			of.commands.setTextSelection(of.state.doc.content.size - 2);
+			of.commands.splitBlock();
+			of.commands.insertContent('more');
+		}
+		expect(rows(of)).toHaveLength(1);
+		expect(of.state.doc.childCount).toBe(1);
 	});
 });
 
-const row = (uid: string, ref: string, content: string): SavedBlock => ({
+describe('adding a section', () => {
+	it('is the only thing that makes one, and it becomes a row once written in', () => {
+		const of = open([block({ content: section(...text('a first thought')) })]);
+		of.commands.addSection();
+		expect(rows(of)).toHaveLength(1);
+
+		of.commands.insertContent('a separate thought');
+		const read = rows(of);
+		expect(read).toHaveLength(2);
+		expect(read[1].ref).toBeNull();
+		expect(planSave(opened, read)).toEqual([
+			{ kind: 'create', uid: read[1].uid, after: read[0].uid, content: read[1].content }
+		]);
+	});
+
+	it('takes one back when it is backspaced into with nothing written in it', () => {
+		const of = open([block({ content: section(...text('a first thought')) })]);
+		of.commands.addSection();
+		expect(of.state.doc.childCount).toBe(2);
+
+		of.view.dispatch(of.state.tr.scrollIntoView());
+		of.commands.keyboardShortcut('Backspace');
+		expect(of.state.doc.childCount).toBe(1);
+	});
+
+	it('keeps the last section, so a note always has somewhere to write', () => {
+		const of = open();
+		of.commands.keyboardShortcut('Backspace');
+		expect(of.state.doc.childCount).toBe(1);
+	});
+});
+
+const one = (words: string): BlockDocument => section(...text(words));
+const row = (uid: string, ref: string, words: string): SavedBlock => ({
 	uid,
 	ref: ref as SavedBlock['ref'],
-	type: 'paragraph',
-	content
+	content: one(words)
 });
-const doc = (uid: string, ref: string | null, content: string): DocBlock => ({
+const doc = (uid: string, ref: string | null, words: string): DocBlock => ({
 	uid,
 	ref: ref as DocBlock['ref'],
-	type: 'paragraph',
-	content
+	content: one(words)
 });
 
 describe('what has to reach the API', () => {
@@ -200,9 +240,9 @@ describe('what has to reach the API', () => {
 		expect(planSave([row('u1', 'a/A', 'one')], [doc('u1', 'a/A', 'one')])).toEqual([]);
 	});
 
-	it('reports only the field that changed', () => {
+	it('writes the whole section back when anything in it changed', () => {
 		expect(planSave([row('u1', 'a/A', 'one')], [doc('u1', 'a/A', 'two')])).toEqual([
-			{ kind: 'update', ref: 'a/A', content: 'two' }
+			{ kind: 'update', ref: 'a/A', content: one('two') }
 		]);
 	});
 
@@ -212,25 +252,25 @@ describe('what has to reach the API', () => {
 		).toEqual([{ kind: 'remove', ref: 'a/B' }]);
 	});
 
-	it('anchors a new block to the block it follows, even a new one', () => {
+	it('anchors a new section to the one it follows, even a new one', () => {
 		expect(
 			planSave(
 				[row('u1', 'a/A', 'one')],
 				[doc('u1', 'a/A', 'one'), doc('u2', null, 'two'), doc('u3', null, 'three')]
 			)
 		).toEqual([
-			{ kind: 'create', uid: 'u2', after: 'u1', type: 'paragraph', content: 'two' },
-			{ kind: 'create', uid: 'u3', after: 'u2', type: 'paragraph', content: 'three' }
+			{ kind: 'create', uid: 'u2', after: 'u1', content: one('two') },
+			{ kind: 'create', uid: 'u3', after: 'u2', content: one('three') }
 		]);
 	});
 
-	it('anchors a block written above everything to nothing', () => {
+	it('anchors a section written above everything to nothing', () => {
 		expect(
 			planSave([row('u1', 'a/A', 'one')], [doc('u2', null, 'new'), doc('u1', 'a/A', 'one')])
-		).toEqual([{ kind: 'create', uid: 'u2', after: null, type: 'paragraph', content: 'new' }]);
+		).toEqual([{ kind: 'create', uid: 'u2', after: null, content: one('new') }]);
 	});
 
-	it('moves a block that changed places rather than rewriting the stack', () => {
+	it('moves a section that changed places rather than rewriting the stack', () => {
 		expect(
 			planSave(
 				[row('u1', 'a/A', 'one'), row('u2', 'a/B', 'two'), row('u3', 'a/C', 'three')],
@@ -239,9 +279,9 @@ describe('what has to reach the API', () => {
 		).toEqual([{ kind: 'reorder', ref: 'a/C', after: null }]);
 	});
 
-	// One drag is one `ord`, however far the block travelled: every block it
+	// One drag is one `ord`, however far the section travelled: every section it
 	// passed kept its place relative to the others and so has nothing to write.
-	it('writes one move for a block dragged past every other block', () => {
+	it('writes one move for a section dragged past every other section', () => {
 		expect(
 			planSave(
 				[
@@ -261,8 +301,8 @@ describe('what has to reach the API', () => {
 	});
 
 	// The order the writer sees is the order the note is stored in, whatever they
-	// did to reach it — dragging a block and then typing a new one under it is
-	// two ordinary steps, and it is the batch where a create anchors on a row the
+	// did to reach it — dragging a section and then adding one under it is two
+	// ordinary steps, and it is the batch where a create anchors on a row the
 	// same batch also moves.
 	it('leaves the stack in the order the document is in, for any edit reaching one save', async () => {
 		let seed = 0x9e3779b9;
@@ -275,7 +315,9 @@ describe('what has to reach the API', () => {
 			const saved = Array.from({ length: 2 + upto(6) }, (_, at) =>
 				row(`u${at}`, `a/row ${at}`, `row ${at}`)
 			);
-			const next: DocBlock[] = saved.map((held) => doc(held.uid, held.ref, held.content));
+			const next: DocBlock[] = saved.map((held) =>
+				doc(held.uid, held.ref, wording(held.content)[0])
+			);
 			let minted = 0;
 			for (let edit = 0, edits = 1 + upto(4); edit < edits; edit++) {
 				const pick = upto(3);
@@ -290,15 +332,15 @@ describe('what has to reach the API', () => {
 			}
 
 			// The API, as a list that only ever places a row after another one. A
-			// row is its own content here, and every ref names the content it holds.
-			const held = saved.map((row) => row.content);
+			// row is its own wording here, and every ref names the section it holds.
+			const held = saved.map((row) => wording(row.content)[0]);
 			const at = (ref: OwnedRef) => held.indexOf(ref.slice(2));
-			const place = (after: OwnedRef | null, content: string) =>
-				held.splice((after ? at(after) : -1) + 1, 0, content);
+			const place = (after: OwnedRef | null, words: string) =>
+				held.splice((after ? at(after) : -1) + 1, 0, words);
 			const writer = {
-				create: async (request: { after: OwnedRef | null; content: string }) => {
-					place(request.after, request.content);
-					return `a/${request.content}` as OwnedRef;
+				create: async (request: { after: OwnedRef | null; content: BlockDocument }) => {
+					place(request.after, wording(request.content)[0]);
+					return `a/${wording(request.content)[0]}` as OwnedRef;
 				},
 				update: async () => {},
 				reorder: async (ref: OwnedRef, after: OwnedRef | null) => {
@@ -310,28 +352,31 @@ describe('what has to reach the API', () => {
 
 			const mine = saved.map((row) => ({ ...row }));
 			await runSave(planSave(mine, next), mine, next, writer);
-			expect({ trial, held }).toEqual({ trial, held: next.map((block) => block.content) });
+			expect({ trial, held }).toEqual({
+				trial,
+				held: next.map((block) => wording(block.content)[0])
+			});
 		}
 	});
 
-	it('treats a row pasted in from another note as a new block here', () => {
+	it('treats a section pasted in from another note as a new one here', () => {
 		expect(planSave([], [doc('u1', 'somewhere/ELSE', 'borrowed')])).toEqual([
-			{ kind: 'create', uid: 'u1', after: null, type: 'paragraph', content: 'borrowed' }
+			{ kind: 'create', uid: 'u1', after: null, content: one('borrowed') }
 		]);
 	});
 
-	it('makes no second row for a block whose create landed after the document was read', () => {
+	it('makes no second row for a section whose create landed after the document was read', () => {
 		expect(planSave([row('u2', 'a/B', 'two')], [doc('u2', null, 'two')])).toEqual([]);
 	});
 
-	it('still moves such a block, and writes what changed in it', () => {
+	it('still moves such a section, and writes what changed in it', () => {
 		expect(
 			planSave(
 				[row('u1', 'a/A', 'one'), row('u2', 'a/B', 'two')],
 				[doc('u2', null, 'two, revised'), doc('u1', 'a/A', 'one')]
 			)
 		).toEqual([
-			{ kind: 'update', ref: 'a/B', content: 'two, revised' },
+			{ kind: 'update', ref: 'a/B', content: one('two, revised') },
 			{ kind: 'reorder', ref: 'a/B', after: null }
 		]);
 	});
@@ -357,7 +402,7 @@ describe('carrying a plan out', () => {
 		};
 	}
 
-	it('anchors each new block to the row the one before it became', async () => {
+	it('anchors each new section to the row the one before it became', async () => {
 		const saved = [row('u1', 'a/A', 'one')];
 		const next = [doc('u1', 'a/A', 'one'), doc('u2', null, 'two'), doc('u3', null, 'three')];
 		const writer = recorder(['a/B', 'a/C']);
@@ -375,44 +420,46 @@ describe('carrying a plan out', () => {
 		expect(saved.map((r) => r.ref)).toEqual(['a/A']);
 
 		expect(planSave(saved, next)).toEqual([
-			{ kind: 'create', uid: 'u2', after: 'u1', type: 'paragraph', content: 'two' },
-			{ kind: 'create', uid: 'u3', after: 'u2', type: 'paragraph', content: 'three' }
+			{ kind: 'create', uid: 'u2', after: 'u1', content: one('two') },
+			{ kind: 'create', uid: 'u3', after: 'u2', content: one('three') }
 		]);
 	});
 });
 
-describe('a picture in a note', () => {
+describe('a picture in a section', () => {
 	const UPLOAD = 'did:syr:z6Mk1/01ABCDEF';
+	const PICTURE = {
+		type: 'picture',
+		attrs: { upload_id: UPLOAD, width: 40, height: 20, alt: 'a kite' }
+	};
 
-	it('opens as the block it was stored as, and is written back unchanged', () => {
-		const of = open([
-			block({ type: 'image', data: { upload_id: UPLOAD, width: 40, height: 20, alt: 'a kite' } })
-		]);
-		expect(rows(of)).toEqual([
-			expect.objectContaining({
-				type: 'image',
-				content: '',
-				data: { upload_id: UPLOAD, width: 40, height: 20, alt: 'a kite' }
-			})
-		]);
+	it('is stored as the upload it came from, and written back unchanged', () => {
+		const of = open([block({ content: section(PICTURE) })]);
+		expect(rows(of)[0].content).toEqual(section(PICTURE));
 		expect(planSave(opened, rows(of))).toEqual([]);
 	});
 
 	// Otherwise a note is stored pointing at bytes that may never arrive.
-	it('is not a row while the file is still on its way', () => {
-		const of = open();
+	it('is not written down while the file is still on its way', () => {
+		const of = open([block({ content: section(...text('a thought')) })]);
 		of.commands.insertPicture({ preview: 'blob:sloppy/1' });
-		expect(rows(of).some((row) => row.type === 'image')).toBe(false);
+		const kinds = () => rows(of)[0].content.content.map((element) => element.type);
+		expect(kinds()).not.toContain('picture');
 
-		of.commands.insertPicture({ uploadId: UPLOAD, width: 40, height: 20 });
-		expect(rows(of).filter((row) => row.type === 'image')).toHaveLength(1);
+		of.commands.insertPicture({ upload_id: UPLOAD, width: 40, height: 20 });
+		expect(kinds().filter((kind) => kind === 'picture')).toHaveLength(1);
 	});
 
-	// A row nothing can be drawn from is carried, not opened as an empty one and
-	// saved back over.
-	it('leaves a row naming no file exactly as it was found', () => {
-		const of = open([block({ type: 'image', data: {} })]);
-		expect(rows(of).some((row) => row.type === 'image')).toBe(false);
-		expect(planSave(opened, rows(of))).toEqual([]);
+	it('leaves the moment-to-moment of a send out of what is stored', () => {
+		const of = open([block({ content: section(...text('a thought')) })]);
+		of.commands.insertPicture({ upload_id: UPLOAD, preview: 'blob:sloppy/1' });
+		const stored = rows(of)[0].content.content.find((element) => element.type === 'picture');
+		expect(Object.keys(stored?.attrs ?? {})).toEqual(['upload_id']);
+	});
+
+	it('makes a section of nothing but a picture on its way no row at all', () => {
+		const of = open();
+		of.commands.insertPicture({ preview: 'blob:sloppy/1' });
+		expect(rows(of)).toEqual([]);
 	});
 });

@@ -1,23 +1,7 @@
-// What a block holds: the editor's own document, and the kinds of element a
-// person writes inside one. docs/ARCHITECTURE.md § "Blocks and ink".
+// What a block holds: the editor's own document, one section of a note.
+// docs/ARCHITECTURE.md § "Blocks and ink".
 
 import { z } from "zod";
-
-/**
- * The kinds of element a block's document is made of. A new kind is a value
- * here and a renderer, never a column.
- */
-export const ElementTypeSchema = z.enum([
-  "paragraph",
-  "heading",
-  "list",
-  "todo",
-  "code",
-  "image",
-  "ink",
-  "embed",
-]);
-export type ElementType = z.infer<typeof ElementTypeSchema>;
 
 /** A mark on a run of text — emphasis, a link — carrying its own attributes. */
 export interface DocumentMark {

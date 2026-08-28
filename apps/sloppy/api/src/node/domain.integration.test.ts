@@ -567,7 +567,7 @@ describe("the domain routes", () => {
               ],
               width: 320,
               height: 240,
-              rasterUploadId: null,
+              raster_upload_id: null,
             },
           },
         ],

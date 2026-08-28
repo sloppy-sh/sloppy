@@ -5,7 +5,7 @@
 // it can be reproduced. The interiors are drawn from a second stream off that
 // same seed, so rewriting how a section is written cannot reshape the graph.
 
-import type { BlockDocument, DocumentNode, ElementType } from "@sloppy/types";
+import type { BlockDocument, DocumentNode } from "@sloppy/types";
 import {
   FOLLOWING_TEMPLATES,
   LIST_TEMPLATES,
@@ -16,11 +16,10 @@ import {
   type Topic,
 } from "./corpus";
 
-/** The element kinds the seed writes. It fills a graph with prose, not pictures. */
-type SeededElement = Extract<
-  ElementType,
-  "paragraph" | "heading" | "list" | "todo" | "code"
->;
+/** What the seed writes into a section. It fills a graph with prose, not
+ *  pictures — `elementNode` turns each of these into the element the editor
+ *  would have written. */
+type SeededElement = "paragraph" | "heading" | "list" | "todo" | "code";
 
 /** One line for a piece of prose, one per item for a list. */
 interface PlannedElement {

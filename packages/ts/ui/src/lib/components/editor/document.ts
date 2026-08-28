@@ -1,142 +1,100 @@
-// The seam between a node's stack of block rows and the one editable document
-// they are written in — docs/ARCHITECTURE.md § "Blocks and ink". Each top-level
-// node in the document IS a block; `blockUid` identifies one across an edit and
-// `blockRef` names the row it was loaded from.
+// The seam between a note's stack of block rows and the one document its
+// sections are written in — docs/ARCHITECTURE.md § "Blocks and ink". A section
+// IS a block: `blockUid` identifies one across an edit and `blockRef` names the
+// row it was loaded from.
 
-import type { BlockType, BlockView, InkBlockData, OwnedRef } from '@sloppy/types';
-import { InkBlockDataSchema } from '@sloppy/types';
-import { Extension, type JSONContent } from '@tiptap/core';
-import type { MarkdownManager } from '@tiptap/markdown';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { PICTURE_NODE, pictureDataFrom, type PictureBlockData } from './picture-node.js';
+import type { BlockDocument, BlockView, DocumentNode, OwnedRef } from '@sloppy/types';
+import type { JSONContent } from '@tiptap/core';
+import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
+import { PICTURE_NODE, storedPicture } from './picture-node.js';
+import { nextUid, SECTION_NODE } from './section-node.js';
 
-export const INK_NODE = 'ink';
-
-/** Every node kind that can stand at the top of a node's interior. */
-export const BLOCK_NODES = [
-	'paragraph',
-	'heading',
-	'bulletList',
-	'orderedList',
-	'taskList',
-	'codeBlock',
-	'blockquote',
-	'horizontalRule',
-	INK_NODE,
-	PICTURE_NODE
-] as const;
-
-const TYPE_BY_NODE: Partial<Record<string, BlockType>> = {
-	heading: 'heading',
-	bulletList: 'list',
-	orderedList: 'list',
-	taskList: 'todo',
-	codeBlock: 'code',
-	[INK_NODE]: 'ink',
-	[PICTURE_NODE]: 'image'
+/** How an element is written down, where that is not simply how it stands. */
+const STORED_AS: Partial<Record<string, (node: DocumentNode) => DocumentNode | null>> = {
+	[PICTURE_NODE]: storedPicture
 };
-
-/** Prose the enum does not name — a quote, a rule — keeps its Markdown as a paragraph. */
-export function blockTypeOf(nodeName: string): BlockType {
-	return TYPE_BY_NODE[nodeName] ?? 'paragraph';
-}
-
-/** The kinds a row can be written back as: one for every node this document has. */
-const WRITABLE_TYPES: ReadonlySet<BlockType> = new Set<BlockType>([
-	'paragraph',
-	...Object.values(TYPE_BY_NODE).filter((type): type is BlockType => type !== undefined)
-]);
-
-/** Only these carry `blockUid` and `blockRef`, so only these can be a row. */
-const IDENTIFIED_NODES: ReadonlySet<string> = new Set(BLOCK_NODES);
-
-let sequence = 0;
-function nextUid(): string {
-	return `b${++sequence}`;
-}
 
 export interface DocBlock {
 	uid: string;
 	/** Null until the row exists. */
 	ref: OwnedRef | null;
-	type: BlockType;
-	content: string;
-	data?: unknown;
+	content: BlockDocument;
 }
 
 /** What a row holds, as far as the surface knows: the last thing it saw saved. */
 export interface SavedBlock {
-	/** The document node this row answers for; `ref` is only where it ended up. */
+	/** The section this row answers for; `ref` is only where it ended up. */
 	uid: string;
 	ref: OwnedRef;
-	type: BlockType;
-	content: string;
-	data?: unknown;
+	content: BlockDocument;
 }
 
 /** `after` is the uid of the block this one follows, so a create can anchor to a create. */
 export type SaveOp =
-	| {
-			kind: 'create';
-			uid: string;
-			after: string | null;
-			type: BlockType;
-			content: string;
-			data?: unknown;
-	  }
-	| { kind: 'update'; ref: OwnedRef; type?: BlockType; content?: string; data?: unknown }
+	| { kind: 'create'; uid: string; after: string | null; content: BlockDocument }
+	| { kind: 'update'; ref: OwnedRef; content: BlockDocument }
 	| { kind: 'reorder'; ref: OwnedRef; after: string | null }
 	| { kind: 'remove'; ref: OwnedRef };
 
-export function inkDataOf(node: ProseMirrorNode): InkBlockData {
-	return {
-		strokes: node.attrs.strokes ?? [],
-		width: node.attrs.width,
-		height: node.attrs.height,
-		...(node.attrs.rasterUploadId ? { raster_upload_id: node.attrs.rasterUploadId } : {})
-	};
+function keepAll(nodes: readonly DocumentNode[]): DocumentNode[] {
+	const kept: DocumentNode[] = [];
+	for (const node of nodes) {
+		const stored = STORED_AS[node.type];
+		const held = stored
+			? stored(node)
+			: node.content
+				? { ...node, content: keepAll(node.content) }
+				: node;
+		if (held) kept.push(held);
+	}
+	return kept;
 }
 
-/** Undefined until the bytes have landed and the block has an upload to name. */
-export function pictureDataOf(node: ProseMirrorNode): PictureBlockData | undefined {
-	return pictureDataFrom({
-		upload_id: node.attrs.uploadId,
-		width: node.attrs.width,
-		height: node.attrs.height,
-		alt: node.attrs.alt
+/** One section, written down. */
+function storedContent(section: ProseMirrorNode): BlockDocument {
+	const json = section.toJSON() as DocumentNode;
+	return { type: 'doc', content: keepAll(json.content ?? []) };
+}
+
+/** Whether anything in a section survives being written down. */
+function written(node: ProseMirrorNode): boolean {
+	const stored = STORED_AS[node.type.name];
+	if (stored) return stored(node.toJSON() as DocumentNode) !== null;
+	if (node.isText) return (node.text ?? '').length > 0;
+	if (node.isLeaf) return true;
+	let any = false;
+	node.forEach((child) => {
+		any ||= written(child);
 	});
+	return any;
 }
 
-function pictureNodeFrom(block: BlockView, data: PictureBlockData): JSONContent {
+function sameDocument(a: BlockDocument, b: BlockDocument): boolean {
+	return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** False for an element kind, or a mark, this build has no renderer for. */
+function readable(node: DocumentNode, schema: Schema): boolean {
+	if (!schema.nodes[node.type]) return false;
+	if (node.marks?.some((mark) => !schema.marks[mark.type])) return false;
+	return (node.content ?? []).every((child) => readable(child, schema));
+}
+
+function sectionFrom(block: BlockView, schema: Schema): JSONContent | null {
+	const elements = block.content?.content ?? [];
+	if (!elements.every((element) => readable(element, schema))) return null;
 	return {
-		type: PICTURE_NODE,
-		attrs: {
-			blockUid: nextUid(),
-			blockRef: block.ref,
-			uploadId: data.upload_id,
-			alt: data.alt ?? '',
-			width: data.width ?? null,
-			height: data.height ?? null
-		}
+		type: SECTION_NODE,
+		attrs: { blockUid: nextUid(), blockRef: block.ref },
+		content: elements.length > 0 ? (elements as JSONContent[]) : [{ type: 'paragraph' }]
 	};
 }
 
-function inkNodeFrom(block: BlockView): JSONContent {
-	const parsed = InkBlockDataSchema.safeParse(block.data);
-	const data: InkBlockData = parsed.success
-		? parsed.data
-		: { strokes: [], width: 600, height: 200 };
+function emptySection(): JSONContent {
 	return {
-		type: INK_NODE,
-		attrs: {
-			blockUid: nextUid(),
-			blockRef: block.ref,
-			strokes: data.strokes,
-			width: data.width,
-			height: data.height,
-			rasterUploadId: data.raster_upload_id ?? null
-		}
+		type: SECTION_NODE,
+		attrs: { blockUid: nextUid(), blockRef: null },
+		content: [{ type: 'paragraph' }]
 	};
 }
 
@@ -151,113 +109,54 @@ export interface Opened {
 
 /**
  * The document a stack of rows opens as, and the truth a save plan is measured
- * against. A row this surface has no node for, or whose Markdown opens as
- * something that cannot hold a row's identity, is in neither, and so is carried
- * untouched. A row whose Markdown opens as several nodes keeps the first as
- * itself and is baselined as stored, so the first save truncates it to that
- * node and writes out the rest.
+ * against. A row holding an element kind this build has no renderer for is in
+ * neither, and so is carried untouched. A note with no rows yet opens as one
+ * empty section, which becomes a row when something is written into it.
  */
-export function openBlocks(blocks: readonly BlockView[], manager: MarkdownManager): Opened {
+export function openBlocks(blocks: readonly BlockView[], schema: Schema): Opened {
 	const content: JSONContent[] = [];
-	const divided = new Map<OwnedRef, SavedBlock>();
-
+	const opening: OwnedRef[] = [];
 	for (const block of blocks) {
-		if (block.type === 'ink') {
-			content.push(inkNodeFrom(block));
-			continue;
-		}
-		if (block.type === 'image') {
-			// A row naming no upload has no picture to draw, so it is carried
-			// untouched rather than opened as an empty one and saved back over.
-			const picture = pictureDataFrom(block.data);
-			if (picture) content.push(pictureNodeFrom(block, picture));
-			continue;
-		}
-		if (!WRITABLE_TYPES.has(block.type)) continue;
-		const parsed = manager.parse(block.content ?? '').content ?? [];
-		const nodes = parsed.length > 0 ? parsed : [{ type: 'paragraph' }];
-		if (!nodes.every((node) => IDENTIFIED_NODES.has(node.type ?? ''))) continue;
-		nodes.forEach((node, index) => {
-			node.attrs = {
-				...node.attrs,
-				blockUid: nextUid(),
-				blockRef: index === 0 ? block.ref : null
-			};
-		});
-		if (nodes.length > 1) {
-			divided.set(block.ref, {
-				uid: nodes[0].attrs?.blockUid as string,
-				ref: block.ref,
-				type: block.type,
-				content: block.content ?? ''
-			});
-		}
-		content.push(...nodes);
+		const section = sectionFrom(block, schema);
+		if (!section) continue;
+		opening.push(block.ref);
+		content.push(section);
 	}
-	if (content.length === 0) {
-		content.push({ type: 'paragraph', attrs: { blockUid: nextUid(), blockRef: null } });
-	}
+	if (content.length === 0) content.push(emptySection());
 
 	return {
 		doc: { type: 'doc', content },
 		baseline(opened) {
 			const read = new Map(opened.flatMap((row) => (row.ref ? [[row.ref, row] as const] : [])));
-			const rows: SavedBlock[] = [];
-			for (const block of blocks) {
-				const held = divided.get(block.ref);
-				if (held) {
-					rows.push(held);
-					continue;
-				}
-				const row = read.get(block.ref);
-				if (row) {
-					rows.push({
-						uid: row.uid,
-						ref: block.ref,
-						type: row.type,
-						content: row.content,
-						data: row.data
-					});
-				}
-			}
-			return rows;
+			return opening.flatMap((ref) => {
+				const row = read.get(ref);
+				return row ? [{ uid: row.uid, ref, content: row.content }] : [];
+			});
 		}
 	};
 }
 
 /**
- * The rows the document currently describes. An empty text block is not one: the
- * blank line a writer is about to type into never becomes a row, and clearing a
- * block deletes it.
+ * The rows the document currently describes. A section holding nothing is not
+ * one until it is one: the empty section a note opens on never becomes a row on
+ * its own, and a section already saved keeps its row when it is emptied.
  */
-export function docBlocks(doc: ProseMirrorNode, manager: MarkdownManager): DocBlock[] {
+export function docBlocks(doc: ProseMirrorNode): DocBlock[] {
 	const blocks: DocBlock[] = [];
-	doc.forEach((node) => {
-		const uid = (node.attrs.blockUid as string | null) ?? nextUid();
-		const ref = (node.attrs.blockRef as OwnedRef | null) ?? null;
-		if (node.type.name === INK_NODE) {
-			blocks.push({ uid, ref, type: 'ink', content: '', data: inkDataOf(node) });
-			return;
-		}
-		if (node.type.name === PICTURE_NODE) {
-			const picture = pictureDataOf(node);
-			if (picture) blocks.push({ uid, ref, type: 'image', content: '', data: picture });
-			return;
-		}
-		const content = manager.serialize(node.toJSON() as JSONContent).trim();
-		if (content) blocks.push({ uid, ref, type: blockTypeOf(node.type.name), content });
+	doc.forEach((section) => {
+		if (section.type.name !== SECTION_NODE) return;
+		const uid = (section.attrs.blockUid as string | null) ?? nextUid();
+		const ref = (section.attrs.blockRef as OwnedRef | null) ?? null;
+		if (!ref && !written(section)) return;
+		blocks.push({ uid, ref, content: storedContent(section) });
 	});
 	return blocks;
-}
-
-function sameData(a: unknown, b: unknown): boolean {
-	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /**
  * Where in `values` one longest strictly increasing run sits. Everything off it
  * is what has to move for the whole to be in order, which is what keeps one
- * block dragged across the stack to one `ord` rather than one per block it
+ * section dragged across the stack to one `ord` rather than one per section it
  * passed.
  */
 function longestRun(values: readonly number[]): number[] {
@@ -309,21 +208,10 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 	next.forEach((block, index) => {
 		const row = rowFor[index];
 		if (!row) {
-			ops.push({
-				kind: 'create',
-				uid: block.uid,
-				after: previousUid,
-				type: block.type,
-				content: block.content,
-				...(block.data === undefined ? {} : { data: block.data })
-			});
+			ops.push({ kind: 'create', uid: block.uid, after: previousUid, content: block.content });
 		} else {
-			const change: SaveOp = { kind: 'update', ref: row.ref };
-			if (row.type !== block.type) change.type = block.type;
-			if (row.content !== block.content) change.content = block.content;
-			if (!sameData(row.data, block.data)) change.data = block.data ?? null;
-			if (change.type !== undefined || change.content !== undefined || change.data !== undefined) {
-				ops.push(change);
+			if (!sameDocument(row.content, block.content)) {
+				ops.push({ kind: 'update', ref: row.ref, content: block.content });
 			}
 			if (!staying.has(index)) ops.push({ kind: 'reorder', ref: row.ref, after: previousUid });
 		}
@@ -337,16 +225,8 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 }
 
 export interface BlockWriter {
-	create(request: {
-		after: OwnedRef | null;
-		type: BlockType;
-		content: string;
-		data?: unknown;
-	}): Promise<OwnedRef>;
-	update(
-		ref: OwnedRef,
-		changes: { type?: BlockType; content?: string; data?: unknown }
-	): Promise<void>;
+	create(request: { after: OwnedRef | null; content: BlockDocument }): Promise<OwnedRef>;
+	update(ref: OwnedRef, content: BlockDocument): Promise<void>;
 	reorder(ref: OwnedRef, after: OwnedRef | null): Promise<void>;
 	remove(ref: OwnedRef): Promise<void>;
 	/** The row a new block became, so the document can carry it from here on. */
@@ -377,24 +257,14 @@ export async function runSave(
 	for (const op of ops) {
 		if (op.kind === 'create') {
 			const after = anchor(op.after);
-			const ref = await writer.create({
-				after,
-				type: op.type,
-				content: op.content,
-				...(op.data === undefined ? {} : { data: op.data })
-			});
+			const ref = await writer.create({ after, content: op.content });
 			refs.set(op.uid, ref);
-			place(saved, after, { uid: op.uid, ref, type: op.type, content: op.content, data: op.data });
+			place(saved, after, { uid: op.uid, ref, content: op.content });
 			writer.placed(op.uid, ref);
 		} else if (op.kind === 'update') {
-			const changes = {
-				...(op.type === undefined ? {} : { type: op.type }),
-				...(op.content === undefined ? {} : { content: op.content }),
-				...(op.data === undefined ? {} : { data: op.data })
-			};
-			await writer.update(op.ref, changes);
+			await writer.update(op.ref, op.content);
 			const row = saved.find((row) => row.ref === op.ref);
-			if (row) Object.assign(row, changes);
+			if (row) row.content = op.content;
 		} else if (op.kind === 'reorder') {
 			const after = anchor(op.after);
 			await writer.reorder(op.ref, after);
@@ -407,62 +277,3 @@ export async function runSave(
 		}
 	}
 }
-
-/**
- * Identity for the blocks in a document. A split copies its origin's attributes,
- * so the copy is the block that has to be renamed — the first node holding a uid
- * keeps it, and every later claimant becomes a new, unsaved block.
- */
-export const BlockIdentity = Extension.create({
-	name: 'blockIdentity',
-
-	addGlobalAttributes() {
-		return [
-			{
-				types: [...BLOCK_NODES],
-				// Carried on the element so a block cut and pasted back into the note
-				// is the same row moved, not the old one deleted and a new one made.
-				attributes: {
-					blockUid: {
-						default: null,
-						parseHTML: (el) => el.getAttribute('data-block-uid'),
-						renderHTML: (attrs) => (attrs.blockUid ? { 'data-block-uid': attrs.blockUid } : {})
-					},
-					blockRef: {
-						default: null,
-						parseHTML: (el) => el.getAttribute('data-block-ref'),
-						renderHTML: (attrs) => (attrs.blockRef ? { 'data-block-ref': attrs.blockRef } : {})
-					}
-				}
-			}
-		];
-	},
-
-	addProseMirrorPlugins() {
-		return [
-			new Plugin({
-				key: new PluginKey('blockIdentity'),
-				appendTransaction: (_transactions, _old, state) => {
-					const claimed = new Set<string>();
-					let tr: ReturnType<typeof state.tr.setNodeMarkup> | null = null;
-					state.doc.forEach((node, pos) => {
-						if (!('blockUid' in node.attrs)) return;
-						const uid = node.attrs.blockUid as string | null;
-						if (uid && !claimed.has(uid)) {
-							claimed.add(uid);
-							return;
-						}
-						const fresh = nextUid();
-						claimed.add(fresh);
-						tr = (tr ?? state.tr).setNodeMarkup(pos, undefined, {
-							...node.attrs,
-							blockUid: fresh,
-							blockRef: null
-						});
-					});
-					return tr ? (tr as typeof state.tr).setMeta('addToHistory', false) : null;
-				}
-			})
-		];
-	}
-});
