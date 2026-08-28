@@ -4,6 +4,26 @@
 
 import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
 
+/** The notes a picking canvas outlines, so a tap is answered before it lands. */
+export interface GraphPickMarks {
+  /** The note the choice is being made for. */
+  from: OwnedRef;
+  /** What `from` already points at. */
+  taken: ReadonlySet<OwnedRef>;
+}
+
+/**
+ * A choice being asked for on the canvas rather than a note to open. Pan, pinch
+ * and mega-node expansion are unchanged while one is on, because the note has to
+ * be found before it can be picked.
+ */
+export interface GraphPicking extends GraphPickMarks {
+  /** The note tapped: any drawn note but {@link GraphPickMarks.from}, a `taken`
+   *  one included — that tap is the reader saying the link they want is the one
+   *  already there. */
+  onPick: (ref: OwnedRef) => void;
+}
+
 export interface GraphSurfaceProps {
   /** The region to draw, in address order. */
   nodes: readonly NodeView[];
@@ -34,6 +54,8 @@ export interface GraphSurfaceProps {
    * (`lod.ts`); absent means the whole graph, folded by generation.
    */
   focus?: OwnedRef;
+  /** Absent means a tap opens the note under it. */
+  picking?: GraphPicking;
   onOpenNode: (ref: OwnedRef) => void;
   /** Draw this mega-node's subtree instead of folding it. */
   onExpand: (ref: OwnedRef) => void;

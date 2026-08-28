@@ -17,6 +17,7 @@ import type {
   Texture,
 } from "pixi.js";
 import { clamp } from "./color.js";
+import type { GraphPickMarks } from "./contract.js";
 import type { GraphNodeAttributes } from "./model.js";
 import type { BuiltModel } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
@@ -44,6 +45,11 @@ const LABEL_GAP = 6;
 const LABEL_LINE = 15;
 /** A title long enough to crowd its neighbours off the canvas is not a title. */
 const TITLE_CHARS = 32;
+
+/** How far outside a mark its picking outline sits. Clear of the edge, so it
+ *  never reads as the provenance ring DESIGN.md § Form draws ON the edge. */
+const PICK_GAP = 6;
+const PICK_WIDTH = 1.5;
 
 const EDGE_WIDTH = 1.2;
 const LINK_DASH = 9;
@@ -99,6 +105,7 @@ export class GraphScene {
   private linkPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
   private selecting = false;
+  private picking: GraphPickMarks | null = null;
 
   private positionsDirty = true;
   private modelDirty = false;
@@ -115,6 +122,7 @@ export class GraphScene {
     private readonly links: Graphics,
     private readonly fills: ParticleContainer,
     private readonly rings: ParticleContainer,
+    private readonly picks: Graphics,
     private readonly labels: Container,
     private readonly labelPool: LabelSlot[],
     private readonly textures: {
@@ -157,7 +165,8 @@ export class GraphScene {
     };
     const fills = new pixi.ParticleContainer(particleOptions);
     const rings = new pixi.ParticleContainer(particleOptions);
-    world.addChild(edges, links, fills, rings);
+    const picks = new pixi.Graphics();
+    world.addChild(edges, links, fills, rings, picks);
 
     const labels = new pixi.Container();
     labels.eventMode = "none";
@@ -197,6 +206,7 @@ export class GraphScene {
       links,
       fills,
       rings,
+      picks,
       labels,
       labelPool,
       textures,
@@ -217,6 +227,12 @@ export class GraphScene {
   setPalette(palette: GraphPalette): void {
     this.options = { ...this.options, palette };
     this.lastEdgeScale = 0;
+    this.positionsDirty = true;
+  }
+
+  /** The choice being asked for on the canvas, or null when a tap opens a note. */
+  setPicking(picking: GraphPickMarks | null): void {
+    this.picking = picking;
     this.positionsDirty = true;
   }
 
@@ -404,6 +420,7 @@ export class GraphScene {
 
     if (this.positionsDirty) this.syncMarks();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
+    if (this.positionsDirty || scaleMoved) this.drawPicking();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
 
     this.world.position.set(this.viewport.x, this.viewport.y);
@@ -524,6 +541,30 @@ export class GraphScene {
     }
 
     this.lastEdgeScale = this.viewport.scale;
+  }
+
+  private drawPicking(): void {
+    this.picks.clear();
+    const picking = this.picking;
+    if (!picking) return;
+
+    const { ink } = this.options.palette;
+    const gap = PICK_GAP / this.viewport.scale;
+    const width = PICK_WIDTH / this.viewport.scale;
+    for (const mark of this.marks) {
+      const from = mark.ref === picking.from;
+      if (!from && !picking.taken.has(mark.ref)) continue;
+      this.picks.circle(
+        this.positions[mark.index * 2],
+        this.positions[mark.index * 2 + 1],
+        mark.radius + gap,
+      );
+      this.picks.stroke({
+        color: ink,
+        alpha: from ? 0.95 : 0.4,
+        width: from ? width * 2 : width,
+      });
+    }
   }
 
   /**

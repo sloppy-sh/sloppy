@@ -240,9 +240,12 @@ async function loadGraph(): Promise<void> {
 	await Promise.all([nodes.load({ origin: FIRST }), nodes.load({ origin: FOURTH })]);
 }
 
-async function openNote(at: OwnedRef, onclose?: () => void): Promise<void> {
+async function openNote(
+	at: OwnedRef,
+	handlers: { onclose?: () => void; onlink?: () => void } = {}
+): Promise<void> {
 	stubViewport(WIDE);
-	mounted = mount(NoteInModal, { target, props: { opened: at, fresh: false, onclose } });
+	mounted = mount(NoteInModal, { target, props: { opened: at, fresh: false, ...handlers } });
 	flushSync();
 	await settle();
 }
@@ -274,26 +277,18 @@ function noteRow(shows: string): HTMLButtonElement {
 
 const screen = () => document.body.textContent ?? '';
 
-/** Only the rows the picker would act on: the notes it merely shows, and the
- *  note's own lists, must not answer for them. */
+/** Only what the typed field turned up: the note's own lists must not answer
+ *  for it. */
 const offered = () =>
-	[...document.body.querySelectorAll('[aria-label="Link to a note"] button')]
-		.filter((row) => row.querySelector('.address'))
+	[...document.body.querySelectorAll('[aria-label="Notes to link to"] button')]
 		.map((row) => row.textContent ?? '')
 		.join(' ');
 
-async function openPicker(): Promise<void> {
-	button('Link to another note').click();
-	await settle();
-	if (!document.body.querySelector('[aria-label="Link to a note"]')) {
-		throw new Error('The note picker never opened');
-	}
-}
-
 async function findToLink(typed: string): Promise<void> {
-	await openPicker();
-	const field = document.body.querySelector<HTMLInputElement>('[aria-label="Narrow this list"]');
-	if (!field) throw new Error('The note picker never opened');
+	const field = document.body.querySelector<HTMLInputElement>(
+		'[aria-label="Link by title or address"]'
+	);
+	if (!field) throw new Error('The note has no field to cite a note into');
 	field.value = typed;
 	field.dispatchEvent(new Event('input', { bubbles: true }));
 	await settle();
@@ -357,7 +352,7 @@ describe('deleting a note', () => {
 
 	it('closes the note where there is nothing above it', async () => {
 		const closed = vi.fn();
-		await openNote(FIRST, closed);
+		await openNote(FIRST, { onclose: closed });
 		button('Delete this note').click();
 		await settle();
 		exactly('Delete').click();
@@ -457,23 +452,16 @@ describe('linking a note to another', () => {
 		expect(noteRow('Method')).toBeTruthy();
 	});
 
-	it('shows the graph to pick from before anything is typed', async () => {
-		await openNote(SECOND);
-		await openPicker();
+	// The graph is the picker, and it lives a layer up: the note asks for it and
+	// steps aside.
+	it('hands the choice to the graph when the reader would rather point at it', async () => {
+		let asked = 0;
+		await openNote(SECOND, { onlink: () => (asked += 1) });
 
-		expect(offered()).toContain('Origins');
-		expect(offered()).toContain('Method');
-	});
-
-	it('opens a branch to reach what grew under it', async () => {
-		await openNote(THIRD);
-		await openPicker();
-		expect(offered()).not.toContain('Cells');
-
-		labelled('Show what is under 1').click();
+		button('Link to another note').click();
 		await settle();
 
-		expect(offered()).toContain('Cells');
+		expect(asked).toBe(1);
 	});
 
 	it('tells the far note where the link came from', async () => {
