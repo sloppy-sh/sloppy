@@ -3,38 +3,38 @@ import { replacement } from "./patch";
 
 interface Row {
   title?: string;
-  labels?: Record<string, string>;
+  tags?: string[];
 }
 
 describe("the SET clause a patch writes", () => {
   it("assigns every column the patch carries", () => {
-    const set = replacement<Row>(["title", "labels"], {
+    const set = replacement<Row>(["title", "tags"], {
       title: "A city remembers",
-      labels: { domain: "biology" },
+      tags: ["biology"],
     });
     expect(set.clause).toBe(
-      "title = $changes.title, labels = $changes.labels, updated_at = $now",
+      "title = $changes.title, tags = $changes.tags, updated_at = $now",
     );
     expect(set.vars.changes).toEqual({
       title: "A city remembers",
-      labels: { domain: "biology" },
+      tags: ["biology"],
     });
   });
 
   it("leaves alone a column the patch does not carry", () => {
-    const set = replacement<Row>(["title", "labels"], { labels: {} });
-    expect(set.clause).toBe("labels = $changes.labels, updated_at = $now");
-    expect(set.vars.changes).toEqual({ labels: {} });
+    const set = replacement<Row>(["title", "tags"], { tags: [] });
+    expect(set.clause).toBe("tags = $changes.tags, updated_at = $now");
+    expect(set.vars.changes).toEqual({ tags: [] });
   });
 
   it("stamps the time even when nothing else changed", () => {
-    const set = replacement<Row>(["title", "labels"], {});
+    const set = replacement<Row>(["title", "tags"], {});
     expect(set.clause).toBe("updated_at = $now");
     expect(set.vars.now).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it("names no column outside the ones it was handed", () => {
-    const set = replacement<Row>(["title", "labels"], {
+    const set = replacement<Row>(["title", "tags"], {
       title: "Kept",
       constructor: "smuggled past a schema",
     } as Row);

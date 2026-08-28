@@ -118,7 +118,7 @@ Default accent is **Indigo** — the blue-black of fountain-pen ink.
 | Ochre                | `oklch(0.66 0.12 80)`  | warm, dry           |
 | Slate                | `oklch(0.50 0.02 265)` | neutral / no-colour |
 
-The accent is chrome only. **It never colours a node, an edge, or a facet** — those come
+The accent is chrome only. **It never colours a node, an edge, or a tag** — those come
 from the graph's own language below, and an accent that leaked into the canvas would make
 a user's theme choice change what the data appears to say.
 
@@ -176,28 +176,30 @@ decorative.
 
 | Channel                | Carries                               | Why this channel                                                                      |
 | ---------------------- | ------------------------------------- | ------------------------------------------------------------------------------------- |
-| **Hue**                | the active lens's facet values        | the lens is the question the reader just asked, so it gets the loudest channel        |
+| **Hue**                | the tags the reader has selected      | the selection is the question the reader just asked, so it gets the loudest channel   |
 | **Lightness**          | genealogical depth                    | depth is ordinal, and lightness is the only channel read as ordered without a legend  |
 | **Form** (shape, edge) | provenance — own / published / pulled | provenance must survive greyscale, colour-blindness and full zoom-out, so never a hue |
 
-### Hue — facets, and only under a lens
+### Hue — the tags you selected, and only those
 
-**With no lens active the graph is monochrome.** Colour appears when the reader asks a
+**With nothing selected the graph is monochrome.** Colour appears when the reader asks a
 question of the graph, and it means the answer. A permanently rainbow canvas is the
 Obsidian failure with extra steps.
 
-- A **dimension** owns a hue slot; a **value** owns a position on that slot's ramp. So
-  `domain:biology` and `domain:chemistry` are visibly siblings, and switching from the
-  `domain` lens to the `status` lens recolours the whole canvas at once.
-- Slots are `--facet-1 … --facet-8`, assigned to dimensions in declaration order by
-  default. **A new dimension is a slot, not a new token** — the same rule AI.md states for
-  data shapes, applied to the palette. Past eight, slots repeat and the lens bar carries
-  the written dimension name, which it does anyway.
-- **A dimension may pin its slot**, and a pin is honoured before declaration order fills
-  what is left (`label_dimension.color_slot`; absent means declaration order). Hue is the
-  channel a reader builds a habit around, and once somebody has decided `status` is the
-  red lens, the order they happened to create their dimensions in does not outrank that. A
-  pin chooses among the eight; it never adds a ninth.
+- **A tag has no colour of its own.** It borrows one for as long as it is selected: the
+  first selected tag takes `--facet-1`, the second `--facet-2`, and so on. There is
+  nothing to persist and nothing to pin, because there is no tag row to hang a colour on
+  — a tag exists exactly as long as a note carries it.
+- **Selection order assigns the slot, and the tag rail shows that order**, so the legend
+  and the canvas cannot disagree about which colour answers which question.
+- **A note carrying more than one selected tag draws in the earliest-selected one's hue.**
+  One mark, one hue: mixing or striping makes the channel ambiguous, and the rail already
+  says which sets a note is in.
+- **Notes carrying none of the selected tags dim; they never leave.** The reader asked
+  which notes are in a set, not to be shown a different graph, and the shape they are
+  reading the answer against is the graph itself.
+- Past eight selected tags the slots repeat. Eight questions at once is already more than
+  the channel can carry, and the rail carries the written tag regardless.
 - Every slot owes **3:1 against the surface** on every theme, because a node fill carrying
   meaning alone is a graphical object. Every slot also owes a minimum OKLab distance of
   **0.03 from every other slot** on the same theme — a palette whose slots have converged
@@ -235,7 +237,7 @@ only incidentally by anything else.
 
 Genealogical edges draw the depth ramp at low alpha — they are the structure, so they
 recede. Associative links (`links[]`) are dashed and drawn above them, because they cross
-the tree and would otherwise read as parentage. **Under a lens, genealogical edges dim
+the tree and would otherwise read as parentage. **With tags selected, genealogical edges dim
 further**: the reader has asked to see sets, and the tree is momentarily the background.
 
 ### Contrast is measured, not assumed
@@ -355,9 +357,9 @@ up and the lift can be 0 in the panned case.
   `remountKey`. A plain drag never remounts, which is the difference between a graph that
   keeps its viewport and one that doesn't.
 - **Level of detail is the design, not an optimisation.** A subtree past a depth threshold
-  draws as one mega-node sized by descendant count; a lens regroups nodes into set-clusters
-  and dims the genealogical edges. **Neither mode ever draws more than a bounded node
-  count** — legibility and frame time are the same constraint here (PRODUCT.md principle 7).
+  draws as one mega-node sized by descendant count; a tag selection lights the notes that
+  carry it and dims the rest along with the genealogical edges. **Neither mode ever draws
+  more than a bounded node count** — legibility and frame time are the same constraint here (PRODUCT.md principle 7).
 - **The canvas is not a scroller.** Pan and zoom are pixi's; the scroll rules below do not
   apply to it, and it must never be wrapped in something that scrolls.
 
@@ -371,7 +373,7 @@ Scroll chrome is part of the theme, not the OS's. Both halves live in `@sloppy/u
   track (`scrollbar-color` on `html`, inherited). WebKit pseudo-element rules cover the
   Tauri WKWebView shells; the `contrast` theme raises thumb contrast. New code needs **no
   class** — the global rule IS the scrollbar.
-- **Hiding the bar is reserved for compact rails** (the lens bar, a chip rail). A rail that
+- **Hiding the bar is reserved for compact rails** (the tag rail, a chip rail). A rail that
   hides its bar MUST carry `scroll-fade-x`, because the fade is then the only "there's more
   this way" affordance.
 - **Overflowing content dissolves at the parent's edges; it never hard-clips.**
@@ -393,10 +395,10 @@ Scroll chrome is part of the theme, not the OS's. Both halves live in `@sloppy/u
   and the API validate the same object; a hand-written client-side check is a second
   contract that will disagree.
 - **Capture demands nothing.** The one-gesture capture path has no required field — not a
-  title, not a label, not a parent choice beyond where the user already was. Everything
+  title, not a tag, not a parent choice beyond where the user already was. Everything
   else is a form the user can open later.
-- **Labels speak dimensions, never enum values.** A select offers "Seed · Growing ·
-  Evergreen", never `status:seed`. The wire value is ours.
+- **A tag is written by typing it.** Nothing is declared first and nothing is chosen from
+  a list the person had to build; what is already in the graph completes as they type.
 - **Publishing states its consequence at the moment of the decision.** What becomes
   readable, and what a peer keeps after an unpublish, is said there — once, plainly, and
   nowhere else in the product.
@@ -430,6 +432,6 @@ states. Empty states invite; they don't apologize. Icons: lucide, one weight.
 ## Persistence
 
 A single client-side prefs store (`localStorage`, key `sloppy_prefs`) holds
-`{ theme, accent, style, font, lens }`, applied to `<html>` data-attributes as early as
+`{ theme, accent, style, font }`, applied to `<html>` data-attributes as early as
 possible (inline head script) to avoid a flash of the wrong theme. No account required;
 choices carry over if someone signs in.

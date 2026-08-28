@@ -259,6 +259,53 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     expect(sliced.map((row) => row.depth)).toEqual([1, 2, 3]);
   });
 
+  it("seeks a tag through its index, and counts an owner's tags", async () => {
+    // A tag equality is membership, because the index holds one entry per
+    // element. The claim is about the plan: without the seek, selecting a tag
+    // reads everything its author has ever written and throws most of it away.
+    const tagged: [address: string, localId: string, tags: string[]][] = [
+      ["8", "01JTAGGEDA0000000000000000", ["biology", "seed"]],
+      ["8a", "01JTAGGEDB0000000000000000", ["biology"]],
+      ["8b", "01JTAGGEDC0000000000000000", ["music"]],
+    ];
+    for (const [address, localId, tags] of tagged) {
+      const row = nodeRow(AVA, address, localId, address.length);
+      await db.create(row.id).content({ ...row, tags });
+    }
+    const his = nodeRow(BOB, "8", "01JTAGGEDP0000000000000000");
+    await db.create(his.id).content({ ...his, tags: ["biology"] });
+
+    // No ORDER BY: an ordering another index can serve outranks this seek, and
+    // the planner silently falls back to reading the whole author. A tag read
+    // sorts in the reader.
+    const CARRIERS = `SELECT address FROM node
+       WHERE tags = $tag AND created_by = $did`;
+    const bound = { did: AVA, tag: "biology" };
+
+    const [plan] = await db.query(`${CARRIERS} EXPLAIN;`, bound);
+    expect(JSON.stringify(plan)).toContain('"index":"node_tags"');
+
+    const [carriers] = await db.query<[{ address: string }[]]>(
+      `${CARRIERS};`,
+      bound,
+    );
+    expect(carriers.map((row) => row.address).sort()).toEqual(["8", "8a"]);
+
+    const [counts] = await db.query<[{ tag: string; notes: number }[]]>(
+      `SELECT tags AS tag, count() AS notes
+         FROM (SELECT tags FROM node
+                 WHERE created_by = $did AND array::len(tags ?? []) > 0
+                 SPLIT tags)
+         GROUP BY tag ORDER BY notes DESC, tag ASC;`,
+      { did: AVA },
+    );
+    expect(counts).toEqual([
+      { tag: "biology", notes: 2 },
+      { tag: "music", notes: 1 },
+      { tag: "seed", notes: 1 },
+    ]);
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);

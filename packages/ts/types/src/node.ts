@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { addressDepth, AddressSchema } from "./address.js";
 import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
-import { LabelSetSchema } from "./label.js";
+import { TagsSchema } from "./tag.js";
 
 export const NodeSchema = OwnedEntitySchema.extend({
   /** Assigned at creation and never rewritten. `schema.ts` enforces this. */
@@ -21,7 +21,7 @@ export const NodeSchema = OwnedEntitySchema.extend({
   /** The root of this node's tree; a root node is its own origin. */
   origin: OwnedRefSchema,
   title: z.string().max(512).default(""),
-  labels: LabelSetSchema.default({}),
+  tags: TagsSchema.default([]),
   /**
    * Associative links, the ones genealogy does not carry. A target may belong
    * to somebody else and may have been deleted, so resolving one must tolerate
@@ -77,7 +77,7 @@ export function parseNode(row: unknown): Node {
 export const CreateNodeRequestSchema = z.object({
   parent: OwnedRefSchema.optional(),
   title: z.string().max(512).default(""),
-  labels: LabelSetSchema.default({}),
+  tags: TagsSchema.default([]),
 });
 export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
@@ -89,7 +89,8 @@ export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
  */
 export const UpdateNodeRequestSchema = z.object({
   title: z.string().max(512).optional(),
-  labels: LabelSetSchema.optional(),
+  /** The WHOLE set, never a delta: a tag absent from it is a tag removed. */
+  tags: TagsSchema.optional(),
   links: z.array(OwnedRefSchema).optional(),
 });
 export type UpdateNodeRequest = z.input<typeof UpdateNodeRequestSchema>;

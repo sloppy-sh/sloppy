@@ -1,6 +1,6 @@
 // The domain routes against a real server: addresses assigned by the API,
 // regions read through the index that exists for them, block stacks ordered by
-// a fractional index, and label dimensions the notes are answerable to.
+// a fractional index, and the tags the notes carry.
 //
 // Everything here is a claim about a running system — that a unique index
 // refuses a second writer, that a bounded read touches a slice rather than a
@@ -20,6 +20,7 @@ import {
   compareAddresses,
   type NodeView,
   type OwnedRef,
+  type TagCount,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -293,11 +294,9 @@ describe("the domain routes", () => {
     scenario("survives two writers with no queue in common", async () => {
       const { NodeService } = await import("./node.service");
       const { NodeRepository } = await import("./node.repository");
-      const { LabelService } = await import("../label/label.service");
       const repository = app.get(NodeRepository);
-      const labels = app.get(LabelService);
-      const one = new NodeService(repository, labels);
-      const other = new NodeService(repository, labels);
+      const one = new NodeService(repository);
+      const other = new NodeService(repository);
 
       const parent = await newNode(ada, { title: "Two writers" });
       const born = await Promise.all(
@@ -305,7 +304,7 @@ describe("the domain routes", () => {
           (i % 2 === 0 ? one : other).create(ada.did, {
             parent: parent.ref,
             title: `Writer ${i}`,
-            labels: {},
+            tags: [],
           }),
         ),
       );
@@ -581,99 +580,73 @@ describe("the domain routes", () => {
     });
   });
 
-  describe("the facet axis", () => {
-    let dimension: { ref: OwnedRef; name: string };
-
-    scenario("holds a note to the values its dimension declares", async () => {
-      dimension = (await ok("POST", "/label-dimensions", ada, {
-        name: "status",
-        values: ["seed", "growing"],
-        color_slot: 3,
-      })) as { ref: OwnedRef; name: string };
-
-      const labelled = await newNode(ada, {
-        title: "Labelled",
-        labels: { status: "seed" },
-      });
-      expect(labelled.labels).toEqual({ status: "seed" });
-
-      expect(
-        (await call("POST", "/nodes", ada, { labels: { status: "ripe" } }))
-          .status,
-      ).toBe(400);
-      expect(
-        (await call("POST", "/nodes", ada, { labels: { mood: "seed" } }))
-          .status,
-      ).toBe(400);
-    });
-
-    scenario("carries a rename across every note holding the key", async () => {
-      await ok("PATCH", `/label-dimensions/${at(dimension.ref)}`, ada, {
-        name: "ripeness",
-      });
-      const carriers = ((await ok("GET", "/nodes", ada)) as NodeView[]).filter(
-        (node) => node.labels.ripeness !== undefined,
-      );
-      expect(carriers.length).toBeGreaterThan(0);
-      for (const node of carriers) expect(node.labels.status).toBeUndefined();
-    });
-
-    scenario("refuses to drop a value notes still hold", async () => {
-      const answer = await call(
-        "PATCH",
-        `/label-dimensions/${at(dimension.ref)}`,
-        ada,
-        { values: ["growing"] },
-      );
-      expect(answer.status).toBe(409);
-    });
-
-    scenario("takes the label with the dimension when it goes", async () => {
-      expect(
-        (await call("DELETE", `/label-dimensions/${at(dimension.ref)}`, ada))
-          .status,
-      ).toBe(204);
-      const left = ((await ok("GET", "/nodes", ada)) as NodeView[]).filter(
-        (node) => node.labels.ripeness !== undefined,
-      );
-      expect(left).toEqual([]);
-    });
-
-    scenario("takes the labels a note is given for its whole set", async () => {
-      await ok("POST", "/label-dimensions", ada, {
-        name: "domain",
-        values: ["biology", "music"],
-      });
-      await ok("POST", "/label-dimensions", ada, {
-        name: "shape",
-        values: ["question"],
-      });
+  describe("the tag axis", () => {
+    scenario("normalizes a tag into the set the store holds", async () => {
       const note = await newNode(ada, {
-        title: "Two facets",
-        labels: { domain: "biology", shape: "question" },
+        title: "Tagged",
+        tags: ["Biology", " biology ", "seed"],
       });
+      expect(note.tags).toEqual(["biology", "seed"]);
 
-      const relabelled = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
-        labels: { domain: "music" },
-      })) as NodeView;
-      expect(relabelled.labels).toEqual({ domain: "music" });
-
-      await ok("PATCH", `/nodes/${at(note.ref)}`, ada, { labels: {} });
       expect(
-        ((await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView).labels,
-      ).toEqual({});
+        (await call("POST", "/nodes", ada, { tags: ["two words"] })).status,
+      ).toBe(400);
+      expect(
+        (await call("POST", "/nodes", ada, { tags: ["   "] })).status,
+      ).toBe(400);
     });
 
-    scenario("leaves the labels alone when a patch says nothing", async () => {
+    scenario("takes the tags a note is given for its whole set", async () => {
+      const note = await newNode(ada, {
+        title: "Two tags",
+        tags: ["biology", "question"],
+      });
+
+      const retagged = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        tags: ["music"],
+      })) as NodeView;
+      expect(retagged.tags).toEqual(["music"]);
+
+      await ok("PATCH", `/nodes/${at(note.ref)}`, ada, { tags: [] });
+      expect(
+        ((await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView).tags,
+      ).toEqual([]);
+    });
+
+    scenario("leaves the tags alone when a patch says nothing", async () => {
       const note = await newNode(ada, {
         title: "Renamed only",
-        labels: { domain: "biology" },
+        tags: ["biology"],
       });
       const retitled = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
         title: "Retitled",
       })) as NodeView;
       expect(retitled.title).toBe("Retitled");
-      expect(retitled.labels).toEqual({ domain: "biology" });
+      expect(retitled.tags).toEqual(["biology"]);
+    });
+
+    scenario("counts the tags one person used, most-used first", async () => {
+      for (const title of ["Counted one", "Counted two", "Counted three"]) {
+        await newNode(ada, { title, tags: ["counted"] });
+      }
+      await newNode(ada, {
+        title: "Counted once",
+        tags: ["counted", "scarce"],
+      });
+      await newNode(bram, { title: "Not hers", tags: ["counted", "his-own"] });
+
+      const counts = (await ok("GET", "/nodes/tags", ada)) as TagCount[];
+      const byTag = new Map(counts.map((count) => [count.tag, count.notes]));
+      expect(byTag.get("counted")).toBe(4);
+      expect(byTag.get("scarce")).toBe(1);
+      expect(byTag.has("his-own")).toBe(false);
+      expect(counts.map((count) => count.notes)).toEqual(
+        [...counts.map((count) => count.notes)].sort((a, b) => b - a),
+      );
+      const tied = counts.filter((count) => count.notes === 1);
+      expect(tied.map((count) => count.tag)).toEqual(
+        [...tied.map((count) => count.tag)].sort(),
+      );
     });
   });
 
@@ -707,8 +680,7 @@ describe("the domain routes", () => {
         ["DELETE", `/nodes/${at(hers.ref)}`],
         ["POST", "/blocks"],
         ["GET", `/nodes/${at(hers.ref)}/blocks`],
-        ["GET", "/label-dimensions"],
-        ["POST", "/label-dimensions"],
+        ["GET", "/nodes/tags"],
       ] as const) {
         expect(
           (await call(method, path, null, {})).status,

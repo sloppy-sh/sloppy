@@ -21,7 +21,6 @@ export const STATEMENTS: readonly string[] = [
   `DELETE block WHERE ${OWNED};`,
   `DELETE publication WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
-  `DELETE label_dimension WHERE ${OWNED};`,
 ];
 
 /** The `$did`-parameterized statements, ready to join into one `query()`. */
@@ -38,5 +37,4 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "block",
   "publication",
   "node",
-  "label_dimension",
 ]);

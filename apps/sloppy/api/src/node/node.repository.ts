@@ -6,19 +6,18 @@ import {
   type Address,
   compareAddresses,
   isAncestorAddress,
-  type LabelSet,
   type Node,
-  nowIso,
   ownedRefFrom,
   type OwnedRef,
   parseNode,
   recordIdFromOwnedRef,
+  type TagCount,
+  TagCountSchema,
 } from "@sloppy/types";
-import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
 import { replacement } from "./patch";
 
-const PATCHABLE = ["title", "labels", "links"] as const;
+const PATCHABLE = ["title", "tags", "links"] as const;
 
 /** What a PATCH may carry; the immutable columns are absent by type. */
 export type NodePatch = Partial<Pick<Node, (typeof PATCHABLE)[number]>>;
@@ -151,34 +150,21 @@ export class NodeRepository {
     );
   }
 
-  async carryingDimension(did: string, name: string): Promise<Node[]> {
-    return this.read(
-      "SELECT * FROM node WHERE created_by = $did AND labels[$name] != NONE",
-      { did, name },
+  /**
+   * The owner's tags, most-used first, ties alphabetical. Counted from the
+   * notes on every call because that is where a tag lives: there is no row to
+   * keep in step, and so no way for the count to be wrong.
+   */
+  async tagCounts(did: string): Promise<TagCount[]> {
+    const [rows] = await this.query<TagCount>(
+      `SELECT tags AS tag, count() AS notes
+         FROM (SELECT tags FROM node
+                 WHERE created_by = $did AND array::len(tags ?? []) > 0
+                 SPLIT tags)
+         GROUP BY tag ORDER BY notes DESC, tag ASC`,
+      { did },
     );
-  }
-
-  async countCarryingValues(
-    did: string,
-    name: string,
-    values: readonly string[],
-  ): Promise<number> {
-    if (values.length === 0) return 0;
-    const [rows] = await this.query<{ n: number }>(
-      "SELECT count() AS n FROM node WHERE created_by = $did AND labels[$name] IN $values GROUP ALL",
-      { did, name, values },
-    );
-    return rows[0]?.n ?? 0;
-  }
-
-  async replaceLabels(
-    updates: readonly { id: RecordId; labels: LabelSet }[],
-  ): Promise<void> {
-    if (updates.length === 0) return;
-    await this.db.handle.query(
-      "FOR $update IN $updates { UPDATE $update.id SET labels = $update.labels, updated_at = $now; };",
-      { updates, now: nowIso() },
-    );
+    return rows.map((row) => TagCountSchema.parse(row));
   }
 
   private async read(

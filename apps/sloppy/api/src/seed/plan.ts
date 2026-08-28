@@ -1,10 +1,10 @@
 // The shape of the seeded graph, worked out before anything is written.
 //
-// Deterministic: one integer seed decides every title, label and branch, so two
+// Deterministic: one integer seed decides every title, tag and branch, so two
 // runs of `pnpm --filter @sloppy/api seed` produce the same graph and a bug in
 // it can be reproduced.
 
-import type { BlockType, LabelSet } from "@sloppy/types";
+import type { BlockType } from "@sloppy/types";
 import {
   FOLLOWING_TEMPLATES,
   LIST_TEMPLATES,
@@ -22,48 +22,33 @@ export interface PlannedBlock {
 
 export interface PlannedNode {
   title: string;
-  labels: LabelSet;
+  /** Already the set the store will hold: lowercased, deduplicated, sorted. */
+  tags: string[];
   blocks: PlannedBlock[];
   children: PlannedNode[];
 }
 
-export interface PlannedDimension {
-  name: string;
-  values: string[];
-  color_slot: number;
-}
-
 export interface GraphPlan {
-  dimensions: PlannedDimension[];
   roots: PlannedNode[];
+  /** Every tag the plan used, so the command can report what it wrote. */
+  tags: string[];
   nodes: number;
   blocks: number;
   deepest: number;
   widestRun: number;
 }
 
-export const DIMENSIONS: readonly PlannedDimension[] = [
-  {
-    name: "domain",
-    values: TOPICS.map((topic) => topic.domain),
-    color_slot: 1,
-  },
-  {
-    name: "status",
-    values: ["seed", "growing", "developed", "dormant"],
-    color_slot: 3,
-  },
-  {
-    name: "type",
-    values: ["question", "claim", "observation", "definition", "objection"],
-    color_slot: 5,
-  },
-  {
-    name: "confidence",
-    values: ["hunch", "working", "settled"],
-    color_slot: 7,
-  },
-];
+/**
+ * Tags that answer to nothing else in the graph — not the subject, not the
+ * depth, not the kind of note. They are what makes an intersection worth
+ * asking for: a handful of notes scattered across every tree.
+ */
+const MARGINALIA = [
+  "revisit",
+  "disputed",
+  "source-needed",
+  "favourite",
+] as const;
 
 /** Deep enough that a chain is worth collapsing, shallow enough to stay legible. */
 const MAX_DEPTH = 9;
@@ -75,8 +60,8 @@ export function planGraph(nodeTarget: number, seed = 0x5104_9713): GraphPlan {
   const roots = TOPICS.map((topic) => growTree(random, used, topic, perTree));
 
   return {
-    dimensions: [...DIMENSIONS],
     roots,
+    tags: [...vocabulary(roots)].sort(),
     nodes: roots.reduce((total, root) => total + count(root), 0),
     blocks: roots.reduce((total, root) => total + blockCount(root), 0),
     deepest: Math.max(...roots.map((root) => deepest(root, 1))),
@@ -92,7 +77,7 @@ function growTree(
 ): PlannedNode {
   const root: PlannedNode = {
     title: topic.thesis,
-    labels: { ...labelsFor(random, topic, 1, "claim"), domain: topic.domain },
+    tags: settle([...tagsFor(random, topic, 1, "claim"), topic.domain]),
     blocks: blocksFor(random, topic, 1, true),
     children: [],
   };
@@ -150,7 +135,7 @@ function plant(
   const { title, kind } = titleFor(random, used, topic, depth);
   return {
     title,
-    labels: labelsFor(random, topic, depth, kind),
+    tags: tagsFor(random, topic, depth, kind),
     blocks: blocksFor(random, topic, depth, false),
     children: [],
   };
@@ -204,38 +189,46 @@ function kindFor(random: () => number): NoteKind {
   return "definition";
 }
 
-function labelsFor(
+function tagsFor(
   random: () => number,
   topic: Topic,
   depth: number,
   kind: NoteKind,
-): LabelSet {
-  const labels: LabelSet = {};
+): string[] {
+  const tags: string[] = [];
 
-  // A fifth of a tree's notes belong to somebody else's domain, which is the
-  // whole point of the facet axis: the domain lens must re-cluster ACROSS the
-  // genealogy, not redraw it.
-  labels.domain =
-    random() < 0.79
-      ? topic.domain
-      : pick(
-          random,
-          TOPICS.map((other) => other.domain),
-        );
+  if (random() < 0.92) tags.push(topic.domain);
+  // A fifth of a tree's notes also carry somebody else's subject, which is what
+  // makes selecting two tags worth doing: the set has to cut ACROSS the
+  // genealogy rather than redraw it.
+  if (random() < 0.21) {
+    tags.push(
+      pick(
+        random,
+        TOPICS.map((other) => other.domain),
+      ),
+    );
+  }
 
-  labels.status = statusFor(random, depth);
-  if (random() < 0.9) labels.type = kind;
+  tags.push(ripenessFor(random, depth));
+  if (random() < 0.9) tags.push(kind);
   if (random() < 0.6) {
     const settled = random();
-    labels.confidence =
-      settled < 0.4 ? "hunch" : settled < 0.8 ? "working" : "settled";
+    tags.push(settled < 0.4 ? "hunch" : settled < 0.8 ? "working" : "settled");
   }
-  return labels;
+  for (const tag of MARGINALIA) if (random() < 0.06) tags.push(tag);
+  return settle(tags);
 }
 
-/** Older thinking sits nearer the trunk, but not so strictly that the status
- *  lens just redraws the depth. */
-function statusFor(random: () => number, depth: number): string {
+/** What the store will hold, so a planned note and a written one are the same
+ *  note — `TagsSchema` in @sloppy/types is the rule this obeys. */
+function settle(tags: readonly string[]): string[] {
+  return [...new Set(tags)].sort();
+}
+
+/** Older thinking sits nearer the trunk, but not so strictly that the ripeness
+ *  tags just redraw the depth. */
+function ripenessFor(random: () => number, depth: number): string {
   if (random() < 0.08) return "dormant";
   const ripe = random();
   if (depth <= 3)
@@ -314,6 +307,16 @@ function sentenceCase(text: string): string {
 
 function pick<T>(random: () => number, from: readonly T[]): T {
   return from[Math.floor(random() * from.length)];
+}
+
+function vocabulary(roots: readonly PlannedNode[]): Set<string> {
+  const seen = new Set<string>();
+  const walk = (node: PlannedNode) => {
+    for (const tag of node.tags) seen.add(tag);
+    for (const child of node.children) walk(child);
+  };
+  for (const root of roots) walk(root);
+  return seen;
 }
 
 function count(node: PlannedNode): number {

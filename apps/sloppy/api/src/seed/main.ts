@@ -1,6 +1,6 @@
 // Fills one identity's graph with something worth looking at: thousands of
-// notes, deep chains and wide sibling runs, four label dimensions whose values
-// cut across the genealogy, and block stacks with real prose in them.
+// notes, deep chains and wide sibling runs, tags that cut across the genealogy,
+// and block stacks with real prose in them.
 //
 //   pnpm --filter @sloppy/api seed [--did <did>] [--fresh] [--nodes <n>]
 //
@@ -14,10 +14,9 @@ import { userPurgeStatements } from "@sloppy/data";
 import { DidSyrSchema, type OwnedRef } from "@sloppy/types";
 import { BlockService } from "../block/block.service";
 import { DbService } from "../db/db.service";
-import { LabelService } from "../label/label.service";
 import { NodeRepository } from "../node/node.repository";
 import { NodeService } from "../node/node.service";
-import { DIMENSIONS, type PlannedNode, planGraph } from "./plan";
+import { type PlannedNode, planGraph } from "./plan";
 import { SeedModule } from "./seed.module";
 
 const DEFAULT_NODE_TARGET = 2400;
@@ -90,7 +89,6 @@ async function main(): Promise<void> {
 
     const nodes = app.get(NodeService);
     const blocks = app.get(BlockService);
-    const labels = app.get(LabelService);
     const repository = app.get(NodeRepository);
 
     const standing = await repository.roots(did);
@@ -106,12 +104,8 @@ async function main(): Promise<void> {
 
     const plan = planGraph(options.nodes);
     console.log(
-      `Planning ${plan.nodes} notes, ${plan.blocks} blocks, ${plan.dimensions.length} label dimensions.`,
+      `Planning ${plan.nodes} notes, ${plan.blocks} blocks, ${plan.tags.length} tags.`,
     );
-
-    for (const dimension of DIMENSIONS) {
-      await labels.create(did, dimension);
-    }
 
     const started = Date.now();
     let written = 0;
@@ -124,7 +118,7 @@ async function main(): Promise<void> {
       const node = await nodes.create(did, {
         ...(parent ? { parent } : {}),
         title: planned.title,
-        labels: planned.labels,
+        tags: planned.tags,
       });
       written++;
       if (written % 250 === 0) {
@@ -155,7 +149,7 @@ async function main(): Promise<void> {
         `  roots            ${roots.map((root) => root.address).join(", ")}`,
         `  deepest branch   ${plan.deepest} levels`,
         `  widest run       ${plan.widestRun} siblings`,
-        `  lenses           ${DIMENSIONS.map((d) => d.name).join(", ")}`,
+        `  tags             ${plan.tags.join(", ")}`,
         "",
       ].join("\n"),
     );

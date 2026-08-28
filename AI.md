@@ -25,13 +25,15 @@ Two orthogonal axes:
 1. **The genealogical axis (Zettelkasten / Folgezettel).** Every node carries an
    address derived from its parent — `1`, `1a`, `1a1`, `1b`. This is not containment,
    it is _sequence of thought_: the direction a note springs out from its origin.
-2. **The facet axis (multi-dimensional set classification).** Labels are typed
-   dimensions (`domain:biology`, `status:seed`, `type:question`), not free tags. A node
-   holds one value per dimension, so sets intersect _across_ the genealogical tree.
+2. **The tag axis (multi-dimensional set classification).** A tag is a plain string on
+   a note — `biology`, `seed`, `question` — and nothing declares it first. A note
+   carries as many as it likes, so selecting several intersects sets _across_ the
+   genealogical tree.
 
-A subtree collapses into a **mega-node** that expands on tap. Label facets are
-switchable **lenses** that re-cluster the same nodes along a chosen dimension. Node
-interiors are block stacks, including **ink blocks** drawn with the Apple Pencil.
+A subtree collapses into a **mega-node** that expands on tap. **Selecting tags
+highlights the notes that carry them and dims the rest** — highlight, not filter, so
+the shape of the graph survives the question. Node interiors are block stacks,
+including **ink blocks** drawn with the Apple Pencil.
 
 **Platform stance: mobile and tablet are the primary surface.** Desktop is the mobile
 UI given more room, never the mobile UI minus features.
@@ -89,13 +91,13 @@ lexicon system and no extension point for third-party record types — its own c
 doc names "third-party repo pollution: structurally prevented" as a feature. So the
 split is not a preference we could revisit; it is the shape syr enforces:
 
-| Concern                                   | Owner                                           |
-| ----------------------------------------- | ----------------------------------------------- |
-| Identity, DID, keys, signing              | **syr** — Platform Delegation                   |
-| Profile data                              | **syr** — resolved from the manifest and cached |
-| Media blobs (block images, ink rasters)   | **syr** — presign → PUT → complete              |
-| Emoji, stickers, reactions, comments      | **syr** — per-DID catalogs, federated           |
-| **Nodes, addresses, labels, blocks, ink** | **Sloppy's own API + SurrealDB**                |
+| Concern                                 | Owner                                           |
+| --------------------------------------- | ----------------------------------------------- |
+| Identity, DID, keys, signing            | **syr** — Platform Delegation                   |
+| Profile data                            | **syr** — resolved from the manifest and cached |
+| Media blobs (block images, ink rasters) | **syr** — presign → PUT → complete              |
+| Emoji, stickers, reactions, comments    | **syr** — per-DID catalogs, federated           |
+| **Nodes, addresses, tags, blocks, ink** | **Sloppy's own API + SurrealDB**                |
 
 - **`node` and `block` are Sloppy's vocabulary.** Putting them in someone's identity
   store is precisely what syr is built to prevent. If a feature seems to need a new
@@ -127,10 +129,10 @@ leaked brand name is debt every future provider pays.
   `delegated` identity, `own` vs `pulled` provenance — not off the product that happens
   to provide it today. Don't conflate "which provider" with "which mode".
 - **The same rule governs Sloppy's own open sets.** Block `type`
-  (`paragraph | heading | list | todo | code | image | ink | embed`) and label
-  dimensions are enums for exactly this reason: a new block kind is a new value and a
-  renderer, never a column. A field named `inkStrokes` hanging off every block would be
-  the same mistake wearing our own brand.
+  (`paragraph | heading | list | todo | code | image | ink | embed`) is an enum for
+  exactly this reason: a new block kind is a new value and a renderer, never a column. A
+  field named `inkStrokes` hanging off every block would be the same mistake wearing our
+  own brand.
 - **No brand token in a hardcoded branch, wire enum value, or SurrealQL column.** Prefer
   a predicate or a set (`isDelegatedIdentity(kind)`) over
   `mode !== 'syr' && mode !== 'local'`; name events for the concept.

@@ -1,5 +1,7 @@
+import { TagsSchema } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { DIMENSIONS, type PlannedNode, planGraph } from "./plan";
+import { TOPICS } from "./corpus";
+import { type PlannedNode, planGraph } from "./plan";
 
 const plan = planGraph(2400);
 
@@ -9,7 +11,27 @@ function every(node: PlannedNode, visit: (node: PlannedNode) => void): void {
 }
 
 const all: PlannedNode[] = [];
-for (const root of plan.roots) every(root, (node) => all.push(node));
+const treeOf = new Map<PlannedNode, PlannedNode>();
+for (const root of plan.roots) {
+  every(root, (node) => {
+    all.push(node);
+    treeOf.set(node, root);
+  });
+}
+
+const SUBJECTS = new Set(TOPICS.map((topic) => topic.domain));
+
+function carrying(...tags: string[]): PlannedNode[] {
+  return all.filter((node) => tags.every((tag) => node.tags.includes(tag)));
+}
+
+function treesSpanned(nodes: readonly PlannedNode[]): number {
+  return new Set(nodes.map((node) => treeOf.get(node))).size;
+}
+
+const PAIRS = plan.tags.flatMap((one, i) =>
+  plan.tags.slice(i + 1).map((other) => [one, other] as const),
+);
 
 describe("the seeded graph", () => {
   it("is big enough to be worth drawing", () => {
@@ -32,41 +54,44 @@ describe("the seeded graph", () => {
     }
   });
 
-  it("labels only with values its dimensions declare", () => {
-    const declared = new Map(
-      DIMENSIONS.map((d) => [d.name, new Set(d.values)]),
-    );
+  it("plans the tags a note will actually be stored with", () => {
     for (const node of all) {
-      for (const [name, value] of Object.entries(node.labels)) {
-        expect(declared.get(name)?.has(value), `${name}:${value}`).toBe(true);
-      }
+      expect(TagsSchema.parse(node.tags), node.title).toEqual(node.tags);
     }
+    expect(new Set(plan.tags)).toEqual(new Set(all.flatMap((n) => n.tags)));
   });
 
-  it("spreads a domain across the trees rather than along them", () => {
+  it("puts more than one subject inside every tree", () => {
     for (const root of plan.roots) {
-      const domains = new Set<string>();
+      const subjects = new Set<string>();
       every(root, (node) => {
-        if (node.labels.domain) domains.add(node.labels.domain);
+        for (const tag of node.tags) if (SUBJECTS.has(tag)) subjects.add(tag);
       });
-      expect(domains.size).toBeGreaterThan(1);
+      expect(subjects.size).toBeGreaterThan(1);
     }
   });
 
-  it("spreads every dimension's values, so switching lens re-clusters", () => {
-    for (const dimension of DIMENSIONS) {
-      const counts = new Map<string, number>();
-      for (const node of all) {
-        const value = node.labels[dimension.name];
-        if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
-      }
-      const labelled = [...counts.values()].reduce((a, b) => a + b, 0);
-      expect(counts.size, dimension.name).toBe(dimension.values.length);
-      // One value on most of the graph is one cluster and a rounding error.
+  it("carries every tag on a share of the graph worth highlighting", () => {
+    for (const tag of plan.tags) {
+      const share = carrying(tag).length / all.length;
+      // Under the floor a selection lights nothing; over the ceiling it lights
+      // the whole canvas. Either way the highlight has said nothing.
+      expect(share, tag).toBeGreaterThan(0.01);
+      expect(share, tag).toBeLessThan(0.65);
+    }
+  });
+
+  it("has most pairs of tags meet, and never inside one tree", () => {
+    // Selecting two tags is the gesture the graph exists to answer. The pairs
+    // that never meet are the ones a note only ever has one of — how ripe it
+    // is, what kind of note it is — and those are the plan's own doing.
+    const meeting = PAIRS.filter(([one, other]) => carrying(one, other).length);
+    expect(meeting.length / PAIRS.length).toBeGreaterThan(0.7);
+    for (const [one, other] of meeting) {
       expect(
-        Math.max(...counts.values()) / labelled,
-        dimension.name,
-      ).toBeLessThan(0.65);
+        treesSpanned(carrying(one, other)),
+        `${one} + ${other}`,
+      ).toBeGreaterThan(1);
     }
   });
 
