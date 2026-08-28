@@ -11,8 +11,9 @@ somebody else's graph, and land in a shape they can read, with its addresses int
 A note carries **tags** — plain strings, nothing declared first — so sets intersect
 _across_ the tree. Selecting several **highlights** the notes that carry them and dims the
 rest, so the answer is read against the shape of the graph rather than instead of it. A
-subtree collapses into a mega-node that expands on tap. Node interiors are block stacks,
-including ink blocks drawn with the Apple Pencil.
+subtree collapses into a mega-node that expands on tap. A note's interior is a stack of
+**blocks**, each one a section its author added deliberately and wrote as many paragraphs,
+lists, pictures and Apple-Pencil drawings into as they liked.
 
 Mobile and tablet are the primary surface. Desktop is the same product with more room.
 

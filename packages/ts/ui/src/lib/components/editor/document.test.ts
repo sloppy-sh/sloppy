@@ -223,6 +223,17 @@ describe('adding a section', () => {
 		]);
 	});
 
+	it('lands at the end of the stack, wherever the caret was', () => {
+		const of = open([
+			block({ content: section(...text('first')) }),
+			block({ content: section(...text('second')) })
+		]);
+		of.commands.setTextSelection(2);
+		of.commands.addSection();
+		of.commands.insertContent('last');
+		expect(rows(of).map((row) => wording(row.content))).toEqual([['first'], ['second'], ['last']]);
+	});
+
 	it('takes one back when it is backspaced into with nothing written in it', () => {
 		const of = open([block({ content: section(...text('a first thought')) })]);
 		of.commands.addSection();

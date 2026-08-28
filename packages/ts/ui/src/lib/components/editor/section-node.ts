@@ -93,8 +93,7 @@ export const SectionNode = Node.create({
 				({ state, tr, dispatch }) => {
 					const made = state.schema.nodes[SECTION_NODE].createAndFill();
 					if (!made) return false;
-					const depth = sectionDepth(state.selection.$from);
-					const at = depth === null ? state.doc.content.size : state.selection.$from.after(depth);
+					const at = state.doc.content.size;
 					if (dispatch) {
 						tr.insert(at, made);
 						tr.setSelection(TextSelection.near(tr.doc.resolve(at + 1)));
