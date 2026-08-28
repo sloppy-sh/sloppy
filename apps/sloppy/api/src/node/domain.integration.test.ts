@@ -584,9 +584,11 @@ describe("the domain routes", () => {
     scenario("normalizes a tag into the set the store holds", async () => {
       const note = await newNode(ada, {
         title: "Tagged",
-        tags: ["Biology", " biology ", "seed"],
+        // The last two are the same word: one keyboard composes the accent and
+        // another sends the letter with a combining mark after it.
+        tags: ["Biology", " biology ", "r\u00e9veil", "re\u0301veil"],
       });
-      expect(note.tags).toEqual(["biology", "seed"]);
+      expect(note.tags).toEqual(["biology", "r\u00e9veil"]);
 
       expect(
         (await call("POST", "/nodes", ada, { tags: ["two words"] })).status,
@@ -594,6 +596,17 @@ describe("the domain routes", () => {
       expect(
         (await call("POST", "/nodes", ada, { tags: ["   "] })).status,
       ).toBe(400);
+    });
+
+    scenario("refuses a tag in words a person can act on", async () => {
+      const refused = await call("POST", "/nodes", ada, {
+        tags: ["two words"],
+      });
+      expect(refused.status).toBe(400);
+      // Rendered verbatim by the picker, so it carries no field path.
+      expect((refused.body as { message: string }).message).toBe(
+        "A tag is one word, with no spaces in it.",
+      );
     });
 
     scenario("takes the tags a note is given for its whole set", async () => {

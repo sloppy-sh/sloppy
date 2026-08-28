@@ -260,9 +260,9 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
   });
 
   it("seeks a tag through its index, and counts an owner's tags", async () => {
-    // A tag equality is membership, because the index holds one entry per
-    // element. The claim is about the plan: without the seek, selecting a tag
-    // reads everything its author has ever written and throws most of it away.
+    // `tags = $tag` is membership only while `node_tags` answers it, so the
+    // claim is about the plan as much as the rows: an unpinned read the planner
+    // hands elsewhere is not slower, it is empty.
     const tagged: [address: string, localId: string, tags: string[]][] = [
       ["8", "01JTAGGEDA0000000000000000", ["biology", "seed"]],
       ["8a", "01JTAGGEDB0000000000000000", ["biology"]],
@@ -275,11 +275,9 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     const his = nodeRow(BOB, "8", "01JTAGGEDP0000000000000000");
     await db.create(his.id).content({ ...his, tags: ["biology"] });
 
-    // No ORDER BY: an ordering another index can serve outranks this seek, and
-    // the planner silently falls back to reading the whole author. A tag read
-    // sorts in the reader.
-    const CARRIERS = `SELECT address FROM node
-       WHERE tags = $tag AND created_by = $did`;
+    const CARRIERS = `SELECT address FROM node WITH INDEX node_tags
+       WHERE tags = $tag AND created_by = $did
+       ORDER BY address`;
     const bound = { did: AVA, tag: "biology" };
 
     const [plan] = await db.query(`${CARRIERS} EXPLAIN;`, bound);
@@ -289,7 +287,16 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
       `${CARRIERS};`,
       bound,
     );
-    expect(carriers.map((row) => row.address).sort()).toEqual(["8", "8a"]);
+    expect(carriers.map((row) => row.address)).toEqual(["8", "8a"]);
+
+    // The trap the pin exists for, held against the server so that the day it
+    // stops being true is a failing test rather than a silent one.
+    const [unpinned] = await db.query<[{ address: string }[]]>(
+      `SELECT address FROM node
+         WHERE tags = $tag AND created_by = $did ORDER BY address;`,
+      bound,
+    );
+    expect(unpinned).toEqual([]);
 
     const [counts] = await db.query<[{ tag: string; notes: number }[]]>(
       `SELECT tags AS tag, count() AS notes

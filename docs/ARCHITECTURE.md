@@ -265,7 +265,7 @@ node:{ created_by: <did>, id: <ulid> }
   parent      ref?      absent on a root
   origin      ref       the root of this node's tree; a root is its own origin
   title       string
-  tags        string[]  lowercased, deduplicated, sorted — @sloppy/types' TagsSchema
+  tags        string[]  normalized, deduplicated, sorted — @sloppy/types' TagsSchema
   links       ref[]     non-genealogical associative links
   published   bool
   created_at  iso       immutable — it is a field of the signed payload
@@ -307,8 +307,18 @@ The rules AI.md's foundation-wave section states, applied here:
   a second one something to work from.
 - **`created_by` is a top-level column and not just the `created_by` inside the key**,
   because SurrealDB will not use a composite index whose second column is a nested path.
-  Every index leads with it, which is what lets one index serve the user-scoped read and
-  the purge both.
+  Every index over scalars leads with it, which is what lets one index serve the
+  user-scoped read and the purge both.
+- **`node_tags` is the exception to that, and it is read pinned.** An index over an array
+  column holds one entry per element, so `tags = $tag` is a membership seek — but only
+  while that index is the one answering it, and plain array equality otherwise. Measured
+  on 3.1.3, an unpinned read the planner hands to another index (an `ORDER BY` is enough)
+  comes back with **zero rows and no error**, and a composite `created_by, tags` fails the
+  same silent way. So the owner is a filter over the seek rather than the leading column,
+  and every tag read is written
+  `FROM node WITH INDEX node_tags WHERE tags = $tag AND created_by = $did`.
+  `tags CONTAINS $tag` is always correct and never uses the index; it is not the spelling.
+  `schema.integration.test.ts` holds both halves against a running server.
 - **A link is a ref, not a SurrealDB record link.** Measured on 3.1.3: an index on a column
   holding a _composite_ record id still enforces `UNIQUE`, but the planner never chooses
   it — `EXPLAIN` gives a TableScan for an equality on such a column and an IndexScan for
@@ -444,9 +454,9 @@ thing that renders the message. A host that resolves on failure gets a chip that
 silently back with nothing said to the person who tapped it — the type `Promise<void>`
 cannot express this, which is why it is written down.
 
-**A tag the picker hands back need not be normalized.** `TagsSchema` lowercases, trims,
-deduplicates and sorts, and the server parses through it either way; a picker that
-re-implements those rules is a second copy of them.
+**A tag the picker hands back need not be normalized.** `TagsSchema` is where the rules
+live — the trimming, the case, the canonical form, the set — and the server parses through
+it either way; a picker that re-implements them is a second copy of them.
 
 **`known` is a prop rather than a store read, and that is structural.** `@sloppy/ui` is
 depended on _by_ `@sloppy/app-core`, so a component here reaching into an app-core store

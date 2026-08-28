@@ -57,13 +57,16 @@ export const SCHEMA = `
   -- Which is why block needs a second index for the purge, where node does not.
   DEFINE INDEX IF NOT EXISTS block_owner ON block FIELDS created_by;
 
-  -- Every note carrying a tag. One entry per element, so a tag equality is a
-  -- membership seek rather than a scan of everything the owner has written.
+  -- Every note carrying a tag. One entry per element, so an equality on tags
+  -- is a membership seek rather than a scan of everything the owner has
+  -- written.
   --
-  -- created_by is deliberately NOT in front of it. Measured on 3.1.3: a
-  -- composite index over an array column answers a two-column access with ZERO
-  -- rows and no error, which is worse than slow. The owner is a filter over the
-  -- seek instead.
+  -- Read it PINNED: FROM node WITH INDEX node_tags WHERE tags = $tag AND
+  -- created_by = $did. Measured on 3.1.3, that equality is membership only
+  -- while this index answers it and plain array equality otherwise, so an
+  -- unpinned read the planner hands to another index (an ORDER BY is enough)
+  -- returns ZERO rows and no error. Two columns over an array column fail the
+  -- same silent way, which is why created_by does not lead here.
   DEFINE INDEX IF NOT EXISTS node_tags ON node FIELDS tags;
 
   -- One live publication per subtree root. Unpublishing deletes the row, so

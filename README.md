@@ -8,10 +8,11 @@ address derives from where the thought came from — `1`, `1a`, `1a1`, `1b` — 
 are the same on every peer, so one person's subtree can be published, pulled into
 somebody else's graph, and land in a shape they can read, with its addresses intact.
 
-Labels are typed dimensions (`domain:biology`, `status:seed`), not free tags, so sets
-intersect _across_ the tree. A subtree collapses into a mega-node that expands on tap. A
-dimension can be picked up as a **lens** that re-clusters the same nodes along it. Node
-interiors are block stacks, including ink blocks drawn with the Apple Pencil.
+A note carries **tags** — plain strings, nothing declared first — so sets intersect
+_across_ the tree. Selecting several **highlights** the notes that carry them and dims the
+rest, so the answer is read against the shape of the graph rather than instead of it. A
+subtree collapses into a mega-node that expands on tap. Node interiors are block stacks,
+including ink blocks drawn with the Apple Pencil.
 
 Mobile and tablet are the primary surface. Desktop is the same product with more room.
 
@@ -23,7 +24,7 @@ Mobile and tablet are the primary surface. Desktop is the same product with more
 
 **The contracts exist; the product does not yet.** What is in the tree today is the build
 foundation and the seams every later branch reads: `@sloppy/types` (the address protocol,
-the node/block/label/publication schemas, and the API's wire shapes), `@sloppy/data` (the
+the node/block/tag/publication schemas, and the API's wire shapes), `@sloppy/data` (the
 table definitions and the per-user purge), `@sloppy/client` (the whole method surface, over
 `fetch`), `@sloppy/app-core` (the platform seam and the api proxy), `@sloppy/ui` (the design
 tokens), `@sloppy/idp` (syr's wire contracts and crypto, served by the API when it is asked
@@ -52,7 +53,7 @@ pnpm + Turborepo monorepo. The rows marked ✓ are in the tree; the rest are ahe
 | `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode        | ✓   |
 
 Identity, profiles, media blobs, emoji and reactions come from **syr**; nodes, addresses,
-labels, blocks and ink are Sloppy's own. That split is not a preference — see
+tags, blocks and ink are Sloppy's own. That split is not a preference — see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Run it

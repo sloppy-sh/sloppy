@@ -12,18 +12,24 @@ export const TAG_MAX_LENGTH = 64;
  */
 export const MAX_TAGS_PER_NODE = 32;
 
+// The zero-width joiner and non-joiner sit inside a word in Persian and inside
+// a single emoji, so they are the two invisibles a tag may carry; the rest of
+// them only make two tags a reader cannot tell apart.
+const ONE_VISIBLE_WORD = /^(?:[\u200c\u200d]|[^\s\p{Cc}\p{Cf}\p{Cs}])+$/u;
+
 /**
- * One tag, normalized: surrounding space is dropped, case is folded away, and
- * no whitespace survives inside — so a tag is always one token, and `Biology`
- * and `biology` are the same set rather than two a reader cannot tell apart.
+ * One tag, in the form it will be compared in — so `Biology`, `biology`, and a
+ * `réveil` whose accent arrived decomposed are one set rather than several a
+ * reader cannot tell apart.
  */
 export const TagSchema = z
   .string()
   .trim()
   .toLowerCase()
+  .normalize("NFC")
   .min(1, "A tag needs at least one character.")
   .max(TAG_MAX_LENGTH, `A tag is at most ${TAG_MAX_LENGTH} characters.`)
-  .regex(/^[^\s\p{Cc}]+$/u, "A tag is one word, with no spaces in it.");
+  .regex(ONE_VISIBLE_WORD, "A tag is one word, with no spaces in it.");
 export type Tag = z.infer<typeof TagSchema>;
 
 /**
@@ -34,6 +40,9 @@ export type Tag = z.infer<typeof TagSchema>;
  */
 export const TagsSchema = z
   .array(TagSchema)
-  .max(MAX_TAGS_PER_NODE, `A note carries at most ${MAX_TAGS_PER_NODE} tags.`)
-  .transform((tags) => [...new Set(tags)].sort());
+  .transform((tags) => [...new Set(tags)].sort())
+  .refine(
+    (tags) => tags.length <= MAX_TAGS_PER_NODE,
+    `A note carries at most ${MAX_TAGS_PER_NODE} tags.`,
+  );
 export type Tags = z.infer<typeof TagsSchema>;

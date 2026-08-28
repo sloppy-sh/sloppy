@@ -41,11 +41,8 @@ export function parseBody<S extends z.ZodType>(
 ): z.output<S> {
   const parsed = schema.safeParse(body ?? {});
   if (parsed.success) return parsed.data;
-  const issue = parsed.error.issues[0];
-  const field = issue.path.join(".");
-  throw new BadRequestException(
-    field ? `${field}: ${issue.message}` : issue.message,
-  );
+  // The schema's sentence and nothing else: nobody can act on "tags.0".
+  throw new BadRequestException(parsed.error.issues[0].message);
 }
 
 /**

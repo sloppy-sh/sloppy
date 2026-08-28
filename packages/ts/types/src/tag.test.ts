@@ -59,9 +59,40 @@ describe("a note's tags", () => {
     }
   });
 
+  it("reach the same array however the accent was typed", () => {
+    // macOS hands back decomposed text from the filesystem and from some input
+    // methods while most keyboards produce composed text, so the same word
+    // arrives spelled two ways from one person on one device.
+    const composed = "r\u00e9veil";
+    const decomposed = "re\u0301veil";
+    expect(composed).not.toEqual(decomposed);
+    expect(TagsSchema.parse([decomposed])).toEqual([composed]);
+    expect(TagsSchema.parse([composed, decomposed])).toHaveLength(1);
+  });
+
   it("refuse anything that is not one word", () => {
-    for (const written of ["two words", "tab\tbed", "line\nbreak", "   ", ""]) {
+    for (const written of [
+      "two words",
+      "tab\tbed",
+      "line\nbreak",
+      "   ",
+      "",
+      // Invisible, and so a tag that reads as `biology` and matches nothing.
+      "bio\u200blogy",
+      "bio\u2060logy",
+    ]) {
       expect(TagsSchema.safeParse([written]).success, written).toBe(false);
+    }
+  });
+
+  it("keep the joiners that sit inside a word", () => {
+    // Persian writes one word across a non-joiner, and an emoji family is one
+    // glyph across joiners.
+    for (const written of [
+      "\u0645\u06cc\u200c\u0631\u0648\u062f",
+      "\u{1f468}\u200d\u{1f469}\u200d\u{1f467}",
+    ]) {
+      expect(TagsSchema.safeParse([written]).success, written).toBe(true);
     }
   });
 
@@ -74,5 +105,16 @@ describe("a note's tags", () => {
     const many = Array.from({ length: MAX_TAGS_PER_NODE }, (_, i) => `t${i}`);
     expect(TagsSchema.parse(many)).toHaveLength(MAX_TAGS_PER_NODE);
     expect(TagsSchema.safeParse([...many, "one-too-many"]).success).toBe(false);
+  });
+
+  it("count the bound against the note, not against what was typed", () => {
+    // A picker hands back what a person typed; the duplicates it did not fold
+    // away must not spend the note's budget.
+    const distinct = Array.from(
+      { length: MAX_TAGS_PER_NODE },
+      (_, i) => `t${i}`,
+    );
+    const typed = [...distinct, ...distinct.map((tag) => tag.toUpperCase())];
+    expect(TagsSchema.parse(typed)).toHaveLength(MAX_TAGS_PER_NODE);
   });
 });
