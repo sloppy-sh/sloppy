@@ -17,6 +17,7 @@
 		type CustomEmojiEntry,
 		type EmojiEntry
 	} from '../../emoji/catalog.js';
+	import { EMOJI_PX, fitted } from './fit.js';
 
 	const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 
@@ -67,7 +68,8 @@
 		adding = true;
 		refused = null;
 		try {
-			await onadd({ file, shortcode: typed, kind: asSticker ? 'sticker' : 'emoji' });
+			const bytes = await fitted(file, EMOJI_PX);
+			await onadd({ file: bytes, shortcode: typed, kind: asSticker ? 'sticker' : 'emoji' });
 			shortcode = '';
 			asSticker = false;
 		} catch (error) {

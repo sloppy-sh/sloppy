@@ -108,6 +108,8 @@ afterEach(() => {
 	// timer that outlives this file lands in whichever file runs next.
 	vi.clearAllTimers();
 	vi.useRealTimers();
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 	target.remove();
 	document.body.innerHTML = '';
 });
@@ -315,15 +317,17 @@ describe('a picture in a note', () => {
 		let land: (asset: MediaAsset) => void = () => {};
 		const landed = new Promise<MediaAsset>((resolve) => (land = resolve));
 		const reported: number[] = [];
+		const files: File[] = [];
 		const media: NoteMedia = {
 			...noMedia(),
-			send: (_file, report) => {
+			send: (file, report) => {
+				files.push(file);
 				report(0.5);
 				reported.push(0.5);
 				return { asset: landed, cancel: () => {} };
 			}
 		};
-		return { media, reported, land: (asset: MediaAsset) => land(asset) };
+		return { media, reported, files, land: (asset: MediaAsset) => land(asset) };
 	}
 
 	async function choose(file: File): Promise<void> {
@@ -408,6 +412,29 @@ describe('a picture in a note', () => {
 		expect(written.created).toEqual([
 			expect.objectContaining({ type: 'image', data: { upload_id: `${OWNER}/01OLD` } })
 		]);
+	});
+
+	it('sends the picture at the size a note draws it, not the whole original', async () => {
+		const { media, files, land } = sender();
+		vi.stubGlobal('createImageBitmap', async () => ({
+			width: 4032,
+			height: 3024,
+			close: () => {}
+		}));
+		vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done) =>
+			done(new Blob([new Uint8Array(300_000)], { type: 'image/webp' }))
+		);
+
+		open([], { media });
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+		await choose(new File([new Uint8Array(4_200_000)], 'IMG_0042.jpeg', { type: 'image/jpeg' }));
+
+		expect(files.map((file) => file.size)).toEqual([300_000]);
+
+		land({ upload_id: `${OWNER}/01UP`, mime_type: 'image/webp', size: 300_000 });
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(written.created.map((row) => row.type)).toEqual(['image']);
 	});
 
 	it('says so when it cannot be drawn, rather than showing an empty frame', async () => {

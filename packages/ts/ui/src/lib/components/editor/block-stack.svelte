@@ -42,6 +42,7 @@
 	import { citedLarge, emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
 	import EmojiSuggestionPopup from './emoji-suggestion-popup.svelte';
 	import { EmojiCompletions, EmojiSuggestion } from './emoji-suggestion.svelte.js';
+	import { fitted, NOTE_PX } from './fit.js';
 	import { InkNode } from './ink-node.js';
 	import {
 		NIB_WIDTH,
@@ -321,10 +322,25 @@
 		if (!current) return;
 		const preview = URL.createObjectURL(file);
 		current.chain().focus().insertPicture({ preview }).run();
-		const send = media.send(file, (fraction) => retouch(current, preview, { progress: fraction }));
-		sending[preview] = send;
-		void send.asset
-			.then((asset) => {
+
+		let live: { cancel: () => void } | null = null;
+		let stopped = false;
+		sending[preview] = {
+			cancel: () => {
+				stopped = true;
+				live?.cancel();
+			}
+		};
+
+		void (async () => {
+			try {
+				const bytes = await fitted(file, NOTE_PX);
+				if (stopped) return;
+				const send = media.send(bytes, (fraction) =>
+					retouch(current, preview, { progress: fraction })
+				);
+				live = send;
+				const asset = await send.asset;
 				const placed = retouch(current, preview, {
 					uploadId: asset.upload_id,
 					width: asset.width ?? null,
@@ -332,8 +348,7 @@
 					progress: null
 				});
 				if (placed) saveSoon();
-			})
-			.catch((error: unknown) => {
+			} catch (error: unknown) {
 				retouch(current, preview, {
 					progress: null,
 					failure:
@@ -341,8 +356,10 @@
 							? error.message
 							: 'That picture could not be added. Remove it and try again.'
 				});
-			})
-			.finally(() => delete sending[preview]);
+			} finally {
+				delete sending[preview];
+			}
+		})();
 	}
 
 	function usePicture(picture: HeldPicture): void {

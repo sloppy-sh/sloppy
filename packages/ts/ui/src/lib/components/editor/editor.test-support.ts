@@ -71,6 +71,7 @@ export function stubCanvas(): void {
 		setTransform() {},
 		clearRect() {},
 		beginPath() {},
+		drawImage() {},
 		moveTo() {},
 		lineTo() {},
 		stroke() {},
