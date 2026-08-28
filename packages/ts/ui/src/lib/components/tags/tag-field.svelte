@@ -47,11 +47,6 @@
 			.slice(0, SHOWN);
 	});
 
-	$effect(() => {
-		// Re-derives with the list, so the caret never points past the last row.
-		if (active >= matches.length) active = 0;
-	});
-
 	async function save(next: Tag[]): Promise<void> {
 		const mine = ++asked;
 		pending = next;
@@ -154,10 +149,14 @@
 		<input
 			bind:value={typed}
 			{onkeydown}
-			oninput={() => (dismissed = false)}
+			oninput={() => {
+				dismissed = false;
+				active = 0;
+			}}
 			onblur={commitOnBlur}
 			type="text"
 			role="combobox"
+			aria-autocomplete="list"
 			autocapitalize="none"
 			autocomplete="off"
 			spellcheck="false"
