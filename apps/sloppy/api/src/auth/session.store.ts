@@ -97,9 +97,9 @@ export class SessionStore implements OnModuleInit {
   /**
    * Every read here is behind the guard that runs before every route, so a call
    * left unsettled is the whole API stopping — including the public routes
-   * somebody signs back in through. `DbService.reachable` bounds itself for the
-   * same reason and says why: a query issued after the server goes away neither
-   * resolves nor rejects.
+   * somebody signs back in through. A socket outlives the server behind it for
+   * however long it takes to notice, and a call written into one in that window
+   * is never answered; `DbService.reachable` bounds itself for the same reason.
    */
   private static readonly TIMEOUT_MS = 2000;
 

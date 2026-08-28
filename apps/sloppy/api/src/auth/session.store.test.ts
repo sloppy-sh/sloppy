@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DbService } from "../db/db.service";
 import { SessionStore } from "./session.store";
 
-/** A store that has gone away: the driver queues the call for a reconnection
- *  rather than failing it, so nothing ever comes back. */
+/** A store on the far end of a socket that has not noticed it went: the call is
+ *  written, and nothing ever comes back. */
 function silent(): SessionStore {
   const never = () => new Promise(() => {});
   return new SessionStore({

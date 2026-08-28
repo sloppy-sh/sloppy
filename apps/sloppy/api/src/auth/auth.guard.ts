@@ -24,9 +24,9 @@ import { delegationOf, viewerOf } from "./session.store";
  *
  * Where the session store cannot say whom a credential names, the answer is
  * neither this person nor nobody. A protected route is refused as unavailable —
- * never as unauthorized, which would name a valid session as rejected and sign
- * the app out. A public route runs on, and reads `sessionUnverified` if the
- * difference is one it has to make.
+ * never as unauthorized, which is a client's signal that its credential is dead
+ * and its cue to erase one that still works. A public route runs on, and reads
+ * `sessionUnverified` if the difference is one it has to make.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {

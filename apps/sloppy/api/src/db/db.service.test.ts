@@ -1,5 +1,5 @@
 import type { Surreal } from "surrealdb";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppConfigService } from "../config/app-config.service";
 import { DbService } from "./db.service";
 
@@ -12,24 +12,38 @@ const SURREAL = {
 };
 
 function connection() {
+  const heard = new Map<string, Set<() => void>>();
   return {
+    status: "connected" as string,
     connect: vi.fn(async () => true as const),
     signin: vi.fn(async () => ({ access: "a-token" })),
     use: vi.fn(async () => {}),
     query: vi.fn(async () => []),
-    subscribe: vi.fn(() => () => {}),
+    subscribe: vi.fn((event: string, listener: () => void) => {
+      const listeners = heard.get(event) ?? new Set<() => void>();
+      listeners.add(listener);
+      heard.set(event, listeners);
+      return () => listeners.delete(listener);
+    }),
     close: vi.fn(async () => {}),
+    /** What the driver publishes when it has stopped holding a connection. */
+    publish(event: string) {
+      for (const listener of [...(heard.get(event) ?? [])]) listener();
+    },
   };
 }
 
-async function opened(): Promise<ReturnType<typeof connection>> {
+async function opened(): Promise<{
+  db: ReturnType<typeof connection>;
+  service: DbService;
+}> {
   const db = connection();
   const service = new DbService(
     { surreal: SURREAL } as AppConfigService,
     db as unknown as Surreal,
   );
   await service.onModuleInit();
-  return db;
+  return { db, service };
 }
 
 // The driver renews an expired session on its own, but only for credentials it
@@ -38,18 +52,19 @@ async function opened(): Promise<ReturnType<typeof connection>> {
 // measures the result.
 describe("opening the one connection", () => {
   it("hands the driver the credentials to reuse", async () => {
-    const db = await opened();
+    const { db } = await opened();
 
     expect(db.connect).toHaveBeenCalledWith(SURREAL.url, {
       authentication: {
         username: SURREAL.username,
         password: SURREAL.password,
       },
+      reconnect: false,
     });
   });
 
   it("spends them nowhere else, which would opt the session out of renewal", async () => {
-    const db = await opened();
+    const { db } = await opened();
 
     expect(db.signin).not.toHaveBeenCalled();
   });
@@ -58,11 +73,75 @@ describe("opening the one connection", () => {
   // and an anonymous select creates nothing — a first boot against an empty
   // store then fails on the schema it was about to apply.
   it("selects the namespace and database after the credentials, not with them", async () => {
-    const db = await opened();
+    const { db } = await opened();
 
     expect(db.use).toHaveBeenCalledWith({
       namespace: SURREAL.namespace,
       database: SURREAL.database,
     });
+  });
+});
+
+describe("a connection that is gone", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("is replaced without anybody restarting anything", async () => {
+    const { db } = await opened();
+
+    db.publish("disconnected");
+    await vi.waitFor(() => expect(db.connect).toHaveBeenCalledTimes(2));
+  });
+
+  // A store can be rebuilt while the API is not looking — the dev stack's own
+  // reset does exactly that — and it comes back with nothing defined on it.
+  it("applies the schema to whatever it opens, not only to the first one", async () => {
+    const { db } = await opened();
+    const applied = db.query.mock.calls.length;
+
+    db.publish("disconnected");
+    await vi.waitFor(() =>
+      expect(db.query.mock.calls.length).toBeGreaterThan(applied),
+    );
+  });
+
+  // The driver's own loop stops after five tries, and an outage of a minute is
+  // an ordinary one: rebuilding the dev stack takes several.
+  it("keeps trying for as long as the server is away", async () => {
+    vi.useFakeTimers();
+    const { db } = await opened();
+
+    let refusals = 20;
+    db.connect.mockImplementation(async () => {
+      if (refusals-- > 0) throw new Error("connection refused");
+      return true as const;
+    });
+    db.publish("disconnected");
+    for (let elapsed = 0; elapsed < 5 * 60_000; elapsed += 20_000) {
+      await vi.advanceTimersByTimeAsync(20_000);
+    }
+
+    expect(db.connect.mock.calls.length).toBeGreaterThan(21);
+    expect(db.use).toHaveBeenCalledTimes(2);
+  });
+
+  // Every operation the driver is asked for while it has no connection waits on
+  // one, and a connection that failed to open never arrives — so the call is
+  // neither sent nor failed, and whoever is waiting on the request is not
+  // answered at all.
+  it("is refused work rather than given a connection that is not there", async () => {
+    const { db, service } = await opened();
+    db.status = "connecting";
+
+    expect(() => service.handle).toThrow();
+  });
+
+  it("is left alone once the process is stopping", async () => {
+    const { db, service } = await opened();
+    await service.onModuleDestroy();
+
+    db.publish("disconnected");
+    await Promise.resolve();
+
+    expect(db.connect).toHaveBeenCalledTimes(1);
   });
 });
