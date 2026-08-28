@@ -89,6 +89,39 @@ describe('the session', () => {
 		expect((await later)?.did).toBe(VIEWER.did);
 	});
 
+	// The app is signed out of by a credential the server turned down, and only by
+	// that: dropping somebody because the answer could not be had takes the whole
+	// app away over a blip they did nothing to cause.
+	it('holds a session it could not ask about, rather than calling it nobody', async () => {
+		api.on(
+			'GET /auth/me',
+			() =>
+				new Response(JSON.stringify({ message: 'Try again in a moment.' }), {
+					status: 503,
+					headers: { 'content-type': 'application/json' }
+				})
+		);
+		await session.refresh();
+		expect(session.signedIn).toBe(false);
+		expect(session.unavailable).toBe(true);
+	});
+
+	it('calls a credential the server turned down nobody, and says so', async () => {
+		api.on('GET /auth/me', () => new Response('{}', { status: 401 }));
+		await session.refresh();
+		expect(session.signedIn).toBe(false);
+		expect(session.unavailable).toBe(false);
+	});
+
+	it('stops holding it once the answer comes back', async () => {
+		api.on('GET /auth/me', () => new Response('{}', { status: 503 }));
+		await session.refresh();
+		api.on('GET /auth/me', () => VIEWER);
+		await session.refresh();
+		expect(session.unavailable).toBe(false);
+		expect(session.signedIn).toBe(true);
+	});
+
 	it('drops the credential when signing out', async () => {
 		runtime.token.set('a-live-token');
 		await session.refresh();

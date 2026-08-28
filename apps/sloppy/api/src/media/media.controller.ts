@@ -3,6 +3,7 @@ import {
   CompleteUploadRequestSchema,
   CreateUploadRequestSchema,
   type MediaAsset,
+  type OwnedMediaAsset,
   type UploadTicket,
 } from "@sloppy/types";
 import type { Response } from "express";
@@ -44,6 +45,13 @@ export class MediaController {
       viewerDelegation(req),
       parseBody(CompleteUploadRequestSchema, body),
     );
+  }
+
+  /** What the caller has already put in a note, so a picture can be used twice
+   *  without being sent twice. */
+  @Get("uploads")
+  pictures(@Req() req: AuthedRequest): Promise<OwnedMediaAsset[]> {
+    return this.media.ownPictures(viewerDelegation(req), "block");
   }
 
   /**

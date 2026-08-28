@@ -8,6 +8,7 @@
 	import Code from '@lucide/svelte/icons/code';
 	import Heading1 from '@lucide/svelte/icons/heading-1';
 	import Heading2 from '@lucide/svelte/icons/heading-2';
+	import ImageIcon from '@lucide/svelte/icons/image';
 	import Italic from '@lucide/svelte/icons/italic';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -23,9 +24,11 @@
 	import StarterKit from '@tiptap/starter-kit';
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { UnicodeEmoji } from '../../emoji/catalog.js';
+	import type { EmojiEntry } from '../../emoji/catalog.js';
+	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 	import { tokenizeContent } from '../../emoji/tokenize.js';
-	import type { BlockStackProps } from './contract.js';
+	import { BlockHandles } from './block-handles.js';
+	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		BlockIdentity,
 		docBlocks,
@@ -36,9 +39,10 @@
 		type SavedBlock
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
-	import { EmojiNode } from './emoji-node.js';
+	import { citedLarge, emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
 	import EmojiSuggestionPopup from './emoji-suggestion-popup.svelte';
 	import { EmojiCompletions, EmojiSuggestion } from './emoji-suggestion.svelte.js';
+	import { fitted, NOTE_PX } from './fit.js';
 	import { InkNode } from './ink-node.js';
 	import {
 		NIB_WIDTH,
@@ -49,9 +53,12 @@
 		strokeBounds,
 		translateStrokes
 	} from './ink.js';
+	import MediaPicker from './media-picker.svelte';
+	import { PICTURE_NODE, PictureNode } from './picture-node.js';
 	import Toolbar, { type EditorAction } from './toolbar.svelte';
 
-	let { node, blocks, onCreate, onUpdate, onRemove, onReorder }: BlockStackProps = $props();
+	let { node, blocks, onCreate, onUpdate, onRemove, onReorder, media, emoji }: BlockStackProps =
+		$props();
 
 	const SAVE_AFTER_MS = 700;
 	/** However long the writing runs on, no change waits longer than this to be written. */
@@ -60,6 +67,8 @@
 	/** How long the pen may rest before the strokes so far settle into a block. */
 	const SETTLE_AFTER_MS = 900;
 	const INK_PADDING = 12;
+	/** How much of the writing surface the controls stand over. */
+	const BAR_CLEARANCE = 64;
 	const NEW_INK_HEIGHT = 200;
 
 	let surface = $state<HTMLDivElement | null>(null);
@@ -75,8 +84,15 @@
 	let marks = $state<Record<string, boolean>>({});
 	let saveState = $state<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 	let pickerOpen = $state(false);
+	let mediaOpen = $state(false);
 
 	const completions = new EmojiCompletions();
+
+	/** The note's author, whose emoji catalog its shortcodes were written against. */
+	const author = $derived(node.ref.slice(0, node.ref.lastIndexOf('/')));
+	const catalog = $derived(emojiCatalogs.of(author, emoji.catalog));
+	/** The reader's own, which is what they can put into a note and change. */
+	const ownCatalog = $derived(emojiCatalogs.of(emoji.mine, emoji.catalog));
 
 	/** What the API is believed to hold, in its order; kept true op by op. */
 	let saved: SavedBlock[] = [];
@@ -211,8 +227,13 @@
 	}
 
 	/**
-	 * Turns the shortcodes a note is stored with back into the glyphs they name.
+	 * Turns the shortcodes a note is stored with back into the emoji they name.
 	 * Code is left as it was written: `:fire:` in a snippet is part of the snippet.
+	 *
+	 * Runs again for every catalog that lands after the note opened, and an emoji
+	 * already drawn is part of what it re-reads: a note opens before its author's
+	 * catalog answers, so a shortcode Unicode also claims is a glyph by the time
+	 * the picture it names arrives.
 	 */
 	function showEmoji(current: Editor): void {
 		const literal = (child: ProseMirrorNode) =>
@@ -220,17 +241,27 @@
 		let tr: ReturnType<typeof current.state.tr.replaceWith> | null = null;
 		current.state.doc.descendants((child, pos) => {
 			if (literal(child)) return false;
+			if (child.type.name === EMOJI_NODE) {
+				const claimed = reclaimEmoji(child.attrs, catalog);
+				if (claimed) {
+					tr ??= current.state.tr;
+					tr.setNodeMarkup(tr.mapping.map(pos), undefined, claimed);
+				}
+				return false;
+			}
 			if (!child.isText || !child.text) return;
-			for (const token of tokenizeContent(child.text)) {
+			for (const token of tokenizeContent(child.text, catalog)) {
 				if (token.kind !== 'emoji') continue;
+				const entry = emojiInsert(token.emoji, token.sticker);
 				tr ??= current.state.tr;
 				tr.replaceWith(
 					tr.mapping.map(pos + token.start),
 					tr.mapping.map(pos + token.end),
 					current.schema.nodes.emoji.create({
-						name: token.emoji.shortcode,
-						char: token.emoji.char,
-						sticker: token.sticker
+						name: entry.shortcode,
+						char: entry.char,
+						src: entry.src,
+						sticker: entry.sticker
 					})
 				);
 			}
@@ -266,6 +297,84 @@
 		};
 	}
 
+	// ── Pictures ─────────────────────────────────────────────────────────────
+	/** Every send still in the air, by the preview that stands in for it. */
+	let sending: Record<string, { cancel: () => void }> = {};
+
+	/** Writes back onto the node a send is filling, without waking a save. */
+	function retouch(from: Editor, preview: string, attrs: Record<string, unknown>): boolean {
+		if (from.isDestroyed) return false;
+		let tr: ReturnType<typeof from.state.tr.setNodeMarkup> | null = null;
+		from.state.doc.forEach((child, pos) => {
+			if (child.type.name !== PICTURE_NODE || child.attrs.preview !== preview) return;
+			tr = (tr ?? from.state.tr).setNodeMarkup(pos, undefined, { ...child.attrs, ...attrs });
+		});
+		if (!tr) return false;
+		from.view.dispatch(quiet(tr));
+		return true;
+	}
+
+	/** The file is on the page at once and the block only when it has landed —
+	 *  `docBlocks` in `./document.ts` keeps one with nothing to name out of the
+	 *  stack, so a note is never stored pointing at bytes that never arrived. */
+	function sendPicture(file: File): void {
+		const current = editor;
+		if (!current) return;
+		const preview = URL.createObjectURL(file);
+		current.chain().focus().insertPicture({ preview }).run();
+
+		let live: { cancel: () => void } | null = null;
+		let stopped = false;
+		sending[preview] = {
+			cancel: () => {
+				stopped = true;
+				live?.cancel();
+			}
+		};
+
+		void (async () => {
+			try {
+				const bytes = await fitted(file, NOTE_PX);
+				if (stopped) return;
+				const send = media.send(bytes, (fraction) =>
+					retouch(current, preview, { progress: fraction })
+				);
+				live = send;
+				const asset = await send.asset;
+				const placed = retouch(current, preview, {
+					uploadId: asset.upload_id,
+					width: asset.width ?? null,
+					height: asset.height ?? null,
+					progress: null
+				});
+				if (placed) saveSoon();
+			} catch (error: unknown) {
+				retouch(current, preview, {
+					progress: null,
+					failure:
+						error instanceof Error && error.message
+							? error.message
+							: 'That picture could not be added. Remove it and try again.'
+				});
+			} finally {
+				delete sending[preview];
+			}
+		})();
+	}
+
+	function usePicture(picture: HeldPicture): void {
+		editor
+			?.chain()
+			.focus()
+			.insertPicture({
+				uploadId: picture.upload_id,
+				width: picture.width ?? null,
+				height: picture.height ?? null
+			})
+			.run();
+		saveSoon();
+	}
+
 	// ── The pen ──────────────────────────────────────────────────────────────
 	let stroke: StrokeInProgress | null = null;
 	let settling: ReturnType<typeof setTimeout> | undefined;
@@ -296,7 +405,8 @@
 
 	function onPenDown(event: PointerEvent): void {
 		if (event.pointerType !== 'pen' || !surface || !wet || !editor) return;
-		if ((event.target as HTMLElement | null)?.closest('[data-ink-block]')) return;
+		if ((event.target as HTMLElement | null)?.closest('[data-ink-block],[data-block-handle]'))
+			return;
 		event.preventDefault();
 		clearTimeout(settling);
 		capturePointer(surface, event.pointerId);
@@ -376,12 +486,17 @@
 					TaskList,
 					TaskItem.configure({ nested: true }),
 					BlockIdentity,
-					EmojiNode,
-					EmojiSuggestion(completions),
-					InkNode
+					BlockHandles,
+					EmojiNode(() => catalog),
+					EmojiSuggestion(completions, () => ownCatalog),
+					InkNode,
+					PictureNode(() => media)
 				],
 				editorProps: {
-					attributes: { class: 'sloppy-prose', role: 'textbox', 'aria-label': 'Note body' }
+					attributes: { class: 'sloppy-prose', role: 'textbox', 'aria-label': 'Note body' },
+					// The caret is scrolled clear of the controls, which sit over the
+					// last of the writing whenever there is more of it than fits.
+					scrollMargin: { top: 0, right: 0, bottom: BAR_CLEARANCE, left: 0 }
 				},
 				onUpdate: () => {
 					empty = created.isEmpty;
@@ -412,6 +527,8 @@
 			frame.addEventListener('pointercancel', onPenUp);
 
 			return () => {
+				for (const send of Object.values(sending)) send.cancel();
+				sending = {};
 				frame.removeEventListener('pointerdown', onPenDown, { capture: true });
 				frame.removeEventListener('pointermove', onPenMove);
 				frame.removeEventListener('pointerup', onPenUp);
@@ -437,12 +554,35 @@
 		});
 	});
 
-	function insertEmoji(emoji: UnicodeEmoji, sticker: boolean): void {
+	// A catalog fetched after the note opened turns its shortcodes into pictures
+	// then, rather than on the next time the note is opened.
+	$effect(() => {
+		const entries = catalog;
+		if (!ready || entries.length === 0) return;
+		const current = editor;
+		if (current) untrack(() => showEmoji(current));
+	});
+
+	function insertEmoji(entry: EmojiEntry, large: boolean): void {
 		editor
 			?.chain()
 			.focus()
-			.insertEmoji({ shortcode: emoji.shortcode, char: emoji.char, sticker })
+			.insertEmoji(emojiInsert(entry, citedLarge(entry, large)))
 			.run();
+	}
+
+	async function addEmoji(entry: {
+		file: File;
+		shortcode: string;
+		kind: 'emoji' | 'sticker';
+	}): Promise<void> {
+		await emoji.add(entry);
+		emojiCatalogs.forget(emoji.mine);
+	}
+
+	async function removeEmoji(id: string): Promise<void> {
+		await emoji.remove(id);
+		emojiCatalogs.forget(emoji.mine);
 	}
 
 	function startDrawing(): void {
@@ -451,7 +591,7 @@
 		editor.chain().focus().insertInk({ width, height: NEW_INK_HEIGHT }).run();
 	}
 
-	const actions = $derived<EditorAction[]>([
+	const formatting = $derived<EditorAction[]>([
 		{
 			id: 'bold',
 			label: 'Bold',
@@ -514,7 +654,11 @@
 			icon: Code,
 			on: marks.code,
 			run: () => editor?.chain().focus().toggleCodeBlock().run()
-		},
+		}
+	]);
+
+	const inserts = $derived<EditorAction[]>([
+		{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) },
 		{ id: 'emoji', label: 'Emoji', icon: Smile, run: () => (pickerOpen = true) },
 		{ id: 'draw', label: 'Draw', icon: PenLine, run: startDrawing }
 	]);
@@ -524,21 +668,23 @@
 <svelte:document onvisibilitychange={whenHidden} />
 
 <div class="space-y-2">
-	<div bind:this={surface} class="relative">
-		<div bind:this={host}></div>
-		<canvas
-			bind:this={wet}
-			class="pointer-events-none absolute inset-0 size-full text-foreground"
-			aria-hidden="true"
-		></canvas>
-		{#if empty && ready}
-			<p
-				class="pointer-events-none absolute top-0 left-0 text-base text-muted-foreground select-none"
+	<div class="block-gutter">
+		<div bind:this={surface} class="relative">
+			<div bind:this={host}></div>
+			<canvas
+				bind:this={wet}
+				class="pointer-events-none absolute inset-0 size-full text-foreground"
 				aria-hidden="true"
-			>
-				Start writing.
-			</p>
-		{/if}
+			></canvas>
+			{#if empty && ready}
+				<p
+					class="pointer-events-none absolute top-0 left-0 text-base text-muted-foreground select-none"
+					aria-hidden="true"
+				>
+					Start writing.
+				</p>
+			{/if}
+		</div>
 	</div>
 
 	<p class="min-h-5 text-right text-xs text-muted-foreground" role="status">
@@ -558,23 +704,40 @@
 			<Button variant="outline" size="sm" onclick={() => scheduleSave(0)}>Try now</Button>
 		</div>
 	{/if}
+
+	<!-- Inside the writing surface: a bar over the viewport covers whatever the
+	     page puts under the note, at every width, with no scroll that reaches it. -->
+	{#if ready && editing}
+		<div
+			class="sticky lift-above-keyboard z-40 mx-auto w-full max-w-[34rem] rounded-full border bg-card/95 px-1.5 py-1 shadow-lg backdrop-blur"
+		>
+			<Toolbar {formatting} {inserts} />
+		</div>
+	{/if}
 </div>
 
 {#if ready}
 	<EmojiSuggestionPopup {completions} />
 {/if}
-<EmojiPicker bind:open={pickerOpen} onpick={insertEmoji} />
-
-{#if ready && editing}
-	<div
-		class="fixed inset-x-0 z-40 mx-auto w-[min(100%-1.5rem,34rem)] rounded-full border bg-card/95 px-1.5 py-1 shadow-lg backdrop-blur"
-		style="bottom: max(var(--kb-inset-bottom, 0px), calc(var(--sysnav-inset-bottom, 0px) + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 0.5rem))"
-	>
-		<Toolbar {actions} />
-	</div>
-{/if}
+<EmojiPicker
+	bind:open={pickerOpen}
+	custom={ownCatalog}
+	onpick={insertEmoji}
+	onadd={addEmoji}
+	onremove={removeEmoji}
+/>
+<MediaPicker
+	bind:open={mediaOpen}
+	{media}
+	onpick={(choice) => ('file' in choice ? sendPicture(choice.file) : usePicture(choice.held))}
+/>
 
 <style>
+	.block-gutter {
+		--block-gutter: 1.75rem;
+		--block-line: 1.75rem;
+		padding-left: var(--block-gutter);
+	}
 	:global(.sloppy-prose) {
 		outline: none;
 		font-size: 1rem;
@@ -582,6 +745,82 @@
 	}
 	:global(.sloppy-prose > * + *) {
 		margin-top: 0.85em;
+	}
+	/* The gap between two blocks is taken by the handle standing between them, so
+	   the handle sits on its own block rather than in the space above it. */
+	:global(.sloppy-prose > .sloppy-row + *) {
+		margin-top: 0;
+	}
+	:global(.sloppy-row) {
+		position: relative;
+		height: 0;
+	}
+	:global(.sloppy-row-handle) {
+		position: absolute;
+		top: 0;
+		left: calc(var(--block-gutter, 1.75rem) * -1);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: var(--block-line, 1.75rem);
+		border-radius: calc(var(--radius) - 4px);
+		color: var(--muted-foreground);
+		opacity: 0.4;
+		cursor: grab;
+		/* A swipe from here still scrolls the note; `./block-handles.ts` takes the
+		   gesture only once the press has been held. iOS answers that press with
+		   a callout of its own unless it is told not to. */
+		touch-action: pan-y;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-touch-callout: none;
+		transition:
+			opacity 150ms ease-out,
+			background-color 150ms ease-out;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global(.sloppy-row-handle) {
+			transition: none;
+		}
+	}
+	/* A drag is a sustained contact, so the whole gutter is the target and the
+	   gutter widens to hold one a finger can find. The grip drawn inside it keeps
+	   its size, and stays on the line of the block it moves. */
+	@media (any-pointer: coarse) {
+		.block-gutter {
+			--block-gutter: 2.5rem;
+		}
+		:global(.sloppy-row-handle) {
+			width: var(--block-gutter);
+			height: var(--block-gutter);
+			top: calc((var(--block-line, 1.75rem) - var(--block-gutter, 1.75rem)) / 2);
+		}
+	}
+	:global(.sloppy-row-handle:hover),
+	:global(.sloppy-row-handle:focus-visible),
+	:global(.sloppy-row-handle.is-dragging) {
+		opacity: 1;
+		background: var(--muted);
+	}
+	:global(.sloppy-row-handle.is-dragging) {
+		cursor: grabbing;
+	}
+	:global(.sloppy-row-handle:focus-visible) {
+		outline: 2px solid var(--ring);
+		outline-offset: 1px;
+	}
+	:global(.sloppy-row-handle svg) {
+		width: 1rem;
+		height: 1rem;
+	}
+	:global(.sloppy-drop-line) {
+		position: fixed;
+		z-index: 50;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--primary);
+		pointer-events: none;
 	}
 	:global(.sloppy-prose h1) {
 		font-size: 1.5rem;
@@ -658,6 +897,102 @@
 		display: inline-block;
 		font-size: 3.25em;
 		line-height: 1.1;
+	}
+	:global(.sloppy-emoji-picture) {
+		/* Tailwind's preflight draws every img as a block, which would put an
+		   emoji on a line of its own in the middle of a sentence. */
+		display: inline-block;
+		font-size: 1em;
+		width: auto;
+		height: 1.35em;
+		vertical-align: -0.3em;
+		object-fit: contain;
+	}
+	:global(.sloppy-sticker.sloppy-emoji-picture) {
+		height: 3.25em;
+		vertical-align: -0.6em;
+	}
+	:global(.sloppy-picture) {
+		margin: 0.85em 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		overflow: hidden;
+		background: var(--card);
+	}
+	:global(.sloppy-picture.is-selected) {
+		outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+		outline-offset: 2px;
+	}
+	:global(.sloppy-picture-frame) {
+		position: relative;
+		line-height: 0;
+	}
+	:global(.sloppy-picture-image) {
+		display: block;
+		width: 100%;
+		height: auto;
+		max-height: 70dvh;
+		object-fit: contain;
+	}
+	:global(.sloppy-picture-image:not([src])) {
+		display: none;
+	}
+	:global(.sloppy-picture.is-sending .sloppy-picture-image) {
+		opacity: 0.55;
+	}
+	:global(.sloppy-picture-note) {
+		margin: 0;
+		padding: 0.5rem 0.65rem;
+		font-size: 0.8125rem;
+		line-height: 1.4;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-picture-note:empty) {
+		display: none;
+	}
+	:global(.sloppy-picture-meter) {
+		position: absolute;
+		inset-inline: 0;
+		bottom: 0;
+		height: 3px;
+		background: var(--muted);
+	}
+	:global(.sloppy-picture-meter > span) {
+		display: block;
+		height: 100%;
+		background: var(--primary);
+		transition: width 0.15s ease-out;
+	}
+	:global(.sloppy-picture-bar) {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		border-top: 1px solid var(--border);
+		padding: 0.25rem;
+	}
+	:global(.sloppy-picture-description) {
+		flex: 1 1 auto;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		padding: 0.25rem 0.55rem;
+		font-size: 0.75rem;
+		color: var(--foreground);
+		outline: none;
+	}
+	:global(.sloppy-picture-description::placeholder) {
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-picture-action) {
+		border-radius: calc(var(--radius) - 2px);
+		padding: 0.25rem 0.55rem;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+		white-space: nowrap;
+	}
+	:global(.sloppy-picture-action:hover) {
+		background: var(--muted);
+		color: var(--foreground);
 	}
 	:global(.sloppy-ink) {
 		margin: 0.85em 0;

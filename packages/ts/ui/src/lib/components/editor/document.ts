@@ -9,6 +9,7 @@ import { Extension, type JSONContent } from '@tiptap/core';
 import type { MarkdownManager } from '@tiptap/markdown';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { PICTURE_NODE, pictureDataFrom, type PictureBlockData } from './picture-node.js';
 
 export const INK_NODE = 'ink';
 
@@ -22,7 +23,8 @@ export const BLOCK_NODES = [
 	'codeBlock',
 	'blockquote',
 	'horizontalRule',
-	INK_NODE
+	INK_NODE,
+	PICTURE_NODE
 ] as const;
 
 const TYPE_BY_NODE: Partial<Record<string, BlockType>> = {
@@ -31,7 +33,8 @@ const TYPE_BY_NODE: Partial<Record<string, BlockType>> = {
 	orderedList: 'list',
 	taskList: 'todo',
 	codeBlock: 'code',
-	[INK_NODE]: 'ink'
+	[INK_NODE]: 'ink',
+	[PICTURE_NODE]: 'image'
 };
 
 /** Prose the enum does not name — a quote, a rule — keeps its Markdown as a paragraph. */
@@ -95,6 +98,30 @@ export function inkDataOf(node: ProseMirrorNode): InkBlockData {
 	};
 }
 
+/** Undefined until the bytes have landed and the block has an upload to name. */
+export function pictureDataOf(node: ProseMirrorNode): PictureBlockData | undefined {
+	return pictureDataFrom({
+		upload_id: node.attrs.uploadId,
+		width: node.attrs.width,
+		height: node.attrs.height,
+		alt: node.attrs.alt
+	});
+}
+
+function pictureNodeFrom(block: BlockView, data: PictureBlockData): JSONContent {
+	return {
+		type: PICTURE_NODE,
+		attrs: {
+			blockUid: nextUid(),
+			blockRef: block.ref,
+			uploadId: data.upload_id,
+			alt: data.alt ?? '',
+			width: data.width ?? null,
+			height: data.height ?? null
+		}
+	};
+}
+
 function inkNodeFrom(block: BlockView): JSONContent {
 	const parsed = InkBlockDataSchema.safeParse(block.data);
 	const data: InkBlockData = parsed.success
@@ -137,6 +164,13 @@ export function openBlocks(blocks: readonly BlockView[], manager: MarkdownManage
 	for (const block of blocks) {
 		if (block.type === 'ink') {
 			content.push(inkNodeFrom(block));
+			continue;
+		}
+		if (block.type === 'image') {
+			// A row naming no upload has no picture to draw, so it is carried
+			// untouched rather than opened as an empty one and saved back over.
+			const picture = pictureDataFrom(block.data);
+			if (picture) content.push(pictureNodeFrom(block, picture));
 			continue;
 		}
 		if (!WRITABLE_TYPES.has(block.type)) continue;
@@ -205,6 +239,11 @@ export function docBlocks(doc: ProseMirrorNode, manager: MarkdownManager): DocBl
 			blocks.push({ uid, ref, type: 'ink', content: '', data: inkDataOf(node) });
 			return;
 		}
+		if (node.type.name === PICTURE_NODE) {
+			const picture = pictureDataOf(node);
+			if (picture) blocks.push({ uid, ref, type: 'image', content: '', data: picture });
+			return;
+		}
 		const content = manager.serialize(node.toJSON() as JSONContent).trim();
 		if (content) blocks.push({ uid, ref, type: blockTypeOf(node.type.name), content });
 	});
@@ -216,9 +255,35 @@ function sameData(a: unknown, b: unknown): boolean {
 }
 
 /**
- * What has to reach the API for the rows to say what the document says. Creates
- * and updates come first in document order, then any move, then the deletions —
- * an anchor is still there when the block that names it is placed.
+ * Where in `values` one longest strictly increasing run sits. Everything off it
+ * is what has to move for the whole to be in order, which is what keeps one
+ * block dragged across the stack to one `ord` rather than one per block it
+ * passed.
+ */
+function longestRun(values: readonly number[]): number[] {
+	const tails: number[] = [];
+	const before: number[] = [];
+	values.forEach((value, index) => {
+		let low = 0;
+		let high = tails.length;
+		while (low < high) {
+			const middle = (low + high) >> 1;
+			if (values[tails[middle]] < value) low = middle + 1;
+			else high = middle;
+		}
+		before[index] = low > 0 ? tails[low - 1] : -1;
+		tails[low] = index;
+	});
+	const run: number[] = [];
+	for (let index = tails.at(-1) ?? -1; index >= 0; index = before[index]) run.push(index);
+	return run.reverse();
+}
+
+/**
+ * What has to reach the API for the rows to say what the document says. A
+ * create and a move both name the block they are to follow, so both are emitted
+ * in document order and the deletions last — the anchor a block names is then
+ * already where the document wants it.
  */
 export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]): SaveOp[] {
 	const byRef = new Map(saved.map((row) => [row.ref, row]));
@@ -229,8 +294,17 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 		(block) => (block.ref ? byRef.get(block.ref) : undefined) ?? byUid.get(block.uid)
 	);
 	const kept = new Set<OwnedRef>();
-	const ops: SaveOp[] = [];
+	for (const row of rowFor) if (row) kept.add(row.ref);
 
+	const order = saved.filter((row) => kept.has(row.ref)).map((row) => row.ref);
+	const wanted = next.flatMap((_, index) => (rowFor[index] ? [index] : []));
+	const staying = new Set(
+		longestRun(wanted.map((at) => order.indexOf((rowFor[at] as SavedBlock).ref))).map(
+			(place) => wanted[place]
+		)
+	);
+
+	const ops: SaveOp[] = [];
 	let previousUid: string | null = null;
 	next.forEach((block, index) => {
 		const row = rowFor[index];
@@ -244,7 +318,6 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 				...(block.data === undefined ? {} : { data: block.data })
 			});
 		} else {
-			kept.add(row.ref);
 			const change: SaveOp = { kind: 'update', ref: row.ref };
 			if (row.type !== block.type) change.type = block.type;
 			if (row.content !== block.content) change.content = block.content;
@@ -252,19 +325,9 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 			if (change.type !== undefined || change.content !== undefined || change.data !== undefined) {
 				ops.push(change);
 			}
+			if (!staying.has(index)) ops.push({ kind: 'reorder', ref: row.ref, after: previousUid });
 		}
 		previousUid = block.uid;
-	});
-
-	const order = saved.filter((row) => kept.has(row.ref)).map((row) => row.ref);
-	const wanted = next.flatMap((_, index) => (rowFor[index] ? [index] : []));
-	wanted.forEach((at, index) => {
-		const ref = (rowFor[at] as SavedBlock).ref;
-		if (order[index] === ref) return;
-		order.splice(order.indexOf(ref), 1);
-		order.splice(index, 0, ref);
-		const before = next[at - 1];
-		ops.push({ kind: 'reorder', ref, after: before ? before.uid : null });
 	});
 
 	for (const row of saved) {

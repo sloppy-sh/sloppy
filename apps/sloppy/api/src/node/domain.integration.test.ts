@@ -210,6 +210,10 @@ describe("the domain routes", () => {
     });
     await app.listen(port, "127.0.0.1");
 
+    // The API listens before the store is open; these routes need it open.
+    const { DbService: Store } = await import("../db/db.service");
+    await app.get(Store).whenOpen();
+
     ada = await signIn(`ada${Date.now().toString(36)}`);
     bram = await signIn(`bram${Date.now().toString(36)}`);
   }, 60_000);
@@ -310,6 +314,10 @@ describe("the domain routes", () => {
       expect(addresses[19]).toBe(`${parent.address}t`);
     });
 
+    // Two identities, ~16 sequential round trips each. AI.md makes this the proof
+    // that address assignment is deterministic, so it must not go red merely
+    // because the suite around it is busy — a protocol test nobody trusts is one
+    // everybody reads past.
     scenario(
       "assigns the same addresses to two identities applying the same sequence",
       async () => {
@@ -333,6 +341,7 @@ describe("the domain routes", () => {
         const second = await signIn(`peerb${Date.now().toString(36)}`);
         expect(await run(first)).toEqual(await run(second));
       },
+      30_000,
     );
   });
 

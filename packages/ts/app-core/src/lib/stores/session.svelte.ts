@@ -2,17 +2,26 @@
  * Who is signed in. One writer — this store — over the API's `me` / `signOut`.
  *
  * `viewer === null` after {@link SessionStore.load} is the ordinary first visit,
- * not a failure; `ready` is what separates "nobody" from "not asked yet".
+ * not a failure; `ready` separates "nobody" from "not asked yet", and
+ * `unavailable` separates it from "could not be asked".
  */
 
+import { SloppyApiError } from '@sloppy/client';
 import type { Viewer } from '@sloppy/types';
 import { api } from '../api.js';
 import { runtime } from '../runtime.js';
+
+/** A credential the server turned down is an answer — nobody is signed in.
+ *  Anything else that goes wrong is not an answer at all. */
+function turnedDown(err: unknown): boolean {
+	return err instanceof SloppyApiError && err.status === 401;
+}
 
 class SessionStore {
 	#viewer = $state<Viewer | null>(null);
 	#ready = $state(false);
 	#loading = $state(false);
+	#unavailable = $state(false);
 	#inflight: Promise<Viewer | null> | null = null;
 	// A session change that lands while `me()` is in flight must not be undone by
 	// its answer, which the server may have sent before the change reached it.
@@ -35,6 +44,12 @@ class SessionStore {
 		return this.#loading;
 	}
 
+	/** The last ask failed, so `viewer === null` means Sloppy could not say who
+	 *  is signed in — not that nobody is. */
+	get unavailable(): boolean {
+		return this.#unavailable;
+	}
+
 	/** Idempotent and deduped: every surface may call it on mount. */
 	load(): Promise<Viewer | null> {
 		if (this.#ready && !this.#inflight) return Promise.resolve(this.#viewer);
@@ -51,13 +66,17 @@ class SessionStore {
 		const request = api
 			.me()
 			.then((viewer) => {
-				if (current()) this.#viewer = viewer;
+				if (current()) {
+					this.#viewer = viewer;
+					this.#unavailable = false;
+				}
 				return viewer;
 			})
-			.catch(() => {
-				// A rejected or unreachable session is nobody signed in; the shell's
-				// `onAuthInvalid` is what turns a rejected credential into a sign-out.
-				if (current()) this.#viewer = null;
+			.catch((err: unknown) => {
+				if (current()) {
+					this.#viewer = null;
+					this.#unavailable = !turnedDown(err);
+				}
 				return null;
 			})
 			.finally(() => {
@@ -75,6 +94,7 @@ class SessionStore {
 		this.#epoch++;
 		runtime.token.set(token);
 		this.#viewer = viewer;
+		this.#unavailable = false;
 		this.#ready = true;
 		this.#loading = false;
 		this.#inflight = null;
@@ -93,6 +113,7 @@ class SessionStore {
 		this.#epoch++;
 		runtime.token.clear();
 		this.#viewer = null;
+		this.#unavailable = false;
 		this.#ready = true;
 		this.#loading = false;
 		this.#inflight = null;

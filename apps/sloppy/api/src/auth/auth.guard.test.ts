@@ -1,5 +1,8 @@
 import type { ExecutionContext } from "@nestjs/common";
-import { UnauthorizedException } from "@nestjs/common";
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import type { Reflector } from "@nestjs/core";
 import { DidSyrSchema } from "@sloppy/types";
 import { RecordId } from "surrealdb";
@@ -29,6 +32,18 @@ function guard(isPublic: boolean, session: SessionRow | null) {
   } as unknown as Reflector;
   const auth = { resolve } as unknown as AuthService;
   return { guard: new AuthGuard(reflector, auth), resolve };
+}
+
+/** The session store refusing to answer, as a query against a connection that
+ *  has lost its authorization does. */
+function storeDown(isPublic: boolean) {
+  const resolve = vi
+    .fn()
+    .mockRejectedValue(new Error("Anonymous access not allowed"));
+  const reflector = {
+    getAllAndOverride: () => isPublic,
+  } as unknown as Reflector;
+  return new AuthGuard(reflector, { resolve } as unknown as AuthService);
 }
 
 function context(headers: Record<string, string>): {
@@ -122,5 +137,34 @@ describe("the guard every route runs behind", () => {
 
     await expect(subject.canActivate(ctx)).resolves.toBe(true);
     expect(request.viewer?.did).toBe(DID);
+  });
+});
+
+describe("a session store that cannot answer", () => {
+  it("lets a public route run, so the way back in still works", async () => {
+    const { context: ctx, request } = context({ authorization: "Bearer good" });
+
+    await expect(storeDown(true).canActivate(ctx)).resolves.toBe(true);
+    expect(request.viewer).toBeUndefined();
+    expect(request.sessionUnverified).toBe(true);
+  });
+
+  // 401 is the client's cue to drop the session app-wide, and a store having a
+  // bad afternoon is not somebody's session ending.
+  it("refuses a protected route as unavailable rather than unauthorized", async () => {
+    const { context: ctx } = context({ authorization: "Bearer good" });
+
+    await expect(storeDown(false).canActivate(ctx)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+
+  it("still refuses a protected route reached with no credential at all", async () => {
+    const { context: ctx, request } = context({});
+
+    await expect(storeDown(false).canActivate(ctx)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(request.sessionUnverified).toBeUndefined();
   });
 });

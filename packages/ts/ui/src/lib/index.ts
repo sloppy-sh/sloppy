@@ -27,6 +27,14 @@ export type { Person, PictureRole } from './components/identity/person.js';
 
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
-export type { BlockStackProps } from './components/editor/contract.js';
+export type {
+	BlockStackProps,
+	HeldPicture,
+	NoteEmoji,
+	NoteMedia,
+	SendingPicture,
+	ShownPicture
+} from './components/editor/contract.js';
+export type { CustomEmojiEntry } from './emoji/catalog.js';
 
 export * from './components/facets/index.js';

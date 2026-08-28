@@ -15,6 +15,7 @@ import {
 	prepareCanvas,
 	strokeBounds
 } from './ink.js';
+import { placeBlock } from './placement.js';
 
 export interface InkInsert {
 	width: number;
@@ -253,11 +254,13 @@ export const InkNode = Node.create({
 		return {
 			insertInk:
 				(entry: InkInsert) =>
-				({ commands }) =>
-					commands.insertContent({
+				({ commands, state }) => {
+					const { at, content } = placeBlock(state, {
 						type: this.name,
 						attrs: { width: entry.width, height: entry.height, strokes: entry.strokes ?? [] }
-					})
+					});
+					return commands.insertContentAt(at, content);
+				}
 		};
 	},
 

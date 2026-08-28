@@ -358,6 +358,24 @@ export async function updateUpload(
   return db.update<UploadRow>(id).merge(patch);
 }
 
+/** Everything one identity has in a folder, newest first — the owner's own
+ *  listing, so a pending upload is in it too. */
+export async function listUploadsIn(
+  db: Surreal,
+  did: string,
+  folderId: string,
+  page: { limit: number; offset: number },
+): Promise<{ rows: UploadRow[]; total: number }> {
+  const [rows, counted] = await db.query<[UploadRow[], { total: number }[]]>(
+    `SELECT * FROM idp_upload WHERE did = $did AND folder_id = $folderId
+       ORDER BY created_at DESC LIMIT $limit START $offset;
+     SELECT count() AS total FROM idp_upload
+       WHERE did = $did AND folder_id = $folderId GROUP ALL;`,
+    { did, folderId, limit: page.limit, offset: page.offset },
+  );
+  return { rows: rows ?? [], total: counted?.[0]?.total ?? 0 };
+}
+
 /** Completed uploads only, and public ones only: this answers a stranger. */
 export async function listPublicUploads(
   db: Surreal,

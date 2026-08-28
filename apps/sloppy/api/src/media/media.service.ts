@@ -8,6 +8,7 @@ import {
   type CreateUploadRequest,
   type MediaAsset,
   type MediaRole,
+  type OwnedMediaAsset,
   type UploadTicket,
 } from "@sloppy/types";
 import { type Delegation, SyrService } from "../syr/syr.service";
@@ -82,6 +83,9 @@ const FINALIZE_WINDOW_MS = 5 * 60 * 1000;
 const FIRST_FINALIZE_DELAY_MS = 1500;
 const LAST_FINALIZE_DELAY_MS = 10_000;
 const SEND_TIMEOUT_MS = 30_000;
+/** How far back a picker looks. Enough to find one somebody put in a note
+ *  recently, which is what using it twice means. */
+const LIBRARY_PAGE_SIZE = 60;
 
 function megabytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
@@ -138,6 +142,38 @@ export class MediaService {
       upload_url: ticket.signedUrl,
       upload_headers: { "content-type": request.mime_type },
     };
+  }
+
+  /**
+   * The pictures the caller has already put in a note, newest first, so one can
+   * be used again without being sent again. A row still on its way has nothing
+   * to draw, and one this app cannot render is not worth offering.
+   */
+  async ownPictures(
+    delegation: Delegation,
+    role: MediaRole,
+  ): Promise<OwnedMediaAsset[]> {
+    const rows = await this.syr.listUploads(
+      delegation,
+      folderPathFor(role),
+      LIBRARY_PAGE_SIZE,
+    );
+    const limits = ROLE_LIMITS[role];
+    return rows
+      .filter(
+        (row) =>
+          row.url &&
+          (row.status ?? "completed") === "completed" &&
+          limits.mimeTypes.includes(row.mime_type),
+      )
+      .map((row) => ({
+        upload_id: `${row.did}/${row.local_id}`,
+        filename: row.filename,
+        mime_type: row.mime_type,
+        size: row.size,
+        width: row.metadata?.width ?? null,
+        height: row.metadata?.height ?? null,
+      }));
   }
 
   /**

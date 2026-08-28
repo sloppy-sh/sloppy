@@ -14,4 +14,14 @@ import type { Delegation } from "../syr/syr.service";
 export type AuthedRequest = Request & {
   viewer?: Viewer;
   delegation?: Delegation;
+  /**
+   * Set where a credential arrived and the session store could not say whom it
+   * names. A route that reads `viewer` alone would call that nobody, and answer
+   * a signed-in person as anonymous.
+   */
+  sessionUnverified?: true;
 };
+
+/** What a caller is told when their credential could not be checked. */
+export const SESSION_UNVERIFIED =
+  "Sloppy could not check who you are just now. Try again in a moment.";

@@ -2,7 +2,15 @@ import type { NodeView, OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nodes } from '../stores/nodes.svelte.js';
-import { node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import { session } from '../stores/session.svelte.js';
+import {
+	DID,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from '../stores/fake-api.test-support.js';
 import NoteInModal from './note-in-modal.test-support.svelte';
 
 const FIRST = ref(1);
@@ -75,6 +83,7 @@ beforeEach(() => {
 afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
+	session.clear();
 	target.remove();
 	document.body.innerHTML = '';
 });
@@ -135,6 +144,57 @@ describe('a note opened to read', () => {
 
 		expect(document.body.textContent).toContain('Close it and open it again');
 		expect(document.body.textContent).not.toContain('Nothing written here yet');
+	});
+});
+
+describe('what a note is written with', () => {
+	function labelled(label: string): HTMLButtonElement | undefined {
+		return [...document.body.querySelectorAll('button')].find(
+			(b) => b.getAttribute('aria-label') === label
+		);
+	}
+
+	async function openToWrite(): Promise<void> {
+		stubViewport(WIDE);
+		session.adopt(VIEWER, 'a-session');
+		await nodes.create({});
+		mounted = mount(NoteInModal, { target, props: { opened: FIRST, fresh: false } });
+		flushSync();
+		await settle();
+		document.body
+			.querySelector('.sloppy-prose')
+			?.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+	}
+
+	it('offers a picture, and what the person already has', async () => {
+		api.on('GET /media/uploads', () => [
+			{ upload_id: `${DID}/01OLD`, filename: 'kite.png', mime_type: 'image/png', size: 9 }
+		]);
+		await openToWrite();
+
+		labelled('Picture')?.click();
+		flushSync();
+		await settle();
+		flushSync();
+
+		expect(document.body.querySelector('input[type="file"]')).not.toBeNull();
+		expect(labelled('kite.png')).toBeDefined();
+	});
+
+	it('offers the emoji this person uploaded, not only the Unicode set', async () => {
+		api.on('GET /emoji/me', () => [
+			{ emoji_id: `${DID}/01E`, did: DID, shortcode: 'parrot', kind: 'emoji', src: '/proxy?ref=p' }
+		]);
+		await openToWrite();
+
+		labelled('Emoji')?.click();
+		flushSync();
+		await settle();
+		flushSync();
+
+		expect(document.body.textContent).toContain('Yours');
+		expect(labelled('parrot')).toBeDefined();
 	});
 });
 

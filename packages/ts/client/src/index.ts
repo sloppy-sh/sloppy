@@ -26,6 +26,8 @@ import {
   type MediaAsset,
   MediaAssetSchema,
   type NodeView,
+  type OwnedMediaAsset,
+  OwnedMediaAssetSchema,
   type OwnedRef,
   type ProfileView,
   ProfileViewSchema,
@@ -199,22 +201,21 @@ export class SloppyClient {
 
   /**
    * Where this Sloppy's own identities live, for somebody who has none
-   * anywhere; `undefined` on an instance that only ever delegates elsewhere.
-   * Asked of the API rather than read off the page's origin, which the shells
-   * do not share.
+   * anywhere. Asked of the API rather than read off the page's origin, which
+   * the shells do not share.
+   *
+   * `undefined` means this instance only ever delegates elsewhere; a rejection
+   * means the answer could not be had. A caller that shows the two the same way
+   * hides the only way in on an instance that has one.
    */
   async ownInstance(): Promise<string | undefined> {
-    try {
-      const body = (await this.json("/auth/own-instance", {
-        method: "GET",
-      })) as {
-        instance_url?: unknown;
-      } | null;
-      const url = body?.instance_url;
-      return typeof url === "string" && url ? url : undefined;
-    } catch {
-      return undefined;
-    }
+    const body = (await this.json("/auth/own-instance", {
+      method: "GET",
+    })) as {
+      instance_url?: unknown;
+    } | null;
+    const url = body?.instance_url;
+    return typeof url === "string" && url ? url : undefined;
   }
 
   /**
@@ -415,23 +416,25 @@ export class SloppyClient {
     );
   }
 
+  /** The pictures the caller has already put in a note, newest first. */
+  async ownPictures(): Promise<OwnedMediaAsset[]> {
+    const body = await this.json("/media/uploads", { method: "GET" });
+    return (body as unknown[]).map((a) => OwnedMediaAssetSchema.parse(a));
+  }
+
   /**
    * One of the caller's own pictures, ready for an `<img>`. A note is private
    * until its subtree is published and so are its pictures, so this is the only
    * way one of them draws.
    *
-   * Where the API shares the page's origin the address is the whole answer,
-   * because the session cookie rides the request. Anywhere else an `<img>`
-   * carries no credential, so the bytes are fetched with the caller's token and
-   * served from memory — which is what `release` frees. Call it when the
-   * picture comes off the screen; it is a no-op on the same-origin answer.
+   * An `<img>` sends no credential of its own and this route needs one, so the
+   * bytes are fetched with the caller's and served from memory — which is what
+   * `release` frees. Call it when the picture comes off the screen.
    */
   async ownPicture(
     uploadId: MediaAsset["upload_id"],
   ): Promise<{ src: string; release: () => void }> {
     const path = `/media/uploads${refPath(uploadId)}`;
-    if (isSameOrigin()) return { src: apiUrl(path), release: () => {} };
-
     const res = await this.request(path, {
       method: "GET",
       headers: { accept: "image/*" },

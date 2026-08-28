@@ -33,28 +33,37 @@ function serving() {
   };
 }
 
+/** Object URLs, so what was minted and what was freed can both be seen. */
+function holdingBlobs() {
+  const created = vi.fn(() => "blob:sloppy/1");
+  const revoked = vi.fn();
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL: created,
+    revokeObjectURL: revoked,
+  });
+  return { created, revoked };
+}
+
 describe("one of the caller's own pictures", () => {
-  // Same-origin the session cookie rides the request, so the address itself is
-  // what an `<img>` needs and nothing is held in memory to free.
-  it("is an address where the API shares the page's origin", async () => {
+  // The web shell's session is a token rather than a cookie, so an address
+  // handed to an `<img>` would reach this route with no credential at all.
+  it("is fetched with the caller's token where the API shares the origin", async () => {
+    const { revoked } = holdingBlobs();
     const { asked, client } = serving();
 
     const picture = await client.ownPicture(UPLOAD);
 
-    expect(picture.src).toBe("/api/media/uploads/did%3Asyr%3Az6Mk1/01ABCDEF");
-    expect(asked).toHaveLength(0);
+    expect(asked[0].url).toBe("/api/media/uploads/did%3Asyr%3Az6Mk1/01ABCDEF");
+    expect(asked[0].headers.get("authorization")).toBe("Bearer a-session");
+    expect(picture.src).toBe("blob:sloppy/1");
+
     picture.release();
+    expect(revoked).toHaveBeenCalledWith("blob:sloppy/1");
   });
 
-  // An `<img>` carries no credential across origins, and this route needs one.
   it("is fetched with the caller's token anywhere else", async () => {
-    const created = vi.fn(() => "blob:sloppy/1");
-    const revoked = vi.fn();
-    vi.stubGlobal("URL", {
-      ...URL,
-      createObjectURL: created,
-      revokeObjectURL: revoked,
-    });
+    const { revoked } = holdingBlobs();
     setHost("https://sloppy.example");
     const { asked, client } = serving();
 
@@ -68,5 +77,15 @@ describe("one of the caller's own pictures", () => {
 
     picture.release();
     expect(revoked).toHaveBeenCalledWith("blob:sloppy/1");
+  });
+
+  it("reports a refusal rather than drawing from an error page", async () => {
+    holdingBlobs();
+    const fetchImpl = vi.fn(
+      async () => new Response("no", { status: 401 }),
+    ) as unknown as typeof fetch;
+    const client = new SloppyClient({ token: "a-session", fetch: fetchImpl });
+
+    await expect(client.ownPicture(UPLOAD)).rejects.toThrow();
   });
 });

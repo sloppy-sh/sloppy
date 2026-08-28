@@ -91,3 +91,10 @@ export const MediaAssetSchema = z.object({
   height: z.int().positive().nullable().optional(),
 });
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
+
+/** One of the caller's own, as a listing hands it back: the asset plus the name
+ *  it was sent under, which is all a picker has to label it by. */
+export const OwnedMediaAssetSchema = MediaAssetSchema.extend({
+  filename: z.string(),
+});
+export type OwnedMediaAsset = z.infer<typeof OwnedMediaAssetSchema>;

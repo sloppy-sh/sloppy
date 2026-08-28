@@ -6,9 +6,12 @@ import { Editor } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
+import type { CustomEmojiEntry } from '../../emoji/catalog.js';
+import type { NoteEmoji, NoteMedia } from './contract.js';
 import { BlockIdentity, docBlocks, openBlocks, type SavedBlock } from './document.js';
 import { EmojiNode } from './emoji-node.js';
 import { InkNode } from './ink-node.js';
+import { PictureNode } from './picture-node.js';
 
 export const OWNER = 'did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc';
 
@@ -44,12 +47,31 @@ export const NOTE: NodeView = {
 	published: false
 };
 
+/** A store that answers nothing, for a test about something else. */
+export function noMedia(): NoteMedia {
+	return {
+		send: () => ({ asset: new Promise<never>(() => {}), cancel: () => {} }),
+		picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} }),
+		library: async () => []
+	};
+}
+
+export function noEmoji(catalog: readonly CustomEmojiEntry[] = []): NoteEmoji {
+	return {
+		mine: OWNER,
+		catalog: async () => catalog,
+		add: async () => {},
+		remove: async () => {}
+	};
+}
+
 /** jsdom has no 2D context, and the ink surfaces ask for one on every repaint. */
 export function stubCanvas(): void {
 	HTMLCanvasElement.prototype.getContext = (() => ({
 		setTransform() {},
 		clearRect() {},
 		beginPath() {},
+		drawImage() {},
 		moveTo() {},
 		lineTo() {},
 		stroke() {},
@@ -78,8 +100,9 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 			TaskList,
 			TaskItem.configure({ nested: true }),
 			BlockIdentity,
-			EmojiNode,
-			InkNode
+			EmojiNode(() => []),
+			InkNode,
+			PictureNode(() => undefined)
 		]
 	});
 	const manager = editor.storage.markdown.manager;
