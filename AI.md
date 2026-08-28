@@ -304,6 +304,45 @@ _who_ is filtering that slop and whether they are doing it correctly. AI is a to
 colleague you can point to and blame. The human author owns every commit and is
 accountable for it. Write commit messages as the author, full stop.
 
+## Match the Machinery to the Change (required, and read this first)
+
+The loop below is expensive. It has repeatedly spent hours and several review rounds on changes
+that warranted one pass, and the cost is not abstract: it is the developer waiting. **The default
+is the SMALLEST process that would catch the class of defect this change can produce.** Scaling up
+is a decision you justify, not the starting point.
+
+**Size the wave before you spawn anything.** Three tiers, and most work is the first:
+
+- **One pass, one reviewer.** A change inside one package that adds no shared vocabulary: a UI
+  surface, a copy fix, a bug with a known cause, a refactor behind a stable signature. One
+  implementer, ONE adversary, at most one fix round. No foundation wave, no tournament, no merge
+  agent — the orchestrator merges it.
+- **Two reviewers, up to two fix rounds.** Work that crosses packages, or changes a contract more
+  than one surface reads.
+- **The full loop below** — foundation wave, worktree tracks, two adversaries, merge tournament.
+  Reserved for what can be wrong in ways a build cannot see: the address protocol, auth, anything
+  a peer will hold, anything that decides what leaves the device. Not for features.
+
+**A reviewer verifies; it does not re-derive.** The implementer already ran the suite, booted the
+stack and measured. Re-running all of it is how a round costs twenty minutes and finds a comment.
+Spot-check the claims that would change the verdict, exercise the thing a person would touch, and
+trust a number until you have reason not to.
+
+**Prose is never blocking after the first round.** A finding about wording, a comment, a doc
+sentence or a name is advisory from round two onward, whatever its lens. It is real, and it is not
+worth another round-trip; fold it into the next change that touches the file. **A round that
+produces only prose findings ends the loop.**
+
+**Rounds end on diminishing returns, not on the cap.** Three rounds is a ceiling, not a target. If
+a round's findings are smaller than the round before it, stop — the next one will be smaller still.
+
+**Batch a correction with the work it corrects.** A defect found in review of a change gets fixed
+in that change, not in a follow-up wave with its own foundation and its own reviewers.
+
+**The orchestrator does small, mechanical, unambiguous work itself.** Deleting code with no
+successor, a one-line fix with a named cause, a formatting pass, a version bump: spawning an agent
+to do it costs more than doing it, and adds a review round to something with nothing to review.
+
 ## Multi-System Prompts (parallel agents + adversarial review)
 
 When the developer asks for changes to **different systems in the same prompt**, the
