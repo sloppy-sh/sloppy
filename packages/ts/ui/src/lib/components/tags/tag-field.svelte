@@ -4,6 +4,7 @@
 	// graph completes as they type, and everything else is just a word.
 	import X from '@lucide/svelte/icons/x';
 	import { type Tag, TagSchema, TagsSchema } from '@sloppy/types';
+	import { onDestroy } from 'svelte';
 	import { cn } from '$lib/utils.js';
 
 	let {
@@ -31,7 +32,8 @@
 	/** What the reader asked for, while it is on its way to the server. */
 	let pending = $state<Tag[] | null>(null);
 	let problem = $state<string | null>(null);
-	let active = $state(0);
+	/** Which completion the arrow keys are on; below zero none of them is. */
+	let active = $state(-1);
 	let dismissed = $state(false);
 	let asked = 0;
 
@@ -46,6 +48,7 @@
 			.filter((tag) => !already.has(tag) && tag.includes(needle) && tag !== needle)
 			.slice(0, SHOWN);
 	});
+	const chosen = $derived(active < 0 ? null : (matches[active] ?? null));
 
 	async function save(next: Tag[]): Promise<void> {
 		const mine = ++asked;
@@ -82,15 +85,24 @@
 		await save(shown.filter((held) => held !== tag));
 	}
 
+	let committing: number | null = null;
+
 	// Blur lands before the click that caused it, so committing what is in the
 	// field straight away turns a tapped suggestion into two tags — the
 	// half-typed one and the one they picked. `add` empties the field first, so a
 	// frame later there is nothing left to commit.
 	function commitOnBlur(): void {
-		requestAnimationFrame(() => {
+		committing = requestAnimationFrame(() => {
+			committing = null;
 			if (typed.trim() !== '') void add(typed);
 		});
 	}
+
+	// The note can close between the blur and that frame — closing it is what
+	// blurred the field — and there would be no note left for `add` to tag.
+	onDestroy(() => {
+		if (committing !== null) cancelAnimationFrame(committing);
+	});
 
 	function onkeydown(event: KeyboardEvent): void {
 		if (event.key === 'Enter' || event.key === ' ') {
@@ -98,7 +110,7 @@
 			// two words typed in a row become two tags rather than one refusal.
 			if (typed.trim() === '') return;
 			event.preventDefault();
-			void add(matches[active] ?? typed);
+			void add(chosen ?? typed);
 			return;
 		}
 		if (event.key === 'Backspace' && typed === '' && shown.length > 0) {
@@ -108,16 +120,21 @@
 		}
 		if (event.key === 'Escape' && matches.length > 0) {
 			event.preventDefault();
+			// Otherwise the surface around the field reads the same Escape and the
+			// note closes on the keystroke that was meant to put the list away.
+			event.stopPropagation();
 			dismissed = true;
 			return;
 		}
 		if (matches.length === 0) return;
+		// Below zero is a position at both ends: arrowing off the list is how the
+		// word being typed is chosen back over any completion of it.
 		if (event.key === 'ArrowDown') {
 			event.preventDefault();
-			active = (active + 1) % matches.length;
+			active = active + 1 < matches.length ? active + 1 : -1;
 		} else if (event.key === 'ArrowUp') {
 			event.preventDefault();
-			active = (active - 1 + matches.length) % matches.length;
+			active = active < 0 ? matches.length - 1 : active - 1;
 		}
 	}
 </script>
@@ -151,7 +168,7 @@
 			{onkeydown}
 			oninput={() => {
 				dismissed = false;
-				active = 0;
+				active = -1;
 			}}
 			onblur={commitOnBlur}
 			type="text"
@@ -163,7 +180,7 @@
 			aria-labelledby="{listId}-label"
 			aria-controls={listId}
 			aria-expanded={matches.length > 0}
-			aria-activedescendant={matches.length > 0 ? `${listId}-${active}` : undefined}
+			aria-activedescendant={chosen ? `${listId}-${active}` : undefined}
 			{placeholder}
 			class="min-h-9 min-w-32 flex-1 bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground md:text-sm"
 		/>

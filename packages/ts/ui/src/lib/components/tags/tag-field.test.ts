@@ -152,13 +152,40 @@ describe('completing from what is already in the graph', () => {
 		expect(options()).toEqual(['biochemistry']);
 	});
 
-	it('commits the highlighted one on Enter, so the arrow keys choose', () => {
+	// The word being typed is what Enter is for; a completion is offered, never
+	// substituted. Without this, "work" cannot be written where "working" exists.
+	it('commits what was typed even where a longer tag completes it', () => {
 		const field = render({ suggestions });
 		type(field, 'bio');
 		expect(options()).toEqual(['biology', 'biochemistry']);
+		press(field, 'Enter');
+		expect(saved).toEqual([['bio']]);
+	});
+
+	it('commits the one the arrow keys chose', () => {
+		const field = render({ suggestions });
+		type(field, 'bio');
+		press(field, 'ArrowDown');
 		press(field, 'ArrowDown');
 		press(field, 'Enter');
 		expect(saved).toEqual([['biochemistry']]);
+	});
+
+	// So the arrows can be walked off the list without retyping the word.
+	it('steps off the end of the list back onto the typed word', () => {
+		const field = render({ suggestions });
+		type(field, 'bio');
+		press(field, 'ArrowUp');
+		press(field, 'ArrowDown');
+		press(field, 'Enter');
+		expect(saved).toEqual([['bio']]);
+	});
+
+	it('agrees with the blur, which commits the typed word too', async () => {
+		const field = render({ suggestions });
+		type(field, 'bio');
+		field.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		await vi.waitFor(() => expect(saved).toEqual([['bio']]));
 	});
 
 	it('commits the one that was clicked', () => {
@@ -174,6 +201,37 @@ describe('completing from what is already in the graph', () => {
 		type(field, 'bio');
 		press(field, 'Escape');
 		expect(options()).toEqual([]);
+		expect(saved).toEqual([]);
+		expect(field.value).toBe('bio');
+	});
+
+	// The field lives inside a note, and the note closes on Escape. The keystroke
+	// that dismisses the list is spent doing that and nothing else.
+	it('keeps the Escape that dismissed the list to itself, and only that one', () => {
+		const field = render({ suggestions });
+		const heard: string[] = [];
+		const listen = (event: Event) => heard.push((event as KeyboardEvent).key);
+		document.addEventListener('keydown', listen);
+		try {
+			type(field, 'bio');
+			press(field, 'Escape');
+			expect(heard).toEqual([]);
+			press(field, 'Escape');
+			expect(heard).toEqual(['Escape']);
+		} finally {
+			document.removeEventListener('keydown', listen);
+		}
+	});
+});
+
+describe('when the note closes under it', () => {
+	it('does not tag a note that is no longer there', async () => {
+		const field = render();
+		type(field, 'method');
+		field.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		unmount(mounted!, { outro: false });
+		mounted = undefined;
+		await new Promise((settle) => requestAnimationFrame(() => requestAnimationFrame(settle)));
 		expect(saved).toEqual([]);
 	});
 });

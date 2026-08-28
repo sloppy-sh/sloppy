@@ -4,6 +4,7 @@
 	// lead, in the order they were selected, because that order is what hands out
 	// the hues.
 	import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
+	import { tick } from 'svelte';
 	import { cn } from '$lib/utils.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 
@@ -23,13 +24,35 @@
 	const counts = $derived(new Map(tags.map((entry) => [entry.tag, entry.notes])));
 
 	/** Selected first, in selection order; then the rest as the read ordered them. */
-	const rail = $derived([
+	const order = $derived([
 		...selected,
 		...tags.map((entry) => entry.tag).filter((tag) => !slots.has(tag))
 	]);
 
-	function toggle(tag: Tag): void {
-		onselect(slots.has(tag) ? selected.filter((held) => held !== tag) : [...selected, tag]);
+	let rail = $state<HTMLElement | null>(null);
+
+	async function toggle(tag: Tag, tapped: HTMLElement): Promise<void> {
+		const dropping = slots.has(tag);
+		onselect(dropping ? selected.filter((held) => held !== tag) : [...selected, tag]);
+		if (dropping) return;
+		await tick();
+		keepInView(tapped);
+	}
+
+	/**
+	 * Selecting has moved the tapped chip to the head of the rail, away from
+	 * where the finger left it — and the legend is read from that head, so show
+	 * as much of it as fits with the tag still on screen.
+	 */
+	function keepInView(tapped: HTMLElement): void {
+		if (!rail) return;
+		const at = rail.scrollLeft;
+		const box = tapped.getBoundingClientRect();
+		const start = box.left - rail.getBoundingClientRect().left + at;
+		const end = start + box.width;
+		const seen = rail.clientWidth;
+		const to = end <= seen ? 0 : Math.min(start, Math.max(at, end - seen));
+		if (to !== at) rail.scrollTo({ left: to });
 	}
 
 	const chip =
@@ -55,15 +78,16 @@
 	</div>
 
 	<div
+		bind:this={rail}
 		class="-mx-1 flex gap-1.5 overflow-x-auto scroll-fade-x px-1 py-0.5 [scrollbar-width:none]"
 		{@attach scrollFade('x')}
 	>
-		{#each rail as tag (tag)}
+		{#each order as tag (tag)}
 			{@const slot = slots.get(tag)}
 			<button
 				type="button"
 				aria-pressed={slot !== undefined}
-				onclick={() => toggle(tag)}
+				onclick={(event) => void toggle(tag, event.currentTarget)}
 				style={slot === undefined ? undefined : `color: var(--facet-${slot})`}
 				class={cn(
 					chip,
