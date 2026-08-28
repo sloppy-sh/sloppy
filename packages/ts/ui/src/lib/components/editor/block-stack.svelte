@@ -718,6 +718,7 @@
 <style>
 	.block-gutter {
 		--block-gutter: 1.75rem;
+		--block-line: 1.75rem;
 		padding-left: var(--block-gutter);
 	}
 	:global(.sloppy-prose) {
@@ -745,7 +746,7 @@
 		align-items: center;
 		justify-content: center;
 		width: 1.5rem;
-		height: 1.75rem;
+		height: var(--block-line, 1.75rem);
 		border-radius: calc(var(--radius) - 4px);
 		color: var(--muted-foreground);
 		opacity: 0.4;
@@ -762,6 +763,19 @@
 	@media (prefers-reduced-motion: reduce) {
 		:global(.sloppy-row-handle) {
 			transition: none;
+		}
+	}
+	/* A drag is a sustained contact, so the whole gutter is the target and the
+	   gutter widens to hold one a finger can find. The grip drawn inside it keeps
+	   its size, and stays on the line of the block it moves. */
+	@media (any-pointer: coarse) {
+		.block-gutter {
+			--block-gutter: 2.5rem;
+		}
+		:global(.sloppy-row-handle) {
+			width: var(--block-gutter);
+			height: var(--block-gutter);
+			top: calc((var(--block-line, 1.75rem) - var(--block-gutter, 1.75rem)) / 2);
 		}
 	}
 	:global(.sloppy-row-handle:hover),
