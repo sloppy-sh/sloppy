@@ -12,8 +12,6 @@ import {
   parseAddress,
 } from "@sloppy/types";
 
-const TAU = Math.PI * 2;
-
 /** Roots sit on this ring; their subtrees radiate outward from it. */
 const ROOT_RADIUS = 1400;
 const STEP_FIRST = 300;
@@ -108,71 +106,4 @@ function fanOffset(ordinal: number): number {
 /** A sector angle as a signed fraction of a half-turn, in `[-1, 1)`. */
 function signedUnit(sector: number): number {
   return sector / Math.PI - 1;
-}
-
-export interface ClusterField {
-  /** Where a node carrying this facet value belongs. `undefined` is unset. */
-  centre(value: string | undefined): { x: number; y: number };
-  /** How far a node scatters around its cluster's centre. */
-  spread(value: string | undefined): number;
-  /** Every value's position on the ring, unset last. */
-  readonly order: readonly string[];
-}
-
-const CLUSTER_BASE_RADIUS = 420;
-const CLUSTER_SCATTER = 0.62;
-
-/**
- * Cluster centres for the active lens: one ring position per facet value, with
- * the unset cluster last so it never sits at the centre and becomes a well
- * every unlabelled node falls into.
- *
- * `population` sizes each cluster's scatter, so a dimension whose values split
- * unevenly does not draw one dense blot beside several sparse ones.
- */
-export function clusterField(
-  order: readonly string[],
-  population: ReadonlyMap<string | undefined, number>,
-): ClusterField {
-  const slots = order.length + 1;
-  const radius = CLUSTER_BASE_RADIUS * Math.sqrt(Math.max(slots, 2));
-  const index = new Map(order.map((value, at) => [value, at]));
-
-  const centre = (value: string | undefined) => {
-    const at =
-      value === undefined ? order.length : (index.get(value) ?? order.length);
-    const angle = (TAU * at) / slots;
-    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
-  };
-
-  return {
-    centre,
-    spread: (value) =>
-      CLUSTER_SCATTER *
-      radius *
-      Math.sqrt((population.get(value) ?? 1) / slots),
-    order,
-  };
-}
-
-/**
- * A node's seed under a lens: its cluster's centre, scattered by its address so
- * the sim starts spread out rather than stacked on one point.
- */
-export function clusterSeed(
-  address: Address,
-  field: ClusterField,
-  value: string | undefined,
-): { x: number; y: number } {
-  const home = field.centre(value);
-  const sector = addressSector(address);
-  const distance = field.spread(value) * Math.sqrt(fract(sector * 3.7));
-  return {
-    x: home.x + Math.cos(sector) * distance,
-    y: home.y + Math.sin(sector) * distance,
-  };
-}
-
-function fract(value: number): number {
-  return value - Math.floor(value);
 }

@@ -2,10 +2,17 @@
 // adjacency are decided. The scene reads attributes off this and draws them; the
 // layout reads the same attributes and moves them.
 
-import type { Address, DidSyr, NodeView, OwnedRef } from "@sloppy/types";
+import {
+  assignTagHueSlots,
+  type Address,
+  type DidSyr,
+  type NodeView,
+  type OwnedRef,
+  type Tag,
+} from "@sloppy/types";
 import Graph from "graphology";
-import type { DrawnNode, GraphLens } from "./contract.js";
-import { clusterField, clusterSeed, seedField } from "./layout/geometry.js";
+import type { DrawnNode } from "./contract.js";
+import { seedField } from "./layout/geometry.js";
 import type { GraphPalette } from "./palette.js";
 
 /** DESIGN.md § Form: provenance survives greyscale, so it is never a hue. */
@@ -21,13 +28,10 @@ const EDGE_MIN = 34;
 const LINK_DISTANCE = 520;
 
 /**
- * How hard a node is held to where it belongs. Genealogically that is a nudge —
- * the seed fixes the shape and the force pass resolves the crowding. Under a
- * lens it has to be the dominant force, because a lens that recoloured the same
- * arrangement would not have answered anything.
+ * How hard a node is held to its seed — a nudge, because the seed fixes the
+ * shape and the force pass only resolves the crowding around it.
  */
 const SEED_ANCHOR = 0.035;
-const CLUSTER_ANCHOR = 0.45;
 
 export interface GraphNodeAttributes {
   index: number;
@@ -41,9 +45,14 @@ export interface GraphNodeAttributes {
   provenance: Provenance;
   /** Children of this node that are themselves drawn — what a collapse folds. */
   children: number;
-  /** The active lens's value for this node, absent when it carries none. */
-  facet: string | undefined;
+  /**
+   * The selected tag this node draws the hue of: the earliest-selected one it
+   * carries, absent when it carries none. DESIGN.md § Hue — one mark, one hue.
+   */
+  tag: Tag | undefined;
   fill: number;
+  /** Below 1 for a node the selection has nothing to say about. */
+  alpha: number;
   x: number;
   y: number;
   anchorX: number;
@@ -59,7 +68,8 @@ export interface GraphEdgeAttributes {
 export type GraphModel = Graph<GraphNodeAttributes, GraphEdgeAttributes>;
 
 export interface ModelOptions {
-  lens: GraphLens | null;
+  /** In selection order, which is the order the hue slots are handed out in. */
+  selection: readonly Tag[];
   palette: GraphPalette;
   /** Whose graph this is. Absent means nothing here is claimed as own. */
   viewer?: DidSyr;
@@ -71,8 +81,6 @@ export interface BuiltModel {
   graph: GraphModel;
   /** Drawn order, which is address order — the layout indexes by position. */
   order: readonly OwnedRef[];
-  /** The lens's values in ramp order, empty without a lens. */
-  facets: readonly string[];
 }
 
 export function buildModel(
@@ -80,29 +88,17 @@ export function buildModel(
   options: ModelOptions,
 ): BuiltModel {
   const graph: GraphModel = new Graph({ type: "undirected" });
-  const facets = options.lens ? facetOrder(drawn, options.lens) : [];
-  const facetIndex = new Map(facets.map((value, at) => [value, at]));
+  const slots = assignTagHueSlots(options.selection);
+  // Ranked off the slot map's keys rather than off the selection, so the dedupe
+  // rule that hands out the hues is the same one that picks between them.
+  const rank = new Map([...slots.keys()].map((tag, at) => [tag, at] as const));
   const seeds = seedField(drawn.map((entry) => entry.node.address));
-
-  const population = new Map<string | undefined, number>();
-  if (options.lens) {
-    for (const { node } of drawn) {
-      const value = node.labels[options.lens.dimension.name];
-      population.set(value, (population.get(value) ?? 0) + 1);
-    }
-  }
-  const clusters = clusterField(facets, population);
 
   drawn.forEach((entry, index) => {
     const { node } = entry;
-    const facet = options.lens
-      ? node.labels[options.lens.dimension.name]
-      : undefined;
+    const tag = earliestSelected(node.tags, rank);
+    const slot = tag === undefined ? undefined : slots.get(tag);
     const seed = seeds.get(node.address) ?? { x: 0, y: 0, outward: 0 };
-    const start = options.lens
-      ? clusterSeed(node.address, clusters, facet)
-      : seed;
-    const anchor = options.lens ? clusters.centre(facet) : seed;
     const kept = options.keep?.get(node.ref);
 
     graph.addNode(node.ref, {
@@ -116,13 +112,20 @@ export function buildModel(
       radius: radiusFor(entry),
       provenance: provenanceOf(node, options.viewer),
       children: 0,
-      facet,
-      fill: fillFor(entry, facet, facetIndex, facets.length, options),
-      x: kept?.x ?? start.x,
-      y: kept?.y ?? start.y,
-      anchorX: anchor.x,
-      anchorY: anchor.y,
-      anchorStrength: options.lens ? CLUSTER_ANCHOR : SEED_ANCHOR,
+      tag,
+      fill:
+        slot === undefined
+          ? options.palette.depth(node.depth)
+          : options.palette.tag(slot),
+      alpha:
+        slot === undefined && options.selection.length > 0
+          ? options.palette.unselectedAlpha
+          : 1,
+      x: kept?.x ?? seed.x,
+      y: kept?.y ?? seed.y,
+      anchorX: seed.x,
+      anchorY: seed.y,
+      anchorStrength: SEED_ANCHOR,
     });
   });
 
@@ -151,26 +154,27 @@ export function buildModel(
     }
   }
 
-  return { graph, order: drawn.map((entry) => entry.node.ref), facets };
+  return { graph, order: drawn.map((entry) => entry.node.ref) };
 }
 
 /**
- * The lens's values in the order the hue ramp walks: declared order first,
- * because that is the order the reader wrote them in, then whatever the region
- * turned out to carry, sorted so two peers reading the same region agree.
+ * Of the tags a note carries, the one selected first — so a note in several
+ * selected sets draws in one hue and always the same one.
  */
-export function facetOrder(
-  drawn: readonly DrawnNode[],
-  lens: GraphLens,
-): string[] {
-  const declared = lens.dimension.values;
-  const known = new Set(declared);
-  const extra = new Set<string>();
-  for (const { node } of drawn) {
-    const value = node.labels[lens.dimension.name];
-    if (value !== undefined && !known.has(value)) extra.add(value);
+function earliestSelected(
+  tags: readonly Tag[],
+  rank: ReadonlyMap<Tag, number>,
+): Tag | undefined {
+  let found: Tag | undefined;
+  let best = Number.POSITIVE_INFINITY;
+  for (const tag of tags) {
+    const at = rank.get(tag);
+    if (at !== undefined && at < best) {
+      best = at;
+      found = tag;
+    }
   }
-  return [...declared, ...[...extra].sort()];
+  return found;
 }
 
 function radiusFor(entry: DrawnNode): number {
@@ -182,17 +186,4 @@ function radiusFor(entry: DrawnNode): number {
 function provenanceOf(node: NodeView, viewer: DidSyr | undefined): Provenance {
   if (viewer !== undefined && node.created_by !== viewer) return "pulled";
   return node.published ? "published" : "own";
-}
-
-function fillFor(
-  entry: DrawnNode,
-  facet: string | undefined,
-  facetIndex: ReadonlyMap<string, number>,
-  facetCount: number,
-  options: ModelOptions,
-): number {
-  if (options.lens === null) return options.palette.depth(entry.node.depth);
-  if (facet === undefined) return options.palette.unlabelled;
-  const at = facetIndex.get(facet) ?? 0;
-  return options.palette.facet(options.lens.slot, at, facetCount);
 }

@@ -41,8 +41,26 @@ export function parseBody<S extends z.ZodType>(
 ): z.output<S> {
   const parsed = schema.safeParse(body ?? {});
   if (parsed.success) return parsed.data;
-  // The schema's sentence and nothing else: nobody can act on "tags.0".
-  throw new BadRequestException(parsed.error.issues[0].message);
+  const issue = parsed.error.issues[0];
+  const field = fieldName(issue.path);
+  throw new BadRequestException(
+    field ? `${field} — ${issue.message}` : issue.message,
+  );
+}
+
+/**
+ * The field a refusal is about, named the way it is labelled on screen, or
+ * `null` where the refusal is about the whole body.
+ *
+ * Zod's path is a wire path: nobody can act on the `0` in `tags.0`, and a
+ * nested one names its container before the field that is actually wrong. But
+ * a refusal that names no field at all leaves somebody hunting a form for the
+ * one line to change, so the innermost named step goes back in, in words.
+ */
+function fieldName(path: readonly PropertyKey[]): string | null {
+  const named = path.filter((step) => typeof step === "string");
+  const words = (named.at(-1) ?? "").replaceAll("_", " ").trim();
+  return words === "" ? null : words[0].toUpperCase() + words.slice(1);
 }
 
 /**

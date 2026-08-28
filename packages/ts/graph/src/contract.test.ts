@@ -18,7 +18,7 @@ function node(seq: number, address: string, parent?: NodeView): NodeView {
     parent: parent?.ref,
     origin: parent?.origin ?? ref(seq),
     title: address,
-    labels: {},
+    tags: [],
     links: [],
     published: false,
   };

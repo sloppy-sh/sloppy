@@ -14,7 +14,7 @@ const corpus = makeCorpus();
 const palette = buildPalette({
   ink: "oklch(0.21 0.01 60)",
   paper: "oklch(0.98 0.006 85)",
-  facets: [],
+  hues: [],
 });
 
 function startFor(count: number): LayoutStart {
@@ -23,7 +23,7 @@ function startFor(count: number): LayoutStart {
     nodes,
     applyLod(nodes, new Set<OwnedRef>(), undefined).collapsed,
   );
-  const model = buildModel(drawn, { lens: null, palette });
+  const model = buildModel(drawn, { selection: [], palette });
   const index = (ref: string) => model.graph.getNodeAttributes(ref).index;
   const edges: LayoutStart["edges"] = [];
   model.graph.forEachEdge((_edge, attributes, source, target) => {

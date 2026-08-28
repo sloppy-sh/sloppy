@@ -7,8 +7,8 @@
 //
 // `pnpm --filter @sloppy/graph bench`, then read the panel or `window.__bench`.
 
+import type { Tag } from "@sloppy/types";
 import LayoutWorker from "../src/layout-worker.ts?worker";
-import type { GraphLens } from "../src/contract.js";
 import { makeCorpus } from "../src/corpus.test-support.js";
 import {
   type GraphHandle,
@@ -52,7 +52,7 @@ function timed<T>(name: string, work: () => T): T {
 const corpus = timed("build corpus (2,400 notes)", () => makeCorpus());
 /** `?inline` measures what a surface that cannot start a worker settles like. */
 const withWorker = !new URLSearchParams(location.search).has("inline");
-let lens: GraphLens | null = null;
+let selection: Tag[] = [];
 let handle: GraphHandle;
 
 // Starts empty: level of detail is what bounds the field, and a host that
@@ -62,7 +62,7 @@ const collapsed = new Set<string>();
 const props = (): GraphMountOptions => ({
   nodes: corpus.nodes,
   collapsed,
-  lens,
+  selection,
   viewer: corpus.owner,
   onOpenNode: (ref) => say(`open ${ref.slice(-8)}`),
   onExpand: (ref) => {
@@ -215,52 +215,60 @@ async function run(): Promise<void> {
   await measure("pinch, two fingers", () => pinchRun(120));
 
   say("");
-  const dimension = corpus.dimensions.find((d) => d.name === "status")!;
-  await measure("lens switch → settled", async () => {
-    const started = performance.now();
-    lens = { dimension, slot: 2 };
-    handle.update(props());
-    await frame();
-    const toFirstFrame = performance.now() - started;
-    const took = await settle();
-    say(
-      `lens switch → first frame        ${toFirstFrame.toFixed(1)} ms · ` +
-        `re-clustered in ${took.toFixed(0)} ms`,
-    );
-  });
-  await measure("idle, under a lens", async () => {
+  // The number the tag rail is judged on: a reader ticks a tag and the answer
+  // has to be on the canvas before the next frame, with the field where they
+  // left it — so `settled` staying true is as much the measurement as the ms.
+  for (const [at, tag] of corpus.tags.slice(0, 3).entries()) {
+    await measure(`select "${tag}" → first frame`, async () => {
+      const started = performance.now();
+      selection = corpus.tags.slice(0, at + 1);
+      handle.update(props());
+      await frame();
+      const took = performance.now() - started;
+      const carriers = corpus.nodes.filter((node) =>
+        node.tags.some((held) => selection.includes(held)),
+      ).length;
+      say(
+        `select "${tag}"`.padEnd(32) +
+          `${took.toFixed(1)} ms to first frame · ` +
+          `${carriers} notes carry any of ${selection.length} · ` +
+          `field ${handle.stats()?.settled ? "held" : "RE-SETTLING"}`,
+      );
+      return [took];
+    });
+  }
+  await measure("idle, three tags selected", async () => {
     await frames(120);
   });
-  await measure("pan, under a lens", () => panRun(120));
+  await measure("pan, three tags selected", () => panRun(120));
 
-  lens = null;
-  handle.update(props());
-  await settle();
+  await measure("clear the selection → first frame", async () => {
+    const started = performance.now();
+    selection = [];
+    handle.update(props());
+    await frame();
+    return [performance.now() - started];
+  });
 
   say("");
   say("BENCH DONE");
   (window as unknown as { __bench: unknown }).__bench = { samples, lines };
 }
 
-const lensNames = [null, ...corpus.dimensions.map((d) => d.name)];
-
 function fit(): void {
   handle.fit();
 }
 
-function cycleLens(): void {
-  const at = lensNames.indexOf(lens?.dimension.name ?? null);
-  const next = lensNames[(at + 1) % lensNames.length];
-  const dimension = corpus.dimensions.find((d) => d.name === next);
-  lens = dimension
-    ? { dimension, slot: ((corpus.dimensions.indexOf(dimension) % 8) + 1) as 1 }
-    : null;
+function cycleSelection(): void {
+  selection =
+    selection.length >= 3 ? [] : corpus.tags.slice(0, selection.length + 1);
   handle.update(props());
+  say(`selected ${selection.length ? selection.join(", ") : "nothing"}`);
 }
 
 for (const [label, action] of [
   ["fit", fit],
-  ["lens", cycleLens],
+  ["select a tag", cycleSelection],
 ] as const) {
   const button = document.createElement("button");
   button.textContent = label;
@@ -270,7 +278,7 @@ for (const [label, action] of [
 
 Object.assign(window, {
   __fit: fit,
-  __lens: cycleLens,
+  __select: cycleSelection,
   __stats: () => handle.stats(),
 });
 

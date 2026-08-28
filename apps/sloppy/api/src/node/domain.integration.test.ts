@@ -598,16 +598,44 @@ describe("the domain routes", () => {
       ).toBe(400);
     });
 
+    // Rendered verbatim by the field, so it says what is wrong AND where — a
+    // person cannot fix a form they cannot locate, and the wire's own `tags.0`
+    // names an index nobody typed.
     scenario("refuses a tag in words a person can act on", async () => {
       const refused = await call("POST", "/nodes", ada, {
         tags: ["two words"],
       });
       expect(refused.status).toBe(400);
-      // Rendered verbatim by the picker, so it carries no field path.
       expect((refused.body as { message: string }).message).toBe(
-        "A tag is one word, with no spaces in it.",
+        "Tags — A tag is one word, with no spaces in it.",
       );
     });
+
+    // The same helper refuses every domain route, so a bad field on one of them
+    // must not read as a whole request the server could not make sense of.
+    scenario(
+      "names the field on every route that shares the refusal",
+      async () => {
+        const note = await newNode(ada, { title: "Somewhere to put a block" });
+        const badType = await call("POST", "/blocks", ada, {
+          node: note.ref,
+          type: "not-a-kind",
+          content: "",
+        });
+        expect(badType.status).toBe(400);
+        expect((badType.body as { message: string }).message).toMatch(
+          /^Type — /,
+        );
+
+        const longTitle = await call("POST", "/nodes", ada, {
+          title: "x".repeat(513),
+        });
+        expect(longTitle.status).toBe(400);
+        expect((longTitle.body as { message: string }).message).toMatch(
+          /^Title — /,
+        );
+      },
+    );
 
     scenario("takes the tags a note is given for its whole set", async () => {
       const note = await newNode(ada, {

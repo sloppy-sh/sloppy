@@ -25,7 +25,8 @@ describe('nodeHref / refFromPath', () => {
 describe('activeRouteId', () => {
 	it.each([
 		['/', 'graph'],
-		['/labels/domain', 'labels'],
+		['/settings/anything-under-it', 'settings'],
+		['/nowhere', 'graph'],
 		[nodeHref(REF as OwnedRef), 'graph']
 	])('reads %s as %s', (path, id) => {
 		expect(activeRouteId(path)).toBe(id);

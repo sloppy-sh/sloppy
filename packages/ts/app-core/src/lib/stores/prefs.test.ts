@@ -73,15 +73,27 @@ describe('the saved look', () => {
 	it('falls back to a default rather than trusting a value it does not know', () => {
 		localStorage.setItem(
 			'sloppy_prefs',
-			JSON.stringify({ theme: 'neon', accent: 42, style: 'sketch' })
+			JSON.stringify({ theme: 'neon', accent: 42, style: 'sketch', tags: 'seed' })
 		);
 		prefs.init();
 		expect(prefs.current).toEqual({
 			theme: 'paper',
 			accent: 'indigo',
 			style: 'default',
-			lens: null
+			tags: []
 		});
+	});
+
+	// The order the tags were selected in is what assigns their hues, so a
+	// saved selection has to come back in it — a sort here would repaint the
+	// canvas differently from the rail that was showing when it was saved.
+	it('brings a saved selection back in the order it was made', () => {
+		localStorage.setItem(
+			'sloppy_prefs',
+			JSON.stringify({ tags: ['seed', 'BIOLOGY', 'seed', 'not a tag', 7] })
+		);
+		prefs.init();
+		expect(prefs.current.tags).toEqual(['seed', 'biology']);
 	});
 
 	it('still opens when the browser is told to block site data', () => {

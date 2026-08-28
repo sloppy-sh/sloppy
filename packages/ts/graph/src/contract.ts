@@ -2,30 +2,22 @@
 // draws the ownership line this expresses: the host owns which nodes exist, the
 // surface owns pan, zoom and drag.
 
-import type {
-  DidSyr,
-  FacetSlot,
-  LabelDimensionView,
-  NodeView,
-  OwnedRef,
-} from "@sloppy/types";
-
-/**
- * The lens the graph is coloured by. The host resolves the slot because only
- * the reader's whole dimension list decides it — DESIGN.md § Hue.
- */
-export interface GraphLens {
-  dimension: LabelDimensionView;
-  slot: FacetSlot;
-}
+import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
 
 export interface GraphSurfaceProps {
   /** The region to draw, in address order. */
   nodes: readonly NodeView[];
   /** Subtree roots to draw as one mega-node — {@link drawnNodes}. */
   collapsed: ReadonlySet<OwnedRef>;
-  /** `null` is the genealogical view, which DESIGN.md § Hue draws monochrome. */
-  lens: GraphLens | null;
+  /**
+   * The tags the reader selected, in the order they selected them — the order
+   * `assignTagHueSlots` hands out the hues in. Empty is the monochrome
+   * genealogical view DESIGN.md § Hue calls for when nothing has been asked.
+   *
+   * Notes carrying none of these dim; they are never dropped, so the shape the
+   * answer is read against stays on the canvas.
+   */
+  selection: readonly Tag[];
   /**
    * Re-initialises the scene when it changes, and only then: a pan, a zoom or a
    * drag must never remount, or the viewport is lost on every gesture.

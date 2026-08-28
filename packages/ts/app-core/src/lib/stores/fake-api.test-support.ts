@@ -3,13 +3,7 @@
 // counting fetches here is what makes "one request" a measurement rather than a
 // claim.
 
-import {
-	addressDepth,
-	type LabelDimensionView,
-	type NodeView,
-	type OwnedRef,
-	type Viewer
-} from '@sloppy/types';
+import { addressDepth, type NodeView, type OwnedRef, type Viewer } from '@sloppy/types';
 import { resetApi } from '../api.js';
 import { initRuntime } from '../runtime.js';
 
@@ -44,25 +38,9 @@ export function node(seed: number, address: string, over: Partial<NodeView> = {}
 		depth: addressDepth(address),
 		origin: self,
 		title: '',
-		labels: {},
+		tags: [],
 		links: [],
 		published: false,
-		...over
-	};
-}
-
-export function dimension(
-	seed: number,
-	name: string,
-	over: Partial<LabelDimensionView> = {}
-): LabelDimensionView {
-	return {
-		ref: ref(seed),
-		created_by: DID,
-		created_at: AT,
-		updated_at: AT,
-		name,
-		values: [],
 		...over
 	};
 }
