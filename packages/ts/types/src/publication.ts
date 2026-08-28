@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { AddressSchema } from "./address.js";
-import { BlockTypeSchema } from "./block.js";
+import { BlockDocumentSchema } from "./document.js";
 import {
   DidSyrSchema,
   OwnedEntitySchema,
@@ -66,9 +66,7 @@ export const PublishedBlockSchema = z.object({
   ref: OwnedRefSchema,
   node: OwnedRefSchema,
   ord: z.string(),
-  type: BlockTypeSchema,
-  content: z.string(),
-  data: z.unknown().optional(),
+  content: BlockDocumentSchema,
 });
 export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
 

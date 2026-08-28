@@ -1,4 +1,4 @@
-import { TagsSchema } from "@sloppy/types";
+import { BlockDocumentSchema, TagsSchema } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { TOPICS } from "./corpus";
 import { type PlannedNode, planGraph } from "./plan";
@@ -38,6 +38,35 @@ describe("the seeded graph", () => {
     expect(all.length).toBe(plan.nodes);
     expect(plan.nodes).toBeGreaterThanOrEqual(2000);
     expect(plan.blocks).toBeGreaterThan(1000);
+  });
+
+  it("gives a note with an interior more than one section to drag", () => {
+    const written = all.filter((node) => node.blocks.length > 0);
+    expect(written.length / all.length).toBeGreaterThan(0.5);
+    for (const node of written) {
+      expect(node.blocks.length, node.title).toBeGreaterThanOrEqual(2);
+      expect(node.blocks.length, node.title).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("writes each section as a document the store will accept", () => {
+    for (const node of all) {
+      for (const section of node.blocks) {
+        expect(BlockDocumentSchema.parse(section), node.title).toEqual(section);
+        expect(section.content.length, node.title).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("puts a heading over several paragraphs in a good many sections", () => {
+    const sections = all.flatMap((node) => node.blocks);
+    const written = sections.filter(
+      (section) =>
+        section.content.some((element) => element.type === "heading") &&
+        section.content.filter((element) => element.type === "paragraph")
+          .length > 1,
+    );
+    expect(written.length / sections.length).toBeGreaterThan(0.2);
   });
 
   it("has chains deep enough and runs wide enough to be worth collapsing", () => {

@@ -12,7 +12,7 @@ import {
 import { DbService } from "../db/db.service";
 import { replacement } from "../node/patch";
 
-const PATCHABLE = ["ord", "type", "content", "data"] as const;
+const PATCHABLE = ["ord", "content"] as const;
 
 export type BlockPatch = Partial<Pick<Block, (typeof PATCHABLE)[number]>>;
 
