@@ -14,7 +14,7 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
-import { LabelSetSchema } from "./label.js";
+import { TagsSchema } from "./tag.js";
 
 /**
  * A subtree its author has made readable. The row existing is what makes it
@@ -47,7 +47,7 @@ export const PublishedNodeSchema = z.object({
   parent: OwnedRefSchema.optional(),
   origin: OwnedRefSchema,
   title: z.string(),
-  labels: LabelSetSchema,
+  tags: TagsSchema,
   links: z.array(OwnedRefSchema),
   created_at: TimestampSchema,
   updated_at: TimestampSchema,
@@ -72,22 +72,11 @@ export const PublishedBlockSchema = z.object({
 });
 export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
 
-/**
- * What a peer's public endpoint answers with. `label_dimensions` travels
- * alongside because a pulled region's labels are meaningless without the
- * dimensions they are keyed by, and the reader's own dimensions are not the
- * author's.
- */
+/** What a peer's public endpoint answers with. */
 export const PublishedSubtreeSchema = z.object({
   did: DidSyrSchema,
   root_address: AddressSchema,
   nodes: z.array(PublishedNodeSchema),
   blocks: z.array(PublishedBlockSchema),
-  label_dimensions: z.array(
-    z.object({
-      name: z.string(),
-      values: z.array(z.string()),
-    }),
-  ),
 });
 export type PublishedSubtree = z.infer<typeof PublishedSubtreeSchema>;

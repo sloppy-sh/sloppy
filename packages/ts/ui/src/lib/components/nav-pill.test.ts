@@ -8,7 +8,7 @@ import NavPill, { type NavPillProps } from './nav-pill.svelte';
 
 const ITEMS = [
 	{ id: 'graph', label: 'Graph', href: '/', icon: HouseIcon },
-	{ id: 'labels', label: 'Labels', href: '/labels', icon: HouseIcon }
+	{ id: 'settings', label: 'Settings', href: '/settings', icon: HouseIcon }
 ];
 
 const ADA: Person = {
@@ -72,9 +72,9 @@ describe('the nav pill', () => {
 	});
 
 	it('marks the destination the reader is on', () => {
-		render({ activeId: 'labels' });
+		render({ activeId: 'settings' });
 		const current = target.querySelector('[aria-current="page"]');
-		expect(current?.textContent).toContain('Labels');
+		expect(current?.textContent).toContain('Settings');
 	});
 
 	it('gives every target a reachable size', () => {

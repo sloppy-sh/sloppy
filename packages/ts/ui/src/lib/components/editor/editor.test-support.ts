@@ -42,7 +42,7 @@ export const NOTE: NodeView = {
 	depth: 2,
 	origin: `${OWNER}/${'0'.repeat(26)}` as OwnedRef,
 	title: 'A thought',
-	labels: {},
+	tags: [],
 	links: [],
 	published: false
 };

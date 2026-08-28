@@ -1,16 +1,17 @@
 // A graph the size of a real one, generated rather than fetched, so the tests
 // and the benchmark measure the same field. The defaults match what
 // `pnpm --filter @sloppy/api seed` produces: 2,400 notes over 6 roots, nine
-// generations deep, 23 siblings at the widest, four lens dimensions.
+// generations deep, 23 siblings at the widest.
 
 import {
   type Address,
   childAddress,
   compareAddresses,
-  type LabelDimensionView,
   type NodeView,
   type OwnedRef,
   siblingAddress,
+  type Tag,
+  TagsSchema,
 } from "@sloppy/types";
 
 const OWNER = "did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc";
@@ -38,18 +39,17 @@ export const DEFAULT_CORPUS: CorpusOptions = {
 
 export interface Corpus {
   nodes: NodeView[];
-  dimensions: LabelDimensionView[];
+  /** Every tag the corpus carries, most-used first — what the tag read answers. */
+  tags: Tag[];
   owner: string;
 }
 
-const DIMENSIONS: { name: string; values: string[] }[] = [
-  {
-    name: "domain",
-    values: ["biology", "chemistry", "physics", "history", "method"],
-  },
-  { name: "status", values: ["seed", "growing", "evergreen"] },
-  { name: "type", values: ["question", "claim", "note", "source"] },
-  { name: "confidence", values: ["hunch", "working", "settled"] },
+/** Drawn from independently, so a note lands in several sets at once. */
+const TAG_POOLS: string[][] = [
+  ["biology", "chemistry", "physics", "history", "method"],
+  ["seed", "growing", "evergreen"],
+  ["question", "claim", "note", "source"],
+  ["hunch", "working", "settled"],
 ];
 
 export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
@@ -77,7 +77,7 @@ export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
       parent: pending.parent,
       origin: pending.depth === 1 ? ref : pending.origin,
       title: titleFor(pending.address, random),
-      labels: labelsFor(random),
+      tags: tagsFor(random),
       links: [],
       published: random() < 0.12,
     };
@@ -136,16 +136,17 @@ export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
     if (from !== to) from.links.push(to.ref);
   }
 
+  const carriers = new Map<Tag, number>();
+  for (const node of nodes) {
+    for (const tag of node.tags)
+      carriers.set(tag, (carriers.get(tag) ?? 0) + 1);
+  }
+
   return {
     nodes,
-    dimensions: DIMENSIONS.map((dimension, at) => ({
-      ref: refAt(OWNER, 900_000 + at),
-      created_by: OWNER,
-      created_at: "2026-01-01T00:00:00.000Z",
-      updated_at: "2026-01-01T00:00:00.000Z",
-      name: dimension.name,
-      values: dimension.values,
-    })),
+    tags: [...carriers]
+      .sort(([a, byA], [b, byB]) => byB - byA || a.localeCompare(b))
+      .map(([tag]) => tag),
     owner: OWNER,
   };
 }
@@ -215,14 +216,14 @@ function shuffled<T>(items: readonly T[], random: () => number): T[] {
   return out;
 }
 
-function labelsFor(random: () => number): Record<string, string> {
-  const labels: Record<string, string> = {};
-  for (const dimension of DIMENSIONS) {
+/** Through `TagsSchema`, so a corpus row carries the set a stored one would. */
+function tagsFor(random: () => number): Tag[] {
+  const picked: string[] = [];
+  for (const pool of TAG_POOLS) {
     if (random() < 0.18) continue;
-    labels[dimension.name] =
-      dimension.values[Math.floor(random() * dimension.values.length)];
+    picked.push(pool[Math.floor(random() * pool.length)]);
   }
-  return labels;
+  return TagsSchema.parse(picked);
 }
 
 const WORDS = [

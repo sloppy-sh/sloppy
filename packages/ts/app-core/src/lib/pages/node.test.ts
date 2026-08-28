@@ -453,3 +453,77 @@ describe('linking a note to another', () => {
 		expect(screen()).toContain('A note that is no longer here.');
 	});
 });
+
+describe('tagging a note', () => {
+	let graph: Map<OwnedRef, NodeView>;
+
+	beforeEach(async () => {
+		graph = installGraph();
+		await loadGraph();
+		api.on('GET /tags', () => []);
+	});
+
+	const tagField = () => document.body.querySelector('input[role="combobox"]') as HTMLInputElement;
+
+	function typeTag(text: string): void {
+		const field = tagField();
+		field.value = text;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		flushSync();
+	}
+
+	function commit(): void {
+		tagField().dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+		);
+		flushSync();
+	}
+
+	/** A tap on a row, in the order a browser fires it: the blur, then the click. */
+	function tapRow(shows: string): void {
+		const row = noteRow(shows);
+		tagField().dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		row.click();
+	}
+
+	it('writes the word on the note it was typed on, not the one opened next', async () => {
+		await openNote(SECOND);
+		typeTag('biology');
+		tapRow('Membranes');
+		await settle();
+		await settle();
+
+		expect(graph.get(SECOND)?.tags).toEqual(['biology']);
+		expect(graph.get(THIRD)?.tags).toEqual([]);
+	});
+
+	it('leaves a refused word behind with the note it was refused on', async () => {
+		await openNote(SECOND);
+		typeTag('cell biology');
+		commit();
+		expect(screen()).toContain('A tag is one word');
+
+		tapRow('Membranes');
+		await settle();
+		await settle();
+
+		expect(tagField().value).toBe('');
+		expect(screen()).not.toContain('A tag is one word');
+	});
+
+	it('shows the next note its own tags, and writes back only those', async () => {
+		await openNote(SECOND);
+		typeTag('biology');
+		commit();
+		await settle();
+
+		noteRow('Membranes').click();
+		await settle();
+		typeTag('method');
+		commit();
+		await settle();
+
+		expect(graph.get(SECOND)?.tags).toEqual(['biology']);
+		expect(graph.get(THIRD)?.tags).toEqual(['method']);
+	});
+});

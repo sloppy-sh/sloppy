@@ -98,7 +98,7 @@ export class GraphScene {
   private edgesByDepth: number[][] = [];
   private linkPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
-  private lensActive = false;
+  private selecting = false;
 
   private positionsDirty = true;
   private modelDirty = false;
@@ -222,12 +222,12 @@ export class GraphScene {
 
   /**
    * Replace what is drawn. Positions of nodes the previous model also held are
-   * kept by the caller, so a lens switch or an expand re-uses them rather than
-   * throwing every node back to its seed.
+   * kept by the caller, so a selection change or an expand re-uses them rather
+   * than throwing every node back to its seed.
    */
-  setModel(model: BuiltModel, lensActive: boolean): void {
+  setModel(model: BuiltModel, selecting: boolean): void {
     this.model = model;
-    this.lensActive = lensActive;
+    this.selecting = selecting;
     this.positions = new Float32Array(model.order.length * 2);
 
     this.marks = model.order.map((ref, index) => {
@@ -421,7 +421,7 @@ export class GraphScene {
 
     for (const mark of this.marks) {
       const scale = mark.radius / TEXTURE_RADIUS;
-      const { provenance, fill } = mark.attributes;
+      const { provenance, fill, alpha } = mark.attributes;
       mark.fill =
         provenance === "pulled"
           ? null
@@ -432,6 +432,7 @@ export class GraphScene {
               scaleX: scale,
               scaleY: scale,
               tint: fill,
+              alpha,
             });
       mark.ring =
         provenance === "own"
@@ -446,6 +447,7 @@ export class GraphScene {
               scaleX: scale,
               scaleY: scale,
               tint: provenance === "pulled" ? fill : this.options.palette.ink,
+              alpha,
             });
       if (mark.fill) this.fills.particleChildren.push(mark.fill);
       if (mark.ring) this.rings.particleChildren.push(mark.ring);
@@ -480,8 +482,8 @@ export class GraphScene {
     const { palette } = this.options;
     const width = Math.min(12, Math.max(0.5, EDGE_WIDTH / this.viewport.scale));
 
-    const edgeAlpha = this.lensActive
-      ? palette.edgeAlphaUnderLens
+    const edgeAlpha = this.selecting
+      ? palette.edgeAlphaWhileSelecting
       : palette.edgeAlpha;
     this.edges.clear();
     this.edgesByDepth.forEach((pairs, step) => {

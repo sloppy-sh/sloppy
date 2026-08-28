@@ -12,7 +12,6 @@ import {
   type CopyEmojiRequest,
   type CreateBlockRequest,
   type CreateEmojiRequest,
-  type CreateLabelDimensionRequest,
   type CreateNodeRequest,
   type CreatePublicationRequest,
   type CreateUploadRequest,
@@ -21,8 +20,6 @@ import {
   type ExchangeSessionRequest,
   type HealthReport,
   HealthReportSchema,
-  type LabelDimensionView,
-  LabelDimensionViewSchema,
   type MediaAsset,
   MediaAssetSchema,
   type NodeView,
@@ -38,8 +35,9 @@ import {
   type Session,
   SessionSchema,
   type StartLoginRequest,
+  type TagCount,
+  TagCountSchema,
   type UpdateBlockRequest,
-  type UpdateLabelDimensionRequest,
   type UpdateNodeRequest,
   type UpdateProfileRequest,
   type UploadTicket,
@@ -290,6 +288,13 @@ export class SloppyClient {
     await this.del(`/nodes${refPath(ref)}`);
   }
 
+  /** Every tag the caller has used, most-used first. A tag is written by
+   *  putting it on a note, so there is nothing else here to call. */
+  async listTags(): Promise<TagCount[]> {
+    const body = await this.json("/nodes/tags", { method: "GET" });
+    return (body as unknown[]).map((t) => TagCountSchema.parse(t));
+  }
+
   // ── Blocks ───────────────────────────────────────────────────────────────
 
   /** A node's stack, already in `ord` order. */
@@ -315,34 +320,6 @@ export class SloppyClient {
 
   async deleteBlock(ref: OwnedRef): Promise<void> {
     await this.del(`/blocks${refPath(ref)}`);
-  }
-
-  // ── Label dimensions ─────────────────────────────────────────────────────
-
-  async listLabelDimensions(): Promise<LabelDimensionView[]> {
-    const body = await this.json("/label-dimensions", { method: "GET" });
-    return (body as unknown[]).map((d) => LabelDimensionViewSchema.parse(d));
-  }
-
-  async createLabelDimension(
-    request: CreateLabelDimensionRequest,
-  ): Promise<LabelDimensionView> {
-    return LabelDimensionViewSchema.parse(
-      await this.send("POST", "/label-dimensions", request),
-    );
-  }
-
-  async updateLabelDimension(
-    ref: OwnedRef,
-    request: UpdateLabelDimensionRequest,
-  ): Promise<LabelDimensionView> {
-    return LabelDimensionViewSchema.parse(
-      await this.send("PATCH", `/label-dimensions${refPath(ref)}`, request),
-    );
-  }
-
-  async deleteLabelDimension(ref: OwnedRef): Promise<void> {
-    await this.del(`/label-dimensions${refPath(ref)}`);
   }
 
   // ── Publications ─────────────────────────────────────────────────────────

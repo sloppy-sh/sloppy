@@ -6,12 +6,7 @@
 import { type Address, parseAddress } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { makeCorpus, mulberry32 } from "../corpus.test-support.js";
-import {
-  clusterField,
-  clusterSeed,
-  seedAddress,
-  seedField,
-} from "./geometry.js";
+import { seedAddress, seedField } from "./geometry.js";
 
 const corpus = makeCorpus();
 const addresses = corpus.nodes.map((node) => node.address);
@@ -75,40 +70,6 @@ describe("seedField", () => {
           reachFrom(depth),
         );
       }
-    }
-  });
-});
-
-describe("clusterField", () => {
-  const values = ["seed", "growing", "evergreen"];
-  const population = new Map<string | undefined, number>([
-    ["seed", 40],
-    ["growing", 20],
-    ["evergreen", 8],
-    [undefined, 4],
-  ]);
-
-  it("gives every value its own place, and the unset one its own too", () => {
-    const field = clusterField(values, population);
-    const places = [...values, undefined].map((value) =>
-      JSON.stringify(field.centre(value)),
-    );
-    expect(new Set(places).size).toBe(places.length);
-  });
-
-  it("gives a value nothing declared the unset cluster", () => {
-    const field = clusterField(values, population);
-    expect(field.centre("invented")).toEqual(field.centre(undefined));
-  });
-
-  it("seeds a node inside its own cluster's scatter", () => {
-    const field = clusterField(values, population);
-    for (const address of addresses.slice(0, 200)) {
-      const at = clusterSeed(address, field, "seed");
-      const home = field.centre("seed");
-      expect(Math.hypot(at.x - home.x, at.y - home.y)).toBeLessThanOrEqual(
-        field.spread("seed") + 1e-9,
-      );
     }
   });
 });

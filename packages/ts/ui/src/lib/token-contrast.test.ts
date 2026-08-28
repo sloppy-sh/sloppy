@@ -10,6 +10,7 @@
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { TAG_HUE_SLOTS } from '@sloppy/types';
 import { contrastRatio, oklabDistance, parseOklch, type Oklch } from './internal/color.js';
 
 const CSS = readFileSync(new URL('./app.css', import.meta.url), 'utf8').replace(
@@ -20,7 +21,9 @@ const CSS = readFileSync(new URL('./app.css', import.meta.url), 'utf8').replace(
 const THEMES = ['paper', 'graphite', 'light', 'dark', 'contrast'] as const;
 const DARK_THEMES = new Set(['graphite', 'dark']);
 const ACCENTS = ['indigo', 'moss', 'rust', 'sea', 'iris', 'ochre', 'slate'] as const;
-const FACET_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const FACET_SLOTS = [
+	...new Set([...CSS.matchAll(/--facet-(\d+)\s*:/g)].map((slot) => Number(slot[1])))
+].sort((a, b) => a - b);
 
 type Theme = (typeof THEMES)[number];
 type Accent = (typeof ACCENTS)[number];
@@ -125,6 +128,10 @@ describe('token contrast', () => {
 	it('reads the tokens out of app.css', () => {
 		expect(ALL_RULES.length).toBeGreaterThan(8);
 		expect(color(tokens('paper', 'indigo'), '--background').l).toBeCloseTo(0.972, 3);
+	});
+
+	it('paints exactly the slots a selected tag can borrow', () => {
+		expect(FACET_SLOTS).toEqual([...TAG_HUE_SLOTS]);
 	});
 
 	it.each(THEMES)('%s: ink on paper is legible body text', (theme) => {

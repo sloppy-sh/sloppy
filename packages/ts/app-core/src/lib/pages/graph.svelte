@@ -13,21 +13,20 @@
 	   to the shells, so this package has no manifest for `resolve()` to check
 	   against. */
 
-	// The home surface: the whole graph, the lens it is read under, and the note
-	// that opens over it. DESIGN.md § Layout — the graph is the page.
+	// The home surface: the whole graph, the tags it is lit by, and the note that
+	// opens over it. DESIGN.md § Layout — the graph is the page.
 	import Plus from '@lucide/svelte/icons/plus';
-	import type { GraphLens } from '@sloppy/graph';
 	import type { NodeView } from '@sloppy/types';
-	import { cn, GraphSurface, ResponsiveModal, scrollFade } from '@sloppy/ui';
+	import { GraphSurface, ResponsiveModal, TagRail } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { tags } from '../stores/tags.svelte.js';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
 
@@ -68,15 +67,19 @@
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt whole by the derived, never mutated after.
 	const collapsed = $derived(new Set(folded));
 
-	const lens = $derived.by((): GraphLens | null => {
-		const dimension = labels.lens;
-		if (!dimension) return null;
-		const slot = labels.slotFor(dimension.name);
-		return slot === undefined ? null : { dimension, slot };
-	});
+	const selection = $derived(tags.selected);
+
+	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
+	const lit = $derived(
+		selection.length === 0
+			? 0
+			: visible.filter((note) => note.tags.some((tag) => selection.includes(tag))).length
+	);
 
 	const summary = $derived(
-		`${count(visible.length, 'note', 'notes')} across ${count(roots.length, 'branch', 'branches')}`
+		selection.length === 0
+			? `${count(visible.length, 'note', 'notes')} across ${count(roots.length, 'branch', 'branches')}`
+			: `${lit.toLocaleString()} of ${count(visible.length, 'note', 'notes')} lit up`
 	);
 
 	function count(n: number, one: string, many: string): string {
@@ -89,7 +92,7 @@
 		loading = !nodes.status().loaded;
 		unreachable = null;
 		try {
-			const [, mine] = await Promise.all([labels.load(), nodes.load()]);
+			const [, mine] = await Promise.all([tags.load(), nodes.load()]);
 			// One branch missing would leave the counts under every mega-node wrong
 			// with nothing to say so, which is worse than saying the graph is not here.
 			await Promise.all(mine.map((root) => nodes.load({ origin: root.ref })));
@@ -150,9 +153,6 @@
 			creating = false;
 		}
 	}
-
-	const lensClass =
-		'shrink-0 rounded-full border px-3 py-1.5 text-sm whitespace-nowrap transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
 </script>
 
 <svelte:head><title>Sloppy</title></svelte:head>
@@ -168,7 +168,7 @@
 			<GraphSurface
 				nodes={visible}
 				{collapsed}
-				{lens}
+				{selection}
 				viewer={session.viewer?.did}
 				focus={open ?? undefined}
 				onOpenNode={show}
@@ -226,42 +226,8 @@
 					</Button>
 				</div>
 
-				{#if labels.dimensions.length > 0}
-					<div
-						class="scroll-fade-x -mx-1 flex gap-1.5 overflow-x-auto px-1 py-0.5 [scrollbar-width:none]"
-						{@attach scrollFade('x')}
-					>
-						<button
-							type="button"
-							aria-pressed={lens === null}
-							onclick={() => labels.setLens(null)}
-							class={cn(
-								lensClass,
-								lens === null
-									? 'border-foreground/30'
-									: 'border-transparent text-muted-foreground hover:text-foreground'
-							)}
-						>
-							No lens
-						</button>
-						{#each labels.dimensions as dimension (dimension.ref)}
-							{@const on = lens?.dimension.ref === dimension.ref}
-							<button
-								type="button"
-								aria-pressed={on}
-								onclick={() => labels.setLens(dimension.name)}
-								style={on && lens ? `color: var(--facet-${lens.slot})` : undefined}
-								class={cn(
-									lensClass,
-									on
-										? 'border-current'
-										: 'border-transparent text-muted-foreground hover:text-foreground'
-								)}
-							>
-								{dimension.name}
-							</button>
-						{/each}
-					</div>
+				{#if tags.all.length > 0 || selection.length > 0}
+					<TagRail tags={tags.all} selected={selection} onselect={(next) => tags.select(next)} />
 				{/if}
 
 				{#if refused}

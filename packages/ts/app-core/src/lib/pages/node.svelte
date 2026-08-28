@@ -4,19 +4,18 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Plus from '@lucide/svelte/icons/plus';
-	import Tags from '@lucide/svelte/icons/tags';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import {
 		compareOrd,
 		type BlockView,
 		type CreateBlockRequest,
-		type LabelSet,
 		type NodeView,
 		type OwnedRef,
+		type Tag,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
-	import { BlockStack, ConfirmModal, LabelPicker, scrollFade } from '@sloppy/ui';
+	import { BlockStack, ConfirmModal, scrollFade, TagField } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
@@ -25,10 +24,10 @@
 	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
-	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { session } from '../stores/session.svelte.js';
+	import { tags } from '../stores/tags.svelte.js';
 
 	let {
 		ref,
@@ -45,8 +44,8 @@
 
 	const node = $derived(nodes.get(ref));
 	const children = $derived(nodes.children(ref));
-	const facets = $derived(Object.entries(node?.labels ?? {}));
 	const emoji = $derived(noteEmoji(session.viewer?.did ?? ''));
+	const suggestions = $derived(tags.all.map((entry) => entry.tag));
 
 	let blocks = $state<BlockView[]>([]);
 	let loading = $state(true);
@@ -65,11 +64,10 @@
 	let searchField = $state<HTMLInputElement | null>(null);
 	let linking = $state(false);
 	let linkRefused = $state<string | null>(null);
+	/** The server's own words when a retag was refused, for the field to show. */
+	let tagRefused = $state<string | null>(null);
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
-
-	let assigning = $state(false);
-	let labelRefused = $state<string | null>(null);
 
 	/** Kept until it is stored, so a save that fails still has it to try again. */
 	let typed = $state<{ ref: OwnedRef; title: string } | null>(null);
@@ -185,8 +183,7 @@
 		removing = false;
 		undeletable = null;
 		linkRefused = null;
-		assigning = false;
-		labelRefused = null;
+		tagRefused = null;
 		void (async () => {
 			try {
 				const [, stack] = await Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
@@ -251,17 +248,19 @@
 		}
 	}
 
-	async function assign(picked: LabelSet): Promise<void> {
-		labelRefused = null;
+	async function retag(picked: Tag[]): Promise<void> {
+		tagRefused = null;
 		try {
-			await nodes.update(ref, { labels: picked });
+			await nodes.update(ref, { tags: picked });
 		} catch (error) {
-			// The picker puts its chips back on a rejection and shows `labelRefused`;
-			// swallowing this would leave a label that never saved looking saved.
-			labelRefused =
-				serverMessage(error) ?? 'Sloppy could not save that label. Try again in a moment.';
+			// The field puts its chips back on a rejection and shows `tagRefused`;
+			// swallowing this would leave a tag that never saved looking saved.
+			tagRefused = serverMessage(error) ?? 'Sloppy could not save that tag. Try again in a moment.';
 			throw error;
 		}
+		// A tag exists exactly as long as a note carries one, so a word written
+		// here is what puts it in the rail and in everybody else's completions.
+		void tags.reload().catch(() => {});
 	}
 
 	async function link(target: OwnedRef): Promise<void> {
@@ -335,14 +334,7 @@
 		</p>
 	{:else}
 		<header class="space-y-3">
-			<div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-				<p class="address text-sm text-foreground/70 select-text">{node.address}</p>
-				{#each facets as [dimension, value] (dimension)}
-					<p class="text-xs text-muted-foreground">
-						{dimension} · <span class="text-foreground">{value}</span>
-					</p>
-				{/each}
-			</div>
+			<p class="address text-sm text-foreground/70 select-text">{node.address}</p>
 
 			<textarea
 				bind:this={titleField}
@@ -422,23 +414,18 @@
 			{#if refused}<p class="text-sm text-destructive" role="alert">{refused}</p>{/if}
 		</div>
 
-		<div class="space-y-3 border-t border-border pt-6">
-			{#if assigning}
-				<LabelPicker
-					dimensions={labels.dimensions}
-					labels={node.labels}
-					slotFor={(dimension: string) => labels.slotFor(dimension)}
-					onassign={assign}
-					refused={labelRefused}
-					manageHref="/labels"
+		<div class="border-t border-border pt-6">
+			<!-- The field belongs to the note: a word half-typed into it, and a
+			     refusal it is still showing, must not follow the reader to the next. -->
+			{#key ref}
+				<TagField
+					tags={node.tags}
+					{suggestions}
+					onchange={retag}
+					refused={tagRefused}
+					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
 				/>
-				<Button variant="ghost" class="h-11" onclick={() => (assigning = false)}>Done</Button>
-			{:else}
-				<Button variant="outline" class="h-11" onclick={() => (assigning = true)}>
-					<Tags class="size-4" />
-					Label this note
-				</Button>
-			{/if}
+			{/key}
 		</div>
 
 		<div class="space-y-3 border-t border-border pt-6">

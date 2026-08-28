@@ -34,7 +34,7 @@ sloppy/
 │       └── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
 ├── packages/
 │   ├── ts/
-│   │   ├── types/     @sloppy/types     — Zod schemas: node, block, label dimension, ink stroke,
+│   │   ├── types/     @sloppy/types     — Zod schemas: node, block, tag, ink stroke,
 │   │   │                                  publication, syr wire contracts
 │   │   ├── client/    @sloppy/client    — backend-agnostic SloppyClient over fetch
 │   │   ├── app-core/  @sloppy/app-core  — ALL pages, components, stores, the api layer, the runtime seam
@@ -113,7 +113,7 @@ management" resolves into a split — the same one Slyng made:
 | Profile data                               | **syr** — never stored locally, resolved from the manifest and cached |
 | Media blobs (block images, ink rasters)    | **syr** — presign → PUT → complete                                    |
 | Emoji, stickers, GIFs, reactions, comments | **syr** — per-DID catalogs, federated                                 |
-| **Nodes, addresses, labels, blocks, ink**  | **Sloppy's own API + SurrealDB**                                      |
+| **Nodes, addresses, tags, blocks, ink**    | **Sloppy's own API + SurrealDB**                                      |
 
 ### Auth: Platform Delegation v0.1
 
@@ -265,7 +265,7 @@ node:{ created_by: <did>, id: <ulid> }
   parent      ref?      absent on a root
   origin      ref       the root of this node's tree; a root is its own origin
   title       string
-  labels      object    { dimension: value }
+  tags        string[]  normalized, deduplicated, sorted — @sloppy/types' TagsSchema
   links       ref[]     non-genealogical associative links
   published   bool
   created_at  iso       immutable — it is a field of the signed payload
@@ -279,12 +279,6 @@ block:{ created_by: <did>, id: <ulid> }
   type        paragraph | heading | list | todo | code | image | ink | embed
   content     markdown with :emoji: / ::sticker:: shortcodes
   data?       the type's own payload — InkBlockData for `ink`, nothing for `paragraph`
-
-label_dimension:{ created_by: <did>, id: <ulid> }
-  created_by  did
-  name        string
-  values      string[]
-  color_slot  1–8?      the --facet-N slot; absent means declaration order (DESIGN.md)
 
 **A deleted note leaves its inbound links behind.** `links` is an array of refs on the
 *linking* node, so removing a note cannot reach the notes that pointed at it — deletion takes
@@ -313,8 +307,18 @@ The rules AI.md's foundation-wave section states, applied here:
   a second one something to work from.
 - **`created_by` is a top-level column and not just the `created_by` inside the key**,
   because SurrealDB will not use a composite index whose second column is a nested path.
-  Every index leads with it, which is what lets one index serve the user-scoped read and
-  the purge both.
+  Every index over scalars leads with it, which is what lets one index serve the
+  user-scoped read and the purge both.
+- **`node_tags` is the exception to that, and it is read pinned.** An index over an array
+  column holds one entry per element, so `tags = $tag` is a membership seek — but only
+  while that index is the one answering it, and plain array equality otherwise. Measured
+  on 3.1.3, an unpinned read the planner hands to another index (an `ORDER BY` is enough)
+  comes back with **zero rows and no error**, and a composite `created_by, tags` fails the
+  same silent way. So the owner is a filter over the seek rather than the leading column,
+  and every tag read is written
+  `FROM node WITH INDEX node_tags WHERE tags = $tag AND created_by = $did`.
+  `tags CONTAINS $tag` is always correct and never uses the index; it is not the spelling.
+  `schema.integration.test.ts` holds both halves against a running server.
 - **A link is a ref, not a SurrealDB record link.** Measured on 3.1.3: an index on a column
   holding a _composite_ record id still enforces `UNIQUE`, but the planner never chooses
   it — `EXPLAIN` gives a TableScan for an equality on such a column and an IndexScan for
@@ -332,7 +336,7 @@ The rules AI.md's foundation-wave section states, applied here:
   `ORDER BY created_at` needs nothing further.
 - **A row crosses the wire as a view of itself**, with the composite key replaced by the
   `<did>/<ulid>` ref the row is already pointed at by. `@sloppy/types`' `api.ts` derives
-  `NodeView`, `BlockView`, `LabelDimensionView` and `PublicationView` from the entity
+  `NodeView`, `BlockView` and `PublicationView` from the entity
   schemas and converts with `entityView()`, so the wire cannot drift from the row. The
   substitution is what makes a row expressible as JSON at all: the key is a SurrealDB
   `RecordId`, and no JSON encoding round-trips back into the class that validates one.
@@ -427,18 +431,16 @@ re-render strokes still see the drawing.
 **TipTap's editor instance must not be `$state`** — Svelte's deep proxy corrupts its
 internals. Use a separate `ready` flag for post-mount UI.
 
-## Putting a note in a facet
+## Tagging a note
 
-`LabelPicker`, in `@sloppy/ui`'s `components/facets/`, is the one surface that edits a note's
-labels. It is **controlled and does not persist**:
+`TagPicker`, in `@sloppy/ui`'s `components/tags/`, is the one surface that edits a note's
+tags. It is **controlled and does not persist**:
 
 ```ts
-dimensions: readonly LabelDimensionView[]; // in declaration order — the order slots were handed out
-labels: LabelSet;                          // what the note carries now
-slotFor: (dimension: string) => FacetSlot | undefined;
-onassign: (labels: LabelSet) => Promise<void>; // the WHOLE set, never a delta
-refused?: string | null;                   // the server's own words for a set that would not save
-manageHref?: string;                       // where a reader with nothing declared goes to declare one
+tags: readonly string[];                 // what the note carries now
+known: readonly TagCount[];              // what to complete against, most-used first
+onassign: (tags: string[]) => Promise<void>; // the WHOLE set, never a delta
+refused?: string | null;                 // the server's own words for a set that would not save
 ```
 
 The page that owns the note writes it, through `nodes.update`. The picker writing for itself
@@ -449,14 +451,18 @@ promise is what lets the picker hold its own pending state while the host saves.
 **`onassign` must REJECT when the save fails, and set `refused` before it does.** The
 rejection is the whole failure signal: the picker catches it, and that catch is the only
 thing that renders the message. A host that resolves on failure gets a chip that snaps
-silently back to its old value with nothing said to the person who tapped it — the type
-`Promise<void>` cannot express this, which is why it is written down.
+silently back with nothing said to the person who tapped it — the type `Promise<void>`
+cannot express this, which is why it is written down.
 
-**`dimensions` and `slotFor` are props rather than store reads, and that is structural.**
-`@sloppy/ui` is depended on _by_ `@sloppy/app-core`, so a component here reaching into
-app-core's `labels` store would close the loop `ui → app-core → ui`, which the workspace has
-no build order for. Every component in this package takes its data as props for that reason —
-see `GraphSurface` and `BlockStack`. The host passes `labels.dimensions` and `labels.slotFor`.
+**A tag the picker hands back need not be normalized.** `TagsSchema` is where the rules
+live — the trimming, the case, the canonical form, the set — and the server parses through
+it either way; a picker that re-implements them is a second copy of them.
+
+**`known` is a prop rather than a store read, and that is structural.** `@sloppy/ui` is
+depended on _by_ `@sloppy/app-core`, so a component here reaching into an app-core store
+would close the loop `ui → app-core → ui`, which the workspace has no build order for.
+Every component in this package takes its data as props for that reason — see
+`GraphSurface` and `BlockStack`.
 
 **The page owns the trigger; the picker is only the surface behind it.** A component that
 mounted its own floating control would fight the layout of whatever hosts it — the note page

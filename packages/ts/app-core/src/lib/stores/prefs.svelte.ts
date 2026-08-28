@@ -1,5 +1,5 @@
 /**
- * The look of the app, and the lens it opens on — DESIGN.md § Persistence.
+ * The look of the app, and the tags it opens on — DESIGN.md § Persistence.
  * One writer for `sloppy_prefs`, and the only code that sets the three axis
  * attributes on `<html>` after first paint.
  *
@@ -9,6 +9,8 @@
  * changing both boot scripts in the same commit.
  */
 
+import { type Tag, TagSchema } from '@sloppy/types';
+
 export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
 export type Accent = 'indigo' | 'moss' | 'rust' | 'sea' | 'iris' | 'ochre' | 'slate';
 export type Style = 'default' | 'hardline';
@@ -17,9 +19,10 @@ export interface Prefs {
 	theme: Theme;
 	accent: Accent;
 	style: Style;
-	/** The label dimension the graph colours by; `null` is the monochrome graph
-	 *  DESIGN.md § Hue calls for when the reader has asked nothing. */
-	lens: string | null;
+	/** The tags the graph is lit by, in SELECTION order — that order hands out
+	 *  the hues, so sorting it would repaint the reader's question. Empty is the
+	 *  monochrome graph DESIGN.md § Hue calls for when nothing has been asked. */
+	tags: Tag[];
 }
 
 const KEY = 'sloppy_prefs';
@@ -65,7 +68,7 @@ function defaults(): Prefs {
 		theme: systemPrefersDark() ? 'graphite' : 'paper',
 		accent: 'indigo',
 		style: 'default',
-		lens: null
+		tags: []
 	};
 }
 
@@ -85,6 +88,17 @@ function stored(): Partial<Prefs> {
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
 	return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+/** Each entry through `TagSchema`, keeping the order and dropping the rest. */
+function tagsIn(value: unknown): Tag[] {
+	if (!Array.isArray(value)) return [];
+	const out: Tag[] = [];
+	for (const entry of value) {
+		const parsed = TagSchema.safeParse(entry);
+		if (parsed.success && !out.includes(parsed.data)) out.push(parsed.data);
+	}
+	return out;
 }
 
 class PrefsStore {
@@ -107,7 +121,7 @@ class PrefsStore {
 			theme: oneOf(saved.theme, THEMES, base.theme),
 			accent: oneOf(saved.accent, ACCENTS, base.accent),
 			style: oneOf(saved.style, STYLES, base.style),
-			lens: typeof saved.lens === 'string' && saved.lens ? saved.lens : null
+			tags: tagsIn(saved.tags)
 		};
 		this.apply();
 	}

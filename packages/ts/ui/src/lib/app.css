@@ -141,9 +141,9 @@
 }
 
 /* ══ The graph's hue slots ═════════════════════════════════════════════════
-   Eight, and a new dimension takes one rather than adding a ninth. DESIGN.md
-   § "Hue — facets, and only under a lens" is the contract; the floors both
-   families are held to are in `token-contrast.test.ts`. */
+   Eight, and a ninth selected tag reuses the first rather than adding one.
+   DESIGN.md § "Hue — the tags you selected, and only those" is the contract;
+   the floors both families are held to are in `token-contrast.test.ts`. */
 :root,
 :root[data-theme='paper'],
 :root[data-theme='light'],

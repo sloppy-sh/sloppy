@@ -17,7 +17,6 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS block SCHEMALESS;
-  DEFINE TABLE IF NOT EXISTS label_dimension SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
 
   DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
@@ -25,23 +24,20 @@ export const SCHEMA = `
 
   DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS created_by ON label_dimension TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON publication TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS created_at ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON block TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS created_at ON label_dimension TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON block TYPE string;
-  DEFINE FIELD IF NOT EXISTS updated_at ON label_dimension TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON publication TYPE string;
 
-  -- Every indexed column is a TOP-LEVEL STRING, including the ones that point
-  -- at another row: a composite record id is a row's own key and never another
-  -- row's column. docs/ARCHITECTURE.md § "Data model" says why, and why most of
-  -- these lead with created_by.
+  -- Every indexed column is a TOP-LEVEL STRING or an array of them, including
+  -- the ones that point at another row: a composite record id is a row's own key
+  -- and never another row's column. docs/ARCHITECTURE.md § "Data model" says
+  -- why, and why most of these lead with created_by.
 
   -- UNIQUE is the address protocol, enforced: one address per author, so a
   -- second row claiming a taken address fails at write rather than becoming a
@@ -61,7 +57,17 @@ export const SCHEMA = `
   -- Which is why block needs a second index for the purge, where node does not.
   DEFINE INDEX IF NOT EXISTS block_owner ON block FIELDS created_by;
 
-  DEFINE INDEX IF NOT EXISTS label_dimension_owner_name ON label_dimension FIELDS created_by, name UNIQUE;
+  -- Every note carrying a tag. One entry per element, so an equality on tags
+  -- is a membership seek rather than a scan of everything the owner has
+  -- written.
+  --
+  -- Read it PINNED: FROM node WITH INDEX node_tags WHERE tags = $tag AND
+  -- created_by = $did. Measured on 3.1.3, that equality is membership only
+  -- while this index answers it and plain array equality otherwise, so an
+  -- unpinned read the planner hands to another index (an ORDER BY is enough)
+  -- returns ZERO rows and no error. Two columns over an array column fail the
+  -- same silent way, which is why created_by does not lead here.
+  DEFINE INDEX IF NOT EXISTS node_tags ON node FIELDS tags;
 
   -- One live publication per subtree root. Unpublishing deletes the row, so
   -- republishing does not collide with a revoked one.

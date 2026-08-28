@@ -20,11 +20,6 @@ import type { Point } from "./viewport.js";
 /** Genealogy edges pull harder than the links that cross them. */
 const GENEALOGY_SPRING = 0.55;
 const LINK_SPRING = 0.12;
-/**
- * DESIGN.md § Edges: under a lens the tree is momentarily the background. It
- * dims, and it also has to stop pulling, or the sets never come apart.
- */
-const GENEALOGY_SPRING_UNDER_LENS = 0.05;
 
 export interface GraphMountOptions extends GraphSurfaceProps {
   /**
@@ -124,9 +119,9 @@ export function mountGraph(
   /**
    * `relayout` false re-reads the model without disturbing the simulation: the
    * drawn set and its order are a function of the props, so when only the
-   * palette has moved the worker's positions still belong to these nodes. A
-   * theme change that restarted the settle would shake the whole graph to
-   * change its colour.
+   * colours have moved the worker's positions still belong to these nodes. A
+   * theme change or a tag selection that restarted the settle would shake the
+   * whole graph to answer a question about colour.
    */
   const rebuild = (relayout = true): void => {
     if (!scene) return;
@@ -134,13 +129,13 @@ export function mountGraph(
     budgetFolded = lod.folded;
 
     const model = buildModel(drawnNodes(props.nodes, lod.collapsed), {
-      lens: props.lens,
+      selection: props.selection,
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),
     });
 
-    scene.setModel(model, props.lens !== null);
+    scene.setModel(model, props.selection.length > 0);
     if (!relayout) return;
 
     epoch += 1;
@@ -160,7 +155,7 @@ export function mountGraph(
           anchorStrength: node.anchorStrength,
         };
       }),
-      edges: edgeInputs(model, props.lens !== null),
+      edges: edgeInputs(model),
     });
   };
 
@@ -235,18 +230,16 @@ export function mountGraph(
 
   return {
     update(next) {
-      // A lens moves every node into a new cluster. Keeping the viewport where
-      // it was would answer the reader's question off the edge of the screen.
-      const relensed = next.lens?.dimension.ref !== props.lens?.dimension.ref;
       const remounting = next.remountKey !== mountedKey;
+      const moved = layoutMoved(props, next);
       props = next;
       if (next.focus !== undefined && next.focus !== focus) focus = next.focus;
       if (remounting) {
         mountedKey = next.remountKey;
         focus = next.focus;
       }
-      if (remounting || relensed) framing = true;
-      rebuild();
+      if (remounting) framing = true;
+      rebuild(moved || remounting);
     },
     destroy() {
       destroyed = true;
@@ -289,7 +282,27 @@ export function mountGraph(
   };
 }
 
-function edgeInputs(model: ReturnType<typeof buildModel>, underLens: boolean) {
+/**
+ * Whether anything the layout reads has moved. `selection` is deliberately not
+ * one of them: DESIGN.md § Hue answers a tag question in colour, and a field
+ * that re-settled under the reader would be answering it somewhere else.
+ *
+ * `lod` is read field by field because a host naturally writes that bag inline
+ * and a fresh object each render is not a moved budget. The collections are
+ * compared by identity, which is what a `$derived` gives them.
+ */
+function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
+  return (
+    a.nodes !== b.nodes ||
+    a.collapsed !== b.collapsed ||
+    a.viewer !== b.viewer ||
+    a.focus !== b.focus ||
+    a.lod?.depth !== b.lod?.depth ||
+    a.lod?.maxDrawn !== b.lod?.maxDrawn
+  );
+}
+
+function edgeInputs(model: ReturnType<typeof buildModel>) {
   const inputs: {
     source: number;
     target: number;
@@ -301,12 +314,7 @@ function edgeInputs(model: ReturnType<typeof buildModel>, underLens: boolean) {
       source: model.graph.getNodeAttributes(source).index,
       target: model.graph.getNodeAttributes(target).index,
       distance: attributes.distance,
-      strength:
-        attributes.kind === "link"
-          ? LINK_SPRING
-          : underLens
-            ? GENEALOGY_SPRING_UNDER_LENS
-            : GENEALOGY_SPRING,
+      strength: attributes.kind === "link" ? LINK_SPRING : GENEALOGY_SPRING,
     });
   });
   return inputs;

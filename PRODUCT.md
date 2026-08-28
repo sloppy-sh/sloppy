@@ -64,7 +64,7 @@ precise rather than clever. A good notebook does not have opinions about your ha
    recedes to the edges and disappears when there is nothing to do. Every element earns
    its pixels or it is removed.
 2. **Sloppy in, structured out.** Capture is one gesture and demands nothing: no title, no
-   folder, no label. The address is assigned for you, from where you were when you wrote.
+   folder, no tag. The address is assigned for you, from where you were when you wrote.
    Structure is something the protocol supplies, never a tax charged at the door.
 3. **The address is permanent, and the interface says so.** An address is shown wherever
    it helps somebody navigate or cite, and moving a node never changes it. A UI that
@@ -79,8 +79,9 @@ precise rather than clever. A good notebook does not have opinions about your ha
    room. Desktop is the same product with more space, never the same product plus
    features the phone does not get.
 7. **Legible before beautiful.** Ten thousand nodes that stay readable beat a hundred that
-   look impressive. Level of detail, collapse and lensing exist so the canvas never draws
-   more than a person can read.
+   look impressive. Level of detail and collapse exist so the canvas never draws more than
+   a person can read; selecting tags answers a question inside what is drawn rather than
+   by drawing something else.
 
 ## Accessibility & Inclusion
 
@@ -88,14 +89,16 @@ Target WCAG 2.2 AA as a floor.
 
 - **The graph has a non-visual equal, not a fallback.** The canvas is drawn with WebGL, so
   it is invisible to a screen reader by construction. A DOM outline — addresses, titles,
-  labels, parent and children, keyboard-navigable — is a first-class way to move through
+  tags, parent and children, keyboard-navigable — is a first-class way to move through
   the graph, kept in step with the canvas and shipped alongside it. It is not a degraded
   mode; a sighted keyboard user should be able to prefer it.
-- **Provenance and facet are never carried by colour alone.** Own / published / pulled and
-  every label dimension also carry a shape, an edge treatment, or a written label, so the
-  graph stays readable to a person who cannot separate two hues.
+- **Provenance and set membership are never carried by colour alone.** Own / published /
+  pulled also carry a shape or an edge treatment. A selection is answered in hue, but a
+  note carrying two selected tags draws in one of them, so which sets a note is in is
+  always readable in words as well — the graph stays answerable to a person who cannot
+  separate two hues, and to one who can but is looking at a note in three sets at once.
 - Full keyboard operability, semantic landmarks, and AA contrast on every theme × accent
-  pairing we ship. Hues drawn as marks — a node fill, an edge, a facet chip — owe the 3:1
+  pairing we ship. Hues drawn as marks — a node fill, an edge, a tag chip — owe the 3:1
   non-text floor and are measured against it, not eyeballed.
 - **Ink degrades, it never gates.** Pointer-event features that only exist on newer
   WebKit (coalesced and predicted events) are feature-detected; a device without them

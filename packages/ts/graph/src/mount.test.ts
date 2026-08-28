@@ -1,7 +1,8 @@
-import type { OwnedRef } from "@sloppy/types";
+import type { OwnedRef, Tag } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
+import type { LayoutCommand } from "./layout/protocol.js";
 import type { GraphMountOptions } from "./mount.js";
 import { Viewport } from "./viewport.js";
 
@@ -14,6 +15,8 @@ class StandInScene {
   static latest: StandInScene | null = null;
   readonly viewport = new Viewport();
   model: BuiltModel | null = null;
+  /** The second half of what a mount says: whether tags are selected. */
+  selecting = false;
   /** What the next hit test finds, which is how a test aims a tap. */
   under: string | null = null;
 
@@ -22,8 +25,9 @@ class StandInScene {
     return StandInScene.latest;
   }
 
-  setModel(model: BuiltModel): void {
+  setModel(model: BuiltModel, selecting: boolean): void {
     this.model = model;
+    this.selecting = selecting;
   }
 
   attributesOf(ref: string) {
@@ -146,11 +150,18 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
   const host = element();
   const expanded: OwnedRef[] = [];
   const opened: OwnedRef[] = [];
+  // A worker that never answers, so what a mount SENDS is what is measured.
+  const sent: LayoutCommand[] = [];
   const props: GraphMountOptions = {
     nodes: corpus.nodes,
     collapsed: new Set<OwnedRef>(),
-    lens: null,
+    selection: [],
     lod: { depth: 3, maxDrawn: 60 },
+    createLayoutWorker: () =>
+      ({
+        postMessage: (command: LayoutCommand) => sent.push(command),
+        terminate() {},
+      }) as unknown as Worker,
     onOpenNode: (ref) => opened.push(ref),
     onExpand: (ref) => expanded.push(ref),
     onCollapse: () => {},
@@ -167,6 +178,9 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     scene,
     expanded,
     opened,
+    /** Settles the layout has been asked to run. */
+    starts: (): number =>
+      sent.filter((command) => command.kind === "start").length,
     model: (): BuiltModel => scene.model as BuiltModel,
     tap(ref: string): void {
       scene.under = ref;
@@ -279,5 +293,70 @@ describe("mountGraph", () => {
 
     expect(graph.handle.stats()?.maxDrawn).toBe(20);
     expect(graph.model().order.length).toBeLessThanOrEqual(20);
+  });
+});
+
+// AI.md: highlight, not filter — "the shape of the graph survives the question".
+// A settle restarted to answer a question about colour would shake the field
+// out from under the reader's finger, so the one it must never restart on is
+// the selection, and the ones it must still restart on are the rest.
+describe("selecting tags", () => {
+  const selection = ["seed"] as Tag[];
+
+  it("recolours what is drawn without asking the layout to settle again", async () => {
+    const graph = await mount();
+    const before = graph.starts();
+    const wasDrawn = graph.model().order;
+    expect(before).toBeGreaterThan(0);
+
+    graph.handle.update({ ...graph.props, selection });
+
+    expect(graph.starts()).toBe(before);
+    expect(graph.model().order).toEqual(wasDrawn);
+    expect(
+      graph
+        .model()
+        .order.filter((ref) => graph.model().graph.getNodeAttributes(ref).tag),
+    ).not.toHaveLength(0);
+  });
+
+  // A host writes its budget inline, so a fresh object every render is the
+  // normal case and not a moved bound — reading it by identity would settle the
+  // whole field again on every tick of the rail.
+  it("reads the budget by what it says, not by which object said it", async () => {
+    const graph = await mount({ lod: { depth: 3, maxDrawn: 60 } });
+    const before = graph.starts();
+
+    graph.handle.update({
+      ...graph.props,
+      selection,
+      lod: { depth: 3, maxDrawn: 60 },
+    });
+
+    expect(graph.starts()).toBe(before);
+  });
+
+  it("tells the scene a selection is on, so the tree recedes behind it", async () => {
+    const graph = await mount();
+    expect(graph.scene.selecting).toBe(false);
+
+    graph.handle.update({ ...graph.props, selection });
+    expect(graph.scene.selecting).toBe(true);
+
+    graph.handle.update({ ...graph.props, selection: [] });
+    expect(graph.scene.selecting).toBe(false);
+  });
+
+  it("still settles again when what is drawn actually moves", async () => {
+    const graph = await mount({ selection });
+    const before = graph.starts();
+
+    graph.handle.update({
+      ...graph.props,
+      selection,
+      collapsed: new Set<OwnedRef>([graph.model().order[0]]),
+    });
+
+    expect(graph.starts()).toBe(before + 1);
   });
 });

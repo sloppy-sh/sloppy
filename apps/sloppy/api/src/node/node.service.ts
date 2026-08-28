@@ -18,10 +18,10 @@ import {
   type OwnedRef,
   ownedRefFrom,
   parseNode,
+  type TagCount,
   type UpdateNodeRequestSchema,
 } from "@sloppy/types";
 import type { z } from "zod";
-import { LabelService } from "../label/label.service";
 import { nextChildAddress } from "./address-assignment";
 import { NodeRepository } from "./node.repository";
 import { SerialQueue } from "./serial-queue";
@@ -39,10 +39,7 @@ const ADDRESS_ATTEMPTS = 8;
 export class NodeService {
   private readonly creations = new SerialQueue();
 
-  constructor(
-    private readonly nodes: NodeRepository,
-    private readonly labels: LabelService,
-  ) {}
+  constructor(private readonly nodes: NodeRepository) {}
 
   async list(
     did: string,
@@ -59,8 +56,11 @@ export class NodeService {
     return node === null ? null : entityView(node);
   }
 
+  tags(did: string): Promise<TagCount[]> {
+    return this.nodes.tagCounts(did);
+  }
+
   async create(did: string, request: CreateRequest): Promise<NodeView> {
-    await this.labels.assertUsable(did, request.labels);
     const parent = request.parent
       ? await this.nodes.find(did, request.parent)
       : null;
@@ -77,7 +77,6 @@ export class NodeService {
     ref: OwnedRef,
     request: UpdateRequest,
   ): Promise<NodeView> {
-    if (request.labels) await this.labels.assertUsable(did, request.labels);
     const updated = await this.nodes.patch(did, ref, request);
     if (!updated) throw new NotFoundException("That note is not here.");
     return entityView(updated);
@@ -130,7 +129,7 @@ function newNode(
     ...(parent ? { parent: ownedRefFrom(parent.id) } : {}),
     origin: parent ? parent.origin : ownedRefFrom(id),
     title: request.title,
-    labels: request.labels,
+    tags: request.tags,
     links: [],
     published: false,
     created_at: now,

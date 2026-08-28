@@ -13,6 +13,7 @@ import {
 import {
   CreateNodeRequestSchema,
   type NodeView,
+  type TagCount,
   UpdateNodeRequestSchema,
 } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
@@ -43,6 +44,12 @@ export class NodeController {
       origin: ownedRefOrRefuse(origin),
       maxDepth: depthBound(maxDepth),
     });
+  }
+
+  /** Every tag the caller has used, most-used first. */
+  @Get("tags")
+  tags(@Req() req: AuthedRequest): Promise<TagCount[]> {
+    return this.nodes.tags(viewerDid(req));
   }
 
   @Get(":did/:localId")

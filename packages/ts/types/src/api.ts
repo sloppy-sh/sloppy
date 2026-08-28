@@ -12,10 +12,10 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
-import { LabelDimensionSchema } from "./label.js";
 import { NodeDepthMismatchError, nodeDepthMatchesAddress } from "./node.js";
 import { NodeSchema } from "./node.js";
 import { PublicationSchema } from "./publication.js";
+import { TagSchema } from "./tag.js";
 
 /**
  * A stored row as it crosses the wire: the composite key replaced by the
@@ -43,10 +43,16 @@ export const BlockViewSchema = BlockSchema.omit({ id: true }).extend({
 });
 export type BlockView = z.infer<typeof BlockViewSchema>;
 
-export const LabelDimensionViewSchema = LabelDimensionSchema.omit({
-  id: true,
-}).extend({ ref: OwnedRefSchema });
-export type LabelDimensionView = z.infer<typeof LabelDimensionViewSchema>;
+/**
+ * One tag somebody has used, and how many of their notes carry it. There is no
+ * tag row to view — a tag exists exactly as long as a note holds it, so this is
+ * counted from the notes rather than read from a table.
+ */
+export const TagCountSchema = z.object({
+  tag: TagSchema,
+  notes: z.int().positive(),
+});
+export type TagCount = z.infer<typeof TagCountSchema>;
 
 export const PublicationViewSchema = PublicationSchema.omit({
   id: true,

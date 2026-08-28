@@ -26,7 +26,7 @@
 		<Card.Action><Button>Open</Button></Card.Action>
 	</Card.Header>
 	<Card.Content>1a1</Card.Content>
-	<Card.Footer>domain:biology</Card.Footer>
+	<Card.Footer>biology</Card.Footer>
 </Card.Root>
 
 <Label for="title">Title</Label>
@@ -41,19 +41,19 @@
 <Tabs.Root value="graph">
 	<Tabs.List>
 		<Tabs.Trigger value="graph">Graph</Tabs.Trigger>
-		<Tabs.Trigger value="labels">Labels</Tabs.Trigger>
+		<Tabs.Trigger value="tags">Tags</Tabs.Trigger>
 	</Tabs.List>
 	<Tabs.Content value="graph">the graph</Tabs.Content>
 </Tabs.Root>
 
-<Select.Root type="single" value="domain" open>
-	<Select.Trigger>domain</Select.Trigger>
+<Select.Root type="single" value="biology" open>
+	<Select.Trigger>biology</Select.Trigger>
 	<Select.Content>
 		<Select.Group>
-			<Select.GroupHeading>Dimensions</Select.GroupHeading>
-			<Select.Item value="domain">domain</Select.Item>
+			<Select.GroupHeading>Tags</Select.GroupHeading>
+			<Select.Item value="biology">biology</Select.Item>
 			<Select.Separator />
-			<Select.Item value="status">status</Select.Item>
+			<Select.Item value="method">method</Select.Item>
 		</Select.Group>
 	</Select.Content>
 </Select.Root>

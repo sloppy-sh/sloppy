@@ -2,30 +2,22 @@
 // draws the ownership line this expresses: the host owns which nodes exist, the
 // surface owns pan, zoom and drag.
 
-import type {
-  DidSyr,
-  FacetSlot,
-  LabelDimensionView,
-  NodeView,
-  OwnedRef,
-} from "@sloppy/types";
-
-/**
- * The lens the graph is coloured by. The host resolves the slot because only
- * the reader's whole dimension list decides it — DESIGN.md § Hue.
- */
-export interface GraphLens {
-  dimension: LabelDimensionView;
-  slot: FacetSlot;
-}
+import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
 
 export interface GraphSurfaceProps {
   /** The region to draw, in address order. */
   nodes: readonly NodeView[];
   /** Subtree roots to draw as one mega-node — {@link drawnNodes}. */
   collapsed: ReadonlySet<OwnedRef>;
-  /** `null` is the genealogical view, which DESIGN.md § Hue draws monochrome. */
-  lens: GraphLens | null;
+  /**
+   * The tags the reader selected, in the order they selected them — the order
+   * `assignTagHueSlots` hands out the hues in. Empty is the monochrome
+   * genealogical view DESIGN.md § Hue calls for when nothing has been asked.
+   *
+   * Notes carrying none of these dim; they are never dropped, so the shape the
+   * answer is read against stays on the canvas.
+   */
+  selection: readonly Tag[];
   /**
    * Re-initialises the scene when it changes, and only then: a pan, a zoom or a
    * drag must never remount, or the viewport is lost on every gesture.
@@ -61,6 +53,11 @@ export interface DrawnNode {
   collapsed: boolean;
   /** Descendants folded into it, which DESIGN.md § "The canvas" sizes it by. */
   folded: number;
+  /**
+   * Every tag this mark stands for: its own and those of everything folded into
+   * it, because a mega-node answers for the subtree it replaced.
+   */
+  tags: readonly Tag[];
 }
 
 /**
@@ -78,19 +75,37 @@ export function drawnNodes(
 ): DrawnNode[] {
   const byRef = new Map(nodes.map((node) => [node.ref, node]));
   const folded = new Map<OwnedRef, number>();
+  const carried = new Map<OwnedRef, Set<Tag>>();
   const visible: NodeView[] = [];
 
   for (const node of nodes) {
     const under = outermostCollapsed(node, byRef, collapsed);
-    if (under) folded.set(under, (folded.get(under) ?? 0) + 1);
-    else visible.push(node);
+    if (under === undefined) {
+      visible.push(node);
+      continue;
+    }
+    folded.set(under, (folded.get(under) ?? 0) + 1);
+    let tags = carried.get(under);
+    if (tags === undefined) carried.set(under, (tags = new Set()));
+    for (const tag of node.tags) tags.add(tag);
   }
 
   return visible.map((node) => ({
     node,
     collapsed: collapsed.has(node.ref),
     folded: folded.get(node.ref) ?? 0,
+    tags: withFolded(node.tags, carried.get(node.ref)),
   }));
+}
+
+function withFolded(
+  own: readonly Tag[],
+  folded: ReadonlySet<Tag> | undefined,
+): readonly Tag[] {
+  if (folded === undefined) return own;
+  const all = new Set(own);
+  for (const tag of folded) all.add(tag);
+  return [...all];
 }
 
 function outermostCollapsed(

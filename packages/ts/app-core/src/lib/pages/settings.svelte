@@ -6,7 +6,6 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
-	import { labels } from '../stores/labels.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
@@ -19,6 +18,7 @@
 		THEMES
 	} from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
+	import { tags } from '../stores/tags.svelte.js';
 
 	let leaving = $state(false);
 
@@ -35,7 +35,7 @@
 			await session.signOut();
 		} finally {
 			nodes.clear();
-			labels.clear();
+			tags.clear();
 			people.hold(null);
 			leaving = false;
 		}

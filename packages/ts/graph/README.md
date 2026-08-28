@@ -37,9 +37,9 @@ build alike.
 
 ## What the host owns, and what this owns
 
-The host owns which nodes exist, which are collapsed, and which lens is active. This owns
-pan, zoom, drag, level of detail and every colour, and reports back through the callbacks
-in `GraphSurfaceProps`.
+The host owns which nodes exist, which are collapsed, and which tags are selected. This
+owns pan, zoom, drag, level of detail and every colour, and reports back through the
+callbacks in `GraphSurfaceProps`.
 
 Pass `collapsed: new Set()` for the whole-graph view. Level of detail is what bounds the
 field; a host that pre-collapses everything gets six mega-nodes and none of the graph. A

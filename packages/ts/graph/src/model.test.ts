@@ -1,32 +1,36 @@
-import type { NodeView, OwnedRef } from "@sloppy/types";
+import {
+  assignTagHueSlots,
+  type NodeView,
+  type OwnedRef,
+  type Tag,
+} from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { drawnNodes, type GraphLens } from "./contract.js";
+import { drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import { applyLod } from "./lod.js";
-import { buildModel, facetOrder } from "./model.js";
+import { buildModel } from "./model.js";
 import { buildPalette } from "./palette.js";
 
 const corpus = makeCorpus();
 const palette = buildPalette({
   ink: "oklch(0.21 0.01 60)",
   paper: "oklch(0.98 0.006 85)",
-  facets: Array.from(
+  hues: Array.from(
     { length: 8 },
-    (_, slot) => `oklch(0.61 0.13 ${25 + slot * 45})`,
+    (_, at) => `oklch(0.61 0.13 ${25 + at * 45})`,
   ),
 });
-
-const status = corpus.dimensions.find((d) => d.name === "status")!;
-const lens: GraphLens = { dimension: status, slot: 2 };
 
 const drawn = drawnNodes(
   corpus.nodes,
   applyLod(corpus.nodes, new Set<OwnedRef>(), undefined).collapsed,
 );
 
+const selection = ["seed", "biology", "question"] as Tag[];
+
 describe("buildModel", () => {
   const model = buildModel(drawn, {
-    lens: null,
+    selection: [],
     palette,
     viewer: corpus.owner,
   });
@@ -88,7 +92,7 @@ describe("buildModel", () => {
   });
 
   it("claims nothing as the reader's own when there is no reader", () => {
-    const anonymous = buildModel(drawn, { lens: null, palette });
+    const anonymous = buildModel(drawn, { selection: [], palette });
     const kinds = new Set(
       anonymous.order.map(
         (ref) => anonymous.graph.getNodeAttributes(ref).provenance,
@@ -115,84 +119,160 @@ describe("buildModel", () => {
       expect(sorted[at].radius).toBeGreaterThanOrEqual(sorted[at - 1].radius);
     }
   });
+
+  // DESIGN.md § Hue: with nothing selected the graph is monochrome, and colour
+  // appearing means the reader asked a question of it.
+  it("colours by depth alone until a tag is selected", () => {
+    for (const ref of model.order) {
+      const node = model.graph.getNodeAttributes(ref);
+      expect(node.fill).toBe(palette.depth(node.depth));
+      expect(node.tag).toBeUndefined();
+      expect(node.alpha).toBe(1);
+    }
+  });
 });
 
-describe("under a lens", () => {
-  const model = buildModel(drawn, { lens, palette, viewer: corpus.owner });
+describe("with tags selected", () => {
+  const model = buildModel(drawn, {
+    selection,
+    palette,
+    viewer: corpus.owner,
+  });
+  const slots = assignTagHueSlots(selection);
 
-  // DESIGN.md § Hue: with no lens the graph is monochrome, and colour appearing
-  // means the reader asked a question of it.
-  it("colours by facet, where the genealogical view colours by depth", () => {
+  it("lights a note in any selected set, in that tag's own hue", () => {
+    const lit = model.order.filter(
+      (ref) => model.graph.getNodeAttributes(ref).tag !== undefined,
+    );
+    expect(lit.length).toBeGreaterThan(0);
+
+    for (const ref of lit) {
+      const node = model.graph.getNodeAttributes(ref);
+      expect(node.fill).toBe(palette.tag(slots.get(node.tag!)!));
+      expect(node.alpha).toBe(1);
+    }
+    expect(
+      new Set(lit.map((ref) => model.graph.getNodeAttributes(ref).tag)),
+    ).toEqual(new Set(selection));
+  });
+
+  // DESIGN.md § Hue: one mark, one hue — the rail already says which other sets
+  // a note is in, so the canvas never mixes or stripes.
+  it("draws a mark in several selected sets in the earliest-selected hue", () => {
+    const several = drawn.filter(
+      (entry) => entry.tags.filter((tag) => selection.includes(tag)).length > 1,
+    );
+    expect(several.length).toBeGreaterThan(0);
+    for (const entry of several) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
+      const earliest = selection.find((tag) => entry.tags.includes(tag));
+      expect(node.tag).toBe(earliest);
+    }
+  });
+
+  // AI.md: highlight, do not filter — and at the default budget two thirds of a
+  // graph this size is folded into mega-nodes.
+  it("lights a mega-node for a tag only the notes it folded carry", () => {
+    const carriers = drawn.filter(
+      (entry) =>
+        entry.folded > 0 &&
+        !entry.node.tags.some((tag) => selection.includes(tag)) &&
+        entry.tags.some((tag) => selection.includes(tag)),
+    );
+    expect(carriers.length).toBeGreaterThan(0);
+    for (const entry of carriers) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
+      expect(node.tag).toBe(selection.find((tag) => entry.tags.includes(tag)));
+      expect(node.alpha).toBe(1);
+    }
+  });
+
+  it("leaves no note in a selected set unaccounted for on the canvas", () => {
+    const byRef = new Map(corpus.nodes.map((node) => [node.ref, node]));
+    const lit = (ref: OwnedRef): boolean =>
+      model.graph.hasNode(ref) &&
+      model.graph.getNodeAttributes(ref).tag !== undefined;
+    const carriers = corpus.nodes.filter((node) =>
+      node.tags.some((tag) => selection.includes(tag)),
+    );
+    expect(carriers.length).toBeGreaterThan(0);
+
+    const unanswered = carriers.filter((carrier) => {
+      let at: NodeView | undefined = carrier;
+      while (at !== undefined && !lit(at.ref)) {
+        at = at.parent === undefined ? undefined : byRef.get(at.parent);
+      }
+      return at === undefined;
+    });
+    expect(unanswered.map((node) => node.address)).toEqual([]);
+  });
+
+  // DESIGN.md § Hue: notes carrying none of the selected tags dim; they never
+  // leave, because the shape the answer is read against is the graph itself.
+  it("recedes a mark in none of them without dropping it or recolouring it", () => {
+    const dark = model.order.filter(
+      (ref) => model.graph.getNodeAttributes(ref).tag === undefined,
+    );
+    expect(dark.length).toBeGreaterThan(0);
+    for (const ref of dark) {
+      const node = model.graph.getNodeAttributes(ref);
+      expect(node.fill).toBe(palette.depth(node.depth));
+      expect(node.alpha).toBe(palette.unselectedAlpha);
+      expect(node.alpha).toBeLessThan(1);
+      const entry = drawn.find((entry) => entry.node.ref === ref)!;
+      expect(entry.tags.some((tag) => selection.includes(tag))).toBe(false);
+    }
+    expect(model.order).toEqual(drawn.map((entry) => entry.node.ref));
+  });
+
+  // AI.md: highlight, not filter — the shape of the graph survives the question.
+  it("leaves every seed and anchor exactly where the plain graph put them", () => {
     const plain = buildModel(drawn, {
-      lens: null,
+      selection: [],
       palette,
       viewer: corpus.owner,
     });
-    const labelled = model.order.filter(
-      (ref) => model.graph.getNodeAttributes(ref).facet !== undefined,
-    );
-    expect(labelled.length).toBeGreaterThan(0);
-
-    for (const ref of labelled) {
-      const under = model.graph.getNodeAttributes(ref);
-      const at = model.facets.indexOf(under.facet!);
-      expect(under.fill).toBe(palette.facet(2, at, model.facets.length));
-    }
-    for (const ref of plain.order) {
-      const bare = plain.graph.getNodeAttributes(ref);
-      expect(bare.fill).toBe(palette.depth(bare.depth));
-      expect(bare.facet).toBeUndefined();
+    for (const ref of model.order) {
+      const asked = model.graph.getNodeAttributes(ref);
+      const before = plain.graph.getNodeAttributes(ref);
+      expect([asked.x, asked.y, asked.anchorX, asked.anchorY]).toEqual([
+        before.x,
+        before.y,
+        before.anchorX,
+        before.anchorY,
+      ]);
+      expect(asked.anchorStrength).toBe(before.anchorStrength);
     }
   });
 
-  it("gives one value one colour across the whole region", () => {
-    const byValue = new Map<string, number>();
+  it("gives one tag one colour across the whole region", () => {
+    const byTag = new Map<Tag, number>();
     for (const ref of model.order) {
       const node = model.graph.getNodeAttributes(ref);
-      if (node.facet === undefined) continue;
-      const seen = byValue.get(node.facet);
-      if (seen === undefined) byValue.set(node.facet, node.fill);
+      if (node.tag === undefined) continue;
+      const seen = byTag.get(node.tag);
+      if (seen === undefined) byTag.set(node.tag, node.fill);
       else expect(node.fill).toBe(seen);
     }
-    expect(new Set(byValue.values()).size).toBe(byValue.size);
+    expect(new Set(byTag.values()).size).toBe(byTag.size);
   });
 
-  it("recedes a node the lens has nothing to say about", () => {
-    const unset = model.order.filter(
-      (ref) => model.graph.getNodeAttributes(ref).facet === undefined,
-    );
-    expect(unset.length).toBeGreaterThan(0);
-    for (const ref of unset) {
-      expect(model.graph.getNodeAttributes(ref).fill).toBe(palette.unlabelled);
+  it("spends one slot on a tag selected twice, and none on one nobody picked", () => {
+    const twice = buildModel(drawn, {
+      selection: [selection[0], selection[1], selection[0]] as Tag[],
+      palette,
+      viewer: corpus.owner,
+    });
+    const two = buildModel(drawn, {
+      selection: selection.slice(0, 2) as Tag[],
+      palette,
+      viewer: corpus.owner,
+    });
+    for (const ref of twice.order) {
+      expect(twice.graph.getNodeAttributes(ref).fill).toBe(
+        two.graph.getNodeAttributes(ref).fill,
+      );
     }
-  });
-
-  it("pulls each value's nodes to one place", () => {
-    const homes = new Map<string | undefined, { x: number; y: number }>();
-    for (const ref of model.order) {
-      const node = model.graph.getNodeAttributes(ref);
-      const anchor = { x: node.anchorX, y: node.anchorY };
-      const seen = homes.get(node.facet);
-      if (seen === undefined) homes.set(node.facet, anchor);
-      else expect(anchor).toEqual(seen);
-    }
-    expect(homes.size).toBeGreaterThan(1);
-  });
-});
-
-describe("facetOrder", () => {
-  it("puts what the reader declared first, then what the region carries", () => {
-    const invented: NodeView = {
-      ...corpus.nodes[0],
-      ref: `${corpus.owner}/00000000000000000000000009` as OwnedRef,
-      labels: { status: "zzz-later" },
-    };
-    const order = facetOrder(
-      [...drawn, { node: invented, collapsed: false, folded: 0 }],
-      lens,
-    );
-    expect(order.slice(0, status.values.length)).toEqual(status.values);
-    expect(order.at(-1)).toBe("zzz-later");
   });
 });
 
@@ -201,7 +281,7 @@ describe("carrying positions across an update", () => {
     const keep = new Map(
       drawn.slice(0, 10).map((entry) => [entry.node.ref, { x: 7, y: -3 }]),
     );
-    const model = buildModel(drawn, { lens: null, palette, keep });
+    const model = buildModel(drawn, { selection: [], palette, keep });
     for (const [ref] of keep) {
       const node = model.graph.getNodeAttributes(ref);
       expect([node.x, node.y]).toEqual([7, -3]);
