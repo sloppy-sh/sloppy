@@ -134,6 +134,12 @@ describe("the domain routes", () => {
   ): Promise<NodeView> =>
     ok("POST", "/nodes", person, request) as Promise<NodeView>;
 
+  const springsFrom = (note: NodeView) => ({
+    relation: "under",
+    note: note.ref,
+  });
+  const follows = (note: NodeView) => ({ relation: "after", note: note.ref });
+
   /** Register on this instance's own provider, then spend the consent code the
    *  way a browser does, so the session is a real one. */
   async function signIn(username: string): Promise<Person> {
@@ -237,47 +243,109 @@ describe("the domain routes", () => {
         expect(root.origin).toBe(root.ref);
         expect(root.parent).toBeUndefined();
 
-        const first = await newNode(ada, { parent: root.ref, title: "First" });
+        const first = await newNode(ada, {
+          from: springsFrom(root),
+          title: "First",
+        });
         const second = await newNode(ada, {
-          parent: root.ref,
+          from: springsFrom(root),
           title: "Second",
         });
-        const under = await newNode(ada, { parent: first.ref, title: "Under" });
+        const deeper = await newNode(ada, {
+          from: springsFrom(first),
+          title: "Under",
+        });
 
-        expect([first.address, second.address, under.address]).toEqual([
+        expect([first.address, second.address, deeper.address]).toEqual([
           "1a",
           "1b",
           "1a1",
         ]);
-        expect(under.depth).toBe(3);
-        expect(under.origin).toBe(root.ref);
-        expect(under.parent).toBe(first.ref);
+        expect(deeper.depth).toBe(3);
+        expect(deeper.origin).toBe(root.ref);
+        expect(deeper.parent).toBe(first.ref);
       },
     );
 
+    scenario("continues a run rather than deepening it", async () => {
+      const root = await newNode(ada, { title: "A run of thought" });
+      const under = await newNode(ada, { from: springsFrom(root) });
+      const alongside = await newNode(ada, { from: follows(under) });
+      const nextBranch = await newNode(ada, { from: follows(root) });
+
+      expect(alongside.address).toBe(`${root.address}b`);
+      expect(alongside.parent).toBe(root.ref);
+      expect(alongside.origin).toBe(root.ref);
+
+      // A root's next note is a branch of its own, so it is its own origin.
+      expect(addressDepth(nextBranch.address as Address)).toBe(1);
+      expect(nextBranch.parent).toBeUndefined();
+      expect(nextBranch.origin).toBe(nextBranch.ref);
+    });
+
+    scenario("opens a branch at the number its author picked", async () => {
+      const picked = await newNode(ada, {
+        from: { relation: "root", address: "4096" },
+        title: "Numbered by hand",
+      });
+      expect(picked.address).toBe("4096");
+      expect(picked.depth).toBe(1);
+      expect(picked.parent).toBeUndefined();
+      expect(picked.origin).toBe(picked.ref);
+
+      const again = await call("POST", "/nodes", ada, {
+        from: { relation: "root", address: "4096" },
+      });
+      expect(again.status).toBe(400);
+      expect(JSON.stringify(again.body)).toContain("4096");
+
+      // Somebody else's graph is a different set of numbers entirely.
+      const bramsOwn = await newNode(bram, {
+        from: { relation: "root", address: "4096" },
+      });
+      expect(bramsOwn.address).toBe("4096");
+    });
+
+    scenario("refuses a number that is not a branch's to hold", async () => {
+      for (const address of ["1a", "0", "-3", "", "1.5"]) {
+        const answer = await call("POST", "/nodes", ada, {
+          from: { relation: "root", address },
+        });
+        expect(answer.status, `${JSON.stringify(address)} was accepted`).toBe(
+          400,
+        );
+      }
+    });
+
     scenario("ignores an address a client tries to name", async () => {
+      const parent = await newNode(ada, { title: "Names its own children" });
       const minted = await newNode(ada, {
+        from: springsFrom(parent),
         title: "Not yours to name",
         address: "9999",
         depth: 42,
         origin: "did:syr:z6MkNot/00000000000000000000000000",
       });
-      expect(minted.address).not.toBe("9999");
+      expect(minted.address).toBe(`${parent.address}a`);
       expect(minted.depth).toBe(addressDepth(minted.address as Address));
+      expect(minted.origin).toBe(parent.ref);
     });
 
-    scenario("refuses a parent that is not there", async () => {
-      const answer = await call("POST", "/nodes", ada, {
-        parent: `${ada.did}/00000000000000000000000000`,
-        title: "Orphan",
-      });
-      expect(answer.status).toBe(400);
+    scenario("refuses a note that is not there to place against", async () => {
+      const nowhere = `${ada.did}/00000000000000000000000000`;
+      for (const relation of ["under", "after"]) {
+        const answer = await call("POST", "/nodes", ada, {
+          from: { relation, note: nowhere },
+          title: "Orphan",
+        });
+        expect(answer.status, `${relation} was accepted`).toBe(400);
+      }
     });
 
     scenario("gives 24 racing creations 24 different addresses", async () => {
       const parent = await newNode(ada, { title: "A crowded parent" });
       const racers = Array.from({ length: 24 }, (_, i) =>
-        newNode(ada, { parent: parent.ref, title: `Racer ${i}` }),
+        newNode(ada, { from: springsFrom(parent), title: `Racer ${i}` }),
       );
       const born = await Promise.all(racers);
       const addresses = born.map((node) => node.address).sort(compareAddresses);
@@ -303,7 +371,7 @@ describe("the domain routes", () => {
       const born = await Promise.all(
         Array.from({ length: 20 }, (_, i) =>
           (i % 2 === 0 ? one : other).create(ada.did, {
-            parent: parent.ref,
+            from: { relation: "under", note: parent.ref },
             title: `Writer ${i}`,
             tags: [],
           }),
@@ -328,7 +396,7 @@ describe("the domain routes", () => {
           for (const step of [0, 0, 1, 0, 2, 3, 1]) {
             written.push(
               await newNode(person, {
-                parent: written[step].ref,
+                from: springsFrom(written[step]),
                 title: `Step ${step}`,
               }),
             );
@@ -786,9 +854,18 @@ describe("the domain routes", () => {
   describe("removing a note", () => {
     scenario("takes its branch and every interior with it", async () => {
       const root = await newNode(ada, { title: "Doomed" });
-      const kept = await newNode(ada, { parent: root.ref, title: "Kept" });
-      const doomed = await newNode(ada, { parent: root.ref, title: "Branch" });
-      const under = await newNode(ada, { parent: doomed.ref, title: "Under" });
+      const kept = await newNode(ada, {
+        from: springsFrom(root),
+        title: "Kept",
+      });
+      const doomed = await newNode(ada, {
+        from: springsFrom(root),
+        title: "Branch",
+      });
+      const under = await newNode(ada, {
+        from: springsFrom(doomed),
+        title: "Under",
+      });
       const block = (await ok("POST", "/blocks", ada, {
         node: under.ref,
         content: {
@@ -829,15 +906,24 @@ describe("the domain routes", () => {
 
     scenario("does not reuse an address taken out of the middle", async () => {
       const root = await newNode(ada, { title: "No reuse" });
-      const first = await newNode(ada, { parent: root.ref, title: "First" });
-      const second = await newNode(ada, { parent: root.ref, title: "Second" });
+      const first = await newNode(ada, {
+        from: springsFrom(root),
+        title: "First",
+      });
+      const second = await newNode(ada, {
+        from: springsFrom(root),
+        title: "Second",
+      });
       expect([first.address, second.address]).toEqual([
         `${root.address}a`,
         `${root.address}b`,
       ]);
 
       await call("DELETE", `/nodes/${at(first.ref)}`, ada);
-      const next = await newNode(ada, { parent: root.ref, title: "Next" });
+      const next = await newNode(ada, {
+        from: springsFrom(root),
+        title: "Next",
+      });
       expect(next.address).toBe(`${root.address}c`);
     });
   });

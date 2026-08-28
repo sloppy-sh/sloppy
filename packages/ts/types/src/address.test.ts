@@ -10,10 +10,37 @@ import {
   InvalidAddressError,
   isAddress,
   isAncestorAddress,
+  isRootAddress,
   parentAddress,
   parseAddress,
   siblingAddress,
 } from "./address.js";
+
+describe("the number a branch is named with", () => {
+  it("is the only address whose parent is nothing", () => {
+    for (const value of ["1", "7", "12", "4096"]) {
+      expect(isRootAddress(value)).toBe(true);
+      expect(parentAddress(value)).toBeNull();
+    }
+  });
+
+  it("refuses anything that names a place under another note", () => {
+    for (const value of ["1a", "1a1", "9z9z"]) {
+      expect(isRootAddress(value)).toBe(false);
+      expect(isAddress(value)).toBe(true);
+    }
+  });
+
+  it("refuses what is not an address at all", () => {
+    for (const value of ["", "0", "-3", "1.5", "01", " 7", "seven", 7, null]) {
+      expect(isRootAddress(value)).toBe(false);
+    }
+  });
+
+  it("refuses a number too large to compare exactly", () => {
+    expect(isRootAddress("9".repeat(30))).toBe(false);
+  });
+});
 
 describe("the grammar", () => {
   it("accepts alternating segments starting with a number", () => {

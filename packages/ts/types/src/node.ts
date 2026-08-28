@@ -3,7 +3,7 @@
 // Is the Protocol".
 
 import { z } from "zod";
-import { addressDepth, AddressSchema } from "./address.js";
+import { addressDepth, AddressSchema, RootAddressSchema } from "./address.js";
 import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { TagsSchema } from "./tag.js";
 
@@ -69,13 +69,26 @@ export function parseNode(row: unknown): Node {
 }
 
 /**
- * Create a node. The server mints the id and assigns the address: a client that
- * could name either could mint a citation into somebody else's graph.
+ * Where a new node goes, said against a node that is already there: `under` it,
+ * so the new one springs out of it, or `after` it, so the new one continues the
+ * run it belongs to. `root` opens a branch at a number the author picked.
+ */
+export const NodePlacementSchema = z.discriminatedUnion("relation", [
+  z.object({ relation: z.literal("under"), note: OwnedRefSchema }),
+  z.object({ relation: z.literal("after"), note: OwnedRefSchema }),
+  z.object({ relation: z.literal("root"), address: RootAddressSchema }),
+]);
+export type NodePlacement = z.infer<typeof NodePlacementSchema>;
+
+/**
+ * Create a node. The server mints the id, and assigns every address except the
+ * one a `root` placement names: a client that could name a node's place under
+ * another could mint a citation into somebody else's graph.
  *
- * An absent `parent` creates a root.
+ * An absent `from` opens a branch at the next number.
  */
 export const CreateNodeRequestSchema = z.object({
-  parent: OwnedRefSchema.optional(),
+  from: NodePlacementSchema.optional(),
   title: z.string().max(512).default(""),
   tags: TagsSchema.default([]),
 });

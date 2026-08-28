@@ -269,8 +269,6 @@ export class SloppyClient {
     return body == null ? null : parseNodeView(body);
   }
 
-  /** The server assigns the address; a client that could name one could mint a
-   *  citation into somebody else's graph. */
   async createNode(request: CreateNodeRequest): Promise<NodeView> {
     return parseNodeView(await this.send("POST", "/nodes", request));
   }

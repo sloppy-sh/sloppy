@@ -11,10 +11,20 @@ import { z } from "zod";
 /** Alternating segments, numeric first: `1`, `1a`, `1a1`, `1ab12c`. */
 const ADDRESS_PATTERN = /^[1-9][0-9]*(?:[a-z]+[1-9][0-9]*)*[a-z]*$/;
 
+const ROOT_ADDRESS_PATTERN = /^[1-9][0-9]*$/;
+
 export const AddressSchema = z
   .string()
   .regex(ADDRESS_PATTERN, "Expected a Folgezettel address, e.g. 1a1");
 export type Address = z.infer<typeof AddressSchema>;
+
+/**
+ * A branch's own number, which is an address of one numeric segment. The only
+ * address anybody may name: every other one is derived from its parent's.
+ */
+export const RootAddressSchema = z
+  .string()
+  .refine(isRootAddress, "Number a branch with a whole number, like 7");
 
 export type SegmentKind = "number" | "letter";
 
@@ -40,6 +50,15 @@ const TAU = Math.PI * 2;
 
 export function isAddress(value: unknown): value is Address {
   return typeof value === "string" && ADDRESS_PATTERN.test(value);
+}
+
+/** Whether `value` addresses a root — a branch nobody's note sprang out of. */
+export function isRootAddress(value: unknown): value is Address {
+  return (
+    typeof value === "string" &&
+    ROOT_ADDRESS_PATTERN.test(value) &&
+    Number.isSafeInteger(Number(value))
+  );
 }
 
 export function parseAddress(address: string): AddressSegment[] {

@@ -109,7 +109,7 @@ describe.each([
 	it('hands the caret on to the next note written from inside it', async () => {
 		await openWritten(at);
 
-		const write = button('Write a note under this');
+		const write = button('A note under this');
 		write.focus();
 		write.click();
 		await settle();
@@ -274,17 +274,26 @@ function noteRow(shows: string): HTMLButtonElement {
 
 const screen = () => document.body.textContent ?? '';
 
-/** Only the search results, so the note's own lists cannot answer for them. */
+/** Only the rows the picker would act on: the notes it merely shows, and the
+ *  note's own lists, must not answer for them. */
 const offered = () =>
-	document.body.querySelector('[aria-label="Notes you can link to"]')?.textContent ?? '';
+	[...document.body.querySelectorAll('[aria-label="Link to a note"] button')]
+		.filter((row) => row.querySelector('.address'))
+		.map((row) => row.textContent ?? '')
+		.join(' ');
 
-async function findToLink(typed: string): Promise<void> {
+async function openPicker(): Promise<void> {
 	button('Link to another note').click();
 	await settle();
-	const field = document.body.querySelector<HTMLInputElement>(
-		'[aria-label="Find a note to link to"]'
-	);
-	if (!field) throw new Error('The note search never opened');
+	if (!document.body.querySelector('[aria-label="Link to a note"]')) {
+		throw new Error('The note picker never opened');
+	}
+}
+
+async function findToLink(typed: string): Promise<void> {
+	await openPicker();
+	const field = document.body.querySelector<HTMLInputElement>('[aria-label="Narrow this list"]');
+	if (!field) throw new Error('The note picker never opened');
 	field.value = typed;
 	field.dispatchEvent(new Event('input', { bubbles: true }));
 	await settle();
@@ -359,6 +368,36 @@ describe('deleting a note', () => {
 	});
 });
 
+describe('writing the note that comes next', () => {
+	let placed: unknown;
+
+	beforeEach(async () => {
+		installGraph();
+		await loadGraph();
+		placed = undefined;
+		api.on('POST /nodes', (_url, init) => {
+			placed = (JSON.parse(String(init?.body)) as { from?: unknown }).from;
+			return node(9, '1b', { origin: FIRST, parent: FIRST });
+		});
+	});
+
+	it('springs a note out of the one being read', async () => {
+		await openNote(SECOND);
+		button('A note under this').click();
+		await settle();
+
+		expect(placed).toEqual({ relation: 'under', note: SECOND });
+	});
+
+	it('continues the run the one being read is in', async () => {
+		await openNote(SECOND);
+		button('The next note').click();
+		await settle();
+
+		expect(placed).toEqual({ relation: 'after', note: SECOND });
+	});
+});
+
 describe('linking a note to another', () => {
 	let graph: Map<OwnedRef, NodeView>;
 
@@ -416,6 +455,25 @@ describe('linking a note to another', () => {
 
 		expect(screen()).toContain('Links to');
 		expect(noteRow('Method')).toBeTruthy();
+	});
+
+	it('shows the graph to pick from before anything is typed', async () => {
+		await openNote(SECOND);
+		await openPicker();
+
+		expect(offered()).toContain('Origins');
+		expect(offered()).toContain('Method');
+	});
+
+	it('opens a branch to reach what grew under it', async () => {
+		await openNote(THIRD);
+		await openPicker();
+		expect(offered()).not.toContain('Cells');
+
+		labelled('Show what is under 1').click();
+		await settle();
+
+		expect(offered()).toContain('Cells');
 	});
 
 	it('tells the far note where the link came from', async () => {
