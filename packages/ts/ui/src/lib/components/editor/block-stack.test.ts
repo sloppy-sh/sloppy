@@ -498,17 +498,18 @@ describe('putting a block somewhere else in the stack', () => {
 	const stack = (): (string | null)[] =>
 		[...target.querySelectorAll('.sloppy-prose > p')].map((row) => row.textContent);
 
-	function finger(type: string, y: number): PointerEvent {
-		const event = new Event(type, { bubbles: true, cancelable: true });
-		Object.assign(event, {
-			pointerId: 2,
-			pointerType: 'touch',
-			button: 0,
-			clientX: 10,
-			clientY: y
-		});
-		return event as PointerEvent;
+	function pointer(pointerType: string) {
+		return (type: string, y: number): PointerEvent => {
+			const event = new Event(type, { bubbles: true, cancelable: true });
+			Object.assign(event, { pointerId: 2, pointerType, button: 0, clientX: 10, clientY: y });
+			return event as PointerEvent;
+		};
 	}
+	const finger = pointer('touch');
+	const mouse = pointer('mouse');
+
+	/** How long a finger rests on a handle before it is holding the block. */
+	const HELD_MS = 350;
 
 	const press = (key: string): KeyboardEvent =>
 		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
@@ -519,12 +520,13 @@ describe('putting a block somewhere else in the stack', () => {
 		block({ type: 'paragraph', content: 'three' })
 	];
 
-	it('lands where a finger drops it, and writes the one move', async () => {
+	it('lands where a finger that held it drops it, and writes the one move', async () => {
 		const blocks = three();
 		open(blocks);
 		stacked();
 
 		grips()[0].dispatchEvent(finger('pointerdown', 20));
+		await vi.advanceTimersByTimeAsync(HELD_MS);
 		window.dispatchEvent(finger('pointermove', 130));
 		window.dispatchEvent(finger('pointerup', 130));
 		flushSync();
@@ -534,11 +536,29 @@ describe('putting a block somewhere else in the stack', () => {
 		expect(written.moved).toEqual([{ ref: blocks[0].ref, after: blocks[2].ref }]);
 	});
 
+	// The gutter runs the length of the note and is where a thumb starts a
+	// scroll, so a swipe from it has to stay a scroll — not a silent reordering
+	// the writer never asked for and has nothing to undo it by.
+	it('leaves a swipe up the gutter to the note, so the reading scrolls', async () => {
+		open(three());
+		stacked();
+
+		grips()[2].dispatchEvent(finger('pointerdown', 100));
+		window.dispatchEvent(finger('pointermove', 40));
+		window.dispatchEvent(finger('pointerup', 20));
+		flushSync();
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(stack()).toEqual(['one', 'two', 'three']);
+		expect(written.moved).toEqual([]);
+	});
+
 	it('writes nothing for a block dropped back where it was', async () => {
 		open(three());
 		stacked();
 
 		grips()[1].dispatchEvent(finger('pointerdown', 60));
+		await vi.advanceTimersByTimeAsync(HELD_MS);
 		window.dispatchEvent(finger('pointermove', 70));
 		window.dispatchEvent(finger('pointerup', 70));
 		flushSync();
@@ -546,6 +566,22 @@ describe('putting a block somewhere else in the stack', () => {
 		expect(stack()).toEqual(['one', 'two', 'three']);
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(written.moved).toEqual([]);
+	});
+
+	// Nothing to hold for: a mouse drag is not competing with a scroll.
+	it('picks the block up the moment a mouse pulls it', async () => {
+		const blocks = three();
+		open(blocks);
+		stacked();
+
+		grips()[0].dispatchEvent(mouse('pointerdown', 20));
+		window.dispatchEvent(mouse('pointermove', 130));
+		window.dispatchEvent(mouse('pointerup', 130));
+		flushSync();
+
+		expect(stack()).toEqual(['two', 'three', 'one']);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.moved).toEqual([{ ref: blocks[0].ref, after: blocks[2].ref }]);
 	});
 
 	it('moves on the arrow keys too, for anyone reaching it without a pointer', async () => {

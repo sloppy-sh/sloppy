@@ -751,11 +751,13 @@
 		color: var(--muted-foreground);
 		opacity: 0.4;
 		cursor: grab;
-		/* The browser must not claim the gesture: a drag here is not a scroll,
-		   and on a coarse pointer it is not a text selection either. */
-		touch-action: none;
+		/* A swipe from here still scrolls the note; `./block-handles.ts` takes the
+		   gesture only once the press has been held. iOS answers that press with
+		   a callout of its own unless it is told not to. */
+		touch-action: pan-y;
 		user-select: none;
 		-webkit-user-select: none;
+		-webkit-touch-callout: none;
 		transition:
 			opacity 150ms ease-out,
 			background-color 150ms ease-out;

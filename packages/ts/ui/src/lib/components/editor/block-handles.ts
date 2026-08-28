@@ -19,6 +19,10 @@ const GRIP =
 
 /** How far a press has to travel before it is a drag rather than a tap. */
 const NUDGE = 4;
+/** How long a finger has to rest before it is holding the block rather than
+ *  starting a scroll, and how far it may wobble while it rests. */
+const HOLD_MS = 350;
+const WOBBLE = 10;
 /** How near a scroller's edge a drag reaches before it carries the scroller with it. */
 const EDGE_PX = 56;
 const DRIFT_PX = 14;
@@ -85,7 +89,10 @@ function slotAt(rows: readonly Row[], y: number): number {
 
 function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: PointerEvent): void {
 	if (start.button > 0) return;
-	start.preventDefault();
+	// A finger is left to the browser until the press has been held: the gutter
+	// is where a thumb starts a scroll, and a swipe from here must still scroll.
+	const byFinger = start.pointerType === 'touch';
+	if (!byFinger) start.preventDefault();
 
 	const line = document.createElement('div');
 	line.className = 'sloppy-drop-line';
@@ -94,6 +101,7 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 	let slot = -1;
 	let y = start.clientY;
 	let frame = 0;
+	let holding: ReturnType<typeof setTimeout> | undefined;
 
 	function aim(): void {
 		if (view.isDestroyed) return;
@@ -119,23 +127,41 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 		aim();
 	}
 
+	/** `touch-action: pan-y` leaves the scroll to the browser, and only a
+	 *  non-passive `touchmove` takes it back once the block is held. */
+	function refuse(event: TouchEvent): void {
+		event.preventDefault();
+	}
+
+	function lift(): void {
+		dragging = true;
+		button.classList.add('is-dragging');
+		document.body.append(line);
+		window.addEventListener('touchmove', refuse, { passive: false });
+		if (scroller) frame = requestAnimationFrame(drift);
+		aim();
+	}
+
 	function moved(event: PointerEvent): void {
 		y = event.clientY;
 		if (!dragging) {
+			if (byFinger) {
+				if (Math.abs(y - start.clientY) > WOBBLE) done();
+				return;
+			}
 			if (Math.abs(y - start.clientY) < NUDGE) return;
-			dragging = true;
-			button.classList.add('is-dragging');
-			document.body.append(line);
-			if (scroller) frame = requestAnimationFrame(drift);
+			lift();
 		}
 		event.preventDefault();
 		aim();
 	}
 
 	function done(): void {
+		clearTimeout(holding);
 		window.removeEventListener('pointermove', moved);
 		window.removeEventListener('pointerup', done);
 		window.removeEventListener('pointercancel', done);
+		window.removeEventListener('touchmove', refuse);
 		if (frame) cancelAnimationFrame(frame);
 		line.remove();
 		button.classList.remove('is-dragging');
@@ -146,6 +172,7 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 		move(view, uid, slot < from ? slot : slot - 1);
 	}
 
+	if (byFinger) holding = setTimeout(lift, HOLD_MS);
 	window.addEventListener('pointermove', moved);
 	window.addEventListener('pointerup', done);
 	window.addEventListener('pointercancel', done);
