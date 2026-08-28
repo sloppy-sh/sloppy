@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Injectable, type OnModuleInit } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import {
   type DidSyr,
   type Timestamp,
@@ -93,11 +93,18 @@ function keyFor(credential: string): RecordId {
 }
 
 @Injectable()
-export class SessionStore implements OnModuleInit {
-  constructor(private readonly db: DbService) {}
+export class SessionStore {
+  /**
+   * Every read here is behind the guard that runs before every route, so a call
+   * left unsettled is the whole API stopping — including the public routes
+   * somebody signs back in through. A socket outlives the server behind it for
+   * however long it takes to notice, and a call written into one in that window
+   * is never answered; `DbService.reachable` bounds itself for the same reason.
+   */
+  private static readonly TIMEOUT_MS = 2000;
 
-  async onModuleInit(): Promise<void> {
-    await this.db.handle.query(SESSION_SCHEMA);
+  constructor(private readonly db: DbService) {
+    db.defineOnOpen((store) => store.query(SESSION_SCHEMA));
   }
 
   async issue(session: NewSession): Promise<IssuedSession> {
@@ -113,34 +120,57 @@ export class SessionStore implements OnModuleInit {
       created_at: now,
       updated_at: now,
     };
-    await this.db.handle.create(row.id).content(row);
+    await this.bounded(this.db.handle.create(row.id).content(row));
     await this.dropExpired(session.did, now);
     return { credential, row };
   }
 
   async find(credential: string): Promise<SessionRow | null> {
     return (
-      (await this.db.handle.select<SessionRow>(keyFor(credential))) ?? null
+      (await this.bounded(
+        this.db.handle.select<SessionRow>(keyFor(credential)),
+      )) ?? null
     );
   }
 
   async end(credential: string): Promise<void> {
-    await this.db.handle.delete(keyFor(credential));
+    await this.bounded(this.db.handle.delete(keyFor(credential)));
   }
 
   /** Every session this identity holds against this instance, everywhere. */
   async endAll(did: DidSyr, syrInstanceUrl: string): Promise<void> {
-    await this.db.handle.query(
-      `DELETE ${SESSION_TABLE} WHERE created_by = $did AND syr_instance_url = $instance;`,
-      { did, instance: syrInstanceUrl },
+    await this.bounded(
+      this.db.handle.query(
+        `DELETE ${SESSION_TABLE} WHERE created_by = $did AND syr_instance_url = $instance;`,
+        { did, instance: syrInstanceUrl },
+      ),
     );
   }
 
   /** Signing in is the sweep: it is the one moment a person's row count grows. */
   private async dropExpired(did: DidSyr, now: Timestamp): Promise<void> {
-    await this.db.handle.query(
-      `DELETE ${SESSION_TABLE} WHERE created_by = $did AND expires_at < $now;`,
-      { did, now },
+    await this.bounded(
+      this.db.handle.query(
+        `DELETE ${SESSION_TABLE} WHERE created_by = $did AND expires_at < $now;`,
+        { did, now },
+      ),
     );
+  }
+
+  private async bounded<T>(work: PromiseLike<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("the session store did not answer")),
+            SessionStore.TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

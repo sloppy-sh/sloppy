@@ -10,6 +10,7 @@ import {
   Query,
   Req,
   Res,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import {
   type ConsentRedirect,
@@ -21,7 +22,7 @@ import {
 import type { Response } from "express";
 import { normalizeInstanceUrl } from "../syr/syr.service";
 import { AuthService, HOME } from "./auth.service";
-import type { AuthedRequest } from "./authed-request";
+import { type AuthedRequest, SESSION_UNVERIFIED } from "./authed-request";
 import { handOffPage } from "./hand-off-page";
 import { Public } from "./public.decorator";
 import { isAllowedRedirect, isDeepLink, withParams } from "./redirect-target";
@@ -42,6 +43,9 @@ import {
  *
  * Every route is `@Public()`: they are how a session begins, and `/auth/me`
  * answers "nobody" rather than refusing, so the first visit is not an error.
+ * Nobody is what an absent credential means, though, never what an unreadable
+ * store means — a session Sloppy cannot check is reported as such, and the
+ * routes that need no session at all still answer while it is down.
  */
 @Controller("auth")
 export class AuthController {
@@ -150,6 +154,8 @@ export class AuthController {
   @Public()
   @Get("me")
   me(@Req() req: AuthedRequest): Viewer | null {
+    if (req.sessionUnverified)
+      throw new ServiceUnavailableException(SESSION_UNVERIFIED);
     return req.viewer ?? null;
   }
 
@@ -161,8 +167,16 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<Record<string, never>> {
     const credential = readCredential(req);
-    if (credential) await this.auth.signOut(credential);
+    // Cleared before the session is ended, and kept cleared if ending it fails:
+    // somebody who wants out gets out of this browser either way.
     clearSessionCookie(res);
+    try {
+      if (credential) await this.auth.signOut(credential);
+    } catch {
+      throw new ServiceUnavailableException(
+        "You're signed out here. Sloppy could not finish signing you out — try again in a moment.",
+      );
+    }
     return {};
   }
 

@@ -176,6 +176,10 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     app.set("trust proxy", app.get(AppConfigService).trustedProxies);
     await app.listen(port, "127.0.0.1");
 
+    // The API listens before the store is open; these routes need it open.
+    const { DbService: Store } = await import("../db/db.service");
+    await app.get(Store).whenOpen();
+
     const post = (path: string, body: unknown, token?: string) =>
       fetch(`${base}${path}`, {
         method: "POST",

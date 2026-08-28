@@ -85,6 +85,7 @@ async function main(): Promise<void> {
 
   try {
     const db = app.get(DbService);
+    await db.whenOpen();
     const did = await resolveDid(db, options);
 
     const nodes = app.get(NodeService);
