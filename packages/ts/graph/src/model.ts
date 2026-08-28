@@ -46,8 +46,9 @@ export interface GraphNodeAttributes {
   /** Children of this node that are themselves drawn — what a collapse folds. */
   children: number;
   /**
-   * The selected tag this node draws the hue of: the earliest-selected one it
-   * carries, absent when it carries none. DESIGN.md § Hue — one mark, one hue.
+   * The selected tag this mark draws the hue of: the earliest-selected of the
+   * ones it stands for ({@link DrawnNode.tags}), absent when it stands for
+   * none. DESIGN.md § Hue — one mark, one hue.
    */
   tag: Tag | undefined;
   fill: number;
@@ -96,7 +97,7 @@ export function buildModel(
 
   drawn.forEach((entry, index) => {
     const { node } = entry;
-    const tag = earliestSelected(node.tags, rank);
+    const tag = earliestSelected(entry.tags, rank);
     const slot = tag === undefined ? undefined : slots.get(tag);
     const seed = seeds.get(node.address) ?? { x: 0, y: 0, outward: 0 };
     const kept = options.keep?.get(node.ref);
@@ -158,7 +159,7 @@ export function buildModel(
 }
 
 /**
- * Of the tags a note carries, the one selected first — so a note in several
+ * Of the tags a mark stands for, the one selected first — so a mark in several
  * selected sets draws in one hue and always the same one.
  */
 function earliestSelected(

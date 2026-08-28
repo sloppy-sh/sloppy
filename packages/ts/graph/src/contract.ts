@@ -53,6 +53,11 @@ export interface DrawnNode {
   collapsed: boolean;
   /** Descendants folded into it, which DESIGN.md § "The canvas" sizes it by. */
   folded: number;
+  /**
+   * Every tag this mark stands for: its own and those of everything folded into
+   * it, because a mega-node answers for the subtree it replaced.
+   */
+  tags: readonly Tag[];
 }
 
 /**
@@ -70,19 +75,37 @@ export function drawnNodes(
 ): DrawnNode[] {
   const byRef = new Map(nodes.map((node) => [node.ref, node]));
   const folded = new Map<OwnedRef, number>();
+  const carried = new Map<OwnedRef, Set<Tag>>();
   const visible: NodeView[] = [];
 
   for (const node of nodes) {
     const under = outermostCollapsed(node, byRef, collapsed);
-    if (under) folded.set(under, (folded.get(under) ?? 0) + 1);
-    else visible.push(node);
+    if (under === undefined) {
+      visible.push(node);
+      continue;
+    }
+    folded.set(under, (folded.get(under) ?? 0) + 1);
+    let tags = carried.get(under);
+    if (tags === undefined) carried.set(under, (tags = new Set()));
+    for (const tag of node.tags) tags.add(tag);
   }
 
   return visible.map((node) => ({
     node,
     collapsed: collapsed.has(node.ref),
     folded: folded.get(node.ref) ?? 0,
+    tags: withFolded(node.tags, carried.get(node.ref)),
   }));
+}
+
+function withFolded(
+  own: readonly Tag[],
+  folded: ReadonlySet<Tag> | undefined,
+): readonly Tag[] {
+  if (folded === undefined) return own;
+  const all = new Set(own);
+  for (const tag of folded) all.add(tag);
+  return [...all];
 }
 
 function outermostCollapsed(

@@ -88,20 +88,24 @@
 				type="button"
 				aria-pressed={slot !== undefined}
 				onclick={(event) => void toggle(tag, event.currentTarget)}
-				style={slot === undefined ? undefined : `color: var(--facet-${slot})`}
+				style={slot === undefined ? undefined : `border-color: var(--facet-${slot})`}
 				class={cn(
 					chip,
 					slot === undefined
 						? 'border-transparent text-muted-foreground hover:text-foreground'
-						: 'border-current'
+						: 'text-foreground'
 				)}
 			>
 				{#if slot !== undefined}
-					<span aria-hidden="true" class="size-2.5 shrink-0 rounded-full bg-current"></span>
+					<span
+						aria-hidden="true"
+						class="size-2.5 shrink-0 rounded-full"
+						style="background-color: var(--facet-{slot})"
+					></span>
 				{/if}
 				{tag}
 				{#if slot === undefined}
-					<span class="text-xs text-muted-foreground/70">{counts.get(tag)?.toLocaleString()}</span>
+					<span class="text-xs text-muted-foreground">{counts.get(tag)?.toLocaleString()}</span>
 				{/if}
 			</button>
 		{/each}

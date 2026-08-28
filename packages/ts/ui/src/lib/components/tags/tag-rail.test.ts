@@ -30,6 +30,14 @@ const named = (tag: string) =>
 
 const heading = () => target.querySelector('h2')?.textContent?.trim();
 
+const painted = (element: HTMLElement): Record<string, string> =>
+	Object.fromEntries(
+		(element.getAttribute('style') ?? '')
+			.split(';')
+			.filter((rule) => rule.trim() !== '')
+			.map((rule) => rule.split(':').map((part) => part.trim()))
+	);
+
 beforeEach(() => {
 	asked = [];
 	stubResizeObserver();
@@ -90,6 +98,19 @@ describe('the legend', () => {
 		for (const tag of selection) {
 			expect(named(tag).getAttribute('style')).toContain(`var(--facet-${slots.get(tag)})`);
 		}
+	});
+
+	// DESIGN.md § "Contrast is measured": the mark family is held to 3:1 as a
+	// graphical object, which is not the floor a word at text-sm owes.
+	it('spends the hue on the mark and the edge, and leaves the word at foreground', () => {
+		const selection = ['question'] as Tag[];
+		render(selection);
+		const slot = assignTagHueSlots(selection).get(selection[0]);
+		const chip = named('question');
+		const dot = chip.querySelector('span[aria-hidden="true"]') as HTMLElement;
+		expect(painted(chip)).toEqual({ 'border-color': `var(--facet-${slot})` });
+		expect(painted(dot)).toEqual({ 'background-color': `var(--facet-${slot})` });
+		expect(chip.className.split(/\s+/)).toContain('text-foreground');
 	});
 
 	it('gives an unselected tag no hue at all', () => {

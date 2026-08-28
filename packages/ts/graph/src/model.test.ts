@@ -1,4 +1,9 @@
-import { assignTagHueSlots, type OwnedRef, type Tag } from "@sloppy/types";
+import {
+  assignTagHueSlots,
+  type NodeView,
+  type OwnedRef,
+  type Tag,
+} from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
@@ -153,22 +158,58 @@ describe("with tags selected", () => {
 
   // DESIGN.md § Hue: one mark, one hue — the rail already says which other sets
   // a note is in, so the canvas never mixes or stripes.
-  it("draws a note in several selected sets in the earliest-selected hue", () => {
+  it("draws a mark in several selected sets in the earliest-selected hue", () => {
     const several = drawn.filter(
-      (entry) =>
-        entry.node.tags.filter((tag) => selection.includes(tag)).length > 1,
+      (entry) => entry.tags.filter((tag) => selection.includes(tag)).length > 1,
     );
     expect(several.length).toBeGreaterThan(0);
     for (const entry of several) {
       const node = model.graph.getNodeAttributes(entry.node.ref);
-      const earliest = selection.find((tag) => entry.node.tags.includes(tag));
+      const earliest = selection.find((tag) => entry.tags.includes(tag));
       expect(node.tag).toBe(earliest);
     }
   });
 
+  // AI.md: highlight, do not filter — and at the default budget two thirds of a
+  // graph this size is folded into mega-nodes.
+  it("lights a mega-node for a tag only the notes it folded carry", () => {
+    const carriers = drawn.filter(
+      (entry) =>
+        entry.folded > 0 &&
+        !entry.node.tags.some((tag) => selection.includes(tag)) &&
+        entry.tags.some((tag) => selection.includes(tag)),
+    );
+    expect(carriers.length).toBeGreaterThan(0);
+    for (const entry of carriers) {
+      const node = model.graph.getNodeAttributes(entry.node.ref);
+      expect(node.tag).toBe(selection.find((tag) => entry.tags.includes(tag)));
+      expect(node.alpha).toBe(1);
+    }
+  });
+
+  it("leaves no note in a selected set unaccounted for on the canvas", () => {
+    const byRef = new Map(corpus.nodes.map((node) => [node.ref, node]));
+    const lit = (ref: OwnedRef): boolean =>
+      model.graph.hasNode(ref) &&
+      model.graph.getNodeAttributes(ref).tag !== undefined;
+    const carriers = corpus.nodes.filter((node) =>
+      node.tags.some((tag) => selection.includes(tag)),
+    );
+    expect(carriers.length).toBeGreaterThan(0);
+
+    const unanswered = carriers.filter((carrier) => {
+      let at: NodeView | undefined = carrier;
+      while (at !== undefined && !lit(at.ref)) {
+        at = at.parent === undefined ? undefined : byRef.get(at.parent);
+      }
+      return at === undefined;
+    });
+    expect(unanswered.map((node) => node.address)).toEqual([]);
+  });
+
   // DESIGN.md § Hue: notes carrying none of the selected tags dim; they never
   // leave, because the shape the answer is read against is the graph itself.
-  it("recedes a note in none of them without dropping it or recolouring it", () => {
+  it("recedes a mark in none of them without dropping it or recolouring it", () => {
     const dark = model.order.filter(
       (ref) => model.graph.getNodeAttributes(ref).tag === undefined,
     );
@@ -178,6 +219,8 @@ describe("with tags selected", () => {
       expect(node.fill).toBe(palette.depth(node.depth));
       expect(node.alpha).toBe(palette.unselectedAlpha);
       expect(node.alpha).toBeLessThan(1);
+      const entry = drawn.find((entry) => entry.node.ref === ref)!;
+      expect(entry.tags.some((tag) => selection.includes(tag))).toBe(false);
     }
     expect(model.order).toEqual(drawn.map((entry) => entry.node.ref));
   });

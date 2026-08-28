@@ -1,4 +1,4 @@
-import type { NodeView, OwnedRef } from "@sloppy/types";
+import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { drawnNodes } from "./contract.js";
 
@@ -7,7 +7,12 @@ const DID = "did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc";
 const ref = (seq: number): OwnedRef =>
   `${DID}/01JYQ0000000000000000${String(seq).padStart(5, "0")}`;
 
-function node(seq: number, address: string, parent?: NodeView): NodeView {
+function node(
+  seq: number,
+  address: string,
+  parent?: NodeView,
+  tags: string[] = [],
+): NodeView {
   return {
     ref: ref(seq),
     created_by: DID,
@@ -18,15 +23,15 @@ function node(seq: number, address: string, parent?: NodeView): NodeView {
     parent: parent?.ref,
     origin: parent?.origin ?? ref(seq),
     title: address,
-    tags: [],
+    tags: tags as Tag[],
     links: [],
     published: false,
   };
 }
 
 const root = node(1, "1");
-const child = node(2, "1a", root);
-const grandchild = node(3, "1a1", child);
+const child = node(2, "1a", root, ["seed"]);
+const grandchild = node(3, "1a1", child, ["evergreen", "seed"]);
 const sibling = node(4, "1b", root);
 
 describe("drawnNodes", () => {
@@ -69,6 +74,32 @@ describe("drawnNodes", () => {
   it("draws a node whose ancestors the host has not loaded", () => {
     const drawn = drawnNodes([grandchild], new Set([root.ref, child.ref]));
     expect(drawn.map((d) => d.node.address)).toEqual(["1a1"]);
+  });
+
+  it("carries what it folded, so a fold never hides a match", () => {
+    const drawn = drawnNodes(
+      [root, child, grandchild, sibling],
+      new Set([root.ref]),
+    );
+    expect(new Set(drawn[0].tags)).toEqual(new Set(["seed", "evergreen"]));
+  });
+
+  it("carries a nested collapse's tags out to the outermost mega-node", () => {
+    const drawn = drawnNodes(
+      [root, child, grandchild],
+      new Set([root.ref, child.ref]),
+    );
+    expect(new Set(drawn[0].tags)).toEqual(new Set(["seed", "evergreen"]));
+  });
+
+  it("gives a mark that folded nothing its own tags and no others", () => {
+    const drawn = drawnNodes([root, child, grandchild, sibling], new Set());
+    expect(drawn.map((entry) => entry.tags)).toEqual([
+      [],
+      ["seed"],
+      ["evergreen", "seed"],
+      [],
+    ]);
   });
 
   it("never folds across origins", () => {
