@@ -14,13 +14,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import BlockStack from './block-stack.svelte';
-import type { NoteEmoji, NoteMedia } from './contract.js';
+import type { NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
 import {
 	NOTE,
 	OWNER,
 	block,
 	noEmoji,
 	noMedia,
+	noNotes,
 	ref,
 	section,
 	stubCanvas,
@@ -53,12 +54,16 @@ let written: Written;
 /** Set to keep every create in flight until the test lets it answer. */
 let answering: Promise<void> | null;
 
-function open(blocks: BlockView[], able: { media?: NoteMedia; emoji?: NoteEmoji } = {}) {
+function open(
+	blocks: BlockView[],
+	able: { media?: NoteMedia; emoji?: NoteEmoji; references?: NoteReferences } = {}
+) {
 	mounted = mount(BlockStack, {
 		target,
 		props: {
 			media: able.media ?? noMedia(),
 			emoji: able.emoji ?? noEmoji(),
+			references: able.references ?? noNotes(),
 			node: NOTE,
 			blocks,
 			onCreate: async (request: CreateBlockRequest) => {

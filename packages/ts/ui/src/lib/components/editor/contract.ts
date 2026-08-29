@@ -61,6 +61,34 @@ export interface NoteEmoji {
 	remove(id: CustomEmojiEntry['id']): Promise<void>;
 }
 
+/**
+ * How a note reaches the others from inside the writing: what `[[` finds, and
+ * what a reference in a section resolves against.
+ *
+ * A reference is not a link. `node.links` is what somebody drew between two
+ * notes by hand, and the canvas draws it dashed; a reference lives in the
+ * sentence it was written in, and nothing here touches `links`.
+ *
+ * `find` and `write` are both answered against the note being written in, which
+ * is the shell's to know: a relation is `under` this note or `after` it.
+ */
+export interface NoteReferences {
+	/** Notes whose address or title carries `query`; all of them where it is
+	 *  empty, in address order. */
+	find(query: string): readonly NodeView[];
+	/** The note a reference names, as it stands now; `null` once there is no such
+	 *  note. A rejection says nothing about whether it is there. */
+	read(note: OwnedRef): Promise<NodeView | null>;
+	/**
+	 * Writes a note nobody has written yet, and answers with it. Rejects with an
+	 * `Error` whose `message` is already fit to show somebody — this package
+	 * cannot tell a server's words for a person from its words for a log.
+	 */
+	write(title: string, relation: 'under' | 'after'): Promise<NodeView>;
+	/** Take the reader to a note. */
+	open(note: OwnedRef): void;
+}
+
 export interface BlockStackProps {
 	/** The node whose interior this is. */
 	node: NodeView;
@@ -73,4 +101,5 @@ export interface BlockStackProps {
 	onReorder: (ref: OwnedRef, after: OwnedRef | null) => Promise<BlockView>;
 	media: NoteMedia;
 	emoji: NoteEmoji;
+	references: NoteReferences;
 }

@@ -129,19 +129,44 @@
 	/** Enough to recognise the one meant, never a list to browse. */
 	const MATCHES = 6;
 
+	/** How a note is reached by what a person cites: the address, or words in the
+	 *  title. `needle` is already lowercased. */
+	function carries(note: NodeView, needle: string): boolean {
+		return note.address.startsWith(needle) || note.title.toLowerCase().includes(needle);
+	}
+
 	const citable = $derived.by(() => {
 		const needle = cited.trim().toLowerCase();
 		if (!needle) return [];
 		const already = new Set(node?.links ?? []);
 		return everyNote
-			.filter(
-				(note) =>
-					note.ref !== ref &&
-					!already.has(note.ref) &&
-					(note.address.startsWith(needle) || note.title.toLowerCase().includes(needle))
-			)
+			.filter((note) => note.ref !== ref && !already.has(note.ref) && carries(note, needle))
 			.slice(0, MATCHES);
 	});
+
+	/**
+	 * What `[[` reaches from inside the writing. A reference is not a link: it
+	 * names a note in a sentence, and leaves `links` — the edge somebody draws
+	 * between two notes — alone.
+	 */
+	const references = {
+		find: (query: string) => {
+			const needle = query.toLowerCase();
+			return everyNote.filter((note) => note.ref !== ref && (!needle || carries(note, needle)));
+		},
+		read: async (target: OwnedRef) => nodes.get(target) ?? (await nodes.fetch(target)),
+		write: async (name: string, relation: 'under' | 'after') => {
+			try {
+				return await nodes.create({ from: { relation, note: ref }, title: name });
+			} catch (error) {
+				throw new Error(
+					serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.',
+					{ cause: error }
+				);
+			}
+		},
+		open: (target: OwnedRef) => onOpen(target)
+	};
 
 	const descendants = $derived.by(() => {
 		let counted = 0;
@@ -484,6 +509,7 @@
 				{node}
 				{blocks}
 				{emoji}
+				{references}
 				media={noteMedia}
 				onCreate={addBlock}
 				onUpdate={editBlock}

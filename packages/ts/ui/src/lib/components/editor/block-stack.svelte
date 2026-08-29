@@ -55,11 +55,23 @@
 	import MediaPicker from './media-picker.svelte';
 	import { afterElement, endOfNote } from './placement.js';
 	import { PICTURE_NODE, PictureNode } from './picture-node.js';
+	import { ReferenceNode } from './reference-node.js';
+	import ReferenceSuggestionPopup from './reference-suggestion-popup.svelte';
+	import { NoteCompletions, ReferenceSuggestion } from './reference-suggestion.svelte.js';
 	import { NoteDocument, SectionNode } from './section-node.js';
 	import Toolbar, { type EditorAction } from './toolbar.svelte';
 
-	let { node, blocks, onCreate, onUpdate, onRemove, onReorder, media, emoji }: BlockStackProps =
-		$props();
+	let {
+		node,
+		blocks,
+		onCreate,
+		onUpdate,
+		onRemove,
+		onReorder,
+		media,
+		emoji,
+		references
+	}: BlockStackProps = $props();
 
 	const SAVE_AFTER_MS = 700;
 	/** However long the writing runs on, no change waits longer than this to be written. */
@@ -88,6 +100,7 @@
 	let mediaOpen = $state(false);
 
 	const completions = new EmojiCompletions();
+	const noteCompletions = new NoteCompletions();
 
 	/** The note's author, whose emoji catalog its shortcodes were written against. */
 	const author = $derived(node.ref.slice(0, node.ref.lastIndexOf('/')));
@@ -480,6 +493,8 @@
 					BlockHandles,
 					EmojiNode(() => catalog),
 					EmojiSuggestion(completions, () => ownCatalog),
+					ReferenceNode(() => references),
+					ReferenceSuggestion(noteCompletions, () => references),
 					InkNode,
 					PictureNode(() => media)
 				],
@@ -718,6 +733,7 @@
 
 {#if ready}
 	<EmojiSuggestionPopup {completions} />
+	<ReferenceSuggestionPopup completions={noteCompletions} />
 {/if}
 <EmojiPicker
 	bind:open={pickerOpen}
@@ -905,6 +921,19 @@
 		color: var(--primary);
 		text-decoration: underline;
 		text-underline-offset: 0.2em;
+	}
+	:global(.sloppy-reference) {
+		cursor: pointer;
+	}
+	:global(.sloppy-reference.is-gone) {
+		color: var(--muted-foreground);
+		text-decoration-style: dotted;
+		cursor: default;
+	}
+	:global(.sloppy-reference:focus-visible) {
+		outline: 2px solid var(--ring);
+		outline-offset: 1px;
+		border-radius: calc(var(--radius) - 6px);
 	}
 	:global(.sloppy-emoji) {
 		font-size: 1.15em;

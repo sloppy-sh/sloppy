@@ -6,11 +6,12 @@ import { Editor } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import StarterKit from '@tiptap/starter-kit';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
-import type { NoteEmoji, NoteMedia } from './contract.js';
+import type { NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
 import { docBlocks, openBlocks, type SavedBlock } from './document.js';
 import { EmojiNode } from './emoji-node.js';
 import { InkNode } from './ink-node.js';
 import { PictureNode } from './picture-node.js';
+import { ReferenceNode } from './reference-node.js';
 import { NoteDocument, SectionNode } from './section-node.js';
 
 export const OWNER = 'did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc';
@@ -74,6 +75,18 @@ export function noEmoji(catalog: readonly CustomEmojiEntry[] = []): NoteEmoji {
 	};
 }
 
+/** A graph with nothing else in it, for a test about something else. */
+export function noNotes(): NoteReferences {
+	return {
+		find: () => [],
+		read: async () => null,
+		write: async () => {
+			throw new Error('That note could not be added. Try again in a moment.');
+		},
+		open: () => {}
+	};
+}
+
 /** jsdom has no 2D context, and the ink surfaces ask for one on every repaint. */
 export function stubCanvas(): void {
 	HTMLCanvasElement.prototype.getContext = (() => ({
@@ -111,7 +124,8 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 			TaskItem.configure({ nested: true }),
 			EmojiNode(() => []),
 			InkNode,
-			PictureNode(() => undefined)
+			PictureNode(() => undefined),
+			ReferenceNode(() => undefined)
 		]
 	});
 	const opening = openBlocks(blocks, editor.schema);

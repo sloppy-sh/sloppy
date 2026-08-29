@@ -1,0 +1,218 @@
+// `[[`-triggered note completion, on the same footing as the `:` shortcodes in
+// `./emoji-suggestion.svelte.ts`: one `@tiptap/suggestion` plugin, one state
+// object, one popup.
+
+import type { NodeView } from '@sloppy/types';
+import { Extension, type Editor } from '@tiptap/core';
+import { PluginKey } from '@tiptap/pm/state';
+import Suggestion from '@tiptap/suggestion';
+import type { NoteReferences } from './contract.js';
+import { citedAs, REFERENCE_NODE } from './reference-node.js';
+
+const SHOWN = 6;
+/** Past this many characters what follows `[[` is a sentence rather than a name,
+ *  and the menu lets go of it. */
+const NAME_LIMIT = 80;
+/** How far back a trigger is read for; longer than a name it could hold. */
+const LOOKBACK = 200;
+
+/** A note to reference, or a note to write and then reference. */
+export type NoteChoice =
+	| { kind: 'note'; note: NodeView }
+	| { kind: 'make'; name: string; relation: 'under' | 'after' };
+
+const COULD_NOT_WRITE = 'That note could not be added. Try again in a moment.';
+
+export class NoteCompletions {
+	open = $state(false);
+	items = $state<NoteChoice[]>([]);
+	index = $state(0);
+	rect = $state<DOMRect | null>(null);
+	/** The name of the note being written, while it is being written. */
+	making = $state<string | null>(null);
+	refused = $state<string | null>(null);
+	#choose: ((choice: NoteChoice) => void) | null = null;
+
+	show(items: NoteChoice[], choose: (choice: NoteChoice) => void, rect: DOMRect | null): void {
+		this.items = items;
+		this.index = Math.min(this.index, Math.max(0, items.length - 1));
+		this.rect = rect;
+		this.refused = null;
+		this.#choose = choose;
+		this.open = items.length > 0;
+	}
+
+	close(): void {
+		this.open = false;
+		this.items = [];
+		this.index = 0;
+		this.rect = null;
+		this.making = null;
+		this.refused = null;
+		this.#choose = null;
+	}
+
+	/** Nothing is written until somebody picks the row that writes it. */
+	pick(choice: NoteChoice): void {
+		if (this.making !== null) return;
+		this.#choose?.(choice);
+	}
+
+	writing(name: string): void {
+		this.making = name;
+		this.refused = null;
+	}
+
+	refuse(message: string): void {
+		this.making = null;
+		this.refused = message;
+	}
+
+	/** True when the key was spent here rather than in the document. */
+	onKeyDown(event: KeyboardEvent): boolean {
+		if (!this.open || this.making !== null || this.items.length === 0) return false;
+		switch (event.key) {
+			case 'ArrowDown':
+				this.index = (this.index + 1) % this.items.length;
+				return true;
+			case 'ArrowUp':
+				this.index = (this.index - 1 + this.items.length) % this.items.length;
+				return true;
+			case 'Enter':
+			case 'Tab':
+				this.pick(this.items[this.index]);
+				return true;
+			default:
+				return false;
+		}
+	}
+}
+
+const referenceSuggestionKey = new PluginKey('referenceSuggestion');
+
+function choicesFor(query: string, references: NoteReferences | undefined): NoteChoice[] {
+	if (!references || query.includes(']')) return [];
+	const name = query.trim();
+	if (name.length > NAME_LIMIT) return [];
+	const found = references
+		.find(name)
+		.slice(0, SHOWN)
+		.map((note): NoteChoice => ({ kind: 'note', note }));
+	// A name already on one of these notes is that note, and offering to write a
+	// second one under the same words would only make the pair ambiguous.
+	const taken = found.some(
+		(choice) => choice.kind === 'note' && choice.note.title.toLowerCase() === name.toLowerCase()
+	);
+	if (!name || taken) return found;
+	return [
+		...found,
+		{ kind: 'make', name, relation: 'under' },
+		{ kind: 'make', name, relation: 'after' }
+	];
+}
+
+/** The span a reference replaces: the `[[…` the caret stands at the end of. */
+interface Trigger {
+	from: number;
+	to: number;
+	text: string;
+}
+
+/** Read from the live document, never from the range the plugin closed over:
+ *  that closure can be a keystroke behind, and replacing the wrong span eats
+ *  what was typed. */
+function triggerAt(editor: Editor): Trigger {
+	const { selection } = editor.state;
+	const to = selection.$from.pos;
+	const before = selection.$from.parent.textBetween(
+		Math.max(0, selection.$from.parentOffset - LOOKBACK),
+		selection.$from.parentOffset,
+		'\n',
+		'￼'
+	);
+	// No `[` inside the run, so a second `[[` on the line starts a new trigger
+	// rather than extending the first.
+	const typed = /\[\[[^[\n]*$/.exec(before);
+	return { from: typed ? to - typed[0].length : to, to, text: typed?.[0] ?? '' };
+}
+
+/** Whether the span is still the one that was read, so replacing it cannot take
+ *  anything typed since. */
+function stillThere(editor: Editor, at: Trigger): boolean {
+	const { doc } = editor.state;
+	if (at.to > doc.content.size) return false;
+	return doc.textBetween(at.from, at.to, '\n', '￼') === at.text;
+}
+
+function place(editor: Editor, at: Trigger, note: NodeView): void {
+	editor
+		.chain()
+		.focus()
+		.insertContentAt({ from: at.from, to: at.to }, [
+			{ type: REFERENCE_NODE, attrs: { note: note.ref, label: citedAs(note) } },
+			{ type: 'text', text: ' ' }
+		])
+		.run();
+}
+
+async function take(
+	editor: Editor,
+	choice: NoteChoice,
+	references: NoteReferences | undefined,
+	completions: NoteCompletions
+): Promise<void> {
+	const at = triggerAt(editor);
+	if (choice.kind === 'note') {
+		place(editor, at, choice.note);
+		completions.close();
+		return;
+	}
+	if (!references) return;
+	completions.writing(choice.name);
+	let written: NodeView;
+	try {
+		written = await references.write(choice.name, choice.relation);
+	} catch (error: unknown) {
+		completions.refuse(error instanceof Error && error.message ? error.message : COULD_NOT_WRITE);
+		return;
+	}
+	if (editor.isDestroyed) return;
+	// A span that shifted while the note was being written is not the span to
+	// replace, so the reference lands at the caret rather than over the typing.
+	place(editor, stillThere(editor, at) ? at : triggerAt(editor), written);
+	completions.close();
+}
+
+export function ReferenceSuggestion(
+	completions: NoteCompletions,
+	references: () => NoteReferences | undefined
+) {
+	return Extension.create({
+		name: 'referenceSuggestion',
+		addProseMirrorPlugins() {
+			return [
+				Suggestion<NoteChoice>({
+					editor: this.editor,
+					pluginKey: referenceSuggestionKey,
+					char: '[[',
+					// A note is found by its title, and titles have spaces in them.
+					allowSpaces: true,
+					// `[[` is its own prefix, so nothing about what precedes it decides
+					// whether it triggers.
+					allowedPrefixes: null,
+					startOfLine: false,
+					items: ({ query }) => choicesFor(query, references()),
+					command: ({ editor, props }) => void take(editor, props, references(), completions),
+					render: () => ({
+						onStart: (p) =>
+							completions.show(p.items, (c) => p.command(c), p.clientRect?.() ?? null),
+						onUpdate: (p) =>
+							completions.show(p.items, (c) => p.command(c), p.clientRect?.() ?? null),
+						onKeyDown: (p) => completions.onKeyDown(p.event),
+						onExit: () => completions.close()
+					})
+				})
+			];
+		}
+	});
+}
