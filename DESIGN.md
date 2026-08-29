@@ -237,10 +237,27 @@ only incidentally by anything else.
 
 ### Edges
 
-Genealogical edges draw the depth ramp at low alpha — they are the structure, so they
-recede. Associative links (`links[]`) are dashed and drawn above them, because they cross
-the tree and would otherwise read as parentage. **With tags selected, genealogical edges dim
-further**: the reader has asked to see sets, and the tree is momentarily the background.
+Three kinds of line cross the canvas, and which one a reader is looking at has to be
+answerable at a glance. Hue is not one of the channels that answers it — that belongs to
+the tags (§ Hue) — so they separate by weight, by lightness and by whether the line is
+broken.
+
+| Edge                                | Drawn as                           | What it says                          |
+| ----------------------------------- | ---------------------------------- | ------------------------------------- |
+| **Genealogy** — parent to child     | the depth ramp, thin, lowest alpha | this thought sprang out of that one   |
+| **The run** — consecutive addresses | ink, solid, heaviest line drawn    | this thought carries on from that one |
+| **A link** (`links[]`)              | ink, dashed, drawn above both      | somebody drew this by hand            |
+
+Genealogy is everywhere, so it recedes. The run is the line a reader walks — `1 → 2 → 3`,
+`1a → 1b` — so it is the one that carries weight, and it is **derived from the addresses,
+never stored** (AI.md § "The Address Is the Protocol"): the two notes either side of a
+deleted one still read as consecutive, because they are. A link is the only line a person
+drew, so it is the only broken one; it crosses the tree and would otherwise read as
+parentage. Where somebody has drawn a link along a run, the hand wins and the line is
+dashed.
+
+**With tags selected, genealogy and the run both dim**: the reader has asked to see sets,
+and the tree is momentarily the background.
 
 ### Contrast is measured, not assumed
 

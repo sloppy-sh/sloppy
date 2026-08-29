@@ -165,10 +165,6 @@ class NodesStore {
 		const node = await api.createNode(request);
 		if (epoch !== this.#epoch) return node;
 		this.#byRef.set(node.ref, node);
-		// A note written after another is linked FROM it, and the server makes
-		// that link — so the note it follows is stale here, and stays stale until
-		// something reads it back.
-		if (request.from?.relation === 'after') await this.fetch(request.from.note);
 		return node;
 	}
 

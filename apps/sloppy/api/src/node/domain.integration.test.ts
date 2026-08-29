@@ -21,6 +21,7 @@ import {
   MAX_DOCUMENT_NESTING,
   type NodeView,
   type OwnedRef,
+  siblingAddress,
   type TagCount,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -832,36 +833,26 @@ describe("the domain routes", () => {
   });
 
   describe("the run a note continues", () => {
-    scenario("a note written after another is linked from it", async () => {
+    // AI.md § "The Address Is the Protocol": the run is a function of the two
+    // addresses, so no placement writes one down. `links` stays what a person
+    // drew by hand, and stays empty until they draw one.
+    scenario("is in the addresses, and nowhere else", async () => {
       const first = await newNode(ada, { title: "One" });
       const second = await newNode(ada, { from: follows(first), title: "Two" });
-      const third = await newNode(ada, {
-        from: follows(second),
-        title: "Three",
+      const under = await newNode(ada, {
+        from: springsFrom(first),
+        title: "Under",
       });
+      const opened = await newNode(ada, { title: "Another branch" });
 
-      // Serially, so the run can be walked: 1 -> 2 -> 3, each pointing only at
-      // the note that follows it.
+      expect(second.address).toBe(siblingAddress(first.address as Address));
+
       const read = async (note: NodeView) =>
         (await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView;
-      expect((await read(first)).links).toEqual([second.ref]);
-      expect((await read(second)).links).toEqual([third.ref]);
-      expect((await read(third)).links).toEqual([]);
+      for (const note of [first, second, under, opened]) {
+        expect((await read(note)).links).toEqual([]);
+      }
     });
-
-    scenario(
-      "a note written under another, or opening a branch, is not",
-      async () => {
-        const root = await newNode(ada, { title: "Branch" });
-        await newNode(ada, { from: springsFrom(root), title: "Under" });
-        expect(
-          ((await ok("GET", `/nodes/${at(root.ref)}`, ada)) as NodeView).links,
-        ).toEqual([]);
-
-        const opened = await newNode(ada, { title: "Another branch" });
-        expect(opened.links).toEqual([]);
-      },
-    );
   });
 
   describe("what one person may reach", () => {

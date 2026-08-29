@@ -5,6 +5,7 @@
 import {
   assignTagHueSlots,
   type Address,
+  compareAddresses,
   type DidSyr,
   type NodeView,
   type OwnedRef,
@@ -62,7 +63,7 @@ export interface GraphNodeAttributes {
 }
 
 export interface GraphEdgeAttributes {
-  kind: "genealogy" | "link";
+  kind: "genealogy" | "run" | "link";
   distance: number;
 }
 
@@ -145,6 +146,25 @@ export function buildModel(
         ),
       });
     }
+  }
+
+  // Held at the gap between the two seeds, so the run reinforces the shape the
+  // addresses already fixed rather than pulling against it.
+  for (const [before, after] of runs(drawn)) {
+    const from = graph.getNodeAttributes(before.ref);
+    const to = graph.getNodeAttributes(after.ref);
+    graph.mergeUndirectedEdge(before.ref, after.ref, {
+      kind: "run",
+      distance: Math.max(
+        EDGE_MIN,
+        Math.hypot(to.anchorX - from.anchorX, to.anchorY - from.anchorY),
+      ),
+    });
+  }
+
+  // Last, so a link somebody drew stays drawn as one even where the run or the
+  // genealogy already joins those two.
+  for (const { node } of drawn) {
     for (const target of node.links) {
       if (target !== node.ref && graph.hasNode(target)) {
         graph.mergeUndirectedEdge(node.ref, target, {
@@ -156,6 +176,30 @@ export function buildModel(
   }
 
   return { graph, order: drawn.map((entry) => entry.node.ref) };
+}
+
+/**
+ * The run of thought, in pairs: at every level, each drawn note and the one
+ * that comes next along it. A note deleted out of the middle of a run leaves
+ * the two either side of it consecutive, and they draw as consecutive.
+ */
+function runs(drawn: readonly DrawnNode[]): [NodeView, NodeView][] {
+  const levels = new Map<string, NodeView[]>();
+  for (const { node } of drawn) {
+    const level = node.parent ?? node.created_by;
+    const alongside = levels.get(level);
+    if (alongside === undefined) levels.set(level, [node]);
+    else alongside.push(node);
+  }
+
+  const pairs: [NodeView, NodeView][] = [];
+  for (const alongside of levels.values()) {
+    alongside.sort((a, b) => compareAddresses(a.address, b.address));
+    for (let at = 1; at < alongside.length; at++) {
+      pairs.push([alongside[at - 1], alongside[at]]);
+    }
+  }
+  return pairs;
 }
 
 /**
