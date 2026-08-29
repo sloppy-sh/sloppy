@@ -37,11 +37,17 @@ const ALPHA_DECAY = 0.026;
 const VELOCITY_DECAY = 0.42;
 /** Enough for `ALPHA_DECAY` to cross `ALPHA_MIN`, with room for a pinned drag. */
 const SETTLE_CAP = 600;
+/** The energy a drag runs at, and how far through the edges it reaches. */
+const DRAG_ALPHA = 0.18;
+const DRAG_REACH = 2;
 
 export class LayoutEngine {
   private readonly particles: Particle[];
   private readonly simulation: Simulation<Particle, Spring>;
   private readonly buffer: Float32Array;
+  private readonly neighbours: number[][];
+  private frozen: Particle[] = [];
+  private frozenAround: number | null = null;
 
   constructor(start: LayoutStart) {
     this.particles = start.nodes.map((node, index) => ({
@@ -61,6 +67,12 @@ export class LayoutEngine {
       distance: edge.distance,
       strength: edge.strength,
     }));
+
+    this.neighbours = this.particles.map(() => []);
+    for (const edge of start.edges) {
+      this.neighbours[edge.source]?.push(edge.target);
+      this.neighbours[edge.target]?.push(edge.source);
+    }
 
     this.simulation = forceSimulation(this.particles)
       .force(
@@ -112,31 +124,79 @@ export class LayoutEngine {
   tick(times = 1): void {
     if (this.particles.length === 0) return;
     this.simulation.tick(times);
+    if (this.settled) this.thaw();
   }
 
   /** Ticks until settled, bounded — a caller waiting on this cannot yield. */
   settle(): void {
     if (this.particles.length === 0) return;
     for (let step = 0; step < SETTLE_CAP && !this.settled; step++) {
-      this.simulation.tick();
+      this.tick();
     }
   }
 
   /**
    * Hold one node where a drag put it, or let go of it. A held node keeps its
    * neighbours moving around it, which is what makes a drag read as a drag.
+   *
+   * A settle stops on a decayed alpha, not on a field with nowhere left to go,
+   * so raising alpha again resumes every node's unfinished settle. Everything
+   * past {@link DRAG_REACH} edges is held where the reader left it until the
+   * field has settled again.
    */
   pin(index: number, x: number, y: number, held: boolean): void {
     const particle = this.particles[index];
     if (!particle) return;
     if (held) {
+      this.freezeBeyond(index);
       particle.fx = x;
       particle.fy = y;
-      if (this.simulation.alpha() < 0.18) this.simulation.alpha(0.18);
+      if (this.simulation.alpha() < DRAG_ALPHA) {
+        this.simulation.alpha(DRAG_ALPHA);
+      }
     } else {
       particle.fx = null;
       particle.fy = null;
     }
+  }
+
+  private freezeBeyond(index: number): void {
+    if (this.frozenAround === index) return;
+    this.thaw();
+    const moving = this.within(index, DRAG_REACH);
+    for (const particle of this.particles) {
+      if (moving.has(particle.index)) continue;
+      particle.fx = particle.x ?? 0;
+      particle.fy = particle.y ?? 0;
+      this.frozen.push(particle);
+    }
+    this.frozenAround = index;
+  }
+
+  private thaw(): void {
+    for (const particle of this.frozen) {
+      particle.fx = null;
+      particle.fy = null;
+    }
+    this.frozen = [];
+    this.frozenAround = null;
+  }
+
+  private within(index: number, reach: number): Set<number> {
+    const found = new Set([index]);
+    let frontier = [index];
+    for (let hop = 0; hop < reach && frontier.length > 0; hop++) {
+      const next: number[] = [];
+      for (const at of frontier) {
+        for (const neighbour of this.neighbours[at] ?? []) {
+          if (found.has(neighbour)) continue;
+          found.add(neighbour);
+          next.push(neighbour);
+        }
+      }
+      frontier = next;
+    }
+    return found;
   }
 
   /** `[x0, y0, x1, y1, …]`. The array is reused; copy it to keep it. */

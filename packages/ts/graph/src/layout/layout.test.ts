@@ -53,6 +53,44 @@ function startFor(count: number): LayoutStart {
   };
 }
 
+/** The node with the most edges, which is the most a drag can disturb. */
+function busiest(start: LayoutStart): number {
+  const degree = new Map<number, number>();
+  for (const edge of start.edges) {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  }
+  let found = 0;
+  let most = -1;
+  for (const [index, count] of degree) {
+    if (count > most) {
+      most = count;
+      found = index;
+    }
+  }
+  return found;
+}
+
+function within(start: LayoutStart, index: number, reach: number): Set<number> {
+  const found = new Set([index]);
+  let frontier = [index];
+  for (let hop = 0; hop < reach; hop++) {
+    const next: number[] = [];
+    for (const edge of start.edges) {
+      for (const [end, other] of [
+        [edge.source, edge.target],
+        [edge.target, edge.source],
+      ]) {
+        if (!frontier.includes(end) || found.has(other)) continue;
+        found.add(other);
+        next.push(other);
+      }
+    }
+    frontier = next;
+  }
+  return found;
+}
+
 describe("LayoutEngine", () => {
   const start = startFor(400);
 
@@ -74,6 +112,38 @@ describe("LayoutEngine", () => {
     first.settle();
     second.settle();
     expect([...second.positions()]).toEqual([...first.positions()]);
+  });
+
+  // The whole point of a drag being local: the reader rearranges one corner
+  // without losing their place in the rest of the field.
+  it("moves the held node and what it is joined to, and nothing else", () => {
+    const field = startFor(600);
+    const engine = new LayoutEngine(field);
+    engine.settle();
+    const before = new Float32Array(engine.positions());
+
+    const held = busiest(field);
+    const joined = within(field, held, 2);
+    let x = before[held * 2];
+    const y = before[held * 2 + 1];
+    for (let frame = 0; frame < 20; frame++) {
+      x += 16;
+      engine.pin(held, x, y, true);
+      engine.tick(5);
+    }
+
+    const after = engine.positions();
+    const still: number[] = [];
+    const moved: number[] = [];
+    for (let at = 0; at < field.nodes.length; at++) {
+      const distance = Math.hypot(
+        after[at * 2] - before[at * 2],
+        after[at * 2 + 1] - before[at * 2 + 1],
+      );
+      (joined.has(at) ? moved : still).push(distance);
+    }
+    expect(Math.max(...still)).toBe(0);
+    expect(moved.filter((distance) => distance > 1).length).toBeGreaterThan(1);
   });
 
   it("holds a node where a drag put it, and lets it go again", () => {
@@ -139,6 +209,41 @@ describe("the layout service", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // DESIGN.md § Motion: reduced motion jumps to the converged positions. It
+  // gets there in one answer rather than in frames, and it is still a drag.
+  it("holds the far field through a reduced-motion drag too", () => {
+    const events: LayoutEvent[] = [];
+    const field: LayoutStart = {
+      ...startFor(400),
+      epoch: 3,
+      settleAtOnce: true,
+    };
+    const accept = serveLayout((event) => events.push(event), { sliceMs: 1 });
+    accept(field);
+    const settled = [...events[0].positions];
+
+    const held = busiest(field);
+    const joined = within(field, held, 2);
+    accept({
+      kind: "pin",
+      epoch: 3,
+      index: held,
+      x: settled[held * 2] + 400,
+      y: settled[held * 2 + 1],
+      held: true,
+    });
+
+    const after = [...events[1].positions];
+    for (let at = 0; at < field.nodes.length; at++) {
+      if (joined.has(at)) continue;
+      expect([after[at * 2], after[at * 2 + 1]]).toEqual([
+        settled[at * 2],
+        settled[at * 2 + 1],
+      ]);
+    }
+    expect(after[held * 2]).toBeCloseTo(settled[held * 2] + 400, 6);
   });
 
   it("ignores a pin aimed at a region it has already replaced", () => {

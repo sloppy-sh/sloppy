@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { GraphPickMarks } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
-import type { LayoutCommand } from "./layout/protocol.js";
+import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
 import type { GraphMountOptions } from "./mount.js";
 import { Viewport } from "./viewport.js";
 
@@ -16,6 +16,8 @@ class StandInScene {
   static latest: StandInScene | null = null;
   readonly viewport = new Viewport();
   model: BuiltModel | null = null;
+  /** Where each mark was last drawn, which a drag and the layout both write. */
+  positions = new Float32Array(0);
   /** The second half of what a mount says: whether tags are selected. */
   selecting = false;
   /** What the next hit test finds, which is how a test aims a tap. */
@@ -23,6 +25,8 @@ class StandInScene {
   /** The choice the canvas was last told to outline. */
   picking: GraphPickMarks | null = null;
   centred: string[] = [];
+  /** How many times the canvas has framed the whole field. */
+  fits = 0;
 
   static async create(): Promise<StandInScene> {
     StandInScene.latest = new StandInScene();
@@ -32,6 +36,7 @@ class StandInScene {
   setModel(model: BuiltModel, selecting: boolean): void {
     this.model = model;
     this.selecting = selecting;
+    this.positions = new Float32Array(model.order.length * 2);
   }
 
   setPicking(picking: GraphPickMarks | null): void {
@@ -63,8 +68,8 @@ class StandInScene {
     return new Map<string, { x: number; y: number }>();
   }
 
-  positionOf() {
-    return { x: 0, y: 0 };
+  positionOf(index: number) {
+    return { x: this.positions[index * 2], y: this.positions[index * 2 + 1] };
   }
 
   stats() {
@@ -81,10 +86,17 @@ class StandInScene {
     };
   }
 
-  movePosition(): void {}
-  setPositions(): void {}
+  movePosition(index: number, world: { x: number; y: number }): void {
+    this.positions[index * 2] = world.x;
+    this.positions[index * 2 + 1] = world.y;
+  }
+  setPositions(positions: Float32Array): void {
+    this.positions.set(positions);
+  }
   setPalette(): void {}
-  fit(): void {}
+  fit(): void {
+    this.fits += 1;
+  }
   invalidate(): void {}
   resetStats(): void {}
   destroy(): void {}
@@ -161,18 +173,20 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
   const host = element();
   const expanded: OwnedRef[] = [];
   const opened: OwnedRef[] = [];
-  // A worker that never answers, so what a mount SENDS is what is measured.
+  // A worker that answers only when a test says so, so what a mount SENDS and
+  // what it does with an answer are both measured.
   const sent: LayoutCommand[] = [];
+  const worker = {
+    onmessage: null as ((message: MessageEvent<LayoutEvent>) => void) | null,
+    postMessage: (command: LayoutCommand) => sent.push(command),
+    terminate() {},
+  };
   const props: GraphMountOptions = {
     nodes: corpus.nodes,
     collapsed: new Set<OwnedRef>(),
     selection: [],
     lod: { depth: 3, maxDrawn: 60 },
-    createLayoutWorker: () =>
-      ({
-        postMessage: (command: LayoutCommand) => sent.push(command),
-        terminate() {},
-      }) as unknown as Worker,
+    createLayoutWorker: () => worker as unknown as Worker,
     onOpenNode: (ref) => opened.push(ref),
     onExpand: (ref) => expanded.push(ref),
     onCollapse: () => {},
@@ -211,6 +225,34 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
         clientX: x,
         clientY: y,
       } as Partial<PointerEvent>);
+    },
+    /** A mouse taking hold of `ref` and carrying it along `path`. */
+    drag(ref: string, path: readonly { x: number; y: number }[]): void {
+      scene.under = ref;
+      for (const [at, point] of path.entries()) {
+        surface.send(at === 0 ? "pointerdown" : "pointermove", {
+          pointerId: 3,
+          pointerType: "mouse",
+          clientX: point.x,
+          clientY: point.y,
+        } as Partial<PointerEvent>);
+      }
+    },
+    /** The layout answering the settle it was last asked to run. */
+    answer(): void {
+      const start = [...sent]
+        .reverse()
+        .find((command) => command.kind === "start");
+      if (!start) throw new Error("nothing was asked to settle");
+      worker.onmessage?.({
+        data: {
+          kind: "positions",
+          epoch: start.epoch,
+          positions: new Float32Array(start.nodes.length * 2),
+          alpha: 0.5,
+          settled: false,
+        },
+      } as MessageEvent<LayoutEvent>);
     },
   };
 }
@@ -304,6 +346,47 @@ describe("mountGraph", () => {
 
     expect(graph.handle.stats()?.maxDrawn).toBe(20);
     expect(graph.model().order.length).toBeLessThanOrEqual(20);
+  });
+});
+
+// A drag is the reader rearranging one corner, so what is under their hand has
+// to be the only thing that moves — the field's own framing included.
+describe("dragging a note", () => {
+  const plain = (graph: Awaited<ReturnType<typeof mount>>) =>
+    graph
+      .model()
+      .order.find(
+        (ref) => !graph.model().graph.getNodeAttributes(ref).collapsed,
+      )!;
+
+  it("stops re-framing the canvas the moment a note is taken hold of", async () => {
+    const graph = await mount();
+    graph.answer();
+    expect(graph.scene.fits).toBe(1);
+
+    graph.drag(plain(graph), [
+      { x: 0, y: 0 },
+      { x: 60, y: 40 },
+    ]);
+    graph.answer();
+
+    expect(graph.scene.fits).toBe(1);
+  });
+
+  // The layout answers a pin that is already a pointer move or two old, so a
+  // held note drawn where the answer puts it trails the pointer it is under.
+  it("keeps the note under the pointer where the pointer is", async () => {
+    const graph = await mount();
+    const ref = plain(graph);
+    const index = graph.model().graph.getNodeAttributes(ref).index;
+
+    graph.drag(ref, [
+      { x: 0, y: 0 },
+      { x: 60, y: 40 },
+    ]);
+    graph.answer();
+
+    expect(graph.scene.positionOf(index)).toEqual({ x: 60, y: 40 });
   });
 });
 
