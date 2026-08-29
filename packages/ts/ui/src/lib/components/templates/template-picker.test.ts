@@ -9,7 +9,7 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let picked: (NoteTemplate | null)[];
 
-function open(props: { suggested?: TemplateId; written?: boolean } = {}) {
+function open(props: { suggested?: TemplateId; existing?: boolean } = {}) {
 	mounted = mount(TemplatePicker, {
 		target,
 		props: { open: true, ...props, onpick: (t: NoteTemplate | null) => picked.push(t) }
@@ -56,8 +56,18 @@ describe('offering a note a shape', () => {
 		expect(rows()).toHaveLength(6);
 	});
 
-	it('says where the sections land when the note is already written in', () => {
-		open({ written: true });
-		expect(document.body.textContent).toContain('go under what you have written');
+	// The note on screen may hold writing that has not been saved yet, so the copy
+	// promises where the sections land without claiming the note is empty.
+	it('says where the sections land in a note that is already open', () => {
+		open({ existing: true });
+		expect(document.body.textContent).toContain(
+			'The sections land under anything already in this note.'
+		);
+	});
+
+	it('offers a note about to be written a shape to start from', () => {
+		open();
+		expect(document.body.textContent).toContain('Start from a shape');
+		expect(document.body.textContent).not.toContain('already in this note');
 	});
 });

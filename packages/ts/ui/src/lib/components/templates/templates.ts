@@ -1,16 +1,12 @@
-// The shapes a note can start from: named sections, seeded empty. A shape is
-// convention and not vocabulary — nothing about it is stored, so a note that
-// took one is a note whose sections somebody happened not to type themselves,
-// and a peer's note with different sections reads exactly the same.
+// The shapes a note can start from: named sections that become ordinary blocks.
+// Nothing about a shape is stored, so nothing can be validated against one.
 
-import {
-	parseAddress,
-	type Address,
-	type BlockDocument,
-	type BlockView,
-	type CreateBlockRequest,
-	type NodePlacement,
-	type OwnedRef
+import type {
+	BlockDocument,
+	BlockView,
+	CreateBlockRequest,
+	NodePlacement,
+	OwnedRef
 } from '@sloppy/types';
 
 export type TemplateId = 'claim' | 'question' | 'source' | 'objection' | 'synthesis';
@@ -110,24 +106,15 @@ export async function writeTemplate(
 	return written;
 }
 
-/** Where a note sits, said the way a placement says it. */
-function relationOf(address: Address): NodePlacement['relation'] {
-	const segments = parseAddress(address);
-	if (segments.length === 1) return 'root';
-	return segments[segments.length - 1].ordinal === 1 ? 'under' : 'after';
-}
-
 /**
- * The shape to put first for a note in that place: a note springing out of
- * another is where an objection goes, one continuing a run is where a synthesis
- * does. Null leaves the shapes in their own order.
+ * The shape to put first for a note about to be written in that place: one
+ * springing out of another is where an objection goes, one continuing a run is
+ * where a synthesis does. Null leaves the shapes in their own order.
+ *
+ * Only a placement can answer this. An address cannot: `1b` is both the second
+ * note under `1` and the note after `1a`, and they are the same note.
  */
 export function suggestedFor(relation: NodePlacement['relation']): TemplateId | null {
 	if (relation === 'under') return 'objection';
 	return relation === 'after' ? 'synthesis' : null;
-}
-
-/** {@link suggestedFor}, for a note that is already at an address. */
-export function suggestedForAddress(address: Address): TemplateId | null {
-	return suggestedFor(relationOf(address));
 }

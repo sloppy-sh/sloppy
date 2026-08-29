@@ -1,7 +1,7 @@
 <script lang="ts">
-	// Picking a note's shape, at the one moment it is cheap: before there is
-	// anything in it. Nothing is imposed — the first row is the note as it
-	// already stands, and an unfilled section stays an empty section.
+	// Picking a note's shape, while picking one is still cheap. Nothing is
+	// imposed: the first row is the note as it already stands, and an unfilled
+	// section stays an empty section.
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import { NOTE_TEMPLATES, type NoteTemplate, type TemplateId } from './templates.js';
 
@@ -9,7 +9,7 @@
 		open = $bindable(false),
 		onOpenChange,
 		suggested = null,
-		written = false,
+		existing = false,
 		onpick
 	}: {
 		open?: boolean;
@@ -17,8 +17,8 @@
 		onOpenChange?: (open: boolean) => void;
 		/** Offered first, where one shape fits this note's place in the graph. */
 		suggested?: TemplateId | null;
-		/** The note already has sections, so the copy says where these land. */
-		written?: boolean;
+		/** The shape goes into a note that is open, not one about to be written. */
+		existing?: boolean;
 		/** Null is the note as it stands: nothing is written. */
 		onpick: (template: NoteTemplate | null) => void;
 	} = $props();
@@ -38,9 +38,9 @@
 		open = v;
 		onOpenChange?.(v);
 	}}
-	title={written ? 'Add a shape' : 'Start from a shape'}
-	description={written
-		? 'The sections go under what you have written.'
+	title={existing ? 'Add a shape' : 'Start from a shape'}
+	description={existing
+		? 'The sections land under anything already in this note.'
 		: 'Sections to fill in, or leave empty.'}
 >
 	<ul class="space-y-0.5 px-2 pt-4">

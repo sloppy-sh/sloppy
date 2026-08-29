@@ -8,7 +8,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
 	NOTE_TEMPLATES,
-	suggestedForAddress,
+	suggestedFor,
 	templateSections,
 	writeTemplate,
 	type NoteTemplate
@@ -84,19 +84,16 @@ describe('writing a shape onto a note', () => {
 	});
 });
 
-describe('the shape suggested for where a note sits', () => {
+describe('the shape suggested for where a note is about to go', () => {
 	it('suggests nothing to a branch, which starts something', () => {
-		expect(suggestedForAddress('1')).toBeNull();
-		expect(suggestedForAddress('7')).toBeNull();
+		expect(suggestedFor('root')).toBeNull();
 	});
 
 	it('offers an objection to a note springing out of another', () => {
-		expect(suggestedForAddress('1a')).toBe('objection');
-		expect(suggestedForAddress('1a1')).toBe('objection');
+		expect(suggestedFor('under')).toBe('objection');
 	});
 
 	it('offers a synthesis to a note continuing a run', () => {
-		expect(suggestedForAddress('1b')).toBe('synthesis');
-		expect(suggestedForAddress('1a3')).toBe('synthesis');
+		expect(suggestedFor('after')).toBe('synthesis');
 	});
 });

@@ -24,7 +24,6 @@
 		ResponsiveModal,
 		TagRail,
 		TemplatePicker,
-		writeTemplate,
 		type NoteTemplate
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
@@ -33,7 +32,6 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api } from '../api.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -57,6 +55,8 @@
 	let railHeight = $state(0);
 	/** The note just written, whose title is still waiting to be given. */
 	let naming = $state<OwnedRef | null>(null);
+	/** The shape that note was written to start from, which it seeds itself with. */
+	let seed = $state<{ ref: OwnedRef; shape: NoteTemplate } | null>(null);
 	/** The note a link is being pointed FROM, while the graph is the picker. */
 	let pointing = $state<OwnedRef | null>(null);
 	/** Where the reader has got to while looking for the note they mean: the one
@@ -154,14 +154,16 @@
 		}
 	});
 
-	function show(ref: OwnedRef, fresh = false): void {
+	function show(ref: OwnedRef, fresh = false, shape: NoteTemplate | null = null): void {
 		naming = fresh ? ref : null;
+		seed = shape ? { ref, shape } : null;
 		pushState(nodeHref(ref), { note: ref });
 	}
 
 	/** Shallow, so the graph behind the note is never torn down and rebuilt. */
 	function hide(): void {
 		naming = null;
+		seed = null;
 		replaceState('/', {});
 	}
 
@@ -211,9 +213,7 @@
 		creating = true;
 		refused = null;
 		try {
-			const written = await nodes.create({});
-			if (shape) await writeTemplate(shape, { node: written.ref }, api.createBlock);
-			show(written.ref, true);
+			show((await nodes.create({})).ref, true, shape);
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
@@ -458,6 +458,13 @@
 	class="sm:max-w-2xl"
 >
 	{#if open}
-		<Note ref={open} {naming} onOpen={show} onLinkOnGraph={() => pointFrom(open)} onClose={hide} />
+		<Note
+			ref={open}
+			{naming}
+			{seed}
+			onOpen={show}
+			onLinkOnGraph={() => pointFrom(open)}
+			onClose={hide}
+		/>
 	{/if}
 </ResponsiveModal>

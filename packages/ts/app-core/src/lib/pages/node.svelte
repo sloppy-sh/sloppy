@@ -22,7 +22,6 @@
 		ConfirmModal,
 		scrollFade,
 		suggestedFor,
-		suggestedForAddress,
 		TagField,
 		TemplatePicker,
 		writeTemplate,
@@ -31,7 +30,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
@@ -44,6 +43,7 @@
 	let {
 		ref,
 		naming = null,
+		seed = null,
 		onOpen,
 		onLinkOnGraph,
 		onClose
@@ -51,7 +51,10 @@
 		ref: OwnedRef;
 		/** The note just written, whose title is still to be given, if it is this one. */
 		naming?: OwnedRef | null;
-		onOpen: (ref: OwnedRef, fresh?: boolean) => void;
+		/** The shape the note just written was to start from, if it is this one. It
+		 *  is seeded here so sections that will not write cannot strand the note. */
+		seed?: { ref: OwnedRef; shape: NoteTemplate } | null;
+		onOpen: (ref: OwnedRef, fresh?: boolean, shape?: NoteTemplate | null) => void;
 		/** Hand the choice of what to link to over to the graph. */
 		onLinkOnGraph: () => void;
 		onClose: () => void;
@@ -76,6 +79,8 @@
 	let shaping = $state<'under' | 'after' | 'this' | null>(null);
 	let seeding = $state(false);
 	let shapeRefused = $state<string | null>(null);
+	/** Block writes the writing surface has in the air. */
+	let surfaceWrites = 0;
 
 	let removing = $state(false);
 	let undeletable = $state<string | null>(null);
@@ -99,11 +104,7 @@
 	 *  would be in the way rather than in time. */
 	const shapeable = $derived(blocks.length <= 1);
 
-	const suggested = $derived.by(() => {
-		if (shaping === null) return null;
-		if (shaping !== 'this') return suggestedFor(shaping);
-		return node ? suggestedForAddress(node.address) : null;
-	});
+	const suggested = $derived(shaping === null || shaping === 'this' ? null : suggestedFor(shaping));
 
 	/** Every note the cache holds — what a link may point at, in address order. */
 	const everyNote = $derived.by(() => {
@@ -206,6 +207,7 @@
 
 	$effect(() => {
 		const opening = ref;
+		const starting = untrack(() => (seed?.ref === opening ? seed.shape : null));
 		let live = true;
 		loading = true;
 		unreachable = null;
@@ -218,9 +220,11 @@
 		seeding = false;
 		shapeRefused = null;
 		void (async () => {
+			let read = false;
 			try {
 				const [, stack] = await Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
 				if (live) blocks = stack;
+				read = true;
 			} catch (error) {
 				if (live) {
 					unreachable =
@@ -229,6 +233,7 @@
 			} finally {
 				if (live) loading = false;
 			}
+			if (live && read && starting) await shapeThisNote(starting);
 		})();
 		return () => {
 			live = false;
@@ -257,9 +262,7 @@
 		adding = true;
 		refused = null;
 		try {
-			const written = await nodes.create({ from: { relation, note: ref } });
-			if (shape) await writeTemplate(shape, { node: written.ref }, api.createBlock);
-			onOpen(written.ref, true);
+			onOpen((await nodes.create({ from: { relation, note: ref } })).ref, true, shape);
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
@@ -267,15 +270,23 @@
 		}
 	}
 
-	/**
-	 * Gives this note a shape: the sections land under whatever is there already.
-	 * `seeding` takes the writing surface down, so what it was still holding is
-	 * flushed on its way out, and the stack is read back once at the end.
-	 */
+	/** Two writers appending to one stack would interleave their sections, so a
+	 *  shape waits until nothing the writing surface started is still in the air. */
+	async function stackSettled(): Promise<void> {
+		await tick();
+		// A turn of the task queue, by which time a write the surface starts on its
+		// way out has been asked for.
+		do {
+			await new Promise((wake) => setTimeout(wake));
+		} while (surfaceWrites > 0);
+	}
+
+	/** Gives this note a shape, its sections landing under what is already here. */
 	async function shapeThisNote(shape: NoteTemplate): Promise<void> {
 		if (seeding) return;
 		seeding = true;
 		shapeRefused = null;
+		await stackSettled();
 		try {
 			await writeTemplate(shape, { node: ref, after: blocks.at(-1)?.ref }, api.createBlock);
 		} catch (error) {
@@ -300,6 +311,40 @@
 			return;
 		}
 		void write(act, shape);
+	}
+
+	async function addBlock(request: CreateBlockRequest): Promise<BlockView> {
+		surfaceWrites += 1;
+		try {
+			const block = await api.createBlock(request);
+			// A write the surface started before the reader moved on belongs to the
+			// note it was typed in, not to the one now on screen.
+			if (request.node === ref) blocks = [...blocks, block].sort(byOrd);
+			return block;
+		} finally {
+			surfaceWrites -= 1;
+		}
+	}
+
+	async function editBlock(block: OwnedRef, request: UpdateBlockRequest): Promise<BlockView> {
+		surfaceWrites += 1;
+		try {
+			const saved = await api.updateBlock(block, request);
+			blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
+			return saved;
+		} finally {
+			surfaceWrites -= 1;
+		}
+	}
+
+	async function dropBlock(block: OwnedRef): Promise<void> {
+		surfaceWrites += 1;
+		try {
+			await api.deleteBlock(block);
+			blocks = blocks.filter((b) => b.ref !== block);
+		} finally {
+			surfaceWrites -= 1;
+		}
 	}
 
 	async function relink(links: OwnedRef[], whenItFails: string): Promise<void> {
@@ -440,25 +485,10 @@
 				{blocks}
 				{emoji}
 				media={noteMedia}
-				onCreate={async (request: CreateBlockRequest) => {
-					const block = await api.createBlock(request);
-					blocks = [...blocks, block].sort(byOrd);
-					return block;
-				}}
-				onUpdate={async (block: OwnedRef, request: UpdateBlockRequest) => {
-					const saved = await api.updateBlock(block, request);
-					blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
-					return saved;
-				}}
-				onRemove={async (block: OwnedRef) => {
-					await api.deleteBlock(block);
-					blocks = blocks.filter((b) => b.ref !== block);
-				}}
-				onReorder={async (block: OwnedRef, after: OwnedRef | null) => {
-					const saved = await api.updateBlock(block, { after });
-					blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
-					return saved;
-				}}
+				onCreate={addBlock}
+				onUpdate={editBlock}
+				onRemove={dropBlock}
+				onReorder={(block: OwnedRef, after: OwnedRef | null) => editBlock(block, { after })}
 			/>
 		{/if}
 
@@ -470,7 +500,7 @@
 				onclick={() => (shaping = 'this')}
 			>
 				<LayoutTemplate class="size-4" />
-				{blocks.length === 0 ? 'Start from a shape' : 'Add a shape'}
+				Add a shape
 			</Button>
 		{/if}
 
@@ -647,7 +677,7 @@
 				if (!v) shaping = null;
 			}}
 			{suggested}
-			written={shaping === 'this' && blocks.length > 0}
+			existing={shaping === 'this'}
 			onpick={pickShape}
 		/>
 

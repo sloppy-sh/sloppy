@@ -1,9 +1,16 @@
-import type { NodeView, OwnedRef } from '@sloppy/types';
+import type {
+	BlockView,
+	CreateBlockRequest,
+	DocumentNode,
+	NodeView,
+	OwnedRef
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import {
+	AT,
 	DID,
 	node,
 	ref,
@@ -497,6 +504,132 @@ describe('linking a note to another', () => {
 		await settle();
 
 		expect(screen()).toContain('A note that is no longer here.');
+	});
+});
+
+describe('starting a note from a shape', () => {
+	const WRITTEN = ref(9);
+
+	/** The note's stack as a server holds it: in order, and placed by `after`. */
+	let stack: BlockView[];
+	/** Every create, in the order it reached the server. */
+	let created: CreateBlockRequest[];
+
+	/** A key between two neighbours, so a placed block sorts where it landed. */
+	function ordBetween(before: string | undefined, after: string | undefined): string {
+		return ((Number(before ?? 0) + Number(after ?? 1)) / 2).toFixed(12);
+	}
+
+	function reading(element: DocumentNode): string {
+		if (element.text !== undefined) return element.text;
+		return (element.content ?? []).map(reading).join('');
+	}
+
+	const saying = (of: { content?: { content?: DocumentNode[] } }) =>
+		(of.content?.content ?? []).map(reading).join(' ').trim();
+
+	/** TipTap hangs the editor off the element it writes into. */
+	const writingIn = (): { commands: { insertContentAt(at: number, text: string): boolean } } =>
+		(
+			document.body.querySelector('.sloppy-prose') as unknown as {
+				editor: { commands: { insertContentAt(at: number, text: string): boolean } };
+			}
+		).editor;
+
+	function shape(named: string): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll<HTMLButtonElement>('li button')].find(
+			(row) => row.querySelector('span')?.textContent?.trim() === named
+		);
+		if (!found) throw new Error(`No shape on screen is called "${named}"`);
+		return found;
+	}
+
+	/** Real timers: what is being waited for is the note settling, not a delay. */
+	async function until(ready: () => boolean): Promise<void> {
+		for (let turn = 0; turn < 200 && !ready(); turn += 1) {
+			await new Promise((wake) => setTimeout(wake));
+			flushSync();
+		}
+		if (!ready()) throw new Error('The note never settled');
+	}
+
+	beforeEach(async () => {
+		installGraph();
+		stack = [];
+		created = [];
+		api.on('POST /nodes', () => node(9, '1b', { origin: FIRST, parent: FIRST }));
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '1b', { origin: FIRST, parent: FIRST }));
+		for (const of of [SECOND, WRITTEN]) {
+			api.on(`GET ${path(of)}/blocks`, () => stack.filter((held) => held.node === of));
+		}
+		api.on('POST /blocks', (_url, init) => {
+			const request = JSON.parse(String(init?.body)) as CreateBlockRequest;
+			created.push(request);
+			const at = request.after ? stack.findIndex((held) => held.ref === request.after) : -1;
+			const row: BlockView = {
+				ref: ref(20 + stack.length),
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				node: request.node,
+				ord: ordBetween(stack[at]?.ord, stack[at + 1]?.ord),
+				content: request.content as BlockView['content']
+			};
+			stack.splice(at + 1, 0, row);
+			return row;
+		});
+		await loadGraph();
+	});
+
+	it('takes the reader to the note even when its sections will not write', async () => {
+		api.on('POST /blocks', () => {
+			throw new Error('unreachable');
+		});
+		await openNote(SECOND);
+
+		labelled('A note under this, from a shape').click();
+		await settle();
+		shape('Objection').click();
+		await until(() => screen().includes('Sloppy could not'));
+
+		expect(document.body.querySelector('.address')?.textContent).toBe('1b');
+		expect(screen()).toContain('Sloppy could not add those sections');
+		expect(screen()).not.toContain('Sloppy could not add that note');
+		expect(api.countOf('POST /nodes')).toBe(1);
+	});
+
+	it('lands the sections under writing the note had not saved yet', async () => {
+		await openNote(SECOND);
+		writingIn().commands.insertContentAt(2, 'the thing happened twice');
+
+		button('Add a shape').click();
+		await settle();
+		shape('Objection').click();
+		await until(() => stack.length === 3);
+
+		// The writing reaches the note first, and the first section names it as
+		// what it goes after — never the other way round, whichever answers first.
+		expect(created.map(saying)).toEqual([
+			'the thing happened twice',
+			'The objection',
+			'What survives if I am right'
+		]);
+		expect(created[1].after).toBe(stack[0].ref);
+		expect(stack.map(saying)).toEqual([
+			'the thing happened twice',
+			'The objection',
+			'What survives if I am right'
+		]);
+	});
+
+	it('offers the sections without telling a note it is empty', async () => {
+		await openNote(SECOND);
+		writingIn().commands.insertContentAt(2, 'the thing happened twice');
+
+		button('Add a shape').click();
+		await settle();
+
+		expect(screen()).toContain('The sections land under anything already in this note.');
 	});
 });
 
