@@ -256,6 +256,12 @@ drew, so it is the only broken one; it crosses the tree and would otherwise read
 parentage. Where somebody has drawn a link along a run, the hand wins and the line is
 dashed.
 
+**A reference is none of the three.** `[[` names another note from inside a sentence, and
+the canvas draws nothing for it: it belongs to the writing it was typed into, not to the
+shape of the graph. `links[]` therefore stays what somebody drew by hand — a reference
+that wrote one would put a dashed hand-drawn line over a run that is already solid, and
+claim a gesture nobody made.
+
 **With tags selected, genealogy and the run both dim**: the reader has asked to see sets,
 and the tree is momentarily the background.
 

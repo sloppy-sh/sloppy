@@ -68,7 +68,15 @@ export class NoteCompletions {
 
 	/** True when the key was spent here rather than in the document. */
 	onKeyDown(event: KeyboardEvent): boolean {
-		if (!this.open || this.making !== null || this.items.length === 0) return false;
+		if (!this.open) return false;
+		// ProseMirror answers a key it handled with `preventDefault()` alone, and
+		// the sheet's escape layer does not consult that — so without this, the one
+		// key that dismisses the menu shuts the note under it as well.
+		if (event.key === 'Escape' || event.key === 'Esc') {
+			event.stopPropagation();
+			return true;
+		}
+		if (this.making !== null || this.items.length === 0) return false;
 		switch (event.key) {
 			case 'ArrowDown':
 				this.index = (this.index + 1) % this.items.length;

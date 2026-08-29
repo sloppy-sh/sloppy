@@ -1,5 +1,5 @@
-// The shapes a note can start from: named sections that become ordinary blocks.
-// Nothing about a shape is stored, so nothing can be validated against one.
+// The shapes a note can start from, and what writing one onto a note does —
+// docs/ARCHITECTURE.md § "Blocks and ink".
 
 import type {
 	BlockDocument,

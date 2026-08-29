@@ -1,11 +1,11 @@
-import type { NodeView, OwnedRef } from '@sloppy/types';
+import type { BlockView, CreateBlockRequest, NodeView, OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import { AT, DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
-import { at } from './page.test-support.svelte.js';
+import { at, back, forward, pushed, replaced, startAt } from './page.test-support.svelte.js';
 
 vi.mock('$app/state', () => ({
 	page: {
@@ -19,14 +19,8 @@ vi.mock('$app/state', () => ({
 }));
 
 vi.mock('$app/navigation', () => ({
-	pushState: (path: string, state: { note?: OwnedRef }) => {
-		if (path) at.path = path;
-		at.note = state.note ?? null;
-	},
-	replaceState: (path: string, state: { note?: OwnedRef }) => {
-		if (path) at.path = path;
-		at.note = state.note ?? null;
-	},
+	pushState: (path: string, state: { note?: OwnedRef }) => pushed(path, state.note ?? null),
+	replaceState: (path: string, state: { note?: OwnedRef }) => replaced(path, state.note ?? null),
 	afterNavigate: () => {}
 }));
 
@@ -148,8 +142,7 @@ async function startLinking(): Promise<void> {
 }
 
 beforeEach(() => {
-	at.path = '/';
-	at.note = null;
+	startAt('/');
 	stubViewport();
 	nodes.clear();
 	tags.clear();
@@ -252,5 +245,81 @@ describe('linking by pointing at the graph', () => {
 
 		expect(screen()).toContain('Not right now.');
 		expect(screen()).toContain('Tap a note to link it to');
+	});
+});
+
+describe('a branch started from a shape', () => {
+	const WRITTEN = ref(9);
+	/** The note's stack as the server holds it. */
+	let stack: BlockView[];
+
+	function labelled(label: string): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll('button')].find(
+			(b) => b.getAttribute('aria-label') === label
+		);
+		if (!found) throw new Error(`Nothing on screen is labelled "${label}"`);
+		return found;
+	}
+
+	function shape(named: string): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll<HTMLButtonElement>('li button')].find(
+			(row) => row.querySelector('span')?.textContent?.trim() === named
+		);
+		if (!found) throw new Error(`No shape on screen is called "${named}"`);
+		return found;
+	}
+
+	/** Real timers: what is being waited for is the note settling, not a delay. */
+	async function until(ready: () => boolean): Promise<void> {
+		for (let turn = 0; turn < 200 && !ready(); turn += 1) {
+			await new Promise((wake) => setTimeout(wake));
+			flushSync();
+		}
+		if (!ready()) throw new Error('The note never settled');
+	}
+
+	beforeEach(() => {
+		stack = [];
+		api.on('POST /nodes', () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => stack);
+		api.on('POST /blocks', (_url, init) => {
+			const request = JSON.parse(String(init?.body)) as CreateBlockRequest;
+			const row: BlockView = {
+				ref: ref(20 + stack.length),
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				node: request.node,
+				ord: String(stack.length + 1).padStart(4, '0'),
+				content: request.content as BlockView['content']
+			};
+			stack.push(row);
+			return row;
+		});
+	});
+
+	// The shape is handed to the note once. Back unmounts it and Forward mounts
+	// it again from the same entry, so a shape still on offer would be taken twice.
+	it('writes the sections once, however often the reader comes back to the note', async () => {
+		mounted = mount(Graph, { target });
+		flushSync();
+		await settle();
+
+		labelled('A new branch, from a shape').click();
+		await settle();
+		shape('Objection').click();
+		await until(() => stack.length === 2);
+
+		back();
+		await settle();
+		expect(screen()).not.toContain('Delete this note');
+
+		forward();
+		await until(() => screen().includes('Delete this note'));
+		await settle();
+		await settle();
+
+		expect(stack).toHaveLength(2);
 	});
 });

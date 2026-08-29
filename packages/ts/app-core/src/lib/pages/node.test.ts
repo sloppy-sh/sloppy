@@ -507,6 +507,60 @@ describe('linking a note to another', () => {
 	});
 });
 
+// The canvas draws a link dashed and derives the run from the addresses, so a
+// reference that wrote a `links` entry would put a hand-drawn line over a
+// derived one — DESIGN.md § Edges.
+describe('naming another note from inside the writing', () => {
+	interface Writing {
+		commands: { focus(): boolean; insertContent(words: string): boolean };
+	}
+
+	let graph: Map<OwnedRef, NodeView>;
+	let placed: unknown;
+
+	/** TipTap hangs the editor off the element it writes into. */
+	const writing = (): Writing =>
+		(document.body.querySelector('.sloppy-prose') as unknown as { editor: Writing }).editor;
+
+	const rows = () =>
+		[...document.body.querySelectorAll<HTMLElement>('[role="option"]')].map((row) => ({
+			row,
+			reads: (row.textContent ?? '').replace(/\s+/g, ' ').trim()
+		}));
+
+	beforeEach(async () => {
+		graph = installGraph();
+		await loadGraph();
+		placed = undefined;
+		api.on('POST /nodes', (_url, init) => {
+			placed = (JSON.parse(String(init?.body)) as { from?: unknown }).from;
+			return node(9, '1b', { origin: FIRST, parent: FIRST, title: 'Guard cells' });
+		});
+	});
+
+	async function type(words: string): Promise<void> {
+		writing().commands.focus();
+		writing().commands.insertContent(words);
+		flushSync();
+		await settle();
+	}
+
+	it('writes the note the row names, and draws no line to it', async () => {
+		await openNote(SECOND);
+		await type('see [[Guard cells');
+
+		const after = rows().find((row) => row.reads === 'Write “Guard cells” after this note');
+		expect(after).toBeDefined();
+		after?.row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+		await settle();
+		await settle();
+
+		expect(placed).toEqual({ relation: 'after', note: SECOND });
+		expect(graph.get(SECOND)?.links).toEqual([]);
+		expect(api.countOf(`PATCH ${path(SECOND)}`)).toBe(0);
+	});
+});
+
 describe('starting a note from a shape', () => {
 	const WRITTEN = ref(9);
 

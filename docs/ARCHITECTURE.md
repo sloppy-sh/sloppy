@@ -467,6 +467,18 @@ saved keeps its row when it is emptied.
 replacement and durable-ref pattern. Markdown shorthands are still how prose is typed;
 `@tiptap/markdown` is gone with the storage format that needed it.
 
+**`reference-node.ts` is Sloppy's own inline atom, on that same footing.** `[[` opens a
+menu of notes and writes the one picked into the sentence; what is STORED is the note's
+ref — which outlives every rename — beside the words it was cited under, so a note that
+has since gone still reads as something. It is an element inside a stored document like
+any other: no column, no row, and no entry in `links`, which DESIGN.md § Edges rules on.
+
+**A shape leaves no trace of itself.** `templates.ts` in `@sloppy/ui` turns a shape into
+a list of documents and `writeTemplate` creates one row for each, after whatever the note
+already holds — so a seeded section is an ordinary block the moment it exists. Nothing
+records which shape a note came from: there is nothing to validate a note against later,
+and changing a shape cannot reach a note already written from it.
+
 The emoji tokenizer's ordering is load-bearing and must be carried across: **mention spans
 are captured first** (a `did:syr:…` contains colons that would false-match `:syr:`),
 stickers before emoji, then linkify. Size comes from the syntax used, not a stored flag.

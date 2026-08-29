@@ -312,6 +312,14 @@
 							<Button class="h-11" disabled={creating} onclick={() => writeBranch(null)}>
 								Write the first note
 							</Button>
+							<Button
+								variant="ghost"
+								class="h-11"
+								disabled={creating}
+								onclick={() => (shaping = true)}
+							>
+								Start from a shape
+							</Button>
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
 								Number it yourself
 							</Button>
@@ -462,6 +470,7 @@
 			ref={open}
 			{naming}
 			{seed}
+			onSeeded={() => (seed = null)}
 			onOpen={show}
 			onLinkOnGraph={() => pointFrom(open)}
 			onClose={hide}

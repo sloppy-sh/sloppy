@@ -373,6 +373,26 @@ describe('the menu never writes a note by itself', () => {
 		expect(writingIn().state.doc.textContent).toBe('[[Guard cells');
 	});
 
+	// The sheet the note is written in closes on Escape too, and it listens on the
+	// document: one key must not cost the writer the note along with the menu.
+	it('takes the Escape that dismissed it, and lets nothing else have it', async () => {
+		const heard: KeyboardEvent[] = [];
+		const listen = (event: Event) => heard.push(event as KeyboardEvent);
+		document.addEventListener('keydown', listen);
+		try {
+			open(graph([]));
+			await type('[[Guard cells');
+			expect(menu()).not.toHaveLength(0);
+
+			press('Escape');
+
+			expect(menu()).toHaveLength(0);
+			expect(heard).toHaveLength(0);
+		} finally {
+			document.removeEventListener('keydown', listen);
+		}
+	});
+
 	it('stays gone for the rest of the line once it has been dismissed', async () => {
 		open(graph([]));
 		await type('[[Guard cells');

@@ -25,6 +25,7 @@
 		TagField,
 		TemplatePicker,
 		writeTemplate,
+		type NoteReferences,
 		type NoteTemplate
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
@@ -44,6 +45,7 @@
 		ref,
 		naming = null,
 		seed = null,
+		onSeeded,
 		onOpen,
 		onLinkOnGraph,
 		onClose
@@ -54,6 +56,9 @@
 		/** The shape the note just written was to start from, if it is this one. It
 		 *  is seeded here so sections that will not write cannot strand the note. */
 		seed?: { ref: OwnedRef; shape: NoteTemplate } | null;
+		/** Called the moment the shape is taken up, and it must not be offered
+		 *  again: a note reopened still carrying one would seed itself twice. */
+		onSeeded?: () => void;
 		onOpen: (ref: OwnedRef, fresh?: boolean, shape?: NoteTemplate | null) => void;
 		/** Hand the choice of what to link to over to the graph. */
 		onLinkOnGraph: () => void;
@@ -77,6 +82,9 @@
 	/** Which act the shapes are being offered for: a note under this one, the one
 	 *  after it, or this note itself. */
 	let shaping = $state<'under' | 'after' | 'this' | null>(null);
+	/** The same act, held while the sheet animates out so its title and its row
+	 *  order do not change on the way. */
+	let offered = $state<'under' | 'after' | 'this'>('this');
 	let seeding = $state(false);
 	let shapeRefused = $state<string | null>(null);
 	/** Block writes the writing surface has in the air. */
@@ -104,7 +112,7 @@
 	 *  would be in the way rather than in time. */
 	const shapeable = $derived(blocks.length <= 1);
 
-	const suggested = $derived(shaping === null || shaping === 'this' ? null : suggestedFor(shaping));
+	const suggested = $derived(offered === 'this' ? null : suggestedFor(offered));
 
 	/** Every note the cache holds — what a link may point at, in address order. */
 	const everyNote = $derived.by(() => {
@@ -144,12 +152,7 @@
 			.slice(0, MATCHES);
 	});
 
-	/**
-	 * What `[[` reaches from inside the writing. A reference is not a link: it
-	 * names a note in a sentence, and leaves `links` — the edge somebody draws
-	 * between two notes — alone.
-	 */
-	const references = {
+	const references: NoteReferences = {
 		find: (query: string) => {
 			const needle = query.toLowerCase();
 			return everyNote.filter((note) => note.ref !== ref && (!needle || carries(note, needle)));
@@ -232,7 +235,12 @@
 
 	$effect(() => {
 		const opening = ref;
-		const starting = untrack(() => (seed?.ref === opening ? seed.shape : null));
+		const starting = untrack(() => {
+			if (seed?.ref !== opening) return null;
+			const shape = seed.shape;
+			onSeeded?.();
+			return shape;
+		});
 		let live = true;
 		loading = true;
 		unreachable = null;
@@ -296,11 +304,11 @@
 	}
 
 	/** Two writers appending to one stack would interleave their sections, so a
-	 *  shape waits until nothing the writing surface started is still in the air. */
+	 *  shape waits until nothing the writing surface started is still in the air.
+	 *  It waits a turn first, because a write started as the surface goes away is
+	 *  not counted the moment it is started. */
 	async function stackSettled(): Promise<void> {
 		await tick();
-		// A turn of the task queue, by which time a write the surface starts on its
-		// way out has been asked for.
 		do {
 			await new Promise((wake) => setTimeout(wake));
 		} while (surfaceWrites > 0);
@@ -309,22 +317,37 @@
 	/** Gives this note a shape, its sections landing under what is already here. */
 	async function shapeThisNote(shape: NoteTemplate): Promise<void> {
 		if (seeding) return;
+		const into = ref;
 		seeding = true;
 		shapeRefused = null;
 		await stackSettled();
+		if (ref !== into) return;
+
+		let refusal: string | null = null;
 		try {
-			await writeTemplate(shape, { node: ref, after: blocks.at(-1)?.ref }, api.createBlock);
+			await writeTemplate(shape, { node: into, after: blocks.at(-1)?.ref }, api.createBlock);
 		} catch (error) {
-			shapeRefused =
+			refusal =
 				serverMessage(error) ?? 'Sloppy could not add those sections. Try again in a moment.';
 		}
+		let stack: BlockView[] | null = null;
 		try {
-			blocks = (await api.listBlocks(ref)).sort(byOrd);
+			stack = (await api.listBlocks(into)).sort(byOrd);
 		} catch (error) {
-			shapeRefused ??=
+			refusal ??=
 				serverMessage(error) ?? 'Sloppy could not read this note. Close it and open it again.';
 		}
+		// A shape that finished after the reader moved on belongs to the note it
+		// was asked for, not to the one now on screen.
+		if (ref !== into) return;
+		if (stack) blocks = stack;
+		shapeRefused = refusal;
 		seeding = false;
+	}
+
+	function offerShapes(act: 'under' | 'after' | 'this'): void {
+		offered = act;
+		shaping = act;
 	}
 
 	function pickShape(shape: NoteTemplate | null): void {
@@ -523,7 +546,7 @@
 				variant="ghost"
 				class="-mt-4 h-11 w-fit text-muted-foreground"
 				disabled={seeding}
-				onclick={() => (shaping = 'this')}
+				onclick={() => offerShapes('this')}
 			>
 				<LayoutTemplate class="size-4" />
 				Add a shape
@@ -561,7 +584,7 @@
 						class="size-11 shrink-0 text-muted-foreground"
 						aria-label="A note under this, from a shape"
 						disabled={adding}
-						onclick={() => (shaping = 'under')}
+						onclick={() => offerShapes('under')}
 					>
 						<LayoutTemplate class="size-4" />
 					</Button>
@@ -582,7 +605,7 @@
 						class="size-11 shrink-0 text-muted-foreground"
 						aria-label="The next note, from a shape"
 						disabled={adding}
-						onclick={() => (shaping = 'after')}
+						onclick={() => offerShapes('after')}
 					>
 						<LayoutTemplate class="size-4" />
 					</Button>
@@ -703,7 +726,7 @@
 				if (!v) shaping = null;
 			}}
 			{suggested}
-			existing={shaping === 'this'}
+			existing={offered === 'this'}
 			onpick={pickShape}
 		/>
 

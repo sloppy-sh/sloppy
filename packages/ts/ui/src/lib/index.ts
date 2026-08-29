@@ -34,6 +34,7 @@ export type {
 	HeldPicture,
 	NoteEmoji,
 	NoteMedia,
+	NoteReferences,
 	SendingPicture,
 	ShownPicture
 } from './components/editor/contract.js';

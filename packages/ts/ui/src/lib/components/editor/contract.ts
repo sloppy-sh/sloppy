@@ -63,11 +63,8 @@ export interface NoteEmoji {
 
 /**
  * How a note reaches the others from inside the writing: what `[[` finds, and
- * what a reference in a section resolves against.
- *
- * A reference is not a link. `node.links` is what somebody drew between two
- * notes by hand, and the canvas draws it dashed; a reference lives in the
- * sentence it was written in, and nothing here touches `links`.
+ * what a reference in a section resolves against. Nothing here writes
+ * `node.links` — DESIGN.md § Edges is the ruling.
  *
  * `find` and `write` are both answered against the note being written in, which
  * is the shell's to know: a relation is `under` this note or `after` it.

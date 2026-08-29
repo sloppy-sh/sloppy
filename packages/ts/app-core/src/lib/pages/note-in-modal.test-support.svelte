@@ -28,6 +28,7 @@
 		ref={showing}
 		{naming}
 		{seed}
+		onSeeded={() => (seed = null)}
 		onOpen={(ref, written, shape) => {
 			showing = ref;
 			naming = written ? ref : null;
