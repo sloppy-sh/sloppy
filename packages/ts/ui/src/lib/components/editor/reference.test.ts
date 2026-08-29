@@ -82,6 +82,11 @@ const writingIn = (): Editor =>
 
 const menu = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[role="option"]')];
 
+/** The address on each row the menu shows; `undefined` where the row writes a
+ *  note rather than naming one. */
+const addresses = (): (string | undefined)[] =>
+	menu().map((row) => row.querySelector('.address')?.textContent ?? undefined);
+
 /** Types into the note the way a person does, and lets the menu answer. */
 async function type(words: string): Promise<void> {
 	writingIn().commands.insertContent(words);
@@ -149,6 +154,22 @@ describe('finding a note from inside the writing', () => {
 		expect(rows[2]).toBe('Write “photo” after this note');
 	});
 
+	it('leads with the note already under that name, wherever its address sorts it', async () => {
+		open(
+			graph([
+				note('1a', 'guard cells overview'),
+				note('1b', 'guard cells notes'),
+				note('1c', 'guard cells and stomata'),
+				note('1d', 'guard cells in ferns'),
+				note('1e', 'guard cells at night'),
+				note('1f', 'guard cells, water'),
+				note('1g', 'Guard cells')
+			])
+		);
+		await type('[[Guard cells');
+		expect(addresses()).toEqual(['1g', '1a', '1b', '1c', '1d', '1e']);
+	});
+
 	it('lists what matches the address, which is what a person cites', async () => {
 		open(graph([note('1b', 'Photosynthesis'), note('1c', 'Seed banks')]));
 		await type('[[1c');
@@ -164,6 +185,26 @@ describe('finding a note from inside the writing', () => {
 		expect(referencesIn(writingIn())).toEqual([{ note: found.ref, label: 'Photosynthesis' }]);
 		expect(writingIn().state.doc.textContent.trimEnd()).toBe('as in');
 		expect(document.querySelector('.sloppy-reference')?.textContent).toBe('Photosynthesis');
+	});
+
+	it('takes the whole of what was typed when the name has a bracket in it', async () => {
+		const found = note('1b', 'Photo [draft]');
+		open(graph([found]));
+		await type('as in [[Photo [dr');
+		tap(menu()[0]);
+
+		expect(referencesIn(writingIn())).toEqual([{ note: found.ref, label: 'Photo [draft]' }]);
+		expect(writingIn().state.doc.textContent.trimEnd()).toBe('as in');
+	});
+
+	it('starts again at the second [[ on the line, and leaves the first alone', async () => {
+		const found = note('1b', 'Photosynthesis');
+		open(graph([found, note('1c', 'Seed banks')]));
+		await type('[[seed [[photo');
+		tap(menu()[0]);
+
+		expect(referencesIn(writingIn())).toEqual([{ note: found.ref, label: 'Photosynthesis' }]);
+		expect(writingIn().state.doc.textContent.trimEnd()).toBe('[[seed');
 	});
 
 	it('holds a note with no title by its address, which never changes either', async () => {

@@ -13,8 +13,6 @@ const SHOWN = 6;
 /** Past this many characters what follows `[[` is a sentence rather than a name,
  *  and the menu lets go of it. */
 const NAME_LIMIT = 80;
-/** How far back a trigger is read for; longer than a name it could hold. */
-const LOOKBACK = 200;
 
 /** A note to reference, or a note to write and then reference. */
 export type NoteChoice =
@@ -88,24 +86,34 @@ export class NoteCompletions {
 	}
 }
 
-const referenceSuggestionKey = new PluginKey('referenceSuggestion');
+/** `@tiptap/suggestion` does not export its plugin state; this is the part of it
+ *  a pick reads. */
+interface SuggestionState {
+	active: boolean;
+	range: { from: number; to: number };
+}
+
+const referenceSuggestionKey = new PluginKey<SuggestionState>('referenceSuggestion');
 
 function choicesFor(query: string, references: NoteReferences | undefined): NoteChoice[] {
 	if (!references || query.includes(']')) return [];
 	const name = query.trim();
 	if (name.length > NAME_LIMIT) return [];
-	const found = references
-		.find(name)
+	const found = references.find(name);
+	const cite = (note: NodeView): NoteChoice => ({ kind: 'note', note });
+	if (!name) return found.slice(0, SHOWN).map(cite);
+
+	const wanted = name.toLowerCase();
+	// A name a note already carries is that note, wherever its address sorts it,
+	// and writing a second one under the same words would only make the pair
+	// ambiguous.
+	const carrying = found.filter((note) => note.title.toLowerCase() === wanted);
+	const shown = [...carrying, ...found.filter((note) => note.title.toLowerCase() !== wanted)]
 		.slice(0, SHOWN)
-		.map((note): NoteChoice => ({ kind: 'note', note }));
-	// A name already on one of these notes is that note, and offering to write a
-	// second one under the same words would only make the pair ambiguous.
-	const taken = found.some(
-		(choice) => choice.kind === 'note' && choice.note.title.toLowerCase() === name.toLowerCase()
-	);
-	if (!name || taken) return found;
+		.map(cite);
+	if (carrying.length > 0) return shown;
 	return [
-		...found,
+		...shown,
 		{ kind: 'make', name, relation: 'under' },
 		{ kind: 'make', name, relation: 'after' }
 	];
@@ -118,22 +126,21 @@ interface Trigger {
 	text: string;
 }
 
-/** Read from the live document, never from the range the plugin closed over:
- *  that closure can be a keystroke behind, and replacing the wrong span eats
- *  what was typed. */
+/** Where the caret is, as a span that replaces nothing. */
+function caretAt(editor: Editor): Trigger {
+	const at = editor.state.selection.$from.pos;
+	return { from: at, to: at, text: '' };
+}
+
+/** Read from the plugin's live state, never from the range handed to `command`:
+ *  that one closed over an earlier render and can be a keystroke behind. Reading
+ *  it is also what keeps the span replaced identical to the span the menu
+ *  matched, whatever the query has in it. */
 function triggerAt(editor: Editor): Trigger {
-	const { selection } = editor.state;
-	const to = selection.$from.pos;
-	const before = selection.$from.parent.textBetween(
-		Math.max(0, selection.$from.parentOffset - LOOKBACK),
-		selection.$from.parentOffset,
-		'\n',
-		'￼'
-	);
-	// No `[` inside the run, so a second `[[` on the line starts a new trigger
-	// rather than extending the first.
-	const typed = /\[\[[^[\n]*$/.exec(before);
-	return { from: typed ? to - typed[0].length : to, to, text: typed?.[0] ?? '' };
+	const live = referenceSuggestionKey.getState(editor.state);
+	if (!live?.active) return caretAt(editor);
+	const { from, to } = live.range;
+	return { from, to, text: editor.state.doc.textBetween(from, to, '\n', '￼') };
 }
 
 /** Whether the span is still the one that was read, so replacing it cannot take
@@ -179,7 +186,7 @@ async function take(
 	if (editor.isDestroyed) return;
 	// A span that shifted while the note was being written is not the span to
 	// replace, so the reference lands at the caret rather than over the typing.
-	place(editor, stillThere(editor, at) ? at : triggerAt(editor), written);
+	place(editor, stillThere(editor, at) ? at : caretAt(editor), written);
 	completions.close();
 }
 
