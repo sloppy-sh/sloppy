@@ -53,6 +53,10 @@ const PICK_WIDTH = 1.5;
 
 const EDGE_WIDTH = 1.2;
 const LINK_DASH = 9;
+/** The most segments one dashed edge may cost. Reached only by an edge long
+ *  enough that the dashes stretch to meet it. */
+const MAX_DASHES = 60;
+
 /** Rebuild edge geometry when the zoom has moved enough to show in the stroke. */
 const SCALE_REBUILD = 0.08;
 
@@ -707,6 +711,27 @@ function markTexture(
   });
 }
 
+/**
+ * Where each dash of a link falls, as distances along the line. The segment
+ * count is capped for cost, and the SPACING absorbs the cap — so a long edge
+ * draws longer dashes rather than stopping partway and leaving a link that
+ * appears to go nowhere.
+ */
+export function dashSegments(
+  length: number,
+  dash: number,
+): { from: number; to: number }[] {
+  if (length < 1) return [];
+  const steps = Math.min(Math.ceil(length / (dash * 2)), MAX_DASHES);
+  const period = length / steps;
+  return Array.from({ length: steps }, (_unused, step) => {
+    const from = step * period;
+    // The last dash runs to the end: the gap a uniform duty cycle would leave
+    // there sits over the note, where it reads as a line that stopped short.
+    return { from, to: step === steps - 1 ? length : from + period * 0.5 };
+  });
+}
+
 function dashLine(
   graphics: Graphics,
   x1: number,
@@ -716,15 +741,11 @@ function dashLine(
   dash: number,
 ): void {
   const length = Math.hypot(x2 - x1, y2 - y1);
-  if (length < 1) return;
-  const steps = Math.min(Math.ceil(length / (dash * 2)), 60);
   const ux = (x2 - x1) / length;
   const uy = (y2 - y1) / length;
-  for (let step = 0; step < steps; step++) {
-    const start = step * dash * 2;
-    const end = Math.min(start + dash, length);
-    graphics.moveTo(x1 + ux * start, y1 + uy * start);
-    graphics.lineTo(x1 + ux * end, y1 + uy * end);
+  for (const { from, to } of dashSegments(length, dash)) {
+    graphics.moveTo(x1 + ux * from, y1 + uy * from);
+    graphics.lineTo(x1 + ux * to, y1 + uy * to);
   }
 }
 
