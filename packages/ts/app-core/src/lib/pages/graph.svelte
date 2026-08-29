@@ -16,15 +16,24 @@
 	// The home surface: the whole graph, the tags it is lit by, and the note that
 	// opens over it. DESIGN.md § Layout — the graph is the page.
 	import Hash from '@lucide/svelte/icons/hash';
+	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { RootAddressSchema, type NodeView } from '@sloppy/types';
-	import { GraphSurface, ResponsiveModal, TagRail } from '@sloppy/ui';
+	import {
+		GraphSurface,
+		ResponsiveModal,
+		TagRail,
+		TemplatePicker,
+		writeTemplate,
+		type NoteTemplate
+	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import { api } from '../api.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -42,6 +51,8 @@
 	let numbering = $state(false);
 	let branchNumber = $state('');
 	let numberRefused = $state<string | null>(null);
+	/** Whether the shapes a branch can start from are being offered. */
+	let shaping = $state(false);
 	/** What the rail covers, so the graph frames itself into what is left. */
 	let railHeight = $state(0);
 	/** The note just written, whose title is still waiting to be given. */
@@ -195,12 +206,14 @@
 	}
 
 	/** A branch of its own. A note that continues one is written from inside it. */
-	async function writeBranch(): Promise<void> {
+	async function writeBranch(shape: NoteTemplate | null): Promise<void> {
 		if (creating) return;
 		creating = true;
 		refused = null;
 		try {
-			show((await nodes.create({})).ref, true);
+			const written = await nodes.create({});
+			if (shape) await writeTemplate(shape, { node: written.ref }, api.createBlock);
+			show(written.ref, true);
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
@@ -296,7 +309,7 @@
 							Your graph starts with one note, and everything else grows out of it.
 						</p>
 						<div class="flex flex-col items-center gap-2">
-							<Button class="h-11" disabled={creating} onclick={writeBranch}>
+							<Button class="h-11" disabled={creating} onclick={() => writeBranch(null)}>
 								Write the first note
 							</Button>
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
@@ -343,10 +356,20 @@
 							variant="outline"
 							class="h-9 shrink-0 rounded-full"
 							disabled={creating}
-							onclick={writeBranch}
+							onclick={() => writeBranch(null)}
 						>
 							<Plus class="size-4" />
 							New branch
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-9 shrink-0 rounded-full"
+							aria-label="A new branch, from a shape"
+							disabled={creating}
+							onclick={() => (shaping = true)}
+						>
+							<LayoutTemplate class="size-4" />
 						</Button>
 						<Button
 							variant="ghost"
@@ -372,6 +395,14 @@
 		</div>
 	{/if}
 </div>
+
+<TemplatePicker
+	bind:open={shaping}
+	onpick={(shape) => {
+		shaping = false;
+		void writeBranch(shape);
+	}}
+/>
 
 <ResponsiveModal
 	bind:open={numbering}

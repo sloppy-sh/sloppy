@@ -4,6 +4,7 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
@@ -16,7 +17,17 @@
 		type Tag,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
-	import { BlockStack, ConfirmModal, scrollFade, TagField } from '@sloppy/ui';
+	import {
+		BlockStack,
+		ConfirmModal,
+		scrollFade,
+		suggestedFor,
+		suggestedForAddress,
+		TagField,
+		TemplatePicker,
+		writeTemplate,
+		type NoteTemplate
+	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
@@ -60,6 +71,12 @@
 	let refused = $state<string | null>(null);
 	let titleField = $state<HTMLTextAreaElement | null>(null);
 
+	/** Which act the shapes are being offered for: a note under this one, the one
+	 *  after it, or this note itself. */
+	let shaping = $state<'under' | 'after' | 'this' | null>(null);
+	let seeding = $state(false);
+	let shapeRefused = $state<string | null>(null);
+
 	let removing = $state(false);
 	let undeletable = $state<string | null>(null);
 
@@ -77,6 +94,16 @@
 	const title = $derived(typed?.ref === ref ? typed.title : (node?.title ?? ''));
 
 	const byOrd = (a: BlockView, b: BlockView) => compareOrd(a.ord, b.ord);
+
+	/** Past one section the person has made their own shape, and offering one
+	 *  would be in the way rather than in time. */
+	const shapeable = $derived(blocks.length <= 1);
+
+	const suggested = $derived.by(() => {
+		if (shaping === null) return null;
+		if (shaping !== 'this') return suggestedFor(shaping);
+		return node ? suggestedForAddress(node.address) : null;
+	});
 
 	/** Every note the cache holds — what a link may point at, in address order. */
 	const everyNote = $derived.by(() => {
@@ -187,6 +214,9 @@
 		undeletable = null;
 		linkRefused = null;
 		tagRefused = null;
+		shaping = null;
+		seeding = false;
+		shapeRefused = null;
 		void (async () => {
 			try {
 				const [, stack] = await Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
@@ -222,17 +252,54 @@
 
 	/** The two ways a note is written from this one: one under it, or the one
 	 *  that comes after it. The server derives the address from either. */
-	async function write(relation: 'under' | 'after'): Promise<void> {
+	async function write(relation: 'under' | 'after', shape: NoteTemplate | null): Promise<void> {
 		if (adding) return;
 		adding = true;
 		refused = null;
 		try {
-			onOpen((await nodes.create({ from: { relation, note: ref } })).ref, true);
+			const written = await nodes.create({ from: { relation, note: ref } });
+			if (shape) await writeTemplate(shape, { node: written.ref }, api.createBlock);
+			onOpen(written.ref, true);
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
 			adding = false;
 		}
+	}
+
+	/**
+	 * Gives this note a shape: the sections land under whatever is there already.
+	 * `seeding` takes the writing surface down, so what it was still holding is
+	 * flushed on its way out, and the stack is read back once at the end.
+	 */
+	async function shapeThisNote(shape: NoteTemplate): Promise<void> {
+		if (seeding) return;
+		seeding = true;
+		shapeRefused = null;
+		try {
+			await writeTemplate(shape, { node: ref, after: blocks.at(-1)?.ref }, api.createBlock);
+		} catch (error) {
+			shapeRefused =
+				serverMessage(error) ?? 'Sloppy could not add those sections. Try again in a moment.';
+		}
+		try {
+			blocks = (await api.listBlocks(ref)).sort(byOrd);
+		} catch (error) {
+			shapeRefused ??=
+				serverMessage(error) ?? 'Sloppy could not read this note. Close it and open it again.';
+		}
+		seeding = false;
+	}
+
+	function pickShape(shape: NoteTemplate | null): void {
+		const act = shaping;
+		shaping = null;
+		if (act === null) return;
+		if (act === 'this') {
+			if (shape) void shapeThisNote(shape);
+			return;
+		}
+		void write(act, shape);
 	}
 
 	async function relink(links: OwnedRef[], whenItFails: string): Promise<void> {
@@ -363,7 +430,7 @@
 			{/if}
 		</header>
 
-		{#if loading}
+		{#if loading || seeding}
 			<Skeleton class="h-24 w-full" />
 		{:else if unreachable}
 			<p class="text-sm text-destructive" role="alert">{unreachable}</p>
@@ -395,6 +462,22 @@
 			/>
 		{/if}
 
+		{#if !loading && !unreachable && shapeable}
+			<Button
+				variant="ghost"
+				class="-mt-4 h-11 w-fit text-muted-foreground"
+				disabled={seeding}
+				onclick={() => (shaping = 'this')}
+			>
+				<LayoutTemplate class="size-4" />
+				{blocks.length === 0 ? 'Start from a shape' : 'Add a shape'}
+			</Button>
+		{/if}
+
+		{#if shapeRefused}
+			<p class="text-sm text-destructive" role="alert">{shapeRefused}</p>
+		{/if}
+
 		<div class="space-y-3 border-t border-border pt-6">
 			{#if children.length > 0}
 				<h2 class="text-sm font-medium text-muted-foreground">Under this</h2>
@@ -406,24 +489,48 @@
 			{/if}
 
 			<div class="flex flex-col gap-2 sm:flex-row">
-				<Button
-					variant="outline"
-					class="h-11 sm:flex-1"
-					disabled={adding}
-					onclick={() => write('under')}
-				>
-					<CornerDownRight class="size-4" />
-					A note under this
-				</Button>
-				<Button
-					variant="outline"
-					class="h-11 sm:flex-1"
-					disabled={adding}
-					onclick={() => write('after')}
-				>
-					<ArrowRight class="size-4" />
-					The next note
-				</Button>
+				<div class="flex gap-2 sm:flex-1">
+					<Button
+						variant="outline"
+						class="h-11 flex-1"
+						disabled={adding}
+						onclick={() => write('under', null)}
+					>
+						<CornerDownRight class="size-4" />
+						A note under this
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-11 shrink-0 text-muted-foreground"
+						aria-label="A note under this, from a shape"
+						disabled={adding}
+						onclick={() => (shaping = 'under')}
+					>
+						<LayoutTemplate class="size-4" />
+					</Button>
+				</div>
+				<div class="flex gap-2 sm:flex-1">
+					<Button
+						variant="outline"
+						class="h-11 flex-1"
+						disabled={adding}
+						onclick={() => write('after', null)}
+					>
+						<ArrowRight class="size-4" />
+						The next note
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-11 shrink-0 text-muted-foreground"
+						aria-label="The next note, from a shape"
+						disabled={adding}
+						onclick={() => (shaping = 'after')}
+					>
+						<LayoutTemplate class="size-4" />
+					</Button>
+				</div>
 			</div>
 
 			{#if refused}<p class="text-sm text-destructive" role="alert">{refused}</p>{/if}
@@ -533,6 +640,16 @@
 				<p class="mt-2 text-sm text-destructive" role="alert">{undeletable}</p>
 			{/if}
 		</div>
+
+		<TemplatePicker
+			open={shaping !== null}
+			onOpenChange={(v) => {
+				if (!v) shaping = null;
+			}}
+			{suggested}
+			written={shaping === 'this' && blocks.length > 0}
+			onpick={pickShape}
+		/>
 
 		<ConfirmModal
 			bind:open={removing}

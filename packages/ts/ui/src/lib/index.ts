@@ -38,3 +38,4 @@ export type {
 	ShownPicture
 } from './components/editor/contract.js';
 export type { CustomEmojiEntry } from './emoji/catalog.js';
+export * from './components/templates/index.js';
