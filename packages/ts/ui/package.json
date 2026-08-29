@@ -44,7 +44,8 @@
 		"test:watch": "vitest",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
-		"format:check": "prettier --check ."
+		"format:check": "prettier --check .",
+		"emoji": "node scripts/emoji.mjs"
 	},
 	"peerDependencies": {
 		"@sveltejs/kit": "^2.0.0",
@@ -72,6 +73,7 @@
 		"@sveltejs/package": "catalog:",
 		"@sveltejs/vite-plugin-svelte": "catalog:",
 		"@tailwindcss/vite": "catalog:",
+		"emojilib": "4.0.3",
 		"eslint": "catalog:",
 		"eslint-config-prettier": "catalog:",
 		"eslint-plugin-svelte": "catalog:",
@@ -86,6 +88,7 @@
 		"tailwindcss": "catalog:",
 		"typescript": "catalog:",
 		"typescript-eslint": "catalog:",
+		"unicode-emoji-json": "0.9.0",
 		"vite": "catalog:",
 		"vitest": "^4.1.11"
 	}

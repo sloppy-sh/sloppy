@@ -614,6 +614,9 @@ importers:
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.2.2(vite@8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
+      emojilib:
+        specifier: 4.0.3
+        version: 4.0.3
       eslint:
         specifier: 'catalog:'
         version: 10.4.0(jiti@2.7.0)
@@ -656,6 +659,9 @@ importers:
       typescript-eslint:
         specifier: 'catalog:'
         version: 8.58.1(eslint@10.4.0(jiti@2.7.0))(typescript@6.0.2)
+      unicode-emoji-json:
+        specifier: 0.9.0
+        version: 0.9.0
       vite:
         specifier: 'catalog:'
         version: 8.0.7(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0)
@@ -2689,6 +2695,9 @@ packages:
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
 
+  emojilib@4.0.3:
+    resolution: {integrity: sha512-KbWiYre9aRSaPbHrHZIz9zmoM+21LAsK1VFJtnTh1VCtWE/rNMDviGhQTmselFl95dhqtGlY22iH0leG5BuW0g==}
+
   empathic@2.0.1:
     resolution: {integrity: sha512-YGRs8knHhKHVShLkFET/rWAU8kmHbOV5LwN938RHI0pljAJ1Gf6SzXsSmRaEzcXTtOOmVqJ5+WtQPL5uigY50Q==}
     engines: {node: '>=14'}
@@ -4370,6 +4379,9 @@ packages:
   undici@8.10.0:
     resolution: {integrity: sha512-HvltHd7avK13QIw/oLe4qoOLyoVSoafqJ2jYOrtMRBkbYT31eiBQ8O0ehRKZiEZCMEyLFQNIADpgCWC5fALvYQ==}
     engines: {node: '>=22.19.0'}
+
+  unicode-emoji-json@0.9.0:
+    resolution: {integrity: sha512-HdrQW/7SdbXUsTd8uTATv7LvQJkCSgbAgRCDCtOhQ6xn3EAx+xZHQtRniOXWJK3ywIqPegkNhP4U4EbuFsiQng==}
 
   universalify@2.0.1:
     resolution: {integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==}
@@ -6616,6 +6628,8 @@ snapshots:
 
   emoji-regex@8.0.0: {}
 
+  emojilib@4.0.3: {}
+
   empathic@2.0.1: {}
 
   encodeurl@2.0.0: {}
@@ -8239,6 +8253,8 @@ snapshots:
   undici@7.29.0: {}
 
   undici@8.10.0: {}
+
+  unicode-emoji-json@0.9.0: {}
 
   universalify@2.0.1: {}
 
