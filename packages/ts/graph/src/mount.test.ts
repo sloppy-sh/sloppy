@@ -197,6 +197,17 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
   const scene = StandInScene.latest as StandInScene;
   const surface = host.children[0] as FakeElement;
 
+  const pressAndRelease = (
+    ref: string,
+    pointerType: string,
+    pointerId: number,
+  ): void => {
+    scene.under = ref;
+    const event = { pointerId, pointerType, clientX: 0, clientY: 0 };
+    surface.send("pointerdown", event as Partial<PointerEvent>);
+    surface.send("pointerup", event as Partial<PointerEvent>);
+  };
+
   return {
     handle,
     props,
@@ -206,18 +217,13 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     /** Settles the layout has been asked to run. */
     starts: (): number =>
       sent.filter((command) => command.kind === "start").length,
+    /** What the layout has been told to hold, and to let go of. */
+    pins: (): LayoutCommand[] =>
+      sent.filter((command) => command.kind === "pin"),
     model: (): BuiltModel => scene.model as BuiltModel,
-    tap(ref: string): void {
-      scene.under = ref;
-      const event = {
-        pointerId: 1,
-        pointerType: "touch",
-        clientX: 0,
-        clientY: 0,
-      };
-      surface.send("pointerdown", event as Partial<PointerEvent>);
-      surface.send("pointerup", event as Partial<PointerEvent>);
-    },
+    tap: (ref: string): void => pressAndRelease(ref, "touch", 1),
+    /** The mouse's tap: down and up on `ref` with the pointer never moving. */
+    click: (ref: string): void => pressAndRelease(ref, "mouse", 3),
     pen(type: string, x: number, y: number): void {
       surface.send(type, {
         pointerId: 2,
@@ -371,6 +377,34 @@ describe("dragging a note", () => {
     graph.answer();
 
     expect(graph.scene.fits).toBe(1);
+  });
+
+  // A mouse button going down is not a drag, and on this surface a click is how
+  // a note is opened — framing has to survive it, or the settle that follows
+  // the next unfold arrives at a canvas that will never frame it.
+  it("keeps framing the field through a click that never moves", async () => {
+    const graph = await mount();
+    graph.answer();
+    expect(graph.scene.fits).toBe(1);
+
+    graph.click(plain(graph));
+    graph.answer();
+
+    expect(graph.scene.fits).toBe(2);
+  });
+
+  it("asks the layout to hold the field only once the pointer moves", async () => {
+    const graph = await mount();
+    const ref = plain(graph);
+
+    graph.click(ref);
+    expect(graph.pins()).toEqual([]);
+
+    graph.drag(ref, [
+      { x: 0, y: 0 },
+      { x: 60, y: 40 },
+    ]);
+    expect(graph.pins()).not.toEqual([]);
   });
 
   // The layout answers a pin that is already a pointer move or two old, so a

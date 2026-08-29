@@ -124,10 +124,11 @@ describe("LayoutEngine", () => {
 
     const held = busiest(field);
     const joined = within(field, held, 2);
+    const carried = 320;
     let x = before[held * 2];
     const y = before[held * 2 + 1];
     for (let frame = 0; frame < 20; frame++) {
-      x += 16;
+      x += carried / 20;
       engine.pin(held, x, y, true);
       engine.tick(5);
     }
@@ -143,7 +144,10 @@ describe("LayoutEngine", () => {
       (joined.has(at) ? moved : still).push(distance);
     }
     expect(Math.max(...still)).toBe(0);
-    expect(moved.filter((distance) => distance > 1).length).toBeGreaterThan(1);
+    // The other half of the same claim: a neighbourhood that held still would
+    // read as a note lifted out of a photograph rather than dragged through it.
+    moved.sort((a, b) => a - b);
+    expect(moved[Math.floor(moved.length / 2)]).toBeGreaterThan(carried / 4);
   });
 
   it("holds a node where a drag put it, and lets it go again", () => {
