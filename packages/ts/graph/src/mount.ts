@@ -12,14 +12,18 @@ import { attachGestures } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
 import { applyLod, DEFAULT_BUDGET, type LodBudget } from "./lod.js";
-import { buildModel } from "./model.js";
+import { buildModel, type GraphEdgeAttributes } from "./model.js";
 import { type GraphPalette, readPalette } from "./palette.js";
 import { type FrameStats, GraphScene } from "./scene.js";
 import type { Point } from "./viewport.js";
 
-/** Genealogy edges pull harder than the links that cross them. */
-const GENEALOGY_SPRING = 0.55;
-const LINK_SPRING = 0.12;
+/** How hard each kind of edge pulls: the tree holds its shape, an association
+ *  crossing it barely tugs. */
+const SPRING: Record<GraphEdgeAttributes["kind"], number> = {
+  genealogy: 0.55,
+  run: 0.3,
+  link: 0.12,
+};
 
 export interface GraphMountOptions extends GraphSurfaceProps {
   /**
@@ -333,7 +337,7 @@ function edgeInputs(model: ReturnType<typeof buildModel>) {
       source: model.graph.getNodeAttributes(source).index,
       target: model.graph.getNodeAttributes(target).index,
       distance: attributes.distance,
-      strength: attributes.kind === "link" ? LINK_SPRING : GENEALOGY_SPRING,
+      strength: SPRING[attributes.kind],
     });
   });
   return inputs;

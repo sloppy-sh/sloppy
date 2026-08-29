@@ -45,6 +45,13 @@ export interface GraphPalette {
   edgeAlphaWhileSelecting: number;
   /** A note carrying none of the selected tags: its own fill, receded. */
   unselectedAlpha: number;
+  /**
+   * The run of consecutive addresses — DESIGN.md § Edges makes it the heaviest
+   * line on the canvas, and dims it with the tree while tags are selected.
+   */
+  run: number;
+  runAlpha: number;
+  runAlphaWhileSelecting: number;
   /** Associative links, drawn above the tree because they cross it. */
   link: number;
   linkAlpha: number;
@@ -108,6 +115,9 @@ export function buildPalette(tokens: PaletteTokens): GraphPalette {
     edgeAlpha: 0.24,
     edgeAlphaWhileSelecting: 0.08,
     unselectedAlpha: 0.34,
+    run: toRgb24(ink),
+    runAlpha: 0.55,
+    runAlphaWhileSelecting: 0.18,
     link: toRgb24(ink),
     linkAlpha: 0.34,
   };

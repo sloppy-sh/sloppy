@@ -1,7 +1,10 @@
 import {
+  type Address,
+  addressDepth,
   assignTagHueSlots,
   type NodeView,
   type OwnedRef,
+  siblingAddress,
   type Tag,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
@@ -275,6 +278,127 @@ describe("with tags selected", () => {
     }
   });
 });
+
+// AI.md § "The Address Is the Protocol": the run between two notes is a
+// function of their addresses, so the model derives it and no row carries it.
+describe("the run of thought", () => {
+  const model = buildModel(drawn, {
+    selection: [],
+    palette,
+    viewer: corpus.owner,
+  });
+
+  const runsOf = (built: typeof model): [string, string][] => {
+    const pairs: [string, string][] = [];
+    built.graph.forEachEdge((_edge, attributes, source, target) => {
+      if (attributes.kind === "run") pairs.push([source, target]);
+    });
+    return pairs;
+  };
+
+  it("joins every note to the one that comes next alongside it", () => {
+    const byAddress = new Map(
+      drawn.map((entry) => [
+        `${entry.node.created_by}|${entry.node.address}`,
+        entry.node,
+      ]),
+    );
+    let joined = 0;
+    for (const { node } of drawn) {
+      const next = byAddress.get(
+        `${node.created_by}|${siblingAddress(node.address)}`,
+      );
+      if (next === undefined || next.parent !== node.parent) continue;
+      joined += 1;
+      expect(model.graph.getEdgeAttributes(node.ref, next.ref).kind).toBe(
+        "run",
+      );
+    }
+    expect(joined).toBeGreaterThan(0);
+  });
+
+  it("only ever joins two notes alongside each other", () => {
+    const byRef = new Map(drawn.map((entry) => [entry.node.ref, entry.node]));
+    for (const [source, target] of runsOf(model)) {
+      const from = byRef.get(source as OwnedRef)!;
+      const to = byRef.get(target as OwnedRef)!;
+      expect(from.parent).toBe(to.parent);
+      expect(from.created_by).toBe(to.created_by);
+      expect(from.depth).toBe(to.depth);
+    }
+  });
+
+  // A run is one person's sequence of thought. Two graphs that both hold a `1`
+  // are not consecutive, they are two people.
+  it("never runs from one person's branch into another's", () => {
+    const roots = drawn
+      .filter((entry) => entry.node.parent === undefined)
+      .map((entry) => entry.node);
+    const mine = roots.filter((node) => node.created_by === corpus.owner);
+    const theirs = roots.filter((node) => node.created_by !== corpus.owner);
+    expect(mine.length).toBeGreaterThan(1);
+    expect(theirs.length).toBeGreaterThan(0);
+
+    for (const ours of mine) {
+      for (const other of theirs) {
+        expect(model.graph.hasEdge(ours.ref, other.ref)).toBe(false);
+      }
+    }
+    expect(model.graph.getEdgeAttributes(mine[0].ref, mine[1].ref).kind).toBe(
+      "run",
+    );
+  });
+
+  // The point of deriving it: nothing is left holding a reference to the note
+  // that went, so the two either side of the gap read as what they now are.
+  it("reads across a note that is gone", () => {
+    const whole = [note("1"), note("2"), note("3")];
+    const full = buildModel(drawnNodes(whole, new Set()), {
+      selection: [],
+      palette,
+    });
+    expect(runsOf(full)).toHaveLength(2);
+
+    const gapped = buildModel(drawnNodes([whole[0], whole[2]], new Set()), {
+      selection: [],
+      palette,
+    });
+    expect(runsOf(gapped)).toEqual([[whole[0].ref, whole[2].ref]]);
+  });
+
+  // DESIGN.md § Edges: where somebody has drawn a link along a run, the hand
+  // wins and the line is dashed.
+  it("gives way to a link somebody drew along it", () => {
+    const first = note("1");
+    const second = note("2");
+    const drew = buildModel(
+      drawnNodes([{ ...first, links: [second.ref] }, second], new Set()),
+      { selection: [], palette },
+    );
+    expect(drew.graph.getEdgeAttributes(first.ref, second.ref).kind).toBe(
+      "link",
+    );
+    expect(runsOf(drew)).toEqual([]);
+  });
+});
+
+/** A root of the corpus owner's, addressed by hand. */
+function note(address: string): NodeView {
+  const ref = `${corpus.owner}/${address}` as OwnedRef;
+  return {
+    ref,
+    created_by: corpus.owner,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    address: address as Address,
+    depth: addressDepth(address as Address),
+    origin: ref,
+    title: address,
+    tags: [],
+    links: [],
+    published: false,
+  };
+}
 
 describe("carrying positions across an update", () => {
   it("leaves a node that was already drawn where it was", () => {
