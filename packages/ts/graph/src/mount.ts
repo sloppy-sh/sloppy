@@ -99,10 +99,11 @@ export function mountGraph(
   let destroyed = false;
   /**
    * Keep the whole field framed while it settles, and stop the moment the
-   * reader moves the viewport — a canvas that re-frames itself under somebody's
+   * reader takes hold of it — a canvas that re-frames itself under somebody's
    * finger is worse than one that starts off-centre.
    */
   let framing = true;
+  let dragged: { index: number; world: Point } | null = null;
 
   const layout = new LayoutClient({
     createWorker: options.createLayoutWorker,
@@ -110,6 +111,7 @@ export function mountGraph(
       if (event.epoch !== epoch) return;
       settled = event.settled;
       scene?.setPositions(event.positions);
+      if (dragged) scene?.movePosition(dragged.index, dragged.world);
       if (framing) scene?.fit();
     },
   });
@@ -137,6 +139,7 @@ export function mountGraph(
 
     scene.setModel(model, props.selection.length > 0);
     scene.setPicking(props.picking ?? null);
+    dragged = null;
     if (!relayout) return;
 
     epoch += 1;
@@ -197,7 +200,10 @@ export function mountGraph(
         if (built.hasDrawnChildren(target))
           props.onCollapse(target as OwnedRef);
       },
-      onDragStart: (target, world) => pin(target, world, true),
+      onDragStart: (target, world) => {
+        framing = false;
+        pin(target, world, true);
+      },
       onDragMove: (target, world) => pin(target, world, true),
       onDragEnd: (target) => {
         const index = built.indexOf(target);
@@ -215,9 +221,9 @@ export function mountGraph(
   };
 
   const pin = (target: string, world: Point, held: boolean): void => {
-    if (!scene) return;
-    const index = scene.indexOf(target);
-    if (index === undefined) return;
+    const index = scene?.indexOf(target);
+    dragged = held && index !== undefined ? { index, world } : null;
+    if (!scene || index === undefined) return;
     if (held) scene.movePosition(index, world);
     layout.send({ kind: "pin", epoch, index, x: world.x, y: world.y, held });
   };

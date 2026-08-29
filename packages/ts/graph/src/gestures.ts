@@ -20,6 +20,7 @@ export interface GestureHandlers {
   onTap(target: string | null, world: Point): void;
   /** A held finger on a node — the collapse gesture, never a drag. */
   onPress(target: string): void;
+  /** A mouse carrying a node, sent once the pointer has moved off the tap. */
   onDragStart(target: string, world: Point): void;
   onDragMove(target: string, world: Point): void;
   onDragEnd(target: string): void;
@@ -53,7 +54,7 @@ export function attachGestures(
   const strokes = new Map<number, InkPointer>();
   let rect = element.getBoundingClientRect();
   let pinchSpan = 0;
-  let dragging: { id: number; target: string } | null = null;
+  let grabbed: { id: number; target: string; dragging: boolean } | null = null;
   let pressTimer: ReturnType<typeof setTimeout> | null = null;
 
   const refreshRect = (): void => {
@@ -109,8 +110,7 @@ export function attachGestures(
     if (target === null) return;
 
     if (event.pointerType === "mouse") {
-      dragging = { id: event.pointerId, target };
-      handlers.onDragStart(target, viewport.toWorld(at.x, at.y));
+      grabbed = { id: event.pointerId, target, dragging: false };
       return;
     }
     pressTimer = setTimeout(() => {
@@ -140,8 +140,16 @@ export function attachGestures(
       cancelPress();
     }
 
-    if (dragging && dragging.id === event.pointerId) {
-      handlers.onDragMove(dragging.target, viewport.toWorld(at.x, at.y));
+    // A drag starts on the move, never on the button: taking hold of a note
+    // stops the canvas framing itself and holds the rest of the field still,
+    // and a click that never moves has asked for neither.
+    if (grabbed && grabbed.id === event.pointerId) {
+      const world = viewport.toWorld(at.x, at.y);
+      if (grabbed.dragging) handlers.onDragMove(grabbed.target, world);
+      else if (entry.moved) {
+        grabbed.dragging = true;
+        handlers.onDragStart(grabbed.target, world);
+      }
       return;
     }
 
@@ -183,9 +191,9 @@ export function attachGestures(
     pinchSpan = touches().length === 2 ? span(touches()) : 0;
     if (!entry) return;
 
-    if (dragging && dragging.id === event.pointerId) {
-      handlers.onDragEnd(dragging.target);
-      dragging = null;
+    if (grabbed && grabbed.id === event.pointerId) {
+      if (grabbed.dragging) handlers.onDragEnd(grabbed.target);
+      grabbed = null;
       if (entry.moved) return;
     }
 
