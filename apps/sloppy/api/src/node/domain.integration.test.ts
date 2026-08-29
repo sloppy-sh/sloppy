@@ -831,6 +831,39 @@ describe("the domain routes", () => {
     });
   });
 
+  describe("the run a note continues", () => {
+    scenario("a note written after another is linked from it", async () => {
+      const first = await newNode(ada, { title: "One" });
+      const second = await newNode(ada, { from: follows(first), title: "Two" });
+      const third = await newNode(ada, {
+        from: follows(second),
+        title: "Three",
+      });
+
+      // Serially, so the run can be walked: 1 -> 2 -> 3, each pointing only at
+      // the note that follows it.
+      const read = async (note: NodeView) =>
+        (await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView;
+      expect((await read(first)).links).toEqual([second.ref]);
+      expect((await read(second)).links).toEqual([third.ref]);
+      expect((await read(third)).links).toEqual([]);
+    });
+
+    scenario(
+      "a note written under another, or opening a branch, is not",
+      async () => {
+        const root = await newNode(ada, { title: "Branch" });
+        await newNode(ada, { from: springsFrom(root), title: "Under" });
+        expect(
+          ((await ok("GET", `/nodes/${at(root.ref)}`, ada)) as NodeView).links,
+        ).toEqual([]);
+
+        const opened = await newNode(ada, { title: "Another branch" });
+        expect(opened.links).toEqual([]);
+      },
+    );
+  });
+
   describe("what one person may reach", () => {
     let hers: NodeView;
 
