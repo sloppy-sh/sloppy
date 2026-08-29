@@ -53,6 +53,9 @@ export class EmojiCompletions {
 				this.pick(this.items[this.index]);
 				return true;
 			case 'Escape':
+				// The sheet's escape layer does not consult `defaultPrevented`, so an
+				// un-stopped Escape closes the note under the menu.
+				event.stopPropagation();
 				this.close();
 				return true;
 			default:
