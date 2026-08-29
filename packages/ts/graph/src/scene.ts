@@ -52,6 +52,8 @@ const PICK_GAP = 6;
 const PICK_WIDTH = 1.5;
 
 const EDGE_WIDTH = 1.2;
+/** DESIGN.md § Edges: the run is the line a reader walks, so it is the heaviest. */
+const RUN_WEIGHT = 1.8;
 const LINK_DASH = 9;
 /** The most segments one dashed edge may cost. Reached only by an edge long
  *  enough that the dashes stretch to meet it. */
@@ -106,6 +108,7 @@ export class GraphScene {
   private positions = new Float32Array(0);
   /** Genealogy edges as index pairs, one bucket per step of the depth ramp. */
   private edgesByDepth: number[][] = [];
+  private runPairs: number[] = [];
   private linkPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
   private selecting = false;
@@ -123,6 +126,7 @@ export class GraphScene {
     private readonly app: Application,
     private readonly world: Container,
     private readonly edges: Graphics,
+    private readonly runs: Graphics,
     private readonly links: Graphics,
     private readonly fills: ParticleContainer,
     private readonly rings: ParticleContainer,
@@ -158,6 +162,7 @@ export class GraphScene {
 
     const world = new pixi.Container();
     const edges = new pixi.Graphics();
+    const runs = new pixi.Graphics();
     const links = new pixi.Graphics();
     const particleOptions = {
       dynamicProperties: {
@@ -170,7 +175,7 @@ export class GraphScene {
     const fills = new pixi.ParticleContainer(particleOptions);
     const rings = new pixi.ParticleContainer(particleOptions);
     const picks = new pixi.Graphics();
-    world.addChild(edges, links, fills, rings, picks);
+    world.addChild(edges, runs, links, fills, rings, picks);
 
     const labels = new pixi.Container();
     labels.eventMode = "none";
@@ -182,7 +187,7 @@ export class GraphScene {
       dashed: markTexture(pixi, app, "dashed"),
     };
 
-    // Two runs per label, because DESIGN.md § Typography gives the address its
+    // Two texts per label, because DESIGN.md § Typography gives the address its
     // own face at every size: `1a1` against `1al` must never be a question.
     const labelPool = Array.from({ length: MAX_LABELS }, () => {
       const make = (fontFamily: string): Text => {
@@ -207,6 +212,7 @@ export class GraphScene {
       app,
       world,
       edges,
+      runs,
       links,
       fills,
       rings,
@@ -266,6 +272,7 @@ export class GraphScene {
 
     const byRef = new Map(model.order.map((ref, index) => [ref, index]));
     this.edgesByDepth = Array.from({ length: DEPTH_STEPS + 1 }, () => []);
+    this.runPairs = [];
     this.linkPairs = [];
     model.graph.forEachEdge((_edge, attributes, source, target) => {
       const a = byRef.get(source);
@@ -273,6 +280,10 @@ export class GraphScene {
       if (a === undefined || b === undefined) return;
       if (attributes.kind === "link") {
         this.linkPairs.push(a, b);
+        return;
+      }
+      if (attributes.kind === "run") {
+        this.runPairs.push(a, b);
         return;
       }
       const deeper = Math.max(
@@ -397,7 +408,7 @@ export class GraphScene {
       frameP95: percentile(this.frameSamples, 0.95),
       frames: this.frameSamples.length,
       drawn: this.marks.length,
-      edges: (genealogy + this.linkPairs.length) / 2,
+      edges: (genealogy + this.runPairs.length + this.linkPairs.length) / 2,
       labels: this.labelSlots.size,
     };
   }
@@ -521,6 +532,23 @@ export class GraphScene {
         width,
       });
     });
+
+    this.runs.clear();
+    for (let at = 0; at < this.runPairs.length; at += 2) {
+      const a = this.runPairs[at] * 2;
+      const b = this.runPairs[at + 1] * 2;
+      this.runs.moveTo(this.positions[a], this.positions[a + 1]);
+      this.runs.lineTo(this.positions[b], this.positions[b + 1]);
+    }
+    if (this.runPairs.length > 0) {
+      this.runs.stroke({
+        color: palette.run,
+        alpha: this.selecting
+          ? palette.runAlphaWhileSelecting
+          : palette.runAlpha,
+        width: width * RUN_WEIGHT,
+      });
+    }
 
     this.links.clear();
     const dash = LINK_DASH / this.viewport.scale;

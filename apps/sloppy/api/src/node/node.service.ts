@@ -65,32 +65,11 @@ export class NodeService {
     const parent = await this.parentFor(did, request.from);
     const named =
       request.from?.relation === "root" ? request.from.address : null;
-    const written = await this.creations.run(
-      `${did}|${parent?.address ?? ""}`,
-      () =>
-        named === null
-          ? this.write(did, parent, request)
-          : this.writeAt(did, named, request),
+    return this.creations.run(`${did}|${parent?.address ?? ""}`, () =>
+      named === null
+        ? this.write(did, parent, request)
+        : this.writeAt(did, named, request),
     );
-    // A note written AFTER another continues its run, so the one it follows
-    // points at it — that sequence is the thing a reader walks. A note written
-    // UNDER one, or opening a branch, starts something instead, and starts it
-    // unlinked.
-    if (request.from?.relation === "after") {
-      await this.follow(did, request.from.note, written.ref);
-    }
-    return written;
-  }
-
-  /** Links `note` to `next`, leaving the rest of its links as they were. */
-  private async follow(
-    did: string,
-    note: OwnedRef,
-    next: OwnedRef,
-  ): Promise<void> {
-    const from = await this.nodes.find(did, note);
-    if (!from || from.links.includes(next)) return;
-    await this.nodes.patch(did, note, { links: [...from.links, next] });
   }
 
   async update(
