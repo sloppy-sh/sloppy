@@ -148,8 +148,10 @@ export function buildModel(
     }
   }
 
-  // Held at the gap between the two seeds, so the run reinforces the shape the
-  // addresses already fixed rather than pulling against it.
+  // Distance is the gap the pair's own seeds already sit at, so the run
+  // reinforces the shape the addresses fixed rather than pulling siblings
+  // together — with the shared floor still holding the most crowded
+  // generations apart.
   for (const [before, after] of runs(drawn)) {
     const from = graph.getNodeAttributes(before.ref);
     const to = graph.getNodeAttributes(after.ref);
