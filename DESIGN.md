@@ -187,9 +187,14 @@ and § "The mark" bounds it; nothing else there is shared.
 
 ### Hue — the tags you selected, and only those
 
-**With nothing selected the graph is monochrome.** Colour appears when the reader asks a
-question of the graph, and it means the answer. A permanently rainbow canvas is the
-Obsidian failure with extra steps.
+**With nothing selected, nothing on the canvas is coloured to mean something.** Colour
+appears when the reader asks a question of the graph, and it means the answer. A
+permanently rainbow canvas is the Obsidian failure with extra steps.
+
+The one thing that carries colour of its own is an author's preview picture, and it is a
+picture — imagery inside the disc, never a fill (§ "The mark"). It says nothing about
+which sets a note is in, and every fill, edge and line around it stays monochrome until a
+tag is selected.
 
 - **A tag has no colour of its own.** It borrows one for as long as it is selected: the
   first selected tag takes `--facet-1`, the second `--facet-2`, and so on. There is
@@ -277,9 +282,8 @@ Six rulings hold that table together:
   The bound is what keeps both readable, and it is tighter than it sounds: the smallest
   mega-node is one note folded, `9 × (1 + log2(2) × 0.42) ≈ 12.78` against a leaf's 9, so
   **a look may grow a leaf by strictly less than 1.42×**. A look that could make a leaf
-  read as a folded subtree has taken a channel that was not its. `@sloppy/graph` owes that
-  bound a test; until it has one the figure is a target, per § "Contrast is measured, not
-  assumed".
+  read as a folded subtree has taken a channel that was not its. `model.test.ts` in
+  `@sloppy/graph` holds that bound over every size a look offers.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
   picture its own author gave it. Tags are the one thing a fold aggregates, because a tag
@@ -291,7 +295,11 @@ Six rulings hold that table together:
   provenance edge, which are last because one is the act the person is in the middle of
   and the other is PRODUCT.md principle 4. The threshold is DRAWN radius rather than zoom
   — `layoutLabels` in `scene.ts` is the precedent, and its hysteresis is too, so a look
-  does not flicker on a mark drifting across the line.
+  does not flicker on a mark drifting across the line, nor on a rebuild. **A figure that
+  drops the look at the view a graph OPENS on has dropped it always**, so the threshold is
+  measured against that view — a phone, the whole field framed — and `scene.test.ts` holds
+  it there. Where the field is too big to hold one, looks survive on the mega-nodes and a
+  pinch brings the rest back.
 - **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
   the question the hue channel answers. The notes somebody has picked out to act on are
   **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.

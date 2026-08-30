@@ -10,4 +10,5 @@ export * from "./lod.js";
 export * from "./model.js";
 export * from "./mount.js";
 export * from "./palette.js";
+export * from "./scene.js";
 export * from "./viewport.js";

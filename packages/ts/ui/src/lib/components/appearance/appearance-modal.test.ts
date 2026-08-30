@@ -154,6 +154,18 @@ describe('giving a note a look', () => {
 		expect(named('Dashed').matches(':disabled')).toBe(false);
 	});
 
+	// A ring style says nothing with no ring, and a size that says what a plain
+	// note draws is not a look either — so what is stored draws what is shown.
+	it('stores nothing for a channel that draws what a plain note does', async () => {
+		open({ ring_weight: 'none', ring_style: 'dashed' });
+		await tap('Large', group('Size'));
+		expect(saved).toEqual([{ mark_radius: 'large' }]);
+
+		open({ ring_weight: 'heavy', ring_style: 'dashed' });
+		await tap('Solid', group('Ring style'));
+		expect(saved.at(-1)).toEqual({ ring_weight: 'heavy' });
+	});
+
 	it('takes the whole look back off', async () => {
 		open({ ring_weight: 'heavy', preview: UPLOAD });
 		await tap('Leave it plain');
@@ -186,12 +198,13 @@ describe('giving a note a look', () => {
 });
 
 describe('a picture for the mark', () => {
-	/** A camera's answer, and a canvas that reports what it was redrawn onto. */
-	function fromACamera(): { drawnAt: number[] } {
+	/** A picture of these dimensions, and a canvas that reports what it was
+	 *  redrawn onto. The default is what a camera hands over. */
+	function fromACamera(width = 4032, height = 3024): { drawnAt: number[] } {
 		const drawnAt: number[] = [];
 		vi.stubGlobal('createImageBitmap', async () => ({
-			width: 4032,
-			height: 3024,
+			width,
+			height,
 			close: () => {}
 		}));
 		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
@@ -223,15 +236,54 @@ describe('a picture for the mark', () => {
 		expect(MARK_PICTURE_PX).toBeLessThan(NOTE_PX);
 	});
 
-	it('re-uses one already in the notes rather than sending it again', async () => {
+	/** What `media.picture` hands back is a URL the bytes are read from. */
+	function readable(): void {
+		vi.stubGlobal('fetch', async () => ({
+			blob: async () => new Blob([new Uint8Array(900_000)], { type: 'image/webp' })
+		}));
+	}
+
+	async function chooseHeld(): Promise<void> {
 		held = [picture(UPLOAD)];
 		open();
 		await tap('Add a picture');
 		(document.body.querySelector('button[aria-label="kite.png"]') as HTMLButtonElement).click();
 		await settle();
+	}
+
+	it('re-uses one already small enough rather than sending it again', async () => {
+		const { drawnAt } = fromACamera(200, 150);
+		readable();
+		await chooseHeld();
+
+		expect(drawnAt).not.toContain(MARK_PICTURE_PX);
+		expect(sent).toEqual([]);
+		expect(saved).toEqual([{ preview: UPLOAD }]);
+	});
+
+	// A note keeps its pictures at the size a note draws them, which is many
+	// times what a mark shows — so re-using one is not the same as re-using it
+	// whole.
+	it("cuts one held at a note's size before the mark wears it", async () => {
+		const { drawnAt } = fromACamera();
+		readable();
+		await chooseHeld();
+
+		expect(drawnAt).toContain(MARK_PICTURE_PX);
+		expect(saved).toEqual([{ preview: 'sent-1' }]);
+	});
+
+	// The picker only offers what the person has; bytes that will not read are
+	// no reason to refuse them the picture they pointed at.
+	it('keeps the picture pointed at when its bytes will not read', async () => {
+		vi.stubGlobal('fetch', async () => {
+			throw new Error('offline');
+		});
+		await chooseHeld();
 
 		expect(sent).toEqual([]);
 		expect(saved).toEqual([{ preview: UPLOAD }]);
+		expect(document.body.querySelector('[role="alert"]')).toBeNull();
 	});
 
 	it('takes the picture off without disturbing the rest of the look', async () => {

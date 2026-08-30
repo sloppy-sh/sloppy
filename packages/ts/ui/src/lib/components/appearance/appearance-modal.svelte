@@ -13,18 +13,18 @@
 		RING_WEIGHTS
 	} from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { HeldPicture, NoteMedia } from '../editor/contract.js';
+	import type { HeldPicture, NoteMedia, ShownPicture } from '../editor/contract.js';
 	import { fitted } from '../editor/fit.js';
 	import MediaPicker from '../editor/media-picker.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import { MARK_RADIUS_LABELS, RING_STYLE_LABELS, RING_WEIGHT_LABELS } from './labels.js';
 	import MarkSwatch from './mark-swatch.svelte';
+	import { shownPicture } from './shown-picture.svelte.js';
 
 	let {
 		open = $bindable(false),
 		onOpenChange,
 		appearance = null,
-		picture = null,
 		media,
 		onchange,
 		refused = null
@@ -33,8 +33,6 @@
 		/** For the unbound `open={expr}` pattern; a bound `open` needs nothing. */
 		onOpenChange?: (open: boolean) => void;
 		appearance?: NodeAppearance | null;
-		/** The note's picture, already resolved for an `<img>`. */
-		picture?: string | null;
 		media: NoteMedia;
 		/** The WHOLE look, or null for a note left plain. Rejecting puts the
 		 *  choices back as they were, so throw rather than swallow. */
@@ -53,6 +51,10 @@
 	const shown = $derived(pending === undefined ? appearance : pending);
 	const look = $derived(resolveAppearance(shown));
 	const unstyled = resolveAppearance(null);
+	const picture = shownPicture(
+		() => media,
+		() => (open ? shown?.preview : undefined)
+	);
 
 	const rows = $derived([
 		{
@@ -61,7 +63,6 @@
 			values: RING_WEIGHTS as readonly string[],
 			labels: RING_WEIGHT_LABELS as Record<string, string>,
 			on: look.ringWeight as string,
-			plain: unstyled.ringWeight as string,
 			disabled: false
 		},
 		{
@@ -70,7 +71,6 @@
 			values: RING_STYLES as readonly string[],
 			labels: RING_STYLE_LABELS as Record<string, string>,
 			on: look.ringStyle as string,
-			plain: unstyled.ringStyle as string,
 			disabled: look.ringWeight === 'none'
 		},
 		{
@@ -79,14 +79,30 @@
 			values: MARK_RADII as readonly string[],
 			labels: MARK_RADIUS_LABELS as Record<string, string>,
 			on: look.markRadius as string,
-			plain: unstyled.markRadius as string,
 			disabled: false
 		}
 	]);
 
+	/**
+	 * A channel saying what a plain note already draws is stored as nothing set,
+	 * and a ring style says nothing with no ring — so a look that draws like an
+	 * unstyled note is stored as one. A token this build has no renderer for is
+	 * not one of those, and survives untouched.
+	 */
+	function tidied(next: NodeAppearance): NodeAppearance {
+		const tidy = { ...next };
+		if (tidy.ring_weight === unstyled.ringWeight) tidy.ring_weight = undefined;
+		if (tidy.mark_radius === unstyled.markRadius) tidy.mark_radius = undefined;
+		if (tidy.ring_weight === undefined || tidy.ring_style === unstyled.ringStyle) {
+			tidy.ring_style = undefined;
+		}
+		return tidy;
+	}
+
 	async function set(next: NodeAppearance): Promise<void> {
 		const mine = ++asked;
-		const whole = isUnstyled(next) ? null : next;
+		const tidy = tidied(next);
+		const whole = isUnstyled(tidy) ? null : tidy;
 		pending = whole;
 		trouble = null;
 		try {
@@ -99,27 +115,51 @@
 		}
 	}
 
-	/** The value a mark draws with nothing set is stored as nothing set, so a
-	 *  look that says nothing is never a look. */
-	function pick(channel: keyof NodeAppearance, value: string, plain: string): Promise<void> {
-		const next = { ...(shown ?? {}), [channel]: value === plain ? undefined : value };
-		if (next.ring_weight === undefined) next.ring_style = undefined;
-		return set(next);
+	function pick(channel: keyof NodeAppearance, value: string): Promise<void> {
+		return set({ ...(shown ?? {}), [channel]: value });
+	}
+
+	/** A mark never draws a picture wider than this, so nothing wider is sent. */
+	async function sent(file: File): Promise<string> {
+		const asset = await media.send(await fitted(file, MARK_PICTURE_PX), () => {}).asset;
+		return asset.upload_id;
+	}
+
+	/**
+	 * One already in the notes is held at the size a NOTE draws it, many times
+	 * what a mark ever shows — so one too big for a mark is cut and sent, and
+	 * anything else is re-used where it lies. `null` is both of those: already
+	 * small enough, and bytes that would not read.
+	 */
+	async function cutForAMark(held: HeldPicture): Promise<File | null> {
+		let source: ShownPicture | null = null;
+		try {
+			source = await media.picture(held.upload_id);
+			const whole = new File([await (await fetch(source.src)).blob()], held.filename, {
+				type: held.mime_type
+			});
+			const bytes = await fitted(whole, MARK_PICTURE_PX);
+			return bytes === whole ? null : bytes;
+		} catch {
+			return null;
+		} finally {
+			source?.release();
+		}
 	}
 
 	async function take(choice: { file: File } | { held: HeldPicture }): Promise<void> {
 		if (sending) return;
 		trouble = null;
-		if ('held' in choice) {
-			await set({ ...(shown ?? {}), preview: choice.held.upload_id });
-			return;
-		}
 		sending = true;
 		try {
-			// A mark never draws a picture wider than this, so nothing wider is sent.
-			const bytes = await fitted(choice.file, MARK_PICTURE_PX);
-			const asset = await media.send(bytes, () => {}).asset;
-			await set({ ...(shown ?? {}), preview: asset.upload_id });
+			let preview: string;
+			if ('held' in choice) {
+				const cut = await cutForAMark(choice.held);
+				preview = cut === null ? choice.held.upload_id : await sent(cut);
+			} else {
+				preview = await sent(choice.file);
+			}
+			await set({ ...(shown ?? {}), preview });
 		} catch (error) {
 			trouble =
 				(error instanceof Error && error.message) ||
@@ -143,7 +183,7 @@
 		class="space-y-6 px-4 pt-2 pb-[max(1rem,var(--safe-area-inset-bottom,env(safe-area-inset-bottom)))]"
 	>
 		<div class="flex items-center justify-center rounded-xl border bg-muted/40 py-7">
-			<MarkSwatch appearance={shown} {picture} size={76} />
+			<MarkSwatch appearance={shown} picture={picture.src} size={76} />
 		</div>
 
 		{#each rows as row (row.channel)}
@@ -151,15 +191,18 @@
 				<legend class="mb-2 text-xs tracking-wide text-muted-foreground uppercase">
 					{row.label}
 				</legend>
-				<div class="flex flex-wrap gap-2">
+				<div
+					class="grid gap-2"
+					style="grid-template-columns: repeat({row.values.length}, minmax(0, 1fr))"
+				>
 					{#each row.values as value (value)}
 						<Button
 							variant={row.on === value ? 'default' : 'outline'}
-							class="h-11 flex-1 basis-20"
+							class="h-11 min-w-0 px-2"
 							aria-pressed={row.on === value}
-							onclick={() => pick(row.channel, value, row.plain)}
+							onclick={() => pick(row.channel, value)}
 						>
-							{row.labels[value]}
+							<span class="truncate">{row.labels[value]}</span>
 						</Button>
 					{/each}
 				</div>

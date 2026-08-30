@@ -760,3 +760,48 @@ describe('tagging a note', () => {
 		expect(graph.get(THIRD)?.tags).toEqual(['method']);
 	});
 });
+
+describe('how a note looks', () => {
+	let graph: Map<OwnedRef, NodeView>;
+
+	beforeEach(async () => {
+		graph = installGraph();
+		await loadGraph();
+	});
+
+	async function openLook(at: OwnedRef): Promise<void> {
+		await openNote(at);
+		button('How this note looks').click();
+		await settle();
+	}
+
+	it('writes the whole look on the note it was chosen on', async () => {
+		await openLook(SECOND);
+		button('Heavy').click();
+		await settle();
+		exactly('Large').click();
+		await settle();
+
+		expect(graph.get(SECOND)?.appearance).toEqual({
+			ring_weight: 'heavy',
+			mark_radius: 'large'
+		});
+		expect(graph.get(THIRD)?.appearance).toBeUndefined();
+	});
+
+	// The choice must not sit there looking saved, and what the reader is told is
+	// the server's own words for a person — never the route the client named.
+	it('puts the choice back when a look will not save, and says so', async () => {
+		api.on(
+			`PATCH ${path(SECOND)}`,
+			() => new Response('{"message":"That look is more than a note can carry."}', { status: 400 })
+		);
+		await openLook(SECOND);
+		button('Heavy').click();
+		await settle();
+
+		expect(screen()).toContain('That look is more than a note can carry.');
+		expect(screen()).not.toContain('Sloppy API');
+		expect(exactly('Heavy').getAttribute('aria-pressed')).toBe('false');
+	});
+});

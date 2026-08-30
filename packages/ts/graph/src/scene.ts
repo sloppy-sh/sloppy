@@ -73,9 +73,10 @@ const LINK_DASH = 9;
  *  enough that the dashes stretch to meet it. */
 const MAX_DASHES = 60;
 
-/** Below this on screen, a mark is too small to carry its author's look —
- *  DESIGN.md § "The mark", where the look is the first thing to go. */
-const LOOK_MIN_RADIUS = 8;
+/** Below this drawn radius, in CSS pixels, a mark is too small to carry its
+ *  author's look — DESIGN.md § "The mark", where the look is the first thing to
+ *  go. `scene.test.ts` holds the figure against the view a graph opens on. */
+const LOOK_MIN_RADIUS = 4;
 /** How far past that a look hangs on, so a pinch does not strobe it. */
 const LOOK_HYSTERESIS = 0.75;
 
@@ -142,7 +143,9 @@ interface Mark {
   /** The author's look, drawn inside the mark. */
   look: Particle | null;
   preview: Sprite | null;
-  /** Whether the look is being drawn, which {@link looksDrawn} latches. */
+  /** Whether the look is being drawn, which {@link looksDrawn} latches. Carried
+   *  across a rebuild the way positions are, so selecting a tag does not take a
+   *  look off a mark sitting inside the latch's own margin. */
   looking: boolean;
 }
 
@@ -319,6 +322,7 @@ export class GraphScene {
     this.selecting = selecting;
     this.positions = new Float32Array(model.order.length * 2);
 
+    const looking = new Map(this.marks.map((mark) => [mark.ref, mark.looking]));
     this.marks = model.order.map((ref, index) => {
       const attributes = model.graph.getNodeAttributes(ref);
       this.positions[index * 2] = attributes.x;
@@ -332,7 +336,7 @@ export class GraphScene {
         ring: null,
         look: null,
         preview: null,
-        looking: false,
+        looking: looking.get(ref) ?? false,
       };
     });
     this.forgetUnwantedPictures();
@@ -488,6 +492,9 @@ export class GraphScene {
   destroy(): void {
     this.destroyed = true;
     this.app.ticker.remove(this.draw);
+    // Marks share one texture per picture, so the sprites go without theirs and
+    // the cache below frees each one once.
+    for (const sprite of this.previews.removeChildren()) sprite.destroy();
     for (const texture of this.previewTextures.values()) texture?.destroy(true);
     this.previewTextures.clear();
     this.app.destroy(true, { children: true, texture: true });
@@ -570,7 +577,6 @@ export class GraphScene {
               ),
               alpha: 0,
             });
-      mark.looking = false;
       if (mark.fill) this.fills.particleChildren.push(mark.fill);
       if (mark.ring) this.rings.particleChildren.push(mark.ring);
       if (mark.look) this.looks.particleChildren.push(mark.look);
