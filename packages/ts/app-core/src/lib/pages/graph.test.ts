@@ -299,14 +299,36 @@ describe('choosing several notes to act on', () => {
 		field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 	}
 
-	/** `1` through the menu, then `1a` and `2` by tapping, which is the phone's
-	 *  way: the mode is entered by name and then taps add to it. */
-	async function chooseThree(): Promise<void> {
+	/** The words the tag field is showing. */
+	const chips = (): string[] =>
+		[...document.body.querySelectorAll('button[aria-label^="Remove "]')].map((chip) =>
+			(chip.getAttribute('aria-label') ?? '').replace('Remove ', '')
+		);
+
+	/** What the surface over the graph says. The bar it covers is still in the
+	 *  document and says some of the same things, so `screen()` cannot tell
+	 *  whether the person who caused a message can read it. */
+	function inSheet(): string {
+		const up = [...document.body.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(
+			(surface) => surface.dataset.state !== 'closed'
+		);
+		if (up.length === 0) throw new Error('No surface is up over the graph');
+		return up.map((surface) => surface.textContent ?? '').join(' ');
+	}
+
+	/** `1` through the menu, which is the phone's way in. */
+	async function chooseOne(): Promise<void> {
 		await open();
 		menuOn('1').click();
 		await settle();
 		item('Choose this note').click();
 		await settle();
+	}
+
+	/** Then `1a` and `2` by tapping: the mode is entered by name and then taps
+	 *  add to it. */
+	async function chooseThree(): Promise<void> {
+		await chooseOne();
 		onCanvas('1a').click();
 		onCanvas('2').click();
 		await settle();
@@ -370,6 +392,24 @@ describe('choosing several notes to act on', () => {
 			{ notes: [FIRST, SECOND, THIRD], act: { act: 'tag', tags: ['method'] } }
 		]);
 		expect(graph.get(SECOND)?.tags).toEqual(['method']);
+		// The chips are every word any of them carries, so the question says so.
+		expect(inSheet()).toContain('A word on any of them shows here.');
+	});
+
+	// The sheet is the one surface built for writing several words in a row, so
+	// the second Enter is asked for while the first is still going. Dropping it
+	// takes the chip away without a word, on the surface built to invite it.
+	it('keeps a word typed while the one before it is still going', async () => {
+		await chooseThree();
+
+		button('Tags').click();
+		await settle();
+		typeTag('method');
+		typeTag('question');
+		await settle();
+
+		expect(graph.get(FIRST)?.tags).toEqual(['method', 'question']);
+		expect(chips()).toEqual(['method', 'question']);
 	});
 
 	it('gives every chosen note one look, in shape alone', async () => {
@@ -388,6 +428,29 @@ describe('choosing several notes to act on', () => {
 				act: { act: 'set_appearance', appearance: { ring_weight: 'heavy' } }
 			}
 		]);
+	});
+
+	// One note is the ordinary way in — the menu offers "Choose this note" first —
+	// so neither question may talk about them.
+	it('asks about one chosen note in the singular', async () => {
+		await chooseOne();
+
+		button('Tags').click();
+		await settle();
+
+		expect(inSheet()).toContain('Tag this note');
+		expect(inSheet()).toContain('Anything you add goes on this note');
+	});
+
+	it('offers a look to one chosen note in the singular', async () => {
+		await chooseOne();
+
+		button('Look').click();
+		await settle();
+
+		expect(inSheet()).toContain('Give this note a look');
+		expect(inSheet()).toContain('including any picture on it.');
+		expect(button('Give it this look')).toBeTruthy();
 	});
 
 	// An untouched dialog carries no look, and writing one anyway is the same act
@@ -413,14 +476,28 @@ describe('choosing several notes to act on', () => {
 		]);
 	});
 
+	// The dialog outlives every set it is opened over, so a look left in it would
+	// be offered to the next notes as though somebody had picked it for them.
+	it('opens the look with nothing picked, whatever was picked last time', async () => {
+		await chooseThree();
+
+		button('Look').click();
+		await settle();
+		button('Heavy').click();
+		await settle();
+		button('Cancel').click();
+		await settle();
+
+		button('Look').click();
+		await settle();
+
+		expect(button('Give them this look').disabled).toBe(true);
+	});
+
 	// The one act that cannot be taken back, so the question counts everything
 	// that goes — the notes chosen are never all of them.
 	it('asks before deleting, counting what goes with the notes chosen', async () => {
-		await open();
-		menuOn('1').click();
-		await settle();
-		item('Choose this note').click();
-		await settle();
+		await chooseOne();
 
 		button('Delete').click();
 		await settle();
@@ -463,7 +540,7 @@ describe('choosing several notes to act on', () => {
 		typeTag('method');
 		await settle();
 
-		expect(screen()).toContain('One of the notes you chose was already gone.');
+		expect(inSheet()).toContain('One of the notes you chose was already gone.');
 	});
 
 	// The bar goes with the set, so a delete has to say it somewhere else.

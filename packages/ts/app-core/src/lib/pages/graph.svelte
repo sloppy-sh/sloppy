@@ -99,9 +99,12 @@
 	 *  still closing. */
 	let deletingCount = $state(0);
 	let deletionSays = $state('');
-	let acting = $state(false);
 	/** Why the last act on the chosen notes did not land. */
 	let actRefused = $state<string | null>(null);
+	/** How much of the last act's set was already gone, where the rest landed. */
+	let actMissed = $state<string | null>(null);
+	/** The act in flight, which the next one asked for queues behind. */
+	let acting: Promise<void> = Promise.resolve();
 
 	const roots = $derived(nodes.region());
 	const open = $derived(page.state.note ?? null);
@@ -266,22 +269,27 @@
 		return room.success ? null : room.error.issues[0].message;
 	}
 
+	function forgetLastAct(): void {
+		actRefused = null;
+		actMissed = null;
+	}
+
 	function startChoosing(): void {
 		choosing = true;
-		actRefused = null;
+		forgetLastAct();
 	}
 
 	function stopChoosing(): void {
 		choosing = false;
 		picked.clear();
-		actRefused = null;
+		forgetLastAct();
 	}
 
 	/** The way in as well as the way around: the first note chosen is what puts
 	 *  the canvas in the mode, whether it came from a menu or a modifier-click. */
 	function chooseAlso(ref: OwnedRef): void {
 		choosing = true;
-		actRefused = null;
+		forgetLastAct();
 		if (picked.has(ref)) {
 			picked.delete(ref);
 			return;
@@ -293,7 +301,7 @@
 
 	function chooseWithin(refs: readonly OwnedRef[]): void {
 		choosing = true;
-		actRefused = null;
+		forgetLastAct();
 		for (const ref of refs) {
 			if (picked.has(ref)) continue;
 			const full = noRoomFor([...picked, ref]);
@@ -308,12 +316,21 @@
 	/**
 	 * One act over every chosen note. Throws so the surface that asked keeps its
 	 * question open and its own button ready to try again.
+	 *
+	 * A second act asked for while one is in flight queues rather than being
+	 * dropped: the tag sheet is where several words are typed in a row, and a
+	 * caller cannot tell a dropped act from a done one.
 	 */
 	async function actOnChosen(act: NodeBulkAct): Promise<void> {
-		if (acting || picked.size === 0) return;
-		acting = true;
-		actRefused = null;
 		const asked = [...picked];
+		if (asked.length === 0) return;
+		const mine = acting.then(() => runOnChosen(asked, act));
+		acting = mine.catch(() => {});
+		await mine;
+	}
+
+	async function runOnChosen(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
+		forgetLastAct();
 		let missed: number;
 		try {
 			missed = (await nodes.act({ notes: asked, act })).missed;
@@ -321,15 +338,13 @@
 			actRefused =
 				serverMessage(error) ?? 'Sloppy could not change those notes. Try again in a moment.';
 			throw error;
-		} finally {
-			acting = false;
 		}
 		const shortfall = missed === 0 ? null : alreadyGone(missed);
 		// A tag exists as long as a note carries one, so the rail's counts are stale
 		// the moment notes are tagged — or taken away with the tags they carried.
 		if (act.act !== 'set_appearance') void tags.reload();
 		if (act.act !== 'delete') {
-			actRefused = shortfall;
+			actMissed = shortfall;
 			return;
 		}
 		if (open && asked.includes(open)) hide();
@@ -637,7 +652,7 @@
 	{#if populated && choosing}
 		<ChosenBar
 			count={picked.size}
-			refused={actRefused}
+			says={actRefused ?? actMissed}
 			onTags={() => (tagging = true)}
 			onLook={() => (styling = true)}
 			onDelete={askToDelete}
@@ -659,6 +674,7 @@
 	tags={chosenTags}
 	suggestions={tags.all}
 	refused={actRefused}
+	missed={actMissed}
 	onadd={(added: TagName[]) => actOnChosen({ act: 'tag', tags: added })}
 	onremove={(gone: TagName[]) => actOnChosen({ act: 'untag', tags: gone })}
 />

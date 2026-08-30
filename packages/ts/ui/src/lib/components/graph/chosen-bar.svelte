@@ -8,15 +8,16 @@
 
 	let {
 		count,
-		refused = null,
+		says = null,
 		onTags,
 		onLook,
 		onDelete,
 		onDone
 	}: {
 		count: number;
-		/** What stopped the last act, in the caller's words. */
-		refused?: string | null;
+		/** What the last act left to say — why it did not land, or what it did not
+		 *  reach where the rest of it did. In the caller's words. */
+		says?: string | null;
 		onTags: () => void;
 		onLook: () => void;
 		onDelete: () => void;
@@ -48,8 +49,8 @@
 			<Button variant="ghost" class="h-9 shrink-0 rounded-full" onclick={onDone}>Done</Button>
 		</div>
 
-		{#if refused}
-			<p class="px-2 pb-2 text-sm text-destructive" role="alert">{refused}</p>
+		{#if says}
+			<p class="px-2 pb-2 text-sm text-destructive" role="alert">{says}</p>
 		{/if}
 
 		{#if count > 0}

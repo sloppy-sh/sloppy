@@ -51,6 +51,15 @@
 	let size = $state<MarkRadius>('regular');
 	let working = $state(false);
 
+	// Mounted for the page's life, so without this it reopens holding the look
+	// the last set was given — one nobody picked for these notes.
+	$effect(() => {
+		if (!open) return;
+		ring = 'none';
+		line = 'solid';
+		size = 'regular';
+	});
+
 	// A channel left where an unstyled note already sits says nothing, so it is
 	// not written; a look with nothing in it is no look at all.
 	const look = $derived.by(() => {
@@ -102,7 +111,9 @@
 <ResponsiveModal
 	bind:open
 	title={count === 1 ? 'Give this note a look' : `Give ${count} notes a look`}
-	description="This replaces the look they have now, including any picture on them."
+	description={count === 1
+		? 'This replaces the look it has now, including any picture on it.'
+		: 'This replaces the look they have now, including any picture on them.'}
 >
 	<div class="space-y-5 px-2 pt-4">
 		{@render row('Ring', rings, ring, (v) => (ring = v as RingWeight))}
@@ -138,7 +149,7 @@
 				disabled={working || look === null}
 				onclick={() => void apply(look)}
 			>
-				Give them this look
+				{count === 1 ? 'Give it this look' : 'Give them this look'}
 			</Button>
 		</div>
 	</div>

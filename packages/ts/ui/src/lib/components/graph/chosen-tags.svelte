@@ -11,20 +11,31 @@
 		tags,
 		suggestions = [],
 		refused = null,
+		missed = null,
 		onadd,
 		onremove
 	}: {
 		open?: boolean;
 		count: number;
-		/** Every tag the chosen notes carry between them. */
+		/** Every tag the chosen notes carry between them: a chip may be on one of
+		 *  them and not the rest, which the description says. */
 		tags: readonly Tag[];
 		suggestions?: readonly TagCount[];
 		refused?: string | null;
+		/** What the last act did not reach, having otherwise landed. Said here too:
+		 *  this surface covers the bar that says it beside the graph. */
+		missed?: string | null;
 		/** Puts these on every chosen note; rejecting restores the chips. */
 		onadd: (tags: Tag[]) => Promise<void>;
 		/** Takes these off every chosen note that carries one. */
 		onremove: (tags: Tag[]) => Promise<void>;
 	} = $props();
+
+	const description = $derived(
+		count === 1
+			? 'Anything you add goes on this note, and anything you take off comes off it.'
+			: 'A word on any of them shows here. Anything you add goes on all of them, and anything you take off comes off all of them.'
+	);
 
 	async function change(next: Tag[]): Promise<void> {
 		const before = new Set(tags);
@@ -39,9 +50,9 @@
 <ResponsiveModal
 	bind:open
 	title={count === 1 ? 'Tag this note' : `Tag ${count} notes`}
-	description="A word here goes on every one of them; taking one off takes it off all of them."
+	{description}
 >
-	<div class="px-2 pt-4">
+	<div class="space-y-2 px-2 pt-4">
 		<TagField
 			{tags}
 			suggestions={suggestions.map((entry) => entry.tag)}
@@ -49,5 +60,8 @@
 			{refused}
 			onchange={change}
 		/>
+		{#if missed}
+			<p class="text-sm text-destructive" role="alert">{missed}</p>
+		{/if}
 	</div>
 </ResponsiveModal>
