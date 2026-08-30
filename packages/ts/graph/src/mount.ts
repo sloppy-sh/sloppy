@@ -8,14 +8,14 @@
 
 import type { OwnedRef } from "@sloppy/types";
 import { drawnNodes, type GraphSurfaceProps } from "./contract.js";
-import { attachGestures } from "./gestures.js";
+import { attachGestures, type ScreenBox } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
 import { applyLod, DEFAULT_BUDGET, type LodBudget } from "./lod.js";
 import { buildModel, type GraphEdgeAttributes } from "./model.js";
 import { type GraphPalette, readPalette } from "./palette.js";
 import { type FrameStats, GraphScene } from "./scene.js";
-import type { Point } from "./viewport.js";
+import type { Bounds, Point, Viewport } from "./viewport.js";
 
 /** How hard each kind of edge pulls: the tree holds its shape, an association
  *  crossing it barely tugs. */
@@ -85,7 +85,16 @@ export function mountGraph(
   ink.dataset.graphInk = "";
   ink.style.cssText = "position:absolute;inset:0;pointer-events:none";
 
-  surface.append(canvas, ink);
+  // The sweep is chrome over the canvas rather than something in the field, so
+  // it is drawn in screen coordinates and never enters the scene.
+  const sweep = document.createElement("div");
+  sweep.dataset.graphSweep = "";
+  sweep.style.cssText =
+    "position:absolute;display:none;pointer-events:none;" +
+    "border:1px solid color-mix(in oklab, currentColor 55%, transparent);" +
+    "background:color-mix(in oklab, currentColor 12%, transparent)";
+
+  surface.append(canvas, ink, sweep);
   host.append(surface);
 
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -143,6 +152,7 @@ export function mountGraph(
 
     scene.setModel(model, props.selection.length > 0);
     scene.setPicking(props.picking ?? null);
+    scene.setChosen(props.chosen ?? null);
     dragged = null;
     if (!relayout) return;
 
@@ -180,7 +190,7 @@ export function mountGraph(
     scene = built;
     detachGestures = attachGestures(surface, built.viewport, {
       hitTest: (world) => built.hitTest(world),
-      onTap: (target) => {
+      onTap: (target, _world, withModifier) => {
         if (target === null) return;
         const node = built.attributesOf(target);
         if (!node) return;
@@ -198,11 +208,38 @@ export function mountGraph(
           if (ref !== picking.from) picking.onPick(ref);
           return;
         }
+        // A tap adds and removes wherever somebody is already choosing, which is
+        // the phone's way in; the modifier is the desk's way of starting.
+        if (props.onChoose && (props.chosen !== undefined || withModifier)) {
+          props.onChoose(ref);
+          return;
+        }
         props.onOpenNode(ref);
       },
-      onPress: (target) => {
-        if (built.hasDrawnChildren(target))
+      onPress: (target, at) => {
+        if (props.onMenu) {
+          props.onMenu({
+            ...at,
+            ref: target as OwnedRef | null,
+            foldable: target !== null && built.hasDrawnChildren(target),
+          });
+          return;
+        }
+        if (target !== null && built.hasDrawnChildren(target)) {
           props.onCollapse(target as OwnedRef);
+        }
+      },
+      canSweep: () => props.onChooseWithin !== undefined,
+      onSweep: (box, done) => {
+        framing = false;
+        if (!done) {
+          showSweep(box);
+          return;
+        }
+        showSweep(null);
+        props.onChooseWithin?.(
+          built.marksWithin(worldBox(built.viewport, box)) as OwnedRef[],
+        );
       },
       onDragStart: (target, world) => {
         framing = false;
@@ -222,6 +259,18 @@ export function mountGraph(
       inkTarget: () => props.onInkPointer,
     });
     rebuild();
+  };
+
+  const showSweep = (box: ScreenBox | null): void => {
+    if (!box) {
+      sweep.style.display = "none";
+      return;
+    }
+    sweep.style.display = "block";
+    sweep.style.left = `${box.x}px`;
+    sweep.style.top = `${box.y}px`;
+    sweep.style.width = `${box.width}px`;
+    sweep.style.height = `${box.height}px`;
   };
 
   const pin = (target: string, world: Point, held: boolean): void => {
@@ -323,6 +372,12 @@ function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
     a.lod?.depth !== b.lod?.depth ||
     a.lod?.maxDrawn !== b.lod?.maxDrawn
   );
+}
+
+function worldBox(viewport: Viewport, box: ScreenBox): Bounds {
+  const from = viewport.toWorld(box.x, box.y);
+  const to = viewport.toWorld(box.x + box.width, box.y + box.height);
+  return { minX: from.x, minY: from.y, maxX: to.x, maxY: to.y };
 }
 
 function edgeInputs(model: ReturnType<typeof buildModel>) {

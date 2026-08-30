@@ -40,3 +40,4 @@ export type {
 } from './components/editor/contract.js';
 export type { CustomEmojiEntry } from './emoji/catalog.js';
 export * from './components/templates/index.js';
+export * from './components/graph/chosen.js';

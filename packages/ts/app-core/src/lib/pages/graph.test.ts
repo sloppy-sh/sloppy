@@ -1,4 +1,10 @@
-import type { BlockView, CreateBlockRequest, NodeView, OwnedRef } from '@sloppy/types';
+import type {
+	BlockView,
+	CreateBlockRequest,
+	NodeBulkRequest,
+	NodeView,
+	OwnedRef
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AT, DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
@@ -245,6 +251,178 @@ describe('linking by pointing at the graph', () => {
 
 		expect(screen()).toContain('Not right now.');
 		expect(screen()).toContain('Tap a note to link it to');
+	});
+});
+
+// DESIGN.md § "The mark" keeps the word "chosen" for the notes somebody picked
+// out to act on; a selection is already the reader's tags.
+describe('choosing several notes to act on', () => {
+	let acts: NodeBulkRequest[];
+
+	/** The canvas's menu, asked for on a note or on the bare field. */
+	function menuOn(what: string): HTMLButtonElement {
+		const found = document.body.querySelector<HTMLButtonElement>(`[data-menu="${what}"]`);
+		if (!found) throw new Error(`Nothing on the canvas answers a menu on ${what}`);
+		return found;
+	}
+
+	function item(label: string): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+			(row) => row.textContent?.trim() === label
+		);
+		if (!found) throw new Error(`The menu does not offer "${label}"`);
+		return found;
+	}
+
+	const offered = (): string[] =>
+		[...document.body.querySelectorAll('[role="menuitem"]')].map(
+			(row) => row.textContent?.trim() ?? ''
+		);
+
+	function typeTag(word: string): void {
+		const field = document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
+		if (!field) throw new Error('No tag field is on screen');
+		field.value = word;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+	}
+
+	/** `1` through the menu, then `1a` and `2` by tapping, which is the phone's
+	 *  way: the mode is entered by name and then taps add to it. */
+	async function chooseThree(): Promise<void> {
+		await open();
+		menuOn('1').click();
+		await settle();
+		item('Choose this note').click();
+		await settle();
+		onCanvas('1a').click();
+		onCanvas('2').click();
+		await settle();
+	}
+
+	beforeEach(() => {
+		acts = [];
+		api.on('POST /nodes/bulk', (_url, init) => {
+			const request = JSON.parse(String(init?.body)) as NodeBulkRequest;
+			acts.push(request);
+			const reached = request.notes.map((of) => graph.get(of)).filter((note) => note !== undefined);
+			const act = request.act;
+			if (act.act === 'delete') {
+				for (const of of request.notes) graph.delete(of);
+				return { reached: reached.length, missed: 0, notes: [] };
+			}
+			const notes = reached.map((note) => {
+				const after: NodeView =
+					act.act === 'tag'
+						? { ...note, tags: [...new Set([...note.tags, ...act.tags])] }
+						: act.act === 'untag'
+							? { ...note, tags: note.tags.filter((tag) => !act.tags.includes(tag)) }
+							: { ...note, appearance: act.appearance ?? undefined };
+				graph.set(after.ref, after);
+				return after;
+			});
+			return { reached: notes.length, missed: 0, notes };
+		});
+	});
+
+	it('counts what is chosen and marks it on the canvas', async () => {
+		await chooseThree();
+
+		expect(screen()).toContain('3 notes chosen');
+		expect(onCanvas('1').dataset.chosen).toBe('yes');
+		expect(onCanvas('1a').dataset.chosen).toBe('yes');
+	});
+
+	it('offers different acts on a note and on the bare field', async () => {
+		await open();
+		menuOn('1').click();
+		await settle();
+		expect(offered()).toEqual(['Choose this note', 'Fold what is under this']);
+
+		item('Choose this note').click();
+		await settle();
+		menuOn('the canvas').click();
+		await settle();
+		expect(offered()).toEqual(['Tags', 'Give them a look', 'Delete it', 'Done choosing']);
+	});
+
+	it('tags every chosen note at once', async () => {
+		await chooseThree();
+
+		button('Tags').click();
+		await settle();
+		typeTag('method');
+		await settle();
+
+		expect(acts).toEqual([
+			{ notes: [FIRST, SECOND, THIRD], act: { act: 'tag', tags: ['method'] } }
+		]);
+		expect(graph.get(SECOND)?.tags).toEqual(['method']);
+	});
+
+	it('gives every chosen note one look, in shape alone', async () => {
+		await chooseThree();
+
+		button('Look').click();
+		await settle();
+		button('Heavy').click();
+		await settle();
+		button('Give them this look').click();
+		await settle();
+
+		expect(acts).toEqual([
+			{
+				notes: [FIRST, SECOND, THIRD],
+				act: { act: 'set_appearance', appearance: { ring_weight: 'heavy' } }
+			}
+		]);
+	});
+
+	// The one act that cannot be taken back, and the one consequence a person
+	// carries afterwards: the address stays where it was.
+	it('asks before deleting, and says what a delete costs', async () => {
+		await open();
+		menuOn('1a').click();
+		await settle();
+		item('Choose this note').click();
+		await settle();
+
+		button('Delete').click();
+		await settle();
+		expect(screen()).toContain('Delete this note?');
+		expect(screen()).toContain('no other note is renumbered');
+		expect(acts).toEqual([]);
+
+		button('Delete it').click();
+		await settle();
+
+		expect(acts).toEqual([{ notes: [SECOND], act: { act: 'delete' } }]);
+		expect(graph.has(SECOND)).toBe(false);
+		expect(screen()).not.toContain('chosen');
+	});
+
+	it('leaves the mode where the reader says so, by hand and by keyboard', async () => {
+		await chooseThree();
+		button('Done').click();
+		await settle();
+		expect(onCanvas('1').dataset.chosen).toBeUndefined();
+
+		await chooseThree();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		await settle();
+		expect(screen()).not.toContain('notes chosen');
+	});
+
+	it('goes back to opening a note once nobody is choosing', async () => {
+		await chooseThree();
+		button('Done').click();
+		await settle();
+
+		onCanvas('1a').click();
+		await settle();
+
+		expect(screen()).toContain('Cells');
+		expect(acts).toEqual([]);
 	});
 });
 

@@ -46,10 +46,13 @@ const LABEL_LINE = 15;
 /** A title long enough to crowd its neighbours off the canvas is not a title. */
 const TITLE_CHARS = 32;
 
-/** How far outside a mark its picking outline sits. Clear of the edge, so it
- *  never reads as the provenance ring DESIGN.md § Form draws ON the edge. */
+/** How far outside a mark the orbit sits. Clear of the edge, so nothing drawn
+ *  there reads as the provenance ring DESIGN.md § Form draws ON the edge. */
 const PICK_GAP = 6;
 const PICK_WIDTH = 1.5;
+/** DESIGN.md § "The mark": the orbit's two meanings separate by weight —
+ *  picking outlines, and choosing fills. */
+const CHOSEN_BAND = 4;
 
 const EDGE_WIDTH = 1.2;
 /** DESIGN.md § Edges: the run is the line a reader walks, so it is the heaviest. */
@@ -113,6 +116,7 @@ export class GraphScene {
   private readonly labelSlots = new Map<string, number>();
   private selecting = false;
   private picking: GraphPickMarks | null = null;
+  private chosen: ReadonlySet<string> | null = null;
 
   private positionsDirty = true;
   private modelDirty = false;
@@ -243,6 +247,12 @@ export class GraphScene {
   /** The choice being asked for on the canvas, or null when a tap opens a note. */
   setPicking(picking: GraphPickMarks | null): void {
     this.picking = picking;
+    this.positionsDirty = true;
+  }
+
+  /** The notes picked out to act on, or null when nobody is choosing. */
+  setChosen(chosen: ReadonlySet<string> | null): void {
+    this.chosen = chosen;
     this.positionsDirty = true;
   }
 
@@ -435,7 +445,7 @@ export class GraphScene {
 
     if (this.positionsDirty) this.syncMarks();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
-    if (this.positionsDirty || scaleMoved) this.drawPicking();
+    if (this.positionsDirty || scaleMoved) this.drawOrbit();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
 
     this.world.position.set(this.viewport.x, this.viewport.y);
@@ -575,13 +585,33 @@ export class GraphScene {
     this.lastEdgeScale = this.viewport.scale;
   }
 
-  private drawPicking(): void {
+  /**
+   * The orbit outside each mark, which DESIGN.md § "The mark" gives to the mode
+   * the canvas is in. Picking outlines and choosing fills, and a canvas is only
+   * ever in one of the two.
+   */
+  private drawOrbit(): void {
     this.picks.clear();
-    const picking = this.picking;
-    if (!picking) return;
-
     const { ink } = this.options.palette;
     const gap = PICK_GAP / this.viewport.scale;
+
+    const chosen = this.chosen;
+    if (chosen) {
+      const band = CHOSEN_BAND / this.viewport.scale;
+      for (const mark of this.marks) {
+        if (!chosen.has(mark.ref)) continue;
+        this.picks.circle(
+          this.positions[mark.index * 2],
+          this.positions[mark.index * 2 + 1],
+          mark.radius + gap + band / 2,
+        );
+        this.picks.stroke({ color: ink, alpha: 0.9, width: band });
+      }
+      return;
+    }
+
+    const picking = this.picking;
+    if (!picking) return;
     const width = PICK_WIDTH / this.viewport.scale;
     for (const mark of this.marks) {
       const from = mark.ref === picking.from;
@@ -597,6 +627,19 @@ export class GraphScene {
         width: from ? width * 2 : width,
       });
     }
+  }
+
+  /** Every mark whose centre falls inside a world rectangle, in drawn order. */
+  marksWithin(bounds: Bounds): string[] {
+    const found: string[] = [];
+    for (const mark of this.marks) {
+      const x = this.positions[mark.index * 2];
+      const y = this.positions[mark.index * 2 + 1];
+      if (x < bounds.minX || x > bounds.maxX) continue;
+      if (y < bounds.minY || y > bounds.maxY) continue;
+      found.push(mark.ref);
+    }
+    return found;
   }
 
   /**

@@ -24,6 +24,17 @@ export interface GraphPicking extends GraphPickMarks {
   onPick: (ref: OwnedRef) => void;
 }
 
+/** Where a menu was asked for, and what it was asked on. */
+export interface GraphMenuAt {
+  /** Viewport coordinates, so the menu can be placed against the screen. */
+  clientX: number;
+  clientY: number;
+  /** The note under the point; null on bare canvas, where the acts differ. */
+  ref: OwnedRef | null;
+  /** This note has drawn children, so there is something for a fold to gather. */
+  foldable: boolean;
+}
+
 export interface GraphSurfaceProps {
   /** The region to draw, in address order. */
   nodes: readonly NodeView[];
@@ -56,6 +67,27 @@ export interface GraphSurfaceProps {
   focus?: OwnedRef;
   /** Absent means a tap opens the note under it. */
   picking?: GraphPicking;
+  /**
+   * The notes somebody has picked out to act on — DESIGN.md § "The mark" calls
+   * this the chosen set, and never a selection, because `selection` above is
+   * already the reader's tags.
+   *
+   * PRESENT is a canvas somebody is choosing on, an empty set included: a tap
+   * then adds or removes rather than opening. Absent is the ordinary canvas.
+   */
+  chosen?: ReadonlySet<OwnedRef>;
+  /** Add or remove one note. Absent is a surface nothing can be chosen on. */
+  onChoose?: (ref: OwnedRef) => void;
+  /** Add every note a sweep enclosed — a mouse with shift, control or command
+   *  held, dragged over bare canvas. Absent leaves that drag panning. */
+  onChooseWithin?: (refs: readonly OwnedRef[]) => void;
+  /**
+   * A menu asked for on the canvas: a right-click, or a press and hold.
+   *
+   * Absent leaves a press and hold folding the note under it, which is what the
+   * canvas did before there was a menu to put the fold in.
+   */
+  onMenu?: (at: GraphMenuAt) => void;
   onOpenNode: (ref: OwnedRef) => void;
   /** Draw this mega-node's subtree instead of folding it. */
   onExpand: (ref: OwnedRef) => void;

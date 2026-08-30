@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachGestures,
   type GestureHandlers,
   type InkPointer,
+  type ScreenBox,
 } from "./gestures.js";
 import { type Point, Viewport } from "./viewport.js";
 
@@ -38,16 +39,30 @@ function fakeElement() {
   };
 }
 
+interface Pressed {
+  target: string | null;
+  clientX: number;
+  clientY: number;
+}
+
 /** A surface whose host can hand the pen somewhere to draw, or take it away. */
 function surface() {
   const element = fakeElement();
   const viewport = new Viewport();
   const inked: Point[] = [];
+  const tapped: { target: string | null; withModifier: boolean }[] = [];
+  const pressed: Pressed[] = [];
+  const swept: { box: ScreenBox; done: boolean }[] = [];
   let onInk: InkPointer | undefined = (_event, world) => inked.push(world);
+  let under: string | null = null;
+  let sweepable = true;
   const handlers: GestureHandlers = {
-    hitTest: () => null,
-    onTap: () => {},
-    onPress: () => {},
+    hitTest: () => under,
+    onTap: (target, _world, withModifier) =>
+      tapped.push({ target, withModifier }),
+    onPress: (target, at) => pressed.push({ target, ...at }),
+    canSweep: () => sweepable,
+    onSweep: (box, done) => swept.push({ box, done }),
     onDragStart: () => {},
     onDragMove: () => {},
     onDragEnd: () => {},
@@ -62,23 +77,55 @@ function surface() {
     pointerId: number,
     x: number,
     y: number,
+    modifiers: Partial<PointerEvent> = {},
   ): void =>
     element.send(type, {
       pointerId,
       pointerType,
+      button: 0,
       clientX: x,
       clientY: y,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      ...modifiers,
     } as Partial<PointerEvent>);
 
   return {
     inked,
+    tapped,
+    pressed,
+    swept,
     viewport,
     inkInto(handler: InkPointer | undefined): void {
       onInk = handler;
     },
+    over(target: string | null): void {
+      under = target;
+    },
+    sweepsInto(allowed: boolean): void {
+      sweepable = allowed;
+    },
     pen: (type: string, x: number, y: number) => send(type, "pen", 1, x, y),
     finger: (type: string, id: number, x: number, y: number) =>
       send(type, "touch", id, x, y),
+    mouse: (
+      type: string,
+      x: number,
+      y: number,
+      modifiers: Partial<PointerEvent> = {},
+    ) => send(type, "mouse", 3, x, y, modifiers),
+    rightClick: (x: number, y: number) => {
+      let prevented = false;
+      element.send("contextmenu", {
+        clientX: x,
+        clientY: y,
+        preventDefault: () => {
+          prevented = true;
+        },
+      } as unknown as Partial<PointerEvent>);
+      return prevented;
+    },
   };
 }
 
@@ -159,5 +206,129 @@ describe("attachGestures", () => {
 
     expect(graph.inked).toHaveLength(1);
     expect(graph.viewport.x).toBe(20);
+  });
+});
+
+describe("asking for the menu", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    return () => vi.useRealTimers();
+  });
+
+  it("raises it where a finger was held, on the note under it", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.finger("pointerdown", 1, 40, 60);
+    vi.advanceTimersByTime(600);
+
+    expect(graph.pressed).toEqual([{ target: "1a", clientX: 40, clientY: 60 }]);
+  });
+
+  // Bare canvas is where the acts on what is already chosen live, so the hold
+  // has to be answered there too.
+  it("raises it on bare canvas", () => {
+    const graph = surface();
+    graph.finger("pointerdown", 1, 10, 10);
+    vi.advanceTimersByTime(600);
+
+    expect(graph.pressed).toEqual([{ target: null, clientX: 10, clientY: 10 }]);
+  });
+
+  // A hold that becomes a pan is a pan: the promotion past TAP_SLOP is the same
+  // one a drag is promoted by.
+  it("leaves a hold that moves off as a pan", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.finger("pointerdown", 1, 40, 60);
+    graph.finger("pointermove", 1, 90, 60);
+    vi.advanceTimersByTime(600);
+
+    expect(graph.pressed).toEqual([]);
+    expect(graph.viewport.x).toBe(50);
+  });
+
+  // The finger that opened the menu is spent: panning on through it would drag
+  // the field out from under the menu it just raised.
+  it("takes the rest of that gesture away from the canvas", () => {
+    const graph = surface();
+    graph.finger("pointerdown", 1, 40, 60);
+    vi.advanceTimersByTime(600);
+    graph.finger("pointermove", 1, 140, 60);
+    graph.finger("pointerup", 1, 140, 60);
+
+    expect(graph.viewport.x).toBe(0);
+    expect(graph.tapped).toEqual([]);
+  });
+
+  it("answers the right button, and never lets the browser's menu through", () => {
+    const graph = surface();
+    graph.over("2");
+    expect(graph.rightClick(120, 30)).toBe(true);
+    expect(graph.pressed).toEqual([{ target: "2", clientX: 120, clientY: 30 }]);
+  });
+
+  it("leaves the note under a right button alone", () => {
+    const graph = surface();
+    graph.over("2");
+    graph.mouse("pointerdown", 10, 10, { button: 2 });
+    graph.mouse("pointermove", 60, 10, { button: -1 });
+
+    expect(graph.viewport.x).toBe(0);
+  });
+});
+
+describe("choosing several", () => {
+  it("says which taps were asking to add rather than to open", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.mouse("pointerdown", 10, 10);
+    graph.mouse("pointerup", 10, 10);
+    graph.mouse("pointerdown", 10, 10, { metaKey: true });
+    graph.mouse("pointerup", 10, 10, { metaKey: true });
+
+    expect(graph.tapped).toEqual([
+      { target: "1a", withModifier: false },
+      { target: "1a", withModifier: true },
+    ]);
+  });
+
+  it("sweeps a box over bare canvas with a modifier held", () => {
+    const graph = surface();
+    graph.mouse("pointerdown", 20, 20, { shiftKey: true });
+    graph.mouse("pointermove", 80, 100);
+    graph.mouse("pointerup", 80, 100);
+
+    expect(graph.swept).toEqual([
+      { box: { x: 20, y: 20, width: 60, height: 80 }, done: false },
+      { box: { x: 20, y: 20, width: 60, height: 80 }, done: true },
+    ]);
+    expect(graph.viewport.x).toBe(0);
+  });
+
+  // The one thing a marquee must never cost. A bare drag is still the pan it
+  // has always been, and so is a modifier drag on a surface with no set to add to.
+  it("leaves a drag over bare canvas panning", () => {
+    const graph = surface();
+    graph.mouse("pointerdown", 20, 20);
+    graph.mouse("pointermove", 80, 20);
+
+    expect(graph.swept).toEqual([]);
+    expect(graph.viewport.x).toBe(60);
+
+    graph.sweepsInto(false);
+    graph.mouse("pointerdown", 20, 20, { shiftKey: true });
+    graph.mouse("pointermove", 80, 20);
+
+    expect(graph.swept).toEqual([]);
+    expect(graph.viewport.x).toBe(120);
+  });
+
+  it("stays a click where the sweep never left the tap", () => {
+    const graph = surface();
+    graph.mouse("pointerdown", 20, 20, { shiftKey: true });
+    graph.mouse("pointerup", 22, 21, { shiftKey: true });
+
+    expect(graph.swept).toEqual([]);
+    expect(graph.tapped).toEqual([{ target: null, withModifier: true }]);
   });
 });
