@@ -29,11 +29,16 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * a miss rather than treat it as corruption.
    */
   links: z.array(OwnedRefSchema).default([]),
+  /**
+   * The note's published mark, which decides how the mark draws and nothing
+   * else. What makes a subtree readable is a `publication` row, and the two are
+   * not yet reconciled — docs/ARCHITECTURE.md § "Data model".
+   */
   published: z.boolean().default(false),
   /**
    * How its author asked the mark to be drawn. Absent is a note nobody styled,
-   * which is what `appearance.ts` says the mark then draws as — and it is why
-   * this carries no default: a look is authored, and no look is not one.
+   * which is why this carries no default — `appearance.ts` says what the mark
+   * then draws as.
    */
   appearance: NodeAppearanceSchema.optional(),
   content_signature: z.string().optional(),
@@ -109,10 +114,9 @@ export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
 /**
  * `address`, `depth` and `origin` are absent because they are immutable, and
- * `published` because publishing is its own act with its own consequences —
- * {@link NodeBulkActSchema} is where it is asked for, whether the person chose
- * one note or forty. `parent` is absent because a move writes an alias rather
- * than a new address, and that mechanism does not exist yet.
+ * `published` because it is written by {@link NodeBulkActSchema}'s own act
+ * rather than alongside a title. `parent` is absent because a move writes an
+ * alias rather than a new address, and that mechanism does not exist yet.
  */
 export const UpdateNodeRequestSchema = z.object({
   title: z.string().max(512).optional(),
@@ -132,12 +136,9 @@ export type UpdateNodeRequest = z.input<typeof UpdateNodeRequestSchema>;
 export const MAX_NOTES_PER_BULK_ACT = 200;
 
 /**
- * One act, over however many notes somebody chose. Keyed by `act` so a fifth
- * act is a member here and a branch in the service — never a second route, and
- * never a field on every request that five acts out of six leave empty.
- *
- * Choosing one note is not a different shape from choosing forty, so none of
- * these has a single-note twin somewhere else.
+ * One act, over however many notes somebody chose. Keyed by `act` so a fifth act
+ * is a member here and a branch in the service — never a second route, and never
+ * a field on every request that five acts out of six leave empty.
  */
 export const NodeBulkActSchema = z.discriminatedUnion("act", [
   /** Added to what each note already carries, rather than replacing it. */
@@ -149,6 +150,11 @@ export const NodeBulkActSchema = z.discriminatedUnion("act", [
     act: z.literal("set_appearance"),
     appearance: NodeAppearanceSchema.nullable(),
   }),
+  /**
+   * Writes {@link NodeSchema}'s `published` mark and makes nothing readable by
+   * anybody. Until a `publication` row is reachable, no surface may offer this
+   * as publishing — docs/ARCHITECTURE.md § "Data model" is the ruling.
+   */
   z.object({ act: z.literal("publish") }),
   z.object({ act: z.literal("unpublish") }),
   /** Each note leaves with everything that sprang from it, and with its blocks. */

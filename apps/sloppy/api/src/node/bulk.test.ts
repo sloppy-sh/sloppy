@@ -110,7 +110,7 @@ describe("one act over the notes somebody chose", () => {
     );
 
     await expect(asked).rejects.toBeInstanceOf(BadRequestException);
-    await expect(asked).rejects.toThrow(/Take a few off first/);
+    await expect(asked).rejects.toThrow(/\b1\b would go past that/);
     expect(writes).toEqual([]);
   });
 
@@ -147,7 +147,7 @@ describe("one act over the notes somebody chose", () => {
     await expect(asked).rejects.toThrow(/Reload your graph/);
   });
 
-  it("publishes and unpublishes through the same act, keyed by which one", async () => {
+  it("sets and clears the published mark through one act, keyed by which", async () => {
     const notes = [note("1")];
     for (const [asked, written] of [
       ["publish", true],

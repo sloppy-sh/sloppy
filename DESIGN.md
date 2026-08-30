@@ -182,7 +182,8 @@ decorative.
 
 Hue and lightness each answer one question. Form answers several, because everything
 that must survive greyscale ends up in it — so form is subdivided instead, and
-§ "The mark" is the division. Within it, no two meanings share a channel either.
+§ "The mark" is the division. Radius is the one channel inside it that two meanings share,
+and § "The mark" bounds it; nothing else there is shared.
 
 ### Hue — the tags you selected, and only those
 
@@ -257,7 +258,7 @@ Each gets its own channel.
 | **The disc's imagery**                            | the author's preview picture                            |
 | **The orbit outside it**                          | the mode the canvas is in — picking, or choosing        |
 
-Four rulings hold that table together:
+Six rulings hold that table together:
 
 - **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
   ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
@@ -271,11 +272,26 @@ Four rulings hold that table together:
   **picking outlines, choosing fills.** A hairline ring in the orbit is a note already
   linked and a heavier one is the note being linked from; a solid band in that same orbit
   is a note in the chosen set. The chrome names the mode; the mark says membership.
-- **Size stays the fold's.** A radius says how much thought is folded into a mark, and a
-  look scales that rather than replacing it. The scale is bounded so the largest a leaf
-  can be styled to is smaller than the smallest mega-node, and `@sloppy/graph` holds that
-  with a test — a look that could make a leaf read as a folded subtree has taken a channel
-  that was not its.
+- **Size stays the fold's, and radius is the one channel two meanings share.** A radius
+  says how much thought is folded into a mark; a look scales that rather than replacing it.
+  The bound is what keeps both readable, and it is tighter than it sounds: the smallest
+  mega-node is one note folded, `9 × (1 + log2(2) × 0.42) ≈ 12.78` against a leaf's 9, so
+  **a look may grow a leaf by strictly less than 1.42×**. A look that could make a leaf
+  read as a folded subtree has taken a channel that was not its. `@sloppy/graph` owes that
+  bound a test; until it has one the figure is a target, per § "Contrast is measured, not
+  assumed".
+- **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
+  note — the root the fold collapsed to — so it wears the ring, the radius scale and the
+  picture its own author gave it. Tags are the one thing a fold aggregates, because a tag
+  is a set a mark can be in and a mega-node answers for the subtree it replaced; a look is
+  authored by one person on one note, and forty of them do not average into a forty-first.
+- **A look is the first thing to go as the mark gets small.** Three concentric strokes do
+  not survive a leaf drawn at half a pixel, so they drop in the order of how little the
+  reader is owed them: the look's ring and its picture first, then the orbit and the
+  provenance edge, which are last because one is the act the person is in the middle of
+  and the other is PRODUCT.md principle 4. The threshold is DRAWN radius rather than zoom
+  — `layoutLabels` in `scene.ts` is the precedent, and its hysteresis is too, so a look
+  does not flicker on a mark drifting across the line.
 - **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
   the question the hue channel answers. The notes somebody has picked out to act on are
   **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.
@@ -296,6 +312,13 @@ The VALUES those channels take are an open set, for the same reason the element 
 inside a block are: a look this build has no renderer for is stored and handed back
 untouched, and draws meanwhile as an unstyled note does. Adding a look is a value; adding
 a channel is a change to the table above.
+
+**A look does not reach a peer yet, and a pulled region draws unstyled.** `PublishedNodeSchema`
+carries no appearance. Ring weight, ring style and radius are plain shape and could travel;
+the picture cannot, because a preview is an upload in the author's own private store, which
+docs/ARCHITECTURE.md § "Pictures" already owns as an open gap. The publishing milestone owns
+both halves and settles the picture's fate before the other three go, so that a peer either
+sees the look its author gave a note or sees none of it.
 
 ### Edges
 

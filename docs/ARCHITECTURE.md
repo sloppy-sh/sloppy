@@ -180,6 +180,10 @@ policy:
 | `emoji`                    | `public/sloppy/…` | anyone — a federated `:shortcode:` renders for everybody |
 | `block` (a note's picture) | `sloppy/notes`    | its owner alone                                          |
 
+A mark's preview picture is deliberately that same role rather than a new one: the folder
+is the access rule, a mark's picture wants exactly the note picture's rule, and one library
+means a picture already in a note can go on its mark without being sent twice.
+
 **A note is private until its subtree is published, so its pictures are too.** The owner
 reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks their own
 store for it as them; nothing else can, and it is not listed among an identity's public
@@ -292,6 +296,29 @@ publication:{ created_by: <did>, id: <ulid> }
   root          ref       the subtree this makes readable
   root_address  string    what a peer cites
 ```
+
+**`publication` is what makes a subtree readable. `node.published` is not, and nothing
+today is.** The row existing is the whole mechanism: a peer cites `root_address` and pulls
+the subtree, so deleting the row is unpublishing. `node.published` is a separate column on
+the note, and `provenanceOf` in `@sloppy/graph` is the only thing that reads it — it
+decides whether a mark draws as own or as published, and nothing else follows from it.
+Neither `POST /publications` nor the public read endpoint § "Federating the graph"
+describes is served by `apps/sloppy/api` yet, so no note in Sloppy has ever been readable
+by anybody, and `NodeBulkActSchema`'s `publish` act changes how a mark draws and nothing
+more.
+
+**So no surface may describe that act as publishing** until both routes exist. PRODUCT.md
+principle 5 puts what publishing exposes in front of the person at the moment they decide,
+and there is no true version of that sentence to write here: a button that says a note has
+left the device would be the one lie the principle exists to forbid.
+
+The publishing milestone owns reconciling the two, and it is a reconciliation rather than
+an addition. A note is readable when a publication row roots at it **or at one of its
+ancestors**, so `published` is that fact denormalized onto the row and has to be either
+maintained from the publication rows or dropped in favour of deriving membership from the
+roots and the address. Two things it must not leave behind whichever way it goes: a note
+drawing as published that no row covers, and a note drawing as own while a row that covers
+it survives.
 
 The rules AI.md's foundation-wave section states, applied here:
 

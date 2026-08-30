@@ -136,8 +136,7 @@ export class NodeRepository {
   /**
    * One act's writes, each note taking its own value — the tag arithmetic is
    * per note, so there is a value per row rather than one for the set. A note
-   * whose row is gone by the time the write lands is absent from the answer,
-   * which is what makes the count of what was reached the answer's own.
+   * whose row is gone by the time the write lands is absent from the answer.
    */
   async patchAll(
     did: string,

@@ -11,9 +11,10 @@ import { NodeSchema } from "./node.js";
 
 const CHANNELS = ["ring_weight", "ring_style", "mark_radius", "preview"];
 
-// A look this build has no renderer for reaches a peer that does have one, so
-// the round trip is the contract rather than the vocabulary. AI.md
-// § "Provider-Agnostic Data Shapes".
+// The round trip is the contract rather than the vocabulary: a look an older
+// build cannot draw survives being read and written back by it. Crossing to a
+// peer is a separate thing and does not happen yet — DESIGN.md § "A note's look
+// never uses colour". AI.md § "Provider-Agnostic Data Shapes".
 describe("a look this build cannot draw", () => {
   it("is carried untouched rather than refused", () => {
     const later = {

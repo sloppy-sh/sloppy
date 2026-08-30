@@ -169,7 +169,7 @@ export class NodeService {
       case "tag":
       case "untag":
         return each((note) => ({
-          tags: retag(note.tags, act.act === "tag", act.tags),
+          tags: retag(note, act.act === "tag", act.tags),
         }));
       case "set_appearance": {
         const appearance = await this.look(act.appearance, delegation);
@@ -286,17 +286,17 @@ function answer(
 
 /**
  * A note's tags after an act. `TagsSchema` decides the answer, so what is
- * checked and what is stored are one computation — and a set it refuses is a
- * note that would come back unreadable rather than merely over-tagged.
+ * checked and what is stored are one computation. The address is in the refusal
+ * because a person choosing forty notes cannot otherwise tell which one it is.
  */
-function retag(tags: Tags, adding: boolean, named: Tags): Tags {
+function retag(note: Node, adding: boolean, named: Tags): Tags {
   const after = adding
-    ? [...tags, ...named]
-    : tags.filter((tag) => !named.includes(tag));
+    ? [...note.tags, ...named]
+    : note.tags.filter((tag) => !named.includes(tag));
   const parsed = TagsSchema.safeParse(after);
   if (!parsed.success) {
     throw new BadRequestException(
-      `A note carries at most ${MAX_TAGS_PER_NODE} tags, and this would take one of these past that. Take a few off first.`,
+      `A note carries at most ${MAX_TAGS_PER_NODE} tags, and ${note.address} would go past that. Take a few off it first.`,
     );
   }
   return parsed.data;

@@ -1056,15 +1056,18 @@ describe("the domain routes", () => {
       expect(untagged.notes.map((note) => note.tags)).toEqual([[], ["seed"]]);
     });
 
-    scenario("publishes and unpublishes what was chosen", async () => {
-      const note = await newNode(ada, { title: "Readable" });
+    scenario(
+      "sets and clears the published mark on what was chosen",
+      async () => {
+        const note = await newNode(ada, { title: "Marked" });
 
-      const published = await bulk(ada, [note.ref], { act: "publish" });
-      expect(published.notes[0].published).toBe(true);
+        const published = await bulk(ada, [note.ref], { act: "publish" });
+        expect(published.notes[0].published).toBe(true);
 
-      const withdrawn = await bulk(ada, [note.ref], { act: "unpublish" });
-      expect(withdrawn.notes[0].published).toBe(false);
-    });
+        const withdrawn = await bulk(ada, [note.ref], { act: "unpublish" });
+        expect(withdrawn.notes[0].published).toBe(false);
+      },
+    );
 
     scenario("sets one look across every note it reaches", async () => {
       const one = await newNode(ada, { title: "One" });

@@ -7,17 +7,13 @@ import { z } from "zod";
 /**
  * One channel's value, bounded by shape rather than by vocabulary: a look this
  * build has no renderer for is stored and handed back untouched instead of
- * being refused, and adding a look is a value here rather than a column.
- *
- * The four channels below are closed and their values are open. A fifth channel
- * would be a new meaning on a mark that already carries several, so it belongs
- * in DESIGN.md's table before it belongs in a row.
+ * being refused. The channels are closed and their values are open.
  */
 export const AppearanceTokenSchema = z
   .string()
   .regex(
     /^[a-z][a-z0-9_]{0,31}$/,
-    "That is not a look Sloppy can save. Pick one from the list.",
+    "Sloppy could not save that look. Choose it again.",
   );
 export type AppearanceToken = z.infer<typeof AppearanceTokenSchema>;
 
@@ -40,10 +36,6 @@ export type MarkRadius = (typeof MARK_RADII)[number];
  * channel inside a present appearance means the same for that channel by
  * itself. There is therefore never a reason to store an appearance whose every
  * channel is absent; {@link isUnstyled} is what recognises one.
- *
- * No channel here carries colour, at any level. Hue on the canvas answers the
- * reader's tag selection, and a note able to spend it would make that answer
- * unreadable on somebody else's graph.
  */
 export const NodeAppearanceSchema = z.object({
   ring_weight: AppearanceTokenSchema.optional(),

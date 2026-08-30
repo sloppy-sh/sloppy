@@ -290,13 +290,15 @@ export class SloppyClient {
   }
 
   /**
-   * One act over the notes somebody chose — tagging, untagging, a look,
-   * publishing, or deleting them. Which act it is, is a value, so this is the
-   * only route any of them takes and a selection of one is not a special case.
+   * One act over the notes somebody chose. Which act it is, is a value, so this
+   * is the only route any of them takes and a selection of one is not a special
+   * case. Only the caller's own notes are reached; `missed` counts the rest,
+   * which is something to say rather than a failure.
    *
-   * Only the caller's own notes are reached; `missed` counts the rest, which is
-   * something to say rather than a failure. Unpublishing stops a note being
-   * readable from here on — a peer who already pulled it keeps their copy.
+   * The `publish` act writes the note's published mark and makes nothing
+   * readable by anybody. {@link publish} is the one that would, and neither it
+   * nor the endpoint a peer reads from is served yet — docs/ARCHITECTURE.md
+   * § "Data model" holds the ruling and what a surface may call this meanwhile.
    */
   async actOnNodes(request: NodeBulkRequest): Promise<NodeBulkResult> {
     return parseNodeBulkResult(await this.send("POST", "/nodes/bulk", request));
@@ -337,6 +339,9 @@ export class SloppyClient {
   }
 
   // ── Publications ─────────────────────────────────────────────────────────
+  // Declared, not served: no controller answers `/publications` yet, so every
+  // method here reaches a 404. docs/ARCHITECTURE.md § "Data model" carries what
+  // that means for anything wanting to call a note published.
 
   async listPublications(): Promise<PublicationView[]> {
     const body = await this.json("/publications", { method: "GET" });
