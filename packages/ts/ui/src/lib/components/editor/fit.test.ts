@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EMOJI_PX, fitted, NOTE_PX } from './fit.js';
+import { EMOJI_PX, fitted, flattened, NOTE_PX } from './fit.js';
 
 /** A platform that decodes `wide` x `tall` and encodes what it drew as `size`
  *  bytes of `type` — or refuses to encode at all. */
@@ -47,6 +47,15 @@ describe('a picture on its way out of the device', () => {
 		const moving = picture('wave.gif', 'image/gif', 3_000_000);
 
 		expect(await fitted(moving, NOTE_PX)).toBe(moving);
+	});
+
+	// A mark paints one frame and never plays it, so the animation is not a
+	// reason to wear a picture whole there.
+	it('redraws one that could be moving for a surface that never plays it', async () => {
+		stub(1600, 1200, { size: 10 });
+		const moving = picture('kite.webp', 'image/webp', 900_000);
+
+		expect(await flattened(moving, 232)).not.toBe(moving);
 	});
 
 	it('goes as it is where it is already no wider than a note draws it', async () => {

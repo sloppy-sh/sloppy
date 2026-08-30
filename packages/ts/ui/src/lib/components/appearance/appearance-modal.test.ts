@@ -21,10 +21,12 @@ const UPLOAD = 'did:syr:ham/01UP';
  *  and a record id, none of which may reach a person. */
 const RAW = 'Sloppy API 400 Bad Request for /nodes/did:syr:ham/01JABCXYZ: nope';
 
+// webp, because that is what a note's pictures ARE: `capped` encodes to it, so
+// every picture big enough for the note path to have shrunk comes back as one.
 const picture = (id: string): HeldPicture => ({
 	upload_id: id,
-	filename: 'kite.png',
-	mime_type: 'image/png',
+	filename: 'kite.webp',
+	mime_type: 'image/webp',
 	size: 9
 });
 
@@ -247,7 +249,7 @@ describe('a picture for the mark', () => {
 		held = [picture(UPLOAD)];
 		open();
 		await tap('Add a picture');
-		(document.body.querySelector('button[aria-label="kite.png"]') as HTMLButtonElement).click();
+		(document.body.querySelector('button[aria-label="kite.webp"]') as HTMLButtonElement).click();
 		await settle();
 	}
 

@@ -48,6 +48,20 @@ export async function fitted(file: File, longest: number): Promise<File> {
 	return new File([drawn], named(file.name, drawn.type), { type: drawn.type });
 }
 
+/**
+ * `file` redrawn with its longest side at `longest`, dropping any animation it
+ * carried — for a surface that paints one frame and never plays it. `file`
+ * itself where redrawing gains nothing.
+ *
+ * `capped` encodes to webp, so a picture the note path already shrank comes
+ * back as one; `fitted` would hand that straight back untouched.
+ */
+export async function flattened(file: File, longest: number): Promise<File> {
+	const drawn = await capped(file, longest);
+	if (!drawn || drawn.size >= file.size) return file;
+	return new File([drawn], named(file.name, drawn.type), { type: drawn.type });
+}
+
 function named(was: string, type: string): string {
 	const stem = was.replace(/\.[^./\\]+$/, '') || 'picture';
 	return `${stem}.${type.slice(type.indexOf('/') + 1)}`;

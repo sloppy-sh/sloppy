@@ -14,7 +14,7 @@
 	} from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { HeldPicture, NoteMedia, ShownPicture } from '../editor/contract.js';
-	import { fitted } from '../editor/fit.js';
+	import { flattened } from '../editor/fit.js';
 	import MediaPicker from '../editor/media-picker.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import { MARK_RADIUS_LABELS, RING_STYLE_LABELS, RING_WEIGHT_LABELS } from './labels.js';
@@ -121,7 +121,7 @@
 
 	/** A mark never draws a picture wider than this, so nothing wider is sent. */
 	async function sent(file: File): Promise<string> {
-		const asset = await media.send(await fitted(file, MARK_PICTURE_PX), () => {}).asset;
+		const asset = await media.send(await flattened(file, MARK_PICTURE_PX), () => {}).asset;
 		return asset.upload_id;
 	}
 
@@ -138,7 +138,7 @@
 			const whole = new File([await (await fetch(source.src)).blob()], held.filename, {
 				type: held.mime_type
 			});
-			const bytes = await fitted(whole, MARK_PICTURE_PX);
+			const bytes = await flattened(whole, MARK_PICTURE_PX);
 			return bytes === whole ? null : bytes;
 		} catch {
 			return null;
