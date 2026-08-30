@@ -58,6 +58,22 @@ describe('a picture on its way out of the device', () => {
 		expect(await flattened(moving, 232)).not.toBe(moving);
 	});
 
+	// The mark crops to a disc, which spends the long side — so a picture kept by
+	// its long side arrives short of the size it is drawn at.
+	it('keeps enough of one that is not square to fill the square it is cropped to', async () => {
+		const box = stub(1600, 1200, { size: 10 });
+		await flattened(picture('kite.jpeg', 'image/jpeg', 900_000), 232);
+
+		expect(box).toEqual([0, 0, 309, 232]);
+	});
+
+	it('leaves one already too small to fill that square alone', async () => {
+		stub(300, 180, { size: 10 });
+		const small = picture('stamp.png', 'image/png', 9_000);
+
+		expect(await flattened(small, 232)).toBe(small);
+	});
+
 	it('goes as it is where it is already no wider than a note draws it', async () => {
 		stub(900, 600, { size: 10 });
 		const small = picture('sketch.png', 'image/png', 90_000);

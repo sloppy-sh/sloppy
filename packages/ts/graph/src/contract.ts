@@ -24,6 +24,19 @@ export interface GraphPicking extends GraphPickMarks {
   onPick: (ref: OwnedRef) => void;
 }
 
+/**
+ * How a mark's preview picture reaches the canvas: the host resolves one,
+ * because this package reaches no server and a raw remote URL in a texture is
+ * the privacy bug it is in an `<img>`.
+ *
+ * `null` is nothing to draw — a picture the store no longer holds included — and
+ * the mark then draws exactly as a mark with no picture. `release` frees
+ * whatever `src` held; the canvas calls it once the bytes are on the GPU.
+ */
+export interface MarkPictures {
+  read(preview: string): Promise<{ src: string; release: () => void } | null>;
+}
+
 /** Where a menu was asked for, and what it was asked on. */
 export interface GraphMenuAt {
   /** Viewport coordinates, so the menu can be placed against the screen. */
@@ -67,6 +80,9 @@ export interface GraphSurfaceProps {
   focus?: OwnedRef;
   /** Absent means a tap opens the note under it. */
   picking?: GraphPicking;
+  /** Read once, as the canvas starts: absent draws every mark without the
+   *  picture its author gave it. */
+  pictures?: MarkPictures;
   /**
    * The notes somebody has picked out to act on — DESIGN.md § "The mark" calls
    * this the chosen set, and never a selection, because `selection` above is

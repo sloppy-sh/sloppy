@@ -37,6 +37,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
+	import { deletionCost } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -175,27 +176,7 @@
 		open: (target: OwnedRef) => onOpen(target)
 	};
 
-	const descendants = $derived.by(() => {
-		let counted = 0;
-		const walk = (of: OwnedRef) => {
-			for (const child of nodes.children(of)) {
-				counted += 1;
-				walk(child.ref);
-			}
-		};
-		walk(ref);
-		return counted;
-	});
-
-	const consequence = $derived.by(() => {
-		// A number nothing has counted yet would be a promise this cannot keep.
-		if (!node || !nodes.status({ origin: node.origin }).loaded) {
-			return 'It goes for good, and so does everything written under it.';
-		}
-		if (descendants === 0) return 'It goes for good.';
-		if (descendants === 1) return 'It goes for good, and so does the one note that grew out of it.';
-		return `It goes for good, and so do the ${descendants.toLocaleString()} notes that grew out of it.`;
-	});
+	const consequence = $derived(deletionCost([ref]));
 
 	// The modal claims focus for itself one frame after it mounts, so the caret
 	// can only be put in the title the frame after that.

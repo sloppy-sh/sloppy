@@ -200,8 +200,9 @@ describe('giving a note a look', () => {
 });
 
 describe('a picture for the mark', () => {
-	/** A picture of these dimensions, and a canvas that reports what it was
-	 *  redrawn onto. The default is what a camera hands over. */
+	/** A picture of these dimensions, and a canvas that reports the SHORT side of
+	 *  what it was redrawn onto — the one a crop to a disc has to fill. The
+	 *  default is what a camera hands over. */
 	function fromACamera(width = 4032, height = 3024): { drawnAt: number[] } {
 		const drawnAt: number[] = [];
 		vi.stubGlobal('createImageBitmap', async () => ({
@@ -216,7 +217,7 @@ describe('a picture for the mark', () => {
 			this: HTMLCanvasElement,
 			done
 		) {
-			drawnAt.push(Math.max(this.width, this.height));
+			drawnAt.push(Math.min(this.width, this.height));
 			done(new Blob([new Uint8Array(20_000)], { type: 'image/webp' }));
 		});
 		return { drawnAt };

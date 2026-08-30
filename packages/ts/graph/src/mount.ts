@@ -182,6 +182,7 @@ export function mountGraph(
       fonts,
       palette,
       resolution: Math.min(globalThis.devicePixelRatio || 1, 2),
+      pictures: props.pictures,
     });
     if (destroyed) {
       built.destroy();

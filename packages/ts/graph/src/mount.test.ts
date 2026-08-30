@@ -1,6 +1,7 @@
 import type { OwnedRef, Tag } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { GraphPickMarks } from "./contract.js";
+import type { GraphPickMarks, MarkPictures } from "./contract.js";
+import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
 import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
@@ -31,8 +32,15 @@ class StandInScene {
   /** How many times the canvas has framed the whole field. */
   fits = 0;
 
-  static async create(): Promise<StandInScene> {
+  /** What the mount handed the canvas as it started. */
+  options: SceneOptions | null = null;
+
+  static async create(
+    _canvas: unknown,
+    options: SceneOptions,
+  ): Promise<StandInScene> {
     StandInScene.latest = new StandInScene();
+    StandInScene.latest.options = options;
     return StandInScene.latest;
   }
 
@@ -435,6 +443,19 @@ describe("mountGraph", () => {
 
     expect(graph.handle.stats()?.maxDrawn).toBe(20);
     expect(graph.model().order.length).toBeLessThanOrEqual(20);
+  });
+
+  // Nothing else can resolve one: this package reaches no server, so a mark
+  // draws its author's picture only if the host's way of reading one arrives.
+  it("hands the canvas the host's way of reading a mark's picture", async () => {
+    const pictures: MarkPictures = { read: async () => null };
+    const graph = await mount({ pictures });
+    expect(graph.scene.options?.pictures).toBe(pictures);
+  });
+
+  it("leaves the canvas without one where the host offered none", async () => {
+    const graph = await mount();
+    expect(graph.scene.options?.pictures).toBeUndefined();
   });
 });
 

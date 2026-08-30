@@ -25,7 +25,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { GraphMenuAt } from '@sloppy/graph';
+	import type { GraphMenuAt, MarkPictures } from '@sloppy/graph';
 	import {
 		NodeBulkRequestSchema,
 		RootAddressSchema,
@@ -54,6 +54,8 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import { api } from '../api.js';
+	import { deletionCost } from '../deletion.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -106,6 +108,8 @@
 	/** The act in flight, which the next one asked for queues behind. */
 	let acting: Promise<void> = Promise.resolve();
 
+	const markPictures: MarkPictures = { read: (upload) => api.ownPicture(upload) };
+
 	const roots = $derived(nodes.region());
 	const open = $derived(page.state.note ?? null);
 	const openNode = $derived(open ? nodes.get(open) : undefined);
@@ -130,7 +134,6 @@
 	 * job, and a host that pre-collapses everything gets mega-nodes and none of
 	 * the graph. Copied, so a fold reaches the surface as a new set.
 	 */
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt whole by the derived, never mutated after.
 	const collapsed = $derived(new Set(folded));
 
 	const selection = $derived(tags.selected);
@@ -410,40 +413,6 @@
 		deleting = true;
 	}
 
-	/** Everything under these notes that is not itself one of them. Null where a
-	 *  branch has not been counted yet, which no number may stand in for. */
-	function grownFrom(refs: readonly OwnedRef[]): number | null {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- counted and thrown away inside this call; nothing reads it.
-		const going = new Set(refs);
-		const walk = (of: OwnedRef) => {
-			for (const child of nodes.children(of)) {
-				going.add(child.ref);
-				walk(child.ref);
-			}
-		};
-		for (const ref of refs) {
-			const note = nodes.get(ref);
-			if (!note || !nodes.status({ origin: note.origin }).loaded) return null;
-			walk(ref);
-		}
-		return going.size - refs.length;
-	}
-
-	function deletionCost(refs: readonly OwnedRef[]): string {
-		const one = refs.length === 1;
-		const it = one ? 'it' : 'them';
-		const grown = grownFrom(refs);
-		if (grown === null) {
-			return one
-				? 'It goes for good, and so does everything written under it.'
-				: 'They go for good, and so does everything written under them.';
-		}
-		const goes = one ? 'It goes for good' : 'They go for good';
-		if (grown === 0) return `${goes}.`;
-		if (grown === 1) return `${goes}, and so does the one note that grew out of ${it}.`;
-		return `${goes}, and so do the ${grown.toLocaleString()} notes that grew out of ${it}.`;
-	}
-
 	/** A branch of its own. A note that continues one is written from inside it. */
 	async function writeBranch(shape: NoteTemplate | null): Promise<void> {
 		if (creating) return;
@@ -523,6 +492,7 @@
 							onPick: (ref) => void pointAt(ref)
 						}
 					: undefined}
+				pictures={markPictures}
 				{chosen}
 				onChoose={pointing ? undefined : chooseAlso}
 				onChooseWithin={pointing ? undefined : chooseWithin}

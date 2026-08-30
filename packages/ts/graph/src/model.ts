@@ -57,8 +57,10 @@ export const PREVIEW_AT = 0.42;
 /** Assumed of the densest screen Sloppy runs on, for {@link MARK_PICTURE_PX}. */
 const DENSE_SCREEN = 2;
 
-/** The longest side a mark's picture is worth holding: the most of one a screen
- *  ever shows is the biggest mega-node, at full zoom, on a dense display. */
+/** The side of the square a mark's picture is cropped to, at the most of one a
+ *  screen ever shows: the biggest mega-node, at full zoom, on a dense display.
+ *  A picture is stored with its SHORT side at this, because the crop spends the
+ *  long one. */
 export const MARK_PICTURE_PX = Math.ceil(
   MAX_RADIUS * PREVIEW_AT * 2 * MAX_SCALE * DENSE_SCREEN,
 );

@@ -12,6 +12,11 @@
 		type RingWeight
 	} from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import {
+		MARK_RADIUS_LABELS,
+		RING_STYLE_LABELS,
+		RING_WEIGHT_LABELS
+	} from '../appearance/labels.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	let {
@@ -30,21 +35,9 @@
 	const choices = <T extends string>(values: readonly T[], words: Record<T, string>) =>
 		values.map((value) => ({ value, word: words[value] }));
 
-	const rings = choices(RING_WEIGHTS, {
-		none: 'No ring',
-		hairline: 'Hairline',
-		regular: 'Regular',
-		heavy: 'Heavy'
-	} satisfies Record<RingWeight, string>);
-	const lines = choices(RING_STYLES, {
-		solid: 'Solid',
-		dashed: 'Dashed'
-	} satisfies Record<RingStyle, string>);
-	const sizes = choices(MARK_RADII, {
-		small: 'Small',
-		regular: 'Regular',
-		large: 'Large'
-	} satisfies Record<MarkRadius, string>);
+	const rings = choices(RING_WEIGHTS, RING_WEIGHT_LABELS);
+	const lines = choices(RING_STYLES, RING_STYLE_LABELS);
+	const sizes = choices(MARK_RADII, MARK_RADIUS_LABELS);
 
 	let ring = $state<RingWeight>('none');
 	let line = $state<RingStyle>('solid');
@@ -118,7 +111,7 @@
 	<div class="space-y-5 px-2 pt-4">
 		{@render row('Ring', rings, ring, (v) => (ring = v as RingWeight))}
 		{#if ring !== 'none'}
-			{@render row('Ring line', lines, line, (v) => (line = v as RingStyle))}
+			{@render row('Ring style', lines, line, (v) => (line = v as RingStyle))}
 			<p class="-mt-3 text-sm text-muted-foreground">A dashed ring reads as a draft.</p>
 		{/if}
 		{@render row('Size', sizes, size, (v) => (size = v as MarkRadius))}

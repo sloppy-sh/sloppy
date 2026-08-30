@@ -1,0 +1,395 @@
+// The one path in `scene.ts` that reaches outside the package: a host resolves
+// a picture, the canvas cuts it to the disc and puts it on a mark. Pixi is stood
+// in for, because what is checked here is the bookkeeping around the GPU — who
+// is asked, what is freed, and what is left holding it — never the pixels.
+
+import type { NodeView, OwnedRef } from "@sloppy/types";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { DrawnNode, MarkPictures } from "./contract.js";
+import { buildModel, MARK_PICTURE_PX, PREVIEW_AT } from "./model.js";
+import { buildPalette } from "./palette.js";
+
+class FakeTexture {
+  destroyed = false;
+  constructor(readonly of: unknown) {}
+  destroy(): void {
+    this.destroyed = true;
+  }
+  static from(source: unknown): FakeTexture {
+    return new FakeTexture(source);
+  }
+}
+
+class FakeContainer {
+  readonly children: FakeContainer[] = [];
+  eventMode = "auto";
+  x = 0;
+  y = 0;
+  readonly position = { set: () => {} };
+  readonly scale = { set: () => {} };
+  addChild(...kids: FakeContainer[]): void {
+    this.children.push(...kids);
+  }
+  removeChild(kid: FakeContainer): void {
+    const at = this.children.indexOf(kid);
+    if (at >= 0) this.children.splice(at, 1);
+  }
+  removeChildren(): FakeContainer[] {
+    return this.children.splice(0);
+  }
+  destroy(): void {}
+}
+
+class FakeGraphics extends FakeContainer {
+  clear(): this {
+    return this;
+  }
+  circle(): this {
+    return this;
+  }
+  arc(): this {
+    return this;
+  }
+  fill(): this {
+    return this;
+  }
+  stroke(): this {
+    return this;
+  }
+  moveTo(): this {
+    return this;
+  }
+  lineTo(): this {
+    return this;
+  }
+}
+
+class FakeParticleContainer extends FakeContainer {
+  readonly particleChildren: unknown[] = [];
+  update(): void {}
+}
+
+class FakeSprite extends FakeContainer {
+  width = 0;
+  height = 0;
+  alpha = 1;
+  visible = true;
+  destroyed = false;
+  readonly anchor = { set: () => {} };
+  constructor(public texture: FakeTexture) {
+    super();
+  }
+  override destroy(): void {
+    this.destroyed = true;
+  }
+}
+
+class FakeText extends FakeContainer {
+  text = "";
+  visible = false;
+  tint = 0;
+  width = 10;
+  readonly anchor = { set: () => {} };
+  constructor(options: { text: string }) {
+    super();
+    this.text = options.text;
+  }
+}
+
+class FakeApplication {
+  static latest: FakeApplication | null = null;
+  readonly stage = new FakeContainer();
+  readonly frames = new Set<() => void>();
+  readonly ticker = {
+    deltaMS: 16,
+    add: (fn: () => void) => this.frames.add(fn),
+    remove: (fn: () => void) => this.frames.delete(fn),
+  };
+  readonly renderer = {
+    screen: { width: 390, height: 740 },
+    generateTexture: () => ({ source: {} }),
+  };
+  constructor() {
+    FakeApplication.latest = this;
+  }
+  async init(): Promise<void> {}
+  destroy(): void {}
+  tick(): void {
+    for (const frame of this.frames) frame();
+  }
+}
+
+vi.mock("pixi.js", () => ({
+  Application: FakeApplication,
+  Container: FakeContainer,
+  Graphics: FakeGraphics,
+  ParticleContainer: FakeParticleContainer,
+  Particle: class {},
+  Sprite: FakeSprite,
+  Text: FakeText,
+  Texture: FakeTexture,
+  Rectangle: class {},
+}));
+
+const { GraphScene } = await import("./scene.js");
+
+/** What each decoded picture measures, keyed by the `src` it was handed. */
+const decoded = new Map<string, { width: number; height: number }>();
+/** Every `drawImage` a cut made: the destination box inside the square. */
+let painted: { canvas: number; box: number[] }[] = [];
+
+beforeAll(() => {
+  vi.stubGlobal(
+    "Image",
+    class {
+      width = 0;
+      height = 0;
+      #src = "";
+      set src(value: string) {
+        this.#src = value;
+        const size = decoded.get(value) ?? { width: 400, height: 400 };
+        this.width = size.width;
+        this.height = size.height;
+      }
+      get src(): string {
+        return this.#src;
+      }
+      async decode(): Promise<void> {}
+    },
+  );
+  vi.stubGlobal("document", {
+    createElement: () => {
+      const canvas = { width: 0, height: 0, getContext: () => context };
+      const context = {
+        beginPath: () => {},
+        arc: () => {},
+        clip: () => {},
+        drawImage: (_source: unknown, ...box: number[]) =>
+          painted.push({ canvas: canvas.width, box }),
+      };
+      return canvas;
+    },
+  });
+});
+
+afterEach(() => {
+  decoded.clear();
+  painted = [];
+});
+
+const OWNER = "did:syr:someone";
+const palette = buildPalette({ ink: "#000", paper: "#fff", hues: [] });
+
+function drawn(address: string, preview?: string): DrawnNode {
+  const ref = `${OWNER}/${address}` as OwnedRef;
+  const node = {
+    ref,
+    created_by: OWNER,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    address,
+    depth: 1,
+    origin: ref,
+    title: address,
+    tags: [],
+    links: [],
+    published: false,
+    ...(preview === undefined ? {} : { appearance: { preview } }),
+  } as NodeView;
+  return { node, collapsed: false, folded: 0, tags: [] };
+}
+
+async function sceneOn(
+  field: DrawnNode[],
+  pictures?: MarkPictures,
+): Promise<{
+  scene: Awaited<ReturnType<typeof GraphScene.create>>;
+  app: FakeApplication;
+}> {
+  const scene = await GraphScene.create({} as HTMLCanvasElement, {
+    fonts: { ui: "ui", address: "mono" },
+    palette,
+    resolution: 2,
+    pictures,
+  });
+  const app = FakeApplication.latest as FakeApplication;
+  scene.setModel(buildModel(field, { selection: [], palette }), false);
+  app.tick();
+  return { scene, app };
+}
+
+/** The layer the preview sprites live on: the one plain container under the
+ *  world, where every other child is a graphics or a particle layer. */
+function previewsOf(app: FakeApplication): FakeContainer {
+  const world = app.stage.children[0];
+  const layer = world.children.find(
+    (child) => child.constructor === FakeContainer,
+  );
+  return layer as FakeContainer;
+}
+
+const settle = (): Promise<void> => new Promise((done) => setTimeout(done, 0));
+
+/** A host that answers with a picture and counts what it was asked for. */
+function host(): MarkPictures & { asked: string[]; released: string[] } {
+  const asked: string[] = [];
+  const released: string[] = [];
+  return {
+    asked,
+    released,
+    async read(preview: string) {
+      asked.push(preview);
+      return { src: `blob:${preview}`, release: () => released.push(preview) };
+    },
+  };
+}
+
+describe("a picture reaching a mark", () => {
+  it("is asked for once however many marks wear it, and let go once it is on the canvas", async () => {
+    const pictures = host();
+    const { scene, app } = await sceneOn(
+      [drawn("1", "up_a"), drawn("2", "up_a"), drawn("3", "up_b"), drawn("4")],
+      pictures,
+    );
+
+    expect(pictures.asked).toEqual(["up_a", "up_b"]);
+    await settle();
+    expect(pictures.released.sort()).toEqual(["up_a", "up_b"]);
+
+    app.tick();
+    expect(previewsOf(app).children).toHaveLength(3);
+    scene.destroy();
+  });
+
+  it("is drawn at the share of the mark DESIGN.md § the mark gives it", async () => {
+    const field = [drawn("1", "up_a")];
+    const { scene, app } = await sceneOn(field, host());
+    await settle();
+    app.tick();
+
+    const model = buildModel(field, { selection: [], palette });
+    const { radius } = model.graph.getNodeAttributes(field[0].node.ref);
+    const sprite = previewsOf(app).children[0] as FakeSprite;
+    expect(sprite.width).toBeCloseTo(radius * PREVIEW_AT * 2, 6);
+    expect(sprite.height).toBe(sprite.width);
+    scene.destroy();
+  });
+
+  it("covers the disc from its short side, and is never enlarged to do it", async () => {
+    decoded.set("blob:wide", { width: 400, height: 300 });
+    decoded.set("blob:small", { width: 120, height: 90 });
+    const { scene } = await sceneOn(
+      [drawn("1", "wide"), drawn("2", "small")],
+      host(),
+    );
+    await settle();
+
+    const wide = painted.find((cut) => cut.canvas === MARK_PICTURE_PX);
+    expect(
+      wide,
+      "the picture with room to spare fills the square",
+    ).toBeDefined();
+    // Centred, and wider than the square by exactly its aspect ratio.
+    expect(wide?.box[2]).toBeCloseTo((MARK_PICTURE_PX * 400) / 300, 6);
+    expect(wide?.box[3]).toBeCloseTo(MARK_PICTURE_PX, 6);
+    expect(wide?.box[1]).toBeCloseTo(0, 6);
+
+    const small = painted.find((cut) => cut.canvas === 90);
+    expect(small, "one below the bound draws at what it has").toBeDefined();
+    expect(small?.box[3]).toBeCloseTo(90, 6);
+    scene.destroy();
+  });
+
+  it("leaves the mark drawing as one with no picture where the host has none", async () => {
+    const { scene, app } = await sceneOn([drawn("1", "up_a")], {
+      read: async () => null,
+    });
+    await settle();
+    app.tick();
+
+    expect(previewsOf(app).children).toHaveLength(0);
+    scene.destroy();
+  });
+
+  it("is never asked for by a canvas no host gave a way to resolve one", async () => {
+    const { scene, app } = await sceneOn([drawn("1", "up_a")]);
+    await settle();
+    app.tick();
+
+    expect(previewsOf(app).children).toHaveLength(0);
+    scene.destroy();
+  });
+});
+
+describe("what a picture landing costs the marks already wearing one", () => {
+  it("leaves their sprites alone rather than rebuilding every one of them", async () => {
+    const held = new Map<string, () => void>();
+    const pictures: MarkPictures = {
+      read: (preview) =>
+        new Promise((answer) => {
+          held.set(preview, () =>
+            answer({ src: `blob:${preview}`, release: () => {} }),
+          );
+        }),
+    };
+    const { scene, app } = await sceneOn(
+      [drawn("1", "up_a"), drawn("2", "up_b")],
+      pictures,
+    );
+
+    held.get("up_a")?.();
+    await settle();
+    app.tick();
+    const first = previewsOf(app).children[0] as FakeSprite;
+
+    held.get("up_b")?.();
+    await settle();
+    app.tick();
+
+    expect(previewsOf(app).children).toHaveLength(2);
+    expect(first.destroyed, "the first mark's sprite was rebuilt").toBe(false);
+    expect(previewsOf(app).children).toContain(first);
+    scene.destroy();
+  });
+});
+
+describe("a picture the graph no longer draws", () => {
+  it("is freed, and nothing on the canvas is left holding it", async () => {
+    const field = [drawn("1", "up_a"), drawn("2", "up_b")];
+    const { scene, app } = await sceneOn(field, host());
+    await settle();
+    app.tick();
+
+    const sprites = previewsOf(app).children as FakeSprite[];
+    const textures = sprites.map((sprite) => sprite.texture);
+    expect(textures.every((texture) => !texture.destroyed)).toBe(true);
+
+    scene.setModel(
+      buildModel([drawn("1", "up_a")], { selection: [], palette }),
+      false,
+    );
+
+    // Before anything renders again, not merely before the next model arrives.
+    expect(
+      previewsOf(app).children,
+      "a sprite outlived the texture it drew from",
+    ).toHaveLength(0);
+    expect(textures.some((texture) => texture.destroyed)).toBe(true);
+
+    await settle();
+    app.tick();
+    expect(previewsOf(app).children).toHaveLength(1);
+    scene.destroy();
+  });
+
+  it("goes with the canvas when it is torn down", async () => {
+    const { scene, app } = await sceneOn([drawn("1", "up_a")], host());
+    await settle();
+    app.tick();
+
+    const sprite = previewsOf(app).children[0] as FakeSprite;
+    scene.destroy();
+    expect(sprite.destroyed).toBe(true);
+    expect(sprite.texture.destroyed).toBe(true);
+  });
+});

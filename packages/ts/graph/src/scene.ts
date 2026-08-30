@@ -19,7 +19,7 @@ import type {
   Texture,
 } from "pixi.js";
 import { clamp } from "./color.js";
-import type { GraphPickMarks } from "./contract.js";
+import type { GraphPickMarks, MarkPictures } from "./contract.js";
 import type { GraphNodeAttributes } from "./model.js";
 import {
   type BuiltModel,
@@ -98,19 +98,6 @@ const SCALE_REBUILD = 0.08;
 export interface SceneFonts {
   ui: string;
   address: string;
-}
-
-/**
- * How a mark's preview picture reaches the canvas: the host resolves one,
- * because this package reaches no server and a raw remote URL in a texture is
- * the privacy bug it is in an `<img>`.
- *
- * `null` is nothing to draw — a picture the store no longer holds included — and
- * the mark then draws exactly as a mark with no picture. `release` frees
- * whatever `src` held; the canvas calls it once the bytes are on the GPU.
- */
-export interface MarkPictures {
-  read(preview: string): Promise<{ src: string; release: () => void } | null>;
 }
 
 export interface SceneOptions {
@@ -502,9 +489,7 @@ export class GraphScene {
   destroy(): void {
     this.destroyed = true;
     this.app.ticker.remove(this.draw);
-    // Marks share one texture per picture, so the sprites go without theirs and
-    // the cache below frees each one once.
-    for (const sprite of this.previews.removeChildren()) sprite.destroy();
+    this.dropPreviewSprites();
     for (const texture of this.previewTextures.values()) texture?.destroy(true);
     this.previewTextures.clear();
     this.app.destroy(true, { children: true, texture: true });
@@ -634,20 +619,33 @@ export class GraphScene {
     }
   }
 
-  /** Separate from {@link rebuildMarks} because a picture lands long after the
-   *  model does, and rebuilding the marks would drop every label placed since. */
+  /**
+   * Separate from {@link rebuildMarks} because a picture lands long after the
+   * model does, and rebuilding the marks would drop every label placed since.
+   *
+   * Only the marks whose picture actually changed hands are touched: pictures
+   * land one at a time across a load, and rebuilding every sprite for each
+   * arrival costs a square of the pictured marks on screen.
+   */
   private rebuildPreviews(): void {
     this.previewsDirty = false;
-    for (const sprite of this.previews.removeChildren()) sprite.destroy();
-
+    let moved = false;
     for (const mark of this.marks) {
-      mark.preview = null;
       const { preview, alpha } = mark.attributes;
-      if (preview === undefined) continue;
-      const texture = this.previewTextures.get(preview);
-      if (texture === undefined) {
+      if (preview !== undefined && !this.previewTextures.has(preview)) {
         this.wantPicture(preview);
-        continue;
+      }
+      const texture =
+        preview === undefined
+          ? null
+          : (this.previewTextures.get(preview) ?? null);
+      if ((mark.preview?.texture ?? null) === texture) continue;
+
+      moved = true;
+      if (mark.preview) {
+        this.previews.removeChild(mark.preview);
+        mark.preview.destroy();
+        mark.preview = null;
       }
       if (texture === null) continue;
       const sprite = new this.pixi.Sprite(texture);
@@ -659,7 +657,13 @@ export class GraphScene {
       mark.preview = sprite;
       this.previews.addChild(sprite);
     }
-    this.positionsDirty = true;
+    if (moved) this.positionsDirty = true;
+  }
+
+  /** Marks share one texture per picture, so a sprite goes without its own. */
+  private dropPreviewSprites(): void {
+    for (const sprite of this.previews.removeChildren()) sprite.destroy();
+    for (const mark of this.marks) mark.preview = null;
   }
 
   private wantPicture(preview: string): void {
@@ -689,7 +693,10 @@ export class GraphScene {
       });
   }
 
+  /** The sprites go first: a texture freed under one still on the display list
+   *  is drawn from freed memory the next time anything renders. */
   private forgetUnwantedPictures(): void {
+    this.dropPreviewSprites();
     if (this.previewTextures.size === 0) return;
     const wanted = new Set(
       this.marks
@@ -963,18 +970,24 @@ async function markPicture(pixi: Pixi, src: string): Promise<Texture | null> {
   picture.src = src;
   await picture.decode();
 
+  // Never larger than the picture can fill: one stored below the bound draws at
+  // what it has rather than being enlarged into a disc it cannot cover.
+  const side = Math.max(
+    1,
+    Math.min(MARK_PICTURE_PX, picture.width, picture.height),
+  );
   const canvas = document.createElement("canvas");
-  canvas.width = MARK_PICTURE_PX;
-  canvas.height = MARK_PICTURE_PX;
+  canvas.width = side;
+  canvas.height = side;
   const onto = canvas.getContext("2d");
   if (!onto) return null;
 
-  const half = MARK_PICTURE_PX / 2;
+  const half = side / 2;
   onto.beginPath();
   onto.arc(half, half, half, 0, Math.PI * 2);
   onto.clip();
   // Short side fills the disc, so a picture is cropped rather than squashed.
-  const cover = MARK_PICTURE_PX / Math.min(picture.width, picture.height);
+  const cover = side / Math.min(picture.width, picture.height);
   const width = picture.width * cover;
   const height = picture.height * cover;
   onto.drawImage(picture, half - width / 2, half - height / 2, width, height);
