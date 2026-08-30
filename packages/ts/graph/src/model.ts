@@ -5,7 +5,6 @@
 import {
   assignTagHueSlots,
   type Address,
-  compareAddresses,
   type DidSyr,
   type MarkRadius,
   type NodeView,
@@ -14,6 +13,7 @@ import {
   resolveAppearance,
   type RingStyle,
   type RingWeight,
+  runPairs,
   type Tag,
 } from "@sloppy/types";
 import Graph from "graphology";
@@ -240,9 +240,9 @@ export function buildModel(
 }
 
 /**
- * The run of thought, in pairs: at every level, each drawn note and the one
- * that comes next along it. A note deleted out of the middle of a run leaves
- * the two either side of it consecutive, and they draw as consecutive.
+ * The run of thought, in pairs. Only which notes are alongside each other is
+ * decided here: those that sprang from the same note, or one author's own
+ * branches.
  */
 function runs(drawn: readonly DrawnNode[]): [NodeView, NodeView][] {
   const levels = new Map<string, NodeView[]>();
@@ -252,15 +252,7 @@ function runs(drawn: readonly DrawnNode[]): [NodeView, NodeView][] {
     if (alongside === undefined) levels.set(level, [node]);
     else alongside.push(node);
   }
-
-  const pairs: [NodeView, NodeView][] = [];
-  for (const alongside of levels.values()) {
-    alongside.sort((a, b) => compareAddresses(a.address, b.address));
-    for (let at = 1; at < alongside.length; at++) {
-      pairs.push([alongside[at - 1], alongside[at]]);
-    }
-  }
-  return pairs;
+  return [...levels.values()].flatMap(runPairs);
 }
 
 /**

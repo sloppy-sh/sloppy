@@ -24,6 +24,8 @@ const FIRST = ref(1);
 const SECOND = ref(2);
 const THIRD = ref(3);
 const FOURTH = ref(4);
+const FIFTH = ref(5);
+const SIXTH = ref(6);
 
 const PHONE = () => true;
 const WIDE = () => false;
@@ -684,6 +686,165 @@ describe('starting a note from a shape', () => {
 		await settle();
 
 		expect(screen()).toContain('The sections land under anything already in this note.');
+	});
+});
+
+/**
+ * A branch whose run has a hole in it. `1b` was written and deleted, and its
+ * address stayed spent — so `1a`, `1c` and `1d` are what a peer holds, and what
+ * the canvas draws consecutive.
+ */
+function installRun(): Map<OwnedRef, NodeView> {
+	const graph = new Map<OwnedRef, NodeView>([
+		[FIRST, node(1, '1', { title: 'Origins' })],
+		[SECOND, node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST })],
+		[THIRD, node(3, '1a1', { title: 'Membranes', origin: FIRST, parent: SECOND })],
+		[FOURTH, node(4, '2', { title: 'Method' })],
+		[FIFTH, node(5, '1c', { title: 'Walls', origin: FIRST, parent: FIRST })],
+		[SIXTH, node(6, '1d', { title: 'Pores', origin: FIRST, parent: FIRST })]
+	]);
+	api.on('GET /nodes', (url) => {
+		const origin = url.searchParams.get('origin');
+		return [...graph.values()].filter((n) => (origin ? n.origin === origin : n.ref === n.origin));
+	});
+	for (const of of [FIRST, SECOND, THIRD, FOURTH, FIFTH, SIXTH]) {
+		api.on(`GET ${path(of)}`, () => graph.get(of) ?? null);
+		api.on(`GET ${path(of)}/blocks`, () => []);
+	}
+	return graph;
+}
+
+describe('walking the graph from a note', () => {
+	beforeEach(async () => {
+		installRun();
+		await loadGraph();
+	});
+
+	/** The address the note on screen says it is. */
+	const showing = () => document.body.querySelector('.address')?.textContent;
+
+	async function walk(way: string): Promise<void> {
+		labelled(way).click();
+		await settle();
+	}
+
+	it('goes on to the next note along the run, over the gap a delete left', async () => {
+		await openNote(SECOND);
+		await walk('The note after this, 1c');
+
+		expect(showing()).toBe('1c');
+		expect(title()?.value).toBe('Walls');
+	});
+
+	it('goes back the way it came', async () => {
+		await openNote(FIFTH);
+		await walk('The note before this, 1a');
+
+		expect(showing()).toBe('1a');
+	});
+
+	it("walks a branch along its author's other branches", async () => {
+		await openNote(FIRST);
+		await walk('The note after this, 2');
+
+		expect(showing()).toBe('2');
+	});
+
+	it('steps down into what grew out of the note', async () => {
+		await openNote(SECOND);
+		await walk('The first note under this, 1a1');
+
+		expect(showing()).toBe('1a1');
+	});
+
+	it('comes back up out of it', async () => {
+		await openNote(THIRD);
+		await walk('The note this one grew out of, 1a');
+
+		expect(showing()).toBe('1a');
+	});
+
+	// The whole point of holding a disabled way in place: a walk is one button
+	// pressed again and again, and it must not move out from under the thumb.
+	it('keeps every way in its place, and answers only where there is one', async () => {
+		await openNote(THIRD);
+		const ways = [...document.body.querySelectorAll<HTMLButtonElement>('nav button')];
+
+		expect(ways.map((way) => way.getAttribute('aria-label'))).toEqual([
+			'The note this one grew out of, 1a',
+			'The note before this',
+			'The note after this',
+			'The first note under this'
+		]);
+		expect(ways.map((way) => way.disabled)).toEqual([false, true, true, true]);
+	});
+
+	it('offers no way out of a note nothing is near', async () => {
+		nodes.clear();
+		api.on('GET /nodes', () => []);
+		api.on(`GET ${path(FOURTH)}`, () => node(4, '2', { title: 'Method' }));
+		await nodes.load();
+		await openNote(FOURTH);
+
+		expect(document.body.querySelector('nav')).toBeNull();
+	});
+
+	// Walking is the same button pressed again and again, so a note whose
+	// sections are in hand must not blank itself on the way back to it.
+	it('does not blank a note it has already read while it asks again', async () => {
+		api.on(`GET ${path(SECOND)}/blocks`, () => [
+			{
+				ref: ref(30),
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				node: SECOND,
+				ord: '0.5',
+				content: {
+					type: 'doc',
+					content: [
+						{
+							type: 'section',
+							content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Ribosomes' }] }]
+						}
+					]
+				}
+			}
+		]);
+		await openNote(SECOND);
+		expect(screen()).toContain('Ribosomes');
+
+		await walk('The note after this, 1c');
+		labelled('The note before this, 1a').click();
+		flushSync();
+
+		expect(document.body.querySelector('[data-slot="skeleton"]')).toBeNull();
+
+		await settle();
+		expect(screen()).toContain('Ribosomes');
+	});
+
+	// The writing surface's own bar rides the same edge, and a way out of the note
+	// under the thumb of somebody mid-sentence is a way out taken by accident.
+	it('gets out of the way while a section is being written in', async () => {
+		await openNote(SECOND);
+		const writing = document.body.querySelector('.sloppy-prose');
+
+		writing?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+		flushSync();
+		expect(document.body.querySelector('nav')).toBeNull();
+
+		writing?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+		await new Promise((wake) => setTimeout(wake, 300));
+		flushSync();
+		expect(document.body.querySelector('nav')).not.toBeNull();
+	});
+
+	it('reads the notes either side before anybody asks for them', async () => {
+		await openNote(FIFTH);
+
+		expect(api.countOf(`GET ${path(SECOND)}/blocks`)).toBe(1);
+		expect(api.countOf(`GET ${path(SIXTH)}/blocks`)).toBe(1);
 	});
 });
 

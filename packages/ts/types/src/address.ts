@@ -189,6 +189,42 @@ export function compareAddresses(a: Address, b: Address): number {
 }
 
 /**
+ * The run of thought over notes that lie alongside each other, in pairs: each
+ * one and the one that follows it. Address order is the whole rule, so a note
+ * taken out of the middle leaves the two either side of it consecutive.
+ */
+export function runPairs<T extends { address: Address }>(
+  alongside: readonly T[],
+): [T, T][] {
+  const order = [...alongside].sort((a, b) =>
+    compareAddresses(a.address, b.address),
+  );
+  const pairs: [T, T][] = [];
+  for (let at = 1; at < order.length; at++) {
+    pairs.push([order[at - 1], order[at]]);
+  }
+  return pairs;
+}
+
+/**
+ * Where `address` sits along the run of the notes it is `alongside`, which are
+ * expected to include it: the one before it and the one after, `null` at either
+ * end of the run.
+ */
+export function alongRun<T extends { address: Address }>(
+  address: Address,
+  alongside: readonly T[],
+): { before: T | null; after: T | null } {
+  let before: T | null = null;
+  let after: T | null = null;
+  for (const [left, right] of runPairs(alongside)) {
+    if (right.address === address) before = left;
+    if (left.address === address) after = right;
+  }
+  return { before, after };
+}
+
+/**
  * The direction this node's branch leaves its parent, in radians on `[0, 2π)`,
  * counter-clockwise from the positive x-axis. Derived rather than stored, so a
  * subtree radiates the same way on every peer's screen without anybody
