@@ -7,6 +7,7 @@ import {
   compareAddresses,
   isAncestorAddress,
   type Node,
+  type NodeAppearance,
   ownedRefFrom,
   type OwnedRef,
   parseNode,
@@ -17,10 +18,23 @@ import {
 import { DbService } from "../db/db.service";
 import { replacement } from "./patch";
 
-const PATCHABLE = ["title", "tags", "links"] as const;
+const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
 
-/** What a PATCH may carry; the immutable columns are absent by type. */
-export type NodePatch = Partial<Pick<Node, (typeof PATCHABLE)[number]>>;
+/**
+ * What a bulk act may write. A title is not one of them: an act says what a set
+ * of notes have in common, and no two notes share a title.
+ */
+const BULK_WRITABLE = ["tags", "appearance", "published"] as const;
+
+/** What a PATCH may carry; the immutable columns are absent by type. A `null`
+ *  clears its column — see {@link replacement}. */
+export type NodePatch = Partial<Pick<Node, "title" | "tags" | "links">> & {
+  appearance?: NodeAppearance | null;
+};
+
+export type NodeBulkPatch = Partial<Pick<Node, "tags" | "published">> & {
+  appearance?: NodeAppearance | null;
+};
 
 @Injectable()
 export class NodeRepository {
@@ -106,12 +120,44 @@ export class NodeRepository {
     return parseNode(rows[0]);
   }
 
-  async patch(
+  /** Of the notes named, the ones this person actually owns. */
+  async many(did: string, refs: readonly OwnedRef[]): Promise<Node[]> {
+    if (refs.length === 0) return [];
+    return this.read(
+      "SELECT * FROM node WHERE id IN $ids AND created_by = $did",
+      { ids: refs.map((ref) => recordIdFromOwnedRef("node", ref)), did },
+    );
+  }
+
+  patch(did: string, ref: OwnedRef, changes: NodePatch): Promise<Node | null> {
+    return this.set(PATCHABLE, did, ref, changes);
+  }
+
+  /**
+   * One act's writes, each note taking its own value — the tag arithmetic is
+   * per note, so there is a value per row rather than one for the set. A note
+   * whose row is gone by the time the write lands is absent from the answer,
+   * which is what makes the count of what was reached the answer's own.
+   */
+  async patchAll(
+    did: string,
+    changes: ReadonlyMap<OwnedRef, NodeBulkPatch>,
+  ): Promise<Node[]> {
+    const written = await Promise.all(
+      [...changes].map(([ref, patch]) =>
+        this.set(BULK_WRITABLE, did, ref, patch),
+      ),
+    );
+    return written.filter((node): node is Node => node !== null);
+  }
+
+  private async set<T extends object>(
+    columns: readonly Extract<keyof T, string>[],
     did: string,
     ref: OwnedRef,
-    changes: NodePatch,
+    changes: T,
   ): Promise<Node | null> {
-    const set = replacement(PATCHABLE, changes);
+    const set = replacement(columns, changes);
     // The owner is part of the statement, not a check on what comes back: a
     // reference names its owner, so anybody could otherwise write a row by
     // asking for it by name.

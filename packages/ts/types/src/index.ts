@@ -6,6 +6,7 @@ export * from "./codecs.js";
 export * from "./address.js";
 export * from "./tag.js";
 export * from "./ink.js";
+export * from "./appearance.js";
 export * from "./node.js";
 export * from "./document.js";
 export * from "./block.js";

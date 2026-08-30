@@ -5,6 +5,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import {
   type Address,
@@ -13,22 +14,38 @@ import {
   createOwnedRecordId,
   entityView,
   isRootAddress,
+  isUnstyled,
+  MAX_TAGS_PER_NODE,
   type Node,
+  type NodeAppearance,
+  type NodeBulkActSchema,
+  type NodeBulkRequestSchema,
+  type NodeBulkResult,
   type NodeView,
   nowIso,
   type OwnedRef,
   ownedRefFrom,
   parseNode,
   type TagCount,
+  type Tags,
+  TagsSchema,
   type UpdateNodeRequestSchema,
 } from "@sloppy/types";
 import type { z } from "zod";
+import { MediaService } from "../media/media.service";
+import type { Delegation } from "../syr/syr.service";
 import { nextChildAddress } from "./address-assignment";
+import type { NodeBulkPatch } from "./node.repository";
 import { NodeRepository } from "./node.repository";
 import { SerialQueue } from "./serial-queue";
 
 type CreateRequest = z.output<typeof CreateNodeRequestSchema>;
 type UpdateRequest = z.output<typeof UpdateNodeRequestSchema>;
+type BulkRequest = z.output<typeof NodeBulkRequestSchema>;
+type ChangingAct = Exclude<
+  z.output<typeof NodeBulkActSchema>,
+  { act: "delete" }
+>;
 
 /**
  * A writer in another process gets past the queue and is refused by the unique
@@ -40,7 +57,10 @@ const ADDRESS_ATTEMPTS = 8;
 export class NodeService {
   private readonly creations = new SerialQueue();
 
-  constructor(private readonly nodes: NodeRepository) {}
+  constructor(
+    private readonly nodes: NodeRepository,
+    private readonly media: MediaService,
+  ) {}
 
   async list(
     did: string,
@@ -76,8 +96,18 @@ export class NodeService {
     did: string,
     ref: OwnedRef,
     request: UpdateRequest,
+    delegation: Delegation | undefined,
   ): Promise<NodeView> {
-    const updated = await this.nodes.patch(did, ref, request);
+    const updated = await this.nodes.patch(
+      did,
+      ref,
+      request.appearance === undefined
+        ? request
+        : {
+            ...request,
+            appearance: await this.look(request.appearance, delegation),
+          },
+    );
     if (!updated) throw new NotFoundException("That note is not here.");
     return entityView(updated);
   }
@@ -87,6 +117,88 @@ export class NodeService {
     const node = await this.nodes.find(did, ref);
     if (!node) return;
     await this.nodes.remove(did, await this.nodes.subtree(did, node));
+  }
+
+  /**
+   * One act over the notes somebody chose. Only their own are reached, and a
+   * note that has gone since their graph was drawn is counted rather than
+   * treated as a failure — one stale mark in a selection of forty is something
+   * to mention, not a reason to refuse the other thirty-nine.
+   */
+  async bulk(
+    did: string,
+    request: BulkRequest,
+    delegation: Delegation | undefined,
+  ): Promise<NodeBulkResult> {
+    const asked = [...new Set(request.notes)];
+    const mine = await this.nodes.many(did, asked);
+    if (mine.length === 0) {
+      throw new NotFoundException(
+        "None of those notes are here any more. Reload your graph and try again.",
+      );
+    }
+
+    if (request.act.act === "delete") {
+      const going = new Map<OwnedRef, Node>();
+      for (const kin of await Promise.all(
+        mine.map((note) => this.nodes.subtree(did, note)),
+      )) {
+        for (const node of kin) going.set(ownedRefFrom(node.id), node);
+      }
+      await this.nodes.remove(did, [...going.values()]);
+      return answer(asked.length, mine.length, []);
+    }
+
+    const written = await this.nodes.patchAll(
+      did,
+      await this.writes(mine, request.act, delegation),
+    );
+    return answer(asked.length, written.length, written.map(entityView));
+  }
+
+  /** What each note the act reached is about to be set to. */
+  private async writes(
+    notes: readonly Node[],
+    act: ChangingAct,
+    delegation: Delegation | undefined,
+  ): Promise<Map<OwnedRef, NodeBulkPatch>> {
+    const each = (of: (note: Node) => NodeBulkPatch) =>
+      new Map(notes.map((note) => [ownedRefFrom(note.id), of(note)] as const));
+
+    switch (act.act) {
+      case "tag":
+      case "untag":
+        return each((note) => ({
+          tags: retag(note.tags, act.act === "tag", act.tags),
+        }));
+      case "set_appearance": {
+        const appearance = await this.look(act.appearance, delegation);
+        return each(() => ({ appearance }));
+      }
+      case "publish":
+      case "unpublish":
+        return each(() => ({ published: act.act === "publish" }));
+    }
+  }
+
+  /**
+   * The look about to be written. A picture is checked against the person's own
+   * store first — owning one is not enough to use it for anything,
+   * docs/ARCHITECTURE.md § "Pictures" — and the address that check answers with
+   * is deliberately not kept, because a note's picture is read back through the
+   * session of whoever owns it.
+   */
+  private async look(
+    appearance: NodeAppearance | null,
+    delegation: Delegation | undefined,
+  ): Promise<NodeAppearance | null> {
+    if (isUnstyled(appearance)) return null;
+    const preview = appearance?.preview;
+    if (preview !== undefined) {
+      if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+      await this.media.ownPicture(delegation, preview, "block");
+    }
+    return appearance;
   }
 
   /**
@@ -162,6 +274,32 @@ export class NodeService {
       }
     }
   }
+}
+
+function answer(
+  asked: number,
+  reached: number,
+  notes: NodeView[],
+): NodeBulkResult {
+  return { reached, missed: asked - reached, notes };
+}
+
+/**
+ * A note's tags after an act. `TagsSchema` decides the answer, so what is
+ * checked and what is stored are one computation — and a set it refuses is a
+ * note that would come back unreadable rather than merely over-tagged.
+ */
+function retag(tags: Tags, adding: boolean, named: Tags): Tags {
+  const after = adding
+    ? [...tags, ...named]
+    : tags.filter((tag) => !named.includes(tag));
+  const parsed = TagsSchema.safeParse(after);
+  if (!parsed.success) {
+    throw new BadRequestException(
+      `A note carries at most ${MAX_TAGS_PER_NODE} tags, and this would take one of these past that. Take a few off first.`,
+    );
+  }
+  return parsed.data;
 }
 
 function taken(address: Address): BadRequestException {

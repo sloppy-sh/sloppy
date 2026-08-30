@@ -170,15 +170,19 @@ unaffordable. The style changes the chrome around the graph and nothing inside i
 ## The graph's colour language
 
 This is the signature system, and it is built on one constraint: **at graph scale there
-are exactly three cheap perceptual channels — hue, lightness, and form — and each is
-spent on exactly one thing.** Two meanings sharing a channel is how a graph view becomes
+are exactly three cheap perceptual channels — hue, lightness, and form — and no two
+meanings may share one.** Two meanings sharing a channel is how a graph view becomes
 decorative.
 
-| Channel                | Carries                               | Why this channel                                                                      |
-| ---------------------- | ------------------------------------- | ------------------------------------------------------------------------------------- |
-| **Hue**                | the tags the reader has selected      | the selection is the question the reader just asked, so it gets the loudest channel   |
-| **Lightness**          | genealogical depth                    | depth is ordinal, and lightness is the only channel read as ordered without a legend  |
-| **Form** (shape, edge) | provenance — own / published / pulled | provenance must survive greyscale, colour-blindness and full zoom-out, so never a hue |
+| Channel                        | Carries                                              | Why this channel                                                                                             |
+| ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Hue**                        | the tags the reader has selected                     | the selection is the question the reader just asked, so it gets the loudest channel                          |
+| **Lightness**                  | genealogical depth                                   | depth is ordinal, and lightness is the only channel read as ordered without a legend                         |
+| **Form** (shape, edge, radius) | provenance, the author's look, and the canvas's mode | form survives greyscale, colour-blindness and full zoom-out, so anything that must never be a hue lives here |
+
+Hue and lightness each answer one question. Form answers several, because everything
+that must survive greyscale ends up in it — so form is subdivided instead, and
+§ "The mark" is the division. Within it, no two meanings share a channel either.
 
 ### Hue — the tags you selected, and only those
 
@@ -234,6 +238,64 @@ A pulled region additionally carries a written attribution at its origin node, a
 its original addresses. **Whose thought this is must never be a question the reader has to
 work out** (PRODUCT.md principle 4) — so it is carried by shape, by a written label, and
 only incidentally by anything else.
+
+### The mark — four meanings on one small disc
+
+A note is one small mark, and four separate things have to be readable off it: where the
+thought came from, how its author asked it to look, whether it is one of the notes a link
+is being pointed at, and whether it is one of the notes somebody has chosen to act on.
+Each gets its own channel.
+
+| Channel on the mark                               | Carries                                                 |
+| ------------------------------------------------- | ------------------------------------------------------- |
+| Fill hue                                          | the selected tags (§ Hue)                               |
+| Fill lightness                                    | genealogical depth (§ Lightness)                        |
+| Fill alpha                                        | carries none of the selected tags (§ Hue)               |
+| **Its own edge** — present, and whether broken    | provenance (§ Form)                                     |
+| **A ring inside it** — weight, and whether broken | the author's look                                       |
+| **Its radius**                                    | how much is folded into it, scaled by the author's look |
+| **The disc's imagery**                            | the author's preview picture                            |
+| **The orbit outside it**                          | the mode the canvas is in — picking, or choosing        |
+
+Four rulings hold that table together:
+
+- **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
+  ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
+  they separate by radius rather than by which of them gets to be dashed. A pulled draft
+  is two dashed rings at two radii, and reads as two facts. Provenance is the one that
+  must never be a question the reader works out (PRODUCT.md principle 4), so it is the one
+  that does not move.
+- **Picking and choosing share the orbit outside the mark**, because a canvas is in one
+  mode or the other and never both: you are picking the note a link points at, or you are
+  choosing notes to act on. They are still drawn apart so nobody has to know that —
+  **picking outlines, choosing fills.** A hairline ring in the orbit is a note already
+  linked and a heavier one is the note being linked from; a solid band in that same orbit
+  is a note in the chosen set. The chrome names the mode; the mark says membership.
+- **Size stays the fold's.** A radius says how much thought is folded into a mark, and a
+  look scales that rather than replacing it. The scale is bounded so the largest a leaf
+  can be styled to is smaller than the smallest mega-node, and `@sloppy/graph` holds that
+  with a test — a look that could make a leaf read as a folded subtree has taken a channel
+  that was not its.
+- **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
+  the question the hue channel answers. The notes somebody has picked out to act on are
+  **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.
+
+### A note's look never uses colour
+
+Every channel a look may spend is shape or imagery: ring weight, whether the ring is
+broken, mark radius, and a picture. There is no colour picker on a note, and a build that
+grows one has grown a bug.
+
+Hue here is the reader's own question — the tags THEY selected, in the order they selected
+them — and it has to stay legible across a graph pulled whole from somebody else, styled
+by an author the reader never met. A note carrying a colour of its own would answer a
+question nobody asked, in the one channel reserved for the question they did.
+`NodeAppearanceSchema` in `@sloppy/types` therefore carries no colour field at any level.
+
+The VALUES those channels take are an open set, for the same reason the element kinds
+inside a block are: a look this build has no renderer for is stored and handed back
+untouched, and draws meanwhile as an unstyled note does. Adding a look is a value; adding
+a channel is a change to the table above.
 
 ### Edges
 

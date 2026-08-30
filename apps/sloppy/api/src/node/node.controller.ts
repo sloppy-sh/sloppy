@@ -12,6 +12,8 @@ import {
 } from "@nestjs/common";
 import {
   CreateNodeRequestSchema,
+  type NodeBulkResult,
+  NodeBulkRequestSchema,
   type NodeView,
   type TagCount,
   UpdateNodeRequestSchema,
@@ -70,6 +72,19 @@ export class NodeController {
     );
   }
 
+  /** One act over the notes somebody chose, whether that is one of them or forty. */
+  @Post("bulk")
+  act(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<NodeBulkResult> {
+    return this.nodes.bulk(
+      viewerDid(req),
+      parseBody(NodeBulkRequestSchema, body),
+      req.delegation,
+    );
+  }
+
   @Patch(":did/:localId")
   update(
     @Req() req: AuthedRequest,
@@ -81,6 +96,7 @@ export class NodeController {
       viewerDid(req),
       requireRef(did, localId),
       parsePatch(UpdateNodeRequestSchema, body),
+      req.delegation,
     );
   }
 

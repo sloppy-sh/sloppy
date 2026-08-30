@@ -22,6 +22,8 @@ import {
   HealthReportSchema,
   type MediaAsset,
   MediaAssetSchema,
+  type NodeBulkRequest,
+  type NodeBulkResult,
   type NodeView,
   type OwnedMediaAsset,
   OwnedMediaAssetSchema,
@@ -44,6 +46,7 @@ import {
   UploadTicketSchema,
   type Viewer,
   ViewerSchema,
+  parseNodeBulkResult,
   parseNodeView,
 } from "@sloppy/types";
 import { SloppyApiError, notImplemented } from "./errors.js";
@@ -284,6 +287,19 @@ export class SloppyClient {
 
   async deleteNode(ref: OwnedRef): Promise<void> {
     await this.del(`/nodes${refPath(ref)}`);
+  }
+
+  /**
+   * One act over the notes somebody chose — tagging, untagging, a look,
+   * publishing, or deleting them. Which act it is, is a value, so this is the
+   * only route any of them takes and a selection of one is not a special case.
+   *
+   * Only the caller's own notes are reached; `missed` counts the rest, which is
+   * something to say rather than a failure. Unpublishing stops a note being
+   * readable from here on — a peer who already pulled it keeps their copy.
+   */
+  async actOnNodes(request: NodeBulkRequest): Promise<NodeBulkResult> {
+    return parseNodeBulkResult(await this.send("POST", "/nodes/bulk", request));
   }
 
   /** Every tag the caller has used, most-used first. A tag is written by

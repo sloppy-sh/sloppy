@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { addressDepth, AddressSchema, RootAddressSchema } from "./address.js";
+import { NodeAppearanceSchema } from "./appearance.js";
 import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { TagsSchema } from "./tag.js";
 
@@ -29,6 +30,12 @@ export const NodeSchema = OwnedEntitySchema.extend({
    */
   links: z.array(OwnedRefSchema).default([]),
   published: z.boolean().default(false),
+  /**
+   * How its author asked the mark to be drawn. Absent is a note nobody styled,
+   * which is what `appearance.ts` says the mark then draws as — and it is why
+   * this carries no default: a look is authored, and no look is not one.
+   */
+  appearance: NodeAppearanceSchema.optional(),
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
@@ -102,14 +109,61 @@ export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
 /**
  * `address`, `depth` and `origin` are absent because they are immutable, and
- * `published` because publishing is its own act with its own consequences.
- * `parent` is absent because a move writes an alias rather than a new address,
- * and that mechanism does not exist yet.
+ * `published` because publishing is its own act with its own consequences —
+ * {@link NodeBulkActSchema} is where it is asked for, whether the person chose
+ * one note or forty. `parent` is absent because a move writes an alias rather
+ * than a new address, and that mechanism does not exist yet.
  */
 export const UpdateNodeRequestSchema = z.object({
   title: z.string().max(512).optional(),
   /** The WHOLE set, never a delta: a tag absent from it is a tag removed. */
   tags: TagsSchema.optional(),
   links: z.array(OwnedRefSchema).optional(),
+  /** `null` takes the look back off and leaves the note unstyled; absent leaves
+   *  whatever look it has alone. */
+  appearance: NodeAppearanceSchema.nullable().optional(),
 });
 export type UpdateNodeRequest = z.input<typeof UpdateNodeRequestSchema>;
+
+/**
+ * How many notes one act may reach. A person choosing marks on a canvas stays
+ * well inside it; the bound is what keeps one tap from rewriting a graph.
+ */
+export const MAX_NOTES_PER_BULK_ACT = 200;
+
+/**
+ * One act, over however many notes somebody chose. Keyed by `act` so a fifth
+ * act is a member here and a branch in the service — never a second route, and
+ * never a field on every request that five acts out of six leave empty.
+ *
+ * Choosing one note is not a different shape from choosing forty, so none of
+ * these has a single-note twin somewhere else.
+ */
+export const NodeBulkActSchema = z.discriminatedUnion("act", [
+  /** Added to what each note already carries, rather than replacing it. */
+  z.object({ act: z.literal("tag"), tags: TagsSchema }),
+  /** Taken off; a note that never carried one of these is left alone. */
+  z.object({ act: z.literal("untag"), tags: TagsSchema }),
+  /** `null` leaves every note it reaches unstyled. */
+  z.object({
+    act: z.literal("set_appearance"),
+    appearance: NodeAppearanceSchema.nullable(),
+  }),
+  z.object({ act: z.literal("publish") }),
+  z.object({ act: z.literal("unpublish") }),
+  /** Each note leaves with everything that sprang from it, and with its blocks. */
+  z.object({ act: z.literal("delete") }),
+]);
+export type NodeBulkAct = z.input<typeof NodeBulkActSchema>;
+
+export const NodeBulkRequestSchema = z.object({
+  notes: z
+    .array(OwnedRefSchema)
+    .min(1, "Choose a note first.")
+    .max(
+      MAX_NOTES_PER_BULK_ACT,
+      `Sloppy can change ${MAX_NOTES_PER_BULK_ACT} notes at a time. Choose fewer.`,
+    ),
+  act: NodeBulkActSchema,
+});
+export type NodeBulkRequest = z.input<typeof NodeBulkRequestSchema>;

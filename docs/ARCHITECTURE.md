@@ -268,6 +268,7 @@ node:{ created_by: <did>, id: <ulid> }
   tags        string[]  normalized, deduplicated, sorted — @sloppy/types' TagsSchema
   links       ref[]     non-genealogical associative links
   published   bool
+  appearance  object?   the look its author gave the mark; absent is unstyled
   created_at  iso       immutable — it is a field of the signed payload
   updated_at  iso
   content_signature, signed_payload_json, signing_device_public_key
@@ -359,6 +360,22 @@ The rules AI.md's foundation-wave section states, applied here:
   a row that gets past it is wrong for as long as it exists. `ASSERT $value > 0` pins the
   convention on top of that: a root is 1, so a writer that counted from the other end fails
   at its first write rather than mis-slicing every region it goes on to store.
+
+- **`appearance` is authored, and that is what makes storing it right.** The rule it looks
+  like it breaks — nothing derivable from an address is stored — is about facts the address
+  ALREADY states: the sector, the collapse key, the depth. Nothing computes a note's look
+  from anything; a person chose it, so there is no function for the row to fall out of step
+  with, and the only other place it could live is a second store. It is a plain column on a
+  SCHEMALESS table, because the database has nothing to enforce about it that
+  `@sloppy/types`' `appearance.ts` does not — and that schema bounds it by SHAPE rather than
+  by vocabulary, the way a block's document is bounded, so a look this build has no renderer
+  for is carried untouched instead of refused. DESIGN.md § "The mark" is the doc of record
+  for which channel means what, and for the ruling that none of them is a colour.
+
+  The preview picture is stored as an upload id and never as an address or a URL —
+  § "Pictures" is why. The id outlives the bytes: a picture deleted from the person's store
+  leaves it standing, and the mark then draws exactly as a mark with no picture, because
+  nothing sweeps a row for a blob somebody else's store no longer holds.
 
 - `schema.ts` is one contiguous string literal, so it is foundation-wave territory rather
   than per-track. Production SurrealDB serves only `DEFINE`d tables; dev does not enforce

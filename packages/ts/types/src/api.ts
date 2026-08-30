@@ -73,6 +73,28 @@ export function parseNodeView(value: unknown): NodeView {
 }
 
 /**
+ * What one bulk act did.
+ *
+ * `notes` is what the act left behind — every note it reached, as that note now
+ * stands — and is empty where the act was to delete them, which is why the
+ * count is its own field. `missed` is the rest of what was asked for: gone, or
+ * never the caller's. An act that reaches nothing is refused instead, so a
+ * reader of these two numbers is always reading a partial success.
+ */
+export const NodeBulkResultSchema = z.object({
+  reached: z.int().nonnegative(),
+  missed: z.int().nonnegative(),
+  notes: z.array(NodeViewSchema),
+});
+export type NodeBulkResult = z.infer<typeof NodeBulkResultSchema>;
+
+/** {@link parseNodeView}'s boundary over a whole answer. */
+export function parseNodeBulkResult(value: unknown): NodeBulkResult {
+  const result = NodeBulkResultSchema.parse(value);
+  return { ...result, notes: result.notes.map(parseNodeView) };
+}
+
+/**
  * Who the API believes is calling.
  *
  * `delegate_public_key` is the PUBLIC half of the key the syr instance signs

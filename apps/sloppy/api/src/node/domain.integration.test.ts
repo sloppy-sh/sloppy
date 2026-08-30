@@ -19,6 +19,8 @@ import {
   type BlockView,
   compareAddresses,
   MAX_DOCUMENT_NESTING,
+  MAX_NOTES_PER_BULK_ACT,
+  type NodeBulkResult,
   type NodeView,
   type OwnedRef,
   siblingAddress,
@@ -384,9 +386,11 @@ describe("the domain routes", () => {
     scenario("survives two writers with no queue in common", async () => {
       const { NodeService } = await import("./node.service");
       const { NodeRepository } = await import("./node.repository");
+      const { MediaService } = await import("../media/media.service");
       const repository = app.get(NodeRepository);
-      const one = new NodeService(repository);
-      const other = new NodeService(repository);
+      const media = app.get(MediaService);
+      const one = new NodeService(repository, media);
+      const other = new NodeService(repository, media);
 
       const parent = await newNode(ada, { title: "Two writers" });
       const born = await Promise.all(
@@ -970,5 +974,212 @@ describe("the domain routes", () => {
       });
       expect(next.address).toBe(`${root.address}c`);
     });
+  });
+  describe("a note's look", () => {
+    scenario(
+      "is stored as its author set it, and taken back off whole",
+      async () => {
+        const note = await newNode(ada, { title: "Styled" });
+        const look = { ring_weight: "heavy", ring_style: "dashed" };
+
+        const styled = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+          appearance: look,
+        })) as NodeView;
+        expect(styled.appearance).toEqual(look);
+
+        const renamed = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+          title: "Still styled",
+        })) as NodeView;
+        expect(renamed.appearance).toEqual(look);
+
+        const bare = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+          appearance: null,
+        })) as NodeView;
+        expect(bare.appearance).toBeUndefined();
+        expect(
+          (await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView,
+        ).toHaveProperty("title", "Still styled");
+      },
+    );
+
+    scenario(
+      "survives a round trip through a build that cannot draw it",
+      async () => {
+        const note = await newNode(ada, { title: "From a newer Sloppy" });
+        const later = { ring_weight: "gossamer", mark_radius: "enormous" };
+
+        await ok("PATCH", `/nodes/${at(note.ref)}`, ada, { appearance: later });
+        const read = (await ok(
+          "GET",
+          `/nodes/${at(note.ref)}`,
+          ada,
+        )) as NodeView;
+        expect(read.appearance).toEqual(later);
+      },
+    );
+
+    scenario("refuses a picture the person does not have", async () => {
+      const note = await newNode(ada, { title: "Borrowed" });
+      const asked = await call("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        appearance: { preview: `${bram.did}/not-theirs` },
+      });
+      expect(asked.status).toBe(404);
+    });
+  });
+
+  describe("one act over a selection", () => {
+    const bulk = (person: Person, notes: OwnedRef[], act: unknown) =>
+      ok("POST", "/nodes/bulk", person, {
+        notes,
+        act,
+      }) as Promise<NodeBulkResult>;
+
+    scenario("adds and takes off tags without touching the rest", async () => {
+      const one = await newNode(ada, { title: "One", tags: ["biology"] });
+      const two = await newNode(ada, { title: "Two", tags: ["seed"] });
+      const chosen = [one.ref, two.ref];
+
+      const tagged = await bulk(ada, chosen, {
+        act: "tag",
+        tags: ["question"],
+      });
+      expect(tagged).toMatchObject({ reached: 2, missed: 0 });
+      expect(tagged.notes.map((note) => note.tags)).toEqual([
+        ["biology", "question"],
+        ["question", "seed"],
+      ]);
+
+      const untagged = await bulk(ada, chosen, {
+        act: "untag",
+        tags: ["question", "biology"],
+      });
+      expect(untagged.notes.map((note) => note.tags)).toEqual([[], ["seed"]]);
+    });
+
+    scenario("publishes and unpublishes what was chosen", async () => {
+      const note = await newNode(ada, { title: "Readable" });
+
+      const published = await bulk(ada, [note.ref], { act: "publish" });
+      expect(published.notes[0].published).toBe(true);
+
+      const withdrawn = await bulk(ada, [note.ref], { act: "unpublish" });
+      expect(withdrawn.notes[0].published).toBe(false);
+    });
+
+    scenario("sets one look across every note it reaches", async () => {
+      const one = await newNode(ada, { title: "One" });
+      const two = await newNode(ada, { title: "Two" });
+      const look = { mark_radius: "large" };
+
+      const styled = await bulk(ada, [one.ref, two.ref], {
+        act: "set_appearance",
+        appearance: look,
+      });
+      expect(styled.notes.map((note) => note.appearance)).toEqual([look, look]);
+
+      const bare = await bulk(ada, [one.ref, two.ref], {
+        act: "set_appearance",
+        appearance: null,
+      });
+      expect(bare.notes.map((note) => note.appearance)).toEqual([
+        undefined,
+        undefined,
+      ]);
+    });
+
+    scenario(
+      "takes each chosen note with its branch and its sections",
+      async () => {
+        const root = await newNode(ada, { title: "Root" });
+        const doomed = await newNode(ada, { from: springsFrom(root) });
+        const under = await newNode(ada, { from: springsFrom(doomed) });
+        const alsoDoomed = await newNode(ada, { from: springsFrom(root) });
+        const block = (await ok("POST", "/blocks", ada, {
+          node: under.ref,
+          content: { type: "doc", content: [] },
+        })) as BlockView;
+
+        const gone = await bulk(ada, [doomed.ref, alsoDoomed.ref], {
+          act: "delete",
+        });
+        expect(gone).toEqual({ reached: 2, missed: 0, notes: [] });
+
+        const left = (await ok(
+          "GET",
+          `/nodes?origin=${encodeURIComponent(root.ref)}`,
+          ada,
+        )) as NodeView[];
+        expect(left.map((node) => node.ref)).toEqual([root.ref]);
+
+        const { DbService } = await import("../db/db.service");
+        const { recordIdFromOwnedRef } = await import("@sloppy/types");
+        const [orphans] = await app
+          .get(DbService)
+          .handle.query<[unknown[]]>("SELECT * FROM block WHERE id = $id", {
+            id: recordIdFromOwnedRef("block", block.ref),
+          });
+        expect(orphans).toEqual([]);
+      },
+    );
+
+    scenario("reaches only the caller's own notes", async () => {
+      const mine = await newNode(ada, { title: "Ada's" });
+      const theirs = await newNode(bram, { title: "Bram's" });
+
+      const acted = await bulk(ada, [mine.ref, theirs.ref], {
+        act: "tag",
+        tags: ["mine"],
+      });
+      expect(acted).toMatchObject({ reached: 1, missed: 1 });
+      expect(acted.notes[0].ref).toBe(mine.ref);
+      expect(
+        ((await ok("GET", `/nodes/${at(theirs.ref)}`, bram)) as NodeView).tags,
+      ).toEqual([]);
+    });
+
+    scenario("is refused when it reaches nothing, in words", async () => {
+      const theirs = await newNode(bram, { title: "Bram's alone" });
+      const refused = await call("POST", "/nodes/bulk", ada, {
+        notes: [theirs.ref],
+        act: { act: "delete" },
+      });
+
+      expect(refused.status).toBe(404);
+      expect(JSON.stringify(refused.body)).toMatch(/Reload your graph/);
+      expect(
+        ((await ok("GET", `/nodes/${at(theirs.ref)}`, bram)) as NodeView).title,
+      ).toBe("Bram's alone");
+    });
+
+    scenario(
+      "refuses a selection with nothing in it, and one too large",
+      async () => {
+        const note = await newNode(ada, { title: "One" });
+        const act = { act: "publish" };
+
+        expect(
+          (await call("POST", "/nodes/bulk", ada, { notes: [], act })).status,
+        ).toBe(400);
+        expect(
+          (
+            await call("POST", "/nodes/bulk", ada, {
+              notes: Array.from(
+                { length: MAX_NOTES_PER_BULK_ACT + 1 },
+                () => note.ref,
+              ),
+              act,
+            })
+          ).status,
+        ).toBe(400);
+        expect(
+          (await call("POST", "/nodes/bulk", ada, { notes: [note.ref] }))
+            .status,
+        ).toBe(400);
+        expect(
+          (await call("POST", "/nodes/bulk", null, { notes: [note.ref], act }))
+            .status,
+        ).toBe(401);
+      },
+    );
   });
 });
