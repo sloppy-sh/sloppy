@@ -4,6 +4,7 @@ import {
   type AddressSegment,
   addressDepth,
   addressSector,
+  alongRun,
   childAddress,
   compareAddresses,
   formatAddress,
@@ -13,6 +14,7 @@ import {
   isRootAddress,
   parentAddress,
   parseAddress,
+  runPairs,
   siblingAddress,
 } from "./address.js";
 
@@ -229,6 +231,88 @@ describe("ordering", () => {
       "2",
       "10",
     ]);
+  });
+});
+
+describe("the run of thought", () => {
+  const alongside = (...addresses: string[]) =>
+    addresses.map((address) => ({ address }));
+
+  it("pairs each note with the one that follows it, however they arrive", () => {
+    expect(runPairs(alongside("1c", "1a", "1b"))).toEqual([
+      [{ address: "1a" }, { address: "1b" }],
+      [{ address: "1b" }, { address: "1c" }],
+    ]);
+  });
+
+  it("closes over a note taken out of the middle", () => {
+    expect(runPairs(alongside("1", "3"))).toEqual([
+      [{ address: "1" }, { address: "3" }],
+    ]);
+    expect(alongRun("1", alongside("1", "3")).after).toEqual({ address: "3" });
+  });
+
+  it("pairs nothing where there is nothing to follow", () => {
+    expect(runPairs(alongside())).toEqual([]);
+    expect(runPairs(alongside("1a"))).toEqual([]);
+  });
+
+  it("says what a note sits between", () => {
+    expect(alongRun("1b", alongside("1a", "1b", "1d"))).toEqual({
+      before: { address: "1a" },
+      after: { address: "1d" },
+    });
+  });
+
+  it("says nothing past either end of the run", () => {
+    const run = alongside("1a", "1b");
+    expect(alongRun("1a", run).before).toBeNull();
+    expect(alongRun("1b", run).after).toBeNull();
+  });
+
+  it("says nothing for a note that is not one of these", () => {
+    expect(alongRun("2", alongside("1a", "1b"))).toEqual({
+      before: null,
+      after: null,
+    });
+  });
+
+  /** A run with notes taken out of it and the rest shuffled — what a cache and
+   *  a canvas each hand this, neither of them in order. */
+  function scattered(seed: number): { address: Address }[] {
+    const random = seededRandom(seed);
+    const run = [{ address: "1a" as Address }];
+    let address: Address = "1a";
+    for (let step = 0; step < 24; step++) {
+      address = siblingAddress(address);
+      if (random() < 0.7) run.push({ address });
+    }
+    for (let at = run.length - 1; at > 0; at--) {
+      const swap = Math.floor(random() * (at + 1));
+      [run[at], run[swap]] = [run[swap], run[at]];
+    }
+    return run;
+  }
+
+  // The canvas draws an edge per pair and the note surface walks by neighbour,
+  // so both are held to address order here rather than to each other.
+  it("pairs and walks by address order, whatever a run is missing", () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const run = scattered(seed);
+      const order = [...run].sort((a, b) =>
+        compareAddresses(a.address, b.address),
+      );
+
+      expect(runPairs(run)).toEqual(
+        order.slice(1).map((note, at) => [order[at], note]),
+      );
+      order.forEach((note, at) => {
+        expect(alongRun(note.address, run)).toEqual({
+          before: order[at - 1] ?? null,
+          after: order[at + 1] ?? null,
+        });
+      });
+    }
   });
 });
 

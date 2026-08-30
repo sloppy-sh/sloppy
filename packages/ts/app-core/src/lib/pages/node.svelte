@@ -3,12 +3,17 @@
 	// the top because it is what a person cites and a peer resolves.
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import {
+		alongRun,
 		compareOrd,
 		type BlockView,
 		type CreateBlockRequest,
@@ -70,17 +75,54 @@
 
 	const node = $derived(nodes.get(ref));
 	const children = $derived(nodes.children(ref));
+	const parent = $derived(node?.parent ? nodes.get(node.parent) : undefined);
 	const emoji = $derived(noteEmoji(session.viewer?.did ?? ''));
 	const suggestions = $derived(tags.all.map((entry) => entry.tag));
 
-	let blocks = $state<BlockView[]>([]);
-	let loading = $state(true);
-	let unreachable = $state<string | null>(null);
+	/** The notes this one is alongside, grouped the way the canvas groups them
+	 *  for the run it draws: what sprang from the same note, or an author's own
+	 *  branches. */
+	const alongside = $derived.by(() => {
+		if (!node) return [];
+		return node.parent
+			? nodes.children(node.parent)
+			: nodes.region().filter((root) => root.created_by === node.created_by);
+	});
+
+	const along = $derived(node ? alongRun(node.address, alongside) : { before: null, after: null });
+
+	/** Every way out of this note, in the shape the graph is drawn in. A way with
+	 *  nowhere to go keeps its place and stops answering, so a walk presses the
+	 *  same button in the same spot the whole way along. */
+	const ways = $derived([
+		{ icon: ChevronUp, says: 'The note this one grew out of', to: parent ?? null },
+		{ icon: ChevronLeft, says: 'The note before this', to: along.before },
+		{ icon: ChevronRight, says: 'The note after this', to: along.after },
+		{ icon: ChevronDown, says: 'The first note under this', to: children[0] ?? null }
+	]);
+
+	/** Stacks already read, oldest first: a note whose sections are in hand must
+	 *  not blank itself while the server says them again. */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- nothing renders off this, and the effect that reads it also writes it: a tracked read would re-open the note on every write.
+	const read = new Map<OwnedRef, BlockView[]>();
+	/** Reads in the air for a note nobody has opened yet. */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- as above.
+	const reading = new Set<OwnedRef>();
+
+	/** The stack on screen and the note it is for. Named so the next note draws
+	 *  from memory in the frame it opens in, not a frame later. */
+	let shown = $state<{ of: OwnedRef; stack: BlockView[] } | null>(null);
+	/** The note a read would not answer for, and what to tell whoever opened it. */
+	let unread = $state<{ of: OwnedRef; says: string } | null>(null);
+	const blocks = $derived(shown?.of === ref ? shown.stack : (read.get(ref) ?? []));
+	const unreachable = $derived(unread?.of === ref ? unread.says : null);
+	const loading = $derived(shown?.of !== ref && !unreachable && read.get(ref) === undefined);
 	/** The note whose title would not save, and what to tell the person writing it. */
 	let unsaved = $state<{ ref: OwnedRef; message: string } | null>(null);
 	let adding = $state(false);
 	let refused = $state<string | null>(null);
 	let titleField = $state<HTMLTextAreaElement | null>(null);
+	let noteBody = $state<HTMLElement | null>(null);
 
 	/** Which act the shapes are being offered for: a note under this one, the one
 	 *  after it, or this note itself. */
@@ -92,6 +134,20 @@
 	let shapeRefused = $state<string | null>(null);
 	/** Block writes the writing surface has in the air. */
 	let surfaceWrites = 0;
+	/** How many writes have landed in the note on screen. An answer to a read
+	 *  started before one of them says less than what is already in hand. */
+	let landed = 0;
+	/** Bumped when the writing surface has to be built again from `blocks`. */
+	let rebuilt = $state(0);
+
+	/** The caret is in the note's own writing — a section, or the title. The
+	 *  writing surface's own bar rides the foot of the note while it is, and a
+	 *  way out under the thumb of somebody mid-sentence is a way out taken by
+	 *  accident. */
+	let writing = $state(false);
+	/** A tap on that bar takes the caret off the writing for an instant, and on
+	 *  touch there is no mousedown to refuse. */
+	let stopped: ReturnType<typeof setTimeout> | undefined;
 
 	let removing = $state(false);
 	let undeletable = $state<string | null>(null);
@@ -112,6 +168,62 @@
 	const title = $derived(typed?.ref === ref ? typed.title : (node?.title ?? ''));
 
 	const byOrd = (a: BlockView, b: BlockView) => compareOrd(a.ord, b.ord);
+
+	/** How many notes back a walk stays instant. */
+	const REMEMBERED = 24;
+
+	function remember(of: OwnedRef, stack: BlockView[]): void {
+		read.delete(of);
+		read.set(of, stack);
+		for (const oldest of read.keys()) {
+			if (read.size <= REMEMBERED) break;
+			read.delete(oldest);
+		}
+	}
+
+	/** Which note's stack a block sits in, of the stacks in hand. */
+	function holderOf(block: OwnedRef): OwnedRef | null {
+		if (blocks.some((held) => held.ref === block)) return ref;
+		for (const [of, stack] of read) {
+			if (stack.some((held) => held.ref === block)) return of;
+		}
+		return null;
+	}
+
+	/** Puts a write into the stack of the note it was made in, which is not
+	 *  always the note on screen: a writing surface sends its last write as it is
+	 *  taken down, by which time the reader has walked on. */
+	function amend(of: OwnedRef, change: (stack: BlockView[]) => BlockView[]): void {
+		const held = of === ref ? blocks : read.get(of);
+		if (!held) return;
+		const stack = change(held).sort(byOrd);
+		remember(of, stack);
+		if (of !== ref) return;
+		shown = { of, stack };
+		landed += 1;
+	}
+
+	/** Whether a stack read back says anything the one in hand does not. */
+	function differs(held: readonly BlockView[], answer: readonly BlockView[]): boolean {
+		if (held.length !== answer.length) return true;
+		return held.some(
+			(block, at) =>
+				block.ref !== answer[at].ref ||
+				block.ord !== answer[at].ord ||
+				JSON.stringify(block.content) !== JSON.stringify(answer[at].content)
+		);
+	}
+
+	async function readAhead(of: OwnedRef): Promise<void> {
+		reading.add(of);
+		try {
+			remember(of, await api.listBlocks(of));
+		} catch {
+			// Nobody asked for this note yet, so nothing is owed when it will not read.
+		} finally {
+			reading.delete(of);
+		}
+	}
 
 	/** Past one section the person has made their own shape, and offering one
 	 *  would be in the way rather than in time. */
@@ -204,6 +316,18 @@
 		}
 	});
 
+	/** The note scrolls inside a surface it does not own, so the next note along
+	 *  is started at ITS top by scrolling whatever that surface turns out to be. */
+	function startAtTheTop(): void {
+		for (let box = noteBody?.parentElement; box; box = box.parentElement) {
+			const flow = getComputedStyle(box).overflowY;
+			if (flow === 'auto' || flow === 'scroll') {
+				box.scrollTop = 0;
+				return;
+			}
+		}
+	}
+
 	/** A title wraps rather than scrolling out of sight, so the box follows it. */
 	function fitTitle(field: HTMLTextAreaElement): void {
 		field.style.height = 'auto';
@@ -216,7 +340,26 @@
 
 	// Dismissing the sheet with the keyboard tears the field down without ever
 	// blurring it, and what was typed into it is still worth keeping.
-	onDestroy(() => void saveTitle());
+	onDestroy(() => {
+		clearTimeout(stopped);
+		void saveTitle();
+	});
+
+	function caretIn(target: EventTarget | null): void {
+		if (!(target instanceof Element)) return;
+		if (
+			target !== titleField &&
+			!target.closest('[contenteditable]:not([contenteditable="false"])')
+		)
+			return;
+		clearTimeout(stopped);
+		writing = true;
+	}
+
+	function caretGone(): void {
+		clearTimeout(stopped);
+		stopped = setTimeout(() => (writing = false), 250);
+	}
 
 	$effect(() => {
 		const opening = ref;
@@ -227,36 +370,60 @@
 			return shape;
 		});
 		let live = true;
-		loading = true;
-		unreachable = null;
+		const known = read.get(opening);
+		const wrote = landed;
 		cited = '';
 		removing = false;
 		undeletable = null;
+		unread = null;
 		linkRefused = null;
 		tagRefused = null;
 		lookRefused = null;
 		shaping = null;
 		seeding = false;
 		shapeRefused = null;
+		writing = false;
+		startAtTheTop();
 		void (async () => {
-			let read = false;
+			let held = false;
 			try {
 				const [, stack] = await Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
-				if (live) blocks = stack;
-				read = true;
-			} catch (error) {
-				if (live) {
-					unreachable =
-						serverMessage(error) ?? 'Sloppy could not read this note. Close it and open it again.';
+				// A write that landed while this was in the air says more than it does.
+				if (landed === wrote) {
+					// A surface built from what was remembered is holding a stack the
+					// server has moved past, and its next save would put that stack
+					// back over the newer one.
+					const rebuild = live && known !== undefined && differs(blocks, stack);
+					remember(opening, stack);
+					if (live) shown = { of: opening, stack };
+					if (rebuild) rebuilt += 1;
 				}
-			} finally {
-				if (live) loading = false;
+				held = true;
+			} catch (error) {
+				// Sections already on screen are the note; taking them away to report
+				// a read behind them costs the reader more than it tells them.
+				if (live && !known) {
+					unread = {
+						of: opening,
+						says:
+							serverMessage(error) ?? 'Sloppy could not read this note. Close it and open it again.'
+					};
+				}
 			}
-			if (live && read && starting) await shapeThisNote(starting);
+			if (live && held && starting) await shapeThisNote(starting);
 		})();
 		return () => {
 			live = false;
 		};
+	});
+
+	// The notes either side are read while this one is being read, so a walk
+	// along the run does not wait on the server at every step.
+	$effect(() => {
+		if (loading || unreachable) return;
+		for (const near of [along.before, along.after]) {
+			if (near && !read.has(near.ref) && !reading.has(near.ref)) void readAhead(near.ref);
+		}
 	});
 
 	async function saveTitle(): Promise<void> {
@@ -319,6 +486,7 @@
 		let stack: BlockView[] | null = null;
 		try {
 			stack = (await api.listBlocks(into)).sort(byOrd);
+			remember(into, stack);
 		} catch (error) {
 			refusal ??=
 				serverMessage(error) ?? 'Sloppy could not read this note. Close it and open it again.';
@@ -326,7 +494,7 @@
 		// A shape that finished after the reader moved on belongs to the note it
 		// was asked for, not to the one now on screen.
 		if (ref !== into) return;
-		if (stack) blocks = stack;
+		if (stack) shown = { of: into, stack };
 		shapeRefused = refusal;
 		seeding = false;
 	}
@@ -351,9 +519,7 @@
 		surfaceWrites += 1;
 		try {
 			const block = await api.createBlock(request);
-			// A write the surface started before the reader moved on belongs to the
-			// note it was typed in, not to the one now on screen.
-			if (request.node === ref) blocks = [...blocks, block].sort(byOrd);
+			amend(block.node, (stack) => [...stack, block]);
 			return block;
 		} finally {
 			surfaceWrites -= 1;
@@ -364,7 +530,7 @@
 		surfaceWrites += 1;
 		try {
 			const saved = await api.updateBlock(block, request);
-			blocks = blocks.map((b) => (b.ref === saved.ref ? saved : b)).sort(byOrd);
+			amend(saved.node, (stack) => stack.map((held) => (held.ref === saved.ref ? saved : held)));
 			return saved;
 		} finally {
 			surfaceWrites -= 1;
@@ -372,10 +538,11 @@
 	}
 
 	async function dropBlock(block: OwnedRef): Promise<void> {
+		const of = holderOf(block);
 		surfaceWrites += 1;
 		try {
 			await api.deleteBlock(block);
-			blocks = blocks.filter((b) => b.ref !== block);
+			if (of) amend(of, (stack) => stack.filter((held) => held.ref !== block));
 		} finally {
 			surfaceWrites -= 1;
 		}
@@ -438,7 +605,7 @@
 	}
 
 	async function deleteNote(): Promise<void> {
-		const parent = node?.parent;
+		const above = node?.parent;
 		undeletable = null;
 		try {
 			await nodes.remove(ref);
@@ -448,7 +615,7 @@
 			return;
 		}
 		if (typed?.ref === ref) typed = null;
-		if (parent) onOpen(parent);
+		if (above) onOpen(above);
 		else onClose();
 	}
 </script>
@@ -466,7 +633,12 @@
 
 <svelte:head><title>{node?.title || 'Note'} · Sloppy</title></svelte:head>
 
-<div class="flex min-h-0 flex-col gap-7 px-2 pt-2 pb-1 sm:px-1">
+<div
+	bind:this={noteBody}
+	class="flex min-h-0 flex-col gap-7 px-2 pt-2 pb-1 sm:px-1"
+	onfocusin={(e) => caretIn(e.target)}
+	onfocusout={caretGone}
+>
 	<!-- First, so the sheet opens on a way out rather than in the title field,
 	     which on a phone would raise the keyboard over a note you came to read. -->
 	<button
@@ -520,6 +692,15 @@
 			{#if unsaved?.ref === ref}
 				<p class="text-sm text-destructive" role="alert">{unsaved.message}</p>
 			{/if}
+
+			{#key ref}
+				<AppearanceField
+					appearance={node.appearance}
+					media={noteMedia}
+					onchange={relook}
+					refused={lookRefused}
+				/>
+			{/key}
 		</header>
 
 		{#if loading || seeding}
@@ -527,17 +708,19 @@
 		{:else if unreachable}
 			<p class="text-sm text-destructive" role="alert">{unreachable}</p>
 		{:else}
-			<BlockStack
-				{node}
-				{blocks}
-				{emoji}
-				{references}
-				media={noteMedia}
-				onCreate={addBlock}
-				onUpdate={editBlock}
-				onRemove={dropBlock}
-				onReorder={(block: OwnedRef, after: OwnedRef | null) => editBlock(block, { after })}
-			/>
+			{#key rebuilt}
+				<BlockStack
+					{node}
+					{blocks}
+					{emoji}
+					{references}
+					media={noteMedia}
+					onCreate={addBlock}
+					onUpdate={editBlock}
+					onRemove={dropBlock}
+					onReorder={(block: OwnedRef, after: OwnedRef | null) => editBlock(block, { after })}
+				/>
+			{/key}
 		{/if}
 
 		{#if !loading && !unreachable && shapeable}
@@ -575,13 +758,13 @@
 						onclick={() => write('under', null)}
 					>
 						<CornerDownRight class="size-4" />
-						A note under this
+						Write a note under this
 					</Button>
 					<Button
 						variant="ghost"
 						size="icon"
 						class="size-11 shrink-0 text-muted-foreground"
-						aria-label="A note under this, from a shape"
+						aria-label="Write a note under this, from a shape"
 						disabled={adding}
 						onclick={() => offerShapes('under')}
 					>
@@ -596,13 +779,13 @@
 						onclick={() => write('after', null)}
 					>
 						<ArrowRight class="size-4" />
-						The next note
+						Write the next note
 					</Button>
 					<Button
 						variant="ghost"
 						size="icon"
 						class="size-11 shrink-0 text-muted-foreground"
-						aria-label="The next note, from a shape"
+						aria-label="Write the next note, from a shape"
 						disabled={adding}
 						onclick={() => offerShapes('after')}
 					>
@@ -624,17 +807,6 @@
 					onchange={retag}
 					refused={tagRefused}
 					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
-				/>
-			{/key}
-		</div>
-
-		<div class="border-t border-border pt-6">
-			{#key ref}
-				<AppearanceField
-					appearance={node.appearance}
-					media={noteMedia}
-					onchange={relook}
-					refused={lookRefused}
 				/>
 			{/key}
 		</div>
@@ -729,6 +901,32 @@
 				<p class="mt-2 text-sm text-destructive" role="alert">{undeletable}</p>
 			{/if}
 		</div>
+
+		{#if !writing && ways.some((way) => way.to)}
+			<!-- `--foot` is the OS bar and a breath above it: the bar is padded by it
+			     so no target lands under the bar, and bled past the note by it so the
+			     strip meets the foot of a sheet. The filler carries the strip on down
+			     a surface that stands further off its own bottom edge. -->
+			<nav
+				aria-label="Nearby notes"
+				style="--foot: calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom)) + 1rem)"
+				class="sticky bottom-[calc(var(--foot)*-1)] z-10 -mx-2 -mb-[var(--foot)] flex items-center gap-1 border-t border-border bg-background px-2 pt-1 pb-[var(--foot)] after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-8 after:bg-background after:content-[''] sm:-mx-1 sm:px-1"
+			>
+				{#each ways as way (way.says)}
+					{@const Way = way.icon}
+					<Button
+						variant="ghost"
+						class="h-11 min-w-0 flex-1 gap-1.5 px-1 text-muted-foreground"
+						disabled={!way.to}
+						aria-label={way.to ? `${way.says}, ${way.to.address}` : way.says}
+						onclick={() => way.to && onOpen(way.to.ref)}
+					>
+						<Way class="size-4 shrink-0" />
+						{#if way.to}<span class="address truncate text-xs">{way.to.address}</span>{/if}
+					</Button>
+				{/each}
+			</nav>
+		{/if}
 
 		<TemplatePicker
 			open={shaping !== null}
