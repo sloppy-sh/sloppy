@@ -11,6 +11,8 @@ import {
 	compareAddresses,
 	type CreateNodeRequest,
 	isAncestorAddress,
+	type NodeBulkRequest,
+	type NodeBulkResult,
 	type NodeView,
 	type OwnedRef,
 	type UpdateNodeRequest
@@ -173,6 +175,20 @@ class NodesStore {
 		const node = await api.updateNode(ref, request);
 		if (epoch === this.#epoch) this.#byRef.set(node.ref, node);
 		return node;
+	}
+
+	/** One act over however many notes somebody chose. */
+	async act(request: NodeBulkRequest): Promise<NodeBulkResult> {
+		const epoch = this.#epoch;
+		const result = await api.actOnNodes(request);
+		if (epoch !== this.#epoch) return result;
+		if (request.act.act === 'delete') {
+			// The missed ones are gone too, whether they went just now or earlier.
+			for (const ref of request.notes) this.forget(ref);
+		} else {
+			for (const node of result.notes) this.#byRef.set(node.ref, node);
+		}
+		return result;
 	}
 
 	async remove(ref: OwnedRef): Promise<void> {

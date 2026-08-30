@@ -15,15 +15,37 @@
 
 	// The home surface: the whole graph, the tags it is lit by, and the note that
 	// opens over it. DESIGN.md § Layout — the graph is the page.
+	import Check from '@lucide/svelte/icons/check';
+	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
+	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
 	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
-	import { RootAddressSchema, type NodeView } from '@sloppy/types';
+	import Tag from '@lucide/svelte/icons/tag';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import type { GraphMenuAt } from '@sloppy/graph';
 	import {
+		NodeBulkRequestSchema,
+		RootAddressSchema,
+		type NodeAppearance,
+		type NodeBulkAct,
+		type NodeView,
+		type Tag as TagName
+	} from '@sloppy/types';
+	import {
+		CanvasMenu,
+		ChosenBar,
+		ChosenLook,
+		ChosenTags,
+		ConfirmModal,
 		GraphSurface,
+		overlay,
 		ResponsiveModal,
 		TagRail,
 		TemplatePicker,
+		type CanvasMenuItem,
 		type NoteTemplate
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
@@ -64,6 +86,25 @@
 	let looking = $state<OwnedRef | null>(null);
 	let pointRefused = $state<string | null>(null);
 	let linking = $state(false);
+	/** Whether notes are being chosen to act on; the set may still be empty. */
+	let choosing = $state(false);
+	const picked = new SvelteSet<OwnedRef>();
+	/** Where the canvas was asked for a menu, and on what. */
+	let menuAt = $state<GraphMenuAt | null>(null);
+	let tagging = $state(false);
+	let styling = $state(false);
+	let deleting = $state(false);
+	/** How many notes the delete question was asked about, and what it costs.
+	 *  Latched: the set is let go the moment the act lands, while the question is
+	 *  still closing. */
+	let deletingCount = $state(0);
+	let deletionSays = $state('');
+	/** Why the last act on the chosen notes did not land. */
+	let actRefused = $state<string | null>(null);
+	/** How much of the last act's set was already gone, where the rest landed. */
+	let actMissed = $state<string | null>(null);
+	/** The act in flight, which the next one asked for queues behind. */
+	let acting: Promise<void> = Promise.resolve();
 
 	const roots = $derived(nodes.region());
 	const open = $derived(page.state.note ?? null);
@@ -93,6 +134,18 @@
 	const collapsed = $derived(new Set(folded));
 
 	const selection = $derived(tags.selected);
+
+	/**
+	 * The notes chosen to act on — DESIGN.md § "The mark" keeps that word for
+	 * them, because `selection` above is already the reader's tags. Copied, so a
+	 * change reaches the canvas as a new set.
+	 */
+	const chosen = $derived(choosing ? new Set(picked) : undefined);
+	const chosenNotes = $derived(
+		choosing ? [...picked].map((ref) => nodes.get(ref)).filter((note) => note !== undefined) : []
+	);
+	const chosenTags = $derived([...new Set(chosenNotes.flatMap((note) => note.tags))]);
+	const overGraph = $derived(overlay.open || menuAt !== null);
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
 	const lit = $derived(
@@ -170,6 +223,9 @@
 	/** The note steps aside so the graph it belongs to can answer the question. */
 	function pointFrom(from: OwnedRef): void {
 		pointRefused = null;
+		// One mode at a time: a canvas asked to point at a note stops being one
+		// anybody is choosing on. DESIGN.md § "The mark".
+		stopChoosing();
 		pointing = from;
 		looking = from;
 		hide();
@@ -205,6 +261,187 @@
 		pointing = null;
 		looking = null;
 		show(from);
+	}
+
+	/** Through the schema the API refuses by, so both say the same thing. */
+	function noRoomFor(refs: readonly OwnedRef[]): string | null {
+		const room = NodeBulkRequestSchema.shape.notes.safeParse(refs);
+		return room.success ? null : room.error.issues[0].message;
+	}
+
+	function forgetLastAct(): void {
+		actRefused = null;
+		actMissed = null;
+	}
+
+	function startChoosing(): void {
+		choosing = true;
+		forgetLastAct();
+	}
+
+	function stopChoosing(): void {
+		choosing = false;
+		picked.clear();
+		forgetLastAct();
+	}
+
+	/** The way in as well as the way around: the first note chosen is what puts
+	 *  the canvas in the mode, whether it came from a menu or a modifier-click. */
+	function chooseAlso(ref: OwnedRef): void {
+		choosing = true;
+		forgetLastAct();
+		if (picked.has(ref)) {
+			picked.delete(ref);
+			return;
+		}
+		const full = noRoomFor([...picked, ref]);
+		if (full) actRefused = full;
+		else picked.add(ref);
+	}
+
+	function chooseWithin(refs: readonly OwnedRef[]): void {
+		choosing = true;
+		forgetLastAct();
+		for (const ref of refs) {
+			if (picked.has(ref)) continue;
+			const full = noRoomFor([...picked, ref]);
+			if (full) {
+				actRefused = full;
+				return;
+			}
+			picked.add(ref);
+		}
+	}
+
+	/**
+	 * One act over every chosen note. Throws so the surface that asked keeps its
+	 * question open and its own button ready to try again.
+	 *
+	 * A second act asked for while one is in flight queues rather than being
+	 * dropped: the tag sheet is where several words are typed in a row, and a
+	 * caller cannot tell a dropped act from a done one.
+	 */
+	async function actOnChosen(act: NodeBulkAct): Promise<void> {
+		const asked = [...picked];
+		if (asked.length === 0) return;
+		const mine = acting.then(() => runOnChosen(asked, act));
+		acting = mine.catch(() => {});
+		await mine;
+	}
+
+	async function runOnChosen(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
+		forgetLastAct();
+		let missed: number;
+		try {
+			missed = (await nodes.act({ notes: asked, act })).missed;
+		} catch (error) {
+			actRefused =
+				serverMessage(error) ?? 'Sloppy could not change those notes. Try again in a moment.';
+			throw error;
+		}
+		const shortfall = missed === 0 ? null : alreadyGone(missed);
+		// A tag exists as long as a note carries one, so the rail's counts are stale
+		// the moment notes are tagged — or taken away with the tags they carried.
+		if (act.act !== 'set_appearance') void tags.reload();
+		if (act.act !== 'delete') {
+			actMissed = shortfall;
+			return;
+		}
+		if (open && asked.includes(open)) hide();
+		// The bar goes with the set, so what is left to say goes beside the graph.
+		stopChoosing();
+		refused = shortfall;
+	}
+
+	function alreadyGone(missed: number): string {
+		return missed === 1
+			? 'One of the notes you chose was already gone.'
+			: `${missed.toLocaleString()} of the notes you chose were already gone.`;
+	}
+
+	const menuItems = $derived.by((): CanvasMenuItem[] => {
+		const at = menuAt;
+		if (!at) return [];
+		const on = at.ref;
+		if (!choosing) {
+			const items: CanvasMenuItem[] = [
+				on
+					? { label: 'Choose this note', icon: ListChecks, onSelect: () => chooseAlso(on) }
+					: { label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }
+			];
+			if (on && at.foldable) {
+				items.push({
+					label: 'Fold what is under this',
+					icon: FoldVertical,
+					onSelect: () => folded.add(on)
+				});
+			}
+			return items;
+		}
+
+		const items: CanvasMenuItem[] = [];
+		if (on) {
+			const held = picked.has(on);
+			items.push({
+				label: held ? 'Leave this one out' : 'Choose this one too',
+				icon: held ? Minus : Plus,
+				onSelect: () => chooseAlso(on)
+			});
+		}
+		if (picked.size > 0) {
+			items.push(
+				{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
+				{ label: 'Give them a look', icon: CircleDashed, onSelect: () => (styling = true) },
+				{
+					label: picked.size === 1 ? 'Delete it' : `Delete these ${picked.size}`,
+					icon: Trash2,
+					destructive: true,
+					onSelect: askToDelete
+				}
+			);
+		}
+		items.push({ label: 'Done choosing', icon: Check, onSelect: stopChoosing });
+		return items;
+	});
+
+	function askToDelete(): void {
+		deletingCount = picked.size;
+		deletionSays = deletionCost([...picked]);
+		deleting = true;
+	}
+
+	/** Everything under these notes that is not itself one of them. Null where a
+	 *  branch has not been counted yet, which no number may stand in for. */
+	function grownFrom(refs: readonly OwnedRef[]): number | null {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- counted and thrown away inside this call; nothing reads it.
+		const going = new Set(refs);
+		const walk = (of: OwnedRef) => {
+			for (const child of nodes.children(of)) {
+				going.add(child.ref);
+				walk(child.ref);
+			}
+		};
+		for (const ref of refs) {
+			const note = nodes.get(ref);
+			if (!note || !nodes.status({ origin: note.origin }).loaded) return null;
+			walk(ref);
+		}
+		return going.size - refs.length;
+	}
+
+	function deletionCost(refs: readonly OwnedRef[]): string {
+		const one = refs.length === 1;
+		const it = one ? 'it' : 'them';
+		const grown = grownFrom(refs);
+		if (grown === null) {
+			return one
+				? 'It goes for good, and so does everything written under it.'
+				: 'They go for good, and so does everything written under them.';
+		}
+		const goes = one ? 'It goes for good' : 'They go for good';
+		if (grown === 0) return `${goes}.`;
+		if (grown === 1) return `${goes}, and so does the one note that grew out of ${it}.`;
+		return `${goes}, and so do the ${grown.toLocaleString()} notes that grew out of ${it}.`;
 	}
 
 	/** A branch of its own. A note that continues one is written from inside it. */
@@ -255,8 +492,13 @@
 <svelte:head><title>Sloppy</title></svelte:head>
 
 <svelte:window
-	onkeydown={(event) => {
-		if (pointing && event.key === 'Escape') stopPointing();
+	onkeydowncapture={(event) => {
+		if (event.key !== 'Escape') return;
+		if (pointing) stopPointing();
+		// Capture, so this reads whether a surface is over the graph BEFORE that
+		// surface closes itself on the same keystroke — otherwise one Escape both
+		// puts the question away and ends what it was asked about.
+		else if (choosing && !overGraph) stopChoosing();
 	}}
 />
 
@@ -281,6 +523,10 @@
 							onPick: (ref) => void pointAt(ref)
 						}
 					: undefined}
+				{chosen}
+				onChoose={pointing ? undefined : chooseAlso}
+				onChooseWithin={pointing ? undefined : chooseWithin}
+				onMenu={pointing ? undefined : (at) => (menuAt = at)}
 				onOpenNode={show}
 				onExpand={(ref) => {
 					folded.delete(ref);
@@ -402,7 +648,53 @@
 			</div>
 		</div>
 	{/if}
+
+	{#if populated && choosing}
+		<ChosenBar
+			count={picked.size}
+			says={actRefused ?? actMissed}
+			onTags={() => (tagging = true)}
+			onLook={() => (styling = true)}
+			onDelete={askToDelete}
+			onDone={stopChoosing}
+		/>
+	{/if}
 </div>
+
+<CanvasMenu
+	at={menuAt}
+	items={menuItems}
+	label="What you can do here"
+	onclose={() => (menuAt = null)}
+/>
+
+<ChosenTags
+	bind:open={tagging}
+	count={picked.size}
+	tags={chosenTags}
+	suggestions={tags.all}
+	refused={actRefused}
+	missed={actMissed}
+	onadd={(added: TagName[]) => actOnChosen({ act: 'tag', tags: added })}
+	onremove={(gone: TagName[]) => actOnChosen({ act: 'untag', tags: gone })}
+/>
+
+<ChosenLook
+	bind:open={styling}
+	count={picked.size}
+	refused={actRefused}
+	onapply={(look: NodeAppearance | null) =>
+		actOnChosen({ act: 'set_appearance', appearance: look })}
+/>
+
+<ConfirmModal
+	bind:open={deleting}
+	title={deletingCount === 1 ? 'Delete this note?' : `Delete these ${deletingCount} notes?`}
+	description={deletionSays}
+	confirmLabel={deletingCount === 1 ? 'Delete it' : `Delete ${deletingCount} notes`}
+	refused={actRefused}
+	onconfirm={() => actOnChosen({ act: 'delete' })}
+/>
 
 <TemplatePicker
 	bind:open={shaping}

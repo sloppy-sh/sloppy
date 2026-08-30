@@ -24,7 +24,7 @@ const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
  * What a bulk act may write. A title is not one of them: an act says what a set
  * of notes have in common, and no two notes share a title.
  */
-const BULK_WRITABLE = ["tags", "appearance", "published"] as const;
+const BULK_WRITABLE = ["tags", "appearance"] as const;
 
 /** What a PATCH may carry; the immutable columns are absent by type. A `null`
  *  clears its column — see {@link replacement}. */
@@ -32,7 +32,7 @@ export type NodePatch = Partial<Pick<Node, "title" | "tags" | "links">> & {
   appearance?: NodeAppearance | null;
 };
 
-export type NodeBulkPatch = Partial<Pick<Node, "tags" | "published">> & {
+export type NodeBulkPatch = Partial<Pick<Node, "tags">> & {
   appearance?: NodeAppearance | null;
 };
 

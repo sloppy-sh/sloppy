@@ -5,6 +5,7 @@ import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
 import type { LayoutCommand, LayoutEvent } from "./layout/protocol.js";
 import type { GraphMountOptions } from "./mount.js";
+import type { Bounds } from "./viewport.js";
 import { Viewport } from "./viewport.js";
 
 /**
@@ -24,6 +25,8 @@ class StandInScene {
   under: string | null = null;
   /** The choice the canvas was last told to outline. */
   picking: GraphPickMarks | null = null;
+  /** The notes the canvas was last told somebody chose to act on. */
+  chosen: ReadonlySet<string> | null = null;
   centred: string[] = [];
   /** How many times the canvas has framed the whole field. */
   fits = 0;
@@ -41,6 +44,24 @@ class StandInScene {
 
   setPicking(picking: GraphPickMarks | null): void {
     this.picking = picking;
+  }
+
+  setChosen(chosen: ReadonlySet<string> | null): void {
+    this.chosen = chosen;
+  }
+
+  marksWithin(bounds: Bounds): string[] {
+    return (this.model?.order ?? []).filter((ref) => {
+      const { index } = this.model!.graph.getNodeAttributes(ref);
+      const x = this.positions[index * 2];
+      const y = this.positions[index * 2 + 1];
+      return (
+        x >= bounds.minX &&
+        x <= bounds.maxX &&
+        y >= bounds.minY &&
+        y <= bounds.maxY
+      );
+    });
   }
 
   centreOn(ref: string): void {
@@ -201,9 +222,20 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     ref: string,
     pointerType: string,
     pointerId: number,
+    modifiers: Partial<PointerEvent> = {},
   ): void => {
     scene.under = ref;
-    const event = { pointerId, pointerType, clientX: 0, clientY: 0 };
+    const event = {
+      pointerId,
+      pointerType,
+      button: 0,
+      clientX: 0,
+      clientY: 0,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      ...modifiers,
+    };
     surface.send("pointerdown", event as Partial<PointerEvent>);
     surface.send("pointerup", event as Partial<PointerEvent>);
   };
@@ -224,6 +256,53 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     tap: (ref: string): void => pressAndRelease(ref, "touch", 1),
     /** The mouse's tap: down and up on `ref` with the pointer never moving. */
     click: (ref: string): void => pressAndRelease(ref, "mouse", 3),
+    /** The desk's "and this one too". */
+    metaClick: (ref: string): void =>
+      pressAndRelease(ref, "mouse", 3, { metaKey: true }),
+    /** A finger held still on `ref` until the canvas answers it. */
+    press: (ref: string | null): void => {
+      vi.useFakeTimers();
+      scene.under = ref;
+      surface.send("pointerdown", {
+        pointerId: 5,
+        pointerType: "touch",
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+      } as Partial<PointerEvent>);
+      vi.advanceTimersByTime(600);
+      vi.useRealTimers();
+    },
+    /** The right button, which asks for the menu rather than taking hold. */
+    rightClick: (ref: string | null, x = 0, y = 0): void => {
+      scene.under = ref;
+      surface.send("contextmenu", {
+        clientX: x,
+        clientY: y,
+        preventDefault: () => {},
+      } as unknown as Partial<PointerEvent>);
+    },
+    /** A modifier-held mouse sweeping a box over bare canvas. */
+    sweep(from: { x: number; y: number }, to: { x: number; y: number }): void {
+      scene.under = null;
+      const at = (point: { x: number; y: number }, held: boolean) =>
+        ({
+          pointerId: 4,
+          pointerType: "mouse",
+          button: held ? 0 : -1,
+          clientX: point.x,
+          clientY: point.y,
+          shiftKey: true,
+          ctrlKey: false,
+          metaKey: false,
+        }) as Partial<PointerEvent>;
+      surface.send("pointerdown", at(from, true));
+      surface.send("pointermove", at(to, false));
+      surface.send("pointerup", at(to, false));
+    },
     pen(type: string, x: number, y: number): void {
       surface.send(type, {
         pointerId: 2,
@@ -239,8 +318,12 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
         surface.send(at === 0 ? "pointerdown" : "pointermove", {
           pointerId: 3,
           pointerType: "mouse",
+          button: at === 0 ? 0 : -1,
           clientX: point.x,
           clientY: point.y,
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
         } as Partial<PointerEvent>);
       }
     },
@@ -582,5 +665,153 @@ describe("picking a note on the canvas", () => {
 
     expect(graph.opened).toEqual([other]);
     expect(graph.scene.picking).toBeNull();
+  });
+});
+
+// DESIGN.md § "The mark": the notes somebody picked out to act on are the chosen
+// set, and a canvas is either choosing or picking, never both.
+describe("choosing notes to act on", () => {
+  const plain = (graph: Awaited<ReturnType<typeof mount>>, but?: OwnedRef) =>
+    graph
+      .model()
+      .order.find(
+        (ref) =>
+          ref !== but && !graph.model().graph.getNodeAttributes(ref).collapsed,
+      )!;
+
+  async function choosing() {
+    const graph = await mount();
+    const first = plain(graph);
+    const second = plain(graph, first);
+    const picked: OwnedRef[] = [];
+    const swept: OwnedRef[][] = [];
+    graph.handle.update({
+      ...graph.props,
+      chosen: new Set<OwnedRef>(),
+      onChoose: (ref) => picked.push(ref),
+      onChooseWithin: (refs) => swept.push([...refs]),
+    });
+    return { graph, first, second, picked, swept };
+  }
+
+  it("starts one at a desk without taking the ordinary click away", async () => {
+    const graph = await mount();
+    const ref = plain(graph);
+    const picked: OwnedRef[] = [];
+    graph.handle.update({ ...graph.props, onChoose: (r) => picked.push(r) });
+
+    graph.click(ref);
+    expect(graph.opened).toEqual([ref]);
+    expect(picked).toEqual([]);
+
+    graph.metaClick(ref);
+    expect(graph.opened).toEqual([ref]);
+    expect(picked).toEqual([ref]);
+  });
+
+  it("adds and removes on a plain tap once a set is being chosen", async () => {
+    const { graph, first, second, picked } = await choosing();
+
+    graph.tap(first);
+    graph.tap(second);
+
+    expect(picked).toEqual([first, second]);
+    expect(graph.opened).toEqual([]);
+  });
+
+  it("hands the chosen set to the canvas to draw", async () => {
+    const { graph, first } = await choosing();
+    expect(graph.scene.chosen).toEqual(new Set());
+
+    graph.handle.update({ ...graph.props, chosen: new Set([first]) });
+    expect(graph.scene.chosen).toEqual(new Set([first]));
+
+    graph.handle.update({ ...graph.props, chosen: undefined });
+    expect(graph.scene.chosen).toBeNull();
+  });
+
+  it("adds everything a sweep enclosed", async () => {
+    const { graph, swept } = await choosing();
+
+    graph.sweep({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
+
+    expect(swept).toEqual([graph.model().order]);
+  });
+
+  it("keeps picking ahead of choosing, because a canvas is in one mode", async () => {
+    const { graph, first, second, picked } = await choosing();
+    const onPick: OwnedRef[] = [];
+    graph.handle.update({
+      ...graph.props,
+      chosen: new Set([first]),
+      onChoose: (ref) => picked.push(ref),
+      picking: { from: first, taken: new Set(), onPick: (r) => onPick.push(r) },
+    });
+
+    graph.tap(second);
+
+    expect(onPick).toEqual([second]);
+    expect(picked).toEqual([]);
+  });
+});
+
+describe("asking the canvas for a menu", () => {
+  const asking = async () => {
+    const graph = await mount();
+    const asked: { ref: OwnedRef | null; foldable: boolean }[] = [];
+    graph.handle.update({ ...graph.props, onMenu: (at) => asked.push(at) });
+    return { graph, asked };
+  };
+
+  it("says where it was asked, and what it was asked on", async () => {
+    const { graph, asked } = await asking();
+    const ref = graph
+      .model()
+      .order.find(
+        (r) => graph.model().graph.getNodeAttributes(r).children > 0,
+      )!;
+
+    graph.rightClick(ref, 120, 48);
+    graph.rightClick(null, 8, 8);
+
+    expect(asked).toEqual([
+      { clientX: 120, clientY: 48, ref, foldable: true },
+      { clientX: 8, clientY: 8, ref: null, foldable: false },
+    ]);
+  });
+
+  it("answers a finger held on the canvas, which is the phone's way in", async () => {
+    const { graph, asked } = await asking();
+
+    graph.press(null);
+
+    expect(asked).toEqual([
+      { clientX: 0, clientY: 0, ref: null, foldable: false },
+    ]);
+  });
+
+  it("says a mega-node has nothing left for a fold to gather", async () => {
+    const { graph, asked } = await asking();
+    const mega = firstMegaNode(graph.model());
+
+    graph.rightClick(mega);
+    expect(asked[0].foldable).toBe(false);
+
+    graph.tap(mega);
+    graph.rightClick(mega);
+    expect(asked[1].foldable).toBe(true);
+  });
+
+  // The fold was on the hold before there was a menu to put it in, and a surface
+  // that offers no menu must not lose it.
+  it("folds on a hold where the host offers no menu", async () => {
+    const folded: OwnedRef[] = [];
+    const graph = await mount({ onCollapse: (ref) => folded.push(ref) });
+    const mega = firstMegaNode(graph.model());
+    graph.tap(mega);
+
+    graph.press(mega);
+
+    expect(folded).toEqual([mega]);
   });
 });

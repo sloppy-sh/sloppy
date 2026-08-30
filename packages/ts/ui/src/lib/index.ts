@@ -41,3 +41,4 @@ export type {
 export type { CustomEmojiEntry } from './emoji/catalog.js';
 export * from './components/templates/index.js';
 export * from './components/appearance/index.js';
+export * from './components/graph/chosen.js';

@@ -175,9 +175,6 @@ export class NodeService {
         const appearance = await this.look(act.appearance, delegation);
         return each(() => ({ appearance }));
       }
-      case "publish":
-      case "unpublish":
-        return each(() => ({ published: act.act === "publish" }));
     }
   }
 
