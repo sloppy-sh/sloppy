@@ -756,6 +756,28 @@ describe('walking the graph from a note', () => {
 		expect(title()?.value).toBe('Walls');
 	});
 
+	// A read that failed once must not follow the note around: walking back to it
+	// reads again, and what comes back is the note.
+	it('shows the sections of a note whose read failed before it was walked away from', async () => {
+		let refuse = true;
+		api.on(`GET ${path(SECOND)}/blocks`, () =>
+			refuse
+				? new Response('{"message":"Sloppy is having a moment."}', { status: 503 })
+				: [section(SECOND, 'The wall is the point')]
+		);
+
+		await openNote(SECOND);
+		expect(document.body.textContent).toContain('Sloppy is having a moment.');
+
+		refuse = false;
+		await walk('The note after this, 1c');
+		await walk('The note before this, 1a');
+
+		expect(showing()).toBe('1a');
+		expect(document.body.textContent).toContain('The wall is the point');
+		expect(document.body.textContent).not.toContain('Sloppy is having a moment.');
+	});
+
 	it('goes back the way it came', async () => {
 		await openNote(FIFTH);
 		await walk('The note before this, 1a');

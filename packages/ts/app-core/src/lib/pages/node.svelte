@@ -375,6 +375,7 @@
 		cited = '';
 		removing = false;
 		undeletable = null;
+		unread = null;
 		linkRefused = null;
 		tagRefused = null;
 		lookRefused = null;
