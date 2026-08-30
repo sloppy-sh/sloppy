@@ -115,7 +115,7 @@ function surface() {
       y: number,
       modifiers: Partial<PointerEvent> = {},
     ) => send(type, "mouse", 3, x, y, modifiers),
-    rightClick: (x: number, y: number) => {
+    contextMenu: (x: number, y: number) => {
       let prevented = false;
       element.send("contextmenu", {
         clientX: x,
@@ -263,7 +263,7 @@ describe("asking for the menu", () => {
   it("answers the right button, and never lets the browser's menu through", () => {
     const graph = surface();
     graph.over("2");
-    expect(graph.rightClick(120, 30)).toBe(true);
+    expect(graph.contextMenu(120, 30)).toBe(true);
     expect(graph.pressed).toEqual([{ target: "2", clientX: 120, clientY: 30 }]);
   });
 
@@ -274,6 +274,48 @@ describe("asking for the menu", () => {
     graph.mouse("pointermove", 60, 10, { button: -1 });
 
     expect(graph.viewport.x).toBe(0);
+  });
+
+  // macOS asks for the menu with ctrl and the left button, so the same click
+  // arrives as a modifier-held press on the note under it. One click, one
+  // answer: the menu takes it, and the note is not also taken hold of.
+  it("leaves the note under a ctrl+click to the menu alone", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.mouse("pointerdown", 10, 10, { ctrlKey: true });
+    graph.contextMenu(10, 10);
+    graph.mouse("pointerup", 10, 10, { ctrlKey: true });
+
+    expect(graph.pressed).toEqual([{ target: "1a", clientX: 10, clientY: 10 }]);
+    expect(graph.tapped).toEqual([]);
+  });
+
+  it("holds the field still under a ctrl+drag that opened the menu", () => {
+    const graph = surface();
+    graph.mouse("pointerdown", 20, 20, { ctrlKey: true });
+    graph.contextMenu(20, 20);
+    graph.mouse("pointermove", 80, 100, { ctrlKey: true });
+    graph.mouse("pointerup", 80, 100, { ctrlKey: true });
+
+    expect(graph.swept).toEqual([]);
+    expect(graph.viewport.x).toBe(0);
+    expect(graph.pressed).toEqual([{ target: null, clientX: 20, clientY: 20 }]);
+  });
+
+  // A sweep already under way has been answered. The menu that arrives on top
+  // of it neither opens nor takes the box away from the reader drawing it.
+  it("stays out of a sweep already under way", () => {
+    const graph = surface();
+    graph.mouse("pointerdown", 20, 20, { shiftKey: true });
+    graph.mouse("pointermove", 80, 100, { shiftKey: true });
+    graph.contextMenu(80, 100);
+    graph.mouse("pointerup", 80, 100, { shiftKey: true });
+
+    expect(graph.pressed).toEqual([]);
+    expect(graph.swept.at(-1)).toEqual({
+      box: { x: 20, y: 20, width: 60, height: 80 },
+      done: true,
+    });
   });
 });
 

@@ -177,6 +177,16 @@ export function attachGestures(
   const onContextMenu = (event: MouseEvent): void => {
     refreshRect();
     event.preventDefault();
+    // macOS raises this from a plain ctrl+click, which reached `pointerdown`
+    // above as an ordinary button-0 press. The menu answers that pointer, so it
+    // is spent here the way the press timer spends a finger; a gesture already
+    // promoted to a drag or a sweep has been answered, and the menu stays out.
+    if (grabbed?.dragging || swept?.sweeping) return;
+    for (const [id, entry] of active) {
+      if (entry.type === "mouse") active.delete(id);
+    }
+    grabbed = null;
+    swept = null;
     const world = viewport.toWorld(
       event.clientX - rect.left,
       event.clientY - rect.top,

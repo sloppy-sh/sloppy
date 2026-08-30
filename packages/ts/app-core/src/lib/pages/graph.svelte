@@ -27,7 +27,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { GraphMenuAt } from '@sloppy/graph';
 	import {
-		MAX_NOTES_PER_BULK_ACT,
+		NodeBulkRequestSchema,
 		RootAddressSchema,
 		type NodeAppearance,
 		type NodeBulkAct,
@@ -93,6 +93,9 @@
 	let tagging = $state(false);
 	let styling = $state(false);
 	let deleting = $state(false);
+	/** How many notes the delete question was asked about. Latched: the set is
+	 *  let go the moment the act lands, while the question is still closing. */
+	let deletingCount = $state(0);
 	let acting = $state(false);
 	/** Why the last act on the chosen notes did not land. */
 	let actRefused = $state<string | null>(null);
@@ -216,6 +219,9 @@
 	/** The note steps aside so the graph it belongs to can answer the question. */
 	function pointFrom(from: OwnedRef): void {
 		pointRefused = null;
+		// One mode at a time: a canvas asked to point at a note stops being one
+		// anybody is choosing on. DESIGN.md § "The mark".
+		stopChoosing();
 		pointing = from;
 		looking = from;
 		hide();
@@ -253,7 +259,11 @@
 		show(from);
 	}
 
-	const FULL = `${MAX_NOTES_PER_BULK_ACT} notes is as many as one change reaches.`;
+	/** Through the schema the API refuses by, so both say the same thing. */
+	function noRoomFor(refs: readonly OwnedRef[]): string | null {
+		const room = NodeBulkRequestSchema.shape.notes.safeParse(refs);
+		return room.success ? null : room.error.issues[0].message;
+	}
 
 	function startChoosing(): void {
 		choosing = true;
@@ -271,8 +281,12 @@
 	function chooseAlso(ref: OwnedRef): void {
 		choosing = true;
 		actRefused = null;
-		if (picked.has(ref)) picked.delete(ref);
-		else if (picked.size >= MAX_NOTES_PER_BULK_ACT) actRefused = FULL;
+		if (picked.has(ref)) {
+			picked.delete(ref);
+			return;
+		}
+		const full = noRoomFor([...picked, ref]);
+		if (full) actRefused = full;
 		else picked.add(ref);
 	}
 
@@ -281,8 +295,9 @@
 		actRefused = null;
 		for (const ref of refs) {
 			if (picked.has(ref)) continue;
-			if (picked.size >= MAX_NOTES_PER_BULK_ACT) {
-				actRefused = FULL;
+			const full = noRoomFor([...picked, ref]);
+			if (full) {
+				actRefused = full;
 				return;
 			}
 			picked.add(ref);
@@ -352,7 +367,7 @@
 					label: picked.size === 1 ? 'Delete it' : `Delete these ${picked.size}`,
 					icon: Trash2,
 					destructive: true,
-					onSelect: () => (deleting = true)
+					onSelect: askToDelete
 				}
 			);
 		}
@@ -360,8 +375,13 @@
 		return items;
 	});
 
+	function askToDelete(): void {
+		deletingCount = picked.size;
+		deleting = true;
+	}
+
 	const deletionSays = $derived(
-		picked.size === 1
+		deletingCount === 1
 			? 'It goes with everything written under it, and this cannot be undone. The address it held stays empty — no other note is renumbered.'
 			: `They go with everything written under them, and this cannot be undone. The addresses they held stay empty — no other note is renumbered.`
 	);
@@ -577,7 +597,7 @@
 			refused={actRefused}
 			onTags={() => (tagging = true)}
 			onLook={() => (styling = true)}
-			onDelete={() => (deleting = true)}
+			onDelete={askToDelete}
 			onDone={stopChoosing}
 		/>
 	{/if}
@@ -610,9 +630,9 @@
 
 <ConfirmModal
 	bind:open={deleting}
-	title={picked.size === 1 ? 'Delete this note?' : `Delete these ${picked.size} notes?`}
+	title={deletingCount === 1 ? 'Delete this note?' : `Delete these ${deletingCount} notes?`}
 	description={deletionSays}
-	confirmLabel={picked.size === 1 ? 'Delete it' : `Delete ${picked.size} notes`}
+	confirmLabel={deletingCount === 1 ? 'Delete it' : `Delete ${deletingCount} notes`}
 	refused={actRefused}
 	onconfirm={() => actOnChosen({ act: 'delete' })}
 />

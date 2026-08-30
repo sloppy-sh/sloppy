@@ -177,12 +177,7 @@ class NodesStore {
 		return node;
 	}
 
-	/**
-	 * One act over however many notes somebody chose. The answer says what it
-	 * reached and what it missed — a note that went since the graph was drawn is
-	 * counted rather than treated as a failure — and the cache is brought in line
-	 * with whichever of the two happened.
-	 */
+	/** One act over however many notes somebody chose. */
 	async act(request: NodeBulkRequest): Promise<NodeBulkResult> {
 		const epoch = this.#epoch;
 		const result = await api.actOnNodes(request);

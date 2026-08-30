@@ -122,6 +122,10 @@ function fold(address: string): HTMLButtonElement {
 const looking = () =>
 	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.focus;
 
+/** Whether the canvas has been handed a set to choose into. */
+const choosingOnCanvas = () =>
+	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.choosing;
+
 function button(labelled: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find((b) =>
 		b.textContent?.includes(labelled)
@@ -426,6 +430,27 @@ describe('choosing several notes to act on', () => {
 		await settle();
 
 		expect(screen()).toContain('3 notes chosen');
+	});
+
+	// DESIGN.md § "The mark": the orbit outside a mark carries the mode the canvas
+	// is in, and a canvas is only ever in one of them. Choosing left running under
+	// a picker would draw over the ring that says which note the link comes from.
+	it('lets the set go when the canvas is asked to point at a note', async () => {
+		const WRITTEN = ref(9);
+		api.on('POST /nodes', () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+
+		await chooseThree();
+		button('New branch').click();
+		await settle();
+		button('Link to another note').click();
+		await settle();
+
+		expect(screen()).toContain('Tap a note to link it to');
+		expect(screen()).not.toContain('notes chosen');
+		expect(onCanvas('1').dataset.chosen).toBeUndefined();
+		expect(choosingOnCanvas()).toBeUndefined();
 	});
 
 	it('goes back to opening a note once nobody is choosing', async () => {

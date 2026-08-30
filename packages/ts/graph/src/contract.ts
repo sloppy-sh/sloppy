@@ -83,9 +83,7 @@ export interface GraphSurfaceProps {
   onChooseWithin?: (refs: readonly OwnedRef[]) => void;
   /**
    * A menu asked for on the canvas: a right-click, or a press and hold.
-   *
-   * Absent leaves a press and hold folding the note under it, which is what the
-   * canvas did before there was a menu to put the fold in.
+   * Absent leaves a press and hold folding the note under it.
    */
   onMenu?: (at: GraphMenuAt) => void;
   onOpenNode: (ref: OwnedRef) => void;
