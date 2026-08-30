@@ -137,6 +137,8 @@
 		choosing ? [...picked].map((ref) => nodes.get(ref)).filter((note) => note !== undefined) : []
 	);
 	const chosenTags = $derived([...new Set(chosenNotes.flatMap((note) => note.tags))]);
+	/** A surface of this page's own is over the graph, asking about the chosen set. */
+	const asking = $derived(tagging || styling || deleting);
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
 	const lit = $derived(
@@ -305,9 +307,9 @@
 		} finally {
 			acting = false;
 		}
-		// A tag exists as long as a note carries one, so the rail's counts are
-		// stale the moment either act lands.
-		if (act.act === 'tag' || act.act === 'untag') void tags.reload();
+		// A tag exists as long as a note carries one, so the rail's counts are stale
+		// the moment notes are tagged — or taken away with the tags they carried.
+		if (act.act !== 'set_appearance') void tags.reload();
 		if (act.act !== 'delete') return;
 		if (open && asked.includes(open)) hide();
 		stopChoosing();
@@ -412,10 +414,13 @@
 <svelte:head><title>Sloppy</title></svelte:head>
 
 <svelte:window
-	onkeydown={(event) => {
+	onkeydowncapture={(event) => {
 		if (event.key !== 'Escape') return;
 		if (pointing) stopPointing();
-		else if (choosing && menuAt === null) stopChoosing();
+		// Capture, so this reads whether a surface is over the graph BEFORE that
+		// surface closes itself on the same keystroke — otherwise one Escape both
+		// puts the question away and ends what it was asked about.
+		else if (choosing && menuAt === null && !asking) stopChoosing();
 	}}
 />
 

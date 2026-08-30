@@ -413,6 +413,21 @@ describe('choosing several notes to act on', () => {
 		expect(screen()).not.toContain('notes chosen');
 	});
 
+	// Escape reaches the page as well as the surface over it, and one keystroke
+	// must not both put a question away and end what it was asked about.
+	it('keeps the set while Escape is putting a surface away', async () => {
+		await chooseThree();
+
+		button('Tags').click();
+		await settle();
+		// Dispatched where a keystroke really lands, so the surface over the graph
+		// reads it first and the page reads it after that surface has closed.
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await settle();
+
+		expect(screen()).toContain('3 notes chosen');
+	});
+
 	it('goes back to opening a note once nobody is choosing', async () => {
 		await chooseThree();
 		button('Done').click();

@@ -92,7 +92,7 @@ export function mountGraph(
   sweep.style.cssText =
     "position:absolute;display:none;pointer-events:none;" +
     "border:1px solid color-mix(in oklab, currentColor 55%, transparent);" +
-    "background:color-mix(in oklab, currentColor 12%, transparent)";
+    "background:color-mix(in oklab, currentColor 8%, transparent)";
 
   surface.append(canvas, ink, sweep);
   host.append(surface);
