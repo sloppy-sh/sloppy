@@ -70,4 +70,23 @@ describe('the canvas menu', () => {
 		open({ items: [] });
 		expect(menu()).toBeNull();
 	});
+
+	// What a note offers is most of a phone's height by the time it is a real
+	// list of acts, and the point it was asked for is usually not near the top.
+	it('turns above the point rather than running off a phone', () => {
+		Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+		const acts = ['Open it', 'Tags', 'Give it a look', 'Fold it', 'Choose it', 'Delete it'];
+		open({
+			at: { clientX: 300, clientY: 800 },
+			items: acts.map((label) => ({ label, icon: Check, onSelect: () => {} }))
+		});
+
+		const height = acts.length * 44 + 8;
+		const top = Number(/min\((\d+(?:\.\d+)?)px/.exec(menu()?.style.top ?? '')?.[1]);
+		expect(top).toBeGreaterThanOrEqual(8);
+		expect(top + height).toBeLessThanOrEqual(800);
+		// And it stays off the right edge, where a menu asked for there would hang.
+		expect(Number.parseFloat(menu()?.style.left ?? '')).toBeLessThanOrEqual(390 - 240 - 8);
+	});
 });

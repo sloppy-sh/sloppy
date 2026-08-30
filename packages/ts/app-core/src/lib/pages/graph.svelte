@@ -17,6 +17,7 @@
 	// opens over it. DESIGN.md § Layout — the graph is the page.
 	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
 	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
@@ -35,6 +36,7 @@
 		type Tag as TagName
 	} from '@sloppy/types';
 	import {
+		AppearanceModal,
 		CanvasMenu,
 		ChosenBar,
 		ChosenLook,
@@ -56,6 +58,7 @@
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
+	import { noteMedia } from '../note-surface.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -91,6 +94,9 @@
 	/** Whether notes are being chosen to act on; the set may still be empty. */
 	let choosing = $state(false);
 	const picked = new SvelteSet<OwnedRef>();
+	/** The one note the menu's acts are about; null where they are the set's.
+	 *  Set by whatever opens a surface, so an act always knows whose it is. */
+	let oneNote = $state<OwnedRef | null>(null);
 	/** Where the canvas was asked for a menu, and on what. */
 	let menuAt = $state<GraphMenuAt | null>(null);
 	let tagging = $state(false);
@@ -144,10 +150,14 @@
 	 * change reaches the canvas as a new set.
 	 */
 	const chosen = $derived(choosing ? new Set(picked) : undefined);
-	const chosenNotes = $derived(
-		choosing ? [...picked].map((ref) => nodes.get(ref)).filter((note) => note !== undefined) : []
+
+	/** What a surface over the graph acts on: the note a menu named, or every
+	 *  note chosen — one note is a set of one, and takes the same acts. */
+	const acted = $derived(oneNote ? [oneNote] : [...picked]);
+	const actedNotes = $derived(
+		acted.map((ref) => nodes.get(ref)).filter((note) => note !== undefined)
 	);
-	const chosenTags = $derived([...new Set(chosenNotes.flatMap((note) => note.tags))]);
+	const actedTags = $derived([...new Set(actedNotes.flatMap((note) => note.tags))]);
 	const overGraph = $derived(overlay.open || menuAt !== null);
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
@@ -317,22 +327,22 @@
 	}
 
 	/**
-	 * One act over every chosen note. Throws so the surface that asked keeps its
-	 * question open and its own button ready to try again.
+	 * One act over every note it is about. Throws so the surface that asked keeps
+	 * its question open and its own button ready to try again.
 	 *
 	 * A second act asked for while one is in flight queues rather than being
 	 * dropped: the tag sheet is where several words are typed in a row, and a
 	 * caller cannot tell a dropped act from a done one.
 	 */
-	async function actOnChosen(act: NodeBulkAct): Promise<void> {
-		const asked = [...picked];
+	async function actOnThem(act: NodeBulkAct): Promise<void> {
+		const asked = [...acted];
 		if (asked.length === 0) return;
-		const mine = acting.then(() => runOnChosen(asked, act));
+		const mine = acting.then(() => runAct(asked, act));
 		acting = mine.catch(() => {});
 		await mine;
 	}
 
-	async function runOnChosen(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
+	async function runAct(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
 		forgetLastAct();
 		let missed: number;
 		try {
@@ -342,7 +352,7 @@
 				serverMessage(error) ?? 'Sloppy could not change those notes. Try again in a moment.';
 			throw error;
 		}
-		const shortfall = missed === 0 ? null : alreadyGone(missed);
+		const shortfall = missed === 0 ? null : alreadyGone(missed, asked.length);
 		// A tag exists as long as a note carries one, so the rail's counts are stale
 		// the moment notes are tagged — or taken away with the tags they carried.
 		if (act.act !== 'set_appearance') void tags.reload();
@@ -352,11 +362,13 @@
 		}
 		if (open && asked.includes(open)) hide();
 		// The bar goes with the set, so what is left to say goes beside the graph.
+		oneNote = null;
 		stopChoosing();
 		refused = shortfall;
 	}
 
-	function alreadyGone(missed: number): string {
+	function alreadyGone(missed: number, asked: number): string {
+		if (asked === 1) return 'That note was already gone.';
 		return missed === 1
 			? 'One of the notes you chose was already gone.'
 			: `${missed.toLocaleString()} of the notes you chose were already gone.`;
@@ -367,19 +379,8 @@
 		if (!at) return [];
 		const on = at.ref;
 		if (!choosing) {
-			const items: CanvasMenuItem[] = [
-				on
-					? { label: 'Choose this note', icon: ListChecks, onSelect: () => chooseAlso(on) }
-					: { label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }
-			];
-			if (on && at.foldable) {
-				items.push({
-					label: 'Fold what is under this',
-					icon: FoldVertical,
-					onSelect: () => folded.add(on)
-				});
-			}
-			return items;
+			if (!on) return [{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }];
+			return actsOnOne(on, at.foldable);
 		}
 
 		const items: CanvasMenuItem[] = [];
@@ -393,13 +394,13 @@
 		}
 		if (picked.size > 0) {
 			items.push(
-				{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
-				{ label: 'Give them a look', icon: CircleDashed, onSelect: () => (styling = true) },
+				{ label: 'Tags', icon: Tag, onSelect: () => openTags(null) },
+				{ label: 'Give them a look', icon: CircleDashed, onSelect: () => openLook(null) },
 				{
 					label: picked.size === 1 ? 'Delete it' : `Delete these ${picked.size}`,
 					icon: Trash2,
 					destructive: true,
-					onSelect: askToDelete
+					onSelect: () => askToDelete(null)
 				}
 			);
 		}
@@ -407,9 +408,49 @@
 		return items;
 	});
 
-	function askToDelete(): void {
-		deletingCount = picked.size;
-		deletionSays = deletionCost([...picked]);
+	/** Kept short: the menu has a phone to fit on, beside the note it is about. */
+	function actsOnOne(on: OwnedRef, foldable: boolean): CanvasMenuItem[] {
+		const items: CanvasMenuItem[] = [
+			{ label: 'Open it', icon: FileText, onSelect: () => show(on) },
+			{ label: 'Tags', icon: Tag, onSelect: () => openTags(on) },
+			{ label: 'Give it a look', icon: CircleDashed, onSelect: () => openLook(on) }
+		];
+		if (foldable) {
+			items.push({
+				label: 'Fold what is under this',
+				icon: FoldVertical,
+				onSelect: () => folded.add(on)
+			});
+		}
+		items.push(
+			{ label: 'Choose this and others', icon: ListChecks, onSelect: () => chooseAlso(on) },
+			{
+				label: 'Delete it',
+				icon: Trash2,
+				destructive: true,
+				onSelect: () => askToDelete(on)
+			}
+		);
+		return items;
+	}
+
+	function openTags(one: OwnedRef | null): void {
+		oneNote = one;
+		forgetLastAct();
+		tagging = true;
+	}
+
+	function openLook(one: OwnedRef | null): void {
+		oneNote = one;
+		forgetLastAct();
+		styling = true;
+	}
+
+	function askToDelete(one: OwnedRef | null): void {
+		oneNote = one;
+		forgetLastAct();
+		deletingCount = acted.length;
+		deletionSays = deletionCost(acted);
 		deleting = true;
 	}
 
@@ -623,9 +664,9 @@
 		<ChosenBar
 			count={picked.size}
 			says={actRefused ?? actMissed}
-			onTags={() => (tagging = true)}
-			onLook={() => (styling = true)}
-			onDelete={askToDelete}
+			onTags={() => openTags(null)}
+			onLook={() => openLook(null)}
+			onDelete={() => askToDelete(null)}
 			onDone={stopChoosing}
 		/>
 	{/if}
@@ -640,22 +681,35 @@
 
 <ChosenTags
 	bind:open={tagging}
-	count={picked.size}
-	tags={chosenTags}
+	count={acted.length}
+	tags={actedTags}
 	suggestions={tags.all}
 	refused={actRefused}
 	missed={actMissed}
-	onadd={(added: TagName[]) => actOnChosen({ act: 'tag', tags: added })}
-	onremove={(gone: TagName[]) => actOnChosen({ act: 'untag', tags: gone })}
+	onadd={(added: TagName[]) => actOnThem({ act: 'tag', tags: added })}
+	onremove={(gone: TagName[]) => actOnThem({ act: 'untag', tags: gone })}
 />
 
-<ChosenLook
-	bind:open={styling}
-	count={picked.size}
-	refused={actRefused}
-	onapply={(look: NodeAppearance | null) =>
-		actOnChosen({ act: 'set_appearance', appearance: look })}
-/>
+<!-- One note gets the surface its own page gives it, which is the one a picture
+     can be put on; several get the shapes they can be given all at once. -->
+{#if oneNote}
+	<AppearanceModal
+		bind:open={styling}
+		appearance={actedNotes[0]?.appearance ?? null}
+		media={noteMedia}
+		refused={actRefused}
+		onchange={(look: NodeAppearance | null) =>
+			actOnThem({ act: 'set_appearance', appearance: look })}
+	/>
+{:else}
+	<ChosenLook
+		bind:open={styling}
+		count={acted.length}
+		refused={actRefused}
+		onapply={(look: NodeAppearance | null) =>
+			actOnThem({ act: 'set_appearance', appearance: look })}
+	/>
+{/if}
 
 <ConfirmModal
 	bind:open={deleting}
@@ -663,7 +717,7 @@
 	description={deletionSays}
 	confirmLabel={deletingCount === 1 ? 'Delete it' : `Delete ${deletingCount} notes`}
 	refused={actRefused}
-	onconfirm={() => actOnChosen({ act: 'delete' })}
+	onconfirm={() => actOnThem({ act: 'delete' })}
 />
 
 <TemplatePicker

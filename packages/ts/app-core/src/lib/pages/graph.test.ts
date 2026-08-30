@@ -45,6 +45,8 @@ let api: FakeApi;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let graph: Map<OwnedRef, NodeView>;
+/** Every act the server was asked for, in the order it was asked. */
+let acts: NodeBulkRequest[];
 
 function path(of: OwnedRef): string {
 	const cut = of.lastIndexOf('/');
@@ -144,6 +146,51 @@ function labelled(label: string): HTMLButtonElement {
 
 const screen = () => document.body.textContent ?? '';
 
+/** The canvas's menu, asked for on a note or on the bare field. */
+function menuOn(what: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(`[data-menu="${what}"]`);
+	if (!found) throw new Error(`Nothing on the canvas answers a menu on ${what}`);
+	return found;
+}
+
+function item(label: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+		(row) => row.textContent?.trim() === label
+	);
+	if (!found) throw new Error(`The menu does not offer "${label}"`);
+	return found;
+}
+
+const offered = (): string[] =>
+	[...document.body.querySelectorAll('[role="menuitem"]')].map(
+		(row) => row.textContent?.trim() ?? ''
+	);
+
+function typeTag(word: string): void {
+	const field = document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
+	if (!field) throw new Error('No tag field is on screen');
+	field.value = word;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+	field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+}
+
+/** The words the tag field is showing. */
+const chips = (): string[] =>
+	[...document.body.querySelectorAll('button[aria-label^="Remove "]')].map((chip) =>
+		(chip.getAttribute('aria-label') ?? '').replace('Remove ', '')
+	);
+
+/** What the surface over the graph says. The bar it covers is still in the
+ *  document and says some of the same things, so `screen()` cannot tell
+ *  whether the person who caused a message can read it. */
+function inSheet(): string {
+	const up = [...document.body.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(
+		(surface) => surface.dataset.state !== 'closed'
+	);
+	if (up.length === 0) throw new Error('No surface is up over the graph');
+	return up.map((surface) => surface.textContent ?? '').join(' ');
+}
+
 async function open(): Promise<void> {
 	mounted = mount(Graph, { target });
 	flushSync();
@@ -166,6 +213,28 @@ beforeEach(() => {
 	tags.clear();
 	api = useFakeApi();
 	graph = installGraph();
+	acts = [];
+	api.on('POST /nodes/bulk', (_url, init) => {
+		const request = JSON.parse(String(init?.body)) as NodeBulkRequest;
+		acts.push(request);
+		const reached = request.notes.map((of) => graph.get(of)).filter((note) => note !== undefined);
+		const act = request.act;
+		if (act.act === 'delete') {
+			for (const of of request.notes) graph.delete(of);
+			return { reached: reached.length, missed: 0, notes: [] };
+		}
+		const notes = reached.map((note) => {
+			const after: NodeView =
+				act.act === 'tag'
+					? { ...note, tags: [...new Set([...note.tags, ...act.tags])] }
+					: act.act === 'untag'
+						? { ...note, tags: note.tags.filter((tag) => !act.tags.includes(tag)) }
+						: { ...note, appearance: act.appearance ?? undefined };
+			graph.set(after.ref, after);
+			return after;
+		});
+		return { reached: notes.length, missed: 0, notes };
+	});
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -266,62 +335,110 @@ describe('linking by pointing at the graph', () => {
 	});
 });
 
+// A right-click and a press-and-hold are how somebody asks what they can do to
+// the note under the pointer, and the answer is about that note.
+describe('acting on one note from the canvas', () => {
+	async function askAbout(address: string): Promise<void> {
+		await open();
+		menuOn(address).click();
+		await settle();
+	}
+
+	it('offers what can be done to the note, with choosing several as one row', async () => {
+		await askAbout('1');
+
+		expect(offered()).toEqual([
+			'Open it',
+			'Tags',
+			'Give it a look',
+			'Fold what is under this',
+			'Choose this and others',
+			'Delete it'
+		]);
+	});
+
+	it('opens the note', async () => {
+		await askAbout('1a');
+
+		item('Open it').click();
+		await settle();
+
+		expect(screen()).toContain('Cells');
+	});
+
+	// Acting on the note under the pointer must not leave the canvas in the mode
+	// for several — that mode was the whole of what the menu used to offer.
+	it('tags that note alone, without starting to choose', async () => {
+		await askAbout('1a');
+
+		item('Tags').click();
+		await settle();
+		expect(inSheet()).toContain('Tag this note');
+		typeTag('method');
+		await settle();
+
+		expect(acts).toEqual([{ notes: [SECOND], act: { act: 'tag', tags: ['method'] } }]);
+		expect(graph.get(SECOND)?.tags).toEqual(['method']);
+		expect(screen()).not.toContain('note chosen');
+		expect(choosingOnCanvas()).toBeUndefined();
+	});
+
+	// A picture is part of how one note is drawn, and the canvas is where somebody
+	// is looking at the mark that would carry it. The set's sheet cannot offer one.
+	it('gives it the look surface a picture can be put on', async () => {
+		await askAbout('1a');
+
+		item('Give it a look').click();
+		await settle();
+		expect(inSheet()).toContain('How this note looks');
+		expect(inSheet()).toContain('Add a picture');
+
+		button('Heavy').click();
+		await settle();
+
+		expect(acts).toEqual([
+			{ notes: [SECOND], act: { act: 'set_appearance', appearance: { ring_weight: 'heavy' } } }
+		]);
+	});
+
+	// The one act that cannot be taken back, in the words the rest of the product
+	// asks it in — never a second wording for the same question.
+	it('asks before deleting it, counting what goes with it', async () => {
+		await askAbout('1');
+
+		item('Delete it').click();
+		await settle();
+		expect(screen()).toContain('Delete this note?');
+		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
+		expect(acts).toEqual([]);
+
+		button('Delete it').click();
+		await settle();
+
+		expect(acts).toEqual([{ notes: [FIRST], act: { act: 'delete' } }]);
+		expect(graph.has(FIRST)).toBe(false);
+	});
+
+	it('starts choosing with that note already in the set', async () => {
+		await askAbout('2');
+
+		item('Choose this and others').click();
+		await settle();
+
+		expect(screen()).toContain('1 note chosen');
+		expect(onCanvas('2').dataset.chosen).toBe('yes');
+	});
+});
+
 // DESIGN.md § "The mark" keeps the word "chosen" for the notes somebody picked
 // out to act on; a selection is already the reader's tags.
 describe('choosing several notes to act on', () => {
-	let acts: NodeBulkRequest[];
-
-	/** The canvas's menu, asked for on a note or on the bare field. */
-	function menuOn(what: string): HTMLButtonElement {
-		const found = document.body.querySelector<HTMLButtonElement>(`[data-menu="${what}"]`);
-		if (!found) throw new Error(`Nothing on the canvas answers a menu on ${what}`);
-		return found;
-	}
-
-	function item(label: string): HTMLButtonElement {
-		const found = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
-			(row) => row.textContent?.trim() === label
-		);
-		if (!found) throw new Error(`The menu does not offer "${label}"`);
-		return found;
-	}
-
-	const offered = (): string[] =>
-		[...document.body.querySelectorAll('[role="menuitem"]')].map(
-			(row) => row.textContent?.trim() ?? ''
-		);
-
-	function typeTag(word: string): void {
-		const field = document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
-		if (!field) throw new Error('No tag field is on screen');
-		field.value = word;
-		field.dispatchEvent(new Event('input', { bubbles: true }));
-		field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-	}
-
-	/** The words the tag field is showing. */
-	const chips = (): string[] =>
-		[...document.body.querySelectorAll('button[aria-label^="Remove "]')].map((chip) =>
-			(chip.getAttribute('aria-label') ?? '').replace('Remove ', '')
-		);
-
-	/** What the surface over the graph says. The bar it covers is still in the
-	 *  document and says some of the same things, so `screen()` cannot tell
-	 *  whether the person who caused a message can read it. */
-	function inSheet(): string {
-		const up = [...document.body.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(
-			(surface) => surface.dataset.state !== 'closed'
-		);
-		if (up.length === 0) throw new Error('No surface is up over the graph');
-		return up.map((surface) => surface.textContent ?? '').join(' ');
-	}
-
 	/** `1` through the menu, which is the phone's way in. */
 	async function chooseOne(): Promise<void> {
 		await open();
 		menuOn('1').click();
 		await settle();
-		item('Choose this note').click();
+		item('Choose this and others').click();
 		await settle();
 	}
 
@@ -334,31 +451,6 @@ describe('choosing several notes to act on', () => {
 		await settle();
 	}
 
-	beforeEach(() => {
-		acts = [];
-		api.on('POST /nodes/bulk', (_url, init) => {
-			const request = JSON.parse(String(init?.body)) as NodeBulkRequest;
-			acts.push(request);
-			const reached = request.notes.map((of) => graph.get(of)).filter((note) => note !== undefined);
-			const act = request.act;
-			if (act.act === 'delete') {
-				for (const of of request.notes) graph.delete(of);
-				return { reached: reached.length, missed: 0, notes: [] };
-			}
-			const notes = reached.map((note) => {
-				const after: NodeView =
-					act.act === 'tag'
-						? { ...note, tags: [...new Set([...note.tags, ...act.tags])] }
-						: act.act === 'untag'
-							? { ...note, tags: note.tags.filter((tag) => !act.tags.includes(tag)) }
-							: { ...note, appearance: act.appearance ?? undefined };
-				graph.set(after.ref, after);
-				return after;
-			});
-			return { reached: notes.length, missed: 0, notes };
-		});
-	});
-
 	it('counts what is chosen and marks it on the canvas', async () => {
 		await chooseThree();
 
@@ -367,13 +459,17 @@ describe('choosing several notes to act on', () => {
 		expect(onCanvas('1a').dataset.chosen).toBe('yes');
 	});
 
+	// The bare field is a different question from a note, and starting to choose
+	// is what it is for.
 	it('offers different acts on a note and on the bare field', async () => {
 		await open();
-		menuOn('1').click();
+		menuOn('the canvas').click();
 		await settle();
-		expect(offered()).toEqual(['Choose this note', 'Fold what is under this']);
+		expect(offered()).toEqual(['Choose notes']);
 
-		item('Choose this note').click();
+		item('Choose notes').click();
+		await settle();
+		onCanvas('1').click();
 		await settle();
 		menuOn('the canvas').click();
 		await settle();
@@ -430,8 +526,8 @@ describe('choosing several notes to act on', () => {
 		]);
 	});
 
-	// One note is the ordinary way in — the menu offers "Choose this note" first —
-	// so neither question may talk about them.
+	// A set of one is still a set somebody built by hand, so neither question may
+	// talk about them.
 	it('asks about one chosen note in the singular', async () => {
 		await chooseOne();
 
