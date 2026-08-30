@@ -41,6 +41,7 @@
 		ChosenTags,
 		ConfirmModal,
 		GraphSurface,
+		overlay,
 		ResponsiveModal,
 		TagRail,
 		TemplatePicker,
@@ -93,9 +94,11 @@
 	let tagging = $state(false);
 	let styling = $state(false);
 	let deleting = $state(false);
-	/** How many notes the delete question was asked about. Latched: the set is
-	 *  let go the moment the act lands, while the question is still closing. */
+	/** How many notes the delete question was asked about, and what it costs.
+	 *  Latched: the set is let go the moment the act lands, while the question is
+	 *  still closing. */
 	let deletingCount = $state(0);
+	let deletionSays = $state('');
 	let acting = $state(false);
 	/** Why the last act on the chosen notes did not land. */
 	let actRefused = $state<string | null>(null);
@@ -134,14 +137,12 @@
 	 * them, because `selection` above is already the reader's tags. Copied, so a
 	 * change reaches the canvas as a new set.
 	 */
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt whole by the derived, never mutated after.
 	const chosen = $derived(choosing ? new Set(picked) : undefined);
 	const chosenNotes = $derived(
 		choosing ? [...picked].map((ref) => nodes.get(ref)).filter((note) => note !== undefined) : []
 	);
 	const chosenTags = $derived([...new Set(chosenNotes.flatMap((note) => note.tags))]);
-	/** A surface of this page's own is over the graph, asking about the chosen set. */
-	const asking = $derived(tagging || styling || deleting);
+	const overGraph = $derived(overlay.open || menuAt !== null);
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
 	const lit = $derived(
@@ -313,8 +314,9 @@
 		acting = true;
 		actRefused = null;
 		const asked = [...picked];
+		let missed: number;
 		try {
-			await nodes.act({ notes: asked, act });
+			missed = (await nodes.act({ notes: asked, act })).missed;
 		} catch (error) {
 			actRefused =
 				serverMessage(error) ?? 'Sloppy could not change those notes. Try again in a moment.';
@@ -322,12 +324,24 @@
 		} finally {
 			acting = false;
 		}
+		const shortfall = missed === 0 ? null : alreadyGone(missed);
 		// A tag exists as long as a note carries one, so the rail's counts are stale
 		// the moment notes are tagged — or taken away with the tags they carried.
 		if (act.act !== 'set_appearance') void tags.reload();
-		if (act.act !== 'delete') return;
+		if (act.act !== 'delete') {
+			actRefused = shortfall;
+			return;
+		}
 		if (open && asked.includes(open)) hide();
+		// The bar goes with the set, so what is left to say goes beside the graph.
 		stopChoosing();
+		refused = shortfall;
+	}
+
+	function alreadyGone(missed: number): string {
+		return missed === 1
+			? 'One of the notes you chose was already gone.'
+			: `${missed.toLocaleString()} of the notes you chose were already gone.`;
 	}
 
 	const menuItems = $derived.by((): CanvasMenuItem[] => {
@@ -377,14 +391,43 @@
 
 	function askToDelete(): void {
 		deletingCount = picked.size;
+		deletionSays = deletionCost([...picked]);
 		deleting = true;
 	}
 
-	const deletionSays = $derived(
-		deletingCount === 1
-			? 'It goes with everything written under it, and this cannot be undone. The address it held stays empty — no other note is renumbered.'
-			: `They go with everything written under them, and this cannot be undone. The addresses they held stay empty — no other note is renumbered.`
-	);
+	/** Everything under these notes that is not itself one of them. Null where a
+	 *  branch has not been counted yet, which no number may stand in for. */
+	function grownFrom(refs: readonly OwnedRef[]): number | null {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- counted and thrown away inside this call; nothing reads it.
+		const going = new Set(refs);
+		const walk = (of: OwnedRef) => {
+			for (const child of nodes.children(of)) {
+				going.add(child.ref);
+				walk(child.ref);
+			}
+		};
+		for (const ref of refs) {
+			const note = nodes.get(ref);
+			if (!note || !nodes.status({ origin: note.origin }).loaded) return null;
+			walk(ref);
+		}
+		return going.size - refs.length;
+	}
+
+	function deletionCost(refs: readonly OwnedRef[]): string {
+		const one = refs.length === 1;
+		const it = one ? 'it' : 'them';
+		const grown = grownFrom(refs);
+		if (grown === null) {
+			return one
+				? 'It goes for good, and so does everything written under it.'
+				: 'They go for good, and so does everything written under them.';
+		}
+		const goes = one ? 'It goes for good' : 'They go for good';
+		if (grown === 0) return `${goes}.`;
+		if (grown === 1) return `${goes}, and so does the one note that grew out of ${it}.`;
+		return `${goes}, and so do the ${grown.toLocaleString()} notes that grew out of ${it}.`;
+	}
 
 	/** A branch of its own. A note that continues one is written from inside it. */
 	async function writeBranch(shape: NoteTemplate | null): Promise<void> {
@@ -440,7 +483,7 @@
 		// Capture, so this reads whether a surface is over the graph BEFORE that
 		// surface closes itself on the same keystroke — otherwise one Escape both
 		// puts the question away and ends what it was asked about.
-		else if (choosing && menuAt === null && !asking) stopChoosing();
+		else if (choosing && !overGraph) stopChoosing();
 	}}
 />
 

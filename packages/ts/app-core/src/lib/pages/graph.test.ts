@@ -134,6 +134,14 @@ function button(labelled: string): HTMLButtonElement {
 	return found;
 }
 
+function labelled(label: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find(
+		(b) => b.getAttribute('aria-label') === label
+	);
+	if (!found) throw new Error(`Nothing on screen is labelled "${label}"`);
+	return found as HTMLButtonElement;
+}
+
 const screen = () => document.body.textContent ?? '';
 
 async function open(): Promise<void> {
@@ -382,11 +390,34 @@ describe('choosing several notes to act on', () => {
 		]);
 	});
 
-	// The one act that cannot be taken back, and the one consequence a person
-	// carries afterwards: the address stays where it was.
-	it('asks before deleting, and says what a delete costs', async () => {
+	// An untouched dialog carries no look, and writing one anyway is the same act
+	// as the button beside it — which also takes off a picture nobody asked about.
+	it('offers no look until one has been picked', async () => {
+		await chooseThree();
+
+		button('Look').click();
+		await settle();
+		expect(button('Give them this look').disabled).toBe(true);
+
+		button('Large').click();
+		await settle();
+		expect(button('Give them this look').disabled).toBe(false);
+
+		button('Give them this look').click();
+		await settle();
+		expect(acts).toEqual([
+			{
+				notes: [FIRST, SECOND, THIRD],
+				act: { act: 'set_appearance', appearance: { mark_radius: 'large' } }
+			}
+		]);
+	});
+
+	// The one act that cannot be taken back, so the question counts everything
+	// that goes — the notes chosen are never all of them.
+	it('asks before deleting, counting what goes with the notes chosen', async () => {
 		await open();
-		menuOn('1a').click();
+		menuOn('1').click();
 		await settle();
 		item('Choose this note').click();
 		await settle();
@@ -394,15 +425,76 @@ describe('choosing several notes to act on', () => {
 		button('Delete').click();
 		await settle();
 		expect(screen()).toContain('Delete this note?');
-		expect(screen()).toContain('no other note is renumbered');
+		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
 		expect(acts).toEqual([]);
 
 		button('Delete it').click();
 		await settle();
 
-		expect(acts).toEqual([{ notes: [SECOND], act: { act: 'delete' } }]);
-		expect(graph.has(SECOND)).toBe(false);
+		expect(acts).toEqual([{ notes: [FIRST], act: { act: 'delete' } }]);
+		expect(graph.has(FIRST)).toBe(false);
 		expect(screen()).not.toContain('chosen');
+	});
+
+	// A note already chosen is not counted twice for being under another one.
+	it('counts a whole branch once, however much of it was chosen', async () => {
+		await chooseThree();
+
+		button('Delete').click();
+		await settle();
+
+		expect(screen()).toContain('Delete these 3 notes?');
+		expect(screen()).toContain('They go for good.');
+	});
+
+	// The server reaches what is still there and counts the rest; reporting a
+	// partial success as a clean one is telling somebody their tag landed on a
+	// note it never reached.
+	it('says how much of what was chosen was already gone', async () => {
+		await chooseThree();
+		api.on('POST /nodes/bulk', () => ({
+			reached: 2,
+			missed: 1,
+			notes: [graph.get(FIRST)!, graph.get(SECOND)!]
+		}));
+
+		button('Tags').click();
+		await settle();
+		typeTag('method');
+		await settle();
+
+		expect(screen()).toContain('One of the notes you chose was already gone.');
+	});
+
+	// The bar goes with the set, so a delete has to say it somewhere else.
+	it('says it beside the graph where the delete was the partial one', async () => {
+		await chooseThree();
+		api.on('POST /nodes/bulk', () => ({ reached: 1, missed: 2, notes: [] }));
+
+		button('Delete').click();
+		await settle();
+		button('Delete 3 notes').click();
+		await settle();
+
+		expect(screen()).not.toContain('notes chosen');
+		expect(screen()).toContain('2 of the notes you chose were already gone.');
+	});
+
+	// DESIGN.md § Layout: a component renders only when it has something to do,
+	// and choosing by name lands somebody here before they have chosen anything.
+	it('offers no act until something is chosen', async () => {
+		await open();
+		menuOn('the canvas').click();
+		await settle();
+		item('Choose notes').click();
+		await settle();
+
+		expect(screen()).toContain('Tap the notes you mean');
+		expect(() => button('Delete')).toThrow();
+
+		onCanvas('1').click();
+		await settle();
+		expect(button('Delete')).toBeTruthy();
 	});
 
 	it('leaves the mode where the reader says so, by hand and by keyboard', async () => {
@@ -426,6 +518,19 @@ describe('choosing several notes to act on', () => {
 		await settle();
 		// Dispatched where a keystroke really lands, so the surface over the graph
 		// reads it first and the page reads it after that surface has closed.
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await settle();
+
+		expect(screen()).toContain('3 notes chosen');
+	});
+
+	// Every surface over this page is the one modal, and a set of twenty is worth
+	// more than the surface a glance opened over it.
+	it('keeps the set for a surface it was never asked about', async () => {
+		await chooseThree();
+
+		labelled('A new branch, from a shape').click();
+		await settle();
 		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await settle();
 
@@ -470,14 +575,6 @@ describe('a branch started from a shape', () => {
 	const WRITTEN = ref(9);
 	/** The note's stack as the server holds it. */
 	let stack: BlockView[];
-
-	function labelled(label: string): HTMLButtonElement {
-		const found = [...document.body.querySelectorAll('button')].find(
-			(b) => b.getAttribute('aria-label') === label
-		);
-		if (!found) throw new Error(`Nothing on screen is labelled "${label}"`);
-		return found;
-	}
 
 	function shape(named: string): HTMLButtonElement {
 		const found = [...document.body.querySelectorAll<HTMLButtonElement>('li button')].find(

@@ -102,7 +102,7 @@
 <ResponsiveModal
 	bind:open
 	title={count === 1 ? 'Give this note a look' : `Give ${count} notes a look`}
-	description="This replaces whatever look they have."
+	description="This replaces the look they have now, including any picture on them."
 >
 	<div class="space-y-5 px-2 pt-4">
 		{@render row('Ring', rings, ring, (v) => (ring = v as RingWeight))}
@@ -133,7 +133,11 @@
 			>
 				Cancel
 			</Button>
-			<Button class="h-11 sm:h-9" disabled={working} onclick={() => void apply(look)}>
+			<Button
+				class="h-11 sm:h-9"
+				disabled={working || look === null}
+				onclick={() => void apply(look)}
+			>
 				Give them this look
 			</Button>
 		</div>

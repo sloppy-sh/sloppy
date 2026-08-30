@@ -43,7 +43,7 @@
 	<div
 		class="pointer-events-auto w-full max-w-md rounded-2xl border bg-card/95 p-2 shadow-lg backdrop-blur"
 	>
-		<div class="flex items-center gap-2 px-2 pb-1">
+		<div class="flex items-center gap-2 px-2 {count > 0 ? 'pb-1' : ''}">
 			<p class="min-w-0 flex-1 truncate text-sm" aria-live="polite">{tally}</p>
 			<Button variant="ghost" class="h-9 shrink-0 rounded-full" onclick={onDone}>Done</Button>
 		</div>
@@ -52,20 +52,21 @@
 			<p class="px-2 pb-2 text-sm text-destructive" role="alert">{refused}</p>
 		{/if}
 
-		<div class="grid grid-cols-3 gap-1">
-			{#each acts as act (act.label)}
-				<Button
-					variant="ghost"
-					disabled={count === 0}
-					onclick={act.onSelect}
-					class="h-14 flex-col gap-1 rounded-xl {act.destructive
-						? 'text-destructive hover:text-destructive'
-						: ''}"
-				>
-					<act.icon class="size-5" />
-					<span class="text-xs leading-none">{act.label}</span>
-				</Button>
-			{/each}
-		</div>
+		{#if count > 0}
+			<div class="grid grid-cols-3 gap-1">
+				{#each acts as act (act.label)}
+					<Button
+						variant="ghost"
+						onclick={act.onSelect}
+						class="h-14 flex-col gap-1 rounded-xl {act.destructive
+							? 'text-destructive hover:text-destructive'
+							: ''}"
+					>
+						<act.icon class="size-5" />
+						<span class="text-xs leading-none">{act.label}</span>
+					</Button>
+				{/each}
+			</div>
+		{/if}
 	</div>
 </div>
