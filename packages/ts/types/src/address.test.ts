@@ -295,22 +295,23 @@ describe("the run of thought", () => {
   }
 
   // The canvas draws an edge per pair and the note surface walks by neighbour,
-  // so neither may reach a note the other does not.
-  it("gives the same neighbours the pairs do, whatever a run is missing", () => {
+  // so both are held to address order here rather than to each other.
+  it("pairs and walks by address order, whatever a run is missing", () => {
     for (let seed = 1; seed <= 200; seed++) {
       const run = scattered(seed);
-      const pairs = runPairs(run);
+      const order = [...run].sort((a, b) =>
+        compareAddresses(a.address, b.address),
+      );
 
-      expect(pairs.length).toBe(run.length - 1);
-      for (const [before, after] of pairs) {
-        expect(alongRun(before.address, run).after).toBe(after);
-        expect(alongRun(after.address, run).before).toBe(before);
-      }
-      const open = run.filter((note) => {
-        const { before, after } = alongRun(note.address, run);
-        return before === null || after === null;
+      expect(runPairs(run)).toEqual(
+        order.slice(1).map((note, at) => [order[at], note]),
+      );
+      order.forEach((note, at) => {
+        expect(alongRun(note.address, run)).toEqual({
+          before: order[at - 1] ?? null,
+          after: order[at + 1] ?? null,
+        });
       });
-      expect(open.length).toBe(run.length === 1 ? 1 : 2);
     }
   });
 });

@@ -30,10 +30,12 @@ const SIXTH = ref(6);
 const PHONE = () => true;
 const WIDE = () => false;
 
-function path(of: OwnedRef): string {
+function refPath(of: OwnedRef): string {
 	const cut = of.lastIndexOf('/');
-	return `/nodes/${encodeURIComponent(of.slice(0, cut))}/${encodeURIComponent(of.slice(cut + 1))}`;
+	return `/${encodeURIComponent(of.slice(0, cut))}/${encodeURIComponent(of.slice(cut + 1))}`;
 }
+
+const path = (of: OwnedRef) => `/nodes${refPath(of)}`;
 
 function stubViewport(matches: () => boolean): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
@@ -59,6 +61,15 @@ function stubViewport(matches: () => boolean): void {
 /** Past the frame the modal claims focus on, and the one the caret follows in. */
 async function settle(): Promise<void> {
 	for (let frame = 0; frame < 4; frame += 1) await new Promise(requestAnimationFrame);
+}
+
+/** Real timers: what is being waited for is the note settling, not a delay. */
+async function until(ready: () => boolean): Promise<void> {
+	for (let turn = 0; turn < 200 && !ready(); turn += 1) {
+		await new Promise((wake) => setTimeout(wake));
+		flushSync();
+	}
+	if (!ready()) throw new Error('The note never settled');
 }
 
 const focused = () => document.activeElement as HTMLElement | null;
@@ -118,7 +129,7 @@ describe.each([
 	it('hands the caret on to the next note written from inside it', async () => {
 		await openWritten(at);
 
-		const write = button('A note under this');
+		const write = button('Write a note under this');
 		write.focus();
 		write.click();
 		await settle();
@@ -387,7 +398,7 @@ describe('writing the note that comes next', () => {
 
 	it('springs a note out of the one being read', async () => {
 		await openNote(SECOND);
-		button('A note under this').click();
+		button('Write a note under this').click();
 		await settle();
 
 		expect(placed).toEqual({ relation: 'under', note: SECOND });
@@ -395,7 +406,7 @@ describe('writing the note that comes next', () => {
 
 	it('continues the run the one being read is in', async () => {
 		await openNote(SECOND);
-		button('The next note').click();
+		button('Write the next note').click();
 		await settle();
 
 		expect(placed).toEqual({ relation: 'after', note: SECOND });
@@ -600,15 +611,6 @@ describe('starting a note from a shape', () => {
 		return found;
 	}
 
-	/** Real timers: what is being waited for is the note settling, not a delay. */
-	async function until(ready: () => boolean): Promise<void> {
-		for (let turn = 0; turn < 200 && !ready(); turn += 1) {
-			await new Promise((wake) => setTimeout(wake));
-			flushSync();
-		}
-		if (!ready()) throw new Error('The note never settled');
-	}
-
 	beforeEach(async () => {
 		installGraph();
 		stack = [];
@@ -643,7 +645,7 @@ describe('starting a note from a shape', () => {
 		});
 		await openNote(SECOND);
 
-		labelled('A note under this, from a shape').click();
+		labelled('Write a note under this, from a shape').click();
 		await settle();
 		shape('Objection').click();
 		await until(() => screen().includes('Sloppy could not'));
@@ -712,6 +714,24 @@ function installRun(): Map<OwnedRef, NodeView> {
 		api.on(`GET ${path(of)}/blocks`, () => []);
 	}
 	return graph;
+}
+
+const SECTION = ref(30);
+
+/** A note's one section, as a server holds it. */
+function section(of: OwnedRef, words: string): BlockView {
+	return {
+		ref: SECTION,
+		created_by: DID,
+		created_at: AT,
+		updated_at: AT,
+		node: of,
+		ord: '0.5',
+		content: {
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: words }] }]
+		}
+	};
 }
 
 describe('walking the graph from a note', () => {
@@ -792,25 +812,7 @@ describe('walking the graph from a note', () => {
 	// Walking is the same button pressed again and again, so a note whose
 	// sections are in hand must not blank itself on the way back to it.
 	it('does not blank a note it has already read while it asks again', async () => {
-		api.on(`GET ${path(SECOND)}/blocks`, () => [
-			{
-				ref: ref(30),
-				created_by: DID,
-				created_at: AT,
-				updated_at: AT,
-				node: SECOND,
-				ord: '0.5',
-				content: {
-					type: 'doc',
-					content: [
-						{
-							type: 'section',
-							content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Ribosomes' }] }]
-						}
-					]
-				}
-			}
-		]);
+		api.on(`GET ${path(SECOND)}/blocks`, () => [section(SECOND, 'Ribosomes')]);
 		await openNote(SECOND);
 		expect(screen()).toContain('Ribosomes');
 
@@ -845,6 +847,63 @@ describe('walking the graph from a note', () => {
 
 		expect(api.countOf(`GET ${path(SECOND)}/blocks`)).toBe(1);
 		expect(api.countOf(`GET ${path(SIXTH)}/blocks`)).toBe(1);
+	});
+});
+
+describe('the sections of a note walked away from', () => {
+	/** The server's copy of what `1a` holds. */
+	let held: BlockView;
+
+	beforeEach(async () => {
+		installRun();
+		await loadGraph();
+		held = section(SECOND, 'Ribosomes');
+		api.on(`GET ${path(SECOND)}/blocks`, () => [held]);
+		api.on(`PATCH /blocks${refPath(SECTION)}`, (_url, init) => {
+			const { content } = JSON.parse(String(init?.body)) as Pick<BlockView, 'content'>;
+			held = { ...held, content };
+			return held;
+		});
+	});
+
+	/** TipTap hangs the editor off the element it writes into. */
+	const writingIn = (): { commands: { insertContentAt(at: number, text: string): boolean } } =>
+		(
+			document.body.querySelector('.sloppy-prose') as unknown as {
+				editor: { commands: { insertContentAt(at: number, text: string): boolean } };
+			}
+		).editor;
+
+	// The surface sends its last write as it is taken down, by which time the
+	// reader is on the next note along.
+	it('keeps writing with the note it was typed in, not the one walked on to', async () => {
+		await openNote(SECOND);
+		writingIn().commands.insertContentAt(2, 'Free ');
+
+		labelled('The note after this, 1c').click();
+		await until(() => api.countOf(`PATCH /blocks${refPath(SECTION)}`) === 1);
+
+		labelled('The note before this, 1a').click();
+		flushSync();
+
+		expect(screen()).toContain('Free Ribosomes');
+	});
+
+	it('reads a note again as it now is where it changed while nobody was on it', async () => {
+		await openNote(SECOND);
+		expect(screen()).toContain('Ribosomes');
+
+		labelled('The note after this, 1c').click();
+		await settle();
+		held = section(SECOND, 'Mitochondria');
+
+		labelled('The note before this, 1a').click();
+		flushSync();
+		expect(screen()).toContain('Ribosomes');
+
+		await settle();
+		expect(screen()).toContain('Mitochondria');
+		expect(screen()).not.toContain('Ribosomes');
 	});
 });
 
