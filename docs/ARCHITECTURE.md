@@ -304,13 +304,7 @@ the note, and `provenanceOf` in `@sloppy/graph` is the only thing that reads it 
 decides whether a mark draws as own or as published, and nothing else follows from it.
 Neither `POST /publications` nor the public read endpoint § "Federating the graph"
 describes is served by `apps/sloppy/api` yet, so no note in Sloppy has ever been readable
-by anybody, and `NodeBulkActSchema`'s `publish` act changes how a mark draws and nothing
-more.
-
-**So no surface may describe that act as publishing** until both routes exist. PRODUCT.md
-principle 5 puts what publishing exposes in front of the person at the moment they decide,
-and there is no true version of that sentence to write here: a button that says a note has
-left the device would be the one lie the principle exists to forbid.
+by anybody, and nothing writes `published` after a note is created.
 
 The publishing milestone owns reconciling the two, and it is a reconciliation rather than
 an addition. A note is readable when a publication row roots at it **or at one of its

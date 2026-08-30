@@ -114,9 +114,8 @@ export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
 /**
  * `address`, `depth` and `origin` are absent because they are immutable, and
- * `published` because it is written by {@link NodeBulkActSchema}'s own act
- * rather than alongside a title. `parent` is absent because a move writes an
- * alias rather than a new address, and that mechanism does not exist yet.
+ * `parent` because a move writes an alias rather than a new address, and that
+ * mechanism does not exist yet.
  */
 export const UpdateNodeRequestSchema = z.object({
   title: z.string().max(512).optional(),
@@ -138,7 +137,7 @@ export const MAX_NOTES_PER_BULK_ACT = 200;
 /**
  * One act, over however many notes somebody chose. Keyed by `act` so a fifth act
  * is a member here and a branch in the service — never a second route, and never
- * a field on every request that five acts out of six leave empty.
+ * a field on every request that three acts out of four leave empty.
  */
 export const NodeBulkActSchema = z.discriminatedUnion("act", [
   /** Added to what each note already carries, rather than replacing it. */
@@ -150,13 +149,6 @@ export const NodeBulkActSchema = z.discriminatedUnion("act", [
     act: z.literal("set_appearance"),
     appearance: NodeAppearanceSchema.nullable(),
   }),
-  /**
-   * Writes {@link NodeSchema}'s `published` mark and makes nothing readable by
-   * anybody. Until a `publication` row is reachable, no surface may offer this
-   * as publishing — docs/ARCHITECTURE.md § "Data model" is the ruling.
-   */
-  z.object({ act: z.literal("publish") }),
-  z.object({ act: z.literal("unpublish") }),
   /** Each note leaves with everything that sprang from it, and with its blocks. */
   z.object({ act: z.literal("delete") }),
 ]);

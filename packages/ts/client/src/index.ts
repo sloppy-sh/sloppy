@@ -294,11 +294,6 @@ export class SloppyClient {
    * is the only route any of them takes and a selection of one is not a special
    * case. Only the caller's own notes are reached; `missed` counts the rest,
    * which is something to say rather than a failure.
-   *
-   * The `publish` act writes the note's published mark and makes nothing
-   * readable by anybody. {@link publish} is the one that would, and neither it
-   * nor the endpoint a peer reads from is served yet — docs/ARCHITECTURE.md
-   * § "Data model" holds the ruling and what a surface may call this meanwhile.
    */
   async actOnNodes(request: NodeBulkRequest): Promise<NodeBulkResult> {
     return parseNodeBulkResult(await this.send("POST", "/nodes/bulk", request));
@@ -339,9 +334,8 @@ export class SloppyClient {
   }
 
   // ── Publications ─────────────────────────────────────────────────────────
-  // Declared, not served: no controller answers `/publications` yet, so every
-  // method here reaches a 404. docs/ARCHITECTURE.md § "Data model" carries what
-  // that means for anything wanting to call a note published.
+  // Declared, not served: `apps/sloppy/api` answers none of these routes yet,
+  // so a call reaches a 404.
 
   async listPublications(): Promise<PublicationView[]> {
     const body = await this.json("/publications", { method: "GET" });

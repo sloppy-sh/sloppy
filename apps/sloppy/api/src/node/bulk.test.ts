@@ -123,7 +123,7 @@ describe("one act over the notes somebody chose", () => {
       DID,
       {
         notes: [...notes.map((n) => ownedRefFrom(n.id)), gone],
-        act: { act: "publish" },
+        act: { act: "untag", tags: ["nothing"] },
       },
       undefined,
     );
@@ -139,24 +139,12 @@ describe("one act over the notes somebody chose", () => {
 
     const asked = service.bulk(
       DID,
-      { notes: [gone], act: { act: "publish" } },
+      { notes: [gone], act: { act: "untag", tags: ["nothing"] } },
       undefined,
     );
 
     await expect(asked).rejects.toBeInstanceOf(NotFoundException);
     await expect(asked).rejects.toThrow(/Reload your graph/);
-  });
-
-  it("sets and clears the published mark through one act, keyed by which", async () => {
-    const notes = [note("1")];
-    for (const [asked, written] of [
-      ["publish", true],
-      ["unpublish", false],
-    ] as const) {
-      const { service, writes } = serviceOver(notes);
-      await service.bulk(DID, over(notes, { act: asked }), undefined);
-      expect(writes).toEqual([{ published: written }]);
-    }
   });
 
   it("stores a look with every channel taken back off as no look at all", async () => {

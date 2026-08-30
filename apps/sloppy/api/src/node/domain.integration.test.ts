@@ -1056,19 +1056,6 @@ describe("the domain routes", () => {
       expect(untagged.notes.map((note) => note.tags)).toEqual([[], ["seed"]]);
     });
 
-    scenario(
-      "sets and clears the published mark on what was chosen",
-      async () => {
-        const note = await newNode(ada, { title: "Marked" });
-
-        const published = await bulk(ada, [note.ref], { act: "publish" });
-        expect(published.notes[0].published).toBe(true);
-
-        const withdrawn = await bulk(ada, [note.ref], { act: "unpublish" });
-        expect(withdrawn.notes[0].published).toBe(false);
-      },
-    );
-
     scenario("sets one look across every note it reaches", async () => {
       const one = await newNode(ada, { title: "One" });
       const two = await newNode(ada, { title: "Two" });
@@ -1158,7 +1145,7 @@ describe("the domain routes", () => {
       "refuses a selection with nothing in it, and one too large",
       async () => {
         const note = await newNode(ada, { title: "One" });
-        const act = { act: "publish" };
+        const act = { act: "untag", tags: ["nothing"] };
 
         expect(
           (await call("POST", "/nodes/bulk", ada, { notes: [], act })).status,
