@@ -9,6 +9,7 @@
 import { TAG_HUE_SLOTS, type TagHueSlot } from "@sloppy/types";
 import {
   clamp,
+  contrastRatio,
   intoGamut,
   mixOklab,
   type Oklch,
@@ -37,6 +38,14 @@ export interface GraphPalette {
    * in `@sloppy/ui` is what holds every slot above {@link MARK_FLOOR}.
    */
   tag(slot: TagHueSlot): number;
+  /**
+   * The ring a look draws inside a mark filled `fill`: whichever of ink and
+   * paper stands out against it, so a look is never lost in its own mark.
+   *
+   * Answers the fills {@link depth} and {@link tag} hand out, plus {@link paper}
+   * for a mark drawn hollow; any other fill is answered in ink.
+   */
+  lookRing(fill: number): number;
   /**
    * Genealogical edges draw {@link depth} at these alphas — DESIGN.md § Edges,
    * which dims them further while tags are selected.
@@ -89,36 +98,52 @@ export function buildPalette(tokens: PaletteTokens): GraphPalette {
   const ink = parseCssColor(tokens.ink) ?? UNTHEMED_INK;
   const paper = parseCssColor(tokens.paper) ?? UNTHEMED_PAPER;
 
-  const depthRamp = Array.from({ length: DEPTH_STEPS + 1 }, (_, step) =>
-    toRgb24(
-      raiseToFloor(
-        mixOklab(ink, paper, step / (DEPTH_STEPS + 1)),
-        paper,
-        ink,
-        MARK_FLOOR,
-      ),
+  const generations = Array.from({ length: DEPTH_STEPS + 1 }, (_, step) =>
+    raiseToFloor(
+      mixOklab(ink, paper, step / (DEPTH_STEPS + 1)),
+      paper,
+      ink,
+      MARK_FLOOR,
     ),
   );
+  const depthRamp = generations.map(toRgb24);
   const depth = (at: number): number =>
     depthRamp[clamp(Math.round(at) - 1, 0, DEPTH_STEPS)];
 
-  const hues = TAG_HUE_SLOTS.map((_, at) => {
+  const slotColours = TAG_HUE_SLOTS.map((_, at) => {
     const token = parseCssColor(tokens.hues[at] ?? "");
-    return token === null ? null : toRgb24(intoGamut(token));
+    return token === null ? null : intoGamut(token);
   });
+  const hues = slotColours.map((slot) =>
+    slot === null ? null : toRgb24(slot),
+  );
+
+  const inkRgb = toRgb24(ink);
+  const paperRgb = toRgb24(paper);
+  const rings = new Map<number, number>();
+  for (const fill of [...generations, ...slotColours, paper]) {
+    if (fill === null) continue;
+    rings.set(
+      toRgb24(fill),
+      contrastRatio(ink, fill) >= contrastRatio(paper, fill)
+        ? inkRgb
+        : paperRgb,
+    );
+  }
 
   return {
-    ink: toRgb24(ink),
-    paper: toRgb24(paper),
+    ink: inkRgb,
+    paper: paperRgb,
     depth,
     tag: (slot) => hues[clamp(slot - 1, 0, hues.length - 1)] ?? depth(1),
+    lookRing: (fill) => rings.get(fill) ?? inkRgb,
     edgeAlpha: 0.24,
     edgeAlphaWhileSelecting: 0.08,
     unselectedAlpha: 0.34,
-    run: toRgb24(ink),
+    run: inkRgb,
     runAlpha: 0.55,
     runAlphaWhileSelecting: 0.18,
-    link: toRgb24(ink),
+    link: inkRgb,
     linkAlpha: 0.34,
   };
 }

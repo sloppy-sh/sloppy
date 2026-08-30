@@ -4,22 +4,32 @@
 //
 // Marks are particles rather than display objects because the bound is in the
 // hundreds and the cost of a container per node is not. Form carries provenance
-// (DESIGN.md § Form), which is why there are three of them: a tint cannot make
-// one texture read as two shapes.
+// and the author's look (DESIGN.md § Form), so each gets a shape of its own: a
+// tint cannot make one texture read as two shapes.
 
+import type { RingStyle, RingWeight } from "@sloppy/types";
 import type {
   Application,
   Container,
   Graphics,
   Particle,
   ParticleContainer,
+  Sprite,
   Text,
   Texture,
 } from "pixi.js";
 import { clamp } from "./color.js";
 import type { GraphPickMarks } from "./contract.js";
 import type { GraphNodeAttributes } from "./model.js";
-import type { BuiltModel } from "./model.js";
+import {
+  type BuiltModel,
+  LOOK_RING_AT,
+  LOOK_RING_DASHES,
+  LOOK_RING_DUTY,
+  LOOK_RING_WIDTH,
+  MARK_PICTURE_PX,
+  PREVIEW_AT,
+} from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
 import {
   type Bounds,
@@ -33,6 +43,10 @@ type Pixi = typeof import("pixi.js");
 /** Radius the mark textures are drawn at; every mark is a scale of this. */
 const TEXTURE_RADIUS = 16;
 const TEXTURE_RESOLUTION = 4;
+/** Empty margin around each shape on the sheet, so sampling one never catches
+ *  the shape beside it. */
+const SHEET_PAD = 4;
+const SHEET_CELL = TEXTURE_RADIUS * 2 + SHEET_PAD * 2;
 
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
@@ -59,6 +73,21 @@ const LINK_DASH = 9;
  *  enough that the dashes stretch to meet it. */
 const MAX_DASHES = 60;
 
+/** Below this on screen, a mark is too small to carry its author's look —
+ *  DESIGN.md § "The mark", where the look is the first thing to go. */
+const LOOK_MIN_RADIUS = 8;
+/** How far past that a look hangs on, so a pinch does not strobe it. */
+const LOOK_HYSTERESIS = 0.75;
+
+/** Dashes around a broken provenance edge; the look's own count is geometry a
+ *  swatch has to match, so `model.ts` owns that one. */
+const EDGE_DASHES = 14;
+
+/** Provenance's own edge, as fractions of the mark's radius — its centre line
+ *  and its stroke. A look draws inside it, and `scene.test.ts` holds the gap. */
+export const EDGE_RING_AT = (TEXTURE_RADIUS - 1.6) / TEXTURE_RADIUS;
+export const EDGE_RING_WIDTH = 2.2 / TEXTURE_RADIUS;
+
 /** Rebuild edge geometry when the zoom has moved enough to show in the stroke. */
 const SCALE_REBUILD = 0.08;
 
@@ -67,10 +96,25 @@ export interface SceneFonts {
   address: string;
 }
 
+/**
+ * How a mark's preview picture reaches the canvas: the host resolves one,
+ * because this package reaches no server and a raw remote URL in a texture is
+ * the privacy bug it is in an `<img>`.
+ *
+ * `null` is nothing to draw — a picture the store no longer holds included — and
+ * the mark then draws exactly as a mark with no picture. `release` frees
+ * whatever `src` held; the canvas calls it once the bytes are on the GPU.
+ */
+export interface MarkPictures {
+  read(preview: string): Promise<{ src: string; release: () => void } | null>;
+}
+
 export interface SceneOptions {
   fonts: SceneFonts;
   palette: GraphPalette;
   resolution: number;
+  /** Absent draws every mark without its author's picture. */
+  pictures?: MarkPictures;
 }
 
 export interface FrameStats {
@@ -93,12 +137,26 @@ interface Mark {
   radius: number;
   attributes: GraphNodeAttributes;
   fill: Particle | null;
+  /** Provenance, on the mark's own edge. */
   ring: Particle | null;
+  /** The author's look, drawn inside the mark. */
+  look: Particle | null;
+  preview: Sprite | null;
+  /** Whether the look is being drawn, which {@link looksDrawn} latches. */
+  looking: boolean;
 }
 
 interface LabelSlot {
   address: Text;
   title: Text;
+}
+
+interface MarkTextures {
+  disc: Texture;
+  ring: Texture;
+  dashed: Texture;
+  /** Keyed by {@link lookKey}. */
+  looks: Map<string, Texture>;
 }
 
 export class GraphScene {
@@ -116,7 +174,14 @@ export class GraphScene {
 
   private positionsDirty = true;
   private modelDirty = false;
+  private previewsDirty = false;
   private lastEdgeScale = 0;
+
+  /** One texture per picture, however many marks wear it; `null` is one that
+   *  will not draw, cached so it is asked for once. */
+  private readonly previewTextures = new Map<string, Texture | null>();
+  private readonly previewsAsked = new Set<string>();
+  private destroyed = false;
 
   private readonly cpuSamples: number[] = [];
   private readonly frameSamples: number[] = [];
@@ -129,15 +194,13 @@ export class GraphScene {
     private readonly runs: Graphics,
     private readonly links: Graphics,
     private readonly fills: ParticleContainer,
+    private readonly previews: Container,
     private readonly rings: ParticleContainer,
+    private readonly looks: ParticleContainer,
     private readonly picks: Graphics,
     private readonly labels: Container,
     private readonly labelPool: LabelSlot[],
-    private readonly textures: {
-      disc: Texture;
-      ring: Texture;
-      dashed: Texture;
-    },
+    private readonly textures: MarkTextures,
     private options: SceneOptions,
   ) {
     this.app.ticker.add(this.draw);
@@ -173,19 +236,17 @@ export class GraphScene {
       },
     };
     const fills = new pixi.ParticleContainer(particleOptions);
+    const previews = new pixi.Container();
     const rings = new pixi.ParticleContainer(particleOptions);
+    const looks = new pixi.ParticleContainer(particleOptions);
     const picks = new pixi.Graphics();
-    world.addChild(edges, runs, links, fills, rings, picks);
+    world.addChild(edges, runs, links, fills, previews, rings, looks, picks);
 
     const labels = new pixi.Container();
     labels.eventMode = "none";
     app.stage.addChild(world, labels);
 
-    const textures = {
-      disc: markTexture(pixi, app, "disc"),
-      ring: markTexture(pixi, app, "ring"),
-      dashed: markTexture(pixi, app, "dashed"),
-    };
+    const textures = markTextures(pixi, app);
 
     // Two texts per label, because DESIGN.md § Typography gives the address its
     // own face at every size: `1a1` against `1al` must never be a question.
@@ -215,7 +276,9 @@ export class GraphScene {
       runs,
       links,
       fills,
+      previews,
       rings,
+      looks,
       picks,
       labels,
       labelPool,
@@ -267,8 +330,12 @@ export class GraphScene {
         attributes,
         fill: null,
         ring: null,
+        look: null,
+        preview: null,
+        looking: false,
       };
     });
+    this.forgetUnwantedPictures();
 
     const byRef = new Map(model.order.map((ref, index) => [ref, index]));
     this.edgesByDepth = Array.from({ length: DEPTH_STEPS + 1 }, () => []);
@@ -419,7 +486,10 @@ export class GraphScene {
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.app.ticker.remove(this.draw);
+    for (const texture of this.previewTextures.values()) texture?.destroy(true);
+    this.previewTextures.clear();
     this.app.destroy(true, { children: true, texture: true });
   }
 
@@ -428,6 +498,7 @@ export class GraphScene {
     this.frameSamples.push(this.app.ticker.deltaMS);
 
     if (this.modelDirty) this.rebuildMarks();
+    if (this.previewsDirty) this.rebuildPreviews();
 
     const scaleMoved =
       Math.abs(this.viewport.scale - this.lastEdgeScale) >
@@ -450,10 +521,12 @@ export class GraphScene {
   private rebuildMarks(): void {
     this.fills.particleChildren.length = 0;
     this.rings.particleChildren.length = 0;
+    this.looks.particleChildren.length = 0;
 
     for (const mark of this.marks) {
       const scale = mark.radius / TEXTURE_RADIUS;
-      const { provenance, fill, alpha } = mark.attributes;
+      const { provenance, fill, alpha, ringWeight, ringStyle } =
+        mark.attributes;
       mark.fill =
         provenance === "pulled"
           ? null
@@ -481,18 +554,38 @@ export class GraphScene {
               tint: provenance === "pulled" ? fill : this.options.palette.ink,
               alpha,
             });
+      const look = this.lookTexture(ringWeight, ringStyle);
+      mark.look =
+        look === null
+          ? null
+          : new this.pixi.Particle({
+              texture: look,
+              anchorX: 0.5,
+              anchorY: 0.5,
+              scaleX: scale,
+              scaleY: scale,
+              // A pulled mark is drawn hollow, so a look inside one is on paper.
+              tint: this.options.palette.lookRing(
+                provenance === "pulled" ? this.options.palette.paper : fill,
+              ),
+              alpha: 0,
+            });
+      mark.looking = false;
       if (mark.fill) this.fills.particleChildren.push(mark.fill);
       if (mark.ring) this.rings.particleChildren.push(mark.ring);
+      if (mark.look) this.looks.particleChildren.push(mark.look);
     }
 
     this.fills.update();
     this.rings.update();
+    this.looks.update();
     this.labelSlots.clear();
     for (const slot of this.labelPool) {
       slot.address.visible = false;
       slot.title.visible = false;
     }
     this.modelDirty = false;
+    this.rebuildPreviews();
   }
 
   private syncMarks(): void {
@@ -507,7 +600,99 @@ export class GraphScene {
         mark.ring.x = x;
         mark.ring.y = y;
       }
+      if (mark.look === null && mark.preview === null) continue;
+
+      mark.looking = looksDrawn(
+        mark.radius * this.viewport.scale,
+        mark.looking,
+      );
+      if (mark.look) {
+        mark.look.x = x;
+        mark.look.y = y;
+        mark.look.alpha = mark.looking ? mark.attributes.alpha : 0;
+      }
+      if (mark.preview) {
+        mark.preview.position.set(x, y);
+        mark.preview.visible = mark.looking;
+      }
     }
+  }
+
+  /** Separate from {@link rebuildMarks} because a picture lands long after the
+   *  model does, and rebuilding the marks would drop every label placed since. */
+  private rebuildPreviews(): void {
+    this.previewsDirty = false;
+    for (const sprite of this.previews.removeChildren()) sprite.destroy();
+
+    for (const mark of this.marks) {
+      mark.preview = null;
+      const { preview, alpha } = mark.attributes;
+      if (preview === undefined) continue;
+      const texture = this.previewTextures.get(preview);
+      if (texture === undefined) {
+        this.wantPicture(preview);
+        continue;
+      }
+      if (texture === null) continue;
+      const sprite = new this.pixi.Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.width = mark.radius * PREVIEW_AT * 2;
+      sprite.height = sprite.width;
+      sprite.alpha = alpha;
+      sprite.visible = false;
+      mark.preview = sprite;
+      this.previews.addChild(sprite);
+    }
+    this.positionsDirty = true;
+  }
+
+  private wantPicture(preview: string): void {
+    const pictures = this.options.pictures;
+    if (pictures === undefined || this.previewsAsked.has(preview)) return;
+    this.previewsAsked.add(preview);
+    void pictures
+      .read(preview)
+      .then(async (held) => {
+        if (held === null) return null;
+        try {
+          return await markPicture(this.pixi, held.src);
+        } finally {
+          held.release();
+        }
+      })
+      // A picture that will not draw leaves the mark drawing as one with no
+      // picture, which is also what a picture since deleted leaves behind.
+      .catch(() => null)
+      .then((texture) => {
+        if (this.destroyed) {
+          texture?.destroy(true);
+          return;
+        }
+        this.previewTextures.set(preview, texture);
+        this.previewsDirty = true;
+      });
+  }
+
+  private forgetUnwantedPictures(): void {
+    if (this.previewTextures.size === 0) return;
+    const wanted = new Set(
+      this.marks
+        .map((mark) => mark.attributes.preview)
+        .filter((preview) => preview !== undefined),
+    );
+    for (const [preview, texture] of this.previewTextures) {
+      if (wanted.has(preview)) continue;
+      texture?.destroy(true);
+      this.previewTextures.delete(preview);
+      this.previewsAsked.delete(preview);
+    }
+  }
+
+  /** `null` is no look at all: a weight of `none`, and any pair this build has
+   *  no shape for — the mark's own edge belongs to provenance. */
+  private lookTexture(weight: RingWeight, style: RingStyle): Texture | null {
+    if (weight === "none") return null;
+    return this.textures.looks.get(lookKey(weight, style)) ?? null;
   }
 
   private rebuildEdges(): void {
@@ -712,31 +897,133 @@ function addressCaption(attributes: GraphNodeAttributes): string {
     : attributes.address;
 }
 
-function markTexture(
-  pixi: Pixi,
-  app: Application,
-  form: "disc" | "ring" | "dashed",
-): Texture {
-  const graphics = new pixi.Graphics();
-  const r = TEXTURE_RADIUS;
-  if (form === "disc") {
-    graphics.circle(r, r, r - 1).fill(0xffffff);
-  } else if (form === "ring") {
-    graphics.circle(r, r, r - 1.6).stroke({ color: 0xffffff, width: 2.2 });
-  } else {
-    const dashes = 14;
-    for (let step = 0; step < dashes; step++) {
-      const from = ((step * 2) / (dashes * 2)) * Math.PI * 2;
-      const to = from + (Math.PI * 2) / (dashes * 2);
-      graphics.arc(r, r, r - 1.6, from, to);
-      graphics.stroke({ color: 0xffffff, width: 2.2 });
+/** Whether a mark drawn at `radius` screen pixels carries its look. The latch is
+ *  the caller's: pass whether it is carrying one now, or it will strobe. */
+export function looksDrawn(radius: number, looking: boolean): boolean {
+  return radius >= LOOK_MIN_RADIUS * (looking ? LOOK_HYSTERESIS : 1);
+}
+
+function lookKey(weight: RingWeight, style: RingStyle): string {
+  return `${weight}:${style}`;
+}
+
+/** A picture cut to the disc it is drawn on and decoded at the size a mark shows
+ *  it, which `MARK_PICTURE_PX` in `model.ts` bounds. */
+async function markPicture(pixi: Pixi, src: string): Promise<Texture | null> {
+  const picture = new Image();
+  picture.src = src;
+  await picture.decode();
+
+  const canvas = document.createElement("canvas");
+  canvas.width = MARK_PICTURE_PX;
+  canvas.height = MARK_PICTURE_PX;
+  const onto = canvas.getContext("2d");
+  if (!onto) return null;
+
+  const half = MARK_PICTURE_PX / 2;
+  onto.beginPath();
+  onto.arc(half, half, half, 0, Math.PI * 2);
+  onto.clip();
+  // Short side fills the disc, so a picture is cropped rather than squashed.
+  const cover = MARK_PICTURE_PX / Math.min(picture.width, picture.height);
+  const width = picture.width * cover;
+  const height = picture.height * cover;
+  onto.drawImage(picture, half - width / 2, half - height / 2, width, height);
+  return pixi.Texture.from(canvas);
+}
+
+/**
+ * Every mark texture, cut from ONE source. A `ParticleContainer` draws all its
+ * particles with a single texture, so a second source would silently put one
+ * mark's ring on every other mark in the same container.
+ */
+function markTextures(pixi: Pixi, app: Application): MarkTextures {
+  const cells: Graphics[] = [];
+  const cell = (draw: (into: Graphics) => void): number => {
+    const graphics = new pixi.Graphics();
+    draw(graphics);
+    graphics.x = cells.length * SHEET_CELL + SHEET_PAD;
+    graphics.y = SHEET_PAD;
+    cells.push(graphics);
+    return cells.length - 1;
+  };
+
+  const disc = cell((into) => {
+    into
+      .circle(TEXTURE_RADIUS, TEXTURE_RADIUS, TEXTURE_RADIUS - 1)
+      .fill(0xffffff);
+  });
+  const edgeAt = TEXTURE_RADIUS * EDGE_RING_AT;
+  const edgeWidth = TEXTURE_RADIUS * EDGE_RING_WIDTH;
+  const ring = cell((into) => strokeRing(into, edgeAt, edgeWidth, 0));
+  const dashed = cell((into) =>
+    strokeRing(into, edgeAt, edgeWidth, EDGE_DASHES),
+  );
+  const looks = new Map<string, number>();
+  for (const [weight, fraction] of Object.entries(LOOK_RING_WIDTH)) {
+    for (const style of ["solid", "dashed"] as const) {
+      looks.set(
+        lookKey(weight as RingWeight, style),
+        cell((into) =>
+          strokeRing(
+            into,
+            TEXTURE_RADIUS * LOOK_RING_AT,
+            TEXTURE_RADIUS * fraction,
+            style === "dashed" ? LOOK_RING_DASHES : 0,
+            LOOK_RING_DUTY,
+          ),
+        ),
+      );
     }
   }
-  return app.renderer.generateTexture({
-    target: graphics,
+
+  const sheet = new pixi.Container();
+  sheet.addChild(...cells);
+  const { source } = app.renderer.generateTexture({
+    target: sheet,
+    frame: new pixi.Rectangle(0, 0, cells.length * SHEET_CELL, SHEET_CELL),
     resolution: TEXTURE_RESOLUTION,
     antialias: true,
   });
+  const cut = (at: number): Texture =>
+    new pixi.Texture({
+      source,
+      frame: new pixi.Rectangle(
+        at * SHEET_CELL + SHEET_PAD,
+        SHEET_PAD,
+        TEXTURE_RADIUS * 2,
+        TEXTURE_RADIUS * 2,
+      ),
+    });
+
+  return {
+    disc: cut(disc),
+    ring: cut(ring),
+    dashed: cut(dashed),
+    looks: new Map([...looks].map(([key, at]) => [key, cut(at)])),
+  };
+}
+
+/** `dashes` of 0 strokes the ring whole; `duty` is the share of each dash's
+ *  turn that is drawn. */
+function strokeRing(
+  into: Graphics,
+  radius: number,
+  width: number,
+  dashes: number,
+  duty = 0.5,
+): void {
+  const centre = TEXTURE_RADIUS;
+  if (dashes === 0) {
+    into.circle(centre, centre, radius).stroke({ color: 0xffffff, width });
+    return;
+  }
+  const turn = (Math.PI * 2) / dashes;
+  for (let step = 0; step < dashes; step++) {
+    const from = step * turn;
+    into.arc(centre, centre, radius, from, from + turn * duty);
+    into.stroke({ color: 0xffffff, width });
+  }
 }
 
 /**

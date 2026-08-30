@@ -2,13 +2,15 @@ import {
   type Address,
   addressDepth,
   assignTagHueSlots,
+  MARK_RADII,
+  type NodeAppearance,
   type NodeView,
   type OwnedRef,
   siblingAddress,
   type Tag,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { drawnNodes } from "./contract.js";
+import { type DrawnNode, drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import { applyLod } from "./lod.js";
 import { buildModel } from "./model.js";
@@ -412,5 +414,94 @@ describe("carrying positions across an update", () => {
     }
     const fresh = model.graph.getNodeAttributes(drawn[20].node.ref);
     expect([fresh.x, fresh.y]).not.toEqual([7, -3]);
+  });
+});
+
+describe("the look a note's author gave it", () => {
+  const styled = (address: string, appearance: NodeAppearance): DrawnNode => ({
+    node: { ...note(address), appearance },
+    collapsed: false,
+    folded: 0,
+    tags: [],
+  });
+
+  const plain = (address: string, folded = 0): DrawnNode => ({
+    node: note(address),
+    collapsed: folded > 0,
+    folded,
+    tags: [],
+  });
+
+  const radiusOf = (entries: DrawnNode[]): number => {
+    const model = buildModel(entries, { selection: [], palette });
+    return model.graph.getNodeAttributes(entries[0].node.ref).radius;
+  };
+
+  const markOf = (entry: DrawnNode) => {
+    const model = buildModel([entry], { selection: [], palette });
+    return model.graph.getNodeAttributes(model.order[0]);
+  };
+
+  it("draws nothing of its own for a note nobody styled", () => {
+    const mark = markOf(plain("1"));
+    expect(mark.ringWeight).toBe("none");
+    expect(mark.preview).toBeUndefined();
+  });
+
+  it("carries the ring and the picture its author chose", () => {
+    const mark = markOf(
+      styled("1", {
+        ring_weight: "heavy",
+        ring_style: "dashed",
+        preview: "upload-1",
+      }),
+    );
+    expect(mark.ringWeight).toBe("heavy");
+    expect(mark.ringStyle).toBe("dashed");
+    expect(mark.preview).toBe("upload-1");
+  });
+
+  // `appearance.ts` bounds a look by shape rather than by vocabulary, so one
+  // written on a newer Sloppy is stored and handed back untouched — and drawn
+  // here as the note reads with nothing set, rather than refused or guessed at.
+  it("draws a look this build has no renderer for as an unstyled note", () => {
+    const mark = markOf(
+      styled("1", { ring_weight: "engraved", mark_radius: "enormous" }),
+    );
+    expect(mark.ringWeight).toBe("none");
+    expect(mark.radius).toBe(radiusOf([plain("1")]));
+  });
+
+  // DESIGN.md § "The mark": radius is the one channel the fold and the author
+  // share, and a look that could grow a leaf as far as the smallest mega-node
+  // would have taken the fold's channel rather than scaling it.
+  it("never grows a leaf as far as one folded note", () => {
+    const grown = radiusOf([styled("1", { mark_radius: "large" })]);
+    expect(grown).toBeGreaterThan(radiusOf([plain("1")]));
+    expect(grown).toBeLessThan(radiusOf([plain("1", 1)]));
+  });
+
+  it("keeps a folded subtree bigger than a leaf wearing the same look", () => {
+    for (const size of MARK_RADII) {
+      const look = { mark_radius: size };
+      const leaf = radiusOf([styled("1", look)]);
+      const mega = radiusOf([
+        { ...styled("1", look), collapsed: true, folded: 1 },
+      ]);
+      expect(mega, size).toBeGreaterThan(leaf);
+      expect(leaf, size).toBeGreaterThan(0);
+    }
+  });
+
+  // DESIGN.md § "The mark": a look is authored by one person on one note, and
+  // forty of them do not average into a forty-first.
+  it("draws a mega-node's own look, and none of the looks it folded", () => {
+    const mark = markOf({
+      ...styled("1", { ring_weight: "hairline" }),
+      collapsed: true,
+      folded: 12,
+    });
+    expect(mark.ringWeight).toBe("hairline");
+    expect(mark.radius).toBeGreaterThan(radiusOf([plain("1")]));
   });
 });

@@ -12,12 +12,14 @@
 		compareOrd,
 		type BlockView,
 		type CreateBlockRequest,
+		type NodeAppearance,
 		type NodeView,
 		type OwnedRef,
 		type Tag,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
 	import {
+		AppearanceField,
 		BlockStack,
 		ConfirmModal,
 		scrollFade,
@@ -99,6 +101,8 @@
 	let linkRefused = $state<string | null>(null);
 	/** The server's own words when a retag was refused, for the field to show. */
 	let tagRefused = $state<string | null>(null);
+	/** The same, for a look that would not save. */
+	let lookRefused = $state<string | null>(null);
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
 
@@ -249,6 +253,7 @@
 		undeletable = null;
 		linkRefused = null;
 		tagRefused = null;
+		lookRefused = null;
 		shaping = null;
 		seeding = false;
 		shapeRefused = null;
@@ -421,6 +426,19 @@
 		// A tag exists exactly as long as a note carries one, so a word written
 		// here is what puts it in the rail and in everybody else's completions.
 		void tags.reload().catch(() => {});
+	}
+
+	async function relook(appearance: NodeAppearance | null): Promise<void> {
+		lookRefused = null;
+		try {
+			await nodes.update(ref, { appearance });
+		} catch (error) {
+			// The field puts the choices back on a rejection and shows `lookRefused`;
+			// swallowing this would leave a look that never saved looking saved.
+			lookRefused =
+				serverMessage(error) ?? 'Sloppy could not save that look. Try again in a moment.';
+			throw error;
+		}
 	}
 
 	async function link(target: OwnedRef): Promise<void> {
@@ -625,6 +643,17 @@
 					onchange={retag}
 					refused={tagRefused}
 					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
+				/>
+			{/key}
+		</div>
+
+		<div class="border-t border-border pt-6">
+			{#key ref}
+				<AppearanceField
+					appearance={node.appearance}
+					media={noteMedia}
+					onchange={relook}
+					refused={lookRefused}
 				/>
 			{/key}
 		</div>

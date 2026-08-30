@@ -7,14 +7,20 @@ import {
   type Address,
   compareAddresses,
   type DidSyr,
+  type MarkRadius,
   type NodeView,
   type OwnedRef,
+  type ResolvedAppearance,
+  resolveAppearance,
+  type RingStyle,
+  type RingWeight,
   type Tag,
 } from "@sloppy/types";
 import Graph from "graphology";
 import type { DrawnNode } from "./contract.js";
 import { seedField } from "./layout/geometry.js";
 import type { GraphPalette } from "./palette.js";
+import { MAX_SCALE } from "./viewport.js";
 
 /** DESIGN.md § Form: provenance survives greyscale, so it is never a hue. */
 export type Provenance = "own" | "published" | "pulled";
@@ -22,6 +28,43 @@ export type Provenance = "own" | "published" | "pulled";
 const LEAF_RADIUS = 9;
 const MEGA_GROWTH = 0.42;
 const MAX_RADIUS = 46;
+
+/** What a look multiplies a mark's radius by. DESIGN.md § "The mark" bounds it:
+ *  a look may not grow a leaf as far as the smallest mega-node. */
+export const LOOK_SCALE: Record<MarkRadius, number> = {
+  small: 0.78,
+  regular: 1,
+  large: 1.34,
+};
+
+/** A look's ring, as fractions of the mark's radius — its centre line, and what
+ *  each weight strokes. Inside the mark, since the edge is provenance's. */
+export const LOOK_RING_AT = 0.6;
+export const LOOK_RING_WIDTH: Record<Exclude<RingWeight, "none">, number> = {
+  hairline: 0.075,
+  regular: 0.14,
+  heavy: 0.22,
+};
+/** Dashes around a broken one, and how much of each one's turn is drawn — the
+ *  rest is the gap, which `scene.test.ts` keeps wider than the heaviest stroke. */
+export const LOOK_RING_DASHES = 7;
+export const LOOK_RING_DUTY = 0.4;
+
+/** How much of the mark's radius the picture covers. What is left is fill, which
+ *  is where the reader's selected tags answer — DESIGN.md § Hue. */
+export const PREVIEW_AT = 0.42;
+
+/** Assumed of the densest screen Sloppy runs on, for {@link MARK_PICTURE_PX}. */
+const DENSE_SCREEN = 2;
+
+/** The longest side a mark's picture is worth holding: the most of one a screen
+ *  ever shows is the biggest mega-node, at full zoom, on a dense display. */
+export const MARK_PICTURE_PX = Math.ceil(
+  MAX_RADIUS * PREVIEW_AT * 2 * MAX_SCALE * DENSE_SCREEN,
+);
+
+/** What a note nobody styled draws as, held once rather than resolved per node. */
+const UNSTYLED: ResolvedAppearance = resolveAppearance(null);
 
 const EDGE_FIRST = 300;
 const EDGE_DECAY = 0.8;
@@ -52,6 +95,13 @@ export interface GraphNodeAttributes {
    * none. DESIGN.md § Hue — one mark, one hue.
    */
   tag: Tag | undefined;
+  /** The author's ring, drawn INSIDE the mark since the edge is provenance's —
+   *  DESIGN.md § "The mark". `none` is a mark with no ring of its own. */
+  ringWeight: RingWeight;
+  /** Says nothing while {@link ringWeight} is `none`. */
+  ringStyle: RingStyle;
+  /** The author's picture, as an upload only their own instance can answer for. */
+  preview: string | undefined;
   fill: number;
   /** Below 1 for a node the selection has nothing to say about. */
   alpha: number;
@@ -102,6 +152,10 @@ export function buildModel(
     const slot = tag === undefined ? undefined : slots.get(tag);
     const seed = seeds.get(node.address) ?? { x: 0, y: 0, outward: 0 };
     const kept = options.keep?.get(node.ref);
+    // A mega-node wears the look of the note it IS, never an average of the
+    // looks it folded — DESIGN.md § "The mark".
+    const look =
+      node.appearance == null ? UNSTYLED : resolveAppearance(node.appearance);
 
     graph.addNode(node.ref, {
       index,
@@ -111,10 +165,13 @@ export function buildModel(
       title: node.title,
       collapsed: entry.collapsed,
       folded: entry.folded,
-      radius: radiusFor(entry),
+      radius: radiusFor(entry, look),
       provenance: provenanceOf(node, options.viewer),
       children: 0,
       tag,
+      ringWeight: look.ringWeight,
+      ringStyle: look.ringStyle,
+      preview: look.preview,
       fill:
         slot === undefined
           ? options.palette.depth(node.depth)
@@ -224,10 +281,11 @@ function earliestSelected(
   return found;
 }
 
-function radiusFor(entry: DrawnNode): number {
-  if (entry.folded === 0) return LEAF_RADIUS;
+function radiusFor(entry: DrawnNode, look: ResolvedAppearance): number {
+  const scale = LOOK_SCALE[look.markRadius];
+  if (entry.folded === 0) return LEAF_RADIUS * scale;
   const grown = LEAF_RADIUS * (1 + Math.log2(1 + entry.folded) * MEGA_GROWTH);
-  return Math.min(grown, MAX_RADIUS);
+  return Math.min(grown * scale, MAX_RADIUS);
 }
 
 function provenanceOf(node: NodeView, viewer: DidSyr | undefined): Provenance {

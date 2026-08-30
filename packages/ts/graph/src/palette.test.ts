@@ -119,6 +119,52 @@ describe("the hue a selected tag borrows", () => {
   });
 });
 
+// DESIGN.md § "The mark" draws a look's ring INSIDE the mark, so what it has to
+// stand out against is the mark's own fill rather than the page. A ring that has
+// sunk into its own mark is a channel that has quietly stopped saying anything.
+//
+// The condition every fill on this canvas already meets is 3:1 against the
+// paper: the ramp is held to it above, and `token-contrast.test.ts` holds the
+// slot hues to it where they are declared. That is what is swept here, so a
+// theme is measured on the fills it could actually ship rather than on a hue
+// borrowed from another one.
+describe("the ring a look draws", () => {
+  for (const theme of [...themes, ...generatedThemes()]) {
+    it(`stays legible on every fill a mark carries on ${theme.name}`, () => {
+      const palette = buildPalette({ ...theme, hues });
+      const paper = rgb(palette.paper);
+      const fills = [
+        ...Array.from({ length: DEPTH_STEPS + 1 }, (_, at) =>
+          palette.depth(at + 1),
+        ),
+        ...TAG_HUE_SLOTS.map((slot) => palette.tag(slot)),
+        palette.paper,
+      ].filter(
+        (fill) =>
+          fill === palette.paper ||
+          contrastRatio(rgb(fill), paper) >= MARK_FLOOR - 1e-9,
+      );
+      expect(fills.length).toBeGreaterThan(DEPTH_STEPS);
+      for (const fill of fills) {
+        expect(
+          contrastRatio(rgb(palette.lookRing(fill)), rgb(fill)),
+          `fill ${fill.toString(16)}`,
+        ).toBeGreaterThanOrEqual(MARK_FLOOR - 1e-9);
+      }
+    });
+  }
+
+  // DESIGN.md § "A note's look never uses colour": the ring is shape, and the
+  // hue it is drawn over is the reader's question, not the author's answer.
+  it("spends no hue of its own, whatever it is drawn on", () => {
+    const palette = buildPalette({ ...themes[0], hues });
+    const ends = new Set([palette.ink, palette.paper]);
+    for (const slot of TAG_HUE_SLOTS) {
+      expect(ends.has(palette.lookRing(palette.tag(slot)))).toBe(true);
+    }
+  });
+});
+
 describe("a theme whose tokens have not resolved", () => {
   it("draws the graph in ink rather than in a palette of its own", () => {
     const palette = buildPalette({ ink: "", paper: "", hues: [] });
