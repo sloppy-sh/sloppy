@@ -29,12 +29,21 @@
 		{naming}
 		{seed}
 		onSeeded={() => (seed = null)}
-		onOpen={(ref, written, shape) => {
+		onOpen={(ref, wrote) => {
 			showing = ref;
-			naming = written ? ref : null;
-			seed = shape ? { ref, shape } : null;
+			naming = wrote ? ref : null;
+			seed = wrote?.shape ? { ref, shape: wrote.shape } : null;
 		}}
 		onLinkOnGraph={() => onlink?.()}
+		onDeleted={(_gone, above) => {
+			if (!above) {
+				onclose?.();
+				return;
+			}
+			showing = above;
+			naming = null;
+			seed = null;
+		}}
 		onClose={() => onclose?.()}
 	/>
 </ReadingPanel>

@@ -333,13 +333,14 @@ Ten rulings hold that table together:
   meaning had taken.** Every other channel spends the mark itself — its fill, its edge, the
   ring inside it, its radius, the imagery on it, and the orbit ruled around it. Being open
   may not have the orbit: that channel is honest only because a canvas is picking or
-  choosing and never both, and a note is open while you pick, while you choose, and while
-  you do neither. So it takes the ground the mark stands on, drawn as ink laid outside the
-  mark's edge and fading outward, which reads as a mark lifted rather than as another line
-  drawn round it. **It is one channel at two strengths** — a note that is open lifts a
-  little, the note being read lifts further and darker — because open and active are one
-  fact at two intensities, not two facts. Concretely it is rings and never a disc: a pulled
-  mark is drawn hollow, and a lift that filled it would make provenance read as own.
+  choosing and never both, and being open is not a mode of the canvas at all — a note stays
+  open while somebody chooses, and while they do neither. So it takes the ground the mark
+  stands on, drawn as ink laid outside the mark's edge and fading outward, which reads as a
+  mark lifted rather than as another line drawn round it. **It is one channel at two
+  strengths** — a note that is open lifts a little, the note being read lifts further and
+  darker — because open and active are one fact at two intensities, not two facts.
+  Concretely it is rings and never a disc: a pulled mark is drawn hollow, and a lift that
+  filled it would make provenance read as own.
   **It is not `data-style`'s elevation**, the way the ground is not the style's either
   (§ "The ground"): the canvas is exempt from that axis, and this is drawn from
   `--graph-ink`, so it inverts with the theme and no theme has to know it exists.
@@ -354,9 +355,15 @@ Ten rulings hold that table together:
   mark's own size and none of the geometry above moves.
   And the objection to elevation on a canvas — a shadow on ten thousand marks — does not
   reach it, because **its cost is bounded by the fact rather than by the field**: only the
-  handful of notes a reader has open are ever lifted. `scene.test.ts` in `@sloppy/graph`
-  holds the two strengths apart and holds the chosen note's band still reading as a band
-  under one; `scene.lift.test.ts` holds it at full strength on a mark the tags have dimmed.
+  handful of notes a reader has open are ever lifted. **The chosen band and a lift share
+  ground, and are told apart by weight rather than by clearance** — the band is a
+  screen-constant gap outside the mark while a lift is the mark's own size, so past a small
+  mark the band is drawn INSIDE the lift, and further in the closer the reader zooms. It
+  goes on reading as a band because it is laid at least half again as heavily as the
+  heaviest paper a lift can put under it, which is the bound `scene.test.ts` in
+  `@sloppy/graph` sweeps every mark size and zoom against; it holds the two strengths apart
+  there too, and `scene.lift.test.ts` holds the lift at full strength on a mark the tags
+  have dimmed.
 - **The active note moves `focus`, and `focus` goes on meaning what it always meant.**
   Level of detail is measured in hops from the note the reader is reading (`lod.ts`),
   which is the note they will walk out of. It says nothing about how a mark is DRAWN, and

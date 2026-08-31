@@ -26,9 +26,11 @@ import { MAX_SCALE } from "./viewport.js";
 /** DESIGN.md § Form: provenance survives greyscale, so it is never a hue. */
 export type Provenance = "own" | "published" | "pulled";
 
-const LEAF_RADIUS = 9;
+/** The two ends of what a mark is drawn at: a leaf with nothing set, and the
+ *  cap a mega-node grows to. */
+export const LEAF_RADIUS = 9;
 const MEGA_GROWTH = 0.42;
-const MAX_RADIUS = 46;
+export const MAX_RADIUS = 46;
 
 /** What a look multiplies a mark's radius by. DESIGN.md § "The mark" bounds it:
  *  a look may not grow a leaf as far as the smallest mega-node. */

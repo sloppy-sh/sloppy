@@ -4,16 +4,19 @@ import { makeCorpus } from "./corpus.test-support.js";
 import { applyLod } from "./lod.js";
 import {
   buildModel,
+  LEAF_RADIUS,
   LOOK_RING_AT,
   LOOK_RING_DASHES,
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
+  LOOK_SCALE,
+  MAX_RADIUS,
   PREVIEW_AT,
   PREVIEW_SPAN,
 } from "./model.js";
 import { buildPalette } from "./palette.js";
 import {
-  CHOSEN_BAND,
+  CHOSEN_INK,
   dashSegments,
   EDGE_RING_AT,
   EDGE_RING_WIDTH,
@@ -24,7 +27,7 @@ import {
   looksDrawn,
   PICK_GAP,
 } from "./scene.js";
-import { type Bounds, Viewport } from "./viewport.js";
+import { type Bounds, MAX_SCALE, MIN_SCALE, Viewport } from "./viewport.js";
 
 describe("a dashed link", () => {
   it("reaches the far note however long it is", () => {
@@ -209,7 +212,7 @@ describe("a picture at every size its author may ask for", () => {
 // DESIGN.md § "The mark": the paper under a mark carries whether its note is
 // open, and it is one channel at two strengths rather than two channels.
 describe("the lift under an open note", () => {
-  const LEAF = 9;
+  const LEAF = LEAF_RADIUS;
   const open = liftOf(LEAF, false, 1);
   const active = liftOf(LEAF, true, 1);
   const reachOf = (bands: LiftBand[]) =>
@@ -235,13 +238,30 @@ describe("the lift under an open note", () => {
     );
   });
 
-  // The crowded case: a mark open AND chosen AND heavily ringed AND wearing a
-  // picture AND pulled, on a graph with tags selected. The chosen band is the
-  // only other thing drawn OUTSIDE the mark, so it is the one a lift could
-  // drown; everything an author spends is inside it.
-  it("leaves the chosen band reading as a band", () => {
-    const band = LEAF + PICK_GAP + CHOSEN_BAND / 2;
-    expect(liftInk(active, band)).toBeLessThan(0.9 / 3);
+  // The crowded case: a mark being read AND chosen, which the canvas really does
+  // draw at once — choosing leaves the reading surface open. The two share no
+  // clearance and cannot: the band is a screen-constant gap outside the mark
+  // while a lift is the mark's own size, so past a small mark the band lands
+  // inside the lift and slides further in the closer the reader zooms. What
+  // keeps it a band is weight, so that is what is swept.
+  it("outweighs the lift wherever the chosen band lands", () => {
+    const sizes = [
+      LEAF * LOOK_SCALE.small,
+      LEAF,
+      LEAF * LOOK_SCALE.large,
+      20,
+      MAX_RADIUS,
+    ];
+    for (const radius of sizes) {
+      for (const scale of [MIN_SCALE, 0.25, 0.5, 1, 1.5, 2, MAX_SCALE]) {
+        // The band's inner edge, which is the heaviest paper under any of it.
+        const under = liftInk(
+          liftOf(radius, true, scale),
+          radius + PICK_GAP / scale,
+        );
+        expect(under * 1.5, `${radius} at ${scale}`).toBeLessThan(CHOSEN_INK);
+      }
+    }
   });
 
   // Rings, not a disc: a pulled mark is drawn hollow, and a lift that filled it

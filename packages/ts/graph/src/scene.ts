@@ -73,6 +73,9 @@ const PICK_WIDTH = 1.5;
 /** DESIGN.md § "The mark": the orbit's two meanings separate by weight —
  *  picking outlines, and choosing fills. */
 export const CHOSEN_BAND = 4;
+/** What the band lays. Heavy enough to read over the paper a lift puts under it,
+ *  which shares its ground — DESIGN.md § "The mark". */
+export const CHOSEN_INK = 0.9;
 
 /** How far a lift spreads past the mark, as a multiple of its radius, and the
  *  ink it lays at the mark's own edge. DESIGN.md § "The mark" — one channel at
@@ -884,7 +887,7 @@ export class GraphScene {
           this.positions[mark.index * 2 + 1],
           mark.radius + gap + band / 2,
         );
-        this.picks.stroke({ color: ink, alpha: 0.9, width: band });
+        this.picks.stroke({ color: ink, alpha: CHOSEN_INK, width: band });
       }
       return;
     }

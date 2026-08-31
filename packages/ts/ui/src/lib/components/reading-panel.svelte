@@ -68,6 +68,12 @@
 	let panel = $state<HTMLElement | null>(null);
 	const stripped = $derived(tabs.length > 1);
 
+	/** The strip scrolls sideways, so the tab being read is brought into it: a tab
+	 *  opened past its edge is otherwise open with nothing on screen to say so. */
+	const keepInView = (showing: boolean) => (tab: Element) => {
+		if (showing) tab.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+	};
+
 	const handle = (v: boolean) => {
 		open = v;
 		onOpenChange?.(v);
@@ -113,8 +119,8 @@
 {#snippet strip()}
 	<nav
 		aria-label="Open notes"
-		style="height: var(--reading-head)"
-		class="sticky top-0 z-30 flex items-stretch border-b border-border bg-background"
+		style="height: {HEAD}"
+		class="flex items-stretch border-b border-border bg-background"
 	>
 		<div
 			class="flex flex-1 items-stretch gap-1 overflow-x-auto scroll-fade-x [scrollbar-width:none]"
@@ -123,6 +129,7 @@
 			{#each tabs as tab (tab.ref)}
 				{@const showing = tab.ref === active}
 				<div
+					{@attach keepInView(showing)}
 					class={cn(
 						'flex shrink-0 items-stretch rounded-md transition-colors duration-150 ease-out motion-reduce:transition-none',
 						showing ? 'bg-muted' : 'hover:bg-muted/50'
@@ -156,8 +163,15 @@
 
 {#snippet body()}
 	<div style={stripped ? `--reading-head: ${HEAD}` : undefined}>
-		{#if stripped}{@render strip()}{/if}
-		{#if says}<p class="px-2 pt-2 text-sm text-destructive" role="alert">{says}</p>{/if}
+		<!-- What the surface has to say about the strip keeps the strip's place:
+		     the row that asks for a note is a scroll down inside a long note, and a
+		     refusal left back up there is one nobody reads. -->
+		{#if stripped || says}
+			<div class="sticky top-0 z-30 bg-background">
+				{#if stripped}{@render strip()}{/if}
+				{#if says}<p class="px-2 py-2 text-sm text-destructive" role="alert">{says}</p>{/if}
+			</div>
+		{/if}
 		{@render children()}
 	</div>
 {/snippet}

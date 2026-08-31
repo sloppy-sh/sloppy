@@ -130,8 +130,22 @@ function installGraph(): Map<OwnedRef, NodeView> {
 			held.set(of, written);
 			return written;
 		});
+		api.on(`DELETE ${path(of)}`, () => {
+			for (const [key, note] of held) {
+				if (key === of || note.parent === of) held.delete(key);
+			}
+			return undefined;
+		});
 	}
 	return held;
+}
+
+/** An answer the suite holds open, so something else can happen while an act is
+ *  still in the air — a tab switched away from under it. */
+function heldOpen<T>(): { answer: (value: T) => void; route: () => Promise<T> } {
+	let give: (value: T) => void = () => {};
+	const waiting = new Promise<T>((settle) => (give = settle));
+	return { answer: (value: T) => give(value), route: () => waiting };
 }
 
 /** A note's control on the stand-in canvas, by the address it carries. */
@@ -199,6 +213,21 @@ function item(label: string): HTMLButtonElement {
 /** What `<html>` is currently told the docked note takes. */
 const dockInset = () =>
 	document.documentElement.style.getPropertyValue('--reading-dock-inset-right');
+
+/** A control inside the note, by the label it carries. */
+function control(label: string): HTMLButtonElement {
+	const found = surface().querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+	if (!found) throw new Error(`The note carries no "${label}"`);
+	return found;
+}
+
+function exactly(text: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find(
+		(b) => b.textContent?.trim() === text
+	);
+	if (!found) throw new Error(`No button on screen reads exactly "${text}"`);
+	return found;
+}
 
 function button(labelled: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find((b) =>
@@ -286,11 +315,23 @@ function noteBox(): HTMLElement {
 	return box;
 }
 
+/** jsdom lays nothing out and has no `scrollIntoView`, so what the strip asks to
+ *  be brought into view is recorded instead. The geometry is the browser's. */
+const scrolling = vi.fn();
+
+/** Whether the last thing brought into view was one tab, named by its address. */
+function broughtIntoView(address: string): boolean {
+	const last = scrolling.mock.contexts.at(-1);
+	return last instanceof Element && last.contains(tab(address));
+}
+
 beforeEach(() => {
 	nodes.clear();
 	tags.clear();
 	api = useFakeApi();
 	installGraph();
+	scrolling.mockClear();
+	Element.prototype.scrollIntoView = scrolling;
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -600,6 +641,21 @@ describe.each([
 		expect(box.scrollTop).toBe(0);
 	});
 
+	// The strip scrolls sideways, and six tabs fit neither a phone nor a desk. A
+	// tab opened past its edge is open with nothing on screen to say so.
+	it('brings the tab it is reading into the strip', async () => {
+		await readCells(width);
+		scrolling.mockClear();
+		await alsoOpen('1b');
+		expect(broughtIntoView('1b')).toBe(true);
+
+		scrolling.mockClear();
+		tab('1a').click();
+		await settle();
+
+		expect(broughtIntoView('1a')).toBe(true);
+	});
+
 	// A strip nobody can find a note on has stopped being a strip.
 	it('says how many can be open once the strip is full', async () => {
 		await readCells(width);
@@ -660,6 +716,80 @@ describe.each([
 		await settle();
 
 		expect(openTabs()).toEqual({ addresses: ['1a', '1b'], reading: '1b' });
+	});
+});
+
+// The server answers long after a finger has moved to another tab, and what it
+// says belongs to the note the act was asked in — not to the one in front of the
+// reader when it lands.
+describe('an act still in the air when the reader switches tabs', () => {
+	it('leaves its refusal on the tab it was asked in', async () => {
+		const stalled = heldOpen<Response>();
+		api.on(`PATCH ${path(SECOND)}`, () => stalled.route());
+		await readCells(DESK);
+		await alsoOpen('1b');
+		tab('1a').click();
+		await settle();
+
+		control('Unlink 1b').click();
+		await settle();
+		tab('1b').click();
+		await settle();
+		stalled.answer(
+			new Response('{"message":"That link would not go."}', {
+				status: 400,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+		await settle();
+
+		expect(surface().textContent).not.toContain('That link would not go.');
+
+		tab('1a').click();
+		await settle();
+		expect(surface().textContent).toContain('That link would not go.');
+	});
+
+	it('opens a note written from one tab in that tab', async () => {
+		const written = ref(8);
+		const made = node(8, '1a1', { title: 'Membranes', origin: FIRST, parent: SECOND });
+		const stalled = heldOpen<NodeView>();
+		api.on('POST /nodes', () => stalled.route());
+		api.on(`GET ${path(written)}`, () => made);
+		api.on(`GET ${path(written)}/blocks`, () => []);
+		await readCells(DESK);
+		await alsoOpen('1b');
+		tab('1a').click();
+		await settle();
+
+		button('Write a note under this').click();
+		await settle();
+		tab('1b').click();
+		await settle();
+		stalled.answer(made);
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['1a1', '1b'], reading: '1a1' });
+	});
+});
+
+// A note deleted from inside the surface leaves the strip the way one deleted
+// from the canvas does. The notes open beside it are not what was deleted.
+describe('deleting the note being read', () => {
+	it('takes it off the strip and leaves the others standing', async () => {
+		await readCells(DESK);
+		await alsoOpen('1');
+		tab('1a').click();
+		await settle();
+
+		button('Delete this note').click();
+		await settle();
+		exactly('Delete').click();
+		await settle();
+
+		expect(strip(), 'the deleted note is still on the strip').toBeNull();
+		expect(titled()).toBe('Origins');
+		expect(at.path).toBe(nodeHref(FIRST));
 	});
 });
 

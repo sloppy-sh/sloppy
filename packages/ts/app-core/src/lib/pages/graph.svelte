@@ -271,13 +271,16 @@
 		}
 	});
 
-	/** The strip once `ref` has taken the active tab's place — or unchanged where
-	 *  it is already open, which is a switch rather than an open. */
-	function inPlaceOf(ref: OwnedRef): readonly OwnedRef[] {
+	/** The strip once `ref` has taken `standing`'s place — or unchanged where it is
+	 *  already open, which is a switch rather than an open. `standing` defaults to
+	 *  the tab being read; a note written from another one takes THAT tab, which is
+	 *  not always the one in front of the reader when the server answers. */
+	function inPlaceOf(ref: OwnedRef, standing: OwnedRef | null = null): readonly OwnedRef[] {
 		const strip = openNotes.length > 0 ? openNotes : aside;
 		if (strip.includes(ref)) return strip;
-		if (open === null) return [ref];
-		return strip.map((held) => (held === open ? ref : held));
+		const held = standing !== null && strip.includes(standing) ? standing : open;
+		if (held === null) return [ref];
+		return strip.map((one) => (one === held ? ref : one));
 	}
 
 	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
@@ -286,12 +289,17 @@
 		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
 	}
 
-	function show(ref: OwnedRef, fresh = false, shape: NoteTemplate | null = null): void {
-		naming = fresh ? ref : null;
-		seed = shape ? { ref, shape } : null;
+	/** `wrote` marks a note just written, whose title is still to be given: `from`
+	 *  is the note it was written from, or nothing where it began a branch. */
+	function show(
+		ref: OwnedRef,
+		wrote: { from: OwnedRef | null; shape: NoteTemplate | null } | null = null
+	): void {
+		naming = wrote ? ref : null;
+		seed = wrote?.shape ? { ref, shape: wrote.shape } : null;
 		refused = null;
 		tooMany = null;
-		goTo(ref, inPlaceOf(ref));
+		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
 	}
 
 	/** Opened beside what is already here rather than in its place. */
@@ -334,13 +342,20 @@
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
-	/** Notes that are no longer there leave the strip with them. */
-	function closeGone(deleted: readonly OwnedRef[]): void {
+	/** Notes that are no longer there leave the strip with them — the ones deleted,
+	 *  and the branch under each, which the graph drops with its root. `instead` is
+	 *  the note that stands in the tab the reader was in, where there is one. */
+	function closeGone(deleted: readonly OwnedRef[], instead: OwnedRef | null = null): void {
 		const going = new Set(deleted);
-		if (!openNotes.some((held) => going.has(held))) return;
-		const left = openNotes.filter((held) => !going.has(held));
-		const next = open !== null && !going.has(open) ? open : left[0];
-		if (next === undefined) {
+		const gone = (held: OwnedRef) => going.has(held) || nodes.get(held) === undefined;
+		if (!openNotes.some(gone)) return;
+		const stand =
+			instead !== null && !gone(instead) && !openNotes.includes(instead) ? instead : null;
+		const left = openNotes.flatMap((held) =>
+			!gone(held) ? [held] : stand !== null && held === open ? [stand] : []
+		);
+		const next = open !== null && !gone(open) ? open : (stand ?? left[0]);
+		if (next === undefined || next === null) {
 			hide();
 			return;
 		}
@@ -603,7 +618,7 @@
 		creating = true;
 		refused = null;
 		try {
-			show((await nodes.create({})).ref, true, shape);
+			show((await nodes.create({})).ref, { from: null, shape });
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
@@ -632,7 +647,7 @@
 				from: { relation: 'root', address: picked.data }
 			});
 			numbering = false;
-			show(written.ref, true);
+			show(written.ref, { from: null, shape: null });
 		} catch (error) {
 			numberRefused =
 				serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
@@ -948,6 +963,7 @@
 			onOpen={show}
 			onOpenAlso={showAlso}
 			onLinkOnGraph={() => pointFrom(open)}
+			onDeleted={(of, above) => closeGone([of], above)}
 			onClose={hide}
 		/>
 	{/if}

@@ -59,6 +59,7 @@
 		onOpen,
 		onOpenAlso,
 		onLinkOnGraph,
+		onDeleted,
 		onClose
 	}: {
 		ref: OwnedRef;
@@ -72,12 +73,18 @@
 		onSeeded?: () => void;
 		/** Every note open on the reading surface, this one included. */
 		openNotes?: readonly OwnedRef[];
-		onOpen: (ref: OwnedRef, fresh?: boolean, shape?: NoteTemplate | null) => void;
+		/** `wrote` is the note the new one was written from, which is the tab it
+		 *  takes the place of — not always the tab the reader is in by the time the
+		 *  note comes back. */
+		onOpen: (ref: OwnedRef, wrote?: { from: OwnedRef; shape: NoteTemplate | null }) => void;
 		/** Open a note beside this one rather than in its place. Absent leaves
 		 *  every row here a plain way to the note it names. */
 		onOpenAlso?: (ref: OwnedRef) => void;
 		/** Hand the choice of what to link to over to the graph. */
 		onLinkOnGraph: () => void;
+		/** This note is gone, and the branch under it with it. `above` is the note
+		 *  it grew out of, for the tab it stood in. */
+		onDeleted: (ref: OwnedRef, above: OwnedRef | null) => void;
 		onClose: () => void;
 	} = $props();
 
@@ -125,10 +132,34 @@
 	const blocks = $derived(shown?.of === ref ? shown.stack : (read.get(ref) ?? []));
 	const unreachable = $derived(unread?.of === ref ? unread.says : null);
 	const loading = $derived(shown?.of !== ref && !unreachable && read.get(ref) === undefined);
-	/** What to tell the person writing a title that would not save, per note. */
-	const unsaved = new SvelteMap<OwnedRef, string>();
-	let adding = $state(false);
-	let refused = $state<string | null>(null);
+	/** What an act would not do, per note and per act. It is the note's, not the
+	 *  surface's: the server answers long after a finger has moved to another tab,
+	 *  and an answer shown against the wrong note is a lie about that note. */
+	interface Refusals {
+		title?: string;
+		add?: string;
+		shape?: string;
+		link?: string;
+		tag?: string;
+		look?: string;
+		remove?: string;
+	}
+	const refusals = new SvelteMap<OwnedRef, Refusals>();
+	const refused = $derived<Refusals>(refusals.get(ref) ?? {});
+
+	function refuse(of: OwnedRef, act: keyof Refusals, says: string | null): void {
+		const held = { ...(refusals.get(of) ?? {}) };
+		if (says === null) delete held[act];
+		else held[act] = says;
+		refusals.set(of, held);
+	}
+
+	/** Acts in the air, by the note they were asked in, so a wait in one tab does
+	 *  not disable the same act in the next. */
+	const adding = new SvelteSet<OwnedRef>();
+	const linking = new SvelteSet<OwnedRef>();
+	const seeding = new SvelteSet<OwnedRef>();
+
 	let titleField = $state<HTMLTextAreaElement | null>(null);
 	let noteBody = $state<HTMLElement | null>(null);
 
@@ -138,8 +169,6 @@
 	/** The same act, held while the sheet animates out so its title and its row
 	 *  order do not change on the way. */
 	let offered = $state<'under' | 'after' | 'this'>('this');
-	let seeding = $state(false);
-	let shapeRefused = $state<string | null>(null);
 	/** Block writes the writing surface has in the air. */
 	let surfaceWrites = 0;
 	/** How many writes have landed in the note on screen. An answer to a read
@@ -158,16 +187,9 @@
 	let stopped: ReturnType<typeof setTimeout> | undefined;
 
 	let removing = $state(false);
-	let undeletable = $state<string | null>(null);
 
 	/** Typed into the field that reaches a note by the address a person cites. */
 	let cited = $state('');
-	let linking = $state(false);
-	let linkRefused = $state<string | null>(null);
-	/** The server's own words when a retag was refused, for the field to show. */
-	let tagRefused = $state<string | null>(null);
-	/** The same, for a look that would not save. */
-	let lookRefused = $state<string | null>(null);
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
 
@@ -387,6 +409,13 @@
 		stopped = setTimeout(() => (writing = false), 250);
 	}
 
+	// Read before the swap, never after: by the time a render effect runs, the box
+	// has been re-laid around the next note and `scrollTop` comes back clamped.
+	$effect.pre(() => {
+		const leaving = ref;
+		return () => keepPlace(leaving);
+	});
+
 	$effect(() => {
 		const opening = ref;
 		const starting = untrack(() => {
@@ -400,15 +429,8 @@
 		const wrote = landed;
 		cited = '';
 		removing = false;
-		undeletable = null;
 		unread = null;
-		refused = null;
-		linkRefused = null;
-		tagRefused = null;
-		lookRefused = null;
 		shaping = null;
-		seeding = false;
-		shapeRefused = null;
 		writing = false;
 		startAtTheirPlace(opening);
 		void (async () => {
@@ -443,7 +465,6 @@
 		// switched with a finger never blurs the field.
 		return () => {
 			live = false;
-			keepPlace(opening);
 			void saveTitle(opening);
 		};
 	});
@@ -465,10 +486,11 @@
 		try {
 			await nodes.update(of, { title: draft });
 			if (drafts.get(of) === draft) drafts.delete(of);
-			unsaved.delete(of);
+			refuse(of, 'title', null);
 		} catch (error) {
-			unsaved.set(
+			refuse(
 				of,
+				'title',
 				serverMessage(error) ?? 'Sloppy could not save that title. Try again in a moment.'
 			);
 		} finally {
@@ -479,15 +501,21 @@
 	/** The two ways a note is written from this one: one under it, or the one
 	 *  that comes after it. The server derives the address from either. */
 	async function write(relation: 'under' | 'after', shape: NoteTemplate | null): Promise<void> {
-		if (adding) return;
-		adding = true;
-		refused = null;
+		const from = ref;
+		if (adding.has(from)) return;
+		adding.add(from);
+		refuse(from, 'add', null);
 		try {
-			onOpen((await nodes.create({ from: { relation, note: ref } })).ref, true, shape);
+			const made = await nodes.create({ from: { relation, note: from } });
+			onOpen(made.ref, { from, shape });
 		} catch (error) {
-			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
+			refuse(
+				from,
+				'add',
+				serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.'
+			);
 		} finally {
-			adding = false;
+			adding.delete(from);
 		}
 	}
 
@@ -504,16 +532,19 @@
 
 	/** Gives this note a shape, its sections landing under what is already here. */
 	async function shapeThisNote(shape: NoteTemplate): Promise<void> {
-		if (seeding) return;
 		const into = ref;
-		seeding = true;
-		shapeRefused = null;
+		if (seeding.has(into)) return;
+		seeding.add(into);
+		refuse(into, 'shape', null);
 		await stackSettled();
-		if (ref !== into) return;
 
 		let refusal: string | null = null;
 		try {
-			await writeTemplate(shape, { node: into, after: blocks.at(-1)?.ref }, api.createBlock);
+			await writeTemplate(
+				shape,
+				{ node: into, after: read.get(into)?.at(-1)?.ref },
+				api.createBlock
+			);
 		} catch (error) {
 			refusal =
 				serverMessage(error) ?? 'Sloppy could not add those sections. Try again in a moment.';
@@ -526,12 +557,9 @@
 			refusal ??=
 				serverMessage(error) ?? 'Sloppy could not read this note. Close it and open it again.';
 		}
-		// A shape that finished after the reader moved on belongs to the note it
-		// was asked for, not to the one now on screen.
-		if (ref !== into) return;
-		if (stack) shown = { of: into, stack };
-		shapeRefused = refusal;
-		seeding = false;
+		if (stack && ref === into) shown = { of: into, stack };
+		refuse(into, 'shape', refusal);
+		seeding.delete(into);
 	}
 
 	function offerShapes(act: 'under' | 'after' | 'this'): void {
@@ -584,26 +612,32 @@
 	}
 
 	async function relink(links: OwnedRef[], whenItFails: string): Promise<void> {
-		if (linking) return;
-		linking = true;
-		linkRefused = null;
+		const of = ref;
+		if (linking.has(of)) return;
+		linking.add(of);
+		refuse(of, 'link', null);
 		try {
-			await nodes.update(ref, { links });
+			await nodes.update(of, { links });
 		} catch (error) {
-			linkRefused = serverMessage(error) ?? whenItFails;
+			refuse(of, 'link', serverMessage(error) ?? whenItFails);
 		} finally {
-			linking = false;
+			linking.delete(of);
 		}
 	}
 
 	async function retag(picked: Tag[]): Promise<void> {
-		tagRefused = null;
+		const of = ref;
+		refuse(of, 'tag', null);
 		try {
-			await nodes.update(ref, { tags: picked });
+			await nodes.update(of, { tags: picked });
 		} catch (error) {
-			// The field puts its chips back on a rejection and shows `tagRefused`;
+			// The field puts its chips back on a rejection and shows what is refused;
 			// swallowing this would leave a tag that never saved looking saved.
-			tagRefused = serverMessage(error) ?? 'Sloppy could not save that tag. Try again in a moment.';
+			refuse(
+				of,
+				'tag',
+				serverMessage(error) ?? 'Sloppy could not save that tag. Try again in a moment.'
+			);
 			throw error;
 		}
 		// A tag exists exactly as long as a note carries one, so a word written
@@ -612,14 +646,18 @@
 	}
 
 	async function relook(appearance: NodeAppearance | null): Promise<void> {
-		lookRefused = null;
+		const of = ref;
+		refuse(of, 'look', null);
 		try {
-			await nodes.update(ref, { appearance });
+			await nodes.update(of, { appearance });
 		} catch (error) {
-			// The field puts the choices back on a rejection and shows `lookRefused`;
+			// The field puts the choices back on a rejection and shows what is refused;
 			// swallowing this would leave a look that never saved looking saved.
-			lookRefused =
-				serverMessage(error) ?? 'Sloppy could not save that look. Try again in a moment.';
+			refuse(
+				of,
+				'look',
+				serverMessage(error) ?? 'Sloppy could not save that look. Try again in a moment.'
+			);
 			throw error;
 		}
 	}
@@ -640,19 +678,24 @@
 	}
 
 	async function deleteNote(): Promise<void> {
-		const above = node?.parent;
-		undeletable = null;
+		const of = ref;
+		const above = node?.parent ?? null;
+		refuse(of, 'remove', null);
 		try {
-			await nodes.remove(ref);
+			await nodes.remove(of);
 		} catch (error) {
-			undeletable =
-				serverMessage(error) ?? 'Sloppy could not delete that note. Try again in a moment.';
+			refuse(
+				of,
+				'remove',
+				serverMessage(error) ?? 'Sloppy could not delete that note. Try again in a moment.'
+			);
 			return;
 		}
-		drafts.delete(ref);
-		places.delete(ref);
-		if (above) onOpen(above);
-		else onClose();
+		drafts.delete(of);
+		places.delete(of);
+		read.delete(of);
+		refusals.delete(of);
+		onDeleted(of, above);
 	}
 </script>
 
@@ -749,33 +792,33 @@
 
 			<NoteAuthor did={node.created_by} />
 
-			{#if unsaved.has(ref)}
-				<p class="text-sm text-destructive" role="alert">{unsaved.get(ref)}</p>
+			{#if refused.title}
+				<p class="text-sm text-destructive" role="alert">{refused.title}</p>
 			{/if}
 		</header>
 
-		<!-- The fields belong to the note: a word half-typed into one, and a
-		     refusal it is still showing, must not follow the reader to the next. -->
+		<!-- A word half-typed into one of these fields belongs to the note it was
+		     typed into, so the fields are rebuilt with the note rather than kept. -->
 		{#key ref}
 			<div class="space-y-2 border-b border-border pb-6">
 				<AppearanceField
 					appearance={node.appearance}
 					media={noteMedia}
 					onchange={relook}
-					refused={lookRefused}
+					refused={refused.look ?? null}
 				/>
 
 				<TagField
 					tags={node.tags}
 					{suggestions}
 					onchange={retag}
-					refused={tagRefused}
+					refused={refused.tag ?? null}
 					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
 				/>
 			</div>
 		{/key}
 
-		{#if loading || seeding}
+		{#if loading || seeding.has(ref)}
 			<Skeleton class="h-24 w-full" />
 		{:else if unreachable}
 			<p class="text-sm text-destructive" role="alert">{unreachable}</p>
@@ -799,7 +842,7 @@
 			<Button
 				variant="ghost"
 				class="-mt-4 h-11 w-fit text-muted-foreground"
-				disabled={seeding}
+				disabled={seeding.has(ref)}
 				onclick={() => offerShapes('this')}
 			>
 				<LayoutTemplate class="size-4" />
@@ -807,8 +850,8 @@
 			</Button>
 		{/if}
 
-		{#if shapeRefused}
-			<p class="text-sm text-destructive" role="alert">{shapeRefused}</p>
+		{#if refused.shape}
+			<p class="text-sm text-destructive" role="alert">{refused.shape}</p>
 		{/if}
 
 		<!-- Container query, never `sm:` — DESIGN.md § Layout: the room the acts
@@ -828,7 +871,7 @@
 					<Button
 						variant="outline"
 						class="h-11 flex-1"
-						disabled={adding}
+						disabled={adding.has(ref)}
 						onclick={() => write('under', null)}
 					>
 						<CornerDownRight class="size-4" />
@@ -839,7 +882,7 @@
 						size="icon"
 						class="size-11 shrink-0 text-muted-foreground"
 						aria-label="Write a note under this, from a shape"
-						disabled={adding}
+						disabled={adding.has(ref)}
 						onclick={() => offerShapes('under')}
 					>
 						<LayoutTemplate class="size-4" />
@@ -849,7 +892,7 @@
 					<Button
 						variant="outline"
 						class="h-11 flex-1"
-						disabled={adding}
+						disabled={adding.has(ref)}
 						onclick={() => write('after', null)}
 					>
 						<ArrowRight class="size-4" />
@@ -860,7 +903,7 @@
 						size="icon"
 						class="size-11 shrink-0 text-muted-foreground"
 						aria-label="Write the next note, from a shape"
-						disabled={adding}
+						disabled={adding.has(ref)}
 						onclick={() => offerShapes('after')}
 					>
 						<LayoutTemplate class="size-4" />
@@ -868,7 +911,7 @@
 				</div>
 			</div>
 
-			{#if refused}<p class="text-sm text-destructive" role="alert">{refused}</p>{/if}
+			{#if refused.add}<p class="text-sm text-destructive" role="alert">{refused.add}</p>{/if}
 		</div>
 
 		<div class="space-y-3 border-t border-border pt-6">
@@ -891,7 +934,7 @@
 								size="icon"
 								class="size-11 shrink-0 text-muted-foreground hover:text-destructive"
 								aria-label={to ? `Unlink ${to.address}` : 'Unlink'}
-								disabled={linking}
+								disabled={linking.has(ref)}
 								onclick={() => unlink(target)}
 							>
 								<X class="size-4" />
@@ -910,7 +953,7 @@
 				</ul>
 			{/if}
 
-			<Button variant="outline" class="h-11" disabled={linking} onclick={onLinkOnGraph}>
+			<Button variant="outline" class="h-11" disabled={linking.has(ref)} onclick={onLinkOnGraph}>
 				<Link2 class="size-4" />
 				Link to another note
 			</Button>
@@ -944,7 +987,7 @@
 				<p class="px-2 text-sm text-muted-foreground">Nothing here matches that.</p>
 			{/if}
 
-			{#if linkRefused}<p class="text-sm text-destructive" role="alert">{linkRefused}</p>{/if}
+			{#if refused.link}<p class="text-sm text-destructive" role="alert">{refused.link}</p>{/if}
 		</div>
 
 		<div class="border-t border-border pt-6">
@@ -957,8 +1000,8 @@
 				Delete this note
 			</Button>
 
-			{#if undeletable}
-				<p class="mt-2 text-sm text-destructive" role="alert">{undeletable}</p>
+			{#if refused.remove}
+				<p class="mt-2 text-sm text-destructive" role="alert">{refused.remove}</p>
 			{/if}
 		</div>
 
