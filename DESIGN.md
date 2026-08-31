@@ -431,10 +431,22 @@ so.
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
   modal is open.
-- **The node interior is one component with two presentations.** A drag-to-dismiss bottom
-  sheet on phone, a docked side panel at ≥900px — same component, same props, the branch
-  **latched for the component's life** so a rotation mid-edit never remounts the editor and
-  loses a caret.
+- **A note opens into a reading surface, not a modal.** `ReadingPanel` is that surface, and
+  it has two presentations from one bound `open`: **docked beside the graph at ≥900px**,
+  where the canvas keeps its pan, its pinch, its choosing and its menu beside an open note;
+  and a **full-height sheet below that width**, phone and portrait tablet alike, so a note is
+  a page rather than a peep-hole. The branch is fixed for as long as a note is open — a
+  rotation mid-edit never remounts the editor and loses a caret — and is read again from the
+  viewport once the surface is empty.
+- **A docked panel is a layout, not a modal**: no scrim, no focus trap, and a drag begun on
+  the canvas is still the canvas's. Beside means beside, so it publishes the width it takes as
+  `--reading-dock-inset-right` — the way the nav pill publishes its height — and the page it
+  stands next to gives that width up rather than going on drawing its chrome underneath. The
+  pill itself is the one thing it does displace, since a `fixed` pill would cross the panel's
+  foot: the panel declares itself through the same `overlay` store a modal does.
+- **The note's way out and its address keep their place** at the head of the surface however
+  far the note runs. The way back out of a long note must never be a scroll away, and the
+  address is the thing a person cites.
 - **A block reads as a section, not a paragraph.** Each is a bounded region of the page —
   a ruled band with its own handle — quiet enough that a note of three sections still
   reads as one page. Everything inside is ordinary prose; the boundary is the only
@@ -450,8 +462,9 @@ so.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** Native sheet on iOS, bottom sheet on phone,
-  centred dialog at ≥640px, from one bound `open`. Reserve bare `Dialog` for passive
-  confirm/detail popups, never input surfaces.
+  centred dialog at ≥640px, from one bound `open`; `fill` is the full-height sheet a reading
+  surface stands in below its dock width. Reserve bare `Dialog` for passive confirm/detail
+  popups, never input surfaces.
 - **Remove-empty chrome (hard rule).** A component renders only when it has something to
   do. An empty graph shows one line and one action, never a bare toolbar or "0 nodes".
   Loading uses skeletons shaped like the thing, not spinners.

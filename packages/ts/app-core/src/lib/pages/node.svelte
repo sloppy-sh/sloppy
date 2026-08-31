@@ -1,6 +1,6 @@
 <script lang="ts">
-	// One note's interior, shown over the graph it belongs to. The address is at
-	// the top because it is what a person cites and a peer resolves.
+	// One note's interior, on the reading surface `ReadingPanel` gives it. The
+	// address rides the top because it is what a person cites and a peer resolves.
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -635,20 +635,32 @@
 
 <div
 	bind:this={noteBody}
-	class="flex min-h-0 flex-col gap-7 px-2 pt-2 pb-1 sm:px-1"
+	class="mx-auto flex min-h-0 w-full max-w-2xl flex-col gap-7 px-2 pb-1 sm:px-1"
 	onfocusin={(e) => caretIn(e.target)}
 	onfocusout={caretGone}
 >
-	<!-- First, so the sheet opens on a way out rather than in the title field,
-	     which on a phone would raise the keyboard over a note you came to read. -->
-	<button
-		type="button"
-		onclick={onClose}
-		class="-ml-2 -mb-4 inline-flex min-h-11 w-fit items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+	<!-- The way out and the address keep their place however far the note runs.
+	     The way out comes first so the surface opens on it rather than in the
+	     title field, which on a phone would raise the keyboard over a note you
+	     came to read. -->
+	<div
+		class="sticky top-0 z-20 -mx-2 flex items-center gap-3 border-b border-border bg-background px-2 pt-2 pb-1 sm:-mx-1 sm:px-1"
 	>
-		<ArrowLeft class="size-4" />
-		Graph
-	</button>
+		<button
+			type="button"
+			onclick={onClose}
+			class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+		>
+			<ArrowLeft class="size-4" />
+			Graph
+		</button>
+
+		{#if node}
+			<span class="address ml-auto truncate text-sm text-foreground/70 select-text">
+				{node.address}
+			</span>
+		{/if}
+	</div>
 
 	{#if loading && !node}
 		<div class="space-y-4">
@@ -664,8 +676,6 @@
 		</p>
 	{:else}
 		<header class="space-y-3">
-			<p class="address text-sm text-foreground/70 select-text">{node.address}</p>
-
 			<textarea
 				bind:this={titleField}
 				value={title}
@@ -692,16 +702,28 @@
 			{#if unsaved?.ref === ref}
 				<p class="text-sm text-destructive" role="alert">{unsaved.message}</p>
 			{/if}
+		</header>
 
-			{#key ref}
+		<!-- The fields belong to the note: a word half-typed into one, and a
+		     refusal it is still showing, must not follow the reader to the next. -->
+		{#key ref}
+			<div class="space-y-2 border-b border-border pb-6">
 				<AppearanceField
 					appearance={node.appearance}
 					media={noteMedia}
 					onchange={relook}
 					refused={lookRefused}
 				/>
-			{/key}
-		</header>
+
+				<TagField
+					tags={node.tags}
+					{suggestions}
+					onchange={retag}
+					refused={tagRefused}
+					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
+				/>
+			</div>
+		{/key}
 
 		{#if loading || seeding}
 			<Skeleton class="h-24 w-full" />
@@ -795,20 +817,6 @@
 			</div>
 
 			{#if refused}<p class="text-sm text-destructive" role="alert">{refused}</p>{/if}
-		</div>
-
-		<div class="border-t border-border pt-6">
-			<!-- The field belongs to the note: a word half-typed into it, and a
-			     refusal it is still showing, must not follow the reader to the next. -->
-			{#key ref}
-				<TagField
-					tags={node.tags}
-					{suggestions}
-					onchange={retag}
-					refused={tagRefused}
-					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
-				/>
-			{/key}
 		</div>
 
 		<div class="space-y-3 border-t border-border pt-6">

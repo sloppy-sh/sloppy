@@ -1,3 +1,10 @@
+<script lang="ts" module>
+	/** The sheet's own side gutters and the breath over the OS bar, on whichever
+	 *  box scrolls — the surface itself, or the body under a filled sheet's grabber. */
+	const SHEET_GUTTERS =
+		'pr-[max(0.75rem,env(safe-area-inset-right))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] pl-[max(0.75rem,env(safe-area-inset-left))]';
+</script>
+
 <script lang="ts">
 	// The one modal — DESIGN.md § Layout. A bottom sheet on a phone, a centered
 	// dialog from 640px, driven by a single bound `open` so no caller branches.
@@ -15,6 +22,7 @@
 		title,
 		description,
 		headed = true,
+		fill = false,
 		class: className,
 		children
 	}: {
@@ -26,6 +34,9 @@
 		description?: string;
 		/** False where the body draws its own header. */
 		headed?: boolean;
+		/** A surface come to read and work in rather than answer: a sheet at every
+		 *  width, standing the whole screen, its body scrolling under the grabber. */
+		fill?: boolean;
 		/** Extra classes for the sheet / dialog surface. */
 		class?: string;
 		children: Snippet;
@@ -35,7 +46,7 @@
 	// sheet, which would tear the surface down mid-edit. `untrack` is a no-op here
 	// at init and keeps the latch if this is ever read somewhere that tracks.
 	const viewport = new MediaQuery('(max-width: 639px)');
-	const asSheet = untrack(() => viewport.current);
+	const asSheet = untrack(() => fill || viewport.current);
 
 	const handle = (v: boolean) => {
 		open = v;
@@ -98,7 +109,13 @@
 			class={cn(
 				// No `clear-sysnav`: the pill is hidden while this is up, so there is
 				// nothing of it to clear.
-				'flex max-h-[calc(100dvh-env(safe-area-inset-top)-1rem)] flex-col gap-0 overflow-x-hidden overflow-y-auto overscroll-contain rounded-t-2xl pt-1 pr-[max(0.75rem,env(safe-area-inset-right))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] pl-[max(0.75rem,env(safe-area-inset-left))]',
+				'flex flex-col gap-0 overscroll-contain rounded-t-2xl pt-1',
+				fill
+					? 'h-[calc(100dvh-env(safe-area-inset-top))] overflow-hidden'
+					: [
+							'max-h-[calc(100dvh-env(safe-area-inset-top)-1rem)] overflow-x-hidden overflow-y-auto',
+							SHEET_GUTTERS
+						],
 				className
 			)}
 		>
@@ -124,7 +141,13 @@
 				<Sheet.Title class="sr-only">{title}</Sheet.Title>
 				{#if description}<Sheet.Description class="sr-only">{description}</Sheet.Description>{/if}
 			{/if}
-			{@render children()}
+			{#if fill}
+				<div class={cn('min-h-0 flex-1 overflow-x-hidden overflow-y-auto', SHEET_GUTTERS)}>
+					{@render children()}
+				</div>
+			{:else}
+				{@render children()}
+			{/if}
 		</Sheet.Content>
 	</Sheet.Root>
 {:else}

@@ -14,7 +14,7 @@
 	   against. */
 
 	// The home surface: the whole graph, the tags it is lit by, and the note that
-	// opens over it. DESIGN.md § Layout — the graph is the page.
+	// opens beside it. DESIGN.md § Layout — the graph is the page.
 	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -44,6 +44,7 @@
 		ConfirmModal,
 		GraphSurface,
 		overlay,
+		ReadingPanel,
 		ResponsiveModal,
 		TagRail,
 		TemplatePicker,
@@ -512,7 +513,7 @@
 	}}
 />
 
-<div class="viewport-fit relative">
+<div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
 	<h1 class="sr-only">Your graph</h1>
 
 	{#if populated}
@@ -772,14 +773,12 @@
 	</div>
 </ResponsiveModal>
 
-<ResponsiveModal
+<ReadingPanel
 	open={open !== null}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}
 	title={openNode?.title || 'Note'}
-	headed={false}
-	class="sm:max-w-2xl"
 >
 	{#if open}
 		<Note
@@ -792,4 +791,4 @@
 			onClose={hide}
 		/>
 	{/if}
-</ResponsiveModal>
+</ReadingPanel>
