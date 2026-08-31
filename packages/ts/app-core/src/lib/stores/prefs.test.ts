@@ -73,14 +73,21 @@ describe('the saved look', () => {
 	it('falls back to a default rather than trusting a value it does not know', () => {
 		localStorage.setItem(
 			'sloppy_prefs',
-			JSON.stringify({ theme: 'neon', accent: 42, style: 'sketch', tags: 'seed' })
+			JSON.stringify({
+				theme: 'neon',
+				accent: 42,
+				style: 'sketch',
+				tags: 'seed',
+				ground: 'graph paper'
+			})
 		);
 		prefs.init();
 		expect(prefs.current).toEqual({
 			theme: 'paper',
 			accent: 'indigo',
 			style: 'default',
-			tags: []
+			tags: [],
+			ground: 'dots'
 		});
 	});
 

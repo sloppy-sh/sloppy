@@ -520,6 +520,43 @@ up and the lift can be 0 in the panned case.
   more than a bounded node count** — legibility and frame time are the same constraint here (PRODUCT.md principle 7).
 - **The canvas is not a scroller.** Pan and zoom are pixi's; the scroll rules below do not
   apply to it, and it must never be wrapped in something that scrolls.
+- **Pointing at a note says what it is, and that is all hover ever does.** A pointer resting
+  on a mark raises a small preview beside it — the address, the title, the tags, and whether
+  it carries a picture — after a moment, so a pointer crossing the field on its way somewhere
+  else says nothing. It is placed beside the mark and never over it, takes no pointer and no
+  focus, and goes the moment anything else begins: a pan, a zoom, a drag, the menu, or a
+  canvas somebody is picking or choosing on. **Nothing is ever reachable only this way.**
+  Hover does not exist on touch and the phone is the primary surface, so a finger gets the
+  tap that opens the note and the press that opens the menu, both untouched, and the canvas
+  already writes the address and the title beside every mark big enough to carry them.
+
+### The ground
+
+The field is drawn on paper, and the reader says which: **dots, ruled lines, or neither**.
+It is a ground rather than a layer of information — it carries no hue, no second weight, and
+nothing drawn on it means anything. It owes no contrast floor for that same reason, and it
+stays quieter than the faintest line the graph itself draws.
+
+- **It is pinned to the world, not to the screen.** A mark of it keeps the world point it
+  sits on, so panning says how far you went and zooming keeps what you were looking at. The
+  one concession is its period: closer together than 32 screen pixels it would close into
+  moiré over a field of thousands of marks, so it **doubles** instead — which leaves every
+  surviving point exactly where it was, the coarser lattice being a subset of the finer one.
+  The half-step marks fade out as they approach that bound, so the doubling is never seen
+  happening. `ground.test.ts` in `@sloppy/graph` holds both figures: the bound at every scale
+  the viewport can reach, and the hand-over as continuous.
+- **It is two tiled fills and nothing else.** One for the lattice a reader keeps as they zoom
+  out, one for the half-step marks that fade into it; a frame writes their offset, their
+  scale and one alpha, never a texture. Its cost on the 2,400-note corpus sits inside the
+  noise of the same passes with no ground at all.
+- **It is the theme's, and not `data-style`'s.** The colour is `--graph-ink`, so it inverts
+  with the surfaces and no theme has to know it exists. It is deliberately not the style
+  axis's: the canvas is exempt from `data-style` (above), and dots against rules is a choice
+  about the field somebody is reading rather than about how the chrome around it is drawn —
+  binding the two would mean choosing a hard edge on your buttons also chose your paper.
+- **It is a per-device view preference**, kept beside the theme (§ Persistence), and never
+  anything about the notes. A peer pulling a subtree receives nothing of it, because there is
+  nothing there to receive.
 
 ## Scrolling (themed scroller + edge fades)
 
@@ -593,3 +630,9 @@ A single client-side prefs store (`localStorage`, key `sloppy_prefs`) holds
 `{ theme, accent, style, font }`, applied to `<html>` data-attributes as early as
 possible (inline head script) to avoid a flash of the wrong theme. No account required;
 choices carry over if someone signs in.
+
+The same store holds the view choices that are nobody's business but this device's — the
+tags the graph opens lit by, and the ground it is drawn on (§ "The ground"). Neither is an
+attribute on `<html>`, so neither is a thing the boot script has to know: the canvas reads
+them once it is up, and a first paint with the right theme is all that flash-of-the-wrong
+anything is about.

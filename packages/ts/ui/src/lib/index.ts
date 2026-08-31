@@ -26,6 +26,7 @@ export { initialsOf, nameOf } from './components/identity/person.js';
 export type { Person, PictureRole } from './components/identity/person.js';
 
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
+export * from './components/graph/view.js';
 export { default as TagField } from './components/tags/tag-field.svelte';
 export { default as TagRail } from './components/tags/tag-rail.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';

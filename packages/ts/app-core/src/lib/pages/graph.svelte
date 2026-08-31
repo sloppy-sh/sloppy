@@ -26,7 +26,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { GraphMenuAt, MarkPictures } from '@sloppy/graph';
+	import type { GraphHoverAt, GraphMenuAt, MarkPictures } from '@sloppy/graph';
 	import {
 		NodeBulkRequestSchema,
 		RootAddressSchema,
@@ -43,12 +43,15 @@
 		ChosenTags,
 		ConfirmModal,
 		GraphSurface,
+		GroundChoice,
+		NotePreview,
 		overlay,
 		ResponsiveModal,
 		TagRail,
 		TemplatePicker,
 		type CanvasMenuItem,
-		type NoteTemplate
+		type NoteTemplate,
+		type PreviewedNote
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -60,6 +63,7 @@
 	import { deletionCost } from '../deletion.js';
 	import { noteMedia } from '../note-surface.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { prefs } from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -99,6 +103,8 @@
 	let oneNote = $state<OwnedRef | null>(null);
 	/** Where the canvas was asked for a menu, and on what. */
 	let menuAt = $state<GraphMenuAt | null>(null);
+	/** The mark a pointer has come to rest on, and where it is drawn. */
+	let hoverAt = $state<GraphHoverAt | null>(null);
 	let tagging = $state(false);
 	let styling = $state(false);
 	let deleting = $state(false);
@@ -159,6 +165,26 @@
 	);
 	const actedTags = $derived([...new Set(actedNotes.flatMap((note) => note.tags))]);
 	const overGraph = $derived(overlay.open || menuAt !== null);
+
+	/** What the mark under the pointer stands for: the note it IS, and — since a
+	 *  fold is drawn rather than stored — what the canvas folded into it. */
+	const previewed = $derived.by((): PreviewedNote | undefined => {
+		if (!hoverAt) return undefined;
+		const note = nodes.get(hoverAt.ref);
+		if (!note) return undefined;
+		return {
+			address: note.address,
+			title: note.title,
+			tags: hoverAt.tags,
+			picture: note.appearance?.preview !== undefined,
+			folded: hoverAt.folded
+		};
+	});
+
+	// Whatever opened over the graph is what the reader is looking at now.
+	$effect(() => {
+		if (overGraph) hoverAt = null;
+	});
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
 	const lit = $derived(
@@ -534,6 +560,8 @@
 						}
 					: undefined}
 				pictures={markPictures}
+				ground={prefs.current.ground}
+				onHover={(at) => (hoverAt = overGraph ? null : at)}
 				{chosen}
 				onChoose={pointing ? undefined : chooseAlso}
 				onChooseWithin={pointing ? undefined : chooseWithin}
@@ -646,6 +674,10 @@
 						>
 							<Hash class="size-4" />
 						</Button>
+						<GroundChoice
+							value={prefs.current.ground}
+							onchange={(ground) => prefs.set('ground', ground)}
+						/>
 					</div>
 				{/if}
 
@@ -678,6 +710,8 @@
 	label="What you can do here"
 	onclose={() => (menuAt = null)}
 />
+
+<NotePreview at={hoverAt} note={previewed} selected={selection} />
 
 <ChosenTags
 	bind:open={tagging}

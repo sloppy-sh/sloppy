@@ -10,6 +10,7 @@
 import type { Tag } from "@sloppy/types";
 import LayoutWorker from "../src/layout-worker.ts?worker";
 import { makeCorpus } from "../src/corpus.test-support.js";
+import type { GraphGround } from "../src/ground.js";
 import {
   type GraphHandle,
   type GraphMountOptions,
@@ -60,6 +61,7 @@ const withWorker = !asked.has("inline");
  */
 const maxDrawn = Number(asked.get("drawn")) || undefined;
 let selection: Tag[] = [];
+let ground: GraphGround = "none";
 let handle: GraphHandle;
 
 // Starts empty: level of detail is what bounds the field, and a host that
@@ -70,6 +72,7 @@ const props = (): GraphMountOptions => ({
   nodes: corpus.nodes,
   collapsed,
   selection,
+  ground,
   viewer: corpus.owner,
   onOpenNode: (ref) => say(`open ${ref.slice(-8)}`),
   onExpand: (ref) => {
@@ -222,6 +225,20 @@ async function run(): Promise<void> {
   await measure("pan, one finger", () => panRun(120));
   await measure("pinch, two fingers", () => pinchRun(120));
 
+  // The ground is two tiled fills over the whole viewport, so what it costs is
+  // fill rate rather than geometry — measured against the same passes with none.
+  say("");
+  for (const paper of ["dots", "lines"] as const) {
+    ground = paper;
+    handle.update(props());
+    await measure(`idle, ground: ${paper}`, async () => {
+      await frames(120);
+    });
+    await measure(`pan, ground: ${paper}`, () => panRun(120));
+  }
+  ground = "none";
+  handle.update(props());
+
   say("");
   // The number the tag rail is judged on: a reader ticks a tag and the answer
   // has to be on the canvas before the next frame, with the field where they
@@ -274,9 +291,17 @@ function cycleSelection(): void {
   say(`selected ${selection.length ? selection.join(", ") : "nothing"}`);
 }
 
+function cycleGround(): void {
+  const grounds: GraphGround[] = ["none", "dots", "lines"];
+  ground = grounds[(grounds.indexOf(ground) + 1) % grounds.length];
+  handle.update(props());
+  say(`ground ${ground}`);
+}
+
 for (const [label, action] of [
   ["fit", fit],
   ["select a tag", cycleSelection],
+  ["ground", cycleGround],
 ] as const) {
   const button = document.createElement("button");
   button.textContent = label;
@@ -287,6 +312,10 @@ for (const [label, action] of [
 Object.assign(window, {
   __fit: fit,
   __select: cycleSelection,
+  __ground: (paper: GraphGround) => {
+    ground = paper;
+    handle.update(props());
+  },
   __stats: () => handle.stats(),
 });
 

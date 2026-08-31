@@ -23,6 +23,7 @@ class FakeTexture {
   static from(source: unknown): FakeTexture {
     return new FakeTexture(source);
   }
+  static WHITE = new FakeTexture("white");
 }
 
 class FakeContainer {
@@ -34,6 +35,9 @@ class FakeContainer {
   readonly scale = { set: () => {} };
   addChild(...kids: FakeContainer[]): void {
     this.children.push(...kids);
+  }
+  addChildAt(kid: FakeContainer, at: number): void {
+    this.children.splice(at, 0, kid);
   }
   removeChild(kid: FakeContainer): void {
     const at = this.children.indexOf(kid);
@@ -89,6 +93,20 @@ class FakeSprite extends FakeContainer {
   }
 }
 
+class FakeTilingSprite extends FakeContainer {
+  width = 0;
+  height = 0;
+  alpha = 1;
+  tint = 0;
+  texture: FakeTexture;
+  readonly tilePosition = { set: () => {} };
+  readonly tileScale = { set: () => {} };
+  constructor(options: { texture: FakeTexture }) {
+    super();
+    this.texture = options.texture;
+  }
+}
+
 class FakeText extends FakeContainer {
   text = "";
   visible = false;
@@ -131,6 +149,7 @@ vi.mock("pixi.js", () => ({
   ParticleContainer: FakeParticleContainer,
   Particle: class {},
   Sprite: FakeSprite,
+  TilingSprite: FakeTilingSprite,
   Text: FakeText,
   Texture: FakeTexture,
   Rectangle: class {},
@@ -230,7 +249,11 @@ async function sceneOn(
 /** The layer the preview sprites live on: the one plain container under the
  *  world, where every other child is a graphics or a particle layer. */
 function previewsOf(app: FakeApplication): FakeContainer {
-  const world = app.stage.children[0];
+  // The world is the layer the marks are on; the ground and the labels are the
+  // other two the stage holds.
+  const world = app.stage.children.find((child) =>
+    child.children.some((kid) => kid instanceof FakeParticleContainer),
+  ) as FakeContainer;
   const layer = world.children.find(
     (child) => child.constructor === FakeContainer,
   );

@@ -53,6 +53,7 @@ function surface() {
   const tapped: { target: string | null; withModifier: boolean }[] = [];
   const pressed: Pressed[] = [];
   const swept: { box: ScreenBox; done: boolean }[] = [];
+  const rested: (string | null)[] = [];
   let onInk: InkPointer | undefined = (_event, world) => inked.push(world);
   let under: string | null = null;
   let sweepable = true;
@@ -61,6 +62,7 @@ function surface() {
     onTap: (target, _world, withModifier) =>
       tapped.push({ target, withModifier }),
     onPress: (target, at) => pressed.push({ target, ...at }),
+    onHover: (target) => rested.push(target),
     canSweep: () => sweepable,
     onSweep: (box, done) => swept.push({ box, done }),
     onDragStart: () => {},
@@ -96,6 +98,7 @@ function surface() {
     tapped,
     pressed,
     swept,
+    rested,
     viewport,
     inkInto(handler: InkPointer | undefined): void {
       onInk = handler;
@@ -115,6 +118,13 @@ function surface() {
       y: number,
       modifiers: Partial<PointerEvent> = {},
     ) => send(type, "mouse", 3, x, y, modifiers),
+    wheel: (x: number, y: number) =>
+      element.send("wheel", {
+        clientX: x,
+        clientY: y,
+        deltaY: -100,
+        preventDefault: () => {},
+      } as unknown as Partial<PointerEvent>),
     contextMenu: (x: number, y: number) => {
       let prevented = false;
       element.send("contextmenu", {
@@ -372,5 +382,88 @@ describe("choosing several", () => {
 
     expect(graph.swept).toEqual([]);
     expect(graph.tapped).toEqual([{ target: null, withModifier: true }]);
+  });
+});
+
+// DESIGN.md § "The canvas": a preview is an addition for a pointer, so a finger
+// never raises one and no gesture leaves one standing.
+describe("resting a pointer on a mark", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    return () => vi.useRealTimers();
+  });
+
+  it("answers after a moment, and lets go where the pointer does", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.mouse("pointermove", 40, 60);
+    expect(graph.rested).toEqual([]);
+
+    vi.advanceTimersByTime(500);
+    expect(graph.rested).toEqual(["1a"]);
+
+    graph.over(null);
+    graph.mouse("pointermove", 300, 60);
+    expect(graph.rested).toEqual(["1a", null]);
+  });
+
+  it("says nothing for a mark crossed on the way somewhere else", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.mouse("pointermove", 40, 60);
+    vi.advanceTimersByTime(200);
+    graph.over("1b");
+    graph.mouse("pointermove", 90, 60);
+    vi.advanceTimersByTime(200);
+    expect(graph.rested).toEqual([]);
+
+    vi.advanceTimersByTime(300);
+    expect(graph.rested).toEqual(["1b"]);
+  });
+
+  it("holds through a jog that stays on the same mark", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.mouse("pointermove", 40, 60);
+    vi.advanceTimersByTime(500);
+    graph.mouse("pointermove", 42, 61);
+
+    expect(graph.rested).toEqual(["1a"]);
+  });
+
+  it("never answers a finger, whatever it rests on", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.finger("pointermove", 1, 40, 60);
+    vi.advanceTimersByTime(1_000);
+
+    expect(graph.rested).toEqual([]);
+  });
+
+  it("lets go the moment a pan, a zoom or the menu begins", () => {
+    for (const begin of [
+      (graph: ReturnType<typeof surface>) => graph.mouse("pointerdown", 41, 61),
+      (graph: ReturnType<typeof surface>) => graph.contextMenu(41, 61),
+      (graph: ReturnType<typeof surface>) => graph.wheel(41, 61),
+    ]) {
+      const graph = surface();
+      graph.over("1a");
+      graph.mouse("pointermove", 41, 61);
+      vi.advanceTimersByTime(500);
+      expect(graph.rested).toEqual(["1a"]);
+
+      begin(graph);
+      expect(graph.rested).toEqual(["1a", null]);
+    }
+  });
+
+  it("stays quiet while a gesture is under way", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.mouse("pointerdown", 40, 60);
+    graph.mouse("pointermove", 120, 60);
+    vi.advanceTimersByTime(1_000);
+
+    expect(graph.rested).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@
 
 export * from "./color.js";
 export * from "./contract.js";
+export * from "./ground.js";
 export * from "./layout/client.js";
 export * from "./layout/geometry.js";
 export * from "./layout/protocol.js";

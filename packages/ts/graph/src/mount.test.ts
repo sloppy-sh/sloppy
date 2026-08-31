@@ -1,6 +1,6 @@
 import type { OwnedRef, Tag } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { GraphPickMarks, MarkPictures } from "./contract.js";
+import type { GraphHoverAt, GraphPickMarks, MarkPictures } from "./contract.js";
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
@@ -26,6 +26,8 @@ class StandInScene {
   under: string | null = null;
   /** The choice the canvas was last told to outline. */
   picking: GraphPickMarks | null = null;
+  /** The paper the canvas was last told to draw on. */
+  ground = "none";
   /** The notes the canvas was last told somebody chose to act on. */
   chosen: ReadonlySet<string> | null = null;
   centred: string[] = [];
@@ -56,6 +58,10 @@ class StandInScene {
 
   setChosen(chosen: ReadonlySet<string> | null): void {
     this.chosen = chosen;
+  }
+
+  setGround(ground: string): void {
+    this.ground = ground;
   }
 
   marksWithin(bounds: Bounds): string[] {
@@ -280,6 +286,20 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
         shiftKey: false,
         ctrlKey: false,
         metaKey: false,
+      } as Partial<PointerEvent>);
+      vi.advanceTimersByTime(600);
+      vi.useRealTimers();
+    },
+    /** A mouse resting on `ref` — no button, until the canvas answers for it. */
+    rest: (ref: string | null): void => {
+      vi.useFakeTimers();
+      scene.under = ref;
+      surface.send("pointermove", {
+        pointerId: 6,
+        pointerType: "mouse",
+        button: -1,
+        clientX: 0,
+        clientY: 0,
       } as Partial<PointerEvent>);
       vi.advanceTimersByTime(600);
       vi.useRealTimers();
@@ -834,5 +854,99 @@ describe("asking the canvas for a menu", () => {
     graph.press(mega);
 
     expect(folded).toEqual([mega]);
+  });
+});
+
+describe("resting a pointer on a note", () => {
+  async function resting(overrides: Partial<GraphMountOptions> = {}) {
+    const rested: (GraphHoverAt | null)[] = [];
+    const graph = await mount({
+      onHover: (at) => rested.push(at),
+      ...overrides,
+    });
+    return { graph, rested };
+  }
+
+  it("says which note it is, and where the mark is on the screen", async () => {
+    const { graph, rested } = await resting();
+    const ref = graph.model().order[0];
+    const mark = graph.model().graph.getNodeAttributes(ref);
+    graph.scene.movePosition(mark.index, { x: 40, y: 60 });
+    graph.scene.viewport.scale = 2;
+    graph.scene.viewport.x = 10;
+    graph.scene.viewport.y = 5;
+
+    graph.rest(ref);
+
+    expect(rested).toEqual([
+      {
+        ref,
+        clientX: 90,
+        clientY: 125,
+        radius: mark.radius * 2,
+        folded: mark.folded,
+        tags: mark.tags,
+      },
+    ]);
+
+    graph.rest(null);
+    expect(rested.at(-1)).toBeNull();
+  });
+
+  // A mega-node is lit by the tags of everything it folded, so a preview showing
+  // only the one note's would disagree with the mark it is standing beside.
+  it("answers for the subtree a mega-node stands for", async () => {
+    const { graph, rested } = await resting();
+    const mega = firstMegaNode(graph.model());
+    const mark = graph.model().graph.getNodeAttributes(mega);
+
+    graph.rest(mega);
+
+    expect(rested[0]?.folded).toBe(mark.folded);
+    expect(rested[0]?.folded).toBeGreaterThan(0);
+    expect(rested[0]?.tags).toEqual(mark.tags);
+    const own = corpus.nodes.find((node) => node.ref === mega)?.tags ?? [];
+    expect(rested[0]?.tags.length).toBeGreaterThan(own.length);
+  });
+
+  it("says nothing on a canvas somebody is choosing on", async () => {
+    const { graph, rested } = await resting({
+      chosen: new Set<OwnedRef>(),
+      onChoose: () => {},
+    });
+
+    graph.rest(graph.model().order[0]);
+
+    expect(rested).toEqual([null]);
+  });
+
+  // The mode arrives while the pointer is already resting, so the preview has to
+  // be taken back rather than left over the note being reached for.
+  it("takes one back the moment the canvas is asked a question", async () => {
+    const { graph, rested } = await resting();
+    graph.rest(graph.model().order[0]);
+    expect(rested.at(-1)).not.toBeNull();
+
+    graph.handle.update({ ...graph.props, chosen: new Set<OwnedRef>() });
+
+    expect(rested.at(-1)).toBeNull();
+  });
+});
+
+describe("the ground under the graph", () => {
+  it("draws none of its own accord", async () => {
+    const graph = await mount();
+    expect(graph.scene.ground).toBe("none");
+  });
+
+  it("draws the one the reader chose, and changes it without a settle", async () => {
+    const graph = await mount({ ground: "dots" });
+    expect(graph.scene.ground).toBe("dots");
+    const settles = graph.starts();
+
+    graph.handle.update({ ...graph.props, ground: "lines" });
+
+    expect(graph.scene.ground).toBe("lines");
+    expect(graph.starts()).toBe(settles);
   });
 });

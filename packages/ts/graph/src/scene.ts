@@ -20,6 +20,7 @@ import type {
 } from "pixi.js";
 import { clamp } from "./color.js";
 import type { GraphPickMarks, MarkPictures } from "./contract.js";
+import { type GraphGround, GroundLayer } from "./ground.js";
 import type { GraphNodeAttributes } from "./model.js";
 import {
   type BuiltModel,
@@ -166,6 +167,7 @@ export class GraphScene {
   private linkPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
   private selecting = false;
+  private readonly ground: GroundLayer;
   private picking: GraphPickMarks | null = null;
   private chosen: ReadonlySet<string> | null = null;
 
@@ -200,6 +202,9 @@ export class GraphScene {
     private readonly textures: MarkTextures,
     private options: SceneOptions,
   ) {
+    this.ground = new GroundLayer(pixi, app);
+    this.ground.setInk(options.palette.ink);
+    app.stage.addChildAt(this.ground.container, 0);
     this.app.ticker.add(this.draw);
   }
 
@@ -296,8 +301,15 @@ export class GraphScene {
    *  with the next {@link setModel}. */
   setPalette(palette: GraphPalette): void {
     this.options = { ...this.options, palette };
+    this.ground.setInk(palette.ink);
     this.lastEdgeScale = 0;
     this.positionsDirty = true;
+  }
+
+  /** The paper the field is drawn on, which the reader chooses and nothing about
+   *  the notes decides. */
+  setGround(ground: GraphGround): void {
+    this.ground.setGround(ground);
   }
 
   /** The choice being asked for on the canvas, or null when a tap opens a note. */
@@ -492,6 +504,7 @@ export class GraphScene {
   destroy(): void {
     this.destroyed = true;
     this.app.ticker.remove(this.draw);
+    this.ground.destroy();
     this.dropPreviewSprites();
     for (const texture of this.previewTextures.values()) texture?.destroy(true);
     this.previewTextures.clear();
@@ -509,6 +522,7 @@ export class GraphScene {
       Math.abs(this.viewport.scale - this.lastEdgeScale) >
       this.lastEdgeScale * SCALE_REBUILD;
 
+    this.ground.update(this.viewport, this.width, this.height);
     if (this.positionsDirty) this.syncMarks();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();

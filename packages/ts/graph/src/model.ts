@@ -103,10 +103,13 @@ export interface GraphNodeAttributes {
   provenance: Provenance;
   /** Children of this node that are themselves drawn — what a collapse folds. */
   children: number;
+  /** Every tag this mark stands for — {@link DrawnNode.tags}, which a mega-node
+   *  answers for the whole subtree with. */
+  tags: readonly Tag[];
   /**
    * The selected tag this mark draws the hue of: the earliest-selected of the
-   * ones it stands for ({@link DrawnNode.tags}), absent when it stands for
-   * none. DESIGN.md § Hue — one mark, one hue.
+   * ones it stands for ({@link tags}), absent when it stands for none.
+   * DESIGN.md § Hue — one mark, one hue.
    */
   tag: Tag | undefined;
   /** The author's ring, drawn INSIDE the mark since the edge is provenance's —
@@ -184,6 +187,7 @@ export function buildModel(
       radius: radiusFor(entry, look),
       provenance: provenanceOf(node, options.viewer),
       children: 0,
+      tags: entry.tags,
       tag,
       ringWeight: look.ringWeight,
       ringStyle: look.ringStyle,

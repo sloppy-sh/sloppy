@@ -7,7 +7,11 @@
 // move it, which is the remount this design exists to avoid.
 
 import type { OwnedRef } from "@sloppy/types";
-import { drawnNodes, type GraphSurfaceProps } from "./contract.js";
+import {
+  drawnNodes,
+  type GraphHoverAt,
+  type GraphSurfaceProps,
+} from "./contract.js";
 import { attachGestures, type ScreenBox } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
@@ -189,6 +193,7 @@ export function mountGraph(
       return;
     }
     scene = built;
+    built.setGround(props.ground ?? "none");
     detachGestures = attachGestures(surface, built.viewport, {
       hitTest: (world) => built.hitTest(world),
       onTap: (target, _world, withModifier) => {
@@ -229,6 +234,14 @@ export function mountGraph(
         if (target !== null && built.hasDrawnChildren(target)) {
           props.onCollapse(target as OwnedRef);
         }
+      },
+      onHover: (target) => {
+        if (destroyed) return;
+        props.onHover?.(
+          target === null || asked(props)
+            ? null
+            : hoverAt(built, surface, target),
+        );
       },
       canSweep: () => props.onChooseWithin !== undefined,
       onSweep: (box, done) => {
@@ -299,7 +312,11 @@ export function mountGraph(
       const remounting = next.remountKey !== mountedKey;
       const moved = layoutMoved(props, next);
       const asking = next.picking?.from !== props.picking?.from;
+      const grounded = next.ground !== props.ground;
+      const takingOver = asked(next) && !asked(props);
       props = next;
+      if (grounded) scene?.setGround(next.ground ?? "none");
+      if (takingOver) next.onHover?.(null);
       // The canvas comes to the note the choice is being made for, so the reader
       // is never asked to pick against a viewport they left somewhere else.
       if (asking && next.picking) {
@@ -373,6 +390,38 @@ function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
     a.lod?.depth !== b.lod?.depth ||
     a.lod?.maxDrawn !== b.lod?.maxDrawn
   );
+}
+
+/**
+ * Whether the canvas is being asked a question of its own — a note to point at,
+ * or notes to choose. A preview then sits over what somebody is reaching for,
+ * and answers something they did not ask.
+ */
+function asked(props: GraphSurfaceProps): boolean {
+  return props.picking !== undefined || props.chosen !== undefined;
+}
+
+/** Where a mark is on the screen, so a preview can be placed against the mark
+ *  rather than against the pointer that found it. */
+function hoverAt(
+  scene: GraphScene,
+  surface: HTMLElement,
+  ref: string,
+): GraphHoverAt | null {
+  const node = scene.attributesOf(ref);
+  const index = scene.indexOf(ref);
+  if (!node || index === undefined) return null;
+  const box = surface.getBoundingClientRect();
+  const world = scene.positionOf(index);
+  const at = scene.viewport.toScreen(world.x, world.y);
+  return {
+    ref: ref as OwnedRef,
+    clientX: box.left + at.x,
+    clientY: box.top + at.y,
+    radius: node.radius * scene.viewport.scale,
+    folded: node.folded,
+    tags: node.tags,
+  };
 }
 
 function worldBox(viewport: Viewport, box: ScreenBox): Bounds {

@@ -3,6 +3,7 @@
 // surface owns pan, zoom and drag.
 
 import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
+import type { GraphGround } from "./ground.js";
 
 /** The notes a picking canvas outlines, so a tap is answered before it lands. */
 export interface GraphPickMarks {
@@ -46,6 +47,24 @@ export interface GraphMenuAt {
   ref: OwnedRef | null;
   /** This note has drawn children, so there is something for a fold to gather. */
   foldable: boolean;
+}
+
+/**
+ * A mark a pointer has come to rest on, and where it is drawn — so a preview can
+ * be placed clear of the mark rather than under the pointer.
+ */
+export interface GraphHoverAt {
+  ref: OwnedRef;
+  /** The mark's centre, in viewport coordinates. */
+  clientX: number;
+  clientY: number;
+  /** What it is drawn at now, in CSS pixels. */
+  radius: number;
+  /** Descendants folded into it: 0 unless this is a mega-node. */
+  folded: number;
+  /** Every tag the MARK stands for, which on a mega-node is the subtree's and
+   *  not the one note's — the hue it is drawn in answers off these. */
+  tags: readonly Tag[];
 }
 
 export interface GraphSurfaceProps {
@@ -102,6 +121,18 @@ export interface GraphSurfaceProps {
    * Absent leaves a press and hold folding the note under it.
    */
   onMenu?: (at: GraphMenuAt) => void;
+  /**
+   * A mark a POINTER has come to rest on, and `null` for one it has left. Never
+   * raised for a finger — hover does not exist on touch, so nothing may be put
+   * behind this that a tap cannot also reach. It stays quiet through a pan, a
+   * drag, and a canvas somebody is picking or choosing on.
+   */
+  onHover?: (at: GraphHoverAt | null) => void;
+  /**
+   * The paper the field is drawn on: a reader's own view choice, and nothing the
+   * notes say. Absent draws no ground at all.
+   */
+  ground?: GraphGround;
   onOpenNode: (ref: OwnedRef) => void;
   /** Draw this mega-node's subtree instead of folding it. */
   onExpand: (ref: OwnedRef) => void;

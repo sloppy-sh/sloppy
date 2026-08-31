@@ -9,6 +9,7 @@
  * changing both boot scripts in the same commit.
  */
 
+import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
 import { type Tag, TagSchema } from '@sloppy/types';
 
 export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
@@ -23,6 +24,8 @@ export interface Prefs {
 	 *  the hues, so sorting it would repaint the reader's question. Empty is the
 	 *  monochrome graph DESIGN.md § Hue calls for when nothing has been asked. */
 	tags: Tag[];
+	/** The paper the graph is drawn on — DESIGN.md § "The ground". */
+	ground: GraphGround;
 }
 
 const KEY = 'sloppy_prefs';
@@ -68,7 +71,8 @@ function defaults(): Prefs {
 		theme: systemPrefersDark() ? 'graphite' : 'paper',
 		accent: 'indigo',
 		style: 'default',
-		tags: []
+		tags: [],
+		ground: 'dots'
 	};
 }
 
@@ -121,7 +125,8 @@ class PrefsStore {
 			theme: oneOf(saved.theme, THEMES, base.theme),
 			accent: oneOf(saved.accent, ACCENTS, base.accent),
 			style: oneOf(saved.style, STYLES, base.style),
-			tags: tagsIn(saved.tags)
+			tags: tagsIn(saved.tags),
+			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground)
 		};
 		this.apply();
 	}

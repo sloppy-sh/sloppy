@@ -9,6 +9,9 @@ import type { Point, Viewport } from "./viewport.js";
 const TAP_SLOP = 10;
 const TAP_MS = 450;
 const PRESS_MS = 480;
+/** How long a pointer rests on a mark before the canvas answers for it. Long
+ *  enough that crossing the field on the way somewhere else says nothing. */
+const HOVER_MS = 400;
 const WHEEL_ZOOM = 0.0016;
 const PINCH_ZOOM = 0.008;
 
@@ -38,6 +41,12 @@ export interface GestureHandlers {
     target: string | null,
     at: { clientX: number; clientY: number },
   ): void;
+  /**
+   * A mark a mouse has rested on, and `null` the moment it leaves one or any
+   * gesture starts. A finger never raises this: a touch reader has the tap and
+   * the press, and neither of them waits.
+   */
+  onHover(target: string | null): void;
   /** Whether a modifier-held drag over bare canvas sweeps instead of panning. */
   canSweep(): boolean;
   /** The box such a drag has swept so far, and whether it has let go. */
@@ -94,9 +103,33 @@ export function attachGestures(
   let grabbed: { id: number; target: string; dragging: boolean } | null = null;
   let swept: { id: number; from: Point; sweeping: boolean } | null = null;
   let pressTimer: ReturnType<typeof setTimeout> | null = null;
+  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  let hoverTarget: string | null = null;
+  let hovering = false;
 
   const refreshRect = (): void => {
     rect = element.getBoundingClientRect();
+  };
+
+  const dropHover = (): void => {
+    if (hoverTimer !== null) clearTimeout(hoverTimer);
+    hoverTimer = null;
+    hoverTarget = null;
+    if (!hovering) return;
+    hovering = false;
+    handlers.onHover(null);
+  };
+
+  const restOn = (target: string | null): void => {
+    if (target === hoverTarget) return;
+    dropHover();
+    if (target === null) return;
+    hoverTarget = target;
+    hoverTimer = setTimeout(() => {
+      hoverTimer = null;
+      hovering = true;
+      handlers.onHover(target);
+    }, HOVER_MS);
   };
 
   const local = (event: PointerEvent): Point => ({
@@ -114,6 +147,7 @@ export function attachGestures(
 
   const onPointerDown = (event: PointerEvent): void => {
     refreshRect();
+    dropHover();
     const at = local(event);
     const ink = event.pointerType === "pen" ? handlers.inkTarget() : undefined;
     if (ink) {
@@ -176,6 +210,7 @@ export function attachGestures(
 
   const onContextMenu = (event: MouseEvent): void => {
     refreshRect();
+    dropHover();
     event.preventDefault();
     // macOS raises this from a plain ctrl+click, which reached `pointerdown`
     // above as an ordinary button-0 press. The menu answers that pointer, so it
@@ -205,7 +240,16 @@ export function attachGestures(
       return;
     }
     const entry = active.get(event.pointerId);
-    if (!entry) return;
+    if (!entry) {
+      // Nothing is down, so this is a pointer crossing the field rather than a
+      // gesture. Only a mouse can rest on a mark; a pen is on its way to inking.
+      if (event.pointerType === "mouse" && active.size === 0) {
+        const over = local(event);
+        restOn(handlers.hitTest(viewport.toWorld(over.x, over.y)));
+      }
+      return;
+    }
+    dropHover();
 
     const at = local(event);
     const dx = at.x - entry.screenX;
@@ -302,8 +346,14 @@ export function attachGestures(
     }
   };
 
+  // The box is read here rather than per move: a pointer resting on a mark is
+  // measured against the box it entered through, and reading it on every move is
+  // a layout the canvas does not otherwise ask for.
+  const onPointerEnter = (): void => refreshRect();
+
   const onWheel = (event: WheelEvent): void => {
     event.preventDefault();
+    dropHover();
     refreshRect();
     const rate = event.ctrlKey ? PINCH_ZOOM : WHEEL_ZOOM;
     viewport.zoomAt(
@@ -318,16 +368,21 @@ export function attachGestures(
   element.addEventListener("pointermove", onPointerMove);
   element.addEventListener("pointerup", onPointerUp);
   element.addEventListener("pointercancel", onPointerUp);
+  element.addEventListener("pointerenter", onPointerEnter);
+  element.addEventListener("pointerleave", dropHover);
   element.addEventListener("wheel", onWheel, { passive: false });
   element.addEventListener("contextmenu", onContextMenu);
 
   return () => {
     cancelPress();
+    dropHover();
     strokes.clear();
     element.removeEventListener("pointerdown", onPointerDown);
     element.removeEventListener("pointermove", onPointerMove);
     element.removeEventListener("pointerup", onPointerUp);
     element.removeEventListener("pointercancel", onPointerUp);
+    element.removeEventListener("pointerenter", onPointerEnter);
+    element.removeEventListener("pointerleave", dropHover);
     element.removeEventListener("wheel", onWheel);
     element.removeEventListener("contextmenu", onContextMenu);
   };
