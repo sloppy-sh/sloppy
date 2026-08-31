@@ -8,6 +8,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import Files from '@lucide/svelte/icons/files';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -53,8 +54,10 @@
 		ref,
 		naming = null,
 		seed = null,
+		openNotes = [],
 		onSeeded,
 		onOpen,
+		onOpenAlso,
 		onLinkOnGraph,
 		onClose
 	}: {
@@ -67,7 +70,12 @@
 		/** Called the moment the shape is taken up, and it must not be offered
 		 *  again: a note reopened still carrying one would seed itself twice. */
 		onSeeded?: () => void;
+		/** Every note open on the reading surface, this one included. */
+		openNotes?: readonly OwnedRef[];
 		onOpen: (ref: OwnedRef, fresh?: boolean, shape?: NoteTemplate | null) => void;
+		/** Open a note beside this one rather than in its place. Absent leaves
+		 *  every row here a plain way to the note it names. */
+		onOpenAlso?: (ref: OwnedRef) => void;
 		/** Hand the choice of what to link to over to the graph. */
 		onLinkOnGraph: () => void;
 		onClose: () => void;
@@ -320,16 +328,29 @@
 		}
 	});
 
-	/** The note scrolls inside a surface it does not own, so the next note along
-	 *  is started at ITS top by scrolling whatever that surface turns out to be. */
-	function startAtTheTop(): void {
+	/** How far down each note the reader had got, so a note switched away from and
+	 *  come back to opens where they left it rather than at its top. */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- nothing renders off this.
+	const places = new Map<OwnedRef, number>();
+
+	/** The note scrolls inside a surface it does not own, so where it is scrolled
+	 *  to is whatever that surface turns out to be. */
+	function scrollBox(): HTMLElement | null {
 		for (let box = noteBody?.parentElement; box; box = box.parentElement) {
 			const flow = getComputedStyle(box).overflowY;
-			if (flow === 'auto' || flow === 'scroll') {
-				box.scrollTop = 0;
-				return;
-			}
+			if (flow === 'auto' || flow === 'scroll') return box;
 		}
+		return null;
+	}
+
+	function keepPlace(of: OwnedRef): void {
+		const box = scrollBox();
+		if (box) places.set(of, box.scrollTop);
+	}
+
+	function startAtTheirPlace(of: OwnedRef): void {
+		const box = scrollBox();
+		if (box) box.scrollTop = places.get(of) ?? 0;
 	}
 
 	/** A title wraps rather than scrolling out of sight, so the box follows it. */
@@ -389,7 +410,7 @@
 		seeding = false;
 		shapeRefused = null;
 		writing = false;
-		startAtTheTop();
+		startAtTheirPlace(opening);
 		void (async () => {
 			let held = false;
 			try {
@@ -422,6 +443,7 @@
 		// switched with a finger never blurs the field.
 		return () => {
 			live = false;
+			keepPlace(opening);
 			void saveTitle(opening);
 		};
 	});
@@ -628,20 +650,34 @@
 			return;
 		}
 		drafts.delete(ref);
+		places.delete(ref);
 		if (above) onOpen(above);
 		else onClose();
 	}
 </script>
 
-{#snippet row(note: NodeView, choose: () => void)}
-	<button
-		type="button"
-		onclick={choose}
-		class="flex min-h-11 w-full items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-	>
-		<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
-		<span class="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
-	</button>
+{#snippet row(note: NodeView, choose: () => void, beside = false)}
+	<div class="flex flex-1 items-center gap-1">
+		<button
+			type="button"
+			onclick={choose}
+			class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+		>
+			<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
+			<span class="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
+		</button>
+		{#if beside && onOpenAlso && !openNotes.includes(note.ref)}
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-11 shrink-0 text-muted-foreground"
+				aria-label="Open {note.address} as well"
+				onclick={() => onOpenAlso(note.ref)}
+			>
+				<Files class="size-4" />
+			</Button>
+		{/if}
+	</div>
 {/snippet}
 
 <svelte:head><title>{node?.title || 'Note'} · Sloppy</title></svelte:head>
@@ -782,7 +818,7 @@
 				<h2 class="text-sm font-medium text-muted-foreground">Under this</h2>
 				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
 					{#each children as child (child.ref)}
-						<li>{@render row(child, () => onOpen(child.ref))}</li>
+						<li class="flex items-center">{@render row(child, () => onOpen(child.ref), true)}</li>
 					{/each}
 				</ul>
 			{/if}
@@ -842,7 +878,7 @@
 					{#each linked as { target, note: to } (target)}
 						<li class="flex items-center gap-1">
 							{#if to}
-								{@render row(to, () => onOpen(target))}
+								{@render row(to, () => onOpen(target), true)}
 							{:else if gone.has(target)}
 								<p class="flex min-h-11 flex-1 items-center px-2 text-muted-foreground">
 									A note that is no longer here.
@@ -869,7 +905,7 @@
 				<h2 class="text-sm font-medium text-muted-foreground">Linked from</h2>
 				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
 					{#each backlinks as from (from.ref)}
-						<li>{@render row(from, () => onOpen(from.ref))}</li>
+						<li class="flex items-center">{@render row(from, () => onOpen(from.ref), true)}</li>
 					{/each}
 				</ul>
 			{/if}

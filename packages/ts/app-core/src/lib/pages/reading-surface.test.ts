@@ -95,7 +95,17 @@ async function settle(): Promise<void> {
 function installGraph(): Map<OwnedRef, NodeView> {
 	const held = new Map<OwnedRef, NodeView>([
 		[FIRST, node(1, '1', { title: 'Origins' })],
-		[SECOND, node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST })],
+		// The hub of the fixture: every other note is a row inside this one, which
+		// is where a reader opens a related note beside the one they are reading.
+		[
+			SECOND,
+			node(2, '1a', {
+				title: 'Cells',
+				origin: FIRST,
+				parent: FIRST,
+				links: [FIRST, THIRD, ...MORE]
+			})
+		],
 		[THIRD, node(3, '1b', { title: 'Tissue', origin: FIRST, parent: FIRST })],
 		...MORE.map(
 			(of, at) =>
@@ -254,13 +264,26 @@ function lifted(): Record<string, string> {
 	);
 }
 
-/** Opens `address` beside whatever is already open, through the canvas menu —
- *  the one way in a finger has, and the one a mouse has. */
+/** Opens `address` beside whatever is already open, from the row inside the note
+ *  that names it. On a phone the surface stands over the canvas, so this is the
+ *  only way in a finger has — and it is the same one at desk width. */
 async function alsoOpen(address: string): Promise<void> {
-	menuOn(address).click();
+	const found = surface().querySelector<HTMLButtonElement>(
+		`[aria-label="Open ${address} as well"]`
+	);
+	if (!found) throw new Error(`The note on screen names no ${address} to open as well`);
+	found.click();
 	await settle();
-	item('Open it as well').click();
-	await settle();
+}
+
+/** The box the note scrolls in. jsdom applies no stylesheet, so the surface's
+ *  own overflow class computes as `visible` and has to be spelled out here. */
+function noteBox(): HTMLElement {
+	const field = surface().querySelector<HTMLElement>('[aria-label="Title"]');
+	const box = field?.closest<HTMLElement>('.mx-auto')?.parentElement?.parentElement;
+	if (!box) throw new Error('The note is in nothing that scrolls');
+	box.style.overflowY = 'auto';
+	return box;
 }
 
 beforeEach(() => {
@@ -407,6 +430,18 @@ describe('the graph beside an open note', () => {
 		}
 	});
 
+	// The canvas is the other way in, wherever a mark can be reached at all.
+	it('opens a mark beside the note being read, from its menu', async () => {
+		await readCells(DESK);
+
+		menuOn('1b').click();
+		await settle();
+		item('Open it as well').click();
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['1a', '1b'], reading: '1b' });
+	});
+
 	it('takes the focus back where the note was opened from', async () => {
 		await openGraph(DESK);
 		const mark = onCanvas('1a');
@@ -423,10 +458,11 @@ describe('the graph beside an open note', () => {
 });
 
 // Several related notes worked across at once. The phone gets every one of
-// these, by the press and hold the canvas already answers — a desk does not get
-// a way in that a finger has not got.
+// these, through the rows inside a note — a desk does not get a way in that a
+// finger has not got, and on a phone the canvas is behind the surface.
 describe.each([
 	['on a phone', PHONE],
+	['on a tablet', TABLET],
 	['at desk width', DESK]
 ])('a few notes open at once, %s', (_where, width) => {
 	it('draws no strip until there is somewhere to switch to', async () => {
@@ -534,20 +570,96 @@ describe.each([
 		expect(at.path).toBe('/');
 	});
 
+	it('comes back to a tab where the reader left off in it', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+		tab('1a').click();
+		await settle();
+
+		const box = noteBox();
+		box.scrollTop = 420;
+
+		tab('1b').click();
+		await settle();
+		expect(box.scrollTop, 'a note opened for the first time starts at its top').toBe(0);
+
+		tab('1a').click();
+		await settle();
+		expect(box.scrollTop).toBe(420);
+	});
+
+	// A walk is somewhere new; the note it leaves is the note it leaves.
+	it('starts a note the reader walked to at its top', async () => {
+		await readCells(width);
+		const box = noteBox();
+		box.scrollTop = 420;
+
+		way('The note this one grew out of').click();
+		await settle();
+
+		expect(box.scrollTop).toBe(0);
+	});
+
 	// A strip nobody can find a note on has stopped being a strip.
 	it('says how many can be open once the strip is full', async () => {
 		await readCells(width);
-		for (const address of ['1b', '1c', '1d', '1e', '1f']) await alsoOpen(address);
+		for (const address of ['1b', '1c', '1d', '1e', '1f']) {
+			await alsoOpen(address);
+			tab('1a').click();
+			await settle();
+		}
 		expect(openTabs().addresses).toHaveLength(6);
 
-		menuOn('1').click();
-		await settle();
-		item('Open it as well').click();
-		await settle();
+		await alsoOpen('1');
 
 		expect(screen()).toContain('You can have 6 notes open at once. Close one to open another.');
 		expect(openTabs().addresses).toHaveLength(6);
-		expect(at.path).toBe(nodeHref(ref(7)));
+		expect(at.path).toBe(nodeHref(SECOND));
+	});
+
+	// A refusal that outlives the act it asks for teaches people to read past it.
+	it('takes the message down once a note has been closed', async () => {
+		await readCells(width);
+		for (const address of ['1b', '1c', '1d', '1e', '1f']) {
+			await alsoOpen(address);
+			tab('1a').click();
+			await settle();
+		}
+		await alsoOpen('1');
+		expect(screen()).toContain('Close one to open another');
+
+		closeTab('1f').click();
+		await settle();
+
+		expect(screen()).not.toContain('Close one to open another');
+	});
+
+	// The graph is asked which note to link to, so the surface steps out of its
+	// way — and the notes on it are not what the reader paid for the question.
+	it('keeps every note open while the graph is asked what to link to', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+
+		button('Link to another note').click();
+		await settle();
+		expect(screen()).toContain('Tap a note to link it to');
+
+		button('Never mind').click();
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['1a', '1b'], reading: '1b' });
+	});
+
+	it('keeps them open when the link lands, too', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+
+		button('Link to another note').click();
+		await settle();
+		onCanvas('1').click();
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['1a', '1b'], reading: '1b' });
 	});
 });
 
@@ -555,6 +667,8 @@ describe('the graph beside a few open notes', () => {
 	it('says which marks are open and which one is in front of the reader', async () => {
 		await readCells(DESK);
 		await alsoOpen('1b');
+		tab('1a').click();
+		await settle();
 		await alsoOpen('1');
 
 		expect(lifted()).toEqual({ '1a': 'open', '1b': 'open', '1': 'reading' });

@@ -151,6 +151,41 @@ describe("the paper under a note that is open", () => {
     scene.destroy();
   });
 
+  // A pinch moves the viewport and nothing else, so the lift has to be laid
+  // again on the zoom the way the orbit and the labels are: the floor is
+  // measured on the screen, and a reach left at the scale it was drawn at is
+  // either invisible or a halo over the neighbourhood.
+  it("is laid again on a pinch, at both ends of it", async () => {
+    const { scene, app } = await canvasOn([drawn("1")]);
+    scene.setReading({ open: new Set([ref("1")]), active: ref("1") });
+    app.tick();
+
+    const zoomTo = (scale: number) => {
+      scene.viewport.zoomAt(0, 0, scale / scene.viewport.scale);
+      app.tick();
+    };
+
+    zoomTo(1 / 18);
+    const spread = under(liftLayer(app).rings, LEAF).reach - LEAF;
+    expect(
+      LEAF * scene.viewport.scale,
+      "the mark is under a pixel",
+    ).toBeLessThan(1);
+    expect(spread * scene.viewport.scale, "on screen").toBeGreaterThan(4);
+
+    zoomTo(3);
+    expect(
+      under(liftLayer(app).rings, LEAF).reach,
+      "the field reach came back to the mark's own size",
+    ).toBeCloseTo(
+      Math.max(
+        ...liftOf(LEAF, true, 3).map((band) => band.at + band.width / 2),
+      ),
+      6,
+    );
+    scene.destroy();
+  });
+
   it("is taken off the paper the moment nothing is open", async () => {
     const { scene, app } = await canvasOn([drawn("1")]);
     scene.setReading({ open: new Set([ref("1")]), active: ref("1") });

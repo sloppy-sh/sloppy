@@ -7,8 +7,7 @@
 	// and which branches the reader folded is their place in it.
 	const folded = new SvelteSet<OwnedRef>();
 
-	/** How many notes may be open at once. Enough to work across a few related
-	 *  ones, and few enough that the strip stays a place you can find one. */
+	/** How many notes may be open at once — DESIGN.md § Layout. */
 	const MOST_OPEN = 6;
 </script>
 
@@ -81,6 +80,8 @@
 	let unreachable = $state<string | null>(null);
 	/** An action failed while the graph is fine; it sits beside the graph. */
 	let refused = $state<string | null>(null);
+	/** Why another note could not be opened beside the ones already open. */
+	let tooMany = $state<string | null>(null);
 	let creating = $state(false);
 	/** Naming a branch's number, which is the one address a person picks. */
 	let numbering = $state(false);
@@ -96,6 +97,9 @@
 	let seed = $state<{ ref: OwnedRef; shape: NoteTemplate } | null>(null);
 	/** The note a link is being pointed FROM, while the graph is the picker. */
 	let pointing = $state<OwnedRef | null>(null);
+	/** The strip held while the surface is out of the graph's way, so a question
+	 *  put to the graph does not cost the reader the notes they had open. */
+	let aside = $state<readonly OwnedRef[]>([]);
 	/** Where the reader has got to while looking for the note they mean: the one
 	 *  they are pointing from, and then whichever mega-node they opened. */
 	let looking = $state<OwnedRef | null>(null);
@@ -270,13 +274,15 @@
 	/** The strip once `ref` has taken the active tab's place — or unchanged where
 	 *  it is already open, which is a switch rather than an open. */
 	function inPlaceOf(ref: OwnedRef): readonly OwnedRef[] {
-		if (openNotes.includes(ref)) return openNotes;
+		const strip = openNotes.length > 0 ? openNotes : aside;
+		if (strip.includes(ref)) return strip;
 		if (open === null) return [ref];
-		return openNotes.map((held) => (held === open ? ref : held));
+		return strip.map((held) => (held === open ? ref : held));
 	}
 
 	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
 	function goTo(ref: OwnedRef, strip: readonly OwnedRef[]): void {
+		aside = [];
 		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
 	}
 
@@ -284,6 +290,7 @@
 		naming = fresh ? ref : null;
 		seed = shape ? { ref, shape } : null;
 		refused = null;
+		tooMany = null;
 		goTo(ref, inPlaceOf(ref));
 	}
 
@@ -294,12 +301,12 @@
 			return;
 		}
 		if (openNotes.length >= MOST_OPEN) {
-			refused = `You can have ${MOST_OPEN} notes open at once. Close one to open another.`;
+			tooMany = `You can have ${MOST_OPEN} notes open at once. Close one to open another.`;
 			return;
 		}
 		naming = null;
 		seed = null;
-		refused = null;
+		tooMany = null;
 		goTo(ref, [...openNotes, ref]);
 	}
 
@@ -307,13 +314,13 @@
 		if (ref === open) return;
 		naming = null;
 		seed = null;
+		tooMany = null;
 		goTo(ref, openNotes);
 	}
 
 	/** Closing the one being read leaves the reader on the note before it, or on
-	 *  the one after it where it was first. Closing the last one puts the surface
-	 *  away. Tidying up is not somewhere the reader went, so it replaces the
-	 *  history entry rather than adding one. */
+	 *  the one after it where it was first. Tidying up is not somewhere the
+	 *  reader went, so it replaces the history entry rather than adding one. */
 	function closeTab(ref: OwnedRef): void {
 		const left = openNotes.filter((held) => held !== ref);
 		const next = ref === open ? left[Math.max(0, openNotes.indexOf(ref) - 1)] : open;
@@ -323,6 +330,7 @@
 		}
 		naming = null;
 		seed = null;
+		tooMany = null;
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
@@ -338,12 +346,26 @@
 		}
 		naming = null;
 		seed = null;
+		tooMany = null;
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
+	/** The surface put away, and every note on it closed with it. */
 	function hide(): void {
+		putAway([]);
+	}
+
+	/** The surface out of the graph's way with the notes on it still open, so
+	 *  they come back when the graph has answered. */
+	function stepAside(): void {
+		putAway(openNotes);
+	}
+
+	function putAway(held: readonly OwnedRef[]): void {
 		naming = null;
 		seed = null;
+		tooMany = null;
+		aside = held;
 		replaceState('/', {});
 	}
 
@@ -355,7 +377,7 @@
 		stopChoosing();
 		pointing = from;
 		looking = from;
-		hide();
+		stepAside();
 	}
 
 	function stopPointing(): void {
@@ -912,6 +934,7 @@
 	title={openNode?.title || 'Note'}
 	{tabs}
 	active={open}
+	says={tooMany}
 	onActivate={activate}
 	onCloseTab={closeTab}
 >
@@ -920,8 +943,10 @@
 			ref={open}
 			{naming}
 			{seed}
+			{openNotes}
 			onSeeded={() => (seed = null)}
 			onOpen={show}
+			onOpenAlso={showAlso}
 			onLinkOnGraph={() => pointFrom(open)}
 			onClose={hide}
 		/>

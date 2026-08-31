@@ -79,9 +79,7 @@ export const CHOSEN_BAND = 4;
  *  two strengths: a note that is open, and the one being read. */
 const LIFT_REACH = { open: 1.7, active: 2.4 };
 const LIFT_INK = { open: 0.26, active: 0.5 };
-/** What that spread may never fall below, in CSS pixels. A mark drawn at half a
- *  pixel is where somebody hunting the note they are reading needs this most,
- *  and a purely proportional lift has all but vanished by then. */
+/** What that spread may never fall below, in CSS pixels — DESIGN.md § "The mark". */
 const LIFT_FLOOR = { open: 5, active: 8 };
 /** Rings the lift is laid down as. Enough that its outer edge is not a line. */
 const LIFT_BANDS = 16;
@@ -562,7 +560,7 @@ export class GraphScene {
 
     this.ground.update(this.viewport, this.width, this.height);
     if (this.positionsDirty) this.syncMarks();
-    if (this.positionsDirty) this.drawLift();
+    if (this.positionsDirty || scaleMoved) this.drawLift();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();

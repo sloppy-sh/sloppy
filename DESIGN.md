@@ -483,20 +483,27 @@ so.
   address is the thing a person cites.
 - **Several notes stay open in that surface, and a strip across its head says which.** A
   reader working across a few related notes switches between them without losing their
-  place in any — what was typed, what a note is showing, and what a failed act left to say
-  are all that TAB's, never the surface's. The strip is the same strip on a phone as on a
-  desk, because a phone is where it matters most, and it appears only once there is
-  something to switch to: one note open draws no strip, which is the remove-empty-chrome
-  rule above applied to the head of the surface. **Each tab is led by its address**, in the
-  address face, because that is the label a note always has and the one a person cites.
+  place in any — what was typed, what a note is showing, what a failed act left to say, and
+  how far down it they had got are all that TAB's, never the surface's. The strip is the
+  same strip on a phone as on a desk, because a phone is where it matters most, and it
+  appears only once there is something to switch to: one note open draws no strip, which is
+  the remove-empty-chrome rule above applied to the head of the surface. **Each tab is led
+  by its address**, in the address face, because that is the label a note always has and
+  the one a person cites.
 - **A plain tap replaces the note being read; opening one BESIDE it is a deliberate act.**
   A walk along the run — previous, next, down, up — and a tap on the canvas both move the
   tab the reader is in, so walking a branch never quietly fills the strip. Opening another
-  note as well is reached from the canvas menu, which a right-click and a press-and-hold
-  both raise, so the way in is the same one on both surfaces rather than a desk-only
-  modifier. **The address bar names the active note and nothing else** — which notes are
-  open beside it rides in the history entry, so Back and Forward can never land on a strip
-  that disagrees with the address, and a reload lands on the one note the address carries.
+  note as well has a way in wherever a note is named: the canvas menu on a mark, which a
+  right-click and a press-and-hold both raise, and — beside every row inside a note that
+  names another one — a control of its own. **The row is what makes this reach a phone at
+  all**, where the surface stands over the canvas the menu is on, and the rows are the
+  related notes a reader came to work across. **The address bar names the active note and
+  nothing else** — which notes are open beside it rides in the history entry, so Back and
+  Forward can never land on a strip that disagrees with the address, and a reload lands on
+  the one note the address carries.
+- **A question put to the graph borrows the surface; it does not close it.** Pointing a
+  link at a note takes the reading surface out of the canvas's way, and the notes open come
+  back with the reader when the graph has answered or the question is abandoned.
 - **Closing has a bound and the bound is said plainly.** A tab closes onto the note beside
   it; the surface's own way out puts the whole thing away. Past a handful of open notes the
   strip stops being somewhere a note can be found, so opening another says how many may be

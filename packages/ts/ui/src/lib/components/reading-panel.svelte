@@ -35,6 +35,7 @@
 		title,
 		tabs = [],
 		active = null,
+		says = null,
 		onActivate,
 		onCloseTab,
 		children
@@ -47,6 +48,8 @@
 		/** The notes open here, in the order they were opened. Fewer than two draws
 		 *  no strip: one note has nothing to switch to. */
 		tabs?: readonly ReadingTab[];
+		/** Why another note could not be opened here, for the reader who asked. */
+		says?: string | null;
 		/** The one {@link children} is showing, of {@link tabs}. */
 		active?: OwnedRef | null;
 		onActivate?: (ref: OwnedRef) => void;
@@ -141,7 +144,7 @@
 						type="button"
 						aria-label="Close {tab.address}"
 						onclick={() => onCloseTab?.(tab.ref)}
-						class="flex w-7 shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						class="flex w-11 shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
 						<X class="size-3.5" />
 					</button>
@@ -154,6 +157,7 @@
 {#snippet body()}
 	<div style={stripped ? `--reading-head: ${HEAD}` : undefined}>
 		{#if stripped}{@render strip()}{/if}
+		{#if says}<p class="px-2 pt-2 text-sm text-destructive" role="alert">{says}</p>{/if}
 		{@render children()}
 	</div>
 {/snippet}

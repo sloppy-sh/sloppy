@@ -796,9 +796,8 @@ describe("choosing notes to act on", () => {
 
     expect(graph.scene.reading?.open).toEqual(new Set([first, second]));
     expect(graph.scene.reading?.active).toBe(second);
-    // Which notes are open is the reader's own place, not a fact the layout
-    // reads: a field that re-settled on a tab switch would move the mark the
-    // lift was pointing at.
+    // Which notes are open is drawn, never laid out — the field settles on
+    // `focus` and what is in it, and this is neither.
     expect(graph.starts()).toBe(settles);
 
     graph.handle.update({ ...graph.props, reading: undefined });
