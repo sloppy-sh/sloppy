@@ -80,8 +80,11 @@
 	let unreachable = $state<string | null>(null);
 	/** An action failed while the graph is fine; it sits beside the graph. */
 	let refused = $state<string | null>(null);
-	/** Why another note could not be opened beside the ones already open. */
-	let tooMany = $state<string | null>(null);
+	/** Where the reader was when opening another note was refused for want of
+	 *  room: the strip, and the note in front of them. What that says is derived
+	 *  from this rather than latched, because Back and Forward reach `openNotes`
+	 *  through nothing this page runs — a message cleared by hand outlives them. */
+	let refusedAt = $state<{ strip: readonly OwnedRef[]; reading: OwnedRef | null } | null>(null);
 	let creating = $state(false);
 	/** Naming a branch's number, which is the one address a person picks. */
 	let numbering = $state(false);
@@ -141,6 +144,15 @@
 			const note = nodes.get(ref);
 			return { ref, address: note?.address ?? '', title: note?.title ?? '' };
 		})
+	);
+	/** Why another note could not be opened beside the ones already open. */
+	const tooMany = $derived(
+		refusedAt !== null &&
+			refusedAt.reading === open &&
+			refusedAt.strip.length === openNotes.length &&
+			refusedAt.strip.every((held, at) => held === openNotes[at])
+			? `You can have ${MOST_OPEN} notes open at once. Close one to open another.`
+			: null
 	);
 	const openNode = $derived(open ? nodes.get(open) : undefined);
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
@@ -274,11 +286,15 @@
 	/** The strip once `ref` has taken `standing`'s place — or unchanged where it is
 	 *  already open, which is a switch rather than an open. `standing` defaults to
 	 *  the tab being read; a note written from another one takes THAT tab, which is
-	 *  not always the one in front of the reader when the server answers. */
+	 *  not always the one in front of the reader when the server answers. Where
+	 *  that tab has been closed in the meantime the note joins the strip instead,
+	 *  so a slow write never puts itself over a note the reader moved to. */
 	function inPlaceOf(ref: OwnedRef, standing: OwnedRef | null = null): readonly OwnedRef[] {
 		const strip = openNotes.length > 0 ? openNotes : aside;
 		if (strip.includes(ref)) return strip;
-		const held = standing !== null && strip.includes(standing) ? standing : open;
+		const gone = standing !== null && !strip.includes(standing);
+		if (gone && strip.length > 0 && strip.length < MOST_OPEN) return [...strip, ref];
+		const held = gone ? open : (standing ?? open);
 		if (held === null) return [ref];
 		return strip.map((one) => (one === held ? ref : one));
 	}
@@ -298,7 +314,6 @@
 		naming = wrote ? ref : null;
 		seed = wrote?.shape ? { ref, shape: wrote.shape } : null;
 		refused = null;
-		tooMany = null;
 		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
 	}
 
@@ -309,12 +324,11 @@
 			return;
 		}
 		if (openNotes.length >= MOST_OPEN) {
-			tooMany = `You can have ${MOST_OPEN} notes open at once. Close one to open another.`;
+			refusedAt = { strip: [...openNotes], reading: open };
 			return;
 		}
 		naming = null;
 		seed = null;
-		tooMany = null;
 		goTo(ref, [...openNotes, ref]);
 	}
 
@@ -322,7 +336,6 @@
 		if (ref === open) return;
 		naming = null;
 		seed = null;
-		tooMany = null;
 		goTo(ref, openNotes);
 	}
 
@@ -338,7 +351,6 @@
 		}
 		naming = null;
 		seed = null;
-		tooMany = null;
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
@@ -361,7 +373,6 @@
 		}
 		naming = null;
 		seed = null;
-		tooMany = null;
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
@@ -379,7 +390,6 @@
 	function putAway(held: readonly OwnedRef[]): void {
 		naming = null;
 		seed = null;
-		tooMany = null;
 		aside = held;
 		replaceState('/', {});
 	}

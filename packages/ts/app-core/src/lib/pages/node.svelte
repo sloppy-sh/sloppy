@@ -154,6 +154,16 @@
 		refusals.set(of, held);
 	}
 
+	// A delete refusal answers an act, not something left half-done on screen the
+	// way a title is — `drafts` keeps that beside it — so at a note the reader
+	// comes back to, all it can do is repeat itself.
+	$effect(() => {
+		const of = ref;
+		untrack(() => {
+			if (refusals.get(of)?.remove !== undefined) refuse(of, 'remove', null);
+		});
+	});
+
 	/** Acts in the air, by the note they were asked in, so a wait in one tab does
 	 *  not disable the same act in the next. */
 	const adding = new SvelteSet<OwnedRef>();

@@ -1,6 +1,6 @@
 import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { drawnNodes } from "./contract.js";
+import { drawnNodes, drawnReading } from "./contract.js";
 
 const DID = "did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc";
 
@@ -107,5 +107,64 @@ describe("drawnNodes", () => {
     const drawn = drawnNodes([root, theirs], new Set([root.ref]));
     expect(drawn.map((d) => d.node.ref)).toEqual([root.ref, theirs.ref]);
     expect(drawn[0].folded).toBe(0);
+  });
+});
+
+// DESIGN.md § "The mark": being open is a set a mark can be IN, so a fold
+// aggregates it the way it aggregates tags — a mega-node answers for the
+// subtree it replaced, and the strip listing an open note never disagrees with
+// the canvas about it.
+describe("drawnReading", () => {
+  const every = [root, child, grandchild, sibling];
+
+  it("leaves a drawn note where it is", () => {
+    expect(
+      drawnReading(every, new Set(), {
+        open: new Set([child.ref, sibling.ref]),
+        active: sibling.ref,
+      }),
+    ).toEqual({
+      open: new Set([child.ref, sibling.ref]),
+      active: sibling.ref,
+    });
+  });
+
+  it("lifts the mega-node that swallowed a note, rather than nothing at all", () => {
+    expect(
+      drawnReading(every, new Set([root.ref]), {
+        open: new Set([grandchild.ref]),
+        active: null,
+      }),
+    ).toEqual({ open: new Set([root.ref]), active: null });
+  });
+
+  it("carries a nested fold out to the outermost mega-node", () => {
+    expect(
+      drawnReading(every, new Set([root.ref, child.ref]), {
+        open: new Set([grandchild.ref]),
+        active: grandchild.ref,
+      }),
+    ).toEqual({ open: new Set([root.ref]), active: root.ref });
+  });
+
+  // Two tabs inside one fold are one mark, and it lifts at the stronger of the
+  // two: the fold holds the note being read.
+  it("folds two open notes onto one mark, at the stronger strength", () => {
+    expect(
+      drawnReading(every, new Set([root.ref]), {
+        open: new Set([child.ref, grandchild.ref]),
+        active: grandchild.ref,
+      }),
+    ).toEqual({ open: new Set([root.ref]), active: root.ref });
+  });
+
+  it("leaves a note the host has not loaded alone, lifting nothing", () => {
+    const away = node(9, "2");
+    expect(
+      drawnReading(every, new Set([root.ref]), {
+        open: new Set([away.ref]),
+        active: away.ref,
+      }),
+    ).toEqual({ open: new Set([away.ref]), active: away.ref });
   });
 });

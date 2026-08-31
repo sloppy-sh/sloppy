@@ -217,6 +217,20 @@ const corpus = makeCorpus({
   maxSiblings: 5,
 });
 
+const byRef = new Map(corpus.nodes.map((node) => [node.ref, node]));
+
+function ancestorsOf(ref: OwnedRef): OwnedRef[] {
+  const up: OwnedRef[] = [];
+  for (
+    let at = byRef.get(ref)?.parent;
+    at !== undefined;
+    at = byRef.get(at)?.parent
+  ) {
+    up.push(at);
+  }
+  return up;
+}
+
 async function mount(overrides: Partial<GraphMountOptions> = {}) {
   const host = element();
   const expanded: OwnedRef[] = [];
@@ -784,26 +798,6 @@ describe("choosing notes to act on", () => {
     expect(graph.scene.chosen).toBeNull();
   });
 
-  it("hands the open notes to the canvas without shaking the field", async () => {
-    const { graph, first, second } = await choosing();
-    expect(graph.scene.reading).toBeNull();
-
-    const settles = graph.starts();
-    graph.handle.update({
-      ...graph.props,
-      reading: { open: new Set([first, second]), active: second },
-    });
-
-    expect(graph.scene.reading?.open).toEqual(new Set([first, second]));
-    expect(graph.scene.reading?.active).toBe(second);
-    // Which notes are open is drawn, never laid out — the field settles on
-    // `focus` and what is in it, and this is neither.
-    expect(graph.starts()).toBe(settles);
-
-    graph.handle.update({ ...graph.props, reading: undefined });
-    expect(graph.scene.reading).toBeNull();
-  });
-
   it("adds everything a sweep enclosed", async () => {
     const { graph, swept } = await choosing();
 
@@ -826,6 +820,68 @@ describe("choosing notes to act on", () => {
 
     expect(onPick).toEqual([second]);
     expect(picked).toEqual([]);
+  });
+});
+
+describe("the notes open on the reading surface", () => {
+  const drawnRefs = (graph: Awaited<ReturnType<typeof mount>>) =>
+    new Set(graph.model().order);
+
+  it("hands them to the canvas without shaking the field", async () => {
+    const graph = await mount();
+    const [first, second] = graph.model().order;
+    expect(graph.scene.reading).toBeNull();
+
+    const settles = graph.starts();
+    graph.handle.update({
+      ...graph.props,
+      reading: { open: new Set([first, second]), active: second },
+    });
+
+    expect(graph.scene.reading?.open).toEqual(new Set([first, second]));
+    expect(graph.scene.reading?.active).toBe(second);
+    // Which notes are open is drawn, never laid out — the field settles on
+    // `focus` and what is in it, and this is neither.
+    expect(graph.starts()).toBe(settles);
+
+    graph.handle.update({ ...graph.props, reading: undefined });
+    expect(graph.scene.reading).toBeNull();
+  });
+
+  // The budget folds a branch the reader is not walking, and a note open inside
+  // one has to stay findable: DESIGN.md § "The mark" hands it to the mega-node
+  // that swallowed it, the way a fold carries tags.
+  it("lifts the fold that swallowed one of them", async () => {
+    const graph = await mount();
+    const away = corpus.nodes.find((node) => !drawnRefs(graph).has(node.ref));
+    expect(away, "the budget folded nothing to test against").toBeDefined();
+
+    graph.handle.update({
+      ...graph.props,
+      reading: { open: new Set([away!.ref]), active: null },
+    });
+
+    const lifted = [...(graph.scene.reading?.open ?? [])];
+    expect(lifted).not.toContain(away!.ref);
+    expect(lifted).toHaveLength(1);
+    expect(drawnRefs(graph)).toContain(lifted[0]);
+    expect(ancestorsOf(away!.ref)).toContain(lifted[0]);
+  });
+
+  // The one being read is the focus, and the budget will not fold the focus's
+  // own spine — so it is drawn wherever it is, and never aggregated.
+  it("draws the one being read, however far it is from the last", async () => {
+    const graph = await mount();
+    const away = corpus.nodes.find((node) => !drawnRefs(graph).has(node.ref));
+
+    graph.handle.update({
+      ...graph.props,
+      focus: away!.ref,
+      reading: { open: new Set([away!.ref]), active: away!.ref },
+    });
+
+    expect(graph.scene.reading?.active).toBe(away!.ref);
+    expect(drawnRefs(graph)).toContain(away!.ref);
   });
 });
 

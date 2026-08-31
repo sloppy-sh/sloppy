@@ -13,7 +13,7 @@ import {
   type StrokedRing,
   worldOf,
 } from "./pixi.test-support.js";
-import { liftInk, liftOf } from "./scene.js";
+import { type LiftBand, liftInk, liftOf } from "./scene.js";
 
 vi.mock("pixi.js", async () => {
   const { fakePixi } = await import("./pixi.test-support.js");
@@ -83,13 +83,18 @@ function liftLayer(app: FakeApplication): FakeGraphics {
   return first;
 }
 
-/** How far the rings around one mark reach, and the ink they lay at its edge. */
+/** The heaviest ink a lift lays, which is the ring where it starts. */
+const heaviest = (bands: LiftBand[]) =>
+  liftInk(bands, bands[0].at - bands[0].width / 2);
+
+/** How far the rings around one mark reach, and the ink they lay where they
+ *  start — which is clear of the mark, never on its edge. */
 function under(rings: StrokedRing[], radius: number) {
   const reach = Math.max(...rings.map((ring) => ring.radius + ring.width / 2));
   const innermost = rings.reduce((closest, ring) =>
     ring.radius < closest.radius ? ring : closest,
   );
-  expect(innermost.radius - innermost.width / 2).toBeCloseTo(radius, 6);
+  expect(innermost.radius - innermost.width / 2).toBeGreaterThan(radius);
   return { reach, ink: innermost.alpha };
 }
 
@@ -114,14 +119,8 @@ describe("the paper under a note that is open", () => {
       .map((laid) => under(laid, LEAF))
       .sort((a, b) => a.ink - b.ink);
     expect(lifts[0].reach, "an open note casts nothing").toBeGreaterThan(LEAF);
-    expect(lifts[0].ink).toBeCloseTo(
-      liftInk(liftOf(LEAF, false, SCALE), LEAF),
-      6,
-    );
-    expect(lifts[1].ink).toBeCloseTo(
-      liftInk(liftOf(LEAF, true, SCALE), LEAF),
-      6,
-    );
+    expect(lifts[0].ink).toBeCloseTo(heaviest(liftOf(LEAF, false, SCALE)), 6);
+    expect(lifts[1].ink).toBeCloseTo(heaviest(liftOf(LEAF, true, SCALE)), 6);
     expect(
       lifts[1].reach,
       "the note being read reaches no further than one merely open",
@@ -145,7 +144,7 @@ describe("the paper under a note that is open", () => {
     // § Hue's alpha answers the question the reader asked; the lift answers
     // where the reader is, so the question does not fade it.
     expect(under(liftLayer(app).rings, LEAF).ink).toBeCloseTo(
-      liftInk(liftOf(LEAF, true, SCALE), LEAF),
+      heaviest(liftOf(LEAF, true, SCALE)),
       6,
     );
     scene.destroy();

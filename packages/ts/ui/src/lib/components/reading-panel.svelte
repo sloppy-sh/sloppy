@@ -4,9 +4,8 @@
 	/** Below this the panel would leave the graph beside it too little to read. */
 	const DOCK_FROM_PX = 900;
 
-	/** How tall the strip stands. Published as `--reading-head` so the note under
-	 *  it can keep its own head in place below the strip rather than beneath it. */
-	const HEAD = '2.75rem';
+	/** How tall the strip stands. */
+	const STRIP = '2.75rem';
 
 	/** One note open in the panel. The address leads, because it is what a person
 	 *  cites and the one label that is never blank. */
@@ -66,7 +65,10 @@
 	});
 
 	let panel = $state<HTMLElement | null>(null);
+	let head = $state<HTMLElement | null>(null);
+	let headHeight = $state(0);
 	const stripped = $derived(tabs.length > 1);
+	const headed = $derived(stripped || !!says);
 
 	/** The strip scrolls sideways, so the tab being read is brought into it: a tab
 	 *  opened past its edge is otherwise open with nothing on screen to say so. */
@@ -87,6 +89,24 @@
 			const ours = panel?.contains(document.activeElement) ?? false;
 			if (ours && from instanceof HTMLElement && from.isConnected) from.focus();
 		};
+	});
+
+	// Measured rather than assumed: the head stands as tall as everything in it,
+	// which is the strip and whatever the surface has to say — DESIGN.md
+	// § "The four inset vars".
+	$effect(() => {
+		const el = head;
+		if (!el) {
+			headHeight = 0;
+			return;
+		}
+		const measure = () => {
+			headHeight = el.offsetHeight;
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		return () => observer.disconnect();
 	});
 
 	// The panel owes the width it takes to whatever it is beside — DESIGN.md
@@ -119,7 +139,7 @@
 {#snippet strip()}
 	<nav
 		aria-label="Open notes"
-		style="height: {HEAD}"
+		style="height: {STRIP}"
 		class="flex items-stretch border-b border-border bg-background"
 	>
 		<div
@@ -162,12 +182,12 @@
 {/snippet}
 
 {#snippet body()}
-	<div style={stripped ? `--reading-head: ${HEAD}` : undefined}>
+	<div style={headed ? `--reading-head: ${headHeight}px` : undefined}>
 		<!-- What the surface has to say about the strip keeps the strip's place:
 		     the row that asks for a note is a scroll down inside a long note, and a
 		     refusal left back up there is one nobody reads. -->
-		{#if stripped || says}
-			<div class="sticky top-0 z-30 bg-background">
+		{#if headed}
+			<div bind:this={head} class="sticky top-0 z-30 bg-background">
 				{#if stripped}{@render strip()}{/if}
 				{#if says}<p class="px-2 py-2 text-sm text-destructive" role="alert">{says}</p>{/if}
 			</div>

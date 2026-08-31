@@ -219,6 +219,29 @@ export function drawnNodes(
   }));
 }
 
+/**
+ * {@link drawnNodes}'s resolution applied to {@link GraphReadingMarks}: an open
+ * note a fold swallowed is carried by the mega-node that swallowed it, so the
+ * canvas and the surface listing it never disagree — DESIGN.md § "The mark".
+ *
+ * A ref outside `nodes` is left as it is, and lifts nothing.
+ */
+export function drawnReading(
+  nodes: readonly NodeView[],
+  collapsed: ReadonlySet<OwnedRef>,
+  reading: GraphReadingMarks,
+): GraphReadingMarks {
+  const byRef = new Map(nodes.map((node) => [node.ref, node]));
+  const onto = (ref: OwnedRef): OwnedRef => {
+    const node = byRef.get(ref);
+    return node ? (outermostCollapsed(node, byRef, collapsed) ?? ref) : ref;
+  };
+  return {
+    open: new Set([...reading.open].map(onto)),
+    active: reading.active === null ? null : onto(reading.active),
+  };
+}
+
 function withFolded(
   own: readonly Tag[],
   folded: ReadonlySet<Tag> | undefined,

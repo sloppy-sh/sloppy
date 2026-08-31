@@ -62,6 +62,14 @@ function answers(query: string, width: number): boolean {
 	return most ? width <= Number(most[1]) : false;
 }
 
+/** jsdom lays nothing out, so what a surface measures itself with is supplied:
+ *  a box stands one row tall per thing in it — a figure of no significance, so
+ *  that what is asserted is the counting — and the observers that would answer a
+ *  reflow are told to look again by `settle`. */
+const ROW = 37;
+const laidOut = new Set<(entries: unknown[]) => void>();
+const noLayout = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+
 function stubViewport(width: number): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
@@ -76,9 +84,22 @@ function stubViewport(width: number): void {
 		configurable: true,
 		writable: true,
 		value: class {
+			look: (entries: unknown[]) => void;
+			constructor(look: (entries: unknown[]) => void) {
+				this.look = look;
+				laidOut.add(look);
+			}
 			observe() {}
 			unobserve() {}
-			disconnect() {}
+			disconnect() {
+				laidOut.delete(this.look);
+			}
+		}
+	});
+	Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+		configurable: true,
+		get(this: HTMLElement) {
+			return this.children.length * ROW;
 		}
 	});
 }
@@ -89,6 +110,7 @@ async function settle(): Promise<void> {
 		flushSync();
 	}
 	for (let frame = 0; frame < 3; frame += 1) await new Promise(requestAnimationFrame);
+	for (const look of laidOut) look([]);
 	flushSync();
 }
 
@@ -213,6 +235,12 @@ function item(label: string): HTMLButtonElement {
 /** What `<html>` is currently told the docked note takes. */
 const dockInset = () =>
 	document.documentElement.style.getPropertyValue('--reading-dock-inset-right');
+
+/** What the surface tells the note under it its own head stands at. */
+const readingHead = () =>
+	surface()
+		.querySelector<HTMLElement>('[style*="--reading-head"]')
+		?.style.getPropertyValue('--reading-head') ?? '';
 
 /** A control inside the note, by the label it carries. */
 function control(label: string): HTMLButtonElement {
@@ -342,6 +370,8 @@ afterEach(() => {
 	session.clear();
 	target.remove();
 	document.body.innerHTML = '';
+	laidOut.clear();
+	if (noLayout) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', noLayout);
 });
 
 // The point of the wave: a note is somewhere to read and work, so a phone must
@@ -563,6 +593,30 @@ describe.each([
 		expect(surface().textContent).toContain('could not save that title');
 	});
 
+	// A refusal that answers an act the reader has walked away from has nothing
+	// left to tell them, and repeating it at a note they came back to is how a
+	// surface teaches people to read past what it says.
+	it('does not repeat a delete that failed at a note the reader comes back to', async () => {
+		api.on(`DELETE ${path(THIRD)}`, () => {
+			throw new Error('nope');
+		});
+		await readCells(width);
+		await alsoOpen('1b');
+
+		button('Delete this note').click();
+		await settle();
+		exactly('Delete').click();
+		await settle();
+		expect(surface().textContent).toContain('could not delete that note');
+
+		tab('1a').click();
+		await settle();
+		tab('1b').click();
+		await settle();
+
+		expect(surface().textContent).not.toContain('could not delete that note');
+	});
+
 	// The bug this is written against shipped once: a read that failed was
 	// remembered against the wrong note and made it permanently unreadable.
 	it('keeps a note that would not read from marking the one beside it', async () => {
@@ -673,6 +727,28 @@ describe.each([
 		expect(at.path).toBe(nodeHref(SECOND));
 	});
 
+	// The note under it sticks its own head below the surface's, so what the
+	// surface publishes has to be the whole of its head — DESIGN.md § "The four
+	// inset vars". A refusal drawn beside the strip and a height that counted
+	// only the strip is a message painted over the way out of the note.
+	it('tells the note how tall its head really stands', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+		expect(readingHead(), 'the strip on its own').toBe(`${ROW}px`);
+
+		for (const address of ['1c', '1d', '1e', '1f']) {
+			tab('1a').click();
+			await settle();
+			await alsoOpen(address);
+		}
+		tab('1a').click();
+		await settle();
+		await alsoOpen('1');
+
+		expect(screen()).toContain('Close one to open another');
+		expect(readingHead(), 'the strip and what it says beside it').toBe(`${ROW * 2}px`);
+	});
+
 	// A refusal that outlives the act it asks for teaches people to read past it.
 	it('takes the message down once a note has been closed', async () => {
 		await readCells(width);
@@ -771,6 +847,31 @@ describe('an act still in the air when the reader switches tabs', () => {
 
 		expect(openTabs()).toEqual({ addresses: ['1a1', '1b'], reading: '1a1' });
 	});
+
+	// That tab can be gone by the time the note comes back, and the note in front
+	// of the reader is not a stand-in for it: a slow write joins the strip rather
+	// than taking somewhere they moved to.
+	it('joins the strip when the tab it was written from has been closed', async () => {
+		const written = ref(8);
+		const made = node(8, '1a1', { title: 'Membranes', origin: FIRST, parent: SECOND });
+		const stalled = heldOpen<NodeView>();
+		api.on('POST /nodes', () => stalled.route());
+		api.on(`GET ${path(written)}`, () => made);
+		api.on(`GET ${path(written)}/blocks`, () => []);
+		await readCells(DESK);
+		await alsoOpen('1b');
+		tab('1a').click();
+		await settle();
+
+		button('Write a note under this').click();
+		await settle();
+		closeTab('1a').click();
+		await settle();
+		stalled.answer(made);
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['1b', '1a1'], reading: '1a1' });
+	});
 });
 
 // A note deleted from inside the surface leaves the strip the way one deleted
@@ -846,5 +947,30 @@ describe('going back and forward across the open notes', () => {
 		expect(at.note).toBeNull();
 		expect(screen()).not.toContain('Delete this note');
 		expect(lifted()).toEqual({});
+	});
+
+	// The refusal answers where the reader was standing when they asked, and a
+	// step back is somewhere else. It rides the head of the surface, so one left
+	// standing there sits over the note's own way out.
+	it('takes down what it said about a full strip', async () => {
+		await readCells(DESK);
+		for (const address of ['1b', '1c', '1d', '1e', '1f']) {
+			await alsoOpen(address);
+			tab('1a').click();
+			await settle();
+		}
+		await alsoOpen('1');
+		expect(screen()).toContain('Close one to open another');
+
+		back();
+		await settle();
+		expect(openTabs().reading).toBe('1f');
+		expect(screen()).not.toContain('Close one to open another');
+
+		while (strip() !== null) {
+			back();
+			await settle();
+		}
+		expect(screen()).not.toContain('Close one to open another');
 	});
 });

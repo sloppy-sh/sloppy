@@ -287,9 +287,10 @@ Ten rulings hold that table together:
   `@sloppy/graph` holds that bound over every size a look offers.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
-  picture its own author gave it. Tags are the one thing a fold aggregates, because a tag
-  is a set a mark can be in and a mega-node answers for the subtree it replaced; a look is
-  authored by one person on one note, and forty of them do not average into a forty-first.
+  picture its own author gave it. What a fold aggregates is a set a mark can be IN — its
+  tags, and whether it is one of the notes open — because a mega-node answers for the
+  subtree it replaced; a look is authored by one person on one note, and forty of them do
+  not average into a forty-first.
 - **A look is the first thing to go as the mark gets small.** Three concentric strokes do
   not survive a leaf drawn at half a pixel, so they drop in the order of how little the
   reader is owed them: the look's ring and its picture first, then the orbit and the
@@ -336,7 +337,12 @@ Ten rulings hold that table together:
   choosing and never both, and being open is not a mode of the canvas at all — a note stays
   open while somebody chooses, and while they do neither. So it takes the ground the mark
   stands on, drawn as ink laid outside the mark's edge and fading outward, which reads as a
-  mark lifted rather than as another line drawn round it. **It is one channel at two
+  mark lifted rather than as another line drawn round it. **It clears the mark's edge
+  before it lays anything**, the way the orbit does and for the orbit's reason: that edge
+  is provenance, an `own` note draws none, and ink laid tangent to the rim would hand one a
+  ring it never had. The clearance is half the orbit's, because a lift is ground rather
+  than a line — held as far off as the orbit it stops reading as the mark's own paper.
+  **It is one channel at two
   strengths** — a note that is open lifts a little, the note being read lifts further and
   darker — because open and active are one fact at two intensities, not two facts.
   Concretely it is rings and never a disc: a pulled mark is drawn hollow, and a lift that
@@ -368,7 +374,14 @@ Ten rulings hold that table together:
   Level of detail is measured in hops from the note the reader is reading (`lod.ts`),
   which is the note they will walk out of. It says nothing about how a mark is DRAWN, and
   it knows nothing about the other notes open beside it — the lift is the only thing that
-  says which those are.
+  says which those are. So the budget goes on folding a note open far from the focus, and
+  **the mega-node that swallowed it lifts in its place**, by the aggregation rule above:
+  a tap through it reaches the mark itself, and what the surface lists as open and what the
+  canvas draws can never disagree. The budget is not widened to hold every open note's
+  spine drawn instead — the focus's own exemption exists because folding it would fold the
+  focus out of the view it is the focus of, and that argument is about one note rather than
+  a handful. **The note being read is never the one aggregated**: it is the focus, and the
+  budget will not fold the focus's spine.
 - **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
   the question the hue channel answers. The notes somebody has picked out to act on are
   **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.
@@ -581,10 +594,14 @@ Three vars live on `<html>`, and a fourth mirrors them at the top:
   often not exempt on the other, and the fallback is the no-chrome height to the pixel.
 
 `--reading-head` is the same bargain kept inside one surface: the reading panel publishes
-how tall the strip across its head stands, and the note under it sticks its own head below
-that rather than beneath it. It is unset wherever no strip is drawn, so a note read on its
-own keeps its head at the top of whatever is scrolling it — the fallback is that height to
-the pixel, which is why every reader of it is written `var(--reading-head, 0px)`.
+how tall its own head stands, and the note under it sticks its own head below that rather
+than beneath it. **The head is what it holds** — the strip across it, and whatever the
+surface has to say about the note being opened — so the height is measured off that box
+rather than assumed from the strip: a refusal drawn beside the strip and a height that
+counted only the strip is a message painted over the way out of the note. It is unset
+wherever the surface draws no head at all, so a note read on its own keeps its head at the
+top of whatever is scrolling it — the fallback is that height to the pixel, which is why
+every reader of it is written `var(--reading-head, 0px)`.
 
 `--reading-dock-inset-right` is the same bargain turned sideways: the reading panel docked
 beside the graph publishes the width it occupies, and what stands next to it subtracts that

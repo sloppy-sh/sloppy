@@ -217,6 +217,10 @@ describe("the lift under an open note", () => {
   const active = liftOf(LEAF, true, 1);
   const reachOf = (bands: LiftBand[]) =>
     Math.max(...bands.map((band) => band.at + band.width / 2));
+  /** Where the paper starts, and the heaviest ink it lays, which is there. */
+  const fromOf = (bands: LiftBand[]) => bands[0].at - bands[0].width / 2;
+  const spreadOf = (bands: LiftBand[]) => reachOf(bands) - fromOf(bands);
+  const heaviest = (bands: LiftBand[]) => liftInk(bands, fromOf(bands));
 
   it("spreads past the mark and stops, at both strengths", () => {
     for (const [strength, bands] of [
@@ -225,25 +229,36 @@ describe("the lift under an open note", () => {
     ] as const) {
       expect(reachOf(bands), strength).toBeGreaterThan(LEAF);
       expect(liftInk(bands, reachOf(bands) * 1.01), strength).toBe(0);
-      expect(liftInk(bands, LEAF), strength).toBeGreaterThan(0.2);
+      expect(heaviest(bands), strength).toBeGreaterThan(0.2);
+    }
+  });
+
+  // The mark's own edge is provenance and an `own` note draws none, so paper
+  // laid tangent to the rim would hand one an edge it never had — PRODUCT.md
+  // principle 4.
+  it("holds clear of the mark before it lays any paper", () => {
+    for (const [strength, bands] of [
+      ["open", open],
+      ["being read", active],
+    ] as const) {
+      expect(fromOf(bands), strength).toBeGreaterThan(LEAF);
+      expect(liftInk(bands, LEAF), strength).toBe(0);
     }
   });
 
   // Which of the two a mark wears has to be answerable without a second mark
   // beside it to compare against, so they separate in reach AND in ink.
   it("tells the note being read from one merely open", () => {
-    expect(liftInk(active, LEAF)).toBeGreaterThan(liftInk(open, LEAF) * 1.5);
-    expect(reachOf(active) - LEAF).toBeGreaterThan(
-      (reachOf(open) - LEAF) * 1.3,
-    );
+    expect(heaviest(active)).toBeGreaterThan(heaviest(open) * 1.5);
+    expect(spreadOf(active)).toBeGreaterThan(spreadOf(open) * 1.3);
   });
 
   // The crowded case: a mark being read AND chosen, which the canvas really does
-  // draw at once — choosing leaves the reading surface open. The two share no
-  // clearance and cannot: the band is a screen-constant gap outside the mark
-  // while a lift is the mark's own size, so past a small mark the band lands
-  // inside the lift and slides further in the closer the reader zooms. What
-  // keeps it a band is weight, so that is what is swept.
+  // draw at once — choosing leaves the reading surface open. Clearance cannot
+  // tell them apart: the band clears the mark by twice what the lift does and is
+  // then the mark's own size wide, so it lands inside the lift and slides
+  // further in the closer the reader zooms. What keeps it a band is weight, so
+  // that is what is swept.
   it("outweighs the lift wherever the chosen band lands", () => {
     const sizes = [
       LEAF * LOOK_SCALE.small,
@@ -283,10 +298,9 @@ describe("the lift under an open note", () => {
       ["being read", true],
     ] as const) {
       const bands = liftOf(LEAF, wearing, scale);
-      const spread = (reachOf(bands) - LEAF) * scale;
-      expect(spread, strength).toBeGreaterThan(4);
-      expect(liftInk(bands, LEAF), strength).toBeCloseTo(
-        liftInk(liftOf(LEAF, wearing, 1), LEAF),
+      expect(spreadOf(bands) * scale, strength).toBeGreaterThan(4);
+      expect(heaviest(bands), strength).toBeCloseTo(
+        heaviest(liftOf(LEAF, wearing, 1)),
         6,
       );
     }
@@ -296,8 +310,8 @@ describe("the lift under an open note", () => {
   // lift is the mark's own size and the geometry above is what holds.
   it("is the mark's own size wherever the mark has room", () => {
     for (const scale of [1, 2, 8]) {
-      expect(reachOf(liftOf(LEAF, true, scale)), `${scale}`).toBeCloseTo(
-        reachOf(active),
+      expect(spreadOf(liftOf(LEAF, true, scale)), `${scale}`).toBeCloseTo(
+        spreadOf(active),
         6,
       );
     }

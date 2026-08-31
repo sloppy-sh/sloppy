@@ -9,6 +9,7 @@
 import type { OwnedRef } from "@sloppy/types";
 import {
   drawnNodes,
+  drawnReading,
   type GraphHoverAt,
   type GraphSurfaceProps,
 } from "./contract.js";
@@ -157,7 +158,11 @@ export function mountGraph(
     scene.setModel(model, props.selection.length > 0);
     scene.setPicking(props.picking ?? null);
     scene.setChosen(props.chosen ?? null);
-    scene.setReading(props.reading ?? null);
+    scene.setReading(
+      props.reading
+        ? drawnReading(props.nodes, lod.collapsed, props.reading)
+        : null,
+    );
     dragged = null;
     if (!relayout) return;
 

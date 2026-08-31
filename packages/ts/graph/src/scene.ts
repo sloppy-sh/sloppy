@@ -77,11 +77,16 @@ export const CHOSEN_BAND = 4;
  *  which shares its ground — DESIGN.md § "The mark". */
 export const CHOSEN_INK = 0.9;
 
-/** How far a lift spreads past the mark, as a multiple of its radius, and the
- *  ink it lays at the mark's own edge. DESIGN.md § "The mark" — one channel at
- *  two strengths: a note that is open, and the one being read. */
+/** How far a lift spreads, as a multiple of the mark's radius, and the ink it
+ *  lays where it begins. DESIGN.md § "The mark" — one channel at two strengths:
+ *  a note that is open, and the one being read. */
 const LIFT_REACH = { open: 1.7, active: 2.4 };
 const LIFT_INK = { open: 0.26, active: 0.5 };
+/** What a lift holds clear of the mark before laying anything, in CSS pixels.
+ *  Half the orbit's: ink tangent to the rim reads as the mark's own edge, which
+ *  is provenance, and paper held as far off as the orbit stops reading as the
+ *  mark's own. */
+const LIFT_GAP = PICK_GAP / 2;
 /** What that spread may never fall below, in CSS pixels — DESIGN.md § "The mark". */
 const LIFT_FLOOR = { open: 5, active: 8 };
 /** Rings the lift is laid down as. Enough that its outer edge is not a line. */
@@ -1048,10 +1053,11 @@ export interface LiftBand {
 /**
  * The lift an open note's mark casts on the paper — DESIGN.md § "The mark".
  * Rings rather than one disc, innermost first, so a mark drawn hollow because
- * it was pulled stays hollow, and so the ink fades outward from its edge.
+ * it was pulled stays hollow, and so the ink fades outward.
  *
  * `radius` and the result are world units; `scale` is what the viewport is
- * drawing at, which only ever widens the spread — {@link LIFT_FLOOR}.
+ * drawing at, which sets the clearance held off the mark and only ever widens
+ * the spread — {@link LIFT_GAP}, {@link LIFT_FLOOR}.
  */
 export function liftOf(
   radius: number,
@@ -1059,13 +1065,14 @@ export function liftOf(
   scale: number,
 ): LiftBand[] {
   const strength = active ? "active" : "open";
+  const from = radius + LIFT_GAP / scale;
   const spread = Math.max(
     radius * (LIFT_REACH[strength] - 1),
     LIFT_FLOOR[strength] / scale,
   );
   const width = spread / LIFT_BANDS;
   return Array.from({ length: LIFT_BANDS }, (_unused, band) => ({
-    at: radius + (band + 0.5) * width,
+    at: from + (band + 0.5) * width,
     width,
     alpha: (LIFT_INK[strength] * (LIFT_BANDS - band)) / LIFT_BANDS,
   }));
