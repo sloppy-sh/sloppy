@@ -502,8 +502,9 @@ so.
   came to write takes as much room as they want for it, by dragging that inner edge or by
   moving a separator they can focus with the arrow keys. It shows a grip at rest rather than
   one that appears under a pointer, and the target around that grip is one a finger can hit:
-  the tablet it docks on has no hover. It is bounded at both ends — never narrower than the
-  column a note is worked in, never so wide that what it is docked against stops being a
+  the tablet it docks on has no hover. It is bounded at both ends — never narrower than a
+  note reads well in, never wider than the point the words themselves stop widening, and
+  never so wide that what it is docked against stops being a
   graph — and it publishes every width it passes through rather than only the
   one it comes to rest at, because the nav pill, the bar over a chosen set and the card
   beside a mark all place themselves against that number. Below the dock width the note is
@@ -540,9 +541,15 @@ so.
   strip stops being somewhere a note can be found, so opening another says how many may be
   open and what to do about it.
 - **Inside the surface, the room is the surface's, not the window's.** A note is worked in a
-  column between 22rem and 42rem wide — the reader moves that wall themselves — on a desk
-  where every viewport breakpoint has long since turned on, so what lays itself out in two
-  columns or one asks a container query, never `sm:`.
+  single column, on a desk where every viewport breakpoint has long since turned on, so what
+  lays itself out in two columns or one asks a container query, never `sm:`.
+- **The words stop widening before the wall does, and the wall stops with them.** A note's
+  column grows with the wall as far as 42rem, past which a line stops being one an eye
+  carries back to the start of. So the wall stops there: room taken past that point is
+  margin nobody writes in, bought with graph somebody reads. At the other end it stops at
+  22rem, below which there is not enough left to work a note in at all. The surface hands
+  the ceiling to the note as `--reading-column`, so the words and the wall cannot drift
+  apart.
 - **Inside a note, the words lead.** A person opens a note to read it and write in it, so
   the writing comes straight under the title and nothing stands between them. What a reader
   takes in at a glance stays out where they can see it — the address, the title, who wrote

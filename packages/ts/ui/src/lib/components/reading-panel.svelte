@@ -7,11 +7,18 @@
 	/** How tall the strip stands. */
 	const STRIP = '2.75rem';
 
-	/** What a docked panel may take, in px: never narrower than the column a note
-	 *  is worked in, never wider than the graph beside it can give up and still be
-	 *  a graph — DESIGN.md § Layout. */
+	/** The widest a note's own writing column grows, in px, and the room the
+	 *  panel keeps either side of it (`pl-4` and `pr-[max(1rem,…)]` below). The
+	 *  note reads the column back as `--reading-column`, so the words and the
+	 *  wall stop at one number rather than two — DESIGN.md § Layout. */
+	const COLUMN = 672;
+	const GUTTERS = 32;
+
+	/** What a docked panel may take, in px: never narrower than a note reads well
+	 *  in, never wider than the point its column stops growing, and never so wide
+	 *  that the graph beside it stops being a graph. */
 	const LEAST = 352;
-	const MOST = 960;
+	const MOST = COLUMN + GUTTERS;
 	const GRAPH_KEEPS = 448;
 
 	function widthWithin(room: number): { least: number; most: number } {
@@ -104,6 +111,12 @@
 	let dragging = $state(false);
 	let grabbedAt = 0;
 	let grabbedWidth = 0;
+	/** What the panel stood at when the wall was grabbed, and whether the grab
+	 *  became a drag. A press that never moved is put back: a width nobody chose,
+	 *  written down, would pin a panel that had been sizing itself to the
+	 *  window. */
+	let ungrabbed: number | null = null;
+	let moved = false;
 
 	const wanted = $derived(dragged ?? width);
 	const stands = $derived(across > 0 && wanted !== null ? dockedWidth(wanted, across) : null);
@@ -190,12 +203,15 @@
 	});
 
 	function startDrag(event: PointerEvent): void {
+		if (event.button !== 0) return;
 		// The wall lies over the edge of the canvas, and what starts on the wall is
 		// the wall's — never a pan of the graph underneath it.
 		event.preventDefault();
 		event.stopPropagation();
 		grabbedAt = event.clientX;
 		grabbedWidth = stands ?? standing;
+		ungrabbed = dragged;
+		moved = false;
 		dragging = true;
 		dragged = dockedWidth(grabbedWidth, across);
 		(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
@@ -203,12 +219,17 @@
 
 	function onDrag(event: PointerEvent): void {
 		if (!dragging) return;
+		if (event.clientX !== grabbedAt) moved = true;
 		dragged = dockedWidth(grabbedWidth + (grabbedAt - event.clientX), across);
 	}
 
 	function endDrag(): void {
 		if (!dragging) return;
 		dragging = false;
+		if (!moved) {
+			dragged = ungrabbed;
+			return;
+		}
 		if (dragged !== null) onWidthChange?.(dragged);
 	}
 
@@ -280,7 +301,7 @@
 {/snippet}
 
 {#snippet body()}
-	<div style={headed ? `--reading-head: ${headHeight}px` : undefined}>
+	<div style="--reading-column: {COLUMN}px;{headed ? ` --reading-head: ${headHeight}px` : ''}">
 		<!-- What the surface has to say about the strip keeps the strip's place:
 		     the row that asks for a note is a scroll down inside a long note, and a
 		     refusal left back up there is one nobody reads. -->

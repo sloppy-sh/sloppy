@@ -70,8 +70,13 @@ function answers(query: string, width: number): boolean {
 const ROW = 37;
 const laidOut = new Set<(entries: unknown[]) => void>();
 const noLayout = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+const roomless = Object.getOwnPropertyDescriptor(window, 'innerWidth');
 
 function stubViewport(width: number): void {
+	// The panel bounds the room it takes against the window itself, not against a
+	// query, so a stubbed viewport that only answered `matchMedia` would leave it
+	// sizing to a window nothing else in the suite is at.
+	Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width });
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
 		writable: true,
@@ -385,6 +390,7 @@ afterEach(() => {
 	document.body.innerHTML = '';
 	laidOut.clear();
 	if (noLayout) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', noLayout);
+	if (roomless) Object.defineProperty(window, 'innerWidth', roomless);
 });
 
 // The point of the wave: a note is somewhere to read and work, so a phone must
@@ -414,7 +420,7 @@ describe.each([
 
 		const menu = screen();
 		expect(menu).toContain('Tags');
-		expect(menu).toContain('How this note looks');
+		expect(menu).toContain('Give it a look');
 		expect(menu).toContain('Link to another note');
 		expect(menu).toContain('Delete this note');
 	});
@@ -637,6 +643,11 @@ describe.each([
 
 		await act('Delete this note');
 		exactly('Delete').click();
+		await settle();
+		// The question stays standing with the answer on it, so the reader who
+		// asked reads it; dismissing it leaves the answer at the head of the note.
+		expect(screen()).toContain('could not delete that note');
+		exactly('Cancel').click();
 		await settle();
 		expect(surface().textContent).toContain('could not delete that note');
 
@@ -1010,6 +1021,38 @@ describe('taking more room to write in', () => {
 		await readCells(DESK);
 
 		expect(dockInset()).toBe('352px');
+	});
+
+	// The reader drags the wall to get more room to write in, so the travel has
+	// to buy them some: past the point the note's own column stops growing, the
+	// graph would give up width and the words would gain none. One number bounds
+	// both, and the surface hands it down so the two cannot drift apart.
+	it('stops where the words stop widening, however much window there is', async () => {
+		prefs.set('readingWidth', 5000);
+		await readCells(2560);
+
+		const column = Number(
+			surface()
+				.querySelector<HTMLElement>('[style*="--reading-column"]')
+				?.style.getPropertyValue('--reading-column')
+				.replace('px', '')
+		);
+		expect(column).toBe(672);
+		// The panel's own gutters either side of that column, and nothing more.
+		expect(Number(wall().getAttribute('aria-valuemax'))).toBe(column + 32);
+		expect(dockInset()).toBe(`${column + 32}px`);
+	});
+
+	// A width nobody dragged to is not a width to keep, and one written down
+	// would pin a panel that had been sizing itself to the window.
+	it('keeps nothing from a press on the wall that never moved', async () => {
+		await readCells(DESK);
+
+		wall().dispatchEvent(pointer('pointerdown', 780));
+		wall().dispatchEvent(pointer('pointerup', 780));
+		await settle();
+
+		expect(prefs.current.readingWidth).toBeNull();
 	});
 });
 

@@ -317,8 +317,9 @@ function noteRow(shows: string): HTMLButtonElement {
 
 const screen = () => document.body.textContent ?? '';
 
-/** The title and what stands with it, where an act asked from the one control
- *  at the head is answered. */
+/** The row that keeps its place at the head of the note however far it runs —
+ *  the way out, the address, the one control every act is asked from, and what
+ *  one of those acts was refused. */
 const noteHead = () => document.body.querySelector('header')?.textContent ?? '';
 
 /** Only what the typed field turned up: the note's own lists must not answer
@@ -401,6 +402,38 @@ describe('deleting a note', () => {
 		await settle();
 
 		expect(closed).toHaveBeenCalled();
+	});
+
+	// A note that is still there and a question that has vanished read as nothing
+	// having happened, and this is the one act where that cannot stand.
+	it('keeps the question up, with the answer on it, where the note would not go', async () => {
+		api.on(`DELETE ${path(THIRD)}`, () => {
+			throw new Error('nope');
+		});
+		await openNote(THIRD);
+		await act('Delete this note');
+		exactly('Delete').click();
+		await settle();
+		await settle();
+
+		expect(screen()).toContain('could not delete that note');
+		expect(exactly('Delete')).toBeTruthy();
+	});
+
+	it('keeps it in front of the reader after the question is dismissed', async () => {
+		api.on(`DELETE ${path(THIRD)}`, () => {
+			throw new Error('nope');
+		});
+		await openNote(THIRD);
+		await act('Delete this note');
+		exactly('Delete').click();
+		await settle();
+		await settle();
+
+		exactly('Cancel').click();
+		await settle();
+
+		expect(noteHead()).toContain('could not delete that note');
 	});
 });
 
@@ -530,9 +563,9 @@ describe('linking a note to another', () => {
 		expect(screen()).not.toContain('Links to');
 	});
 
-	// The sheet that asked is gone by the time the server answers, so a note with
-	// no links must not grow a section of them to carry the refusal.
-	it('says at the head of the note what it would not link', async () => {
+	// The reader who asked is the one owed the answer, so the sheet stays up to
+	// give it rather than closing and leaving it at a head they have scrolled off.
+	it('says on the sheet that asked what it would not link', async () => {
 		api.on(`PATCH ${path(SECOND)}`, () => {
 			throw new Error('nope');
 		});
@@ -542,8 +575,46 @@ describe('linking a note to another', () => {
 		await settle();
 		await settle();
 
-		expect(noteHead()).toContain('could not add that link');
+		expect(document.body.querySelector('[aria-label="Link by title or address"]')).not.toBeNull();
+		expect(screen()).toContain('could not add that link');
 		expect(screen()).not.toContain('Links to');
+	});
+
+	// The one control every act is asked from rides the head of the note, so its
+	// answers do too once the surface that asked has been put away.
+	it('keeps a refused link in front of the reader after the sheet is gone', async () => {
+		api.on(`PATCH ${path(SECOND)}`, () => {
+			throw new Error('nope');
+		});
+		await openNote(SECOND);
+		await findToLink('meth');
+		noteRow('Method').click();
+		await settle();
+		await settle();
+
+		exactly('Close').click();
+		await settle();
+
+		expect(noteHead()).toContain('could not add that link');
+	});
+
+	// Taking a link off is asked at the foot of the note, where the links are, so
+	// that is where it is answered.
+	it('says beside the links themselves what it would not unlink', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, links: [FOURTH] });
+		nodes.clear();
+		await loadGraph();
+		await openNote(SECOND);
+		api.on(`PATCH ${path(SECOND)}`, () => {
+			throw new Error('nope');
+		});
+
+		labelled('Unlink 2').click();
+		await settle();
+		await settle();
+
+		expect(screen()).toContain('could not remove that link');
+		expect(noteHead()).not.toContain('could not remove that link');
 	});
 
 	it('says so where the note a link points at has gone', async () => {
@@ -1091,7 +1162,7 @@ describe('how a note looks', () => {
 
 	async function openLook(at: OwnedRef): Promise<void> {
 		await openNote(at);
-		await act('How this note looks');
+		await act('Give it a look');
 	}
 
 	it('writes the whole look on the note it was chosen on', async () => {

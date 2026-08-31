@@ -7,13 +7,13 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
+	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Files from '@lucide/svelte/icons/files';
-	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
-	import Palette from '@lucide/svelte/icons/palette';
+	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import {
@@ -24,7 +24,7 @@
 		type NodeAppearance,
 		type NodeView,
 		type OwnedRef,
-		type Tag,
+		type Tag as TagName,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
 	import {
@@ -147,6 +147,7 @@
 		add?: string;
 		shape?: string;
 		link?: string;
+		unlink?: string;
 		tag?: string;
 		look?: string;
 		remove?: string;
@@ -353,8 +354,8 @@
 	/** Everything a reader occasionally DOES to a note, as against what they read
 	 *  off it. Delete comes last and apart — DESIGN.md § Layout. */
 	const acts = $derived<NoteMenuItem[]>([
-		{ label: 'Tags', icon: Hash, onSelect: () => (tagging = true) },
-		{ label: 'How this note looks', icon: Palette, onSelect: () => (looking = true) },
+		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
+		{ label: 'Give it a look', icon: CircleDashed, onSelect: () => (looking = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
 		{
 			label: 'Delete this note',
@@ -363,6 +364,18 @@
 			destructive: true
 		}
 	]);
+
+	/** What an act was refused, once the surface that asked has been put away. It
+	 *  rides the head with the one control every act is asked from, which a
+	 *  reader reaches from anywhere in a long note — so its answers have to reach
+	 *  them from there too. Gravest first. */
+	const saysHere = $derived(
+		(!removing && refused.remove) ||
+			(!linking && refused.link) ||
+			(!looking && refused.look) ||
+			(!tagging && refused.tag) ||
+			null
+	);
 
 	// The modal claims focus for itself one frame after it mounts, so the caret
 	// can only be put in the title the frame after that.
@@ -667,21 +680,29 @@
 		}
 	}
 
-	async function relink(links: OwnedRef[], whenItFails: string): Promise<void> {
+	/** True where the links landed. Adding one and taking one off answer in
+	 *  different places, so they are refused under different names. */
+	async function relink(
+		links: OwnedRef[],
+		act: 'link' | 'unlink',
+		whenItFails: string
+	): Promise<boolean> {
 		const of = ref;
-		if (relinking.has(of)) return;
+		if (relinking.has(of)) return false;
 		relinking.add(of);
-		refuse(of, 'link', null);
+		refuse(of, act, null);
 		try {
 			await nodes.update(of, { links });
+			return true;
 		} catch (error) {
-			refuse(of, 'link', serverMessage(error) ?? whenItFails);
+			refuse(of, act, serverMessage(error) ?? whenItFails);
+			return false;
 		} finally {
 			relinking.delete(of);
 		}
 	}
 
-	async function retag(picked: Tag[]): Promise<void> {
+	async function retag(picked: TagName[]): Promise<void> {
 		const of = ref;
 		refuse(of, 'tag', null);
 		try {
@@ -718,18 +739,22 @@
 		}
 	}
 
-	async function link(target: OwnedRef): Promise<void> {
+	async function link(target: OwnedRef): Promise<boolean> {
 		const before = node?.links;
-		if (!before) return;
-		await relink([...before, target], 'Sloppy could not add that link. Try again in a moment.');
+		if (!before) return false;
+		return await relink(
+			[...before, target],
+			'link',
+			'Sloppy could not add that link. Try again in a moment.'
+		);
 	}
 
-	/** Closed before the act is asked, so what the server refuses is said at the
-	 *  head of the note rather than on a sheet the reader has already dismissed. */
+	/** The sheet stands until the server has answered, so a refusal reaches the
+	 *  reader who asked for it instead of a surface they have already dismissed. */
 	async function linkTo(target: OwnedRef): Promise<void> {
+		if (!(await link(target))) return;
 		linking = false;
 		cited = '';
-		await link(target);
 	}
 
 	async function unlink(target: OwnedRef): Promise<void> {
@@ -737,6 +762,7 @@
 		if (!before) return;
 		await relink(
 			before.filter((other) => other !== target),
+			'unlink',
 			'Sloppy could not remove that link. Try again in a moment.'
 		);
 	}
@@ -753,7 +779,9 @@
 				'remove',
 				serverMessage(error) ?? 'Sloppy could not delete that note. Try again in a moment.'
 			);
-			return;
+			// Thrown on: the question stays up with the answer on it, and the same
+			// button tries again.
+			throw error;
 		}
 		drafts.delete(of);
 		places.delete(of);
@@ -791,42 +819,49 @@
 
 <div
 	bind:this={noteBody}
-	class="mx-auto flex min-h-0 w-full max-w-2xl flex-col gap-7 px-2 pb-1 sm:px-1"
+	class="mx-auto flex min-h-0 w-full max-w-[var(--reading-column,42rem)] flex-col gap-7 px-2 pb-1 sm:px-1"
 	onfocusin={(e) => caretIn(e.target)}
 	onfocusout={caretGone}
 >
-	<!-- The way out and the address keep their place however far the note runs.
-	     The way out comes first so the surface opens on it rather than in the
-	     title field, which on a phone would raise the keyboard over a note you
-	     came to read. -->
-	<div
+	<!-- The way out, the address and the acts keep their place however far the
+	     note runs, and so does whatever one of those acts was refused. The way
+	     out comes first so the surface opens on it rather than in the title
+	     field, which on a phone would raise the keyboard over a note you came to
+	     read. -->
+	<header
 		style="top: var(--reading-head, 0px)"
-		class="sticky z-20 -mx-2 flex items-center gap-2 border-b border-border bg-background px-2 pt-2 pb-1 sm:-mx-1 sm:px-1"
+		class="sticky z-20 -mx-2 border-b border-border bg-background px-2 pt-2 pb-1 sm:-mx-1 sm:px-1"
 	>
-		<button
-			type="button"
-			onclick={onClose}
-			class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-		>
-			<ArrowLeft class="size-4" />
-			Graph
-		</button>
-
-		{#if node}
-			<span class="address ml-auto truncate text-sm text-foreground/70 select-text">
-				{node.address}
-			</span>
-			<Button
-				variant="ghost"
-				size="icon"
-				class="-mr-2 size-11 shrink-0 text-muted-foreground"
-				aria-label="What to do with this note"
-				onclick={() => (acting = true)}
+		<div class="flex items-center gap-2">
+			<button
+				type="button"
+				onclick={onClose}
+				class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 			>
-				<Ellipsis class="size-4" />
-			</Button>
+				<ArrowLeft class="size-4" />
+				Graph
+			</button>
+
+			{#if node}
+				<span class="address ml-auto truncate text-sm text-foreground/70 select-text">
+					{node.address}
+				</span>
+				<Button
+					variant="ghost"
+					size="icon"
+					class="-mr-2 size-11 shrink-0 text-muted-foreground"
+					aria-label="What to do with this note"
+					onclick={() => (acting = true)}
+				>
+					<Ellipsis class="size-4" />
+				</Button>
+			{/if}
+		</div>
+
+		{#if saysHere}
+			<p class="pb-1 text-sm text-destructive" role="alert">{saysHere}</p>
 		{/if}
-	</div>
+	</header>
 
 	{#if loading && !node}
 		<div class="space-y-4">
@@ -841,7 +876,7 @@
 			That note is not here. Whoever wrote it may have taken it down.
 		</p>
 	{:else}
-		<header class="space-y-3">
+		<div class="space-y-3">
 			<textarea
 				bind:this={titleField}
 				value={title}
@@ -881,20 +916,7 @@
 			{#if refused.title}
 				<p class="text-sm text-destructive" role="alert">{refused.title}</p>
 			{/if}
-
-			<!-- The field says this itself for as long as its sheet stands. -->
-			{#if refused.tag && !tagging}
-				<p class="text-sm text-destructive" role="alert">{refused.tag}</p>
-			{/if}
-
-			{#if refused.link}
-				<p class="text-sm text-destructive" role="alert">{refused.link}</p>
-			{/if}
-
-			{#if refused.remove}
-				<p class="text-sm text-destructive" role="alert">{refused.remove}</p>
-			{/if}
-		</header>
+		</div>
 
 		{#if loading || seeding.has(ref)}
 			<Skeleton class="h-24 w-full" />
@@ -1021,6 +1043,10 @@
 							</li>
 						{/each}
 					</ul>
+
+					{#if refused.unlink}
+						<p class="text-sm text-destructive" role="alert">{refused.unlink}</p>
+					{/if}
 				{/if}
 
 				{#if backlinks.length > 0}
@@ -1110,6 +1136,10 @@
 						spellcheck="false"
 					/>
 
+					{#if refused.link}
+						<p class="text-sm text-destructive" role="alert">{refused.link}</p>
+					{/if}
+
 					{#if citable.length > 0}
 						<ul
 							aria-label="Notes to link to"
@@ -1142,6 +1172,7 @@
 			title="Delete this note?"
 			description={consequence}
 			confirmLabel="Delete"
+			refused={refused.remove ?? null}
 			onconfirm={deleteNote}
 		/>
 	{/if}

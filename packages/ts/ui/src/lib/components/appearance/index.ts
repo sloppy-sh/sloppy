@@ -1,4 +1,3 @@
-export { default as AppearanceField } from './appearance-field.svelte';
 export { default as AppearanceModal } from './appearance-modal.svelte';
 export { default as MarkSwatch } from './mark-swatch.svelte';
 export {
