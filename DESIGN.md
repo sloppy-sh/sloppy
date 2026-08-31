@@ -245,12 +245,12 @@ its original addresses. **Whose thought this is must never be a question the rea
 work out** (PRODUCT.md principle 4) — so it is carried by shape, by a written label, and
 only incidentally by anything else.
 
-### The mark — four meanings on one small disc
+### The mark — five meanings on one small disc
 
-A note is one small mark, and four separate things have to be readable off it: where the
+A note is one small mark, and five separate things have to be readable off it: where the
 thought came from, how its author asked it to look, whether it is one of the notes a link
-is being pointed at, and whether it is one of the notes somebody has chosen to act on.
-Each gets its own channel.
+is being pointed at, whether it is one of the notes somebody has chosen to act on, and
+whether it is one of the notes open in front of the reader. Each gets its own channel.
 
 | Channel on the mark                               | Carries                                                 |
 | ------------------------------------------------- | ------------------------------------------------------- |
@@ -262,8 +262,9 @@ Each gets its own channel.
 | **Its radius**                                    | how much is folded into it, scaled by the author's look |
 | **The disc's imagery**                            | the author's picture, at the share of the disc they set |
 | **The orbit outside it**                          | the mode the canvas is in — picking, or choosing        |
+| **The paper under it** — how far it lifts         | this note is open, and whether it is the one being read |
 
-Eight rulings hold that table together:
+Ten rulings hold that table together:
 
 - **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
   ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
@@ -328,6 +329,39 @@ Eight rulings hold that table together:
   line and a picture that erased it would have taken a channel that was not its. An author
   who wants every pixel of the picture has a lighter ring, or none, and none is what a note
   draws with nothing set.
+- **Being open lifts the mark off the paper, because the paper was the one surface no
+  meaning had taken.** Every other channel spends the mark itself — its fill, its edge, the
+  ring inside it, its radius, the imagery on it, and the orbit ruled around it. Being open
+  may not have the orbit: that channel is honest only because a canvas is picking or
+  choosing and never both, and a note is open while you pick, while you choose, and while
+  you do neither. So it takes the ground the mark stands on, drawn as ink laid outside the
+  mark's edge and fading outward, which reads as a mark lifted rather than as another line
+  drawn round it. **It is one channel at two strengths** — a note that is open lifts a
+  little, the note being read lifts further and darker — because open and active are one
+  fact at two intensities, not two facts. Concretely it is rings and never a disc: a pulled
+  mark is drawn hollow, and a lift that filled it would make provenance read as own.
+  **It is not `data-style`'s elevation**, the way the ground is not the style's either
+  (§ "The ground"): the canvas is exempt from that axis, and this is drawn from
+  `--graph-ink`, so it inverts with the theme and no theme has to know it exists.
+  **It never dims with the tag question** — § Hue's alpha answers what the reader ASKED,
+  and this answers where the reader IS, so a note carrying none of the selected tags still
+  shows plainly that it is the one being read. It is the LAST thing to go as a mark
+  shrinks rather than the first, with the orbit and the provenance edge, and it is the
+  mark's own size only while the mark has room: **what it spreads has a floor measured on
+  the screen**, so a mark drawn at half a pixel still lifts far enough to find. Somebody
+  hunting the note they are reading across a field they zoomed out of is exactly who that
+  floor is for, and it only ever widens — at the view a note is read at, the lift is the
+  mark's own size and none of the geometry above moves.
+  And the objection to elevation on a canvas — a shadow on ten thousand marks — does not
+  reach it, because **its cost is bounded by the fact rather than by the field**: only the
+  handful of notes a reader has open are ever lifted. `scene.test.ts` in `@sloppy/graph`
+  holds the two strengths apart and holds the chosen note's band still reading as a band
+  under one; `scene.lift.test.ts` holds it at full strength on a mark the tags have dimmed.
+- **The active note moves `focus`, and `focus` goes on meaning what it always meant.**
+  Level of detail is measured in hops from the note the reader is reading (`lod.ts`),
+  which is the note they will walk out of. It says nothing about how a mark is DRAWN, and
+  it knows nothing about the other notes open beside it — the lift is the only thing that
+  says which those are.
 - **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
   the question the hue channel answers. The notes somebody has picked out to act on are
   **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.
@@ -447,6 +481,26 @@ so.
 - **The note's way out and its address keep their place** at the head of the surface however
   far the note runs. The way back out of a long note must never be a scroll away, and the
   address is the thing a person cites.
+- **Several notes stay open in that surface, and a strip across its head says which.** A
+  reader working across a few related notes switches between them without losing their
+  place in any — what was typed, what a note is showing, and what a failed act left to say
+  are all that TAB's, never the surface's. The strip is the same strip on a phone as on a
+  desk, because a phone is where it matters most, and it appears only once there is
+  something to switch to: one note open draws no strip, which is the remove-empty-chrome
+  rule above applied to the head of the surface. **Each tab is led by its address**, in the
+  address face, because that is the label a note always has and the one a person cites.
+- **A plain tap replaces the note being read; opening one BESIDE it is a deliberate act.**
+  A walk along the run — previous, next, down, up — and a tap on the canvas both move the
+  tab the reader is in, so walking a branch never quietly fills the strip. Opening another
+  note as well is reached from the canvas menu, which a right-click and a press-and-hold
+  both raise, so the way in is the same one on both surfaces rather than a desk-only
+  modifier. **The address bar names the active note and nothing else** — which notes are
+  open beside it rides in the history entry, so Back and Forward can never land on a strip
+  that disagrees with the address, and a reload lands on the one note the address carries.
+- **Closing has a bound and the bound is said plainly.** A tab closes onto the note beside
+  it; the surface's own way out puts the whole thing away. Past a handful of open notes the
+  strip stops being somewhere a note can be found, so opening another says how many may be
+  open and what to do about it.
 - **Inside the surface, the room is the surface's, not the window's.** A note is worked in a
   column 22–34rem wide on a desk where every viewport breakpoint has long since turned on, so
   what lays itself out in two columns or one asks a container query, never `sm:`.
@@ -511,6 +565,12 @@ Three vars live on `<html>`, and a fourth mirrors them at the top:
   `h-[calc(100dvh-var(--app-chrome-top,0px)-env(safe-area-inset-top))]`. **Subtract it
   unconditionally** — the two shells gate chrome differently, so a route exempt on one is
   often not exempt on the other, and the fallback is the no-chrome height to the pixel.
+
+`--reading-head` is the same bargain kept inside one surface: the reading panel publishes
+how tall the strip across its head stands, and the note under it sticks its own head below
+that rather than beneath it. It is unset wherever no strip is drawn, so a note read on its
+own keeps its head at the top of whatever is scrolling it — the fallback is that height to
+the pixel, which is why every reader of it is written `var(--reading-head, 0px)`.
 
 `--reading-dock-inset-right` is the same bargain turned sideways: the reading panel docked
 beside the graph publishes the width it occupies, and what stands next to it subtracts that

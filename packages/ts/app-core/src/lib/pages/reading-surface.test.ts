@@ -5,7 +5,7 @@ import { node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-sup
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
-import { at, back, pushed, replaced, startAt } from './page.test-support.svelte.js';
+import { at, back, forward, pushed, replaced, startAt } from './page.test-support.svelte.js';
 import { nodeHref } from './routes.js';
 
 vi.mock('$app/state', () => ({
@@ -14,14 +14,16 @@ vi.mock('$app/state', () => ({
 			return new URL(at.path, 'http://app.test');
 		},
 		get state() {
-			return at.note ? { note: at.note } : {};
+			return at.note ? { note: at.note, notes: at.notes } : {};
 		}
 	}
 }));
 
 vi.mock('$app/navigation', () => ({
-	pushState: (path: string, state: { note?: OwnedRef }) => pushed(path, state.note ?? null),
-	replaceState: (path: string, state: { note?: OwnedRef }) => replaced(path, state.note ?? null),
+	pushState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
+		pushed(path, state.note ?? null, [...(state.notes ?? [])]),
+	replaceState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
+		replaced(path, state.note ?? null, [...(state.notes ?? [])]),
 	afterNavigate: () => {}
 }));
 
@@ -38,6 +40,10 @@ const DESK = 1280;
 
 const FIRST = ref(1);
 const SECOND = ref(2);
+const THIRD = ref(3);
+/** Under `1` alongside the two above, so a suite can fill the strip. */
+const MORE = [ref(4), ref(5), ref(6), ref(7)];
+const EVERY = [FIRST, SECOND, THIRD, ...MORE];
 
 let api: FakeApi;
 let target: HTMLElement;
@@ -89,17 +95,31 @@ async function settle(): Promise<void> {
 function installGraph(): Map<OwnedRef, NodeView> {
 	const held = new Map<OwnedRef, NodeView>([
 		[FIRST, node(1, '1', { title: 'Origins' })],
-		[SECOND, node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST })]
+		[SECOND, node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST })],
+		[THIRD, node(3, '1b', { title: 'Tissue', origin: FIRST, parent: FIRST })],
+		...MORE.map(
+			(of, at) =>
+				[
+					of,
+					node(at + 4, `1${'cdef'[at]}`, { title: 'Later', origin: FIRST, parent: FIRST })
+				] as const
+		)
 	]);
 	api.on('GET /nodes/tags', () => []);
 	api.on('GET /nodes', (url) => {
 		const origin = url.searchParams.get('origin');
 		return [...held.values()].filter((n) => (origin ? n.origin === origin : n.ref === n.origin));
 	});
-	for (const of of [FIRST, SECOND]) {
+	for (const of of EVERY) {
 		api.on(`GET ${path(of)}`, () => held.get(of) ?? null);
 		api.on(`GET ${path(of)}/blocks`, () => []);
-		api.on(`PATCH ${path(of)}`, () => held.get(of) ?? null);
+		api.on(`PATCH ${path(of)}`, (_url, init) => {
+			const note = held.get(of);
+			if (!note) return null;
+			const written = { ...note, ...(JSON.parse(String(init?.body ?? '{}')) as Partial<NodeView>) };
+			held.set(of, written);
+			return written;
+		});
 	}
 	return held;
 }
@@ -127,6 +147,21 @@ function titled(): string {
 	const field = surface().querySelector<HTMLTextAreaElement>('[aria-label="Title"]');
 	if (!field) throw new Error('The note has no title to read');
 	return field.value;
+}
+
+/** Types over the title of whichever note is on screen. */
+function retitle(to: string): void {
+	const field = surface().querySelector<HTMLTextAreaElement>('[aria-label="Title"]');
+	if (!field) throw new Error('The note has no title to write');
+	field.value = to;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** One of the ways along the run at the foot of a note, by what it says. */
+function way(says: string): HTMLButtonElement {
+	const found = surface().querySelector<HTMLButtonElement>(`[aria-label^="${says}"]`);
+	if (!found) throw new Error(`The note offers no way to "${says}"`);
+	return found;
 }
 
 /** What the tag field invites, which says whether it is on screen at all. */
@@ -174,6 +209,57 @@ async function openGraph(width: number, from = '/'): Promise<void> {
 async function readCells(width: number): Promise<void> {
 	await openGraph(width);
 	onCanvas('1a').click();
+	await settle();
+}
+
+/** The strip across the head of the panel, and nothing where it is not drawn. */
+function strip(): HTMLElement | null {
+	return document.body.querySelector<HTMLElement>('[aria-label="Open notes"]');
+}
+
+/** One tab, by the address it carries. */
+function tab(address: string): HTMLButtonElement {
+	const found = [...(strip()?.querySelectorAll('button') ?? [])].find(
+		(b) => b.querySelector('.address')?.textContent === address
+	);
+	if (!found) throw new Error(`No tab for ${address} is on the strip`);
+	return found as HTMLButtonElement;
+}
+
+/** The control that closes one tab, by the address it names. */
+function closeTab(address: string): HTMLButtonElement {
+	const found = strip()?.querySelector<HTMLButtonElement>(`[aria-label="Close ${address}"]`);
+	if (!found) throw new Error(`No way to close ${address} is on the strip`);
+	return found;
+}
+
+/** The addresses on the strip, in order, and which one is being read. */
+function openTabs(): { addresses: string[]; reading: string | undefined } {
+	const marks = [...(strip()?.querySelectorAll('.address') ?? [])];
+	return {
+		addresses: marks.map((mark) => mark.textContent ?? ''),
+		reading: marks
+			.find((mark) => mark.closest('button')?.getAttribute('aria-current') === 'page')
+			?.textContent?.trim()
+	};
+}
+
+/** What the canvas is lifting: which marks are open, and which is being read. */
+function lifted(): Record<string, string> {
+	const marks = [
+		...document.body.querySelectorAll<HTMLElement>('[aria-label="The graph"] [data-lifted]')
+	];
+	return Object.fromEntries(
+		marks.map((mark) => [mark.textContent?.trim().split(/\s+/)[0] ?? '', mark.dataset.lifted ?? ''])
+	);
+}
+
+/** Opens `address` beside whatever is already open, through the canvas menu —
+ *  the one way in a finger has, and the one a mouse has. */
+async function alsoOpen(address: string): Promise<void> {
+	menuOn(address).click();
+	await settle();
+	item('Open it as well').click();
 	await settle();
 }
 
@@ -333,5 +419,188 @@ describe('the graph beside an open note', () => {
 		await settle();
 
 		expect(document.activeElement).toBe(mark);
+	});
+});
+
+// Several related notes worked across at once. The phone gets every one of
+// these, by the press and hold the canvas already answers — a desk does not get
+// a way in that a finger has not got.
+describe.each([
+	['on a phone', PHONE],
+	['at desk width', DESK]
+])('a few notes open at once, %s', (_where, width) => {
+	it('draws no strip until there is somewhere to switch to', async () => {
+		await readCells(width);
+		expect(strip()).toBeNull();
+
+		await alsoOpen('1b');
+
+		expect(openTabs()).toEqual({ addresses: ['1a', '1b'], reading: '1b' });
+	});
+
+	it('replaces the note being read when one is opened plainly', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+
+		onCanvas('1').click();
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['1a', '1'], reading: '1' });
+		expect(titled()).toBe('Origins');
+	});
+
+	it('switches between them without losing what was typed into one', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+		retitle('Tissue, half-written');
+		await settle();
+
+		tab('1a').click();
+		await settle();
+		expect(titled()).toBe('Cells');
+
+		tab('1b').click();
+		await settle();
+		expect(titled()).toBe('Tissue, half-written');
+	});
+
+	// A title that would not save stays on the note it was typed into, with the
+	// words that say so — neither may follow the reader to the next tab.
+	it('keeps a title that would not save on the note it belongs to', async () => {
+		api.on(`PATCH ${path(THIRD)}`, () => {
+			throw new Error('nope');
+		});
+		await readCells(width);
+		await alsoOpen('1b');
+		retitle('Tissue, half-written');
+		await settle();
+
+		tab('1a').click();
+		await settle();
+		expect(titled()).toBe('Cells');
+		expect(surface().textContent).not.toContain('could not save that title');
+
+		tab('1b').click();
+		await settle();
+		expect(titled()).toBe('Tissue, half-written');
+		expect(surface().textContent).toContain('could not save that title');
+	});
+
+	// The bug this is written against shipped once: a read that failed was
+	// remembered against the wrong note and made it permanently unreadable.
+	it('keeps a note that would not read from marking the one beside it', async () => {
+		api.on(`GET ${path(THIRD)}/blocks`, () => {
+			throw new Error('nope');
+		});
+		await readCells(width);
+		await alsoOpen('1b');
+		expect(screen()).toContain('Sloppy could not read this note');
+
+		tab('1a').click();
+		await settle();
+
+		expect(screen()).not.toContain('Sloppy could not read this note');
+		expect(titled()).toBe('Cells');
+	});
+
+	// A walk is a walk: it moves the reader along the run, and does not quietly
+	// fill the strip with every note they passed through.
+	it('walks the run inside the tab it started in', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+		tab('1a').click();
+		await settle();
+
+		way('The note this one grew out of').click();
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['1', '1b'], reading: '1' });
+	});
+
+	it('leaves the reader on the note beside the one they closed', async () => {
+		await readCells(width);
+		await alsoOpen('1b');
+
+		closeTab('1b').click();
+		await settle();
+
+		expect(strip()).toBeNull();
+		expect(titled()).toBe('Cells');
+		expect(at.path).toBe(nodeHref(SECOND));
+
+		button('Graph').click();
+		await settle();
+		expect(screen()).not.toContain('Delete this note');
+		expect(at.path).toBe('/');
+	});
+
+	// A strip nobody can find a note on has stopped being a strip.
+	it('says how many can be open once the strip is full', async () => {
+		await readCells(width);
+		for (const address of ['1b', '1c', '1d', '1e', '1f']) await alsoOpen(address);
+		expect(openTabs().addresses).toHaveLength(6);
+
+		menuOn('1').click();
+		await settle();
+		item('Open it as well').click();
+		await settle();
+
+		expect(screen()).toContain('You can have 6 notes open at once. Close one to open another.');
+		expect(openTabs().addresses).toHaveLength(6);
+		expect(at.path).toBe(nodeHref(ref(7)));
+	});
+});
+
+describe('the graph beside a few open notes', () => {
+	it('says which marks are open and which one is in front of the reader', async () => {
+		await readCells(DESK);
+		await alsoOpen('1b');
+		await alsoOpen('1');
+
+		expect(lifted()).toEqual({ '1a': 'open', '1b': 'open', '1': 'reading' });
+
+		tab('1a').click();
+		await settle();
+		expect(lifted()).toEqual({ '1a': 'reading', '1b': 'open', '1': 'open' });
+	});
+
+	it('says nothing about a note nobody has open', async () => {
+		await openGraph(DESK);
+		expect(lifted()).toEqual({});
+	});
+});
+
+// Which notes are open rides in the history entry beside the active one, so a
+// pop can never leave the strip disagreeing with the address bar.
+describe('going back and forward across the open notes', () => {
+	it('lands on the note the address bar names, with the strip it had', async () => {
+		await readCells(DESK);
+		await alsoOpen('1b');
+		expect(at.path).toBe(nodeHref(THIRD));
+
+		back();
+		await settle();
+		expect(at.path).toBe(nodeHref(SECOND));
+		expect(strip()).toBeNull();
+		expect(titled()).toBe('Cells');
+
+		forward();
+		await settle();
+		expect(openTabs()).toEqual({ addresses: ['1a', '1b'], reading: '1b' });
+		expect(titled()).toBe('Tissue');
+	});
+
+	it('closes the surface on the way back past the first note', async () => {
+		await readCells(DESK);
+		await alsoOpen('1b');
+
+		back();
+		await settle();
+		back();
+		await settle();
+
+		expect(at.note).toBeNull();
+		expect(screen()).not.toContain('Delete this note');
+		expect(lifted()).toEqual({});
 	});
 });

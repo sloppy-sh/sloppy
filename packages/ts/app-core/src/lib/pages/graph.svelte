@@ -6,6 +6,10 @@
 	// the graph is torn down on the way to settings and rebuilt on the way back,
 	// and which branches the reader folded is their place in it.
 	const folded = new SvelteSet<OwnedRef>();
+
+	/** How many notes may be open at once. Enough to work across a few related
+	 *  ones, and few enough that the strip stays a place you can find one. */
+	const MOST_OPEN = 6;
 </script>
 
 <script lang="ts">
@@ -18,6 +22,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
 	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
@@ -125,6 +130,14 @@
 
 	const roots = $derived(nodes.region());
 	const open = $derived(page.state.note ?? null);
+	/** Every note open on the reading surface, in the order they were opened. */
+	const openNotes = $derived<readonly OwnedRef[]>(page.state.notes ?? (open ? [open] : []));
+	const tabs = $derived(
+		openNotes.map((ref) => {
+			const note = nodes.get(ref);
+			return { ref, address: note?.address ?? '', title: note?.title ?? '' };
+		})
+	);
 	const openNode = $derived(open ? nodes.get(open) : undefined);
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	const populated = $derived(!loading && !unreachable && roots.length > 0);
@@ -157,6 +170,11 @@
 	 * change reaches the canvas as a new set.
 	 */
 	const chosen = $derived(choosing ? new Set(picked) : undefined);
+
+	/** What the canvas lifts off the paper — DESIGN.md § "The mark". */
+	const reading = $derived(
+		openNotes.length > 0 ? { open: new Set(openNotes), active: open } : undefined
+	);
 
 	/** What a surface over the graph acts on: the note a menu named, or every
 	 *  note chosen — one note is a set of one, and takes the same acts. */
@@ -227,7 +245,7 @@
 	// on it — which settles `page.state` last, after any mount it caused.
 	function openCited(): void {
 		const cited = refFromPath(page.url.pathname);
-		if (cited && !page.state.note) replaceState('', { note: cited });
+		if (cited && !page.state.note) replaceState('', { note: cited, notes: [cited] });
 	}
 
 	onMount(() => {
@@ -240,20 +258,89 @@
 	// Re-runs as the cache fills, so a note reached by its address is never left
 	// inside a branch the reader folded earlier.
 	$effect(() => {
-		let node = open ? nodes.get(open) : undefined;
-		while (node?.parent) {
-			folded.delete(node.parent);
-			node = nodes.get(node.parent);
+		for (const of of openNotes) {
+			let node = nodes.get(of);
+			while (node?.parent) {
+				folded.delete(node.parent);
+				node = nodes.get(node.parent);
+			}
 		}
 	});
+
+	/** The strip once `ref` has taken the active tab's place — or unchanged where
+	 *  it is already open, which is a switch rather than an open. */
+	function inPlaceOf(ref: OwnedRef): readonly OwnedRef[] {
+		if (openNotes.includes(ref)) return openNotes;
+		if (open === null) return [ref];
+		return openNotes.map((held) => (held === open ? ref : held));
+	}
+
+	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
+	function goTo(ref: OwnedRef, strip: readonly OwnedRef[]): void {
+		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
+	}
 
 	function show(ref: OwnedRef, fresh = false, shape: NoteTemplate | null = null): void {
 		naming = fresh ? ref : null;
 		seed = shape ? { ref, shape } : null;
-		pushState(nodeHref(ref), { note: ref });
+		refused = null;
+		goTo(ref, inPlaceOf(ref));
 	}
 
-	/** Shallow, so the graph behind the note is never torn down and rebuilt. */
+	/** Opened beside what is already here rather than in its place. */
+	function showAlso(ref: OwnedRef): void {
+		if (openNotes.includes(ref)) {
+			show(ref);
+			return;
+		}
+		if (openNotes.length >= MOST_OPEN) {
+			refused = `You can have ${MOST_OPEN} notes open at once. Close one to open another.`;
+			return;
+		}
+		naming = null;
+		seed = null;
+		refused = null;
+		goTo(ref, [...openNotes, ref]);
+	}
+
+	function activate(ref: OwnedRef): void {
+		if (ref === open) return;
+		naming = null;
+		seed = null;
+		goTo(ref, openNotes);
+	}
+
+	/** Closing the one being read leaves the reader on the note before it, or on
+	 *  the one after it where it was first. Closing the last one puts the surface
+	 *  away. Tidying up is not somewhere the reader went, so it replaces the
+	 *  history entry rather than adding one. */
+	function closeTab(ref: OwnedRef): void {
+		const left = openNotes.filter((held) => held !== ref);
+		const next = ref === open ? left[Math.max(0, openNotes.indexOf(ref) - 1)] : open;
+		if (next === undefined || next === null) {
+			hide();
+			return;
+		}
+		naming = null;
+		seed = null;
+		replaceState(nodeHref(next), { note: next, notes: left });
+	}
+
+	/** Notes that are no longer there leave the strip with them. */
+	function closeGone(deleted: readonly OwnedRef[]): void {
+		const going = new Set(deleted);
+		if (!openNotes.some((held) => going.has(held))) return;
+		const left = openNotes.filter((held) => !going.has(held));
+		const next = open !== null && !going.has(open) ? open : left[0];
+		if (next === undefined) {
+			hide();
+			return;
+		}
+		naming = null;
+		seed = null;
+		replaceState(nodeHref(next), { note: next, notes: left });
+	}
+
 	function hide(): void {
 		naming = null;
 		seed = null;
@@ -387,7 +474,7 @@
 			actMissed = shortfall;
 			return;
 		}
-		if (open && asked.includes(open)) hide();
+		closeGone(asked);
 		// The bar goes with the set, so what is left to say goes beside the graph.
 		oneNote = null;
 		stopChoosing();
@@ -438,10 +525,17 @@
 	/** Kept short: the menu has a phone to fit on, beside the note it is about. */
 	function actsOnOne(on: OwnedRef, foldable: boolean): CanvasMenuItem[] {
 		const items: CanvasMenuItem[] = [
-			{ label: 'Open it', icon: FileText, onSelect: () => show(on) },
+			{ label: 'Open it', icon: FileText, onSelect: () => show(on) }
+		];
+		// A phone has no modifier to hold, so this is the way in on both surfaces
+		// — a press and hold, and a right-click.
+		if (openNotes.length > 0 && !openNotes.includes(on)) {
+			items.push({ label: 'Open it as well', icon: Files, onSelect: () => showAlso(on) });
+		}
+		items.push(
 			{ label: 'Tags', icon: Tag, onSelect: () => openTags(on) },
 			{ label: 'Give it a look', icon: CircleDashed, onSelect: () => openLook(on) }
-		];
+		);
 		if (foldable) {
 			items.push({
 				label: 'Fold what is under this',
@@ -561,6 +655,7 @@
 						}
 					: undefined}
 				pictures={markPictures}
+				{reading}
 				ground={prefs.current.ground}
 				onHover={(at) => (hoverAt = overGraph ? null : at)}
 				{chosen}
@@ -815,6 +910,10 @@
 		if (!v) hide();
 	}}
 	title={openNode?.title || 'Note'}
+	{tabs}
+	active={open}
+	onActivate={activate}
+	onCloseTab={closeTab}
 >
 	{#if open}
 		<Note

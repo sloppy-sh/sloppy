@@ -157,6 +157,7 @@ export function mountGraph(
     scene.setModel(model, props.selection.length > 0);
     scene.setPicking(props.picking ?? null);
     scene.setChosen(props.chosen ?? null);
+    scene.setReading(props.reading ?? null);
     dragged = null;
     if (!relayout) return;
 

@@ -9,6 +9,7 @@
 		nodes,
 		picking,
 		chosen,
+		reading,
 		focus,
 		onOpenNode,
 		onExpand,
@@ -27,6 +28,11 @@
 				type="button"
 				data-marked={marked}
 				data-chosen={chosen?.has(note.ref) ? 'yes' : undefined}
+				data-lifted={reading?.open.has(note.ref)
+					? reading.active === note.ref
+						? 'reading'
+						: 'open'
+					: undefined}
 				onclick={() =>
 					picking ? picking.onPick(note.ref) : chosen ? onChoose?.(note.ref) : onOpenNode(note.ref)}
 			>

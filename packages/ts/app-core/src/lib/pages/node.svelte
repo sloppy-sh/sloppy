@@ -39,7 +39,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onDestroy, tick, untrack } from 'svelte';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
@@ -117,8 +117,8 @@
 	const blocks = $derived(shown?.of === ref ? shown.stack : (read.get(ref) ?? []));
 	const unreachable = $derived(unread?.of === ref ? unread.says : null);
 	const loading = $derived(shown?.of !== ref && !unreachable && read.get(ref) === undefined);
-	/** The note whose title would not save, and what to tell the person writing it. */
-	let unsaved = $state<{ ref: OwnedRef; message: string } | null>(null);
+	/** What to tell the person writing a title that would not save, per note. */
+	const unsaved = new SvelteMap<OwnedRef, string>();
 	let adding = $state(false);
 	let refused = $state<string | null>(null);
 	let titleField = $state<HTMLTextAreaElement | null>(null);
@@ -163,9 +163,13 @@
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
 
-	/** Kept until it is stored, so a save that fails still has it to try again. */
-	let typed = $state<{ ref: OwnedRef; title: string } | null>(null);
-	const title = $derived(typed?.ref === ref ? typed.title : (node?.title ?? ''));
+	/** Kept per note until it is stored, so a save that fails still has it to try
+	 *  again — and so a note left mid-sentence still has it when it comes back. */
+	const drafts = new SvelteMap<OwnedRef, string>();
+	/** Titles being stored, so a blur and a walk do not both send the same one. */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- nothing renders off this.
+	const storing = new Set<OwnedRef>();
+	const title = $derived(drafts.get(ref) ?? node?.title ?? '');
 
 	const byOrd = (a: BlockView, b: BlockView) => compareOrd(a.ord, b.ord);
 
@@ -339,10 +343,11 @@
 	});
 
 	// Dismissing the sheet with the keyboard tears the field down without ever
-	// blurring it, and what was typed into it is still worth keeping.
+	// blurring it, and what was typed into any of the notes worked in here is
+	// still worth keeping.
 	onDestroy(() => {
 		clearTimeout(stopped);
-		void saveTitle();
+		for (const of of drafts.keys()) void saveTitle(of);
 	});
 
 	function caretIn(target: EventTarget | null): void {
@@ -376,6 +381,7 @@
 		removing = false;
 		undeletable = null;
 		unread = null;
+		refused = null;
 		linkRefused = null;
 		tagRefused = null;
 		lookRefused = null;
@@ -412,8 +418,11 @@
 			}
 			if (live && held && starting) await shapeThisNote(starting);
 		})();
+		// The note being left saves its title here rather than only on blur: a tab
+		// switched with a finger never blurs the field.
 		return () => {
 			live = false;
+			void saveTitle(opening);
 		};
 	});
 
@@ -426,18 +435,22 @@
 		}
 	});
 
-	async function saveTitle(): Promise<void> {
-		const draft = typed;
-		if (!draft || draft.title === nodes.get(draft.ref)?.title) return;
+	async function saveTitle(of: OwnedRef): Promise<void> {
+		const draft = drafts.get(of);
+		if (draft === undefined || storing.has(of)) return;
+		if (draft === nodes.get(of)?.title) return;
+		storing.add(of);
 		try {
-			await nodes.update(draft.ref, { title: draft.title });
-			if (typed === draft) typed = null;
-			if (unsaved?.ref === draft.ref) unsaved = null;
+			await nodes.update(of, { title: draft });
+			if (drafts.get(of) === draft) drafts.delete(of);
+			unsaved.delete(of);
 		} catch (error) {
-			unsaved = {
-				ref: draft.ref,
-				message: serverMessage(error) ?? 'Sloppy could not save that title. Try again in a moment.'
-			};
+			unsaved.set(
+				of,
+				serverMessage(error) ?? 'Sloppy could not save that title. Try again in a moment.'
+			);
+		} finally {
+			storing.delete(of);
 		}
 	}
 
@@ -614,7 +627,7 @@
 				serverMessage(error) ?? 'Sloppy could not delete that note. Try again in a moment.';
 			return;
 		}
-		if (typed?.ref === ref) typed = null;
+		drafts.delete(ref);
 		if (above) onOpen(above);
 		else onClose();
 	}
@@ -644,7 +657,8 @@
 	     title field, which on a phone would raise the keyboard over a note you
 	     came to read. -->
 	<div
-		class="sticky top-0 z-20 -mx-2 flex items-center gap-3 border-b border-border bg-background px-2 pt-2 pb-1 sm:-mx-1 sm:px-1"
+		style="top: var(--reading-head, 0px)"
+		class="sticky z-20 -mx-2 flex items-center gap-3 border-b border-border bg-background px-2 pt-2 pb-1 sm:-mx-1 sm:px-1"
 	>
 		<button
 			type="button"
@@ -681,7 +695,7 @@
 				value={title}
 				rows="1"
 				oninput={(e) => {
-					typed = { ref, title: e.currentTarget.value };
+					drafts.set(ref, e.currentTarget.value);
 					fitTitle(e.currentTarget);
 				}}
 				onkeydown={(e) => {
@@ -690,7 +704,7 @@
 						e.currentTarget.blur();
 					}
 				}}
-				onblur={saveTitle}
+				onblur={() => saveTitle(ref)}
 				placeholder="Untitled"
 				maxlength="512"
 				aria-label="Title"
@@ -699,8 +713,8 @@
 
 			<NoteAuthor did={node.created_by} />
 
-			{#if unsaved?.ref === ref}
-				<p class="text-sm text-destructive" role="alert">{unsaved.message}</p>
+			{#if unsaved.has(ref)}
+				<p class="text-sm text-destructive" role="alert">{unsaved.get(ref)}</p>
 			{/if}
 		</header>
 

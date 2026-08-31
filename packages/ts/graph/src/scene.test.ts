@@ -13,11 +13,16 @@ import {
 } from "./model.js";
 import { buildPalette } from "./palette.js";
 import {
+  CHOSEN_BAND,
   dashSegments,
   EDGE_RING_AT,
   EDGE_RING_WIDTH,
   FILL_AT,
+  liftInk,
+  type LiftBand,
+  liftOf,
   looksDrawn,
+  PICK_GAP,
 } from "./scene.js";
 import { type Bounds, Viewport } from "./viewport.js";
 
@@ -197,6 +202,84 @@ describe("a picture at every size its author may ask for", () => {
           `${size} ends alongside a ${weight} ring`,
         ).toBe(true);
       }
+    }
+  });
+});
+
+// DESIGN.md § "The mark": the paper under a mark carries whether its note is
+// open, and it is one channel at two strengths rather than two channels.
+describe("the lift under an open note", () => {
+  const LEAF = 9;
+  const open = liftOf(LEAF, false, 1);
+  const active = liftOf(LEAF, true, 1);
+  const reachOf = (bands: LiftBand[]) =>
+    Math.max(...bands.map((band) => band.at + band.width / 2));
+
+  it("spreads past the mark and stops, at both strengths", () => {
+    for (const [strength, bands] of [
+      ["open", open],
+      ["being read", active],
+    ] as const) {
+      expect(reachOf(bands), strength).toBeGreaterThan(LEAF);
+      expect(liftInk(bands, reachOf(bands) * 1.01), strength).toBe(0);
+      expect(liftInk(bands, LEAF), strength).toBeGreaterThan(0.2);
+    }
+  });
+
+  // Which of the two a mark wears has to be answerable without a second mark
+  // beside it to compare against, so they separate in reach AND in ink.
+  it("tells the note being read from one merely open", () => {
+    expect(liftInk(active, LEAF)).toBeGreaterThan(liftInk(open, LEAF) * 1.5);
+    expect(reachOf(active) - LEAF).toBeGreaterThan(
+      (reachOf(open) - LEAF) * 1.3,
+    );
+  });
+
+  // The crowded case: a mark open AND chosen AND heavily ringed AND wearing a
+  // picture AND pulled, on a graph with tags selected. The chosen band is the
+  // only other thing drawn OUTSIDE the mark, so it is the one a lift could
+  // drown; everything an author spends is inside it.
+  it("leaves the chosen band reading as a band", () => {
+    const band = LEAF + PICK_GAP + CHOSEN_BAND / 2;
+    expect(liftInk(active, band)).toBeLessThan(0.9 / 3);
+  });
+
+  // Rings, not a disc: a pulled mark is drawn hollow, and a lift that filled it
+  // would make provenance read as own — PRODUCT.md principle 4.
+  it("lays nothing inside the mark, where a pulled one shows paper", () => {
+    for (const at of [0, LEAF * EDGE_RING_AT, LEAF * LOOK_RING_AT, LEAF * 0.99])
+      expect(liftInk(active, at), `${at}`).toBe(0);
+  });
+
+  // The look goes first as a mark shrinks; the lift is at the other end of that
+  // order with the orbit and the provenance edge, because a reader hunting the
+  // note they are reading across a field they zoomed out of is who it is for —
+  // so what it spreads has a floor measured on the SCREEN, not in the field.
+  it("stays findable on a mark drawn at half a pixel", () => {
+    const scale = 1 / 18;
+    expect(LEAF * scale).toBeLessThan(1);
+    for (const [strength, wearing] of [
+      ["open", false],
+      ["being read", true],
+    ] as const) {
+      const bands = liftOf(LEAF, wearing, scale);
+      const spread = (reachOf(bands) - LEAF) * scale;
+      expect(spread, strength).toBeGreaterThan(4);
+      expect(liftInk(bands, LEAF), strength).toBeCloseTo(
+        liftInk(liftOf(LEAF, wearing, 1), LEAF),
+        6,
+      );
+    }
+  });
+
+  // The floor only ever widens the spread: at the view a note is read at, the
+  // lift is the mark's own size and the geometry above is what holds.
+  it("is the mark's own size wherever the mark has room", () => {
+    for (const scale of [1, 2, 8]) {
+      expect(reachOf(liftOf(LEAF, true, scale)), `${scale}`).toBeCloseTo(
+        reachOf(active),
+        6,
+      );
     }
   });
 });

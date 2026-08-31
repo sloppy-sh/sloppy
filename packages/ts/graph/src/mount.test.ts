@@ -1,6 +1,11 @@
 import type { OwnedRef, Tag } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { GraphHoverAt, GraphPickMarks, MarkPictures } from "./contract.js";
+import type {
+  GraphHoverAt,
+  GraphPickMarks,
+  GraphReadingMarks,
+  MarkPictures,
+} from "./contract.js";
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import type { BuiltModel } from "./model.js";
@@ -30,6 +35,8 @@ class StandInScene {
   ground = "none";
   /** The notes the canvas was last told somebody chose to act on. */
   chosen: ReadonlySet<string> | null = null;
+  /** The notes the canvas was last told are open, and which is being read. */
+  reading: GraphReadingMarks | null = null;
   centred: string[] = [];
   /** How many times the canvas has framed the whole field. */
   fits = 0;
@@ -58,6 +65,10 @@ class StandInScene {
 
   setChosen(chosen: ReadonlySet<string> | null): void {
     this.chosen = chosen;
+  }
+
+  setReading(reading: GraphReadingMarks | null): void {
+    this.reading = reading;
   }
 
   setGround(ground: string): void {
@@ -771,6 +782,27 @@ describe("choosing notes to act on", () => {
 
     graph.handle.update({ ...graph.props, chosen: undefined });
     expect(graph.scene.chosen).toBeNull();
+  });
+
+  it("hands the open notes to the canvas without shaking the field", async () => {
+    const { graph, first, second } = await choosing();
+    expect(graph.scene.reading).toBeNull();
+
+    const settles = graph.starts();
+    graph.handle.update({
+      ...graph.props,
+      reading: { open: new Set([first, second]), active: second },
+    });
+
+    expect(graph.scene.reading?.open).toEqual(new Set([first, second]));
+    expect(graph.scene.reading?.active).toBe(second);
+    // Which notes are open is the reader's own place, not a fact the layout
+    // reads: a field that re-settled on a tab switch would move the mark the
+    // lift was pointing at.
+    expect(graph.starts()).toBe(settles);
+
+    graph.handle.update({ ...graph.props, reading: undefined });
+    expect(graph.scene.reading).toBeNull();
   });
 
   it("adds everything a sweep enclosed", async () => {

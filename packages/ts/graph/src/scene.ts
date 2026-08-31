@@ -19,7 +19,11 @@ import type {
   Texture,
 } from "pixi.js";
 import { clamp } from "./color.js";
-import type { GraphPickMarks, MarkPictures } from "./contract.js";
+import type {
+  GraphPickMarks,
+  GraphReadingMarks,
+  MarkPictures,
+} from "./contract.js";
 import type { GraphGround } from "./ground.js";
 import { GroundLayer } from "./ground-layer.js";
 import type { GraphNodeAttributes } from "./model.js";
@@ -64,11 +68,23 @@ const TITLE_CHARS = 32;
 
 /** How far outside a mark the orbit sits. Clear of the edge, so nothing drawn
  *  there reads as the provenance ring DESIGN.md § Form draws ON the edge. */
-const PICK_GAP = 6;
+export const PICK_GAP = 6;
 const PICK_WIDTH = 1.5;
 /** DESIGN.md § "The mark": the orbit's two meanings separate by weight —
  *  picking outlines, and choosing fills. */
-const CHOSEN_BAND = 4;
+export const CHOSEN_BAND = 4;
+
+/** How far a lift spreads past the mark, as a multiple of its radius, and the
+ *  ink it lays at the mark's own edge. DESIGN.md § "The mark" — one channel at
+ *  two strengths: a note that is open, and the one being read. */
+const LIFT_REACH = { open: 1.7, active: 2.4 };
+const LIFT_INK = { open: 0.26, active: 0.5 };
+/** What that spread may never fall below, in CSS pixels. A mark drawn at half a
+ *  pixel is where somebody hunting the note they are reading needs this most,
+ *  and a purely proportional lift has all but vanished by then. */
+const LIFT_FLOOR = { open: 5, active: 8 };
+/** Rings the lift is laid down as. Enough that its outer edge is not a line. */
+const LIFT_BANDS = 16;
 
 const EDGE_WIDTH = 1.2;
 /** DESIGN.md § Edges: the run is the line a reader walks, so it is the heaviest. */
@@ -171,6 +187,7 @@ export class GraphScene {
   private readonly ground: GroundLayer;
   private picking: GraphPickMarks | null = null;
   private chosen: ReadonlySet<string> | null = null;
+  private reading: GraphReadingMarks | null = null;
 
   private positionsDirty = true;
   private modelDirty = false;
@@ -190,6 +207,7 @@ export class GraphScene {
     private readonly pixi: Pixi,
     private readonly app: Application,
     private readonly world: Container,
+    private readonly lift: Graphics,
     private readonly edges: Graphics,
     private readonly runs: Graphics,
     private readonly links: Graphics,
@@ -227,6 +245,7 @@ export class GraphScene {
     });
 
     const world = new pixi.Container();
+    const lift = new pixi.Graphics();
     const edges = new pixi.Graphics();
     const runs = new pixi.Graphics();
     const links = new pixi.Graphics();
@@ -243,7 +262,18 @@ export class GraphScene {
     const rings = new pixi.ParticleContainer(particleOptions);
     const looks = new pixi.ParticleContainer(particleOptions);
     const picks = new pixi.Graphics();
-    world.addChild(edges, runs, links, fills, previews, rings, looks, picks);
+    // The lift is under everything: it is paper, not a line drawn on the field.
+    world.addChild(
+      lift,
+      edges,
+      runs,
+      links,
+      fills,
+      previews,
+      rings,
+      looks,
+      picks,
+    );
 
     const labels = new pixi.Container();
     labels.eventMode = "none";
@@ -275,6 +305,7 @@ export class GraphScene {
       pixi,
       app,
       world,
+      lift,
       edges,
       runs,
       links,
@@ -322,6 +353,12 @@ export class GraphScene {
   /** The notes picked out to act on, or null when nobody is choosing. */
   setChosen(chosen: ReadonlySet<string> | null): void {
     this.chosen = chosen;
+    this.positionsDirty = true;
+  }
+
+  /** The notes open on the reading surface, or null when none is. */
+  setReading(reading: GraphReadingMarks | null): void {
+    this.reading = reading;
     this.positionsDirty = true;
   }
 
@@ -525,6 +562,7 @@ export class GraphScene {
 
     this.ground.update(this.viewport, this.width, this.height);
     if (this.positionsDirty) this.syncMarks();
+    if (this.positionsDirty) this.drawLift();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
@@ -803,6 +841,32 @@ export class GraphScene {
   }
 
   /**
+   * The paper under each open note, which DESIGN.md § "The mark" gives to the
+   * fact that it is open.
+   */
+  private drawLift(): void {
+    this.lift.clear();
+    const reading = this.reading;
+    if (!reading) return;
+    const { ink } = this.options.palette;
+    for (const mark of this.marks) {
+      if (!reading.open.has(mark.ref)) continue;
+      const x = this.positions[mark.index * 2];
+      const y = this.positions[mark.index * 2 + 1];
+      const bands = liftOf(
+        mark.radius,
+        mark.ref === reading.active,
+        this.viewport.scale,
+      );
+      for (const band of bands) {
+        this.lift
+          .circle(x, y, band.at)
+          .stroke({ color: ink, alpha: band.alpha, width: band.width });
+      }
+    }
+  }
+
+  /**
    * The orbit outside each mark, which DESIGN.md § "The mark" gives to the mode
    * the canvas is in. Picking outlines and choosing fills, and a canvas is only
    * ever in one of the two.
@@ -970,6 +1034,48 @@ function addressCaption(attributes: GraphNodeAttributes): string {
   return attributes.folded > 0
     ? `${attributes.address} +${attributes.folded}`
     : attributes.address;
+}
+
+/** One ring of a lift: the circle stroked, in world units from the mark's
+ *  centre, how wide the stroke is, and the ink it lays. */
+export interface LiftBand {
+  at: number;
+  width: number;
+  alpha: number;
+}
+
+/**
+ * The lift an open note's mark casts on the paper — DESIGN.md § "The mark".
+ * Rings rather than one disc, innermost first, so a mark drawn hollow because
+ * it was pulled stays hollow, and so the ink fades outward from its edge.
+ *
+ * `radius` and the result are world units; `scale` is what the viewport is
+ * drawing at, which only ever widens the spread — {@link LIFT_FLOOR}.
+ */
+export function liftOf(
+  radius: number,
+  active: boolean,
+  scale: number,
+): LiftBand[] {
+  const strength = active ? "active" : "open";
+  const spread = Math.max(
+    radius * (LIFT_REACH[strength] - 1),
+    LIFT_FLOOR[strength] / scale,
+  );
+  const width = spread / LIFT_BANDS;
+  return Array.from({ length: LIFT_BANDS }, (_unused, band) => ({
+    at: radius + (band + 0.5) * width,
+    width,
+    alpha: (LIFT_INK[strength] * (LIFT_BANDS - band)) / LIFT_BANDS,
+  }));
+}
+
+/** The ink a lift lays `at` world units from the mark's centre. */
+export function liftInk(bands: readonly LiftBand[], at: number): number {
+  const on = bands.find(
+    (band) => at >= band.at - band.width / 2 && at < band.at + band.width / 2,
+  );
+  return on?.alpha ?? 0;
 }
 
 /** Whether a mark drawn at `radius` screen pixels carries its look. The latch is

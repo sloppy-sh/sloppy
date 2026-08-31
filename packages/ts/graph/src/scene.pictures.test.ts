@@ -13,147 +13,17 @@ import {
   PREVIEW_SPAN,
 } from "./model.js";
 import { buildPalette } from "./palette.js";
+import {
+  FakeApplication,
+  FakeContainer,
+  FakeSprite,
+  worldOf,
+} from "./pixi.test-support.js";
 
-class FakeTexture {
-  destroyed = false;
-  constructor(readonly of: unknown) {}
-  destroy(): void {
-    this.destroyed = true;
-  }
-  static from(source: unknown): FakeTexture {
-    return new FakeTexture(source);
-  }
-  static WHITE = new FakeTexture("white");
-}
-
-class FakeContainer {
-  readonly children: FakeContainer[] = [];
-  eventMode = "auto";
-  x = 0;
-  y = 0;
-  readonly position = { set: () => {} };
-  readonly scale = { set: () => {} };
-  addChild(...kids: FakeContainer[]): void {
-    this.children.push(...kids);
-  }
-  addChildAt(kid: FakeContainer, at: number): void {
-    this.children.splice(at, 0, kid);
-  }
-  removeChild(kid: FakeContainer): void {
-    const at = this.children.indexOf(kid);
-    if (at >= 0) this.children.splice(at, 1);
-  }
-  removeChildren(): FakeContainer[] {
-    return this.children.splice(0);
-  }
-  destroy(): void {}
-}
-
-class FakeGraphics extends FakeContainer {
-  clear(): this {
-    return this;
-  }
-  circle(): this {
-    return this;
-  }
-  arc(): this {
-    return this;
-  }
-  fill(): this {
-    return this;
-  }
-  stroke(): this {
-    return this;
-  }
-  moveTo(): this {
-    return this;
-  }
-  lineTo(): this {
-    return this;
-  }
-}
-
-class FakeParticleContainer extends FakeContainer {
-  readonly particleChildren: unknown[] = [];
-  update(): void {}
-}
-
-class FakeSprite extends FakeContainer {
-  width = 0;
-  height = 0;
-  alpha = 1;
-  visible = true;
-  destroyed = false;
-  readonly anchor = { set: () => {} };
-  constructor(public texture: FakeTexture) {
-    super();
-  }
-  override destroy(): void {
-    this.destroyed = true;
-  }
-}
-
-class FakeTilingSprite extends FakeContainer {
-  width = 0;
-  height = 0;
-  alpha = 1;
-  tint = 0;
-  texture: FakeTexture;
-  readonly tilePosition = { set: () => {} };
-  readonly tileScale = { set: () => {} };
-  constructor(options: { texture: FakeTexture }) {
-    super();
-    this.texture = options.texture;
-  }
-}
-
-class FakeText extends FakeContainer {
-  text = "";
-  visible = false;
-  tint = 0;
-  width = 10;
-  readonly anchor = { set: () => {} };
-  constructor(options: { text: string }) {
-    super();
-    this.text = options.text;
-  }
-}
-
-class FakeApplication {
-  static latest: FakeApplication | null = null;
-  readonly stage = new FakeContainer();
-  readonly frames = new Set<() => void>();
-  readonly ticker = {
-    deltaMS: 16,
-    add: (fn: () => void) => this.frames.add(fn),
-    remove: (fn: () => void) => this.frames.delete(fn),
-  };
-  readonly renderer = {
-    screen: { width: 390, height: 740 },
-    generateTexture: () => ({ source: {} }),
-  };
-  constructor() {
-    FakeApplication.latest = this;
-  }
-  async init(): Promise<void> {}
-  destroy(): void {}
-  tick(): void {
-    for (const frame of this.frames) frame();
-  }
-}
-
-vi.mock("pixi.js", () => ({
-  Application: FakeApplication,
-  Container: FakeContainer,
-  Graphics: FakeGraphics,
-  ParticleContainer: FakeParticleContainer,
-  Particle: class {},
-  Sprite: FakeSprite,
-  TilingSprite: FakeTilingSprite,
-  Text: FakeText,
-  Texture: FakeTexture,
-  Rectangle: class {},
-}));
+vi.mock("pixi.js", async () => {
+  const { fakePixi } = await import("./pixi.test-support.js");
+  return fakePixi();
+});
 
 const { GraphScene } = await import("./scene.js");
 
@@ -249,15 +119,11 @@ async function sceneOn(
 /** The layer the preview sprites live on: the one plain container under the
  *  world, where every other child is a graphics or a particle layer. */
 function previewsOf(app: FakeApplication): FakeContainer {
-  // The world is the layer the marks are on; the ground and the labels are the
-  // other two the stage holds.
-  const world = app.stage.children.find((child) =>
-    child.children.some((kid) => kid instanceof FakeParticleContainer),
-  ) as FakeContainer;
-  const layer = world.children.find(
+  const layer = worldOf(app).children.find(
     (child) => child.constructor === FakeContainer,
   );
-  return layer as FakeContainer;
+  if (!layer) throw new Error("The world has no preview layer on it");
+  return layer;
 }
 
 const settle = (): Promise<void> => new Promise((done) => setTimeout(done, 0));

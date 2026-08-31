@@ -26,6 +26,19 @@ export interface GraphPicking extends GraphPickMarks {
 }
 
 /**
+ * The notes open on the reading surface, and the one in front of the reader.
+ *
+ * A per-reader, per-device fact: nothing here is stored on a note and nothing
+ * here reaches a peer.
+ */
+export interface GraphReadingMarks {
+  /** Every note open, the active one included. */
+  open: ReadonlySet<OwnedRef>;
+  /** The one being read, of {@link open}; `null` while none of them is. */
+  active: OwnedRef | null;
+}
+
+/**
  * How a mark's preview picture reaches the canvas: the host resolves one,
  * because this package reaches no server and a raw remote URL in a texture is
  * the privacy bug it is in an `<img>`.
@@ -99,6 +112,15 @@ export interface GraphSurfaceProps {
   focus?: OwnedRef;
   /** Absent means a tap opens the note under it. */
   picking?: GraphPicking;
+  /**
+   * The notes open on the reading surface — DESIGN.md § "The mark" lifts these
+   * off the paper, and lifts the active one further. Absent is a canvas with
+   * nothing open on it.
+   *
+   * Separate from {@link focus}, which measures level of detail in hops and
+   * says nothing about how a mark is drawn.
+   */
+  reading?: GraphReadingMarks;
   /** Read once, as the canvas starts: absent draws every mark without the
    *  picture its author gave it. */
   pictures?: MarkPictures;

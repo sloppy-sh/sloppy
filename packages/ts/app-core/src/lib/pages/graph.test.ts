@@ -19,14 +19,16 @@ vi.mock('$app/state', () => ({
 			return new URL(at.path, 'http://app.test');
 		},
 		get state() {
-			return at.note ? { note: at.note } : {};
+			return at.note ? { note: at.note, notes: at.notes } : {};
 		}
 	}
 }));
 
 vi.mock('$app/navigation', () => ({
-	pushState: (path: string, state: { note?: OwnedRef }) => pushed(path, state.note ?? null),
-	replaceState: (path: string, state: { note?: OwnedRef }) => replaced(path, state.note ?? null),
+	pushState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
+		pushed(path, state.note ?? null, [...(state.notes ?? [])]),
+	replaceState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
+		replaced(path, state.note ?? null, [...(state.notes ?? [])]),
 	afterNavigate: () => {}
 }));
 
