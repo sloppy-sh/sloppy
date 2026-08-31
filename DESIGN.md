@@ -306,20 +306,25 @@ Eight rulings hold that table together:
   reader's own question is answered (§ Hue): that band stays wider than the heaviest ring
   an author may draw, because a picture that left the reader's channel thinner than the
   author's own decoration would have taken the loudest thing on the mark from the question
-  it exists to answer. **The band is measured where it is drawn, not out to the radius** —
+  it exists to answer. **The ring is drawn inside that band, so where an author spends one
+  the hue is what the ring does not cover** — at the largest picture under a heavy ring that
+  is about half the band, and still the widest single thing left on the mark. **The band is measured where it is drawn, not out to the radius** —
   the fill stops short of the mark's edge, and on a published note the ink edge is drawn
   over the outside of what is left, so the tighter of those two is what the largest picture
   is worth. That lands the ceiling on the look's ring, which is where it belongs: **the
   ring is drawn over the picture**, so a rim that stops under the ring is framed by it and
-  one well inside it is a circle of its own. A rim a hair from either edge of a ring is the
-  case forbidden, because two circles that close read as one thick edge instead of two
-  facts. `scene.test.ts` holds those bounds against the radii `scene.ts` draws at, and
+  one well inside it is a circle of its own. A rim that stops just short of a ring's edge is
+  the case guarded against, because two circles that close read as one thick edge instead of
+  two facts — the clearance held is half the thinnest line drawn, which the middle size meets
+  exactly against a regular ring and spends entirely against a heavy one, where it stops
+  tangent to the ring instead. `scene.test.ts` holds those bounds against the radii `scene.ts` draws at, and
   `PREVIEW_SPAN` in `model.ts` is what each size is worth. A picture is cut to the largest
   of them once, when somebody chooses it; a mark drawn bigger than the bytes it holds draws
   them softer rather than refusing them.
-- **Where an author spends both, the ring wins the band they share.** A heavy ring covers
-  the annulus the two largest pictures differ across, so on a heavily ringed note they draw
-  alike. That is the ring's, not a size that failed to act: the ring is the author's own
+- **Where an author spends both, the ring wins the band they share.** A solid heavy ring
+  covers the annulus the two largest pictures differ across, so on such a note they draw
+  alike; a dashed one leaves most of its turn open, and the two rims show apart through the
+  gaps. That is the ring's, not a size that failed to act: the ring is the author's own
   line and a picture that erased it would have taken a channel that was not its. An author
   who wants every pixel of the picture has a lighter ring, or none, and none is what a note
   draws with nothing set.

@@ -160,8 +160,10 @@ describe("a picture at every size its author may ask for", () => {
     published: EDGE_RING_AT - EDGE_RING_WIDTH / 2,
   };
 
+  // The anchor, not the alias: every note already carrying a picture keeps the
+  // mark it has only because this number does not move.
   it("covers what it always has where nobody chose a size", () => {
-    expect(PREVIEW_SPAN.small).toBe(PREVIEW_AT);
+    expect(PREVIEW_SPAN.small).toBe(0.42);
   });
 
   it("leaves the hue a band wider than the heaviest ring a look can draw", () => {
