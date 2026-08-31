@@ -8,6 +8,7 @@
 		isUnstyled,
 		MARK_RADII,
 		type NodeAppearance,
+		PREVIEW_SIZES,
 		resolveAppearance,
 		RING_STYLES,
 		RING_WEIGHTS
@@ -17,7 +18,12 @@
 	import { flattened } from '../editor/fit.js';
 	import MediaPicker from '../editor/media-picker.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
-	import { MARK_RADIUS_LABELS, RING_STYLE_LABELS, RING_WEIGHT_LABELS } from './labels.js';
+	import {
+		MARK_RADIUS_LABELS,
+		PREVIEW_SIZE_LABELS,
+		RING_STYLE_LABELS,
+		RING_WEIGHT_LABELS
+	} from './labels.js';
 	import MarkSwatch from './mark-swatch.svelte';
 	import { shownPicture } from './shown-picture.svelte.js';
 
@@ -56,7 +62,16 @@
 		() => (open ? shown?.preview : undefined)
 	);
 
-	const rows = $derived([
+	interface Row {
+		label: string;
+		channel: keyof NodeAppearance;
+		values: readonly string[];
+		labels: Record<string, string>;
+		on: string;
+		disabled: boolean;
+	}
+
+	const rows: Row[] = $derived([
 		{
 			label: 'Ring',
 			channel: 'ring_weight' as const,
@@ -83,6 +98,15 @@
 		}
 	]);
 
+	const pictureSize: Row = $derived({
+		label: 'Picture size',
+		channel: 'preview_size',
+		values: PREVIEW_SIZES,
+		labels: PREVIEW_SIZE_LABELS,
+		on: look.previewSize,
+		disabled: false
+	});
+
 	/**
 	 * A channel saying what a plain note already draws is stored as nothing set,
 	 * and a ring style says nothing with no ring — so a look that draws like an
@@ -95,6 +119,9 @@
 		if (tidy.mark_radius === unstyled.markRadius) tidy.mark_radius = undefined;
 		if (tidy.ring_weight === undefined || tidy.ring_style === unstyled.ringStyle) {
 			tidy.ring_style = undefined;
+		}
+		if (tidy.preview === undefined || tidy.preview_size === unstyled.previewSize) {
+			tidy.preview_size = undefined;
 		}
 		return tidy;
 	}
@@ -170,6 +197,29 @@
 	}
 </script>
 
+{#snippet choices(row: Row)}
+	<fieldset disabled={row.disabled} class="space-y-2 disabled:opacity-50">
+		<legend class="mb-2 text-xs tracking-wide text-muted-foreground uppercase">
+			{row.label}
+		</legend>
+		<div
+			class="grid gap-2"
+			style="grid-template-columns: repeat({row.values.length}, minmax(0, 1fr))"
+		>
+			{#each row.values as value (value)}
+				<Button
+					variant={row.on === value ? 'default' : 'outline'}
+					class="h-11 min-w-0 px-2"
+					aria-pressed={row.on === value}
+					onclick={() => pick(row.channel, value)}
+				>
+					<span class="truncate">{row.labels[value]}</span>
+				</Button>
+			{/each}
+		</div>
+	</fieldset>
+{/snippet}
+
 <ResponsiveModal
 	{open}
 	onOpenChange={(v) => {
@@ -187,26 +237,7 @@
 		</div>
 
 		{#each rows as row (row.channel)}
-			<fieldset disabled={row.disabled} class="space-y-2 disabled:opacity-50">
-				<legend class="mb-2 text-xs tracking-wide text-muted-foreground uppercase">
-					{row.label}
-				</legend>
-				<div
-					class="grid gap-2"
-					style="grid-template-columns: repeat({row.values.length}, minmax(0, 1fr))"
-				>
-					{#each row.values as value (value)}
-						<Button
-							variant={row.on === value ? 'default' : 'outline'}
-							class="h-11 min-w-0 px-2"
-							aria-pressed={row.on === value}
-							onclick={() => pick(row.channel, value)}
-						>
-							<span class="truncate">{row.labels[value]}</span>
-						</Button>
-					{/each}
-				</div>
-			</fieldset>
+			{@render choices(row)}
 		{/each}
 
 		<div class="space-y-2">
@@ -233,6 +264,10 @@
 				{/if}
 			</div>
 		</div>
+
+		{#if shown?.preview}
+			{@render choices(pictureSize)}
+		{/if}
 
 		{#if trouble}
 			<p class="text-sm text-destructive" role="alert">{trouble}</p>

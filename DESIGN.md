@@ -260,10 +260,10 @@ Each gets its own channel.
 | **Its own edge** — present, and whether broken    | provenance (§ Form)                                     |
 | **A ring inside it** — weight, and whether broken | the author's look                                       |
 | **Its radius**                                    | how much is folded into it, scaled by the author's look |
-| **The disc's imagery**                            | the author's preview picture                            |
+| **The disc's imagery**                            | the author's picture, at the share of the disc they set |
 | **The orbit outside it**                          | the mode the canvas is in — picking, or choosing        |
 
-Six rulings hold that table together:
+Eight rulings hold that table together:
 
 - **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
   ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
@@ -300,6 +300,29 @@ Six rulings hold that table together:
   measured against that view — a phone, the whole field framed — and `scene.test.ts` holds
   it there. Where the field is too big to hold one, looks survive on the mega-nodes and a
   pinch brings the rest back.
+- **A picture may grow, and what bounds it is what it leaves.** How much of the disc the
+  imagery covers is a channel its author spends, so a picture can be the thing you see
+  rather than a dot in the middle. What stops it is the band of fill outside it, where the
+  reader's own question is answered (§ Hue): that band stays wider than the heaviest ring
+  an author may draw, because a picture that left the reader's channel thinner than the
+  author's own decoration would have taken the loudest thing on the mark from the question
+  it exists to answer. **The band is measured where it is drawn, not out to the radius** —
+  the fill stops short of the mark's edge, and on a published note the ink edge is drawn
+  over the outside of what is left, so the tighter of those two is what the largest picture
+  is worth. That lands the ceiling on the look's ring, which is where it belongs: **the
+  ring is drawn over the picture**, so a rim that stops under the ring is framed by it and
+  one well inside it is a circle of its own. A rim a hair from either edge of a ring is the
+  case forbidden, because two circles that close read as one thick edge instead of two
+  facts. `scene.test.ts` holds those bounds against the radii `scene.ts` draws at, and
+  `PREVIEW_SPAN` in `model.ts` is what each size is worth. A picture is cut to the largest
+  of them once, when somebody chooses it; a mark drawn bigger than the bytes it holds draws
+  them softer rather than refusing them.
+- **Where an author spends both, the ring wins the band they share.** A heavy ring covers
+  the annulus the two largest pictures differ across, so on a heavily ringed note they draw
+  alike. That is the ring's, not a size that failed to act: the ring is the author's own
+  line and a picture that erased it would have taken a channel that was not its. An author
+  who wants every pixel of the picture has a lighter ring, or none, and none is what a note
+  draws with nothing set.
 - **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
   the question the hue channel answers. The notes somebody has picked out to act on are
   **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.
@@ -307,8 +330,8 @@ Six rulings hold that table together:
 ### A note's look never uses colour
 
 Every channel a look may spend is shape or imagery: ring weight, whether the ring is
-broken, mark radius, and a picture. There is no colour picker on a note, and a build that
-grows one has grown a bug.
+broken, mark radius, a picture, and how much of the mark that picture covers. There is no
+colour picker on a note, and a build that grows one has grown a bug.
 
 Hue here is the reader's own question — the tags THEY selected, in the order they selected
 them — and it has to stay legible across a graph pulled whole from somebody else, styled

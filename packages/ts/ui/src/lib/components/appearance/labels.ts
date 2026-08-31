@@ -2,7 +2,7 @@
 // vocabulary is an open set (`appearance.ts` in @sloppy/types), so this covers
 // what this build draws and a look from a newer Sloppy simply has no row here.
 
-import type { MarkRadius, RingStyle, RingWeight } from '@sloppy/types';
+import type { MarkRadius, PreviewSize, RingStyle, RingWeight } from '@sloppy/types';
 
 export const RING_WEIGHT_LABELS: Record<RingWeight, string> = {
 	none: 'None',
@@ -19,5 +19,11 @@ export const RING_STYLE_LABELS: Record<RingStyle, string> = {
 export const MARK_RADIUS_LABELS: Record<MarkRadius, string> = {
 	small: 'Small',
 	regular: 'Medium',
+	large: 'Large'
+};
+
+export const PREVIEW_SIZE_LABELS: Record<PreviewSize, string> = {
+	small: 'Small',
+	medium: 'Medium',
 	large: 'Large'
 };

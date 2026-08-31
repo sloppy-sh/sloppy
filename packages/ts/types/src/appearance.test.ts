@@ -3,13 +3,20 @@ import {
   isUnstyled,
   MARK_RADII,
   NodeAppearanceSchema,
+  PREVIEW_SIZES,
   RING_STYLES,
   RING_WEIGHTS,
   resolveAppearance,
 } from "./appearance.js";
 import { NodeSchema } from "./node.js";
 
-const CHANNELS = ["ring_weight", "ring_style", "mark_radius", "preview"];
+const CHANNELS = [
+  "ring_weight",
+  "ring_style",
+  "mark_radius",
+  "preview",
+  "preview_size",
+];
 
 // The round trip is the contract rather than the vocabulary: a look an older
 // build cannot draw survives being read and written back by it. Crossing to a
@@ -21,18 +28,25 @@ describe("a look this build cannot draw", () => {
       ring_weight: "gossamer",
       ring_style: "double",
       mark_radius: "enormous",
+      preview_size: "whole",
     };
     expect(NodeAppearanceSchema.parse(later)).toEqual(later);
   });
 
   it("draws as an unstyled note does, so nothing renders a token it cannot", () => {
     expect(
-      resolveAppearance(NodeAppearanceSchema.parse({ ring_style: "double" })),
+      resolveAppearance(
+        NodeAppearanceSchema.parse({
+          ring_style: "double",
+          preview_size: "whole",
+        }),
+      ),
     ).toEqual({
       ringWeight: "none",
       ringStyle: "solid",
       markRadius: "regular",
       preview: undefined,
+      previewSize: "small",
     });
   });
 
@@ -46,13 +60,18 @@ describe("a look this build cannot draw", () => {
     for (const mark_radius of MARK_RADII) {
       expect(resolveAppearance({ mark_radius }).markRadius).toBe(mark_radius);
     }
+    for (const preview_size of PREVIEW_SIZES) {
+      expect(resolveAppearance({ preview_size }).previewSize).toBe(
+        preview_size,
+      );
+    }
   });
 });
 
 // The developer's ruling: a note's look never uses hue, because hue on the
 // canvas is the reader's own question. DESIGN.md § "The mark".
 describe("the channels a look may spend", () => {
-  it("are the four, and colour is not among them at any level", () => {
+  it("are shape and imagery, and colour is not among them at any level", () => {
     const parsed = NodeAppearanceSchema.parse({
       ring_weight: "heavy",
       color: "oklch(0.5 0.2 30)",
@@ -98,6 +117,7 @@ describe("a note nobody styled", () => {
       ringStyle: "solid",
       markRadius: "regular",
       preview: undefined,
+      previewSize: "small",
     });
   });
 
@@ -106,5 +126,6 @@ describe("a note nobody styled", () => {
     expect(isUnstyled(null)).toBe(true);
     expect(isUnstyled(NodeAppearanceSchema.parse({}))).toBe(true);
     expect(isUnstyled({ ring_weight: "none" })).toBe(false);
+    expect(isUnstyled({ preview_size: "large" })).toBe(false);
   });
 });

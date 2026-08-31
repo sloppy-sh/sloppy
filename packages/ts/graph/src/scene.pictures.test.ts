@@ -3,10 +3,15 @@
 // in for, because what is checked here is the bookkeeping around the GPU — who
 // is asked, what is freed, and what is left holding it — never the pixels.
 
-import type { NodeView, OwnedRef } from "@sloppy/types";
+import { type NodeView, type OwnedRef, PREVIEW_SIZES } from "@sloppy/types";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { DrawnNode, MarkPictures } from "./contract.js";
-import { buildModel, MARK_PICTURE_PX, PREVIEW_AT } from "./model.js";
+import {
+  buildModel,
+  MARK_PICTURE_PX,
+  PREVIEW_AT,
+  PREVIEW_SPAN,
+} from "./model.js";
 import { buildPalette } from "./palette.js";
 
 class FakeTexture {
@@ -180,7 +185,11 @@ afterEach(() => {
 const OWNER = "did:syr:someone";
 const palette = buildPalette({ ink: "#000", paper: "#fff", hues: [] });
 
-function drawn(address: string, preview?: string): DrawnNode {
+function drawn(
+  address: string,
+  preview?: string,
+  preview_size?: string,
+): DrawnNode {
   const ref = `${OWNER}/${address}` as OwnedRef;
   const node = {
     ref,
@@ -194,7 +203,7 @@ function drawn(address: string, preview?: string): DrawnNode {
     tags: [],
     links: [],
     published: false,
-    ...(preview === undefined ? {} : { appearance: { preview } }),
+    ...(preview === undefined ? {} : { appearance: { preview, preview_size } }),
   } as NodeView;
   return { node, collapsed: false, folded: 0, tags: [] };
 }
@@ -275,8 +284,33 @@ describe("a picture reaching a mark", () => {
     scene.destroy();
   });
 
+  // DESIGN.md § "The mark": how much of the mark a picture covers is a channel
+  // its author spends, and the sizes are what `PREVIEW_SPAN` holds.
+  it("grows to the share its author asked for", async () => {
+    const field = PREVIEW_SIZES.map((size, at) =>
+      drawn(`${at + 1}`, `up_${size}`, size),
+    );
+    const { scene, app } = await sceneOn(field, host());
+    await settle();
+    app.tick();
+
+    const model = buildModel(field, { selection: [], palette });
+    const sprites = previewsOf(app).children as FakeSprite[];
+    let widest = 0;
+    field.forEach((entry, at) => {
+      const { radius } = model.graph.getNodeAttributes(entry.node.ref);
+      expect(sprites[at].width, PREVIEW_SIZES[at]).toBeCloseTo(
+        radius * PREVIEW_SPAN[PREVIEW_SIZES[at]] * 2,
+        6,
+      );
+      expect(sprites[at].width).toBeGreaterThan(widest);
+      widest = sprites[at].width;
+    });
+    scene.destroy();
+  });
+
   it("covers the disc from its short side, and is never enlarged to do it", async () => {
-    decoded.set("blob:wide", { width: 400, height: 300 });
+    decoded.set("blob:wide", { width: 800, height: 600 });
     decoded.set("blob:small", { width: 120, height: 90 });
     const { scene } = await sceneOn(
       [drawn("1", "wide"), drawn("2", "small")],
@@ -290,7 +324,7 @@ describe("a picture reaching a mark", () => {
       "the picture with room to spare fills the square",
     ).toBeDefined();
     // Centred, and wider than the square by exactly its aspect ratio.
-    expect(wide?.box[2]).toBeCloseTo((MARK_PICTURE_PX * 400) / 300, 6);
+    expect(wide?.box[2]).toBeCloseTo((MARK_PICTURE_PX * 800) / 600, 6);
     expect(wide?.box[3]).toBeCloseTo(MARK_PICTURE_PX, 6);
     expect(wide?.box[1]).toBeCloseTo(0, 6);
 

@@ -446,6 +446,7 @@ describe("the look a note's author gave it", () => {
     const mark = markOf(plain("1"));
     expect(mark.ringWeight).toBe("none");
     expect(mark.preview).toBeUndefined();
+    expect(mark.previewSize).toBe("small");
   });
 
   it("carries the ring and the picture its author chose", () => {
@@ -454,11 +455,13 @@ describe("the look a note's author gave it", () => {
         ring_weight: "heavy",
         ring_style: "dashed",
         preview: "upload-1",
+        preview_size: "large",
       }),
     );
     expect(mark.ringWeight).toBe("heavy");
     expect(mark.ringStyle).toBe("dashed");
     expect(mark.preview).toBe("upload-1");
+    expect(mark.previewSize).toBe("large");
   });
 
   // `appearance.ts` bounds a look by shape rather than by vocabulary, so one
@@ -466,10 +469,15 @@ describe("the look a note's author gave it", () => {
   // here as the note reads with nothing set, rather than refused or guessed at.
   it("draws a look this build has no renderer for as an unstyled note", () => {
     const mark = markOf(
-      styled("1", { ring_weight: "engraved", mark_radius: "enormous" }),
+      styled("1", {
+        ring_weight: "engraved",
+        mark_radius: "enormous",
+        preview_size: "whole",
+      }),
     );
     expect(mark.ringWeight).toBe("none");
     expect(mark.radius).toBe(radiusOf([plain("1")]));
+    expect(mark.previewSize).toBe("small");
   });
 
   // DESIGN.md § "The mark": radius is the one channel the fold and the author

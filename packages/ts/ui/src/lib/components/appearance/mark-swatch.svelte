@@ -2,12 +2,13 @@
 	// A mark drawn the way the canvas draws it, so what somebody picks here is
 	// what they get out there. `model.ts` in @sloppy/graph owns every fraction.
 	import {
+		FILL_AT,
 		LOOK_RING_AT,
 		LOOK_RING_DASHES,
 		LOOK_RING_DUTY,
 		LOOK_RING_WIDTH,
 		LOOK_SCALE,
-		PREVIEW_AT
+		PREVIEW_SPAN
 	} from '@sloppy/graph';
 	import { type NodeAppearance, resolveAppearance } from '@sloppy/types';
 	import { cn } from '$lib/utils.js';
@@ -36,6 +37,7 @@
 	const ringWidth = $derived(
 		look.ringWeight === 'none' ? 0 : radius * LOOK_RING_WIDTH[look.ringWeight]
 	);
+	const covered = $derived(radius * PREVIEW_SPAN[look.previewSize]);
 	const turn = $derived((2 * Math.PI * ringAt) / LOOK_RING_DASHES);
 	const dash = $derived(turn * LOOK_RING_DUTY);
 	const half = $derived(size / 2);
@@ -48,17 +50,17 @@
 	aria-hidden="true"
 	class={cn('shrink-0', className)}
 >
-	<circle cx={half} cy={half} r={radius} fill="var(--graph-ink)" />
+	<circle cx={half} cy={half} r={radius * FILL_AT} fill="var(--graph-ink)" />
 	{#if picture}
 		<clipPath id={clip}>
-			<circle cx={half} cy={half} r={radius * PREVIEW_AT} />
+			<circle cx={half} cy={half} r={covered} />
 		</clipPath>
 		<image
 			href={picture}
-			x={half - radius * PREVIEW_AT}
-			y={half - radius * PREVIEW_AT}
-			width={radius * PREVIEW_AT * 2}
-			height={radius * PREVIEW_AT * 2}
+			x={half - covered}
+			y={half - covered}
+			width={covered * 2}
+			height={covered * 2}
 			preserveAspectRatio="xMidYMid slice"
 			clip-path="url(#{clip})"
 		/>

@@ -28,7 +28,7 @@ import {
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
   MARK_PICTURE_PX,
-  PREVIEW_AT,
+  PREVIEW_SPAN,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
 import {
@@ -86,6 +86,9 @@ const LOOK_HYSTERESIS = 0.75;
 /** Dashes around a broken provenance edge; the look's own count is geometry a
  *  swatch has to match, so `model.ts` owns that one. */
 const EDGE_DASHES = 14;
+
+/** Where the mark's fill stops, as a fraction of its radius. */
+export const FILL_AT = (TEXTURE_RADIUS - 1) / TEXTURE_RADIUS;
 
 /** Provenance's own edge, as fractions of the mark's radius — its centre line
  *  and its stroke. A look draws inside it, and `scene.test.ts` holds the gap. */
@@ -650,7 +653,8 @@ export class GraphScene {
       if (texture === null) continue;
       const sprite = new this.pixi.Sprite(texture);
       sprite.anchor.set(0.5);
-      sprite.width = mark.radius * PREVIEW_AT * 2;
+      sprite.width =
+        mark.radius * PREVIEW_SPAN[mark.attributes.previewSize] * 2;
       sprite.height = sprite.width;
       sprite.alpha = alpha;
       sprite.visible = false;
@@ -1012,7 +1016,7 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
 
   const disc = cell((into) => {
     into
-      .circle(TEXTURE_RADIUS, TEXTURE_RADIUS, TEXTURE_RADIUS - 1)
+      .circle(TEXTURE_RADIUS, TEXTURE_RADIUS, TEXTURE_RADIUS * FILL_AT)
       .fill(0xffffff);
   });
   const edgeAt = TEXTURE_RADIUS * EDGE_RING_AT;

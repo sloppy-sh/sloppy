@@ -295,3 +295,47 @@ describe('a picture for the mark', () => {
 		expect(saved).toEqual([{ ring_weight: 'heavy' }]);
 	});
 });
+
+// DESIGN.md § "The mark": how much of the mark the picture covers is the
+// author's to choose, and a size says nothing with no picture to size.
+describe('how big the picture is drawn', () => {
+	it('is asked for only once there is a picture to size', () => {
+		open();
+		expect(() => group('Picture size')).toThrow();
+		open({ preview: UPLOAD });
+		expect(named('Small', group('Picture size')).getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('saves the size its author chose', async () => {
+		open({ preview: UPLOAD });
+		await tap('Large', group('Picture size'));
+		expect(saved).toEqual([{ preview: UPLOAD, preview_size: 'large' }]);
+	});
+
+	it('stores nothing for the size a picture already draws at', async () => {
+		open({ preview: UPLOAD, preview_size: 'large' });
+		await tap('Small', group('Picture size'));
+		expect(saved).toEqual([{ preview: UPLOAD }]);
+	});
+
+	it('goes with the picture it sized', async () => {
+		open({ preview: UPLOAD, preview_size: 'large' });
+		await tap('Remove');
+		expect(saved).toEqual([null]);
+	});
+
+	// The swatch is what somebody reads before they save, so it draws the size
+	// the canvas will.
+	it('is what the swatch draws before it is saved', async () => {
+		const across = (): number =>
+			Number(document.body.querySelector('svg image')?.getAttribute('width'));
+
+		open({ preview: UPLOAD });
+		await settle();
+		const small = across();
+
+		open({ preview: UPLOAD, preview_size: 'large' });
+		await settle();
+		expect(across()).toBeGreaterThan(small);
+	});
+});

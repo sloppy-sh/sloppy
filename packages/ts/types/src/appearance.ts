@@ -27,6 +27,12 @@ export type RingStyle = (typeof RING_STYLES)[number];
 export const MARK_RADII = ["small", "regular", "large"] as const;
 export type MarkRadius = (typeof MARK_RADII)[number];
 
+/** How much of the mark a picture covers; `small` is what a note whose author
+ *  has not said draws. DESIGN.md § "The mark" carries the shares and the bound
+ *  on the largest. */
+export const PREVIEW_SIZES = ["small", "medium", "large"] as const;
+export type PreviewSize = (typeof PREVIEW_SIZES)[number];
+
 /**
  * A note's look, as its author set it.
  *
@@ -53,6 +59,8 @@ export const NodeAppearanceSchema = z.object({
    * picture rather than showing a gap.
    */
   preview: z.string().min(1).max(512).optional(),
+  /** Says nothing without a {@link NodeAppearance.preview} to size. */
+  preview_size: AppearanceTokenSchema.optional(),
 });
 export type NodeAppearance = z.infer<typeof NodeAppearanceSchema>;
 
@@ -62,6 +70,7 @@ export interface ResolvedAppearance {
   ringStyle: RingStyle;
   markRadius: MarkRadius;
   preview: string | undefined;
+  previewSize: PreviewSize;
 }
 
 /**
@@ -77,6 +86,7 @@ export function resolveAppearance(
     ringStyle: known(RING_STYLES, appearance?.ring_style, "solid"),
     markRadius: known(MARK_RADII, appearance?.mark_radius, "regular"),
     preview: appearance?.preview,
+    previewSize: known(PREVIEW_SIZES, appearance?.preview_size, "small"),
   };
 }
 

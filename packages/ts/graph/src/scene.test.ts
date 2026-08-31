@@ -9,12 +9,14 @@ import {
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
   PREVIEW_AT,
+  PREVIEW_SPAN,
 } from "./model.js";
 import { buildPalette } from "./palette.js";
 import {
   dashSegments,
   EDGE_RING_AT,
   EDGE_RING_WIDTH,
+  FILL_AT,
   looksDrawn,
 } from "./scene.js";
 import { type Bounds, Viewport } from "./viewport.js";
@@ -126,10 +128,6 @@ describe("the bands drawn on one mark", () => {
     );
   });
 
-  it("keeps the picture clear of the heaviest look", () => {
-    expect(PREVIEW_AT).toBeLessThan(LOOK_RING_AT - heaviest);
-  });
-
   // A ring wider than the mark it is inside has stopped being a ring.
   it("keeps every weight inside the mark", () => {
     for (const [weight, width] of Object.entries(LOOK_RING_WIDTH)) {
@@ -142,5 +140,61 @@ describe("the bands drawn on one mark", () => {
   it("leaves a broken ring a gap wider than its heaviest stroke", () => {
     const turn = (2 * Math.PI * LOOK_RING_AT) / LOOK_RING_DASHES;
     expect(turn * (1 - LOOK_RING_DUTY)).toBeGreaterThan(LOOK_RING_WIDTH.heavy);
+  });
+});
+
+// DESIGN.md § "The mark": how much of the mark a picture takes is its author's
+// to choose, and what bounds it is what it leaves — the band of fill the
+// reader's own selection speaks in, the edge that is provenance's, and the
+// author's own ring, which is drawn over a picture rather than beside it.
+describe("a picture at every size its author may ask for", () => {
+  const sizes = Object.entries(PREVIEW_SPAN);
+  const rings = Object.entries(LOOK_RING_WIDTH);
+
+  // Where the fill is last visible, which is not the mark's radius: the disc
+  // stops short of it, and a published note's ink edge is drawn over the
+  // outside of what is left. A pulled mark is hollow, so its hue is the dashed
+  // edge and a picture takes none of it.
+  const fillEndsAt = {
+    own: FILL_AT,
+    published: EDGE_RING_AT - EDGE_RING_WIDTH / 2,
+  };
+
+  it("covers what it always has where nobody chose a size", () => {
+    expect(PREVIEW_SPAN.small).toBe(PREVIEW_AT);
+  });
+
+  it("leaves the hue a band wider than the heaviest ring a look can draw", () => {
+    for (const [size, at] of sizes) {
+      for (const [provenance, ends] of Object.entries(fillEndsAt)) {
+        expect(ends - at, `${size} on a ${provenance} note`).toBeGreaterThan(
+          LOOK_RING_WIDTH.heavy,
+        );
+      }
+    }
+  });
+
+  it("never reaches the mark's own edge, which is provenance's", () => {
+    for (const [size, at] of sizes) {
+      expect(at, size).toBeLessThan(EDGE_RING_AT - EDGE_RING_WIDTH / 2);
+    }
+  });
+
+  // A rim that stops under the ring is framed by it, and one well inside it is
+  // a circle of its own. A rim a hair from either edge of the ring is neither:
+  // the two read as one thick edge instead of two facts.
+  it("ends under the author's ring or well inside it, never alongside", () => {
+    for (const [size, at] of sizes) {
+      for (const [weight, width] of rings) {
+        const clear = Math.max(
+          LOOK_RING_AT - width / 2 - at,
+          at - (LOOK_RING_AT + width / 2),
+        );
+        expect(
+          clear <= 0 || clear >= LOOK_RING_WIDTH.hairline / 2,
+          `${size} ends alongside a ${weight} ring`,
+        ).toBe(true);
+      }
+    }
   });
 });

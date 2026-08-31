@@ -9,6 +9,7 @@ import {
   type MarkRadius,
   type NodeView,
   type OwnedRef,
+  type PreviewSize,
   type ResolvedAppearance,
   resolveAppearance,
   type RingStyle,
@@ -50,19 +51,30 @@ export const LOOK_RING_WIDTH: Record<Exclude<RingWeight, "none">, number> = {
 export const LOOK_RING_DASHES = 7;
 export const LOOK_RING_DUTY = 0.4;
 
-/** How much of the mark's radius the picture covers. What is left is fill, which
- *  is where the reader's selected tags answer — DESIGN.md § Hue. */
+/** What a picture covers where its author has not chosen a size. */
 export const PREVIEW_AT = 0.42;
+
+/**
+ * How much of the mark's radius the picture covers, at each size an author may
+ * ask for. What is left is the fill the reader's selected tags answer in, and
+ * the look's ring is the ceiling — DESIGN.md § "The mark" carries both bounds,
+ * and `scene.test.ts` measures them against the radii `scene.ts` draws at.
+ */
+export const PREVIEW_SPAN: Record<PreviewSize, number> = {
+  small: PREVIEW_AT,
+  medium: LOOK_RING_AT - LOOK_RING_WIDTH.heavy / 2,
+  large: LOOK_RING_AT,
+};
 
 /** Assumed of the densest screen Sloppy runs on, for {@link MARK_PICTURE_PX}. */
 const DENSE_SCREEN = 2;
 
 /** The side of the square a mark's picture is cropped to, at the most of one a
- *  screen ever shows: the biggest mega-node, at full zoom, on a dense display.
- *  A picture is stored with its SHORT side at this, because the crop spends the
- *  long one. */
+ *  screen ever shows: the biggest mega-node wearing the largest picture, at full
+ *  zoom, on a dense display. A picture is stored with its SHORT side at this,
+ *  because the crop spends the long one. */
 export const MARK_PICTURE_PX = Math.ceil(
-  MAX_RADIUS * PREVIEW_AT * 2 * MAX_SCALE * DENSE_SCREEN,
+  MAX_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
 );
 
 /** What a note nobody styled draws as, held once rather than resolved per node. */
@@ -104,6 +116,8 @@ export interface GraphNodeAttributes {
   ringStyle: RingStyle;
   /** The author's picture, as an upload only their own instance can answer for. */
   preview: string | undefined;
+  /** The share of the mark it covers — {@link PREVIEW_SPAN}. */
+  previewSize: PreviewSize;
   fill: number;
   /** Below 1 for a node the selection has nothing to say about. */
   alpha: number;
@@ -174,6 +188,7 @@ export function buildModel(
       ringWeight: look.ringWeight,
       ringStyle: look.ringStyle,
       preview: look.preview,
+      previewSize: look.previewSize,
       fill:
         slot === undefined
           ? options.palette.depth(node.depth)
