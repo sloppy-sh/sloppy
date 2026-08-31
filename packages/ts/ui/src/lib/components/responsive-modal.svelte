@@ -111,7 +111,7 @@
 				// nothing of it to clear.
 				'flex flex-col gap-0 overscroll-contain rounded-t-2xl pt-1',
 				fill
-					? 'h-[calc(100dvh-env(safe-area-inset-top))] overflow-hidden'
+					? 'viewport-fit overflow-hidden'
 					: [
 							'max-h-[calc(100dvh-env(safe-area-inset-top)-1rem)] overflow-x-hidden overflow-y-auto',
 							SHEET_GUTTERS

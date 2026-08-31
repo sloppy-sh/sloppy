@@ -513,7 +513,9 @@
 	}}
 />
 
-<div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
+<!-- `contain-layout` is positioning, not a hint: the page's own `fixed` chrome
+     is placed against this box, so it centres on what a docked note leaves. -->
+<div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)] contain-layout">
 	<h1 class="sr-only">Your graph</h1>
 
 	{#if populated}

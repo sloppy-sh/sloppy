@@ -431,22 +431,25 @@ so.
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
   modal is open.
-- **A note opens into a reading surface, not a modal.** `ReadingPanel` is that surface, and
-  it has two presentations from one bound `open`: **docked beside the graph at ≥900px**,
-  where the canvas keeps its pan, its pinch, its choosing and its menu beside an open note;
-  and a **full-height sheet below that width**, phone and portrait tablet alike, so a note is
-  a page rather than a peep-hole. The branch is fixed for as long as a note is open — a
-  rotation mid-edit never remounts the editor and loses a caret — and is read again from the
-  viewport once the surface is empty.
-- **A docked panel is a layout, not a modal**: no scrim, no focus trap, and a drag begun on
-  the canvas is still the canvas's. Beside means beside, so it publishes the width it takes as
-  `--reading-dock-inset-right` — the way the nav pill publishes its height — and the page it
-  stands next to gives that width up rather than going on drawing its chrome underneath. The
-  pill itself is the one thing it does displace, since a `fixed` pill would cross the panel's
-  foot: the panel declares itself through the same `overlay` store a modal does.
+- **A note opens into a reading surface.** `ReadingPanel` is that surface, and it has two
+  presentations from one bound `open`: **docked beside the graph at ≥900px**, where the canvas
+  keeps its pan, its pinch, its choosing and its menu beside an open note; and a **full-height
+  modal sheet below that width**, phone and portrait tablet alike, so a note is a page rather
+  than a peep-hole. The branch is fixed for as long as a note is open — a rotation mid-edit
+  never remounts the editor and loses a caret — and is read again from the viewport once the
+  surface is empty.
+- **A docked panel is a layout, not a modal**: no scrim, no focus trap, nothing else on the
+  page taken away while it stands, and a drag begun on the canvas is still the canvas's. It is
+  put away by the way out at its head, and by Escape from inside it — outside it, Escape
+  belongs to whatever the canvas is in the middle of. Beside means beside, so it publishes the
+  width it takes as `--reading-dock-inset-right` and the page it stands next to gives that
+  width up rather than going on drawing its chrome underneath.
 - **The note's way out and its address keep their place** at the head of the surface however
   far the note runs. The way back out of a long note must never be a scroll away, and the
   address is the thing a person cites.
+- **Inside the surface, the room is the surface's, not the window's.** A note is worked in a
+  column 22–34rem wide on a desk where every viewport breakpoint has long since turned on, so
+  what lays itself out in two columns or one asks a container query, never `sm:`.
 - **A block reads as a section, not a paragraph.** Each is a bounded region of the page —
   a ruled band with its own handle — quiet enough that a note of three sections still
   reads as one page. Everything inside is ordinary prose; the boundary is the only
@@ -508,6 +511,13 @@ Three vars live on `<html>`, and a fourth mirrors them at the top:
   `h-[calc(100dvh-var(--app-chrome-top,0px)-env(safe-area-inset-top))]`. **Subtract it
   unconditionally** — the two shells gate chrome differently, so a route exempt on one is
   often not exempt on the other, and the fallback is the no-chrome height to the pixel.
+
+`--reading-dock-inset-right` is the same bargain turned sideways: the reading panel docked
+beside the graph publishes the width it occupies, and what stands next to it subtracts that
+width instead of drawing underneath — the page's own box, and the nav pill, which re-centres
+over what is left rather than being taken away. Any full-bleed layer on a page that can be
+docked beside — a drawn ground, a bar pinned across the foot — is placed against that box, or
+it runs on under the panel while the page it belongs to stops at the edge.
 
 A composer riding above the keyboard uses
 `max(var(--kb-inset-bottom,0px), calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 0.5rem))`

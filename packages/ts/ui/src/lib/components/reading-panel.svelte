@@ -12,7 +12,6 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { cn } from '$lib/utils.js';
 	import ResponsiveModal from './responsive-modal.svelte';
-	import { overlay } from './overlay.svelte.js';
 
 	let {
 		open = $bindable(false),
@@ -43,36 +42,39 @@
 		onOpenChange?.(v);
 	};
 
-	// Declared like a modal though it is beside the graph rather than over it:
-	// the nav pill is `fixed` and would float across the panel's foot.
 	$effect(() => {
 		if (!docked || !open) return;
-		// untrack: push() reads the count it also writes, and would re-run forever.
-		return untrack(() => overlay.push());
+		const from = untrack(() => document.activeElement);
+		panel?.focus();
+		return () => {
+			const ours = panel?.contains(document.activeElement) ?? false;
+			if (ours && from instanceof HTMLElement && from.isConnected) from.focus();
+		};
 	});
 
-	$effect(() => {
-		if (docked && open) panel?.focus();
-	});
-
-	// Docked means beside, so the panel owes the width it takes to whatever it is
-	// beside — which would otherwise go on drawing its own chrome underneath.
+	// The panel owes the width it takes to whatever it is beside — DESIGN.md
+	// § "The four inset vars". The canvas there resizes to its parent on a window
+	// `resize` and nothing else, and the window did not change: only the box the
+	// panel left it.
 	$effect(() => {
 		const root = document.documentElement;
-		const drop = () => root.style.removeProperty('--reading-dock-inset-right');
+		let taken = '';
+		const settle = (width: string) => {
+			if (width === taken) return;
+			taken = width;
+			if (width) root.style.setProperty('--reading-dock-inset-right', width);
+			else root.style.removeProperty('--reading-dock-inset-right');
+			window.dispatchEvent(new Event('resize'));
+		};
 		const el = panel;
-		if (!docked || !open || !el) {
-			drop();
-			return;
-		}
-		const publish = () =>
-			root.style.setProperty('--reading-dock-inset-right', `${el.offsetWidth}px`);
+		if (!docked || !open || !el) return;
+		const publish = () => settle(`${el.offsetWidth}px`);
 		publish();
 		const observer = new ResizeObserver(publish);
 		observer.observe(el);
 		return () => {
 			observer.disconnect();
-			drop();
+			settle('');
 		};
 	});
 </script>

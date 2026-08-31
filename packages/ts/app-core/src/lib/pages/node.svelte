@@ -761,7 +761,9 @@
 			<p class="text-sm text-destructive" role="alert">{shapeRefused}</p>
 		{/if}
 
-		<div class="space-y-3 border-t border-border pt-6">
+		<!-- Container query, never `sm:` — DESIGN.md § Layout: the room the acts
+		     lay out in is the reading surface's, not the window's. -->
+		<div class="@container space-y-3 border-t border-border pt-6">
 			{#if children.length > 0}
 				<h2 class="text-sm font-medium text-muted-foreground">Under this</h2>
 				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
@@ -771,8 +773,8 @@
 				</ul>
 			{/if}
 
-			<div class="flex flex-col gap-2 sm:flex-row">
-				<div class="flex gap-2 sm:flex-1">
+			<div class="flex flex-col gap-2 @lg:flex-row">
+				<div class="flex gap-2 @lg:flex-1">
 					<Button
 						variant="outline"
 						class="h-11 flex-1"
@@ -793,7 +795,7 @@
 						<LayoutTemplate class="size-4" />
 					</Button>
 				</div>
-				<div class="flex gap-2 sm:flex-1">
+				<div class="flex gap-2 @lg:flex-1">
 					<Button
 						variant="outline"
 						class="h-11 flex-1"

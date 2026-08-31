@@ -136,6 +136,25 @@ function tagInvite(): string {
 	return field.placeholder;
 }
 
+/** The canvas's menu, asked for on the bare field. */
+function menuOn(what: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(`[data-menu="${what}"]`);
+	if (!found) throw new Error(`Nothing on the canvas answers a menu on ${what}`);
+	return found;
+}
+
+function item(label: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+		(row) => row.textContent?.trim() === label
+	);
+	if (!found) throw new Error(`The menu does not offer "${label}"`);
+	return found;
+}
+
+/** What `<html>` is currently told the docked note takes. */
+const dockInset = () =>
+	document.documentElement.style.getPropertyValue('--reading-dock-inset-right');
+
 function button(labelled: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find((b) =>
 		b.textContent?.includes(labelled)
@@ -259,5 +278,60 @@ describe('the note in the address bar', () => {
 
 		expect(titled()).toBe('Cells');
 		expect(at.note).toBe(SECOND);
+	});
+});
+
+// The panel is beside the graph, not over it, so the graph goes on being the
+// graph: it keeps every mode it had, and it is told the box it has left.
+describe('the graph beside an open note', () => {
+	it('ends choosing on Escape, the way it does with nothing open', async () => {
+		await readCells(DESK);
+
+		menuOn('the canvas').click();
+		await settle();
+		item('Choose notes').click();
+		await settle();
+		expect(screen()).toContain('Tap the notes you mean');
+
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		await settle();
+
+		expect(screen()).not.toContain('Tap the notes you mean');
+		expect(titled()).toBe('Cells');
+	});
+
+	it('hears its box change when the note takes the width and when it gives it back', async () => {
+		await openGraph(DESK);
+		let told = 0;
+		const heard = () => (told += 1);
+		window.addEventListener('resize', heard);
+		try {
+			onCanvas('1a').click();
+			await settle();
+			expect(dockInset()).not.toBe('');
+			expect(told).toBeGreaterThan(0);
+
+			const settled = told;
+			button('Graph').click();
+			await settle();
+			expect(dockInset()).toBe('');
+			expect(told).toBeGreaterThan(settled);
+		} finally {
+			window.removeEventListener('resize', heard);
+		}
+	});
+
+	it('takes the focus back where the note was opened from', async () => {
+		await openGraph(DESK);
+		const mark = onCanvas('1a');
+		mark.focus();
+		mark.click();
+		await settle();
+		expect(surface().contains(document.activeElement)).toBe(true);
+
+		button('Graph').click();
+		await settle();
+
+		expect(document.activeElement).toBe(mark);
 	});
 });
