@@ -154,6 +154,11 @@
 			? `You can have ${MOST_OPEN} notes open at once. Close one to open another.`
 			: null
 	);
+	// Spent the moment the reader moves, so coming back to the same tabs is not
+	// asking again — a history pop and a deliberate switch both count as moving.
+	$effect(() => {
+		if (refusedAt !== null && tooMany === null) refusedAt = null;
+	});
 	const openNode = $derived(open ? nodes.get(open) : undefined);
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	const populated = $derived(!loading && !unreachable && roots.length > 0);
@@ -287,8 +292,9 @@
 	 *  already open, which is a switch rather than an open. `standing` defaults to
 	 *  the tab being read; a note written from another one takes THAT tab, which is
 	 *  not always the one in front of the reader when the server answers. Where
-	 *  that tab has been closed in the meantime the note joins the strip instead,
-	 *  so a slow write never puts itself over a note the reader moved to. */
+	 *  that tab has been closed in the meantime the note joins the strip, unless
+	 *  the strip is full — then it takes the tab being read, because there is
+	 *  nowhere else to put it. */
 	function inPlaceOf(ref: OwnedRef, standing: OwnedRef | null = null): readonly OwnedRef[] {
 		const strip = openNotes.length > 0 ? openNotes : aside;
 		if (strip.includes(ref)) return strip;

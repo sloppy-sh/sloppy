@@ -154,13 +154,16 @@
 		refusals.set(of, held);
 	}
 
-	// A delete refusal answers an act, not something left half-done on screen the
-	// way a title is — `drafts` keeps that beside it — so at a note the reader
-	// comes back to, all it can do is repeat itself.
+	// These answer an act, not something left half-done on screen the way a title
+	// is — `drafts` keeps that beside it — and the fields they annotate are built
+	// from the server again on the way in, so at a note the reader comes back to
+	// all they can do is contradict what is on screen.
 	$effect(() => {
 		const of = ref;
 		untrack(() => {
-			if (refusals.get(of)?.remove !== undefined) refuse(of, 'remove', null);
+			for (const act of ['remove', 'tag', 'look'] as const) {
+				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
+			}
 		});
 	});
 
