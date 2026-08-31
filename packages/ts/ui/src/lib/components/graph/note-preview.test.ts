@@ -56,6 +56,7 @@ beforeEach(() => {
 afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
+	document.documentElement.style.removeProperty('--reading-dock-inset-right');
 	target.remove();
 });
 
@@ -112,6 +113,20 @@ describe('the note preview', () => {
 
 		expect(card()?.style.width).toBe('224px');
 		expect(card()?.style.left).toBe('8px');
+		expect(clearOf(mark)).toBe(true);
+	});
+
+	// A note docked beside the graph takes the right of the screen, and the card
+	// belongs to the graph — DESIGN.md § "The four inset vars".
+	it('stays inside the room a docked note leaves the graph', () => {
+		document.documentElement.style.setProperty('--reading-dock-inset-right', '544px');
+		const mark = { clientX: 620, clientY: 300, radius: 10 };
+		show({ at: mark });
+		const style = card()!.style;
+
+		expect(Number.parseFloat(style.left) + Number.parseFloat(style.width)).toBeLessThanOrEqual(
+			1200 - 544 - 8
+		);
 		expect(clearOf(mark)).toBe(true);
 	});
 

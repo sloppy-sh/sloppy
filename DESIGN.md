@@ -431,10 +431,25 @@ so.
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
   modal is open.
-- **The node interior is one component with two presentations.** A drag-to-dismiss bottom
-  sheet on phone, a docked side panel at ≥900px — same component, same props, the branch
-  **latched for the component's life** so a rotation mid-edit never remounts the editor and
-  loses a caret.
+- **A note opens into a reading surface.** `ReadingPanel` is that surface, and it has two
+  presentations from one bound `open`: **docked beside the graph at ≥900px**, where the canvas
+  keeps its pan, its pinch, its choosing and its menu beside an open note; and a **full-height
+  modal sheet below that width**, phone and portrait tablet alike, so a note is a page rather
+  than a peep-hole. The branch is fixed for as long as a note is open — a rotation mid-edit
+  never remounts the editor and loses a caret — and is read again from the viewport once the
+  surface is empty.
+- **A docked panel is a layout, not a modal**: no scrim, no focus trap, nothing else on the
+  page taken away while it stands, and a drag begun on the canvas is still the canvas's. It is
+  put away by the way out at its head, and by Escape from inside it — outside it, Escape
+  belongs to whatever the canvas is in the middle of. Beside means beside, so it publishes the
+  width it takes as `--reading-dock-inset-right` and the page it stands next to gives that
+  width up rather than going on drawing its chrome underneath.
+- **The note's way out and its address keep their place** at the head of the surface however
+  far the note runs. The way back out of a long note must never be a scroll away, and the
+  address is the thing a person cites.
+- **Inside the surface, the room is the surface's, not the window's.** A note is worked in a
+  column 22–34rem wide on a desk where every viewport breakpoint has long since turned on, so
+  what lays itself out in two columns or one asks a container query, never `sm:`.
 - **A block reads as a section, not a paragraph.** Each is a bounded region of the page —
   a ruled band with its own handle — quiet enough that a note of three sections still
   reads as one page. Everything inside is ordinary prose; the boundary is the only
@@ -450,8 +465,9 @@ so.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** Native sheet on iOS, bottom sheet on phone,
-  centred dialog at ≥640px, from one bound `open`. Reserve bare `Dialog` for passive
-  confirm/detail popups, never input surfaces.
+  centred dialog at ≥640px, from one bound `open`; `fill` is the full-height sheet a reading
+  surface stands in below its dock width. Reserve bare `Dialog` for passive confirm/detail
+  popups, never input surfaces.
 - **Remove-empty chrome (hard rule).** A component renders only when it has something to
   do. An empty graph shows one line and one action, never a bare toolbar or "0 nodes".
   Loading uses skeletons shaped like the thing, not spinners.
@@ -496,6 +512,14 @@ Three vars live on `<html>`, and a fourth mirrors them at the top:
   unconditionally** — the two shells gate chrome differently, so a route exempt on one is
   often not exempt on the other, and the fallback is the no-chrome height to the pixel.
 
+`--reading-dock-inset-right` is the same bargain turned sideways: the reading panel docked
+beside the graph publishes the width it occupies, and what stands next to it subtracts that
+width instead of drawing underneath — the page's own box, and the nav pill, which re-centres
+over what is left rather than being taken away. Any full-bleed layer on a page that can be
+docked beside — a drawn ground, a bar pinned across the foot, a card raised beside a mark —
+is placed against that box, or it runs on under the panel while the page it belongs to stops
+at the edge.
+
 A composer riding above the keyboard uses
 `max(var(--kb-inset-bottom,0px), calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 0.5rem))`
 — the breath belongs INSIDE the bar term, since that term goes to 0 while the keyboard is
@@ -524,8 +548,10 @@ up and the lift can be 0 in the panned case.
   on a mark raises a small preview beside it — the address, the title, the tags, and whether
   it carries a picture — after a moment, so a pointer crossing the field on its way somewhere
   else says nothing. It is placed clear of the mark and never over it — beside it, or above
-  or below it in a window too narrow to have room beside — takes no pointer and no focus, and goes the moment anything else begins: a pan, a zoom, a drag, the menu, or a
-  canvas somebody is picking or choosing on. **Nothing is ever reachable only this way.**
+  or below it where the box the graph has left is too narrow to have room beside — takes no
+  pointer and no focus, and goes the moment anything else begins: a pan, a zoom, a drag, the
+  menu, or a canvas somebody is picking or choosing on. **Nothing is ever reachable only this
+  way.**
   Hover does not exist on touch and the phone is the primary surface, so a finger gets the
   tap that opens the note and the press that opens the menu, both untouched, and the canvas
   already writes the address and the title beside every mark big enough to carry them.

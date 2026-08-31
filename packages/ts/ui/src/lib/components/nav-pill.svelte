@@ -81,8 +81,9 @@
 	bind:this={pill}
 	aria-label="Primary"
 	inert={hidden}
+	style="left: calc(50% - var(--reading-dock-inset-right, 0px) / 2)"
 	class={cn(
-		'fixed bottom-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border bg-card/95 p-1 shadow-lg backdrop-blur transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none',
+		'fixed bottom-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border bg-card/95 p-1 shadow-lg backdrop-blur transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none',
 		hidden
 			? 'pointer-events-none translate-y-[calc(100%+2rem)] opacity-0'
 			: 'translate-y-0 opacity-100'

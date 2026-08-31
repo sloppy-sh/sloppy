@@ -1,8 +1,8 @@
 <script lang="ts">
-	// What graph.svelte mounts, cut down to the note and the modal it opens in:
+	// What graph.svelte mounts, cut down to the note and the surface it opens in:
 	// the composition the caret has to be placed inside.
 	import type { OwnedRef } from '@sloppy/types';
-	import { ResponsiveModal, type NoteTemplate } from '@sloppy/ui';
+	import { ReadingPanel, type NoteTemplate } from '@sloppy/ui';
 	import { untrack } from 'svelte';
 	import Note from './node.svelte';
 
@@ -23,7 +23,7 @@
 	let seed = $state<{ ref: OwnedRef; shape: NoteTemplate } | null>(null);
 </script>
 
-<ResponsiveModal open title="Note" headed={false}>
+<ReadingPanel open title="Note">
 	<Note
 		ref={showing}
 		{naming}
@@ -37,4 +37,4 @@
 		onLinkOnGraph={() => onlink?.()}
 		onClose={() => onclose?.()}
 	/>
-</ResponsiveModal>
+</ReadingPanel>

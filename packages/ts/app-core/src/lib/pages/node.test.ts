@@ -18,7 +18,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
-import NoteInModal from './note-in-modal.test-support.svelte';
+import NoteOnSurface from './note-in-panel.test-support.svelte';
 
 const FIRST = ref(1);
 const SECOND = ref(2);
@@ -27,8 +27,9 @@ const FOURTH = ref(4);
 const FIFTH = ref(5);
 const SIXTH = ref(6);
 
-const PHONE = () => true;
-const WIDE = () => false;
+const PHONE = 390;
+const TABLET = 834;
+const WIDE = 1280;
 
 function refPath(of: OwnedRef): string {
 	const cut = of.lastIndexOf('/');
@@ -37,12 +38,20 @@ function refPath(of: OwnedRef): string {
 
 const path = (of: OwnedRef) => `/nodes${refPath(of)}`;
 
-function stubViewport(matches: () => boolean): void {
+/** Only the width queries the surfaces branch on; anything else is unmatched. */
+function answers(query: string, width: number): boolean {
+	const least = /min-width:\s*(\d+)px/.exec(query);
+	if (least) return width >= Number(least[1]);
+	const most = /max-width:\s*(\d+)px/.exec(query);
+	return most ? width <= Number(most[1]) : false;
+}
+
+function stubViewport(width: number): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
 		writable: true,
-		value: () => ({
-			matches: matches(),
+		value: (query: string) => ({
+			matches: answers(query, width),
 			addEventListener: () => {},
 			removeEventListener: () => {}
 		})
@@ -108,10 +117,10 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-async function openWritten(at: () => boolean): Promise<OwnedRef> {
+async function openWritten(at: number): Promise<OwnedRef> {
 	stubViewport(at);
 	const written = await nodes.create({});
-	mounted = mount(NoteInModal, { target, props: { opened: written.ref } });
+	mounted = mount(NoteOnSurface, { target, props: { opened: written.ref } });
 	flushSync();
 	await settle();
 	return written.ref;
@@ -119,6 +128,7 @@ async function openWritten(at: () => boolean): Promise<OwnedRef> {
 
 describe.each([
 	['on a phone', PHONE],
+	['on a tablet', TABLET],
 	['at desktop width', WIDE]
 ])('a note just written, %s', (_where, at) => {
 	it('opens with the caret in its title', async () => {
@@ -143,7 +153,7 @@ describe('a note opened to read', () => {
 	it('keeps the caret out of its title', async () => {
 		stubViewport(PHONE);
 		await nodes.create({});
-		mounted = mount(NoteInModal, { target, props: { opened: FIRST, fresh: false } });
+		mounted = mount(NoteOnSurface, { target, props: { opened: FIRST, fresh: false } });
 		flushSync();
 		await settle();
 
@@ -158,7 +168,7 @@ describe('a note opened to read', () => {
 			throw new Error('unreachable');
 		});
 
-		mounted = mount(NoteInModal, { target, props: { opened: FIRST, fresh: false } });
+		mounted = mount(NoteOnSurface, { target, props: { opened: FIRST, fresh: false } });
 		flushSync();
 		await settle();
 
@@ -178,7 +188,7 @@ describe('what a note is written with', () => {
 		stubViewport(WIDE);
 		session.adopt(VIEWER, 'a-session');
 		await nodes.create({});
-		mounted = mount(NoteInModal, { target, props: { opened: FIRST, fresh: false } });
+		mounted = mount(NoteOnSurface, { target, props: { opened: FIRST, fresh: false } });
 		flushSync();
 		await settle();
 		document.body
@@ -265,7 +275,7 @@ async function openNote(
 	handlers: { onclose?: () => void; onlink?: () => void } = {}
 ): Promise<void> {
 	stubViewport(WIDE);
-	mounted = mount(NoteInModal, { target, props: { opened: at, fresh: false, ...handlers } });
+	mounted = mount(NoteOnSurface, { target, props: { opened: at, fresh: false, ...handlers } });
 	flushSync();
 	await settle();
 }

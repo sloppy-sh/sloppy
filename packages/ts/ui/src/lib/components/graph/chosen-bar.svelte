@@ -39,7 +39,7 @@
 
 <div
 	class="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3"
-	style="padding-bottom: calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--sysnav-inset-bottom, 0px) + 0.5rem)"
+	style="right: var(--reading-dock-inset-right, 0px); padding-bottom: calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--sysnav-inset-bottom, 0px) + 0.5rem)"
 >
 	<div
 		class="pointer-events-auto w-full max-w-md rounded-2xl border bg-card/95 p-2 shadow-lg backdrop-blur"
