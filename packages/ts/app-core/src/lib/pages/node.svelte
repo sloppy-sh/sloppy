@@ -773,8 +773,8 @@
 				</ul>
 			{/if}
 
-			<div class="flex flex-col gap-2 @lg:flex-row">
-				<div class="flex gap-2 @lg:flex-1">
+			<div class="flex flex-col gap-2 @md:flex-row">
+				<div class="flex gap-2 @md:flex-1">
 					<Button
 						variant="outline"
 						class="h-11 flex-1"
@@ -795,7 +795,7 @@
 						<LayoutTemplate class="size-4" />
 					</Button>
 				</div>
-				<div class="flex gap-2 @lg:flex-1">
+				<div class="flex gap-2 @md:flex-1">
 					<Button
 						variant="outline"
 						class="h-11 flex-1"

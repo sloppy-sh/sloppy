@@ -142,7 +142,12 @@
 				{#if description}<Sheet.Description class="sr-only">{description}</Sheet.Description>{/if}
 			{/if}
 			{#if fill}
-				<div class={cn('min-h-0 flex-1 overflow-x-hidden overflow-y-auto', SHEET_GUTTERS)}>
+				<div
+					class={cn(
+						'min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain',
+						SHEET_GUTTERS
+					)}
+				>
 					{@render children()}
 				</div>
 			{:else}
