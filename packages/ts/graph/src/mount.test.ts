@@ -186,13 +186,15 @@ beforeAll(() => {
     fontFamily: "",
     getPropertyValue: () => "",
   }));
-  vi.stubGlobal(
-    "MutationObserver",
-    class {
-      observe(): void {}
-      disconnect(): void {}
-    },
-  );
+  for (const observer of ["MutationObserver", "ResizeObserver"]) {
+    vi.stubGlobal(
+      observer,
+      class {
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+  }
 });
 
 afterAll(() => vi.unstubAllGlobals());

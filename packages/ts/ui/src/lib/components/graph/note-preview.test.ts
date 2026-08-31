@@ -31,6 +31,21 @@ function show(props: Record<string, unknown> = {}) {
 
 const card = () => target.querySelector<HTMLElement>('[aria-hidden="true"]');
 
+type Mark = { clientX: number; clientY: number; radius: number };
+
+/** Whether the mark is still visible with the card placed. jsdom lays nothing
+ *  out, so this reads the edge the card anchored itself by — the one it grows
+ *  away from, which is the only edge its placement decided. */
+function clearOf(mark: Mark): boolean {
+	const style = card()!.style;
+	const left = Number.parseFloat(style.left);
+	const width = Number.parseFloat(style.width);
+	if (mark.clientX + mark.radius <= left) return true;
+	if (mark.clientX - mark.radius >= left + width) return true;
+	if (style.top !== '') return mark.clientY + mark.radius <= Number.parseFloat(style.top);
+	return mark.clientY - mark.radius >= window.innerHeight - Number.parseFloat(style.bottom);
+}
+
 beforeEach(() => {
 	Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
 	Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
@@ -59,9 +74,12 @@ describe('the note preview', () => {
 	// The mark is what the reader is pointing at; a card over it answers a
 	// question by hiding the thing it is about.
 	it('sits beside the mark, never over it', () => {
-		show();
+		const mark = { clientX: 200, clientY: 300, radius: 12 };
+		show({ at: mark });
+
 		expect(card()?.style.left).toBe('224px');
 		expect(card()?.style.top).toBe('300px');
+		expect(clearOf(mark)).toBe(true);
 	});
 
 	it('turns back from the edges it would hang off', () => {
@@ -71,6 +89,30 @@ describe('the note preview', () => {
 		// Anchored by its foot, so a card near the bottom grows upward.
 		expect(card()?.style.bottom).toBe('100px');
 		expect(card()?.style.top).toBe('');
+	});
+
+	// A narrow window with a pointer in it is real: a trackpad in Split View is
+	// the one pointer this whole feature answers. There the card is wider than
+	// the room beside the mark, so it goes under or over the mark instead.
+	it('goes clear of the mark where neither side of it has room', () => {
+		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 500 });
+		const mark = { clientX: 250, clientY: 300, radius: 10 };
+		show({ at: mark });
+		const style = card()!.style;
+
+		expect(clearOf(mark)).toBe(true);
+		expect(Number.parseFloat(style.left)).toBeGreaterThanOrEqual(8);
+		expect(Number.parseFloat(style.left) + Number.parseFloat(style.width)).toBeLessThanOrEqual(492);
+	});
+
+	it('narrows rather than hanging off a window smaller than it', () => {
+		Object.defineProperty(window, 'innerWidth', { configurable: true, value: 240 });
+		const mark = { clientX: 120, clientY: 600, radius: 8 };
+		show({ at: mark });
+
+		expect(card()?.style.width).toBe('224px');
+		expect(card()?.style.left).toBe('8px');
+		expect(clearOf(mark)).toBe(true);
 	});
 
 	// DESIGN.md § Hue: the rail hands out the hues in selection order, and the

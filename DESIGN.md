@@ -523,8 +523,8 @@ up and the lift can be 0 in the panned case.
 - **Pointing at a note says what it is, and that is all hover ever does.** A pointer resting
   on a mark raises a small preview beside it — the address, the title, the tags, and whether
   it carries a picture — after a moment, so a pointer crossing the field on its way somewhere
-  else says nothing. It is placed beside the mark and never over it, takes no pointer and no
-  focus, and goes the moment anything else begins: a pan, a zoom, a drag, the menu, or a
+  else says nothing. It is placed clear of the mark and never over it — beside it, or above
+  or below it in a window too narrow to have room beside — takes no pointer and no focus, and goes the moment anything else begins: a pan, a zoom, a drag, the menu, or a
   canvas somebody is picking or choosing on. **Nothing is ever reachable only this way.**
   Hover does not exist on touch and the phone is the primary surface, so a finger gets the
   tap that opens the note and the press that opens the menu, both untouched, and the canvas
@@ -534,21 +534,31 @@ up and the lift can be 0 in the panned case.
 
 The field is drawn on paper, and the reader says which: **dots, ruled lines, or neither**.
 It is a ground rather than a layer of information — it carries no hue, no second weight, and
-nothing drawn on it means anything. It owes no contrast floor for that same reason, and it
-stays quieter than the faintest line the graph itself draws.
+nothing drawn on it means anything. It owes no contrast floor for that same reason: it is
+the one thing on the canvas a reader is meant to stop seeing.
 
 - **It is pinned to the world, not to the screen.** A mark of it keeps the world point it
   sits on, so panning says how far you went and zooming keeps what you were looking at. The
   one concession is its period: closer together than 32 screen pixels it would close into
   moiré over a field of thousands of marks, so it **doubles** instead — which leaves every
   surviving point exactly where it was, the coarser lattice being a subset of the finer one.
-  The half-step marks fade out as they approach that bound, so the doubling is never seen
-  happening. `ground.test.ts` in `@sloppy/graph` holds both figures: the bound at every scale
-  the viewport can reach, and the hand-over as continuous.
+- **The doubling is not seen happening, and that is measured rather than hoped.** The
+  half-step marks fade in at exactly the rate their own count closes up — squared for dots,
+  linear for rules — so the ink the lattice asks for per unit area is one number at every
+  scale, and the same number either side of a doubling. And a mark keeps the size it is drawn
+  at: a tiled fill's scale is what carries the lattice's period, and it would carry the mark
+  along with it, so the pattern is cut at eight cells across the octave the period opens over
+  and a fill takes whichever leaves it nearest 1:1 — a mark within 5% of its size anywhere in
+  the range, with what is left of that taken back out of the alpha. `ground.test.ts` in
+  `@sloppy/graph` holds all three: the 32-pixel bound at every scale the viewport can reach,
+  the flat ink, and the mark. What a GPU rasterises out of a mark a pixel or two across then
+  wanders as the lattice slides over the pixel grid, the way any stipple does. There is no
+  step in it, and none at the doubling.
 - **It is two tiled fills and nothing else.** One for the lattice a reader keeps as they zoom
   out, one for the half-step marks that fade into it; a frame writes their offset, their
-  scale and one alpha, never a texture. Its cost on the 2,400-note corpus sits inside the
-  noise of the same passes with no ground at all.
+  scale and two alphas, never a texture — the cuts are taken once, when a reader first asks
+  for that paper. Its cost on the 2,400-note corpus sits inside the noise of the same passes
+  with no ground at all: `bench/` reports idle and pan frames at 8.3/9.3 ms either way.
 - **It is the theme's, and not `data-style`'s.** The colour is `--graph-ink`, so it inverts
   with the surfaces and no theme has to know it exists. It is deliberately not the style
   axis's: the canvas is exempt from `data-style` (above), and dots against rules is a choice

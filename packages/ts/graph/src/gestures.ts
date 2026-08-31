@@ -348,8 +348,11 @@ export function attachGestures(
 
   // The box is read here rather than per move: a pointer resting on a mark is
   // measured against the box it entered through, and reading it on every move is
-  // a layout the canvas does not otherwise ask for.
+  // a layout the canvas does not otherwise ask for. The chrome above the canvas
+  // can also grow under a pointer that never moves, so the box is read again
+  // whenever the surface itself changes size.
   const onPointerEnter = (): void => refreshRect();
+  const resized = new ResizeObserver(refreshRect);
 
   const onWheel = (event: WheelEvent): void => {
     event.preventDefault();
@@ -372,6 +375,7 @@ export function attachGestures(
   element.addEventListener("pointerleave", dropHover);
   element.addEventListener("wheel", onWheel, { passive: false });
   element.addEventListener("contextmenu", onContextMenu);
+  resized.observe(element);
 
   return () => {
     cancelPress();
@@ -385,6 +389,7 @@ export function attachGestures(
     element.removeEventListener("pointerleave", dropHover);
     element.removeEventListener("wheel", onWheel);
     element.removeEventListener("contextmenu", onContextMenu);
+    resized.disconnect();
   };
 }
 

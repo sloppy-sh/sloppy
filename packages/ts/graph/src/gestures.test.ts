@@ -9,6 +9,20 @@ import { type Point, Viewport } from "./viewport.js";
 
 type Listener = (event: Event) => void;
 
+/** Node has no ResizeObserver, and the surface asks for one to hear that its own
+ *  box has moved. */
+const watching = new Map<HTMLElement, () => void>();
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    constructor(private readonly notify: () => void) {}
+    observe(element: HTMLElement): void {
+      watching.set(element, this.notify);
+    }
+    disconnect(): void {}
+  },
+);
+
 /**
  * Enough of an element to attach to. The gesture layer only ever reads a
  * bounding box and captures pointers, so a real DOM would only be slower.
@@ -16,25 +30,32 @@ type Listener = (event: Event) => void;
 function fakeElement() {
   const listeners = new Map<string, Set<Listener>>();
   const captured = new Set<number>();
+  const box = { left: 0, top: 0 };
+  const element = {
+    getBoundingClientRect: () => ({ ...box }),
+    setPointerCapture: (id: number) => captured.add(id),
+    hasPointerCapture: (id: number) => captured.has(id),
+    releasePointerCapture: (id: number) => captured.delete(id),
+    addEventListener: (type: string, listener: Listener) => {
+      const set = listeners.get(type) ?? new Set<Listener>();
+      set.add(listener);
+      listeners.set(type, set);
+    },
+    removeEventListener: (type: string, listener: Listener) => {
+      listeners.get(type)?.delete(listener);
+    },
+  } as unknown as HTMLElement;
   return {
-    element: {
-      getBoundingClientRect: () => ({ left: 0, top: 0 }),
-      setPointerCapture: (id: number) => captured.add(id),
-      hasPointerCapture: (id: number) => captured.has(id),
-      releasePointerCapture: (id: number) => captured.delete(id),
-      addEventListener: (type: string, listener: Listener) => {
-        const set = listeners.get(type) ?? new Set<Listener>();
-        set.add(listener);
-        listeners.set(type, set);
-      },
-      removeEventListener: (type: string, listener: Listener) => {
-        listeners.get(type)?.delete(listener);
-      },
-    } as unknown as HTMLElement,
+    element,
     send(type: string, event: Partial<PointerEvent>): void {
       for (const listener of listeners.get(type) ?? []) {
         listener(event as Event);
       }
+    },
+    /** The chrome above the canvas grew, which no pointer event announces. */
+    movesTo(top: number): void {
+      box.top = top;
+      watching.get(element)?.();
     },
   };
 }
@@ -54,11 +75,15 @@ function surface() {
   const pressed: Pressed[] = [];
   const swept: { box: ScreenBox; done: boolean }[] = [];
   const rested: (string | null)[] = [];
+  const asked: Point[] = [];
   let onInk: InkPointer | undefined = (_event, world) => inked.push(world);
   let under: string | null = null;
   let sweepable = true;
   const handlers: GestureHandlers = {
-    hitTest: () => under,
+    hitTest: (world) => {
+      asked.push(world);
+      return under;
+    },
     onTap: (target, _world, withModifier) =>
       tapped.push({ target, withModifier }),
     onPress: (target, at) => pressed.push({ target, ...at }),
@@ -99,7 +124,9 @@ function surface() {
     pressed,
     swept,
     rested,
+    asked,
     viewport,
+    movesTo: (top: number) => element.movesTo(top),
     inkInto(handler: InkPointer | undefined): void {
       onInk = handler;
     },
@@ -455,6 +482,19 @@ describe("resting a pointer on a mark", () => {
       begin(graph);
       expect(graph.rested).toEqual(["1a", null]);
     }
+  });
+
+  // The chrome above the canvas grows with no pointer event to announce it — a
+  // tag rail appearing, an error line wrapping — and a pointer already inside
+  // the canvas never crosses its edge again to say so.
+  it("measures a pointer against a surface that moved under it", () => {
+    const graph = surface();
+    graph.over("1a");
+    graph.mouse("pointermove", 40, 60);
+    graph.movesTo(48);
+    graph.mouse("pointermove", 40, 60);
+
+    expect(graph.asked.at(-1)).toEqual({ x: 40, y: 12 });
   });
 
   it("stays quiet while a gesture is under way", () => {

@@ -643,11 +643,13 @@
 						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
 					{/if}
 				{:else}
-					<div class="flex items-center gap-3">
-						<p class="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</p>
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+						<p class="w-full min-w-0 truncate text-sm text-muted-foreground sm:w-auto sm:flex-1">
+							{summary}
+						</p>
 						<Button
 							variant="outline"
-							class="h-9 shrink-0 rounded-full"
+							class="ms-auto h-9 shrink-0 rounded-full"
 							disabled={creating}
 							onclick={() => writeBranch(null)}
 						>

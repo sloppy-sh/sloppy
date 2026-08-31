@@ -20,7 +20,8 @@ import type {
 } from "pixi.js";
 import { clamp } from "./color.js";
 import type { GraphPickMarks, MarkPictures } from "./contract.js";
-import { type GraphGround, GroundLayer } from "./ground.js";
+import type { GraphGround } from "./ground.js";
+import { GroundLayer } from "./ground-layer.js";
 import type { GraphNodeAttributes } from "./model.js";
 import {
   type BuiltModel,
