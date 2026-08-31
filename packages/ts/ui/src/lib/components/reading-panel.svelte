@@ -7,6 +7,22 @@
 	/** How tall the strip stands. */
 	const STRIP = '2.75rem';
 
+	/** What a docked panel may take, in px: never narrower than the column a note
+	 *  is worked in, never wider than the graph beside it can give up and still be
+	 *  a graph — DESIGN.md § Layout. */
+	const LEAST = 352;
+	const MOST = 960;
+	const GRAPH_KEEPS = 448;
+
+	function widthWithin(room: number): { least: number; most: number } {
+		return { least: LEAST, most: Math.max(LEAST, Math.min(MOST, room - GRAPH_KEEPS)) };
+	}
+
+	function dockedWidth(want: number, room: number): number {
+		const { least, most } = widthWithin(room);
+		return Math.min(most, Math.max(least, Math.round(want)));
+	}
+
 	/** One note open in the panel. The address leads, because it is what a person
 	 *  cites and the one label that is never blank. */
 	export interface ReadingTab {
@@ -35,6 +51,8 @@
 		tabs = [],
 		active = null,
 		says = null,
+		width = null,
+		onWidthChange,
 		onActivate,
 		onCloseTab,
 		children
@@ -49,6 +67,12 @@
 		tabs?: readonly ReadingTab[];
 		/** Why another note could not be opened here, for the reader who asked. */
 		says?: string | null;
+		/** How much room this reader last took for a docked note, in px. Null is the
+		 *  width it opens at, and any number is safe to hand over: it is bounded
+		 *  against the window the panel is actually in. */
+		width?: number | null;
+		/** A width the reader settled on, to keep for their next note. */
+		onWidthChange?: (width: number) => void;
 		/** The one {@link children} is showing, of {@link tabs}. */
 		active?: OwnedRef | null;
 		onActivate?: (ref: OwnedRef) => void;
@@ -70,6 +94,21 @@
 	const stripped = $derived(tabs.length > 1);
 	const headed = $derived(stripped || !!says);
 
+	/** The window the panel bounds itself against. */
+	let across = $state(0);
+	/** What the panel measures, for the widths that are the stylesheet's. */
+	let standing = $state(0);
+	/** The width the reader has dragged to. It stands ahead of {@link width},
+	 *  which answers a frame later — the panel must not snap back in that frame. */
+	let dragged = $state<number | null>(null);
+	let dragging = $state(false);
+	let grabbedAt = 0;
+	let grabbedWidth = 0;
+
+	const wanted = $derived(dragged ?? width);
+	const stands = $derived(across > 0 && wanted !== null ? dockedWidth(wanted, across) : null);
+	const bounds = $derived(widthWithin(across || DOCK_FROM_PX));
+
 	/** The strip scrolls sideways, so the tab being read is brought into it: a tab
 	 *  opened past its edge is otherwise open with nothing on screen to say so. */
 	const keepInView = (showing: boolean) => (tab: Element) => {
@@ -89,6 +128,13 @@
 			const ours = panel?.contains(document.activeElement) ?? false;
 			if (ours && from instanceof HTMLElement && from.isConnected) from.focus();
 		};
+	});
+
+	$effect(() => {
+		const measure = () => (across = window.innerWidth);
+		measure();
+		window.addEventListener('resize', measure);
+		return () => window.removeEventListener('resize', measure);
 	});
 
 	// Measured rather than assumed: the head stands as tall as everything in it,
@@ -113,27 +159,79 @@
 	// § "The four inset vars". The canvas there resizes to its parent on a window
 	// `resize` and nothing else, and the window did not change: only the box the
 	// panel left it.
-	$effect(() => {
+	let taken = '';
+	function takes(width: string): void {
+		if (width === taken) return;
+		taken = width;
 		const root = document.documentElement;
-		let taken = '';
-		const settle = (width: string) => {
-			if (width === taken) return;
-			taken = width;
-			if (width) root.style.setProperty('--reading-dock-inset-right', width);
-			else root.style.removeProperty('--reading-dock-inset-right');
-			window.dispatchEvent(new Event('resize'));
-		};
+		if (width) root.style.setProperty('--reading-dock-inset-right', width);
+		else root.style.removeProperty('--reading-dock-inset-right');
+		window.dispatchEvent(new Event('resize'));
+	}
+
+	$effect(() => {
 		const el = panel;
 		if (!docked || !open || !el) return;
-		const publish = () => settle(`${el.offsetWidth}px`);
-		publish();
-		const observer = new ResizeObserver(publish);
+		const measure = () => (standing = el.offsetWidth);
+		measure();
+		const observer = new ResizeObserver(measure);
 		observer.observe(el);
 		return () => {
 			observer.disconnect();
-			settle('');
+			takes('');
 		};
 	});
+
+	// `stands` is read here rather than measured, so a width the reader is still
+	// dragging reaches the chrome beside the panel in the frame it is applied.
+	$effect(() => {
+		if (!docked || !open || !panel) return;
+		takes(`${stands ?? standing}px`);
+	});
+
+	function startDrag(event: PointerEvent): void {
+		// The wall lies over the edge of the canvas, and what starts on the wall is
+		// the wall's — never a pan of the graph underneath it.
+		event.preventDefault();
+		event.stopPropagation();
+		grabbedAt = event.clientX;
+		grabbedWidth = stands ?? standing;
+		dragging = true;
+		dragged = dockedWidth(grabbedWidth, across);
+		(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+	}
+
+	function onDrag(event: PointerEvent): void {
+		if (!dragging) return;
+		dragged = dockedWidth(grabbedWidth + (grabbedAt - event.clientX), across);
+	}
+
+	function endDrag(): void {
+		if (!dragging) return;
+		dragging = false;
+		if (dragged !== null) onWidthChange?.(dragged);
+	}
+
+	/** What one press of an arrow key is worth, in px. */
+	const STEP = 24;
+
+	function onWallKey(event: KeyboardEvent): void {
+		const at = stands ?? standing;
+		const to =
+			event.key === 'ArrowLeft'
+				? at + STEP
+				: event.key === 'ArrowRight'
+					? at - STEP
+					: event.key === 'Home'
+						? bounds.least
+						: event.key === 'End'
+							? bounds.most
+							: null;
+		if (to === null) return;
+		event.preventDefault();
+		dragged = dockedWidth(to, across);
+		onWidthChange?.(dragged);
+	}
 </script>
 
 {#snippet strip()}
@@ -203,7 +301,9 @@
 		tabindex="-1"
 		aria-label={title}
 		inert={!open}
-		style="top: calc(var(--app-chrome-top, 0px) + env(safe-area-inset-top, 0px))"
+		style="top: calc(var(--app-chrome-top, 0px) + env(safe-area-inset-top, 0px));{stands
+			? ` width: ${stands}px`
+			: ''}"
 		onkeydown={(e) => {
 			if (e.key === 'Escape') handle(false);
 		}}
@@ -212,6 +312,36 @@
 			open ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-full opacity-0'
 		)}
 	>
+		<!-- A separator a reader can focus and move IS a widget; the rule reads the
+		     role as decoration either way. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div
+			role="separator"
+			tabindex="0"
+			aria-orientation="vertical"
+			aria-label="How much room the note takes"
+			aria-valuenow={stands ?? standing}
+			aria-valuemin={bounds.least}
+			aria-valuemax={bounds.most}
+			onpointerdown={startDrag}
+			onpointermove={onDrag}
+			onpointerup={endDrag}
+			onpointercancel={endDrag}
+			onlostpointercapture={endDrag}
+			onkeydown={onWallKey}
+			class="group absolute inset-y-0 -left-2 z-10 flex w-4 cursor-col-resize touch-none justify-center focus-visible:outline-none"
+		>
+			<span
+				class={cn(
+					'h-full transition-[background-color,width] duration-150 ease-out motion-reduce:transition-none',
+					dragging
+						? 'w-0.5 bg-ring'
+						: 'w-px bg-transparent group-hover:w-0.5 group-hover:bg-border group-focus-visible:w-0.5 group-focus-visible:bg-ring'
+				)}
+			></span>
+		</div>
+
 		<div
 			class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-[max(1rem,env(safe-area-inset-right))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] pl-4"
 		>

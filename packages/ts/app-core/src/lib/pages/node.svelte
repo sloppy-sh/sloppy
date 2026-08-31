@@ -8,9 +8,12 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Files from '@lucide/svelte/icons/files';
+	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
+	import Palette from '@lucide/svelte/icons/palette';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import {
@@ -25,17 +28,21 @@
 		type UpdateBlockRequest
 	} from '@sloppy/types';
 	import {
-		AppearanceField,
+		AppearanceModal,
 		BlockStack,
 		ConfirmModal,
+		NoteMenu,
+		ResponsiveModal,
 		scrollFade,
 		suggestedFor,
 		TagField,
 		TemplatePicker,
 		writeTemplate,
+		type NoteMenuItem,
 		type NoteReferences,
 		type NoteTemplate
 	} from '@sloppy/ui';
+	import { Badge } from '@sloppy/ui/badge';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
@@ -170,7 +177,7 @@
 	/** Acts in the air, by the note they were asked in, so a wait in one tab does
 	 *  not disable the same act in the next. */
 	const adding = new SvelteSet<OwnedRef>();
-	const linking = new SvelteSet<OwnedRef>();
+	const relinking = new SvelteSet<OwnedRef>();
 	const seeding = new SvelteSet<OwnedRef>();
 
 	let titleField = $state<HTMLTextAreaElement | null>(null);
@@ -199,6 +206,11 @@
 	 *  touch there is no mousedown to refuse. */
 	let stopped: ReturnType<typeof setTimeout> | undefined;
 
+	/** The surfaces the one control at the head opens, none of which is writing. */
+	let acting = $state(false);
+	let tagging = $state(false);
+	let looking = $state(false);
+	let linking = $state(false);
 	let removing = $state(false);
 
 	/** Typed into the field that reaches a note by the address a person cites. */
@@ -337,6 +349,20 @@
 
 	const consequence = $derived(deletionCost([ref]));
 
+	/** Everything a reader occasionally DOES to a note, as against what they read
+	 *  off it. Delete comes last and apart — DESIGN.md § Layout. */
+	const acts = $derived<NoteMenuItem[]>([
+		{ label: 'Tags', icon: Hash, onSelect: () => (tagging = true) },
+		{ label: 'How this note looks', icon: Palette, onSelect: () => (looking = true) },
+		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
+		{
+			label: 'Delete this note',
+			icon: Trash2,
+			onSelect: () => (removing = true),
+			destructive: true
+		}
+	]);
+
 	// The modal claims focus for itself one frame after it mounts, so the caret
 	// can only be put in the title the frame after that.
 	$effect(() => {
@@ -441,6 +467,10 @@
 		const known = read.get(opening);
 		const wrote = landed;
 		cited = '';
+		acting = false;
+		tagging = false;
+		looking = false;
+		linking = false;
 		removing = false;
 		unread = null;
 		shaping = null;
@@ -626,15 +656,15 @@
 
 	async function relink(links: OwnedRef[], whenItFails: string): Promise<void> {
 		const of = ref;
-		if (linking.has(of)) return;
-		linking.add(of);
+		if (relinking.has(of)) return;
+		relinking.add(of);
 		refuse(of, 'link', null);
 		try {
 			await nodes.update(of, { links });
 		} catch (error) {
 			refuse(of, 'link', serverMessage(error) ?? whenItFails);
 		} finally {
-			linking.delete(of);
+			relinking.delete(of);
 		}
 	}
 
@@ -679,6 +709,14 @@
 		const before = node?.links;
 		if (!before) return;
 		await relink([...before, target], 'Sloppy could not add that link. Try again in a moment.');
+	}
+
+	/** Closed before the act is asked, so what the server refuses lands in the
+	 *  note, beside the links it is about. */
+	async function linkTo(target: OwnedRef): Promise<void> {
+		linking = false;
+		cited = '';
+		await link(target);
 	}
 
 	async function unlink(target: OwnedRef): Promise<void> {
@@ -750,7 +788,7 @@
 	     came to read. -->
 	<div
 		style="top: var(--reading-head, 0px)"
-		class="sticky z-20 -mx-2 flex items-center gap-3 border-b border-border bg-background px-2 pt-2 pb-1 sm:-mx-1 sm:px-1"
+		class="sticky z-20 -mx-2 flex items-center gap-2 border-b border-border bg-background px-2 pt-2 pb-1 sm:-mx-1 sm:px-1"
 	>
 		<button
 			type="button"
@@ -765,6 +803,15 @@
 			<span class="address ml-auto truncate text-sm text-foreground/70 select-text">
 				{node.address}
 			</span>
+			<Button
+				variant="ghost"
+				size="icon"
+				class="-mr-2 size-11 shrink-0 text-muted-foreground"
+				aria-label="What to do with this note"
+				onclick={() => (acting = true)}
+			>
+				<Ellipsis class="size-4" />
+			</Button>
 		{/if}
 	</div>
 
@@ -805,31 +852,29 @@
 
 			<NoteAuthor did={node.created_by} />
 
+			<!-- What a note is filed under is read at a glance; writing one is an act,
+			     and it waits with the others. -->
+			{#if node.tags.length > 0}
+				<button
+					type="button"
+					aria-label="Tags: {node.tags.join(', ')}"
+					onclick={() => (tagging = true)}
+					class="-mx-2 flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				>
+					{#each node.tags as tag (tag)}
+						<Badge variant="outline" class="text-muted-foreground">{tag}</Badge>
+					{/each}
+				</button>
+			{/if}
+
 			{#if refused.title}
 				<p class="text-sm text-destructive" role="alert">{refused.title}</p>
 			{/if}
+
+			{#if refused.remove}
+				<p class="text-sm text-destructive" role="alert">{refused.remove}</p>
+			{/if}
 		</header>
-
-		<!-- A word half-typed into one of these fields belongs to the note it was
-		     typed into, so the fields are rebuilt with the note rather than kept. -->
-		{#key ref}
-			<div class="space-y-2 border-b border-border pb-6">
-				<AppearanceField
-					appearance={node.appearance}
-					media={noteMedia}
-					onchange={relook}
-					refused={refused.look ?? null}
-				/>
-
-				<TagField
-					tags={node.tags}
-					{suggestions}
-					onchange={retag}
-					refused={refused.tag ?? null}
-					placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
-				/>
-			</div>
-		{/key}
 
 		{#if loading || seeding.has(ref)}
 			<Skeleton class="h-24 w-full" />
@@ -927,96 +972,52 @@
 			{#if refused.add}<p class="text-sm text-destructive" role="alert">{refused.add}</p>{/if}
 		</div>
 
-		<div class="space-y-3 border-t border-border pt-6">
-			{#if linked.length > 0}
-				<h2 class="text-sm font-medium text-muted-foreground">Links to</h2>
-				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
-					{#each linked as { target, note: to } (target)}
-						<li class="flex items-center gap-1">
-							{#if to}
-								{@render row(to, () => onOpen(target), true)}
-							{:else if gone.has(target)}
-								<p class="flex min-h-11 flex-1 items-center px-2 text-muted-foreground">
-									A note that is no longer here.
-								</p>
-							{:else}
-								<Skeleton class="h-9 flex-1" />
-							{/if}
-							<Button
-								variant="ghost"
-								size="icon"
-								class="size-11 shrink-0 text-muted-foreground hover:text-destructive"
-								aria-label={to ? `Unlink ${to.address}` : 'Unlink'}
-								disabled={linking.has(ref)}
-								onclick={() => unlink(target)}
-							>
-								<X class="size-4" />
-							</Button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
+		<!-- The notes this one names, and the ones that name it: rows a reader came
+		     to work across, so they stay. Making a link is the act, and that waits
+		     with the others; what one refuses lands here, where the links are. -->
+		{#if linked.length > 0 || backlinks.length > 0 || refused.link}
+			<div class="space-y-3 border-t border-border pt-6">
+				{#if linked.length > 0}
+					<h2 class="text-sm font-medium text-muted-foreground">Links to</h2>
+					<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
+						{#each linked as { target, note: to } (target)}
+							<li class="flex items-center gap-1">
+								{#if to}
+									{@render row(to, () => onOpen(target), true)}
+								{:else if gone.has(target)}
+									<p class="flex min-h-11 flex-1 items-center px-2 text-muted-foreground">
+										A note that is no longer here.
+									</p>
+								{:else}
+									<Skeleton class="h-9 flex-1" />
+								{/if}
+								<Button
+									variant="ghost"
+									size="icon"
+									class="size-11 shrink-0 text-muted-foreground hover:text-destructive"
+									aria-label={to ? `Unlink ${to.address}` : 'Unlink'}
+									disabled={relinking.has(ref)}
+									onclick={() => unlink(target)}
+								>
+									<X class="size-4" />
+								</Button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 
-			{#if backlinks.length > 0}
-				<h2 class="text-sm font-medium text-muted-foreground">Linked from</h2>
-				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
-					{#each backlinks as from (from.ref)}
-						<li class="flex items-center">{@render row(from, () => onOpen(from.ref), true)}</li>
-					{/each}
-				</ul>
-			{/if}
+				{#if backlinks.length > 0}
+					<h2 class="text-sm font-medium text-muted-foreground">Linked from</h2>
+					<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
+						{#each backlinks as from (from.ref)}
+							<li class="flex items-center">{@render row(from, () => onOpen(from.ref), true)}</li>
+						{/each}
+					</ul>
+				{/if}
 
-			<Button variant="outline" class="h-11" disabled={linking.has(ref)} onclick={onLinkOnGraph}>
-				<Link2 class="size-4" />
-				Link to another note
-			</Button>
-
-			<Input
-				bind:value={cited}
-				class="h-11"
-				placeholder="Or link by title or address"
-				aria-label="Link by title or address"
-				autocapitalize="none"
-				autocomplete="off"
-				spellcheck="false"
-			/>
-
-			{#if citable.length > 0}
-				<ul
-					aria-label="Notes to link to"
-					class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
-					{@attach scrollFade('y')}
-				>
-					{#each citable as note (note.ref)}
-						<li>
-							{@render row(note, () => {
-								cited = '';
-								void link(note.ref);
-							})}
-						</li>
-					{/each}
-				</ul>
-			{:else if cited.trim()}
-				<p class="px-2 text-sm text-muted-foreground">Nothing here matches that.</p>
-			{/if}
-
-			{#if refused.link}<p class="text-sm text-destructive" role="alert">{refused.link}</p>{/if}
-		</div>
-
-		<div class="border-t border-border pt-6">
-			<Button
-				variant="ghost"
-				class="h-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
-				onclick={() => (removing = true)}
-			>
-				<Trash2 class="size-4" />
-				Delete this note
-			</Button>
-
-			{#if refused.remove}
-				<p class="mt-2 text-sm text-destructive" role="alert">{refused.remove}</p>
-			{/if}
-		</div>
+				{#if refused.link}<p class="text-sm text-destructive" role="alert">{refused.link}</p>{/if}
+			</div>
+		{/if}
 
 		{#if !writing && ways.some((way) => way.to)}
 			<!-- `--foot` is the OS bar and a breath above it: the bar is padded by it
@@ -1043,6 +1044,73 @@
 				{/each}
 			</nav>
 		{/if}
+
+		<NoteMenu bind:open={acting} items={acts} />
+
+		<!-- A word half-typed into one of these fields belongs to the note it was
+		     typed into, so the fields are rebuilt with the note rather than kept. -->
+		{#key ref}
+			<ResponsiveModal bind:open={tagging} title="Tags" headed={false}>
+				<div class="px-2 pt-2">
+					<TagField
+						tags={node.tags}
+						{suggestions}
+						onchange={retag}
+						refused={refused.tag ?? null}
+						placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
+					/>
+				</div>
+			</ResponsiveModal>
+
+			<AppearanceModal
+				bind:open={looking}
+				appearance={node.appearance}
+				media={noteMedia}
+				onchange={relook}
+				refused={refused.look ?? null}
+			/>
+
+			<ResponsiveModal bind:open={linking} title="Link to another note">
+				<div class="space-y-3 px-2 pt-2">
+					<Button
+						variant="outline"
+						class="h-11 w-full"
+						disabled={relinking.has(ref)}
+						onclick={() => {
+							linking = false;
+							onLinkOnGraph();
+						}}
+					>
+						<Link2 class="size-4" />
+						Point at it on the graph
+					</Button>
+
+					<Input
+						bind:value={cited}
+						class="h-11"
+						placeholder="Or link by title or address"
+						aria-label="Link by title or address"
+						autocapitalize="none"
+						autocomplete="off"
+						spellcheck="false"
+					/>
+
+					{#if citable.length > 0}
+						<ul
+							aria-label="Notes to link to"
+							class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
+							{@attach scrollFade('y')}
+						>
+							{#each citable as note (note.ref)}
+								<li>{@render row(note, () => linkTo(note.ref))}</li>
+							{/each}
+						</ul>
+					{:else if cited.trim()}
+						<p class="px-2 text-sm text-muted-foreground">Nothing here matches that.</p>
+					{/if}
+				</div>
+			</ResponsiveModal>
+		{/key}
 
 		<TemplatePicker
 			open={shaping !== null}

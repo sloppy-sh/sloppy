@@ -199,13 +199,26 @@ async function open(): Promise<void> {
 	await settle();
 }
 
+/** Whether a note is open on the reading surface at all. */
+const reading = () => document.body.querySelector('[aria-label="Title"]') !== null;
+
+/** Ask, from the note on screen, for what it links to to be picked on the graph.
+ *  Everything that is not writing waits behind one control at its head. */
+async function pointFromNote(): Promise<void> {
+	labelled('What to do with this note').click();
+	await settle();
+	button('Link to another note').click();
+	await settle();
+	button('Point at it on the graph').click();
+	await settle();
+}
+
 /** Open `1a` and ask for the note it links to to be picked on the graph. */
 async function startLinking(): Promise<void> {
 	await open();
 	onCanvas('1a').click();
 	await settle();
-	button('Link to another note').click();
-	await settle();
+	await pointFromNote();
 }
 
 beforeEach(() => {
@@ -256,7 +269,7 @@ describe('linking by pointing at the graph', () => {
 		expect(screen()).toContain('Tap a note to link it to');
 		expect(screen()).toContain('1a');
 		// The note steps aside: on a phone the choice is the whole screen.
-		expect(screen()).not.toContain('Link to another note');
+		expect(reading()).toBe(false);
 	});
 
 	it('marks the note being pointed from, so it is findable on the canvas', async () => {
@@ -296,7 +309,7 @@ describe('linking by pointing at the graph', () => {
 		await settle();
 
 		expect(graph.get(SECOND)?.links).toEqual([]);
-		expect(screen()).toContain('Link to another note');
+		expect(reading()).toBe(true);
 	});
 
 	// Finding the note is half of pointing at it, so the level of detail has to
@@ -319,7 +332,7 @@ describe('linking by pointing at the graph', () => {
 		await settle();
 
 		expect(graph.get(SECOND)?.links).toEqual([]);
-		expect(screen()).toContain('Link to another note');
+		expect(reading()).toBe(true);
 	});
 
 	it('says so where the link would not save, and stays on the graph', async () => {
@@ -724,8 +737,7 @@ describe('choosing several notes to act on', () => {
 		await chooseThree();
 		button('New branch').click();
 		await settle();
-		button('Link to another note').click();
-		await settle();
+		await pointFromNote();
 
 		expect(screen()).toContain('Tap a note to link it to');
 		expect(screen()).not.toContain('notes chosen');
@@ -803,10 +815,10 @@ describe('a branch started from a shape', () => {
 
 		back();
 		await settle();
-		expect(screen()).not.toContain('Delete this note');
+		expect(reading()).toBe(false);
 
 		forward();
-		await until(() => screen().includes('Delete this note'));
+		await until(() => reading());
 		await settle();
 		await settle();
 

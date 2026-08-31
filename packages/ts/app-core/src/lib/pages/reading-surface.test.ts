@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
 import { at, back, forward, pushed, replaced, startAt } from './page.test-support.svelte.js';
@@ -210,10 +211,22 @@ function way(says: string): HTMLButtonElement {
 	return found;
 }
 
-/** What the tag field invites, which says whether it is on screen at all. */
+/** Whether a note is open on the reading surface at all. */
+const reading = () => document.body.querySelector('[aria-label="Title"]') !== null;
+
+/** Everything that is not writing waits behind one control at the head of the
+ *  note, so an act is reached by opening that and picking it. */
+async function act(named: string): Promise<void> {
+	control('What to do with this note').click();
+	await settle();
+	exactly(named).click();
+	await settle();
+}
+
+/** What the tag field invites, on whichever surface it was opened on. */
 function tagInvite(): string {
-	const field = surface().querySelector<HTMLInputElement>('input[role="combobox"]');
-	if (!field) throw new Error('The note has no tag field');
+	const field = document.body.querySelector<HTMLInputElement>('input[role="combobox"]');
+	if (!field) throw new Error('Nothing on screen invites a tag');
 	return field.placeholder;
 }
 
@@ -381,18 +394,37 @@ describe.each([
 	['on a tablet', TABLET],
 	['at desk width', DESK]
 ])('what a note opens with, %s', (_where, width) => {
-	it('carries its address, its title, and every act on it', async () => {
+	it('carries its address, its title, and the acts that write', async () => {
 		await readCells(width);
 
 		const note = surface().textContent ?? '';
 		expect(note).toContain('1a');
 		expect(titled()).toBe('Cells');
-		expect(tagInvite()).toBe('Tag this note');
-		expect(note).toContain('How this note looks');
 		expect(note).toContain('Write a note under this');
 		expect(note).toContain('Write the next note');
-		expect(note).toContain('Link to another note');
-		expect(note).toContain('Delete this note');
+	});
+
+	// A re-ranking, not a removal: what a reader does to a note occasionally is
+	// still all there, one control away, on a phone as at a desk.
+	it('holds everything else behind the one control at its head', async () => {
+		await readCells(width);
+
+		control('What to do with this note').click();
+		await settle();
+
+		const menu = screen();
+		expect(menu).toContain('Tags');
+		expect(menu).toContain('How this note looks');
+		expect(menu).toContain('Link to another note');
+		expect(menu).toContain('Delete this note');
+	});
+
+	it('reaches the tags on this note from there', async () => {
+		await readCells(width);
+
+		await act('Tags');
+
+		expect(tagInvite()).toBe('Tag this note');
 	});
 
 	it('goes back to the graph by the way out it opens on', async () => {
@@ -401,7 +433,7 @@ describe.each([
 		button('Graph').click();
 		await settle();
 
-		expect(screen()).not.toContain('Delete this note');
+		expect(reading()).toBe(false);
 		expect(at.path).toBe('/');
 	});
 });
@@ -433,7 +465,7 @@ describe('a note beside the graph', () => {
 		surface().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await settle();
 
-		expect(screen()).not.toContain('Delete this note');
+		expect(reading()).toBe(false);
 		expect(document.body.querySelector('[aria-label="The graph"]')).not.toBeNull();
 	});
 });
@@ -447,7 +479,7 @@ describe('the note in the address bar', () => {
 		await settle();
 
 		expect(at.note).toBeNull();
-		expect(screen()).not.toContain('Delete this note');
+		expect(reading()).toBe(false);
 		expect(document.body.querySelector('[aria-label="The graph"]')).not.toBeNull();
 	});
 
@@ -603,8 +635,7 @@ describe.each([
 		await readCells(width);
 		await alsoOpen('1b');
 
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 		exactly('Delete').click();
 		await settle();
 		expect(surface().textContent).toContain('could not delete that note');
@@ -661,7 +692,7 @@ describe.each([
 
 		button('Graph').click();
 		await settle();
-		expect(screen()).not.toContain('Delete this note');
+		expect(reading()).toBe(false);
 		expect(at.path).toBe('/');
 	});
 
@@ -772,7 +803,8 @@ describe.each([
 		await readCells(width);
 		await alsoOpen('1b');
 
-		button('Link to another note').click();
+		await act('Link to another note');
+		button('Point at it on the graph').click();
 		await settle();
 		expect(screen()).toContain('Tap a note to link it to');
 
@@ -786,7 +818,8 @@ describe.each([
 		await readCells(width);
 		await alsoOpen('1b');
 
-		button('Link to another note').click();
+		await act('Link to another note');
+		button('Point at it on the graph').click();
 		await settle();
 		onCanvas('1').click();
 		await settle();
@@ -874,6 +907,102 @@ describe('an act still in the air when the reader switches tabs', () => {
 	});
 });
 
+// The panel is docked against the graph, so the room one takes is room the other
+// gives up. Everything that stands beside it reads the width off `<html>` —
+// DESIGN.md § "The four inset vars".
+describe('taking more room to write in', () => {
+	/** The wall between the note and the graph. */
+	function wall(): HTMLElement {
+		const found = document.body.querySelector<HTMLElement>('[role="separator"]');
+		if (!found) throw new Error('The note has no wall to take room by');
+		return found;
+	}
+
+	function pointer(type: string, clientX: number): PointerEvent {
+		const event = new Event(type, { bubbles: true, cancelable: true });
+		Object.assign(event, { pointerId: 1, pointerType: 'mouse', button: 0, clientX, clientY: 300 });
+		return event as PointerEvent;
+	}
+
+	const press = (key: string): KeyboardEvent =>
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+
+	afterEach(() => prefs.set('readingWidth', null));
+
+	it('is not there on a phone, where the note is the whole screen', async () => {
+		await readCells(PHONE);
+
+		expect(document.body.querySelector('[role="separator"]')).toBeNull();
+	});
+
+	// The nav pill, the bar over the chosen notes and the card beside a mark all
+	// place themselves against this, so a drag that only spoke at the end would
+	// leave the three of them behind the wall for as long as it lasted.
+	it('tells the chrome beside it the new width while the drag is still happening', async () => {
+		prefs.set('readingWidth', 500);
+		await readCells(DESK);
+		expect(dockInset()).toBe('500px');
+
+		let told = 0;
+		const heard = () => (told += 1);
+		window.addEventListener('resize', heard);
+		try {
+			wall().dispatchEvent(pointer('pointerdown', 780));
+			wall().dispatchEvent(pointer('pointermove', 740));
+			await settle();
+
+			expect(dockInset()).toBe('540px');
+			expect(told).toBeGreaterThan(0);
+		} finally {
+			window.removeEventListener('resize', heard);
+		}
+	});
+
+	it('keeps the width the drag settled on, for the next note this device opens', async () => {
+		prefs.set('readingWidth', 500);
+		await readCells(DESK);
+
+		wall().dispatchEvent(pointer('pointerdown', 780));
+		wall().dispatchEvent(pointer('pointermove', 740));
+		wall().dispatchEvent(pointer('pointerup', 740));
+		await settle();
+
+		expect(prefs.current.readingWidth).toBe(540);
+	});
+
+	// A wall only a mouse can move is a desktop-only affordance.
+	it('moves by the arrow keys, the way a separator does', async () => {
+		prefs.set('readingWidth', 500);
+		await readCells(DESK);
+
+		wall().dispatchEvent(press('ArrowLeft'));
+		await settle();
+		expect(dockInset()).toBe('524px');
+
+		wall().dispatchEvent(press('ArrowRight'));
+		await settle();
+		expect(dockInset()).toBe('500px');
+	});
+
+	// The graph is what the panel is docked against, and a note that could take
+	// the whole window would leave nothing to be docked against.
+	it('leaves the graph its own room however far the wall is pushed', async () => {
+		prefs.set('readingWidth', 5000);
+		await readCells(DESK);
+
+		const took = Number(dockInset().replace('px', ''));
+		expect(took).toBe(Number(wall().getAttribute('aria-valuemax')));
+		expect(window.innerWidth - took).toBeGreaterThanOrEqual(448);
+	});
+
+	it('will not squeeze the note below the column it is written in', async () => {
+		prefs.set('readingWidth', 10);
+		await readCells(DESK);
+
+		expect(dockInset()).toBe('352px');
+	});
+});
+
 // A note deleted from inside the surface leaves the strip the way one deleted
 // from the canvas does. The notes open beside it are not what was deleted.
 describe('deleting the note being read', () => {
@@ -883,8 +1012,7 @@ describe('deleting the note being read', () => {
 		tab('1a').click();
 		await settle();
 
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 		exactly('Delete').click();
 		await settle();
 
@@ -945,7 +1073,7 @@ describe('going back and forward across the open notes', () => {
 		await settle();
 
 		expect(at.note).toBeNull();
-		expect(screen()).not.toContain('Delete this note');
+		expect(reading()).toBe(false);
 		expect(lifted()).toEqual({});
 	});
 

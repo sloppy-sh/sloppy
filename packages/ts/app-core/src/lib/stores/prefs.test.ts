@@ -78,7 +78,8 @@ describe('the saved look', () => {
 				accent: 42,
 				style: 'sketch',
 				tags: 'seed',
-				ground: 'graph paper'
+				ground: 'graph paper',
+				readingWidth: 'wide'
 			})
 		);
 		prefs.init();
@@ -87,7 +88,8 @@ describe('the saved look', () => {
 			accent: 'indigo',
 			style: 'default',
 			tags: [],
-			ground: 'dots'
+			ground: 'dots',
+			readingWidth: null
 		});
 	});
 

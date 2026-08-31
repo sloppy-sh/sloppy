@@ -966,6 +966,8 @@
 	{tabs}
 	active={open}
 	says={tooMany}
+	width={prefs.current.readingWidth}
+	onWidthChange={(px) => prefs.set('readingWidth', px)}
 	onActivate={activate}
 	onCloseTab={closeTab}
 >

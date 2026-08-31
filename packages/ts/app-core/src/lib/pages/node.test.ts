@@ -296,6 +296,15 @@ function exactly(text: string): HTMLButtonElement {
 	return found;
 }
 
+/** Everything that is not writing waits behind one control at the head of the
+ *  note, so an act is reached by opening that and picking it. */
+async function act(named: string): Promise<void> {
+	labelled('What to do with this note').click();
+	await settle();
+	exactly(named).click();
+	await settle();
+}
+
 /** A row in one of the note's lists, by the title it shows. */
 function noteRow(shows: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find(
@@ -315,6 +324,9 @@ const offered = () =>
 		.join(' ');
 
 async function findToLink(typed: string): Promise<void> {
+	if (!document.body.querySelector('[aria-label="Link by title or address"]')) {
+		await act('Link to another note');
+	}
 	const field = document.body.querySelector<HTMLInputElement>(
 		'[aria-label="Link by title or address"]'
 	);
@@ -332,8 +344,7 @@ describe('deleting a note', () => {
 
 	it('says how much goes with it, counting the whole subtree', async () => {
 		await openNote(FIRST);
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 
 		expect(screen()).toContain('Delete this note?');
 		expect(screen()).toContain('It goes for good, and so do the 2 notes that grew out of it.');
@@ -341,16 +352,14 @@ describe('deleting a note', () => {
 
 	it('counts one note as one note', async () => {
 		await openNote(SECOND);
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 
 		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
 	});
 
 	it('promises nothing extra where nothing grew out of it', async () => {
 		await openNote(THIRD);
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 
 		expect(screen()).toContain('It goes for good.');
 		expect(screen()).not.toContain('grew out of it');
@@ -360,8 +369,7 @@ describe('deleting a note', () => {
 		nodes.clear();
 		await nodes.load();
 		await openNote(FIRST);
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 
 		expect(screen()).toContain('It goes for good, and so does everything written under it.');
 	});
@@ -369,8 +377,7 @@ describe('deleting a note', () => {
 	it('leaves the reader on the note this one grew out of', async () => {
 		const graph = installGraph();
 		await openNote(THIRD);
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 		exactly('Delete').click();
 		await settle();
 		await settle();
@@ -383,8 +390,7 @@ describe('deleting a note', () => {
 	it('closes the note where there is nothing above it', async () => {
 		const closed = vi.fn();
 		await openNote(FIRST, { onclose: closed });
-		button('Delete this note').click();
-		await settle();
+		await act('Delete this note');
 		exactly('Delete').click();
 		await settle();
 		await settle();
@@ -488,7 +494,8 @@ describe('linking a note to another', () => {
 		let asked = 0;
 		await openNote(SECOND, { onlink: () => (asked += 1) });
 
-		button('Link to another note').click();
+		await act('Link to another note');
+		button('Point at it on the graph').click();
 		await settle();
 
 		expect(asked).toBe(1);
@@ -950,6 +957,10 @@ describe('tagging a note', () => {
 
 	const tagField = () => document.body.querySelector('input[role="combobox"]') as HTMLInputElement;
 
+	async function openTags(): Promise<void> {
+		await act('Tags');
+	}
+
 	function typeTag(text: string): void {
 		const field = tagField();
 		field.value = text;
@@ -973,6 +984,7 @@ describe('tagging a note', () => {
 
 	it('writes the word on the note it was typed on, not the one opened next', async () => {
 		await openNote(SECOND);
+		await openTags();
 		typeTag('biology');
 		tapRow('Membranes');
 		await settle();
@@ -984,6 +996,7 @@ describe('tagging a note', () => {
 
 	it('leaves a refused word behind with the note it was refused on', async () => {
 		await openNote(SECOND);
+		await openTags();
 		typeTag('bio\u200blogy');
 		commit();
 		expect(screen()).toContain('A tag cannot hold hidden characters.');
@@ -992,18 +1005,21 @@ describe('tagging a note', () => {
 		await settle();
 		await settle();
 
+		await openTags();
 		expect(tagField().value).toBe('');
 		expect(screen()).not.toContain('A tag is one word');
 	});
 
 	it('shows the next note its own tags, and writes back only those', async () => {
 		await openNote(SECOND);
+		await openTags();
 		typeTag('biology');
 		commit();
 		await settle();
 
 		noteRow('Membranes').click();
 		await settle();
+		await openTags();
 		typeTag('method');
 		commit();
 		await settle();
@@ -1023,8 +1039,7 @@ describe('how a note looks', () => {
 
 	async function openLook(at: OwnedRef): Promise<void> {
 		await openNote(at);
-		button('How this note looks').click();
-		await settle();
+		await act('How this note looks');
 	}
 
 	it('writes the whole look on the note it was chosen on', async () => {

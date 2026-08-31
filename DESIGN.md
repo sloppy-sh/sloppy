@@ -498,6 +498,15 @@ so.
   belongs to whatever the canvas is in the middle of. Beside means beside, so it publishes the
   width it takes as `--reading-dock-inset-right` and the page it stands next to gives that
   width up rather than going on drawing its chrome underneath.
+- **The wall between a docked note and the graph is the reader's to move.** A person who
+  came to write takes as much room as they want for it, by dragging that inner edge or by
+  moving a separator they can focus with the arrow keys. It is bounded at both ends — never
+  narrower than the column a note is worked in, never so wide that what it is docked against
+  stops being a graph — and it publishes every width it passes through rather than only the
+  one it comes to rest at, because the nav pill, the bar over a chosen set and the card
+  beside a mark all place themselves against that number. Below the dock width the note is
+  the whole screen and there is no wall, because there is nothing left to take room from.
+  How much room was taken is this device's, kept beside the theme (§ Persistence).
 - **The note's way out and its address keep their place** at the head of the surface however
   far the note runs. The way back out of a long note must never be a scroll away, and the
   address is the thing a person cites.
@@ -531,6 +540,19 @@ so.
 - **Inside the surface, the room is the surface's, not the window's.** A note is worked in a
   column 22–34rem wide on a desk where every viewport breakpoint has long since turned on, so
   what lays itself out in two columns or one asks a container query, never `sm:`.
+- **Inside a note, the words lead.** A person opens a note to read it and write in it, so
+  the writing comes straight under the title and nothing stands between them. What a reader
+  takes in at a glance stays out where they can see it — the address, the title, who wrote
+  it, the tags it carries, the notes under it and the notes it names — and what they
+  occasionally DO to a note waits behind one quiet control at the head: filing it, giving it
+  a look, pointing it at another note, taking it down. This is a ranking and never a
+  removal, so every act is still one tap away and the phone gets exactly the acts the desk
+  does.
+- **The one act that cannot be taken back sits apart.** Deleting a note is the last thing in
+  that control, below a rule and in the destructive colour — never a full-width button in
+  the flow of a note somebody is writing in, where a hand lands on its way to something
+  else. The question it then asks is the same question the canvas asks about a whole chosen
+  set, in one wording that is derived rather than written twice.
 - **A block reads as a section, not a paragraph.** Each is a bounded region of the page —
   a ruled band with its own handle — quiet enough that a note of three sections still
   reads as one page. Everything inside is ordinary prose; the boundary is the only
@@ -759,7 +781,8 @@ possible (inline head script) to avoid a flash of the wrong theme. No account re
 choices carry over if someone signs in.
 
 The same store holds the view choices that are nobody's business but this device's — the
-tags the graph opens lit by, and the ground it is drawn on (§ "The ground"). Neither is an
-attribute on `<html>`, so neither is a thing the boot script has to know: the canvas reads
-them once it is up, and a first paint with the right theme is all that flash-of-the-wrong
-anything is about.
+tags the graph opens lit by, the ground it is drawn on (§ "The ground"), and how much room
+a docked note was last given. None of them is an attribute on `<html>`, so none is a thing
+the boot script has to know: the canvas reads them once it is up, and a first paint with
+the right theme is all that flash-of-the-wrong anything is about. None of them reaches a
+note either — a peer pulling a subtree receives nothing of how it was read.

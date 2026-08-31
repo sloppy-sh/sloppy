@@ -26,6 +26,11 @@ export interface Prefs {
 	tags: Tag[];
 	/** The paper the graph is drawn on — DESIGN.md § "The ground". */
 	ground: GraphGround;
+	/** How much room the reader has taken for a note docked beside the graph, in
+	 *  px. Null is the width it opens at, and a number from a wider window is
+	 *  still safe to hand over: the surface bounds it against the window it is
+	 *  actually in. */
+	readingWidth: number | null;
 }
 
 const KEY = 'sloppy_prefs';
@@ -72,7 +77,8 @@ function defaults(): Prefs {
 		accent: 'indigo',
 		style: 'default',
 		tags: [],
-		ground: 'dots'
+		ground: 'dots',
+		readingWidth: null
 	};
 }
 
@@ -92,6 +98,10 @@ function stored(): Partial<Prefs> {
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
 	return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+function widthIn(value: unknown): number | null {
+	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 /** Each entry through `TagSchema`, keeping the order and dropping the rest. */
@@ -126,7 +136,8 @@ class PrefsStore {
 			accent: oneOf(saved.accent, ACCENTS, base.accent),
 			style: oneOf(saved.style, STYLES, base.style),
 			tags: tagsIn(saved.tags),
-			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground)
+			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground),
+			readingWidth: widthIn(saved.readingWidth)
 		};
 		this.apply();
 	}
