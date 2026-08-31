@@ -169,7 +169,7 @@
 	$effect(() => {
 		const of = ref;
 		untrack(() => {
-			for (const act of ['remove', 'tag', 'look'] as const) {
+			for (const act of ['remove', 'tag', 'look', 'link'] as const) {
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
 		});
