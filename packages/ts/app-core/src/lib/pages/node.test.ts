@@ -3,7 +3,8 @@ import type {
 	CreateBlockRequest,
 	DocumentNode,
 	NodeView,
-	OwnedRef
+	OwnedRef,
+	Tag
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -316,6 +317,10 @@ function noteRow(shows: string): HTMLButtonElement {
 
 const screen = () => document.body.textContent ?? '';
 
+/** The title and what stands with it, where an act asked from the one control
+ *  at the head is answered. */
+const noteHead = () => document.body.querySelector('header')?.textContent ?? '';
+
 /** Only what the typed field turned up: the note's own lists must not answer
  *  for it. */
 const offered = () =>
@@ -522,6 +527,22 @@ describe('linking a note to another', () => {
 		await settle();
 
 		expect(graph.get(SECOND)?.links).toEqual([]);
+		expect(screen()).not.toContain('Links to');
+	});
+
+	// The sheet that asked is gone by the time the server answers, so a note with
+	// no links must not grow a section of them to carry the refusal.
+	it('says at the head of the note what it would not link', async () => {
+		api.on(`PATCH ${path(SECOND)}`, () => {
+			throw new Error('nope');
+		});
+		await openNote(SECOND);
+		await findToLink('meth');
+		noteRow('Method').click();
+		await settle();
+		await settle();
+
+		expect(noteHead()).toContain('could not add that link');
 		expect(screen()).not.toContain('Links to');
 	});
 
@@ -982,6 +1003,17 @@ describe('tagging a note', () => {
 		row.click();
 	}
 
+	// Left to itself the sheet takes the first thing it can focus, which on a note
+	// that already carries a tag is that chip's Remove: one keystroke from
+	// dropping a tag on a surface opened to add one.
+	it('opens with the caret in the field, not on a tag it would drop', async () => {
+		await nodes.update(SECOND, { tags: ['biology'] as Tag[] });
+		await openNote(SECOND);
+		await openTags();
+
+		expect(focused()).toBe(tagField());
+	});
+
 	it('writes the word on the note it was typed on, not the one opened next', async () => {
 		await openNote(SECOND);
 		await openTags();
@@ -1008,6 +1040,26 @@ describe('tagging a note', () => {
 		await openTags();
 		expect(tagField().value).toBe('');
 		expect(screen()).not.toContain('A tag is one word');
+	});
+
+	// The field says it while its sheet stands; once the sheet is gone the note
+	// has to, or a word that never saved goes unanswered.
+	it('keeps a refused tag in front of the reader after the sheet is gone', async () => {
+		api.on(`PATCH ${path(SECOND)}`, () => {
+			throw new Error('nope');
+		});
+		await openNote(SECOND);
+		await openTags();
+		typeTag('biology');
+		commit();
+		await settle();
+		await settle();
+		expect(screen()).toContain('could not save that tag');
+
+		exactly('Close').click();
+		await settle();
+
+		expect(noteHead()).toContain('could not save that tag');
 	});
 
 	it('shows the next note its own tags, and writes back only those', async () => {

@@ -312,8 +312,15 @@
 			open ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-full opacity-0'
 		)}
 	>
-		<!-- A separator a reader can focus and move IS a widget; the rule reads the
-		     role as decoration either way. -->
+		<div
+			class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-[max(1rem,env(safe-area-inset-right))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] pl-4"
+		>
+			{@render body()}
+		</div>
+
+		<!-- Last in the panel, so the way out of the note is what a keyboard reader
+		     reaches first. A separator a reader can focus and move IS a widget; the
+		     rule reads the role as decoration either way. -->
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div
@@ -330,22 +337,17 @@
 			onpointercancel={endDrag}
 			onlostpointercapture={endDrag}
 			onkeydown={onWallKey}
-			class="group absolute inset-y-0 -left-2 z-10 flex w-4 cursor-col-resize touch-none justify-center focus-visible:outline-none"
+			class="group absolute inset-y-0 -left-3 z-10 flex w-6 cursor-col-resize touch-none items-center justify-center focus-visible:outline-none"
 		>
+			<!-- A grip at rest, because the tablet this docks on has no hover. -->
 			<span
 				class={cn(
-					'h-full transition-[background-color,width] duration-150 ease-out motion-reduce:transition-none',
+					'transition-[background-color,height,width] duration-150 ease-out motion-reduce:transition-none',
 					dragging
-						? 'w-0.5 bg-ring'
-						: 'w-px bg-transparent group-hover:w-0.5 group-hover:bg-border group-focus-visible:w-0.5 group-focus-visible:bg-ring'
+						? 'h-full w-0.5 bg-ring'
+						: 'h-10 w-1 rounded-full bg-border group-hover:bg-muted-foreground/60 group-focus-visible:bg-ring'
 				)}
 			></span>
-		</div>
-
-		<div
-			class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-[max(1rem,env(safe-area-inset-right))] pb-[calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom))+1rem)] pl-4"
-		>
-			{@render body()}
 		</div>
 	</aside>
 {:else}

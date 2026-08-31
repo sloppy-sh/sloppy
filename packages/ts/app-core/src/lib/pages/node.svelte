@@ -182,6 +182,7 @@
 
 	let titleField = $state<HTMLTextAreaElement | null>(null);
 	let noteBody = $state<HTMLElement | null>(null);
+	let tagsSheet = $state<HTMLElement | null>(null);
 
 	/** Which act the shapes are being offered for: a note under this one, the one
 	 *  after it, or this note itself. */
@@ -370,6 +371,18 @@
 		if (naming !== ref || !field) return;
 		let frame = requestAnimationFrame(() => {
 			frame = requestAnimationFrame(() => field.focus());
+		});
+		return () => cancelAnimationFrame(frame);
+	});
+
+	// Left to itself the sheet takes the first thing it can focus, which in a
+	// field of tags is a chip's Remove: one keystroke from dropping a tag on a
+	// surface opened to add one.
+	$effect(() => {
+		const sheet = tagsSheet;
+		if (!tagging || !sheet) return;
+		let frame = requestAnimationFrame(() => {
+			frame = requestAnimationFrame(() => sheet.querySelector<HTMLInputElement>('input')?.focus());
 		});
 		return () => cancelAnimationFrame(frame);
 	});
@@ -711,8 +724,8 @@
 		await relink([...before, target], 'Sloppy could not add that link. Try again in a moment.');
 	}
 
-	/** Closed before the act is asked, so what the server refuses lands in the
-	 *  note, beside the links it is about. */
+	/** Closed before the act is asked, so what the server refuses is said at the
+	 *  head of the note rather than on a sheet the reader has already dismissed. */
 	async function linkTo(target: OwnedRef): Promise<void> {
 		linking = false;
 		cited = '';
@@ -852,8 +865,6 @@
 
 			<NoteAuthor did={node.created_by} />
 
-			<!-- What a note is filed under is read at a glance; writing one is an act,
-			     and it waits with the others. -->
 			{#if node.tags.length > 0}
 				<button
 					type="button"
@@ -869,6 +880,15 @@
 
 			{#if refused.title}
 				<p class="text-sm text-destructive" role="alert">{refused.title}</p>
+			{/if}
+
+			<!-- The field says this itself for as long as its sheet stands. -->
+			{#if refused.tag && !tagging}
+				<p class="text-sm text-destructive" role="alert">{refused.tag}</p>
+			{/if}
+
+			{#if refused.link}
+				<p class="text-sm text-destructive" role="alert">{refused.link}</p>
 			{/if}
 
 			{#if refused.remove}
@@ -972,10 +992,7 @@
 			{#if refused.add}<p class="text-sm text-destructive" role="alert">{refused.add}</p>{/if}
 		</div>
 
-		<!-- The notes this one names, and the ones that name it: rows a reader came
-		     to work across, so they stay. Making a link is the act, and that waits
-		     with the others; what one refuses lands here, where the links are. -->
-		{#if linked.length > 0 || backlinks.length > 0 || refused.link}
+		{#if linked.length > 0 || backlinks.length > 0}
 			<div class="space-y-3 border-t border-border pt-6">
 				{#if linked.length > 0}
 					<h2 class="text-sm font-medium text-muted-foreground">Links to</h2>
@@ -1014,8 +1031,6 @@
 						{/each}
 					</ul>
 				{/if}
-
-				{#if refused.link}<p class="text-sm text-destructive" role="alert">{refused.link}</p>{/if}
 			</div>
 		{/if}
 
@@ -1051,7 +1066,7 @@
 		     typed into, so the fields are rebuilt with the note rather than kept. -->
 		{#key ref}
 			<ResponsiveModal bind:open={tagging} title="Tags" headed={false}>
-				<div class="px-2 pt-2">
+				<div bind:this={tagsSheet} class="px-2 pt-2">
 					<TagField
 						tags={node.tags}
 						{suggestions}

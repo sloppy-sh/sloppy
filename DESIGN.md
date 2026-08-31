@@ -500,9 +500,11 @@ so.
   width up rather than going on drawing its chrome underneath.
 - **The wall between a docked note and the graph is the reader's to move.** A person who
   came to write takes as much room as they want for it, by dragging that inner edge or by
-  moving a separator they can focus with the arrow keys. It is bounded at both ends — never
-  narrower than the column a note is worked in, never so wide that what it is docked against
-  stops being a graph — and it publishes every width it passes through rather than only the
+  moving a separator they can focus with the arrow keys. It shows a grip at rest rather than
+  one that appears under a pointer, and the target around that grip is one a finger can hit:
+  the tablet it docks on has no hover. It is bounded at both ends — never narrower than the
+  column a note is worked in, never so wide that what it is docked against stops being a
+  graph — and it publishes every width it passes through rather than only the
   one it comes to rest at, because the nav pill, the bar over a chosen set and the card
   beside a mark all place themselves against that number. Below the dock width the note is
   the whole screen and there is no wall, because there is nothing left to take room from.
@@ -538,8 +540,9 @@ so.
   strip stops being somewhere a note can be found, so opening another says how many may be
   open and what to do about it.
 - **Inside the surface, the room is the surface's, not the window's.** A note is worked in a
-  column 22–34rem wide on a desk where every viewport breakpoint has long since turned on, so
-  what lays itself out in two columns or one asks a container query, never `sm:`.
+  column between 22rem and 42rem wide — the reader moves that wall themselves — on a desk
+  where every viewport breakpoint has long since turned on, so what lays itself out in two
+  columns or one asks a container query, never `sm:`.
 - **Inside a note, the words lead.** A person opens a note to read it and write in it, so
   the writing comes straight under the title and nothing stands between them. What a reader
   takes in at a glance stays out where they can see it — the address, the title, who wrote

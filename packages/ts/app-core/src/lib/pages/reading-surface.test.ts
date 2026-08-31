@@ -970,6 +970,16 @@ describe('taking more room to write in', () => {
 		expect(prefs.current.readingWidth).toBe(540);
 	});
 
+	// The way back out of a long note is never a step away — DESIGN.md § Layout —
+	// and a reader who has just opened a note is not looking for a resize handle.
+	it('is not what a keyboard reader meets before the way out', async () => {
+		await readCells(DESK);
+
+		const reachable = [...surface().querySelectorAll<HTMLElement>('button, [tabindex="0"]')];
+		expect(reachable[0]?.textContent?.trim()).toBe('Graph');
+		expect(reachable).toContain(wall());
+	});
+
 	// A wall only a mouse can move is a desktop-only affordance.
 	it('moves by the arrow keys, the way a separator does', async () => {
 		prefs.set('readingWidth', 500);
