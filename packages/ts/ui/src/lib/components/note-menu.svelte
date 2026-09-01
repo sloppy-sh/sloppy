@@ -1,38 +1,49 @@
 <script lang="ts" module>
-	import type { Component } from 'svelte';
+	// One shape for one concept: a row in a menu of acts on a note, wherever it
+	// is raised from.
+	import type { CanvasMenuItem } from './graph/canvas-menu.svelte';
 
-	export interface NoteMenuItem {
-		label: string;
-		icon: Component;
-		onSelect: () => void;
-		/** The one act that cannot be taken back. It is set apart at the foot,
-		 *  away from where a hand lands on its way to anything else. */
-		destructive?: boolean;
-	}
+	export type NoteMenuItem = CanvasMenuItem;
 </script>
 
 <script lang="ts">
 	// What can be done to the note being read, held behind one control so the
 	// writing leads — DESIGN.md § Layout.
+	import { MediaQuery } from 'svelte/reactivity';
 	import { cn } from '$lib/utils.js';
+	import CanvasMenu from './graph/canvas-menu.svelte';
 	import ResponsiveModal from './responsive-modal.svelte';
 
 	let {
 		open = $bindable(false),
 		title = 'This note',
+		anchor = null,
 		items
 	}: {
 		open?: boolean;
 		/** Read out; the rows are the whole surface. */
 		title?: string;
-		items: readonly NoteMenuItem[];
+		/** What raised it. A hand on a mouse should not cross the window to reach
+		 *  the answer, so where there is one the menu opens against this. */
+		anchor?: HTMLElement | null;
+		items: readonly CanvasMenuItem[];
 	} = $props();
+
+	// Pointer, not width: a tablet held in two hands wants the sheet at any size,
+	// and a narrow window with a mouse still wants the menu under the control.
+	const mouse = new MediaQuery('(pointer: fine)');
+	const placed = $derived(mouse.current && anchor !== null);
+	const at = $derived.by(() => {
+		if (!placed || !open || !anchor) return null;
+		const box = anchor.getBoundingClientRect();
+		return { clientX: box.right, clientY: box.bottom };
+	});
 
 	const acts = $derived(items.filter((item) => !item.destructive));
 	const grave = $derived(items.filter((item) => item.destructive));
 </script>
 
-{#snippet row(item: NoteMenuItem)}
+{#snippet row(item: CanvasMenuItem)}
 	<button
 		type="button"
 		onclick={() => {
@@ -49,16 +60,20 @@
 	</button>
 {/snippet}
 
-<ResponsiveModal bind:open {title} headed={false} class="sm:max-w-xs">
-	<div class="px-1 pt-2">
-		{#each acts as item (item.label)}
-			{@render row(item)}
-		{/each}
-		{#if grave.length > 0 && acts.length > 0}
-			<div class="my-2 border-t border-border"></div>
-		{/if}
-		{#each grave as item (item.label)}
-			{@render row(item)}
-		{/each}
-	</div>
-</ResponsiveModal>
+{#if placed}
+	<CanvasMenu {at} items={[...acts, ...grave]} label={title} onclose={() => (open = false)} />
+{:else}
+	<ResponsiveModal bind:open {title} headed={false} class="sm:max-w-xs">
+		<div class="px-1 pt-2">
+			{#each acts as item (item.label)}
+				{@render row(item)}
+			{/each}
+			{#if grave.length > 0 && acts.length > 0}
+				<div class="my-2 border-t border-border"></div>
+			{/if}
+			{#each grave as item (item.label)}
+				{@render row(item)}
+			{/each}
+		</div>
+	</ResponsiveModal>
+{/if}

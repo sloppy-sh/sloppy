@@ -31,13 +31,20 @@
 
 	const ROW = 44;
 	const PADDING = 8;
+	/** The rule that sets the grave act apart, and the room it takes. */
+	const RULE = 9;
 	/** Between the point and the menu, and between the menu and the edge. */
 	const GAP = 6;
 	const EDGE = 8;
 	const WIDTH = 240;
 
 	const open = $derived(at !== null && items.length > 0);
-	const height = $derived(items.length * ROW + PADDING);
+	/** Where a grave act follows an ordinary one, a rule sets it apart — the order
+	 *  is the caller's, and only the gap is ours. */
+	const rules = $derived(
+		items.map((item, at) => item.destructive === true && at > 0 && !items[at - 1].destructive)
+	);
+	const height = $derived(items.length * ROW + PADDING + rules.filter(Boolean).length * RULE);
 
 	const place = $derived.by(() => {
 		if (!at || !open) return null;
@@ -85,7 +92,8 @@
 		class="fixed z-50 rounded-xl border bg-popover p-1 text-popover-foreground shadow-md"
 		style="left: {place.left}px; width: {WIDTH}px; top: min({place.top}px, calc(100dvh - {height}px - ({CLEAR_BOTTOM}) - {EDGE}px));"
 	>
-		{#each items as item (item.label)}
+		{#each items as item, at (item.label)}
+			{#if rules[at]}<div class="my-1 border-t border-border"></div>{/if}
 			<button
 				type="button"
 				role="menuitem"

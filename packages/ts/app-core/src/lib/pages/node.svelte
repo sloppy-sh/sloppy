@@ -353,6 +353,7 @@
 
 	/** Everything a reader occasionally DOES to a note, as against what they read
 	 *  off it. Delete comes last and apart — DESIGN.md § Layout. */
+	let actsFrom = $state<HTMLElement | null>(null);
 	const acts = $derived<NoteMenuItem[]>([
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Give it a look', icon: CircleDashed, onSelect: () => (looking = true) },
@@ -847,6 +848,7 @@
 					{node.address}
 				</span>
 				<Button
+					bind:ref={actsFrom}
 					variant="ghost"
 					size="icon"
 					class="-mr-2 size-11 shrink-0 text-muted-foreground"
@@ -1086,7 +1088,7 @@
 			</nav>
 		{/if}
 
-		<NoteMenu bind:open={acting} items={acts} />
+		<NoteMenu bind:open={acting} anchor={actsFrom} items={acts} />
 
 		<!-- A word half-typed into one of these fields belongs to the note it was
 		     typed into, so the fields are rebuilt with the note rather than kept. -->
