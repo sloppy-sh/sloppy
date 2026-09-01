@@ -57,6 +57,16 @@
 	});
 
 	let menu = $state<HTMLElement | null>(null);
+	// A transform or `contain` on an ancestor — the reading panel has both — makes
+	// it the containing block for fixed children, so viewport coordinates alone
+	// put the menu outside the window. `frame` stands at the origin they resolve
+	// against, and is measured rather than worked out.
+	let frame = $state<HTMLElement | null>(null);
+	const origin = $derived.by(() => {
+		if (!place) return { top: 0, left: 0 };
+		const box = frame?.getBoundingClientRect();
+		return { top: box?.top ?? 0, left: box?.left ?? 0 };
+	});
 
 	$effect(() => {
 		if (place) menu?.querySelector('button')?.focus();
@@ -74,10 +84,14 @@
 	}}
 />
 
+<div bind:this={frame} class="pointer-events-none fixed top-0 left-0 h-0 w-0"></div>
+
 {#if place}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 z-40"
+		data-menu-scrim
+		class="fixed z-40 h-[100dvh] w-[100vw]"
+		style="top: {-origin.top}px; left: {-origin.left}px;"
 		onpointerdown={onclose}
 		oncontextmenu={(event) => {
 			event.preventDefault();
@@ -90,7 +104,8 @@
 		role="menu"
 		aria-label={label}
 		class="fixed z-50 rounded-xl border bg-popover p-1 text-popover-foreground shadow-md"
-		style="left: {place.left}px; width: {WIDTH}px; top: min({place.top}px, calc(100dvh - {height}px - ({CLEAR_BOTTOM}) - {EDGE}px));"
+		style="left: {place.left - origin.left}px; width: {WIDTH}px; top: min({place.top -
+			origin.top}px, calc(100dvh - {height}px - ({CLEAR_BOTTOM}) - {EDGE}px - {origin.top}px));"
 	>
 		{#each items as item, at (item.label)}
 			{#if rules[at]}<div class="my-1 border-t border-border"></div>{/if}

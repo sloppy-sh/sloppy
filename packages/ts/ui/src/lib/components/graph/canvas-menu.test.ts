@@ -61,7 +61,7 @@ describe('the canvas menu', () => {
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 		expect(closed).toBe(1);
 
-		const away = document.body.querySelector<HTMLElement>('.fixed.inset-0');
+		const away = document.body.querySelector<HTMLElement>('[data-menu-scrim]');
 		away?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 		expect(closed).toBe(2);
 	});
