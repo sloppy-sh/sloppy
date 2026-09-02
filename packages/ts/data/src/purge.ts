@@ -25,6 +25,7 @@ export const STATEMENTS: readonly string[] = [
   // A held copy of somebody else's region is the reader's row, so it goes with
   // the reader — the author erasing their own identity elsewhere never reaches
   // it, which is the same fact the product states about unpublishing.
+  `DELETE pull_member WHERE ${OWNED};`,
   `DELETE pulled_block WHERE ${OWNED};`,
   `DELETE pulled_node WHERE ${OWNED};`,
   `DELETE pull WHERE ${OWNED};`,
@@ -45,6 +46,7 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "publication",
   "published_picture",
   "node",
+  "pull_member",
   "pulled_block",
   "pulled_node",
   "pull",

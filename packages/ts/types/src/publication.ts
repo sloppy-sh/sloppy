@@ -57,17 +57,28 @@ export const PublishedPictureSchema = OwnedEntitySchema.extend({
 export type PublishedPicture = z.infer<typeof PublishedPictureSchema>;
 
 /**
- * How much of somebody else's graph one answer may carry.
+ * How much of somebody else's graph ONE ANSWER may carry, and how many answers
+ * a reader takes before it stops asking.
  *
  * A pull is an OUTBOUND fetch, so nothing about the reader's own request bounds
  * it: what arrives is whatever the author's instance chose to send, and the
- * reader's instance parses all of it and writes a row per node and per block.
- * An answer past these is refused whole — half a subtree held as a complete one
- * would be a region the reader cannot tell is missing notes.
+ * reader's instance parses all of it and writes a row per node and per block. A
+ * page past one of these is refused whole; a subtree longer than a page carries
+ * a cursor instead, so what bounds a region is the product of the two rather
+ * than a size a graph can outgrow.
  */
-export const MAX_PUBLISHED_ROOTS = 500;
-export const MAX_PUBLISHED_NODES = 2_000;
-export const MAX_PUBLISHED_BLOCKS = 10_000;
+export const MAX_PUBLISHED_ROOTS_PER_PAGE = 500;
+export const MAX_PUBLISHED_NODES_PER_PAGE = 2_000;
+export const MAX_PUBLISHED_BLOCKS_PER_PAGE = 10_000;
+export const MAX_PUBLISHED_PAGES = 128;
+
+/**
+ * Where the answer resumes. Minted by the instance that served the page and
+ * handed back to it untouched — what it means is that instance's own, so
+ * nothing here reads one.
+ */
+export const PageCursorSchema = z.string().min(1).max(512);
+export type PageCursor = z.infer<typeof PageCursorSchema>;
 
 /**
  * One subtree an identity publishes, as an instance lists it: enough to choose
@@ -82,21 +93,27 @@ export const PublishedRootSchema = z.object({
 export type PublishedRoot = z.infer<typeof PublishedRootSchema>;
 
 /**
- * What one identity publishes on one instance — the answer to "I follow this
- * person, what can I read?", which a DID alone cannot give: nothing in syr's
- * identity manifest names where somebody's graph is served, so the instance is
- * asked and never derived. docs/ARCHITECTURE.md § "Federating the graph".
+ * One page of what an identity publishes on one instance — the answer to "I
+ * follow this person, what can I read?", which a DID alone cannot give: nothing
+ * in syr's identity manifest names where somebody's graph is served, so the
+ * instance is asked and never derived. docs/ARCHITECTURE.md § "Federating the
+ * graph".
+ *
+ * A page stands on its own: one entry is one region, and nothing in it refers
+ * to an entry on another page.
  */
 export const PublishedIndexSchema = z.object({
   did: DidSyrSchema,
-  roots: z.array(PublishedRootSchema).max(MAX_PUBLISHED_ROOTS),
+  roots: z.array(PublishedRootSchema).max(MAX_PUBLISHED_ROOTS_PER_PAGE),
+  /** Absent on the last page. */
+  next_cursor: PageCursorSchema.optional(),
 });
 export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
 
 /**
  * One node as a peer receives it. Rows travel by `<did>/<ulid>` reference
- * rather than by record id, and carry no `depth`: a reader computes it, along
- * with the sector and subtree membership, from the address.
+ * rather than by record id, and carry no `depth`: a reader computes it, the
+ * sector, and which addresses lie under which, from the address.
  *
  * **Every reference on it names a note the caller may read**, because this
  * whole shape reaches an anonymous one. A `<did>/<ulid>` is not readable by
@@ -148,19 +165,30 @@ export const PublishedBlockSchema = z.object({
 });
 export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
 
-/** What a peer's public endpoint answers with. */
-export const PublishedSubtreeSchema = z.object({
+/** One answer from a peer's public endpoint. */
+export const PublishedSubtreePageSchema = z.object({
   did: DidSyrSchema,
   root_address: AddressSchema,
-  nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES),
-  blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS),
+  nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES_PER_PAGE),
+  blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS_PER_PAGE),
+  /** Absent on the last page. */
+  next_cursor: PageCursorSchema.optional(),
 });
-export type PublishedSubtree = z.infer<typeof PublishedSubtreeSchema>;
+export type PublishedSubtreePage = z.infer<typeof PublishedSubtreePageSchema>;
+
+/** Every page of one subtree, assembled: what a caller holds once the last page
+ *  is in. The wire carries pages, so nothing parses this. */
+export interface PublishedSubtree {
+  did: DidSyr;
+  root_address: Address;
+  nodes: PublishedNode[];
+  blocks: PublishedBlock[];
+}
 
 /** An answer from a peer that is not the answer that was asked for. */
 export class UnaskedAnswerError extends Error {
-  constructor(reason: string) {
-    super(`A peer answered with ${reason}`);
+  constructor(reason: string, cause?: unknown) {
+    super(`A peer answered with ${reason}`, { cause });
     this.name = "UnaskedAnswerError";
   }
 }
@@ -170,58 +198,132 @@ export function parsePublishedIndex(
   body: unknown,
   did: DidSyr,
 ): PublishedIndex {
-  const index = PublishedIndexSchema.parse(body);
-  if (index.did !== did) throw new UnaskedAnswerError(`about ${index.did}`);
-  return index;
+  const read = PublishedIndexSchema.safeParse(body);
+  if (!read.success) {
+    throw new UnaskedAnswerError("something that is not a listing", read.error);
+  }
+  if (read.data.did !== did) {
+    throw new UnaskedAnswerError(`about ${read.data.did}`);
+  }
+  return read.data;
 }
 
 /**
- * A peer's subtree, held to what was asked for. A failure here is an answer to
- * refuse WHOLE and never rows to store in part: what gets past is written into
- * the reader's own store under the author's name.
+ * Reads one peer's subtree, holding every page to what was asked for and to the
+ * pages already taken: a note's parent may have arrived on an earlier one, and
+ * a note may not claim an address another already has, on this page or any
+ * before it — the same rule `node_owner_address UNIQUE` holds our own rows to,
+ * on rows a peer handed us.
  */
-export function parsePublishedSubtree(
-  body: unknown,
-  asked: { did: DidSyr; root_address: Address },
-): PublishedSubtree {
-  const subtree = PublishedSubtreeSchema.parse(body);
-  if (subtree.did !== asked.did) {
-    throw new UnaskedAnswerError(`${asked.did}'s subtree as ${subtree.did}`);
-  }
-  if (subtree.root_address !== asked.root_address) {
-    throw new UnaskedAnswerError(`the subtree at ${subtree.root_address}`);
-  }
+export interface PublishedSubtreeReader {
+  /**
+   * One answer. A page is taken WHOLE or refused whole — what gets past is
+   * written into the reader's own store under the author's name — and a refused
+   * page leaves the reader holding exactly what it held before. `next_cursor`
+   * on what comes back is the page to ask for next.
+   */
+  take(body: unknown): PublishedSubtreePage;
+  /** Every note this region has served, which is what a refresh sweeps against
+   *  once the last page is in. docs/ARCHITECTURE.md § "Federating the graph". */
+  served(): Set<OwnedRef>;
+}
 
-  const sent = new Set<OwnedRef>();
-  for (const node of subtree.nodes) {
-    requireAuthor(node.ref, asked.did);
-    if (!isInSubtree(asked.root_address, node.address)) {
-      throw new UnaskedAnswerError(`a note at ${node.address}`);
-    }
-    if (sent.has(node.ref)) throw new UnaskedAnswerError(`${node.ref} twice`);
-    sent.add(node.ref);
-  }
+export function publishedSubtreeReader(asked: {
+  did: DidSyr;
+  root_address: Address;
+}): PublishedSubtreeReader {
+  const heldNodes = new Set<OwnedRef>();
+  const heldAddresses = new Set<Address>();
+  const heldBlocks = new Set<OwnedRef>();
+  let regionRoot: OwnedRef | undefined;
+  let pages = 0;
 
-  const root = subtree.nodes.find((n) => n.address === asked.root_address);
-  if (!root) throw new UnaskedAnswerError("a subtree without its own root");
-  if (root.parent !== undefined || root.origin !== root.ref) {
-    throw new UnaskedAnswerError("a root pointing outside the subtree");
-  }
-
-  for (const node of subtree.nodes) {
-    for (const ref of [node.parent, node.origin]) {
-      if (ref !== undefined && !sent.has(ref)) {
-        throw new UnaskedAnswerError(`a note referring to ${ref}`);
+  return {
+    take(body: unknown): PublishedSubtreePage {
+      if (pages === MAX_PUBLISHED_PAGES) {
+        throw new UnaskedAnswerError(`more than ${MAX_PUBLISHED_PAGES} pages`);
       }
-    }
-  }
-  for (const block of subtree.blocks) {
-    requireAuthor(block.ref, asked.did);
-    if (!sent.has(block.node)) {
-      throw new UnaskedAnswerError(`a section of ${block.node}`);
-    }
-  }
-  return subtree;
+      const read = PublishedSubtreePageSchema.safeParse(body);
+      if (!read.success) {
+        throw new UnaskedAnswerError(
+          "something that is not a subtree",
+          read.error,
+        );
+      }
+      const page = read.data;
+      if (page.did !== asked.did) {
+        throw new UnaskedAnswerError(`${asked.did}'s subtree as ${page.did}`);
+      }
+      if (page.root_address !== asked.root_address) {
+        throw new UnaskedAnswerError(`the subtree at ${page.root_address}`);
+      }
+      const root =
+        regionRoot ??
+        page.nodes.find((n) => n.address === asked.root_address)?.ref;
+      if (root === undefined) {
+        throw new UnaskedAnswerError("a subtree without its own root");
+      }
+
+      const pageNodes = new Set<OwnedRef>();
+      const pageAddresses = new Set<Address>();
+      for (const node of page.nodes) {
+        requireAuthor(node.ref, asked.did);
+        if (!isInSubtree(asked.root_address, node.address)) {
+          throw new UnaskedAnswerError(`a note at ${node.address}`);
+        }
+        if (heldNodes.has(node.ref) || pageNodes.has(node.ref)) {
+          throw new UnaskedAnswerError(`${node.ref} twice`);
+        }
+        if (
+          heldAddresses.has(node.address) ||
+          pageAddresses.has(node.address)
+        ) {
+          throw new UnaskedAnswerError(`a second note at ${node.address}`);
+        }
+        pageNodes.add(node.ref);
+        pageAddresses.add(node.address);
+      }
+      for (const node of page.nodes) {
+        if (node.origin !== root) {
+          throw new UnaskedAnswerError(`a note rooted at ${node.origin}`);
+        }
+        if (node.address === asked.root_address) {
+          if (node.parent !== undefined) {
+            throw new UnaskedAnswerError("a root pointing outside the subtree");
+          }
+        } else if (node.parent === undefined) {
+          throw new UnaskedAnswerError(
+            `a note at ${node.address} with nothing above it`,
+          );
+        } else if (!heldNodes.has(node.parent) && !pageNodes.has(node.parent)) {
+          throw new UnaskedAnswerError(`a note referring to ${node.parent}`);
+        }
+      }
+
+      const pageBlocks = new Set<OwnedRef>();
+      for (const block of page.blocks) {
+        requireAuthor(block.ref, asked.did);
+        if (heldBlocks.has(block.ref) || pageBlocks.has(block.ref)) {
+          throw new UnaskedAnswerError(`${block.ref} twice`);
+        }
+        if (!heldNodes.has(block.node) && !pageNodes.has(block.node)) {
+          throw new UnaskedAnswerError(`a section of ${block.node}`);
+        }
+        pageBlocks.add(block.ref);
+      }
+
+      regionRoot = root;
+      pages += 1;
+      for (const ref of pageNodes) heldNodes.add(ref);
+      for (const address of pageAddresses) heldAddresses.add(address);
+      for (const ref of pageBlocks) heldBlocks.add(ref);
+      return page;
+    },
+
+    served(): Set<OwnedRef> {
+      return new Set(heldNodes);
+    },
+  };
 }
 
 function requireAuthor(ref: OwnedRef, did: DidSyr): void {

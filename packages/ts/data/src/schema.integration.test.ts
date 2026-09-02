@@ -93,6 +93,7 @@ function heldNodeRow(localId: string, address: string, depth: number) {
     created_by: AVA,
     source: OwnedRefSchema.parse(`${BOB}/${localId}`),
     source_did: BOB,
+    address,
     depth,
     node: {
       address,
@@ -457,6 +458,88 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     expect(shared).toHaveLength(1);
   });
 
+  it("refuses a second held note at an address it already holds of one author", async () => {
+    // `node_owner_address UNIQUE` on rows a peer handed us: a citation of that
+    // author's `4a` has to resolve one way in the reader's copy too.
+    const first = heldNodeRow("01JPEERADDRA00000000000000", "4a", 2);
+    await db.create(first.id).content(first);
+
+    const clash = heldNodeRow("01JPEERADDRB00000000000000", "4a", 2);
+    await expect(db.create(clash.id).content(clash)).rejects.toThrow();
+
+    // Two authors at one address is the ordinary federated case: the reader
+    // holds both, and each resolves under its own author.
+    const elsewhere = {
+      ...heldNodeRow("01JPEERADDRC00000000000000", "4a", 2),
+      source: OwnedRefSchema.parse(`${CAI}/01JPEERADDRC00000000000000`),
+      source_did: CAI,
+    };
+    await expect(
+      db.create(elsewhere.id).content(elsewhere),
+    ).resolves.toBeDefined();
+
+    await expect(
+      db.update(first.id).merge({ address: "4b" }),
+    ).rejects.toThrow();
+  });
+
+  it("records which region served a note, and reads it both ways", async () => {
+    // What a refresh and a drop each need: the notes one region served, and
+    // whether any surviving region still serves a note.
+    const shared = OwnedRefSchema.parse(`${BOB}/01JPEERSHARE00000000000000`);
+    const inner = `${AVA}/01JPEERREGN400000000000000`;
+    const outer = `${AVA}/01JPEERREGN500000000000000`;
+    for (const [localId, pull, source] of [
+      ["01JPEERMEMBA00000000000000", inner, shared],
+      ["01JPEERMEMBB00000000000000", outer, shared],
+      [
+        "01JPEERMEMBC00000000000000",
+        outer,
+        `${BOB}/01JPEERMARKA00000000000000`,
+      ],
+    ] as const) {
+      const row = {
+        id: avaId("pull_member", localId),
+        created_by: AVA,
+        pull,
+        source: OwnedRefSchema.parse(source),
+        created_at: "2026-02-01T00:00:00.000Z",
+        updated_at: "2026-02-01T00:00:00.000Z",
+      };
+      await db.create(row.id).content(row);
+    }
+
+    const again = {
+      id: avaId("pull_member", "01JPEERMEMBD00000000000000"),
+      created_by: AVA,
+      pull: inner,
+      source: shared,
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    };
+    await expect(db.create(again.id).content(again)).rejects.toThrow();
+
+    const SERVED = `SELECT source FROM pull_member
+       WHERE created_by = $did AND pull = $pull ORDER BY source`;
+    const bound = { did: AVA, pull: outer };
+    const [plan] = await db.query(`${SERVED} EXPLAIN;`, bound);
+    expect(JSON.stringify(plan)).toContain(
+      '"index":"pull_member_owner_pull_source"',
+    );
+    const [served] = await db.query<[{ source: string }[]]>(
+      `${SERVED};`,
+      bound,
+    );
+    expect(served).toHaveLength(2);
+
+    const [holders] = await db.query<[{ pull: string }[]]>(
+      `SELECT pull FROM pull_member
+         WHERE created_by = $did AND source = $source ORDER BY pull;`,
+      { did: AVA, source: shared },
+    );
+    expect(holders.map((row) => row.pull)).toEqual([inner, outer]);
+  });
+
   it("takes a refresh of a held node and refuses to let it become another", async () => {
     const row = heldNodeRow("01JPEERMARKF00000000000000", "1b", 2);
     await db.create(row.id).content(row);
@@ -524,6 +607,7 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     // which is what makes erasing the reader take it.
     for (const table of [
       "pull",
+      "pull_member",
       "pulled_node",
       "pulled_block",
       "published_picture",

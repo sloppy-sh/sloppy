@@ -171,13 +171,24 @@ an opaque blob.
 
 **Two routes on this instance answer without a session**, and they are the ones a peer's
 instance calls. `GET /api/public/subtrees/{did}/{root address}` answers a
-`PublishedSubtree` where a `publication` row roots at that address and nothing where none
-does; `GET /api/public/publications/{did}` lists what that identity publishes here — each
-root's address, its title, and when it was last published, and nothing that is not already
-public in it. `POST /api/publications` writes the row and `DELETE /api/publications/{ref}`
-removes it; both need the author's session, and the row existing is the whole mechanism.
-A published node travels **without its `depth` and without its look** — a reader recomputes
-depth, sector and subtree membership from the address, and draws a pulled mark unstyled.
+`PublishedSubtreePage` where a `publication` row roots at that address and nothing where
+none does; `GET /api/public/publications/{did}` lists what that identity publishes here —
+each root's address, its title, and when it was last published, and nothing that is not
+already public in it. `POST /api/publications` writes the row and
+`DELETE /api/publications/{ref}` removes it; both need the author's session, and the row
+existing is the whole mechanism. A published node travels **without its `depth` and without
+its look** — a reader recomputes depth, sector and which addresses lie under which from the
+address, and draws a pulled mark unstyled.
+
+**Both public routes answer a page at a time**, and `?cursor=` asks for the next one. The
+cursor is minted by the instance that served the page and handed back to it untouched, so
+what it means is that instance's own business and no reader reads one; absent on the answer
+means there is no more. A subtree's pages are ordered so that every reference resolves in
+the page carrying it or in one already sent: the region's root arrives first, and a note's
+parent never arrives after the note. That is what makes the size bounds a defence rather
+than a ceiling a graph can hit: a branch of any size is read page by page, and what a
+per-page bound refuses is one answer too large to hold, never a subtree too large to
+publish.
 
 **A DID names a person, never a place.** An identity manifest describes that identity's
 own store — profile, uploads, comments, reactions, who they follow — and says nothing
@@ -208,16 +219,24 @@ what it may name is bounded in three places and none of them is a server's own i
   picture does, and a second policy written beside it would be a second answer to one
   question.
 - **The answer is held to the question.** `parsePublishedIndex` and
-  `parsePublishedSubtree` in `@sloppy/types` are that boundary: an instance that answers
+  `publishedSubtreeReader` in `@sloppy/types` are that boundary: an instance that answers
   about a different DID, hands back a subtree at a different address, carries a note
-  attributed to somebody else, carries one outside the subtree that was asked for, or
-  refers to a note it did not send is answering a question nobody asked, and the answer is
-  refused whole rather than stored in part. `MAX_PUBLISHED_NODES` and
-  `MAX_PUBLISHED_BLOCKS` bound the size for the same reason: a pull is an outbound fetch,
-  so the reader's own request limits protect nothing, and what arrives is whatever the
-  author's instance chose to send. What a refused answer SAID is not passed on either: the
-  words in front of a person come from Sloppy, and a peer's server is not one of the
-  servers AI.md § "User-Facing Copy" means by "where the server explains itself".
+  attributed to somebody else, carries one outside the subtree that was asked for, puts a
+  second note at an address another note in the region already has, or refers to a note it
+  did not send is answering a question nobody asked. A page that does any of it is refused
+  WHOLE, and a refused page leaves the reader holding exactly what it held before — the
+  reader is writing rows under the author's name, so half a page is not a thing to store.
+  The address rule is `node_owner_address UNIQUE` applied to rows a peer handed us: our own
+  rows cannot put two notes at one address, and a copy of somebody else's may not either,
+  or a citation of that author's `1a1` resolves two ways in the reader's graph.
+  `MAX_PUBLISHED_NODES_PER_PAGE`, `MAX_PUBLISHED_BLOCKS_PER_PAGE` and
+  `MAX_PUBLISHED_ROOTS_PER_PAGE` bound one answer, and `MAX_PUBLISHED_PAGES` is how many a
+  reader asks for before it stops: a pull is an outbound fetch, so the reader's own request
+  limits protect nothing, and what arrives is whatever the author's instance chose to send —
+  including, from a hostile one, an answer that never ends. What a refused answer SAID is
+  not passed on either: the words in front of a person come from Sloppy, and a peer's
+  server is not one of the servers AI.md § "User-Facing Copy" means by "where the server
+  explains itself".
 
 **A published node carries only references a peer may follow.** The shape reaches an
 anonymous caller, and a `<did>/<ulid>` is not readable on its own but still says a note
@@ -255,15 +274,27 @@ pull writes rows:
   instance it came from, and `updated_at` is when the copy was last refreshed. Pulling the
   same subtree again refreshes that row rather than growing a second beside it.
 - `pulled_node` and `pulled_block` are the copy, and **a node is held once however many
-  regions cover it.** Which regions those are is `isInSubtree` over the roots of that
-  reader's `pull` rows for that author — derived from the address, like everything else
-  derived from one (AI.md § "The Address Is the Protocol"), so nothing stores membership
-  and nothing can disagree with it. Pulling `1` when `1a` is already held therefore
-  refreshes the rows the two share instead of colliding with them, which is the ordinary
-  act of reading a branch and then wanting the trail it came from. `DELETE /api/pulls/{ref}`
-  lets a region go and takes the notes no surviving region still covers, with their
-  blocks — a note two regions hold survives the first of them.
-- `created_by` on all three is the **reader**, because they are the one whose purge has to
+  regions serve it.** Pulling `1` when `1a` is already held refreshes the rows the two
+  share instead of colliding with them, which is the ordinary act of reading a branch and
+  then wanting the trail it came from.
+- `pull_member` is **which region served which note, recorded rather than derived.** An
+  address says which regions COVER a note; only the answer says which one handed it over,
+  and the difference is what a refresh and a drop are made of. This is not the rule about
+  deriving from an address (AI.md § "The Address Is the Protocol") bent: what a peer's
+  instance chose to send is not a fact any address states.
+- **A refresh removes what its region served and the new answer no longer carries.** The
+  sweep runs when the last page is in and never on a run that failed partway, because an
+  incomplete answer is not evidence that a note is gone. Without it, a note its author
+  deleted stays readable in the reader's copy forever. It also **replaces a held note that
+  the new answer puts a different note at the address of** — `pulled_node` is UNIQUE on
+  author and address, and an author who deletes every child of a branch and writes a new
+  first one hands out an address a reader is still holding. The answer just received is
+  what that author's graph says now, and the reader's copy is a copy of it. **A drop —
+  `DELETE /api/pulls/{ref}` — removes that region's rows and takes the notes no surviving
+  region serves, with their blocks.** A note two regions serve survives the first of them,
+  and one merely covered by a wider region's address does not: the wider region's answer
+  never carried it, so nothing there serves it.
+- `created_by` on all four is the **reader**, because they are the one whose purge has to
   reach it — a row owned by the author would be swept when the author erased their identity
   here and left behind when the reader erased theirs, which is backwards in both
   directions. Who wrote the node is `source_did`, beside `source` rather than read out of
@@ -497,10 +528,9 @@ published_picture:{ created_by: <did>, id: <ulid> }
   source_upload id        the picture the note reads, private
   public_upload id        the copy a peer reads, immutable once minted
 
-The three rows below hold a region pulled from somebody else. `created_by` on every one
+The four rows below hold a region pulled from somebody else. `created_by` on every one
 of them is the READER holding the copy, never the author who wrote it — § "Federating the
-graph" says why that is the only ownership the purge can work with, and why no row here
-names the region it belongs to.
+graph" says why that is the only ownership the purge can work with.
 
 pull:{ created_by: <did>, id: <ulid> }
   created_by    did       the reader
@@ -509,10 +539,16 @@ pull:{ created_by: <did>, id: <ulid> }
   source_url    url       the instance that served it, and the one a refresh asks
   updated_at    iso       when the copy was last refreshed
 
+pull_member:{ created_by: <did>, id: <ulid> }
+  created_by    did       the reader
+  pull          ref       the region that served the note, immutable
+  source        ref       the note, as its author addresses it, immutable
+
 pulled_node:{ created_by: <did>, id: <ulid> }
   created_by    did       the reader
   source        ref       the node as its AUTHOR addresses it, immutable
   source_did    did       who wrote it, immutable
+  address       string    where its author addressed it, immutable
   depth         int       the reader's own mint from the address, immutable
   node          object    the published node, carried untouched
 
@@ -561,7 +597,9 @@ The rules AI.md's foundation-wave section states, applied here:
 - **`created_by` is a top-level column and not just the `created_by` inside the key**,
   because SurrealDB will not use a composite index whose second column is a nested path.
   Every index over scalars leads with it, which is what lets one index serve the
-  user-scoped read and the purge both.
+  user-scoped read and the purge both. A held row copies `source_did` and `address` out
+  beside the published node it carries for the same reason, and `parsePulledNode` is where
+  each is held to the node it was copied from.
 - **`node_tags` is the exception to that, and it is read pinned.** An index over an array
   column holds one entry per element, so `tags = $tag` is a membership seek — but only
   while that index is the one answering it, and plain array equality otherwise. Measured
@@ -593,7 +631,7 @@ The rules AI.md's foundation-wave section states, applied here:
   schemas and converts with `entityView()`, so the wire cannot drift from the row. The
   substitution is what makes a row expressible as JSON at all: the key is a SurrealDB
   `RecordId`, and no JSON encoding round-trips back into the class that validates one.
-  `PublishedSubtree` is the separate, deliberately narrower shape a foreign reader gets.
+  `PublishedSubtreePage` is the separate, deliberately narrower shape a foreign reader gets.
 - **Nothing derivable from the address is stored, except `depth`** — AI.md § "The Address
   Is the Protocol" states the rule, and this is the one ratified exception to it. The
   angular sector and subtree membership stay functions in `address.ts`.
@@ -641,10 +679,11 @@ something the application cannot be trusted to. What qualifies is all of it stat
 / `updated_at` as `TYPE string`, which is what makes a write in the wrong encoding fail at
 the write; `node.depth` and `pulled_node.depth`, immutable like the addresses they mirror
 and `TYPE int ASSERT $value > 0`, because a depth is read as a range and a range is where a
-string or a zero would go wrong quietly; a held row's `source` and `source_did`, immutable
-for the reason `created_by` is — a row that changed either would quietly become a copy of a
-different node, or of the same node by somebody else; and a published picture's two halves,
-because a copy pointing at a different original takes the wrong bytes public, and one whose
+string or a zero would go wrong quietly; a held row's `source`, `source_did` and `address`
+and a `pull_member`'s two halves, immutable for the reason `created_by` is — a row that
+changed one would quietly become a copy of a different node, of the same node by somebody
+else, or the record of a region that never served it; and a published picture's two
+halves, because a copy pointing at a different original takes the wrong bytes public, and one whose
 public half changed strands the address a peer already holds. `created_at` is immutable
 too, being a field of the signed payload. Everything else is a plain column, which is what
 keeps a later track from having to edit the shared literal to add a field.

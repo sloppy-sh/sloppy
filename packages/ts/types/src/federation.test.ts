@@ -18,6 +18,7 @@ import {
   type PulledNode,
   parsePulledNode,
   PulledBlockSchema,
+  PullMemberSchema,
 } from "./federation.js";
 import { NodeDepthMismatchError } from "./node.js";
 import { nodeRefFromSyrPost, syrPostRefFor } from "./syr.js";
@@ -44,6 +45,7 @@ function heldNode(address: Address, depth = addressDepth(address)): PulledNode {
     updated_at: "2026-01-02T00:00:00.000Z",
     source: `${AUTHOR}/${HELD}`,
     source_did: AUTHOR,
+    address,
     depth,
     node: {
       address,
@@ -95,17 +97,35 @@ describe("a held node", () => {
     ).toThrow(/was written by/);
   });
 
-  it("is held by every region that covers it, and by no stored membership", () => {
+  it("is refused when it is filed at an address it is not at", () => {
+    // The other column an index seeks on, and the one a UNIQUE stands over: a
+    // row that got past here would answer a citation with somebody else's note.
+    expect(() => parsePulledNode({ ...heldNode("1a"), address: "1b" })).toThrow(
+      /filed at/,
+    );
+  });
+
+  it("is held once, and the regions that served it are rows of their own", () => {
     // Two regions of one author's graph, the second an ancestor of the first.
-    // The row is the same row; which regions hold it is read off the address.
+    // Both COVER the note; which of them handed it over is what the rows say,
+    // because an answer that did not carry it is not something an address knows.
     const held = heldNode("1a1");
     for (const root of ["1", "1a", "1a1"] as const) {
-      expect(isInSubtree(root, held.node.address)).toBe(true);
+      expect(isInSubtree(root, held.address)).toBe(true);
     }
     for (const root of ["1b", "2"] as const) {
-      expect(isInSubtree(root, held.node.address)).toBe(false);
+      expect(isInSubtree(root, held.address)).toBe(false);
     }
-    expect(Object.keys(held)).not.toContain("pull");
+
+    const served = PullMemberSchema.parse({
+      id: new RecordId("pull_member", { created_by: READER, id: ROOT }),
+      created_by: READER,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      pull: `${READER}/${ROOT}`,
+      source: held.source,
+    });
+    expect(served.source).toBe(held.source);
   });
 });
 

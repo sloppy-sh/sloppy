@@ -134,10 +134,9 @@ export const CreatePullRequestSchema = z.object({
 export type CreatePullRequest = z.input<typeof CreatePullRequestSchema>;
 
 /**
- * One node of a held copy, as its author's instance answered.
- *
- * Held ONCE per reader however many regions cover it, and no column says which:
- * membership is `isInSubtree` over the reader's `pull` roots for this author.
+ * One node of a held copy, as its author's instance answered. Held ONCE per
+ * reader however many regions serve it; `PullMemberSchema` below is which
+ * regions those are.
  *
  * `node` is carried untouched, because a signature is over what the author
  * sent: a reader that reshaped it could no longer check one. Its `ref` is not
@@ -150,6 +149,10 @@ export const PulledNodeSchema = OwnedEntitySchema.extend({
   /** Its author, beside `source` rather than read out of it, because an index
    *  cannot seek on half a column. `parsePulledNode` holds the two together. */
   source_did: DidSyrSchema,
+  /** `node.address`, beside the node rather than inside it for the same reason,
+   *  and unique per author: an address a peer handed us resolves one way, the
+   *  way our own do. */
+  address: AddressSchema,
   /**
    * `addressDepth(node.address)`, minted here because a published node carries
    * none. It is the same ratified exception `node.depth` is, bought by the same
@@ -162,11 +165,17 @@ export type PulledNode = z.infer<typeof PulledNodeSchema>;
 
 /**
  * Every pulled node row crosses this, in both directions, for the reason
- * `parseNode` exists: both columns are immutable, so a row that gets past here
- * disagreeing with the node it copies is wrong for as long as it exists.
+ * `parseNode` exists: every column beside `node` is immutable, so a row that
+ * gets past here disagreeing with the node it copies is wrong for as long as it
+ * exists.
  */
 export function parsePulledNode(row: unknown): PulledNode {
   const pulled = PulledNodeSchema.parse(row);
+  if (pulled.address !== pulled.node.address) {
+    throw new Error(
+      `Held node ${pulled.source} is filed at ${pulled.address} and addressed ${pulled.node.address}`,
+    );
+  }
   const actual = addressDepth(pulled.node.address);
   if (pulled.depth !== actual) {
     throw new NodeDepthMismatchError(pulled.node.address, pulled.depth, actual);
@@ -179,6 +188,21 @@ export function parsePulledNode(row: unknown): PulledNode {
   }
   return pulled;
 }
+
+/**
+ * One note a region actually served, and the region that served it. Recorded
+ * rather than derived: an address says which regions COVER a note, and only the
+ * answer says which one handed it over — so a refresh knows what to drop when a
+ * note leaves the author's subtree, and dropping a region keeps what another
+ * region still serves. docs/ARCHITECTURE.md § "Federating the graph".
+ */
+export const PullMemberSchema = OwnedEntitySchema.extend({
+  /** The region, as `PullView` refs it. */
+  pull: OwnedRefSchema,
+  /** The note, as its AUTHOR addresses it. */
+  source: OwnedRefSchema,
+});
+export type PullMember = z.infer<typeof PullMemberSchema>;
 
 /**
  * One block of a held copy, held once like the node it belongs to. Flat rather

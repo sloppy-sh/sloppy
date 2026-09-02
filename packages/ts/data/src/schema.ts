@@ -20,6 +20,7 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS published_picture SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pull SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS pull_member SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pulled_node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pulled_block SCHEMALESS;
 
@@ -33,17 +34,23 @@ export const SCHEMA = `
   -- On a held copy the owner is the READER, never the author: they are the one
   -- the purge has to reach. docs/ARCHITECTURE.md § "Federating the graph".
   DEFINE FIELD IF NOT EXISTS created_by ON pull TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON pull_member TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
 
-  -- Which foreign row a held row is a copy of, and who wrote it. Immutable for
-  -- the reason created_by is: a row that changed either would quietly become a
-  -- copy of something else. Which REGIONS hold it is not here at all — that is
-  -- derived from the address, § "Federating the graph".
+  -- Which foreign row a held row is a copy of, who wrote it, and where they
+  -- addressed it. Immutable for the reason created_by is: a row that changed
+  -- any of them would quietly become a copy of something else.
   DEFINE FIELD IF NOT EXISTS source ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source_did ON pulled_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS address ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS depth ON pulled_node TYPE int ASSERT $value > 0 READONLY;
+
+  -- Which region served which note. Both immutable: this row IS the pairing,
+  -- so a changed half is a different pairing and a new row.
+  DEFINE FIELD IF NOT EXISTS pull ON pull_member TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source ON pull_member TYPE string READONLY;
 
   -- The two halves of a published picture, immutable: a copy that pointed at a
   -- different original would take the wrong bytes public, and one whose public
@@ -56,6 +63,7 @@ export const SCHEMA = `
   DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON published_picture TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pull TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON pull_member TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_block TYPE string READONLY;
 
@@ -64,6 +72,7 @@ export const SCHEMA = `
   DEFINE FIELD IF NOT EXISTS updated_at ON publication TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON published_picture TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pull TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON pull_member TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_block TYPE string;
 
@@ -116,12 +125,23 @@ export const SCHEMA = `
 
   -- What the reader holds of ONE author, sliced the way node_owner_origin_depth
   -- slices their own graph: the leading pair reads it, a trailing
-  -- AND depth <= $max bounds it. The author stands where origin does: a held
-  -- node is not indexed by region, because no column says which regions cover
-  -- one.
+  -- AND depth <= $max bounds it. The author stands where origin does, because a
+  -- region is not a column here — pull_member below is which regions served a
+  -- note.
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_depth ON pulled_node FIELDS created_by, source_did, depth;
-  -- One copy per foreign node however many regions cover it.
+  -- One copy per foreign node however many regions serve it.
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_source ON pulled_node FIELDS created_by, source UNIQUE;
+  -- The address protocol on rows a peer handed us: one address per author, so a
+  -- second copy claiming a taken one fails at write rather than becoming a
+  -- citation that resolves two ways. It is also how a held note is reached by
+  -- the address a reader cites.
+  DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_address ON pulled_node FIELDS created_by, source_did, address UNIQUE;
+
+  -- Which notes a region served, and which regions still serve a note: the
+  -- first is how a refresh finds what to drop, the second is what stops a drop
+  -- taking a note another region shares.
+  DEFINE INDEX IF NOT EXISTS pull_member_owner_pull_source ON pull_member FIELDS created_by, pull, source UNIQUE;
+  DEFINE INDEX IF NOT EXISTS pull_member_owner_source ON pull_member FIELDS created_by, source;
 
   -- A held node's stack, already in order. Leading with created_by rather than
   -- node, unlike block: a held block's node names its AUTHOR, so the reader is

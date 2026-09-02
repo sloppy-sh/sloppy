@@ -43,7 +43,9 @@ import {
   ProfileViewSchema,
   type PublicationView,
   PublicationViewSchema,
+  type PublishedBlock,
   type PublishedIndex,
+  type PublishedNode,
   type PublishedSubtree,
   type PullView,
   PullViewSchema,
@@ -62,7 +64,7 @@ import {
   parseNodeBulkResult,
   parseNodeView,
   parsePublishedIndex,
-  parsePublishedSubtree,
+  publishedSubtreeReader,
 } from "@sloppy/types";
 import { SloppyApiError } from "./errors.js";
 import { apiUrl, isSameOrigin } from "./host.js";
@@ -374,28 +376,43 @@ export class SloppyClient {
 
   /**
    * A published subtree held by THIS instance, read without a session — the
-   * endpoint a peer's instance calls. `null` where nothing is published at that
+   * endpoint a peer's instance calls. It answers a page at a time and this
+   * follows the pages to the end; `null` where nothing is published at that
    * address, which is also what an unpublish leaves behind.
    */
   async readPublishedSubtree(
     did: string,
     rootAddress: string,
   ): Promise<PublishedSubtree | null> {
+    const reader = publishedSubtreeReader({ did, root_address: rootAddress });
     const path = `/public/subtrees/${encodeURIComponent(did)}/${encodeURIComponent(
       rootAddress,
     )}`;
-    const body = await this.json(path, { method: "GET" });
-    return body == null
-      ? null
-      : parsePublishedSubtree(body, { did, root_address: rootAddress });
+    const nodes: PublishedNode[] = [];
+    const blocks: PublishedBlock[] = [];
+    let cursor: string | undefined;
+    do {
+      const at =
+        cursor === undefined
+          ? path
+          : `${path}?cursor=${encodeURIComponent(cursor)}`;
+      const body = await this.json(at, { method: "GET" });
+      if (body == null && cursor === undefined) return null;
+      const page = reader.take(body);
+      nodes.push(...page.nodes);
+      blocks.push(...page.blocks);
+      cursor = page.next_cursor;
+    } while (cursor !== undefined);
+    return { did, root_address: rootAddress, nodes, blocks };
   }
 
   /**
-   * What somebody publishes, which is what following them leads to: a DID names
-   * a person and never a place, so `sourceUrl` says which instance to ask.
-   * Omitted, this one answers about itself — the whole of it for somebody who
-   * keeps their graph here. The asking is done by the API, so the instance
-   * asked learns this instance and never the reader.
+   * One page of what somebody publishes, which is what following them leads to:
+   * a DID names a person and never a place, so `sourceUrl` says which instance
+   * to ask. Omitted, this one answers about itself — the whole of it for
+   * somebody who keeps their graph here. The asking is done by the API, so the
+   * instance asked learns this instance and never the reader. `next_cursor` on
+   * the answer is what a surface asks for to show more.
    *
    * `sourceUrl` is an origin and is refused here as well as at the API, so a
    * surface that took one from a person hears about it before the send;
@@ -403,17 +420,20 @@ export class SloppyClient {
    */
   async publishedBy(
     did: string,
-    sourceUrl?: string,
-  ): Promise<PublishedIndex["roots"]> {
-    const where =
-      sourceUrl === undefined
-        ? ""
-        : `&source_url=${encodeURIComponent(PeerOriginSchema.parse(sourceUrl))}`;
-    const body = await this.json(
-      `/peers/publications?did=${encodeURIComponent(did)}${where}`,
-      { method: "GET" },
-    );
-    return parsePublishedIndex(body, did).roots;
+    options: { sourceUrl?: string; cursor?: string } = {},
+  ): Promise<PublishedIndex> {
+    const query = [`did=${encodeURIComponent(did)}`];
+    if (options.sourceUrl !== undefined) {
+      const origin = PeerOriginSchema.parse(options.sourceUrl);
+      query.push(`source_url=${encodeURIComponent(origin)}`);
+    }
+    if (options.cursor !== undefined) {
+      query.push(`cursor=${encodeURIComponent(options.cursor)}`);
+    }
+    const body = await this.json(`/peers/publications?${query.join("&")}`, {
+      method: "GET",
+    });
+    return parsePublishedIndex(body, did);
   }
 
   /**

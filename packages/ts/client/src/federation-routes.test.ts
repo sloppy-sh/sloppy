@@ -48,9 +48,9 @@ describe("what an identity publishes", () => {
   it("is asked of this instance when nowhere else is named", async () => {
     const { asked, client } = serving(index);
 
-    const roots = await client.publishedBy(AUTHOR);
+    const page = await client.publishedBy(AUTHOR);
 
-    expect(roots.map((root) => root.root_address)).toEqual(["1"]);
+    expect(page.roots.map((root) => root.root_address)).toEqual(["1"]);
     expect(asked[0].url).toBe(
       `/api/peers/publications?did=${encodeURIComponent(AUTHOR)}`,
     );
@@ -59,15 +59,25 @@ describe("what an identity publishes", () => {
   it("names the instance to ask, because a DID does not answer where", async () => {
     const { asked, client } = serving(index);
 
-    await client.publishedBy(AUTHOR, PEER);
+    await client.publishedBy(AUTHOR, { sourceUrl: PEER });
 
     expect(asked[0].url).toContain(`source_url=${encodeURIComponent(PEER)}`);
+  });
+
+  it("asks for more where the listing goes on", async () => {
+    const { asked, client } = serving({ ...index, next_cursor: "past-1" });
+
+    const page = await client.publishedBy(AUTHOR);
+    await client.publishedBy(AUTHOR, { cursor: page.next_cursor });
+
+    expect(page.next_cursor).toBe("past-1");
+    expect(asked[1].url).toContain("cursor=past-1");
   });
 
   it("is asked by the API and never by the browser", async () => {
     const { asked, client } = serving(index);
 
-    await client.publishedBy(AUTHOR, PEER);
+    await client.publishedBy(AUTHOR, { sourceUrl: PEER });
 
     // Whatever instance is named, the request leaves for our own API: a fetch
     // straight at the peer would tell them who is reading.
@@ -144,7 +154,9 @@ describe("what a caller may aim this instance at", () => {
       "https://reader:secret@peer.example",
       "file:///etc/passwd",
     ]) {
-      await expect(client.publishedBy(AUTHOR, aimed)).rejects.toThrow();
+      await expect(
+        client.publishedBy(AUTHOR, { sourceUrl: aimed }),
+      ).rejects.toThrow();
       await expect(client.pullSubtree(AUTHOR, "1a", aimed)).rejects.toThrow();
     }
     expect(asked).toHaveLength(0);
@@ -152,6 +164,23 @@ describe("what a caller may aim this instance at", () => {
 });
 
 describe("what a peer answered with", () => {
+  const NOTE = `${AUTHOR}/01JPEERA000000000000000000`;
+  const BELOW = `${AUTHOR}/01JPEERB000000000000000000`;
+
+  function note(ref: string, address: string, parent?: string) {
+    return {
+      ref,
+      address,
+      origin: NOTE,
+      ...(parent === undefined ? {} : { parent }),
+      title: "A thought",
+      tags: [],
+      links: [],
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
   it("is refused when it is not the subtree that was asked for", async () => {
     const { client } = serving({
       did: `${AUTHOR}x`,
@@ -161,6 +190,38 @@ describe("what a peer answered with", () => {
     });
 
     await expect(client.readPublishedSubtree(AUTHOR, "1a")).rejects.toThrow();
+  });
+
+  it("is followed to the end where it does not fit in one answer", async () => {
+    const pages = [
+      {
+        did: AUTHOR,
+        root_address: "1a",
+        nodes: [note(NOTE, "1a")],
+        blocks: [],
+        next_cursor: "past-1a",
+      },
+      {
+        did: AUTHOR,
+        root_address: "1a",
+        nodes: [note(BELOW, "1a1", NOTE)],
+        blocks: [],
+      },
+    ];
+    const asked: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      asked.push(String(input));
+      return new Response(JSON.stringify(pages[asked.length - 1]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const client = new SloppyClient({ token: "a-session", fetch: fetchImpl });
+
+    const subtree = await client.readPublishedSubtree(AUTHOR, "1a");
+
+    expect(subtree?.nodes.map((n) => n.address)).toEqual(["1a", "1a1"]);
+    expect(asked[1]).toContain("cursor=past-1a");
   });
 
   it("is nothing at all where nothing is published there", async () => {
