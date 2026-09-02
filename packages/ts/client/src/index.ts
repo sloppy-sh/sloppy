@@ -42,6 +42,8 @@ import {
   ProfileViewSchema,
   type PublicationView,
   PublicationViewSchema,
+  type PublishedIndex,
+  PublishedIndexSchema,
   type PublishedSubtree,
   PublishedSubtreeSchema,
   type PullView,
@@ -386,16 +388,45 @@ export class SloppyClient {
   }
 
   /**
+   * What somebody publishes, which is what following them leads to: a DID names
+   * a person and never a place, so `sourceUrl` says which instance to ask.
+   * Omitted, this one answers about itself — the whole of it for somebody who
+   * keeps their graph here. The asking is done by the API, so the instance
+   * asked learns this instance and never the reader.
+   */
+  async publishedBy(
+    did: string,
+    sourceUrl?: string,
+  ): Promise<PublishedIndex["roots"]> {
+    const where = sourceUrl
+      ? `&source_url=${encodeURIComponent(sourceUrl)}`
+      : "";
+    const body = await this.json(
+      `/peers/publications?did=${encodeURIComponent(did)}${where}`,
+      { method: "GET" },
+    );
+    return PublishedIndexSchema.parse(body).roots;
+  }
+
+  /**
    * Take somebody else's published subtree as a foreign, read-only region.
    *
    * The copy is kept, which is what the reader still has when the author stops
    * publishing; pulling the same subtree again refreshes that region rather
-   * than making a second one. The resolution runs on the API — a browser
-   * resolving a peer's provider would leak the viewer to it, which `proxied()`
-   * exists to prevent.
+   * than making a second one, and a region overlapping one already held shares
+   * its notes. The resolution runs on the API — a browser resolving a peer's
+   * provider would leak the viewer to it, which `proxied()` exists to prevent.
    */
-  async pullSubtree(did: string, rootAddress: string): Promise<PullView> {
-    const request: CreatePullRequest = { did, root_address: rootAddress };
+  async pullSubtree(
+    did: string,
+    rootAddress: string,
+    sourceUrl?: string,
+  ): Promise<PullView> {
+    const request: CreatePullRequest = {
+      did,
+      root_address: rootAddress,
+      ...(sourceUrl ? { source_url: sourceUrl } : {}),
+    };
     return PullViewSchema.parse(await this.send("POST", "/pulls", request));
   }
 
@@ -406,7 +437,7 @@ export class SloppyClient {
   }
 
   /** Let a held region go. It is the reader's copy, so nothing of the author's
-   *  is touched. */
+   *  is touched, and a note another region still covers stays. */
   async dropPull(ref: OwnedRef): Promise<void> {
     await this.del(`/pulls${refPath(ref)}`);
   }
@@ -481,8 +512,10 @@ export class SloppyClient {
     );
   }
 
+  /** A comment is cited the way the store that issued it cites one, so it
+   *  binds as a single segment rather than as a `<did>/<ulid>` pair. */
   async removeComment(commentId: NoteComment["comment_id"]): Promise<void> {
-    await this.del(`/comments${refPath(commentId)}`);
+    await this.del(`/comments/${encodeURIComponent(commentId)}`);
   }
 
   /** The same reach as {@link listComments}: what the caller follows, and no
@@ -501,7 +534,7 @@ export class SloppyClient {
   }
 
   async removeReaction(reactionId: NoteReaction["reaction_id"]): Promise<void> {
-    await this.del(`/reactions${refPath(reactionId)}`);
+    await this.del(`/reactions/${encodeURIComponent(reactionId)}`);
   }
 
   // ── Media ────────────────────────────────────────────────────────────────

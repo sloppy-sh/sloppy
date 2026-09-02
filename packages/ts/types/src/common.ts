@@ -66,6 +66,23 @@ export const OwnedRefSchema = z
   );
 export type OwnedRef = z.infer<typeof OwnedRefSchema>;
 
+/**
+ * How an identity store names a record of its own: `<did>:<local id>`. This is
+ * the form syr writes into a comment thread's ancestor chain, so a reply and an
+ * ancestor compare as strings without either side taking one apart. The local
+ * half is the issuing store's to mint and is not a ULID on every instance,
+ * which is why this is not an `OwnedRef`; `splitStoreRef` is the one place it
+ * is taken apart, and it splits at the LAST colon because a DID carries two of
+ * its own.
+ */
+export const StoreRefSchema = z
+  .string()
+  .regex(
+    /^did:syr:z[1-9A-HJ-NP-Za-km-z]+:.+$/,
+    "Expected a <did>:<local id> reference",
+  );
+export type StoreRef = z.infer<typeof StoreRefSchema>;
+
 export const BaseEntitySchema = z.object({
   id: RecordIdSchema,
   created_at: TimestampSchema,

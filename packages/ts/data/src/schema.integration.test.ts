@@ -11,12 +11,7 @@
 // runs `pnpm test`. `docker compose up -d` is what turns it on.
 
 import { createConnection } from "node:net";
-import {
-  DidSyrSchema,
-  extractLocalId,
-  OwnedRefSchema,
-  UlidSchema,
-} from "@sloppy/types";
+import { DidSyrSchema, OwnedRefSchema, UlidSchema } from "@sloppy/types";
 import { RecordId, Surreal, Table } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { STATEMENTS } from "./purge.js";
@@ -35,6 +30,7 @@ const DATABASE = `schema_${Date.now()}`;
 // identifier here is minted through the schema that will parse it there.
 const AVA = DidSyrSchema.parse("did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva");
 const BOB = DidSyrSchema.parse("did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob");
+const CAI = DidSyrSchema.parse("did:syr:z6MkCaiCaiCaiCaiCaiCaiCaiCaiCaiCai");
 
 type NodeRow = ReturnType<typeof nodeRow>;
 
@@ -67,9 +63,9 @@ function nodeRow(
   };
 }
 
-// A region AVA holds of BOB's graph: the reader owns every row, and the author
-// is only ever the DID half of `source`.
-function heldId(table: string, localId: string): RecordId {
+// A row AVA owns. On a held copy of BOB's graph that makes her the READER, and
+// the author is only ever the DID half of `source`.
+function avaId(table: string, localId: string): RecordId {
   return new RecordId(table, {
     created_by: AVA,
     id: UlidSchema.parse(localId),
@@ -81,26 +77,22 @@ const OTHER_REGION = "01JPEERREGN200000000000000";
 
 function pullRow(localId: string, rootAddress: string) {
   return {
-    id: heldId("pull", localId),
+    id: avaId("pull", localId),
     created_by: AVA,
     source_did: BOB,
     root_address: rootAddress,
+    source_url: "https://peer.example",
     created_at: "2026-02-01T00:00:00.000Z",
     updated_at: "2026-02-01T00:00:00.000Z",
   };
 }
 
-function heldNodeRow(
-  localId: string,
-  address: string,
-  depth: number,
-  region = REGION,
-) {
+function heldNodeRow(localId: string, address: string, depth: number) {
   return {
-    id: heldId("pulled_node", localId),
+    id: avaId("pulled_node", localId),
     created_by: AVA,
-    pull: OwnedRefSchema.parse(`${AVA}/${region}`),
     source: OwnedRefSchema.parse(`${BOB}/${localId}`),
+    source_did: BOB,
     depth,
     node: {
       address,
@@ -381,7 +373,7 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     await expect(db.create(other.id).content(other)).resolves.toBeDefined();
   });
 
-  it("reads a held region bounded by depth, from its index", async () => {
+  it("reads what it holds of one author, bounded by depth, from its index", async () => {
     const branch: [localId: string, address: string][] = [
       ["01JPEERMARKA00000000000000", "1"],
       ["01JPEERMARKB00000000000000", "1a"],
@@ -392,20 +384,18 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
       const row = heldNodeRow(localId, address, index + 1);
       await db.create(row.id).content(row);
     }
-    // Another region of the same reader's, at a depth the slice covers, so a
-    // read that ignored the region would have to come back wrong.
-    const elsewhere = heldNodeRow(
-      "01JPEERMARKE00000000000000",
-      "2",
-      1,
-      OTHER_REGION,
-    );
+    // A third author's note at a depth the slice covers, so a read that ignored
+    // whose it is would have to come back wrong.
+    const elsewhere = {
+      ...heldNodeRow("01JPEERMARKE00000000000000", "2", 1),
+      source: OwnedRefSchema.parse(`${CAI}/01JPEERMARKE00000000000000`),
+      source_did: CAI,
+    };
     await db.create(elsewhere.id).content(elsewhere);
 
     const section = {
-      id: heldId("pulled_block", "01JPEERSECTN00000000000000"),
+      id: avaId("pulled_block", "01JPEERSECTN00000000000000"),
       created_by: AVA,
-      pull: `${AVA}/${REGION}`,
       source: `${BOB}/01JPEERSECTN00000000000000`,
       node: `${BOB}/01JPEERMARKB00000000000000`,
       ord: "a0",
@@ -416,21 +406,55 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     await db.create(section.id).content(section);
 
     const SLICE = `SELECT depth FROM pulled_node
-       WHERE created_by = $did AND pull = $pull AND depth <= $max
+       WHERE created_by = $did AND source_did = $author AND depth <= $max
        ORDER BY depth`;
-    const bound = { did: AVA, pull: `${AVA}/${REGION}`, max: 3 };
+    const bound = { did: AVA, author: BOB, max: 3 };
 
     // The claim is about the plan, not only the rows: an index that stopped at
-    // the leading pair would read the whole region and drop the rest, which is
-    // the one outcome the third column exists to avoid.
+    // the leading pair would read everything held of that author and drop the
+    // rest, which is the one outcome the third column exists to avoid.
     const [plan] = await db.query(`${SLICE} EXPLAIN;`, bound);
     const explained = JSON.stringify(plan);
-    expect(explained).toContain('"index":"pulled_node_owner_pull_depth"');
+    expect(explained).toContain('"index":"pulled_node_owner_author_depth"');
     expect(explained).toContain("LessThanEqual");
     expect(explained).not.toContain('"operator":"Filter"');
 
     const [sliced] = await db.query<[{ depth: number }[]]>(`${SLICE};`, bound);
     expect(sliced.map((row) => row.depth)).toEqual([1, 2, 3]);
+  });
+
+  it("holds one copy of a node two overlapping regions both cover", async () => {
+    // "I read a branch, now I want the trail it came from": a region at `1`
+    // arriving on top of one at `1a`. The rows they share are refreshed, and
+    // the second copy the reader must never end up with is refused.
+    const inner = pullRow("01JPEERREGN400000000000000", "3a");
+    await db.create(inner.id).content(inner);
+    const held = heldNodeRow("01JPEERSHARE00000000000000", "3a", 2);
+    await db.create(held.id).content(held);
+
+    const outer = pullRow("01JPEERREGN500000000000000", "3");
+    await expect(db.create(outer.id).content(outer)).resolves.toBeDefined();
+
+    const second = {
+      ...heldNodeRow("01JPEERSHARE20000000000000", "3a", 2),
+      source: held.source,
+    };
+    await expect(db.create(second.id).content(second)).rejects.toThrow();
+
+    // The refresh the wider pull writes instead, over the row already there.
+    await db.update(held.id).content({
+      ...held,
+      node: { ...held.node, title: "as the wider pull answered" },
+      updated_at: "2026-03-01T00:00:00.000Z",
+    });
+    const stored = await db.select<{ node: { title: string } }>(held.id);
+    expect(stored?.node.title).toBe("as the wider pull answered");
+
+    const [shared] = await db.query<[{ source: string }[]]>(
+      `SELECT source FROM pulled_node WHERE created_by = $did AND source = $source;`,
+      { did: AVA, source: held.source },
+    );
+    expect(shared).toHaveLength(1);
   });
 
   it("takes a refresh of a held node and refuses to let it become another", async () => {
@@ -449,9 +473,37 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
 
     for (const reassignment of [
       { created_by: BOB },
-      { pull: `${AVA}/${OTHER_REGION}` },
+      { source_did: CAI },
       { source: `${BOB}/01JPEERMARKZ00000000000000` },
       { depth: 9 },
+    ]) {
+      await expect(db.update(row.id).merge(reassignment)).rejects.toThrow();
+    }
+  });
+
+  it("mints one public copy of a picture, and holds both halves still", async () => {
+    // Publishing copies the bytes rather than widening the original, so this
+    // row is what stops a second publish minting a second copy.
+    const row = {
+      id: avaId("published_picture", "01JPXRA0000000000000000000"),
+      created_by: AVA,
+      source_upload: `${AVA}/01JPXA00000000000000000000`,
+      public_upload: `${AVA}/01JPXB00000000000000000000`,
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    };
+    await db.create(row.id).content(row);
+
+    const again = {
+      ...row,
+      id: avaId("published_picture", "01JPXRB0000000000000000000"),
+      public_upload: `${AVA}/01JPXC00000000000000000000`,
+    };
+    await expect(db.create(again.id).content(again)).rejects.toThrow();
+
+    for (const reassignment of [
+      { source_upload: `${AVA}/01JPXD00000000000000000000` },
+      { public_upload: `${AVA}/01JPXE00000000000000000000` },
     ]) {
       await expect(db.update(row.id).merge(reassignment)).rejects.toThrow();
     }
@@ -470,7 +522,12 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
 
     // The held copy is the READER's row even though BOB wrote what is in it,
     // which is what makes erasing the reader take it.
-    for (const table of ["pull", "pulled_node", "pulled_block"]) {
+    for (const table of [
+      "pull",
+      "pulled_node",
+      "pulled_block",
+      "published_picture",
+    ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }
   });

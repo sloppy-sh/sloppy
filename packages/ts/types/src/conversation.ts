@@ -11,17 +11,23 @@
 // § "Federating the graph" carries what that means for the product.
 
 import { z } from "zod";
-import { DidSyrSchema, OwnedRefSchema, TimestampSchema } from "./common.js";
+import {
+  DidSyrSchema,
+  OwnedRefSchema,
+  StoreRefSchema,
+  TimestampSchema,
+} from "./common.js";
 import { CustomEmojiSchema } from "./emoji.js";
 
 /**
  * One comment on a note.
  *
- * `comment_id` is opaque and only meaningful to the store that issued it — a
- * peer's store mints ids its own way, so nothing here parses one.
+ * A comment lives in its author's store and is cited the way that store cites
+ * it, `<did>:<local id>` — the same form a thread's ancestors are written in,
+ * so `reply_to` compares to one directly.
  */
 export const NoteCommentSchema = z.object({
-  comment_id: z.string().min(1),
+  comment_id: StoreRefSchema,
   author: DidSyrSchema,
   node: OwnedRefSchema,
   /**
@@ -30,10 +36,20 @@ export const NoteCommentSchema = z.object({
    * identities they follow wrote — so a `reply_to` that resolves to nothing is
    * an ordinary state of a thread rather than a missing row.
    */
-  reply_to: z.string().min(1).optional(),
+  reply_to: StoreRefSchema.optional(),
   content: z.string(),
   created_at: TimestampSchema,
   updated_at: TimestampSchema,
+  /**
+   * Present when the author signed the comment through their own store. The
+   * same rule a node's signature carries: a reader that cannot verify one still
+   * renders the comment, and a reader that can, and finds it wrong, must not
+   * present it as the author's. Absent is the ordinary case and says nothing
+   * either way.
+   */
+  content_signature: z.string().optional(),
+  signed_payload_json: z.string().optional(),
+  signing_device_public_key: z.string().optional(),
 });
 export type NoteComment = z.infer<typeof NoteCommentSchema>;
 
@@ -46,15 +62,15 @@ export const CreateNoteCommentRequestSchema = z.object({
     .trim()
     .min(1, "Write something first.")
     .max(NOTE_COMMENT_MAX, "That is longer than a comment can be. Trim it."),
-  reply_to: z.string().min(1).optional(),
+  reply_to: StoreRefSchema.optional(),
 });
 export type CreateNoteCommentRequest = z.input<
   typeof CreateNoteCommentRequestSchema
 >;
 
 const reactionIdentity = {
-  /** Opaque, like a comment's. */
-  reaction_id: z.string().min(1),
+  /** Cited the way a comment is, by the store that issued it. */
+  reaction_id: StoreRefSchema,
   author: DidSyrSchema,
   node: OwnedRefSchema,
 };
@@ -63,6 +79,9 @@ const reactionIdentity = {
  * What somebody reacted with: a character off their keyboard, or an entry in
  * an identity's emoji catalog. Keyed by which, so a third kind is a member here
  * rather than a field every other reaction leaves empty.
+ *
+ * No signature, unlike a comment: syr stores one on a reaction and its public
+ * listing does not serve it, so a reader never receives one to check.
  */
 export const NoteReactionSchema = z.discriminatedUnion("kind", [
   z.object({

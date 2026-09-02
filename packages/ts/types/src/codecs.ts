@@ -6,7 +6,7 @@
 
 import { RecordId } from "surrealdb";
 import { ulid } from "ulid";
-import type { DidSyr, OwnedRef } from "./common.js";
+import type { DidSyr, OwnedRef, StoreRef } from "./common.js";
 
 interface CompositeId {
   created_by: string;
@@ -78,6 +78,23 @@ export function splitOwnedRef(ref: OwnedRef): { did: DidSyr; localId: string } {
 export function recordIdFromOwnedRef(table: string, ref: OwnedRef): RecordId {
   const { did, localId } = splitOwnedRef(ref);
   return recordIdFromDidAndLocal(table, did, localId);
+}
+
+/** How an identity store's own record is cited: `<did>:<local id>`. */
+export function storeRefFor(did: DidSyr, localId: string): StoreRef {
+  return `${did}:${localId}`;
+}
+
+/** The two halves of one, split at the LAST colon — the DID carries two. */
+export function splitStoreRef(ref: StoreRef): {
+  did: DidSyr;
+  localId: string;
+} {
+  const separator = ref.lastIndexOf(":");
+  if (separator < 1) {
+    throw new Error(`Expected a <did>:<local id> reference, got ${ref}`);
+  }
+  return { did: ref.slice(0, separator), localId: ref.slice(separator + 1) };
 }
 
 export { ulid } from "ulid";

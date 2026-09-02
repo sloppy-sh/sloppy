@@ -20,6 +20,7 @@ export const STATEMENTS: readonly string[] = [
   // referencing a row outlives it even if a statement fails partway.
   `DELETE block WHERE ${OWNED};`,
   `DELETE publication WHERE ${OWNED};`,
+  `DELETE published_picture WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
   // A held copy of somebody else's region is the reader's row, so it goes with
   // the reader — the author erasing their own identity elsewhere never reaches
@@ -42,6 +43,7 @@ export function userPurgeStatements(): string[] {
 export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "block",
   "publication",
+  "published_picture",
   "node",
   "pulled_block",
   "pulled_node",

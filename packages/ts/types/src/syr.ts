@@ -178,6 +178,33 @@ export const NodeSignedPayloadV1Schema = z.object({
 export type NodeSignedPayloadV1 = z.infer<typeof NodeSignedPayloadV1Schema>;
 
 /**
+ * What a comment is signed with. syr defines this one — it is the payload its
+ * own signing flow builds — so the field set is its to change, and a verifier
+ * reconstructing it differently gets a signature that does not check out.
+ *
+ * Two halves are easy to get wrong. `comment_id` is the LOCAL half of the
+ * comment's key, not the `<did>:<local id>` a thread cites it by; `created_at`
+ * is the store's own serialization of the comment it just wrote, at whatever
+ * width that store used, because the signature is over those bytes and not over
+ * a timestamp Sloppy normalized afterwards.
+ */
+export const CommentSignedPayloadV1Schema = z.object({
+  type: z.literal("comment@v1"),
+  did: DidSyrSchema,
+  comment_id: z.string().min(1),
+  post_did: z.string().min(1),
+  post_id: z.string().min(1),
+  ancestor_chain: z.array(z.string()),
+  content: z.string(),
+  visibility: z.literal("public"),
+  status: z.literal("completed"),
+  created_at: z.iso.datetime(),
+});
+export type CommentSignedPayloadV1 = z.infer<
+  typeof CommentSignedPayloadV1Schema
+>;
+
+/**
  * Every syr API response is wrapped in an envelope; the payload is under
  * `data`. The listing endpoints add `pagination` beside it, which nothing here
  * reads — a caller that needs a second page asks for one by offset.
@@ -314,12 +341,23 @@ export const SyrCommentSchema = z.object({
   local_id: z.string().min(1),
   post_did: z.string().min(1),
   post_id: z.string().min(1),
-  /** Root comment first, immediate parent last; each entry `<did>:<local id>`,
-   *  which splits at the LAST colon because a DID carries two of its own. */
+  /**
+   * Root comment first, immediate parent last. Each entry is a `StoreRef`, and
+   * the array is plain strings so that one entry Sloppy cannot read costs a
+   * thread its shape rather than costing a reader the whole comment.
+   */
   ancestor_chain: z.array(z.string()).default([]),
   content: z.string(),
   created_at: z.iso.datetime(),
   updated_at: z.iso.datetime(),
+  /**
+   * Present when the author signed the comment. syr's create route drops the
+   * envelope it accepts, so a comment is written unsigned and signed by the
+   * patch below; this listing serves whatever landed that way.
+   */
+  content_signature: z.string().optional(),
+  signed_payload_json: z.string().optional(),
+  signing_device_public_key: z.string().optional(),
 });
 export type SyrComment = z.infer<typeof SyrCommentSchema>;
 
@@ -339,6 +377,19 @@ export const SyrCommentCreateRequestSchema = z.object({
 export type SyrCommentCreateRequest = z.infer<
   typeof SyrCommentCreateRequestSchema
 >;
+
+/**
+ * What attaches a signature to a comment already written, sent to the store
+ * that holds it. Writing and signing are two calls because the create route
+ * takes no signature; a comment whose second call never lands stays as it is,
+ * unsigned, rather than being lost.
+ */
+export const SyrCommentSignatureSchema = z.object({
+  content_signature: z.string().min(1),
+  signed_payload_json: z.string().min(1),
+  signing_device_public_key: z.string().min(1),
+});
+export type SyrCommentSignature = z.infer<typeof SyrCommentSignatureSchema>;
 
 /** What a reaction is carried by. `gif` is one syr has and Sloppy has no
  *  renderer for, so a reader is handed the kinds it can draw and the rest are

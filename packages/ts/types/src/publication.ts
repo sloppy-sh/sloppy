@@ -37,6 +37,47 @@ export type CreatePublicationRequest = z.input<
 >;
 
 /**
+ * The public duplicate of a picture inside a published note, and the row that
+ * remembers which picture it is a copy of. Publishing copies the bytes rather
+ * than widening the original, so the same picture in a note nobody published
+ * stays private; docs/ARCHITECTURE.md § "Pictures" carries the ruling.
+ *
+ * `created_by` is the AUTHOR: both uploads are theirs, and the copy is theirs
+ * to delete.
+ */
+export const PublishedPictureSchema = OwnedEntitySchema.extend({
+  /** The picture as the author's own note cites it. Private, and stays so. */
+  source_upload: z.string().min(1),
+  /** The copy a peer reads, and the one a published note cites. */
+  public_upload: z.string().min(1),
+});
+export type PublishedPicture = z.infer<typeof PublishedPictureSchema>;
+
+/**
+ * One subtree an identity publishes, as an instance lists it: enough to choose
+ * one and pull it, and nothing that is not already public in it.
+ */
+export const PublishedRootSchema = z.object({
+  root_address: AddressSchema,
+  title: z.string(),
+  /** When the author last published or republished it. */
+  updated_at: TimestampSchema,
+});
+export type PublishedRoot = z.infer<typeof PublishedRootSchema>;
+
+/**
+ * What one identity publishes on one instance — the answer to "I follow this
+ * person, what can I read?", which a DID alone cannot give: nothing in syr's
+ * identity manifest names where somebody's graph is served, so the instance is
+ * asked and never derived. docs/ARCHITECTURE.md § "Federating the graph".
+ */
+export const PublishedIndexSchema = z.object({
+  did: DidSyrSchema,
+  roots: z.array(PublishedRootSchema),
+});
+export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
+
+/**
  * One node as a peer receives it. Rows travel by `<did>/<ulid>` reference
  * rather than by record id, and carry no `depth`: a reader computes it, along
  * with the sector and subtree membership, from the address.
@@ -62,6 +103,12 @@ export const PublishedNodeSchema = z.object({
 });
 export type PublishedNode = z.infer<typeof PublishedNodeSchema>;
 
+/**
+ * One block as a peer receives it. A picture in `content` is cited by the
+ * PUBLIC copy of its upload and never by the private original the author's own
+ * note reads, so what a peer holds is an address that answers for them;
+ * docs/ARCHITECTURE.md § "Pictures" is the ruling and who does the swap.
+ */
 export const PublishedBlockSchema = z.object({
   ref: OwnedRefSchema,
   node: OwnedRefSchema,

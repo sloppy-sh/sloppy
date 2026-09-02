@@ -10,6 +10,7 @@
 
 import { z } from "zod";
 import { addressDepth, AddressSchema } from "./address.js";
+import { splitOwnedRef } from "./codecs.js";
 import { DidSyrSchema, OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import { NodeDepthMismatchError } from "./node.js";
@@ -41,17 +42,34 @@ export const PullSchema = OwnedEntitySchema.extend({
   source_did: DidSyrSchema,
   /** The address the reader cited to find it. */
   root_address: AddressSchema,
+  /**
+   * The instance that served it, and the one a refresh asks again. A DID does
+   * not answer this: syr's identity manifest names an identity's own store and
+   * nothing about where that identity's graph is served, so where is carried
+   * rather than resolved.
+   */
+  source_url: z.url(),
 });
 export type Pull = z.infer<typeof PullSchema>;
 
 export const CreatePullRequestSchema = z.object({
   did: DidSyrSchema,
   root_address: AddressSchema,
+  /** Where to ask. Absent means this instance, which is the whole of it when
+   *  the author keeps their graph here. */
+  source_url: z.url().optional(),
 });
 export type CreatePullRequest = z.input<typeof CreatePullRequestSchema>;
 
 /**
- * One node of a held region, as its author's instance answered.
+ * One node of a held copy, as its author's instance answered.
+ *
+ * A node is held ONCE per reader however many regions cover it: which regions
+ * those are is `isInSubtree` over the roots of the reader's `pull` rows for
+ * this author, derived from the address like everything else derived from one
+ * (AI.md § "The Address Is the Protocol"). So pulling `1` after `1a` shares
+ * these rows rather than colliding with them, and dropping a region deletes
+ * only what no surviving region still covers.
  *
  * `node` is carried untouched, because a signature is over what the author
  * sent: a reader that reshaped it could no longer check one. Its `ref` is not
@@ -59,10 +77,11 @@ export type CreatePullRequest = z.input<typeof CreatePullRequestSchema>;
  * disagree.
  */
 export const PulledNodeSchema = OwnedEntitySchema.extend({
-  /** The region, so dropping one drops its nodes. */
-  pull: OwnedRefSchema,
   /** The node as its AUTHOR addresses it: `<their did>/<their ulid>`. */
   source: OwnedRefSchema,
+  /** Its author, beside `source` rather than read out of it, because an index
+   *  cannot seek on half a column. `parsePulledNode` holds the two together. */
+  source_did: DidSyrSchema,
   /**
    * `addressDepth(node.address)`, minted here because a published node carries
    * none. It is the same ratified exception `node.depth` is, bought by the same
@@ -75,8 +94,8 @@ export type PulledNode = z.infer<typeof PulledNodeSchema>;
 
 /**
  * Every pulled node row crosses this, in both directions, for the reason
- * `parseNode` exists: the column is immutable, so a row that gets past here
- * with a depth its address disagrees with is wrong for as long as it exists.
+ * `parseNode` exists: both columns are immutable, so a row that gets past here
+ * disagreeing with the node it copies is wrong for as long as it exists.
  */
 export function parsePulledNode(row: unknown): PulledNode {
   const pulled = PulledNodeSchema.parse(row);
@@ -84,16 +103,21 @@ export function parsePulledNode(row: unknown): PulledNode {
   if (pulled.depth !== actual) {
     throw new NodeDepthMismatchError(pulled.node.address, pulled.depth, actual);
   }
+  const { did } = splitOwnedRef(pulled.source);
+  if (pulled.source_did !== did) {
+    throw new Error(
+      `Held node ${pulled.source} says it was written by ${pulled.source_did}`,
+    );
+  }
   return pulled;
 }
 
 /**
- * One block of a held region. Flat rather than nesting the published block:
- * every column but `content` is one an index reads, and SurrealDB will not
- * index a nested path.
+ * One block of a held copy, held once like the node it belongs to. Flat rather
+ * than nesting the published block: every column but `content` is one an index
+ * reads, and SurrealDB will not index a nested path.
  */
 export const PulledBlockSchema = OwnedEntitySchema.extend({
-  pull: OwnedRefSchema,
   /** The block as its AUTHOR addresses it. */
   source: OwnedRefSchema,
   /** The node it belongs to, as its author addresses it. */

@@ -172,6 +172,16 @@ export function isAncestorAddress(
 }
 
 /**
+ * Whether `address` lies in the subtree rooted at `root`, the root ITSELF
+ * included — which `isAncestorAddress` deliberately excludes. This is the
+ * membership a publication covers and a pulled region holds, so the two read it
+ * from the same function rather than each remembering the root.
+ */
+export function isInSubtree(root: Address, address: Address): boolean {
+  return root === address || isAncestorAddress(root, address);
+}
+
+/**
  * Total order over addresses: depth-first tree order. A node sorts before its
  * descendants, and `1a` before `1b` before `2`. Returns -1, 0 or 1.
  */

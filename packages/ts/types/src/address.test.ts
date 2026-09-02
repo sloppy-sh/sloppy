@@ -11,6 +11,7 @@ import {
   InvalidAddressError,
   isAddress,
   isAncestorAddress,
+  isInSubtree,
   isRootAddress,
   parentAddress,
   parseAddress,
@@ -202,6 +203,31 @@ describe("ancestry", () => {
   it("excludes a cousin", () => {
     expect(isAncestorAddress("1a", "1b1")).toBe(false);
     expect(isAncestorAddress("1a", "2a")).toBe(false);
+  });
+});
+
+describe("a subtree, as a publication covers one and a region holds one", () => {
+  it("holds its own root, which ancestry does not", () => {
+    expect(isInSubtree("1a", "1a")).toBe(true);
+    expect(isAncestorAddress("1a", "1a")).toBe(false);
+  });
+
+  it("holds everything under the root and nothing beside it", () => {
+    for (const address of ["1a", "1a1", "1a1b", "1a2"]) {
+      expect(isInSubtree("1a", address)).toBe(true);
+      expect(isInSubtree("1", address)).toBe(true);
+    }
+    for (const address of ["1", "1b", "1ab", "2a"]) {
+      expect(isInSubtree("1a", address)).toBe(false);
+    }
+  });
+
+  it("is where two overlapping regions meet: what one drops, the other keeps", () => {
+    const held = ["1", "1a", "1a1", "1b"] as const;
+    const kept = held.filter((address) => isInSubtree("1", address));
+    const dropped = held.filter((address) => isInSubtree("1a", address));
+    expect(dropped).toEqual(["1a", "1a1"]);
+    expect(dropped.every((address) => kept.includes(address))).toBe(true);
   });
 });
 

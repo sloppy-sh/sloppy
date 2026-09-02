@@ -4,6 +4,7 @@ import {
   type Address,
   addressDepth,
   childAddress,
+  isInSubtree,
   siblingAddress,
 } from "./address.js";
 import { parseNodeView, pulledBlockView, pulledNodeView } from "./api.js";
@@ -36,8 +37,8 @@ function heldNode(address: Address, depth = addressDepth(address)): PulledNode {
     created_by: READER,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-02T00:00:00.000Z",
-    pull: `${READER}/${ROOT}`,
     source: `${AUTHOR}/${HELD}`,
+    source_did: AUTHOR,
     depth,
     node: {
       address,
@@ -80,6 +81,27 @@ describe("a held node", () => {
       expect(parsePulledNode(heldNode(address)).depth).toBe(actual);
     }
   });
+
+  it("is refused when it names an author its source does not", () => {
+    // The column an index seeks on, held to the reference it was copied from:
+    // a row that got past here would answer somebody else's region for good.
+    expect(() =>
+      parsePulledNode({ ...heldNode("1a"), source_did: READER }),
+    ).toThrow(/was written by/);
+  });
+
+  it("is held by every region that covers it, and by no stored membership", () => {
+    // Two regions of one author's graph, the second an ancestor of the first.
+    // The row is the same row; which regions hold it is read off the address.
+    const held = heldNode("1a1");
+    for (const root of ["1", "1a", "1a1"] as const) {
+      expect(isInSubtree(root, held.node.address)).toBe(true);
+    }
+    for (const root of ["1b", "2"] as const) {
+      expect(isInSubtree(root, held.node.address)).toBe(false);
+    }
+    expect(Object.keys(held)).not.toContain("pull");
+  });
 });
 
 describe("a held block", () => {
@@ -89,7 +111,6 @@ describe("a held block", () => {
       created_by: READER,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-02T00:00:00.000Z",
-      pull: `${READER}/${ROOT}`,
       source: `${AUTHOR}/${HELD}`,
       node: `${AUTHOR}/${ROOT}`,
       ord: "a0",
