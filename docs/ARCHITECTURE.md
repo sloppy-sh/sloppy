@@ -217,23 +217,47 @@ what it may name is bounded in three places and none of them is a server's own i
   resolves to passes, checks every redirect hop, and drops a credential that would leave
   the origin it was for. A peer fetch goes through `fetchReachable` for the same reason a
   picture does, and a second policy written beside it would be a second answer to one
-  question.
+  question. Its refusal is WORDED for the picture route it was written for, and a second
+  caller has to word its own: somebody who typed an instance address this instance will not
+  reach is told about the instance they named, never about a picture.
 - **The answer is held to the question.** `parsePublishedIndex` and
   `publishedSubtreeReader` in `@sloppy/types` are that boundary: an instance that answers
   about a different DID, hands back a subtree at a different address, carries a note
   attributed to somebody else, carries one outside the subtree that was asked for, puts a
-  second note at an address another note in the region already has, or refers to a note it
-  did not send is answering a question nobody asked. A page that does any of it is refused
-  WHOLE, and a refused page leaves the reader holding exactly what it held before — the
-  reader is writing rows under the author's name, so half a page is not a thing to store.
-  The address rule is `node_owner_address UNIQUE` applied to rows a peer handed us: our own
-  rows cannot put two notes at one address, and a copy of somebody else's may not either,
-  or a citation of that author's `1a1` resolves two ways in the reader's graph.
+  second note at an address another note in the region already has, springs a note from
+  anything but the note at its own parent address, names a link to a note somebody else
+  wrote, writes a timestamp at a width other than `TimestampSchema`'s, or refers to a note
+  it did not send is answering a question nobody asked. A page that does any of it is
+  refused WHOLE, and a refused page leaves the reader holding exactly what it held before —
+  the reader is writing rows under the author's name, so half a page is not a thing to
+  store. A listing followed to its end goes through `publishedIndexReader`, which holds a
+  run of pages the same way: one publication per root, so a region listed twice is refused
+  the way a second note at a taken address is.
+
+  Two of those refusals are the address protocol, held on rows a peer handed us. Two
+  notes at one address is `node_owner_address UNIQUE`: our own rows cannot do it, and a
+  copy of somebody else's may not either, or a citation of that author's `1a1` resolves two
+  ways in the reader's graph. Where a note hangs is the other half of the same rule — a
+  mark's position seeds from its address alone, so a genealogy that disagrees with the
+  addresses draws a shape the two peers do not share, and a CYCLE of parents is that
+  disagreement at its worst: our own rows cannot hold one, so the walk up a note's
+  ancestors does not guard against one and the first draw of that region would never
+  return. And every reference is held to its author because the published shape reaches an
+  anonymous caller: a `links` entry naming one of the READER's own notes would otherwise
+  draw a stranger's note into their graph as a link they had drawn themselves. The one
+  timestamp width is the last of them — a signature is over the bytes the author sent, so a
+  published node is not something to normalize on arrival, and one encoding on the wire is
+  what leaves the stored copy checkable.
+
   `MAX_PUBLISHED_NODES_PER_PAGE`, `MAX_PUBLISHED_BLOCKS_PER_PAGE` and
   `MAX_PUBLISHED_ROOTS_PER_PAGE` bound one answer, and `MAX_PUBLISHED_PAGES` is how many a
   reader asks for before it stops: a pull is an outbound fetch, so the reader's own request
   limits protect nothing, and what arrives is whatever the author's instance chose to send —
-  including, from a hostile one, an answer that never ends. What a refused answer SAID is
+  including, from a hostile one, an answer that never ends. Those four are counts, and a
+  count is only reachable once a body is whole, so they are not what stops that answer:
+  `MAX_PUBLISHED_PAGE_BYTES` bounds the bytes of one, and **the fetch is where it is
+  enforced** — the read gives up there rather than at the parse. An instance serving pages
+  keeps one under it, the way it keeps one under the counts. What a refused answer SAID is
   not passed on either: the words in front of a person come from Sloppy, and a peer's
   server is not one of the servers AI.md § "User-Facing Copy" means by "where the server
   explains itself".
@@ -330,7 +354,7 @@ rather than gaps to close:
   own comment vanished on reload would be reading a thread they are not in. Reaching a
   stranger's comment would need a firehose syr does not have. A surface that implies it is showing every comment on a note is lying, and there is
   no total to show beside one either — nobody can compute one, which is also why nothing
-  here counts toward a score (PRODUCT.md § "What Sloppy Is Not").
+  here counts toward a score (PRODUCT.md § "Anti-references").
 - **A comment can be signed, and is signed in a second step.** syr's create route drops
   the signed envelope it accepts, so the comment is written unsigned and a `comment@v1`
   payload is signed through `platform.sign` and patched onto it; an identity's public
@@ -403,8 +427,15 @@ that has been published still appears in the picker, because the row it lists ne
 Copying happens at two moments, and both are needed: when a subtree is published, over the
 pictures already in it; and when a picture is saved into a note a live publication already
 covers, because otherwise a peer who pulled yesterday reads a note whose new picture
-answers 404. A mark's preview picture is not among them: a published node travels without
-its look, so nothing a peer holds ever cites one, and it stays private.
+answers 404. **The second moment is a decision somebody is making too**, and it is the one
+that can be crossed without noticing: a photo dropped into a note inside a branch published
+last month is as readable as the published ones, and nothing takes that back. So the
+surface that adds a picture there says so where it is added — what the publish moment says,
+at the only other moment somebody crosses that line, and standing nowhere else
+(PRODUCT.md § "Design Principles", 5).
+
+A mark's preview picture is not among them: a published node travels without its look, so
+nothing a peer holds ever cites one, and it stays private.
 
 **A public copy is public to anybody, not only to somebody holding the address.** syr
 decides `is_public` from the folder a blob is in, and an identity's `uploads` endpoint
@@ -578,8 +609,11 @@ Deriving membership from the roots and the address was the other candidate, and 
 foreign node rules it out: no publication row on this instance covers one, so the
 derivation has nothing to read, and whether its author still publishes it is not something
 a reader can learn. `pulledNodeView` asserts the column instead — what was true when the
-copy arrived — and `provenanceOf` draws a held node as pulled before it ever looks, so what
-the assertion actually buys is a graph built without a viewer beside it. Two things the
+copy arrived — and `provenanceOf` reads the author before it reads the column, so a held
+node draws as pulled wherever the viewer is beside it. **That is a requirement on whoever
+builds the graph, not a nicety:** with no viewer there is no author to compare, the read
+falls through to the column, and a foreign region draws as the reader's OWN published
+notes, which PRODUCT.md § "Design Principles" 4 forbids outright. Two things the
 maintenance must not leave behind: a note drawing as published that no row covers, and a
 note drawing as own while a row that covers it survives.
 

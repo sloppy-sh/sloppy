@@ -6,7 +6,12 @@
 // the graph".
 
 import { z } from "zod";
-import { type Address, AddressSchema, isInSubtree } from "./address.js";
+import {
+  type Address,
+  AddressSchema,
+  isInSubtree,
+  parentAddress,
+} from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
 import { BlockDocumentSchema } from "./document.js";
 import {
@@ -66,11 +71,16 @@ export type PublishedPicture = z.infer<typeof PublishedPictureSchema>;
  * page past one of these is refused whole; a subtree longer than a page carries
  * a cursor instead, so what bounds a region is the product of the two rather
  * than a size a graph can outgrow.
+ *
+ * The counts bound a page that has been PARSED. `MAX_PUBLISHED_PAGE_BYTES`
+ * bounds the answer as it arrives, and the fetch is where it is enforced;
+ * docs/ARCHITECTURE.md § "Federating the graph" says which side each is for.
  */
 export const MAX_PUBLISHED_ROOTS_PER_PAGE = 500;
 export const MAX_PUBLISHED_NODES_PER_PAGE = 2_000;
 export const MAX_PUBLISHED_BLOCKS_PER_PAGE = 10_000;
 export const MAX_PUBLISHED_PAGES = 128;
+export const MAX_PUBLISHED_PAGE_BYTES = 16 * 1024 * 1024;
 
 /**
  * Where the answer resumes. Minted by the instance that served the page and
@@ -160,7 +170,7 @@ export type PublishedNode = z.infer<typeof PublishedNodeSchema>;
 export const PublishedBlockSchema = z.object({
   ref: OwnedRefSchema,
   node: OwnedRefSchema,
-  ord: z.string(),
+  ord: z.string().min(1),
   content: BlockDocumentSchema,
 });
 export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
@@ -193,7 +203,7 @@ export class UnaskedAnswerError extends Error {
   }
 }
 
-/** A peer's listing, held to the identity it was asked about. */
+/** One page of a peer's listing, held to the identity it was asked about. */
 export function parsePublishedIndex(
   body: unknown,
   did: DidSyr,
@@ -209,11 +219,53 @@ export function parsePublishedIndex(
 }
 
 /**
+ * The same boundary over a RUN of listing pages: what a caller uses when it
+ * follows `next_cursor` to the end rather than showing one page. An identity
+ * publishes a region once, so a root address arrives once — and a run of pages
+ * ends, the way a subtree's does.
+ */
+export interface PublishedIndexReader {
+  take(body: unknown): PublishedIndex;
+}
+
+export function publishedIndexReader(asked: {
+  did: DidSyr;
+}): PublishedIndexReader {
+  const heldRoots = new Set<Address>();
+  let pages = 0;
+
+  return {
+    take(body: unknown): PublishedIndex {
+      if (pages === MAX_PUBLISHED_PAGES) {
+        throw new UnaskedAnswerError(`more than ${MAX_PUBLISHED_PAGES} pages`);
+      }
+      const page = parsePublishedIndex(body, asked.did);
+      const pageRoots = new Set<Address>();
+      for (const root of page.roots) {
+        if (
+          heldRoots.has(root.root_address) ||
+          pageRoots.has(root.root_address)
+        ) {
+          throw new UnaskedAnswerError(
+            `the region at ${root.root_address} twice`,
+          );
+        }
+        pageRoots.add(root.root_address);
+      }
+      pages += 1;
+      for (const address of pageRoots) heldRoots.add(address);
+      return page;
+    },
+  };
+}
+
+/**
  * Reads one peer's subtree, holding every page to what was asked for and to the
  * pages already taken: a note's parent may have arrived on an earlier one, and
  * a note may not claim an address another already has, on this page or any
  * before it — the same rule `node_owner_address UNIQUE` holds our own rows to,
- * on rows a peer handed us.
+ * on rows a peer handed us. A note hangs off the note at its own parent
+ * address, so the tree a peer draws is the one its addresses already state.
  */
 export interface PublishedSubtreeReader {
   /**
@@ -233,7 +285,7 @@ export function publishedSubtreeReader(asked: {
   root_address: Address;
 }): PublishedSubtreeReader {
   const heldNodes = new Set<OwnedRef>();
-  const heldAddresses = new Set<Address>();
+  const heldByAddress = new Map<Address, OwnedRef>();
   const heldBlocks = new Set<OwnedRef>();
   let regionRoot: OwnedRef | undefined;
   let pages = 0;
@@ -265,9 +317,10 @@ export function publishedSubtreeReader(asked: {
       }
 
       const pageNodes = new Set<OwnedRef>();
-      const pageAddresses = new Set<Address>();
+      const pageByAddress = new Map<Address, OwnedRef>();
       for (const node of page.nodes) {
         requireAuthor(node.ref, asked.did);
+        for (const target of node.links) requireAuthor(target, asked.did);
         if (!isInSubtree(asked.root_address, node.address)) {
           throw new UnaskedAnswerError(`a note at ${node.address}`);
         }
@@ -275,13 +328,13 @@ export function publishedSubtreeReader(asked: {
           throw new UnaskedAnswerError(`${node.ref} twice`);
         }
         if (
-          heldAddresses.has(node.address) ||
-          pageAddresses.has(node.address)
+          heldByAddress.has(node.address) ||
+          pageByAddress.has(node.address)
         ) {
           throw new UnaskedAnswerError(`a second note at ${node.address}`);
         }
         pageNodes.add(node.ref);
-        pageAddresses.add(node.address);
+        pageByAddress.set(node.address, node.ref);
       }
       for (const node of page.nodes) {
         if (node.origin !== root) {
@@ -291,12 +344,14 @@ export function publishedSubtreeReader(asked: {
           if (node.parent !== undefined) {
             throw new UnaskedAnswerError("a root pointing outside the subtree");
           }
-        } else if (node.parent === undefined) {
+          continue;
+        }
+        const above = parentAddress(node.address) ?? asked.root_address;
+        const sprangFrom = heldByAddress.get(above) ?? pageByAddress.get(above);
+        if (sprangFrom === undefined || node.parent !== sprangFrom) {
           throw new UnaskedAnswerError(
-            `a note at ${node.address} with nothing above it`,
+            `a note at ${node.address} that does not spring from ${above}`,
           );
-        } else if (!heldNodes.has(node.parent) && !pageNodes.has(node.parent)) {
-          throw new UnaskedAnswerError(`a note referring to ${node.parent}`);
         }
       }
 
@@ -314,8 +369,10 @@ export function publishedSubtreeReader(asked: {
 
       regionRoot = root;
       pages += 1;
-      for (const ref of pageNodes) heldNodes.add(ref);
-      for (const address of pageAddresses) heldAddresses.add(address);
+      for (const node of page.nodes) {
+        heldNodes.add(node.ref);
+        heldByAddress.set(node.address, node.ref);
+      }
       for (const ref of pageBlocks) heldBlocks.add(ref);
       return page;
     },

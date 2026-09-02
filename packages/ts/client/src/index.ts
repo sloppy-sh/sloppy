@@ -416,7 +416,9 @@ export class SloppyClient {
    *
    * `sourceUrl` is an origin and is refused here as well as at the API, so a
    * surface that took one from a person hears about it before the send;
-   * `peerOrigin` in `@sloppy/types` is what turns what they typed into one.
+   * `peerOrigin` in `@sloppy/types` is what turns what they typed into one. A
+   * caller that follows the pages to the end holds them to each other with
+   * `publishedIndexReader` rather than page by page.
    */
   async publishedBy(
     did: string,

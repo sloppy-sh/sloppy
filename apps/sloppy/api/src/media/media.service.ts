@@ -49,9 +49,8 @@ export function roleLimits(role: MediaRole): {
  * banner, and a federated emoji has to render for everybody. A note is private
  * until its subtree is published, so its pictures are not public either.
  *
- * Publishing does not move one out of here: it copies the bytes into
- * `public/sloppy/notes`, which is a placement and not a role a caller can ask
- * for. docs/ARCHITECTURE.md § "Pictures" carries the ruling.
+ * docs/ARCHITECTURE.md § "Pictures" carries the ruling, and what publishing
+ * still has to build to keep it.
  */
 const ROLE_FOLDERS: Record<MediaRole, readonly string[]> = {
   block: ["sloppy", "notes"],

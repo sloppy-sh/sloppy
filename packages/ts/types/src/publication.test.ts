@@ -5,6 +5,7 @@ import {
   MAX_PUBLISHED_PAGES,
   parsePublishedIndex,
   type PublishedNode,
+  publishedIndexReader,
   type PublishedSubtreePage,
   publishedSubtreeReader,
   UnaskedAnswerError,
@@ -149,6 +150,49 @@ describe("a subtree a peer answered with", () => {
     }
   });
 
+  it("is refused when a note springs from anything but its parent address", () => {
+    // A mark's position seeds from its address, so a genealogy that disagrees
+    // with the addresses draws edges the shape does not answer to. A cycle is
+    // the same disagreement at its worst: our own rows cannot hold one, so the
+    // walk up a note's ancestors does not guard itself against one.
+    const cycle = subtree();
+    cycle.nodes = [
+      cycle.nodes[0],
+      node(1, "1a1", { parent: `${AUTHOR}/${ulid(2)}` }),
+      node(2, "1a2", { parent: `${AUTHOR}/${ulid(1)}` }),
+    ];
+    expect(() => takeWhole(cycle)).toThrow(UnaskedAnswerError);
+
+    const regrafted = subtree();
+    regrafted.nodes = [
+      regrafted.nodes[0],
+      node(1, "1a1", { parent: regrafted.nodes[0].ref }),
+      node(2, "1a1a", { parent: regrafted.nodes[0].ref }),
+    ];
+    expect(() => takeWhole(regrafted)).toThrow(UnaskedAnswerError);
+  });
+
+  it("is refused when a note links to one its author did not write", () => {
+    // Every reference on a published node names a note the same author
+    // published; a link naming one of the READER's own would draw a stranger's
+    // note into their graph as a link they had drawn themselves.
+    const reaching = subtree();
+    reaching.nodes[1] = node(1, "1a1", {
+      parent: reaching.nodes[0].ref,
+      links: [`${STRANGER}/${ulid(7)}`],
+    });
+    expect(() => takeWhole(reaching)).toThrow(UnaskedAnswerError);
+
+    // The author is the whole of the rule: a link may leave this region, the
+    // author's other publications being no business of this answer.
+    const elsewhere = subtree();
+    elsewhere.nodes[1] = node(1, "1a1", {
+      parent: elsewhere.nodes[0].ref,
+      links: [`${AUTHOR}/${ulid(8)}`],
+    });
+    expect(takeWhole(elsewhere).nodes[1].links).toHaveLength(1);
+  });
+
   it("is refused when a note below the root hangs off nothing", () => {
     const loose = subtree();
     loose.nodes[1] = node(1, "1a1");
@@ -170,6 +214,15 @@ describe("a subtree a peer answered with", () => {
     const orphan = subtree();
     orphan.blocks[0].node = `${AUTHOR}/${ulid(9)}`;
     expect(() => takeWhole(orphan)).toThrow(UnaskedAnswerError);
+  });
+
+  it("is refused when a section has no place in its note", () => {
+    // A page is taken whole or refused whole, so what a peer sends is held to
+    // what the reader's own rows accept — an unordered section would otherwise
+    // fail at the write with the region already stored.
+    const placeless = subtree();
+    placeless.blocks[0].ord = "";
+    expect(() => takeWhole(placeless)).toThrow(UnaskedAnswerError);
   });
 
   it("is refused when the same section arrives twice", () => {
@@ -369,5 +422,29 @@ describe("a listing a peer answered with", () => {
     expect(() => parsePublishedIndex({ roots: "everything" }, AUTHOR)).toThrow(
       UnaskedAnswerError,
     );
+  });
+
+  it("is refused when one region is listed twice over a run of pages", () => {
+    // One publication per root, which is `publication_owner_root UNIQUE` on our
+    // own rows: a region listed twice is one entry that resolves two ways.
+    const reader = publishedIndexReader({ did: AUTHOR });
+    reader.take({ did: AUTHOR, roots, next_cursor: "past-1a" });
+    expect(() => reader.take({ did: AUTHOR, roots })).toThrow(
+      UnaskedAnswerError,
+    );
+  });
+
+  it("stops following a listing that never ends", () => {
+    const reader = publishedIndexReader({ did: AUTHOR });
+    for (let page = 0; page < MAX_PUBLISHED_PAGES; page++) {
+      reader.take({
+        did: AUTHOR,
+        roots: [{ ...roots[0], root_address: String(page + 1) }],
+        next_cursor: "more",
+      });
+    }
+    expect(() =>
+      reader.take({ did: AUTHOR, roots: [], next_cursor: "more" }),
+    ).toThrow(UnaskedAnswerError);
   });
 });
