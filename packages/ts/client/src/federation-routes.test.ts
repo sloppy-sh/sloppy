@@ -133,3 +133,42 @@ describe("a comment somebody wrote", () => {
     expect(asked[0].url).toBe(`/api/reactions/${encodeURIComponent(COMMENT)}`);
   });
 });
+
+describe("what a caller may aim this instance at", () => {
+  it("is an instance and not an address, and is refused before the send", async () => {
+    const { asked, client } = serving({ did: AUTHOR, roots: [] });
+
+    for (const aimed of [
+      "http://127.0.0.1:8010/rpc",
+      "https://peer.example/1a",
+      "https://reader:secret@peer.example",
+      "file:///etc/passwd",
+    ]) {
+      await expect(client.publishedBy(AUTHOR, aimed)).rejects.toThrow();
+      await expect(client.pullSubtree(AUTHOR, "1a", aimed)).rejects.toThrow();
+    }
+    expect(asked).toHaveLength(0);
+  });
+});
+
+describe("what a peer answered with", () => {
+  it("is refused when it is not the subtree that was asked for", async () => {
+    const { client } = serving({
+      did: `${AUTHOR}x`,
+      root_address: "1a",
+      nodes: [],
+      blocks: [],
+    });
+
+    await expect(client.readPublishedSubtree(AUTHOR, "1a")).rejects.toThrow();
+  });
+
+  it("is nothing at all where nothing is published there", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("", { status: 200 }),
+    ) as unknown as typeof fetch;
+    const client = new SloppyClient({ token: "a-session", fetch: fetchImpl });
+
+    await expect(client.readPublishedSubtree(AUTHOR, "1a")).resolves.toBeNull();
+  });
+});

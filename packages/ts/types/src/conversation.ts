@@ -7,8 +7,9 @@
 // draw.
 //
 // Discovery is per-identity and pull-only, so what a reader sees on a note is
-// what the identities they follow have written on it. docs/ARCHITECTURE.md
-// § "Federating the graph" carries what that means for the product.
+// what they and the identities they follow have written on it.
+// docs/ARCHITECTURE.md § "Federating the graph" carries what that means for the
+// product.
 
 import { z } from "zod";
 import {
@@ -32,9 +33,9 @@ export const NoteCommentSchema = z.object({
   node: OwnedRefSchema,
   /**
    * The comment this answers; absent at the top of a thread. A reader can hold
-   * a reply whose parent they cannot see, because they reach only what the
-   * identities they follow wrote — so a `reply_to` that resolves to nothing is
-   * an ordinary state of a thread rather than a missing row.
+   * a reply whose parent they cannot see, because they reach only their own
+   * store and those of the identities they follow — so a `reply_to` that
+   * resolves to nothing is an ordinary state of a thread, not a missing row.
    */
   reply_to: StoreRefSchema.optional(),
   content: z.string(),

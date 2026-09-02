@@ -38,14 +38,13 @@ import {
   type OwnedMediaAsset,
   OwnedMediaAssetSchema,
   type OwnedRef,
+  PeerOriginSchema,
   type ProfileView,
   ProfileViewSchema,
   type PublicationView,
   PublicationViewSchema,
   type PublishedIndex,
-  PublishedIndexSchema,
   type PublishedSubtree,
-  PublishedSubtreeSchema,
   type PullView,
   PullViewSchema,
   type Session,
@@ -62,6 +61,8 @@ import {
   ViewerSchema,
   parseNodeBulkResult,
   parseNodeView,
+  parsePublishedIndex,
+  parsePublishedSubtree,
 } from "@sloppy/types";
 import { SloppyApiError } from "./errors.js";
 import { apiUrl, isSameOrigin } from "./host.js";
@@ -384,7 +385,9 @@ export class SloppyClient {
       rootAddress,
     )}`;
     const body = await this.json(path, { method: "GET" });
-    return body == null ? null : PublishedSubtreeSchema.parse(body);
+    return body == null
+      ? null
+      : parsePublishedSubtree(body, { did, root_address: rootAddress });
   }
 
   /**
@@ -393,19 +396,24 @@ export class SloppyClient {
    * Omitted, this one answers about itself — the whole of it for somebody who
    * keeps their graph here. The asking is done by the API, so the instance
    * asked learns this instance and never the reader.
+   *
+   * `sourceUrl` is an origin and is refused here as well as at the API, so a
+   * surface that took one from a person hears about it before the send;
+   * `peerOrigin` in `@sloppy/types` is what turns what they typed into one.
    */
   async publishedBy(
     did: string,
     sourceUrl?: string,
   ): Promise<PublishedIndex["roots"]> {
-    const where = sourceUrl
-      ? `&source_url=${encodeURIComponent(sourceUrl)}`
-      : "";
+    const where =
+      sourceUrl === undefined
+        ? ""
+        : `&source_url=${encodeURIComponent(PeerOriginSchema.parse(sourceUrl))}`;
     const body = await this.json(
       `/peers/publications?did=${encodeURIComponent(did)}${where}`,
       { method: "GET" },
     );
-    return PublishedIndexSchema.parse(body).roots;
+    return parsePublishedIndex(body, did).roots;
   }
 
   /**
@@ -425,7 +433,9 @@ export class SloppyClient {
     const request: CreatePullRequest = {
       did,
       root_address: rootAddress,
-      ...(sourceUrl ? { source_url: sourceUrl } : {}),
+      ...(sourceUrl === undefined
+        ? {}
+        : { source_url: PeerOriginSchema.parse(sourceUrl) }),
     };
     return PullViewSchema.parse(await this.send("POST", "/pulls", request));
   }
@@ -496,8 +506,8 @@ export class SloppyClient {
 
   /**
    * What people have said on a note. Reading somebody's comments means reading
-   * them from their own identity store, so this answers with what the
-   * identities the caller follows have written and cannot answer with more.
+   * them from their own identity store, so this answers with what the caller
+   * and the identities they follow have written, and cannot answer with more.
    */
   async listComments(node: OwnedRef): Promise<NoteComment[]> {
     const body = await this.json(`/nodes${refPath(node)}/comments`, {
@@ -518,8 +528,8 @@ export class SloppyClient {
     await this.del(`/comments/${encodeURIComponent(commentId)}`);
   }
 
-  /** The same reach as {@link listComments}: what the caller follows, and no
-   *  total, because nobody can see one. */
+  /** The same reach as {@link listComments}: the caller and who they follow,
+   *  and no total, because nobody can see one. */
   async listReactions(node: OwnedRef): Promise<NoteReaction[]> {
     const body = await this.json(`/nodes${refPath(node)}/reactions`, {
       method: "GET",

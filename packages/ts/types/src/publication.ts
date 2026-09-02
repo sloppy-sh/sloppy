@@ -6,11 +6,14 @@
 // the graph".
 
 import { z } from "zod";
-import { AddressSchema } from "./address.js";
+import { type Address, AddressSchema, isInSubtree } from "./address.js";
+import { splitOwnedRef } from "./codecs.js";
 import { BlockDocumentSchema } from "./document.js";
 import {
+  type DidSyr,
   DidSyrSchema,
   OwnedEntitySchema,
+  type OwnedRef,
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
@@ -54,12 +57,25 @@ export const PublishedPictureSchema = OwnedEntitySchema.extend({
 export type PublishedPicture = z.infer<typeof PublishedPictureSchema>;
 
 /**
+ * How much of somebody else's graph one answer may carry.
+ *
+ * A pull is an OUTBOUND fetch, so nothing about the reader's own request bounds
+ * it: what arrives is whatever the author's instance chose to send, and the
+ * reader's instance parses all of it and writes a row per node and per block.
+ * An answer past these is refused whole — half a subtree held as a complete one
+ * would be a region the reader cannot tell is missing notes.
+ */
+export const MAX_PUBLISHED_ROOTS = 500;
+export const MAX_PUBLISHED_NODES = 2_000;
+export const MAX_PUBLISHED_BLOCKS = 10_000;
+
+/**
  * One subtree an identity publishes, as an instance lists it: enough to choose
  * one and pull it, and nothing that is not already public in it.
  */
 export const PublishedRootSchema = z.object({
   root_address: AddressSchema,
-  title: z.string(),
+  title: z.string().max(512),
   /** When the author last published or republished it. */
   updated_at: TimestampSchema,
 });
@@ -73,7 +89,7 @@ export type PublishedRoot = z.infer<typeof PublishedRootSchema>;
  */
 export const PublishedIndexSchema = z.object({
   did: DidSyrSchema,
-  roots: z.array(PublishedRootSchema),
+  roots: z.array(PublishedRootSchema).max(MAX_PUBLISHED_ROOTS),
 });
 export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
 
@@ -81,14 +97,29 @@ export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
  * One node as a peer receives it. Rows travel by `<did>/<ulid>` reference
  * rather than by record id, and carry no `depth`: a reader computes it, along
  * with the sector and subtree membership, from the address.
+ *
+ * **Every reference on it names a note the caller may read**, because this
+ * whole shape reaches an anonymous one. A `<did>/<ulid>` is not readable by
+ * itself, but it says a note exists and when it was written; the three fields
+ * below each carry the rule that keeps one out.
  */
 export const PublishedNodeSchema = z.object({
   ref: OwnedRefSchema,
   address: AddressSchema,
+  /** Absent on the region's own root, whose parent is outside the publication
+   *  and is not named. */
   parent: OwnedRefSchema.optional(),
+  /**
+   * The root of the REGION, not of the author's tree: a publication rooted
+   * below depth 1 would otherwise name a note nobody published. What a peer
+   * holds is a tree rooted here, so its root is its own origin the way any root
+   * is.
+   */
   origin: OwnedRefSchema,
-  title: z.string(),
+  title: z.string().max(512),
   tags: TagsSchema,
+  /** Only targets the same author publishes. A link to a note nobody published
+   *  is dropped rather than named. */
   links: z.array(OwnedRefSchema),
   created_at: TimestampSchema,
   updated_at: TimestampSchema,
@@ -121,7 +152,80 @@ export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
 export const PublishedSubtreeSchema = z.object({
   did: DidSyrSchema,
   root_address: AddressSchema,
-  nodes: z.array(PublishedNodeSchema),
-  blocks: z.array(PublishedBlockSchema),
+  nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES),
+  blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS),
 });
 export type PublishedSubtree = z.infer<typeof PublishedSubtreeSchema>;
+
+/** An answer from a peer that is not the answer that was asked for. */
+export class UnaskedAnswerError extends Error {
+  constructor(reason: string) {
+    super(`A peer answered with ${reason}`);
+    this.name = "UnaskedAnswerError";
+  }
+}
+
+/** A peer's listing, held to the identity it was asked about. */
+export function parsePublishedIndex(
+  body: unknown,
+  did: DidSyr,
+): PublishedIndex {
+  const index = PublishedIndexSchema.parse(body);
+  if (index.did !== did) throw new UnaskedAnswerError(`about ${index.did}`);
+  return index;
+}
+
+/**
+ * A peer's subtree, held to what was asked for. A failure here is an answer to
+ * refuse WHOLE and never rows to store in part: what gets past is written into
+ * the reader's own store under the author's name.
+ */
+export function parsePublishedSubtree(
+  body: unknown,
+  asked: { did: DidSyr; root_address: Address },
+): PublishedSubtree {
+  const subtree = PublishedSubtreeSchema.parse(body);
+  if (subtree.did !== asked.did) {
+    throw new UnaskedAnswerError(`${asked.did}'s subtree as ${subtree.did}`);
+  }
+  if (subtree.root_address !== asked.root_address) {
+    throw new UnaskedAnswerError(`the subtree at ${subtree.root_address}`);
+  }
+
+  const sent = new Set<OwnedRef>();
+  for (const node of subtree.nodes) {
+    requireAuthor(node.ref, asked.did);
+    if (!isInSubtree(asked.root_address, node.address)) {
+      throw new UnaskedAnswerError(`a note at ${node.address}`);
+    }
+    if (sent.has(node.ref)) throw new UnaskedAnswerError(`${node.ref} twice`);
+    sent.add(node.ref);
+  }
+
+  const root = subtree.nodes.find((n) => n.address === asked.root_address);
+  if (!root) throw new UnaskedAnswerError("a subtree without its own root");
+  if (root.parent !== undefined || root.origin !== root.ref) {
+    throw new UnaskedAnswerError("a root pointing outside the subtree");
+  }
+
+  for (const node of subtree.nodes) {
+    for (const ref of [node.parent, node.origin]) {
+      if (ref !== undefined && !sent.has(ref)) {
+        throw new UnaskedAnswerError(`a note referring to ${ref}`);
+      }
+    }
+  }
+  for (const block of subtree.blocks) {
+    requireAuthor(block.ref, asked.did);
+    if (!sent.has(block.node)) {
+      throw new UnaskedAnswerError(`a section of ${block.node}`);
+    }
+  }
+  return subtree;
+}
+
+function requireAuthor(ref: OwnedRef, did: DidSyr): void {
+  if (splitOwnedRef(ref).did !== did) {
+    throw new UnaskedAnswerError(`${ref} among ${did}'s own`);
+  }
+}

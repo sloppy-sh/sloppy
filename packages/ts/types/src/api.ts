@@ -66,14 +66,14 @@ export const PullViewSchema = PullSchema.omit({ id: true }).extend({
 export type PullView = z.infer<typeof PullViewSchema>;
 
 /**
- * A held node as the rest of Sloppy reads it — addressed by its AUTHOR, so
- * `provenanceOf` in `@sloppy/graph` draws it as foreign without being told
- * anything further.
+ * A held node as the rest of Sloppy reads it, addressed by its AUTHOR — which
+ * is what `provenanceOf` in `@sloppy/graph` reads to draw it as foreign, and it
+ * needs the viewer beside it to do so.
  *
- * `published` is true and not read off anything: no publication row on this
- * instance covers a foreign node, so the column is the only place the fact that
- * its author publishes it can live. There is no look, because a published node
- * travels without one.
+ * `published` is asserted, not read: no publication row on this instance covers
+ * a foreign node, and whether the author still publishes it is not something a
+ * reader can learn, so this says what was true when the copy arrived. There is
+ * no look, because a published node travels without one.
  */
 export function pulledNodeView(row: PulledNode): NodeView {
   const { node } = row;

@@ -10,6 +10,11 @@ import {
 import { parseNodeView, pulledBlockView, pulledNodeView } from "./api.js";
 import { emptyDocument } from "./document.js";
 import {
+  CreatePullRequestSchema,
+  isPeerOrigin,
+  peerOrigin,
+  PeerOriginSchema,
+  PeerPublicationsQuerySchema,
   type PulledNode,
   parsePulledNode,
   PulledBlockSchema,
@@ -135,5 +140,78 @@ describe("a note addressed in an identity store", () => {
       expect(post).toEqual({ post_did: did, post_id: localId });
       expect(nodeRefFromSyrPost(post)).toBe(ref);
     }
+  });
+});
+
+describe("where a peer's graph is served", () => {
+  it("is an origin, whatever a person typed at it", () => {
+    for (const [typed, origin] of [
+      ["peer.example", "https://peer.example"],
+      ["  https://peer.example/  ", "https://peer.example"],
+      ["https://peer.example/1a?from=here#top", "https://peer.example"],
+      ["http://192.168.1.9:8040", "http://192.168.1.9:8040"],
+      ["peer.example:8040", "https://peer.example:8040"],
+      ["PEER.example", "https://peer.example"],
+      ["https://reader:secret@peer.example", "https://peer.example"],
+      ["http://[::1]:8040", "http://[::1]:8040"],
+      ["http://peer.example:80", "http://peer.example"],
+      ["https://peer.example:443", "https://peer.example"],
+    ] as const) {
+      expect(peerOrigin(typed)).toBe(origin);
+      expect(isPeerOrigin(origin)).toBe(true);
+      expect(PeerOriginSchema.parse(origin)).toBe(origin);
+    }
+  });
+
+  it("is refused where it is not an instance at all", () => {
+    for (const typed of [
+      "",
+      "   ",
+      "file:///etc/passwd",
+      "gopher://peer.example",
+      "https://",
+      "https://peer.example:0",
+      "https://peer.example:99999",
+      "https://-peer.example",
+    ]) {
+      expect(peerOrigin(typed)).toBeNull();
+    }
+  });
+
+  it("carries nothing but the instance across the wire", () => {
+    // Anything else is a caller choosing the address this instance fetches and
+    // reading the answer back, so the shape refuses it rather than a server.
+    for (const value of [
+      "https://peer.example/",
+      "https://peer.example/latest",
+      "https://peer.example?ref=1",
+      "https://reader:secret@peer.example",
+      "file:///etc/passwd",
+      "gopher://peer.example",
+      "HTTPS://PEER.EXAMPLE",
+      "https://peer.example:443",
+    ]) {
+      expect(isPeerOrigin(value)).toBe(false);
+      expect(() => PeerOriginSchema.parse(value)).toThrow();
+      expect(() =>
+        CreatePullRequestSchema.parse({
+          did: AUTHOR,
+          root_address: "1a",
+          source_url: value,
+        }),
+      ).toThrow();
+      expect(() =>
+        PeerPublicationsQuerySchema.parse({ did: AUTHOR, source_url: value }),
+      ).toThrow();
+    }
+  });
+
+  it("is optional, and absent means this instance", () => {
+    expect(
+      CreatePullRequestSchema.parse({ did: AUTHOR, root_address: "1a" }),
+    ).toEqual({ did: AUTHOR, root_address: "1a" });
+    expect(PeerPublicationsQuerySchema.parse({ did: AUTHOR })).toEqual({
+      did: AUTHOR,
+    });
   });
 });

@@ -116,12 +116,11 @@ export const SCHEMA = `
 
   -- What the reader holds of ONE author, sliced the way node_owner_origin_depth
   -- slices their own graph: the leading pair reads it, a trailing
-  -- AND depth <= $max bounds it. The author stands where origin does because a
-  -- held node is not indexed by region — regions overlap, and which of them
-  -- cover a node is derived from its address rather than stored.
+  -- AND depth <= $max bounds it. The author stands where origin does: a held
+  -- node is not indexed by region, because no column says which regions cover
+  -- one.
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_depth ON pulled_node FIELDS created_by, source_did, depth;
-  -- One copy per foreign node however many regions cover it, which is also what
-  -- makes a second, overlapping pull refresh these rows instead of colliding.
+  -- One copy per foreign node however many regions cover it.
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_source ON pulled_node FIELDS created_by, source UNIQUE;
 
   -- A held node's stack, already in order. Leading with created_by rather than

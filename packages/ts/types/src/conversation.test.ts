@@ -34,17 +34,25 @@ describe("how a comment is cited", () => {
     expect(parsed.reply_to).toBe(parsed.comment_id);
   });
 
-  it("splits at the last colon, not at the two the DID carries", () => {
+  it("splits after the DID, not at the colons the DID carries", () => {
     expect(splitStoreRef(ANCESTOR)).toEqual({ did: AUTHOR, localId: LOCAL });
     expect(AUTHOR.split(":")).toHaveLength(3);
   });
 
   it("survives a local id the issuing store minted its own way", () => {
     // Not a ULID anywhere but here, which is why a comment is not an OwnedRef.
-    for (const localId of ["7", "a-b-c", "01JZZZ", "cmt_9f2"]) {
+    // The colons are the ones that matter: the validator admits them, so the
+    // splitter has to give back a DID and not a DID with half an id on it.
+    for (const localId of ["7", "a-b-c", "01JZZZ", "cmt_9f2", "cmt:9f2:1"]) {
       const ref = storeRefFor(AUTHOR, localId);
       expect(StoreRefSchema.parse(ref)).toBe(ref);
       expect(splitStoreRef(ref)).toEqual({ did: AUTHOR, localId });
+    }
+  });
+
+  it("is refused where there is no local id to split off", () => {
+    for (const ref of [AUTHOR, `${AUTHOR}:`, "did:syr:", "nonsense"]) {
+      expect(() => splitStoreRef(ref)).toThrow();
     }
   });
 

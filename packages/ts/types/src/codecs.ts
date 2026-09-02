@@ -85,16 +85,24 @@ export function storeRefFor(did: DidSyr, localId: string): StoreRef {
   return `${did}:${localId}`;
 }
 
-/** The two halves of one, split at the LAST colon — the DID carries two. */
+/**
+ * The two halves of one. The DID is matched rather than counted to: a local id
+ * is the issuing store's to mint and may carry colons of its own, so splitting
+ * at the last of them would hand back a DID with part of the id stuck to it.
+ */
 export function splitStoreRef(ref: StoreRef): {
   did: DidSyr;
   localId: string;
 } {
-  const separator = ref.lastIndexOf(":");
-  if (separator < 1) {
+  const did = /^did:syr:z[1-9A-HJ-NP-Za-km-z]+/.exec(ref)?.[0];
+  if (
+    did === undefined ||
+    ref[did.length] !== ":" ||
+    did.length + 1 === ref.length
+  ) {
     throw new Error(`Expected a <did>:<local id> reference, got ${ref}`);
   }
-  return { did: ref.slice(0, separator), localId: ref.slice(separator + 1) };
+  return { did, localId: ref.slice(did.length + 1) };
 }
 
 export { ulid } from "ulid";

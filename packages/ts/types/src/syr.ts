@@ -405,7 +405,9 @@ export type SyrReactionKind = z.infer<typeof SyrReactionKindSchema>;
 /**
  * One reaction as an identity's public endpoint answers it. `parent_type` is
  * `post` for a reaction on a note; `comment` is one on a comment, which the
- * same endpoint carries.
+ * same endpoint carries and which a reader drops — Sloppy has no surface for
+ * reacting inside a thread, so an unfiltered listing would draw a comment's
+ * reactions on the note.
  *
  * `image_url` is the author's own store, so it never reaches a reader — every
  * remote address is minted into one of ours first. AI.md § "Sloppy's Vocabulary

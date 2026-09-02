@@ -31,6 +31,78 @@ export const FollowRequestSchema = z.object({ did: DidSyrSchema });
 export type FollowRequest = z.input<typeof FollowRequestSchema>;
 
 /**
+ * `scheme://host[:port]` and nothing else. Spelled out rather than delegated to
+ * a URL parser, because this package compiles against no platform globals and
+ * because a wire shape says what it accepts: lowercase, `http` or `https`, a
+ * name or an address literal, and a port that is present only where it is not
+ * the scheme's own.
+ */
+const PEER_ORIGIN =
+  /^(https?):\/\/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*|\[[0-9a-f:.]+\])(?::([0-9]+))?$/;
+
+/** Whether a string is an origin and nothing more: no path, query, fragment or
+ *  credentials, and one spelling of each instance. */
+export function isPeerOrigin(value: string): boolean {
+  const match = PEER_ORIGIN.exec(value);
+  if (!match) return false;
+  const [, scheme, port] = match;
+  if (port === undefined) return true;
+  return (
+    /^[1-9][0-9]{0,4}$/.test(port) &&
+    Number(port) <= 65535 &&
+    Number(port) !== (scheme === "https" ? 443 : 80)
+  );
+}
+
+/**
+ * Where somebody else's graph is served. An ORIGIN and never a URL, because the
+ * caller names an instance and the instance names the path: a value carrying
+ * one would let a signed-in reader have this instance fetch an address of their
+ * choosing and read the answer back. The single spelling is also what keeps one
+ * peer from becoming two `pull` rows.
+ *
+ * This bounds the shape. WHICH addresses an instance will connect to is the
+ * separate question `api/src/media/remote-host.ts` already answers once, and a
+ * peer fetch goes through it rather than answering it again.
+ * docs/ARCHITECTURE.md § "Federating the graph".
+ */
+export const PeerOriginSchema = z
+  .string()
+  .refine(
+    isPeerOrigin,
+    "Enter an instance address, like https://sloppy.example",
+  );
+export type PeerOrigin = z.infer<typeof PeerOriginSchema>;
+
+/**
+ * What somebody typed, as an origin: a bare hostname gets `https://`, and a
+ * whole address they pasted keeps only the instance out of it. `null` where it
+ * cannot be one at all, which is a text field's answer rather than a throw.
+ */
+export function peerOrigin(typed: string): PeerOrigin | null {
+  const trimmed = typed.trim().toLowerCase();
+  const written = /^([a-z][a-z0-9+.-]*):\/\//.exec(trimmed);
+  // A scheme somebody wrote is theirs; `peer.example:8040` is a host and a
+  // port, and treating it as one would make a hostname out of `file`.
+  if (written && written[1] !== "http" && written[1] !== "https") return null;
+  const scheme = written?.[1] ?? "https";
+  const authority = trimmed.slice(written?.[0].length ?? 0).split(/[/?#]/)[0];
+  const host = authority.slice(authority.lastIndexOf("@") + 1);
+  const ownPort = scheme === "https" ? ":443" : ":80";
+  const named = host.endsWith(ownPort) ? host.slice(0, -ownPort.length) : host;
+  const origin = `${scheme}://${named}`;
+  return isPeerOrigin(origin) ? origin : null;
+}
+
+/** What `GET /peers/publications` binds. An absent `source_url` is this
+ *  instance, which is the whole of it for somebody who keeps their graph here. */
+export const PeerPublicationsQuerySchema = z.object({
+  did: DidSyrSchema,
+  source_url: PeerOriginSchema.optional(),
+});
+export type PeerPublicationsQuery = z.input<typeof PeerPublicationsQuerySchema>;
+
+/**
  * A region of somebody else's graph the reader holds a copy of. One row per
  * reader, author and root address — pulling again refreshes this row rather
  * than writing a second, and `updated_at` is when that last happened.
@@ -48,7 +120,7 @@ export const PullSchema = OwnedEntitySchema.extend({
    * nothing about where that identity's graph is served, so where is carried
    * rather than resolved.
    */
-  source_url: z.url(),
+  source_url: PeerOriginSchema,
 });
 export type Pull = z.infer<typeof PullSchema>;
 
@@ -57,19 +129,15 @@ export const CreatePullRequestSchema = z.object({
   root_address: AddressSchema,
   /** Where to ask. Absent means this instance, which is the whole of it when
    *  the author keeps their graph here. */
-  source_url: z.url().optional(),
+  source_url: PeerOriginSchema.optional(),
 });
 export type CreatePullRequest = z.input<typeof CreatePullRequestSchema>;
 
 /**
  * One node of a held copy, as its author's instance answered.
  *
- * A node is held ONCE per reader however many regions cover it: which regions
- * those are is `isInSubtree` over the roots of the reader's `pull` rows for
- * this author, derived from the address like everything else derived from one
- * (AI.md § "The Address Is the Protocol"). So pulling `1` after `1a` shares
- * these rows rather than colliding with them, and dropping a region deletes
- * only what no surviving region still covers.
+ * Held ONCE per reader however many regions cover it, and no column says which:
+ * membership is `isInSubtree` over the reader's `pull` roots for this author.
  *
  * `node` is carried untouched, because a signature is over what the author
  * sent: a reader that reshaped it could no longer check one. Its `ref` is not

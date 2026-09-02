@@ -182,13 +182,59 @@ depth, sector and subtree membership from the address, and draws a pulled mark u
 **A DID names a person, never a place.** An identity manifest describes that identity's
 own store — profile, uploads, comments, reactions, who they follow — and says nothing
 about where their GRAPH is served, so following somebody yields no address to pull and no
-instance to ask. Where is carried rather than resolved: `GET /api/peers/publications` takes
-a DID and the instance to ask, which is this one unless the caller names another — the
-whole of it for somebody who keeps their graph here — and answers what that identity
-publishes there. A named origin is the caller's, like the one sign-in takes. The request is
+instance to ask, and nothing a peer says about themselves can corroborate one. Where is
+carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
+ask, which is this one unless the caller names another — the whole of it for somebody who
+keeps their graph here — and answers what that identity publishes there. The request is
 made by the reader's instance, so the instance asked learns an instance and never a reader,
 and a `pull` row keeps the origin in `source_url` so refreshing a region asks the same
 instance again.
+
+**A named origin is a signed-in caller telling this instance to go and fetch something, so
+what it may name is bounded in three places and none of them is a server's own idea.**
+
+- **It is an ORIGIN and not a URL.** `PeerOrigin` in `@sloppy/types` is the shape — one
+  canonical spelling of `scheme://host[:port]`, `http` or `https`, nothing else on it — so
+  the caller names an instance and the instance names the path. A value carrying a path, a
+  query or credentials would make this a way to have Sloppy fetch an address of somebody's
+  choosing and hand the answer back, and the single spelling is also what keeps one peer
+  from becoming two `pull` rows. `peerOrigin` turns what a person typed into one; a surface
+  never assembles it by hand.
+- **Which ADDRESSES it may reach is `api/src/media/remote-host.ts`, unchanged and not
+  re-answered.** That module already decides what this instance will connect to on
+  somebody else's say-so — it resolves the name itself, refuses unless every address it
+  resolves to passes, checks every redirect hop, and drops a credential that would leave
+  the origin it was for. A peer fetch goes through `fetchReachable` for the same reason a
+  picture does, and a second policy written beside it would be a second answer to one
+  question.
+- **The answer is held to the question.** `parsePublishedIndex` and
+  `parsePublishedSubtree` in `@sloppy/types` are that boundary: an instance that answers
+  about a different DID, hands back a subtree at a different address, carries a note
+  attributed to somebody else, carries one outside the subtree that was asked for, or
+  refers to a note it did not send is answering a question nobody asked, and the answer is
+  refused whole rather than stored in part. `MAX_PUBLISHED_NODES` and
+  `MAX_PUBLISHED_BLOCKS` bound the size for the same reason: a pull is an outbound fetch,
+  so the reader's own request limits protect nothing, and what arrives is whatever the
+  author's instance chose to send. What a refused answer SAID is not passed on either: the
+  words in front of a person come from Sloppy, and a peer's server is not one of the
+  servers AI.md § "User-Facing Copy" means by "where the server explains itself".
+
+**A published node carries only references a peer may follow.** The shape reaches an
+anonymous caller, and a `<did>/<ulid>` is not readable on its own but still says a note
+exists and when it was written. So `origin` on a published node is the root of the REGION
+rather than of the author's tree, which for a publication rooted below depth 1 would
+otherwise be a note nobody published; the region's root carries no `parent`, its parent
+being outside the publication; and `links` carries only targets the same author publishes,
+a link to an unpublished note being dropped rather than named. The reader's copy is a tree
+rooted at the region root, so it satisfies the same `ref === origin` a root always does.
+
+**Where a foreign region is DRAWN is not settled here, and a surface must settle it before
+it builds one graph out of two.** A mark's position seeds from its address alone
+(`packages/ts/graph/src/layout/geometry.ts`), so a peer's `1a` and the reader's own `1a`
+seed identically, and `graph.addNode` is keyed by ref, so two held regions that overlap
+answer the shared notes twice. Neither is a defect in the layout — it is what makes one
+person's graph readable in the same shape by another — and both are the pull surface's to
+answer.
 
 **A follow belongs to the reader's identity store, not to Sloppy.** Identity is syr's half
 of the table above, syr already keeps a follow list and serves it at an identity's
@@ -222,8 +268,8 @@ pull writes rows:
   here and left behind when the reader erased theirs, which is backwards in both
   directions. Who wrote the node is `source_did`, beside `source` rather than read out of
   it because an index cannot seek on half a column; `pulledNodeView` in `@sloppy/types` is
-  what turns a held row into the `NodeView` the graph draws, so `provenanceOf` reads it as
-  foreign without being told anything further.
+  what turns a held row into the `NodeView` the graph draws, and `provenanceOf` reads it as
+  foreign off the author, given the viewer beside it.
 - The published node is carried **untouched**, because a signature is over what the author
   sent and a reader that reshaped it could no longer check one. `depth` beside it is the
   reader's own mint from the address, held to the address by `parsePulledNode` exactly as
@@ -239,17 +285,19 @@ none of it.
 **A comment is cited the way the store that issued it cites one**, `<did>:<local id>` —
 which is the form syr writes into a thread's ancestor chain, so a reply's `reply_to`
 compares to an ancestor without either side taking one apart. `StoreRef` in
-`@sloppy/types` is that form and `splitStoreRef` the one place it is split, at the last
-colon because a DID carries two of its own. It is deliberately not an `OwnedRef`: the
-local half is the issuing store's to mint and is not a ULID everywhere, so a route binds
-one as a single segment.
+`@sloppy/types` is that form and `splitStoreRef` the one place it is split, by matching the
+DID rather than counting colons — the local half is the issuing store's to mint, is not a
+ULID everywhere, and may carry colons of its own, which is also why this is not an
+`OwnedRef` and why a route binds one as a single segment.
 
 Two consequences follow from pull-only discovery, and both are the product's to state
 rather than gaps to close:
 
-- **A note shows the comments and reactions written by the identities the reader follows,
-  and cannot show more.** Reaching a stranger's comment would need a firehose syr does not
-  have. A surface that implies it is showing every comment on a note is lying, and there is
+- **A note shows the comments and reactions written by the reader and by the identities
+  they follow, and cannot show more.** Each of those is read from the store that holds it,
+  and the reader's own store is one of them — nobody follows themselves, and a reader whose
+  own comment vanished on reload would be reading a thread they are not in. Reaching a
+  stranger's comment would need a firehose syr does not have. A surface that implies it is showing every comment on a note is lying, and there is
   no total to show beside one either — nobody can compute one, which is also why nothing
   here counts toward a score (PRODUCT.md § "What Sloppy Is Not").
 - **A comment can be signed, and is signed in a second step.** syr's create route drops
@@ -294,8 +342,8 @@ whatever they sent. The copy is minted at publish, out of bytes the store alread
 
 **A note is private until its subtree is published, so its pictures are too.** The owner
 reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks their own
-store for it as them; nothing else can, and it is not listed among an identity's public
-uploads. `GET /api/media/uploads` lists the ones they put in a note, newest first, so a
+store for it as them; nothing else can, and the original is not listed among an identity's
+public uploads. `GET /api/media/uploads` lists the ones they put in a note, newest first, so a
 picture can be used twice without being sent twice — the same folder decides what is in
 it, so nothing from a profile is. That route needs the reader's session and an `<img>`
 sends none, so `SloppyClient.ownPicture` fetches the bytes with the reader's own
@@ -327,13 +375,21 @@ covers, because otherwise a peer who pulled yesterday reads a note whose new pic
 answers 404. A mark's preview picture is not among them: a published node travels without
 its look, so nothing a peer holds ever cites one, and it stays private.
 
+**A public copy is public to anybody, not only to somebody holding the address.** syr
+decides `is_public` from the folder a blob is in, and an identity's `uploads` endpoint
+serves every public one it has, paginated, with its filename and size — so from the moment
+a subtree is published, the pictures in it are enumerable by anyone who knows the author's
+DID, with no publication address and no pull. That is the exposure publishing actually
+creates, and it is what the copy at the moment of the decision has to be true to.
+
 **Unpublishing does not take the copy back**, and that is the deliberate half. An address
 a peer already holds is load-bearing (AI.md § "The Address Is the Protocol"), so a URL
 minted public cannot quietly become private later; the copy is minted public and stays
-public. The consequence is the reader's, and the product says it at the moment of the
-decision: unpublishing stops this instance serving the subtree, and anyone who already has
-a picture keeps it. Deleting the picture is what takes it back — and deleting it deletes
-both halves, because the copy exists only to serve what was published.
+public, listed with the rest. The consequence is the reader's, and the product says it at
+the moment of the decision: unpublishing stops this instance serving the subtree, and the
+pictures that went out with it stay readable. Deleting the picture is what takes it back —
+and deleting it deletes both halves, because the copy exists only to serve what was
+published.
 
 **A peer's picture is fetched by this instance, never by the reader's browser.**
 `GET /api/media/published/{did}/{localId}` is that route — `publishedPicture` in
@@ -342,8 +398,8 @@ the reader's instance and never the reader, and nothing is served that that stor
 said is public. syr offers no single-upload public read, only the paginated listing at an
 identity's `uploads` endpoint, so finding one is a search of that listing rather than a
 lookup; the milestone serving the route owns making that cheap enough to sit behind an
-`<img>`, and an identity's public listing is the small half of its store, not the whole
-of it.
+`<img>`, and it may not assume the listing is short — the copies above go into it, so
+somebody who publishes a branch full of pictures has a long one.
 
 **Every renderable address is minted by the API, and none of them is a URL.** `AssetLinks`
 (`api/src/media/asset-link.ts`) signs the address a picture actually lives at and hands
@@ -483,11 +539,13 @@ its ancestors**, so the column is that fact denormalized onto the row: the API w
 across a subtree when a row is created, across what a removed row covered and no surviving
 row still covers when one is deleted, and onto a note created under a published ancestor.
 Deriving membership from the roots and the address was the other candidate, and a held
-foreign node rules it out — no publication row on this instance covers one, and it must
-still draw as something its author publishes, so the column is the only place that fact
-can live and `pulledNodeView` is what sets it. Two things the maintenance must not leave
-behind: a note drawing as published that no row covers, and a note drawing as own while a
-row that covers it survives.
+foreign node rules it out: no publication row on this instance covers one, so the
+derivation has nothing to read, and whether its author still publishes it is not something
+a reader can learn. `pulledNodeView` asserts the column instead — what was true when the
+copy arrived — and `provenanceOf` draws a held node as pulled before it ever looks, so what
+the assertion actually buys is a graph built without a viewer beside it. Two things the
+maintenance must not leave behind: a note drawing as published that no row covers, and a
+note drawing as own while a row that covers it survives.
 
 The rules AI.md's foundation-wave section states, applied here:
 
