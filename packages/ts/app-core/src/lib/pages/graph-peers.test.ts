@@ -1,7 +1,8 @@
 // Reading somebody else's region on the canvas: what is drawn, whose it says it
-// is, and what the surface stops offering while it is up.
+// is, what one of their notes opens as, and what the surface stops offering
+// while it is up.
 
-import type { NodeView, OwnedRef, PullView } from '@sloppy/types';
+import type { BlockView, NodeView, OwnedRef, PullView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -9,6 +10,7 @@ import {
 	DID,
 	node,
 	ref,
+	ulid,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
@@ -73,6 +75,22 @@ function theirs(seed: number, address: string, over: Partial<NodeView> = {}): No
 }
 
 const THEIR_ROOT = ref(11, AUTHOR);
+
+/** One section of a held note, as the region served it. */
+function section(seed: number, note: OwnedRef, words: string): BlockView {
+	return {
+		ref: ref(seed, AUTHOR),
+		created_by: AUTHOR,
+		created_at: AT,
+		updated_at: AT,
+		node: note,
+		ord: 'a0',
+		content: {
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: words }] }]
+		}
+	};
+}
 
 let api: FakeApi;
 let target: HTMLElement;
@@ -167,8 +185,11 @@ beforeEach(() => {
 	api.on('GET /following', () => []);
 	api.on('GET /pulls', () => [held]);
 	api.on(`GET /pulls/${encodeURIComponent(DID)}/${REGION_ID}/nodes`, () => [
-		theirs(11, '1', { title: 'Note 1' }),
+		theirs(11, '1', { title: 'Note 1', tags: ['biology'] }),
 		theirs(12, '1a', { title: 'Note 1a', origin: THEIR_ROOT, parent: THEIR_ROOT })
+	]);
+	api.on(`GET /pulls/nodes/${encodeURIComponent(AUTHOR)}/${ulid(12)}/blocks`, () => [
+		section(21, ref(12, AUTHOR), 'What they wrote in 1a')
 	]);
 
 	target = document.createElement('div');
@@ -212,10 +233,28 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		expect(api.calls.some((call) => call.startsWith('POST /nodes'))).toBe(false);
 	});
 
-	it('opens no note from a held mark', async () => {
+	it('opens the note a held mark stands for, in the author’s own words', async () => {
+		await enterHeldRegion();
+		onCanvas('1a').click();
+		await settle();
+		expect(screen()).toContain('Note 1a');
+		expect(screen()).toContain('What they wrote in 1a');
+	});
+
+	it('offers no way to write in a note it is showing', async () => {
 		await enterHeldRegion();
 		onCanvas('1a').click();
 		await settle();
 		expect(document.body.querySelector('[aria-label="Title"]')).toBeNull();
+		expect(document.body.querySelector('[contenteditable="true"]')).toBeNull();
+		expect(api.calls.some((call) => call.startsWith('PATCH /blocks'))).toBe(false);
+		expect(api.calls.some((call) => call.startsWith('POST /blocks'))).toBe(false);
+	});
+
+	it('counts the region’s own tags on the rail, not the reader’s', async () => {
+		api.on('GET /nodes/tags', () => [{ tag: 'biology', notes: 412 }]);
+		await enterHeldRegion();
+		expect(screen()).not.toContain('412');
+		expect(screen()).toContain('biology');
 	});
 });

@@ -283,7 +283,20 @@ was written in, so a peer's `1a` sitting where the reader's own `1a` sits would 
 genealogy neither author wrote. **Every act the canvas offers is off in a held region** —
 choosing, tagging, the look, deleting, pointing a link — because none of them is something
 to offer on somebody else's note; the region names its author in the chrome, and its marks
-draw as `pulled` off the viewer.
+draw as `pulled` off the viewer. The tag rail is the legend for the graph on screen, so it
+counts the region's notes while one is up.
+
+**A held note opens on the same reading surface a note of the reader's own does**, and
+nothing on it writes: its sections come from `GET /api/pulls/nodes/{did}/{ulid}/blocks` and
+are drawn in the writing surface's own element kinds with the surface not editable, so a
+kind the writer knows is a kind a peer's note draws in. Two of those kinds address something
+outside the document, and both are answered by this instance rather than by the author's: a
+picture cites the public copy its author published and is read through the reader's own
+instance (`SloppyClient.publishedPicture`), and an emoji's stored picture address — which
+the author's own instance minted — is dropped before the document is drawn, the shortcode
+resolving instead against the author's catalog as this instance cached it. A reference
+inside a held note resolves within the region or not at all; the reader's own graph is not
+the one on screen.
 
 **A follow belongs to the reader's identity store, not to Sloppy.** Identity is syr's half
 of the table above, syr already keeps a follow list and serves it at an identity's
@@ -291,7 +304,12 @@ of the table above, syr already keeps a follow list and serves it at an identity
 this person follow" that nothing reconciles. So `GET`/`POST`/`DELETE /api/following` reads
 and writes that store with the reader's delegation, and Sloppy stores nothing. The
 provider URL the store recorded beside a DID is the first step of resolving it; absent, the
-DID is resolved from scratch.
+DID is resolved from scratch. **The embedded provider keeps one like any other store** —
+`idp_follow`, the owner's `/follows` routes and a `public_following` endpoint on its
+identity manifest — so following works in the fully-local deployment mode too. Whether a
+store keeps a list at all is read off its manifest rather than off a failed request: one
+that declares no `public_following` has no follows rather than an error, and somebody using
+it is told they can still pull a branch by its address.
 
 **A pulled region is stored, and the reader owns the copy.** The alternative — re-fetching
 the author's instance on every read — cannot be reconciled with what the product already

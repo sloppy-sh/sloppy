@@ -1,6 +1,6 @@
 // Pulling against a real store and a real peer: the region a reader holds, what
-// a refresh sweeps, what two overlapping regions share, and what an answer has
-// to be to get in at all.
+// a refresh sweeps, what two overlapping regions share, what an answer has to
+// be to get in at all, and the follow list the reader's own store keeps.
 //
 // The peer here is a plain HTTP server speaking the contract in
 // `@sloppy/types` — publishing is another module's, and a peer is its wire.
@@ -14,6 +14,7 @@ import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type {
   BlockView,
+  FollowedIdentity,
   NodeView,
   PublishedBlock,
   PublishedNode,
@@ -547,5 +548,41 @@ describe("holding a region of somebody else's graph", () => {
     }
     expect(await regions()).toEqual([]);
     expect(await stackOf(ID.a)).toHaveLength(0);
+  });
+
+  scenario("records a follow, lists it, and drops it", async () => {
+    expect(await ok("GET", "/following")).toEqual([]);
+
+    await ok("POST", "/following", { did: AUTHOR });
+    expect(
+      ((await ok("GET", "/following")) as FollowedIdentity[]).map(
+        (one) => one.did,
+      ),
+    ).toEqual([AUTHOR]);
+
+    // Following somebody already followed is the same one follow.
+    await ok("POST", "/following", { did: AUTHOR });
+    expect((await ok("GET", "/following")) as FollowedIdentity[]).toHaveLength(
+      1,
+    );
+
+    await ok("DELETE", `/following/${encodeURIComponent(AUTHOR)}`);
+    expect(await ok("GET", "/following")).toEqual([]);
+  });
+
+  scenario("keeps the list on the reader's own identity", async () => {
+    await ok("POST", "/following", { did: STRANGER });
+    const answer = await fetch(
+      `${base}/api/idp/public/following/${encodeURIComponent(reader.did)}`,
+    );
+    const page = (await answer.json()) as { data: { followed_did: string }[] };
+    expect(answer.status).toBe(200);
+    expect(page.data.map((row) => row.followed_did)).toEqual([STRANGER]);
+    await ok("DELETE", `/following/${encodeURIComponent(STRANGER)}`);
+  });
+
+  scenario("will not let a reader follow themselves", async () => {
+    const refused = await call("POST", "/following", { did: reader.did });
+    expect(refused.status).toBe(400);
   });
 });

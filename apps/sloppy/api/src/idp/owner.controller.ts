@@ -18,6 +18,10 @@ import {
   EmojiCreateSchema,
   emojiCatalog,
   finishUpload,
+  FollowCreateSchema,
+  following,
+  addFollow,
+  removeFollow,
   FolderCreateSchema,
   foldersUnder,
   type FolderView,
@@ -35,7 +39,7 @@ import {
   type UploadTicket,
   uploadsUnder,
 } from "@sloppy/idp";
-import type { SyrEmoji } from "@sloppy/types";
+import type { SyrEmoji, SyrFollow } from "@sloppy/types";
 import type { Response } from "express";
 import { Public } from "../auth/public.decorator";
 import {
@@ -209,6 +213,50 @@ export class OwnerController {
     const grant = writingPlatform(req);
     if (decodeURIComponent(did) !== grant.did) throw notYours();
     await removeEmoji(this.idp.context, grant.did, decodeURIComponent(localId));
+  }
+
+  @Get("follows")
+  async follows(
+    @Req() req: IdpRequest,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ): Promise<PublicListing<SyrFollow>> {
+    const page = pageOf(limit, offset);
+    const { entries, total } = await following(
+      this.idp.context,
+      req.platform!.did,
+      page,
+    );
+    return listing(entries, page, total);
+  }
+
+  @Post("follows")
+  async createFollow(
+    @Req() req: IdpRequest,
+    @Body() body: unknown,
+  ): Promise<{ status: "success"; data: SyrFollow }> {
+    const grant = writingPlatform(req);
+    return {
+      status: "success",
+      data: await addFollow(
+        this.idp.context,
+        grant.did,
+        parseBody(FollowCreateSchema, body),
+      ),
+    };
+  }
+
+  @Delete("follows")
+  @HttpCode(204)
+  async deleteFollow(
+    @Req() req: IdpRequest,
+    @Query("followed_did") followedDid?: string,
+  ): Promise<void> {
+    const grant = writingPlatform(req);
+    if (!followedDid) {
+      throw new IdpError(400, "invalid_request", "Name who to stop following.");
+    }
+    await removeFollow(this.idp.context, grant.did, followedDid);
   }
 
   @Patch("user/profile")

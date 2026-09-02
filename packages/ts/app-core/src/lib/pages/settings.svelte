@@ -7,6 +7,7 @@
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { peers } from '../stores/peers.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
 		ACCENT_LABELS,
@@ -36,6 +37,7 @@
 		} finally {
 			nodes.clear();
 			tags.clear();
+			peers.clear();
 			people.hold(null);
 			leaving = false;
 		}

@@ -50,6 +50,7 @@
 		ConfirmModal,
 		GraphSurface,
 		GroundChoice,
+		HeldNote,
 		nameOf,
 		NotePreview,
 		overlay,
@@ -61,7 +62,9 @@
 		type CanvasMenuItem,
 		type HeldRegion,
 		type NoteTemplate,
-		type PreviewedNote
+		type PictureSource,
+		type PreviewedNote,
+		type ReferenceReader
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -71,7 +74,7 @@
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
-	import { noteMedia } from '../note-surface.js';
+	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
@@ -148,15 +151,29 @@
 	 * seed identically and mean different things.
 	 */
 	let foreign = $state<PullView | null>(null);
-	/**
-	 * The held note the reader last reached for, which the canvas opens around.
-	 * A held note's interior is deliberately not opened onto the reading surface:
-	 * `pages/node.svelte` reads the reader's own notes and writes to them, and
-	 * handing it somebody else's would show a note that is not there.
-	 */
+	/** The held note being read, which the canvas also opens around. */
 	let reached = $state<OwnedRef | null>(null);
+	/** The held note whose sections are still on their way. */
+	let reaching = $state<OwnedRef | null>(null);
+	/** Why the held note in front of the reader has no sections. */
+	let reachRefused = $state<string | null>(null);
 
 	const markPictures: MarkPictures = { read: (upload) => api.ownPicture(upload) };
+
+	/** A picture inside a held note. Publishing the branch is what made it
+	 *  readable, and the fetch is the API's, so the author's instance never
+	 *  learns who is reading. */
+	const heldPictures: PictureSource = { picture: (upload) => api.publishedPicture(upload) };
+
+	/** Where a reference inside a held note leads: the region either holds the
+	 *  note it names or nothing does, since the reader's own graph is not the
+	 *  one on screen. */
+	const heldReferences: ReferenceReader = {
+		read: async (note) => heldNotes.find((held) => held.ref === note) ?? null,
+		open: (note) => {
+			if (heldNotes.some((held) => held.ref === note)) void readHeld(note);
+		}
+	};
 
 	const roots = $derived(nodes.region());
 	const open = $derived(page.state.note ?? null);
@@ -186,6 +203,9 @@
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	/** The region's notes, already in address order. */
 	const heldNotes = $derived(foreign ? peers.held(foreign.ref) : []);
+	const reachedNote = $derived(
+		reached ? (heldNotes.find((note) => note.ref === reached) ?? null) : null
+	);
 	const populated = $derived(
 		foreign ? heldNotes.length > 0 : !loading && !unreachable && roots.length > 0
 	);
@@ -254,6 +274,19 @@
 	// Whatever opened over the graph is what the reader is looking at now.
 	$effect(() => {
 		if (overGraph) hoverAt = null;
+	});
+
+	/** The rail is the legend for the graph on screen, so inside a region it
+	 *  counts the region's notes rather than the reader's own. */
+	const railTags = $derived.by(() => {
+		if (!foreign) return tags.all;
+		const counted: Record<string, number> = {};
+		for (const note of heldNotes) {
+			for (const tag of note.tags) counted[tag] = (counted[tag] ?? 0) + 1;
+		}
+		return Object.entries(counted)
+			.map(([tag, notes]) => ({ tag, notes }))
+			.sort((a, b) => b.notes - a.notes || a.tag.localeCompare(b.tag));
 	});
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
@@ -685,14 +718,42 @@
 		stopChoosing();
 		stopPointing();
 		hide();
-		reached = null;
+		closeHeld();
 		foreign = region;
 		await peers.enter(ref);
 	}
 
 	function leaveRegion(): void {
 		foreign = null;
+		closeHeld();
+	}
+
+	/** A held note, opened to be read. Its sections are asked for once, and a
+	 *  second note opened while the first is still coming settles last. */
+	async function readHeld(ref: OwnedRef): Promise<void> {
+		reached = ref;
+		reachRefused = null;
+		if (peers.hasStack(ref)) return;
+		reaching = ref;
+		const stack = await peers.read(ref);
+		if (reached !== ref) return;
+		reaching = null;
+		if (stack === null) {
+			reachRefused = peers.says ?? 'Sloppy could not read that note. Try again in a moment.';
+		}
+	}
+
+	function closeHeld(): void {
 		reached = null;
+		reaching = null;
+		reachRefused = null;
+	}
+
+	/** Other people's graphs, and a second look at whatever did not arrive the
+	 *  first time. */
+	function visitPeers(): void {
+		visiting = true;
+		void peers.load();
 	}
 
 	const heldRegions = $derived<HeldRegion[]>(
@@ -716,6 +777,9 @@
 	});
 
 	const regionAuthor = $derived(foreign ? people.of(foreign.source_did) : null);
+	/** A note's shortcodes are read against its own author's catalog, which this
+	 *  instance resolves. */
+	const heldEmoji = $derived(noteEmoji(session.viewer?.did ?? '').catalog);
 
 	function startNumbering(): void {
 		branchNumber = '';
@@ -791,7 +855,7 @@
 				onChoose={pointing || foreign ? undefined : chooseAlso}
 				onChooseWithin={pointing || foreign ? undefined : chooseWithin}
 				onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
-				onOpenNode={foreign ? (ref) => (reached = ref) : show}
+				onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
 				onExpand={(ref) => {
 					folded.delete(ref);
 					if (pointing) looking = ref;
@@ -840,7 +904,7 @@
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
 								Number it yourself
 							</Button>
-							<Button variant="ghost" class="h-11" onclick={() => (visiting = true)}>
+							<Button variant="ghost" class="h-11" onclick={visitPeers}>
 								Read somebody else's
 							</Button>
 						</div>
@@ -878,8 +942,6 @@
 						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
 					{/if}
 				{:else if foreign}
-					<!-- Whose thought this is, said in words at the region it is about —
-					     DESIGN.md § Form, PRODUCT.md principle 4. -->
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
 							<span class="address">{foreign.root_address}</span>
@@ -948,8 +1010,8 @@
 					</div>
 				{/if}
 
-				{#if tags.all.length > 0 || selection.length > 0}
-					<TagRail tags={tags.all} selected={selection} onselect={(next) => tags.select(next)} />
+				{#if railTags.length > 0 || selection.length > 0}
+					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
 				{/if}
 
 				{#if refused}
@@ -1052,7 +1114,22 @@
 	}}
 	onFollow={(identity) => void peers.follow(identity)}
 	onUnfollow={(identity) => void peers.unfollow(identity)}
+	onRetry={peers.loaded ? undefined : () => void peers.load()}
 />
+
+{#if foreign}
+	<HeldNote
+		note={reachedNote}
+		author={{ identity: foreign.source_did, person: regionAuthor }}
+		blocks={reached ? peers.stack(reached) : []}
+		loading={reaching !== null}
+		says={reachRefused}
+		pictures={heldPictures}
+		references={heldReferences}
+		emoji={heldEmoji}
+		onClose={closeHeld}
+	/>
+{/if}
 
 <ResponsiveModal
 	bind:open={numbering}
@@ -1098,8 +1175,11 @@
 	</div>
 </ResponsiveModal>
 
+<!-- One author's graph at a time, so the reader's own notes are not read beside
+     somebody else's region — a history pop is the way in that nothing else
+     closes. -->
 <ReadingPanel
-	open={open !== null}
+	open={open !== null && !foreign}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}

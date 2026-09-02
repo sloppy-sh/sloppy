@@ -25,7 +25,8 @@
 		onLook,
 		onPull,
 		onFollow,
-		onUnfollow
+		onUnfollow,
+		onRetry
 	}: {
 		open?: boolean;
 		regions: readonly HeldRegion[];
@@ -33,6 +34,9 @@
 		busy?: boolean;
 		/** Why the last thing asked for did not happen. */
 		says?: string | null;
+		/** Given while one of the two lists above is still to be read, so the
+		 *  reader can ask for it again. */
+		onRetry?: () => void;
 		/** Read this region on the canvas. */
 		onEnter: (ref: HeldRegion['ref']) => void;
 		onDrop: (ref: HeldRegion['ref']) => void;
@@ -209,6 +213,9 @@
 		{/if}
 		{#if says}
 			<p class="text-sm text-destructive" role="alert">{says}</p>
+		{/if}
+		{#if onRetry && !busy}
+			<Button variant="outline" class="h-11 w-full" onclick={onRetry}>Try again</Button>
 		{/if}
 
 		{#if looking}
