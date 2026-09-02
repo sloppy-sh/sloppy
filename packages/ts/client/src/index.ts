@@ -475,8 +475,9 @@ export class SloppyClient {
   }
 
   /**
-   * A held region's notes, addressed by their author. `maxDepth` bounds it, the
-   * same level-of-detail read {@link listNodes} takes over the caller's own.
+   * A held region's notes, addressed by their author. `maxDepth` counts from
+   * the REGION's own root, not from the author's — a region pulled at `1a1`
+   * starts at its root however deep that sits in the graph it came from.
    */
   async listPulledNodes(
     pull: OwnedRef,

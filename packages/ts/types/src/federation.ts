@@ -11,6 +11,7 @@
 import { z } from "zod";
 import { addressDepth, AddressSchema } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
+import { PageCursorSchema } from "./publication.js";
 import { DidSyrSchema, OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import { NodeDepthMismatchError } from "./node.js";
@@ -99,6 +100,9 @@ export function peerOrigin(typed: string): PeerOrigin | null {
 export const PeerPublicationsQuerySchema = z.object({
   did: DidSyrSchema,
   source_url: PeerOriginSchema.optional(),
+  /** Absent asks for the first page. A zod object strips what it does not
+   *  declare, so a listing that goes on is unreachable without this. */
+  cursor: PageCursorSchema.optional(),
 });
 export type PeerPublicationsQuery = z.input<typeof PeerPublicationsQuerySchema>;
 

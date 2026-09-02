@@ -309,7 +309,11 @@ pull writes rows:
 - **A refresh removes what its region served and the new answer no longer carries.** The
   sweep runs when the last page is in and never on a run that failed partway, because an
   incomplete answer is not evidence that a note is gone. Without it, a note its author
-  deleted stays readable in the reader's copy forever. It also **replaces a held note that
+  deleted stays readable in the reader's copy forever. **The sweep reaches sections too**:
+  a note that survives it keeps only the blocks the new answer carried, because a block
+  belongs to exactly one note and a note deleting a section is the ordinary case. It runs
+  over the whole accumulated answer rather than page by page — a note's blocks can span
+  pages, and a per-page sweep would take the ones that had not arrived yet. It also **replaces a held note that
   the new answer puts a different note at the address of** — `pulled_node` is UNIQUE on
   author and address, and an author who deletes every child of a branch and writes a new
   first one hands out an address a reader is still holding. The answer just received is
