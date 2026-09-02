@@ -12,6 +12,7 @@ import {
   findFollow,
   type FollowRow,
   listFollows,
+  listPublicFollows,
   mergeFollow,
 } from "./store.js";
 
@@ -34,6 +35,17 @@ export async function following(
   page: { limit: number; offset: number },
 ): Promise<{ entries: SyrFollow[]; total: number }> {
   const { rows, total } = await listFollows(ctx.db, did, page);
+  return { entries: rows.map(followView), total };
+}
+
+/** What an identity's `public_following` endpoint answers. {@link following}
+ *  is the owner's own listing and carries what this one may not. */
+export async function publicFollowing(
+  ctx: IdpContext,
+  did: string,
+  page: { limit: number; offset: number },
+): Promise<{ entries: SyrFollow[]; total: number }> {
+  const { rows, total } = await listPublicFollows(ctx.db, did, page);
   return { entries: rows.map(followView), total };
 }
 
@@ -61,6 +73,7 @@ export async function addFollow(
       did,
       followed_did: request.followed_did,
       followed_provider_url: provider,
+      is_public: false,
       created_at: nowIso(),
     }),
   );

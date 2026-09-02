@@ -311,6 +311,22 @@ store keeps a list at all is read off its manifest rather than off a failed requ
 that declares no `public_following` has no follows rather than an error, and somebody using
 it is told they can still pull a branch by its address.
 
+**Where a followed identity's GRAPH is served is a guess, and is shown as one.** A DID
+names a person and never a place, and syr's manifest answers for an identity's own store
+and not for the graph beside it, so asking somebody what they publish starts at the
+instance a region of theirs already came from, else at the provider recorded beside their
+DID. That lands in the field the reader can edit rather than behind the button, because on
+the two of the three deployment modes where a person's store and their graph are one
+instance it is the right answer, and on the third the reader has to be able to see which
+instance was asked before they can name the right one.
+
+**A follow is private, and following somebody is not publishing that you did.** Who a
+person reads is theirs. A store's `public_following` endpoint serves the follows its owner
+made public — syr's `is_public`, false unless set — and Sloppy asks for none, so a follow
+written here is readable by its owner and by nobody else. The embedded provider answers the
+same way rather than a laxer one: which deployment mode somebody runs is not a choice about
+who can see who they read.
+
 **A pulled region is stored, and the reader owns the copy.** The alternative — re-fetching
 the author's instance on every read — cannot be reconciled with what the product already
 promises at the moment of publishing: that a peer who has pulled a subtree keeps it after
@@ -330,6 +346,15 @@ pull writes rows:
   and the difference is what a refresh and a drop are made of. This is not the rule about
   deriving from an address (AI.md § "The Address Is the Protocol") bent: what a peer's
   instance chose to send is not a fact any address states.
+- **A note whose own signature refutes it is left out; the branch around it still
+  arrives.** `PublishedNodeSchema` bounds what a reader may claim — one that cannot verify
+  a signature still renders the note, one that can and finds it wrong must not present it
+  as the author's — and not presenting ONE note as its author's is not the same as refusing
+  the two hundred that verify. So `attribution.ts` answers per note, the page is written
+  without it, and it is not among what the sweep below counts as served, which lets go of a
+  copy the reader can no longer put the author's name to. An answer that is not the branch
+  that was ASKED for is the other case entirely and is still refused whole: what a peer
+  sent about the shape of its own subtree is either the answer to the question or not.
 - **A refresh removes what its region served and the new answer no longer carries.** The
   sweep runs when the last page is in and never on a run that failed partway, because an
   incomplete answer is not evidence that a note is gone. Without it, a note its author
@@ -396,10 +421,10 @@ rather than gaps to close:
   three fields on one and its public listing does not serve them, so a reaction never
   arrives with anything to check, and no surface may claim otherwise.
 
-**Local-only mode has neither.** `@sloppy/idp` serves files, emoji and a profile, and its
-identity manifest advertises no `public_comments`, `public_reactions` or `public_following`
-— so an instance running on the embedded provider can publish, be pulled from, and pull,
-and has no conversation and no follow list at all.
+**Local-only mode has neither.** `@sloppy/idp` serves files, emoji, a profile and a follow
+list, and its identity manifest advertises no `public_comments` or `public_reactions` — so
+an instance running on the embedded provider can publish, be pulled from, pull and follow,
+and has no conversation at all.
 
 ## Pictures
 

@@ -16,6 +16,7 @@ import {
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { peers } from '../stores/peers.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
 import { at, pushed, replaced, startAt } from './page.test-support.svelte.js';
@@ -47,6 +48,8 @@ vi.mock('@sloppy/ui', async (original) => ({
 const Graph = (await import('./graph.svelte')).default;
 
 const AUTHOR = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
+/** Somebody the reader follows and holds nothing from. */
+const STRANGER = 'did:syr:z6MkjchhfUsD6mmvni8mCdXHw216Xrm9bQe2mBH1P5RDjVJG';
 const REGION_ID = '01JQXR000000000000000000RG';
 const REGION = `${DID}/${REGION_ID}` as OwnedRef;
 
@@ -75,6 +78,9 @@ function theirs(seed: number, address: string, over: Partial<NodeView> = {}): No
 }
 
 const THEIR_ROOT = ref(11, AUTHOR);
+
+/** An address a peer would like the reader's browser to fetch. */
+const TRACKER = 'https://tracker.example/p.png';
 
 /** One section of a held note, as the region served it. */
 function section(seed: number, note: OwnedRef, words: string): BlockView {
@@ -152,6 +158,15 @@ function onCanvas(address: string): HTMLButtonElement {
 	return found as HTMLButtonElement;
 }
 
+/** The nth "What they publish", which is the nth person the reader follows. */
+function publishedByRow(at: number): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].filter((b) =>
+		b.textContent?.includes('What they publish')
+	);
+	if (!found[at]) throw new Error(`No ${at + 1}th person to ask about`);
+	return found[at] as HTMLButtonElement;
+}
+
 const choosingOnCanvas = () =>
 	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.choosing;
 
@@ -175,6 +190,9 @@ beforeEach(() => {
 	stubViewport();
 	nodes.clear();
 	tags.clear();
+	// Held regions outlive a component, so one test's copy is another's unless
+	// this runs: what a region served is read once and kept for the session.
+	peers.clear();
 	api = useFakeApi();
 	session.adopt(VIEWER, 'a-token');
 
@@ -249,6 +267,57 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		expect(document.body.querySelector('[contenteditable="true"]')).toBeNull();
 		expect(api.calls.some((call) => call.startsWith('PATCH /blocks'))).toBe(false);
 		expect(api.calls.some((call) => call.startsWith('POST /blocks'))).toBe(false);
+	});
+
+	it('fetches no address a peer put in a note it is showing', async () => {
+		api.on(`GET /pulls/nodes/${encodeURIComponent(AUTHOR)}/${ulid(12)}/blocks`, () => [
+			{
+				...section(21, ref(12, AUTHOR), 'What they wrote in 1a'),
+				content: {
+					type: 'doc',
+					content: [
+						{ type: 'picture', attrs: { preview: TRACKER, failure: 'Call this number' } },
+						{
+							type: 'paragraph',
+							content: [{ type: 'emoji', attrs: { name: 'wave', char: '', src: TRACKER } }]
+						}
+					]
+				}
+			}
+		]);
+		await enterHeldRegion();
+		onCanvas('1a').click();
+		await settle();
+
+		expect(document.body.innerHTML).not.toContain(TRACKER);
+	});
+
+	it('asks about somebody the reader follows where their graph is', async () => {
+		api.on('GET /following', () => [
+			{ did: AUTHOR, provider_url: 'https://recorded.example' },
+			{ did: STRANGER, provider_url: 'https://theirs.example' }
+		]);
+		api.on('GET /peers/publications', () => ({ did: AUTHOR, roots: [] }));
+		mounted = mount(Graph, { target });
+		flushSync();
+		await settle();
+		labelledControl("Other people's graphs").click();
+		await settle();
+
+		const asking = (who: string, where: string) =>
+			`GET /peers/publications?did=${encodeURIComponent(who)}&source_url=${encodeURIComponent(where)}`;
+
+		// Somebody whose graph nothing here has read is asked at the instance
+		// their DID was recorded against.
+		publishedByRow(1).click();
+		await settle();
+		expect(api.calls).toContain(asking(STRANGER, 'https://theirs.example'));
+
+		// Somebody a region is already held from is asked where that came from,
+		// and not at whatever the box was left holding for the last person.
+		publishedByRow(0).click();
+		await settle();
+		expect(api.calls).toContain(asking(AUTHOR, 'http://peer.test'));
 	});
 
 	it('counts the region’s own tags on the rail, not the reader’s', async () => {

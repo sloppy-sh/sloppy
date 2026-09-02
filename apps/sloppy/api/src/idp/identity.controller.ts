@@ -14,7 +14,6 @@ import {
   type DidDocument,
   didDocument,
   emojiCatalog,
-  following,
   LoginRequestSchema,
   login,
   logout,
@@ -22,6 +21,7 @@ import {
   profileOf,
   type PublicListing,
   type PublicRecord,
+  publicFollowing,
   publicUploadsOf,
   register,
   RegisterRequestSchema,
@@ -132,18 +132,26 @@ export class IdentityController {
     return listing(entries, page, total);
   }
 
-  /** Who this identity says they read. A reader resolves a followed DID to the
-   *  store that answers for it, which is why the row carries one. */
+  /**
+   * Who this identity says PUBLICLY that they read. Who somebody reads is
+   * theirs, so a follow is in here only where its owner said so; a reader
+   * resolves a followed DID to the store that answers for it, which is why the
+   * row carries one.
+   */
   @Public()
   @Get("public/following/:did")
-  async publicFollowing(
+  async followedPublicly(
     @Param("did") did: string,
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
   ): Promise<PublicListing<SyrFollow>> {
     const owner = await this.ownDid(did);
     const page = pageOf(limit, offset);
-    const { entries, total } = await following(this.idp.context, owner, page);
+    const { entries, total } = await publicFollowing(
+      this.idp.context,
+      owner,
+      page,
+    );
     return listing(entries, page, total);
   }
 

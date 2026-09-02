@@ -9,6 +9,9 @@ import type { Person } from '../identity/person.js';
 export interface Peer {
 	identity: string;
 	person: Person | null;
+	/** The instance to ask about them, where the host knows one. Absent is this
+	 *  one, which is the whole of it for somebody whose graph is kept here. */
+	from?: string;
 }
 
 /** A region of somebody else's graph the reader holds. */

@@ -190,6 +190,10 @@ export interface FollowRow {
   did: string;
   followed_did: string;
   followed_provider_url: string | null;
+  /** Whether a stranger may read this row. Who somebody reads is theirs, so a
+   *  follow is private until its owner says otherwise — the same answer syr
+   *  gives, and what `public_following` on the manifest serves. */
+  is_public: boolean;
   created_at: string;
 }
 
@@ -463,7 +467,7 @@ export async function createFollow(
   return db.create<FollowRow>(newId("idp_follow")).content(row);
 }
 
-/** Who this identity follows, newest first. */
+/** Who this identity follows, newest first — the owner's own listing. */
 export async function listFollows(
   db: Surreal,
   did: string,
@@ -473,6 +477,23 @@ export async function listFollows(
     `SELECT * FROM idp_follow WHERE did = $did
        ORDER BY created_at DESC LIMIT $limit START $offset;
      SELECT count() AS total FROM idp_follow WHERE did = $did GROUP ALL;`,
+    { did, limit: page.limit, offset: page.offset },
+  );
+  return { rows: rows ?? [], total: counted?.[0]?.total ?? 0 };
+}
+
+/** The same listing as a stranger may read it: only what its owner made
+ *  public, which a row carrying no answer has not. */
+export async function listPublicFollows(
+  db: Surreal,
+  did: string,
+  page: { limit: number; offset: number },
+): Promise<{ rows: FollowRow[]; total: number }> {
+  const [rows, counted] = await db.query<[FollowRow[], { total: number }[]]>(
+    `SELECT * FROM idp_follow WHERE did = $did AND is_public = true
+       ORDER BY created_at DESC LIMIT $limit START $offset;
+     SELECT count() AS total FROM idp_follow
+       WHERE did = $did AND is_public = true GROUP ALL;`,
     { did, limit: page.limit, offset: page.offset },
   );
   return { rows: rows ?? [], total: counted?.[0]?.total ?? 0 };

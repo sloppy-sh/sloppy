@@ -61,6 +61,7 @@ export class PullService {
 
     let region: Pull | undefined;
     let cursor: string | undefined;
+    const declined = new Set<OwnedRef>();
     do {
       const body = await readPeerJson(
         subtreeUrl(origin, author, rootAddress, cursor),
@@ -74,7 +75,7 @@ export class PullService {
         }
         throw new ServiceUnavailableException(UNREADABLE);
       }
-      const page = this.take(reading, body);
+      const page = this.take(reading, body, declined);
       region ??= await this.pulls.openRegion(reader, {
         source_did: author,
         root_address: rootAddress,
@@ -85,7 +86,9 @@ export class PullService {
     } while (cursor !== undefined);
 
     if (region === undefined) throw new ServiceUnavailableException(UNREADABLE);
-    await this.sweep(reader, region, reading.served());
+    const served = reading.served();
+    for (const node of declined) served.delete(node);
+    await this.sweep(reader, region, served);
     return viewOf(await this.pulls.settleRegion(region, origin));
   }
 
@@ -126,10 +129,17 @@ export class PullService {
     return (await this.pulls.blocksOf(reader, node)).map(pulledBlockView);
   }
 
-  /** One page, held to the question and to the author's own signatures. */
+  /**
+   * One page, held to the question and to the author's own signatures. A note
+   * whose own signature refutes it is left out and named in `declined`, so it
+   * is neither held nor swept for. `PublishedNodeSchema` bounds the claim, and
+   * not presenting ONE note as its author's is not refusing the branch it sits
+   * in.
+   */
   private take(
     reading: ReturnType<typeof publishedSubtreeReader>,
     body: unknown,
+    declined: Set<OwnedRef>,
   ): PublishedSubtreePage {
     let page: PublishedSubtreePage;
     try {
@@ -141,13 +151,19 @@ export class PullService {
       }
       throw error;
     }
+    const refuted = new Set<OwnedRef>();
     for (const node of page.nodes) {
-      if (signatureRefutes(node)) {
-        this.logger.warn(`${node.ref} does not carry its author's signature`);
-        throw new ServiceUnavailableException(UNREADABLE);
-      }
+      if (!signatureRefutes(node)) continue;
+      this.logger.warn(`${node.ref} does not carry its author's signature`);
+      refuted.add(node.ref);
+      declined.add(node.ref);
     }
-    return page;
+    if (refuted.size === 0) return page;
+    return {
+      ...page,
+      nodes: page.nodes.filter((node) => !refuted.has(node.ref)),
+      blocks: page.blocks.filter((block) => !refuted.has(block.node)),
+    };
   }
 
   /** What the region served last time and no longer does. Sections are swept

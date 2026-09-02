@@ -12,13 +12,15 @@ const block = (content: BlockDocument): BlockView => ({
 	content
 });
 
-/** Every `src` anywhere in a document, however deep it sits. */
+/** Every address anywhere in a document, whichever attribute carries it and
+ *  however deep it sits: a browser fetches one the same either way. */
 function addresses(document: BlockDocument): string[] {
 	const found: string[] = [];
 	const pending = [...document.content];
 	for (let element = pending.pop(); element; element = pending.pop()) {
-		const src = element.attrs?.src;
-		if (typeof src === 'string' && src) found.push(src);
+		for (const value of Object.values(element.attrs ?? {})) {
+			if (typeof value === 'string' && /^(?:https?|blob|data):/.test(value)) found.push(value);
+		}
 		if (element.content) pending.push(...element.content);
 	}
 	return found;
@@ -49,6 +51,42 @@ describe('a section written on somebody else’s instance', () => {
 			})
 		]);
 
+		expect(addresses(cleaned.content)).toEqual([]);
+	});
+
+	it('draws no picture from an address its author put beside the upload', () => {
+		const [cleaned] = withoutPeerAddresses([
+			block({
+				type: 'doc',
+				content: [
+					{
+						type: 'picture',
+						attrs: {
+							upload_id: 'did:syr:z6Mk/01JQXR',
+							preview: 'https://tracker.example/p.png',
+							progress: 0,
+							failure: 'Ask your bank to call this number'
+						}
+					}
+				]
+			})
+		]);
+
+		expect(cleaned.content.content[0].attrs).toEqual({ upload_id: 'did:syr:z6Mk/01JQXR' });
+	});
+
+	it('draws nothing at all for a picture that is only an address', () => {
+		const [cleaned] = withoutPeerAddresses([
+			block({
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: 'before' }] },
+					{ type: 'picture', attrs: { preview: 'https://tracker.example/p.png' } }
+				]
+			})
+		]);
+
+		expect(cleaned.content.content.map((element) => element.type)).toEqual(['paragraph']);
 		expect(addresses(cleaned.content)).toEqual([]);
 	});
 

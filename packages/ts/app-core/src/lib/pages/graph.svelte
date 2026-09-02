@@ -35,6 +35,8 @@
 	import {
 		NodeBulkRequestSchema,
 		RootAddressSchema,
+		peerOrigin,
+		type FollowedIdentity,
 		type NodeAppearance,
 		type NodeBulkAct,
 		type NodeView,
@@ -62,6 +64,7 @@
 		type CanvasMenuItem,
 		type HeldRegion,
 		type NoteTemplate,
+		type Peer,
 		type PictureSource,
 		type PreviewedNote,
 		type ReferenceReader
@@ -766,8 +769,21 @@
 		}))
 	);
 
-	const followedPeople = $derived(
-		peers.following.map((one) => ({ identity: one.did, person: people.of(one.did) }))
+	/** Where to ask about somebody: the instance a region of theirs came from,
+	 *  else the provider the reader's own store recorded beside their DID. A DID
+	 *  names a person and never a place, so neither is more than a best guess,
+	 *  and the sheet shows which was used. */
+	function readAt(one: FollowedIdentity): string | undefined {
+		const held = peers.regions.find((region) => region.source_did === one.did);
+		return held?.source_url ?? peerOrigin(one.provider_url ?? '') ?? undefined;
+	}
+
+	const followedPeople = $derived<Peer[]>(
+		peers.following.map((one) => ({
+			identity: one.did,
+			person: people.of(one.did),
+			from: readAt(one)
+		}))
 	);
 
 	/** Whoever a peer surface is about to name, asked for once. */

@@ -75,6 +75,14 @@
 		return peerOrigin(where);
 	}
 
+	/** Somebody the reader already follows is asked at the instance known for
+	 *  them rather than at whatever the box was last used for, and the box then
+	 *  shows it so it can be changed. */
+	async function lookAtFollowed(peer: Peer): Promise<void> {
+		where = peer.from ?? '';
+		await look(peer.identity);
+	}
+
 	async function look(who: string): Promise<void> {
 		const at = instance();
 		if (at === null) {
@@ -155,7 +163,7 @@
 								variant="ghost"
 								class="h-9 shrink-0 rounded-full"
 								disabled={busy}
-								onclick={() => look(one.identity)}
+								onclick={() => lookAtFollowed(one)}
 							>
 								What they publish
 							</Button>

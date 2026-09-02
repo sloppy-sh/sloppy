@@ -487,26 +487,41 @@ describe("holding a region of somebody else's graph", () => {
     expect((await heldIn(region)).map((node) => node.ref)).toEqual(before);
   });
 
-  scenario("refuses a note whose own signature says it is not", async () => {
-    serves(
-      page("1a", [
-        {
-          ...note("1a", "1a"),
-          content_signature: "z2i7YveT8N8bmBrE",
-          signing_device_public_key: STRANGER.slice("did:syr:".length),
-          signed_payload_json: JSON.stringify({
-            type: "sloppy-node@v1",
-            did: AUTHOR,
-            node_id: "01JQXQ0000000000000000000A",
-            address: "1a",
-            title: "Somebody else's note",
-            created_at: "2026-01-01T00:00:00.000Z",
-          }),
-        },
-      ]),
-    );
-    expect((await pull("1a")).status).toBeGreaterThanOrEqual(400);
-  });
+  scenario(
+    "leaves out the note whose own signature says it is not, and reads the rest",
+    async () => {
+      // `1a1` is held from the pull before this one, so the branch arriving
+      // without it is also the reader letting go of a copy they can no longer
+      // put the author's name to.
+      serves(
+        page(
+          "1a",
+          [
+            note("1a", "1a"),
+            {
+              ...note("1a", "1a1"),
+              content_signature: "z2i7YveT8N8bmBrE",
+              signing_device_public_key: STRANGER.slice("did:syr:".length),
+              signed_payload_json: JSON.stringify({
+                type: "sloppy-node@v1",
+                did: AUTHOR,
+                node_id: ID.a1,
+                address: "1a1",
+                title: "Somebody else's note",
+                created_at: "2026-01-01T00:00:00.000Z",
+              }),
+            },
+          ],
+          [section(ID.s1, ID.a, "a0"), section(ID.s3, ID.a1, "a0")],
+        ),
+      );
+
+      const region = await pulled("1a");
+      expect((await heldIn(region)).map((n) => n.address)).toEqual(["1a"]);
+      expect(await stackOf(ID.a)).toHaveLength(1);
+      expect(await stackOf(ID.a1)).toHaveLength(0);
+    },
+  );
 
   scenario("holds a note it cannot check the signature on", async () => {
     serves(
@@ -570,16 +585,29 @@ describe("holding a region of somebody else's graph", () => {
     expect(await ok("GET", "/following")).toEqual([]);
   });
 
-  scenario("keeps the list on the reader's own identity", async () => {
-    await ok("POST", "/following", { did: STRANGER });
-    const answer = await fetch(
-      `${base}/api/idp/public/following/${encodeURIComponent(reader.did)}`,
-    );
-    const page = (await answer.json()) as { data: { followed_did: string }[] };
-    expect(answer.status).toBe(200);
-    expect(page.data.map((row) => row.followed_did)).toEqual([STRANGER]);
-    await ok("DELETE", `/following/${encodeURIComponent(STRANGER)}`);
-  });
+  scenario(
+    "keeps the list on the reader's own identity, and to themselves",
+    async () => {
+      await ok("POST", "/following", { did: STRANGER });
+      expect(
+        ((await ok("GET", "/following")) as FollowedIdentity[]).map(
+          (one) => one.did,
+        ),
+      ).toEqual([STRANGER]);
+
+      // Following somebody is not publishing that you did: the endpoint an
+      // identity's manifest points a stranger at serves what its owner made
+      // public, and nothing here has.
+      const answer = await fetch(
+        `${base}/api/idp/public/following/${encodeURIComponent(reader.did)}`,
+      );
+      const page = (await answer.json()) as { data: unknown[] };
+      expect(answer.status).toBe(200);
+      expect(page.data).toEqual([]);
+
+      await ok("DELETE", `/following/${encodeURIComponent(STRANGER)}`);
+    },
+  );
 
   scenario("will not let a reader follow themselves", async () => {
     const refused = await call("POST", "/following", { did: reader.did });
