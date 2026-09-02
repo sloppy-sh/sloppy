@@ -27,6 +27,9 @@ export { default as PersonEditor } from './components/identity/person-editor.sve
 export { initialsOf, nameOf } from './components/identity/person.js';
 export type { Person, PictureRole } from './components/identity/person.js';
 
+export { default as PeersSheet } from './components/peers/peers-sheet.svelte';
+export type { HeldRegion, Peer, PublishedThere } from './components/peers/peer.js';
+
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export * from './components/graph/view.js';
 export { default as TagField } from './components/tags/tag-field.svelte';

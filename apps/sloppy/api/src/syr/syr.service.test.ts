@@ -506,3 +506,103 @@ describe("a change the store made, and what it left a caller to work with", () =
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
+
+describe("who somebody follows, in their own identity store", () => {
+  const FOLLOWS = "/api/follows";
+  const MANIFEST_PATH = `/.well-known/syr/${encodeURIComponent(DID)}`;
+  const OTHER = DidSyrSchema.parse(
+    "did:syr:z6MkBvbBvbBvbBvbBvbBvbBvbBvbBvbBvb",
+  );
+
+  const identityManifest = (endpoints: Record<string, string>) => ({
+    version: 1,
+    did: DID,
+    provider: INSTANCE,
+    endpoints: {
+      profile: `${INSTANCE}/api/public/profile/${DID}`,
+      posts: `${INSTANCE}/api/public/posts/${DID}`,
+      stories: `${INSTANCE}/api/public/stories/${DID}`,
+      uploads: `${INSTANCE}/api/public/uploads/${DID}`,
+      did_document: `${INSTANCE}/api/identity/${DID}/document`,
+      ...endpoints,
+    },
+    web_profile: `${INSTANCE}/u/${DID}`,
+  });
+
+  it("reads a store that keeps one, and says so of a store that does not", async () => {
+    instance({
+      [MANIFEST_PATH]: {
+        body: identityManifest({
+          public_following: `${INSTANCE}/api/public/following/${DID}`,
+        }),
+      },
+    });
+    await expect(new SyrService().keepsFollows(INSTANCE, DID)).resolves.toBe(
+      true,
+    );
+
+    instance({ [MANIFEST_PATH]: { body: identityManifest({}) } });
+    await expect(new SyrService().keepsFollows(INSTANCE, DID)).resolves.toBe(
+      false,
+    );
+  });
+
+  it("lists them, dropping what a row carries beside the two halves", async () => {
+    instance({
+      [FOLLOWS]: {
+        body: {
+          data: [
+            {
+              followed_did: OTHER,
+              followed_provider_url: "https://elsewhere.example",
+              is_public: true,
+              created_at: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(
+      new SyrService().listFollowing(DELEGATION),
+    ).resolves.toStrictEqual([
+      {
+        followed_did: OTHER,
+        followed_provider_url: "https://elsewhere.example",
+      },
+    ]);
+  });
+
+  it("records where an identity lives beside the follow", async () => {
+    const { calls } = instance({ [FOLLOWS]: { status: 204 } });
+    await new SyrService().follow(DELEGATION, OTHER, INSTANCE);
+
+    const wrote = calls.find((call) => call.url.endsWith(FOLLOWS));
+    expect(JSON.parse(String(wrote?.init?.body))).toStrictEqual({
+      followed_did: OTHER,
+      provider_url: INSTANCE,
+    });
+    expect(wrote?.init?.headers).toMatchObject({
+      authorization: `Bearer ${DELEGATION.access_token}`,
+    });
+  });
+
+  it("names the follow it is dropping in the query, as the store takes it", async () => {
+    const { calls } = instance({ [FOLLOWS]: { status: 204 } });
+    await new SyrService().unfollow(DELEGATION, OTHER);
+
+    const asked = calls.find((call) => call.url.includes(FOLLOWS));
+    expect(new URL(String(asked?.url)).searchParams.get("followed_did")).toBe(
+      OTHER,
+    );
+    expect(asked?.init?.method).toBe("DELETE");
+  });
+
+  it("cannot say where an identity lives when the store does not know", async () => {
+    vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+    instance({ [MANIFEST_PATH]: { status: 404, body: {} } });
+    await expect(
+      new SyrService().providerFor(INSTANCE, DID),
+    ).resolves.toBeNull();
+  });
+});

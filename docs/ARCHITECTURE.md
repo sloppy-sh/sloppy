@@ -271,13 +271,19 @@ being outside the publication; and `links` carries only targets the same author 
 a link to an unpublished note being dropped rather than named. The reader's copy is a tree
 rooted at the region root, so it satisfies the same `ref === origin` a root always does.
 
-**Where a foreign region is DRAWN is not settled here, and a surface must settle it before
-it builds one graph out of two.** A mark's position seeds from its address alone
-(`packages/ts/graph/src/layout/geometry.ts`), so a peer's `1a` and the reader's own `1a`
-seed identically, and `graph.addNode` is keyed by ref, so two held regions that overlap
-answer the shared notes twice. Neither is a defect in the layout — it is what makes one
-person's graph readable in the same shape by another — and both are the pull surface's to
-answer.
+**The canvas draws ONE author's graph at a time**, and that is how a foreign region is
+read: the reader's own graph, or a region they hold, entered and left from the graph's own
+chrome (`app-core/src/lib/pages/graph.svelte`). A mark's position seeds from its address
+alone (`packages/ts/graph/src/layout/geometry.ts`), so a peer's `1a` and the reader's own
+`1a` seed identically, and `graph.addNode` is keyed by ref, so two held regions that
+overlap would answer the shared notes twice. Neither is a defect in the layout — it is what
+makes one person's graph readable in the same shape by another — and drawing one graph at a
+time is what makes them true rather than a collision: an address is a place in the graph it
+was written in, so a peer's `1a` sitting where the reader's own `1a` sits would claim a
+genealogy neither author wrote. **Every act the canvas offers is off in a held region** —
+choosing, tagging, the look, deleting, pointing a link — because none of them is something
+to offer on somebody else's note; the region names its author in the chrome, and its marks
+draw as `pulled` off the viewer.
 
 **A follow belongs to the reader's identity store, not to Sloppy.** Identity is syr's half
 of the table above, syr already keeps a follow list and serves it at an identity's

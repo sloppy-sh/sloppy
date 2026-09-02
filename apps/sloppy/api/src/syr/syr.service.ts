@@ -10,6 +10,8 @@ import {
   type CreateUploadRequest,
   type SyrEmoji,
   SyrEmojiSchema,
+  type SyrFollow,
+  SyrFollowSchema,
   type SyrIdentityManifest,
   SyrIdentityManifestSchema,
   type SyrInstanceManifest,
@@ -268,7 +270,7 @@ export class SyrService {
     return listing.data;
   }
 
-  // ── The identity store: profile, media and emoji ──────────────────────────
+  // ── The identity store: profile, media, follows and emoji ─────────────────
 
   /**
    * A single identity's manifest, `/.well-known/syr/{did}` — where the profile
@@ -464,6 +466,79 @@ export class SyrService {
     );
     return this.readShape(syrEnvelope(SyrUploadSchema), body, url, failure)
       .data;
+  }
+
+  /**
+   * Where an identity's own store answers, as this instance can resolve it, or
+   * `null` where it cannot say — an identity held somewhere this instance has
+   * never heard of, or an instance that did not answer just now. A follow
+   * recorded without one is resolved from scratch when somebody reads it.
+   */
+  async providerFor(instanceUrl: string, did: string): Promise<string | null> {
+    try {
+      return (await this.identityManifest(instanceUrl, did)).provider;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Whether this identity's store keeps a follow list at all. A store that
+   * declares no public one keeps none, so the answer is read off the manifest
+   * rather than off a failed request.
+   */
+  async keepsFollows(instanceUrl: string, did: string): Promise<boolean> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    return endpoints.public_following !== undefined;
+  }
+
+  async listFollowing(delegation: Delegation): Promise<SyrFollow[]> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
+    const failure = "We could not read who you follow. Try again in a moment.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "GET" },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrFollowSchema)),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
+  /** `providerUrl` is where that identity's own store answers, kept beside the
+   *  DID so reading them later starts there rather than from scratch. */
+  async follow(
+    delegation: Delegation,
+    did: string,
+    providerUrl?: string,
+  ): Promise<void> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
+    await this.asPerson(
+      delegation,
+      url,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          followed_did: did,
+          ...(providerUrl ? { provider_url: providerUrl } : {}),
+        }),
+      },
+      "That could not be saved to your identity right now. Try again.",
+    );
+  }
+
+  async unfollow(delegation: Delegation, did: string): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/follows?followed_did=${encodeURIComponent(did)}`,
+      { method: "DELETE" },
+      "That could not be saved to your identity right now. Try again.",
+    );
   }
 
   async listOwnEmoji(delegation: Delegation): Promise<SyrEmoji[]> {
