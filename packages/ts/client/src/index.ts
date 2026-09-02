@@ -13,11 +13,17 @@ import {
   type CreateBlockRequest,
   type CreateEmojiRequest,
   type CreateNodeRequest,
+  type CreateNoteCommentRequest,
+  type CreateNoteReactionRequest,
   type CreatePublicationRequest,
+  type CreatePullRequest,
   type CreateUploadRequest,
   type CustomEmoji,
   CustomEmojiSchema,
   type ExchangeSessionRequest,
+  type FollowedIdentity,
+  FollowedIdentitySchema,
+  type FollowRequest,
   type HealthReport,
   HealthReportSchema,
   type MediaAsset,
@@ -25,6 +31,10 @@ import {
   type NodeBulkRequest,
   type NodeBulkResult,
   type NodeView,
+  type NoteComment,
+  NoteCommentSchema,
+  type NoteReaction,
+  NoteReactionSchema,
   type OwnedMediaAsset,
   OwnedMediaAssetSchema,
   type OwnedRef,
@@ -34,6 +44,8 @@ import {
   PublicationViewSchema,
   type PublishedSubtree,
   PublishedSubtreeSchema,
+  type PullView,
+  PullViewSchema,
   type Session,
   SessionSchema,
   type StartLoginRequest,
@@ -49,7 +61,7 @@ import {
   parseNodeBulkResult,
   parseNodeView,
 } from "@sloppy/types";
-import { SloppyApiError, notImplemented } from "./errors.js";
+import { SloppyApiError } from "./errors.js";
 import { apiUrl, isSameOrigin } from "./host.js";
 
 export * from "./errors.js";
@@ -333,9 +345,10 @@ export class SloppyClient {
     await this.del(`/blocks${refPath(ref)}`);
   }
 
-  // ── Publications ─────────────────────────────────────────────────────────
-  // Declared, not served: `apps/sloppy/api` answers none of these routes yet,
-  // so a call reaches a 404.
+  // ── Publishing, following, and what a peer holds ─────────────────────────
+  // Declared, not served: `apps/sloppy/api` answers none of the routes from
+  // here to the end of this block yet, so a call reaches a 404.
+  // docs/ARCHITECTURE.md § "Federating the graph" is what they answer to.
 
   async listPublications(): Promise<PublicationView[]> {
     const body = await this.json("/publications", { method: "GET" });
@@ -373,18 +386,122 @@ export class SloppyClient {
   }
 
   /**
-   * Pull somebody else's published subtree in as a foreign, read-only region.
+   * Take somebody else's published subtree as a foreign, read-only region.
    *
-   * Declared, not implemented: M4 owns whether a pull answers with the subtree
-   * or schedules an import, and whether the region is stored or re-fetched.
-   * The resolution itself runs on the API — a browser resolving a peer's
-   * provider would leak the viewer to it, which `proxied()` exists to prevent.
+   * The copy is kept, which is what the reader still has when the author stops
+   * publishing; pulling the same subtree again refreshes that region rather
+   * than making a second one. The resolution runs on the API — a browser
+   * resolving a peer's provider would leak the viewer to it, which `proxied()`
+   * exists to prevent.
    */
-  async pullSubtree(
-    _did: string,
-    _rootAddress: string,
-  ): Promise<PublishedSubtree> {
-    return notImplemented("Pulling a peer's subtree");
+  async pullSubtree(did: string, rootAddress: string): Promise<PullView> {
+    const request: CreatePullRequest = { did, root_address: rootAddress };
+    return PullViewSchema.parse(await this.send("POST", "/pulls", request));
+  }
+
+  /** Every region the caller holds, most recently pulled first. */
+  async listPulls(): Promise<PullView[]> {
+    const body = await this.json("/pulls", { method: "GET" });
+    return (body as unknown[]).map((p) => PullViewSchema.parse(p));
+  }
+
+  /** Let a held region go. It is the reader's copy, so nothing of the author's
+   *  is touched. */
+  async dropPull(ref: OwnedRef): Promise<void> {
+    await this.del(`/pulls${refPath(ref)}`);
+  }
+
+  /**
+   * A held region's notes, addressed by their author. `maxDepth` bounds it, the
+   * same level-of-detail read {@link listNodes} takes over the caller's own.
+   */
+  async listPulledNodes(
+    pull: OwnedRef,
+    query: { maxDepth?: number } = {},
+  ): Promise<NodeView[]> {
+    const search =
+      query.maxDepth == null ? "" : `?max_depth=${String(query.maxDepth)}`;
+    const body = await this.json(`/pulls${refPath(pull)}/nodes${search}`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map(parseNodeView);
+  }
+
+  /** A held note's stack, already in `ord` order. */
+  async listPulledBlocks(node: OwnedRef): Promise<BlockView[]> {
+    const body = await this.json(`/pulls/nodes${refPath(node)}/blocks`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map((b) => BlockViewSchema.parse(b));
+  }
+
+  /**
+   * A picture inside a published note, from its author's store. Publishing is
+   * what makes one readable — docs/ARCHITECTURE.md § "Pictures" — and the fetch
+   * is made here rather than by the browser, so the author's instance never
+   * learns who is reading. `release` frees the bytes; call it when the picture
+   * comes off the screen.
+   */
+  async publishedPicture(
+    uploadId: MediaAsset["upload_id"],
+  ): Promise<{ src: string; release: () => void }> {
+    return this.picture(`/media/published${refPath(uploadId)}`);
+  }
+
+  /** The identities the caller follows. Their own identity store keeps the
+   *  list; Sloppy reads and writes it there. */
+  async following(): Promise<FollowedIdentity[]> {
+    const body = await this.json("/following", { method: "GET" });
+    return (body as unknown[]).map((f) => FollowedIdentitySchema.parse(f));
+  }
+
+  async follow(request: FollowRequest): Promise<void> {
+    await this.send("POST", "/following", request);
+  }
+
+  async unfollow(did: string): Promise<void> {
+    await this.del(`/following/${encodeURIComponent(did)}`);
+  }
+
+  /**
+   * What people have said on a note. Reading somebody's comments means reading
+   * them from their own identity store, so this answers with what the
+   * identities the caller follows have written and cannot answer with more.
+   */
+  async listComments(node: OwnedRef): Promise<NoteComment[]> {
+    const body = await this.json(`/nodes${refPath(node)}/comments`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map((c) => NoteCommentSchema.parse(c));
+  }
+
+  async addComment(request: CreateNoteCommentRequest): Promise<NoteComment> {
+    return NoteCommentSchema.parse(
+      await this.send("POST", "/comments", request),
+    );
+  }
+
+  async removeComment(commentId: NoteComment["comment_id"]): Promise<void> {
+    await this.del(`/comments${refPath(commentId)}`);
+  }
+
+  /** The same reach as {@link listComments}: what the caller follows, and no
+   *  total, because nobody can see one. */
+  async listReactions(node: OwnedRef): Promise<NoteReaction[]> {
+    const body = await this.json(`/nodes${refPath(node)}/reactions`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map((r) => NoteReactionSchema.parse(r));
+  }
+
+  async addReaction(request: CreateNoteReactionRequest): Promise<NoteReaction> {
+    return NoteReactionSchema.parse(
+      await this.send("POST", "/reactions", request),
+    );
+  }
+
+  async removeReaction(reactionId: NoteReaction["reaction_id"]): Promise<void> {
+    await this.del(`/reactions${refPath(reactionId)}`);
   }
 
   // ── Media ────────────────────────────────────────────────────────────────
@@ -424,7 +541,12 @@ export class SloppyClient {
   async ownPicture(
     uploadId: MediaAsset["upload_id"],
   ): Promise<{ src: string; release: () => void }> {
-    const path = `/media/uploads${refPath(uploadId)}`;
+    return this.picture(`/media/uploads${refPath(uploadId)}`);
+  }
+
+  private async picture(
+    path: string,
+  ): Promise<{ src: string; release: () => void }> {
     const res = await this.request(path, {
       method: "GET",
       headers: { accept: "image/*" },

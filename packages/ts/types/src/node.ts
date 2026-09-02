@@ -30,9 +30,11 @@ export const NodeSchema = OwnedEntitySchema.extend({
    */
   links: z.array(OwnedRefSchema).default([]),
   /**
-   * The note's published mark, which decides how the mark draws and nothing
-   * else. What makes a subtree readable is a `publication` row, and the two are
-   * not yet reconciled — docs/ARCHITECTURE.md § "Data model".
+   * Whether a publication row roots at this note or at one of its ancestors,
+   * denormalized so a mark can be drawn without the publication list beside it.
+   * What makes a subtree readable is still the row; docs/ARCHITECTURE.md
+   * § "Data model" carries the ruling and what maintaining this must never
+   * leave behind.
    */
   published: z.boolean().default(false),
   /**

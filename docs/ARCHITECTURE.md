@@ -113,6 +113,7 @@ management" resolves into a split — the same one Slyng made:
 | Profile data                               | **syr** — never stored locally, resolved from the manifest and cached |
 | Media blobs (block images, ink rasters)    | **syr** — presign → PUT → complete                                    |
 | Emoji, stickers, GIFs, reactions, comments | **syr** — per-DID catalogs, federated                                 |
+| Who somebody follows                       | **syr** — kept with the identity, served per-DID                      |
 | **Nodes, addresses, tags, blocks, ink**    | **Sloppy's own API + SurrealDB**                                      |
 
 ### Auth: Platform Delegation v0.1
@@ -168,6 +169,70 @@ their subtree in as a foreign, read-only region **with its addresses intact** �
 deterministic address is what makes a pulled subtree land in a known shape rather than as
 an opaque blob.
 
+**One route on this instance answers without a session**, and it is the one a peer's
+instance calls: `GET /api/public/subtrees/{did}/{root address}`, answering a
+`PublishedSubtree` where a `publication` row roots at that address and nothing where none
+does. `POST /api/publications` writes that row and `DELETE /api/publications/{ref}`
+removes it; both need the author's session, and the row existing is the whole mechanism.
+A published node travels **without its `depth` and without its look** — a reader recomputes
+depth, sector and subtree membership from the address, and draws a pulled mark unstyled.
+
+**A follow belongs to the reader's identity store, not to Sloppy.** Identity is syr's half
+of the table above, syr already keeps a follow list and serves it at an identity's
+`public_following` endpoint, and a second list here would be a second answer to "who does
+this person follow" that nothing reconciles. So `GET`/`POST`/`DELETE /api/following` reads
+and writes that store with the reader's delegation, and Sloppy stores nothing. The
+provider URL the store recorded beside a DID is the first step of resolving it; absent, the
+DID is resolved from scratch.
+
+**A pulled region is stored, and the reader owns the copy.** The alternative — re-fetching
+the author's instance on every read — cannot be reconciled with what the product already
+promises at the moment of publishing: that a peer who has pulled a subtree keeps it after
+you unpublish. It would also make reading a foreign region depend on somebody else's
+server being up, on a phone, which is the case the mobile-first stance optimises for. So a
+pull writes rows:
+
+- `pull` is the region: one row per reader, author and root address, and `updated_at` is
+  when the copy was last refreshed. Pulling the same subtree again refreshes that row
+  rather than growing a second beside it; `DELETE /api/pulls/{ref}` lets the region go and
+  takes its nodes and blocks with it.
+- `pulled_node` and `pulled_block` are the copy. `created_by` on all three is the
+  **reader**, because they are the one whose purge has to reach it — a row owned by the
+  author would be swept when the author erased their identity here and left behind when the
+  reader erased theirs, which is backwards in both directions. Who wrote the node is the
+  DID half of `source`, and `pulledNodeView` in `@sloppy/types` is what turns a held row
+  into the `NodeView` the graph draws, so `provenanceOf` reads it as foreign without being
+  told anything further.
+- The published node is carried **untouched**, because a signature is over what the author
+  sent and a reader that reshaped it could no longer check one. `depth` beside it is the
+  reader's own mint from the address, held to the address by `parsePulledNode` exactly as
+  `parseNode` holds a node's.
+
+**Comments and reactions are syr's records, addressed by an opaque pair.** A note is
+`post_did` + `post_id` — the two halves of its `<did>/<ulid>` — and the store never learns
+it is a note, which is what keeps Sloppy's vocabulary out of an identity store that has no
+extension point for it. `syrPostRefFor` is that conversion and the only place it is spelled.
+A comment the reader writes goes to their own instance with their delegation; Sloppy holds
+none of it.
+
+Two consequences follow from pull-only discovery, and both are the product's to state
+rather than gaps to close:
+
+- **A note shows the comments and reactions written by the identities the reader follows,
+  and cannot show more.** Reaching a stranger's comment would need a firehose syr does not
+  have. A surface that implies it is showing every comment on a note is lying, and there is
+  no total to show beside one either — nobody can compute one, which is also why nothing
+  here counts toward a score (PRODUCT.md § "What Sloppy Is Not").
+- **A comment written through syr's comment route is stored unsigned.** That route drops
+  the signed envelope it accepts, so nothing downstream can verify authorship the way a
+  node's `content_signature` allows. Nothing in the product claims otherwise, and no
+  surface should present a comment as cryptographically attributed.
+
+**Local-only mode has neither.** `@sloppy/idp` serves files, emoji and a profile, and its
+identity manifest advertises no `public_comments`, `public_reactions` or `public_following`
+— so an instance running on the embedded provider can publish, be pulled from, and pull,
+and has no conversation and no follow list at all.
+
 ## Pictures
 
 Who may read a picture is decided once, by the folder its bytes land in, and everything
@@ -197,13 +262,31 @@ that session is a token and not a cookie — sign-in there finishes through the 
 only way one of these draws, which is why a `MediaAsset` carries an `upload_id` and no
 address at all: who may read a picture is the store's answer, not the row's.
 
-**Open gap, and the milestone that owns it: publishing a subtree does not yet make its
-pictures reachable.** A peer who pulls a published subtree today gets addresses that
-answer 404, because the bytes sit outside `public/`. Federation-side publishing is what
-has to close this — by moving or re-publishing a published node's blobs — and it must
-close it deliberately: an address a peer already holds is load-bearing (AI.md § "The
-Address Is the Protocol"), so a URL minted public cannot quietly become private later.
-That is why the default is private now and widened at publish, never the other way round.
+**Publishing widens a picture's readability, and nothing narrows it again.** The bytes
+of a picture inside a published note move to `public/sloppy/notes` in its author's own
+store — the folder is the access rule, so widening the folder is the whole act. It
+happens at two moments, and both are needed: when a subtree is published, over the
+pictures already in it; and when a picture is saved into a note a live publication
+already covers, because otherwise a peer who pulled yesterday reads a note whose new
+picture answers 404. A mark's preview picture is not among them: a published node travels
+without its look, so nothing a peer holds ever cites one, and it stays private.
+
+**Unpublishing does not move the bytes back**, and that is the deliberate half. An
+address a peer already holds is load-bearing (AI.md § "The Address Is the Protocol"), so
+a URL minted public cannot quietly become private later; the default is private and
+widened at publish, never the other way round. The consequence is the reader's and the
+product says it at the moment of the decision: unpublishing stops this instance serving
+the subtree, and anyone who already has a picture keeps it. Deleting the picture is what
+takes it back.
+
+**A peer's picture is fetched by this instance, never by the reader's browser.**
+`GET /api/media/published/{did}/{localId}` is that route — `publishedPicture` in
+`@sloppy/client` is the caller — and it holds two invariants: the author's instance
+learns the reader's instance and never the reader, and nothing is served that the
+author's store has not said is public. syr offers no single-upload public read, only the
+paginated listing at an identity's `uploads` endpoint, so finding one is a search of that
+listing rather than a lookup; whichever milestone serves the route owns making that cheap
+enough to sit behind an `<img>`.
 
 **Every renderable address is minted by the API, and none of them is a URL.** `AssetLinks`
 (`api/src/media/asset-link.ts`) signs the address a picture actually lives at and hands
@@ -295,6 +378,31 @@ publication:{ created_by: <did>, id: <ulid> }
   created_by    did
   root          ref       the subtree this makes readable
   root_address  string    what a peer cites
+
+The three rows below hold a region pulled from somebody else. `created_by` on every one
+of them is the READER holding the copy, never the author who wrote it — § "Federating the
+graph" says why that is the only ownership the purge can work with.
+
+pull:{ created_by: <did>, id: <ulid> }
+  created_by    did       the reader
+  source_did    did       whose subtree this is
+  root_address  string    the address they cited
+  updated_at    iso       when the copy was last refreshed
+
+pulled_node:{ created_by: <did>, id: <ulid> }
+  created_by    did       the reader
+  pull          ref       the region, immutable
+  source        ref       the node as its AUTHOR addresses it, immutable
+  depth         int       the reader's own mint from the address, immutable
+  node          object    the published node, carried untouched
+
+pulled_block:{ created_by: <did>, id: <ulid> }
+  created_by    did       the reader
+  pull          ref
+  source        ref       the block as its author addresses it
+  node          ref       the node it belongs to, as its author addresses it
+  ord           string
+  content       object
 ```
 
 **`publication` is what makes a subtree readable. `node.published` is not, and nothing
@@ -306,13 +414,17 @@ Neither `POST /publications` nor the public read endpoint § "Federating the gra
 describes is served by `apps/sloppy/api` yet, so no note in Sloppy has ever been readable
 by anybody, and nothing writes `published` after a note is created.
 
-The publishing milestone owns reconciling the two, and it is a reconciliation rather than
-an addition. A note is readable when a publication row roots at it **or at one of its
-ancestors**, so `published` is that fact denormalized onto the row and has to be either
-maintained from the publication rows or dropped in favour of deriving membership from the
-roots and the address. Two things it must not leave behind whichever way it goes: a note
-drawing as published that no row covers, and a note drawing as own while a row that covers
-it survives.
+**`published` is maintained from the publication rows, and the option of deriving it
+instead is closed.** A note is readable when a publication row roots at it **or at one of
+its ancestors**, so the column is that fact denormalized onto the row: the API writes it
+across a subtree when a row is created, across what a removed row covered and no surviving
+row still covers when one is deleted, and onto a note created under a published ancestor.
+Deriving membership from the roots and the address was the other candidate, and a held
+foreign node rules it out — no publication row on this instance covers one, and it must
+still draw as something its author publishes, so the column is the only place that fact
+can live and `pulledNodeView` is what sets it. Two things the maintenance must not leave
+behind: a note drawing as published that no row covers, and a note drawing as own while a
+row that covers it survives.
 
 The rules AI.md's foundation-wave section states, applied here:
 
@@ -403,14 +515,16 @@ The rules AI.md's foundation-wave section states, applied here:
   it, so an undeclared table passes locally and fails in production.
 
 Tables are `SCHEMALESS`, and `DEFINE FIELD` is spent only where the database has to enforce
-something the application cannot be trusted to. Four things qualify, all of them stated
-above: `node.address` and every table's `created_by`, made immutable with `READONLY`;
-`created_at` / `updated_at` as `TYPE string`, which is what makes a write in the wrong
-encoding fail at the write; and `node.depth`, immutable like the address it mirrors and
-`TYPE int ASSERT $value > 0`, because it is read as a range and a range is where a string or
-a zero would go wrong quietly. `created_at` is immutable too, being a field of the signed
-payload. Everything else is a plain column, which is what keeps a later track from having to
-edit the shared literal to add a field.
+something the application cannot be trusted to. What qualifies is all of it stated above:
+`node.address` and every table's `created_by`, made immutable with `READONLY`; `created_at`
+/ `updated_at` as `TYPE string`, which is what makes a write in the wrong encoding fail at
+the write; `node.depth` and `pulled_node.depth`, immutable like the addresses they mirror
+and `TYPE int ASSERT $value > 0`, because a depth is read as a range and a range is where a
+string or a zero would go wrong quietly; and a held row's `pull` and `source`, immutable for
+the reason `created_by` is — a row that changed either would become a copy of a different
+node, or outlive the region whose deletion should have taken it. `created_at` is immutable
+too, being a field of the signed payload. Everything else is a plain column, which is what
+keeps a later track from having to edit the shared literal to add a field.
 
 **`READONLY` and not the `VALUE $before OR $value` idiom**, measured on 3.1.3: that idiom
 keeps the old value only while the old value is truthy, so a row first written with `""` in

@@ -6,7 +6,7 @@
 
 import { RecordId } from "surrealdb";
 import { ulid } from "ulid";
-import type { OwnedRef } from "./common.js";
+import type { DidSyr, OwnedRef } from "./common.js";
 
 interface CompositeId {
   created_by: string;
@@ -65,16 +65,19 @@ export function ownedRefFrom(recordId: RecordId): OwnedRef {
   return `${key.created_by}/${key.id}`;
 }
 
-export function recordIdFromOwnedRef(table: string, ref: OwnedRef): RecordId {
+/** The two halves of a reference. The DID carries colons of its own, so the
+ *  split is at the last separator and never the first. */
+export function splitOwnedRef(ref: OwnedRef): { did: DidSyr; localId: string } {
   const separator = ref.lastIndexOf("/");
   if (separator < 1) {
     throw new Error(`Expected a <did>/<ulid> reference, got ${ref}`);
   }
-  return recordIdFromDidAndLocal(
-    table,
-    ref.slice(0, separator),
-    ref.slice(separator + 1),
-  );
+  return { did: ref.slice(0, separator), localId: ref.slice(separator + 1) };
+}
+
+export function recordIdFromOwnedRef(table: string, ref: OwnedRef): RecordId {
+  const { did, localId } = splitOwnedRef(ref);
+  return recordIdFromDidAndLocal(table, did, localId);
 }
 
 export { ulid } from "ulid";

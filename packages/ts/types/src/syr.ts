@@ -9,7 +9,14 @@
 
 import { z } from "zod";
 import { AddressSchema } from "./address.js";
-import { DidSyrSchema, TimestampSchema, UlidSchema } from "./common.js";
+import { splitOwnedRef } from "./codecs.js";
+import {
+  DidSyrSchema,
+  type OwnedRef,
+  OwnedRefSchema,
+  TimestampSchema,
+  UlidSchema,
+} from "./common.js";
 
 /**
  * What Sloppy asks for. A response may name a scope this version does not,
@@ -71,6 +78,7 @@ export const SyrIdentityManifestSchema = z.object({
     public_gifs: z.url().optional(),
     public_reactions: z.url().optional(),
     public_comments: z.url().optional(),
+    public_following: z.url().optional(),
   }),
   web_profile: z.url(),
 });
@@ -259,3 +267,120 @@ export const SyrEmojiSchema = z.object({
   is_sticker: z.boolean().default(false),
 });
 export type SyrEmoji = z.infer<typeof SyrEmojiSchema>;
+
+/**
+ * A note, as an identity store addresses the thing a comment or a reaction is
+ * about. The store never learns it is a note: it holds an opaque pair, which is
+ * what keeps Sloppy's vocabulary out of it.
+ */
+export function syrPostRefFor(node: OwnedRef): {
+  post_did: string;
+  post_id: string;
+} {
+  const { did, localId } = splitOwnedRef(node);
+  return { post_did: did, post_id: localId };
+}
+
+/** The other direction, for a record read back off a store. */
+export function nodeRefFromSyrPost(post: {
+  post_did: string;
+  post_id: string;
+}): OwnedRef {
+  return OwnedRefSchema.parse(`${post.post_did}/${post.post_id}`);
+}
+
+/**
+ * One row of `endpoints.public_following` — a DID this identity says it
+ * follows. The owner's own listing answers the same shape with more beside it,
+ * which is dropped here.
+ */
+export const SyrFollowSchema = z.object({
+  followed_did: DidSyrSchema,
+  followed_provider_url: z.url().nullable().optional(),
+});
+export type SyrFollow = z.infer<typeof SyrFollowSchema>;
+
+/**
+ * One comment as an identity's public endpoint answers it. That endpoint serves
+ * only what its author made public and finished, so nothing downstream filters
+ * again.
+ *
+ * `created_at` is a foreign instance's serialization and is accepted at
+ * whatever width it wrote — `asTimestamp` brings it to the one encoding
+ * Sloppy's own wire uses.
+ */
+export const SyrCommentSchema = z.object({
+  did: DidSyrSchema,
+  local_id: z.string().min(1),
+  post_did: z.string().min(1),
+  post_id: z.string().min(1),
+  /** Root comment first, immediate parent last; each entry `<did>:<local id>`,
+   *  which splits at the LAST colon because a DID carries two of its own. */
+  ancestor_chain: z.array(z.string()).default([]),
+  content: z.string(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
+});
+export type SyrComment = z.infer<typeof SyrCommentSchema>;
+
+/**
+ * What Sloppy posts to write one. `visibility` and `status` are sent rather
+ * than left to the store's defaults: a comment a reader wrote to be read is not
+ * something to discover a default about.
+ */
+export const SyrCommentCreateRequestSchema = z.object({
+  post_did: z.string().min(1),
+  post_id: z.string().min(1),
+  ancestor_chain: z.array(z.string()),
+  content: z.string().min(1),
+  visibility: z.literal("public"),
+  status: z.literal("completed"),
+});
+export type SyrCommentCreateRequest = z.infer<
+  typeof SyrCommentCreateRequestSchema
+>;
+
+/** What a reaction is carried by. `gif` is one syr has and Sloppy has no
+ *  renderer for, so a reader is handed the kinds it can draw and the rest are
+ *  dropped rather than refused. */
+export const SyrReactionKindSchema = z.enum([
+  "unicode",
+  "custom_emoji",
+  "sticker",
+  "gif",
+]);
+export type SyrReactionKind = z.infer<typeof SyrReactionKindSchema>;
+
+/**
+ * One reaction as an identity's public endpoint answers it. `parent_type` is
+ * `post` for a reaction on a note; `comment` is one on a comment, which the
+ * same endpoint carries.
+ *
+ * `image_url` is the author's own store, so it never reaches a reader — every
+ * remote address is minted into one of ours first. AI.md § "Sloppy's Vocabulary
+ * Stays Out of the Identity Store".
+ */
+export const SyrReactionSchema = z.object({
+  did: DidSyrSchema,
+  local_id: z.string().min(1),
+  parent_type: z.enum(["post", "comment"]),
+  parent_did: z.string().min(1),
+  parent_id: z.string().min(1),
+  kind: SyrReactionKindSchema,
+  value: z.string().min(1),
+  image_url: z.url().nullable().optional(),
+  created_at: z.iso.datetime(),
+});
+export type SyrReaction = z.infer<typeof SyrReactionSchema>;
+
+export const SyrReactionCreateRequestSchema = z.object({
+  parent_type: z.literal("post"),
+  parent_did: z.string().min(1),
+  parent_id: z.string().min(1),
+  kind: SyrReactionKindSchema,
+  value: z.string().min(1),
+  image_url: z.url().optional(),
+});
+export type SyrReactionCreateRequest = z.infer<
+  typeof SyrReactionCreateRequestSchema
+>;

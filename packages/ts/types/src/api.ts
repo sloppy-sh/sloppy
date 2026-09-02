@@ -5,7 +5,7 @@ import type { RecordId } from "surrealdb";
 import { z } from "zod";
 import { addressDepth } from "./address.js";
 import { BlockSchema } from "./block.js";
-import { ownedRefFrom } from "./codecs.js";
+import { ownedRefFrom, splitOwnedRef } from "./codecs.js";
 import {
   DidSyrSchema,
   type OwnedRef,
@@ -14,6 +14,7 @@ import {
 } from "./common.js";
 import { NodeDepthMismatchError, nodeDepthMatchesAddress } from "./node.js";
 import { NodeSchema } from "./node.js";
+import { type PulledBlock, type PulledNode, PullSchema } from "./federation.js";
 import { PublicationSchema } from "./publication.js";
 import { TagSchema } from "./tag.js";
 
@@ -58,6 +59,58 @@ export const PublicationViewSchema = PublicationSchema.omit({
   id: true,
 }).extend({ ref: OwnedRefSchema });
 export type PublicationView = z.infer<typeof PublicationViewSchema>;
+
+export const PullViewSchema = PullSchema.omit({ id: true }).extend({
+  ref: OwnedRefSchema,
+});
+export type PullView = z.infer<typeof PullViewSchema>;
+
+/**
+ * A held node as the rest of Sloppy reads it — addressed by its AUTHOR, so
+ * `provenanceOf` in `@sloppy/graph` draws it as foreign without being told
+ * anything further.
+ *
+ * `published` is true and not read off anything: no publication row on this
+ * instance covers a foreign node, so the column is the only place the fact that
+ * its author publishes it can live. There is no look, because a published node
+ * travels without one.
+ */
+export function pulledNodeView(row: PulledNode): NodeView {
+  const { node } = row;
+  return {
+    ref: row.source,
+    created_by: splitOwnedRef(row.source).did,
+    address: node.address,
+    depth: row.depth,
+    parent: node.parent,
+    origin: node.origin,
+    title: node.title,
+    tags: node.tags,
+    links: node.links,
+    published: true,
+    created_at: node.created_at,
+    updated_at: node.updated_at,
+    content_signature: node.content_signature,
+    signed_payload_json: node.signed_payload_json,
+    signing_device_public_key: node.signing_device_public_key,
+  };
+}
+
+/**
+ * A held block, likewise. The timestamps are the copy's own: a published block
+ * carries none of the author's, so these say when the copy arrived.
+ */
+export function pulledBlockView(row: PulledBlock): BlockView {
+  return {
+    ref: row.source,
+    created_by: splitOwnedRef(row.source).did,
+    node: row.node,
+    ord: row.ord,
+    content: row.content,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
 
 /** `parseNode`'s boundary, on the wire: a node arrives depth-checked or not at all. */
 export function parseNodeView(value: unknown): NodeView {

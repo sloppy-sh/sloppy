@@ -11,7 +11,12 @@
 // runs `pnpm test`. `docker compose up -d` is what turns it on.
 
 import { createConnection } from "node:net";
-import { DidSyrSchema, OwnedRefSchema, UlidSchema } from "@sloppy/types";
+import {
+  DidSyrSchema,
+  extractLocalId,
+  OwnedRefSchema,
+  UlidSchema,
+} from "@sloppy/types";
 import { RecordId, Surreal, Table } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { STATEMENTS } from "./purge.js";
@@ -59,6 +64,55 @@ function nodeRow(
     title: "",
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+// A region AVA holds of BOB's graph: the reader owns every row, and the author
+// is only ever the DID half of `source`.
+function heldId(table: string, localId: string): RecordId {
+  return new RecordId(table, {
+    created_by: AVA,
+    id: UlidSchema.parse(localId),
+  });
+}
+
+const REGION = "01JPEERREGN000000000000000";
+const OTHER_REGION = "01JPEERREGN200000000000000";
+
+function pullRow(localId: string, rootAddress: string) {
+  return {
+    id: heldId("pull", localId),
+    created_by: AVA,
+    source_did: BOB,
+    root_address: rootAddress,
+    created_at: "2026-02-01T00:00:00.000Z",
+    updated_at: "2026-02-01T00:00:00.000Z",
+  };
+}
+
+function heldNodeRow(
+  localId: string,
+  address: string,
+  depth: number,
+  region = REGION,
+) {
+  return {
+    id: heldId("pulled_node", localId),
+    created_by: AVA,
+    pull: OwnedRefSchema.parse(`${AVA}/${region}`),
+    source: OwnedRefSchema.parse(`${BOB}/${localId}`),
+    depth,
+    node: {
+      address,
+      origin: OwnedRefSchema.parse(`${BOB}/01JPEERBASE000000000000000`),
+      title: "",
+      tags: [],
+      links: [],
+      created_at: "2025-01-01T00:00:00.000Z",
+      updated_at: "2025-01-01T00:00:00.000Z",
+    },
+    created_at: "2026-02-01T00:00:00.000Z",
+    updated_at: "2026-02-01T00:00:00.000Z",
   };
 }
 
@@ -313,14 +367,111 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     ]);
   });
 
+  it("refuses a second copy of a region the reader already holds", async () => {
+    // Pulling again refreshes this row, so the uniqueness is what stops a
+    // reader ending up with two copies of one subtree that drift apart.
+    const first = pullRow(REGION, "1");
+    await db.create(first.id).content(first);
+
+    const again = pullRow("01JPEERREGN300000000000000", "1");
+    await expect(db.create(again.id).content(again)).rejects.toThrow();
+
+    // Another root of the same author's is an ordinary second region.
+    const other = pullRow(OTHER_REGION, "2");
+    await expect(db.create(other.id).content(other)).resolves.toBeDefined();
+  });
+
+  it("reads a held region bounded by depth, from its index", async () => {
+    const branch: [localId: string, address: string][] = [
+      ["01JPEERMARKA00000000000000", "1"],
+      ["01JPEERMARKB00000000000000", "1a"],
+      ["01JPEERMARKC00000000000000", "1a1"],
+      ["01JPEERMARKD00000000000000", "1a1a"],
+    ];
+    for (const [index, [localId, address]] of branch.entries()) {
+      const row = heldNodeRow(localId, address, index + 1);
+      await db.create(row.id).content(row);
+    }
+    // Another region of the same reader's, at a depth the slice covers, so a
+    // read that ignored the region would have to come back wrong.
+    const elsewhere = heldNodeRow(
+      "01JPEERMARKE00000000000000",
+      "2",
+      1,
+      OTHER_REGION,
+    );
+    await db.create(elsewhere.id).content(elsewhere);
+
+    const section = {
+      id: heldId("pulled_block", "01JPEERSECTN00000000000000"),
+      created_by: AVA,
+      pull: `${AVA}/${REGION}`,
+      source: `${BOB}/01JPEERSECTN00000000000000`,
+      node: `${BOB}/01JPEERMARKB00000000000000`,
+      ord: "a0",
+      content: { type: "doc", content: [] },
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    };
+    await db.create(section.id).content(section);
+
+    const SLICE = `SELECT depth FROM pulled_node
+       WHERE created_by = $did AND pull = $pull AND depth <= $max
+       ORDER BY depth`;
+    const bound = { did: AVA, pull: `${AVA}/${REGION}`, max: 3 };
+
+    // The claim is about the plan, not only the rows: an index that stopped at
+    // the leading pair would read the whole region and drop the rest, which is
+    // the one outcome the third column exists to avoid.
+    const [plan] = await db.query(`${SLICE} EXPLAIN;`, bound);
+    const explained = JSON.stringify(plan);
+    expect(explained).toContain('"index":"pulled_node_owner_pull_depth"');
+    expect(explained).toContain("LessThanEqual");
+    expect(explained).not.toContain('"operator":"Filter"');
+
+    const [sliced] = await db.query<[{ depth: number }[]]>(`${SLICE};`, bound);
+    expect(sliced.map((row) => row.depth)).toEqual([1, 2, 3]);
+  });
+
+  it("takes a refresh of a held node and refuses to let it become another", async () => {
+    const row = heldNodeRow("01JPEERMARKF00000000000000", "1b", 2);
+    await db.create(row.id).content(row);
+
+    // What a refresh is: the whole row again, carrying the author's own edits
+    // inside `node` and re-sending every immutable column unchanged.
+    await db.update(row.id).content({
+      ...row,
+      node: { ...row.node, title: "the author renamed it" },
+      updated_at: "2026-03-01T00:00:00.000Z",
+    });
+    const refreshed = await db.select<{ node: { title: string } }>(row.id);
+    expect(refreshed?.node.title).toBe("the author renamed it");
+
+    for (const reassignment of [
+      { created_by: BOB },
+      { pull: `${AVA}/${OTHER_REGION}` },
+      { source: `${BOB}/01JPEERMARKZ00000000000000` },
+      { depth: 9 },
+    ]) {
+      await expect(db.update(row.id).merge(reassignment)).rejects.toThrow();
+    }
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);
+    expect(await db.select(new Table("pulled_node"))).not.toHaveLength(0);
 
     await db.query(STATEMENTS.join("\n"), { did: AVA });
 
     const after = await db.select<NodeRow>(new Table("node"));
     expect(after.some((row) => row.created_by === AVA)).toBe(false);
     expect(after.some((row) => row.created_by === BOB)).toBe(true);
+
+    // The held copy is the READER's row even though BOB wrote what is in it,
+    // which is what makes erasing the reader take it.
+    for (const table of ["pull", "pulled_node", "pulled_block"]) {
+      expect(await db.select(new Table(table))).toHaveLength(0);
+    }
   });
 });

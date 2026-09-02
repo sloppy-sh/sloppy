@@ -18,6 +18,9 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS block SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS pull SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS pulled_node SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS pulled_block SCHEMALESS;
 
   DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS depth ON node TYPE int ASSERT $value > 0 READONLY;
@@ -25,14 +28,35 @@ export const SCHEMA = `
   DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON publication TYPE string READONLY;
+  -- On a held copy the owner is the READER, never the author: they are the one
+  -- the purge has to reach. docs/ARCHITECTURE.md § "Federating the graph".
+  DEFINE FIELD IF NOT EXISTS created_by ON pull TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON pulled_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
+
+  -- Which region a held row belongs to, and which foreign row it is a copy of.
+  -- Both immutable for the reason created_by is: a row that changed either
+  -- would quietly become a copy of something else, or outlive the region whose
+  -- deletion should have taken it.
+  DEFINE FIELD IF NOT EXISTS pull ON pulled_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS pull ON pulled_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source ON pulled_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source ON pulled_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS depth ON pulled_node TYPE int ASSERT $value > 0 READONLY;
 
   DEFINE FIELD IF NOT EXISTS created_at ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON pull TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON pulled_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON pulled_block TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON block TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON publication TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON pull TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON pulled_node TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON pulled_block TYPE string;
 
   -- Every indexed column is a TOP-LEVEL STRING or an array of them, including
   -- the ones that point at another row: a composite record id is a row's own key
@@ -72,6 +96,26 @@ export const SCHEMA = `
   -- One live publication per subtree root. Unpublishing deletes the row, so
   -- republishing does not collide with a revoked one.
   DEFINE INDEX IF NOT EXISTS publication_owner_root ON publication FIELDS created_by, root UNIQUE;
+
+  -- One held copy of a region per reader, so pulling again refreshes the copy
+  -- rather than growing a second one beside it.
+  DEFINE INDEX IF NOT EXISTS pull_owner_source_root ON pull FIELDS created_by, source_did, root_address UNIQUE;
+
+  -- A held region, sliced the way node_owner_origin_depth slices the reader's
+  -- own graph: the leading pair reads the region, a trailing AND depth <= $max
+  -- bounds it. The region stands in for origin because a pull is already one
+  -- author's subtree.
+  DEFINE INDEX IF NOT EXISTS pulled_node_owner_pull_depth ON pulled_node FIELDS created_by, pull, depth;
+  -- One copy per foreign node, which is also how a block read finds its node.
+  DEFINE INDEX IF NOT EXISTS pulled_node_owner_source ON pulled_node FIELDS created_by, source UNIQUE;
+
+  -- A held node's stack, already in order. Leading with created_by rather than
+  -- node, unlike block: a held block's node names its AUTHOR, so the reader is
+  -- a column here rather than half of the reference.
+  DEFINE INDEX IF NOT EXISTS pulled_block_owner_node_ord ON pulled_block FIELDS created_by, node, ord;
+  DEFINE INDEX IF NOT EXISTS pulled_block_owner_source ON pulled_block FIELDS created_by, source UNIQUE;
+  -- Dropping a region takes its blocks with it.
+  DEFINE INDEX IF NOT EXISTS pulled_block_owner_pull ON pulled_block FIELDS created_by, pull;
 `;
 
 const DEFINE_TABLE = /DEFINE TABLE\s+(?:IF NOT EXISTS\s+)?(\w+)/g;

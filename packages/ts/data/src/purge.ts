@@ -21,6 +21,12 @@ export const STATEMENTS: readonly string[] = [
   `DELETE block WHERE ${OWNED};`,
   `DELETE publication WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
+  // A held copy of somebody else's region is the reader's row, so it goes with
+  // the reader — the author erasing their own identity elsewhere never reaches
+  // it, which is the same fact the product states about unpublishing.
+  `DELETE pulled_block WHERE ${OWNED};`,
+  `DELETE pulled_node WHERE ${OWNED};`,
+  `DELETE pull WHERE ${OWNED};`,
 ];
 
 /** The `$did`-parameterized statements, ready to join into one `query()`. */
@@ -37,4 +43,7 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "block",
   "publication",
   "node",
+  "pulled_block",
+  "pulled_node",
+  "pull",
 ]);

@@ -26,6 +26,16 @@ export function nowIso(): Timestamp {
 }
 
 /**
+ * Somebody else's ISO-8601 timestamp, brought to the width above. A peer's
+ * instance writes whatever precision it likes, and a listing that failed to
+ * parse over a missing millisecond would be a whole conversation lost to a
+ * digit. The caller must have validated the string as a datetime first.
+ */
+export function asTimestamp(value: string): Timestamp {
+  return new Date(value).toISOString();
+}
+
+/**
  * A syr identity. The method-specific part is a multibase base58btc-encoded
  * Ed25519 public key, so the DID is the key rather than a lookup into one.
  */
