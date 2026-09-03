@@ -238,6 +238,10 @@ export const SyrUploadSchema = z.object({
   mime_type: z.string(),
   size: z.int().nonnegative(),
   url: z.url().nullable().optional(),
+  /** syr's own spelling, and the one that actually reads: `url` is the raw
+   *  object-store address, which a private blob refuses. Absent on a store that
+   *  gates the raw address itself, where `url` is what to use. */
+  downloadUrl: z.url().nullable().optional(),
   status: z.string().optional(),
   /** Whether a stranger may read the bytes. Absent where a store does not say,
    *  which is not the same as `false`: a caller that must not accept a private

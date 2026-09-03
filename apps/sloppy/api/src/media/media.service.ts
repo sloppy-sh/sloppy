@@ -275,7 +275,8 @@ export class MediaService {
       throw new NotFoundException("That picture is not there.");
     }
     const stored = await this.syr.readUpload(delegation, upload);
-    if (!stored.url) {
+    const source = stored.downloadUrl ?? stored.url;
+    if (!source) {
       throw new NotFoundException("That picture is not there.");
     }
     if (roleIsPublic(role) && stored.is_public === false) {
@@ -283,7 +284,7 @@ export class MediaService {
         "That picture cannot be used here. Add it again from your device.",
       );
     }
-    return { url: stored.url, filename: stored.filename };
+    return { url: source, filename: stored.filename };
   }
 
   /**
