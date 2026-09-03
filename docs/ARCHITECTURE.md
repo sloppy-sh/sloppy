@@ -206,7 +206,7 @@ human-readable label inside somebody's graph rather than a machine identifier, s
 `root_address` is something a publication CARRIES — shown wherever it helps a person
 navigate or cite — and `<did>/<ulid>` is what a route binds.
 
-**The routes.** Four answer without a session, and they are the ones a peer's instance
+**The routes.** Three answer without a session, and they are the ones a peer's instance
 calls:
 
 - `GET /api/public/publications/{did}` lists what that identity publishes here — each
@@ -217,8 +217,6 @@ calls:
   that answers at the version its cursor was minted against, so publishing again moves
   what a fresh read gets and never what a read already under way is part of.
 - `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
-- `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
-  between two of them.
 
 The first of those is the exposure publishing creates, and the copy at the moment of the
 decision has to be true to it: from the moment a subtree is published, anyone holding the
@@ -254,16 +252,19 @@ than a ceiling a graph can hit: a branch of any size is read page by page, and w
 per-page bound refuses is one answer too large to hold, never a subtree too large to
 publish.
 
-**The difference between two versions is computed where the versions are.** The instance
-holds every version and the reader holds none, so a phone asking what changed between two
-snapshots of a ten-thousand-note branch reads the difference rather than both sides of it.
-One entry per note — arrived, gone, or changed — in the same address order a version's own
-pages take, carrying both sides of the note and both sides of only the sections that
-differ, which is what a review-shaped diff needs and no more. A note that is gone carries
-no sections: what it said is in the version that still has it, and that is a read a reader
-makes when they want it. Where one address holds a different note in each version, the
-reader is told both: one note gone and another arrived. `PublishedNoteChange` in `@sloppy/types` is the shape and
-`publishedChangesReader` the boundary.
+**The difference between two versions would be computed where the versions are, and
+nothing answers one yet.** The instance holds every version and the reader holds none, so a
+phone asking what changed between two snapshots of a ten-thousand-note branch would read
+the difference rather than both sides of it: one entry per note — arrived, gone, or
+changed — in the same address order a version's own pages take, carrying both sides of the
+note and both sides of only the sections that differ, which is what a review-shaped diff
+needs and no more. A note that is gone would carry no sections, what it said being in the
+version that still has it; where one address holds a different note in each version the
+reader would be told both, one gone and one arrived. `PublishedNoteChange` in
+`@sloppy/types` is that shape and `publishedChangesReader` its boundary — **both settled
+and neither served**, so the surface for it is DEFERRED out of this milestone by the developer's
+call — the shape is settled and the route is not served, so nothing offers it yet and the
+next milestone to serve the comparison owns building it.
 
 **Who is invited to comment is the publication's to say, and it is an invitation rather
 than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which
@@ -297,10 +298,12 @@ about where their GRAPH is served, so following somebody yields nothing to pull 
 instance to ask, and nothing a peer says about themselves can corroborate one. Where is
 carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
 ask, which is this one unless the caller names another — the whole of it for somebody who
-keeps their graph here — and answers what that identity publishes there. The request is
-made by the reader's instance, so the instance asked learns an instance and never a reader,
-and a `pull` row keeps the origin in `source_url` so refreshing a region asks the same
-instance again.
+keeps their graph here — and answers what that identity publishes there.
+`GET /api/peers/versions` would be the same mediation for a publication's history, and no
+instance answers it yet. What the writing DID between two versions is not something this
+build answers either, on either side of the federation line. Every one of those requests is made by the reader's instance, so the
+instance asked learns an instance and never a reader, and a `pull` row keeps the origin in
+`source_url` so refreshing a region asks the same instance again.
 
 **A named origin is a signed-in caller telling this instance to go and fetch something, so
 what it may name is bounded in three places and none of them is a server's own idea.**
@@ -376,13 +379,32 @@ published when the version was made, a link to an unpublished note being dropped
 than named. The reader's copy is a tree rooted at the region root, so it satisfies the same
 `ref === origin` a root always does.
 
-**Where a foreign region is DRAWN is not settled here, and a surface must settle it before
-it builds one graph out of two.** A mark's position seeds from its address alone
-(`packages/ts/graph/src/layout/geometry.ts`), so a peer's `1a` and the reader's own `1a`
-seed identically, and `graph.addNode` is keyed by ref, so two held regions that overlap
-answer the shared notes twice. Neither is a defect in the layout — it is what makes one
-person's graph readable in the same shape by another — and both are the pull surface's to
-answer.
+**The canvas draws ONE author's graph at a time**, and that is how a foreign region is
+read: the reader's own graph, or a region they hold, entered and left from the graph's own
+chrome (`app-core/src/lib/pages/graph.svelte`). A mark's position seeds from its address
+alone (`packages/ts/graph/src/layout/geometry.ts`), so a peer's `1a` and the reader's own
+`1a` seed identically, and `graph.addNode` is keyed by ref, so two held regions that
+overlap would answer the shared notes twice. Neither is a defect in the layout — it is what
+makes one person's graph readable in the same shape by another — and drawing one graph at a
+time is what makes them true rather than a collision: an address is a place in the graph it
+was written in, so a peer's `1a` sitting where the reader's own `1a` sits would claim a
+genealogy neither author wrote. **Every act the canvas offers is off in a held region** —
+choosing, tagging, the look, deleting, pointing a link — because none of them is something
+to offer on somebody else's note; the region names its author in the chrome, and its marks
+draw as `pulled` off the viewer. The tag rail is the legend for the graph on screen, so it
+counts the region's notes while one is up.
+
+**A held note opens on the same reading surface a note of the reader's own does**, and
+nothing on it writes: its sections come from `GET /api/pulls/nodes/{did}/{ulid}/blocks` and
+are drawn in the writing surface's own element kinds with the surface not editable, so a
+kind the writer knows is a kind a peer's note draws in. Two of those kinds address something
+outside the document, and both are answered by this instance rather than by the author's: a
+picture cites the public copy its author published and is read through the reader's own
+instance (`SloppyClient.publishedPicture`), and an emoji's stored picture address — which
+the author's own instance minted — is dropped before the document is drawn, the shortcode
+resolving instead against the author's catalog as this instance cached it. A reference
+inside a held note resolves within the region or not at all; the reader's own graph is not
+the one on screen.
 
 **A follow belongs to the reader's identity store, not to Sloppy.** Identity is syr's half
 of the table above, syr already keeps a follow list and serves it at an identity's
@@ -390,7 +412,28 @@ of the table above, syr already keeps a follow list and serves it at an identity
 this person follow" that nothing reconciles. So `GET`/`POST`/`DELETE /api/following` reads
 and writes that store with the reader's delegation, and Sloppy stores nothing. The
 provider URL the store recorded beside a DID is the first step of resolving it; absent, the
-DID is resolved from scratch.
+DID is resolved from scratch. **The embedded provider keeps one like any other store** —
+`idp_follow`, the owner's `/follows` routes and a `public_following` endpoint on its
+identity manifest — so following works in the fully-local deployment mode too. Whether a
+store keeps a list at all is read off its manifest rather than off a failed request: one
+that declares no `public_following` has no follows rather than an error, and somebody using
+it is told they can still pull a branch by its address.
+
+**Where a followed identity's GRAPH is served is a guess, and is shown as one.** A DID
+names a person and never a place, and syr's manifest answers for an identity's own store
+and not for the graph beside it, so asking somebody what they publish starts at the
+instance a region of theirs already came from, else at the provider recorded beside their
+DID. That lands in the field the reader can edit rather than behind the button, because on
+the two of the three deployment modes where a person's store and their graph are one
+instance it is the right answer, and on the third the reader has to be able to see which
+instance was asked before they can name the right one.
+
+**A follow is private, and following somebody is not publishing that you did.** Who a
+person reads is theirs. A store's `public_following` endpoint serves the follows its owner
+made public — syr's `is_public`, false unless set — and Sloppy asks for none, so a follow
+written here is readable by its owner and by nobody else. The embedded provider answers the
+same way rather than a laxer one: which deployment mode somebody runs is not a choice about
+who can see who they read.
 
 **A pulled region is stored, and the reader owns the copy.** The alternative — re-fetching
 the author's instance on every read — cannot be reconciled with what the product already
@@ -419,6 +462,15 @@ pull writes rows:
   and the difference is what a refresh and a drop are made of. This is not the rule about
   deriving from an address (AI.md § "The Address Is the Protocol") bent: what a peer's
   instance chose to send is not a fact any address states.
+- **A note whose own signature refutes it is left out; the branch around it still
+  arrives.** `PublishedNodeSchema` bounds what a reader may claim — one that cannot verify
+  a signature still renders the note, one that can and finds it wrong must not present it
+  as the author's — and not presenting ONE note as its author's is not the same as refusing
+  the two hundred that verify. So `attribution.ts` answers per note, the page is written
+  without it, and it is not among what the sweep below counts as served, which lets go of a
+  copy the reader can no longer put the author's name to. An answer that is not the branch
+  that was ASKED for is the other case entirely and is still refused whole: what a peer
+  sent about the shape of its own subtree is either the answer to the question or not.
 - **A refresh removes what its region served and the new answer no longer carries.** The
   sweep runs when the last page is in and never on a run that failed partway, because an
   incomplete answer is not evidence that a note is gone. Without it, a note its author
@@ -485,10 +537,34 @@ rather than gaps to close:
   three fields on one and its public listing does not serve them, so a reaction never
   arrives with anything to check, and no surface may claim otherwise.
 
-**Local-only mode has neither.** `@sloppy/idp` serves files, emoji and a profile, and its
-identity manifest advertises no `public_comments`, `public_reactions` or `public_following`
-— so an instance running on the embedded provider can publish, be pulled from, and pull,
-and has no conversation and no follow list at all.
+**An identity's answer is held to that identity.** Each of those listings is one
+identity's own public endpoint asked about one note, so a record carrying anybody else's
+DID is dropped rather than drawn — `fromEveryVoice` in `api/src/social/social.service.ts`
+is the one comparison, made where the record and the store that served it are still
+together. It is the rule § "Federating the graph" applies to a peer's published notes, and
+here it is the only line there is: a reaction arrives with nothing to check at all, and no
+signature is verified anywhere in this build. Without it any instance could put words
+under any name and face the reader knows, including the reader's own.
+
+**A conversation hangs off the note, not off whose graph it is in.** A store is handed
+`post_did` + `post_id` and never learns whose surface asked, so answering a note pulled from
+a peer is the same act as answering one's own and reaches the same two routes, which take
+any note's ref and check nobody's ownership. Both surfaces that show a note offer one on the
+same two conditions: the publication BEING READ invites answers, and the reader's own
+identity is one that can hold a conversation. That is what PRODUCT.md § "The peer" costs —
+"they read, they comment, they branch" is one person on somebody else's writing.
+
+**Local-only mode has no conversation.** `@sloppy/idp` serves files, emoji, a profile and a
+follow list, and its identity manifest advertises no `public_comments` or `public_reactions`
+— so an instance running on the embedded provider can publish, be pulled from, pull and
+follow, and has no conversation at all. **A surface has to know that before it offers
+anybody a conversation**, or a whole deployment mode gets a control that refuses every time
+it is used. The axis is the IDENTITY's and not the deployment's — an instance that delegates
+elsewhere still serves its own provider, and somebody on a hosted instance may keep their
+identity on it — so `identity.svelte.ts` in `@sloppy/app-core` answers it per person, by
+asking whether the identity signed in is kept on this instance's own provider. `local`
+offers no conversation; `delegated` does. Until the answer is in, nothing is offered and
+nothing alarming is said, which are opposite defaults and deliberately so.
 
 ## Pictures
 

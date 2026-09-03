@@ -8,8 +8,10 @@ import { HealthModule } from "./health/health.module";
 import { IdpModule } from "./idp/idp.module";
 import { MediaModule } from "./media/media.module";
 import { NodeModule } from "./node/node.module";
+import { PeerModule } from "./peer/peer.module";
 import { ProfileModule } from "./profile/profile.module";
 import { PublicationModule } from "./publication/publication.module";
+import { SocialModule } from "./social/social.module";
 
 /**
  * The whole application, wired once. A milestone fills one of the modules
@@ -29,6 +31,8 @@ import { PublicationModule } from "./publication/publication.module";
     MediaModule,
     ProfileModule,
     EmojiModule,
+    PeerModule,
+    SocialModule,
   ],
 })
 export class AppModule {}

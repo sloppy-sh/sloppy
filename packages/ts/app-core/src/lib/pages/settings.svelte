@@ -6,7 +6,10 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import { conversation } from '../stores/conversation.svelte.js';
+	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { peers } from '../stores/peers.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
 		ACCENT_LABELS,
@@ -17,6 +20,7 @@
 		THEME_LABELS,
 		THEMES
 	} from '../stores/prefs.svelte.js';
+	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
 
@@ -36,7 +40,11 @@
 		} finally {
 			nodes.clear();
 			tags.clear();
+			peers.clear();
 			people.hold(null);
+			publications.clear();
+			conversation.clear();
+			identity.clear();
 			leaving = false;
 		}
 	}

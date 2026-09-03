@@ -21,13 +21,14 @@ import {
   profileOf,
   type PublicListing,
   type PublicRecord,
+  publicFollowing,
   publicUploadsOf,
   register,
   RegisterRequestSchema,
   requireIdentity,
   type SessionGrant,
 } from "@sloppy/idp";
-import type { SyrEmoji } from "@sloppy/types";
+import type { SyrEmoji, SyrFollow } from "@sloppy/types";
 import { Public } from "../auth/public.decorator";
 import { IdpExceptionFilter, type IdpRequest, parseBody } from "./idp-request";
 import { IdpSessionGuard } from "./idp.guards";
@@ -124,6 +125,29 @@ export class IdentityController {
     const owner = await this.ownDid(did);
     const page = pageOf(limit, offset);
     const { entries, total } = await emojiCatalog(
+      this.idp.context,
+      owner,
+      page,
+    );
+    return listing(entries, page, total);
+  }
+
+  /**
+   * Who this identity says PUBLICLY that they read. Who somebody reads is
+   * theirs, so a follow is in here only where its owner said so; a reader
+   * resolves a followed DID to the store that answers for it, which is why the
+   * row carries one.
+   */
+  @Public()
+  @Get("public/following/:did")
+  async followedPublicly(
+    @Param("did") did: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ): Promise<PublicListing<SyrFollow>> {
+    const owner = await this.ownDid(did);
+    const page = pageOf(limit, offset);
+    const { entries, total } = await publicFollowing(
       this.idp.context,
       owner,
       page,

@@ -16,7 +16,11 @@ export function citedAs(note: { address: string; title: string }): string {
 	return note.title || note.address;
 }
 
-export function ReferenceNode(references: () => NoteReferences | undefined) {
+/** Only what a reference already in the writing needs, so a surface that reads
+ *  without writing has nothing to write a note from. */
+export type ReferenceReader = Pick<NoteReferences, 'read' | 'open'>;
+
+export function ReferenceNode(references: () => ReferenceReader | undefined) {
 	return Node.create({
 		name: REFERENCE_NODE,
 		group: 'inline',

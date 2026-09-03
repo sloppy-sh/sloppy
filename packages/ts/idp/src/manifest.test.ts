@@ -79,6 +79,7 @@ describe("the identity manifest", () => {
       "posts",
       "profile",
       "public_emojis",
+      "public_following",
       "stories",
       "uploads",
     ]);

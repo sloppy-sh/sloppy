@@ -105,12 +105,30 @@ export const InkNode = Node.create({
 
 			const canvas = document.createElement('canvas');
 			canvas.className = 'sloppy-ink-canvas';
-			const bar = document.createElement('div');
-			bar.className = 'sloppy-ink-bar';
-			const undoStroke = quietButton('Undo stroke');
-			const removeDrawing = quietButton('Remove drawing');
-			bar.append(undoStroke, removeDrawing);
-			dom.append(canvas, bar);
+			dom.append(canvas);
+
+			let undoStroke: HTMLButtonElement | null = null;
+			if (editor.isEditable) {
+				const bar = document.createElement('div');
+				bar.className = 'sloppy-ink-bar';
+				undoStroke = quietButton('Undo stroke');
+				const removeDrawing = quietButton('Remove drawing');
+				bar.append(undoStroke, removeDrawing);
+				dom.append(bar);
+
+				undoStroke.addEventListener('click', (event) => {
+					event.preventDefault();
+					apply({ strokes: strokes().slice(0, -1) });
+				});
+
+				removeDrawing.addEventListener('click', (event) => {
+					event.preventDefault();
+					if (editor.isDestroyed) return;
+					const at = positionOf();
+					if (at === undefined) return;
+					editor.commands.deleteRange({ from: at, to: at + current.nodeSize });
+				});
+			}
 
 			const box = () => canvas.getBoundingClientRect();
 			const strokes = (): InkStroke[] => (current.attrs.strokes as InkStroke[]) ?? [];
@@ -134,7 +152,7 @@ export const InkNode = Node.create({
 				prepared.ctx.clearRect(0, 0, rect.width, rect.height);
 				drawStrokes(prepared.ctx, strokes(), prepared.scale);
 				if (wet) drawStroke(prepared.ctx, { points: wet.points, width: wet.width }, prepared.scale);
-				undoStroke.disabled = strokes().length === 0;
+				if (undoStroke) undoStroke.disabled = strokes().length === 0;
 			}
 
 			function positionOf(): number | undefined {
@@ -203,19 +221,6 @@ export const InkNode = Node.create({
 
 			canvas.addEventListener('pointerup', settle);
 			canvas.addEventListener('pointercancel', settle);
-
-			undoStroke.addEventListener('click', (event) => {
-				event.preventDefault();
-				apply({ strokes: strokes().slice(0, -1) });
-			});
-
-			removeDrawing.addEventListener('click', (event) => {
-				event.preventDefault();
-				if (editor.isDestroyed) return;
-				const at = positionOf();
-				if (at === undefined) return;
-				editor.commands.deleteRange({ from: at, to: at + current.nodeSize });
-			});
 
 			const resize = new ResizeObserver(() => redraw());
 			resize.observe(canvas);

@@ -27,6 +27,10 @@ export { default as PersonEditor } from './components/identity/person-editor.sve
 export { initialsOf, nameOf } from './components/identity/person.js';
 export type { Person, PictureRole } from './components/identity/person.js';
 
+export { default as PeersSheet } from './components/peers/peers-sheet.svelte';
+export { default as HeldNote } from './components/peers/held-note.svelte';
+export type { HeldRegion, Peer, PublishedThere } from './components/peers/peer.js';
+
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export * from './components/graph/view.js';
 export { default as TagField } from './components/tags/tag-field.svelte';
@@ -41,7 +45,11 @@ export type {
 	SendingPicture,
 	ShownPicture
 } from './components/editor/contract.js';
+export type { PictureSource } from './components/editor/picture-node.js';
+export type { ReferenceReader } from './components/editor/reference-node.js';
 export type { CustomEmojiEntry } from './emoji/catalog.js';
+export * from './components/publish/index.js';
+export * from './components/social/index.js';
 export * from './components/templates/index.js';
 export * from './components/appearance/index.js';
 export * from './components/graph/chosen.js';

@@ -11,6 +11,7 @@
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Files from '@lucide/svelte/icons/files';
+	import Globe from '@lucide/svelte/icons/globe';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Tag from '@lucide/svelte/icons/tag';
@@ -19,11 +20,14 @@
 	import {
 		alongRun,
 		compareOrd,
+		isInSubtree,
 		type BlockView,
+		type CommentAccess,
 		type CreateBlockRequest,
 		type NodeAppearance,
 		type NodeView,
 		type OwnedRef,
+		type StoreRef,
 		type Tag as TagName,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
@@ -31,7 +35,9 @@
 		AppearanceModal,
 		BlockStack,
 		ConfirmModal,
+		Conversation,
 		NoteMenu,
+		PublishModal,
 		ResponsiveModal,
 		scrollFade,
 		suggestedFor,
@@ -40,7 +46,8 @@
 		writeTemplate,
 		type NoteMenuItem,
 		type NoteReferences,
-		type NoteTemplate
+		type NoteTemplate,
+		type ReactionPick
 	} from '@sloppy/ui';
 	import { Badge } from '@sloppy/ui/badge';
 	import { Button } from '@sloppy/ui/button';
@@ -52,7 +59,11 @@
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
+	import { conversation } from '../stores/conversation.svelte.js';
+	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { people } from '../stores/people.svelte.js';
+	import { publications } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -150,6 +161,7 @@
 		unlink?: string;
 		tag?: string;
 		look?: string;
+		publish?: string;
 		remove?: string;
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
@@ -169,7 +181,7 @@
 	$effect(() => {
 		const of = ref;
 		untrack(() => {
-			for (const act of ['remove', 'tag', 'look', 'link'] as const) {
+			for (const act of ['remove', 'tag', 'look', 'link', 'publish'] as const) {
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
 		});
@@ -213,6 +225,7 @@
 	let tagging = $state(false);
 	let looking = $state(false);
 	let linking = $state(false);
+	let publishing = $state(false);
 	let removing = $state(false);
 
 	/** Typed into the field that reaches a note by the address a person cites. */
@@ -351,6 +364,70 @@
 
 	const consequence = $derived(deletionCost([ref]));
 
+	// ── Publishing this branch, and what people say back ──────────────────────
+
+	const own = $derived(node !== undefined && node.created_by === session.viewer?.did);
+	/** The publication rooted at this note, which is what an act here changes. */
+	const publication = $derived(node && own ? publications.at(node) : undefined);
+	/** One rooted above it that already carries this branch. */
+	const carriedBy = $derived(node && own ? publications.above(node) : undefined);
+	const narrower = $derived(
+		node && own
+			? publications
+					.narrowerUnder(node, publication?.comments ?? 'anyone')
+					.map((under) => under.root_address)
+			: []
+	);
+	const branch = $derived(
+		publication
+			? {
+					latest: publication.latest,
+					versions: publications.versions(publication.ref),
+					comments: publication.comments
+				}
+			: null
+	);
+
+	/**
+	 * True where this branch has changed since the newest version was published.
+	 * It only ever reports that one HAS: what is in hand is this note's own
+	 * sections and the rows of the notes around it, so writing done in another
+	 * note of the branch is not visible from here — false says nothing, and
+	 * nothing is said on it.
+	 */
+	const changedSince = $derived.by(() => {
+		if (!node || !publication) return false;
+		const since = publication.latest.published_at;
+		if (blocks.some((section) => section.updated_at > since)) return true;
+		return nodes
+			.region({ origin: node.origin })
+			.some((other) => isInSubtree(node.address, other.address) && other.updated_at > since);
+	});
+
+	/** What the publishing sheet says went wrong: the last act's refusal, or that
+	 *  nothing could be read about this branch at all. */
+	const publishRefusal = $derived(
+		refused.publish ??
+			(publications.state.failed && !publications.state.loaded
+				? (publications.state.error ??
+					'Sloppy could not check whether this branch is published. Try again in a moment.')
+				: null)
+	);
+
+	/** Whether anybody may answer this note: the author's own invitation, held by
+	 *  an identity kept somewhere that carries a conversation at all. This surface
+	 *  draws no graph but the reader's own, so their own invitation is the only
+	 *  one it can be reading. */
+	const answerable = $derived(
+		node !== undefined && own && publications.answersOn(node) === 'anyone' && identity.converses
+	);
+	const conversing = $derived(conversation.status(ref));
+
+	const conversationPeople = {
+		of: (did: string) => people.of(did),
+		resolve: (did: string) => people.resolve(did)
+	};
+
 	/** Everything a reader occasionally DOES to a note, as against what they read
 	 *  off it. Delete comes last and apart — DESIGN.md § Layout. */
 	let actsFrom = $state<HTMLElement | null>(null);
@@ -358,6 +435,7 @@
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Give it a look', icon: CircleDashed, onSelect: () => (looking = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
+		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
 		{
 			label: 'Delete this note',
 			icon: Trash2,
@@ -372,6 +450,7 @@
 	 *  them from there too. Gravest first. */
 	const saysHere = $derived(
 		(!removing && refused.remove) ||
+			(!publishing && refused.publish) ||
 			(!linking && refused.link) ||
 			(!looking && refused.look) ||
 			(!tagging && refused.tag) ||
@@ -498,6 +577,7 @@
 		tagging = false;
 		looking = false;
 		linking = false;
+		publishing = false;
 		removing = false;
 		unread = null;
 		shaping = null;
@@ -537,6 +617,25 @@
 			live = false;
 			void saveTitle(opening);
 		};
+	});
+
+	// What the person publishes decides whether this note draws as published and
+	// whether anybody may answer it, so it is read before either is drawn.
+	$effect(() => {
+		if (session.signedIn) void publications.load().catch(() => {});
+	});
+
+	$effect(() => {
+		if (session.signedIn) void identity.load();
+	});
+
+	$effect(() => {
+		const which = publication?.ref;
+		if (which) void publications.loadVersions(which).catch(() => {});
+	});
+
+	$effect(() => {
+		if (answerable) void conversation.load(ref);
 	});
 
 	// The notes either side are read while this one is being read, so a walk
@@ -768,6 +867,102 @@
 		);
 	}
 
+	/** Whatever a conversation shows a person when a send fails is this, so a
+	 *  server that explained itself in words for a human is what they read. */
+	function refusal(error: unknown, otherwise: string): Error {
+		return new Error(serverMessage(error) ?? otherwise, { cause: error });
+	}
+
+	/** Publish the branch rooted here, or send it again as it stands. Thrown on,
+	 *  so the sheet stays up with the answer on it. */
+	async function publishBranch(): Promise<void> {
+		const of = ref;
+		refuse(of, 'publish', null);
+		try {
+			await publications.publish(of);
+			// The mark this note draws on the graph reads its own row.
+			await nodes.fetch(of);
+		} catch (error) {
+			refuse(
+				of,
+				'publish',
+				serverMessage(error) ?? 'Sloppy could not publish that branch. Try again in a moment.'
+			);
+			throw error;
+		}
+	}
+
+	async function inviteAnswers(access: CommentAccess): Promise<void> {
+		const of = ref;
+		const which = publication?.ref;
+		if (!which) return;
+		refuse(of, 'publish', null);
+		try {
+			await publications.setComments(which, access);
+		} catch (error) {
+			refuse(
+				of,
+				'publish',
+				serverMessage(error) ?? 'Sloppy could not save that. Try again in a moment.'
+			);
+			throw error;
+		}
+	}
+
+	async function takeDown(): Promise<void> {
+		const of = ref;
+		const which = publication?.ref;
+		if (!which) return;
+		refuse(of, 'publish', null);
+		try {
+			await publications.unpublish(which);
+			await nodes.fetch(of);
+		} catch (error) {
+			refuse(
+				of,
+				'publish',
+				serverMessage(error) ?? 'Sloppy could not take that down. Try again in a moment.'
+			);
+			throw error;
+		}
+	}
+
+	async function say(content: string, replyTo: StoreRef | undefined): Promise<void> {
+		try {
+			await conversation.say({
+				node: ref,
+				content,
+				...(replyTo === undefined ? {} : { reply_to: replyTo })
+			});
+		} catch (error) {
+			throw refusal(error, 'That could not be posted. Try again in a moment.');
+		}
+	}
+
+	async function unsay(commentId: StoreRef): Promise<void> {
+		try {
+			await conversation.unsay(ref, commentId);
+		} catch (error) {
+			throw refusal(error, 'That could not be removed. Try again in a moment.');
+		}
+	}
+
+	async function react(pick: ReactionPick): Promise<void> {
+		try {
+			await conversation.react({ node: ref, ...pick });
+		} catch (error) {
+			throw refusal(error, 'That reaction could not be added. Try again in a moment.');
+		}
+	}
+
+	async function unreact(reactionId: StoreRef): Promise<void> {
+		try {
+			await conversation.unreact(ref, reactionId);
+		} catch (error) {
+			throw refusal(error, 'That reaction could not be removed. Try again in a moment.');
+		}
+	}
+
 	async function deleteNote(): Promise<void> {
 		const of = ref;
 		const above = node?.parent ?? null;
@@ -900,7 +1095,23 @@
 				class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-semibold tracking-tight placeholder:text-muted-foreground/60 focus-visible:outline-none"
 			></textarea>
 
-			<NoteAuthor did={node.created_by} />
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+				<NoteAuthor did={node.created_by} />
+				{#if own && (publication || carriedBy)}
+					<button
+						type="button"
+						onclick={() => (publishing = true)}
+						class="inline-flex min-h-9 items-center gap-1.5 rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						<Globe class="size-3.5 shrink-0" />
+						{#if publication}
+							Published · version {publication.latest.sequence}
+						{:else if carriedBy}
+							Published under <span class="address">{carriedBy.root_address}</span>
+						{/if}
+					</button>
+				{/if}
+			</div>
 
 			{#if node.tags.length > 0}
 				<button
@@ -1062,6 +1273,24 @@
 			</div>
 		{/if}
 
+		{#if answerable}
+			<Conversation
+				comments={conversation.comments(ref)}
+				reactions={conversation.reactions(ref)}
+				mine={session.viewer?.did ?? ''}
+				people={conversationPeople}
+				{emoji}
+				loading={conversing.loading}
+				unreadable={conversing.failed
+					? (conversing.error ?? 'Sloppy could not read what people said. Try again in a moment.')
+					: null}
+				onsay={say}
+				onunsay={unsay}
+				onreact={react}
+				onunreact={unreact}
+			/>
+		{/if}
+
 		{#if !writing && ways.some((way) => way.to)}
 			<!-- `--foot` is the OS bar and a breath above it: the bar is padded by it
 			     so no target lands under the bar, and bled past the note by it so the
@@ -1168,6 +1397,22 @@
 			existing={offered === 'this'}
 			onpick={pickShape}
 		/>
+
+		{#if own}
+			<PublishModal
+				bind:open={publishing}
+				address={node.address}
+				published={branch}
+				carriedBy={carriedBy?.root_address ?? null}
+				{narrower}
+				{changedSince}
+				answersReach={identity.kind !== 'local'}
+				refused={publishRefusal}
+				onpublish={publishBranch}
+				oncomments={inviteAnswers}
+				onunpublish={takeDown}
+			/>
+		{/if}
 
 		<ConfirmModal
 			bind:open={removing}
