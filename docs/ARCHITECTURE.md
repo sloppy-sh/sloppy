@@ -260,7 +260,9 @@ needs and no more. A note that is gone would carry no sections, what it said bei
 version that still has it; where one address holds a different note in each version the
 reader would be told both, one gone and one arrived. `PublishedNoteChange` in
 `@sloppy/types` is that shape and `publishedChangesReader` its boundary — **both settled
-and neither served**, so no surface may offer a reader what changed.
+and neither served**, so the surface for it is DEFERRED out of this milestone by the developer's
+call — the shape is settled and the route is not served, so nothing offers it yet and the
+next milestone to serve the comparison owns building it.
 
 **Who is invited to comment is the publication's to say, and it is an invitation rather
 than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which

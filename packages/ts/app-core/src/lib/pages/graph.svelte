@@ -1228,7 +1228,7 @@
 		note={reachedNote}
 		author={{ identity: authorOf(foreign), person: regionAuthor }}
 		blocks={reached ? peers.stack(reached) : []}
-		loading={reaching !== null}
+		loading={reaching !== null && reaching === reached}
 		says={reachRefused}
 		pictures={heldPictures}
 		references={heldReferences}
