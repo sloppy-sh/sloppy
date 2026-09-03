@@ -36,11 +36,13 @@
 		NodeBulkRequestSchema,
 		RootAddressSchema,
 		peerOrigin,
+		splitOwnedRef,
 		type FollowedIdentity,
 		type NodeAppearance,
 		type NodeBulkAct,
 		type NodeView,
 		type PullView,
+		type StoreRef,
 		type Tag as TagName
 	} from '@sloppy/types';
 	import {
@@ -62,11 +64,13 @@
 		TagRail,
 		TemplatePicker,
 		type CanvasMenuItem,
+		type ConversationProps,
 		type HeldRegion,
 		type NoteTemplate,
 		type Peer,
 		type PictureSource,
 		type PreviewedNote,
+		type ReactionPick,
 		type ReferenceReader
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
@@ -78,6 +82,8 @@
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
+	import { conversation } from '../stores/conversation.svelte.js';
+	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
@@ -752,6 +758,75 @@
 		reachRefused = null;
 	}
 
+	/**
+	 * Whether the reader may answer the note in front of them: the author's
+	 * invitation as the copy carries it, held by somebody whose own identity is
+	 * kept where a conversation can be. Anyone allowed to answer may answer
+	 * whoever wrote it — PRODUCT.md § "A peer".
+	 */
+	const answerable = $derived(
+		foreign !== null && foreign.comments === 'anyone' && identity.converses
+	);
+
+	const conversationPeople = {
+		of: (did: string) => people.of(did),
+		resolve: (did: string) => people.resolve(did)
+	};
+
+	const readerEmoji = $derived(noteEmoji(session.viewer?.did ?? ''));
+
+	const heldConversation = $derived.by<ConversationProps | null>(() => {
+		const note = reached;
+		if (note === null || !answerable) return null;
+		const state = conversation.status(note);
+		return {
+			comments: conversation.comments(note),
+			reactions: conversation.reactions(note),
+			mine: session.viewer?.did ?? '',
+			people: conversationPeople,
+			emoji: readerEmoji,
+			loading: state.loading,
+			unreadable: state.failed
+				? (state.error ?? 'Sloppy could not read what people said. Try again in a moment.')
+				: null,
+			onsay: (content: string, replyTo: StoreRef | undefined) =>
+				answering(
+					() =>
+						conversation.say({
+							node: note,
+							content,
+							...(replyTo === undefined ? {} : { reply_to: replyTo })
+						}),
+					'That could not be posted. Try again in a moment.'
+				),
+			onunsay: (commentId: StoreRef) =>
+				answering(
+					() => conversation.unsay(note, commentId),
+					'That could not be removed. Try again in a moment.'
+				),
+			onreact: (pick: ReactionPick) =>
+				answering(
+					() => conversation.react({ node: note, ...pick }),
+					'That reaction could not be added. Try again in a moment.'
+				),
+			onunreact: (reactionId: StoreRef) =>
+				answering(
+					() => conversation.unreact(note, reactionId),
+					'That reaction could not be removed. Try again in a moment.'
+				)
+		};
+	});
+
+	/** Thrown on so the conversation shows the answer where it was asked, in the
+	 *  server's own words where it gave any. */
+	async function answering(act: () => Promise<unknown>, otherwise: string): Promise<void> {
+		try {
+			await act();
+		} catch (error) {
+			throw new Error(serverMessage(error) ?? otherwise, { cause: error });
+		}
+	}
+
 	/** Other people's graphs, and a second look at whatever did not arrive the
 	 *  first time. */
 	function visitPeers(): void {
@@ -759,11 +834,16 @@
 		void peers.load();
 	}
 
+	/** Whose graph a held region copies: a publication is its author's, so their
+	 *  identity is one half of its reference. */
+	const authorOf = (region: PullView) => splitOwnedRef(region.publication).did;
+
 	const heldRegions = $derived<HeldRegion[]>(
 		peers.regions.map((region) => ({
 			ref: region.ref,
-			identity: region.source_did,
-			person: people.of(region.source_did),
+			publication: region.publication,
+			identity: authorOf(region),
+			person: people.of(authorOf(region)),
 			address: region.root_address,
 			from: region.source_url
 		}))
@@ -774,7 +854,7 @@
 	 *  names a person and never a place, so neither is more than a best guess,
 	 *  and the sheet shows which was used. */
 	function readAt(one: FollowedIdentity): string | undefined {
-		const held = peers.regions.find((region) => region.source_did === one.did);
+		const held = peers.regions.find((region) => authorOf(region) === one.did);
 		return held?.source_url ?? peerOrigin(one.provider_url ?? '') ?? undefined;
 	}
 
@@ -789,13 +869,23 @@
 	/** Whoever a peer surface is about to name, asked for once. */
 	$effect(() => {
 		for (const one of peers.following) people.resolve(one.did);
-		for (const region of peers.regions) people.resolve(region.source_did);
+		for (const region of peers.regions) people.resolve(authorOf(region));
 	});
 
-	const regionAuthor = $derived(foreign ? people.of(foreign.source_did) : null);
+	// Where the reader's identity is kept decides whether a held note is offered
+	// a conversation at all, so it is asked before one is drawn.
+	$effect(() => {
+		if (session.signedIn) void identity.load();
+	});
+
+	$effect(() => {
+		if (answerable && reached) void conversation.load(reached);
+	});
+
+	const regionAuthor = $derived(foreign ? people.of(authorOf(foreign)) : null);
 	/** A note's shortcodes are read against its own author's catalog, which this
 	 *  instance resolves. */
-	const heldEmoji = $derived(noteEmoji(session.viewer?.did ?? '').catalog);
+	const heldEmoji = $derived(readerEmoji.catalog);
 
 	function startNumbering(): void {
 		branchNumber = '';
@@ -961,7 +1051,7 @@
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
 							<span class="address">{foreign.root_address}</span>
-							<span>{regionAuthor ? nameOf(regionAuthor) : foreign.source_did}</span>
+							<span>{regionAuthor ? nameOf(regionAuthor) : authorOf(foreign)}</span>
 							<span class="text-muted-foreground">· {summary}</span>
 						</p>
 						<Button
@@ -1118,31 +1208,32 @@
 		if (foreign?.ref === ref) leaveRegion();
 		void peers.drop(ref);
 	}}
-	onLook={async (identity, where, cursor) => {
-		const page = await peers.publishedBy(identity, { sourceUrl: where, cursor });
-		return page && { roots: page.roots, nextCursor: page.next_cursor };
+	onLook={async (who, where, cursor) => {
+		const page = await peers.publishedBy(who, { sourceUrl: where, cursor });
+		return page && { publications: page.publications, nextCursor: page.next_cursor };
 	}}
-	onPull={async (identity, where, address) => {
-		const region = await peers.pull({ did: identity, rootAddress: address, sourceUrl: where });
+	onPull={async (where, publication) => {
+		const region = await peers.pull({ publication, sourceUrl: where });
 		if (!region) return;
 		visiting = false;
 		await enterRegion(region.ref);
 	}}
-	onFollow={(identity) => void peers.follow(identity)}
-	onUnfollow={(identity) => void peers.unfollow(identity)}
+	onFollow={(who) => void peers.follow(who)}
+	onUnfollow={(who) => void peers.unfollow(who)}
 	onRetry={peers.loaded ? undefined : () => void peers.load()}
 />
 
 {#if foreign}
 	<HeldNote
 		note={reachedNote}
-		author={{ identity: foreign.source_did, person: regionAuthor }}
+		author={{ identity: authorOf(foreign), person: regionAuthor }}
 		blocks={reached ? peers.stack(reached) : []}
 		loading={reaching !== null}
 		says={reachRefused}
 		pictures={heldPictures}
 		references={heldReferences}
 		emoji={heldEmoji}
+		conversation={heldConversation}
 		onClose={closeHeld}
 	/>
 {/if}

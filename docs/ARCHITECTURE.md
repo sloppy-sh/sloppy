@@ -542,6 +542,14 @@ here it is the only line there is: a reaction arrives with nothing to check at a
 signature is verified anywhere in this build. Without it any instance could put words
 under any name and face the reader knows, including the reader's own.
 
+**A conversation hangs off the note, not off whose graph it is in.** A store is handed
+`post_did` + `post_id` and never learns whose surface asked, so answering a note pulled from
+a peer is the same act as answering one's own and reaches the same two routes, which take
+any note's ref and check nobody's ownership. Both surfaces that show a note offer one on the
+same two conditions: the publication BEING READ invites answers, and the reader's own
+identity is one that can hold a conversation. That is what PRODUCT.md § "The peer" costs —
+"they read, they comment, they branch" is one person on somebody else's writing.
+
 **Local-only mode has no conversation.** `@sloppy/idp` serves files, emoji, a profile and a
 follow list, and its identity manifest advertises no `public_comments` or `public_reactions`
 — so an instance running on the embedded provider can publish, be pulled from, pull and

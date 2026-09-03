@@ -18,6 +18,7 @@ import type {
   NodeView,
   PublishedBlock,
   PublishedNode,
+  PublishedVersion,
   PullView,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -91,6 +92,10 @@ const ID = {
   s1: ulid("7"),
   s2: ulid("8"),
   s3: ulid("9"),
+  wide: ulid("A"),
+  narrow: ulid("B"),
+  wideVersion: ulid("C"),
+  narrowVersion: ulid("D"),
 };
 
 /** Which note this fixture puts at an address, so a parent can be referenced
@@ -137,6 +142,33 @@ function section(local: string, node: string, ord: string): PublishedBlock {
     content: doc(`Section ${local}`),
   };
 }
+
+/** One of the author's publications, as this fixture serves it: what a reader
+ *  names to pull it, and the snapshot they get back. */
+interface Published {
+  publication: string;
+  version: PublishedVersion;
+  root: string;
+}
+
+const published = (
+  publication: string,
+  version: string,
+  root: string,
+): Published => ({
+  publication: ref(publication),
+  version: {
+    ref: ref(version),
+    sequence: 1,
+    published_at: "2026-02-01T00:00:00.000Z",
+  },
+  root,
+});
+
+/** Two publications of one graph, one rooted inside the other: what a region
+ *  is keyed by, and what two regions sharing notes are made of. */
+const WIDE = published(ID.wide, ID.wideVersion, "1");
+const NARROW = published(ID.narrow, ID.narrowVersion, "1a");
 
 describe("holding a region of somebody else's graph", () => {
   let listening = false;
@@ -190,22 +222,23 @@ describe("holding a region of somebody else's graph", () => {
       ref.slice(ref.lastIndexOf("/") + 1),
     )}`;
 
-  const pull = (rootAddress: string) =>
+  const pull = (of: Published) =>
     call("POST", "/pulls", {
-      did: AUTHOR,
-      root_address: rootAddress,
+      publication: of.publication,
       source_url: peerOrigin,
     });
 
-  const pulled = async (rootAddress: string): Promise<PullView> =>
+  const pulled = async (of: Published): Promise<PullView> =>
     (await ok("POST", "/pulls", {
-      did: AUTHOR,
-      root_address: rootAddress,
+      publication: of.publication,
       source_url: peerOrigin,
     })) as PullView;
 
   const regions = async (): Promise<PullView[]> =>
     (await call("GET", "/pulls")).body as PullView[];
+
+  const regionOf = async (of: Published): Promise<PullView | undefined> =>
+    (await regions()).find((held) => held.publication === of.publication);
 
   const heldIn = async (region: PullView, query = ""): Promise<NodeView[]> =>
     (await ok("GET", `/pulls/${at(region.ref)}/nodes${query}`)) as NodeView[];
@@ -218,15 +251,17 @@ describe("holding a region of somebody else's graph", () => {
     asked = [];
   };
 
-  /** One page of a subtree, with `next_cursor` where more follows. */
+  /** One page of one version, with `next_cursor` where more follows. */
   const page = (
-    rootAddress: string,
+    of: Published,
     nodes: PublishedNode[],
     blocks: PublishedBlock[] = [],
     nextCursor?: string,
   ) => ({
-    did: AUTHOR,
-    root_address: rootAddress,
+    publication: of.publication,
+    version: of.version,
+    root_address: of.root,
+    comments: "anyone",
     nodes,
     blocks,
     ...(nextCursor === undefined ? {} : { next_cursor: nextCursor }),
@@ -343,25 +378,31 @@ describe("holding a region of somebody else's graph", () => {
   scenario("takes a subtree page by page, addresses intact", async () => {
     serves(
       page(
-        "1",
+        WIDE,
         [note("1", "1"), note("1", "1a")],
         [section(ID.s1, ID.a, "a0")],
         "1",
       ),
       page(
-        "1",
+        WIDE,
         [note("1", "1a1"), note("1", "1b")],
         [section(ID.s2, ID.b, "a0")],
       ),
     );
 
-    const region = await pulled("1");
-    expect(region.source_did).toBe(AUTHOR);
+    const region = await pulled(WIDE);
+    expect(region.publication).toBe(WIDE.publication);
+    expect(region.version).toEqual(WIDE.version);
     expect(region.root_address).toBe("1");
+    expect(region.comments).toBe("anyone");
     expect(region.source_url).toBe(peerOrigin);
     // The reader owns the copy; the author owns the notes.
     expect(region.created_by).toBe(reader.did);
     expect(asked).toHaveLength(2);
+    // The publication is asked for by its own reference, not by an address.
+    expect(asked[0]).toBe(
+      `/api/public/publications/${encodeURIComponent(AUTHOR)}/${ID.wide}`,
+    );
 
     const held = await heldIn(region);
     expect(held.map((node) => node.address)).toEqual(["1", "1a", "1a1", "1b"]);
@@ -377,12 +418,12 @@ describe("holding a region of somebody else's graph", () => {
   scenario("counts max_depth from the region's own root", async () => {
     serves(
       page(
-        "1a",
+        NARROW,
         [note("1a", "1a"), note("1a", "1a1")],
         [section(ID.s1, ID.a, "a0")],
       ),
     );
-    const region = await pulled("1a");
+    const region = await pulled(NARROW);
 
     expect(
       (await heldIn(region, "?max_depth=1")).map((n) => n.address),
@@ -391,12 +432,12 @@ describe("holding a region of somebody else's graph", () => {
   });
 
   scenario("shares the notes two regions both serve", async () => {
-    const wide = (await regions()).find((held) => held.root_address === "1");
+    const wide = await regionOf(WIDE);
     expect(wide).toBeDefined();
     if (!wide) return;
     await ok("DELETE", `/pulls/${at(wide.ref)}`);
 
-    const narrow = (await regions()).find((held) => held.root_address === "1a");
+    const narrow = await regionOf(NARROW);
     expect(narrow).toBeDefined();
     if (!narrow) return;
     // `1a` and `1a1` survive their own region, sections included; `1` and `1b`
@@ -411,17 +452,20 @@ describe("holding a region of somebody else's graph", () => {
     async () => {
       serves(
         page(
-          "1a",
+          NARROW,
           [note("1a", "1a"), note("1a", "1a1")],
           [section(ID.s1, ID.a, "a0"), section(ID.s3, ID.a1, "a0")],
         ),
       );
-      const region = await pulled("1a");
+      const region = await pulled(NARROW);
       expect(await stackOf(ID.a1)).toHaveLength(1);
 
-      serves(page("1a", [note("1a", "1a")], [section(ID.s1, ID.a, "a0")]));
-      await pulled("1a");
+      serves(page(NARROW, [note("1a", "1a")], [section(ID.s1, ID.a, "a0")]));
+      const refreshed = await pulled(NARROW);
 
+      // One region per publication: pulling it again refreshed this row.
+      expect(refreshed.ref).toBe(region.ref);
+      expect(await regions()).toHaveLength(1);
       expect((await heldIn(region)).map((n) => n.address)).toEqual(["1a"]);
       expect(await stackOf(ID.a1)).toHaveLength(0);
     },
@@ -429,12 +473,12 @@ describe("holding a region of somebody else's graph", () => {
 
   scenario("replaces a held note the author re-addressed", async () => {
     serves(
-      page("1a", [
+      page(NARROW, [
         note("1a", "1a"),
         { ...note("1a", "1a1"), ref: ref(ID.again), title: "Written again" },
       ]),
     );
-    const region = await pulled("1a");
+    const region = await pulled(NARROW);
 
     expect((await heldIn(region)).map((node) => node.ref)).toEqual([
       ref(ID.a),
@@ -443,48 +487,70 @@ describe("holding a region of somebody else's graph", () => {
   });
 
   scenario("refuses an answer that is not the one asked for", async () => {
-    const region = (await regions()).find((held) => held.root_address === "1a");
+    const region = await regionOf(NARROW);
     expect(region).toBeDefined();
     if (!region) return;
     const before = (await heldIn(region)).map((node) => node.ref);
 
     // A note outside the subtree that was asked for.
-    serves(page("1a", [note("1a", "1a"), note("1", "1b")]));
-    expect((await pull("1a")).status).toBeGreaterThanOrEqual(400);
+    serves(page(NARROW, [note("1a", "1a"), note("1", "1b")]));
+    expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
 
     // A second note at an address the page already used.
     serves(
-      page("1a", [
+      page(NARROW, [
         note("1a", "1a"),
         note("1a", "1a1"),
         { ...note("1a", "1a1"), ref: ref(ID.other) },
       ]),
     );
-    expect((await pull("1a")).status).toBeGreaterThanOrEqual(400);
+    expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
 
     // A link to a note the author did not write.
     serves(
-      page("1a", [{ ...note("1a", "1a"), links: [`${STRANGER}/theirs`] }]),
+      page(NARROW, [{ ...note("1a", "1a"), links: [`${STRANGER}/theirs`] }]),
     );
-    expect((await pull("1a")).status).toBeGreaterThanOrEqual(400);
+    expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
 
     // A note that does not spring from the note at its own parent address.
     serves(
-      page("1a", [
+      page(NARROW, [
         note("1a", "1a"),
         { ...note("1a", "1a1"), parent: ref(ID.a1) },
       ]),
     );
-    expect((await pull("1a")).status).toBeGreaterThanOrEqual(400);
+    expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
+
+    // A page of a publication nobody asked about.
+    serves(page(WIDE, [note("1", "1")]));
+    expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
+
+    // A second page carrying another version of the same publication.
+    serves(
+      page(NARROW, [note("1a", "1a")], [], "1"),
+      page(
+        { ...NARROW, version: { ...NARROW.version, ref: ref(ID.wideVersion) } },
+        [note("1a", "1a1")],
+      ),
+    );
+    expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
 
     // A second page that contradicts the first is refused with the first kept.
     serves(
-      page("1a", [note("1a", "1a")], [], "1"),
-      page("1a", [{ ...note("1a", "1a1"), address: "2" }]),
+      page(NARROW, [note("1a", "1a")], [], "1"),
+      page(NARROW, [{ ...note("1a", "1a1"), address: "2" }]),
     );
-    expect((await pull("1a")).status).toBeGreaterThanOrEqual(400);
+    expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
 
     expect((await heldIn(region)).map((node) => node.ref)).toEqual(before);
+  });
+
+  scenario("will not take the reader's own branch as a peer's", async () => {
+    const mine = await call("POST", "/pulls", {
+      publication: `${reader.did}/${ID.narrow}`,
+      source_url: peerOrigin,
+    });
+    expect(mine.status).toBe(400);
   });
 
   scenario(
@@ -495,7 +561,7 @@ describe("holding a region of somebody else's graph", () => {
       // put the author's name to.
       serves(
         page(
-          "1a",
+          NARROW,
           [
             note("1a", "1a"),
             {
@@ -516,7 +582,7 @@ describe("holding a region of somebody else's graph", () => {
         ),
       );
 
-      const region = await pulled("1a");
+      const region = await pulled(NARROW);
       expect((await heldIn(region)).map((n) => n.address)).toEqual(["1a"]);
       expect(await stackOf(ID.a)).toHaveLength(1);
       expect(await stackOf(ID.a1)).toHaveLength(0);
@@ -525,7 +591,7 @@ describe("holding a region of somebody else's graph", () => {
 
   scenario("holds a note it cannot check the signature on", async () => {
     serves(
-      page("1a", [
+      page(NARROW, [
         {
           ...note("1a", "1a"),
           content_signature: "z2i7YveT8N8bmBrE",
@@ -535,7 +601,7 @@ describe("holding a region of somebody else's graph", () => {
         },
       ]),
     );
-    const region = await pulled("1a");
+    const region = await pulled(NARROW);
     expect((await heldIn(region)).map((n) => n.address)).toEqual(["1a"]);
   });
 
@@ -551,7 +617,7 @@ describe("holding a region of somebody else's graph", () => {
     });
     expect(acted.status).toBe(404);
 
-    const region = (await regions()).find((held) => held.root_address === "1a");
+    const region = await regionOf(NARROW);
     expect(region).toBeDefined();
     if (!region) return;
     expect((await heldIn(region)).map((n) => n.address)).toContain("1a");

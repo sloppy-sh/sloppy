@@ -11,6 +11,7 @@
 	import type { ReferenceReader } from '../editor/reference-node.js';
 	import { nameOf } from '../identity/person.js';
 	import ReadingPanel from '../reading-panel.svelte';
+	import Conversation, { type ConversationProps } from '../social/conversation.svelte';
 	import HeldStack from './held-stack.svelte';
 	import type { Peer } from './peer.js';
 
@@ -23,6 +24,7 @@
 		pictures,
 		references,
 		emoji,
+		conversation = null,
 		onClose
 	}: {
 		/** The note being read; null closes the surface. */
@@ -36,6 +38,9 @@
 		pictures: PictureSource;
 		references: ReferenceReader;
 		emoji: NoteEmoji['catalog'];
+		/** What people said on this note, and the way to answer it. Absent draws
+		 *  no conversation at all: who may answer is the host's to weigh. */
+		conversation?: ConversationProps | null;
 		onClose: () => void;
 	} = $props();
 </script>
@@ -94,6 +99,12 @@
 			{#key note.ref}
 				<HeldStack author={note.created_by} {blocks} {pictures} {references} {emoji} />
 			{/key}
+		{/if}
+
+		{#if conversation}
+			<div class="mt-7">
+				<Conversation {...conversation} />
+			</div>
 		{/if}
 	{/if}
 </ReadingPanel>

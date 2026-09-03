@@ -359,9 +359,11 @@ export class SloppyClient {
   }
 
   // ── Publishing, following, and what a peer holds ─────────────────────────
-  // Declared, not served: `apps/sloppy/api` answers none of the routes from
-  // here to the end of this block yet, so a call reaches a 404.
-  // docs/ARCHITECTURE.md § "Federating the graph" is what they answer to.
+  // docs/ARCHITECTURE.md § "Federating the graph" is what these answer to.
+  // Publishing is declared and not yet served: this build carries no
+  // publication module, so a call under `/publications`, `/public` or
+  // `/media/published`, and a peer's versions or changes, reaches a 404. What a
+  // peer publishes, holding a region, following and the conversation are served.
 
   async listPublications(): Promise<PublicationView[]> {
     const body = await this.json("/publications", { method: "GET" });

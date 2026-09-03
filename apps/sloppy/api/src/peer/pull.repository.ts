@@ -6,7 +6,6 @@
 
 import { Injectable } from "@nestjs/common";
 import {
-  type Address,
   type DidSyr,
   type OwnedRef,
   type Pull,
@@ -14,7 +13,6 @@ import {
   PulledBlockSchema,
   type PulledNode,
   PullSchema,
-  type PeerOrigin,
   createOwnedRecordId,
   compareOrd,
   nowIso,
@@ -24,14 +22,16 @@ import {
 } from "@sloppy/types";
 import { DbService } from "../db/db.service";
 
-/** One page of an answer, ready to be written. What the reader stamps on
- *  it — who holds the copy and when it arrived — is this repository's. */
+/** A row as an answer states it. What the reader stamps on it — who holds the
+ *  copy and when it arrived — is this repository's. */
 type Held<T> = Omit<T, "id" | "created_by" | "created_at" | "updated_at">;
 
 export interface HeldPage {
   nodes: readonly Held<PulledNode>[];
   blocks: readonly Held<PulledBlock>[];
 }
+
+export type RegionTerms = Held<Pull>;
 
 @Injectable()
 export class PullRepository {
@@ -54,24 +54,16 @@ export class PullRepository {
   }
 
   /**
-   * The region row a run writes into: one per reader, author and root address,
-   * so pulling the same subtree again refreshes the region rather than growing
-   * a second beside it. Where it is already there it comes back untouched —
-   * {@link settleRegion} is what says a refresh finished.
+   * The region row a run writes into: one per reader and publication, so
+   * pulling the same publication again refreshes the region rather than growing
+   * a second beside it. Where it is already there it comes back untouched — it
+   * still describes the copy the reader is holding until {@link settleRegion}
+   * says the refresh reached the last page.
    */
-  async openRegion(
-    reader: DidSyr,
-    region: {
-      source_did: DidSyr;
-      root_address: Address;
-      source_url: PeerOrigin;
-    },
-  ): Promise<Pull> {
+  async openRegion(reader: DidSyr, region: RegionTerms): Promise<Pull> {
     const [held] = await this.query(
-      `SELECT * FROM pull
-         WHERE created_by = $reader AND source_did = $author
-           AND root_address = $address`,
-      { reader, author: region.source_did, address: region.root_address },
+      "SELECT * FROM pull WHERE created_by = $reader AND publication = $publication",
+      { reader, publication: region.publication },
     );
     if (held[0] !== undefined) return PullSchema.parse(held[0]);
 
@@ -91,12 +83,20 @@ export class PullRepository {
     return PullSchema.parse(written[0]);
   }
 
-  /** A refresh that reached the last page: `updated_at` is when the copy was
-   *  last made whole, and the instance recorded is the one that made it. */
-  async settleRegion(pull: Pull, sourceUrl: PeerOrigin): Promise<Pull> {
+  /** A refresh that reached the last page: the snapshot the copy is now of, and
+   *  `updated_at` as the moment it was last made whole. */
+  async settleRegion(pull: Pull, region: RegionTerms): Promise<Pull> {
     const [written] = await this.query(
-      "UPDATE $id SET source_url = $url, updated_at = $at RETURN AFTER",
-      { id: pull.id, url: sourceUrl, at: nowIso() },
+      `UPDATE $id SET version = $version, root_address = $address,
+         comments = $comments, source_url = $url, updated_at = $at RETURN AFTER`,
+      {
+        id: pull.id,
+        version: region.version,
+        address: region.root_address,
+        comments: region.comments,
+        url: region.source_url,
+        at: nowIso(),
+      },
     );
     return PullSchema.parse(written[0]);
   }

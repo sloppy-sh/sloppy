@@ -3,7 +3,7 @@
 
 import type { PullView } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AT, DID, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
+import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
 import { peers } from './peers.svelte.js';
 import { session } from './session.svelte.js';
 
@@ -12,17 +12,27 @@ const AUTHOR = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
 const held: PullView = {
 	ref: `${DID}/01JQXR000000000000000000RG`,
 	created_by: DID,
-	source_did: AUTHOR,
+	publication: ref(31, AUTHOR),
+	version: { ref: ref(32, AUTHOR), sequence: 1, published_at: AT },
 	root_address: '1',
+	comments: 'anyone',
 	source_url: 'http://peer.test',
 	created_at: AT,
 	updated_at: AT
 };
 
-/** A listing page as an instance serves one. */
-const listing = (address: string, nextCursor?: string) => ({
+/** A listing page as an instance serves one. One publication per seed, so a
+ *  page repeating a seed is a page repeating a publication. */
+const listing = (seed: number, nextCursor?: string) => ({
 	did: AUTHOR,
-	roots: [{ root_address: address, title: 'A branch', updated_at: AT }],
+	publications: [
+		{
+			ref: ref(seed, AUTHOR),
+			root_address: `${seed}`,
+			title: 'A branch',
+			latest: { ref: ref(seed + 100, AUTHOR), sequence: 1, published_at: AT }
+		}
+	],
 	...(nextCursor === undefined ? {} : { next_cursor: nextCursor })
 });
 
@@ -37,18 +47,18 @@ beforeEach(() => {
 describe('what somebody publishes', () => {
 	it('walks a listing page by page', async () => {
 		api.on('GET /peers/publications', (url) =>
-			url.searchParams.get('cursor') === null ? listing('1', '1') : listing('2')
+			url.searchParams.get('cursor') === null ? listing(1, '1') : listing(2)
 		);
 
 		const first = await peers.publishedBy(AUTHOR);
-		expect(first?.roots.map((root) => root.root_address)).toEqual(['1']);
+		expect(first?.publications.map((one) => one.root_address)).toEqual(['1']);
 		const second = await peers.publishedBy(AUTHOR, { cursor: first?.next_cursor });
-		expect(second?.roots.map((root) => root.root_address)).toEqual(['2']);
+		expect(second?.publications.map((one) => one.root_address)).toEqual(['2']);
 		expect(peers.says).toBeNull();
 	});
 
 	it('refuses a listing that serves one region twice', async () => {
-		api.on('GET /peers/publications', () => listing('1', '1'));
+		api.on('GET /peers/publications', () => listing(1, '1'));
 
 		const first = await peers.publishedBy(AUTHOR);
 		expect(first).not.toBeNull();
@@ -57,7 +67,7 @@ describe('what somebody publishes', () => {
 	});
 
 	it('starts a fresh run for a listing asked for from the top', async () => {
-		api.on('GET /peers/publications', () => listing('1', '1'));
+		api.on('GET /peers/publications', () => listing(1, '1'));
 
 		expect(await peers.publishedBy(AUTHOR)).not.toBeNull();
 		expect(await peers.publishedBy(AUTHOR)).not.toBeNull();

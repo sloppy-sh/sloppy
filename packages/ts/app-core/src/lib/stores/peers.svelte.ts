@@ -23,11 +23,12 @@ import { api } from '../api.js';
 import { serverMessage } from './errors.js';
 import { session } from './session.svelte.js';
 
-/** What a region is asked for by. `sourceUrl` absent asks this instance, which
- *  is the whole of it for somebody whose graph is kept here. */
+/** What a region is asked for by. An absent `version` takes the newest, and an
+ *  absent `sourceUrl` asks this instance — the whole of it for somebody whose
+ *  graph is kept here. */
 export interface PullAsk {
-	did: string;
-	rootAddress: string;
+	publication: OwnedRef;
+	version?: OwnedRef;
 	sourceUrl?: string;
 }
 
@@ -147,10 +148,13 @@ class PeersStore {
 		}
 	}
 
-	/** Take a region, or refresh the one already held at that address. */
+	/** Take a region, or refresh the copy already held of that publication. */
 	pull(ask: PullAsk): Promise<PullView | null> {
 		return this.attempt(async () => {
-			const held = await api.pullSubtree(ask.did, ask.rootAddress, ask.sourceUrl);
+			const held = await api.pullSubtree(ask.publication, {
+				...(ask.version === undefined ? {} : { version: ask.version }),
+				...(ask.sourceUrl === undefined ? {} : { sourceUrl: ask.sourceUrl })
+			});
 			this.#regions = await api.listPulls();
 			this.#hasRegions = true;
 			this.#forget(held.ref);

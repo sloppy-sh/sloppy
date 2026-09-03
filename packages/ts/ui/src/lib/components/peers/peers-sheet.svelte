@@ -5,7 +5,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserMinus from '@lucide/svelte/icons/user-minus';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
-	import { peerOrigin } from '@sloppy/types';
+	import { type OwnedRef, peerOrigin } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import PersonChip from '../identity/person-chip.svelte';
@@ -47,7 +47,8 @@
 			where: string | undefined,
 			cursor?: string
 		) => Promise<PublishedThere | null>;
-		onPull: (identity: string, where: string | undefined, rootAddress: string) => void;
+		/** Take a copy of one of them; the publication names its own author. */
+		onPull: (where: string | undefined, publication: OwnedRef) => void;
 		onFollow: (identity: string) => void;
 		onUnfollow: (identity: string) => void;
 	} = $props();
@@ -59,13 +60,7 @@
 	let found = $state<PublishedThere | null>(null);
 	let refused = $state<string | null>(null);
 
-	const heldAddresses = $derived(
-		new Set(
-			regions
-				.filter((region) => region.identity === looking?.identity)
-				.map((region) => region.address)
-		)
-	);
+	const heldPublications = $derived(new Set(regions.map((region) => region.publication)));
 	const lookingAt = $derived(following.find((one) => one.identity === looking?.identity) ?? null);
 
 	/** Nothing typed is this instance, which is the whole of it for somebody
@@ -101,7 +96,7 @@
 		const page = await onLook(looking.identity, looking.where, cursor);
 		if (!page) return;
 		found = {
-			roots: [...(found?.roots ?? []), ...page.roots],
+			publications: [...(found?.publications ?? []), ...page.publications],
 			nextCursor: page.nextCursor
 		};
 	}
@@ -249,11 +244,11 @@
 				</div>
 				{#if found}
 					<PublishedRoots
-						roots={found.roots}
+						publications={found.publications}
 						nextCursor={found.nextCursor}
 						{busy}
-						held={heldAddresses}
-						onpull={(address) => onPull(at.identity, at.where, address)}
+						held={heldPublications}
+						onpull={(publication) => onPull(at.where, publication)}
 						onmore={more}
 					/>
 				{/if}

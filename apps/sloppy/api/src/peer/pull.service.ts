@@ -2,6 +2,7 @@
 // docs/ARCHITECTURE.md § "Federating the graph".
 
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -19,13 +20,20 @@ import {
   UnaskedAnswerError,
   addressDepth,
   compareAddresses,
+  entityView,
   publishedSubtreeReader,
   pulledBlockView,
   pulledNodeView,
+  splitOwnedRef,
 } from "@sloppy/types";
 import { AppConfigService } from "../config/app-config.service";
 import { signatureRefutes } from "./attribution";
-import { type HeldPage, PullRepository, pullRef } from "./pull.repository";
+import {
+  type HeldPage,
+  PullRepository,
+  type RegionTerms,
+  pullRef,
+} from "./pull.repository";
 import { hereOrigin, peerReach, readPeerJson, subtreeUrl } from "./peer-fetch";
 
 /** What somebody is told when an instance answers something other than the
@@ -42,54 +50,70 @@ export class PullService {
   ) {}
 
   async list(reader: DidSyr): Promise<PullView[]> {
-    return (await this.pulls.listPulls(reader)).map(viewOf);
+    return (await this.pulls.listPulls(reader)).map(entityView);
   }
 
   /**
-   * A region taken page by page, held to what was asked for at every one, and
+   * A version taken page by page, held to what was asked for at every one, and
    * swept only once the last page is in: an answer that stopped partway is not
    * evidence that a note is gone.
+   *
+   * What the copy is OF comes off the answer rather than off the request: an
+   * absent version asks for the newest, and the snapshot the reader ends up
+   * holding is the one the first page named.
    */
   async pull(reader: DidSyr, request: CreatePullRequest): Promise<PullView> {
-    const author = request.did;
-    const rootAddress = request.root_address;
+    const publication = request.publication;
+    const author = splitOwnedRef(publication).did;
+    if (author === reader) {
+      throw new BadRequestException("That branch is already in your graph.");
+    }
     const origin = request.source_url ?? hereOrigin(this.config);
     const reading = publishedSubtreeReader({
-      did: author,
-      root_address: rootAddress,
+      publication,
+      version: request.version,
     });
 
     let region: Pull | undefined;
+    let terms: RegionTerms | undefined;
     let cursor: string | undefined;
     const declined = new Set<OwnedRef>();
     do {
       const body = await readPeerJson(
-        subtreeUrl(origin, author, rootAddress, cursor),
+        subtreeUrl(origin, publication, request.version, cursor),
         peerReach(this.config),
       );
       if (body === null) {
         if (cursor === undefined) {
-          throw new NotFoundException(
-            "Nothing is published at that address on that instance.",
-          );
+          throw new NotFoundException("That branch is not published there.");
         }
         throw new ServiceUnavailableException(UNREADABLE);
       }
       const page = this.take(reading, body, declined);
-      region ??= await this.pulls.openRegion(reader, {
-        source_did: author,
-        root_address: rootAddress,
+      terms ??= {
+        publication,
+        version: page.version,
+        root_address: page.root_address,
+        comments: page.comments,
         source_url: origin,
-      });
-      await this.pulls.writePage(reader, author, pullRef(region), held(page));
+      };
+      region ??= await this.pulls.openRegion(reader, terms);
+      await this.pulls.writePage(
+        reader,
+        author,
+        pullRef(region),
+        held(page, author),
+      );
       cursor = page.next_cursor;
     } while (cursor !== undefined);
 
-    if (region === undefined) throw new ServiceUnavailableException(UNREADABLE);
+    if (region === undefined || terms === undefined) {
+      throw new ServiceUnavailableException(UNREADABLE);
+    }
     const served = reading.served();
     for (const node of declined) served.delete(node);
     await this.sweep(reader, region, served);
-    return viewOf(await this.pulls.settleRegion(region, origin));
+    return entityView(await this.pulls.settleRegion(region, terms));
   }
 
   async drop(reader: DidSyr, ref: OwnedRef): Promise<void> {
@@ -183,11 +207,11 @@ export class PullService {
   }
 }
 
-function held(page: PublishedSubtreePage): HeldPage {
+function held(page: PublishedSubtreePage, author: DidSyr): HeldPage {
   return {
     nodes: page.nodes.map(({ ref, ...node }) => ({
       source: ref,
-      source_did: page.did,
+      source_did: author,
       address: node.address,
       depth: addressDepth(node.address),
       node: { ...node },
@@ -198,17 +222,5 @@ function held(page: PublishedSubtreePage): HeldPage {
       ord: block.ord,
       content: block.content,
     })),
-  };
-}
-
-function viewOf(pull: Pull): PullView {
-  return {
-    ref: pullRef(pull),
-    created_by: pull.created_by,
-    source_did: pull.source_did,
-    root_address: pull.root_address,
-    source_url: pull.source_url,
-    created_at: pull.created_at,
-    updated_at: pull.updated_at,
   };
 }

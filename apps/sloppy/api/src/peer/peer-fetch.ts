@@ -9,8 +9,10 @@ import {
 } from "@nestjs/common";
 import {
   MAX_PUBLISHED_PAGE_BYTES,
+  type OwnedRef,
   type PeerOrigin,
   PeerOriginSchema,
+  splitOwnedRef,
 } from "@sloppy/types";
 import type { AppConfigService } from "../config/app-config.service";
 import {
@@ -143,18 +145,23 @@ export function publicationsUrl(
     : `${at}?cursor=${encodeURIComponent(cursor)}`;
 }
 
+/** One version of one publication, page by page. An absent `version` asks for
+ *  the newest, and the first page says which that was. */
 export function subtreeUrl(
   origin: PeerOrigin,
-  did: string,
-  rootAddress: string,
+  publication: OwnedRef,
+  version?: OwnedRef,
   cursor?: string,
 ): string {
+  const { did, localId } = splitOwnedRef(publication);
   const at =
-    `${origin}/api/public/subtrees/${encodeURIComponent(did)}` +
-    `/${encodeURIComponent(rootAddress)}`;
-  return cursor === undefined
-    ? at
-    : `${at}?cursor=${encodeURIComponent(cursor)}`;
+    `${origin}/api/public/publications/${encodeURIComponent(did)}` +
+    `/${encodeURIComponent(localId)}`;
+  const query = new URLSearchParams();
+  if (version !== undefined) query.set("version", version);
+  if (cursor !== undefined) query.set("cursor", cursor);
+  const search = query.toString();
+  return search === "" ? at : `${at}?${search}`;
 }
 
 function reason(error: unknown): string {

@@ -90,7 +90,7 @@ export class PeerService {
       publicationsUrl(origin, query.did, query.cursor),
       peerReach(this.config),
     );
-    if (body === null) return { did: query.did, roots: [] };
+    if (body === null) return { did: query.did, publications: [] };
     try {
       return parsePublishedIndex(body, query.did);
     } catch (error) {
