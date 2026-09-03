@@ -149,6 +149,20 @@ describe("a region a peer answered with", () => {
     );
   });
 
+  it("is taken when the invitation on it is one this build has never heard of", () => {
+    // A narrower invitation is a value somebody else's build may already have.
+    // Refusing the page would cost the reader every note in the region over a
+    // word about who may reply, so the reader reads it as the narrowest one it
+    // knows and goes on holding the writing.
+    for (const unknown of ["the-people-i-follow", 7, undefined]) {
+      const page = takeWhole(subtree({ comments: unknown as never }));
+      expect(page.comments).toBe("nobody");
+      expect(page.nodes).toHaveLength(2);
+    }
+    expect(takeWhole(subtree({ comments: "nobody" })).comments).toBe("nobody");
+    expect(takeWhole(subtree()).comments).toBe("anyone");
+  });
+
   it("is refused when it is not a region at all", () => {
     // One error out of the boundary, whatever was wrong with the answer: a
     // validation message is not something to put in front of a person.

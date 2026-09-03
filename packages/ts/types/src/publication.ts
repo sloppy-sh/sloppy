@@ -137,10 +137,8 @@ export type SnapshotBlock = z.infer<typeof SnapshotBlockSchema>;
  * author's, and the copy is theirs to delete.
  *
  * It belongs to the PUBLICATION rather than to one version, because every
- * version stays readable: a copy the newest version stopped citing is still
- * what the versions before it draw, and a version citing an asset an earlier
- * one already copied reuses that copy rather than sending the same bytes public
- * again under a second address.
+ * version of one stays readable and a copy outlives the version that made it.
+ * docs/ARCHITECTURE.md § "Pictures".
  */
 export const SnapshotAssetSchema = OwnedEntitySchema.extend({
   publication: OwnedRefSchema,

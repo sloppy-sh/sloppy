@@ -26,18 +26,13 @@ import { TagsSchema } from "./tag.js";
 
 /**
  * How much of somebody else's graph ONE ANSWER may carry, and how many answers
- * a reader takes before it stops asking.
- *
- * A pull is an OUTBOUND fetch, so nothing about the reader's own request bounds
- * it: what arrives is whatever the author's instance chose to send, and the
- * reader's instance parses all of it and writes a row per node and per block. A
- * page past one of these is refused whole; a region longer than a page carries
- * a cursor instead, so what bounds a region is the product of the two rather
- * than a size a graph can outgrow.
+ * a reader takes before it stops asking. A page past one of these is refused
+ * whole; a region longer than a page carries a cursor instead.
  *
  * The counts bound a page that has been PARSED. `MAX_PUBLISHED_PAGE_BYTES`
- * bounds the answer as it arrives, and the fetch is where it is enforced;
- * docs/ARCHITECTURE.md § "Federating the graph" says which side each is for.
+ * bounds the answer as it ARRIVES, and the fetch is where that one is enforced.
+ * docs/ARCHITECTURE.md § "Federating the graph" says why an outbound fetch
+ * needs both.
  */
 export const MAX_PUBLISHED_PUBLICATIONS_PER_PAGE = 500;
 export const MAX_PUBLISHED_NODES_PER_PAGE = 2_000;
@@ -64,11 +59,24 @@ export type PageCursor = z.infer<typeof PageCursorSchema>;
  * wrote it and syr asks nobody's permission to hold one, so this decides what
  * an instance serves and what a surface offers. Copy that claims it stops
  * anybody writing one is claiming something Sloppy cannot do.
+ *
+ * Closed, because this is what an author may ASK for: an invitation stored and
+ * then not honoured is worse than a request that fails.
+ * {@link ReceivedCommentAccessSchema} is the same field arriving.
  */
 export const CommentAccessSchema = z.enum(["anyone", "nobody"]);
 export type CommentAccess = z.infer<typeof CommentAccessSchema>;
 
 export const DEFAULT_COMMENT_ACCESS: CommentAccess = "anyone";
+
+/**
+ * The same field as a PEER sends it, where the set is open at the far end and a
+ * page is refused WHOLE. An invitation this build has no branch for reads as
+ * `nobody`: carrying a conversation on terms it cannot describe is the one
+ * answer worse than carrying none, and refusing would cost the reader every
+ * note in the region over a word about who may reply.
+ */
+export const ReceivedCommentAccessSchema = CommentAccessSchema.catch("nobody");
 
 /**
  * One snapshot in a publication's chain, as everything that names one carries
@@ -186,7 +194,7 @@ export const PublishedSubtreePageSchema = z.object({
   publication: OwnedRefSchema,
   version: PublishedVersionSchema,
   root_address: AddressSchema,
-  comments: CommentAccessSchema,
+  comments: ReceivedCommentAccessSchema,
   nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES_PER_PAGE),
   blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS_PER_PAGE),
   /** Absent on the last page. */
@@ -234,6 +242,12 @@ export type PublishedSectionChange = z.infer<
   typeof PublishedSectionChangeSchema
 >;
 
+/** One entry carries a whole stack, so it is held to what a whole page of
+ *  sections is held to. */
+const SectionChangesSchema = z
+  .array(PublishedSectionChangeSchema)
+  .max(MAX_PUBLISHED_BLOCKS_PER_PAGE);
+
 /**
  * What became of one note between two versions, and enough of both sides to
  * draw the difference without holding either version.
@@ -247,14 +261,14 @@ export const PublishedNoteChangeSchema = z.discriminatedUnion("change", [
   z.object({
     change: z.literal("added"),
     note: PublishedNodeSchema,
-    sections: z.array(PublishedSectionChangeSchema),
+    sections: SectionChangesSchema,
   }),
   z.object({ change: z.literal("removed"), note: PublishedNodeSchema }),
   z.object({
     change: z.literal("changed"),
     note: PublishedNodeSchema,
     before: PublishedNodeSchema,
-    sections: z.array(PublishedSectionChangeSchema),
+    sections: SectionChangesSchema,
   }),
 ]);
 export type PublishedNoteChange = z.infer<typeof PublishedNoteChangeSchema>;

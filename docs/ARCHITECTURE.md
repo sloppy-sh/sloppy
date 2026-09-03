@@ -171,13 +171,18 @@ an opaque blob.
 
 **Publishing takes a SNAPSHOT, and a peer reads the snapshot.** Publishing copies the
 notes, their sections and every asset those sections cite into a version of the
-publication's own. Nothing the author does afterwards reaches it: editing a note,
-replacing a picture, deleting a custom emoji, deleting the note itself — a peer goes on
-reading what was published, whole. The alternative, serving the live rows through a
-window, is what makes a published document a set of citations into an author's private
-library, and every one of those citations is something that can break or leak later.
+publication's own. Nothing the author does to their own graph afterwards reaches it:
+editing a note, replacing a picture, deleting a custom emoji, deleting the note itself — a
+peer goes on reading what was published, whole. The alternative, serving the live rows
+through a window, is what makes a published document a set of citations into an author's
+private library, and every one of those citations is something that can break or leak
+later.
 
-Three consequences follow, and they are the product's to state at the moment of the
+What does reach it is an erasure, and only an erasure: deleting the publication, and
+deleting a picture from the library, which takes the copies made from it (§ "Pictures").
+Erasing means erasing, or a person cannot trust either word.
+
+Four consequences follow, and they are the product's to state at the moment of the
 decision rather than gaps to close:
 
 - **Publishing again does not retract what was published.** It writes another version
@@ -186,12 +191,15 @@ decision rather than gaps to close:
   graph, and the snapshots it was already in are unchanged.
 - **Deleting the publication is what stops this instance serving any of it** — and a peer
   who has already pulled a version keeps the writing, which nothing here can take back.
+- **Deleting a picture from the library is the one edit a peer sees.** It takes the
+  published copies of it with it, in every version that drew it, because a person who
+  erases a picture has to be erasing it and not filing it somewhere they cannot see.
 
 **A publication is a chain of versions, the way a commit history is.** Each version is
 self-contained, carries the moment it was made, and is numbered from 1 in publishing
-order — the number a person cites. A version is written only where its snapshot differs
-from the newest one, so publishing an unchanged subtree adds nothing to the history.
-Versions are appended and never edited: a peer is reading one.
+order — the number a person cites. Publishing writes one every time, the way a commit
+does, so the history says when the author published and never only when the writing
+moved. Versions are appended and never edited: a peer is reading one.
 
 **A publication is addressed by its own ref, never by its root address.** An address is a
 human-readable label inside somebody's graph rather than a machine identifier, so
@@ -209,6 +217,11 @@ calls:
 - `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
 - `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
   between two of them.
+
+The first of those is the exposure publishing creates, and the copy at the moment of the
+decision has to be true to it: from the moment a subtree is published, anyone holding the
+author's DID can see that it exists and read all of it, with no publication address to
+withhold and no pull to grant. § "Pictures" says the same of the pictures in it.
 
 The author's own need their session: `POST /api/publications` publishes a subtree —
 creating the chain if the note has none, and writing a version either way;
@@ -229,8 +242,12 @@ cursor is minted by the instance that served the page and handed back to it unto
 what it means is that instance's own business and no reader reads one; absent on the
 answer means there is no more. A version's pages are ordered so that every reference
 resolves in the page carrying it or in one already sent: notes go before sections, and
-notes go in address order, which puts a note's parent ahead of it because a parent's
-address is a prefix of its child's. That is what makes the size bounds a defence rather
+notes go in **lexicographic** address order — the order the `address` column itself gives,
+which puts a note's parent ahead of it because a parent's address is a prefix of its
+child's. Lexicographic and not `compareAddresses`, which reads `1a2` before `1a10` and is
+what a surface sorts by when it shows a person a list: a server paging by one order and
+cursoring by the other skips notes across a page boundary, and nothing on the reading side
+would catch it. That is what makes the size bounds a defence rather
 than a ceiling a graph can hit: a branch of any size is read page by page, and what a
 per-page bound refuses is one answer too large to hold, never a subtree too large to
 publish.
@@ -238,19 +255,19 @@ publish.
 **The difference between two versions is computed where the versions are.** The instance
 holds every version and the reader holds none, so a phone asking what changed between two
 snapshots of a ten-thousand-note branch reads the difference rather than both sides of it.
-One entry per note — arrived, gone, or changed — in address order, carrying both sides of
-the note and both sides of only the sections that differ, which is what a review-shaped
-diff needs and no more. A note that is gone carries no sections: what it said is in the
-version that still has it, and that is a read a reader makes when they want it. Where one
-address holds a different note in each version, the reader is told both: one note gone and
-another arrived. `PublishedNoteChange` in `@sloppy/types` is the shape and
+One entry per note — arrived, gone, or changed — in the same address order a version's own
+pages take, carrying both sides of the note and both sides of only the sections that
+differ, which is what a review-shaped diff needs and no more. A note that is gone carries
+no sections: what it said is in the version that still has it, and that is a read a reader
+makes when they want it. Where one address holds a different note in each version, the
+reader is told both: one note gone and another arrived. `PublishedNoteChange` in `@sloppy/types` is the shape and
 `publishedChangesReader` the boundary.
 
 **Who is invited to comment is the publication's to say, and it is an invitation rather
 than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which
 is what a syr identity from any instance gets, and `nobody` for an author who is not
 taking answers here. A narrower invitation is a value there and a branch where a
-conversation is assembled, never a column. Two things about it are load-bearing:
+conversation is assembled, never a column. Three things about it are load-bearing:
 
 - **The publication answers, and nothing else does.** A per-author preference would be a
   second authority for one question; where one later exists it decides what a new
@@ -262,6 +279,13 @@ conversation is assembled, never a column. Two things about it are load-bearing:
   wrote it and syr asks no permission to hold one, so what this decides is what an instance
   serves and what a surface offers. Copy that says it blocks people is claiming something
   Sloppy cannot do; copy that says the author is not taking comments here is true.
+- **The set is open at the far end, so the value is closed going out and open coming in.**
+  `CommentAccessSchema` is what an author may ask for — storing an invitation this build
+  would then not honour is worse than a request that fails — and
+  `ReceivedCommentAccessSchema` is the same field off a peer's answer, where one this
+  build has never heard of reads as `nobody`. A page is refused whole, so a closed enum on
+  the wire would cost a reader every note in a region the day somebody publishes a
+  narrower invitation.
 
 **A DID names a person, never a place.** An identity manifest describes that identity's
 own store — profile, uploads, comments, reactions, who they follow — and says nothing
@@ -378,7 +402,11 @@ pull writes rows:
   was last refreshed. Pulling the same publication again refreshes that row rather than
   growing a second beside it. It keys on the publication and not on the address for the
   reason a route does, and `version` is what stops a surface telling somebody their copy is
-  current when the author has published since.
+  current when the author has published since. **`POST /api/pulls` refuses the reader's
+  own publication.** Nothing in the keys excludes it, and the result would be one ref
+  answered by two notes — the live one and a frozen copy wearing the reader's own DID,
+  which `provenanceOf` reads as their own published note. Previewing what a peer sees is a
+  read of the publication, never a copy of it.
 - `pulled_node` and `pulled_block` are the copy, and **a node is held once however many
   regions serve it.** Pulling `1` when `1a` is already held refreshes the rows the two
   share instead of colliding with them, which is the ordinary act of reading a branch and
@@ -504,11 +532,19 @@ private library: that is the snapshot, applied to pictures.
 `citedUploads` in `@sloppy/types` is what "cites" means — an `attrs` key named `upload_id`,
 or one ending `_upload_id`. That is a convention across elements rather than a list of
 them, so an element kind this build has no renderer for still has its pictures copied with
-it, which is AI.md § "A Block Is a Section" applied to the walk. A custom emoji is the one
-element that names its picture by something else, a shortcode in its author's catalog: so
-publishing resolves that catalog once and writes the copy's upload onto the published
-element, and a peer draws the emoji out of the snapshot rather than out of a catalog its
-author can empty.
+it, which is AI.md § "A Block Is a Section" applied to the walk.
+
+A custom emoji is the one element `citedUploads` deliberately does not reach, because it
+names its picture by a shortcode and carries no upload at all. Publishing resolves that
+shortcode itself and writes the copy's upload onto the published element under
+`EMOJI_UPLOAD_ATTR` — `emoji_upload_id`, which ends `_upload_id`, so from then on the walk
+reaches it like any other picture and a peer draws the emoji out of the snapshot rather
+than out of a catalog its author can empty. The catalog it resolves against is the note
+AUTHOR's own: a note's shortcodes resolve against their catalog and nobody else's
+(`emojiCatalogs.of(author, …)`), and taking somebody else's emoji into a note is
+`CopyEmojiRequest`, which re-uploads the bytes under the caller's identity first. So both
+halves of a `snapshot_asset` row are the author's, and publishing never fetches a
+stranger's blob.
 
 The duplicate storage is the accepted cost, and it is accepted for a reason the product
 requires: one library backs every note, so a picture is legitimately in several of them
@@ -534,14 +570,15 @@ DID, with no publication address and no pull. That is the exposure publishing ac
 creates, and it is what the copy at the moment of the decision has to be true to.
 
 **Deleting the publication deletes its copies**, because a copy exists only to serve what
-that publication published. It is the take-it-back act and the only one: while the
-publication stands, every version of it stays readable and so does everything the versions
-draw. Deleting the picture from the library takes both halves the same way.
+that publication published. Deleting the picture from the library takes both halves the
+same way, wherever it was published — those two acts are the take-it-back acts and there
+are no others. Short of one of them, while a publication stands every version of it stays
+readable and so does everything the versions draw.
 
 That is also where the promise about a peer's copy stops, and the product says which half
 is which: the notes somebody pulled are theirs and stay theirs, and the pictures in them
-were being served out of the author's store all along, so those stop with the publication.
-Nothing here can reach a copy of the bytes a peer made for themselves.
+were being served out of the author's store all along, so those stop when either act
+above does. Nothing here can reach a copy of the bytes a peer made for themselves.
 
 **A peer's picture is fetched by this instance, never by the reader's browser.**
 `GET /api/media/published/{did}/{localId}` is that route — `publishedPicture` in

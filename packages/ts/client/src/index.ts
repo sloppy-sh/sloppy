@@ -521,8 +521,9 @@ export class SloppyClient {
   }
 
   /**
-   * Take a version of somebody else's publication as a foreign, read-only
-   * region. An absent `version` takes the newest.
+   * Take a version of SOMEBODY ELSE'S publication as a foreign, read-only
+   * region — the caller's own is refused, a note being one note. An absent
+   * `version` takes the newest.
    *
    * The copy is kept, which is what the reader still has when the author stops
    * publishing; pulling the same publication again refreshes that region rather

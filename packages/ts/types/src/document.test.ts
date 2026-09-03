@@ -3,6 +3,7 @@ import { BlockSchema } from "./block.js";
 import {
   BlockDocumentSchema,
   citedUploads,
+  EMOJI_UPLOAD_ATTR,
   MAX_DOCUMENT_NESTING,
 } from "./document.js";
 
@@ -188,6 +189,42 @@ describe("the assets a section cites", () => {
   it("name one upload once however many elements draw it", () => {
     const twice = { type: "picture", attrs: { upload_id: `${AVA}/01PIC` } };
     expect(cite([twice, twice])).toEqual([`${AVA}/01PIC`]);
+  });
+
+  it("are nothing on an emoji as its author wrote it, which names a shortcode", () => {
+    // The case publishing cannot delegate to this walk: there is no upload on
+    // the element to copy, only a name in a catalog.
+    expect(
+      cite([
+        {
+          type: "paragraph",
+          content: [
+            { type: "emoji", attrs: { name: "kite", char: "", sticker: true } },
+          ],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("are the emoji's copy once publishing has written it on", () => {
+    expect(
+      cite([
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "emoji",
+              attrs: {
+                name: "kite",
+                char: "",
+                sticker: true,
+                [EMOJI_UPLOAD_ATTR]: `${AVA}/01EMOJI`,
+              },
+            },
+          ],
+        },
+      ]),
+    ).toEqual([`${AVA}/01EMOJI`]);
   });
 
   it("are nothing where a citation is empty or is not one", () => {

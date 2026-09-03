@@ -96,6 +96,16 @@ export function emptyDocument(): BlockDocument {
 const CITES_UPLOAD = /^(?:.*_)?upload_id$/;
 
 /**
+ * Where a PUBLISHED emoji carries the publication's copy of its picture. An
+ * emoji in a note names a shortcode and no upload at all, so publishing
+ * resolves the author's catalog once and writes the copy here; the key ends
+ * `_upload_id`, so from then on {@link citedUploads} reaches it like any other
+ * picture and a peer draws the emoji out of the snapshot rather than out of a
+ * catalog its author can empty. docs/ARCHITECTURE.md § "Pictures".
+ */
+export const EMOJI_UPLOAD_ATTR = "emoji_upload_id";
+
+/**
  * Every upload a section's document cites, in the order it cites them and
  * without repeats — which is what publishing has to copy, and what a published
  * section may cite nothing outside of.
@@ -105,6 +115,10 @@ const CITES_UPLOAD = /^(?:.*_)?upload_id$/;
  * across elements rather than a list of them, so an element kind this build has
  * no renderer for is walked like any other and its pictures travel with it —
  * AI.md § "A Block Is a Section" is why storage does not enumerate the kinds.
+ *
+ * What it does NOT reach is an element that names a picture by something other
+ * than an upload, which today is the custom emoji: publishing resolves that one
+ * itself and writes the copy under {@link EMOJI_UPLOAD_ATTR}.
  * docs/ARCHITECTURE.md § "Pictures".
  */
 export function citedUploads(content: BlockDocument): string[] {
