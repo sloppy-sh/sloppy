@@ -23,6 +23,29 @@ function mark(author: string, localId: string, character: string): NoteReaction 
 
 const cheer = (author: string, localId: string) => mark(author, localId, '🎉');
 
+/** A reaction made with somebody's own picture. `src` arrives as the API mints
+ *  one: an address under the API with no host on it. */
+function drawn(author: string, localId: string): NoteReaction {
+	return {
+		kind: 'emoji',
+		reaction_id: `${author}:${localId}`,
+		author,
+		node: NOTE,
+		emoji: {
+			emoji_id: `${author}/e1`,
+			did: author,
+			shortcode: 'party',
+			kind: 'emoji',
+			src: '/proxy?ref=an-upload'
+		}
+	};
+}
+
+function pictureOf(reaction: NoteReaction | undefined): string {
+	if (reaction?.kind !== 'emoji') throw new Error('expected a reaction with a picture');
+	return reaction.emoji.src;
+}
+
 let api: FakeApi;
 
 beforeEach(() => {
@@ -54,6 +77,29 @@ describe('reacting to a note', () => {
 		await conversation.react({ node: NOTE, kind: 'character', character: '🎉' });
 
 		expect(conversation.reactions(NOTE)).toEqual([cheer(PEER, 'r1'), cheer(DID, 'r2')]);
+	});
+
+	// The page is not served from the API, and on the native shell it is not even
+	// the same host, so an address with no host on it would draw nothing at all.
+	it('hands a picture back on the host this shell reaches its instance at', async () => {
+		api.on(`GET /nodes${refPath(NOTE)}/reactions`, () => [drawn(PEER, 'r1')]);
+		await conversation.load(NOTE);
+
+		expect(pictureOf(conversation.reactions(NOTE)[0])).toBe(
+			'http://api.test/api/proxy?ref=an-upload'
+		);
+	});
+
+	it('does the same for one the reader has just made', async () => {
+		await conversation.load(NOTE);
+		api.on('POST /reactions', () => drawn(DID, 'r2'));
+
+		const made = await conversation.react({ node: NOTE, kind: 'emoji', emoji_id: `${DID}/e1` });
+
+		expect(pictureOf(made)).toBe('http://api.test/api/proxy?ref=an-upload');
+		expect(pictureOf(conversation.reactions(NOTE).at(-1))).toBe(
+			'http://api.test/api/proxy?ref=an-upload'
+		);
 	});
 
 	it('keeps a different mark from the same person', async () => {

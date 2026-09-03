@@ -1,9 +1,12 @@
 <script lang="ts" module>
 	import type { Address, CommentAccess, PublishedVersion } from '@sloppy/types';
 
-	/** A branch as it stands published: the chain a person reads back, newest
-	 *  version first, and who the author invites to answer it. */
+	/** A branch as it stands published: the version a reader gets, the chain
+	 *  behind it newest first, and who the author invites to answer it. */
 	export interface PublishedBranch {
+		latest: PublishedVersion;
+		/** Empty until the chain has been read, and `latest` is the whole of what
+		 *  is known then. */
 		versions: readonly PublishedVersion[];
 		comments: CommentAccess;
 	}
@@ -53,7 +56,9 @@
 		onunpublish
 	}: PublishModalProps = $props();
 
-	const newest = $derived(published?.versions[0] ?? null);
+	const chain = $derived(
+		published ? (published.versions.length > 0 ? published.versions : [published.latest]) : []
+	);
 
 	let working = $state(false);
 	let takingDown = $state(false);
@@ -94,13 +99,13 @@
 	class="sm:max-w-lg"
 >
 	<div class="space-y-5 px-2 pt-3">
-		{#if published && newest}
+		{#if published}
 			<section class="space-y-2">
 				<p class="text-sm text-muted-foreground">
 					Anyone who can find your profile can read this branch.
 				</p>
 				<ul class="max-h-64 space-y-0.5 overflow-y-auto scroll-fade-y" {@attach scrollFade('y')}>
-					{#each published.versions as version (version.ref)}
+					{#each chain as version (version.ref)}
 						<li class="flex min-h-9 items-center gap-3 px-2">
 							<span class="shrink-0 address text-sm">Version {version.sequence}</span>
 							<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">

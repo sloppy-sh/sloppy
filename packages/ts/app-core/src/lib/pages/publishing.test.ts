@@ -205,7 +205,7 @@ async function open(of: OwnedRef = FIRST): Promise<void> {
 	mounted = mount(NoteOnSurface, { target, props: { opened: of, fresh: false } });
 	flushSync();
 	await settle();
-	await until(() => publications.state.loaded);
+	await until(() => publications.state.loaded || publications.state.failed);
 	flushSync();
 }
 
@@ -317,6 +317,21 @@ describe('publishing a branch', () => {
 		expect(says()).toContain('1a is published inviting fewer people');
 	});
 
+	it('says so rather than describing a branch it could not read anything about', async () => {
+		api.on(
+			'GET /publications',
+			() => new Response('{"message":"Not right now."}', { status: 503 })
+		);
+
+		await open();
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('Not right now.');
+	});
+
 	it('says nothing about narrower branches where every one of them is as wide', async () => {
 		held = [publication({ ref: UNDER_PUBLICATION, root: UNDER, root_address: '1a' })];
 
@@ -350,6 +365,27 @@ describe('a branch already published', () => {
 
 		expect(says()).toContain('Version 2');
 		expect(says()).toContain('Version 1');
+	});
+
+	// Offering to publish a branch that is already public — and hiding the way to
+	// take it down — is the wrong way round in the one milestone about knowing
+	// what is exposed. The version a reader gets is on the listing already.
+	it('stands by what is published when the chain behind it will not read', async () => {
+		api.on(`GET /publications${refPath(PUBLICATION)}/versions`, () => {
+			throw new Error('unreachable');
+		});
+
+		await open();
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('1 is published');
+		expect(says()).toContain('Version 2');
+		expect(says()).not.toContain('Everything under 1 goes out');
+		expect(has('Take it down')).toBe(true);
+		expect(says()).toContain('Who may answer');
 	});
 
 	it('publishes again, saying that the versions before it stay readable', async () => {

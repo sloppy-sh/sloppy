@@ -380,6 +380,92 @@ describe("a voice hosted on another instance", () => {
     ]);
   });
 
+  it("drops what their instance answers in a name it does not hold", async () => {
+    instance(
+      {
+        "/api/follows": { body: following({ did: THEM, at: ELSEWHERE }) },
+        [`${INSTANCE}${commentsPath(ME)}`]: {
+          body: { data: [comment(ME, "mine")] },
+        },
+        [`${ELSEWHERE}${commentsPath(THEM)}`]: {
+          body: {
+            data: [
+              comment(THEM, "theirs"),
+              // Their instance, answering as the reader and as a third party.
+              comment(ME, "forged", { content: "I never wrote this" }),
+              comment(STRANGER, "hearsay"),
+            ],
+          },
+        },
+      },
+      hosted,
+    );
+
+    const said = await social().comments(DELEGATION, NOTE);
+
+    expect(said.map((one) => one.comment_id)).toEqual([
+      `${ME}:mine`,
+      `${THEM}:theirs`,
+    ]);
+  });
+
+  it("drops a reaction their instance puts under somebody else's name", async () => {
+    instance(
+      {
+        "/api/follows": { body: following({ did: THEM, at: ELSEWHERE }) },
+        [`${INSTANCE}${reactionsPath(ME)}`]: { body: { data: [] } },
+        [`${ELSEWHERE}${reactionsPath(THEM)}`]: {
+          body: {
+            data: [
+              reaction({ did: THEM, local_id: "theirs" }),
+              reaction({ did: ME, local_id: "forged" }),
+            ],
+          },
+        },
+      },
+      hosted,
+    );
+
+    const made = await social().reactions(DELEGATION, NOTE);
+
+    expect(made.map((one) => one.reaction_id)).toEqual([`${THEM}:theirs`]);
+  });
+
+  it("will not thread a reply under a chain read off a forged parent", async () => {
+    const { calls } = instance(
+      {
+        "/api/follows": { body: following({ did: THEM, at: ELSEWHERE }) },
+        [`${ELSEWHERE}${commentsPath(THEM)}`]: {
+          body: {
+            data: [
+              comment(STRANGER, "parent", {
+                ancestor_chain: [`${STRANGER}:root`],
+              }),
+            ],
+          },
+        },
+        "/api/comments": { body: { data: comment(ME, "new") } },
+        "/api/platform/sign": SIGNED,
+        [signaturePath("new")]: { body: {} },
+      },
+      hosted,
+    );
+
+    await social().comment(DELEGATION, {
+      node: NOTE,
+      content: "answering",
+      reply_to: `${THEM}:parent`,
+    });
+
+    const create = calls.find(
+      (call) =>
+        call.init?.method === "POST" && call.url === `${INSTANCE}/api/comments`,
+    );
+    expect(JSON.parse(String(create?.init?.body)).ancestor_chain).toEqual([
+      `${THEM}:parent`,
+    ]);
+  });
+
   it("leaves a chain of one where the parent's author is nobody it can reach", async () => {
     const { calls } = instance({
       "/api/follows": { body: following() },

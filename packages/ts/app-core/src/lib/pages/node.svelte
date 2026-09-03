@@ -380,10 +380,13 @@
 	);
 	const branch = $derived(
 		publication
-			? { versions: publications.versions(publication.ref), comments: publication.comments }
+			? {
+					latest: publication.latest,
+					versions: publications.versions(publication.ref),
+					comments: publication.comments
+				}
 			: null
 	);
-	const newest = $derived(branch?.versions[0] ?? null);
 
 	/**
 	 * True where this branch has changed since the newest version was published.
@@ -393,13 +396,23 @@
 	 * nothing is said on it.
 	 */
 	const changedSince = $derived.by(() => {
-		if (!node || !newest) return false;
-		const since = newest.published_at;
+		if (!node || !publication) return false;
+		const since = publication.latest.published_at;
 		if (blocks.some((section) => section.updated_at > since)) return true;
 		return nodes
 			.region({ origin: node.origin })
 			.some((other) => isInSubtree(node.address, other.address) && other.updated_at > since);
 	});
+
+	/** What the publishing sheet says went wrong: the last act's refusal, or that
+	 *  nothing could be read about this branch at all. */
+	const publishRefusal = $derived(
+		refused.publish ??
+			(publications.state.failed && !publications.state.loaded
+				? (publications.state.error ??
+					'Sloppy could not check whether this branch is published. Try again in a moment.')
+				: null)
+	);
 
 	/** Whether anybody may answer this note: the author's own invitation on their
 	 *  own note, and the terms the held copy came with on somebody else's. */
@@ -1090,10 +1103,8 @@
 						class="inline-flex min-h-9 items-center gap-1.5 rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
 						<Globe class="size-3.5 shrink-0" />
-						{#if publication && newest}
-							Published · version {newest.sequence}
-						{:else if publication}
-							Published
+						{#if publication}
+							Published · version {publication.latest.sequence}
 						{:else if carriedBy}
 							Published under <span class="address">{carriedBy.root_address}</span>
 						{/if}
@@ -1394,7 +1405,7 @@
 				carriedBy={carriedBy?.root_address ?? null}
 				{narrower}
 				{changedSince}
-				refused={refused.publish ?? null}
+				refused={publishRefusal}
 				onpublish={publishBranch}
 				oncomments={inviteAnswers}
 				onunpublish={takeDown}

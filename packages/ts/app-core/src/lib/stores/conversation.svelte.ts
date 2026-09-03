@@ -8,6 +8,7 @@
  * or totals, because nobody can; docs/ARCHITECTURE.md § "Federating the graph".
  */
 
+import { proxied } from '@sloppy/client';
 import type {
 	CreateNoteCommentRequest,
 	CreateNoteReactionRequest,
@@ -32,6 +33,12 @@ export interface ConversationState {
 const IDLE: ConversationState = { loading: false, loaded: false, failed: false };
 
 const oldestFirst = (a: NoteComment, b: NoteComment) => a.created_at.localeCompare(b.created_at);
+
+/** A reaction whose picture a surface can put straight into an `img`. */
+const drawable = (reaction: NoteReaction): NoteReaction =>
+	reaction.kind === 'emoji'
+		? { ...reaction, emoji: { ...reaction.emoji, src: proxied(reaction.emoji.src) } }
+		: reaction;
 
 /**
  * Whether two reactions are the same mark: an identity store keys one by who
@@ -90,7 +97,7 @@ class ConversationStore {
 				this.#comments.set(node, [...said].sort(oldestFirst));
 				// Kept as they arrived: a reaction carries no time of its own, so
 				// the order the API assembled them in is the only one there is.
-				this.#reactions.set(node, reacted);
+				this.#reactions.set(node, reacted.map(drawable));
 				this.#state.set(node, { loading: false, loaded: true, failed: false });
 			})
 			.catch((err: unknown) => {
@@ -131,7 +138,7 @@ class ConversationStore {
 
 	async react(request: CreateNoteReactionRequest): Promise<NoteReaction> {
 		const epoch = this.#epoch;
-		const made = await api.addReaction(request);
+		const made = drawable(await api.addReaction(request));
 		if (epoch !== this.#epoch) return made;
 		const held = this.reactions(made.node).filter((other) => !sameMark(other, made));
 		this.#reactions.set(made.node, [...held, made]);

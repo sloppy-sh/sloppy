@@ -206,7 +206,7 @@ human-readable label inside somebody's graph rather than a machine identifier, s
 `root_address` is something a publication CARRIES — shown wherever it helps a person
 navigate or cite — and `<did>/<ulid>` is what a route binds.
 
-**The routes.** Four answer without a session, and they are the ones a peer's instance
+**The routes.** Three answer without a session, and they are the ones a peer's instance
 calls:
 
 - `GET /api/public/publications/{did}` lists what that identity publishes here — each
@@ -215,8 +215,6 @@ calls:
 - `GET /api/public/publications/{did}/{id}` answers a page of a version: `?version=`
   names one, and absent is the newest.
 - `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
-- `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
-  between two of them.
 
 The first of those is the exposure publishing creates, and the copy at the moment of the
 decision has to be true to it: from the moment a subtree is published, anyone holding the
@@ -296,11 +294,11 @@ instance to ask, and nothing a peer says about themselves can corroborate one. W
 carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
 ask, which is this one unless the caller names another — the whole of it for somebody who
 keeps their graph here — and answers what that identity publishes there.
-`GET /api/peers/versions` and `GET /api/peers/changes` are the same mediation for a
-publication's history and its differences. Every one of those requests is made by the
-reader's instance, so the instance asked learns an instance and never a reader, and a
-`pull` row keeps the origin in `source_url` so refreshing a region asks the same instance
-again.
+`GET /api/peers/versions` is the same mediation for a publication's history. What the
+writing DID between two versions is not something this build answers, on either side of
+the federation line. Every one of those requests is made by the reader's instance, so the
+instance asked learns an instance and never a reader, and a `pull` row keeps the origin in
+`source_url` so refreshing a region asks the same instance again.
 
 **A named origin is a signed-in caller telling this instance to go and fetch something, so
 what it may name is bounded in three places and none of them is a server's own idea.**
@@ -484,6 +482,15 @@ rather than gaps to close:
   signature it has not checked. **A reaction is the other way round:** syr stores the same
   three fields on one and its public listing does not serve them, so a reaction never
   arrives with anything to check, and no surface may claim otherwise.
+
+**An identity's answer is held to that identity.** Each of those listings is one
+identity's own public endpoint asked about one note, so a record carrying anybody else's
+DID is dropped rather than drawn — `fromEveryVoice` in `api/src/social/social.service.ts`
+is the one comparison, made where the record and the store that served it are still
+together. It is the rule § "Federating the graph" applies to a peer's published notes, and
+here it is the only line there is: a reaction arrives with nothing to check at all, and no
+signature is verified anywhere in this build. Without it any instance could put words
+under any name and face the reader knows, including the reader's own.
 
 **Local-only mode has neither.** `@sloppy/idp` serves files, emoji and a profile, and its
 identity manifest advertises no `public_comments`, `public_reactions` or `public_following`

@@ -219,10 +219,15 @@ export class SocialService {
 
   /**
    * What every reachable store answers, each record still paired with the voice
-   * that served it. A store that will not answer costs that person's words
-   * rather than the whole conversation, which is why nothing here throws on one.
+   * that served it — and nothing it answers in a name it does not hold. One
+   * identity's own endpoint is asked about one note, so a record carrying
+   * anybody else's DID is dropped rather than drawn; docs/ARCHITECTURE.md
+   * § "Federating the graph" carries why it has to be.
+   *
+   * A store that will not answer costs that person's words rather than the
+   * whole conversation, which is why nothing here throws on one.
    */
-  private async fromEveryVoice<T>(
+  private async fromEveryVoice<T extends { did: DidSyr }>(
     delegation: Delegation,
     read: (instanceUrl: string, did: DidSyr) => Promise<T[]>,
   ): Promise<Held<T>[]> {
@@ -232,13 +237,22 @@ export class SocialService {
     );
     const held: Held<T>[] = [];
     answers.forEach((answer, at) => {
-      if (answer.status === "fulfilled") {
-        for (const record of answer.value)
-          held.push({ from: voices[at], record });
-      } else
+      const from = voices[at];
+      if (answer.status === "rejected") {
         this.logger.warn(
-          `${voices[at].did} did not answer: ${reason(answer.reason)}`,
+          `${from.did} did not answer: ${reason(answer.reason)}`,
         );
+        return;
+      }
+      const theirs = answer.value.filter((record) => record.did === from.did);
+      if (theirs.length !== answer.value.length) {
+        this.logger.warn(
+          `${from.where} answered for ${from.did} carrying ${
+            answer.value.length - theirs.length
+          } record(s) attributed to somebody else.`,
+        );
+      }
+      for (const record of theirs) held.push({ from, record });
     });
     return held;
   }
@@ -263,7 +277,9 @@ export class SocialService {
         author.did,
         post,
       );
-      const held = theirs.find((one) => one.local_id === parent.localId);
+      const held = theirs.find(
+        (one) => one.did === author.did && one.local_id === parent.localId,
+      );
       if (held) return [...held.ancestor_chain, replyTo];
     } catch (err) {
       this.logger.warn(`Could not read ${replyTo}: ${reason(err)}`);
