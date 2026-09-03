@@ -213,7 +213,9 @@ calls:
   publication's ref, the address it is rooted at, the newest version's title, and that
   version — and nothing that is not already public in it.
 - `GET /api/public/publications/{did}/{id}` answers a page of a version: `?version=`
-  names one, and absent is the newest.
+  names one, and absent is the newest when the first page is asked for. Every page after
+  that answers at the version its cursor was minted against, so publishing again moves
+  what a fresh read gets and never what a read already under way is part of.
 - `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
 - `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
   between two of them.

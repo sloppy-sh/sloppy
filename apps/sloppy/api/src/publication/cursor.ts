@@ -3,7 +3,12 @@
 // reading side reads one. docs/ARCHITECTURE.md § "Federating the graph".
 
 import { BadRequestException } from "@nestjs/common";
-import { type PageCursor, PageCursorSchema } from "@sloppy/types";
+import {
+  type OwnedRef,
+  OwnedRefSchema,
+  type PageCursor,
+  PageCursorSchema,
+} from "@sloppy/types";
 import { z } from "zod";
 
 const MarkSchema = z.object({
@@ -37,6 +42,35 @@ export function pageMark(
     throw new BadRequestException("Ask for that again from the start.");
   }
   return mark.data;
+}
+
+/** What a run of a region is of: one version of one publication. */
+export function subtreeRun(publication: OwnedRef, version: OwnedRef): string {
+  return `${publication}|${version}`;
+}
+
+/**
+ * The version a region's cursor is being spent on, `undefined` where the caller
+ * asked for the first page. A reader that named no version is answered with the
+ * newest, and every page after the first is held to that one — publishing again
+ * mid-read moves what a fresh read answers with, never what this one is part of
+ * the way through.
+ */
+export function pinnedVersion(
+  raw: string | undefined,
+  publication: OwnedRef,
+): OwnedRef | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const mark = MarkSchema.safeParse(read(raw));
+  const prefix = `${publication}|`;
+  const version =
+    mark.success && mark.data.of.startsWith(prefix)
+      ? OwnedRefSchema.safeParse(mark.data.of.slice(prefix.length))
+      : undefined;
+  if (version?.success !== true) {
+    throw new BadRequestException("Ask for that again from the start.");
+  }
+  return version.data;
 }
 
 function read(raw: string): unknown {

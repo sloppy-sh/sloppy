@@ -107,30 +107,13 @@ function version(of: { notes: number; sections: number }): Snapshot {
   return { nodes, blocks };
 }
 
-/**
- * The reads `PublishedService` makes, answered from memory in the repository's
- * own orders: notes by address, sections by note reference and then by `ord`.
- * A read past its limit is TRUNCATED rather than refused, which is the shape
- * the service has to notice.
- */
-function repositoryOf(held: Snapshot): PublicationRepository {
-  const chain: Publication = {
-    id: recordIdFromOwnedRef("publication", PUBLICATION),
-    created_by: AVA,
-    root: ref("RT"),
-    root_address: "1" as Address,
-    comments: "anyone",
-    created_at: NOW,
-    updated_at: NOW,
-  };
-  const latest: PublicationVersion = {
-    id: recordIdFromOwnedRef("publication_version", VERSION),
-    created_by: AVA,
-    publication: PUBLICATION,
-    sequence: 1,
-    created_at: NOW,
-    updated_at: NOW,
-  };
+/** One version's rows in the orders the repository reads them back in. */
+interface Held {
+  ordered: SnapshotNode[];
+  stacks: Map<OwnedRef, SnapshotBlock[]>;
+}
+
+function hold(held: Snapshot): Held {
   const ordered = [...held.nodes].sort((a, b) =>
     a.address < b.address ? -1 : a.address > b.address ? 1 : 0,
   );
@@ -143,35 +126,79 @@ function repositoryOf(held: Snapshot): PublicationRepository {
   for (const stack of stacks.values()) {
     stack.sort((a, b) => (a.ord < b.ord ? -1 : a.ord > b.ord ? 1 : 0));
   }
+  return { ordered, stacks };
+}
 
-  return {
+/**
+ * The reads `PublishedService` makes, answered from memory in the repository's
+ * own orders: notes by address, sections by note reference and then by `ord`.
+ * A read past its limit is TRUNCATED rather than refused, which is the shape
+ * the service has to notice.
+ *
+ * `publish` adds a version and makes it the newest, which is what an author
+ * publishing again while a peer reads looks like from down here.
+ */
+function repositoryOf(first: Snapshot): {
+  repository: PublicationRepository;
+  publish: (next: Snapshot) => OwnedRef;
+} {
+  const chain: Publication = {
+    id: recordIdFromOwnedRef("publication", PUBLICATION),
+    created_by: AVA,
+    root: ref("RT"),
+    root_address: "1" as Address,
+    comments: "anyone",
+    created_at: NOW,
+    updated_at: NOW,
+  };
+  const held = new Map<OwnedRef, Held>([[VERSION, hold(first)]]);
+  let newest = VERSION;
+
+  const versionRow = (at: OwnedRef): PublicationVersion => ({
+    id: recordIdFromOwnedRef("publication_version", at),
+    created_by: AVA,
+    publication: PUBLICATION,
+    sequence: [...held.keys()].indexOf(at) + 1,
+    created_at: NOW,
+    updated_at: NOW,
+  });
+  const rows = (version: OwnedRef): Held =>
+    held.get(version) ?? { ordered: [], stacks: new Map() };
+
+  const repository = {
     async find(_did: string, asked: OwnedRef) {
       return asked === PUBLICATION ? chain : null;
     },
     async latestOf(_did: string, asked: readonly OwnedRef[]) {
       return new Map(
-        asked.includes(PUBLICATION) ? [[PUBLICATION, latest]] : [],
+        asked.includes(PUBLICATION) ? [[PUBLICATION, versionRow(newest)]] : [],
       );
+    },
+    async findVersion(_did: string, asked: OwnedRef) {
+      return held.has(asked) ? versionRow(asked) : null;
     },
     async nodesFrom(
       _did: string,
-      _version: OwnedRef,
+      version: OwnedRef,
       after: Address | undefined,
       limit: number,
     ) {
-      return ordered
-        .filter((row) => after === undefined || row.address > after)
+      return rows(version)
+        .ordered.filter((row) => after === undefined || row.address > after)
         .slice(0, limit);
     },
-    async nodeAt(_did: string, _version: OwnedRef, address: Address) {
-      return ordered.find((row) => row.address === address) ?? null;
+    async nodeAt(_did: string, version: OwnedRef, address: Address) {
+      return (
+        rows(version).ordered.find((row) => row.address === address) ?? null
+      );
     },
     async blocksOf(
       _did: string,
-      _version: OwnedRef,
+      version: OwnedRef,
       nodes: readonly OwnedRef[],
       limit: number,
     ) {
+      const { stacks } = rows(version);
       const run: SnapshotBlock[] = [];
       for (const node of [...nodes].sort()) {
         run.push(...(stacks.get(node) ?? []));
@@ -180,21 +207,34 @@ function repositoryOf(held: Snapshot): PublicationRepository {
     },
     async blocksAfter(
       _did: string,
-      _version: OwnedRef,
+      version: OwnedRef,
       node: OwnedRef,
       ord: string,
       limit: number,
     ) {
-      return (stacks.get(node) ?? [])
+      return (rows(version).stacks.get(node) ?? [])
         .filter((block) => block.ord > ord)
         .slice(0, limit);
     },
   } as unknown as PublicationRepository;
+
+  return {
+    repository,
+    publish(next: Snapshot) {
+      const at = ref(`V${held.size + 1}`);
+      held.set(at, hold(next));
+      newest = at;
+      return at;
+    },
+  };
 }
 
-/** Every page of a version, taken the way a peer's instance takes them. */
+/** Every page of a version, taken the way a peer's instance takes them —
+ *  through the reader, which refuses an answer that moves to another version
+ *  part of the way through. `between` runs once the first page is in. */
 async function readThrough(
   service: PublishedService,
+  between?: () => void,
 ): Promise<{ addresses: Address[]; sections: OwnedRef[]; pages: number }> {
   const reader = publishedSubtreeReader({ publication: PUBLICATION });
   const addresses: Address[] = [];
@@ -206,6 +246,7 @@ async function readThrough(
       await service.subtree(AVA, PUBLICATION, undefined, cursor),
     );
     pages += 1;
+    if (pages === 1) between?.();
     for (const node of page.nodes) addresses.push(node.address);
     for (const block of page.blocks) sections.push(block.ref);
     cursor = page.next_cursor;
@@ -216,7 +257,7 @@ async function readThrough(
 describe("serving one version a page at a time", () => {
   it("narrows the run when a window's sections will not fit, rather than falling to one note a page", async () => {
     const held = version({ notes: 600, sections: 12 });
-    const service = new PublishedService(repositoryOf(held));
+    const service = new PublishedService(repositoryOf(held).repository);
 
     const { addresses, sections, pages } = await readThrough(service);
     expect(addresses).toHaveLength(600);
@@ -228,7 +269,7 @@ describe("serving one version a page at a time", () => {
 
   it("pages inside a note whose stack alone runs past one read", async () => {
     const held = version({ notes: 1, sections: 2_500 });
-    const service = new PublishedService(repositoryOf(held));
+    const service = new PublishedService(repositoryOf(held).repository);
 
     const { addresses, sections, pages } = await readThrough(service);
     expect(addresses).toEqual(["1"]);
@@ -239,7 +280,7 @@ describe("serving one version a page at a time", () => {
 
   it("carries a version that fits in one answer whole, with no cursor", async () => {
     const held = version({ notes: 20, sections: 3 });
-    const service = new PublishedService(repositoryOf(held));
+    const service = new PublishedService(repositoryOf(held).repository);
 
     const page = await service.subtree(AVA, PUBLICATION, undefined, undefined);
     expect(page?.nodes).toHaveLength(20);
@@ -249,10 +290,46 @@ describe("serving one version a page at a time", () => {
 
   it("answers nothing for a publication that is not here", async () => {
     const service = new PublishedService(
-      repositoryOf(version({ notes: 1, sections: 0 })),
+      repositoryOf(version({ notes: 1, sections: 0 })).repository,
     );
     expect(
       await service.subtree(AVA, ref("ZZ"), undefined, undefined),
     ).toBeNull();
+  });
+});
+
+describe("a read the author publishes over", () => {
+  // The reader refuses a run that changes version under it, so a pull that
+  // survives at all is a pull held to the version it opened on.
+  it("carries the version it opened on to the end", async () => {
+    const store = repositoryOf(version({ notes: 60, sections: 40 }));
+    const service = new PublishedService(store.repository);
+
+    const { addresses, sections, pages } = await readThrough(service, () => {
+      store.publish(version({ notes: 1, sections: 1 }));
+    });
+
+    expect(pages).toBeGreaterThan(1);
+    expect(addresses).toHaveLength(60);
+    expect(sections).toHaveLength(60 * 40);
+  });
+
+  it("answers a read that starts afterwards with what was published last", async () => {
+    const store = repositoryOf(version({ notes: 6, sections: 1 }));
+    const service = new PublishedService(store.repository);
+
+    const before = await service.subtree(
+      AVA,
+      PUBLICATION,
+      undefined,
+      undefined,
+    );
+    const later = store.publish(version({ notes: 1, sections: 1 }));
+    const after = await service.subtree(AVA, PUBLICATION, undefined, undefined);
+
+    expect(before?.nodes).toHaveLength(6);
+    expect(before?.version.ref).not.toBe(later);
+    expect(after?.version.ref).toBe(later);
+    expect(after?.nodes).toHaveLength(1);
   });
 });

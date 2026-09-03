@@ -21,7 +21,13 @@ import {
   type SnapshotBlock,
   type SnapshotNode,
 } from "@sloppy/types";
-import { markPage, type PageMark, pageMark } from "./cursor";
+import {
+  markPage,
+  type PageMark,
+  pageMark,
+  pinnedVersion,
+  subtreeRun,
+} from "./cursor";
 import { comparableTo, noteChanges, type SnapshotSide } from "./difference";
 import {
   publicationVersion,
@@ -97,10 +103,15 @@ export class PublishedService {
     asked: OwnedRef | undefined,
     cursor: string | undefined,
   ): Promise<PublishedSubtreePage | null> {
-    const read = await this.reading(did, publication, asked);
-    if (read === null) return null;
-    const { chain, version } = read;
-    const of = `${publication}|${ownedRefFrom(version.id)}`;
+    const chain = await this.publications.find(did, publication);
+    if (!chain) return null;
+    const version = await this.reading(
+      did,
+      publication,
+      asked ?? pinnedVersion(cursor, publication),
+    );
+    if (version === null) return null;
+    const of = subtreeRun(publication, ownedRefFrom(version.id));
     const page = await this.run(
       did,
       ownedRefFrom(version.id),
@@ -190,20 +201,15 @@ export class PublishedService {
     };
   }
 
+  /** The version a read answers with: the one it names, or the newest. */
   private async reading(
     did: DidSyr,
     publication: OwnedRef,
-    asked: OwnedRef | undefined,
-  ): Promise<{ chain: Publication; version: PublicationVersion } | null> {
-    const chain = await this.publications.find(did, publication);
-    if (!chain) return null;
-    if (asked !== undefined) {
-      const version = await this.versionIn(did, publication, asked);
-      return version === null ? null : { chain, version };
-    }
+    named: OwnedRef | undefined,
+  ): Promise<PublicationVersion | null> {
+    if (named !== undefined) return this.versionIn(did, publication, named);
     const latest = await this.publications.latestOf(did, [publication]);
-    const version = latest.get(publication);
-    return version === undefined ? null : { chain, version };
+    return latest.get(publication) ?? null;
   }
 
   private async versionIn(

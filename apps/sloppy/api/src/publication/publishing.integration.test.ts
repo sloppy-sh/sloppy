@@ -849,4 +849,64 @@ describe("publishing a branch, and what a peer reads back", () => {
     },
     120_000,
   );
+
+  scenario(
+    "finishes a long read the author published over half way through",
+    async () => {
+      const root = await newNode({ title: "A long run held still" });
+      const db = app.get<DbService>(
+        (await import("../db/db.service")).DbService,
+      );
+      const rows: Record<string, unknown>[] = [];
+      const now = new Date().toISOString();
+      let address = childAddress(root.address as Address);
+      for (let i = 1; i <= LONG_BRANCH; i++) {
+        rows.push({
+          id: createOwnedRecordId("node", ada.did),
+          created_by: ada.did,
+          address,
+          depth: addressDepth(address),
+          parent: root.ref,
+          origin: root.ref,
+          title: `Note ${i}`,
+          tags: [],
+          links: [],
+          published: false,
+          created_at: now,
+          updated_at: now,
+        });
+        address = siblingAddress(address);
+      }
+      for (let at = 0; at < rows.length; at += 200) {
+        await db.handle.query("INSERT INTO node $rows", {
+          rows: rows.slice(at, at + 200),
+        });
+      }
+
+      const publication = await publish(root.ref);
+      const reader = publishedSubtreeReader({ publication: publication.ref });
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const page = reader.take(
+          await read(
+            publication.ref,
+            cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`,
+          ),
+        );
+        pages += 1;
+        // The author publishes again with the reader one page in, which is what
+        // a peer pulling a large branch races against.
+        if (pages === 1) {
+          const again = await publish(root.ref);
+          expect(again.latest.sequence).toBe(2);
+        }
+        cursor = page.next_cursor;
+      } while (cursor !== undefined);
+
+      expect(pages).toBeGreaterThan(1);
+      expect(reader.served().size).toBe(LONG_BRANCH + 1);
+    },
+    120_000,
+  );
 });
