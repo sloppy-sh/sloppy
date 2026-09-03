@@ -36,17 +36,22 @@ const DELEGATION = {
  *  including nothing at all, which is how a store reports a change it made. */
 type Answer = { status?: number; body?: unknown; text?: string } | Error;
 
+/** A path answers with one thing, or with whatever the query asked for. */
+type Answering = Answer | ((asked: URL) => Answer);
+
 /** One fake instance, answering by path. Records what it was asked. */
-function instance(answers: Record<string, Answer> = {}) {
+function instance(answers: Record<string, Answering> = {}) {
   const calls: { url: string; init?: RequestInit }[] = [];
   const fetchImpl = vi.fn(async (input: unknown, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
-    const answer =
-      answers[new URL(url).pathname] ??
-      (new URL(url).pathname === "/.well-known/syr"
+    const asked = new URL(url);
+    const held =
+      answers[asked.pathname] ??
+      (asked.pathname === "/.well-known/syr"
         ? { body: MANIFEST }
         : { status: 404, body: {} });
+    const answer = typeof held === "function" ? held(asked) : held;
     if (answer instanceof Error) throw answer;
     const status = answer.status ?? 200;
     const sent =
@@ -504,5 +509,63 @@ describe("a change the store made, and what it left a caller to work with", () =
     await expect(
       new SyrService().updateProfile(DELEGATION, { display_name: "A" }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});
+
+describe("reading somebody's own catalog", () => {
+  const entries = (total: number) =>
+    Array.from({ length: total }, (_, at) => ({
+      did: DID,
+      local_id: `01ABC${String(at).padStart(3, "0")}`,
+      shortcode: `emoji${String(at).padStart(3, "0")}`,
+      url: `${INSTANCE}/files/${at}.png`,
+      is_sticker: false,
+    }));
+
+  /** An instance holding `total` entries, serving the page it is asked for. */
+  function holding(total: number) {
+    const held = entries(total);
+    return instance({
+      "/api/emojis": (asked) => ({
+        body: {
+          data: held.slice(
+            Number(asked.searchParams.get("offset")),
+            Number(asked.searchParams.get("offset")) +
+              Number(asked.searchParams.get("limit")),
+          ),
+        },
+      }),
+    });
+  }
+
+  // A shortcode this read cannot find is taken to be one the author deleted,
+  // and publishing drops the picture. Stopping at the first page would make
+  // that true of every emoji past it.
+  it("comes back whole where it runs past one page", async () => {
+    holding(250);
+
+    const held = await new SyrService().listOwnEmoji(DELEGATION);
+
+    expect(held.map((e) => e.shortcode)).toEqual(
+      entries(250).map((e) => e.shortcode),
+    );
+  });
+
+  it("asks once where the first page is the whole of it", async () => {
+    const { calls } = holding(4);
+
+    await new SyrService().listOwnEmoji(DELEGATION);
+
+    expect(calls.filter((c) => c.url.includes("/emojis"))).toHaveLength(1);
+  });
+
+  it("stops asking an instance that answers the same page every time", async () => {
+    const { calls } = instance({
+      "/api/emojis": { body: { data: entries(100) } },
+    });
+
+    await new SyrService().listOwnEmoji(DELEGATION);
+
+    expect(calls.length).toBeGreaterThan(1);
   });
 });

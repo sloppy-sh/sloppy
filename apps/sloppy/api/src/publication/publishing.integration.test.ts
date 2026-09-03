@@ -222,6 +222,28 @@ describe("publishing a branch, and what a peer reads back", () => {
     return rows;
   }
 
+  /**
+   * Enough of the author's own emoji sorting before `shortcode` to push it off
+   * the first page a catalog is served in. Only the shortcodes matter, so these
+   * go in as rows rather than through the route that mints one.
+   */
+  async function fillCatalogBefore(shortcode: string): Promise<void> {
+    const rows = Array.from({ length: 100 }, (_, at) => ({
+      did: ada.did,
+      shortcode: `aa${String(at).padStart(4, "0")}`,
+      url: "https://example.invalid/filler.png",
+      mime_type: "image/png",
+      size: 1,
+      is_sticker: false,
+      created_at: new Date().toISOString(),
+    }));
+    expect(rows.every((row) => row.shortcode < shortcode)).toBe(true);
+    const { DbService: Db } = await import("../db/db.service");
+    await app
+      .get<DbService>(Db)
+      .handle.query("INSERT INTO idp_emoji $rows", { rows });
+  }
+
   /** What anybody holding the author's identity can enumerate. */
   async function publicFilenames(): Promise<string[]> {
     const listed = (await (
@@ -507,8 +529,13 @@ describe("publishing a branch, and what a peer reads back", () => {
   );
 
   scenario(
-    "draws an emoji from the snapshot, so emptying the catalog changes nothing",
+    "draws an emoji from anywhere in the catalog, and keeps it once emptied",
     async () => {
+      // A catalog is served a page at a time, ordered by shortcode, and a
+      // shortcode publishing cannot find is taken for one the author deleted.
+      // So `kite` sits past the first page, where reading one page would drop
+      // its picture and say nothing about having done so.
+      await fillCatalogBefore("kite");
       const uploadId = await upload("kite.png", "emoji");
       const emoji = (await ok("POST", "/emoji/me", ada, {
         shortcode: "kite",

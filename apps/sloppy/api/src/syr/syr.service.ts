@@ -38,6 +38,12 @@ import { z } from "zod";
 const MANIFEST_TTL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
+/** The most of a catalog an instance serves in one answer. */
+const EMOJI_PER_READ = 100;
+/** Where reading a catalog stops asking, for an instance that answers the same
+ *  page whatever offset it is given. */
+const EMOJI_READ_LIMIT = 10_000;
+
 /**
  * What a caller must hold to act as somebody on their instance. The token is a
  * credential: it belongs on a request to syr and nowhere else.
@@ -481,21 +487,30 @@ export class SyrService {
     );
   }
 
+  /** The whole of the caller's catalog. A shortcode absent from this is one the
+   *  author does not have, which is what publishing takes it to mean. */
   async listOwnEmoji(delegation: Delegation): Promise<SyrEmoji[]> {
-    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/emojis?limit=100`;
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
     const failure = "We could not read your emoji. Try again in a moment.";
-    const body = await this.asPerson(
-      delegation,
-      url,
-      { method: "GET" },
-      failure,
-    );
-    return this.readShape(
-      syrEnvelope(z.array(SyrEmojiSchema)),
-      body,
-      url,
-      failure,
-    ).data;
+    const held: SyrEmoji[] = [];
+    while (held.length < EMOJI_READ_LIMIT) {
+      const url = `${base}/emojis?limit=${EMOJI_PER_READ}&offset=${held.length}`;
+      const body = await this.asPerson(
+        delegation,
+        url,
+        { method: "GET" },
+        failure,
+      );
+      const page = this.readShape(
+        syrEnvelope(z.array(SyrEmojiSchema)),
+        body,
+        url,
+        failure,
+      ).data;
+      held.push(...page);
+      if (page.length < EMOJI_PER_READ) break;
+    }
+    return held;
   }
 
   /** Anyone's catalog, as that identity's own instance publishes it. An empty
