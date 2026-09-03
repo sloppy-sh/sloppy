@@ -250,16 +250,17 @@ than a ceiling a graph can hit: a branch of any size is read page by page, and w
 per-page bound refuses is one answer too large to hold, never a subtree too large to
 publish.
 
-**The difference between two versions is computed where the versions are.** The instance
-holds every version and the reader holds none, so a phone asking what changed between two
-snapshots of a ten-thousand-note branch reads the difference rather than both sides of it.
-One entry per note — arrived, gone, or changed — in the same address order a version's own
-pages take, carrying both sides of the note and both sides of only the sections that
-differ, which is what a review-shaped diff needs and no more. A note that is gone carries
-no sections: what it said is in the version that still has it, and that is a read a reader
-makes when they want it. Where one address holds a different note in each version, the
-reader is told both: one note gone and another arrived. `PublishedNoteChange` in `@sloppy/types` is the shape and
-`publishedChangesReader` the boundary.
+**The difference between two versions would be computed where the versions are, and
+nothing answers one yet.** The instance holds every version and the reader holds none, so a
+phone asking what changed between two snapshots of a ten-thousand-note branch would read
+the difference rather than both sides of it: one entry per note — arrived, gone, or
+changed — in the same address order a version's own pages take, carrying both sides of the
+note and both sides of only the sections that differ, which is what a review-shaped diff
+needs and no more. A note that is gone would carry no sections, what it said being in the
+version that still has it; where one address holds a different note in each version the
+reader would be told both, one gone and one arrived. `PublishedNoteChange` in
+`@sloppy/types` is that shape and `publishedChangesReader` its boundary — **both settled
+and neither served**, so no surface may offer a reader what changed.
 
 **Who is invited to comment is the publication's to say, and it is an invitation rather
 than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which
@@ -294,9 +295,9 @@ instance to ask, and nothing a peer says about themselves can corroborate one. W
 carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
 ask, which is this one unless the caller names another — the whole of it for somebody who
 keeps their graph here — and answers what that identity publishes there.
-`GET /api/peers/versions` is the same mediation for a publication's history. What the
-writing DID between two versions is not something this build answers, on either side of
-the federation line. Every one of those requests is made by the reader's instance, so the
+`GET /api/peers/versions` would be the same mediation for a publication's history, and no
+instance answers it yet. What the writing DID between two versions is not something this
+build answers either, on either side of the federation line. Every one of those requests is made by the reader's instance, so the
 instance asked learns an instance and never a reader, and a `pull` row keeps the origin in
 `source_url` so refreshing a region asks the same instance again.
 
@@ -495,7 +496,14 @@ under any name and face the reader knows, including the reader's own.
 **Local-only mode has neither.** `@sloppy/idp` serves files, emoji and a profile, and its
 identity manifest advertises no `public_comments`, `public_reactions` or `public_following`
 — so an instance running on the embedded provider can publish, be pulled from, and pull,
-and has no conversation and no follow list at all.
+and has no conversation and no follow list at all. **A surface has to know that before it
+offers anybody a conversation**, or a whole deployment mode gets a control that refuses
+every time it is used. The axis is the IDENTITY's and not the deployment's — an instance
+that delegates elsewhere still serves its own provider, and somebody on a hosted instance
+may keep their identity on it — so `identity.svelte.ts` in `@sloppy/app-core` answers it
+per person, by asking whether the identity signed in is kept on this instance's own
+provider. `local` offers no conversation; `delegated` does. Until the answer is in, nothing
+is offered and nothing alarming is said, which are opposite defaults and deliberately so.
 
 ## Pictures
 

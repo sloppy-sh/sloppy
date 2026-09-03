@@ -3,8 +3,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
 import { conversation } from '../stores/conversation.svelte.js';
+import { identity } from '../stores/identity.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
-import { pulls } from '../stores/pulls.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { people } from '../stores/people.svelte.js';
 import Settings from './settings.svelte';
@@ -45,11 +45,12 @@ beforeEach(() => {
 	});
 	people.hold(null);
 	publications.clear();
-	pulls.clear();
+	identity.clear();
 	conversation.clear();
 	api = useFakeApi();
 	api.on('GET /profile/me', () => STORED);
 	api.on('POST /auth/logout', () => ({}));
+	api.on('GET /auth/own-instance', () => ({ instance_url: null }));
 	session.adopt(VIEWER, 'a-session');
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -109,7 +110,6 @@ describe('settings', () => {
 				latest: { ref: ref(20), sequence: 1, published_at: AT }
 			}
 		]);
-		api.on('GET /pulls', () => []);
 		api.on(
 			`GET /nodes/${encodeURIComponent(DID)}/${encodeURIComponent(NOTE.split('/')[1])}/comments`,
 			() => []
@@ -119,7 +119,7 @@ describe('settings', () => {
 			() => []
 		);
 		await publications.load();
-		await pulls.load();
+		await identity.load();
 		await conversation.load(NOTE);
 
 		mounted = mount(Settings, { target });
@@ -130,7 +130,9 @@ describe('settings', () => {
 
 		expect(publications.all).toEqual([]);
 		expect(publications.state.loaded).toBe(false);
-		expect(pulls.loaded).toBe(false);
 		expect(conversation.status(NOTE).loaded).toBe(false);
+		// Where the last person's identity was kept is asked again, never assumed.
+		await identity.load();
+		expect(api.countOf('GET /auth/own-instance')).toBe(2);
 	});
 });

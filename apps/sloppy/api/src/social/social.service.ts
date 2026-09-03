@@ -158,9 +158,12 @@ export class SocialService {
       parent_id: post.post_id,
       ...carried,
     };
-    // syr's create route toggles, so a reaction the person already had comes
-    // off; asking again puts back what the caller asked to be there.
+    // syr's create route toggles and no pair of calls to it is atomic, so a
+    // mark the person already made is read back rather than sent again: sending
+    // it takes it off, and putting it back is then one more call's luck.
+    const held = await this.ownMark(delegation, post, carried);
     const made =
+      held ??
       (await this.syr.createReaction(delegation, wanted)) ??
       (await this.syr.createReaction(delegation, wanted));
     if (!made) {
@@ -329,6 +332,40 @@ export class SocialService {
     return (
       comment.post_did === post.post_did && comment.post_id === post.post_id
     );
+  }
+
+  /**
+   * The mark this person has already made on this note, of the one they are
+   * asking for. Their own store is the only one they can have made it in, and a
+   * read that does not land answers `null` — no worse than not asking, which is
+   * what {@link react} does with it.
+   */
+  private async ownMark(
+    delegation: Delegation,
+    post: PostRef,
+    carried: { kind: SyrReaction["kind"]; value: string },
+  ): Promise<SyrReaction | null> {
+    try {
+      const made = await this.syr.listPublicReactions(
+        delegation.syr_instance_url,
+        delegation.did,
+        post,
+      );
+      return (
+        made.find(
+          (one) =>
+            one.did === delegation.did &&
+            this.isOn(one, post) &&
+            one.kind === carried.kind &&
+            one.value === carried.value,
+        ) ?? null
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not read what ${delegation.did} has already marked: ${reason(err)}`,
+      );
+      return null;
+    }
   }
 
   private isOn(reaction: SyrReaction, post: PostRef): boolean {

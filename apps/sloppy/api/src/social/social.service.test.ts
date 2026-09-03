@@ -601,8 +601,52 @@ describe("writing a comment", () => {
 });
 
 describe("reacting to a note", () => {
+  it("answers with the mark they already made rather than sending it again", async () => {
+    const { calls } = instance({
+      [reactionsPath(ME)]: { body: { data: [reaction({ local_id: "held" })] } },
+      "/api/reactions": { body: { data: reaction({ local_id: "fresh" }) } },
+    });
+
+    const made = await social().react(DELEGATION, {
+      node: NOTE,
+      kind: "character",
+      character: "🎉",
+    });
+
+    // The create route toggles: sending this would have taken the mark off.
+    expect(
+      calls.filter((call) => call.url === `${INSTANCE}/api/reactions`),
+    ).toHaveLength(0);
+    expect(made).toMatchObject({
+      kind: "character",
+      character: "🎉",
+      reaction_id: `${ME}:held`,
+    });
+  });
+
+  it("sends a mark they have not made, and leaves the rest of theirs alone", async () => {
+    const { calls } = instance({
+      [reactionsPath(ME)]: {
+        body: { data: [reaction({ local_id: "held", value: "🌱" })] },
+      },
+      "/api/reactions": { body: { data: reaction({ local_id: "fresh" }) } },
+    });
+
+    const made = await social().react(DELEGATION, {
+      node: NOTE,
+      kind: "character",
+      character: "🎉",
+    });
+
+    expect(
+      calls.filter((call) => call.url === `${INSTANCE}/api/reactions`),
+    ).toHaveLength(1);
+    expect(made.reaction_id).toBe(`${ME}:fresh`);
+  });
+
   it("puts back a reaction the store's own toggle took off", async () => {
     const { calls } = instance({
+      [reactionsPath(ME)]: { body: { data: [] } },
       "/api/reactions": [
         { body: { status: "success", action: "removed" } },
         { body: { data: reaction() } },

@@ -60,10 +60,10 @@
 	import { deletionCost } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
-	import { pulls } from '../stores/pulls.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -414,11 +414,12 @@
 				: null)
 	);
 
-	/** Whether anybody may answer this note: the author's own invitation on their
-	 *  own note, and the terms the held copy came with on somebody else's. */
+	/** Whether anybody may answer this note: the author's own invitation, held by
+	 *  an identity kept somewhere that carries a conversation at all. This surface
+	 *  draws no graph but the reader's own, so their own invitation is the only
+	 *  one it can be reading. */
 	const answerable = $derived(
-		node !== undefined &&
-			(own ? publications.answersOn(node) : (pulls.holding(node)?.comments ?? null)) === 'anyone'
+		node !== undefined && own && publications.answersOn(node) === 'anyone' && identity.converses
 	);
 	const conversing = $derived(conversation.status(ref));
 
@@ -625,7 +626,7 @@
 	});
 
 	$effect(() => {
-		if (node && !own) void pulls.load().catch(() => {});
+		if (session.signedIn) void identity.load();
 	});
 
 	$effect(() => {
@@ -1405,6 +1406,7 @@
 				carriedBy={carriedBy?.root_address ?? null}
 				{narrower}
 				{changedSince}
+				answersReach={identity.kind !== 'local'}
 				refused={publishRefusal}
 				onpublish={publishBranch}
 				oncomments={inviteAnswers}

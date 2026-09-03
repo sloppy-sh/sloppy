@@ -24,6 +24,9 @@
 		/** True where a note in this branch has changed since the newest version.
 		 *  False says nothing: it is silent where it cannot tell. */
 		changedSince?: boolean;
+		/** False where answers people write will never reach this person, so the
+		 *  sheet promises none. What readers are invited to do is unaffected. */
+		answersReach?: boolean;
 		/** Why the last act did not land, in the caller's words. */
 		refused?: string | null;
 		onpublish: () => Promise<void>;
@@ -50,6 +53,7 @@
 		carriedBy = null,
 		narrower = [],
 		changedSince = false,
+		answersReach = true,
 		refused = null,
 		onpublish,
 		oncomments,
@@ -136,6 +140,9 @@
 
 			<section class="space-y-2">
 				<h3 class="text-sm font-medium">Who may answer</h3>
+				{#if !answersReach}
+					<p class="text-sm text-muted-foreground">You will not see what they say.</p>
+				{/if}
 				{#each terms as term (term.value)}
 					<button
 						type="button"
@@ -184,7 +191,11 @@
 					let in.
 				</p>
 				<p>If you take it down, whoever has already read it keeps their copy.</p>
-				<p>Anyone reading it may answer, until you say otherwise here.</p>
+				{#if answersReach}
+					<p>Anyone reading it may answer, until you say otherwise here.</p>
+				{:else}
+					<p>Anyone reading it may answer, and you will not see what they say.</p>
+				{/if}
 				{#if carriedBy}
 					<p>{carriedBy} already carries this branch, on its own terms.</p>
 				{/if}

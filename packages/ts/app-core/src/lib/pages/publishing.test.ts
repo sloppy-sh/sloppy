@@ -4,16 +4,15 @@ import type {
 	NoteReaction,
 	OwnedRef,
 	PublicationView,
-	PublishedVersion,
-	PullView
+	PublishedVersion
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { conversation } from '../stores/conversation.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { people } from '../stores/people.svelte.js';
+import { identity } from '../stores/identity.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
-import { pulls } from '../stores/pulls.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import {
 	AT,
@@ -161,18 +160,22 @@ let held: PublicationView[];
 let chain: PublishedVersion[];
 let said: NoteComment[];
 let reacted: NoteReaction[];
+/** Where this instance keeps its own identities, which is `VIEWER`'s own only
+ *  for somebody whose identity this instance holds itself. */
+let ownInstance: string | null;
 
 beforeEach(() => {
 	nodes.clear();
 	publications.clear();
 	conversation.clear();
-	pulls.clear();
+	identity.clear();
 	people.hold(null);
 	api = useFakeApi();
 	held = [];
 	chain = [];
 	said = [];
 	reacted = [];
+	ownInstance = null;
 
 	api.on(`GET /nodes${refPath(FIRST)}`, () => node(1, '1'));
 	api.on(`GET /nodes${refPath(FIRST)}/blocks`, () => []);
@@ -186,6 +189,9 @@ beforeEach(() => {
 	api.on(`GET /profile/${encodeURIComponent(PEER)}`, () => profile(PEER, 'peer'));
 	api.on('GET /emoji/me', () => []);
 	api.on('GET /pulls', () => []);
+	// Where this instance's own identities live. Answering `null` makes every
+	// suite below a person whose identity is kept somewhere that answers for it.
+	api.on('GET /auth/own-instance', () => ({ instance_url: ownInstance }));
 
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -567,34 +573,62 @@ describe('the conversation on a note', () => {
 		expect(says()).not.toContain('Conversation');
 	});
 
-	it('carries a peer’s published note on the terms the held copy came with', async () => {
-		const foreign = `${PEER}/${ref(1).split('/')[1]}` as OwnedRef;
-		const pull: PullView = {
-			ref: ref(30),
-			created_by: DID,
-			created_at: AT,
-			updated_at: AT,
-			publication: `${PEER}/${PUBLICATION.split('/')[1]}` as OwnedRef,
-			version: version(VERSION_ONE, 1),
-			root_address: '1',
-			comments: 'anyone',
-			source_url: 'https://peer.example'
-		};
-		api.on('GET /pulls', () => [pull]);
-		api.on(`GET /nodes${refPath(foreign)}`, () =>
-			node(1, '1', { ref: foreign, created_by: PEER, origin: foreign, published: true })
-		);
-		api.on(`GET /nodes${refPath(foreign)}/blocks`, () => []);
-		api.on(`GET /nodes${refPath(foreign)}/comments`, () => []);
-		api.on(`GET /nodes${refPath(foreign)}/reactions`, () => []);
+	it('is not offered to somebody whose identity keeps none', async () => {
+		ownInstance = VIEWER.syr_instance_url;
+		held = [publication()];
+		chain = [version(VERSION_ONE, 1)];
+		said = [comment('c1', PEER, 'A thought of my own')];
 
-		await open(foreign);
-		await until(() => conversation.status(foreign).loaded);
+		await open();
+		await settle();
 		flushSync();
-		expect(says()).toContain('Conversation');
 
+		expect(says()).not.toContain('Conversation');
+		expect(says()).not.toContain('Say something');
+		expect(api.countOf(`GET /nodes${refPath(FIRST)}/comments`)).toBe(0);
+	});
+});
+
+describe('publishing where answers cannot come back', () => {
+	it('does not promise the author any', async () => {
+		ownInstance = VIEWER.syr_instance_url;
+
+		await open();
+		await until(() => identity.kind !== undefined);
 		await openActs();
-		// Nothing of the reader's publishes it, so there is nothing here to publish.
-		expect(has('Publishing')).toBe(false);
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('you will not see what they say');
+		expect(says()).not.toContain('until you say otherwise here');
+	});
+
+	it('promises them where the identity is kept somewhere that answers', async () => {
+		await open();
+		await until(() => identity.kind !== undefined);
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('until you say otherwise here');
+		expect(says()).not.toContain('you will not see what they say');
+	});
+
+	it('still lets the author say who may answer, since readers are offered it', async () => {
+		ownInstance = VIEWER.syr_instance_url;
+		held = [publication()];
+		chain = [version(VERSION_ONE, 1)];
+
+		await open();
+		await until(() => identity.kind !== undefined);
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('Who may answer');
+		expect(has('Nobody')).toBe(true);
 	});
 });

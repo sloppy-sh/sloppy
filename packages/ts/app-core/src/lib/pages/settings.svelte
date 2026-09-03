@@ -7,6 +7,7 @@
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
@@ -19,7 +20,6 @@
 		THEMES
 	} from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
-	import { pulls } from '../stores/pulls.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
 
@@ -41,8 +41,8 @@
 			tags.clear();
 			people.hold(null);
 			publications.clear();
-			pulls.clear();
 			conversation.clear();
+			identity.clear();
 			leaving = false;
 		}
 	}
