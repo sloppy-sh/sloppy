@@ -209,6 +209,19 @@ describe("publishing a branch, and what a peer reads back", () => {
     );
   }
 
+  /** Straight off the store, because a chain with no version is served to
+   *  nobody — which is the whole reason one left behind would be a problem. */
+  async function chainsRootedAt(root: OwnedRef): Promise<unknown[]> {
+    const { DbService: Db } = await import("../db/db.service");
+    const [rows] = await app
+      .get<DbService>(Db)
+      .handle.query<[unknown[]]>(
+        "SELECT VALUE id FROM publication WHERE created_by = $did AND root = $root",
+        { did: ada.did, root },
+      );
+    return rows;
+  }
+
   /** What anybody holding the author's identity can enumerate. */
   async function publicFilenames(): Promise<string[]> {
     const listed = (await (
@@ -646,16 +659,18 @@ describe("publishing a branch, and what a peer reads back", () => {
   scenario("publishes whole or not at all", async () => {
     const branch = await newNode({ title: "Half a thing" });
     const uploadId = await upload("real.png");
-    await newBlock(branch.ref, {
-      type: "doc",
-      content: [
-        { type: "picture", attrs: { upload_id: uploadId } },
-        {
-          type: "picture",
-          attrs: { upload_id: `${ada.did}/01GONEGONEGONEGONEGONEGONE` },
-        },
-      ],
-    });
+    const sections = [
+      await newBlock(branch.ref, {
+        type: "doc",
+        content: [
+          { type: "picture", attrs: { upload_id: uploadId } },
+          {
+            type: "picture",
+            attrs: { upload_id: `${ada.did}/01GONEGONEGONEGONEGONEGONE` },
+          },
+        ],
+      }),
+    ];
 
     const refused = await call("POST", "/publications", ada, {
       root: branch.ref,
@@ -671,7 +686,59 @@ describe("publishing a branch, and what a peer reads back", () => {
     );
     // The copy the attempt had already made is not left public.
     expect(await publicFilenames()).not.toContain("real.png");
+
+    // And no publication is left owning it. A chain nothing serves is invisible
+    // to its author, so one that outlived a failed attempt would be a picture
+    // they could neither see nor take down.
+    expect(await chainsRootedAt(branch.ref)).toEqual([]);
+
+    // Taking the picture out is what the answer asked for, and publishing then
+    // starts the history at 1 rather than continuing one nobody could see.
+    await ok("PATCH", `/blocks/${at(sections[0].ref)}`, ada, {
+      content: {
+        type: "doc",
+        content: [{ type: "picture", attrs: { upload_id: uploadId } }],
+      },
+    });
+    expect((await publish(branch.ref)).latest.sequence).toBe(1);
   });
+
+  // The sweep that clears a chain a failed publish opened is guarded, because a
+  // second publish of the same root shares that chain. Either claim on it — a
+  // version, or a copy the store still holds — has to hold it in place.
+  scenario(
+    "will not clear a chain anything is still hanging off",
+    async () => {
+      const uploadId = await upload("still-owned.png");
+      const branch = await newNode({ title: "Still owned" });
+      await newBlock(branch.ref, {
+        type: "doc",
+        content: [{ type: "picture", attrs: { upload_id: uploadId } }],
+      });
+      const publication = await publish(branch.ref);
+
+      const { PublicationRepository } = await import(
+        "./publication.repository"
+      );
+      const repository = app.get(PublicationRepository);
+      await repository.removeEmptyChain(ada.did, publication.ref);
+      expect(await chainsRootedAt(branch.ref)).toHaveLength(1);
+
+      const { DbService: Db } = await import("../db/db.service");
+      await app.get<DbService>(Db).handle.query(
+        `DELETE publication_version
+             WHERE created_by = $did AND publication = $publication`,
+        { did: ada.did, publication: publication.ref },
+      );
+      await repository.removeEmptyChain(ada.did, publication.ref);
+      expect(await chainsRootedAt(branch.ref)).toHaveLength(1);
+
+      await ok("DELETE", `/publications/${at(publication.ref)}`, ada);
+      expect(await chainsRootedAt(branch.ref)).toEqual([]);
+      expect(await publicFilenames()).not.toContain("still-owned.png");
+    },
+    60_000,
+  );
 
   scenario("lists what an identity publishes, and nothing else", async () => {
     const shown = await newNode({ title: "On the shelf" });

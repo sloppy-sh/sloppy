@@ -178,9 +178,8 @@ through a window, is what makes a published document a set of citations into an 
 private library, and every one of those citations is something that can break or leak
 later.
 
-What does reach it is an erasure, and only an erasure: deleting the publication, and
-deleting a picture from the library, which takes the copies made from it (§ "Pictures").
-Erasing means erasing, or a person cannot trust either word.
+What does reach it is an erasure, and only an erasure: deleting the publication. Erasing
+means erasing, or a person cannot trust the word.
 
 Four consequences follow, and they are the product's to state at the moment of the
 decision rather than gaps to close:
@@ -191,9 +190,10 @@ decision rather than gaps to close:
   graph, and the snapshots it was already in are unchanged.
 - **Deleting the publication is what stops this instance serving any of it** — and a peer
   who has already pulled a version keeps the writing, which nothing here can take back.
-- **Deleting a picture from the library is the one edit a peer sees.** It takes the
-  published copies of it with it, in every version that drew it, because a person who
-  erases a picture has to be erasing it and not filing it somewhere they cannot see.
+- **A published copy is reached by deleting the publication and by nothing else.** There
+  is no act that removes a picture from the library — the milestone that adds one owes
+  the copies with it, in every version that drew it, because a person who erases a
+  picture has to be erasing it and not filing it somewhere they cannot see.
 
 **A publication is a chain of versions, the way a commit history is.** Each version is
 self-contained, carries the moment it was made, and is numbered from 1 in publishing
@@ -575,15 +575,15 @@ DID, with no publication address and no pull. That is the exposure publishing ac
 creates, and it is what the copy at the moment of the decision has to be true to.
 
 **Deleting the publication deletes its copies**, because a copy exists only to serve what
-that publication published. Deleting the picture from the library takes both halves the
-same way, wherever it was published — those two acts are the take-it-back acts and there
-are no others. Short of one of them, while a publication stands every version of it stays
-readable and so does everything the versions draw.
+that publication published. It is the take-it-back act, and it is the only one: Sloppy has
+no act that removes a picture from the library, and the milestone that adds one owes this
+same sweep, wherever that picture was published. Short of deleting the publication, while
+one stands every version of it stays readable and so does everything the versions draw.
 
 That is also where the promise about a peer's copy stops, and the product says which half
 is which: the notes somebody pulled are theirs and stay theirs, and the pictures in them
-were being served out of the author's store all along, so those stop when either act
-above does. Nothing here can reach a copy of the bytes a peer made for themselves.
+were being served out of the author's store all along, so those stop when the publication
+does. Nothing here can reach a copy of the bytes a peer made for themselves.
 
 **A peer's picture is fetched by this instance, never by the reader's browser.**
 `GET /api/media/published/{did}/{localId}` is that route — `publishedPicture` in

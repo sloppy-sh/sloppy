@@ -131,7 +131,7 @@ export class PublicationService {
     const root = await this.nodes.find(did, request.root);
     if (!root) throw new NotFoundException("That note is not here.");
 
-    const publication = await this.chainFor(did, root);
+    const { publication, opened } = await this.chainFor(did, root);
     const chain = ownedRefFrom(publication.id);
     const id = createOwnedRecordId("publication_version", did);
 
@@ -158,17 +158,20 @@ export class PublicationService {
       };
       await this.publications.commit({ did, version, marking });
     } catch (err) {
-      await this.undo(delegation, ownedRefFrom(id), copies);
+      await this.undo(
+        delegation,
+        { version: ownedRefFrom(id), chain, opened },
+        copies,
+      );
       throw err;
     }
     return { ...entityView(publication), latest: publicationVersion(version) };
   }
 
   /**
-   * A publication and everything under it. The copies go first and the act
-   * fails if the store will not let one go: rows deleted around a picture still
-   * readable would leave nothing pointing at it, and a person who unpublished
-   * would be told it was gone.
+   * A publication and everything under it. The act fails if the store will not
+   * let a copy go, rather than reporting a take-down to somebody whose picture
+   * is still public.
    */
   async remove(delegation: Delegation, ref: OwnedRef): Promise<void> {
     const did = delegation.did;
@@ -200,18 +203,25 @@ export class PublicationService {
   }
 
   /**
-   * The chain this root publishes into, created on the first publish. A chain
-   * with no version is one whose first publish did not finish: nothing serves
-   * it, and publishing that root again completes it and reuses the copies that
-   * attempt had already made.
+   * The chain this root publishes into, created on the first publish and before
+   * any bytes go public. That order is what makes a publish recoverable: a
+   * process that dies partway leaves no version, so nothing serves the branch,
+   * but this row still owns the copies that attempt made — and publishing the
+   * root again finds it, reuses them, and completes.
+   *
+   * `opened` says this publish is the one that created it, which is what lets
+   * the undo take it back down.
    */
-  private async chainFor(did: string, root: Node): Promise<Publication> {
+  private async chainFor(
+    did: string,
+    root: Node,
+  ): Promise<{ publication: Publication; opened: boolean }> {
     const ref = ownedRefFrom(root.id);
     const held = await this.publications.findByRoot(did, ref);
-    if (held) return held;
+    if (held) return { publication: held, opened: false };
     const now = nowIso();
     try {
-      return await this.publications.create({
+      const made = await this.publications.create({
         id: createOwnedRecordId("publication", did),
         created_by: did,
         root: ref,
@@ -220,11 +230,12 @@ export class PublicationService {
         created_at: now,
         updated_at: now,
       });
+      return { publication: made, opened: true };
     } catch (err) {
       // Two publishes of one root race here, and the unique index settles it.
       const won = await this.publications.findByRoot(did, ref);
       if (!won) throw err;
-      return won;
+      return { publication: won, opened: false };
     }
   }
 
@@ -371,17 +382,21 @@ export class PublicationService {
           throw missing(err) ? notInTheLibrary(asked.address) : err;
         }),
       );
-      into.copies.add(
-        await this.publications.addAsset({
-          id: createOwnedRecordId("snapshot_asset", delegation.did),
-          created_by: delegation.did,
-          publication: into.chain,
-          source_upload: sourceId,
-          public_upload: copy.upload_id,
-          created_at: nowIso(),
-          updated_at: nowIso(),
-        }),
-      );
+      const now = nowIso();
+      const made: SnapshotAsset = {
+        id: createOwnedRecordId("snapshot_asset", delegation.did),
+        created_by: delegation.did,
+        publication: into.chain,
+        source_upload: sourceId,
+        public_upload: copy.upload_id,
+        created_at: now,
+        updated_at: now,
+      };
+      // The bytes are public from the line above, so the undo is told about
+      // them before anything else can fail: a copy the pairing row was refused
+      // for is still a copy this publish made.
+      into.copies.add(made);
+      await this.publications.addAsset(made);
     });
 
     return new Map(
@@ -393,14 +408,17 @@ export class PublicationService {
   }
 
   /**
-   * What a publish that failed leaves: nothing readable, and no picture made
-   * public by an act that did not finish. A copy the store will not let go of
-   * keeps its pairing row, so it is a copy this publication still owns rather
-   * than bytes nothing points at.
+   * What a publish that failed leaves: nothing readable, no picture made public
+   * by an act that did not finish, and — where this publish opened the chain —
+   * no chain either.
+   *
+   * A copy the store will not let go of keeps its pairing row, and the row
+   * keeps the chain: it is a copy this publication still owns rather than bytes
+   * nothing points at, and taking the publication down is what reaches it.
    */
   private async undo(
     delegation: Delegation,
-    version: OwnedRef,
+    of: { version: OwnedRef; chain: OwnedRef; opened: boolean },
     copies: Copies,
   ): Promise<void> {
     for (const asset of copies.made) {
@@ -414,9 +432,12 @@ export class PublicationService {
       }
     }
     try {
-      await this.publications.discardVersion(delegation.did, version);
+      await this.publications.discardVersion(delegation.did, of.version);
+      if (of.opened) {
+        await this.publications.removeEmptyChain(delegation.did, of.chain);
+      }
     } catch (err) {
-      this.logger.error(`${version} left rows behind: ${reason(err)}`);
+      this.logger.error(`${of.version} left rows behind: ${reason(err)}`);
     }
   }
 }

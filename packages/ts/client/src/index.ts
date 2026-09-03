@@ -359,8 +359,6 @@ export class SloppyClient {
   }
 
   // ── Publishing, following, and what a peer holds ─────────────────────────
-  // Declared, not served: `apps/sloppy/api` answers none of the routes from
-  // here to the end of this block yet, so a call reaches a 404.
   // docs/ARCHITECTURE.md § "Federating the graph" is what they answer to.
 
   async listPublications(): Promise<PublicationView[]> {
@@ -446,6 +444,10 @@ export class SloppyClient {
       blocks,
     };
   }
+
+  // Declared, not served: `apps/sloppy/api` answers none of the `/peers` or
+  // `/pulls` routes from here to the end of this block yet, so a call reaches a
+  // 404.
 
   /**
    * One page of what somebody publishes, which is what following them leads to:

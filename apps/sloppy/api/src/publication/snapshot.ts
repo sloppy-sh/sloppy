@@ -21,8 +21,6 @@ import {
  * catalog and writes the copy under {@link EMOJI_UPLOAD_ATTR}.
  */
 const EMOJI_ELEMENT = "emoji";
-/** Where a custom emoji carries the address minted for the author's catalog. A
- *  published element carries the copy instead and never this. */
 const EMOJI_SRC_ATTR = "src";
 const EMOJI_NAME_ATTR = "name";
 

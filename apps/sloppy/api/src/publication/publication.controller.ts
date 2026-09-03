@@ -52,7 +52,7 @@ export class PublicationController {
     );
   }
 
-  /** Who is invited to answer this. It publishes nothing. */
+  /** Who is invited to answer this. */
   @Patch(":did/:localId")
   setComments(
     @Req() req: AuthedRequest,

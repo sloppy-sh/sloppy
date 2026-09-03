@@ -322,16 +322,11 @@ export class PublicationRepository {
     return rows.map((row) => SnapshotAssetSchema.parse(row));
   }
 
-  async addAsset(row: SnapshotAsset): Promise<SnapshotAsset> {
-    const { id, ...content } = row;
-    const [rows] = await this.query(
-      "CREATE $id CONTENT $content RETURN AFTER",
-      {
-        id,
-        content,
-      },
-    );
-    return SnapshotAssetSchema.parse(rows[0]);
+  async addAsset(row: SnapshotAsset): Promise<void> {
+    await this.query("CREATE $id CONTENT $content RETURN NONE", {
+      id: row.id,
+      content: rowOf(row),
+    });
   }
 
   async removeAssets(ids: readonly RecordId[]): Promise<void> {
@@ -350,7 +345,6 @@ export class PublicationRepository {
    */
   async commit(work: {
     did: string;
-    publication?: Publication;
     version: PublicationVersion;
     marking: readonly RecordId[];
   }): Promise<void> {
@@ -360,11 +354,6 @@ export class PublicationRepository {
       versionId: work.version.id,
       version: rowOf(work.version),
     };
-    if (work.publication) {
-      statements.push("CREATE $publicationId CONTENT $publication;");
-      vars.publicationId = work.publication.id;
-      vars.publication = rowOf(work.publication);
-    }
     statements.push("CREATE $versionId CONTENT $version;");
     for (const [at, marking] of chunks(work.marking).entries()) {
       statements.push(
@@ -374,6 +363,23 @@ export class PublicationRepository {
     }
     statements.push("COMMIT TRANSACTION;");
     await this.db.handle.query(statements.join("\n"), vars);
+  }
+
+  /**
+   * A chain a first publish opened and did not fill, taken back down. The guard
+   * is inside the statement rather than a read before it, because a second
+   * publish of the same root shares this chain and may be writing under it: a
+   * version or a copy is a claim on it, and either one keeps it.
+   */
+  async removeEmptyChain(did: string, ref: OwnedRef): Promise<void> {
+    await this.db.handle.query(
+      `DELETE publication WHERE id = $id AND created_by = $did
+         AND array::len((SELECT VALUE id FROM publication_version
+             WHERE created_by = $did AND publication = $publication)) = 0
+         AND array::len((SELECT VALUE id FROM snapshot_asset
+             WHERE created_by = $did AND publication = $publication)) = 0;`,
+      { did, publication: ref, id: recordIdFromOwnedRef("publication", ref) },
+    );
   }
 
   /** What a publish that failed leaves behind: rows under a version that was

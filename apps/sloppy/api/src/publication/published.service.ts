@@ -247,28 +247,17 @@ export class PublishedService {
     const listed = window.slice(0, NOTES_PER_PAGE);
     if (listed.length === 0) return { nodes: [], blocks: [] };
 
-    const sections = await this.publications.blocksOf(
-      did,
-      version,
-      listed.map((row) => row.source),
-      SECTIONS_PER_PAGE + 1,
-    );
-    if (sections.length > SECTIONS_PER_PAGE) {
+    const held = await this.whole(did, version, listed);
+    if (held === null) {
       return this.oneNote(did, version, of, listed[0], "", true);
     }
-
-    const stacks = new Map<OwnedRef, SnapshotBlock[]>();
-    for (const section of sections) {
-      const stack = stacks.get(section.node);
-      if (stack) stack.push(section);
-      else stacks.set(section.node, [section]);
-    }
+    const { run, stacks } = held;
 
     const nodes: PublishedNode[] = [];
     const blocks: PublishedBlock[] = [];
     let spent = 0;
     let next: PageMark | undefined;
-    for (const row of listed) {
+    for (const row of run) {
       nodes.push(publishedNode(row));
       spent += weigh(row.node);
       const stack = stacks.get(row.source) ?? [];
@@ -286,10 +275,52 @@ export class PublishedService {
         break;
       }
     }
-    if (next === undefined && window.length > NOTES_PER_PAGE) {
-      next = { of, at: listed[listed.length - 1].address };
+    if (next === undefined && window.length > run.length) {
+      next = { of, at: run[run.length - 1].address };
     }
     return { nodes, blocks, ...(next === undefined ? {} : { next }) };
+  }
+
+  /**
+   * As long a run of the window as one read of the sections covers, and those
+   * sections. A short read says nothing about which notes are whole, so the run
+   * narrows until the read is not short — a version whose notes carry many
+   * sections each serves fewer notes per page rather than one.
+   *
+   * `null` where a single note's stack runs past a read: there is nothing
+   * narrower to ask for, and {@link oneNote} pages inside it.
+   */
+  private async whole(
+    did: DidSyr,
+    version: OwnedRef,
+    window: readonly SnapshotNode[],
+  ): Promise<{
+    run: SnapshotNode[];
+    stacks: Map<OwnedRef, SnapshotBlock[]>;
+  } | null> {
+    for (
+      let width = window.length;
+      ;
+      width = Math.max(1, Math.floor(width / 4))
+    ) {
+      const run = window.slice(0, width);
+      const sections = await this.publications.blocksOf(
+        did,
+        version,
+        run.map((row) => row.source),
+        SECTIONS_PER_PAGE + 1,
+      );
+      if (sections.length <= SECTIONS_PER_PAGE) {
+        const stacks = new Map<OwnedRef, SnapshotBlock[]>();
+        for (const section of sections) {
+          const stack = stacks.get(section.node);
+          if (stack) stack.push(section);
+          else stacks.set(section.node, [section]);
+        }
+        return { run, stacks };
+      }
+      if (width === 1) return null;
+    }
   }
 
   /** One note's stack, read in its own order — for a note whose sections do not
