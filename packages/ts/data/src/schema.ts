@@ -18,7 +18,10 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS block SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
-  DEFINE TABLE IF NOT EXISTS published_picture SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS publication_version SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS snapshot_node SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS snapshot_block SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS snapshot_asset SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pull SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pull_member SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pulled_node SCHEMALESS;
@@ -30,7 +33,10 @@ export const SCHEMA = `
   DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON publication TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS created_by ON published_picture TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON publication_version TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON snapshot_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON snapshot_asset TYPE string READONLY;
   -- On a held copy the owner is the READER, never the author: they are the one
   -- the purge has to reach. docs/ARCHITECTURE.md § "Federating the graph".
   DEFINE FIELD IF NOT EXISTS created_by ON pull TYPE string READONLY;
@@ -52,16 +58,39 @@ export const SCHEMA = `
   DEFINE FIELD IF NOT EXISTS pull ON pull_member TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source ON pull_member TYPE string READONLY;
 
-  -- The two halves of a published picture, immutable: a copy that pointed at a
+  -- What a publication is of, and which version each copy belongs to. All
+  -- immutable: a publication that changed its root, or a copy that changed its
+  -- version, would silently become a snapshot of something else — and a peer is
+  -- reading it.
+  DEFINE FIELD IF NOT EXISTS root ON publication TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS root_address ON publication TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS publication ON publication_version TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS sequence ON publication_version TYPE int ASSERT $value > 0 READONLY;
+  DEFINE FIELD IF NOT EXISTS version ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS address ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS version ON snapshot_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source ON snapshot_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS node ON snapshot_block TYPE string READONLY;
+
+  -- The two halves of a copied asset, immutable: a copy that pointed at a
   -- different original would take the wrong bytes public, and one whose public
   -- half changed would strand the address a peer already holds.
-  DEFINE FIELD IF NOT EXISTS source_upload ON published_picture TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS public_upload ON published_picture TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS publication ON snapshot_asset TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source_upload ON snapshot_asset TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS public_upload ON snapshot_asset TYPE string READONLY;
+
+  -- Which publication a held copy is of. Immutable for the reason a held note's
+  -- source is: a row that changed it would be a copy of something else.
+  DEFINE FIELD IF NOT EXISTS publication ON pull TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS created_at ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS created_at ON published_picture TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON publication_version TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON snapshot_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON snapshot_asset TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pull TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pull_member TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_node TYPE string READONLY;
@@ -70,7 +99,10 @@ export const SCHEMA = `
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON block TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON publication TYPE string;
-  DEFINE FIELD IF NOT EXISTS updated_at ON published_picture TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON publication_version TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON snapshot_node TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON snapshot_block TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON snapshot_asset TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pull TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pull_member TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_node TYPE string;
@@ -111,17 +143,43 @@ export const SCHEMA = `
   -- same silent way, which is why created_by does not lead here.
   DEFINE INDEX IF NOT EXISTS node_tags ON node FIELDS tags;
 
-  -- One live publication per subtree root. Unpublishing deletes the row, so
-  -- republishing does not collide with a revoked one.
+  -- One publication per subtree root. Publishing that root again writes another
+  -- version of this one rather than a second chain beside it.
   DEFINE INDEX IF NOT EXISTS publication_owner_root ON publication FIELDS created_by, root UNIQUE;
 
-  -- One public copy per picture, so a second publish reuses the first copy
-  -- rather than sending the same bytes public again under a new address.
-  DEFINE INDEX IF NOT EXISTS published_picture_owner_source ON published_picture FIELDS created_by, source_upload UNIQUE;
+  -- A publication's chain, in order, and one number per version: two published
+  -- in the same moment cannot share a place in the history.
+  DEFINE INDEX IF NOT EXISTS publication_version_owner_publication_sequence ON publication_version FIELDS created_by, publication, sequence UNIQUE;
 
-  -- One held copy of a region per reader, so pulling again refreshes the copy
-  -- rather than growing a second one beside it.
-  DEFINE INDEX IF NOT EXISTS pull_owner_source_root ON pull FIELDS created_by, source_did, root_address UNIQUE;
+  -- The address protocol inside one version: one note per address, which is
+  -- also the order a version is served and paged in, parents before children.
+  DEFINE INDEX IF NOT EXISTS snapshot_node_owner_version_address ON snapshot_node FIELDS created_by, version, address UNIQUE;
+  -- One copy of a note per version, and the seek a difference between two
+  -- versions makes over and over.
+  DEFINE INDEX IF NOT EXISTS snapshot_node_owner_version_source ON snapshot_node FIELDS created_by, version, source UNIQUE;
+  -- Every version carrying one note, which is what a note's published mark is
+  -- maintained from when a publication goes. Read it PINNED —
+  -- FROM snapshot_node WITH INDEX snapshot_node_owner_source — because an
+  -- ORDER BY over the versions sends the planner to the index above, which
+  -- matches the ordering and then filters across everything its owner has ever
+  -- published. Wrong only in cost, unlike node_tags, and the cost grows with
+  -- the graph.
+  DEFINE INDEX IF NOT EXISTS snapshot_node_owner_source ON snapshot_node FIELDS created_by, source;
+
+  -- A note's stack inside one version, already in order. The leading pair also
+  -- reaches everything a version takes with it when it goes.
+  DEFINE INDEX IF NOT EXISTS snapshot_block_owner_version_node_ord ON snapshot_block FIELDS created_by, version, node, ord;
+  DEFINE INDEX IF NOT EXISTS snapshot_block_owner_version_source ON snapshot_block FIELDS created_by, version, source UNIQUE;
+
+  -- One copy per asset per publication, so a second version citing the same
+  -- picture reuses the copy rather than sending the same bytes public again
+  -- under a new address. The leading pair is also the cascade when the
+  -- publication is deleted.
+  DEFINE INDEX IF NOT EXISTS snapshot_asset_owner_publication_source ON snapshot_asset FIELDS created_by, publication, source_upload UNIQUE;
+
+  -- One held copy of a publication per reader, so pulling again refreshes the
+  -- copy rather than growing a second one beside it.
+  DEFINE INDEX IF NOT EXISTS pull_owner_publication ON pull FIELDS created_by, publication UNIQUE;
 
   -- What the reader holds of ONE author, sliced the way node_owner_origin_depth
   -- slices their own graph: the leading pair reads it, a trailing

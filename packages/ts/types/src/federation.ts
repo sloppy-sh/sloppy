@@ -11,11 +11,15 @@
 import { z } from "zod";
 import { addressDepth, AddressSchema } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
-import { PageCursorSchema } from "./publication.js";
 import { DidSyrSchema, OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import { NodeDepthMismatchError } from "./node.js";
-import { PublishedNodeSchema } from "./publication.js";
+import {
+  CommentAccessSchema,
+  PageCursorSchema,
+  PublishedNodeSchema,
+  PublishedVersionSchema,
+} from "./published.js";
 
 /**
  * Somebody the reader follows. `provider_url` is where their identity store
@@ -106,18 +110,50 @@ export const PeerPublicationsQuerySchema = z.object({
 });
 export type PeerPublicationsQuery = z.input<typeof PeerPublicationsQuerySchema>;
 
+/** What `GET /peers/versions` binds: one publication's chain, from wherever it
+ *  is served. */
+export const PeerVersionsQuerySchema = z.object({
+  publication: OwnedRefSchema,
+  source_url: PeerOriginSchema.optional(),
+  cursor: PageCursorSchema.optional(),
+});
+export type PeerVersionsQuery = z.input<typeof PeerVersionsQuerySchema>;
+
+/** What `GET /peers/changes` binds: what one publication's writing did between
+ *  two of its versions. */
+export const PeerChangesQuerySchema = z.object({
+  publication: OwnedRefSchema,
+  from: OwnedRefSchema,
+  to: OwnedRefSchema,
+  source_url: PeerOriginSchema.optional(),
+  cursor: PageCursorSchema.optional(),
+});
+export type PeerChangesQuery = z.input<typeof PeerChangesQuerySchema>;
+
 /**
  * A region of somebody else's graph the reader holds a copy of. One row per
- * reader, author and root address — pulling again refreshes this row rather
- * than writing a second, and `updated_at` is when that last happened.
+ * reader and publication — pulling again refreshes this row rather than writing
+ * a second, and `updated_at` is when that last happened.
+ *
+ * It is keyed by the publication rather than by the address the reader typed,
+ * because an address is a label within somebody's graph and the ref is what
+ * identifies the thing being read.
  *
  * `created_by` is the READER. They are the one whose purge has to reach the
- * copy, and the author is `source_did`.
+ * copy; the author is the publication's own half of the ref.
  */
 export const PullSchema = OwnedEntitySchema.extend({
-  source_did: DidSyrSchema,
-  /** The address the reader cited to find it. */
+  /** The publication, as its author's instance names it. */
+  publication: OwnedRefSchema,
+  /** Which snapshot this copy is of, so a reader is never told a copy is
+   *  current when a newer version has been published. */
+  version: PublishedVersionSchema,
+  /** The address the author gave the region, as the answer carried it — the
+   *  label a reader cites, not what the copy is found by. */
   root_address: AddressSchema,
+  /** Who the author invites to answer what is in it, as it stood when the copy
+   *  was last refreshed. */
+  comments: CommentAccessSchema,
   /**
    * The instance that served it, and the one a refresh asks again. A DID does
    * not answer this: syr's identity manifest names an identity's own store and
@@ -129,8 +165,10 @@ export const PullSchema = OwnedEntitySchema.extend({
 export type Pull = z.infer<typeof PullSchema>;
 
 export const CreatePullRequestSchema = z.object({
-  did: DidSyrSchema,
-  root_address: AddressSchema,
+  publication: OwnedRefSchema,
+  /** Which snapshot to take. Absent takes the newest, which is what following
+   *  somebody's writing means. */
+  version: OwnedRefSchema.optional(),
   /** Where to ask. Absent means this instance, which is the whole of it when
    *  the author keeps their graph here. */
   source_url: PeerOriginSchema.optional(),

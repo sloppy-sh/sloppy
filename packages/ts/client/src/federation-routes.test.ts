@@ -5,6 +5,15 @@ import { SloppyClient } from "./index.js";
 const AUTHOR = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 const COMMENT = `${AUTHOR}:01JCOMMENT0000000000000000`;
 const PEER = "https://peer.example";
+const PUBLICATION = `${AUTHOR}/01JPB000000000000000000000`;
+const VERSION = `${AUTHOR}/01JPB00000000000000000000B`;
+const EARLIER = `${AUTHOR}/01JPB00000000000000000000A`;
+
+const version = {
+  ref: VERSION,
+  sequence: 2,
+  published_at: "2026-02-01T00:00:00.000Z",
+};
 
 afterEach(() => setHost(""));
 
@@ -36,11 +45,12 @@ function serving(body: unknown) {
 describe("what an identity publishes", () => {
   const index = {
     did: AUTHOR,
-    roots: [
+    publications: [
       {
+        ref: PUBLICATION,
         root_address: "1",
         title: "A branch",
-        updated_at: "2026-01-01T00:00:00.000Z",
+        latest: version,
       },
     ],
   };
@@ -50,7 +60,7 @@ describe("what an identity publishes", () => {
 
     const page = await client.publishedBy(AUTHOR);
 
-    expect(page.roots.map((root) => root.root_address)).toEqual(["1"]);
+    expect(page.publications.map((p) => p.ref)).toEqual([PUBLICATION]);
     expect(asked[0].url).toBe(
       `/api/peers/publications?did=${encodeURIComponent(AUTHOR)}`,
     );
@@ -85,28 +95,84 @@ describe("what an identity publishes", () => {
   });
 });
 
+describe("a publication's history", () => {
+  const chain = { publication: PUBLICATION, versions: [version] };
+
+  it("is asked for by the publication, wherever it is served", async () => {
+    const { asked, client } = serving(chain);
+
+    const page = await client.publishedVersions(PUBLICATION, {
+      sourceUrl: PEER,
+    });
+
+    expect(page.versions).toHaveLength(1);
+    expect(asked[0].url).toContain(
+      `publication=${encodeURIComponent(PUBLICATION)}`,
+    );
+    expect(asked[0].url).toContain(`source_url=${encodeURIComponent(PEER)}`);
+  });
+
+  it("is refused when the answer is another publication's", async () => {
+    const { client } = serving({
+      ...chain,
+      publication: `${AUTHOR}/01JPB00000000000000000ZZ`,
+    });
+
+    await expect(client.publishedVersions(PUBLICATION)).rejects.toThrow();
+  });
+});
+
+describe("what changed between two versions", () => {
+  const difference = {
+    publication: PUBLICATION,
+    root_address: "1",
+    from: EARLIER,
+    to: VERSION,
+    changes: [],
+  };
+
+  it("names both versions, so the answer can be held to the question", async () => {
+    const { asked, client } = serving(difference);
+
+    await client.publishedChanges(PUBLICATION, EARLIER, VERSION);
+
+    expect(asked[0].url).toContain(`from=${encodeURIComponent(EARLIER)}`);
+    expect(asked[0].url).toContain(`to=${encodeURIComponent(VERSION)}`);
+  });
+
+  it("is refused when the answer compares another pair", async () => {
+    const { client } = serving({ ...difference, from: VERSION });
+
+    await expect(
+      client.publishedChanges(PUBLICATION, EARLIER, VERSION),
+    ).rejects.toThrow();
+  });
+});
+
 describe("taking a region", () => {
   const pull = {
     ref: `${AUTHOR}/01JPEER0000000000000000000`,
     created_by: AUTHOR,
-    source_did: AUTHOR,
+    publication: PUBLICATION,
+    version,
     root_address: "1a",
+    comments: "anyone",
     source_url: PEER,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
   };
 
-  it("carries where the subtree is served, so a refresh can ask again", async () => {
+  it("carries where the publication is served, so a refresh can ask again", async () => {
     const { asked, client } = serving(pull);
 
-    const region = await client.pullSubtree(AUTHOR, "1a", PEER);
+    const region = await client.pullSubtree(PUBLICATION, { sourceUrl: PEER });
 
     expect(JSON.parse(asked[0].body ?? "{}")).toEqual({
-      did: AUTHOR,
-      root_address: "1a",
+      publication: PUBLICATION,
       source_url: PEER,
     });
     expect(region.source_url).toBe(PEER);
+    expect(region.version.sequence).toBe(2);
   });
 
   it("leaves it out for an author who keeps their graph here", async () => {
@@ -115,11 +181,21 @@ describe("taking a region", () => {
       source_url: "https://sloppy.test",
     });
 
-    await client.pullSubtree(AUTHOR, "1a");
+    await client.pullSubtree(PUBLICATION);
 
     expect(JSON.parse(asked[0].body ?? "{}")).toEqual({
-      did: AUTHOR,
-      root_address: "1a",
+      publication: PUBLICATION,
+    });
+  });
+
+  it("names a version where the reader wants one rather than the newest", async () => {
+    const { asked, client } = serving(pull);
+
+    await client.pullSubtree(PUBLICATION, { version: EARLIER });
+
+    expect(JSON.parse(asked[0].body ?? "{}")).toEqual({
+      publication: PUBLICATION,
+      version: EARLIER,
     });
   });
 });
@@ -146,7 +222,7 @@ describe("a comment somebody wrote", () => {
 
 describe("what a caller may aim this instance at", () => {
   it("is an instance and not an address, and is refused before the send", async () => {
-    const { asked, client } = serving({ did: AUTHOR, roots: [] });
+    const { asked, client } = serving({ did: AUTHOR, publications: [] });
 
     for (const aimed of [
       "http://127.0.0.1:8010/rpc",
@@ -157,7 +233,12 @@ describe("what a caller may aim this instance at", () => {
       await expect(
         client.publishedBy(AUTHOR, { sourceUrl: aimed }),
       ).rejects.toThrow();
-      await expect(client.pullSubtree(AUTHOR, "1a", aimed)).rejects.toThrow();
+      await expect(
+        client.pullSubtree(PUBLICATION, { sourceUrl: aimed }),
+      ).rejects.toThrow();
+      await expect(
+        client.publishedVersions(PUBLICATION, { sourceUrl: aimed }),
+      ).rejects.toThrow();
     }
     expect(asked).toHaveLength(0);
   });
@@ -181,32 +262,30 @@ describe("what a peer answered with", () => {
     };
   }
 
-  it("is refused when it is not the subtree that was asked for", async () => {
-    const { client } = serving({
-      did: `${AUTHOR}x`,
+  function page(over: Record<string, unknown>) {
+    return {
+      publication: PUBLICATION,
+      version,
       root_address: "1a",
+      comments: "anyone",
       nodes: [],
       blocks: [],
-    });
+      ...over,
+    };
+  }
 
-    await expect(client.readPublishedSubtree(AUTHOR, "1a")).rejects.toThrow();
+  it("is refused when it is not the publication that was asked for", async () => {
+    const { client } = serving(
+      page({ publication: `${AUTHOR}/01JPB00000000000000000ZZ` }),
+    );
+
+    await expect(client.readPublishedSubtree(PUBLICATION)).rejects.toThrow();
   });
 
   it("is followed to the end where it does not fit in one answer", async () => {
     const pages = [
-      {
-        did: AUTHOR,
-        root_address: "1a",
-        nodes: [note(NOTE, "1a")],
-        blocks: [],
-        next_cursor: "past-1a",
-      },
-      {
-        did: AUTHOR,
-        root_address: "1a",
-        nodes: [note(BELOW, "1a1", NOTE)],
-        blocks: [],
-      },
+      page({ nodes: [note(NOTE, "1a")], next_cursor: "past-1a" }),
+      page({ nodes: [note(BELOW, "1a1", NOTE)] }),
     ];
     const asked: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
@@ -218,10 +297,19 @@ describe("what a peer answered with", () => {
     }) as unknown as typeof fetch;
     const client = new SloppyClient({ token: "a-session", fetch: fetchImpl });
 
-    const subtree = await client.readPublishedSubtree(AUTHOR, "1a");
+    const region = await client.readPublishedSubtree(PUBLICATION);
 
-    expect(subtree?.nodes.map((n) => n.address)).toEqual(["1a", "1a1"]);
+    expect(region?.nodes.map((n) => n.address)).toEqual(["1a", "1a1"]);
+    expect(region?.version.ref).toBe(VERSION);
     expect(asked[1]).toContain("cursor=past-1a");
+  });
+
+  it("is asked for one version where the reader named one", async () => {
+    const { asked, client } = serving(page({ nodes: [note(NOTE, "1a")] }));
+
+    await client.readPublishedSubtree(PUBLICATION, VERSION);
+
+    expect(asked[0].url).toContain(`version=${encodeURIComponent(VERSION)}`);
   });
 
   it("is nothing at all where nothing is published there", async () => {
@@ -230,6 +318,6 @@ describe("what a peer answered with", () => {
     ) as unknown as typeof fetch;
     const client = new SloppyClient({ token: "a-session", fetch: fetchImpl });
 
-    await expect(client.readPublishedSubtree(AUTHOR, "1a")).resolves.toBeNull();
+    await expect(client.readPublishedSubtree(PUBLICATION)).resolves.toBeNull();
   });
 });

@@ -74,13 +74,23 @@ function avaId(table: string, localId: string): RecordId {
 
 const REGION = "01JPEERREGN000000000000000";
 const OTHER_REGION = "01JPEERREGN200000000000000";
+const PUBLICATION = OwnedRefSchema.parse(`${BOB}/01JPEERPBCA000000000000000`);
+const OTHER_PUBLICATION = OwnedRefSchema.parse(
+  `${BOB}/01JPEERPBCB000000000000000`,
+);
 
-function pullRow(localId: string, rootAddress: string) {
+function pullRow(localId: string, publication: string, rootAddress: string) {
   return {
     id: avaId("pull", localId),
     created_by: AVA,
-    source_did: BOB,
+    publication,
+    version: {
+      ref: OwnedRefSchema.parse(`${BOB}/01JPEERVRSN000000000000000`),
+      sequence: 1,
+      published_at: "2026-01-01T00:00:00.000Z",
+    },
     root_address: rootAddress,
+    comments: "anyone",
     source_url: "https://peer.example",
     created_at: "2026-02-01T00:00:00.000Z",
     updated_at: "2026-02-01T00:00:00.000Z",
@@ -360,18 +370,24 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     ]);
   });
 
-  it("refuses a second copy of a region the reader already holds", async () => {
+  it("refuses a second copy of a publication the reader already holds", async () => {
     // Pulling again refreshes this row, so the uniqueness is what stops a
-    // reader ending up with two copies of one subtree that drift apart.
-    const first = pullRow(REGION, "1");
+    // reader ending up with two copies of one region that drift apart. It keys
+    // on the publication rather than on the address, because an address is a
+    // label inside somebody's graph and the ref is what identifies the thing
+    // being read.
+    const first = pullRow(REGION, PUBLICATION, "1");
     await db.create(first.id).content(first);
 
-    const again = pullRow("01JPEERREGN300000000000000", "1");
+    const again = pullRow("01JPEERREGN300000000000000", PUBLICATION, "1");
     await expect(db.create(again.id).content(again)).rejects.toThrow();
 
-    // Another root of the same author's is an ordinary second region.
-    const other = pullRow(OTHER_REGION, "2");
+    const other = pullRow(OTHER_REGION, OTHER_PUBLICATION, "2");
     await expect(db.create(other.id).content(other)).resolves.toBeDefined();
+
+    await expect(
+      db.update(first.id).merge({ publication: OTHER_PUBLICATION }),
+    ).rejects.toThrow();
   });
 
   it("reads what it holds of one author, bounded by depth, from its index", async () => {
@@ -428,12 +444,20 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     // "I read a branch, now I want the trail it came from": a region at `1`
     // arriving on top of one at `1a`. The rows they share are refreshed, and
     // the second copy the reader must never end up with is refused.
-    const inner = pullRow("01JPEERREGN400000000000000", "3a");
+    const inner = pullRow(
+      "01JPEERREGN400000000000000",
+      `${BOB}/01JPEERPBCC000000000000000`,
+      "3a",
+    );
     await db.create(inner.id).content(inner);
     const held = heldNodeRow("01JPEERSHARE00000000000000", "3a", 2);
     await db.create(held.id).content(held);
 
-    const outer = pullRow("01JPEERREGN500000000000000", "3");
+    const outer = pullRow(
+      "01JPEERREGN500000000000000",
+      `${BOB}/01JPEERPBCD000000000000000`,
+      "3",
+    );
     await expect(db.create(outer.id).content(outer)).resolves.toBeDefined();
 
     const second = {
@@ -564,12 +588,122 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     }
   });
 
-  it("mints one public copy of a picture, and holds both halves still", async () => {
-    // Publishing copies the bytes rather than widening the original, so this
-    // row is what stops a second publish minting a second copy.
-    const row = {
-      id: avaId("published_picture", "01JPXRA0000000000000000000"),
+  it("numbers a publication's versions once each", async () => {
+    const chain = `${AVA}/01JPXPUB0000000000000000AA`;
+    const version = (localId: string, sequence: number) => ({
+      id: avaId("publication_version", localId),
       created_by: AVA,
+      publication: chain,
+      sequence,
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    });
+
+    const first = version("01JPXVERA000000000000000AA", 1);
+    await db.create(first.id).content(first);
+    const second = version("01JPXVERB000000000000000AA", 2);
+    await db.create(second.id).content(second);
+
+    // Two publishes in one moment would otherwise share a place in the history
+    // a reader cites versions by.
+    const collision = version("01JPXVERC000000000000000AA", 2);
+    await expect(db.create(collision.id).content(collision)).rejects.toThrow();
+
+    // A version is what a peer is reading, so it cannot be moved to another
+    // chain or renumbered underneath them.
+    for (const reassignment of [{ publication: `${AVA}/x` }, { sequence: 9 }]) {
+      await expect(db.update(first.id).merge(reassignment)).rejects.toThrow();
+    }
+  });
+
+  it("holds one copy of a note per version, and the same note in two", async () => {
+    // A version is a snapshot: the note is copied into each one, so the address
+    // protocol holds inside a version and says nothing across two.
+    const version = (n: number) => `${AVA}/01JPXVER${n}00000000000000AA`;
+    const note = `${AVA}/01JPXNOTE000000000000000AA`;
+    const copy = (
+      localId: string,
+      at: string,
+      address: string,
+      source = note,
+    ) => ({
+      id: avaId("snapshot_node", localId),
+      created_by: AVA,
+      version: at,
+      source,
+      address,
+      node: {
+        address,
+        origin: note,
+        title: "As it stood",
+        tags: [],
+        links: [],
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      },
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    });
+
+    const inFirst = copy("01JPXSNAPA00000000000000AA", version(1), "1a");
+    await db.create(inFirst.id).content(inFirst);
+    const inSecond = copy("01JPXSNAPB00000000000000AA", version(2), "1a");
+    await expect(
+      db.create(inSecond.id).content(inSecond),
+    ).resolves.toBeDefined();
+
+    const twice = copy(
+      "01JPXSNAPC00000000000000AA",
+      version(1),
+      "1a",
+      `${AVA}/other`,
+    );
+    await expect(db.create(twice.id).content(twice)).rejects.toThrow();
+
+    const again = copy("01JPXSNAPD00000000000000AA", version(1), "1b");
+    await expect(db.create(again.id).content(again)).rejects.toThrow();
+
+    // Every version carrying one note, which is what `node.published` is
+    // maintained from when a publication goes.
+    const CARRYING = `SELECT version FROM snapshot_node
+       WITH INDEX snapshot_node_owner_source
+       WHERE created_by = $did AND source = $source ORDER BY version`;
+    const bound = { did: AVA, source: note };
+    const [plan] = await db.query(`${CARRYING} EXPLAIN;`, bound);
+    expect(JSON.stringify(plan)).toContain(
+      '"index":"snapshot_node_owner_source"',
+    );
+    const [carrying] = await db.query<[{ version: string }[]]>(
+      `${CARRYING};`,
+      bound,
+    );
+    expect(carrying.map((row) => row.version)).toEqual([
+      version(1),
+      version(2),
+    ]);
+
+    // How a version is served: in address order, which is parents before
+    // children, and resumable from wherever the last page stopped.
+    const PAGE = `SELECT address FROM snapshot_node
+       WHERE created_by = $did AND version = $version AND address > $after
+       ORDER BY address LIMIT 1`;
+    const paging = { did: AVA, version: version(1), after: "" };
+    const [paged] = await db.query(`${PAGE} EXPLAIN;`, paging);
+    expect(JSON.stringify(paged)).toContain(
+      '"index":"snapshot_node_owner_version_address"',
+    );
+    const [page] = await db.query<[{ address: string }[]]>(`${PAGE};`, paging);
+    expect(page.map((row) => row.address)).toEqual(["1a"]);
+  });
+
+  it("mints one public copy of an asset per publication, and holds both halves still", async () => {
+    // A published section cites the copy, so this row is what stops a second
+    // version sending the same bytes public again under a new address — and
+    // what the copy is deleted with is the publication, not one version.
+    const row = {
+      id: avaId("snapshot_asset", "01JPXRA0000000000000000000"),
+      created_by: AVA,
+      publication: `${AVA}/01JPXPUB0000000000000000AA`,
       source_upload: `${AVA}/01JPXA00000000000000000000`,
       public_upload: `${AVA}/01JPXB00000000000000000000`,
       created_at: "2026-02-01T00:00:00.000Z",
@@ -579,12 +713,13 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
 
     const again = {
       ...row,
-      id: avaId("published_picture", "01JPXRB0000000000000000000"),
+      id: avaId("snapshot_asset", "01JPXRB0000000000000000000"),
       public_upload: `${AVA}/01JPXC00000000000000000000`,
     };
     await expect(db.create(again.id).content(again)).rejects.toThrow();
 
     for (const reassignment of [
+      { publication: `${AVA}/01JPXPUB0000000000000000AB` },
       { source_upload: `${AVA}/01JPXD00000000000000000000` },
       { public_upload: `${AVA}/01JPXE00000000000000000000` },
     ]) {
@@ -610,7 +745,9 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
       "pull_member",
       "pulled_node",
       "pulled_block",
-      "published_picture",
+      "publication_version",
+      "snapshot_node",
+      "snapshot_asset",
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }

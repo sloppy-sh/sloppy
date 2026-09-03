@@ -10,6 +10,7 @@ export * from "./appearance.js";
 export * from "./node.js";
 export * from "./document.js";
 export * from "./block.js";
+export * from "./published.js";
 export * from "./publication.js";
 export * from "./federation.js";
 export * from "./media.js";

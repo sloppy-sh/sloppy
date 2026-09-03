@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BlockSchema } from "./block.js";
-import { BlockDocumentSchema, MAX_DOCUMENT_NESTING } from "./document.js";
+import {
+  BlockDocumentSchema,
+  citedUploads,
+  MAX_DOCUMENT_NESTING,
+} from "./document.js";
 
 /**
  * A document nesting exactly `levels` deep, counted the way the bound counts:
@@ -143,5 +147,56 @@ describe("the document a block stores", () => {
     const empty = BlockSchema.shape.content.parse(undefined);
     expect(empty).toEqual({ type: "doc", content: [] });
     expect(BlockSchema.shape.content.parse(undefined)).not.toBe(empty);
+  });
+});
+
+describe("the assets a section cites", () => {
+  const AVA = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
+  const cite = (content: unknown[]) =>
+    citedUploads(BlockDocumentSchema.parse({ type: "doc", content }));
+
+  it("are the uploads its elements name", () => {
+    expect(
+      cite([
+        { type: "picture", attrs: { upload_id: `${AVA}/01PIC`, width: 40 } },
+        {
+          type: "ink",
+          attrs: {
+            strokes: [],
+            width: 4,
+            height: 4,
+            raster_upload_id: `${AVA}/01INK`,
+          },
+        },
+      ]).sort(),
+    ).toEqual([`${AVA}/01INK`, `${AVA}/01PIC`]);
+  });
+
+  it("are found inside an element kind nothing here has a renderer for", () => {
+    // Publishing has to copy what a peer will read, and a kind this build
+    // cannot draw is carried untouched — so its pictures travel with it.
+    expect(
+      cite([
+        {
+          type: "diagram-from-a-later-build",
+          attrs: { panels: [{ upload_id: `${AVA}/01FUTURE` }] },
+        },
+      ]),
+    ).toEqual([`${AVA}/01FUTURE`]);
+  });
+
+  it("name one upload once however many elements draw it", () => {
+    const twice = { type: "picture", attrs: { upload_id: `${AVA}/01PIC` } };
+    expect(cite([twice, twice])).toEqual([`${AVA}/01PIC`]);
+  });
+
+  it("are nothing where a citation is empty or is not one", () => {
+    expect(
+      cite([
+        { type: "picture", attrs: { upload_id: "" } },
+        { type: "picture", attrs: { upload_id: null } },
+        { type: "paragraph", content: [{ type: "text", text: "upload_id" }] },
+      ]),
+    ).toEqual([]);
   });
 });

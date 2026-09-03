@@ -91,3 +91,36 @@ export type BlockDocument = z.infer<typeof BlockDocumentSchema>;
 export function emptyDocument(): BlockDocument {
   return { type: "doc", content: [] };
 }
+
+/** `upload_id`, or anything ending `_upload_id`. */
+const CITES_UPLOAD = /^(?:.*_)?upload_id$/;
+
+/**
+ * Every upload a section's document cites, in the order it cites them and
+ * without repeats — which is what publishing has to copy, and what a published
+ * section may cite nothing outside of.
+ *
+ * An `attrs` key named `upload_id`, or ending `_upload_id`, names an upload in
+ * the author's store: a picture's, a drawing's raster. That is a convention
+ * across elements rather than a list of them, so an element kind this build has
+ * no renderer for is walked like any other and its pictures travel with it —
+ * AI.md § "A Block Is a Section" is why storage does not enumerate the kinds.
+ * docs/ARCHITECTURE.md § "Pictures".
+ */
+export function citedUploads(content: BlockDocument): string[] {
+  const cited = new Set<string>();
+  // Depth is what `MAX_DOCUMENT_NESTING` already bounds, so the walk is written
+  // the way the document is shaped.
+  const walk = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return;
+    for (const [key, held] of Object.entries(value)) {
+      if (CITES_UPLOAD.test(key) && typeof held === "string" && held) {
+        cited.add(held);
+      } else {
+        walk(held);
+      }
+    }
+  };
+  walk(content.content);
+  return [...cited];
+}

@@ -1,42 +1,45 @@
-// Publishing a subtree, and the shape a peer pulls it back in.
+// Publishing a subtree: the rows behind what a peer reads.
 //
-// Federation is pull-only, so this is a read contract rather than a delivery
-// one: a publication row says a subtree may be read, and a peer that follows
-// the DID fetches it whenever it likes. See docs/ARCHITECTURE.md § "Federating
-// the graph".
+// A publication is a SNAPSHOT and not a window. Publishing copies the notes,
+// their sections and every asset those sections cite into a version of its own,
+// and publishing again writes another version beside it — so nothing the author
+// does to a note, a picture or an emoji afterwards changes or breaks what a peer
+// is already reading. `published.ts` is the shape those copies cross the wire
+// in; docs/ARCHITECTURE.md § "Federating the graph" is the doc of record.
 
 import { z } from "zod";
-import {
-  type Address,
-  AddressSchema,
-  isInSubtree,
-  parentAddress,
-} from "./address.js";
+import { AddressSchema } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
+import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import {
-  type DidSyr,
-  DidSyrSchema,
-  OwnedEntitySchema,
-  type OwnedRef,
-  OwnedRefSchema,
-  TimestampSchema,
-} from "./common.js";
-import { TagsSchema } from "./tag.js";
+  CommentAccessSchema,
+  DEFAULT_COMMENT_ACCESS,
+  PublishedNodeSchema,
+} from "./published.js";
 
 /**
- * A subtree its author has made readable. The row existing is what makes it
- * readable, so unpublishing deletes the row — and a peer who already pulled the
- * subtree keeps their copy, which is a fact the product states plainly rather
- * than a gap.
+ * A subtree its author has made readable, and the chain of versions they have
+ * published of it. Deleting this row takes every version with it, and what a
+ * peer who already pulled one keeps is the writing — facts the product states
+ * plainly rather than gaps.
+ *
+ * `root_address` is carried rather than looked up by: it is the label a person
+ * cites, and what identifies the publication is its own ref.
  */
 export const PublicationSchema = OwnedEntitySchema.extend({
   root: OwnedRefSchema,
-  /** The address a peer cites, denormalized so a public read needs no join. */
+  /** The address the root note sits at, so a listing needs no join. */
   root_address: AddressSchema,
+  comments: CommentAccessSchema.default(DEFAULT_COMMENT_ACCESS),
 });
 export type Publication = z.infer<typeof PublicationSchema>;
 
+/**
+ * Publish a subtree. A note that already has a publication gets another version
+ * of it rather than a second publication, so this is the whole of the act
+ * either way.
+ */
 export const CreatePublicationRequestSchema = z.object({
   root: OwnedRefSchema,
 });
@@ -44,347 +47,106 @@ export type CreatePublicationRequest = z.input<
   typeof CreatePublicationRequestSchema
 >;
 
-/**
- * The public duplicate of a picture inside a published note, and the row that
- * remembers which picture it is a copy of. Publishing copies the bytes rather
- * than widening the original, so the same picture in a note nobody published
- * stays private; docs/ARCHITECTURE.md § "Pictures" carries the ruling.
- *
- * `created_by` is the AUTHOR: both uploads are theirs, and the copy is theirs
- * to delete.
- */
-export const PublishedPictureSchema = OwnedEntitySchema.extend({
-  /** The picture as the author's own note cites it. Private, and stays so. */
-  source_upload: z.string().min(1),
-  /** The copy a peer reads, and the one a published note cites. */
-  public_upload: z.string().min(1),
+/** Change who is invited to comment. It publishes nothing: the terms of a
+ *  conversation are not a version of the writing. */
+export const UpdatePublicationRequestSchema = z.object({
+  comments: CommentAccessSchema,
 });
-export type PublishedPicture = z.infer<typeof PublishedPictureSchema>;
+export type UpdatePublicationRequest = z.input<
+  typeof UpdatePublicationRequestSchema
+>;
 
 /**
- * How much of somebody else's graph ONE ANSWER may carry, and how many answers
- * a reader takes before it stops asking.
+ * One version of a publication: everything below carries this ref, and deleting
+ * it takes them with it. A version is written once and never edited — that is
+ * what a peer is holding — so `created_at` is the moment it was made.
  *
- * A pull is an OUTBOUND fetch, so nothing about the reader's own request bounds
- * it: what arrives is whatever the author's instance chose to send, and the
- * reader's instance parses all of it and writes a row per node and per block. A
- * page past one of these is refused whole; a subtree longer than a page carries
- * a cursor instead, so what bounds a region is the product of the two rather
- * than a size a graph can outgrow.
- *
- * The counts bound a page that has been PARSED. `MAX_PUBLISHED_PAGE_BYTES`
- * bounds the answer as it arrives, and the fetch is where it is enforced;
- * docs/ARCHITECTURE.md § "Federating the graph" says which side each is for.
+ * `sequence` counts from 1 in publishing order and is the number a person
+ * reads. It is assigned rather than derived: versions are only ever appended,
+ * so counting the ones before it would answer the same forever, and the unique
+ * index is what keeps two published in one moment from sharing a number.
  */
-export const MAX_PUBLISHED_ROOTS_PER_PAGE = 500;
-export const MAX_PUBLISHED_NODES_PER_PAGE = 2_000;
-export const MAX_PUBLISHED_BLOCKS_PER_PAGE = 10_000;
-export const MAX_PUBLISHED_PAGES = 128;
-export const MAX_PUBLISHED_PAGE_BYTES = 16 * 1024 * 1024;
-
-/**
- * Where the answer resumes. Minted by the instance that served the page and
- * handed back to it untouched — what it means is that instance's own, so
- * nothing here reads one.
- */
-export const PageCursorSchema = z.string().min(1).max(512);
-export type PageCursor = z.infer<typeof PageCursorSchema>;
-
-/**
- * One subtree an identity publishes, as an instance lists it: enough to choose
- * one and pull it, and nothing that is not already public in it.
- */
-export const PublishedRootSchema = z.object({
-  root_address: AddressSchema,
-  title: z.string().max(512),
-  /** When the author last published or republished it. */
-  updated_at: TimestampSchema,
+export const PublicationVersionSchema = OwnedEntitySchema.extend({
+  publication: OwnedRefSchema,
+  sequence: z.int().positive(),
 });
-export type PublishedRoot = z.infer<typeof PublishedRootSchema>;
+export type PublicationVersion = z.infer<typeof PublicationVersionSchema>;
 
 /**
- * One page of what an identity publishes on one instance — the answer to "I
- * follow this person, what can I read?", which a DID alone cannot give: nothing
- * in syr's identity manifest names where somebody's graph is served, so the
- * instance is asked and never derived. docs/ARCHITECTURE.md § "Federating the
- * graph".
+ * One note as a version froze it, ready to serve: what is stored is the shape a
+ * peer receives, so nothing is reshaped at read time and a signature stays over
+ * the bytes that go out.
  *
- * A page stands on its own: one entry is one region, and nothing in it refers
- * to an entry on another page.
+ * `source` is the note it was copied from and the only home for its ref, so the
+ * two cannot disagree; `address` is beside the node rather than inside it
+ * because an index cannot seek on a nested path.
  */
-export const PublishedIndexSchema = z.object({
-  did: DidSyrSchema,
-  roots: z.array(PublishedRootSchema).max(MAX_PUBLISHED_ROOTS_PER_PAGE),
-  /** Absent on the last page. */
-  next_cursor: PageCursorSchema.optional(),
-});
-export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
-
-/**
- * One node as a peer receives it. Rows travel by `<did>/<ulid>` reference
- * rather than by record id, and carry no `depth`: a reader computes it, the
- * sector, and which addresses lie under which, from the address.
- *
- * **Every reference on it names a note the caller may read**, because this
- * whole shape reaches an anonymous one. A `<did>/<ulid>` is not readable by
- * itself, but it says a note exists and when it was written; the three fields
- * below each carry the rule that keeps one out.
- */
-export const PublishedNodeSchema = z.object({
-  ref: OwnedRefSchema,
+export const SnapshotNodeSchema = OwnedEntitySchema.extend({
+  version: OwnedRefSchema,
+  /** The note as its author addresses it — the ref a peer receives. */
+  source: OwnedRefSchema,
   address: AddressSchema,
-  /** Absent on the region's own root, whose parent is outside the publication
-   *  and is not named. */
-  parent: OwnedRefSchema.optional(),
-  /**
-   * The root of the REGION, not of the author's tree: a publication rooted
-   * below depth 1 would otherwise name a note nobody published. What a peer
-   * holds is a tree rooted here, so its root is its own origin the way any root
-   * is.
-   */
-  origin: OwnedRefSchema,
-  title: z.string().max(512),
-  tags: TagsSchema,
-  /** Only targets the same author publishes. A link to a note nobody published
-   *  is dropped rather than named. */
-  links: z.array(OwnedRefSchema),
-  created_at: TimestampSchema,
-  updated_at: TimestampSchema,
-  /**
-   * Present when the author signed this node through their syr instance. A
-   * reader that cannot verify a signature still renders the node; a reader that
-   * can, and finds it wrong, must not present it as the author's.
-   */
-  content_signature: z.string().optional(),
-  signed_payload_json: z.string().optional(),
-  signing_device_public_key: z.string().optional(),
+  node: PublishedNodeSchema.omit({ ref: true }),
 });
-export type PublishedNode = z.infer<typeof PublishedNodeSchema>;
+export type SnapshotNode = z.infer<typeof SnapshotNodeSchema>;
 
 /**
- * One block as a peer receives it. A picture in `content` is cited by the
- * PUBLIC copy of its upload and never by the private original the author's own
- * note reads, so what a peer holds is an address that answers for them;
- * docs/ARCHITECTURE.md § "Pictures" is the ruling and who does the swap.
+ * Every snapshot node row crosses this, in both directions, for the reason
+ * `parseNode` exists: `address` and `source` are immutable, so a row that gets
+ * past here disagreeing with the node it carries is wrong for as long as it
+ * exists.
  */
-export const PublishedBlockSchema = z.object({
-  ref: OwnedRefSchema,
+export function parseSnapshotNode(row: unknown): SnapshotNode {
+  const snapshot = SnapshotNodeSchema.parse(row);
+  if (snapshot.address !== snapshot.node.address) {
+    throw new Error(
+      `Published note ${snapshot.source} is filed at ${snapshot.address} and addressed ${snapshot.node.address}`,
+    );
+  }
+  const { did } = splitOwnedRef(snapshot.source);
+  if (splitOwnedRef(snapshot.version).did !== did) {
+    throw new Error(
+      `Published note ${snapshot.source} sits in ${snapshot.version}, which is somebody else's version`,
+    );
+  }
+  return snapshot;
+}
+
+/**
+ * One section as a version froze it. Flat rather than nesting the published
+ * block, for the reason a held one is: every column but `content` is one an
+ * index reads, and SurrealDB will not index a nested path.
+ *
+ * `content` cites the version's own copies of whatever it draws — never the
+ * upload the author's own note reads.
+ */
+export const SnapshotBlockSchema = OwnedEntitySchema.extend({
+  version: OwnedRefSchema,
+  /** The section as its author addresses it — the ref a peer receives. */
+  source: OwnedRefSchema,
+  /** The note it belongs to, as its author addresses it. */
   node: OwnedRefSchema,
   ord: z.string().min(1),
   content: BlockDocumentSchema,
 });
-export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
+export type SnapshotBlock = z.infer<typeof SnapshotBlockSchema>;
 
-/** One answer from a peer's public endpoint. */
-export const PublishedSubtreePageSchema = z.object({
-  did: DidSyrSchema,
-  root_address: AddressSchema,
-  nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES_PER_PAGE),
-  blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS_PER_PAGE),
-  /** Absent on the last page. */
-  next_cursor: PageCursorSchema.optional(),
+/**
+ * The publication's own copy of one asset a published section cites, and the
+ * row that remembers which upload it was copied from. Both uploads are the
+ * author's, and the copy is theirs to delete.
+ *
+ * It belongs to the PUBLICATION rather than to one version, because every
+ * version stays readable: a copy the newest version stopped citing is still
+ * what the versions before it draw, and a version citing an asset an earlier
+ * one already copied reuses that copy rather than sending the same bytes public
+ * again under a second address.
+ */
+export const SnapshotAssetSchema = OwnedEntitySchema.extend({
+  publication: OwnedRefSchema,
+  /** The upload as the author's own note cites it. Private, and stays so. */
+  source_upload: z.string().min(1),
+  /** The copy a peer reads, and the one a published section cites. */
+  public_upload: z.string().min(1),
 });
-export type PublishedSubtreePage = z.infer<typeof PublishedSubtreePageSchema>;
-
-/** Every page of one subtree, assembled: what a caller holds once the last page
- *  is in. The wire carries pages, so nothing parses this. */
-export interface PublishedSubtree {
-  did: DidSyr;
-  root_address: Address;
-  nodes: PublishedNode[];
-  blocks: PublishedBlock[];
-}
-
-/** An answer from a peer that is not the answer that was asked for. */
-export class UnaskedAnswerError extends Error {
-  constructor(reason: string, cause?: unknown) {
-    super(`A peer answered with ${reason}`, { cause });
-    this.name = "UnaskedAnswerError";
-  }
-}
-
-/** One page of a peer's listing, held to the identity it was asked about. */
-export function parsePublishedIndex(
-  body: unknown,
-  did: DidSyr,
-): PublishedIndex {
-  const read = PublishedIndexSchema.safeParse(body);
-  if (!read.success) {
-    throw new UnaskedAnswerError("something that is not a listing", read.error);
-  }
-  if (read.data.did !== did) {
-    throw new UnaskedAnswerError(`about ${read.data.did}`);
-  }
-  return read.data;
-}
-
-/**
- * The same boundary over a RUN of listing pages: what a caller uses when it
- * follows `next_cursor` to the end rather than showing one page. An identity
- * publishes a region once, so a root address arrives once — and a run of pages
- * ends, the way a subtree's does.
- */
-export interface PublishedIndexReader {
-  take(body: unknown): PublishedIndex;
-}
-
-export function publishedIndexReader(asked: {
-  did: DidSyr;
-}): PublishedIndexReader {
-  const heldRoots = new Set<Address>();
-  let pages = 0;
-
-  return {
-    take(body: unknown): PublishedIndex {
-      if (pages === MAX_PUBLISHED_PAGES) {
-        throw new UnaskedAnswerError(`more than ${MAX_PUBLISHED_PAGES} pages`);
-      }
-      const page = parsePublishedIndex(body, asked.did);
-      const pageRoots = new Set<Address>();
-      for (const root of page.roots) {
-        if (
-          heldRoots.has(root.root_address) ||
-          pageRoots.has(root.root_address)
-        ) {
-          throw new UnaskedAnswerError(
-            `the region at ${root.root_address} twice`,
-          );
-        }
-        pageRoots.add(root.root_address);
-      }
-      pages += 1;
-      for (const address of pageRoots) heldRoots.add(address);
-      return page;
-    },
-  };
-}
-
-/**
- * Reads one peer's subtree, holding every page to what was asked for and to the
- * pages already taken: a note's parent may have arrived on an earlier one, and
- * a note may not claim an address another already has, on this page or any
- * before it — the same rule `node_owner_address UNIQUE` holds our own rows to,
- * on rows a peer handed us. A note hangs off the note at its own parent
- * address, so the tree a peer draws is the one its addresses already state.
- */
-export interface PublishedSubtreeReader {
-  /**
-   * One answer. A page is taken WHOLE or refused whole — what gets past is
-   * written into the reader's own store under the author's name — and a refused
-   * page leaves the reader holding exactly what it held before. `next_cursor`
-   * on what comes back is the page to ask for next.
-   */
-  take(body: unknown): PublishedSubtreePage;
-  /** Every note this region has served, which is what a refresh sweeps against
-   *  once the last page is in. docs/ARCHITECTURE.md § "Federating the graph". */
-  served(): Set<OwnedRef>;
-}
-
-export function publishedSubtreeReader(asked: {
-  did: DidSyr;
-  root_address: Address;
-}): PublishedSubtreeReader {
-  const heldNodes = new Set<OwnedRef>();
-  const heldByAddress = new Map<Address, OwnedRef>();
-  const heldBlocks = new Set<OwnedRef>();
-  let regionRoot: OwnedRef | undefined;
-  let pages = 0;
-
-  return {
-    take(body: unknown): PublishedSubtreePage {
-      if (pages === MAX_PUBLISHED_PAGES) {
-        throw new UnaskedAnswerError(`more than ${MAX_PUBLISHED_PAGES} pages`);
-      }
-      const read = PublishedSubtreePageSchema.safeParse(body);
-      if (!read.success) {
-        throw new UnaskedAnswerError(
-          "something that is not a subtree",
-          read.error,
-        );
-      }
-      const page = read.data;
-      if (page.did !== asked.did) {
-        throw new UnaskedAnswerError(`${asked.did}'s subtree as ${page.did}`);
-      }
-      if (page.root_address !== asked.root_address) {
-        throw new UnaskedAnswerError(`the subtree at ${page.root_address}`);
-      }
-      const root =
-        regionRoot ??
-        page.nodes.find((n) => n.address === asked.root_address)?.ref;
-      if (root === undefined) {
-        throw new UnaskedAnswerError("a subtree without its own root");
-      }
-
-      const pageNodes = new Set<OwnedRef>();
-      const pageByAddress = new Map<Address, OwnedRef>();
-      for (const node of page.nodes) {
-        requireAuthor(node.ref, asked.did);
-        for (const target of node.links) requireAuthor(target, asked.did);
-        if (!isInSubtree(asked.root_address, node.address)) {
-          throw new UnaskedAnswerError(`a note at ${node.address}`);
-        }
-        if (heldNodes.has(node.ref) || pageNodes.has(node.ref)) {
-          throw new UnaskedAnswerError(`${node.ref} twice`);
-        }
-        if (
-          heldByAddress.has(node.address) ||
-          pageByAddress.has(node.address)
-        ) {
-          throw new UnaskedAnswerError(`a second note at ${node.address}`);
-        }
-        pageNodes.add(node.ref);
-        pageByAddress.set(node.address, node.ref);
-      }
-      for (const node of page.nodes) {
-        if (node.origin !== root) {
-          throw new UnaskedAnswerError(`a note rooted at ${node.origin}`);
-        }
-        if (node.address === asked.root_address) {
-          if (node.parent !== undefined) {
-            throw new UnaskedAnswerError("a root pointing outside the subtree");
-          }
-          continue;
-        }
-        const above = parentAddress(node.address) ?? asked.root_address;
-        const sprangFrom = heldByAddress.get(above) ?? pageByAddress.get(above);
-        if (sprangFrom === undefined || node.parent !== sprangFrom) {
-          throw new UnaskedAnswerError(
-            `a note at ${node.address} that does not spring from ${above}`,
-          );
-        }
-      }
-
-      const pageBlocks = new Set<OwnedRef>();
-      for (const block of page.blocks) {
-        requireAuthor(block.ref, asked.did);
-        if (heldBlocks.has(block.ref) || pageBlocks.has(block.ref)) {
-          throw new UnaskedAnswerError(`${block.ref} twice`);
-        }
-        if (!heldNodes.has(block.node) && !pageNodes.has(block.node)) {
-          throw new UnaskedAnswerError(`a section of ${block.node}`);
-        }
-        pageBlocks.add(block.ref);
-      }
-
-      regionRoot = root;
-      pages += 1;
-      for (const node of page.nodes) {
-        heldNodes.add(node.ref);
-        heldByAddress.set(node.address, node.ref);
-      }
-      for (const ref of pageBlocks) heldBlocks.add(ref);
-      return page;
-    },
-
-    served(): Set<OwnedRef> {
-      return new Set(heldNodes);
-    },
-  };
-}
-
-function requireAuthor(ref: OwnedRef, did: DidSyr): void {
-  if (splitOwnedRef(ref).did !== did) {
-    throw new UnaskedAnswerError(`${ref} among ${did}'s own`);
-  }
-}
+export type SnapshotAsset = z.infer<typeof SnapshotAssetSchema>;

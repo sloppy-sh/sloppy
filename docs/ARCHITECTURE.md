@@ -165,41 +165,116 @@ DID→provider → fetch `/.well-known/syr/{did}` → hit that identity's public
 directly.
 
 Sloppy adds public read endpoints for published subtrees. A peer follows a DID and pulls
-their subtree in as a foreign, read-only region **with its addresses intact** — the
+a subtree in as a foreign, read-only region **with its addresses intact** — the
 deterministic address is what makes a pulled subtree land in a known shape rather than as
 an opaque blob.
 
-**Two routes on this instance answer without a session**, and they are the ones a peer's
-instance calls. `GET /api/public/subtrees/{did}/{root address}` answers a
-`PublishedSubtreePage` where a `publication` row roots at that address and nothing where
-none does; `GET /api/public/publications/{did}` lists what that identity publishes here —
-each root's address, its title, and when it was last published, and nothing that is not
-already public in it. `POST /api/publications` writes the row and
-`DELETE /api/publications/{ref}` removes it; both need the author's session, and the row
-existing is the whole mechanism. A published node travels **without its `depth` and without
-its look** — a reader recomputes depth, sector and which addresses lie under which from the
-address, and draws a pulled mark unstyled.
+**Publishing takes a SNAPSHOT, and a peer reads the snapshot.** Publishing copies the
+notes, their sections and every asset those sections cite into a version of the
+publication's own. Nothing the author does afterwards reaches it: editing a note,
+replacing a picture, deleting a custom emoji, deleting the note itself — a peer goes on
+reading what was published, whole. The alternative, serving the live rows through a
+window, is what makes a published document a set of citations into an author's private
+library, and every one of those citations is something that can break or leak later.
 
-**Both public routes answer a page at a time**, and `?cursor=` asks for the next one. The
+Three consequences follow, and they are the product's to state at the moment of the
+decision rather than gaps to close:
+
+- **Publishing again does not retract what was published.** It writes another version
+  beside the one before it, and both stay readable.
+- **Deleting a note does not reach the versions that carry it.** It leaves the author's
+  graph, and the snapshots it was already in are unchanged.
+- **Deleting the publication is what stops this instance serving any of it** — and a peer
+  who has already pulled a version keeps the writing, which nothing here can take back.
+
+**A publication is a chain of versions, the way a commit history is.** Each version is
+self-contained, carries the moment it was made, and is numbered from 1 in publishing
+order — the number a person cites. A version is written only where its snapshot differs
+from the newest one, so publishing an unchanged subtree adds nothing to the history.
+Versions are appended and never edited: a peer is reading one.
+
+**A publication is addressed by its own ref, never by its root address.** An address is a
+human-readable label inside somebody's graph rather than a machine identifier, so
+`root_address` is something a publication CARRIES — shown wherever it helps a person
+navigate or cite — and `<did>/<ulid>` is what a route binds.
+
+**The routes.** Four answer without a session, and they are the ones a peer's instance
+calls:
+
+- `GET /api/public/publications/{did}` lists what that identity publishes here — each
+  publication's ref, the address it is rooted at, the newest version's title, and that
+  version — and nothing that is not already public in it.
+- `GET /api/public/publications/{did}/{id}` answers a page of a version: `?version=`
+  names one, and absent is the newest.
+- `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
+- `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
+  between two of them.
+
+The author's own need their session: `POST /api/publications` publishes a subtree —
+creating the chain if the note has none, and writing a version either way;
+`PATCH /api/publications/{ref}` changes who is invited to comment and publishes nothing;
+`DELETE /api/publications/{ref}` takes the whole chain down; and
+`GET /api/publications/{ref}/versions` is the author's own history. A published node
+travels **without its `depth` and without its look** — a reader recomputes depth, sector
+and which addresses lie under which from the address, and draws a pulled mark unstyled.
+
+**Deleting a publication cascades.** Every version, every copied note and section, and
+every copied asset — a copy exists only to serve what that publication published, so
+nothing outlives it here. What it cannot undo is what was already read: a peer who pulled
+keeps the writing, and while the publication stood its pictures were readable by anybody
+who knew the author's DID, so a copy somebody else took is theirs (§ "Pictures").
+
+**Every public route answers a page at a time**, and `?cursor=` asks for the next one. The
 cursor is minted by the instance that served the page and handed back to it untouched, so
-what it means is that instance's own business and no reader reads one; absent on the answer
-means there is no more. A subtree's pages are ordered so that every reference resolves in
-the page carrying it or in one already sent: the region's root arrives first, and a note's
-parent never arrives after the note. That is what makes the size bounds a defence rather
+what it means is that instance's own business and no reader reads one; absent on the
+answer means there is no more. A version's pages are ordered so that every reference
+resolves in the page carrying it or in one already sent: notes go before sections, and
+notes go in address order, which puts a note's parent ahead of it because a parent's
+address is a prefix of its child's. That is what makes the size bounds a defence rather
 than a ceiling a graph can hit: a branch of any size is read page by page, and what a
 per-page bound refuses is one answer too large to hold, never a subtree too large to
 publish.
 
+**The difference between two versions is computed where the versions are.** The instance
+holds every version and the reader holds none, so a phone asking what changed between two
+snapshots of a ten-thousand-note branch reads the difference rather than both sides of it.
+One entry per note — arrived, gone, or changed — in address order, carrying both sides of
+the note and both sides of only the sections that differ, which is what a review-shaped
+diff needs and no more. A note that is gone carries no sections: what it said is in the
+version that still has it, and that is a read a reader makes when they want it. Where one
+address holds a different note in each version, the reader is told both: one note gone and
+another arrived. `PublishedNoteChange` in `@sloppy/types` is the shape and
+`publishedChangesReader` the boundary.
+
+**Who is invited to comment is the publication's to say, and it is an invitation rather
+than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which
+is what a syr identity from any instance gets, and `nobody` for an author who is not
+taking answers here. A narrower invitation is a value there and a branch where a
+conversation is assembled, never a column. Two things about it are load-bearing:
+
+- **The publication answers, and nothing else does.** A per-author preference would be a
+  second authority for one question; where one later exists it decides what a new
+  publication is created WITH, and the publication still answers. Where more than one
+  publication covers a note — a branch published inside a tree that is also published —
+  the NEAREST one answers, so a decision made about a branch is not overridden by a
+  decision about the tree above it.
+- **It cannot stop anybody writing a comment.** A comment lives in the store of whoever
+  wrote it and syr asks no permission to hold one, so what this decides is what an instance
+  serves and what a surface offers. Copy that says it blocks people is claiming something
+  Sloppy cannot do; copy that says the author is not taking comments here is true.
+
 **A DID names a person, never a place.** An identity manifest describes that identity's
 own store — profile, uploads, comments, reactions, who they follow — and says nothing
-about where their GRAPH is served, so following somebody yields no address to pull and no
+about where their GRAPH is served, so following somebody yields nothing to pull and no
 instance to ask, and nothing a peer says about themselves can corroborate one. Where is
 carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
 ask, which is this one unless the caller names another — the whole of it for somebody who
-keeps their graph here — and answers what that identity publishes there. The request is
-made by the reader's instance, so the instance asked learns an instance and never a reader,
-and a `pull` row keeps the origin in `source_url` so refreshing a region asks the same
-instance again.
+keeps their graph here — and answers what that identity publishes there.
+`GET /api/peers/versions` and `GET /api/peers/changes` are the same mediation for a
+publication's history and its differences. Every one of those requests is made by the
+reader's instance, so the instance asked learns an instance and never a reader, and a
+`pull` row keeps the origin in `source_url` so refreshing a region asks the same instance
+again.
 
 **A named origin is a signed-in caller telling this instance to go and fetch something, so
 what it may name is bounded in three places and none of them is a server's own idea.**
@@ -220,19 +295,21 @@ what it may name is bounded in three places and none of them is a server's own i
   question. Its refusal is WORDED for the picture route it was written for, and a second
   caller has to word its own: somebody who typed an instance address this instance will not
   reach is told about the instance they named, never about a picture.
-- **The answer is held to the question.** `parsePublishedIndex` and
-  `publishedSubtreeReader` in `@sloppy/types` are that boundary: an instance that answers
-  about a different DID, hands back a subtree at a different address, carries a note
-  attributed to somebody else, carries one outside the subtree that was asked for, puts a
-  second note at an address another note in the region already has, springs a note from
+- **The answer is held to the question.** `parsePublishedIndex`, `publishedSubtreeReader`,
+  `publishedVersionsReader` and `publishedChangesReader` in `@sloppy/types` are that
+  boundary: an instance that answers about a different identity or a different publication,
+  changes version half way through a region, roots one region at two addresses, carries a
+  note attributed to somebody else, carries one outside the region that was asked for, puts
+  a second note at an address another note in the region already has, springs a note from
   anything but the note at its own parent address, names a link to a note somebody else
-  wrote, writes a timestamp at a width other than `TimestampSchema`'s, or refers to a note
-  it did not send is answering a question nobody asked. A page that does any of it is
-  refused WHOLE, and a refused page leaves the reader holding exactly what it held before —
-  the reader is writing rows under the author's name, so half a page is not a thing to
-  store. A listing followed to its end goes through `publishedIndexReader`, which holds a
-  run of pages the same way: one publication per root, so a region listed twice is refused
-  the way a second note at a taken address is.
+  wrote, writes a timestamp at a width other than `TimestampSchema`'s, refers to a note it
+  did not send, or hands back a history whose numbering stops falling is answering a
+  question nobody asked. A page that does any of it is refused WHOLE, and a refused page
+  leaves the reader holding exactly what it held before — the reader is writing rows under
+  the author's name, so half a page is not a thing to store. A listing followed to its end
+  goes through `publishedIndexReader`, which holds a run of pages the same way: one entry
+  per publication, so a publication listed twice is refused the way a second note at a
+  taken address is.
 
   Two of those refusals are the address protocol, held on rows a peer handed us. Two
   notes at one address is `node_owner_address UNIQUE`: our own rows cannot do it, and a
@@ -249,12 +326,13 @@ what it may name is bounded in three places and none of them is a server's own i
   published node is not something to normalize on arrival, and one encoding on the wire is
   what leaves the stored copy checkable.
 
-  `MAX_PUBLISHED_NODES_PER_PAGE`, `MAX_PUBLISHED_BLOCKS_PER_PAGE` and
-  `MAX_PUBLISHED_ROOTS_PER_PAGE` bound one answer, and `MAX_PUBLISHED_PAGES` is how many a
-  reader asks for before it stops: a pull is an outbound fetch, so the reader's own request
-  limits protect nothing, and what arrives is whatever the author's instance chose to send —
-  including, from a hostile one, an answer that never ends. Those four are counts, and a
-  count is only reachable once a body is whole, so they are not what stops that answer:
+  `MAX_PUBLISHED_NODES_PER_PAGE`, `MAX_PUBLISHED_BLOCKS_PER_PAGE`,
+  `MAX_PUBLISHED_PUBLICATIONS_PER_PAGE`, `MAX_PUBLISHED_VERSIONS_PER_PAGE` and
+  `MAX_PUBLISHED_CHANGES_PER_PAGE` bound one answer, and `MAX_PUBLISHED_PAGES` is how many
+  a reader asks for before it stops: a pull is an outbound fetch, so the reader's own
+  request limits protect nothing, and what arrives is whatever the author's instance chose
+  to send — including, from a hostile one, an answer that never ends. Those are counts, and
+  a count is only reachable once a body is whole, so they are not what stops that answer:
   `MAX_PUBLISHED_PAGE_BYTES` bounds the bytes of one, and **the fetch is where it is
   enforced** — the read gives up there rather than at the parse. An instance serving pages
   keeps one under it, the way it keeps one under the counts. What a refused answer SAID is
@@ -267,9 +345,10 @@ anonymous caller, and a `<did>/<ulid>` is not readable on its own but still says
 exists and when it was written. So `origin` on a published node is the root of the REGION
 rather than of the author's tree, which for a publication rooted below depth 1 would
 otherwise be a note nobody published; the region's root carries no `parent`, its parent
-being outside the publication; and `links` carries only targets the same author publishes,
-a link to an unpublished note being dropped rather than named. The reader's copy is a tree
-rooted at the region root, so it satisfies the same `ref === origin` a root always does.
+being outside the publication; and `links` carries only targets the same author had
+published when the version was made, a link to an unpublished note being dropped rather
+than named. The reader's copy is a tree rooted at the region root, so it satisfies the same
+`ref === origin` a root always does.
 
 **Where a foreign region is DRAWN is not settled here, and a surface must settle it before
 it builds one graph out of two.** A mark's position seeds from its address alone
@@ -289,18 +368,22 @@ DID is resolved from scratch.
 
 **A pulled region is stored, and the reader owns the copy.** The alternative — re-fetching
 the author's instance on every read — cannot be reconciled with what the product already
-promises at the moment of publishing: that a peer who has pulled a subtree keeps it after
-you unpublish. It would also make reading a foreign region depend on somebody else's
+promises at the moment of publishing: that a peer who has pulled a subtree keeps the
+writing after you unpublish (§ "Pictures" says where that promise stops). It would also make reading a foreign region depend on somebody else's
 server being up, on a phone, which is the case the mobile-first stance optimises for. So a
 pull writes rows:
 
-- `pull` is the region: one row per reader, author and root address, `source_url` is the
-  instance it came from, and `updated_at` is when the copy was last refreshed. Pulling the
-  same subtree again refreshes that row rather than growing a second beside it.
+- `pull` is the region: one row per reader and publication, `version` is the snapshot the
+  copy is of, `source_url` is the instance it came from, and `updated_at` is when the copy
+  was last refreshed. Pulling the same publication again refreshes that row rather than
+  growing a second beside it. It keys on the publication and not on the address for the
+  reason a route does, and `version` is what stops a surface telling somebody their copy is
+  current when the author has published since.
 - `pulled_node` and `pulled_block` are the copy, and **a node is held once however many
   regions serve it.** Pulling `1` when `1a` is already held refreshes the rows the two
   share instead of colliding with them, which is the ordinary act of reading a branch and
-  then wanting the trail it came from.
+  then wanting the trail it came from. Where two regions carry one note from different
+  versions, the copy is of whichever was pulled last.
 - `pull_member` is **which region served which note, recorded rather than derived.** An
   address says which regions COVER a note; only the answer says which one handed it over,
   and the difference is what a refresh and a drop are made of. This is not the rule about
@@ -309,19 +392,19 @@ pull writes rows:
 - **A refresh removes what its region served and the new answer no longer carries.** The
   sweep runs when the last page is in and never on a run that failed partway, because an
   incomplete answer is not evidence that a note is gone. Without it, a note its author
-  deleted stays readable in the reader's copy forever. **The sweep reaches sections too**:
-  a note that survives it keeps only the blocks the new answer carried, because a block
-  belongs to exactly one note and a note deleting a section is the ordinary case. It runs
-  over the whole accumulated answer rather than page by page — a note's blocks can span
-  pages, and a per-page sweep would take the ones that had not arrived yet. It also **replaces a held note that
-  the new answer puts a different note at the address of** — `pulled_node` is UNIQUE on
-  author and address, and an author who deletes every child of a branch and writes a new
-  first one hands out an address a reader is still holding. The answer just received is
-  what that author's graph says now, and the reader's copy is a copy of it. **A drop —
-  `DELETE /api/pulls/{ref}` — removes that region's rows and takes the notes no surviving
-  region serves, with their blocks.** A note two regions serve survives the first of them,
-  and one merely covered by a wider region's address does not: the wider region's answer
-  never carried it, so nothing there serves it.
+  dropped from a later version stays readable in the reader's copy forever. **The sweep
+  reaches sections too**: a note that survives it keeps only the blocks the new answer
+  carried, because a block belongs to exactly one note and a note losing a section is the
+  ordinary case. It runs over the whole accumulated answer rather than page by page — a
+  note's blocks can span pages, and a per-page sweep would take the ones that had not
+  arrived yet. It also **replaces a held note that the new answer puts a different note at
+  the address of** — `pulled_node` is UNIQUE on author and address, and an author who
+  deletes every child of a branch and writes a new first one hands out an address a reader
+  is still holding. The answer just received is what that version says, and the reader's
+  copy is a copy of it. **A drop — `DELETE /api/pulls/{ref}` — removes that region's rows
+  and takes the notes no surviving region serves, with their blocks.** A note two regions
+  serve survives the first of them, and one merely covered by a wider region's address does
+  not: the wider region's answer never carried it, so nothing there serves it.
 - `created_by` on all four is the **reader**, because they are the one whose purge has to
   reach it — a row owned by the author would be swept when the author erased their identity
   here and left behind when the reader erased theirs, which is backwards in both
@@ -393,54 +476,56 @@ A mark's preview picture is deliberately that same role rather than a new one: t
 is the access rule, a mark's picture wants exactly the note picture's rule, and one library
 means a picture already in a note can go on its mark without being sent twice.
 
-Publishing adds a fifth placement and no fifth role: the copy below lands in
-`public/sloppy/notes` and anyone may read it. It is deliberately **not** a value of
+Publishing adds a fifth placement and no fifth role: the copies below land in
+`public/sloppy/notes` and anyone may read them. It is deliberately **not** a value of
 `MediaRole`, because a role is what a caller asks for — one that placed bytes straight into
 a public folder would let anybody have this instance mint a durable public address for
-whatever they sent. The copy is minted at publish, out of bytes the store already holds.
+whatever they sent. A copy is minted at publish, out of bytes the store already holds.
 
-**A note is private until its subtree is published, so its pictures are too.** The owner
-reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks their own
-store for it as them; nothing else can, and the original is not listed among an identity's
-public uploads. `GET /api/media/uploads` lists the ones they put in a note, newest first, so a
-picture can be used twice without being sent twice — the same folder decides what is in
-it, so nothing from a profile is. That route needs the reader's session and an `<img>`
-sends none, so `SloppyClient.ownPicture` fetches the bytes with the reader's own
-credential and hands back something the browser can draw from memory. On the web shell
+**A note's pictures are private, and stay private however much of the note is published.**
+The owner reads one back through `GET /api/media/uploads/{did}/{localId}`, which asks their
+own store for it as them; nothing else can, and the original is not listed among an
+identity's public uploads. `GET /api/media/uploads` lists the ones they put in a note,
+newest first, so a picture can be used twice without being sent twice — the same folder
+decides what is in it, so nothing from a profile is. That route needs the reader's session
+and an `<img>` sends none, so `SloppyClient.ownPicture` fetches the bytes with the reader's
+own credential and hands back something the browser can draw from memory. On the web shell
 that session is a token and not a cookie — sign-in there finishes through the hand-off in
 `auth.controller.ts`, so an address alone would reach this route as a stranger. It is the
 only way one of these draws, which is why a `MediaAsset` carries an `upload_id` and no
 address at all: who may read a picture is the store's answer, not the row's.
 
-**Publishing COPIES a picture; it never widens the one a note is reading.** The bytes of
-every picture inside a published note are duplicated into `public/sloppy/notes` in its
-author's own store, and the note goes on reading its own private original. What a peer
-receives cites the copy — a published block carries the PUBLIC upload's id, so the address
-a peer holds answers for them — while the same picture sitting in a note nobody published
-is exactly as private as it was.
+**A publication carries its own copy of every asset its sections cite.** Publishing
+duplicates the bytes into `public/sloppy/notes` in the author's own store and writes the
+published section citing the copy, so what a peer holds answers for them and cannot be
+changed or broken from the other end. There is no original to widen and no citation into a
+private library: that is the snapshot, applied to pictures.
+
+`citedUploads` in `@sloppy/types` is what "cites" means — an `attrs` key named `upload_id`,
+or one ending `_upload_id`. That is a convention across elements rather than a list of
+them, so an element kind this build has no renderer for still has its pictures copied with
+it, which is AI.md § "A Block Is a Section" applied to the walk. A custom emoji is the one
+element that names its picture by something else, a shortcode in its author's catalog: so
+publishing resolves that catalog once and writes the copy's upload onto the published
+element, and a peer draws the emoji out of the snapshot rather than out of a catalog its
+author can empty.
 
 The duplicate storage is the accepted cost, and it is accepted for a reason the product
 requires: one library backs every note, so a picture is legitimately in several of them
 (`ownPictures` lists the note folder, and the picker exists so a picture is used again
 rather than sent again). A picture that MOVED would take an unpublished note's picture
-public along with it, decided by a publish somewhere else in the graph. `published_picture`
-pairs the original with its copy, so a second publish reuses the copy rather than sending
-the same bytes public again under a new address, and the library is untouched: a picture
-that has been published still appears in the picker, because the row it lists never moved.
+public along with it, decided by a publish somewhere else in the graph. `snapshot_asset`
+pairs the original with its copy, one row per publication, so a second version citing the
+same picture reuses that copy rather than sending the same bytes public again under a new
+address — and the library is untouched: a picture that has been published still appears in
+the picker, because the row it lists never moved.
 
-Copying happens at two moments, and both are needed: when a subtree is published, over the
-pictures already in it; and when a picture is saved into a note a live publication already
-covers, because otherwise a peer who pulled yesterday reads a note whose new picture
-answers 404. **The second moment is a decision somebody is making too**, and it is the one
-that can be crossed without noticing: a photo dropped into a note inside a branch published
-last month is as readable as the published ones, and nothing takes that back. So the
-surface that adds a picture there says so where it is added — what the publish moment says,
-at the only other moment somebody crosses that line, and standing nowhere else
-(PRODUCT.md § "Design Principles", 5).
+**Publishing is the only moment bytes go public, and it is always a deliberate act.** A
+picture dropped into a note inside a published branch is in no version until its author
+publishes again, so nothing crosses that line while somebody is writing.
 
 A mark's preview picture is not among them: a published node travels without its look, so
 nothing a peer holds ever cites one, and it stays private.
-
 **A public copy is public to anybody, not only to somebody holding the address.** syr
 decides `is_public` from the folder a blob is in, and an identity's `uploads` endpoint
 serves every public one it has, paginated, with its filename and size — so from the moment
@@ -448,14 +533,15 @@ a subtree is published, the pictures in it are enumerable by anyone who knows th
 DID, with no publication address and no pull. That is the exposure publishing actually
 creates, and it is what the copy at the moment of the decision has to be true to.
 
-**Unpublishing does not take the copy back**, and that is the deliberate half. An address
-a peer already holds is load-bearing (AI.md § "The Address Is the Protocol"), so a URL
-minted public cannot quietly become private later; the copy is minted public and stays
-public, listed with the rest. The consequence is the reader's, and the product says it at
-the moment of the decision: unpublishing stops this instance serving the subtree, and the
-pictures that went out with it stay readable. Deleting the picture is what takes it back —
-and deleting it deletes both halves, because the copy exists only to serve what was
-published.
+**Deleting the publication deletes its copies**, because a copy exists only to serve what
+that publication published. It is the take-it-back act and the only one: while the
+publication stands, every version of it stays readable and so does everything the versions
+draw. Deleting the picture from the library takes both halves the same way.
+
+That is also where the promise about a peer's copy stops, and the product says which half
+is which: the notes somebody pulled are theirs and stay theirs, and the pictures in them
+were being served out of the author's store all along, so those stop with the publication.
+Nothing here can reach a copy of the bytes a peer made for themselves.
 
 **A peer's picture is fetched by this instance, never by the reader's browser.**
 `GET /api/media/published/{did}/{localId}` is that route — `publishedPicture` in
@@ -555,13 +641,36 @@ resolves.
 
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
-  root          ref       the subtree this makes readable
-  root_address  string    what a peer cites
+  root          ref       the subtree it publishes, immutable
+  root_address  string    the label a person cites, immutable
+  comments      string    who the author invites to answer it
 
-published_picture:{ created_by: <did>, id: <ulid> }
+publication_version:{ created_by: <did>, id: <ulid> }
+  created_by    did
+  publication   ref       the chain it belongs to, immutable
+  sequence      int       1-based, in publishing order, immutable and unique per chain
+  created_at    iso       the moment this snapshot was made
+
+snapshot_node:{ created_by: <did>, id: <ulid> }
+  created_by    did       the author
+  version       ref       the snapshot it belongs to, immutable
+  source        ref       the note it was copied from, immutable
+  address       string    where its author addressed it, immutable
+  node          object    the published node, in the shape a peer receives
+
+snapshot_block:{ created_by: <did>, id: <ulid> }
+  created_by    did       the author
+  version       ref       immutable
+  source        ref       the section it was copied from, immutable
+  node          ref       the note it belongs to, immutable
+  ord           string
+  content       object    citing the publication's own copies, never a private upload
+
+snapshot_asset:{ created_by: <did>, id: <ulid> }
   created_by    did       the author; both uploads are theirs
-  source_upload id        the picture the note reads, private
-  public_upload id        the copy a peer reads, immutable once minted
+  publication   ref       what the copy is deleted with, immutable
+  source_upload id        the upload the note reads, private
+  public_upload id        the copy a published section cites, immutable once minted
 
 The four rows below hold a region pulled from somebody else. `created_by` on every one
 of them is the READER holding the copy, never the author who wrote it — § "Federating the
@@ -569,8 +678,10 @@ graph" says why that is the only ownership the purge can work with.
 
 pull:{ created_by: <did>, id: <ulid> }
   created_by    did       the reader
-  source_did    did       whose subtree this is
-  root_address  string    the address they cited
+  publication   ref       the region, as its author's instance names it, immutable
+  version       object    which snapshot this copy is of
+  root_address  string    the label the answer carried
+  comments      string    who the author invites, as of the last refresh
   source_url    url       the instance that served it, and the one a refresh asks
   updated_at    iso       when the copy was last refreshed
 
@@ -595,31 +706,32 @@ pulled_block:{ created_by: <did>, id: <ulid> }
   content       object
 ```
 
-**`publication` is what makes a subtree readable. `node.published` is not, and nothing
-today is.** The row existing is the whole mechanism: a peer cites `root_address` and pulls
-the subtree, so deleting the row is unpublishing. `node.published` is a separate column on
-the note, and `provenanceOf` in `@sloppy/graph` is the only thing that reads it — it
-decides whether a mark draws as own or as published, and nothing else follows from it.
-Neither `POST /publications` nor the public read endpoint § "Federating the graph"
+**A version is what makes a subtree readable. `node.published` is not, and nothing today
+is.** A peer reads `snapshot_node` and `snapshot_block` rows and never the notes they were
+copied from, so deleting a publication — with its versions, its copies and its assets — is
+unpublishing. `node.published` is a separate column on the note, and `provenanceOf` in
+`@sloppy/graph` is the only thing that reads it: it decides whether a mark draws as own or
+as published, and nothing else follows from it. None of the routes § "Federating the graph"
 describes is served by `apps/sloppy/api` yet, so no note in Sloppy has ever been readable
 by anybody, and nothing writes `published` after a note is created.
 
-**`published` is maintained from the publication rows, and the option of deriving it
-instead is closed.** A note is readable when a publication row roots at it **or at one of
-its ancestors**, so the column is that fact denormalized onto the row: the API writes it
-across a subtree when a row is created, across what a removed row covered and no surviving
-row still covers when one is deleted, and onto a note created under a published ancestor.
-Deriving membership from the roots and the address was the other candidate, and a held
-foreign node rules it out: no publication row on this instance covers one, so the
-derivation has nothing to read, and whether its author still publishes it is not something
-a reader can learn. `pulledNodeView` asserts the column instead — what was true when the
-copy arrived — and `provenanceOf` reads the author before it reads the column, so a held
-node draws as pulled wherever the viewer is beside it. **That is a requirement on whoever
-builds the graph, not a nicety:** with no viewer there is no author to compare, the read
-falls through to the column, and a foreign region draws as the reader's OWN published
-notes, which PRODUCT.md § "Design Principles" 4 forbids outright. Two things the
-maintenance must not leave behind: a note drawing as published that no row covers, and a
-note drawing as own while a row that covers it survives.
+**`published` says a version carries this note, and is maintained from the snapshot rows.**
+Not "a publication covers it": under a snapshot a note inside a published branch is
+readable by nobody until the author publishes again, and a mark that claimed otherwise
+would be the interface lying about what has left (PRODUCT.md § "Design Principles" 3 and
+5). So the API writes the column across the notes a new version carries, and clears it for
+the notes no surviving version carries when a publication is deleted — a note created under
+a published ancestor is untouched, because publishing is what makes it readable and nothing
+else does. Deriving the column instead was the other candidate, and a held foreign node
+rules it out: no row on this instance says whether its author still publishes it.
+`pulledNodeView` asserts the column instead — what was true when the copy arrived — and
+`provenanceOf` reads the author before it reads the column, so a held node draws as pulled
+wherever the viewer is beside it. **That is a requirement on whoever builds the graph, not
+a nicety:** with no viewer there is no author to compare, the read falls through to the
+column, and a foreign region draws as the reader's OWN published notes, which PRODUCT.md
+§ "Design Principles" 4 forbids outright. Two things the maintenance must not leave behind:
+a note drawing as published that no version carries, and a note drawing as own while a
+version that carries it survives.
 
 The rules AI.md's foundation-wave section states, applied here:
 
@@ -648,6 +760,15 @@ The rules AI.md's foundation-wave section states, applied here:
   `FROM node WITH INDEX node_tags WHERE tags = $tag AND created_by = $did`.
   `tags CONTAINS $tag` is always correct and never uses the index; it is not the spelling.
   `schema.integration.test.ts` holds both halves against a running server.
+
+  **`snapshot_node_owner_source` is pinned for a milder version of the same reason.**
+  Asking which versions carry a note orders by version, and the planner prefers an index
+  that satisfies the ordering — `snapshot_node_owner_version_source` — then filters across
+  everything its owner has ever published. The answer is right and the cost grows with the
+  graph, so that read is written
+  `FROM snapshot_node WITH INDEX snapshot_node_owner_source`, and the same test holds the
+  plan.
+
 - **A link is a ref, not a SurrealDB record link.** Measured on 3.1.3: an index on a column
   holding a _composite_ record id still enforces `UNIQUE`, but the planner never chooses
   it — `EXPLAIN` gives a TableScan for an equality on such a column and an IndexScan for
@@ -665,11 +786,13 @@ The rules AI.md's foundation-wave section states, applied here:
   `ORDER BY created_at` needs nothing further.
 - **A row crosses the wire as a view of itself**, with the composite key replaced by the
   `<did>/<ulid>` ref the row is already pointed at by. `@sloppy/types`' `api.ts` derives
-  `NodeView`, `BlockView` and `PublicationView` from the entity
-  schemas and converts with `entityView()`, so the wire cannot drift from the row. The
-  substitution is what makes a row expressible as JSON at all: the key is a SurrealDB
-  `RecordId`, and no JSON encoding round-trips back into the class that validates one.
-  `PublishedSubtreePage` is the separate, deliberately narrower shape a foreign reader gets.
+  `NodeView`, `BlockView`, `PublicationView` and `PullView` from the entity schemas and
+  converts with `entityView()`, so the wire cannot drift from the row. The substitution is
+  what makes a row expressible as JSON at all: the key is a SurrealDB `RecordId`, and no
+  JSON encoding round-trips back into the class that validates one. `PublicationView` adds
+  the chain's newest version beside the row, which is read from the versions rather than
+  kept on it. `PublishedSubtreePage` is the separate, deliberately narrower shape a foreign
+  reader gets.
 - **Nothing derivable from the address is stored, except `depth`** — AI.md § "The Address
   Is the Protocol" states the rule, and this is the one ratified exception to it. The
   angular sector and subtree membership stay functions in `address.ts`.
@@ -717,12 +840,16 @@ something the application cannot be trusted to. What qualifies is all of it stat
 / `updated_at` as `TYPE string`, which is what makes a write in the wrong encoding fail at
 the write; `node.depth` and `pulled_node.depth`, immutable like the addresses they mirror
 and `TYPE int ASSERT $value > 0`, because a depth is read as a range and a range is where a
-string or a zero would go wrong quietly; a held row's `source`, `source_did` and `address`
-and a `pull_member`'s two halves, immutable for the reason `created_by` is — a row that
-changed one would quietly become a copy of a different node, of the same node by somebody
-else, or the record of a region that never served it; and a published picture's two
-halves, because a copy pointing at a different original takes the wrong bytes public, and one whose
-public half changed strands the address a peer already holds. `created_at` is immutable
+string or a zero would go wrong quietly; a held row's `source`, `source_did` and `address`,
+a `pull`'s publication and a `pull_member`'s two halves, immutable for the reason
+`created_by` is — a row that changed one would quietly become a copy of a different node,
+of the same node by somebody else, or the record of a region that never served it; what a
+publication is rooted at, which chain a version belongs to and its number in it, and which
+version each copied note and section sits in, because a peer is reading those and a row
+that moved would answer for something it is not a snapshot of; and a copied asset's two
+halves, because a copy pointing at a different original takes the wrong bytes public, and
+one whose public half changed strands the address a published section already cites.
+`created_at` is immutable
 too, being a field of the signed payload. Everything else is a plain column, which is what
 keeps a later track from having to edit the shared literal to add a field.
 

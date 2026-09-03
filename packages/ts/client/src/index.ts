@@ -44,9 +44,14 @@ import {
   type PublicationView,
   PublicationViewSchema,
   type PublishedBlock,
+  type PublishedChangesPage,
   type PublishedIndex,
   type PublishedNode,
   type PublishedSubtree,
+  type PublishedSubtreePage,
+  type PublishedVersion,
+  PublishedVersionSchema,
+  type PublishedVersionsPage,
   type PullView,
   PullViewSchema,
   type Session,
@@ -57,6 +62,7 @@ import {
   type UpdateBlockRequest,
   type UpdateNodeRequest,
   type UpdateProfileRequest,
+  type UpdatePublicationRequest,
   type UploadTicket,
   UploadTicketSchema,
   type Viewer,
@@ -64,7 +70,9 @@ import {
   parseNodeBulkResult,
   parseNodeView,
   parsePublishedIndex,
+  publishedChangesReader,
   publishedSubtreeReader,
+  publishedVersionsReader,
 } from "@sloppy/types";
 import { SloppyApiError } from "./errors.js";
 import { apiUrl, isSameOrigin } from "./host.js";
@@ -360,50 +368,83 @@ export class SloppyClient {
     return (body as unknown[]).map((p) => PublicationViewSchema.parse(p));
   }
 
+  /**
+   * Publish a subtree, as it stands right now. What a peer reads is that
+   * snapshot and not the notes it was taken from, so publishing the same root
+   * again is how anything written since reaches anybody.
+   */
   async publish(request: CreatePublicationRequest): Promise<PublicationView> {
     return PublicationViewSchema.parse(
       await this.send("POST", "/publications", request),
     );
   }
 
+  /** Change who is invited to comment. It publishes nothing. */
+  async updatePublication(
+    ref: OwnedRef,
+    request: UpdatePublicationRequest,
+  ): Promise<PublicationView> {
+    return PublicationViewSchema.parse(
+      await this.send("PATCH", `/publications${refPath(ref)}`, request),
+    );
+  }
+
   /**
-   * The row existing is what makes the subtree readable, so unpublishing
-   * deletes it. A peer who already pulled the subtree keeps their copy.
+   * Stop serving a publication, with every version of it and every copy those
+   * versions were made of. What a peer who already pulled one keeps is the
+   * writing: the pictures in it were being served from here.
    */
   async unpublish(ref: OwnedRef): Promise<void> {
     await this.del(`/publications${refPath(ref)}`);
   }
 
+  /** The caller's own chain, newest version first. */
+  async publicationVersions(ref: OwnedRef): Promise<PublishedVersion[]> {
+    const body = await this.json(`/publications${refPath(ref)}/versions`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map((v) => PublishedVersionSchema.parse(v));
+  }
+
   /**
-   * A published subtree held by THIS instance, read without a session — the
-   * endpoint a peer's instance calls. It answers a page at a time and this
-   * follows the pages to the end; `null` where nothing is published at that
-   * address, which is also what an unpublish leaves behind.
+   * One version of a publication held by THIS instance, read without a session
+   * — the endpoint a peer's instance calls. It answers a page at a time and
+   * this follows the pages to the end; an absent `version` reads the newest,
+   * and `null` where the publication is gone, which is also what an unpublish
+   * leaves behind.
    */
   async readPublishedSubtree(
-    did: string,
-    rootAddress: string,
+    publication: OwnedRef,
+    version?: OwnedRef,
   ): Promise<PublishedSubtree | null> {
-    const reader = publishedSubtreeReader({ did, root_address: rootAddress });
-    const path = `/public/subtrees/${encodeURIComponent(did)}/${encodeURIComponent(
-      rootAddress,
-    )}`;
+    const reader = publishedSubtreeReader({ publication, version });
+    const path = `/public/publications${refPath(publication)}`;
     const nodes: PublishedNode[] = [];
     const blocks: PublishedBlock[] = [];
+    let page: PublishedSubtreePage | undefined;
     let cursor: string | undefined;
     do {
-      const at =
-        cursor === undefined
-          ? path
-          : `${path}?cursor=${encodeURIComponent(cursor)}`;
-      const body = await this.json(at, { method: "GET" });
+      const query = new URLSearchParams();
+      if (version !== undefined) query.set("version", version);
+      if (cursor !== undefined) query.set("cursor", cursor);
+      const search = query.toString();
+      const body = await this.json(search ? `${path}?${search}` : path, {
+        method: "GET",
+      });
       if (body == null && cursor === undefined) return null;
-      const page = reader.take(body);
+      page = reader.take(body);
       nodes.push(...page.nodes);
       blocks.push(...page.blocks);
       cursor = page.next_cursor;
     } while (cursor !== undefined);
-    return { did, root_address: rootAddress, nodes, blocks };
+    return {
+      publication,
+      version: page.version,
+      root_address: page.root_address,
+      comments: page.comments,
+      nodes,
+      blocks,
+    };
   }
 
   /**
@@ -424,40 +465,81 @@ export class SloppyClient {
     did: string,
     options: { sourceUrl?: string; cursor?: string } = {},
   ): Promise<PublishedIndex> {
-    const query = [`did=${encodeURIComponent(did)}`];
-    if (options.sourceUrl !== undefined) {
-      const origin = PeerOriginSchema.parse(options.sourceUrl);
-      query.push(`source_url=${encodeURIComponent(origin)}`);
-    }
-    if (options.cursor !== undefined) {
-      query.push(`cursor=${encodeURIComponent(options.cursor)}`);
-    }
-    const body = await this.json(`/peers/publications?${query.join("&")}`, {
+    const query = new URLSearchParams({ did });
+    this.askingPeer(query, options);
+    const body = await this.json(`/peers/publications?${query.toString()}`, {
       method: "GET",
     });
     return parsePublishedIndex(body, did);
   }
 
   /**
-   * Take somebody else's published subtree as a foreign, read-only region.
+   * One page of a publication's chain, newest version first — from wherever it
+   * is served, asked for the same way {@link publishedBy} is. A caller that
+   * follows the pages to the end holds them to each other with
+   * `publishedVersionsReader`.
+   */
+  async publishedVersions(
+    publication: OwnedRef,
+    options: { sourceUrl?: string; cursor?: string } = {},
+  ): Promise<PublishedVersionsPage> {
+    const query = new URLSearchParams({ publication });
+    this.askingPeer(query, options);
+    const body = await this.json(`/peers/versions?${query.toString()}`, {
+      method: "GET",
+    });
+    return publishedVersionsReader({ publication }).take(body);
+  }
+
+  /**
+   * What one publication's writing did between two of its versions, a page at a
+   * time and in address order. The comparison is made by the instance that
+   * holds the versions, so reading it costs neither side of it.
+   */
+  async publishedChanges(
+    publication: OwnedRef,
+    from: OwnedRef,
+    to: OwnedRef,
+    options: { sourceUrl?: string; cursor?: string } = {},
+  ): Promise<PublishedChangesPage> {
+    const query = new URLSearchParams({ publication, from, to });
+    this.askingPeer(query, options);
+    const body = await this.json(`/peers/changes?${query.toString()}`, {
+      method: "GET",
+    });
+    return publishedChangesReader({ publication, from, to }).take(body);
+  }
+
+  private askingPeer(
+    query: URLSearchParams,
+    options: { sourceUrl?: string; cursor?: string },
+  ): void {
+    if (options.sourceUrl !== undefined) {
+      query.set("source_url", PeerOriginSchema.parse(options.sourceUrl));
+    }
+    if (options.cursor !== undefined) query.set("cursor", options.cursor);
+  }
+
+  /**
+   * Take a version of somebody else's publication as a foreign, read-only
+   * region. An absent `version` takes the newest.
    *
    * The copy is kept, which is what the reader still has when the author stops
-   * publishing; pulling the same subtree again refreshes that region rather
+   * publishing; pulling the same publication again refreshes that region rather
    * than making a second one, and a region overlapping one already held shares
    * its notes. The resolution runs on the API — a browser resolving a peer's
    * provider would leak the viewer to it, which `proxied()` exists to prevent.
    */
   async pullSubtree(
-    did: string,
-    rootAddress: string,
-    sourceUrl?: string,
+    publication: OwnedRef,
+    options: { version?: OwnedRef; sourceUrl?: string } = {},
   ): Promise<PullView> {
     const request: CreatePullRequest = {
-      did,
-      root_address: rootAddress,
-      ...(sourceUrl === undefined
+      publication,
+      ...(options.version === undefined ? {} : { version: options.version }),
+      ...(options.sourceUrl === undefined
         ? {}
-        : { source_url: PeerOriginSchema.parse(sourceUrl) }),
+        : { source_url: PeerOriginSchema.parse(options.sourceUrl) }),
     };
     return PullViewSchema.parse(await this.send("POST", "/pulls", request));
   }

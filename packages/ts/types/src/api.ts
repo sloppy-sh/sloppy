@@ -16,6 +16,7 @@ import { NodeDepthMismatchError, nodeDepthMatchesAddress } from "./node.js";
 import { NodeSchema } from "./node.js";
 import { type PulledBlock, type PulledNode, PullSchema } from "./federation.js";
 import { PublicationSchema } from "./publication.js";
+import { PublishedVersionSchema } from "./published.js";
 import { TagSchema } from "./tag.js";
 
 /**
@@ -55,9 +56,14 @@ export const TagCountSchema = z.object({
 });
 export type TagCount = z.infer<typeof TagCountSchema>;
 
+/**
+ * The author's own view of a publication: the chain, and the version a plain
+ * read of it answers with. `latest` is read from the versions rather than kept
+ * on the row, so there is one place a chain's newest version is written down.
+ */
 export const PublicationViewSchema = PublicationSchema.omit({
   id: true,
-}).extend({ ref: OwnedRefSchema });
+}).extend({ ref: OwnedRefSchema, latest: PublishedVersionSchema });
 export type PublicationView = z.infer<typeof PublicationViewSchema>;
 
 export const PullViewSchema = PullSchema.omit({ id: true }).extend({

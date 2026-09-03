@@ -27,6 +27,7 @@ const AUTHOR = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 const READER = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob";
 const HELD = "01JSPREAD00000000000000000";
 const ROOT = "01JSPREAD00000000000000001";
+const PUBLICATION = `${AUTHOR}/01JSPREAD00000000000000002`;
 
 /** Addresses the protocol can assign, breadth-first from the root. */
 function spread(count: number): Address[] {
@@ -215,8 +216,7 @@ describe("where a peer's graph is served", () => {
       expect(() => PeerOriginSchema.parse(value)).toThrow();
       expect(() =>
         CreatePullRequestSchema.parse({
-          did: AUTHOR,
-          root_address: "1a",
+          publication: PUBLICATION,
           source_url: value,
         }),
       ).toThrow();
@@ -227,9 +227,9 @@ describe("where a peer's graph is served", () => {
   });
 
   it("is optional, and absent means this instance", () => {
-    expect(
-      CreatePullRequestSchema.parse({ did: AUTHOR, root_address: "1a" }),
-    ).toEqual({ did: AUTHOR, root_address: "1a" });
+    expect(CreatePullRequestSchema.parse({ publication: PUBLICATION })).toEqual(
+      { publication: PUBLICATION },
+    );
     expect(PeerPublicationsQuerySchema.parse({ did: AUTHOR })).toEqual({
       did: AUTHOR,
     });
