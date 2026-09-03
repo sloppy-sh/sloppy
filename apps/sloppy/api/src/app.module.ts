@@ -9,6 +9,7 @@ import { IdpModule } from "./idp/idp.module";
 import { MediaModule } from "./media/media.module";
 import { NodeModule } from "./node/node.module";
 import { ProfileModule } from "./profile/profile.module";
+import { PublicationModule } from "./publication/publication.module";
 
 /**
  * The whole application, wired once. A milestone fills one of the modules
@@ -24,6 +25,7 @@ import { ProfileModule } from "./profile/profile.module";
     IdpModule.forRoot(),
     NodeModule,
     BlockModule,
+    PublicationModule,
     MediaModule,
     ProfileModule,
     EmojiModule,

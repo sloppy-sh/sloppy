@@ -466,6 +466,21 @@ export class SyrService {
       .data;
   }
 
+  /** One of the caller's own uploads, erased. A 404 comes back as one, because
+   *  a store that no longer holds it has given the answer this was asking for. */
+  async deleteUpload(
+    delegation: Delegation,
+    upload: { did: string; localId: string },
+  ): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/uploads/${encodeURIComponent(upload.did)}/${encodeURIComponent(upload.localId)}`,
+      { method: "DELETE" },
+      "That picture could not be removed. Try again.",
+    );
+  }
+
   async listOwnEmoji(delegation: Delegation): Promise<SyrEmoji[]> {
     const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/emojis?limit=100`;
     const failure = "We could not read your emoji. Try again in a moment.";

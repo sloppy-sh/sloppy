@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import type { CreateUploadRequest } from "@sloppy/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppConfigService } from "../config/app-config.service";
 import type { Delegation, SyrService } from "../syr/syr.service";
 import { folderPathFor, MediaService, splitUploadId } from "./media.service";
 
@@ -14,7 +15,13 @@ const DELEGATION: Delegation = {
 };
 
 function serviceOver(store: Partial<SyrService>): MediaService {
-  return new MediaService(store as SyrService);
+  return new MediaService(
+    store as SyrService,
+    {
+      isProduction: false,
+      publicUrl: "http://localhost:8020",
+    } as AppConfigService,
+  );
 }
 
 const REQUEST: CreateUploadRequest = {

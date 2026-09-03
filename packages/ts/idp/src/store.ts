@@ -440,6 +440,10 @@ export async function deleteEmoji(db: Surreal, id: RecordId): Promise<void> {
   await db.delete(id);
 }
 
+export async function deleteUpload(db: Surreal, id: RecordId): Promise<void> {
+  await db.delete(id);
+}
+
 export async function createSession(
   db: Surreal,
   row: Omit<SessionRow, "id">,

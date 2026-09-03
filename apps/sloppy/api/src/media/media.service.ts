@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -11,7 +13,9 @@ import {
   type OwnedMediaAsset,
   type UploadTicket,
 } from "@sloppy/types";
+import { AppConfigService } from "../config/app-config.service";
 import { type Delegation, SyrService } from "../syr/syr.service";
+import { readRemotePicture } from "./remote-fetch";
 
 /**
  * What a role may carry. The store enforces its own limits too; these are
@@ -46,11 +50,11 @@ export function roleLimits(role: MediaRole): {
  * Where a role's blobs land in the person's own file store. A folder named
  * `public` is that store's whole access rule, so only what a stranger has to be
  * able to read goes under one: a peer resolving a DID needs the avatar and the
- * banner, and a federated emoji has to render for everybody. A note is private
- * until its subtree is published, so its pictures are not public either.
+ * banner, and a federated emoji has to render for everybody. A note's picture
+ * stays here however much of the note is published: what a peer reads is the
+ * publication's own copy, below.
  *
- * docs/ARCHITECTURE.md § "Pictures" carries the ruling, and what publishing
- * still has to build to keep it.
+ * docs/ARCHITECTURE.md § "Pictures" carries the ruling.
  */
 const ROLE_FOLDERS: Record<MediaRole, readonly string[]> = {
   block: ["sloppy", "notes"],
@@ -62,6 +66,16 @@ const ROLE_FOLDERS: Record<MediaRole, readonly string[]> = {
 export function folderPathFor(role: MediaRole): readonly string[] {
   return ROLE_FOLDERS[role];
 }
+
+/**
+ * Where a publication's own copy of a note's picture lands, readable by
+ * anybody. Deliberately not a `MediaRole`: a role is what a caller asks for,
+ * and one that put bytes straight into a public folder would let anybody have
+ * this instance mint a durable public address for whatever they sent. A copy is
+ * minted at publish, out of bytes the store already holds.
+ * docs/ARCHITECTURE.md § "Pictures".
+ */
+const PUBLISHED_FOLDER: readonly string[] = ["public", "sloppy", "notes"];
 
 export function roleIsPublic(role: MediaRole): boolean {
   return ROLE_FOLDERS[role].includes("public");
@@ -114,11 +128,22 @@ export function splitUploadId(uploadId: string): {
  */
 @Injectable()
 export class MediaService {
-  constructor(private readonly syr: SyrService) {}
+  constructor(
+    private readonly syr: SyrService,
+    private readonly config: AppConfigService,
+  ) {}
 
-  async createUpload(
+  createUpload(
     delegation: Delegation,
     request: CreateUploadRequest,
+  ): Promise<UploadTicket> {
+    return this.ticket(delegation, request, folderPathFor(request.role));
+  }
+
+  private async ticket(
+    delegation: Delegation,
+    request: CreateUploadRequest,
+    folder: readonly string[],
   ): Promise<UploadTicket> {
     const limits = ROLE_LIMITS[request.role];
     if (!limits.mimeTypes.includes(request.mime_type)) {
@@ -132,11 +157,7 @@ export class MediaService {
       );
     }
 
-    const ticket = await this.syr.createUpload(
-      delegation,
-      request,
-      folderPathFor(request.role),
-    );
+    const ticket = await this.syr.createUpload(delegation, request, folder);
     return {
       upload_id: `${ticket.uploadDid}/${ticket.uploadLocalId}`,
       upload_url: ticket.signedUrl,
@@ -181,7 +202,7 @@ export class MediaService {
    * straight to the ticket instead; this exists for the one case where the
    * bytes were fetched here so that fetching them told nobody who asked.
    */
-  async store(
+  store(
     delegation: Delegation,
     file: {
       role: MediaRole;
@@ -190,12 +211,29 @@ export class MediaService {
       bytes: Uint8Array;
     },
   ): Promise<StoredBlob> {
-    const ticket = await this.createUpload(delegation, {
-      role: file.role,
-      filename: file.filename,
-      mime_type: file.mimeType,
-      size: file.bytes.byteLength,
-    });
+    return this.send(delegation, folderPathFor(file.role), file);
+  }
+
+  private async send(
+    delegation: Delegation,
+    folder: readonly string[],
+    file: {
+      role: MediaRole;
+      filename: string;
+      mimeType: string;
+      bytes: Uint8Array;
+    },
+  ): Promise<StoredBlob> {
+    const ticket = await this.ticket(
+      delegation,
+      {
+        role: file.role,
+        filename: file.filename,
+        mime_type: file.mimeType,
+        size: file.bytes.byteLength,
+      },
+      folder,
+    );
     const sent = await fetch(ticket.upload_url, {
       method: "PUT",
       headers: ticket.upload_headers,
@@ -222,6 +260,16 @@ export class MediaService {
     uploadId: string,
     role: MediaRole,
   ): Promise<string> {
+    return (await this.ownStoredPicture(delegation, uploadId, role)).url;
+  }
+
+  /** The same picture with the name it was sent under, for the caller that
+   *  copies one rather than relaying it. */
+  async ownStoredPicture(
+    delegation: Delegation,
+    uploadId: string,
+    role: MediaRole,
+  ): Promise<{ url: string; filename: string }> {
     const upload = splitUploadId(uploadId);
     if (upload.did !== delegation.did) {
       throw new NotFoundException("That picture is not there.");
@@ -235,7 +283,56 @@ export class MediaService {
         "That picture cannot be used here. Add it again from your device.",
       );
     }
-    return stored.url;
+    return { url: stored.url, filename: stored.filename };
+  }
+
+  /**
+   * A publication's own copy of a picture, made from bytes this instance
+   * fetched out of the author's own store — never from an address a caller
+   * sent. What a peer reads is the copy, so the original stays private and
+   * neither editing nor deleting it reaches a published note.
+   */
+  async copyForPublication(
+    delegation: Delegation,
+    picture: { url: string; filename: string },
+  ): Promise<MediaAsset> {
+    const limits = ROLE_LIMITS.block;
+    const fetched = await readRemotePicture(picture.url, {
+      allowPrivate: !this.config.isProduction,
+      publicUrl: this.config.publicUrl,
+      maxBytes: limits.maxBytes,
+      mimeTypes: limits.mimeTypes,
+      // A note's picture is readable by its owner alone, so the copy is taken
+      // as them — the same credential `/media/uploads` relays one with.
+      headers: { authorization: `Bearer ${delegation.access_token}` },
+    });
+    const { url: _storeAddress, ...asset } = await this.send(
+      delegation,
+      PUBLISHED_FOLDER,
+      {
+        role: "block",
+        filename: picture.filename,
+        mimeType: fetched.mimeType,
+        bytes: fetched.bytes,
+      },
+    );
+    return asset;
+  }
+
+  /** One of those copies, gone. A store that no longer holds it has already
+   *  given this answer. */
+  async removePublishedCopy(
+    delegation: Delegation,
+    uploadId: string,
+  ): Promise<void> {
+    try {
+      await this.syr.deleteUpload(delegation, splitUploadId(uploadId));
+    } catch (err) {
+      const gone =
+        err instanceof HttpException &&
+        err.getStatus() === HttpStatus.NOT_FOUND;
+      if (!gone) throw err;
+    }
   }
 
   async completeUpload(

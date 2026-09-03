@@ -36,6 +36,10 @@ export async function readRemotePicture(
     publicUrl: string;
     maxBytes: number;
     mimeTypes: readonly string[];
+    /** What the far end needs to answer, where the bytes are not a stranger's
+     *  to read. `remote-host.ts` drops it the moment a hop leaves the origin it
+     *  was for. */
+    headers?: Record<string, string>;
   },
 ): Promise<RemotePicture> {
   const stop = new AbortController();
@@ -62,7 +66,11 @@ export async function readRemotePicture(
 
 async function read(
   target: string,
-  policy: { allowPrivate: boolean; publicUrl: string },
+  policy: {
+    allowPrivate: boolean;
+    publicUrl: string;
+    headers?: Record<string, string>;
+  },
   signal: AbortSignal,
 ): Promise<ReachableResponse> {
   let response: ReachableResponse;
@@ -73,7 +81,7 @@ async function read(
         allowPrivate: policy.allowPrivate,
         ownOrigin: ownOrigin(policy.publicUrl),
       },
-      { headers: { accept: "image/*" }, signal },
+      { headers: { accept: "image/*", ...policy.headers }, signal },
     );
   } catch (error) {
     // A refused address is already an answer for a person; anything else here

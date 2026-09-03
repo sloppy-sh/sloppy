@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import {
   addEmoji,
+  discardUpload,
   EmojiCreateSchema,
   emojiCatalog,
   finishUpload,
@@ -38,6 +39,7 @@ import {
 import type { SyrEmoji } from "@sloppy/types";
 import type { Response } from "express";
 import { Public } from "../auth/public.decorator";
+import { BlobStore } from "./blob-store";
 import {
   IdpExceptionFilter,
   type IdpRequest,
@@ -62,7 +64,10 @@ import { listing, pageOf, type UploadView, uploadView } from "./public-page";
 @UseFilters(IdpExceptionFilter)
 @UseGuards(PlatformTokenGuard)
 export class OwnerController {
-  constructor(private readonly idp: IdpService) {}
+  constructor(
+    private readonly idp: IdpService,
+    private readonly blobs: BlobStore,
+  ) {}
 
   @Get("folders")
   async folders(
@@ -166,6 +171,25 @@ export class OwnerController {
       decodeURIComponent(localId),
     );
     return { status: "success", data: uploadView(row) };
+  }
+
+  /** What publishing's own copies are taken down by, and the route syr answers
+   *  at the same address. */
+  @Delete("uploads/:did/:localId")
+  @HttpCode(204)
+  async removeUpload(
+    @Req() req: IdpRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+  ): Promise<void> {
+    const grant = writingPlatform(req);
+    if (decodeURIComponent(did) !== grant.did) throw notYours();
+    await discardUpload(
+      this.idp.context,
+      grant.did,
+      decodeURIComponent(localId),
+      (key) => this.blobs.remove(key),
+    );
   }
 
   @Get("emojis")

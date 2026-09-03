@@ -31,6 +31,32 @@ export class BlockRepository {
       .sort((a, b) => compareOrd(a.ord, b.ord));
   }
 
+  /**
+   * The stacks of several notes at once, each in `ord` order. Publishing a
+   * branch reads it a batch of notes at a time; one call per note would be one
+   * round trip per note.
+   */
+  async listByNodes(
+    nodes: readonly OwnedRef[],
+  ): Promise<Map<OwnedRef, Block[]>> {
+    const stacks = new Map<OwnedRef, Block[]>();
+    if (nodes.length === 0) return stacks;
+    const [rows] = await this.query(
+      "SELECT * FROM block WHERE node IN $nodes",
+      { nodes: [...nodes] },
+    );
+    for (const row of rows) {
+      const block = BlockSchema.parse(row);
+      const held = stacks.get(block.node);
+      if (held) held.push(block);
+      else stacks.set(block.node, [block]);
+    }
+    for (const stack of stacks.values()) {
+      stack.sort((a, b) => compareOrd(a.ord, b.ord));
+    }
+    return stacks;
+  }
+
   async find(did: string, ref: OwnedRef): Promise<Block | null> {
     const [rows] = await this.query(
       "SELECT * FROM block WHERE id = $id AND created_by = $did",

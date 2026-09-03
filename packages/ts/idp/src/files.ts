@@ -15,6 +15,7 @@ import { IdpError } from "./errors.js";
 import {
   createFolder,
   createUpload,
+  deleteUpload,
   findFolder,
   findFolderById,
   findUpload,
@@ -238,6 +239,23 @@ export async function requireUpload(
     throw new IdpError(404, "not_found", "That file is not there.");
   }
   return row;
+}
+
+/**
+ * One of somebody's own files, gone. `removeBlob` is a parameter for the reason
+ * `purgeIdentity`'s is — the object store belongs to the API — and the bytes go
+ * first: a row deleted while the object survived leaves bytes a stranger can
+ * still read and nothing left pointing at them.
+ */
+export async function discardUpload(
+  ctx: IdpContext,
+  did: string,
+  localId: string,
+  removeBlob: (key: string) => Promise<void>,
+): Promise<void> {
+  const row = await requireUpload(ctx, did, localId);
+  await removeBlob(row.key);
+  await deleteUpload(ctx.db, row.id);
 }
 
 export interface StoredBytes {

@@ -556,7 +556,10 @@ public along with it, decided by a publish somewhere else in the graph. `snapsho
 pairs the original with its copy, one row per publication, so a second version citing the
 same picture reuses that copy rather than sending the same bytes public again under a new
 address — and the library is untouched: a picture that has been published still appears in
-the picker, because the row it lists never moved.
+the picker, because the row it lists never moved. `source_upload` is what the author's own
+note cites the picture BY, which is an upload for a picture and a catalog entry for an
+emoji; both are `<did>/<local id>` under the author, and one read of these rows is what
+answers "already copied?" for a whole branch.
 
 **Publishing is the only moment bytes go public, and it is always a deliberate act.** A
 picture dropped into a note inside a published branch is in no version until its author
@@ -745,14 +748,19 @@ pulled_block:{ created_by: <did>, id: <ulid> }
   content       object
 ```
 
-**A version is what makes a subtree readable. `node.published` is not, and nothing today
-is.** A peer reads `snapshot_node` and `snapshot_block` rows and never the notes they were
-copied from, so deleting a publication — with its versions, its copies and its assets — is
-unpublishing. `node.published` is a separate column on the note, and `provenanceOf` in
-`@sloppy/graph` is the only thing that reads it: it decides whether a mark draws as own or
-as published, and nothing else follows from it. None of the routes § "Federating the graph"
-describes is served by `apps/sloppy/api` yet, so no note in Sloppy has ever been readable
-by anybody, and nothing writes `published` after a note is created.
+**A version is what makes a subtree readable. `node.published` is not.** A peer reads
+`snapshot_node` and `snapshot_block` rows and never the notes they were copied from, so
+deleting a publication — with its versions, its copies and its assets — is unpublishing.
+`node.published` is a separate column on the note, and `provenanceOf` in `@sloppy/graph` is
+the only thing that reads it: it decides whether a mark draws as own or as published, and
+nothing else follows from it. `apps/sloppy/api`'s `publication/` serves the author's own
+routes and the four public ones; the peer-mediated reads and the pull side of § "Federating
+the graph" are not served yet.
+
+**A publication with no version is a first publish that did not finish.** Nothing serves
+one and no listing carries one, and publishing that root again completes it — reusing the
+copies the failed attempt had already paired, rather than sending the same bytes public
+twice.
 
 **`published` says a version carries this note, and is maintained from the snapshot rows.**
 Not "a publication covers it": under a snapshot a note inside a published branch is
