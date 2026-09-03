@@ -740,6 +740,42 @@ describe("publishing a branch, and what a peer reads back", () => {
     60_000,
   );
 
+  // Two publishes of one branch share the chain's copies, so they take their
+  // turns: interleaved, the one that lost the race for a version number would
+  // take back the copy the one that won had just published a version around.
+  scenario(
+    "publishes one branch twice at once as two versions",
+    async () => {
+      const uploadId = await upload("at-once.png");
+      const branch = await newNode({ title: "Twice at once" });
+      await newBlock(branch.ref, {
+        type: "doc",
+        content: [{ type: "picture", attrs: { upload_id: uploadId } }],
+      });
+
+      const [first, second] = await Promise.all([
+        publish(branch.ref),
+        publish(branch.ref),
+      ]);
+      expect(first.ref).toBe(second.ref);
+      expect(
+        [first.latest.sequence, second.latest.sequence].sort((a, b) => a - b),
+      ).toEqual([1, 2]);
+      // One copy, made by whichever went first and reused by the other, and
+      // still there for the version that cites it.
+      expect(
+        (await publicFilenames()).filter((one) => one === "at-once.png"),
+      ).toHaveLength(1);
+      const page = await read(first.ref);
+      const drawn = (page?.blocks[0].content.content?.[0].attrs ?? {}) as {
+        upload_id?: string;
+      };
+      expect(drawn.upload_id).toBeDefined();
+      expect(drawn.upload_id).not.toBe(uploadId);
+    },
+    60_000,
+  );
+
   scenario("lists what an identity publishes, and nothing else", async () => {
     const shown = await newNode({ title: "On the shelf" });
     const hidden = await newNode({ title: "In the drawer" });

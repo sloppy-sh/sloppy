@@ -295,12 +295,10 @@ about where their GRAPH is served, so following somebody yields nothing to pull 
 instance to ask, and nothing a peer says about themselves can corroborate one. Where is
 carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
 ask, which is this one unless the caller names another — the whole of it for somebody who
-keeps their graph here — and answers what that identity publishes there.
-`GET /api/peers/versions` and `GET /api/peers/changes` are the same mediation for a
-publication's history and its differences. Every one of those requests is made by the
-reader's instance, so the instance asked learns an instance and never a reader, and a
-`pull` row keeps the origin in `source_url` so refreshing a region asks the same instance
-again.
+keeps their graph here — and answers what that identity publishes there. The request is
+made by the reader's instance, so the instance asked learns an instance and never a reader,
+and a `pull` row keeps the origin in `source_url` so refreshing a region asks the same
+instance again.
 
 **A named origin is a signed-in caller telling this instance to go and fetch something, so
 what it may name is bounded in three places and none of them is a server's own idea.**

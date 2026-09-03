@@ -37,6 +37,7 @@ import type { RecordId } from "surrealdb";
 import { BlockRepository } from "../block/block.repository";
 import { MediaService } from "../media/media.service";
 import { NodeRepository } from "../node/node.repository";
+import { SerialQueue } from "../node/serial-queue";
 import { type Delegation, SyrService } from "../syr/syr.service";
 import {
   publicationVersion,
@@ -60,6 +61,10 @@ const COPIES_AT_ONCE = 4;
 @Injectable()
 export class PublicationService {
   private readonly logger = new Logger(PublicationService.name);
+  /** One act on a branch at a time. Publishing and taking down both move the
+   *  copies a publication owns, so steps that interleave would have one taking
+   *  back what the other has written a version around. */
+  private readonly acts = new SerialQueue();
 
   constructor(
     private readonly publications: PublicationRepository,
@@ -123,7 +128,16 @@ export class PublicationService {
    * nothing serves a snapshot without it, so a publish that fails partway
    * leaves rows nobody can reach and takes its copies back down.
    */
-  async publish(
+  publish(
+    delegation: Delegation,
+    request: { root: OwnedRef },
+  ): Promise<PublicationView> {
+    return this.acts.run(request.root, () =>
+      this.snapshot(delegation, request),
+    );
+  }
+
+  private async snapshot(
     delegation: Delegation,
     request: { root: OwnedRef },
   ): Promise<PublicationView> {
@@ -134,6 +148,10 @@ export class PublicationService {
     const { publication, opened } = await this.chainFor(did, root);
     const chain = ownedRefFrom(publication.id);
     const id = createOwnedRecordId("publication_version", did);
+    // The number a version of this chain would take next, read before any bytes
+    // go public: a publish elsewhere that commits while this one runs takes that
+    // number, which is how the undo learns its copies are now that version's.
+    const opening = await this.publications.nextSequence(did, chain);
 
     const copies = new Copies(await this.publications.assetsOf(did, chain));
     let version: PublicationVersion;
@@ -144,9 +162,9 @@ export class PublicationService {
         chain,
         copies,
       });
-      // The number is read here rather than before the copying, so two publishes
-      // of one root race over a moment instead of over a whole branch. The
-      // unique index settles whichever still collide.
+      // Read again rather than reused: taking the number late leaves a publish
+      // in another process racing this one over a moment instead of over a
+      // whole branch, and the unique index settles whichever still collide.
       const now = nowIso();
       version = {
         id,
@@ -160,7 +178,7 @@ export class PublicationService {
     } catch (err) {
       await this.undo(
         delegation,
-        { version: ownedRefFrom(id), chain, opened },
+        { version: ownedRefFrom(id), chain, opened, opening },
         copies,
       );
       throw err;
@@ -174,10 +192,19 @@ export class PublicationService {
    * is still public.
    */
   async remove(delegation: Delegation, ref: OwnedRef): Promise<void> {
-    const did = delegation.did;
-    const publication = await this.publications.find(did, ref);
+    const publication = await this.publications.find(delegation.did, ref);
     if (!publication) return;
+    await this.acts.run(publication.root, () =>
+      this.takeDown(delegation, publication),
+    );
+  }
 
+  private async takeDown(
+    delegation: Delegation,
+    publication: Publication,
+  ): Promise<void> {
+    const did = delegation.did;
+    const ref = ownedRefFrom(publication.id);
     const assets = await this.publications.assetsOf(did, ref);
     await inRuns(assets, COPIES_AT_ONCE, (asset) =>
       this.media.removePublishedCopy(delegation, asset.public_upload),
@@ -412,23 +439,32 @@ export class PublicationService {
    * by an act that did not finish, and — where this publish opened the chain —
    * no chain either.
    *
-   * A copy the store will not let go of keeps its pairing row, and the row
-   * keeps the chain: it is a copy this publication still owns rather than bytes
-   * nothing points at, and taking the publication down is what reaches it.
+   * Two things hold a copy in place against that. A store that will not let one
+   * go keeps its pairing row, and the row keeps the chain: it is a copy this
+   * publication still owns rather than bytes nothing points at, and taking the
+   * publication down is what reaches it. And a version another publish
+   * committed while this one ran was written around these copies.
    */
   private async undo(
     delegation: Delegation,
-    of: { version: OwnedRef; chain: OwnedRef; opened: boolean },
+    of: {
+      version: OwnedRef;
+      chain: OwnedRef;
+      opened: boolean;
+      opening: number;
+    },
     copies: Copies,
   ): Promise<void> {
-    for (const asset of copies.made) {
-      try {
-        await this.media.removePublishedCopy(delegation, asset.public_upload);
-        await this.publications.removeAssets([asset.id]);
-      } catch (err) {
-        this.logger.error(
-          `A copy made for ${asset.publication} outlived the publish that made it: ${reason(err)}`,
-        );
+    if (await this.stillOurs(delegation.did, of)) {
+      for (const asset of copies.made) {
+        try {
+          await this.media.removePublishedCopy(delegation, asset.public_upload);
+          await this.publications.removeAssets([asset.id]);
+        } catch (err) {
+          this.logger.error(
+            `A copy made for ${asset.publication} outlived the publish that made it: ${reason(err)}`,
+          );
+        }
       }
     }
     try {
@@ -438,6 +474,31 @@ export class PublicationService {
       }
     } catch (err) {
       this.logger.error(`${of.version} left rows behind: ${reason(err)}`);
+    }
+  }
+
+  /**
+   * Whether the copies this publish made are still nobody else's to keep. A
+   * version another publish committed while this one ran cites them and cannot
+   * be edited, so taking them back would leave a peer reading a note whose
+   * pictures are gone.
+   */
+  private async stillOurs(
+    did: string,
+    of: { chain: OwnedRef; opening: number },
+  ): Promise<boolean> {
+    try {
+      // Below it where the whole chain went down meanwhile, which took the
+      // copies with it.
+      return (
+        (await this.publications.nextSequence(did, of.chain)) <= of.opening
+      );
+    } catch (err) {
+      // Unanswered is not "nobody else's", so the copies stay with the chain.
+      this.logger.error(
+        `What ${of.chain} owns could not be read back: ${reason(err)}`,
+      );
+      return false;
     }
   }
 }

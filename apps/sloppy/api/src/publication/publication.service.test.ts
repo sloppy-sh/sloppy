@@ -56,6 +56,18 @@ const root: Node = parseNode({
   updated_at: NOW,
 });
 
+/** A chain this root already publishes into, so a publish of it is a second
+ *  version rather than the first. */
+const HELD: Publication = {
+  id: recordIdFromOwnedRef("publication", CHAIN),
+  created_by: AVA,
+  root: ROOT,
+  root_address: "1" as Address,
+  comments: "anyone",
+  created_at: NOW,
+  updated_at: NOW,
+};
+
 const section: Block = {
   id: recordIdFromOwnedRef("block", SECTION),
   created_by: AVA,
@@ -73,13 +85,22 @@ interface Ledger {
   released: string[];
   chainsRemoved: OwnedRef[];
   assetsRemoved: number;
+  copying: number;
+  atOnce: number;
 }
 
 /**
  * A publish of one note carrying one picture, where `refusing` decides whether
- * the store accepts the row that pairs the copy with the picture it came from.
+ * the store accepts the row that pairs the copy with the picture it came from,
+ * and `raced` stands for a publish in another process committing a version of
+ * the same chain while this one runs.
  */
-function publishing(of: { held?: Publication; refusing: boolean }): {
+function publishing(of: {
+  held?: Publication;
+  refusing: boolean;
+  raced?: boolean;
+  holding?: Promise<void>;
+}): {
   service: PublicationService;
   ledger: Ledger;
 } {
@@ -87,17 +108,12 @@ function publishing(of: { held?: Publication; refusing: boolean }): {
     released: [],
     chainsRemoved: [],
     assetsRemoved: 0,
+    copying: 0,
+    atOnce: 0,
   };
-  const chain: Publication = of.held ?? {
-    id: recordIdFromOwnedRef("publication", CHAIN),
-    created_by: AVA,
-    root: ROOT,
-    root_address: "1" as Address,
-    comments: "anyone",
-    created_at: NOW,
-    updated_at: NOW,
-  };
+  const chain: Publication = of.held ?? HELD;
 
+  let asked = 0;
   const publications = {
     async findByRoot() {
       return of.held ?? null;
@@ -114,7 +130,8 @@ function publishing(of: { held?: Publication; refusing: boolean }): {
     async addNodes() {},
     async addBlocks() {},
     async nextSequence() {
-      return 1;
+      asked += 1;
+      return of.raced === true && asked > 1 ? 2 : 1;
     },
     async commit() {},
     async removeAssets(ids: readonly unknown[]) {
@@ -149,6 +166,10 @@ function publishing(of: { held?: Publication; refusing: boolean }): {
       return { url: "https://example.invalid/p.png", filename: "p.png" };
     },
     async copyForPublication() {
+      ledger.copying += 1;
+      ledger.atOnce = Math.max(ledger.atOnce, ledger.copying);
+      await of.holding;
+      ledger.copying -= 1;
       return { upload_id: COPY };
     },
     async removePublishedCopy(_delegation: Delegation, uploadId: string) {
@@ -187,20 +208,46 @@ describe("a publish that does not finish", () => {
   });
 
   it("leaves a chain that was already there, versions and all", async () => {
-    const held: Publication = {
-      id: recordIdFromOwnedRef("publication", CHAIN),
-      created_by: AVA,
-      root: ROOT,
-      root_address: "1" as Address,
-      comments: "anyone",
-      created_at: NOW,
-      updated_at: NOW,
-    };
-    const { service, ledger } = publishing({ held, refusing: true });
+    const { service, ledger } = publishing({ held: HELD, refusing: true });
 
     await expect(service.publish(delegation, { root: ROOT })).rejects.toThrow();
     expect(ledger.released).toEqual([COPY]);
     expect(ledger.chainsRemoved).toEqual([]);
+  });
+
+  // Publishing again reuses the copies the chain already owns, so a publish
+  // that fails is not free to take back what one that finished is citing: a
+  // version is immutable, and a peer is reading it.
+  it("leaves a copy a version published meanwhile was written around", async () => {
+    const { service, ledger } = publishing({
+      held: HELD,
+      refusing: true,
+      raced: true,
+    });
+
+    await expect(service.publish(delegation, { root: ROOT })).rejects.toThrow();
+    expect(ledger.released).toEqual([]);
+    expect(ledger.assetsRemoved).toBe(0);
+    expect(ledger.chainsRemoved).toEqual([]);
+  });
+
+  it("publishes one branch twice over one at a time", async () => {
+    let release = () => {};
+    const holding = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { service, ledger } = publishing({ refusing: false, holding });
+
+    const both = Promise.all([
+      service.publish(delegation, { root: ROOT }),
+      service.publish(delegation, { root: ROOT }),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ledger.copying).toBe(1);
+
+    release();
+    await both;
+    expect(ledger.atOnce).toBe(1);
   });
 
   it("leaves the copy and the chain alone when it finishes", async () => {
