@@ -30,13 +30,17 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Users from '@lucide/svelte/icons/users';
 	import type { GraphHoverAt, GraphMenuAt, MarkPictures } from '@sloppy/graph';
 	import {
 		NodeBulkRequestSchema,
 		RootAddressSchema,
+		peerOrigin,
+		type FollowedIdentity,
 		type NodeAppearance,
 		type NodeBulkAct,
 		type NodeView,
+		type PullView,
 		type Tag as TagName
 	} from '@sloppy/types';
 	import {
@@ -48,15 +52,22 @@
 		ConfirmModal,
 		GraphSurface,
 		GroundChoice,
+		HeldNote,
+		nameOf,
 		NotePreview,
 		overlay,
+		PeersSheet,
 		ReadingPanel,
 		ResponsiveModal,
 		TagRail,
 		TemplatePicker,
 		type CanvasMenuItem,
+		type HeldRegion,
 		type NoteTemplate,
-		type PreviewedNote
+		type Peer,
+		type PictureSource,
+		type PreviewedNote,
+		type ReferenceReader
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -66,8 +77,10 @@
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
-	import { noteMedia } from '../note-surface.js';
+	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { peers } from '../stores/peers.svelte.js';
+	import { people } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -132,8 +145,38 @@
 	let actMissed = $state<string | null>(null);
 	/** The act in flight, which the next one asked for queues behind. */
 	let acting: Promise<void> = Promise.resolve();
+	/** Whether the graphs of other people are being looked through. */
+	let visiting = $state(false);
+	/**
+	 * The held region on the canvas, or `null` for the reader's own graph. One
+	 * author's graph is drawn at a time: an address is a place in the graph it
+	 * was written in, so a peer's `1a` and the reader's own are two notes that
+	 * seed identically and mean different things.
+	 */
+	let foreign = $state<PullView | null>(null);
+	/** The held note being read, which the canvas also opens around. */
+	let reached = $state<OwnedRef | null>(null);
+	/** The held note whose sections are still on their way. */
+	let reaching = $state<OwnedRef | null>(null);
+	/** Why the held note in front of the reader has no sections. */
+	let reachRefused = $state<string | null>(null);
 
 	const markPictures: MarkPictures = { read: (upload) => api.ownPicture(upload) };
+
+	/** A picture inside a held note. Publishing the branch is what made it
+	 *  readable, and the fetch is the API's, so the author's instance never
+	 *  learns who is reading. */
+	const heldPictures: PictureSource = { picture: (upload) => api.publishedPicture(upload) };
+
+	/** Where a reference inside a held note leads: the region either holds the
+	 *  note it names or nothing does, since the reader's own graph is not the
+	 *  one on screen. */
+	const heldReferences: ReferenceReader = {
+		read: async (note) => heldNotes.find((held) => held.ref === note) ?? null,
+		open: (note) => {
+			if (heldNotes.some((held) => held.ref === note)) void readHeld(note);
+		}
+	};
 
 	const roots = $derived(nodes.region());
 	const open = $derived(page.state.note ?? null);
@@ -161,10 +204,18 @@
 	});
 	const openNode = $derived(open ? nodes.get(open) : undefined);
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
-	const populated = $derived(!loading && !unreachable && roots.length > 0);
+	/** The region's notes, already in address order. */
+	const heldNotes = $derived(foreign ? peers.held(foreign.ref) : []);
+	const reachedNote = $derived(
+		reached ? (heldNotes.find((note) => note.ref === reached) ?? null) : null
+	);
+	const populated = $derived(
+		foreign ? heldNotes.length > 0 : !loading && !unreachable && roots.length > 0
+	);
 
 	/** Depth-first from the roots, which is address order without re-deriving it. */
 	const visible = $derived.by(() => {
+		if (foreign) return heldNotes;
 		const out: NodeView[] = [];
 		const walk = (list: NodeView[]) => {
 			for (const node of list) {
@@ -210,7 +261,9 @@
 	 *  fold is drawn rather than stored — what the canvas folded into it. */
 	const previewed = $derived.by((): PreviewedNote | undefined => {
 		if (!hoverAt) return undefined;
-		const note = nodes.get(hoverAt.ref);
+		const note = foreign
+			? heldNotes.find((held) => held.ref === hoverAt?.ref)
+			: nodes.get(hoverAt.ref);
 		if (!note) return undefined;
 		return {
 			address: note.address,
@@ -226,6 +279,19 @@
 		if (overGraph) hoverAt = null;
 	});
 
+	/** The rail is the legend for the graph on screen, so inside a region it
+	 *  counts the region's notes rather than the reader's own. */
+	const railTags = $derived.by(() => {
+		if (!foreign) return tags.all;
+		const counted: Record<string, number> = {};
+		for (const note of heldNotes) {
+			for (const tag of note.tags) counted[tag] = (counted[tag] ?? 0) + 1;
+		}
+		return Object.entries(counted)
+			.map(([tag, notes]) => ({ tag, notes }))
+			.sort((a, b) => b.notes - a.notes || a.tag.localeCompare(b.tag));
+	});
+
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
 	const lit = $derived(
 		selection.length === 0
@@ -234,9 +300,11 @@
 	);
 
 	const summary = $derived(
-		selection.length === 0
-			? `${count(visible.length, 'note', 'notes')} across ${count(roots.length, 'branch', 'branches')}`
-			: `${lit.toLocaleString()} of ${count(visible.length, 'note', 'notes')} lit up`
+		selection.length > 0
+			? `${lit.toLocaleString()} of ${count(visible.length, 'note', 'notes')} lit up`
+			: foreign
+				? count(visible.length, 'note', 'notes')
+				: `${count(visible.length, 'note', 'notes')} across ${count(roots.length, 'branch', 'branches')}`
 	);
 
 	function count(n: number, one: string, many: string): string {
@@ -272,6 +340,7 @@
 	onMount(() => {
 		openCited();
 		void loadGraph();
+		void peers.load();
 	});
 
 	afterNavigate(openCited);
@@ -642,6 +711,92 @@
 		}
 	}
 
+	/**
+	 * Somebody else's region, on the canvas in place of the reader's own graph.
+	 * The notes they had open belong to their graph, so they close with it.
+	 */
+	async function enterRegion(ref: OwnedRef): Promise<void> {
+		const region = peers.region(ref);
+		if (!region) return;
+		stopChoosing();
+		stopPointing();
+		hide();
+		closeHeld();
+		foreign = region;
+		await peers.enter(ref);
+	}
+
+	function leaveRegion(): void {
+		foreign = null;
+		closeHeld();
+	}
+
+	/** A held note, opened to be read. Its sections are asked for once, and a
+	 *  second note opened while the first is still coming settles last. */
+	async function readHeld(ref: OwnedRef): Promise<void> {
+		reached = ref;
+		reachRefused = null;
+		if (peers.hasStack(ref)) return;
+		reaching = ref;
+		const stack = await peers.read(ref);
+		if (reached !== ref) return;
+		reaching = null;
+		if (stack === null) {
+			reachRefused = peers.says ?? 'Sloppy could not read that note. Try again in a moment.';
+		}
+	}
+
+	function closeHeld(): void {
+		reached = null;
+		reaching = null;
+		reachRefused = null;
+	}
+
+	/** Other people's graphs, and a second look at whatever did not arrive the
+	 *  first time. */
+	function visitPeers(): void {
+		visiting = true;
+		void peers.load();
+	}
+
+	const heldRegions = $derived<HeldRegion[]>(
+		peers.regions.map((region) => ({
+			ref: region.ref,
+			identity: region.source_did,
+			person: people.of(region.source_did),
+			address: region.root_address,
+			from: region.source_url
+		}))
+	);
+
+	/** Where to ask about somebody: the instance a region of theirs came from,
+	 *  else the provider the reader's own store recorded beside their DID. A DID
+	 *  names a person and never a place, so neither is more than a best guess,
+	 *  and the sheet shows which was used. */
+	function readAt(one: FollowedIdentity): string | undefined {
+		const held = peers.regions.find((region) => region.source_did === one.did);
+		return held?.source_url ?? peerOrigin(one.provider_url ?? '') ?? undefined;
+	}
+
+	const followedPeople = $derived<Peer[]>(
+		peers.following.map((one) => ({
+			identity: one.did,
+			person: people.of(one.did),
+			from: readAt(one)
+		}))
+	);
+
+	/** Whoever a peer surface is about to name, asked for once. */
+	$effect(() => {
+		for (const one of peers.following) people.resolve(one.did);
+		for (const region of peers.regions) people.resolve(region.source_did);
+	});
+
+	const regionAuthor = $derived(foreign ? people.of(foreign.source_did) : null);
+	/** A note's shortcodes are read against its own author's catalog, which this
+	 *  instance resolves. */
+	const heldEmoji = $derived(noteEmoji(session.viewer?.did ?? '').catalog);
+
 	function startNumbering(): void {
 		branchNumber = '';
 		numberRefused = null;
@@ -699,7 +854,8 @@
 				{collapsed}
 				{selection}
 				viewer={session.viewer?.did}
-				focus={open ?? looking ?? undefined}
+				remountKey={foreign?.ref}
+				focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
 				picking={pointing && pointingNote
 					? {
 							from: pointing,
@@ -708,14 +864,14 @@
 						}
 					: undefined}
 				pictures={markPictures}
-				{reading}
+				reading={foreign ? undefined : reading}
 				ground={prefs.current.ground}
 				onHover={(at) => (hoverAt = overGraph ? null : at)}
-				{chosen}
-				onChoose={pointing ? undefined : chooseAlso}
-				onChooseWithin={pointing ? undefined : chooseWithin}
-				onMenu={pointing ? undefined : (at) => (menuAt = at)}
-				onOpenNode={show}
+				chosen={foreign ? undefined : chosen}
+				onChoose={pointing || foreign ? undefined : chooseAlso}
+				onChooseWithin={pointing || foreign ? undefined : chooseWithin}
+				onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
+				onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
 				onExpand={(ref) => {
 					folded.delete(ref);
 					if (pointing) looking = ref;
@@ -726,11 +882,18 @@
 	{:else}
 		<div class="clear-sysnav absolute inset-0 overflow-y-auto px-3 sm:px-6">
 			<div class="mx-auto w-full max-w-4xl pb-8">
-				{#if loading}
+				{#if loading || (foreign && peers.busy)}
 					<div class="space-y-2 px-2 pt-2">
 						{#each Array.from({ length: 6 }, (_, row) => row) as row (row)}
 							<Skeleton class="h-11 w-full" />
 						{/each}
+					</div>
+				{:else if foreign}
+					<div class="mx-auto max-w-sm space-y-5 py-20 text-center">
+						<p class="text-muted-foreground" role="alert">
+							{peers.says ?? 'There is nothing in this branch to read.'}
+						</p>
+						<Button variant="outline" class="h-11" onclick={leaveRegion}>Your graph</Button>
 					</div>
 				{:else if unreachable}
 					<div class="mx-auto max-w-sm space-y-5 py-20 text-center">
@@ -756,6 +919,9 @@
 							</Button>
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
 								Number it yourself
+							</Button>
+							<Button variant="ghost" class="h-11" onclick={visitPeers}>
+								Read somebody else's
 							</Button>
 						</div>
 						{#if refused}
@@ -791,6 +957,25 @@
 					{#if pointRefused}
 						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
 					{/if}
+				{:else if foreign}
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
+							<span class="address">{foreign.root_address}</span>
+							<span>{regionAuthor ? nameOf(regionAuthor) : foreign.source_did}</span>
+							<span class="text-muted-foreground">· {summary}</span>
+						</p>
+						<Button
+							variant="outline"
+							class="ms-auto h-9 shrink-0 rounded-full"
+							onclick={leaveRegion}
+						>
+							Your graph
+						</Button>
+						<GroundChoice
+							value={prefs.current.ground}
+							onchange={(ground) => prefs.set('ground', ground)}
+						/>
+					</div>
 				{:else}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 truncate text-sm text-muted-foreground sm:w-auto sm:flex-1">
@@ -825,6 +1010,15 @@
 						>
 							<Hash class="size-4" />
 						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-9 shrink-0 rounded-full"
+							aria-label="Other people's graphs"
+							onclick={() => (visiting = true)}
+						>
+							<Users class="size-4" />
+						</Button>
 						<GroundChoice
 							value={prefs.current.ground}
 							onchange={(ground) => prefs.set('ground', ground)}
@@ -832,8 +1026,8 @@
 					</div>
 				{/if}
 
-				{#if tags.all.length > 0 || selection.length > 0}
-					<TagRail tags={tags.all} selected={selection} onselect={(next) => tags.select(next)} />
+				{#if railTags.length > 0 || selection.length > 0}
+					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
 				{/if}
 
 				{#if refused}
@@ -913,6 +1107,46 @@
 	}}
 />
 
+<PeersSheet
+	bind:open={visiting}
+	regions={heldRegions}
+	following={followedPeople}
+	busy={peers.busy}
+	says={peers.says}
+	onEnter={(ref) => void enterRegion(ref)}
+	onDrop={(ref) => {
+		if (foreign?.ref === ref) leaveRegion();
+		void peers.drop(ref);
+	}}
+	onLook={async (identity, where, cursor) => {
+		const page = await peers.publishedBy(identity, { sourceUrl: where, cursor });
+		return page && { roots: page.roots, nextCursor: page.next_cursor };
+	}}
+	onPull={async (identity, where, address) => {
+		const region = await peers.pull({ did: identity, rootAddress: address, sourceUrl: where });
+		if (!region) return;
+		visiting = false;
+		await enterRegion(region.ref);
+	}}
+	onFollow={(identity) => void peers.follow(identity)}
+	onUnfollow={(identity) => void peers.unfollow(identity)}
+	onRetry={peers.loaded ? undefined : () => void peers.load()}
+/>
+
+{#if foreign}
+	<HeldNote
+		note={reachedNote}
+		author={{ identity: foreign.source_did, person: regionAuthor }}
+		blocks={reached ? peers.stack(reached) : []}
+		loading={reaching !== null}
+		says={reachRefused}
+		pictures={heldPictures}
+		references={heldReferences}
+		emoji={heldEmoji}
+		onClose={closeHeld}
+	/>
+{/if}
+
 <ResponsiveModal
 	bind:open={numbering}
 	title="Number a new branch"
@@ -957,8 +1191,11 @@
 	</div>
 </ResponsiveModal>
 
+<!-- One author's graph at a time, so the reader's own notes are not read beside
+     somebody else's region — a history pop is the way in that nothing else
+     closes. -->
 <ReadingPanel
-	open={open !== null}
+	open={open !== null && !foreign}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}

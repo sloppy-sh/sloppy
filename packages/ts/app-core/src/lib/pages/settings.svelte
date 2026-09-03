@@ -8,6 +8,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { peers } from '../stores/peers.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
 		ACCENT_LABELS,
@@ -39,6 +40,7 @@
 		} finally {
 			nodes.clear();
 			tags.clear();
+			peers.clear();
 			people.hold(null);
 			publications.clear();
 			pulls.clear();

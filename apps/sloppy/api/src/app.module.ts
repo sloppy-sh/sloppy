@@ -8,6 +8,7 @@ import { HealthModule } from "./health/health.module";
 import { IdpModule } from "./idp/idp.module";
 import { MediaModule } from "./media/media.module";
 import { NodeModule } from "./node/node.module";
+import { PeerModule } from "./peer/peer.module";
 import { ProfileModule } from "./profile/profile.module";
 import { SocialModule } from "./social/social.module";
 
@@ -28,6 +29,7 @@ import { SocialModule } from "./social/social.module";
     MediaModule,
     ProfileModule,
     EmojiModule,
+    PeerModule,
     SocialModule,
   ],
 })
