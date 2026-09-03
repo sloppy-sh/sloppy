@@ -8,8 +8,14 @@ import {
 } from "@nestjs/common";
 import {
   type CreateUploadRequest,
+  type SyrComment,
+  type SyrCommentCreateRequest,
+  SyrCommentSchema,
+  type SyrCommentSignature,
   type SyrEmoji,
   SyrEmojiSchema,
+  type SyrFollow,
+  SyrFollowSchema,
   type SyrIdentityManifest,
   SyrIdentityManifestSchema,
   type SyrInstanceManifest,
@@ -25,6 +31,9 @@ import {
   type SyrProfile,
   type SyrProfilePatch,
   SyrProfileSchema,
+  type SyrReaction,
+  type SyrReactionCreateRequest,
+  SyrReactionSchema,
   type SyrScope,
   type SyrUpload,
   SyrUploadSchema,
@@ -37,6 +46,9 @@ import { z } from "zod";
 /** syr's own `Cache-Control` on the manifest is 300s; this matches it. */
 const MANIFEST_TTL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
+/** How much of one identity's conversation about one note is read. It is syr's
+ *  own per-page ceiling, and one page of it is what a note shows. */
+const CONVERSATION_LIMIT = 100;
 
 /**
  * What a caller must hold to act as somebody on their instance. The token is a
@@ -535,6 +547,185 @@ export class SyrService {
       `${base}/emojis/${encodeURIComponent(emoji.did)}/${encodeURIComponent(emoji.localId)}`,
       { method: "DELETE" },
       "That emoji could not be removed. Try again.",
+    );
+  }
+
+  // ── The identity store: comments, reactions, and who somebody follows ─────
+
+  /** Who this person follows, as their own store keeps it. */
+  async listFollowing(delegation: Delegation): Promise<SyrFollow[]> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
+    const failure = "We could not read who you follow. Try again in a moment.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "GET" },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrFollowSchema)),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
+  async follow(delegation: Delegation, did: string): Promise<void> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
+    await this.asPerson(
+      delegation,
+      url,
+      { method: "POST", body: JSON.stringify({ followed_did: did }) },
+      "We could not follow them. Try again.",
+    );
+  }
+
+  async unfollow(delegation: Delegation, did: string): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/follows?followed_did=${encodeURIComponent(did)}`,
+      { method: "DELETE" },
+      "We could not stop following them. Try again.",
+    );
+  }
+
+  /**
+   * What one identity has said in public about one post. Empty where their
+   * instance publishes no such listing, which is what an instance on the
+   * embedded provider answers — docs/ARCHITECTURE.md § "Federating the graph".
+   */
+  async listPublicComments(
+    instanceUrl: string,
+    did: string,
+    post: { post_did: string; post_id: string },
+  ): Promise<SyrComment[]> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    if (!endpoints.public_comments) return [];
+    const url =
+      `${endpoints.public_comments}?post_did=${encodeURIComponent(post.post_did)}` +
+      `&post_id=${encodeURIComponent(post.post_id)}&limit=${CONVERSATION_LIMIT}`;
+    const failure =
+      "We could not read what people said. Try again in a moment.";
+    const body = await this.readJson(
+      url,
+      { headers: { accept: "application/json" } },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrCommentSchema)),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
+  async createComment(
+    delegation: Delegation,
+    request: SyrCommentCreateRequest,
+  ): Promise<SyrComment> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/comments`;
+    const failure = "That could not be posted. Try again.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "POST", body: JSON.stringify(request) },
+      failure,
+    );
+    return this.readShape(syrEnvelope(SyrCommentSchema), body, url, failure)
+      .data;
+  }
+
+  /** Attaching a signature to a comment already written: syr's create route
+   *  drops the signed envelope it accepts, so this is the second of two calls. */
+  async signComment(
+    delegation: Delegation,
+    comment: { did: string; localId: string },
+    signature: SyrCommentSignature,
+  ): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/comments/${encodeURIComponent(comment.did)}/${encodeURIComponent(comment.localId)}`,
+      { method: "PATCH", body: JSON.stringify(signature) },
+      "That could not be posted. Try again.",
+    );
+  }
+
+  async deleteComment(
+    delegation: Delegation,
+    comment: { did: string; localId: string },
+  ): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/comments/${encodeURIComponent(comment.did)}/${encodeURIComponent(comment.localId)}`,
+      { method: "DELETE" },
+      "That could not be removed. Try again.",
+    );
+  }
+
+  /** The same reach as {@link listPublicComments}, for one post's reactions. */
+  async listPublicReactions(
+    instanceUrl: string,
+    did: string,
+    post: { post_did: string; post_id: string },
+  ): Promise<SyrReaction[]> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    if (!endpoints.public_reactions) return [];
+    const url =
+      `${endpoints.public_reactions}?parent_type=post` +
+      `&parent_did=${encodeURIComponent(post.post_did)}` +
+      `&parent_id=${encodeURIComponent(post.post_id)}&limit=${CONVERSATION_LIMIT}`;
+    const failure =
+      "We could not read what people said. Try again in a moment.";
+    const body = await this.readJson(
+      url,
+      { headers: { accept: "application/json" } },
+      failure,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrReactionSchema)),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
+  /**
+   * `null` where the store took the reaction OFF instead: its create route
+   * toggles, so sending one the person already has removes it. The caller
+   * asked for the reaction to be there and decides what to do about that.
+   */
+  async createReaction(
+    delegation: Delegation,
+    request: SyrReactionCreateRequest,
+  ): Promise<SyrReaction | null> {
+    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/reactions`;
+    const failure = "That reaction could not be added. Try again.";
+    const body = await this.asPerson(
+      delegation,
+      url,
+      { method: "POST", body: JSON.stringify(request) },
+      failure,
+    );
+    if (z.object({ action: z.literal("removed") }).safeParse(body).success) {
+      return null;
+    }
+    return this.readShape(syrEnvelope(SyrReactionSchema), body, url, failure)
+      .data;
+  }
+
+  async deleteReaction(
+    delegation: Delegation,
+    reaction: { did: string; localId: string },
+  ): Promise<void> {
+    const base = await this.ownerApiBase(delegation.syr_instance_url);
+    await this.asPerson(
+      delegation,
+      `${base}/reactions/${encodeURIComponent(reaction.did)}/${encodeURIComponent(reaction.localId)}`,
+      { method: "DELETE" },
+      "That reaction could not be removed. Try again.",
     );
   }
 

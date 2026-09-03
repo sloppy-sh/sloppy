@@ -9,6 +9,7 @@ import { IdpModule } from "./idp/idp.module";
 import { MediaModule } from "./media/media.module";
 import { NodeModule } from "./node/node.module";
 import { ProfileModule } from "./profile/profile.module";
+import { SocialModule } from "./social/social.module";
 
 /**
  * The whole application, wired once. A milestone fills one of the modules
@@ -27,6 +28,7 @@ import { ProfileModule } from "./profile/profile.module";
     MediaModule,
     ProfileModule,
     EmojiModule,
+    SocialModule,
   ],
 })
 export class AppModule {}
