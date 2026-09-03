@@ -386,19 +386,19 @@
 	const newest = $derived(branch?.versions[0] ?? null);
 
 	/**
-	 * True where a note in this branch has changed since the newest version was
-	 * published. It only ever reports that one HAS: a section rewritten moves no
-	 * note's own row, and a branch not all in hand cannot be compared — so false
-	 * says nothing, and nothing is said on it.
+	 * True where this branch has changed since the newest version was published.
+	 * It only ever reports that one HAS: what is in hand is this note's own
+	 * sections and the rows of the notes around it, so writing done in another
+	 * note of the branch is not visible from here — false says nothing, and
+	 * nothing is said on it.
 	 */
 	const changedSince = $derived.by(() => {
 		if (!node || !newest) return false;
+		const since = newest.published_at;
+		if (blocks.some((section) => section.updated_at > since)) return true;
 		return nodes
 			.region({ origin: node.origin })
-			.some(
-				(other) =>
-					isInSubtree(node.address, other.address) && other.updated_at > newest.published_at
-			);
+			.some((other) => isInSubtree(node.address, other.address) && other.updated_at > since);
 	});
 
 	/** Whether anybody may answer this note: the author's own invitation on their
@@ -913,11 +913,6 @@
 		}
 	}
 
-	async function whatChanged(from: OwnedRef, to: OwnedRef) {
-		const which = publication?.ref;
-		return which ? await publications.changes(which, from, to) : [];
-	}
-
 	async function say(content: string, replyTo: StoreRef | undefined): Promise<void> {
 		try {
 			await conversation.say({
@@ -1403,7 +1398,6 @@
 				onpublish={publishBranch}
 				oncomments={inviteAnswers}
 				onunpublish={takeDown}
-				onchanges={whatChanged}
 			/>
 		{/if}
 

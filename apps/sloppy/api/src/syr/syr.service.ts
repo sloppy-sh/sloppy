@@ -550,8 +550,6 @@ export class SyrService {
     );
   }
 
-  // ── The identity store: comments, reactions, and who somebody follows ─────
-
   /** Who this person follows, as their own store keeps it. */
   async listFollowing(delegation: Delegation): Promise<SyrFollow[]> {
     const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
@@ -568,26 +566,6 @@ export class SyrService {
       url,
       failure,
     ).data;
-  }
-
-  async follow(delegation: Delegation, did: string): Promise<void> {
-    const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
-    await this.asPerson(
-      delegation,
-      url,
-      { method: "POST", body: JSON.stringify({ followed_did: did }) },
-      "We could not follow them. Try again.",
-    );
-  }
-
-  async unfollow(delegation: Delegation, did: string): Promise<void> {
-    const base = await this.ownerApiBase(delegation.syr_instance_url);
-    await this.asPerson(
-      delegation,
-      `${base}/follows?followed_did=${encodeURIComponent(did)}`,
-      { method: "DELETE" },
-      "We could not stop following them. Try again.",
-    );
   }
 
   /**

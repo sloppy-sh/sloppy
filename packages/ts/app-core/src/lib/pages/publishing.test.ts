@@ -1,9 +1,9 @@
 import type {
+	BlockView,
 	NoteComment,
 	NoteReaction,
 	OwnedRef,
 	PublicationView,
-	PublishedChangesPage,
 	PublishedVersion,
 	PullView
 } from '@sloppy/types';
@@ -124,6 +124,22 @@ function profile(did: string, username: string) {
 		bio: null,
 		avatar_src: null,
 		banner_src: null
+	};
+}
+
+/** One section of a note, written at `at`. */
+function section(of: OwnedRef, words: string, at = AT): BlockView {
+	return {
+		ref: ref(30),
+		created_by: DID,
+		created_at: at,
+		updated_at: at,
+		node: of,
+		ord: '0.5',
+		content: {
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: words }] }]
+		}
 	};
 }
 
@@ -329,54 +345,11 @@ describe('a branch already published', () => {
 		flushSync();
 	}
 
-	it('reads what the writing did between one version and the one before it', async () => {
-		const changes: PublishedChangesPage = {
-			publication: PUBLICATION,
-			root_address: '1',
-			from: VERSION_ONE,
-			to: VERSION_TWO,
-			changes: [
-				{
-					change: 'changed',
-					note: {
-						ref: FIRST,
-						address: '1',
-						origin: FIRST,
-						title: 'A thought',
-						tags: [],
-						links: [],
-						created_at: AT,
-						updated_at: AT
-					},
-					before: {
-						ref: FIRST,
-						address: '1',
-						origin: FIRST,
-						title: 'A thought',
-						tags: [],
-						links: [],
-						created_at: AT,
-						updated_at: AT
-					},
-					sections: []
-				}
-			]
-		};
-		api.on('GET /peers/changes', () => changes);
-
-		await openPublishing();
-		button('Version 2').click();
-		await until(() => says().includes('A thought'));
-		flushSync();
-
-		expect(api.countOf('GET /peers/changes')).toBe(1);
-		expect(says()).toContain('Changed');
-	});
-
-	it('offers no difference against the version nothing came before', async () => {
+	it('names every version of the chain, newest first', async () => {
 		await openPublishing();
 
-		expect(button('Version 1').disabled).toBe(true);
+		expect(says()).toContain('Version 2');
+		expect(says()).toContain('Version 1');
 	});
 
 	it('publishes again, saying that the versions before it stay readable', async () => {
@@ -405,7 +378,29 @@ describe('a branch already published', () => {
 		expect(says()).toContain('This branch has changed since then');
 	});
 
+	it('says it too where the writing inside a note has moved on', async () => {
+		const BEFORE = '2025-12-01T00:00:00.000Z';
+		held = [publication({ latest: version(VERSION_TWO, 2, BEFORE) })];
+		chain = [version(VERSION_TWO, 2, BEFORE), version(VERSION_ONE, 1, BEFORE)];
+		api.on(`GET /nodes${refPath(FIRST)}/blocks`, () => [section(FIRST, 'written since')]);
+
+		await openPublishing();
+
+		expect(says()).toContain('This branch has changed since then');
+	});
+
 	it('says nothing about it where every note is as the version left it', async () => {
+		await openPublishing();
+
+		expect(says()).not.toContain('has changed since then');
+	});
+
+	it('says nothing about it where the sections are as the version left them', async () => {
+		const AFTER = '2026-06-01T00:00:00.000Z';
+		held = [publication({ latest: version(VERSION_TWO, 2, AFTER) })];
+		chain = [version(VERSION_TWO, 2, AFTER), version(VERSION_ONE, 1, AFTER)];
+		api.on(`GET /nodes${refPath(FIRST)}/blocks`, () => [section(FIRST, 'published as it stands')]);
+
 		await openPublishing();
 
 		expect(says()).not.toContain('has changed since then');

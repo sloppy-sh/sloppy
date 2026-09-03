@@ -1,11 +1,5 @@
 <script lang="ts" module>
-	import type {
-		Address,
-		CommentAccess,
-		OwnedRef,
-		PublishedNoteChange,
-		PublishedVersion
-	} from '@sloppy/types';
+	import type { Address, CommentAccess, PublishedVersion } from '@sloppy/types';
 
 	/** A branch as it stands published: the chain a person reads back, newest
 	 *  version first, and who the author invites to answer it. */
@@ -32,8 +26,6 @@
 		onpublish: () => Promise<void>;
 		oncomments: (access: CommentAccess) => Promise<void>;
 		onunpublish: () => Promise<void>;
-		/** What the writing did between two versions, read when somebody asks. */
-		onchanges: (from: OwnedRef, to: OwnedRef) => Promise<readonly PublishedNoteChange[]>;
 	}
 </script>
 
@@ -42,11 +34,7 @@
 	// publishing exposes is said here, at the decision, and nowhere else —
 	// DESIGN.md § Forms.
 	import Check from '@lucide/svelte/icons/check';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import type { PublishedSectionChange } from '@sloppy/types';
-	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
@@ -62,21 +50,16 @@
 		refused = null,
 		onpublish,
 		oncomments,
-		onunpublish,
-		onchanges
+		onunpublish
 	}: PublishModalProps = $props();
 
 	const newest = $derived(published?.versions[0] ?? null);
 
 	let working = $state(false);
 	let takingDown = $state(false);
-	/** The version whose difference from the one before it is being read, and
-	 *  what came back. */
-	let opened = $state<OwnedRef | null>(null);
-	let difference = $state<{ of: OwnedRef; changes: readonly PublishedNoteChange[] } | null>(null);
-	let unreadable = $state<string | null>(null);
-
-	const shown = $derived(difference?.of === opened ? difference.changes : null);
+	/** True once the take-down itself has been refused, so the sheet's refusal
+	 *  for some other act is not re-shown over a question about this one. */
+	let downRefused = $state(false);
 
 	const terms: { value: CommentAccess; label: string; says: string }[] = [
 		{ value: 'anyone', label: 'Anyone', says: 'Anyone reading it can answer.' },
@@ -94,62 +77,15 @@
 		}
 	}
 
-	/** The version before `of` in the chain, which is what it is compared with.
-	 *  The oldest has none, so nothing to open. */
-	function precursor(of: OwnedRef): PublishedVersion | undefined {
-		const chain = published?.versions ?? [];
-		const at = chain.findIndex((version) => version.ref === of);
-		return at < 0 ? undefined : chain[at + 1];
-	}
-
-	async function openChanges(version: PublishedVersion): Promise<void> {
-		if (opened === version.ref) {
-			opened = null;
-			return;
-		}
-		const before = precursor(version.ref);
-		if (!before) return;
-		opened = version.ref;
-		unreadable = null;
+	async function takeDown(): Promise<void> {
+		downRefused = false;
 		try {
-			const changes = await onchanges(before.ref, version.ref);
-			difference = { of: version.ref, changes };
-		} catch {
-			difference = null;
-			unreadable = 'Sloppy could not read what changed. Try again in a moment.';
+			await onunpublish();
+		} catch (error) {
+			downRefused = true;
+			throw error;
 		}
 	}
-
-	function became(change: PublishedNoteChange): string {
-		if (change.change === 'added') return 'New';
-		return change.change === 'removed' ? 'Gone' : 'Changed';
-	}
-
-	/** What became of a note's sections, where the note itself is not new — every
-	 *  section of a new note arrived with it, and counting them says nothing. */
-	function sectionsOf(change: PublishedNoteChange): string | null {
-		if (change.change !== 'changed' || change.sections.length === 0) return null;
-		const counted = (kind: PublishedSectionChange['change']) =>
-			change.sections.filter((section) => section.change === kind).length;
-		const parts = [
-			[counted('added'), 'added'],
-			[counted('changed'), 'rewritten'],
-			[counted('removed'), 'taken out']
-		] as const;
-		const said = parts
-			.filter(([count]) => count > 0)
-			.map(([count, word]) => `${count} ${count === 1 ? 'section' : 'sections'} ${word}`);
-		return said.length > 0 ? said.join(', ') : null;
-	}
-
-	// A sheet reopened on another note must not show the difference read for the
-	// last one, and a chain that has moved on must not keep an old panel open.
-	$effect(() => {
-		if (open) return;
-		opened = null;
-		difference = null;
-		unreadable = null;
-	});
 </script>
 
 <ResponsiveModal
@@ -165,63 +101,11 @@
 				</p>
 				<ul class="max-h-64 space-y-0.5 overflow-y-auto scroll-fade-y" {@attach scrollFade('y')}>
 					{#each published.versions as version (version.ref)}
-						{@const openable = precursor(version.ref) !== undefined}
-						<li>
-							<button
-								type="button"
-								disabled={!openable}
-								aria-expanded={openable ? opened === version.ref : undefined}
-								onclick={() => openChanges(version)}
-								class="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:hover:bg-transparent motion-reduce:transition-none"
-							>
-								<span class="shrink-0 address text-sm">Version {version.sequence}</span>
-								<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-									{when(version.published_at)}
-								</span>
-								{#if openable}
-									<ChevronDown
-										class="size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-out motion-reduce:transition-none {opened ===
-										version.ref
-											? 'rotate-180'
-											: ''}"
-									/>
-								{/if}
-							</button>
-
-							{#if opened === version.ref}
-								<div class="space-y-2 border-l border-border py-2 pl-3">
-									{#if unreadable}
-										<p class="text-sm text-destructive" role="alert">{unreadable}</p>
-									{:else if !shown}
-										<Skeleton class="h-9 w-full" />
-									{:else if shown.length === 0}
-										<p class="text-sm text-muted-foreground">
-											The writing was the same as the version before it.
-										</p>
-									{:else}
-										<ul class="space-y-1.5">
-											{#each shown as change (change.note.ref)}
-												<li class="space-y-0.5">
-													<div class="flex items-baseline gap-2">
-														<span class="shrink-0 address text-xs text-muted-foreground">
-															{change.note.address}
-														</span>
-														<span class="min-w-0 flex-1 truncate text-sm">
-															{change.note.title || 'Untitled'}
-														</span>
-														<Badge variant="outline" class="shrink-0 text-muted-foreground">
-															{became(change)}
-														</Badge>
-													</div>
-													{#if sectionsOf(change)}
-														<p class="text-xs text-muted-foreground">{sectionsOf(change)}</p>
-													{/if}
-												</li>
-											{/each}
-										</ul>
-									{/if}
-								</div>
-							{/if}
+						<li class="flex min-h-9 items-center gap-3 px-2">
+							<span class="shrink-0 address text-sm">Version {version.sequence}</span>
+							<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+								{when(version.published_at)}
+							</span>
 						</li>
 					{/each}
 				</ul>
@@ -278,6 +162,7 @@
 				disabled={working}
 				onclick={() => {
 					open = false;
+					downRefused = false;
 					takingDown = true;
 				}}
 			>
@@ -290,8 +175,8 @@
 					them.
 				</p>
 				<p>
-					Anyone who can find your profile can read it. There is no address to keep back and nobody
-					to let in.
+					Anyone who can find your profile can read it. There is no link to keep back and nobody to
+					let in.
 				</p>
 				<p>If you take it down, whoever has already read it keeps their copy.</p>
 				<p>Anyone reading it may answer, until you say otherwise here.</p>
@@ -332,6 +217,6 @@
 	title="Take {address} down?"
 	description="Sloppy stops serving it, and the pictures in it stop being readable. Whoever has already read it keeps their copy of the writing."
 	confirmLabel="Take it down"
-	{refused}
-	onconfirm={onunpublish}
+	refused={downRefused ? refused : null}
+	onconfirm={takeDown}
 />

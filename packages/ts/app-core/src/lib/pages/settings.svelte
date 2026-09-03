@@ -6,6 +6,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import { conversation } from '../stores/conversation.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import {
@@ -17,6 +18,8 @@
 		THEME_LABELS,
 		THEMES
 	} from '../stores/prefs.svelte.js';
+	import { publications } from '../stores/publications.svelte.js';
+	import { pulls } from '../stores/pulls.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
 
@@ -37,6 +40,9 @@
 			nodes.clear();
 			tags.clear();
 			people.hold(null);
+			publications.clear();
+			pulls.clear();
+			conversation.clear();
 			leaving = false;
 		}
 	}

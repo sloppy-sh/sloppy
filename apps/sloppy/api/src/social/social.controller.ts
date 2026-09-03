@@ -11,46 +11,16 @@ import {
 import {
   CreateNoteCommentRequestSchema,
   CreateNoteReactionRequestSchema,
-  type FollowedIdentity,
-  FollowRequestSchema,
   type NoteComment,
   type NoteReaction,
 } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
-import {
-  didOrRefuse,
-  parseBody,
-  requireRef,
-  viewerDelegation,
-} from "../node/request";
+import { parseBody, requireRef, viewerDelegation } from "../node/request";
 import { SocialService } from "./social.service";
 
 @Controller()
 export class SocialController {
   constructor(private readonly social: SocialService) {}
-
-  @Get("following")
-  following(@Req() req: AuthedRequest): Promise<FollowedIdentity[]> {
-    return this.social.following(viewerDelegation(req));
-  }
-
-  @Post("following")
-  @HttpCode(204)
-  follow(@Req() req: AuthedRequest, @Body() body: unknown): Promise<void> {
-    return this.social.follow(
-      viewerDelegation(req),
-      parseBody(FollowRequestSchema, body),
-    );
-  }
-
-  @Delete("following/:did")
-  @HttpCode(204)
-  unfollow(
-    @Req() req: AuthedRequest,
-    @Param("did") did: string,
-  ): Promise<void> {
-    return this.social.unfollow(viewerDelegation(req), didOrRefuse(did));
-  }
 
   @Post("comments")
   comment(

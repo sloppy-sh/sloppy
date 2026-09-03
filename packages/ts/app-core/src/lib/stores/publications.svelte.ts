@@ -16,7 +16,6 @@ import {
 	type NodeView,
 	type OwnedRef,
 	type PublicationView,
-	type PublishedNoteChange,
 	type PublishedVersion,
 	splitOwnedRef
 } from '@sloppy/types';
@@ -211,16 +210,6 @@ class PublicationsStore {
 		if (epoch !== this.#epoch) return;
 		this.#byRef.delete(ref);
 		this.#versions.delete(ref);
-	}
-
-	/**
-	 * What the writing did between two versions, in address order. The
-	 * comparison is made where the versions are, so this is a read and not a
-	 * download of both sides.
-	 */
-	async changes(ref: OwnedRef, from: OwnedRef, to: OwnedRef): Promise<PublishedNoteChange[]> {
-		const page = await api.publishedChanges(ref, from, to);
-		return page.changes;
 	}
 
 	/** After a sign-out or an erase: nothing here belongs to the next person. */

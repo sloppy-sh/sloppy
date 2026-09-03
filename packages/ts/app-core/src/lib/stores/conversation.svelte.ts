@@ -33,6 +33,17 @@ const IDLE: ConversationState = { loading: false, loaded: false, failed: false }
 
 const oldestFirst = (a: NoteComment, b: NoteComment) => a.created_at.localeCompare(b.created_at);
 
+/**
+ * Whether two reactions are the same mark: an identity store keys one by who
+ * made it and what it is, so reacting again with an emoji already used takes
+ * the old one off and issues a new id for the same mark.
+ */
+const sameMark = (a: NoteReaction, b: NoteReaction): boolean =>
+	a.author === b.author &&
+	(a.kind === 'character'
+		? b.kind === 'character' && a.character === b.character
+		: b.kind === 'emoji' && a.emoji.emoji_id === b.emoji.emoji_id);
+
 class ConversationStore {
 	#comments = new SvelteMap<OwnedRef, NoteComment[]>();
 	#reactions = new SvelteMap<OwnedRef, NoteReaction[]>();
@@ -122,9 +133,7 @@ class ConversationStore {
 		const epoch = this.#epoch;
 		const made = await api.addReaction(request);
 		if (epoch !== this.#epoch) return made;
-		const held = this.reactions(made.node).filter(
-			(other) => other.reaction_id !== made.reaction_id
-		);
+		const held = this.reactions(made.node).filter((other) => !sameMark(other, made));
 		this.#reactions.set(made.node, [...held, made]);
 		return made;
 	}

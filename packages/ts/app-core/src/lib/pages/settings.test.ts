@@ -1,7 +1,10 @@
 import type { ProfileView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DID, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import { conversation } from '../stores/conversation.svelte.js';
+import { publications } from '../stores/publications.svelte.js';
+import { pulls } from '../stores/pulls.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { people } from '../stores/people.svelte.js';
 import Settings from './settings.svelte';
@@ -41,6 +44,9 @@ beforeEach(() => {
 		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
 	});
 	people.hold(null);
+	publications.clear();
+	pulls.clear();
+	conversation.clear();
 	api = useFakeApi();
 	api.on('GET /profile/me', () => STORED);
 	api.on('POST /auth/logout', () => ({}));
@@ -85,5 +91,46 @@ describe('settings', () => {
 		await settle();
 		expect(people.me).toBeNull();
 		expect(target.textContent).not.toContain('Ada Lovelace');
+	});
+
+	// What one person could reach depends on who they are, and a second sign-in
+	// on the same device does not reload the app.
+	it('lets go of what was read as them, so the next person reads for themselves', async () => {
+		const NOTE = ref(1);
+		api.on('GET /publications', () => [
+			{
+				ref: ref(10),
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				root: NOTE,
+				root_address: '1',
+				comments: 'anyone' as const,
+				latest: { ref: ref(20), sequence: 1, published_at: AT }
+			}
+		]);
+		api.on('GET /pulls', () => []);
+		api.on(
+			`GET /nodes/${encodeURIComponent(DID)}/${encodeURIComponent(NOTE.split('/')[1])}/comments`,
+			() => []
+		);
+		api.on(
+			`GET /nodes/${encodeURIComponent(DID)}/${encodeURIComponent(NOTE.split('/')[1])}/reactions`,
+			() => []
+		);
+		await publications.load();
+		await pulls.load();
+		await conversation.load(NOTE);
+
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+		button('Sign out').click();
+		await settle();
+
+		expect(publications.all).toEqual([]);
+		expect(publications.state.loaded).toBe(false);
+		expect(pulls.loaded).toBe(false);
+		expect(conversation.status(NOTE).loaded).toBe(false);
 	});
 });

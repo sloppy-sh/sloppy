@@ -7,6 +7,9 @@ import { SyrService } from "../syr/syr.service";
 import { SocialService } from "./social.service";
 
 const INSTANCE = "https://syr.is";
+/** Where an identity this reader follows is hosted instead. A DID names a
+ *  person and never a place, so nothing about a peer is at INSTANCE. */
+const ELSEWHERE = "https://other.example";
 const ME = DidSyrSchema.parse("did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva");
 const THEM = DidSyrSchema.parse("did:syr:z6MkBoBoBoBoBoBoBoBoBoBoBoBoBoBoBo");
 const STRANGER = DidSyrSchema.parse(
@@ -22,19 +25,23 @@ const DELEGATION = {
   access_token: "the-delegated-token",
 };
 
-const MANIFEST = {
-  name: "syr",
-  public_url: INSTANCE,
-  identity_manifest_template: `${INSTANCE}/.well-known/syr/{did}`,
-  platform: {
-    consent: `${INSTANCE}/auth/platform-consent`,
-    token: `${INSTANCE}/api/platform/token`,
-    sign: `${INSTANCE}/api/platform/sign`,
-    challenge: `${INSTANCE}/api/platform/challenge`,
-    delegations: `${INSTANCE}/api/platform/delegations`,
-    revoke: `${INSTANCE}/api/platform/revoke`,
-  },
-};
+/** An instance answers for itself, so what it says about where identities are
+ *  described points at its own host and never at the asker's. */
+function instanceManifest(at: string) {
+  return {
+    name: "syr",
+    public_url: at,
+    identity_manifest_template: `${at}/.well-known/syr/{did}`,
+    platform: {
+      consent: `${at}/auth/platform-consent`,
+      token: `${at}/api/platform/token`,
+      sign: `${at}/api/platform/sign`,
+      challenge: `${at}/api/platform/challenge`,
+      delegations: `${at}/api/platform/delegations`,
+      revoke: `${at}/api/platform/revoke`,
+    },
+  };
+}
 
 const SIGNED = {
   body: {
@@ -45,20 +52,20 @@ const SIGNED = {
   },
 };
 
-function identityManifest(did: string) {
+function identityManifest(did: string, at: string) {
   return {
     version: 1,
     did,
-    provider: INSTANCE,
+    provider: at,
     endpoints: {
-      profile: `${INSTANCE}/api/public/profile/${did}`,
-      uploads: `${INSTANCE}/api/public/uploads/${did}`,
-      did_document: `${INSTANCE}/api/public/did/${did}`,
-      public_emojis: `${INSTANCE}/api/public/emojis/${did}`,
-      public_comments: `${INSTANCE}/api/public/comments/${did}`,
-      public_reactions: `${INSTANCE}/api/public/reactions/${did}`,
+      profile: `${at}/api/public/profile/${did}`,
+      uploads: `${at}/api/public/uploads/${did}`,
+      did_document: `${at}/api/public/did/${did}`,
+      public_emojis: `${at}/api/public/emojis/${did}`,
+      public_comments: `${at}/api/public/comments/${did}`,
+      public_reactions: `${at}/api/public/reactions/${did}`,
     },
-    web_profile: `${INSTANCE}/u/${did}`,
+    web_profile: `${at}/u/${did}`,
   };
 }
 
@@ -72,15 +79,29 @@ const signaturePath = (localId: string) =>
 
 type Answer = { status?: number; body?: unknown } | Error;
 
-/** One fake instance, answering by path and recording what it was asked. A list
- *  answers successive asks for the same path, the last of it standing after. */
-function instance(answers: Record<string, Answer | Answer[]> = {}) {
+/**
+ * The instances a read can reach, answering by path and recording what each was
+ * asked. A list answers successive asks for the same path, the last of it
+ * standing after. An answer keyed by origin and path binds to that instance
+ * alone; keyed by path alone it stands at every one.
+ *
+ * `hosts` says which instance holds which identity, and defaults to this
+ * reader's own.
+ */
+function instance(
+  answers: Record<string, Answer | Answer[]> = {},
+  hosts: Record<string, string> = {},
+) {
   const calls: { url: string; init?: RequestInit }[] = [];
   const fetchImpl = vi.fn(async (input: unknown, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
-    const path = new URL(url).pathname;
-    const held = answers[path] ?? standing(path);
+    const asked = new URL(url);
+    const path = asked.pathname;
+    const held =
+      answers[`${asked.origin}${path}`] ??
+      answers[path] ??
+      standing(asked, (did) => hosts[did] ?? INSTANCE);
     const answer = Array.isArray(held)
       ? ((held.length > 1 ? held.shift() : held[0]) ?? {
           status: 404,
@@ -98,10 +119,17 @@ function instance(answers: Record<string, Answer | Answer[]> = {}) {
   return { calls, fetchImpl };
 }
 
-function standing(path: string): Answer {
-  if (path === "/.well-known/syr") return { body: MANIFEST };
+/** syr's identity manifest route is a local lookup, so an instance answers 404
+ *  for a DID it does not host — `.well-known/syr/[did]/+server.ts`. */
+function standing(asked: URL, hostOf: (did: string) => string): Answer {
+  if (asked.pathname === "/.well-known/syr") {
+    return { body: instanceManifest(asked.origin) };
+  }
   for (const did of [ME, THEM, STRANGER]) {
-    if (path === manifestPath(did)) return { body: identityManifest(did) };
+    if (asked.pathname !== manifestPath(did)) continue;
+    return hostOf(did) === asked.origin
+      ? { body: identityManifest(did, asked.origin) }
+      : { status: 404, body: {} };
   }
   return { status: 404, body: {} };
 }
@@ -143,8 +171,16 @@ function reaction(over: Record<string, unknown> = {}) {
   };
 }
 
-function following(...dids: string[]) {
-  return { data: dids.map((did) => ({ followed_did: did })) };
+/** Who the reader follows, as their own store keeps it: a bare DID for somebody
+ *  whose provider it never recorded, or the DID with the instance beside it. */
+function following(...followed: (string | { did: string; at: string })[]) {
+  return {
+    data: followed.map((one) =>
+      typeof one === "string"
+        ? { followed_did: one }
+        : { followed_did: one.did, followed_provider_url: one.at },
+    ),
+  };
 }
 
 // An identity store that will not answer is reported, not thrown; the log line
@@ -243,6 +279,134 @@ describe("what a note's conversation can reach", () => {
   });
 });
 
+describe("a voice hosted on another instance", () => {
+  const hosted = { [THEM]: ELSEWHERE };
+
+  it("reads their words from their own instance and not from the reader's", async () => {
+    const { calls } = instance(
+      {
+        "/api/follows": { body: following({ did: THEM, at: ELSEWHERE }) },
+        [`${INSTANCE}${commentsPath(ME)}`]: {
+          body: { data: [comment(ME, "mine")] },
+        },
+        [`${ELSEWHERE}${commentsPath(THEM)}`]: {
+          body: { data: [comment(THEM, "theirs")] },
+        },
+      },
+      hosted,
+    );
+
+    const said = await social().comments(DELEGATION, NOTE);
+
+    expect(said.map((one) => one.author)).toEqual([ME, THEM]);
+    expect(
+      calls.some((call) => call.url === `${INSTANCE}${manifestPath(THEM)}`),
+    ).toBe(false);
+  });
+
+  it("draws their catalog reaction out of the catalog their instance holds", async () => {
+    instance(
+      {
+        "/api/follows": { body: following({ did: THEM, at: ELSEWHERE }) },
+        [`${ELSEWHERE}${reactionsPath(THEM)}`]: {
+          body: {
+            data: [
+              reaction({
+                did: THEM,
+                local_id: "theirs",
+                kind: "custom_emoji",
+                value: "party",
+              }),
+            ],
+          },
+        },
+        [`${ELSEWHERE}${emojisPath(THEM)}`]: {
+          body: {
+            data: [
+              {
+                did: THEM,
+                local_id: "e1",
+                shortcode: "party",
+                url: `${ELSEWHERE}/files/party.png`,
+                is_sticker: false,
+              },
+            ],
+          },
+        },
+      },
+      hosted,
+    );
+
+    const made = await social().reactions(DELEGATION, NOTE);
+
+    expect(made).toHaveLength(1);
+    const drawn = made[0];
+    if (drawn.kind !== "emoji") throw new Error("expected a catalog reaction");
+    expect(drawn.emoji.emoji_id).toBe(`${THEM}/e1`);
+    expect(drawn.emoji.src.startsWith("/proxy?ref=")).toBe(true);
+  });
+
+  it("threads a reply to them under the chain their own instance kept", async () => {
+    const { calls } = instance(
+      {
+        "/api/follows": { body: following({ did: THEM, at: ELSEWHERE }) },
+        [`${ELSEWHERE}${commentsPath(THEM)}`]: {
+          body: {
+            data: [
+              comment(THEM, "parent", { ancestor_chain: [`${THEM}:root`] }),
+            ],
+          },
+        },
+        "/api/comments": { body: { data: comment(ME, "new") } },
+        "/api/platform/sign": SIGNED,
+        [signaturePath("new")]: { body: {} },
+      },
+      hosted,
+    );
+
+    await social().comment(DELEGATION, {
+      node: NOTE,
+      content: "answering",
+      reply_to: `${THEM}:parent`,
+    });
+
+    const create = calls.find(
+      (call) =>
+        call.init?.method === "POST" && call.url === `${INSTANCE}/api/comments`,
+    );
+    expect(JSON.parse(String(create?.init?.body)).ancestor_chain).toEqual([
+      `${THEM}:root`,
+      `${THEM}:parent`,
+    ]);
+  });
+
+  it("leaves a chain of one where the parent's author is nobody it can reach", async () => {
+    const { calls } = instance({
+      "/api/follows": { body: following() },
+      "/api/comments": { body: { data: comment(ME, "new") } },
+      "/api/platform/sign": SIGNED,
+      [signaturePath("new")]: { body: {} },
+    });
+
+    await social().comment(DELEGATION, {
+      node: NOTE,
+      content: "answering",
+      reply_to: `${STRANGER}:parent`,
+    });
+
+    const create = calls.find(
+      (call) =>
+        call.init?.method === "POST" && call.url === `${INSTANCE}/api/comments`,
+    );
+    expect(JSON.parse(String(create?.init?.body)).ancestor_chain).toEqual([
+      `${STRANGER}:parent`,
+    ]);
+    expect(
+      calls.some((call) => call.url.includes(commentsPath(STRANGER))),
+    ).toBe(false);
+  });
+});
+
 describe("writing a comment", () => {
   const written = { body: { data: comment(ME, "new") } };
 
@@ -296,6 +460,43 @@ describe("writing a comment", () => {
     expect(JSON.parse(String(patch?.init?.body)).content_signature).toBe(
       "z6Signature",
     );
+  });
+
+  it("signs the chain the store wrote, not the one it was sent", async () => {
+    const { calls } = instance({
+      "/api/follows": { body: following() },
+      [commentsPath(ME)]: {
+        body: {
+          data: [comment(ME, "parent", { ancestor_chain: [`${ME}:root`] })],
+        },
+      },
+      "/api/comments": {
+        body: {
+          data: comment(ME, "new", { ancestor_chain: [`${ME}:parent`] }),
+        },
+      },
+      "/api/platform/sign": SIGNED,
+      [signaturePath("new")]: { body: {} },
+    });
+
+    await social().comment(DELEGATION, {
+      node: NOTE,
+      content: "answering",
+      reply_to: `${ME}:parent`,
+    });
+
+    const create = calls.find(
+      (call) =>
+        call.init?.method === "POST" && call.url === `${INSTANCE}/api/comments`,
+    );
+    expect(JSON.parse(String(create?.init?.body)).ancestor_chain).toEqual([
+      `${ME}:root`,
+      `${ME}:parent`,
+    ]);
+    const signing = calls.find((call) => call.url.endsWith("/platform/sign"));
+    expect(
+      JSON.parse(String(signing?.init?.body)).payload.ancestor_chain,
+    ).toEqual([`${ME}:parent`]);
   });
 
   it("keeps the comment when the signature will not land", async () => {

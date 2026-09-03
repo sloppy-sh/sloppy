@@ -6,8 +6,6 @@ import {
   CreateNoteReactionRequestSchema,
   type CustomEmoji,
   type DidSyr,
-  type FollowedIdentity,
-  type FollowRequest,
   type NoteComment,
   type NoteReaction,
   type OwnedRef,
@@ -33,6 +31,24 @@ type CreateNoteReaction = z.output<typeof CreateNoteReactionRequestSchema>;
 type PostRef = ReturnType<typeof syrPostRefFor>;
 
 /**
+ * One store this reader can reach, and where it answers. A DID names a person
+ * and never a place, so the instance travels with it everywhere: an identity
+ * hosted elsewhere is not in this instance's manifest and asking here for one
+ * of their records answers nothing at all.
+ */
+interface Voice {
+  did: DidSyr;
+  where: string;
+}
+
+/** What one voice held, kept beside the voice so a second read of the same
+ *  record goes back to the store that served it. */
+interface Held<T> {
+  from: Voice;
+  record: T;
+}
+
+/**
  * Comments and reactions on a note, assembled out of identity stores — Sloppy
  * holds none of them, and neither `comment` nor `reaction` is a word in its
  * vocabulary. AI.md § "Sloppy's Vocabulary Stays Out of the Identity Store".
@@ -51,21 +67,6 @@ export class SocialService {
     private readonly links: AssetLinks,
   ) {}
 
-  async following(delegation: Delegation): Promise<FollowedIdentity[]> {
-    return (await this.syr.listFollowing(delegation)).map((follow) => ({
-      did: follow.followed_did,
-      provider_url: follow.followed_provider_url ?? null,
-    }));
-  }
-
-  async follow(delegation: Delegation, request: FollowRequest): Promise<void> {
-    await this.syr.follow(delegation, request.did);
-  }
-
-  async unfollow(delegation: Delegation, did: DidSyr): Promise<void> {
-    await this.syr.unfollow(delegation, did);
-  }
-
   /** Oldest first, which is the order a conversation is read in. */
   async comments(
     delegation: Delegation,
@@ -76,6 +77,7 @@ export class SocialService {
       this.syr.listPublicComments(where, did, post),
     );
     return written
+      .map((held) => held.record)
       .filter((comment) => this.isAbout(comment, post))
       .map((comment) => this.commentView(comment, node))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -102,7 +104,7 @@ export class SocialService {
       visibility: "public",
       status: "completed",
     });
-    await this.sign(delegation, written, post, ancestors);
+    await this.sign(delegation, written, post);
     return this.commentView(written, request.node);
   }
 
@@ -125,13 +127,13 @@ export class SocialService {
       this.syr.listPublicEmoji(where, did),
     );
     const drawn: NoteReaction[] = [];
-    for (const reaction of made.sort((a, b) =>
-      a.created_at.localeCompare(b.created_at),
+    for (const held of made.sort((a, b) =>
+      a.record.created_at.localeCompare(b.record.created_at),
     )) {
-      if (!this.isOn(reaction, post)) continue;
+      if (!this.isOn(held.record, post)) continue;
       const view = await this.reactionView(
-        delegation,
-        reaction,
+        held.from.where,
+        held.record,
         node,
         catalogs,
       );
@@ -169,7 +171,13 @@ export class SocialService {
     const catalogs = new Catalogs((where, did) =>
       this.syr.listPublicEmoji(where, did),
     );
-    const view = await this.reactionView(delegation, made, node, catalogs);
+    // The reader's own reaction, so their own instance is where it is read back.
+    const view = await this.reactionView(
+      delegation.syr_instance_url,
+      made,
+      node,
+      catalogs,
+    );
     if (!view) {
       throw new BadRequestException(
         "That reaction could not be added. Try again.",
@@ -187,22 +195,18 @@ export class SocialService {
 
   /**
    * Every store the reader can reach: their own, and those of the identities
-   * they follow. A store that will not answer costs that person's words rather
-   * than the whole conversation, which is why nothing here throws on one.
+   * they follow, each at the instance that hosts it.
    */
-  private async fromEveryVoice<T>(
-    delegation: Delegation,
-    read: (instanceUrl: string, did: DidSyr) => Promise<T[]>,
-  ): Promise<T[]> {
-    const voices: { did: DidSyr; where: string }[] = [
+  private async voices(delegation: Delegation): Promise<Voice[]> {
+    const reachable: Voice[] = [
       { did: delegation.did, where: delegation.syr_instance_url },
     ];
     try {
-      for (const followed of await this.following(delegation)) {
-        if (followed.did === delegation.did) continue;
-        voices.push({
-          did: followed.did,
-          where: followed.provider_url ?? delegation.syr_instance_url,
+      for (const follow of await this.syr.listFollowing(delegation)) {
+        if (follow.followed_did === delegation.did) continue;
+        reachable.push({
+          did: follow.followed_did,
+          where: follow.followed_provider_url ?? delegation.syr_instance_url,
         });
       }
     } catch (err) {
@@ -210,13 +214,28 @@ export class SocialService {
         `Could not read who ${delegation.did} follows: ${reason(err)}`,
       );
     }
+    return reachable;
+  }
+
+  /**
+   * What every reachable store answers, each record still paired with the voice
+   * that served it. A store that will not answer costs that person's words
+   * rather than the whole conversation, which is why nothing here throws on one.
+   */
+  private async fromEveryVoice<T>(
+    delegation: Delegation,
+    read: (instanceUrl: string, did: DidSyr) => Promise<T[]>,
+  ): Promise<Held<T>[]> {
+    const voices = await this.voices(delegation);
     const answers = await Promise.allSettled(
       voices.map((voice) => read(voice.where, voice.did)),
     );
-    const held: T[] = [];
+    const held: Held<T>[] = [];
     answers.forEach((answer, at) => {
-      if (answer.status === "fulfilled") held.push(...answer.value);
-      else
+      if (answer.status === "fulfilled") {
+        for (const record of answer.value)
+          held.push({ from: voices[at], record });
+      } else
         this.logger.warn(
           `${voices[at].did} did not answer: ${reason(answer.reason)}`,
         );
@@ -235,10 +254,13 @@ export class SocialService {
     replyTo: string,
   ): Promise<string[]> {
     const parent = splitStoreRef(StoreRefSchema.parse(replyTo));
+    const voices = await this.voices(delegation);
+    const author = voices.find((voice) => voice.did === parent.did);
+    if (!author) return [replyTo];
     try {
       const theirs = await this.syr.listPublicComments(
-        delegation.syr_instance_url,
-        parent.did,
+        author.where,
+        author.did,
         post,
       );
       const held = theirs.find((one) => one.local_id === parent.localId);
@@ -253,7 +275,6 @@ export class SocialService {
     delegation: Delegation,
     written: SyrComment,
     post: PostRef,
-    ancestors: string[],
   ): Promise<void> {
     // `created_at` is the store's own serialization of what it just wrote: the
     // signature is over those bytes, not over a timestamp normalized here.
@@ -262,7 +283,7 @@ export class SocialService {
       did: written.did,
       comment_id: written.local_id,
       ...post,
-      ancestor_chain: ancestors,
+      ancestor_chain: written.ancestor_chain,
       content: written.content,
       visibility: "public",
       status: "completed",
@@ -329,9 +350,12 @@ export class SocialService {
    * no renderer for, or naming an entry that has left its author's catalog.
    * Dropped rather than refused: one reaction nobody can see must not cost the
    * reader the rest of them.
+   *
+   * `where` is the instance that served the reaction, which is also the one
+   * holding the catalog it names.
    */
   private async reactionView(
-    delegation: Delegation,
+    where: string,
     reaction: SyrReaction,
     node: OwnedRef,
     catalogs: Catalogs,
@@ -345,11 +369,7 @@ export class SocialService {
       return { kind: "character", ...held, character: reaction.value };
     }
     if (reaction.kind === "gif") return null;
-    const entry = await catalogs.entry(
-      delegation.syr_instance_url,
-      reaction.did,
-      reaction.value,
-    );
+    const entry = await catalogs.entry(where, reaction.did, reaction.value);
     return entry
       ? { kind: "emoji", ...held, emoji: this.emojiView(entry) }
       : null;
