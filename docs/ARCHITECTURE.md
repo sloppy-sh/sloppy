@@ -271,10 +271,12 @@ conversation is assembled, never a column. Three things about it are load-bearin
 
 - **The publication answers, and nothing else does.** A per-author preference would be a
   second authority for one question; where one later exists it decides what a new
-  publication is created WITH, and the publication still answers. Where more than one
-  publication covers a note — a branch published inside a tree that is also published —
-  the NEAREST one answers, so a decision made about a branch is not overridden by a
-  decision about the tree above it.
+  publication is created WITH, and the publication still answers. **Where more than one
+  publication covers a note, the one being READ answers** — a snapshot is a self-contained
+  copy, so a reader holding the tree is reading the tree's, and the branch's own snapshot is
+  a different artifact with its own. The consequence is the author's to know and belongs in
+  front of them when they publish: **publishing a tree opens everything under it on the
+  tree's terms, including a branch they had published on narrower ones.**
 - **It cannot stop anybody writing a comment.** A comment lives in the store of whoever
   wrote it and syr asks no permission to hold one, so what this decides is what an instance
   serves and what a surface offers. Copy that says it blocks people is claiming something

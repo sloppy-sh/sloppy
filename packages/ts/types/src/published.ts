@@ -14,7 +14,7 @@ import {
 } from "./address.js";
 import { z } from "zod";
 import { splitOwnedRef } from "./codecs.js";
-import { BlockDocumentSchema } from "./document.js";
+import { BlockDocumentSchema, citedUploads } from "./document.js";
 import {
   type DidSyr,
   DidSyrSchema,
@@ -481,6 +481,11 @@ export function publishedSubtreeReader(
         }
         if (!heldNodes.has(block.node) && !pageNodes.has(block.node)) {
           throw new UnaskedAnswerError(`a section of ${block.node}`);
+        }
+        // The one reference with an outbound fetch behind it: an upload the
+        // answer cites is what the reader's instance goes and asks for.
+        for (const upload of citedUploads(block.content)) {
+          requireAuthor(upload as OwnedRef, author);
         }
         pageBlocks.add(block.ref);
       }

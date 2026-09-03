@@ -97,11 +97,13 @@ const CITES_UPLOAD = /^(?:.*_)?upload_id$/;
 
 /**
  * Where a PUBLISHED emoji carries the publication's copy of its picture. An
- * emoji in a note names a shortcode and no upload at all, so publishing
- * resolves the author's catalog once and writes the copy here; the key ends
+ * emoji in a note names a shortcode and an address minted for the author's own
+ * catalog, so publishing resolves that catalog once, writes the copy here, and
+ * **clears the minted `src`** — an address into a catalog its author can empty
+ * is exactly what a snapshot exists not to depend on. The key ends
  * `_upload_id`, so from then on {@link citedUploads} reaches it like any other
- * picture and a peer draws the emoji out of the snapshot rather than out of a
- * catalog its author can empty. docs/ARCHITECTURE.md § "Pictures".
+ * picture. A reader draws a published emoji from this and never from `src`,
+ * which a published element does not carry. docs/ARCHITECTURE.md § "Pictures".
  */
 export const EMOJI_UPLOAD_ATTR = "emoji_upload_id";
 
