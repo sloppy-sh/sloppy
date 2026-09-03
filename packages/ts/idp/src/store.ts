@@ -20,6 +20,7 @@ export const IDENTITY_SCHEMA = `
   DEFINE TABLE IF NOT EXISTS idp_folder SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS idp_upload SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS idp_emoji SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS idp_follow SCHEMALESS;
 
   -- The owner column every sweep below deletes by, immutable for the reason
   -- @sloppy/data makes created_by immutable: a row reassigned out from under
@@ -32,6 +33,7 @@ export const IDENTITY_SCHEMA = `
   DEFINE FIELD IF NOT EXISTS did ON idp_folder TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS did ON idp_upload TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS did ON idp_emoji TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS did ON idp_follow TYPE string READONLY;
 
   -- Timestamps are strings here for the same reason they are everywhere else in
   -- Sloppy; docs/ARCHITECTURE.md § "Data model" carries the ruling.
@@ -43,6 +45,7 @@ export const IDENTITY_SCHEMA = `
   DEFINE FIELD IF NOT EXISTS created_at ON idp_folder TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON idp_upload TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON idp_emoji TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON idp_follow TYPE string READONLY;
 
   -- One identity per DID, and one account per name: both are what a stranger
   -- resolves, so a second row claiming either has to fail at the write.
@@ -62,6 +65,8 @@ export const IDENTITY_SCHEMA = `
   DEFINE INDEX IF NOT EXISTS idp_folder_did_parent_name ON idp_folder FIELDS did, parent_id, name UNIQUE;
   DEFINE INDEX IF NOT EXISTS idp_emoji_did_shortcode ON idp_emoji FIELDS did, shortcode UNIQUE;
   DEFINE INDEX IF NOT EXISTS idp_upload_did ON idp_upload FIELDS did;
+  -- One row per identity followed, so following somebody twice is one follow.
+  DEFINE INDEX IF NOT EXISTS idp_follow_did_followed ON idp_follow FIELDS did, followed_did UNIQUE;
 `;
 
 const DEFINE_TABLE = /DEFINE TABLE\s+(?:IF NOT EXISTS\s+)?(\w+)/g;
@@ -174,6 +179,21 @@ export interface EmojiRow {
   mime_type: string;
   size: number;
   is_sticker: boolean;
+  created_at: string;
+}
+
+/** One identity this identity follows. `followed_provider_url` is where that
+ *  identity's own store answers, as far as this one could resolve it; null
+ *  where it could not, and a reader resolves it from scratch. */
+export interface FollowRow {
+  id: RecordId;
+  did: string;
+  followed_did: string;
+  followed_provider_url: string | null;
+  /** Whether a stranger may read this row. Who somebody reads is theirs, so a
+   *  follow is private until its owner says otherwise — the same answer syr
+   *  gives, and what `public_following` on the manifest serves. */
+  is_public: boolean;
   created_at: string;
 }
 
@@ -437,6 +457,69 @@ export async function findEmoji(
 }
 
 export async function deleteEmoji(db: Surreal, id: RecordId): Promise<void> {
+  await db.delete(id);
+}
+
+export async function createFollow(
+  db: Surreal,
+  row: Omit<FollowRow, "id">,
+): Promise<FollowRow> {
+  return db.create<FollowRow>(newId("idp_follow")).content(row);
+}
+
+/** Who this identity follows, newest first — the owner's own listing. */
+export async function listFollows(
+  db: Surreal,
+  did: string,
+  page: { limit: number; offset: number },
+): Promise<{ rows: FollowRow[]; total: number }> {
+  const [rows, counted] = await db.query<[FollowRow[], { total: number }[]]>(
+    `SELECT * FROM idp_follow WHERE did = $did
+       ORDER BY created_at DESC LIMIT $limit START $offset;
+     SELECT count() AS total FROM idp_follow WHERE did = $did GROUP ALL;`,
+    { did, limit: page.limit, offset: page.offset },
+  );
+  return { rows: rows ?? [], total: counted?.[0]?.total ?? 0 };
+}
+
+/** The same listing as a stranger may read it: only what its owner made
+ *  public, which a row carrying no answer has not. */
+export async function listPublicFollows(
+  db: Surreal,
+  did: string,
+  page: { limit: number; offset: number },
+): Promise<{ rows: FollowRow[]; total: number }> {
+  const [rows, counted] = await db.query<[FollowRow[], { total: number }[]]>(
+    `SELECT * FROM idp_follow WHERE did = $did AND is_public = true
+       ORDER BY created_at DESC LIMIT $limit START $offset;
+     SELECT count() AS total FROM idp_follow
+       WHERE did = $did AND is_public = true GROUP ALL;`,
+    { did, limit: page.limit, offset: page.offset },
+  );
+  return { rows: rows ?? [], total: counted?.[0]?.total ?? 0 };
+}
+
+export async function findFollow(
+  db: Surreal,
+  did: string,
+  followedDid: string,
+): Promise<FollowRow | null> {
+  return first<FollowRow>(
+    db,
+    "SELECT * FROM idp_follow WHERE did = $did AND followed_did = $followed LIMIT 1;",
+    { did, followed: followedDid },
+  );
+}
+
+export async function mergeFollow(
+  db: Surreal,
+  id: RecordId,
+  patch: Pick<FollowRow, "followed_provider_url">,
+): Promise<FollowRow> {
+  return db.update<FollowRow>(id).merge(patch);
+}
+
+export async function deleteFollow(db: Surreal, id: RecordId): Promise<void> {
   await db.delete(id);
 }
 

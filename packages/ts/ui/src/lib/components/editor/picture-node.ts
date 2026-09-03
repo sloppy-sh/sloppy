@@ -69,7 +69,11 @@ function numberAttr(value: string | null): number | null {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function PictureNode(media: () => NoteMedia | undefined) {
+/** Only what a picture on the page needs, so a surface that reads without
+ *  writing has nothing to send from. */
+export type PictureSource = Pick<NoteMedia, 'picture'>;
+
+export function PictureNode(media: () => PictureSource | undefined) {
 	return Node.create({
 		name: PICTURE_NODE,
 		group: 'block',
@@ -145,16 +149,32 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 				meter.append(filled);
 				frame.append(image, note, meter);
 
-				const bar = document.createElement('div');
-				bar.className = 'sloppy-picture-bar';
-				const description = document.createElement('input');
-				description.type = 'text';
-				description.className = 'sloppy-picture-description';
-				description.placeholder = 'Describe this picture';
-				description.setAttribute('aria-label', 'Describe this picture');
-				const remove = quietButton('Remove picture');
-				bar.append(description, remove);
-				dom.append(frame, bar);
+				dom.append(frame);
+
+				let description: HTMLInputElement | null = null;
+				if (editor.isEditable) {
+					const bar = document.createElement('div');
+					bar.className = 'sloppy-picture-bar';
+					description = document.createElement('input');
+					description.type = 'text';
+					description.className = 'sloppy-picture-description';
+					description.placeholder = 'Describe this picture';
+					description.setAttribute('aria-label', 'Describe this picture');
+					const remove = quietButton('Remove picture');
+					bar.append(description, remove);
+					dom.append(bar);
+
+					const field = description;
+					field.addEventListener('input', () => apply({ alt: field.value }));
+
+					remove.addEventListener('click', (event) => {
+						event.preventDefault();
+						if (editor.isDestroyed) return;
+						const at = positionOf();
+						if (at === undefined) return;
+						editor.commands.deleteRange({ from: at, to: at + current.nodeSize });
+					});
+				}
 
 				function positionOf(): number | undefined {
 					const at = typeof getPos === 'function' ? getPos() : undefined;
@@ -226,7 +246,7 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 					// the width of the note.
 					image.style.maxWidth = width ? `${width}px` : '';
 					image.alt = (current.attrs.alt as string) || '';
-					if (description.value !== ((current.attrs.alt as string) || '')) {
+					if (description && description.value !== ((current.attrs.alt as string) || '')) {
 						description.value = (current.attrs.alt as string) || '';
 					}
 
@@ -248,16 +268,6 @@ export function PictureNode(media: () => NoteMedia | undefined) {
 					if (current.attrs.upload_id && image.getAttribute('src')) {
 						note.textContent = COULD_NOT_DRAW;
 					}
-				});
-
-				description.addEventListener('input', () => apply({ alt: description.value }));
-
-				remove.addEventListener('click', (event) => {
-					event.preventDefault();
-					if (editor.isDestroyed) return;
-					const at = positionOf();
-					if (at === undefined) return;
-					editor.commands.deleteRange({ from: at, to: at + current.nodeSize });
 				});
 
 				redraw();

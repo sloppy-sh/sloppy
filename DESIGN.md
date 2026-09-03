@@ -30,8 +30,8 @@ themes) and from copy that is short and human, never from decoration.
 The interface demonstrates; it never narrates its own mechanics. Do not explain what the
 app will do with an answer — a person capturing a thought is not studying the product
 architecture. Let the result appear where it matters instead: the new node's address
-appears on the node the moment it is created; the pulled region's author appears on the
-region, not in a tooltip about federation.
+appears on the node the moment it is created; the author of the region being read is
+named across the top of it, not in a tooltip about federation.
 
 A line of copy earns its place only when it helps the reader ACT — an instruction, an
 expectation, a consequence they can choose against — one short line, never a lecture. If
@@ -240,10 +240,12 @@ single easiest way to make this canvas slow.
 | **Published** | solid fill + a thin ring at the node's edge |
 | **Pulled**    | hollow fill + a dashed edge                 |
 
-A pulled region additionally carries a written attribution at its origin node, and keeps
-its original addresses. **Whose thought this is must never be a question the reader has to
-work out** (PRODUCT.md principle 4) — so it is carried by shape, by a written label, and
-only incidentally by anything else.
+A pulled region keeps its author's addresses, and one author's graph is drawn at a time —
+a peer's `1a` seeds where the reader's own does, so the two cannot share a canvas. While a
+region is up, its author is named in the chrome above it and every act that would change a
+note is gone. **Whose thought this is must never be a question the reader has to work out**
+(PRODUCT.md principle 4) — so it is carried by shape, by a written label, and only
+incidentally by anything else.
 
 ### The mark — five meanings on one small disc
 

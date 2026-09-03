@@ -10,6 +10,7 @@ export * from "./emojis.js";
 export * from "./encoding.js";
 export * from "./errors.js";
 export * from "./files.js";
+export * from "./follows.js";
 export * from "./identity.js";
 export * from "./keys.js";
 export * from "./manifest.js";
