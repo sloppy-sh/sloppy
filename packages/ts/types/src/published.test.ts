@@ -606,11 +606,28 @@ describe("what a peer says changed between two versions", () => {
     ).toThrow(UnaskedAnswerError);
   });
 
-  it("is refused when the two sides are different notes", () => {
+  it("is refused when the two sides are different notes or different sections", () => {
     expect(() =>
       publishedChangesReader(askedChanges).take(
         difference([
           { ...rewritten, before: node(1, "1a1", { parent: root.ref }) },
+        ]),
+      ),
+    ).toThrow(UnaskedAnswerError);
+
+    expect(() =>
+      publishedChangesReader(askedChanges).take(
+        difference([
+          {
+            ...rewritten,
+            sections: [
+              {
+                change: "changed",
+                section: section(2, root.ref),
+                before: section(3, root.ref),
+              },
+            ],
+          },
         ]),
       ),
     ).toThrow(UnaskedAnswerError);

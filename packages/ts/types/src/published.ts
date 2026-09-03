@@ -591,13 +591,17 @@ export function publishedChangesReader(asked: {
             `${note.ref} compared against ${entry.before.ref}`,
           );
         }
-        for (const section of entry.change === "removed"
-          ? []
-          : entry.sections) {
-          requireAuthor(section.section.ref, author);
-          if (section.section.node !== note.ref) {
+        for (const held of entry.change === "removed" ? [] : entry.sections) {
+          requireAuthor(held.section.ref, author);
+          if (held.section.node !== note.ref) {
+            throw new UnaskedAnswerError(`a section of ${held.section.node}`);
+          }
+          if (
+            held.change === "changed" &&
+            held.before.ref !== held.section.ref
+          ) {
             throw new UnaskedAnswerError(
-              `a section of ${section.section.node}`,
+              `${held.section.ref} compared against ${held.before.ref}`,
             );
           }
         }
