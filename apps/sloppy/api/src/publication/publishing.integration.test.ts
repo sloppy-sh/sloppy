@@ -23,9 +23,11 @@ import {
   type NodeView,
   type OwnedRef,
   type PublicationView,
-  type PublishedChangesPage,
   type PublishedIndex,
   type PublishedSubtreePage,
+  parsePublishedIndex,
+  publishedChangesReader,
+  publishedSubtreeReader,
   siblingAddress,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -195,6 +197,18 @@ describe("publishing a branch, and what a peer reads back", () => {
     return response.status;
   }
 
+  /** What that identity publishes, held to the identity it was asked about. */
+  async function published(): Promise<PublishedIndex> {
+    return parsePublishedIndex(
+      await ok(
+        "GET",
+        `/public/publications/${encodeURIComponent(ada.did)}`,
+        null,
+      ),
+      ada.did,
+    );
+  }
+
   /** What anybody holding the author's identity can enumerate. */
   async function publicFilenames(): Promise<string[]> {
     const listed = (await (
@@ -312,8 +326,11 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(publication.root_address).toBe(branch.address);
     expect(publication.latest.sequence).toBe(1);
 
-    const page = await read(publication.ref);
-    if (!page) throw new Error("nothing was served");
+    // Taken the way a peer's instance takes it: `publishedSubtreeReader` is the
+    // boundary every rule about what may be in an answer is enforced at, and an
+    // answer that breaks one is refused whole rather than stored.
+    const reader = publishedSubtreeReader({ publication: publication.ref });
+    const page = reader.take(await read(publication.ref));
     expect(page.nodes.map((node) => node.address)).toEqual([
       branch.address,
       under.address,
@@ -415,13 +432,17 @@ describe("publishing a branch, and what a peer reads back", () => {
     });
     const second = (await publish(branch.ref)).latest.ref;
 
-    const page = (await ok(
-      "GET",
-      `/public/publications/${at(publication.ref)}/changes?from=${encodeURIComponent(first)}&to=${encodeURIComponent(second)}`,
-      null,
-    )) as PublishedChangesPage;
-    expect(page.from).toBe(first);
-    expect(page.to).toBe(second);
+    const page = publishedChangesReader({
+      publication: publication.ref,
+      from: first,
+      to: second,
+    }).take(
+      await ok(
+        "GET",
+        `/public/publications/${at(publication.ref)}/changes?from=${encodeURIComponent(first)}&to=${encodeURIComponent(second)}`,
+        null,
+      ),
+    );
     const byRef = new Map(page.changes.map((one) => [one.note.ref, one]));
     const changed = byRef.get(branch.ref);
     if (changed?.change !== "changed") throw new Error("expected a change");
@@ -610,11 +631,7 @@ describe("publishing a branch, and what a peer reads back", () => {
         ref: OwnedRef;
       }[];
       expect(listed.map((one) => one.ref)).not.toContain(publication.ref);
-      const index = (await ok(
-        "GET",
-        `/public/publications/${encodeURIComponent(ada.did)}`,
-        null,
-      )) as PublishedIndex;
+      const index = await published();
       expect(index.publications.map((one) => one.ref)).not.toContain(
         publication.ref,
       );
@@ -648,11 +665,7 @@ describe("publishing a branch, and what a peer reads back", () => {
 
     const listed = (await ok("GET", "/publications", ada)) as PublicationView[];
     expect(listed.map((one) => one.root)).not.toContain(branch.ref);
-    const index = (await ok(
-      "GET",
-      `/public/publications/${encodeURIComponent(ada.did)}`,
-      null,
-    )) as PublishedIndex;
+    const index = await published();
     expect(index.publications.map((one) => one.root_address)).not.toContain(
       branch.address,
     );
@@ -665,11 +678,7 @@ describe("publishing a branch, and what a peer reads back", () => {
     const hidden = await newNode({ title: "In the drawer" });
     const publication = await publish(shown.ref);
 
-    const index = (await ok(
-      "GET",
-      `/public/publications/${encodeURIComponent(ada.did)}`,
-      null,
-    )) as PublishedIndex;
+    const index = await published();
     expect(index.did).toBe(ada.did);
     const listed = index.publications.find(
       (one) => one.ref === publication.ref,
@@ -715,27 +724,25 @@ describe("publishing a branch, and what a peer reads back", () => {
       }
 
       const publication = await publish(root.ref);
-      const held: string[] = [];
+      // The reader holds a RUN of pages to each other: one note per address,
+      // one version throughout, and every note springing from the note at its
+      // own parent address, which is what makes paging safe to store.
+      const reader = publishedSubtreeReader({ publication: publication.ref });
       let cursor: string | undefined;
       let pages = 0;
       do {
-        const page = await read(
-          publication.ref,
-          cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`,
+        const page = reader.take(
+          await read(
+            publication.ref,
+            cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`,
+          ),
         );
-        if (!page) throw new Error("nothing was served");
         pages += 1;
-        // Every reference resolves in the page carrying it or one already sent.
-        for (const node of page.nodes) {
-          if (node.parent !== undefined) expect(held).toContain(node.parent);
-          held.push(node.ref);
-        }
         cursor = page.next_cursor;
       } while (cursor !== undefined);
 
       expect(pages).toBeGreaterThan(1);
-      expect(held).toHaveLength(LONG_BRANCH + 1);
-      expect(new Set(held).size).toBe(held.length);
+      expect(reader.served().size).toBe(LONG_BRANCH + 1);
     },
     120_000,
   );

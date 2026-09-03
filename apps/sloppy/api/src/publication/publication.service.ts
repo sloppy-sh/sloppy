@@ -133,19 +133,32 @@ export class PublicationService {
 
     const publication = await this.chainFor(did, root);
     const chain = ownedRefFrom(publication.id);
-    const version = await this.nextVersion(did, chain);
+    const id = createOwnedRecordId("publication_version", did);
 
     const copies = new Copies(await this.publications.assetsOf(did, chain));
+    let version: PublicationVersion;
     try {
       const marking = await this.freeze(delegation, {
         root,
-        version: ownedRefFrom(version.id),
+        version: ownedRefFrom(id),
         chain,
         copies,
       });
+      // The number is read here rather than before the copying, so two publishes
+      // of one root race over a moment instead of over a whole branch. The
+      // unique index settles whichever still collide.
+      const now = nowIso();
+      version = {
+        id,
+        created_by: did,
+        publication: chain,
+        sequence: await this.publications.nextSequence(did, chain),
+        created_at: now,
+        updated_at: now,
+      };
       await this.publications.commit({ did, version, marking });
     } catch (err) {
-      await this.undo(delegation, ownedRefFrom(version.id), copies);
+      await this.undo(delegation, ownedRefFrom(id), copies);
       throw err;
     }
     return { ...entityView(publication), latest: publicationVersion(version) };
@@ -215,21 +228,6 @@ export class PublicationService {
     }
   }
 
-  private async nextVersion(
-    did: string,
-    chain: OwnedRef,
-  ): Promise<PublicationVersion> {
-    const now = nowIso();
-    return {
-      id: createOwnedRecordId("publication_version", did),
-      created_by: did,
-      publication: chain,
-      sequence: await this.publications.nextSequence(did, chain),
-      created_at: now,
-      updated_at: now,
-    };
-  }
-
   /** Every note of the branch and every section of each, copied under the new
    *  version, and the notes whose mark the commit is about to set. */
   private async freeze(
@@ -257,8 +255,14 @@ export class PublicationService {
         batch.map((node) => ownedRefFrom(node.id)),
       );
       await reach.learn(cited(batch, stacks));
-      await this.copyCited(delegation, into, catalog, batch, stacks);
-      await this.write(did, into, region, reach, catalog, batch, stacks);
+      const emoji = await this.copyCited(
+        delegation,
+        into,
+        catalog,
+        batch,
+        stacks,
+      );
+      await this.write(did, into, region, reach, emoji, batch, stacks);
     }
     return branch.filter((node) => !node.published).map((node) => node.id);
   }
@@ -268,11 +272,11 @@ export class PublicationService {
     into: { version: OwnedRef; copies: Copies },
     region: { root: OwnedRef; address: Address },
     reach: Reach,
-    catalog: Catalog,
+    emoji: ReadonlyMap<string, string>,
     batch: readonly Node[],
     stacks: ReadonlyMap<OwnedRef, Block[]>,
   ): Promise<void> {
-    const held = this.snapshotted(into.copies, catalog, reach);
+    const held = snapshotted(into.copies, emoji, reach);
     const now = nowIso();
     const nodes: SnapshotNode[] = [];
     const blocks: SnapshotBlock[] = [];
@@ -314,26 +318,12 @@ export class PublicationService {
     await this.publications.addBlocks(blocks);
   }
 
-  private snapshotted(
-    copies: Copies,
-    catalog: Catalog,
-    reach: Reach,
-  ): Snapshotted {
-    return {
-      copyOf: (uploadId) => copies.of(uploadId),
-      emojiOf: (shortcode) => {
-        const entry = catalog.claiming(shortcode);
-        return entry === undefined ? undefined : copies.of(entryId(entry));
-      },
-      reaches: (note) => reach.holds(note),
-    };
-  }
-
   /**
-   * The publication's own copy of everything this run of notes draws. A copy is
-   * made once per publication, so publishing again sends nothing that was sent
-   * before — `snapshot_asset` is the pairing, and its unique index is what one
-   * read of it answers for the whole branch.
+   * The publication's own copy of everything this run of notes draws, and where
+   * each shortcode in it now draws from. A copy is made once per publication, so
+   * publishing again sends nothing that was sent before — `snapshot_asset` is
+   * the pairing, and one read of it answers "already copied?" for the whole
+   * branch.
    */
   private async copyCited(
     delegation: Delegation,
@@ -341,11 +331,12 @@ export class PublicationService {
     catalog: Catalog,
     batch: readonly Node[],
     stacks: ReadonlyMap<OwnedRef, Block[]>,
-  ): Promise<void> {
+  ): Promise<Map<string, string>> {
     const wanted = new Map<
       string,
       { address: Address; source: () => Promise<Picture> }
     >();
+    const drawn = new Map<string, string>();
     for (const node of batch) {
       for (const block of stacks.get(ownedRefFrom(node.id)) ?? []) {
         for (const uploadId of citedUploads(block.content)) {
@@ -360,6 +351,7 @@ export class PublicationService {
           const entry = await catalog.of(shortcode);
           if (entry === undefined) continue;
           const id = entryId(entry);
+          drawn.set(shortcode.toLowerCase(), id);
           if (into.copies.of(id) !== undefined) continue;
           wanted.set(id, {
             address: node.address,
@@ -391,6 +383,13 @@ export class PublicationService {
         }),
       );
     });
+
+    return new Map(
+      [...drawn].flatMap(([shortcode, id]) => {
+        const copy = into.copies.of(id);
+        return copy === undefined ? [] : [[shortcode, copy] as const];
+      }),
+    );
   }
 
   /**
@@ -482,8 +481,8 @@ class Reach {
   }
 }
 
-/** The author's own emoji, read once per publish. A note's shortcodes resolve
- *  against their catalog and nobody else's. */
+/** The author's own emoji, read once per publish and only where a section draws
+ *  one. A note's shortcodes resolve against their catalog and nobody else's. */
 class Catalog {
   private entries: Map<string, SyrEmoji> | undefined;
 
@@ -499,12 +498,22 @@ class Catalog {
         held.map((entry) => [entry.shortcode.toLowerCase(), entry]),
       );
     }
-    return this.claiming(shortcode);
+    return this.entries.get(shortcode.toLowerCase());
   }
+}
 
-  claiming(shortcode: string): SyrEmoji | undefined {
-    return this.entries?.get(shortcode.toLowerCase());
-  }
+/** What the walk in `snapshot.ts` asks after, answered from what this publish
+ *  holds. */
+function snapshotted(
+  copies: Copies,
+  emoji: ReadonlyMap<string, string>,
+  reach: Reach,
+): Snapshotted {
+  return {
+    copyOf: (uploadId) => copies.of(uploadId),
+    emojiOf: (shortcode) => emoji.get(shortcode.toLowerCase()),
+    reaches: (note) => reach.holds(note),
+  };
 }
 
 /**
