@@ -268,19 +268,17 @@ boundary. **The author's own instance answers it as a peer's does** — `/change
 public, so the surface a person reads it on asks over `GET /api/peers/changes` whether the
 publication is theirs or somebody else's, and one path serves both.
 
-**What is answered is the difference between two VERSIONS. What a person has written since
-the newest one is not answered by anything, and that is a gap rather than a rule.** A draft
-is not a snapshot: its sections cite the author's own uploads rather than the copies a
-publication owns, and its citations still name notes nobody published, so running the
+**What a branch has done SINCE its newest version is a different question, and is answered
+without comparing a document.** A draft is not a snapshot: its sections cite the author's
+own uploads rather than the copies a publication owns (§ "Pictures"), so running the
 comparison above over one would report a difference for every picture in it and call
-writing changed that nobody touched (§ "Pictures"). That is an argument about THIS
-comparison and not about the question — which notes a branch has gained and lost, what has
-been retitled and retagged, and which sections have been written in since a version, are
-all answerable without touching an upload reference, and a section's own `updated_at`
-against the version's `published_at` says the last of them without comparing a document at
-all. Nothing serves that today, so the decision to publish again is made on "this branch
-has changed since then" and the difference is read afterwards, between the two versions
-that then exist.
+writing changed that nobody touched. What does not need a document is which notes the
+branch has gained and lost, which were renamed or retagged, and which have been written in
+since — a section's own `updated_at` against the version's `published_at` says the last
+of them. `GET /api/publications/{did}/{id}/unpublished` answers that,
+`UnpublishedChange` in `@sloppy/types` is the shape, and it is read at the decision to
+publish again rather than afterwards: PRODUCT.md § "Design Principles" 5 puts the truth
+about a publish in front of the person making it.
 
 **Who is invited to comment is the publication's to say, and it is an invitation rather
 than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which
@@ -553,46 +551,60 @@ rather than gaps to close:
   three fields on one and its public listing does not serve them, so a reaction never
   arrives with anything to check, and no surface may claim otherwise.
 
-**A pointer is how a stranger's answer arrives, and it is a claim rather than a copy.**
-Pull-only federation has no relay and no firehose, so an instance is never told that
-somebody it has never heard of answered one of its notes. `POST
+**A pointer is how a stranger's answer arrives, and it is a claim that is checked before
+it is kept.** Pull-only federation has no relay and no firehose, so an instance is never
+told that somebody it has never heard of answered one of its notes. `POST
 /api/nodes/{did}/{localId}/replies` is where that is said: public, because the identity
 saying it has no relationship with the author, and it carries **no words and no place** —
 one DID and one comment's citation. A `comment_pointer` row is the author's, not the
 depositor's (`created_by` is the note's author, so their purge reaches it and their note's
-deletion takes it), and it is kept only where one of the author's own snapshots both
+deletion takes it), and it is written only where one of the author's own snapshots both
 carries that note and invites `anyone`. The route always answers 204: whether a bound
-refused it, or the note takes no answers, is a fact about somebody else's graph.
+refused it, whether the note takes answers, and whether the identity resolves are all
+facts about somebody else's graph.
 
-Three rules make an unauthenticated deposit safe to hold, and each answers a way the
-depositor would otherwise decide something that is not theirs:
+Four rules make an unauthenticated deposit safe to hold. The first is the one the rest
+hang off:
 
+- **The claim is checked on the way IN, not drawn on the way out.** A deposit names an
+  identity and a comment; the instance resolves that identity and asks its store for that
+  comment, and keeps the pointer only where the store serves it, in that name and about
+  that note. A DID costs nothing to mint, so the alternative — store the claim and
+  believe it at read time — spends a note's slots on answers nobody can ever be shown,
+  and lets whoever mints fastest fill it. A verified pointer cannot be minted in bulk,
+  because the comment behind each one has to exist.
 - **Where a voice's store answers is resolved, never carried.** A DID names a person and
   never a place, and **nothing in syr binds one to the other**: an identity manifest is
   whatever the origin serving it says, so a depositor naming the store would be vouching
   for the identity they claim to be, and any instance could put words under any name. The
-  read therefore asks the READER's own instance to place the claimed DID (`providerFor`)
-  and asks whatever that names. **A voice it cannot place is left out**, which is the whole
-  cost of the rule: syr's per-identity manifest is a local lookup, so a stranger on ANOTHER
-  instance leaves a pointer that is kept and not yet shown. Showing one safely means
-  checking a comment's signature against the key its DID already carries, and no signature
-  is verified anywhere in this build (§ below) — that, and not a wider trust in whoever
-  deposited the claim, is what closes the gap.
+  deposit therefore asks the AUTHOR's own instance to place the claimed DID
+  (`providerFor`), which is the one party to a deposit that is not the depositor —
+  `publication.identity_store` is where the author's own instance is written down, so a
+  branch published before it was kept takes no answers until it is published again. syr's
+  per-identity manifest is a local lookup, so this reaches identities kept where the
+  author's is and refuses the rest; a stranger on another instance needs a comment's
+  signature checked against the key its DID already carries, and no signature is verified
+  anywhere in this build (§ below).
 - **A resolved store is still an address somebody else chose**, so reading one goes through
   `media/remote-host.ts` — the same answer a picture's address is held to, on every hop, and
   within a bound on how much of the answer is read. `SyrService.readJson` takes that policy
   for a store this instance was pointed at and none for the deployment's own.
-- **A full note makes room rather than refusing.** A DID costs nothing to mint, so a cap
-  that turned away the newest deposit would hand a note to whoever filled it first. The
-  oldest pointer of whichever voice holds the most is dropped instead, which never costs a
-  voice holding one.
+- **A full note refuses what arrives next, and a read is bounded by the stores it will
+  ask.** `POINTERS_PER_NOTE` and `POINTERS_PER_VOICE` bound the rows; `VOICES_PER_NOTE`
+  bounds the DISTINCT identities one read reaches, which is what the work costs, because a
+  store is asked once for a voice however many times that voice answered. Past it the
+  voices that answered earliest are the ones read. An identity that resolves to nothing is
+  remembered for as long as one that resolves, and the deposit route is rate-limited per
+  caller the way `/api/proxy` is — the two unauthenticated routes that can send this
+  instance to fetch something.
 
 **An identity's answer is held to that identity.** Each of those listings is one
 identity's own public endpoint asked about one note, so a record carrying anybody else's
 DID is dropped rather than drawn — `fromEveryVoice` in `api/src/social/social.service.ts`
 is the one comparison, made where the record and the store that served it are still
-together. It is what a pointer is finally believed on: the claim gets a store asked, and
-that store's answer in that name is the whole of what is shown. It is the rule § "Federating the graph" applies to a peer's published notes, and
+together. A pointer is checked against the same line when it is deposited and again when
+it is read, because a store can stop serving what it once served. It is the rule
+§ "Federating the graph" applies to a peer's published notes, and
 here it is the only line there is: a reaction arrives with nothing to check at all, and no
 signature is verified anywhere in this build. Without it any instance could put words
 under any name and face the reader knows, including the reader's own.

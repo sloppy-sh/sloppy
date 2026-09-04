@@ -160,9 +160,9 @@ function social(): SocialService {
   // No pointer has been left in these, so the reachable set is the reader and
   // who they follow — which is what every one of them is about.
   const pointers = {
-    pointersOn: async () => [],
-    admitsAnswers: async () => false,
-    leave: async () => null,
+    voicesOn: async () => [],
+    answersFrom: async () => null,
+    leave: async () => undefined,
   } as unknown as PointerRepository;
   return new SocialService(
     new SyrService(),
@@ -774,11 +774,9 @@ describe("an answer from somebody the reader does not follow", () => {
       get: () => "a-session-secret",
     } as unknown as ConfigService;
     const pointers = {
-      pointersOn: async () => [
-        { voice: STRANGER, comment_id: `${STRANGER}:01POINTED` },
-      ],
-      admitsAnswers: async () => true,
-      leave: async () => null,
+      voicesOn: async () => [STRANGER],
+      answersFrom: async () => INSTANCE,
+      leave: async () => undefined,
       ...over,
     } as unknown as PointerRepository;
     return new SocialService(
@@ -890,10 +888,9 @@ describe("an answer from somebody the reader does not follow", () => {
   it("keeps a pointer on a note that takes no answers out of the store", async () => {
     let left = 0;
     const service = withPointer({
-      admitsAnswers: async () => false,
+      answersFrom: async () => null,
       leave: async () => {
         left += 1;
-        return null;
       },
     });
 
@@ -903,5 +900,112 @@ describe("an answer from somebody the reader does not follow", () => {
     });
 
     expect(left).toBe(0);
+  });
+
+  // The whole of ruling: a slot holds an answer somebody can be shown, so the
+  // store is asked before the row exists rather than after.
+  it("keeps a claim whose own store serves the comment", async () => {
+    let left = 0;
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(
+      THEIR_STORE,
+    );
+    vi.spyOn(SyrService.prototype, "listPublicComments").mockResolvedValue([
+      comment(STRANGER, "01POINTED"),
+    ] as never);
+    const service = withPointer({
+      leave: async () => {
+        left += 1;
+      },
+    });
+
+    await service.leaveReply(NOTE, {
+      voice: STRANGER,
+      comment_id: `${STRANGER}:01POINTED`,
+    });
+
+    expect(left).toBe(1);
+  });
+
+  it("keeps nothing from a store that serves no such comment", async () => {
+    let left = 0;
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(
+      THEIR_STORE,
+    );
+    vi.spyOn(SyrService.prototype, "listPublicComments").mockResolvedValue([]);
+    const service = withPointer({
+      leave: async () => {
+        left += 1;
+      },
+    });
+
+    await service.leaveReply(NOTE, {
+      voice: STRANGER,
+      comment_id: `${STRANGER}:01NEVERWRITTEN`,
+    });
+
+    expect(left).toBe(0);
+  });
+
+  it("keeps nothing from a store answering about another note", async () => {
+    let left = 0;
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(
+      THEIR_STORE,
+    );
+    vi.spyOn(SyrService.prototype, "listPublicComments").mockResolvedValue([
+      comment(STRANGER, "01POINTED", {
+        post_id: "01JZZZZZZZZZZZZZZZZZZZZZZZ",
+      }),
+    ] as never);
+    const service = withPointer({
+      leave: async () => {
+        left += 1;
+      },
+    });
+
+    await service.leaveReply(NOTE, {
+      voice: STRANGER,
+      comment_id: `${STRANGER}:01POINTED`,
+    });
+
+    expect(left).toBe(0);
+  });
+
+  it("keeps nothing from a voice this instance cannot place", async () => {
+    let left = 0;
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(null);
+    const asked = vi.spyOn(SyrService.prototype, "listPublicComments");
+    const service = withPointer({
+      leave: async () => {
+        left += 1;
+      },
+    });
+
+    await service.leaveReply(NOTE, {
+      voice: STRANGER,
+      comment_id: `${STRANGER}:01POINTED`,
+    });
+
+    expect(left).toBe(0);
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  // A comment is cited by the store that issued it, so a citation naming
+  // somebody else is a claim about a record the voice does not own.
+  it("keeps nothing whose citation names another identity", async () => {
+    let left = 0;
+    const resolved = vi.spyOn(SyrService.prototype, "providerFor");
+    const service = withPointer({
+      leave: async () => {
+        left += 1;
+      },
+    });
+
+    await service.leaveReply(NOTE, {
+      voice: STRANGER,
+      comment_id: `${THEM}:01POINTED`,
+    });
+
+    expect(left).toBe(0);
+    expect(resolved).not.toHaveBeenCalled();
   });
 });

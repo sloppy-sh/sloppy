@@ -10,12 +10,14 @@
 // Skipped when the dev stack is not up, so a clone without it still runs
 // `pnpm test`. `docker compose up -d` is what turns it on.
 
+import { createServer as createHttpServer, type Server } from "node:http";
 import { type AddressInfo, createConnection, createServer } from "node:net";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import {
   type Address,
   addressDepth,
+  compareAddresses,
   type BlockView,
   childAddress,
   createOwnedRecordId,
@@ -30,7 +32,9 @@ import {
   parsePublishedIndex,
   publishedChangesReader,
   publishedSubtreeReader,
+  recordIdFromOwnedRef,
   siblingAddress,
+  syrPostRefFor,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
@@ -57,6 +61,87 @@ const LONG_BRANCH = 260;
 /** Somebody the author has never heard of, whose identity is kept somewhere
  *  this instance has no relationship with. */
 const STRANGER = "did:syr:z6MkStrangerStrangerStrangerStranger";
+/** Somebody else again, for a claim citing a comment in a name its depositor
+ *  does not hold. */
+const OTHER = "did:syr:z6MkSecondVoiceSpeakingHere";
+
+/**
+ * An identity store the stranger is kept on, answering the two endpoints a
+ * deposit is checked against: where a DID's store is, and what that identity
+ * has said in public about one note. The embedded provider serves no
+ * conversation at all, so without one of these a claim can never be backed —
+ * which is itself what the refusals below assert.
+ */
+function strangerStore(said: {
+  did: string;
+  localId: string;
+  post: { post_did: string; post_id: string };
+}): Promise<{ url: string; close: () => Promise<void>; asked: string[] }> {
+  const asked: string[] = [];
+  let url = "";
+  const server: Server = createHttpServer((request, response) => {
+    const path = (request.url ?? "").split("?")[0];
+    asked.push(path);
+    const answer = (body: unknown) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(body));
+    };
+    if (path === "/.well-known/syr") {
+      return answer({
+        name: "syr",
+        public_url: url,
+        identity_manifest_template: `${url}/.well-known/syr/{did}`,
+      });
+    }
+    if (path === `/.well-known/syr/${encodeURIComponent(said.did)}`) {
+      return answer({
+        version: 1,
+        did: said.did,
+        provider: url,
+        endpoints: {
+          profile: `${url}/profile`,
+          uploads: `${url}/uploads`,
+          did_document: `${url}/did`,
+          public_comments: `${url}/comments`,
+        },
+        web_profile: `${url}/u`,
+      });
+    }
+    if (path === "/comments") {
+      return answer({
+        data: [
+          {
+            did: said.did,
+            local_id: said.localId,
+            ...said.post,
+            ancestor_chain: [],
+            content: "I read this",
+            created_at: "2026-03-01T10:00:00.000Z",
+            updated_at: "2026-03-01T10:00:00.000Z",
+          },
+        ],
+      });
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end("{}");
+  });
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const found = server.address() as AddressInfo | null;
+      if (!found) return reject(new Error("no port"));
+      url = `http://127.0.0.1:${found.port}`;
+      resolve({
+        url,
+        asked,
+        close: () =>
+          new Promise<void>((done) => {
+            server.close(() => done());
+          }),
+      });
+    });
+  });
+}
 
 function reachable(endpoint: URL): Promise<boolean> {
   return new Promise((resolve) => {
@@ -240,6 +325,26 @@ describe("publishing a branch, and what a peer reads back", () => {
         { did: ada.did, note },
       );
     return rows;
+  }
+
+  /** Where the author's identity answers, as a publish recorded it. Pointed at
+   *  a store this test is running, because the embedded provider carries no
+   *  conversation for anybody to have answered from. */
+  async function answersFrom(
+    publication: OwnedRef,
+    identityStore: string,
+  ): Promise<void> {
+    const { DbService: Db } = await import("../db/db.service");
+    await app
+      .get<DbService>(Db)
+      .handle.query(
+        "UPDATE $id SET identity_store = $identityStore WHERE created_by = $did",
+        {
+          id: recordIdFromOwnedRef("publication", publication),
+          did: ada.did,
+          identityStore,
+        },
+      );
   }
 
   /** Straight off the store, because a chain with no version is served to
@@ -519,6 +624,101 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(changed.sections).toHaveLength(1);
     expect(byRef.get(kept.ref)?.change).toBe("removed");
     expect(byRef.get(arrived.ref)?.change).toBe("added");
+  });
+
+  // The decision to publish again is made on this, so it answers about the
+  // draft — where a comparison of two versions cannot, every picture in a draft
+  // citing the author's own upload rather than a published copy.
+  scenario("answers what the branch has done since it went out", async () => {
+    const branch = await newNode({ title: "Root" });
+    const renamed = await newNode({
+      from: { relation: "under", note: branch.ref },
+      title: "Called this",
+    });
+    const retagged = await newNode({
+      from: { relation: "under", note: renamed.ref },
+      title: "Tagged",
+      tags: ["seed"],
+    });
+    const written = await newNode({
+      from: { relation: "under", note: branch.ref },
+      title: "Written in",
+    });
+    const leaving = await newNode({
+      from: { relation: "under", note: branch.ref },
+      title: "On its way out",
+    });
+    const untouched = await newNode({
+      from: { relation: "under", note: branch.ref },
+      title: "Left alone",
+    });
+    const publication = await publish(branch.ref);
+
+    const nothing = (await ok(
+      "GET",
+      `/publications/${at(publication.ref)}/unpublished`,
+      ada,
+    )) as { changes: unknown[]; total: number };
+    expect(nothing).toMatchObject({ changes: [], total: 0 });
+
+    await ok("PATCH", `/nodes/${at(renamed.ref)}`, ada, {
+      title: "Called that",
+    });
+    await ok("PATCH", `/nodes/${at(retagged.ref)}`, ada, { tags: ["sprout"] });
+    await newBlock(written.ref, {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Since." }] },
+      ],
+    });
+    await ok("DELETE", `/nodes/${at(leaving.ref)}`, ada);
+    const arrived = await newNode({
+      from: { relation: "under", note: branch.ref },
+      title: "New since",
+    });
+
+    const moved = (await ok(
+      "GET",
+      `/publications/${at(publication.ref)}/unpublished`,
+      ada,
+    )) as {
+      since: { ref: OwnedRef };
+      total: number;
+      changes: {
+        note: OwnedRef;
+        address: Address;
+        change: string;
+        was_titled?: string;
+        tags_gained: string[];
+        tags_lost: string[];
+        written: boolean;
+      }[];
+    };
+
+    expect(moved.since.ref).toBe(publication.latest.ref);
+    const byRef = new Map(moved.changes.map((one) => [one.note, one]));
+    expect(moved.total).toBe(5);
+    expect(byRef.get(renamed.ref)).toMatchObject({
+      change: "changed",
+      was_titled: "Called this",
+    });
+    expect(byRef.get(retagged.ref)).toMatchObject({
+      change: "changed",
+      tags_gained: ["sprout"],
+      tags_lost: ["seed"],
+    });
+    expect(byRef.get(written.ref)).toMatchObject({
+      change: "changed",
+      written: true,
+    });
+    expect(byRef.get(leaving.ref)?.change).toBe("removed");
+    expect(byRef.get(arrived.ref)?.change).toBe("added");
+    // A note nobody touched is not a change, and neither is the root.
+    expect(byRef.has(untouched.ref)).toBe(false);
+    expect(byRef.has(branch.ref)).toBe(false);
+    // In address order, which is the order the branch reads in.
+    const order = moved.changes.map((one) => one.address);
+    expect(order).toEqual([...order].sort(compareAddresses));
   });
 
   scenario(
@@ -975,27 +1175,50 @@ describe("publishing a branch, and what a peer reads back", () => {
   // notes. The route is public and always answers 204, so what it did is only
   // visible in the store.
   scenario(
-    "takes an answer from a stranger to a branch that invites one",
+    "takes an answer whose own store will back it, and nothing else",
     async () => {
       const branch = await newNode({ title: "Open to answers" });
       const under = await newNode({
         from: { relation: "under", note: branch.ref },
         title: "Also open",
       });
-      await publish(branch.ref);
+      const publication = await publish(branch.ref);
+      const store = await strangerStore({
+        did: STRANGER,
+        localId: "01ANSWER",
+        post: syrPostRefFor(under.ref),
+      });
+      try {
+        await answersFrom(publication.ref, store.url);
 
-      expect(await reply(under.ref, STRANGER, `${STRANGER}:01ANSWER`)).toBe(
-        204,
-      );
-      expect((await pointersOn(under.ref)).map((one) => one.voice)).toEqual([
-        STRANGER,
-      ]);
+        expect(await reply(under.ref, STRANGER, `${STRANGER}:01ANSWER`)).toBe(
+          204,
+        );
+        expect((await pointersOn(under.ref)).map((one) => one.voice)).toEqual([
+          STRANGER,
+        ]);
 
-      // The same claim twice is the same claim.
-      expect(await reply(under.ref, STRANGER, `${STRANGER}:01ANSWER`)).toBe(
-        204,
-      );
-      expect(await pointersOn(under.ref)).toHaveLength(1);
+        // The same claim twice is the same claim.
+        expect(await reply(under.ref, STRANGER, `${STRANGER}:01ANSWER`)).toBe(
+          204,
+        );
+        expect(await pointersOn(under.ref)).toHaveLength(1);
+
+        // A comment that store never served, under a name it does not hold,
+        // and about a note it did not answer: none of them is kept, so a note's
+        // slots cannot be spent on claims nobody could ever be shown.
+        expect(await reply(under.ref, STRANGER, `${STRANGER}:01INVENTED`)).toBe(
+          204,
+        );
+        expect(await reply(under.ref, OTHER, `${OTHER}:01ANSWER`)).toBe(204);
+        expect(await reply(branch.ref, STRANGER, `${STRANGER}:01ANSWER`)).toBe(
+          204,
+        );
+        expect(await pointersOn(under.ref)).toHaveLength(1);
+        expect(await pointersOn(branch.ref)).toEqual([]);
+      } finally {
+        await store.close();
+      }
     },
   );
 
@@ -1018,22 +1241,26 @@ describe("publishing a branch, and what a peer reads back", () => {
     },
   );
 
-  // A DID costs nothing to mint, so a bound that turned away the newest deposit
-  // would hand a note to whoever filled it first.
-  scenario(
-    "makes room for a new voice by taking it off the crowd",
-    async () => {
-      const branch = await newNode({ title: "Answered by a crowd" });
-      await publish(branch.ref);
+  // A full note keeps what it holds. Nothing is dropped to admit a newcomer,
+  // because every row on it is an answer somebody wrote.
+  scenario("takes no more once a note is full", async () => {
+    const branch = await newNode({ title: "Answered by a crowd" });
+    const publication = await publish(branch.ref);
+    const store = await strangerStore({
+      did: STRANGER,
+      localId: "01LATE",
+      post: syrPostRefFor(branch.ref),
+    });
+    try {
+      await answersFrom(publication.ref, store.url);
 
       // A DID's tail is base58btc, which has no 0, O, I or l in it.
       const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
       const voice = (which: number) => `did:syr:z6MkCrowd${B58[which]}`;
-      const QUIET = 20;
-      const GREEDY = (POINTERS_PER_NOTE - QUIET) / POINTERS_PER_VOICE;
+      const voices = POINTERS_PER_NOTE / POINTERS_PER_VOICE;
       const rows: Record<string, unknown>[] = [];
       const now = new Date().toISOString();
-      for (let one = 0; one < GREEDY; one++) {
+      for (let one = 0; one < voices; one++) {
         for (let held = 0; held < POINTERS_PER_VOICE; held++) {
           rows.push({
             id: createOwnedRecordId("comment_pointer", ada.did),
@@ -1046,47 +1273,37 @@ describe("publishing a branch, and what a peer reads back", () => {
           });
         }
       }
-      for (let one = 0; one < QUIET; one++) {
-        rows.push({
-          id: createOwnedRecordId("comment_pointer", ada.did),
-          created_by: ada.did,
-          note: branch.ref,
-          voice: voice(GREEDY + one),
-          comment_id: `${voice(GREEDY + one)}:c0`,
-          created_at: now,
-          updated_at: now,
-        });
-      }
       expect(rows).toHaveLength(POINTERS_PER_NOTE);
       const { DbService: Db } = await import("../db/db.service");
       await app
         .get<DbService>(Db)
         .handle.query("INSERT INTO comment_pointer $rows", { rows });
 
-      const newcomer = "did:syr:z6MkNewcomerWithSomethingToSay";
-      expect(await reply(branch.ref, newcomer, `${newcomer}:c0`)).toBe(204);
+      expect(await reply(branch.ref, STRANGER, `${STRANGER}:01LATE`)).toBe(204);
 
       const held = await pointersOn(branch.ref);
       expect(held).toHaveLength(POINTERS_PER_NOTE);
-      expect(held.filter((one) => one.voice === newcomer)).toHaveLength(1);
-      // The crowd paid for the newcomer, and a voice holding one did not.
-      const quiet = held.filter((one) => one.voice === voice(GREEDY));
-      expect(quiet).toHaveLength(1);
-      const crowd = Array.from(
-        { length: GREEDY },
-        (_, one) => held.filter((row) => row.voice === voice(one)).length,
-      );
-      expect(
-        crowd.filter((one) => one === POINTERS_PER_VOICE - 1),
-      ).toHaveLength(1);
-    },
-  );
+      expect(held.filter((one) => one.voice === STRANGER)).toEqual([]);
+    } finally {
+      await store.close();
+    }
+  });
 
   scenario("lets go of what pointed at a note that has gone", async () => {
     const branch = await newNode({ title: "Answered, then deleted" });
-    await publish(branch.ref);
-    expect(await reply(branch.ref, STRANGER, `${STRANGER}:01GONE`)).toBe(204);
-    expect(await pointersOn(branch.ref)).toHaveLength(1);
+    const publication = await publish(branch.ref);
+    const store = await strangerStore({
+      did: STRANGER,
+      localId: "01GONE",
+      post: syrPostRefFor(branch.ref),
+    });
+    try {
+      await answersFrom(publication.ref, store.url);
+      expect(await reply(branch.ref, STRANGER, `${STRANGER}:01GONE`)).toBe(204);
+      expect(await pointersOn(branch.ref)).toHaveLength(1);
+    } finally {
+      await store.close();
+    }
 
     await ok("DELETE", `/nodes/${at(branch.ref)}`, ada);
     expect(await pointersOn(branch.ref)).toEqual([]);

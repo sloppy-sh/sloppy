@@ -29,6 +29,7 @@
 		type OwnedRef,
 		type StoreRef,
 		type Tag as TagName,
+		type UnpublishedChanges,
 		type UpdateBlockRequest
 	} from '@sloppy/types';
 	import {
@@ -914,6 +915,18 @@
 		}
 	}
 
+	/** What this branch has done since its newest version went out. `null` says
+	 *  the sheet keeps the answer it already had. */
+	async function readPending(): Promise<UnpublishedChanges | null> {
+		const which = publication?.ref;
+		if (!which) return null;
+		try {
+			return await publications.unpublishedIn(which);
+		} catch {
+			return null;
+		}
+	}
+
 	async function inviteAnswers(access: CommentAccess): Promise<void> {
 		const of = ref;
 		const which = publication?.ref;
@@ -1431,6 +1444,7 @@
 				answersReach={identity.kind !== 'local'}
 				refused={publishRefusal}
 				onchanges={readChanges}
+				onpending={readPending}
 				onpublish={publishBranch}
 				oncomments={inviteAnswers}
 				onunpublish={takeDown}

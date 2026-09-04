@@ -62,6 +62,8 @@ import {
   type UpdateBlockRequest,
   type UpdateNodeRequest,
   type UpdateProfileRequest,
+  type UnpublishedChanges,
+  UnpublishedChangesSchema,
   type UpdatePublicationRequest,
   type UploadTicket,
   UploadTicketSchema,
@@ -402,6 +404,16 @@ export class SloppyClient {
       method: "GET",
     });
     return (body as unknown[]).map((v) => PublishedVersionSchema.parse(v));
+  }
+
+  /** What the caller's own branch has done since its newest version went out,
+   *  for the moment before they publish it again. */
+  async unpublishedChanges(ref: OwnedRef): Promise<UnpublishedChanges> {
+    return UnpublishedChangesSchema.parse(
+      await this.json(`/publications${refPath(ref)}/unpublished`, {
+        method: "GET",
+      }),
+    );
   }
 
   /**

@@ -27,6 +27,15 @@ import { DbService } from "../db/db.service";
  *  run of these rather than one statement the length of somebody's graph. */
 const PER_STATEMENT = 500;
 
+/** One note as a version filed it, read for comparison rather than for
+ *  serving. */
+export interface FiledNote {
+  source: OwnedRef;
+  address: Address;
+  title: string;
+  tags: string[];
+}
+
 @Injectable()
 export class PublicationRepository {
   constructor(private readonly db: DbService) {}
@@ -85,6 +94,26 @@ export class PublicationRepository {
       },
     );
     return PublicationSchema.parse(rows[0]);
+  }
+
+  /** Where the author's identity answered from, as of this publish —
+   *  `Publication.identity_store` says what it is read for. */
+  async setIdentityStore(
+    did: string,
+    ref: OwnedRef,
+    identityStore: string,
+    at: string,
+  ): Promise<void> {
+    await this.query(
+      `UPDATE $id SET identity_store = $identityStore, updated_at = $at
+         WHERE created_by = $did RETURN NONE`,
+      {
+        id: recordIdFromOwnedRef("publication", ref),
+        did,
+        identityStore,
+        at,
+      },
+    );
   }
 
   /** The terms of a conversation, changed. It publishes nothing, so no version
@@ -230,6 +259,29 @@ export class PublicationRepository {
       { did, version, after, limit },
     );
     return rows.map(parseSnapshotNode);
+  }
+
+  /**
+   * What a version says about each of its notes, without the notes themselves:
+   * enough to tell an author what their branch has gained, lost, renamed and
+   * retagged since, and none of the writing, which is not comparable against a
+   * draft (`UnpublishedChange` in `@sloppy/types`).
+   */
+  async notesIn(
+    did: string,
+    version: OwnedRef,
+    after: Address | undefined,
+    limit: number,
+  ): Promise<FiledNote[]> {
+    const from = after === undefined ? "" : " AND address > $after";
+    const [rows] = await this.query<FiledNote>(
+      `SELECT source, address, node.title AS title, node.tags AS tags
+         FROM snapshot_node
+         WHERE created_by = $did AND version = $version${from}
+         ORDER BY address LIMIT $limit`,
+      { did, version, after, limit },
+    );
+    return rows;
   }
 
   async nodeAt(

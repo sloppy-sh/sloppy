@@ -83,6 +83,8 @@ const section: Block = {
 
 interface Ledger {
   released: string[];
+  /** Where the author's identity answered from, as this publish recorded it. */
+  identityStore?: string;
   chainsRemoved: OwnedRef[];
   assetsRemoved: number;
   copying: number;
@@ -120,6 +122,13 @@ function publishing(of: {
     },
     async create() {
       return chain;
+    },
+    async setIdentityStore(
+      _did: string,
+      _ref: OwnedRef,
+      identityStore: string,
+    ) {
+      ledger.identityStore = identityStore;
     },
     async assetsOf(): Promise<SnapshotAsset[]> {
       return [];
@@ -205,6 +214,15 @@ describe("a publish that does not finish", () => {
 
     await expect(service.publish(delegation, { root: ROOT })).rejects.toThrow();
     expect(ledger.chainsRemoved).toEqual([CHAIN]);
+  });
+
+  // A pointer names an identity and never a place, so a deposit is resolved
+  // through the author's own instance and this is where it is written down.
+  it("records where the author's identity answered from", async () => {
+    const { service, ledger } = publishing({ held: HELD, refusing: true });
+
+    await expect(service.publish(delegation, { root: ROOT })).rejects.toThrow();
+    expect(ledger.identityStore).toBe(delegation.syr_instance_url);
   });
 
   it("leaves a chain that was already there, versions and all", async () => {

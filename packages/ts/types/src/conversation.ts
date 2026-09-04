@@ -131,18 +131,20 @@ export type CreateNoteReactionRequest = z.input<
  *
  * **It carries no words, and it does not carry a place either.** A DID names a
  * person and never a place, so where that person's store answers is resolved by
- * the READER's own instance when the note is read — a depositor who named the
- * store would be vouching for the identity they are claiming to be. What is
- * kept is the claim and nothing else: a store that serves nothing under that
- * DID, or serves nothing about this note, leaves the pointer showing nothing,
- * and so does a voice the reader's instance cannot place at all.
+ * the note author's own instance — a depositor who named the store would be
+ * vouching for the identity they are claiming to be.
+ *
+ * **A row exists only where that store has already served the comment**, in
+ * that name and about that note. A claim that does not check out is refused on
+ * the way in rather than kept and dropped at every read, so a slot always holds
+ * an answer somebody can be shown.
  *
  * `created_by` is the NOTE's author — the person it was left for, and the one
  * whose purge has to reach it.
  */
 export const CommentPointerSchema = OwnedEntitySchema.extend({
   note: OwnedRefSchema,
-  /** Who says they wrote it. Held to what their own store actually serves. */
+  /** Who wrote it, as their own store served it back. */
   voice: DidSyrSchema,
   comment_id: StoreRefSchema,
 });
@@ -158,16 +160,19 @@ export type LeaveCommentPointerRequest = z.input<
 >;
 
 /**
- * How many pointers one instance keeps for a note, and how many of those any
- * single voice may account for. Together they bound how many stores reading one
- * note asks: a voice is asked once however many pointers it left, so a note
- * reaches at most `POINTERS_PER_NOTE / POINTERS_PER_VOICE` of them.
+ * How many pointers one instance keeps for a note, how many of those any single
+ * voice may account for, and how many stores reading the note will ask.
  *
- * Neither bound decides who gets in, because a DID costs nothing to mint and a
- * cap that refuses the newest would hand a note to whoever filled it first.
- * A full note makes room by dropping the oldest pointer of whichever voice
- * holds the most, so the crowd pays for the newcomer and a voice holding one
- * pointer is never the one dropped.
+ * `VOICES_PER_NOTE` is the one that bounds the WORK, and it is separate because
+ * the other two do not imply it: a note may hold its whole allowance one
+ * pointer per voice, and a read asks a store once per voice rather than once
+ * per pointer. Past it, the voices that answered earliest are the ones read.
+ *
+ * A full note refuses what arrives next rather than dropping what it holds.
+ * Nothing here decides who gets in — a pointer is kept only where the voice's
+ * own store served the comment, so a slot cannot be taken by a claim that was
+ * never true.
  */
 export const POINTERS_PER_NOTE = 500;
 export const POINTERS_PER_VOICE = 20;
+export const VOICES_PER_NOTE = 50;

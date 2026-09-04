@@ -2,10 +2,11 @@
 // What the sheet says a publish did, drawn from the difference itself rather
 // than from a count of it.
 
-import type { OwnedRef, PublishedNoteChange } from '@sloppy/types';
+import type { OwnedRef, PublishedNoteChange, UnpublishedChanges } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
+import { reactive } from '../props.test-support.svelte.js';
 import PublishModal, { type PublishedBranch } from './publish-modal.svelte';
 
 const AUTHOR = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
@@ -66,7 +67,8 @@ function open(
 		to: OwnedRef,
 		cursor?: string
 	) => Promise<{ changes: typeof changes } | null>,
-	published: PublishedBranch = branch
+	published: PublishedBranch = branch,
+	onpending: () => Promise<UnpublishedChanges | null> = async () => null
 ) {
 	mounted = mount(PublishModal, {
 		target,
@@ -75,6 +77,7 @@ function open(
 			address: '1',
 			published,
 			onchanges,
+			onpending,
 			onpublish: async () => undefined,
 			oncomments: async () => undefined,
 			onunpublish: async () => undefined
@@ -232,6 +235,112 @@ describe('a branch already published', () => {
 
 		expect(document.body.textContent).toContain('What version 2 changed');
 		expect(document.body.textContent).not.toContain('From the other publish');
+	});
+});
+
+describe('the decision to publish again', () => {
+	const pending = (
+		changes: UnpublishedChanges['changes'],
+		total = changes.length
+	): UnpublishedChanges => ({ publication: ref('P'), since: V2, changes, total });
+
+	const moved = (
+		mark: string,
+		address: string,
+		title: string,
+		over: Partial<UnpublishedChanges['changes'][number]> = {}
+	) => ({
+		note: ref(mark),
+		address,
+		title,
+		change: 'changed' as const,
+		tags_gained: [] as string[],
+		tags_lost: [] as string[],
+		written: false,
+		...over
+	});
+
+	// What a person is about to publish is a different question from what a past
+	// publish did, and it is the one the button beside it answers.
+	it('says what the branch has done since, beside the button that sends it', async () => {
+		open(
+			async () => ({ changes }),
+			branch,
+			async () =>
+				pending([
+					moved('A', '1a', 'Written since', { written: true }),
+					moved('B', '1b', 'Renamed', { was_titled: 'Called this' }),
+					moved('C', '1c', 'Retagged', { tags_gained: ['sprout'], tags_lost: ['seed'] }),
+					{ ...moved('D', '1d', 'New note'), change: 'added' as const },
+					{ ...moved('E', '1e', 'Gone'), change: 'removed' as const }
+				])
+		);
+
+		await vi.waitFor(() => expect(document.body.textContent).toContain('Written since'));
+		flushSync();
+
+		const shown = document.body.textContent ?? '';
+		expect(shown).toContain('This branch has changed since then.');
+		expect(shown).toContain('Written in');
+		expect(shown).toContain('Was “Called this”');
+		expect(shown).toContain('Now tagged sprout');
+		expect(shown).toContain('No longer tagged seed');
+		expect(shown).toContain('New note');
+		expect(shown).toContain('Taken out');
+		expect(shown).toContain('Publish again');
+	});
+
+	it('says nothing where the branch is as it was published', async () => {
+		open(
+			async () => ({ changes }),
+			branch,
+			async () => pending([])
+		);
+
+		await vi.waitFor(() => expect(document.body.textContent).toContain('Publish again'));
+		for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+		flushSync();
+
+		expect(document.body.textContent).not.toContain('This branch has changed since then.');
+	});
+
+	it('says how many more moved than it lists', async () => {
+		open(
+			async () => ({ changes }),
+			branch,
+			async () => pending([moved('A', '1a', 'One of many', { written: true })], 12)
+		);
+
+		await vi.waitFor(() => expect(document.body.textContent).toContain('One of many'));
+		flushSync();
+
+		expect(document.body.textContent).toContain('And 11 more.');
+	});
+
+	// The answer is about writing that is still moving, so a sheet opened again
+	// asks again rather than drawing what it was told last time.
+	it('asks again every time the sheet is opened', async () => {
+		const asked = vi.fn(async () => pending([]));
+		const props = reactive({
+			open: true,
+			address: '1',
+			published: branch,
+			onchanges: async () => ({ changes }),
+			onpending: asked,
+			onpublish: async () => undefined,
+			oncomments: async () => undefined,
+			onunpublish: async () => undefined
+		});
+		mounted = mount(PublishModal, { target, props });
+		flushSync();
+
+		await vi.waitFor(() => expect(asked).toHaveBeenCalledTimes(1));
+		props.open = false;
+		flushSync();
+		props.open = true;
+		flushSync();
+
+		await vi.waitFor(() => expect(asked).toHaveBeenCalledTimes(2));
 	});
 });
 

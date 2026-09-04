@@ -17,6 +17,7 @@ import {
   type SyrEmoji,
   type SyrReaction,
   syrPostRefFor,
+  VOICES_PER_NOTE,
 } from "@sloppy/types";
 import type { z } from "zod";
 import { AppConfigService } from "../config/app-config.service";
@@ -25,6 +26,10 @@ import type { HostPolicy } from "../media/remote-host";
 import { peerReach } from "../peer/peer-fetch";
 import { type Delegation, SyrService } from "../syr/syr.service";
 import { PointerRepository } from "./pointer.repository";
+
+/** How many identity stores one read of a note has open at once. A note may
+ *  reach `VOICES_PER_NOTE` of them plus everyone the reader follows. */
+const STORES_AT_ONCE = 8;
 
 /** As the route parsed them: what the wire accepts is the request type, and
  *  what a schema hands back after trimming and defaulting is this. */
@@ -80,14 +85,16 @@ export class SocialService {
   ) {}
 
   /**
-   * Somebody's claim that they said something about a note of the author's. It
-   * is stored and nothing more: what makes it show is the read, which resolves
-   * the claimed identity to its own store and keeps only what that store serves
-   * in that name.
+   * Somebody's claim that they said something about a note of the author's,
+   * checked before it is kept: the voice is resolved through the author's own
+   * instance and that store is asked for the comment. A row exists only where
+   * the store served it, in that name and about that note, so a note's slots
+   * hold answers somebody can be shown rather than claims a read will drop.
    *
    * The answer says nothing about whether it was kept. A depositor learning
-   * that a bound refused them, or that a note admits no answers, learns
-   * something about somebody else's graph they did not already know.
+   * that a bound refused them, that a note admits no answers, or that an
+   * identity is unknown here, learns something about somebody else's graph they
+   * did not already know.
    */
   async leaveReply(
     note: OwnedRef,
@@ -95,8 +102,44 @@ export class SocialService {
   ): Promise<void> {
     const author = splitOwnedRef(note).did;
     if (left.voice === author) return;
-    if (!(await this.pointers.admitsAnswers(author, note))) return;
+    if (splitStoreRef(left.comment_id).did !== left.voice) return;
+    const asking = await this.pointers.answersFrom(author, note);
+    if (asking === null) return;
+    const store = await this.syr.providerFor(asking, left.voice);
+    if (store === null) return;
+    const voice = this.voiceAt(left.voice, store, asking);
+    if (!(await this.wrote(voice, left.comment_id, note))) return;
     await this.pointers.leave({ author, note, ...left });
+  }
+
+  /** Whether that store serves that comment, under the voice's own DID and
+   *  about that note. A store that will not answer has not said so. */
+  private async wrote(
+    voice: Voice,
+    commentId: string,
+    note: OwnedRef,
+  ): Promise<boolean> {
+    const post = syrPostRefFor(note);
+    const { localId } = splitStoreRef(commentId);
+    try {
+      const theirs = await this.syr.listPublicComments(
+        voice.where,
+        voice.did,
+        post,
+        voice.reach,
+      );
+      return theirs.some(
+        (one) =>
+          one.did === voice.did &&
+          one.local_id === localId &&
+          this.isAbout(one, post),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `${voice.where} did not answer for ${voice.did}: ${reason(err)}`,
+      );
+      return false;
+    }
   }
 
   /** Oldest first, which is the order a conversation is read in. */
@@ -250,9 +293,7 @@ export class SocialService {
     about?: OwnedRef,
   ): Promise<Voice[]> {
     const own = delegation.syr_instance_url;
-    const elsewhere = peerReach(this.config);
-    const at = (did: DidSyr, where: string): Voice =>
-      where === own ? { did, where } : { did, where, reach: elsewhere };
+    const at = (did: DidSyr, where: string) => this.voiceAt(did, where, own);
 
     const reachable: Voice[] = [at(delegation.did, own)];
     const already = new Set<DidSyr>([delegation.did]);
@@ -273,17 +314,15 @@ export class SocialService {
     // they do not follow can still have left a pointer on it, which is the whole
     // of how a stranger's answer arrives at all.
     if (about !== undefined && splitOwnedRef(about).did === delegation.did) {
-      const claimed: DidSyr[] = [];
-      for (const left of await this.pointers.pointersOn(
+      const left = await this.pointers.voicesOn(
         delegation.did,
         about,
-      )) {
-        if (already.has(left.voice)) continue;
-        already.add(left.voice);
-        claimed.push(left.voice);
-      }
-      const stores = await Promise.all(
-        claimed.map((voice) => this.syr.providerFor(own, voice)),
+        VOICES_PER_NOTE,
+      );
+      const claimed = left.filter((voice) => !already.has(voice));
+      for (const voice of claimed) already.add(voice);
+      const stores = await inRuns(claimed, STORES_AT_ONCE, (voice) =>
+        this.syr.providerFor(own, voice),
       );
       claimed.forEach((did, which) => {
         const where = stores[which];
@@ -291,6 +330,14 @@ export class SocialService {
       });
     }
     return reachable;
+  }
+
+  /** A store to read, held to `media/remote-host.ts` on every address but the
+   *  one this instance was configured with. */
+  private voiceAt(did: DidSyr, where: string, own: string): Voice {
+    return where === own
+      ? { did, where }
+      : { did, where, reach: peerReach(this.config) };
   }
 
   /**
@@ -309,7 +356,15 @@ export class SocialService {
     about?: OwnedRef,
   ): Promise<Held<T>[]> {
     const voices = await this.voices(delegation, about);
-    const answers = await Promise.allSettled(voices.map(read));
+    const answers = await inRuns(voices, STORES_AT_ONCE, (voice) =>
+      read(voice).then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (refused: unknown) => ({
+          status: "rejected" as const,
+          reason: refused,
+        }),
+      ),
+    );
     const held: Held<T>[] = [];
     answers.forEach((answer, at) => {
       const from = voices[at];
@@ -573,6 +628,19 @@ function catalogEntryId(emojiId: string): { did: string; localId: string } {
     throw new BadRequestException("Pick an emoji from your own set.");
   }
   return { did: emojiId.slice(0, cut), localId: emojiId.slice(cut + 1) };
+}
+
+/** `work` over all of them, at most `atOnce` in flight, answered in order. */
+async function inRuns<T, R>(
+  all: readonly T[],
+  atOnce: number,
+  work: (one: T) => Promise<R>,
+): Promise<R[]> {
+  const answers: R[] = [];
+  for (let at = 0; at < all.length; at += atOnce) {
+    answers.push(...(await Promise.all(all.slice(at, at + atOnce).map(work))));
+  }
+  return answers;
 }
 
 function reason(err: unknown): string {

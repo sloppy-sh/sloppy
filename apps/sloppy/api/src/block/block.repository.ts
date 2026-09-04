@@ -14,6 +14,9 @@ import { replacement } from "../node/patch";
 
 const PATCHABLE = ["ord", "content"] as const;
 
+/** How many references one `IN` carries. */
+const PER_STATEMENT = 500;
+
 export type BlockPatch = Partial<Pick<Block, (typeof PATCHABLE)[number]>>;
 
 @Injectable()
@@ -55,6 +58,26 @@ export class BlockRepository {
       stack.sort((a, b) => compareOrd(a.ord, b.ord));
     }
     return stacks;
+  }
+
+  /** Which of these notes have had a section written in since a moment. The
+   *  refs alone: a section's document is what makes reading a whole branch
+   *  expensive, and none of them is read here. */
+  async writtenSince(
+    did: string,
+    nodes: readonly OwnedRef[],
+    since: string,
+  ): Promise<Set<OwnedRef>> {
+    const written = new Set<OwnedRef>();
+    for (let at = 0; at < nodes.length; at += PER_STATEMENT) {
+      const [rows] = await this.db.handle.query<[OwnedRef[]]>(
+        `SELECT VALUE node FROM block
+           WHERE created_by = $did AND node IN $nodes AND updated_at > $since`,
+        { did, nodes: nodes.slice(at, at + PER_STATEMENT), since },
+      );
+      for (const node of rows) written.add(node);
+    }
+    return written;
   }
 
   async find(did: string, ref: OwnedRef): Promise<Block | null> {

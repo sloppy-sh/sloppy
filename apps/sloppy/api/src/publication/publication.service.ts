@@ -31,7 +31,11 @@ import {
   SnapshotBlockSchema,
   type SnapshotNode,
   type SyrEmoji,
+  type UnpublishedChange,
+  type UnpublishedChanges,
   type UpdatePublicationRequest,
+  compareAddresses,
+  MAX_UNPUBLISHED_CHANGES,
 } from "@sloppy/types";
 import type { RecordId } from "surrealdb";
 import { BlockRepository } from "../block/block.repository";
@@ -41,6 +45,7 @@ import { SerialQueue } from "../node/serial-queue";
 import { type Delegation, SyrService } from "../syr/syr.service";
 import {
   publicationVersion,
+  type FiledNote,
   PublicationRepository,
 } from "./publication.repository";
 import {
@@ -57,6 +62,8 @@ const NOTES_PER_BATCH = 100;
 /** How many pictures are copied at once. The bytes pass through this instance,
  *  so the bound is what one publish may hold and what it may ask of a store. */
 const COPIES_AT_ONCE = 4;
+/** How many of a version's notes one read of what it filed takes. */
+const NOTES_PER_PAGE = 1000;
 
 @Injectable()
 export class PublicationService {
@@ -82,9 +89,7 @@ export class PublicationService {
     );
     return rows.flatMap((row) => {
       const version = latest.get(ownedRefFrom(row.id));
-      return version === undefined
-        ? []
-        : [{ ...entityView(row), latest: publicationVersion(version) }];
+      return version === undefined ? [] : [viewOf(row, version)];
     });
   }
 
@@ -104,6 +109,74 @@ export class PublicationService {
     return rows.map(publicationVersion);
   }
 
+  /**
+   * What the branch has done since its newest version went out, for the person
+   * about to publish it again. Not a comparison of the writing and deliberately
+   * not — `UnpublishedChange` in `@sloppy/types` carries why, and what is
+   * answered instead.
+   */
+  async unpublished(did: string, ref: OwnedRef): Promise<UnpublishedChanges> {
+    const publication = await this.publications.find(did, ref);
+    if (!publication) throw gone();
+    const version = (await this.publications.latestOf(did, [ref])).get(ref);
+    if (version === undefined) throw gone();
+    const since = publicationVersion(version);
+
+    const root = await this.nodes.find(did, publication.root);
+    const branch = root ? await this.nodes.subtree(did, root) : [];
+    const now = new Map(branch.map((node) => [ownedRefFrom(node.id), node]));
+    const published = await this.publishedNotes(did, since.ref);
+    const both = [...published.keys()].filter((note) => now.has(note));
+    const written = await this.blocks.writtenSince(
+      did,
+      both,
+      since.published_at,
+    );
+
+    const changes: UnpublishedChange[] = [];
+    for (const [note, node] of now) {
+      const before = published.get(note);
+      if (before === undefined) {
+        changes.push(gainedOrLost(note, node.address, node.title, "added"));
+        continue;
+      }
+      const moved = whatMoved(before, node, written.has(note));
+      if (moved) changes.push(moved);
+    }
+    for (const [note, before] of published) {
+      if (now.has(note)) continue;
+      changes.push(gainedOrLost(note, before.address, before.title, "removed"));
+    }
+    changes.sort((a, b) => compareAddresses(a.address, b.address));
+
+    return {
+      publication: ref,
+      since,
+      changes: changes.slice(0, MAX_UNPUBLISHED_CHANGES),
+      total: changes.length,
+    };
+  }
+
+  /** Every note one version filed, by the note it was copied from. */
+  private async publishedNotes(
+    did: string,
+    version: OwnedRef,
+  ): Promise<Map<OwnedRef, FiledNote>> {
+    const held = new Map<OwnedRef, FiledNote>();
+    let after: Address | undefined;
+    for (;;) {
+      const page = await this.publications.notesIn(
+        did,
+        version,
+        after,
+        NOTES_PER_PAGE,
+      );
+      for (const note of page) held.set(note.source, note);
+      if (page.length < NOTES_PER_PAGE) return held;
+      after = page[page.length - 1].address;
+    }
+  }
+
   async setComments(
     did: string,
     ref: OwnedRef,
@@ -119,7 +192,7 @@ export class PublicationService {
     const latest = await this.publications.latestOf(did, [ref]);
     const version = latest.get(ref);
     if (version === undefined) throw gone();
-    return { ...entityView(written), latest: publicationVersion(version) };
+    return viewOf(written, version);
   }
 
   /**
@@ -145,7 +218,7 @@ export class PublicationService {
     const root = await this.nodes.find(did, request.root);
     if (!root) throw new NotFoundException("That note is not here.");
 
-    const { publication, opened } = await this.chainFor(did, root);
+    const { publication, opened } = await this.chainFor(delegation, root);
     const chain = ownedRefFrom(publication.id);
     const id = createOwnedRecordId("publication_version", did);
     // The number a version of this chain would take next, read before any bytes
@@ -183,7 +256,7 @@ export class PublicationService {
       );
       throw err;
     }
-    return { ...entityView(publication), latest: publicationVersion(version) };
+    return viewOf(publication, version);
   }
 
   /**
@@ -240,13 +313,23 @@ export class PublicationService {
    * the undo take it back down.
    */
   private async chainFor(
-    did: string,
+    delegation: Delegation,
     root: Node,
   ): Promise<{ publication: Publication; opened: boolean }> {
+    const did = delegation.did;
+    const store = delegation.syr_instance_url;
     const ref = ownedRefFrom(root.id);
-    const held = await this.publications.findByRoot(did, ref);
-    if (held) return { publication: held, opened: false };
     const now = nowIso();
+    const held = await this.publications.findByRoot(did, ref);
+    if (held) {
+      if (held.identity_store !== store) {
+        await this.publications.setIdentityStore(did, ref, store, now);
+      }
+      return {
+        publication: { ...held, identity_store: store },
+        opened: false,
+      };
+    }
     try {
       const made = await this.publications.create({
         id: createOwnedRecordId("publication", did),
@@ -254,6 +337,7 @@ export class PublicationService {
         root: ref,
         root_address: root.address,
         comments: DEFAULT_COMMENT_ACCESS,
+        identity_store: store,
         created_at: now,
         updated_at: now,
       });
@@ -619,6 +703,60 @@ function cited(
     }
   }
   return [...named];
+}
+
+/** A note the branch gained or lost: the whole of it moved, so nothing beneath
+ *  the change is worth naming. */
+function gainedOrLost(
+  note: OwnedRef,
+  address: Address,
+  title: string,
+  change: UnpublishedChange["change"],
+): UnpublishedChange {
+  return {
+    note,
+    address,
+    title,
+    change,
+    tags_gained: [],
+    tags_lost: [],
+    written: false,
+  };
+}
+
+/** What one note has done since the version filed it, or `null` where it has
+ *  done nothing a person can be told about without opening a section. */
+function whatMoved(
+  before: FiledNote,
+  node: Node,
+  written: boolean,
+): UnpublishedChange | null {
+  const gained = node.tags.filter((tag) => !before.tags.includes(tag));
+  const lost = before.tags.filter((tag) => !node.tags.includes(tag));
+  const renamed = before.title !== node.title;
+  if (!written && !renamed && gained.length === 0 && lost.length === 0) {
+    return null;
+  }
+  return {
+    note: ownedRefFrom(node.id),
+    address: node.address,
+    title: node.title,
+    change: "changed",
+    ...(renamed ? { was_titled: before.title } : {}),
+    tags_gained: gained,
+    tags_lost: lost,
+    written,
+  };
+}
+
+/** A publication as its author reads it. `identity_store` is how this instance
+ *  places a voice somebody claims to be, and stays on the row. */
+function viewOf(
+  row: Publication,
+  version: PublicationVersion,
+): PublicationView {
+  const { identity_store: _store, ...view } = entityView(row);
+  return { ...view, latest: publicationVersion(version) };
 }
 
 /**

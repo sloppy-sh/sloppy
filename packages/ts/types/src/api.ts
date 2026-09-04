@@ -60,9 +60,13 @@ export type TagCount = z.infer<typeof TagCountSchema>;
  * The author's own view of a publication: the chain, and the version a plain
  * read of it answers with. `latest` is read from the versions rather than kept
  * on the row, so there is one place a chain's newest version is written down.
+ *
+ * `identity_store` stays on the row: it is how this instance resolves a voice
+ * somebody claims to be, and nothing a surface draws.
  */
 export const PublicationViewSchema = PublicationSchema.omit({
   id: true,
+  identity_store: true,
 }).extend({ ref: OwnedRefSchema, latest: PublishedVersionSchema });
 export type PublicationView = z.infer<typeof PublicationViewSchema>;
 

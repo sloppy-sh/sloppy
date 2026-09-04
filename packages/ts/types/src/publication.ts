@@ -16,7 +16,9 @@ import {
   CommentAccessSchema,
   DEFAULT_COMMENT_ACCESS,
   PublishedNodeSchema,
+  PublishedVersionSchema,
 } from "./published.js";
+import { TagsSchema } from "./tag.js";
 
 /**
  * A subtree its author has made readable, and the chain of versions they have
@@ -32,6 +34,15 @@ export const PublicationSchema = OwnedEntitySchema.extend({
   /** The address the root note sits at, so a listing needs no join. */
   root_address: AddressSchema,
   comments: CommentAccessSchema.default(DEFAULT_COMMENT_ACCESS),
+  /**
+   * Where the author's identity answered from when they last published. It is
+   * read for one thing: an answer left by a stranger names an identity and
+   * never a place, so somebody has to place it, and the author's own instance
+   * is the one party to a deposit that is not the depositor. **Absent on a
+   * publication written before this was kept, which takes no answers until it
+   * is published again.**
+   */
+  identity_store: z.url().optional(),
 });
 export type Publication = z.infer<typeof PublicationSchema>;
 
@@ -148,3 +159,51 @@ export const SnapshotAssetSchema = OwnedEntitySchema.extend({
   public_upload: z.string().min(1),
 });
 export type SnapshotAsset = z.infer<typeof SnapshotAssetSchema>;
+
+/** How many notes one answer lists. `total` counts them all, so a branch past
+ *  this is told how many more moved than it can show. */
+export const MAX_UNPUBLISHED_CHANGES = 200;
+
+/**
+ * What one note in a branch has done since the newest version of it went out.
+ *
+ * **This is not a comparison of the writing, and deliberately not.** Publishing
+ * rewrites every picture a section cites to the copy the publication owns
+ * (docs/ARCHITECTURE.md § "Pictures"), so comparing a draft's document against
+ * a published one would report a difference for every picture in it and call
+ * writing changed that nobody touched. What is answered is what can be told
+ * without opening a section: which notes the branch gained and lost, which were
+ * renamed or retagged, and which have been written in since.
+ *
+ * `title` is the note's title now, or the published one where the note is gone.
+ */
+export const UnpublishedChangeSchema = z.object({
+  note: OwnedRefSchema,
+  address: AddressSchema,
+  title: z.string().max(512),
+  change: z.enum(["added", "removed", "changed"]),
+  /** What it was called in the version, where that is not what it is called
+   *  now. */
+  was_titled: z.string().max(512).optional(),
+  tags_gained: TagsSchema,
+  tags_lost: TagsSchema,
+  /** A section of it was written or added since the version. A section taken
+   *  out leaves nothing behind with a time on it, so it is not counted here. */
+  written: z.boolean(),
+});
+export type UnpublishedChange = z.infer<typeof UnpublishedChangeSchema>;
+
+/**
+ * What a branch has done since it was last published, as its author is shown
+ * before publishing it again — PRODUCT.md § "Design Principles" 5 puts the
+ * truth about a publish at the moment of the decision.
+ */
+export const UnpublishedChangesSchema = z.object({
+  publication: OwnedRefSchema,
+  /** The version it is measured against. */
+  since: PublishedVersionSchema,
+  changes: z.array(UnpublishedChangeSchema).max(MAX_UNPUBLISHED_CHANGES),
+  /** Every note that moved, however many are listed. */
+  total: z.int().nonnegative(),
+});
+export type UnpublishedChanges = z.infer<typeof UnpublishedChangesSchema>;

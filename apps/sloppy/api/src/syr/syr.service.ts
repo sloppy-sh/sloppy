@@ -46,6 +46,8 @@ import { type HostPolicy, fetchReachable } from "../media/remote-host";
 
 /** syr's own `Cache-Control` on the manifest is 300s; this matches it. */
 const MANIFEST_TTL_MS = 5 * 60 * 1000;
+/** How many identities that resolved to nothing are remembered at once. */
+const UNRESOLVED_MAX = 4096;
 const REQUEST_TIMEOUT_MS = 10_000;
 /** How much of one identity's conversation about one note is read. It is syr's
  *  own per-page ceiling, and one page of it is what a note shows. */
@@ -134,6 +136,9 @@ export class SyrService {
   /** Keyed by instance, identity and path. Folders are never renamed away from
    *  under us, so a hit stays true for this process's life. */
   private readonly folders = new Map<string, string>();
+  /** When an identity last failed to resolve at an instance, least recently
+   *  written first. Anyone may name one, so it is capped as well as aged. */
+  private readonly unresolved = new Map<string, number>();
 
   async manifest(
     instanceUrl: string,
@@ -511,11 +516,29 @@ export class SyrService {
    * `null` where it cannot say — an identity held somewhere this instance has
    * never heard of, or an instance that did not answer just now. A follow
    * recorded without one is resolved from scratch when somebody reads it.
+   *
+   * The `null` is remembered for as long as an answer would be. Anyone may name
+   * an identity this instance has never heard of, so a name that resolves to
+   * nothing has to cost what one that resolves costs.
    */
   async providerFor(instanceUrl: string, did: string): Promise<string | null> {
+    const key = `${instanceUrl}|${did}`;
+    const missed = this.unresolved.get(key);
+    if (missed !== undefined && Date.now() - missed < MANIFEST_TTL_MS) {
+      return null;
+    }
     try {
       return (await this.identityManifest(instanceUrl, did)).provider;
     } catch {
+      const now = Date.now();
+      for (const [at, when] of this.unresolved) {
+        if (now - when >= MANIFEST_TTL_MS) this.unresolved.delete(at);
+      }
+      for (const at of this.unresolved.keys()) {
+        if (this.unresolved.size < UNRESOLVED_MAX) break;
+        this.unresolved.delete(at);
+      }
+      this.unresolved.set(key, now);
       return null;
     }
   }

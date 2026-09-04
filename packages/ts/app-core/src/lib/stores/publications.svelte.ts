@@ -18,7 +18,8 @@ import {
 	type PublicationView,
 	type PublishedNoteChange,
 	type PublishedVersion,
-	splitOwnedRef
+	splitOwnedRef,
+	type UnpublishedChanges
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
@@ -216,6 +217,15 @@ class PublicationsStore {
 			changes: page.changes,
 			...(page.next_cursor === undefined ? {} : { nextCursor: page.next_cursor })
 		};
+	}
+
+	/**
+	 * What this branch has done since its newest version went out. Read afresh
+	 * every time it is asked for: it is about writing that is still moving, and
+	 * the answer is only true for the moment it was read.
+	 */
+	unpublishedIn(ref: OwnedRef): Promise<UnpublishedChanges> {
+		return api.unpublishedChanges(ref);
 	}
 
 	/** Publish the branch rooted at this note, as it stands. A note that already

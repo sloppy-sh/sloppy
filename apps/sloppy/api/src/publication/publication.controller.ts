@@ -14,6 +14,7 @@ import {
   MAX_PUBLISHED_VERSIONS_PER_PAGE,
   type PublicationView,
   type PublishedVersion,
+  type UnpublishedChanges,
   UpdatePublicationRequestSchema,
 } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
@@ -77,6 +78,20 @@ export class PublicationController {
       viewerDid(req),
       requireRef(did, localId),
       MAX_PUBLISHED_VERSIONS_PER_PAGE,
+    );
+  }
+
+  /** What this branch has done since it was last published — read beside the
+   *  decision to publish it again. */
+  @Get(":did/:localId/unpublished")
+  unpublished(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+  ): Promise<UnpublishedChanges> {
+    return this.publications.unpublished(
+      viewerDid(req),
+      requireRef(did, localId),
     );
   }
 

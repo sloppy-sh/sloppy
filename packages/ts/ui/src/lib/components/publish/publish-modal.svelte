@@ -1,5 +1,11 @@
 <script lang="ts" module>
-	import type { Address, CommentAccess, OwnedRef, PublishedVersion } from '@sloppy/types';
+	import type {
+		Address,
+		CommentAccess,
+		OwnedRef,
+		PublishedVersion,
+		UnpublishedChanges
+	} from '@sloppy/types';
 	import type { VersionComparison } from './version-changes.svelte';
 
 	/** A branch as it stands published: the version a reader gets, the chain
@@ -28,7 +34,8 @@
 		/** Branches under this one that were published inviting fewer people. */
 		narrower?: readonly Address[];
 		/** True where a note in this branch has changed since the newest version.
-		 *  False says nothing: it is silent where it cannot tell. */
+		 *  False says nothing: it is silent where it cannot tell. What
+		 *  {@link onpending} answers replaces it the moment it arrives. */
 		changedSince?: boolean;
 		/** False where answers people write will never reach this person, so the
 		 *  sheet promises none. What readers are invited to do is unaffected. */
@@ -39,6 +46,9 @@
 		 *  of this branch's versions, in that order. `null` where it could not be
 		 *  read, which {@link refused} then says. */
 		onchanges: (from: OwnedRef, to: OwnedRef, cursor?: string) => Promise<VersionComparison | null>;
+		/** What the branch has done since the newest version went out. `null`
+		 *  where it could not be read, which leaves {@link changedSince} standing. */
+		onpending: () => Promise<UnpublishedChanges | null>;
 		onpublish: () => Promise<void>;
 		oncomments: (access: CommentAccess) => Promise<void>;
 		onunpublish: () => Promise<void>;
@@ -58,6 +68,7 @@
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { when } from '../social/when.js';
+	import PendingChanges from './pending-changes.svelte';
 	import VersionChanges from './version-changes.svelte';
 
 	let {
@@ -70,6 +81,7 @@
 		answersReach = true,
 		refused = null,
 		onchanges,
+		onpending,
 		onpublish,
 		oncomments,
 		onunpublish
@@ -80,6 +92,9 @@
 	);
 
 	let working = $state(false);
+	/** What the branch has done since it was last published, once the instance
+	 *  has answered. Until then the sheet has only {@link changedSince}. */
+	let pending = $state<UnpublishedChanges | null>(null);
 	let takingDown = $state(false);
 	/** True once the take-down itself has been refused, so the sheet's refusal
 	 *  for some other act is not re-shown over a question about this one. */
@@ -166,6 +181,27 @@
 		reviewing = null;
 		against = null;
 		compared = null;
+	});
+
+	/** The version the answer in hand is measured against, so a re-render that
+	 *  hands the sheet an equal branch does not ask all over again. */
+	let askedAgainst: OwnedRef | null = null;
+	/** The newest ask, so an answer to a question that has been left behind is
+	 *  dropped rather than drawn against the version that replaced it. */
+	let asking = 0;
+
+	// Writing moves while the sheet is shut, so what it says the branch has done
+	// is read again every time somebody opens it, and again after a publish.
+	$effect(() => {
+		const version = open && published ? published.latest.ref : null;
+		if (version === askedAgainst) return;
+		askedAgainst = version;
+		pending = null;
+		const mine = ++asking;
+		if (version === null) return;
+		void onpending().then((answer) => {
+			if (mine === asking) pending = answer;
+		});
 	});
 
 	const terms: { value: CommentAccess; label: string; says: string }[] = [
@@ -281,7 +317,12 @@
 			</section>
 
 			<section class="space-y-2">
-				{#if changedSince}
+				{#if pending}
+					{#if pending.total > 0}
+						<p class="text-sm text-muted-foreground">This branch has changed since then.</p>
+						<PendingChanges changes={pending.changes} total={pending.total} />
+					{/if}
+				{:else if changedSince}
 					<p class="text-sm text-muted-foreground">This branch has changed since then.</p>
 				{/if}
 				<p class="text-sm text-muted-foreground">
