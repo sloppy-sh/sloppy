@@ -419,7 +419,29 @@
 	// on it — which settles `page.state` last, after any mount it caused.
 	function openCited(): void {
 		const cited = refFromPath(page.url.pathname);
-		if (cited && !page.state.note) replaceState('', { note: cited, notes: [cited] });
+		if (!cited) return;
+		if (!page.state.note) replaceState('', { note: cited, notes: [cited] });
+		void reachCited(cited);
+	}
+
+	/** A note cited by its address is in whichever graph its author filed it in,
+	 *  so reaching one is what moves the reader into that graph. */
+	async function reachCited(cited: OwnedRef): Promise<void> {
+		const note = nodes.get(cited) ?? (await nodes.fetch(cited).catch(() => null));
+		if (note && !graphs.onCanvas.includes(graphOf(note))) graphs.enter(graphOf(note));
+	}
+
+	/** The notes the canvas has stopped drawing, closed with the field they were
+	 *  read beside: a note open over a canvas that no longer holds its graph is
+	 *  one surface showing two. */
+	function closeUndrawn(): void {
+		const drawing = new Set(graphs.onCanvas);
+		closeGone(
+			openNotes.filter((of) => {
+				const note = nodes.get(of);
+				return note !== undefined && !drawing.has(graphOf(note));
+			})
+		);
 	}
 
 	onMount(() => {
@@ -1398,8 +1420,14 @@
 	full={graphs.canvasFull}
 	busy={graphs.state.loading}
 	says={graphs.state.failed ? (graphs.state.error ?? null) : null}
-	onEnter={(ref) => graphs.enter(ref)}
-	onToggle={(ref) => graphs.toggleOnCanvas(ref)}
+	onEnter={(ref) => {
+		graphs.enter(ref);
+		closeUndrawn();
+	}}
+	onToggle={(ref) => {
+		graphs.toggleOnCanvas(ref);
+		closeUndrawn();
+	}}
 	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
 	onRename={(ref, title) =>
 		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}

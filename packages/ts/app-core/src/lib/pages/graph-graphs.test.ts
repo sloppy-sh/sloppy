@@ -105,6 +105,18 @@ const drawn = (): string[] =>
 		(mark) => mark.dataset.expand ?? ''
 	);
 
+/** A note's own control on the stand-in canvas, by the address it carries. */
+function onCanvasMark(address: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('[aria-label="The graph"] button')].find(
+		(mark) => mark.textContent?.trim().split(/\s+/)[0] === address
+	);
+	if (!found) throw new Error(`No note addressed ${address} is drawn`);
+	return found as HTMLButtonElement;
+}
+
+/** Whether a note is open on the reading surface at all. */
+const reading = () => document.body.querySelector('[aria-label="Title"]') !== null;
+
 function button(labelled: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find((b) =>
 		b.textContent?.includes(labelled)
@@ -160,6 +172,12 @@ beforeEach(() => {
 		const of = url.searchParams.get('graph') ?? HOME;
 		return held.filter((one) => one.ref === one.origin && (one.graph ?? HOME) === of);
 	});
+	for (const one of held) {
+		const [did, id] = [one.ref.slice(0, one.ref.lastIndexOf('/')), one.ref.split('/')[1]];
+		const at = `/nodes/${encodeURIComponent(did)}/${encodeURIComponent(id)}`;
+		api.on(`GET ${at}`, () => held.find((note) => note.ref === one.ref) ?? null);
+		api.on(`GET ${at}/blocks`, () => []);
+	}
 	api.on('POST /nodes', (_url, init) => {
 		const request = JSON.parse(String(init?.body)) as CreateNodeRequest;
 		written.push(request);
@@ -246,6 +264,30 @@ describe('which graph you are in', () => {
 		button('Save').click();
 		await settle();
 		expect(inSheet()).toContain('Allotment');
+	});
+
+	// A note open beside a canvas that no longer holds its graph is one surface
+	// showing two.
+	it('closes a note the canvas has stopped drawing', async () => {
+		await open();
+		onCanvasMark('1').click();
+		await settle();
+		expect(reading()).toBe(true);
+
+		await openGraphs();
+		button('Garden').click();
+		await settle();
+
+		expect(reading()).toBe(false);
+	});
+
+	// A citation resolves, whichever graph its author filed it in.
+	it('moves into the graph of a note reached by its address', async () => {
+		startAt(`/n/${encodeURIComponent(DID)}/${held[1].ref.split('/')[1]}`);
+		await open();
+
+		expect(graphs.current).toBe(GARDEN);
+		expect(reading()).toBe(true);
 	});
 
 	// A person comes back to the graph they left off in.
