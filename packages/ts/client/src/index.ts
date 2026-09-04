@@ -445,10 +445,6 @@ export class SloppyClient {
     };
   }
 
-  // Declared, not served: `apps/sloppy/api` answers none of the `/peers` or
-  // `/pulls` routes from here to the end of this block yet, so a call reaches a
-  // 404.
-
   /**
    * One page of what somebody publishes, which is what following them leads to:
    * a DID names a person and never a place, so `sourceUrl` says which instance

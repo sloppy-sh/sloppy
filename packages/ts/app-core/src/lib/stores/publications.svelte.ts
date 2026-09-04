@@ -16,12 +16,20 @@ import {
 	type NodeView,
 	type OwnedRef,
 	type PublicationView,
+	type PublishedNoteChange,
 	type PublishedVersion,
 	splitOwnedRef
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { serverMessage } from './errors.js';
+
+/** One page of the difference between two versions. */
+export interface VersionChanges {
+	changes: PublishedNoteChange[];
+	/** More to ask for; absent is the end of it. */
+	nextCursor?: string;
+}
 
 export interface PublicationsState {
 	loading: boolean;
@@ -183,6 +191,24 @@ class PublicationsStore {
 			});
 		this.#versionsInflight.set(ref, request);
 		return request;
+	}
+
+	/**
+	 * What the writing did between two versions of one publication, in that
+	 * order and a page at a time. The comparison is made where the versions are,
+	 * so reading one costs neither side of it.
+	 */
+	async changesBetween(
+		publication: OwnedRef,
+		from: OwnedRef,
+		to: OwnedRef,
+		cursor?: string
+	): Promise<VersionChanges> {
+		const page = await api.publishedChanges(publication, from, to, cursor ? { cursor } : {});
+		return {
+			changes: page.changes,
+			...(page.next_cursor === undefined ? {} : { nextCursor: page.next_cursor })
+		};
 	}
 
 	/** Publish the branch rooted at this note, as it stands. A note that already

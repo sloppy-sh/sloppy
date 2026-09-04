@@ -153,15 +153,49 @@ export function subtreeUrl(
   version?: OwnedRef,
   cursor?: string,
 ): string {
+  return asked(publicationUrl(origin, publication), { version, cursor });
+}
+
+/** One publication's chain, newest version first. */
+export function versionsUrl(
+  origin: PeerOrigin,
+  publication: OwnedRef,
+  cursor?: string,
+): string {
+  return asked(`${publicationUrl(origin, publication)}/versions`, { cursor });
+}
+
+/** What one publication's writing did between two of its versions, in that
+ *  order. */
+export function changesUrl(
+  origin: PeerOrigin,
+  publication: OwnedRef,
+  from: OwnedRef,
+  to: OwnedRef,
+  cursor?: string,
+): string {
+  return asked(`${publicationUrl(origin, publication)}/changes`, {
+    from,
+    to,
+    cursor,
+  });
+}
+
+function publicationUrl(origin: PeerOrigin, publication: OwnedRef): string {
   const { did, localId } = splitOwnedRef(publication);
-  const at =
+  return (
     `${origin}/api/public/publications/${encodeURIComponent(did)}` +
-    `/${encodeURIComponent(localId)}`;
-  const query = new URLSearchParams();
-  if (version !== undefined) query.set("version", version);
-  if (cursor !== undefined) query.set("cursor", cursor);
-  const search = query.toString();
-  return search === "" ? at : `${at}?${search}`;
+    `/${encodeURIComponent(localId)}`
+  );
+}
+
+function asked(at: string, query: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) search.set(key, value);
+  }
+  const written = search.toString();
+  return written === "" ? at : `${at}?${written}`;
 }
 
 function reason(error: unknown): string {

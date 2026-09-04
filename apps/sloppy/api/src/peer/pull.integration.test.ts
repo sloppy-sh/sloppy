@@ -17,8 +17,10 @@ import type {
   FollowedIdentity,
   NodeView,
   PublishedBlock,
+  PublishedChangesPage,
   PublishedNode,
   PublishedVersion,
+  PublishedVersionsPage,
   PullView,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -630,6 +632,119 @@ describe("holding a region of somebody else's graph", () => {
     expect(await regions()).toEqual([]);
     expect(await stackOf(ID.a)).toHaveLength(0);
   });
+
+  scenario(
+    "reads a publication's history without the browser asking",
+    async () => {
+      serves({
+        publication: WIDE.publication,
+        versions: [
+          { ...WIDE.version, sequence: 2 },
+          { ...WIDE.version, ref: ref(ID.narrowVersion), sequence: 1 },
+        ],
+      });
+
+      const chain = (await ok(
+        "GET",
+        `/peers/versions?publication=${encodeURIComponent(WIDE.publication)}` +
+          `&source_url=${encodeURIComponent(peerOrigin)}`,
+      )) as PublishedVersionsPage;
+
+      expect(chain.versions.map((one) => one.sequence)).toEqual([2, 1]);
+      expect(asked).toEqual([
+        `/api/public/publications/${at(WIDE.publication)}/versions`,
+      ]);
+    },
+  );
+
+  scenario("reads what changed between two versions the same way", async () => {
+    serves({
+      publication: WIDE.publication,
+      root_address: "1",
+      from: ref(ID.narrowVersion),
+      to: WIDE.version.ref,
+      changes: [
+        {
+          change: "changed",
+          note: { ...note("1", "1"), title: "After" },
+          before: note("1", "1"),
+          sections: [
+            {
+              change: "changed",
+              section: {
+                ...section(ID.s1, ID.root, "a0"),
+                content: doc("Now"),
+              },
+              before: section(ID.s1, ID.root, "a0"),
+            },
+          ],
+        },
+        { change: "added", note: note("1", "1a"), sections: [] },
+      ],
+    });
+
+    const difference = (await ok(
+      "GET",
+      `/peers/changes?publication=${encodeURIComponent(WIDE.publication)}` +
+        `&from=${encodeURIComponent(ref(ID.narrowVersion))}` +
+        `&to=${encodeURIComponent(WIDE.version.ref)}` +
+        `&source_url=${encodeURIComponent(peerOrigin)}`,
+    )) as PublishedChangesPage;
+
+    expect(difference.changes.map((one) => one.change)).toEqual([
+      "changed",
+      "added",
+    ]);
+    expect(asked[0]).toContain(`/changes?from=`);
+  });
+
+  scenario(
+    "refuses a difference between versions nobody asked about",
+    async () => {
+      serves({
+        publication: WIDE.publication,
+        root_address: "1",
+        from: WIDE.version.ref,
+        to: WIDE.version.ref,
+        changes: [],
+      });
+
+      const answer = await call(
+        "GET",
+        `/peers/changes?publication=${encodeURIComponent(WIDE.publication)}` +
+          `&from=${encodeURIComponent(ref(ID.narrowVersion))}` +
+          `&to=${encodeURIComponent(WIDE.version.ref)}` +
+          `&source_url=${encodeURIComponent(peerOrigin)}`,
+      );
+
+      expect(answer.status).toBe(503);
+    },
+  );
+
+  scenario(
+    "says so where the instance has nothing at that address",
+    async () => {
+      serves();
+
+      const chain = (await ok(
+        "GET",
+        `/peers/versions?publication=${encodeURIComponent(WIDE.publication)}` +
+          `&source_url=${encodeURIComponent(peerOrigin)}`,
+      )) as PublishedVersionsPage;
+      expect(chain.versions).toEqual([]);
+
+      // An empty difference would say the writing did not move, which is not the
+      // same thing as a branch that is no longer served.
+      const difference = await call(
+        "GET",
+        `/peers/changes?publication=${encodeURIComponent(WIDE.publication)}` +
+          `&from=${encodeURIComponent(ref(ID.narrowVersion))}` +
+          `&to=${encodeURIComponent(WIDE.version.ref)}` +
+          `&source_url=${encodeURIComponent(peerOrigin)}`,
+      );
+      expect(difference.status).toBe(404);
+    },
+  );
 
   scenario("records a follow, lists it, and drops it", async () => {
     expect(await ok("GET", "/following")).toEqual([]);

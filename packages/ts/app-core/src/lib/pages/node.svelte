@@ -63,7 +63,7 @@
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people } from '../stores/people.svelte.js';
-	import { publications } from '../stores/publications.svelte.js';
+	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -892,6 +892,27 @@
 		}
 	}
 
+	async function readChanges(
+		from: OwnedRef,
+		to: OwnedRef,
+		cursor: string | undefined
+	): Promise<VersionChanges | null> {
+		const of = ref;
+		const which = publication?.ref;
+		if (!which) return null;
+		refuse(of, 'publish', null);
+		try {
+			return await publications.changesBetween(which, from, to, cursor);
+		} catch (error) {
+			refuse(
+				of,
+				'publish',
+				serverMessage(error) ?? 'Sloppy could not read what changed. Try again in a moment.'
+			);
+			return null;
+		}
+	}
+
 	async function inviteAnswers(access: CommentAccess): Promise<void> {
 		const of = ref;
 		const which = publication?.ref;
@@ -1408,6 +1429,7 @@
 				{changedSince}
 				answersReach={identity.kind !== 'local'}
 				refused={publishRefusal}
+				onchanges={readChanges}
 				onpublish={publishBranch}
 				oncomments={inviteAnswers}
 				onunpublish={takeDown}

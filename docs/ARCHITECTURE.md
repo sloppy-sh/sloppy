@@ -206,7 +206,7 @@ human-readable label inside somebody's graph rather than a machine identifier, s
 `root_address` is something a publication CARRIES — shown wherever it helps a person
 navigate or cite — and `<did>/<ulid>` is what a route binds.
 
-**The routes.** Three answer without a session, and they are the ones a peer's instance
+**The routes.** Four answer without a session, and they are the ones a peer's instance
 calls:
 
 - `GET /api/public/publications/{did}` lists what that identity publishes here — each
@@ -217,6 +217,9 @@ calls:
   that answers at the version its cursor was minted against, so publishing again moves
   what a fresh read gets and never what a read already under way is part of.
 - `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
+- `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
+  between those two versions, one entry per note and in the same address order a version's
+  own pages take.
 
 The first of those is the exposure publishing creates, and the copy at the moment of the
 decision has to be true to it: from the moment a subtree is published, anyone holding the
@@ -252,19 +255,25 @@ than a ceiling a graph can hit: a branch of any size is read page by page, and w
 per-page bound refuses is one answer too large to hold, never a subtree too large to
 publish.
 
-**The difference between two versions would be computed where the versions are, and
-nothing answers one yet.** The instance holds every version and the reader holds none, so a
-phone asking what changed between two snapshots of a ten-thousand-note branch would read
-the difference rather than both sides of it: one entry per note — arrived, gone, or
-changed — in the same address order a version's own pages take, carrying both sides of the
-note and both sides of only the sections that differ, which is what a review-shaped diff
-needs and no more. A note that is gone would carry no sections, what it said being in the
-version that still has it; where one address holds a different note in each version the
-reader would be told both, one gone and one arrived. `PublishedNoteChange` in
-`@sloppy/types` is that shape and `publishedChangesReader` its boundary — **both settled
-and neither served**, so the surface for it is DEFERRED out of this milestone by the developer's
-call — the shape is settled and the route is not served, so nothing offers it yet and the
-next milestone to serve the comparison owns building it.
+**The difference between two versions is computed where the versions are.** The instance
+holds every version and the reader holds none, so a phone asking what changed between two
+snapshots of a ten-thousand-note branch reads the difference rather than both sides of it:
+one entry per note — arrived, gone, or changed — in the same address order a version's own
+pages take, carrying both sides of the note and both sides of only the sections that
+differ, which is what a review-shaped diff needs and no more. A note that is gone carries
+no sections, what it said being in the version that still has it; where one address holds a
+different note in each version the reader is told both, one gone and one arrived.
+`PublishedNoteChange` in `@sloppy/types` is that shape and `publishedChangesReader` its
+boundary. **The author's own instance answers it as a peer's does** — `/changes` above is
+public, so the surface a person reads it on asks over `GET /api/peers/changes` whether the
+publication is theirs or somebody else's, and one path serves both. A comparison is a READ
+of two versions and never of a draft. What a person has written since the newest version is
+not a snapshot: its sections cite the author's own uploads rather than the copies a
+publication owns, and its citations still name notes nobody published, so comparing one
+against a version would report a difference for every picture in it and call writing
+changed that nobody touched (§ "Pictures"). A surface says that a branch has changed since
+it was last published, which is what a person acts on; what MOVED is answered between two
+versions, once both exist.
 
 **Who is invited to comment is the publication's to say, and it is an invitation rather
 than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which
@@ -299,11 +308,11 @@ instance to ask, and nothing a peer says about themselves can corroborate one. W
 carried rather than resolved: `GET /api/peers/publications` takes a DID and the instance to
 ask, which is this one unless the caller names another — the whole of it for somebody who
 keeps their graph here — and answers what that identity publishes there.
-`GET /api/peers/versions` would be the same mediation for a publication's history, and no
-instance answers it yet. What the writing DID between two versions is not something this
-build answers either, on either side of the federation line. Every one of those requests is made by the reader's instance, so the
-instance asked learns an instance and never a reader, and a `pull` row keeps the origin in
-`source_url` so refreshing a region asks the same instance again.
+`GET /api/peers/versions` is the same mediation for a publication's history and
+`GET /api/peers/changes` for what its writing did between two of them, both named by the
+publication rather than by an address. Every one of those requests is made by the reader's
+instance, so the instance asked learns an instance and never a reader, and a `pull` row
+keeps the origin in `source_url` so refreshing a region asks the same instance again.
 
 **A named origin is a signed-in caller telling this instance to go and fetch something, so
 what it may name is bounded in three places and none of them is a server's own idea.**
@@ -830,8 +839,8 @@ deleting a publication — with its versions, its copies and its assets — is u
 `node.published` is a separate column on the note, and `provenanceOf` in `@sloppy/graph` is
 the only thing that reads it: it decides whether a mark draws as own or as published, and
 nothing else follows from it. `apps/sloppy/api`'s `publication/` serves the author's own
-routes and the four public ones; the peer-mediated reads and the pull side of § "Federating
-the graph" are not served yet.
+routes and the four public ones; `peer/` serves the mediated reads beside them and the pull
+side of § "Federating the graph".
 
 **A publication with no version is a first publish that did not finish.** Nothing serves
 one and no listing carries one, and publishing that root again completes it — reusing the

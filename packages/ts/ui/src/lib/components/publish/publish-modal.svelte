@@ -1,5 +1,6 @@
 <script lang="ts" module>
-	import type { Address, CommentAccess, PublishedVersion } from '@sloppy/types';
+	import type { Address, CommentAccess, OwnedRef, PublishedVersion } from '@sloppy/types';
+	import type { VersionComparison } from './version-changes.svelte';
 
 	/** A branch as it stands published: the version a reader gets, the chain
 	 *  behind it newest first, and who the author invites to answer it. */
@@ -29,6 +30,10 @@
 		answersReach?: boolean;
 		/** Why the last act did not land, in the caller's words. */
 		refused?: string | null;
+		/** What one publish changed, a page at a time: the difference between two
+		 *  of this branch's versions, in that order. `null` where it could not be
+		 *  read, which {@link refused} then says. */
+		onchanges: (from: OwnedRef, to: OwnedRef, cursor?: string) => Promise<VersionComparison | null>;
 		onpublish: () => Promise<void>;
 		oncomments: (access: CommentAccess) => Promise<void>;
 		onunpublish: () => Promise<void>;
@@ -39,12 +44,16 @@
 	// Publishing a branch, and everything a person does to one afterwards. What
 	// publishing exposes is said here, at the decision, and nowhere else —
 	// DESIGN.md § Forms.
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Check from '@lucide/svelte/icons/check';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { when } from '../social/when.js';
+	import VersionChanges from './version-changes.svelte';
 
 	let {
 		open = $bindable(false),
@@ -55,6 +64,7 @@
 		changedSince = false,
 		answersReach = true,
 		refused = null,
+		onchanges,
 		onpublish,
 		oncomments,
 		onunpublish
@@ -69,6 +79,69 @@
 	/** True once the take-down itself has been refused, so the sheet's refusal
 	 *  for some other act is not re-shown over a question about this one. */
 	let downRefused = $state(false);
+
+	/** The publish being read, and the one it is read against — absent where this
+	 *  is the first, which nothing precedes. */
+	let reviewing = $state<PublishedVersion | null>(null);
+	let against = $state<PublishedVersion | null>(null);
+	let compared = $state<VersionComparison | null>(null);
+	let reading = $state(false);
+
+	/** The version published before this one, as far as the chain in hand goes. */
+	function before(at: number): PublishedVersion | undefined {
+		return chain[at + 1];
+	}
+
+	function comparable(version: PublishedVersion, at: number): boolean {
+		return version.sequence === 1 || before(at) !== undefined;
+	}
+
+	async function review(
+		version: PublishedVersion,
+		earlier: PublishedVersion | undefined
+	): Promise<void> {
+		reviewing = version;
+		against = earlier ?? null;
+		compared = null;
+		if (!earlier) return;
+		reading = true;
+		try {
+			compared = await onchanges(earlier.ref, version.ref);
+		} finally {
+			reading = false;
+		}
+	}
+
+	/** The next page of one comparison, with anything it repeats left out — a
+	 *  note that moved, moved once. */
+	async function more(cursor: string): Promise<void> {
+		if (!reviewing || !against) return;
+		reading = true;
+		let page: VersionComparison | null;
+		try {
+			page = await onchanges(against.ref, reviewing.ref, cursor);
+		} finally {
+			reading = false;
+		}
+		if (!page) return;
+		const held = new Set((compared?.changes ?? []).map((one) => one.note.ref));
+		compared = {
+			changes: [
+				...(compared?.changes ?? []),
+				...page.changes.filter((one) => !held.has(one.note.ref))
+			],
+			...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor })
+		};
+	}
+
+	// Nothing about one comparison belongs to the next thing this sheet is
+	// opened for.
+	$effect(() => {
+		if (open) return;
+		reviewing = null;
+		against = null;
+		compared = null;
+	});
 
 	const terms: { value: CommentAccess; label: string; says: string }[] = [
 		{ value: 'anyone', label: 'Anyone', says: 'Anyone reading it can answer.' },
@@ -99,23 +172,79 @@
 
 <ResponsiveModal
 	bind:open
-	title={published ? `${address} is published` : `Publish ${address}?`}
+	title={reviewing
+		? against
+			? `What version ${reviewing.sequence} changed`
+			: `Version ${reviewing.sequence}`
+		: published
+			? `${address} is published`
+			: `Publish ${address}?`}
 	class="sm:max-w-lg"
 >
 	<div class="space-y-5 px-2 pt-3">
-		{#if published}
+		{#if reviewing}
+			<button
+				type="button"
+				onclick={() => (reviewing = null)}
+				class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+			>
+				<ArrowLeft class="size-4" />
+				Publishing
+			</button>
+
+			{#if against}
+				<p class="text-sm text-muted-foreground">
+					Against version {against.sequence}, published {when(against.published_at)}.
+				</p>
+				{#if reading && !compared}
+					<Skeleton class="h-24 w-full" />
+				{:else if compared}
+					<VersionChanges
+						changes={compared.changes}
+						nextCursor={compared.nextCursor}
+						busy={reading}
+						onmore={more}
+					/>
+				{/if}
+			{:else}
+				<p class="text-sm text-muted-foreground">
+					This is where {address} was first published, so everything in it went out at once.
+				</p>
+			{/if}
+
+			{#if refused}
+				<p class="text-sm text-destructive" role="alert">{refused}</p>
+			{/if}
+		{:else if published}
 			<section class="space-y-2">
 				<p class="text-sm text-muted-foreground">
 					Anyone who can find your profile can read this branch.
 				</p>
 				<ul class="max-h-64 space-y-0.5 overflow-y-auto scroll-fade-y" {@attach scrollFade('y')}>
-					{#each chain as version (version.ref)}
-						<li class="flex min-h-9 items-center gap-3 px-2">
-							<span class="shrink-0 address text-sm">Version {version.sequence}</span>
-							<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-								{when(version.published_at)}
-							</span>
-						</li>
+					{#each chain as version, at (version.ref)}
+						{#if comparable(version, at)}
+							<li>
+								<button
+									type="button"
+									onclick={() => review(version, before(at))}
+									class="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+								>
+									<span class="shrink-0 address text-sm">Version {version.sequence}</span>
+									<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+										{when(version.published_at)}
+									</span>
+									<span class="sr-only">See what it changed</span>
+									<ChevronRight class="size-4 shrink-0 text-muted-foreground" />
+								</button>
+							</li>
+						{:else}
+							<li class="flex min-h-11 items-center gap-3 px-2">
+								<span class="shrink-0 address text-sm">Version {version.sequence}</span>
+								<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+									{when(version.published_at)}
+								</span>
+							</li>
+						{/if}
 					{/each}
 				</ul>
 			</section>
