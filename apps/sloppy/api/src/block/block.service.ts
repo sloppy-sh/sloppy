@@ -21,13 +21,20 @@ import { NodeRepository } from "../node/node.repository";
 import { SerialQueue } from "../node/serial-queue";
 import { BlockRepository, type BlockPatch } from "./block.repository";
 import { ordAfter, type Placed, UnknownNeighbourError } from "./placement";
+import { alreadyDerived, citationsMoved, referencesOf } from "./references";
 
 type CreateRequest = z.output<typeof CreateBlockRequestSchema>;
 type UpdateRequest = z.output<typeof UpdateBlockRequestSchema>;
 
 @Injectable()
 export class BlockService {
-  private readonly placements = new SerialQueue();
+  /**
+   * One note's writes, one at a time: placing a block reads the stack before it
+   * writes an `ord`, and deriving the note's references reads the whole stack
+   * before it writes the row. Both would otherwise interleave with each other
+   * and with themselves.
+   */
+  private readonly perNote = new SerialQueue();
 
   constructor(
     private readonly blocks: BlockRepository,
@@ -45,24 +52,26 @@ export class BlockService {
     if (!(await this.nodes.find(did, request.node))) {
       throw new BadRequestException("That note is not here.");
     }
-    return this.placements.run(request.node, async () => {
+    const written = await this.perNote.run(request.node, async () => {
       const ord = this.place(
         await this.stack(request.node),
         request.after ?? null,
       );
       const now = nowIso();
-      return entityView(
-        await this.blocks.insert({
-          id: createOwnedRecordId("block", did),
-          created_by: did,
-          node: request.node,
-          ord,
-          content: request.content,
-          created_at: now,
-          updated_at: now,
-        }),
-      );
+      return this.blocks.insert({
+        id: createOwnedRecordId("block", did),
+        created_by: did,
+        node: request.node,
+        ord,
+        content: request.content,
+        created_at: now,
+        updated_at: now,
+      });
     });
+    if (citationsMoved(null, request.content)) {
+      await this.derive(did, request.node);
+    }
+    return entityView(written);
   }
 
   async update(
@@ -76,23 +85,49 @@ export class BlockService {
     const changes: BlockPatch = {};
     if (request.content !== undefined) changes.content = request.content;
 
-    if (request.after === undefined) {
-      return entityView(await this.save(did, ref, changes));
-    }
     if (request.after === ref) {
       throw new BadRequestException("A block cannot follow itself.");
     }
-    return this.placements.run(block.node, async () => {
-      const stack = (await this.stack(block.node)).filter(
-        (other) => other.ref !== ref,
-      );
-      changes.ord = this.place(stack, request.after ?? null);
-      return entityView(await this.save(did, ref, changes));
+    const written = await this.perNote.run(block.node, async () => {
+      if (request.after !== undefined) {
+        const stack = (await this.stack(block.node)).filter(
+          (other) => other.ref !== ref,
+        );
+        changes.ord = this.place(stack, request.after ?? null);
+      }
+      return this.save(did, ref, changes);
     });
+    // A section moved within the stack names the same notes in a new order.
+    if (
+      request.after !== undefined ||
+      citationsMoved(block.content, written.content)
+    ) {
+      await this.derive(did, block.node);
+    }
+    return entityView(written);
   }
 
   async remove(did: string, ref: OwnedRef): Promise<void> {
+    const block = await this.blocks.find(did, ref);
     await this.blocks.remove(did, ref);
+    if (block && citationsMoved(block.content, null)) {
+      await this.derive(did, block.node);
+    }
+  }
+
+  /**
+   * Brings the note's `references` back into step with what its stack now says,
+   * which is what makes a `[[` draw a line and deleting those words take it
+   * away. docs/ARCHITECTURE.md § "Data model".
+   */
+  private async derive(did: string, node: OwnedRef): Promise<void> {
+    await this.perNote.run(node, async () => {
+      const held = await this.nodes.find(did, node);
+      if (!held) return;
+      const derived = referencesOf(node, await this.blocks.listByNode(node));
+      if (alreadyDerived(held.references, derived)) return;
+      await this.nodes.setReferences(did, node, derived);
+    });
   }
 
   private async stack(node: OwnedRef): Promise<Placed[]> {
