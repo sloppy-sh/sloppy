@@ -8,9 +8,9 @@
 // in; docs/ARCHITECTURE.md § "Federating the graph" is the doc of record.
 
 import { z } from "zod";
-import { AddressSchema } from "./address.js";
+import { type Address, AddressSchema, isAncestorAddress } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
-import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
+import { OwnedEntitySchema, type OwnedRef, OwnedRefSchema } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import {
   CommentAccessSchema,
@@ -57,6 +57,27 @@ export const CreatePublicationRequestSchema = z.object({
 export type CreatePublicationRequest = z.input<
   typeof CreatePublicationRequestSchema
 >;
+
+/**
+ * Which of the notes somebody chose a publish of the whole set sends out.
+ * `rooted` answers whether a publication is already rooted at a note. The
+ * surface counts what it says over this and the API acts on it, so what a
+ * person is told and what happens are one decision — docs/ARCHITECTURE.md
+ * § "Federating the graph".
+ */
+export function publishRootsOf<
+  T extends { origin: OwnedRef; address: Address },
+>(chosen: readonly T[], rooted: (note: T) => boolean): T[] {
+  return chosen.filter(
+    (note) =>
+      rooted(note) ||
+      !chosen.some(
+        (other) =>
+          other.origin === note.origin &&
+          isAncestorAddress(other.address, note.address),
+      ),
+  );
+}
 
 /** Change who is invited to comment. It publishes nothing: the terms of a
  *  conversation are not a version of the writing. */

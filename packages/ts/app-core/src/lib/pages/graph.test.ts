@@ -9,7 +9,15 @@ import type {
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AT, DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import {
+	AT,
+	DID,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
@@ -241,6 +249,7 @@ function inSheet(): string {
 }
 
 async function open(): Promise<void> {
+	session.adopt(VIEWER, 'a-session');
 	mounted = mount(Graph, { target });
 	flushSync();
 	await settle();
@@ -777,6 +786,58 @@ describe('choosing several notes to act on', () => {
 		expect(asked).toContain('1 already carries the note you chose, on its own terms.');
 	});
 
+	// The carrier is going out in this same act, so the writing under it goes out
+	// once and there is nothing to warn about.
+	it('says nothing about a carrier that is itself in the chosen set', async () => {
+		held = [publication(10, FIRST, '1')];
+		await chooseOnly('1');
+		onCanvas('1a').click();
+		await settle();
+
+		button('Publish').click();
+		await settle();
+
+		const asked = inSheet();
+		expect(asked).toContain('the one you have already published');
+		expect(asked).not.toContain('already carries');
+	});
+
+	// Its chain is its own: the carrier's snapshot does not advance it, so it
+	// goes out too and the question counts it.
+	it('counts a chain of its own inside another chosen note', async () => {
+		held = [publication(10, FIRST, '1'), publication(11, SECOND, '1a')];
+		await chooseOnly('1');
+		onCanvas('1a').click();
+		await settle();
+
+		button('Publish').click();
+		await settle();
+
+		expect(inSheet()).toContain('the 2 you have already published');
+	});
+
+	// PRODUCT.md § "Design Principles" 5: what a publish widens is said at the
+	// decision, so it cannot be waiting on a read the decision started.
+	it('reads what is already published before the question is asked', async () => {
+		held = [publication(10, FIRST, '1')];
+		await chooseOnly('1');
+
+		expect(api.calls.filter((call) => call === 'GET /publications')).toHaveLength(1);
+		expect(publications.state.loaded).toBe(true);
+	});
+
+	it('says so where it could not read what is already published', async () => {
+		api.on('GET /publications', () => {
+			throw new Error('the connection went away');
+		});
+		await chooseThree();
+
+		button('Publish').click();
+		await settle();
+
+		expect(inSheet()).toContain('Sloppy could not check which of those notes are published.');
+	});
+
 	it('says a branch under the chosen set invites fewer people to answer', async () => {
 		held = [publication(10, SECOND, '1a', 'nobody')];
 		await chooseOnly('1');
@@ -824,7 +885,7 @@ describe('choosing several notes to act on', () => {
 		button('Publish 3 notes').click();
 		await settle();
 
-		expect(screen()).toContain('One of the notes you chose is not published.');
+		expect(screen()).toContain('One of the notes you chose did not go out.');
 	});
 
 	// DESIGN.md § "Mobile and tablet first": the surface a phone gets is the one

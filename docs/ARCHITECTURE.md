@@ -234,14 +234,18 @@ creating the chain if the note has none, and writing a version either way;
 travels **without its `depth` and without its look** — a reader recomputes depth, sector
 and which addresses lie under which from the address, and draws a pulled mark unstyled.
 
-**Publishing several notes at once is one act, and it puts each of them out once.**
-`POST /api/nodes/bulk` carries a `publish` act beside `tag`, `set_appearance` and
-`delete`, and each chosen note becomes a publication rooted at itself. A chosen note that
-another chosen note carries goes out inside that one rather than as a second publication:
-publishing both would put one piece of writing out twice, in two snapshots each with
-their own terms and their own history. A chosen note that is already published takes
-another version, exactly as publishing it from its own surface does — which is a
-different act from putting out what is not out yet, so the question says how much of the
+**Publishing several notes at once is one act, and it puts each of them out once.** `POST
+/api/nodes/bulk` carries a `publish` act beside `tag`, `set_appearance` and `delete`, and
+each chosen note becomes a publication rooted at itself. Which of them go out is one
+decision — `publishRootsOf` in `@sloppy/types`, read both by the surface that says what a
+publish widens and by the service that does it, because two answers to that question is
+how somebody is promised a version that some chain never gets. A chosen note that already
+roots a publication takes another version wherever it sits, including inside another
+chosen note: that chain is its own, and a carrier's snapshot does not advance it. A chosen
+note with no publication of its own goes out inside the chosen note carrying it rather
+than opening a second one, since publishing both would put one piece of writing out twice,
+in two snapshots each with their own terms and their own history. Sending a chain again is
+a different act from putting out what is not out yet, so the question says how much of the
 set it is before it is answered. A chosen note counts as already published only where a
 publication is rooted at it: `node.published` is true of every note inside a published
 branch and answers a different question. So a chosen note that a branch above already
@@ -249,9 +253,10 @@ carries opens a publication of its own, which the question names before it is an
 and a chain that is already out keeps the terms its author set on it. Each note is
 published on its own, so a request that stops partway leaves the ones that went out
 readable — the surface says so and reads the branches again rather than reporting that
-nothing landed. Some of a set going out and some not is the ordinary
-case rather than a failure, and `reached` and `missed` on `NodeBulkResult` carry it;
-where nothing went out at all, the refusal itself is the answer.
+nothing landed. Some of a set going out and some not is the ordinary case rather than a
+failure, and `reached` and `missed` on `NodeBulkResult` carry it: a chosen note is reached
+where its own chain took the version, or where the chosen note carrying it went out. Where
+nothing went out at all, the refusal itself is the answer.
 
 **Deleting a publication cascades.** Every version, every copied note and section, and
 every copied asset — a copy exists only to serve what that publication published, so

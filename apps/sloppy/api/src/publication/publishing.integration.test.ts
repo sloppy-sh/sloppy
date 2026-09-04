@@ -575,6 +575,30 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(after?.latest.sequence).toBe(2);
   });
 
+  // A chain of its own is its own. The carrier's new snapshot does not advance
+  // it, so leaving it out would leave a peer holding its address on the older
+  // one while the set was told it went out.
+  scenario("sends a chosen note's own chain again inside another", async () => {
+    const first = await newNode({ title: "Roads" });
+    const under = await newNode({
+      from: { relation: "under", note: first.ref },
+      title: "Milestones",
+    });
+    await ok("POST", "/publications", ada, { root: under.ref });
+
+    const done = (await ok("POST", "/nodes/bulk", ada, {
+      notes: [first.ref, under.ref],
+      act: { act: "publish" },
+    })) as { reached: number; missed: number };
+    expect(done).toMatchObject({ reached: 2, missed: 0 });
+
+    const mine = (await ok("GET", "/publications", ada)) as PublicationView[];
+    const rooted = new Set(mine.map((one) => one.root_address));
+    const inner = mine.find((one) => one.root_address === under.address);
+    expect(rooted.has(first.address)).toBe(true);
+    expect(inner?.latest.sequence).toBe(2);
+  });
+
   scenario(
     "keeps the copy still while its author writes on, and publishes again to move it",
     async () => {

@@ -37,6 +37,7 @@
 		NodeBulkRequestSchema,
 		RootAddressSchema,
 		peerOrigin,
+		publishRootsOf,
 		splitOwnedRef,
 		type FollowedIdentity,
 		type NodeAppearance,
@@ -265,37 +266,51 @@
 		acted.map((ref) => nodes.get(ref)).filter((note) => note !== undefined)
 	);
 	const actedTags = $derived([...new Set(actedNotes.flatMap((note) => note.tags))]);
-	/** The publication rooted at each chosen note, where there is one — what a
+	/** The chosen notes a publish sends out, which everything the question says
+	 *  is counted over — the API acts on the same set. */
+	const goingOut = $derived(
+		publishRootsOf(actedNotes, (note) => publications.at(note) !== undefined)
+	);
+	/** The publication rooted at each of those, where there is one — what a
 	 *  publish here sends another version of. A note that merely sits inside a
 	 *  branch published from above has none, and publishing it opens one. */
 	const chosenChains = $derived(
-		actedNotes.map((note) => publications.at(note)).filter((chain) => chain !== undefined)
+		goingOut.map((note) => publications.at(note)).filter((chain) => chain !== undefined)
 	);
 	const alreadyOut = $derived(chosenChains.length);
 	/** True where one of those invites fewer people to answer than a first
 	 *  publish does, which publishing again leaves as it is. */
 	const keepsTerms = $derived(chosenChains.some((chain) => chain.comments !== 'anyone'));
-	/** Branches rooted above the chosen notes that already carry them, which a
-	 *  publish here puts out a second time on terms of its own. */
+	/** Branches rooted above the notes going out that already carry them, which
+	 *  a publish here puts out a second time on terms of its own. */
 	const carriedAbove = $derived([
 		...new Set(
-			actedNotes
+			goingOut
 				.filter((note) => publications.at(note) === undefined)
 				.map((note) => publications.above(note)?.root_address)
 				.filter((address) => address !== undefined)
 		)
 	]);
-	/** Branches under the chosen notes that were published inviting fewer people
-	 *  to answer, whose notes a publish here carries on its own terms. */
+	/** Branches under the notes going out that were published inviting fewer
+	 *  people to answer, whose notes a publish here carries on its own terms. */
 	const narrowerUnderChosen = $derived([
 		...new Set(
-			actedNotes.flatMap((note) =>
+			goingOut.flatMap((note) =>
 				publications
 					.narrowerUnder(note, publications.at(note)?.comments ?? 'anyone')
 					.map((under) => under.root_address)
 			)
 		)
 	]);
+	/** What the publishing sheet says went wrong: the last act's refusal, or that
+	 *  nothing could be read about what is already published. */
+	const publishRefusal = $derived(
+		actRefused ??
+			(publications.state.failed && !publications.state.loaded
+				? (publications.state.error ??
+					'Sloppy could not check which of those notes are published. Try again in a moment.')
+				: null)
+	);
 	const overGraph = $derived(overlay.open || menuAt !== null);
 
 	/** What the mark under the pointer stands for: the note it IS, and — since a
@@ -639,7 +654,7 @@
 			missed === 0
 				? null
 				: act.act === 'publish'
-					? notPublished(missed, asked.length)
+					? didNotGoOut(missed, asked.length)
 					: alreadyGone(missed, asked.length);
 		// A tag exists as long as a note carries one, so the rail's counts are stale
 		// the moment notes are tagged — or taken away with the tags they carried.
@@ -673,11 +688,13 @@
 		void publications.reload().catch(() => {});
 	}
 
-	function notPublished(missed: number, asked: number): string {
-		if (asked === 1) return 'That note is not published.';
+	/** A chosen note that already had versions behind it is still published when
+	 *  a fresh one does not land, so what is said is about this act. */
+	function didNotGoOut(missed: number, asked: number): string {
+		if (asked === 1) return 'That note did not go out.';
 		return missed === 1
-			? 'One of the notes you chose is not published.'
-			: `${missed.toLocaleString()} of the notes you chose are not published.`;
+			? 'One of the notes you chose did not go out.'
+			: `${missed.toLocaleString()} of the notes you chose did not go out.`;
 	}
 
 	function alreadyGone(missed: number, asked: number): string {
@@ -776,7 +793,6 @@
 	function openPublish(): void {
 		oneNote = null;
 		forgetLastAct();
-		void publications.load().catch(() => {});
 		publishing = true;
 	}
 
@@ -961,6 +977,12 @@
 	// a conversation at all, so it is asked before one is drawn.
 	$effect(() => {
 		if (session.signedIn) void identity.load();
+	});
+
+	// What is already published decides what a publish of the chosen set widens,
+	// so it is read before the question is asked and not at it.
+	$effect(() => {
+		if (session.signedIn) void publications.load().catch(() => {});
 	});
 
 	$effect(() => {
@@ -1274,7 +1296,7 @@
 	carriedBy={carriedAbove}
 	narrower={narrowerUnderChosen}
 	answersReach={identity.kind !== 'local'}
-	refused={actRefused}
+	refused={publishRefusal}
 	onpublish={() => actOnThem({ act: 'publish' })}
 />
 

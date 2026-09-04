@@ -1,6 +1,10 @@
 import { RecordId } from "surrealdb";
 import { describe, expect, it } from "vitest";
-import { PublicationSchema, parseSnapshotNode } from "./publication.js";
+import {
+  PublicationSchema,
+  parseSnapshotNode,
+  publishRootsOf,
+} from "./publication.js";
 import { DEFAULT_COMMENT_ACCESS } from "./published.js";
 
 const AUTHOR = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
@@ -61,5 +65,42 @@ describe("a publication", () => {
     });
     expect(row.comments).toBe(DEFAULT_COMMENT_ACCESS);
     expect(row.comments).toBe("anyone");
+  });
+});
+
+describe("the chosen notes a publish of a whole set sends out", () => {
+  const chosen = (...addresses: string[]) =>
+    addresses.map((address) => ({ origin: `${AUTHOR}/${NOTE}`, address }));
+
+  it("leaves a note with no chain of its own to the chosen note carrying it", () => {
+    const set = chosen("1", "1a", "1a1");
+
+    expect(publishRootsOf(set, () => false)).toEqual([set[0]]);
+  });
+
+  // Its chain is its own, and a carrier's snapshot does not advance it.
+  it("sends a chain of its own again even inside another chosen note", () => {
+    const set = chosen("1", "1a", "1a1");
+
+    expect(publishRootsOf(set, (note) => note.address === "1a")).toEqual([
+      set[0],
+      set[1],
+    ]);
+  });
+
+  it("sends a chosen note beside another on its own", () => {
+    const set = chosen("1a", "1b");
+
+    expect(publishRootsOf(set, () => false)).toEqual(set);
+  });
+
+  // An address descends only within the tree it was assigned in.
+  it("carries nothing across trees that share an address", () => {
+    const set = [
+      { origin: `${AUTHOR}/${NOTE}`, address: "1" },
+      { origin: `${AUTHOR}/${VERSION}`, address: "1a" },
+    ];
+
+    expect(publishRootsOf(set, () => false)).toEqual(set);
   });
 });

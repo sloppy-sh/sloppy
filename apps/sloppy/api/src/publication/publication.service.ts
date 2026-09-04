@@ -93,6 +93,16 @@ export class PublicationService {
     });
   }
 
+  /** Which of these notes a publication of their own is rooted at, which
+   *  publishing sends another version of rather than opening a chain. */
+  async rootedAmong(
+    did: string,
+    notes: readonly OwnedRef[],
+  ): Promise<Set<OwnedRef>> {
+    if (notes.length === 0) return new Set();
+    return this.publications.rootsAmong(did, notes);
+  }
+
   async versions(
     did: string,
     ref: OwnedRef,

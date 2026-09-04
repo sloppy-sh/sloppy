@@ -66,9 +66,14 @@ function tree(...addresses: string[]): Node[] {
 /**
  * The writes an act asked for, alongside the service that made them. `refuses`
  * names the roots the publish half turns down, which is what a set publishing
- * partway looks like from here.
+ * partway looks like from here; `chains` names the notes a publication is
+ * already rooted at.
  */
-function serviceOver(notes: Node[], refuses: readonly OwnedRef[] = []) {
+function serviceOver(
+  notes: Node[],
+  refuses: readonly OwnedRef[] = [],
+  chains: readonly OwnedRef[] = [],
+) {
   const writes: NodeBulkPatch[] = [];
   const removed: Node[] = [];
   const published: OwnedRef[] = [];
@@ -87,6 +92,8 @@ function serviceOver(notes: Node[], refuses: readonly OwnedRef[] = []) {
     },
   } as unknown as NodeRepository;
   const publications = {
+    rootedAmong: (_did: string, asked: readonly OwnedRef[]) =>
+      Promise.resolve(new Set(asked.filter((ref) => chains.includes(ref)))),
     publish: (_delegation: Delegation, request: { root: OwnedRef }) => {
       if (refuses.includes(request.root)) {
         return Promise.reject(
@@ -261,11 +268,59 @@ describe("publishing the notes somebody chose", () => {
 
   it("sends a note that is already published again", async () => {
     const notes = [note("1", [], true)];
-    const { service, published } = serviceOver(notes);
+    const { service, published } = serviceOver(
+      notes,
+      [],
+      [ownedRefFrom(notes[0].id)],
+    );
 
     await service.bulk(DID, over(notes, { act: "publish" }), ada);
 
     expect(published).toEqual([ownedRefFrom(notes[0].id)]);
+  });
+
+  // A chain of its own is its own: a carrier's snapshot does not advance it, so
+  // skipping it would leave it a version behind what the set was told.
+  it("sends a chosen note's own chain again inside a chosen note", async () => {
+    const notes = tree("1", "1a", "1a1");
+    const { service, published } = serviceOver(
+      notes,
+      [],
+      [ownedRefFrom(notes[1].id)],
+    );
+
+    const result = await service.bulk(
+      DID,
+      over(notes, { act: "publish" }),
+      ada,
+    );
+
+    expect(published).toEqual([
+      ownedRefFrom(notes[0].id),
+      ownedRefFrom(notes[1].id),
+    ]);
+    expect(result.reached).toBe(3);
+  });
+
+  // Its writing went out inside the carrier; the chain the set promised another
+  // version of did not get one, and that is what the count is about.
+  it("counts a chain that was refused, however much carried it", async () => {
+    const notes = tree("1", "1a");
+    const { service, published } = serviceOver(
+      notes,
+      [ownedRefFrom(notes[1].id)],
+      [ownedRefFrom(notes[1].id)],
+    );
+
+    const result = await service.bulk(
+      DID,
+      over(notes, { act: "publish" }),
+      ada,
+    );
+
+    expect(published).toEqual([ownedRefFrom(notes[0].id)]);
+    expect(result.reached).toBe(1);
+    expect(result.missed).toBe(1);
   });
 
   it("counts the ones that did not go out and leaves the rest published", async () => {

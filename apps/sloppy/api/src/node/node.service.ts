@@ -13,7 +13,6 @@ import {
   type CreateNodeRequestSchema,
   createOwnedRecordId,
   entityView,
-  isAncestorAddress,
   isInSubtree,
   isRootAddress,
   isUnstyled,
@@ -28,6 +27,7 @@ import {
   type OwnedRef,
   ownedRefFrom,
   parseNode,
+  publishRootsOf,
   type TagCount,
   type Tags,
   TagsSchema,
@@ -167,18 +167,24 @@ export class NodeService {
 
   /**
    * Each chosen note published as it stands, and how much of the set that
-   * reached. Publishing puts a note out once: one the set already carries goes
-   * out inside its carrier, and every note under a carrier that failed is
-   * counted rather than reported as published.
+   * reached. A chosen note whose own chain was asked for and refused did not go
+   * out however much of the rest did, and one with no chain of its own goes out
+   * only if the chosen note carrying it went out.
    */
   private async publishEach(
     delegation: Delegation,
     asked: number,
     mine: readonly Node[],
   ): Promise<NodeBulkResult> {
+    const rooted = await this.publications.rootedAmong(
+      delegation.did,
+      mine.map((note) => ownedRefFrom(note.id)),
+    );
     const put: Node[] = [];
     let refusal: unknown;
-    for (const root of outermost(mine)) {
+    for (const root of publishRootsOf(mine, (note) =>
+      rooted.has(ownedRefFrom(note.id)),
+    )) {
       try {
         await this.publications.publish(delegation, {
           root: ownedRefFrom(root.id),
@@ -191,13 +197,17 @@ export class NodeService {
     // Nothing went out, so the person reads why rather than a count of it.
     if (put.length === 0) throw refusal;
 
-    const out = mine.filter((note) =>
-      put.some(
-        (root) =>
-          root.origin === note.origin &&
-          isInSubtree(root.address, note.address),
-      ),
-    );
+    const sent = new Set(put.map((root) => ownedRefFrom(root.id)));
+    const out = mine.filter((note) => {
+      const ref = ownedRefFrom(note.id);
+      return rooted.has(ref)
+        ? sent.has(ref)
+        : put.some(
+            (root) =>
+              root.origin === note.origin &&
+              isInSubtree(root.address, note.address),
+          );
+    });
     const after = await this.nodes.many(
       delegation.did,
       out.map((note) => ownedRefFrom(note.id)),
@@ -320,23 +330,6 @@ export class NodeService {
       }
     }
   }
-}
-
-/**
- * The chosen notes no other chosen note carries. Publishing an inner one as
- * well would put one piece of writing out twice, in two snapshots each on their
- * own terms.
- */
-function outermost(chosen: readonly Node[]): Node[] {
-  return chosen.filter(
-    (note) =>
-      !chosen.some(
-        (other) =>
-          other !== note &&
-          other.origin === note.origin &&
-          isAncestorAddress(other.address, note.address),
-      ),
-  );
 }
 
 function answer(

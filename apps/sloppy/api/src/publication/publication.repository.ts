@@ -66,6 +66,19 @@ export class PublicationRepository {
     return rows.map((row) => PublicationSchema.parse(row));
   }
 
+  /** Which of these notes this author has a publication rooted at. */
+  async rootsAmong(
+    did: string,
+    notes: readonly OwnedRef[],
+  ): Promise<Set<OwnedRef>> {
+    const [rows] = await this.query<OwnedRef>(
+      `SELECT VALUE root FROM publication
+         WHERE created_by = $did AND root IN $notes`,
+      { did, notes },
+    );
+    return new Set(rows);
+  }
+
   /**
    * One page of what an identity publishes, in address order — which is unique
    * per owner, so it is also a cursor.
