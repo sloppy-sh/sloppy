@@ -142,10 +142,11 @@ export function citedUploads(content: BlockDocument): string[] {
   return [...cited];
 }
 
-// The element a `[[` writes, and the attribute on it naming the note cited.
-// `reference-node.ts` in `@sloppy/ui` is what renders one; the two names live
-// here because {@link citedNotes} has to read what that renderer wrote.
-export const REFERENCE_NODE = "reference";
+/**
+ * How a section cites another note: an `attrs` key named `note` holding a
+ * `<did>/<ulid>`. `reference-node.ts` in `@sloppy/ui` is the element a `[[`
+ * writes one on, and publishing blanks the ones a reader may not follow.
+ */
 export const REFERENCE_NOTE_ATTR = "note";
 
 /**
@@ -153,21 +154,25 @@ export const REFERENCE_NOTE_ATTR = "note";
  * without repeats — which is what a note's `references` are derived from, and
  * so which dashed lines its writing draws. DESIGN.md § Edges rules on the line.
  *
- * A stored document is whatever some client wrote, so an element naming
- * anything that is not a `<did>/<ulid>` names no note and is skipped: a
- * reference nobody can resolve must not become an edge to nowhere.
+ * {@link REFERENCE_NOTE_ATTR} is a convention across elements rather than a
+ * list of them, the way {@link citedUploads} reads a picture: an element kind
+ * this build has no renderer for is walked like any other, and so is a mark on
+ * a run of text. Publishing withholds a citation by blanking that key rather
+ * than by removing the element, so a stored document is also whatever some
+ * client wrote — anything held there that is not a `<did>/<ulid>` names no note
+ * and is skipped, because an edge to nowhere must not be drawn.
  */
 export function citedNotes(content: BlockDocument): OwnedRef[] {
   const cited = new Set<OwnedRef>();
-  const walk = (nodes: readonly DocumentNode[] | undefined): void => {
-    for (const node of nodes ?? []) {
-      if (node.type === REFERENCE_NODE) {
-        const named = OwnedRefSchema.safeParse(
-          node.attrs?.[REFERENCE_NOTE_ATTR],
-        );
+  const walk = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return;
+    for (const [key, held] of Object.entries(value)) {
+      if (key === REFERENCE_NOTE_ATTR) {
+        const named = OwnedRefSchema.safeParse(held);
         if (named.success) cited.add(named.data);
+      } else {
+        walk(held);
       }
-      walk(node.content);
     }
   };
   walk(content.content);

@@ -6,7 +6,6 @@ import {
   citedUploads,
   EMOJI_UPLOAD_ATTR,
   MAX_DOCUMENT_NESTING,
-  REFERENCE_NODE,
   REFERENCE_NOTE_ATTR,
 } from "./document.js";
 
@@ -252,7 +251,7 @@ describe("the notes a section cites", () => {
     citedNotes(BlockDocumentSchema.parse({ type: "doc", content }));
 
   const reference = (note: unknown, label = "a note") => ({
-    type: REFERENCE_NODE,
+    type: "reference",
     attrs: { [REFERENCE_NOTE_ATTR]: note, label },
   });
 
@@ -311,7 +310,7 @@ describe("the notes a section cites", () => {
             reference(`${AVA}/not-a-ulid`),
             reference(null),
             reference(7),
-            { type: REFERENCE_NODE },
+            { type: "reference" },
             reference(SEED),
           ],
         },
@@ -319,9 +318,35 @@ describe("the notes a section cites", () => {
     ).toEqual([SEED]);
   });
 
-  it("are nothing on an element that merely holds a ref", () => {
-    // A ref in another element's payload is not a citation, and reading one as
-    // an edge would draw a line nobody wrote.
+  it("reach one an element kind this build cannot draw cites", () => {
+    expect(
+      cite([
+        {
+          type: "diagram-from-a-later-build",
+          attrs: { panels: [{ [REFERENCE_NOTE_ATTR]: SEED }] },
+        },
+      ]),
+    ).toEqual([SEED]);
+  });
+
+  it("reach one cited by a mark on a run of text", () => {
+    expect(
+      cite([
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "the tide",
+              marks: [{ type: "link", attrs: { [REFERENCE_NOTE_ATTR]: TIDE } }],
+            },
+          ],
+        },
+      ]),
+    ).toEqual([TIDE]);
+  });
+
+  it("are nothing where a ref is held under some other key", () => {
     expect(
       cite([
         { type: "picture", attrs: { upload_id: SEED } },

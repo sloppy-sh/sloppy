@@ -40,12 +40,10 @@ export const NodeSchema = OwnedEntitySchema.extend({
   links: z.array(OwnedRefSchema).default([]),
   /**
    * The notes this one's own writing names, derived from its blocks and
-   * rewritten whenever one of them is — so the words going takes the line with
+   * rewritten whenever they change — so the words going takes the line with
    * them, where a link stays until a hand removes it. Absent is a note nothing
-   * has ever derived them for, and every reader takes that as none.
-   *
-   * Derived means the server alone writes it. A client that could set this
-   * could draw a line out of a note it is not allowed to read.
+   * has ever derived them for, and every reader takes that as none. Derived
+   * means the server alone writes it: docs/ARCHITECTURE.md § "Data model".
    */
   references: z.array(OwnedRefSchema).optional(),
   /**

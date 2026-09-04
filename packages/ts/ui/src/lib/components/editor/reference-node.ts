@@ -3,11 +3,11 @@
 // under, so a note that has since gone still reads as something. The canvas
 // draws a line for it: DESIGN.md § Edges is the ruling.
 
-import { type OwnedRef, REFERENCE_NODE, REFERENCE_NOTE_ATTR } from '@sloppy/types';
+import { type OwnedRef, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { NoteReferences } from './contract.js';
 
-export { REFERENCE_NODE, REFERENCE_NOTE_ATTR };
+export const REFERENCE_NODE = 'reference';
 
 /** The words a note is cited under. Its address stands in where it has no
  *  title, since that is what a person cites and a peer resolves. */

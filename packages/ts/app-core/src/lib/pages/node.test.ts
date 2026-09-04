@@ -631,9 +631,9 @@ describe('linking a note to another', () => {
 	});
 });
 
-// The canvas draws a link dashed and derives the run from the addresses, so a
-// reference that wrote a `links` entry would put a hand-drawn line over a
-// derived one — DESIGN.md § Edges.
+// The line a citation draws comes from `references`, derived from the writing,
+// so citing a note leaves `links` — what a hand drew — untouched.
+// DESIGN.md § Edges.
 describe('naming another note from inside the writing', () => {
 	interface Writing {
 		commands: { focus(): boolean; insertContent(words: string): boolean };
@@ -669,7 +669,7 @@ describe('naming another note from inside the writing', () => {
 		await settle();
 	}
 
-	it('writes the note the row names, and draws no line to it', async () => {
+	it('writes the note the row names, and leaves its links alone', async () => {
 		await openNote(SECOND);
 		await type('see [[Guard cells');
 

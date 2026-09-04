@@ -881,7 +881,8 @@ the subtree, not the mentions. The note surface renders a missing target honestl
 that is no longer here.") with its own unlink control, so nobody is shown a row that waits
 forever, but nothing sweeps the stale refs. Whichever milestone adds a sweep owns deciding
 whether it runs on delete or on read; until then the stored array is a superset of what
-resolves.
+resolves. `references` is a superset the same way and has no unlink control, because what
+points at the deleted note is the writing: removing those words is what removes the ref.
 
 **A connection may cross into another of its author's graphs, and it is an ordinary
 connection.** A `links` or `references` entry is a ref, and a ref names one note across
@@ -893,15 +894,29 @@ not, exactly as it draws none for a target in a subtree that is not loaded. What
 a subset of what is stored; what is stored resolves either way.
 
 **`references` is derived, so only the server writes it.** It is `citedNotes` over the
-note's blocks in `ord` order without repeats — every note a `[[` in them names — recomputed
-whenever one of those blocks is written, which is what makes deleting the words delete the
-line. The order is fixed rather than incidental so that re-deriving an unchanged note
-produces the same array it already holds. It is therefore absent from
-`PATCHABLE` and from every create and update request: a client that could set it could draw
-a line out of a note it is not allowed to read. It carries no `DEFINE FIELD` for the same
-reason `links` carries none, and absent on a row is a note nothing has derived them for,
-read as none. The canvas draws `links` and `references` as one dashed line — DESIGN.md
-§ Edges is the ruling, and says which of the two goes away with the writing.
+note's blocks in `ord` order without repeats, recomputed whenever that stack changes — a
+block written, added or removed alike — which is what makes deleting the words delete the
+line, whether they went a sentence or a whole section at a time. The order is fixed rather
+than incidental so that re-deriving an unchanged note produces the array it already holds.
+It is therefore absent from `PATCHABLE` and from every create and update request: a client
+that could set it could draw a line out of a note it is not allowed to read. It carries no
+`DEFINE FIELD` for the same reason `links` carries none, and absent on a row is a note
+nothing has derived them for, read as none. The canvas draws `links` and `references` as
+one dashed line — DESIGN.md § Edges is the ruling, and says which of the two goes away with
+the writing.
+
+**What a document counts as a citation is a key, not a list of element kinds.** `citedNotes`
+in `@sloppy/types` reads an `attrs` key named `note` holding a `<did>/<ulid>`, wherever it
+sits — the same convention `citedUploads` reads a picture by, so an element kind this build
+has no renderer for is walked like any other and a mark on a run of text counts. Publishing
+reads the same key to decide what it must reach and blanks the citations it may not, so the
+two answers cannot drift: one function, in `@sloppy/types`, and `snapshot.ts` shares it.
+
+**A published node carries no `references`.** `PublishedNodeSchema` fixes what a peer
+receives and has no field for them, so a pulled copy draws its `links` alone — fewer lines
+than the writing it carries. DESIGN.md § Edges states that as the gap it is; closing it is
+the publishing milestone's, and costs deciding what a peer may be told about a note they
+cannot follow.
 
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did

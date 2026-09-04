@@ -9,7 +9,6 @@ import { RecordId } from "surrealdb";
 import { describe, expect, it } from "vitest";
 import {
   citedEmoji,
-  citedNotes,
   publishedDocument,
   publishedNodeOf,
   type Snapshotted,
@@ -45,7 +44,7 @@ const reference = (note: string, label: string): DocumentNode => ({
   attrs: { note, label },
 });
 
-describe("what a section cites", () => {
+describe("the custom emoji a section draws", () => {
   it("names a custom emoji by its shortcode and leaves a glyph alone", () => {
     expect(
       citedEmoji(
@@ -58,34 +57,6 @@ describe("what a section cites", () => {
         }),
       ),
     ).toEqual(["kite"]);
-  });
-
-  it("finds a note cited anywhere in the document", () => {
-    expect(
-      citedNotes(
-        doc({
-          type: "paragraph",
-          content: [reference(PUBLISHED_NOTE, "A published thought")],
-        }),
-      ),
-    ).toEqual([PUBLISHED_NOTE]);
-  });
-
-  it("finds one cited by a mark on a run of text", () => {
-    expect(
-      citedNotes(
-        doc({
-          type: "paragraph",
-          content: [
-            {
-              type: "text",
-              text: "there",
-              marks: [{ type: "link", attrs: { note: PRIVATE_NOTE } }],
-            },
-          ],
-        }),
-      ),
-    ).toEqual([PRIVATE_NOTE]);
   });
 });
 

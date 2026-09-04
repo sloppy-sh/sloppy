@@ -490,6 +490,14 @@ line and not two: the reader is being told the pair is connected, and how somebo
 connection is not a second thing to see. Taking one of the two away leaves the line, which
 is what makes each way of making it independent of the other.
 
+**A reference does not reach a peer yet, and a pulled region draws only what a hand drew
+there.** `PublishedNodeSchema` carries `links` and no `references`, so a note somebody
+pulled shows the connections its author made by hand and none of the ones its writing
+makes — fewer lines than the same writing draws on the author's own canvas. The publishing
+milestone owns closing that, and the reason it is not free is the same one that keeps a
+look off a published node: what a peer may be shown is bounded by what they may follow,
+and docs/ARCHITECTURE.md § "Federating the graph" owns that bound.
+
 **With tags selected, genealogy and the run both dim**: the reader has asked to see sets,
 and the tree is momentarily the background.
 
