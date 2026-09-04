@@ -1,12 +1,7 @@
 // What a note's own writing names, derived from its stack.
 // docs/ARCHITECTURE.md § "Data model".
 
-import {
-  type Block,
-  type BlockDocument,
-  citedNotes,
-  type OwnedRef,
-} from "@sloppy/types";
+import { type BlockDocument, citedNotes, type OwnedRef } from "@sloppy/types";
 
 /**
  * The notes a stack names, in `ord` order and without repeats — so re-deriving
@@ -15,11 +10,14 @@ import {
  */
 export function referencesOf(
   node: OwnedRef,
-  stack: readonly Block[],
+  stack: readonly { content: unknown }[],
 ): OwnedRef[] {
   const named = new Set<OwnedRef>();
   for (const block of stack) {
-    for (const cited of citedNotes(block.content)) {
+    // Writing kept before a block held the editor's own document is a bare
+    // string, and a string names nothing. Deriving steps over it.
+    if (typeof block.content !== "object" || block.content === null) continue;
+    for (const cited of citedNotes(block.content as BlockDocument)) {
       if (cited !== node) named.add(cited);
     }
   }

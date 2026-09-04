@@ -7,8 +7,10 @@ import {
   BlockSchema,
   compareOrd,
   type OwnedRef,
+  OwnedRefSchema,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
+import { z } from "zod";
 import { DbService } from "../db/db.service";
 import { replacement } from "../node/patch";
 
@@ -19,12 +21,58 @@ const PER_STATEMENT = 500;
 
 export type BlockPatch = Partial<Pick<Block, (typeof PATCHABLE)[number]>>;
 
+/**
+ * A row read only for what its writing NAMES, which is why `content` is taken
+ * as stored rather than validated: writing kept before a block held the
+ * editor's own document is a bare string, and deriving what a note cites must
+ * step over one of those rather than stop at it. Everything that renders or
+ * publishes a block still reads it through `BlockSchema`.
+ */
+const StoredSchema = z.object({
+  node: OwnedRefSchema,
+  ord: z.string().min(1),
+  content: z.unknown(),
+});
+export type StoredBlock = z.infer<typeof StoredSchema>;
+
 @Injectable()
 export class BlockRepository {
   constructor(private readonly db: DbService) {}
 
   /** In `ord` order, sorted here rather than by the server so the ordering the
    *  stack renders in is the one `compareOrd` defines. */
+  /** One note's stack, as stored — see {@link StoredSchema}. */
+  async storedByNode(node: OwnedRef): Promise<StoredBlock[]> {
+    const [rows] = await this.query("SELECT * FROM block WHERE node = $node", {
+      node,
+    });
+    return rows
+      .map((row) => StoredSchema.parse(row))
+      .sort((a, b) => compareOrd(a.ord, b.ord));
+  }
+
+  /** The same for several notes at once — see {@link StoredSchema}. */
+  async storedByNodes(
+    nodes: readonly OwnedRef[],
+  ): Promise<Map<OwnedRef, StoredBlock[]>> {
+    const stacks = new Map<OwnedRef, StoredBlock[]>();
+    if (nodes.length === 0) return stacks;
+    const [rows] = await this.query(
+      "SELECT * FROM block WHERE node IN $nodes",
+      { nodes: [...nodes] },
+    );
+    for (const row of rows) {
+      const block = StoredSchema.parse(row);
+      const held = stacks.get(block.node);
+      if (held) held.push(block);
+      else stacks.set(block.node, [block]);
+    }
+    for (const stack of stacks.values()) {
+      stack.sort((a, b) => compareOrd(a.ord, b.ord));
+    }
+    return stacks;
+  }
+
   async listByNode(node: OwnedRef): Promise<Block[]> {
     const [rows] = await this.query("SELECT * FROM block WHERE node = $node", {
       node,

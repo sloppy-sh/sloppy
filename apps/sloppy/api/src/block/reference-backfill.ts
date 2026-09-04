@@ -59,7 +59,7 @@ export class ReferenceBackfill implements OnApplicationBootstrap {
       if (pending.length === 0) break;
       for (let at = 0; at < pending.length; at += STACKS_AT_ONCE) {
         const batch = pending.slice(at, at + STACKS_AT_ONCE);
-        const stacks = await this.blocks.listByNodes(batch);
+        const stacks = await this.blocks.storedByNodes(batch);
         await this.nodes.fillReferences(
           new Map(
             batch.map((node) => [

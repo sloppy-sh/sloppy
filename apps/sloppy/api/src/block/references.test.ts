@@ -47,6 +47,18 @@ describe("what a note's writing names", () => {
     ).toEqual([SEED, TIDE]);
   });
 
+  // Writing kept before a block held the editor's own document is a bare
+  // string. One of those must not cost the note the rest of its stack.
+  it("steps over writing it cannot read as a document", () => {
+    expect(
+      referencesOf(FROM, [
+        { content: "## The tram line nobody rebuilt" },
+        section("b", SEED),
+        { content: null },
+      ]),
+    ).toEqual([SEED]);
+  });
+
   it("names one note once however many sections cite it", () => {
     expect(
       referencesOf(FROM, [

@@ -146,7 +146,10 @@ export class BlockService {
       await this.perNote.run(node, async () => {
         const held = await this.nodes.find(did, node);
         if (!held) return;
-        const derived = referencesOf(node, await this.blocks.listByNode(node));
+        const derived = referencesOf(
+          node,
+          await this.blocks.storedByNode(node),
+        );
         if (alreadyDerived(held.references, derived)) return;
         await this.nodes.setReferences(did, node, derived);
       });
