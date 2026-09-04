@@ -265,33 +265,25 @@ export function buildModel(
   }
 
   // Last, so a connection somebody made stays drawn as one even where the run
-  // already joins those two. Merged rather than added, so a pair connected both
-  // ways is the one line DESIGN.md § Edges calls for.
+  // or the tree already joins those two. Merged rather than added, so a pair
+  // connected both ways is the one line DESIGN.md § Edges calls for.
   for (const { node } of drawn) {
     for (const target of connectedTo(node)) {
       if (target === node.ref || !graph.hasNode(target)) continue;
-      // A connection is dashed because it crosses the tree. Onto the tree's own
-      // line it crosses nothing, and drawing it would take the parentage away.
-      if (alreadyParentage(graph, node.ref, target)) continue;
+      const already = graph.undirectedEdge(node.ref, target);
       graph.mergeUndirectedEdge(node.ref, target, {
         kind: "connection",
-        distance: CONNECTION_DISTANCE,
+        // A connection changes how the line is drawn, never how far apart the
+        // two notes sit: that is the addresses' to set — DESIGN.md § Edges.
+        distance:
+          already === undefined
+            ? CONNECTION_DISTANCE
+            : graph.getEdgeAttribute(already, "distance"),
       });
     }
   }
 
   return { graph, order: drawn.map((entry) => entry.node.ref), fields };
-}
-
-function alreadyParentage(
-  graph: GraphModel,
-  from: OwnedRef,
-  to: OwnedRef,
-): boolean {
-  const edge = graph.undirectedEdge(from, to);
-  return (
-    edge !== undefined && graph.getEdgeAttribute(edge, "kind") === "genealogy"
-  );
 }
 
 /** The notes a note is connected to, drawn by hand and derived from its own

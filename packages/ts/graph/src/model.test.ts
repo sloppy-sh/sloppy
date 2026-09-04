@@ -465,24 +465,50 @@ describe("what a connection is drawn from", () => {
     );
   });
 
-  // Writing about the note a thought sprang from is ordinary Zettelkasten, and
-  // the dash would say the two are connected while taking away the line that
-  // says which one came first.
-  it("leaves the tree's own line where the connection is to a parent", () => {
+  // Writing about the note a thought sprang from is ordinary Zettelkasten, so
+  // the line is drawn — but how far apart the two sit is the addresses' to say.
+  it("draws a connection to a parent without moving it", () => {
     const parent = note("1");
     const child = { ...note("1a"), parent: parent.ref, origin: parent.ref };
     const bare = built([parent, child]);
+    const apart = bare.graph.getEdgeAttribute(
+      bare.graph.undirectedEdge(parent.ref, child.ref),
+      "distance",
+    );
 
     for (const citing of [
       built([parent, { ...child, references: [parent.ref] }]),
       built([{ ...parent, references: [child.ref] }, child]),
       built([parent, { ...child, links: [parent.ref] }]),
     ]) {
-      expect(connections(citing)).toEqual([]);
-      expect(citing.graph.getEdgeAttributes(parent.ref, child.ref)).toEqual(
-        bare.graph.getEdgeAttributes(parent.ref, child.ref),
-      );
+      expect(connections(citing)).toEqual([[parent.ref, child.ref]]);
+      expect(
+        citing.graph.getEdgeAttribute(
+          citing.graph.undirectedEdge(parent.ref, child.ref),
+          "distance",
+        ),
+      ).toBe(apart);
     }
+  });
+
+  // The same holds along the run, where the gap is the seeds' own.
+  it("draws a connection along a run without moving it", () => {
+    const first = note("1");
+    const second = note("2");
+    const bare = built([first, second]);
+    const apart = bare.graph.getEdgeAttribute(
+      bare.graph.undirectedEdge(first.ref, second.ref),
+      "distance",
+    );
+
+    const citing = built([{ ...first, references: [second.ref] }, second]);
+    expect(connections(citing)).toEqual([[first.ref, second.ref]]);
+    expect(
+      citing.graph.getEdgeAttribute(
+        citing.graph.undirectedEdge(first.ref, second.ref),
+        "distance",
+      ),
+    ).toBe(apart);
   });
 });
 

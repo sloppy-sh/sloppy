@@ -22,7 +22,12 @@ import { NodeRepository } from "../node/node.repository";
 import { SerialQueue } from "../node/serial-queue";
 import { BlockRepository, type BlockPatch } from "./block.repository";
 import { ordAfter, type Placed, UnknownNeighbourError } from "./placement";
-import { alreadyDerived, citationsMoved, referencesOf } from "./references";
+import {
+  alreadyDerived,
+  citationsMoved,
+  movingReorders,
+  referencesOf,
+} from "./references";
 
 type CreateRequest = z.output<typeof CreateBlockRequestSchema>;
 type UpdateRequest = z.output<typeof UpdateBlockRequestSchema>;
@@ -105,10 +110,11 @@ export class BlockService {
       const saved = await this.save(did, ref, changes);
       return {
         written: saved,
-        // A section moved within the stack names the same notes in a new order.
+        // A section moved within the stack names the same notes in a new order
+        // — unless it names none, which no position can reorder.
         moved:
-          request.after !== undefined ||
-          citationsMoved(before.content, saved.content),
+          citationsMoved(before.content, saved.content) ||
+          (request.after !== undefined && movingReorders(saved.content)),
       };
     });
     if (moved) await this.derive(did, node);

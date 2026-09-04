@@ -468,8 +468,13 @@ Genealogy is everywhere, so it recedes. The run is the line a reader walks — `
 never stored** (AI.md § "The Address Is the Protocol"): the two notes either side of a
 deleted one still read as consecutive, because they are. A connection is the only line a
 person made on purpose, so it is the only broken one; it crosses the tree and would
-otherwise read as parentage. Where somebody has connected two notes already along a run,
-the connection wins and the line is dashed.
+otherwise read as parentage. Where somebody has connected two notes the graph already
+joins — along a run, or along the tree's own line from parent to child — the connection
+wins and the line is dashed: citing the note a thought sprang from is one of the most
+ordinary things a person does here, and a line they made that drew nothing would be a
+gesture the canvas swallowed. **What a connection never does is move them.** How far apart
+two notes sit is the addresses' to set, so a connection onto a line that is already there
+takes that line's look and leaves its spacing alone.
 
 **A reference is that dashed line.** Typing `[[X]]` is a person saying this note and that
 one go together — the same thing drawing a link says — so the canvas draws it. A reference

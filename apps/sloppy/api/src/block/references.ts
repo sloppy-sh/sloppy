@@ -32,6 +32,12 @@ export function referencesOf(
  * notes in the same order cannot have, and asking here is what spares an
  * ordinary save a read of the whole stack — every drawing in it included.
  */
+/** Whether moving a section within its stack could reorder what the note
+ *  cites. One that names nothing cannot, wherever it lands. */
+export function movingReorders(content: BlockDocument): boolean {
+  return citedNotes(content).length > 0;
+}
+
 export function citationsMoved(
   before: BlockDocument | null,
   after: BlockDocument | null,
