@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import type { HeldPicture, NoteMedia, ShownPicture } from '../editor/contract.js';
+	import { animatable } from '../editor/fit.js';
 	import { tileSized } from '../editor/thumbnail.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
@@ -68,7 +69,10 @@
 		void media
 			.library()
 			.then((pictures) => {
-				if (live) held = pictures;
+				// The ground holds still. A picture that animates would repaint the whole
+				// field under every mark, with nothing offered to stop it short of taking
+				// the picture off — DESIGN.md § "The wallpaper".
+				if (live) held = pictures.filter((picture) => !animatable(picture.mime_type));
 			})
 			.catch(() => {
 				if (live) unreadable = true;

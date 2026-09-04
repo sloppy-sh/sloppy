@@ -733,7 +733,10 @@ over whatever is behind it.
   question twice. Standing still is also what makes it free: it is one composited layer
   behind a canvas that already clears transparent, so no frame writes anything for it. On the
   2,400-note corpus `bench/` reports idle and pan at **8.3/9.3 ms with a picture and 8.3/9.3
-  without** — the same numbers the ground is measured at, and the same with both on.
+  without** — the same numbers the ground is measured at, and the same with both on. Which is
+  meant literally, so **a picture that may animate is not offered**: a GIF or an animated
+  WebP would repaint that layer under the whole field every frame — the one cost this ground
+  is measured not to have — and nothing would stop it short of taking the picture off.
 - **The mask over it is the theme's own paper, and nobody picks its colour.** A hue chosen
   here would be the one thing on the canvas carrying colour that answers no question
   (§ Hue), and it would shift every hue drawn over it. So the picture shows through the
@@ -749,10 +752,10 @@ over whatever is behind it.
   whichever comes first**, because the label is not the only thing that has to survive the
   ground: a picture strong enough to darken eight hues into one has taken the reader's
   question, and on a light theme it takes it a long way before the label gives. **The
-  reader's control
-  spans that range**, so its full travel is the most the theme will carry rather than a
-  number that stops meaning anything half way along, and a theme change re-reads it. It opens
-  at a quarter of the way up, which is quiet enough to read as paper with a picture in it.
+  reader's control spans that range**, so its full travel is the most the theme will carry
+  rather than a number that stops meaning anything half way along, and a theme change
+  re-reads it. It opens at a quarter of the way up, which is quiet enough to read as paper
+  with a picture in it.
 - **A picture moves the palette, because the palette is derived from the ground.** The depth
   ramp already mixes between the theme's ends and is pulled back until it clears the mark
   floor; with a picture under it, it is pulled back against that band instead. The cost is
@@ -858,7 +861,8 @@ choices carry over if someone signs in.
 
 The same store holds the view choices that are nobody's business but this device's — the
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
-it (§ "The wallpaper"), and how much room a docked note was last given. None of them is an attribute on `<html>`, so none is a thing
-the boot script has to know: the canvas reads them once it is up, and a first paint with
-the right theme is all that flash-of-the-wrong anything is about. None of them reaches a
-note either — a peer pulling a subtree receives nothing of how it was read.
+it (§ "The wallpaper"), and how much room a docked note was last given. None of them is an
+attribute on `<html>`, so none is a thing the boot script has to know: the canvas reads
+them once it is up, and a first paint with the right theme is all that flash-of-the-wrong
+anything is about. None of them reaches a note either — a peer pulling a subtree receives
+nothing of how it was read.

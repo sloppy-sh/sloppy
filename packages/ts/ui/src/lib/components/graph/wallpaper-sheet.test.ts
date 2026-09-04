@@ -19,10 +19,12 @@ let held: HeldPicture[];
 
 const picture = (id: string): HeldPicture => ({
 	upload_id: id,
-	filename: `${id}.webp`,
-	mime_type: 'image/webp',
+	filename: `${id}.png`,
+	mime_type: 'image/png',
 	size: 9
 });
+
+const moving = (id: string): HeldPicture => ({ ...picture(id), mime_type: 'image/gif' });
 
 const media: Pick<NoteMedia, 'library' | 'picture'> = {
 	picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} }),
@@ -76,8 +78,16 @@ afterEach(() => {
 describe('choosing the picture under the graph', () => {
 	it('offers what the reader has already put in a note', async () => {
 		await open({ uploads: [], strength: 0.25, every: 60 });
-		expect(tiles().map((tile) => tile.getAttribute('aria-label'))).toEqual(['a.webp', 'b.webp']);
+		expect(tiles().map((tile) => tile.getAttribute('aria-label'))).toEqual(['a.png', 'b.png']);
 		expect(tiles().every((tile) => tile.getAttribute('aria-pressed') === 'false')).toBe(true);
+	});
+
+	it('leaves out a picture that would move behind the graph', async () => {
+		held = [picture('a'), moving('spin'), picture('b')];
+
+		await open({ uploads: [], strength: 0.25, every: 60 });
+
+		expect(tiles().map((tile) => tile.getAttribute('aria-label'))).toEqual(['a.png', 'b.png']);
 	});
 
 	it('adds one to the turn and takes it back out', async () => {

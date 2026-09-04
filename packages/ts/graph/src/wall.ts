@@ -50,6 +50,10 @@ export class WallLayer {
     this.scrim.style.opacity = `${1 - presence}`;
     this.settle();
     if (picture === this.wanted) return;
+    // Asked for none of it, with none of it drawn: the bytes would be fetched
+    // and decoded to be hidden. `wanted` is left alone, so raising the strength
+    // later is a fresh attempt rather than a repeat that early-returns above.
+    if (presence === 0 && this.picture === null) return;
     this.wanted = picture;
     this.era += 1;
     if (picture === null || pictures === undefined) {

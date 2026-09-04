@@ -122,7 +122,11 @@ export function mountGraph(
   let scene: GraphScene | null = null;
   let detachGestures: (() => void) | null = null;
   let tokens: PaletteTokens = readPaletteTokens(host);
-  let ceiling = paperCeiling(tokens);
+  // Held back rather than computed: the walk-up and its bisections cost several
+  // milliseconds of the first paint, and buy nothing for a reader who has
+  // chosen no picture.
+  let ceilingNow: number | null = null;
+  const ceiling = (): number => (ceilingNow ??= paperCeiling(tokens));
   let presence = presenceOf(props, ceiling);
   let palette: GraphPalette = buildPalette(tokens, presence);
   // Before the renderer is up: the picture is the reader's ground, and it has
@@ -331,7 +335,7 @@ export function mountGraph(
 
   const themes = new MutationObserver(() => {
     tokens = readPaletteTokens(host);
-    ceiling = paperCeiling(tokens);
+    ceilingNow = null;
     repaint();
     rebuild(false);
   });
@@ -417,10 +421,10 @@ export function mountGraph(
  * what this ground can carry. A surface with no picture up is presence 0, so
  * the palette is the plain theme's to the byte.
  */
-function presenceOf(props: GraphSurfaceProps, ceiling: number): number {
+function presenceOf(props: GraphSurfaceProps, ceiling: () => number): number {
   const paper = props.wallpaper;
   if (!paper || paper.picture === null) return 0;
-  return Math.max(0, Math.min(1, paper.strength)) * ceiling;
+  return Math.max(0, Math.min(1, paper.strength)) * ceiling();
 }
 
 /**

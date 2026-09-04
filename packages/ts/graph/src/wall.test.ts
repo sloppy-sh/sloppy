@@ -139,10 +139,25 @@ describe("the picture under the field", () => {
 
   it("goes quiet where the reader asked for none of it", async () => {
     const wall = new WallLayer(stillLooking);
-    wall.show("a", store(), 0);
+    const pictures = store();
+    wall.show("a", pictures, 0);
     await settled();
 
     expect(wall.element.style.display).toBe("none");
+    expect(pictures.asked).toEqual([]);
+  });
+
+  it("fetches it once the reader asks to see some of it", async () => {
+    const wall = new WallLayer(stillLooking);
+    const pictures = store();
+    wall.show("a", pictures, 0);
+    await settled();
+    wall.show("a", pictures, 0.4);
+    await settled();
+
+    expect(pictures.asked).toEqual(["a"]);
+    expect(laid(wall)).toHaveLength(1);
+    expect(wall.element.style.display).toBe("block");
   });
 
   it("draws nothing for a picture the store no longer holds", async () => {
