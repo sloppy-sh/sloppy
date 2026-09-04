@@ -22,7 +22,7 @@ import { clamp } from "./color.js";
 import type {
   GraphPickMarks,
   GraphReadingMarks,
-  MarkPictures,
+  GraphPictures,
 } from "./contract.js";
 import type { GraphGround } from "./ground.js";
 import { GroundLayer } from "./ground-layer.js";
@@ -132,7 +132,7 @@ export interface SceneOptions {
   palette: GraphPalette;
   resolution: number;
   /** Absent draws every mark without its author's picture. */
-  pictures?: MarkPictures;
+  pictures?: GraphPictures;
 }
 
 export interface FrameStats {

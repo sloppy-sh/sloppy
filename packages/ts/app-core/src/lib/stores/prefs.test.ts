@@ -79,6 +79,7 @@ describe('the saved look', () => {
 				style: 'sketch',
 				tags: 'seed',
 				ground: 'graph paper',
+				wallpapers: 'a picture',
 				readingWidth: 'wide'
 			})
 		);
@@ -89,8 +90,22 @@ describe('the saved look', () => {
 			style: 'default',
 			tags: [],
 			ground: 'dots',
+			wallpapers: {},
 			readingWidth: null
 		});
+	});
+
+	// DESIGN.md § "The wallpaper": a picture belongs to the graph it is under,
+	// so what one graph is drawn over says nothing about another.
+	it('keeps each graph its own picture', () => {
+		prefs.init();
+		prefs.setWallpaper('own', { uploads: ['a'], strength: 0.3, every: 60 });
+		expect(prefs.wallpaper('own')?.uploads).toEqual(['a']);
+		expect(prefs.wallpaper('another')).toBeNull();
+
+		prefs.setWallpaper('own', null);
+		expect(prefs.wallpaper('own')).toBeNull();
+		expect(prefs.current.wallpapers).toEqual({});
 	});
 
 	// The order the tags were selected in is what assigns their hues, so a

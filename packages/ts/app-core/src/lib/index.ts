@@ -20,6 +20,16 @@ export {
 	THEMES
 } from './stores/prefs.svelte.js';
 export type { Accent, Prefs, Style, Theme } from './stores/prefs.svelte.js';
+export {
+	OPENING_STRENGTH,
+	OPENING_TURN,
+	readingGraph,
+	sanitizeWallpaper,
+	sanitizeWallpapers,
+	WALLPAPER_TURNS,
+	wallpaperTurn
+} from './wallpaper.js';
+export type { GraphId, WallpaperPrefs } from './wallpaper.js';
 export { nodes } from './stores/nodes.svelte.js';
 export type { NodeRegion, RegionState } from './stores/nodes.svelte.js';
 export { tags } from './stores/tags.svelte.js';

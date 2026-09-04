@@ -8,12 +8,23 @@ import GroundChoice from './ground-choice.svelte';
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let chosen: GraphGround[];
+let asked: number;
 
-function open(value: GraphGround = 'dots') {
+function open(
+	value: GraphGround = 'dots',
+	extra: { pictured?: boolean; onpicture?: () => void } = {}
+) {
 	chosen = [];
+	asked = 0;
 	mounted = mount(GroundChoice, {
 		target,
-		props: { value, onchange: (ground: GraphGround) => chosen.push(ground) }
+		props: {
+			value,
+			pictured: false,
+			onpicture: () => (asked += 1),
+			onchange: (ground: GraphGround) => chosen.push(ground),
+			...extra
+		}
 	});
 	flushSync();
 	target.querySelector('button')?.click();
@@ -21,6 +32,7 @@ function open(value: GraphGround = 'dots') {
 }
 
 const rows = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+const picture = () => document.body.querySelector<HTMLElement>('[role="menuitem"]');
 
 beforeEach(() => {
 	stubResizeObserver();
@@ -62,5 +74,28 @@ describe('choosing the ground', () => {
 		open();
 		expect(target.querySelector('button')?.className).toContain('size-9');
 		for (const row of rows()) expect(row.className).toContain('min-h-11');
+		expect(picture()?.className).toContain('min-h-11');
+	});
+});
+
+// DESIGN.md § "The wallpaper": paper and a picture are one choice about the
+// ground, so they are reached from one control rather than from two.
+describe('the picture under the ground', () => {
+	it('is reached from the same control the paper is', () => {
+		open('dots', { pictured: false });
+		expect(picture()?.textContent?.trim()).toBe('Add a picture');
+		picture()?.click();
+		flushSync();
+		expect(asked).toBe(1);
+	});
+
+	it('says there is one already where there is', () => {
+		open('dots', { pictured: true });
+		expect(picture()?.textContent?.trim()).toBe('Change the picture');
+	});
+
+	it('offers nothing where a surface has no picture to offer', () => {
+		open('dots', { onpicture: undefined });
+		expect(picture()).toBeNull();
 	});
 });
