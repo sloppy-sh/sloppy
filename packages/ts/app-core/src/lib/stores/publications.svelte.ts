@@ -167,6 +167,13 @@ class PublicationsStore {
 		return (this.#versions.get(ref) ?? []).slice(0, RECENT_VERSIONS);
 	}
 
+	/** The publish just before the oldest one {@link versions} lists, so the
+	 *  oldest row is a comparison rather than a dead end. `undefined` where the
+	 *  chain does not run back that far. */
+	versionBefore(ref: OwnedRef): PublishedVersion | undefined {
+		return (this.#versions.get(ref) ?? [])[RECENT_VERSIONS];
+	}
+
 	/** The chain, read once. A version is appended and never edited, so one in
 	 *  hand stays true until this instance publishes another. */
 	loadVersions(ref: OwnedRef): Promise<PublishedVersion[]> {

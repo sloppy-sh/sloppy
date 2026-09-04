@@ -1,5 +1,6 @@
-// What a section says, as lines a person reads: the words in it, and a name for
-// the elements that have none.
+// What a section says, as lines a person reads — the words in it, and a name for
+// the elements that have none — and how much of a difference between two of them
+// those lines can carry.
 
 import type { BlockDocument, DocumentNode } from '@sloppy/types';
 import { INK_NODE } from '../editor/ink-node.js';
@@ -45,4 +46,45 @@ function words(node: DocumentNode): string {
 	}
 	if (node.text !== undefined) return node.text;
 	return (node.content ?? []).map(words).join('');
+}
+
+/**
+ * How far apart two sides of one changed section are, as far as a reader can be
+ * SHOWN it. A stack is reordered as a first-class act, so a section that only
+ * moved has identical writing on both sides — and so does one whose difference
+ * is a picture swapped or a word emboldened, which {@link sectionLines} reads
+ * the same either way. Drawing either as a was/now pair shows a difference that
+ * is not there.
+ */
+export type SectionDifference = 'moved' | 'same-words' | 'rewritten';
+
+export function sectionDifference(
+	before: { ord: string; content: BlockDocument },
+	now: { ord: string; content: BlockDocument }
+): SectionDifference {
+	if (same(before.content, now.content)) {
+		return before.ord === now.ord ? 'same-words' : 'moved';
+	}
+	return sectionLines(before.content).join('\n') === sectionLines(now.content).join('\n')
+		? 'same-words'
+		: 'rewritten';
+}
+
+/** A section's document is the editor's own, so it is compared by shape rather
+ *  than by a serialization whose key order is the store's to choose. */
+function same(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (a === null || b === null) return false;
+	if (typeof a !== 'object' || typeof b !== 'object') return false;
+	if (Array.isArray(a) !== Array.isArray(b)) return false;
+	if (Array.isArray(a) && Array.isArray(b)) {
+		return a.length === b.length && a.every((held, at) => same(held, b[at]));
+	}
+	const held = a as Record<string, unknown>;
+	const against = b as Record<string, unknown>;
+	const keys = Object.keys(held);
+	return (
+		keys.length === Object.keys(against).length &&
+		keys.every((key) => key in against && same(held[key], against[key]))
+	);
 }

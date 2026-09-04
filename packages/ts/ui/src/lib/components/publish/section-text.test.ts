@@ -1,6 +1,6 @@
 import type { BlockDocument } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
-import { sectionLines } from './section-text.js';
+import { sectionDifference, sectionLines } from './section-text.js';
 
 const doc = (content: BlockDocument['content']): BlockDocument => ({ type: 'doc', content });
 
@@ -79,5 +79,38 @@ describe('a section read as lines', () => {
 		expect(
 			sectionLines(doc([{ type: 'orrery', attrs: { planets: 8 } }, { type: 'picture' }]))
 		).toEqual(['A picture']);
+	});
+});
+
+describe('two sides of one changed section', () => {
+	const words = (text: string) => doc([{ type: 'paragraph', content: [{ type: 'text', text }] }]);
+
+	// Reordering the stack is a first-class act, so this is the ordinary case
+	// rather than a corner: nothing about the writing moved.
+	it('calls a section that only took a new place moved', () => {
+		expect(
+			sectionDifference(
+				{ ord: 'Zz', content: words('written first') },
+				{ ord: 'Zx', content: words('written first') }
+			)
+		).toBe('moved');
+	});
+
+	it('says the words are the same where only the pictures changed', () => {
+		expect(
+			sectionDifference(
+				{ ord: 'a0', content: doc([{ type: 'picture', attrs: { upload_id: 'one' } }]) },
+				{ ord: 'a0', content: doc([{ type: 'picture', attrs: { upload_id: 'another' } }]) }
+			)
+		).toBe('same-words');
+	});
+
+	it('asks for both sides where the writing itself moved', () => {
+		expect(
+			sectionDifference(
+				{ ord: 'a0', content: words('what it said') },
+				{ ord: 'a0', content: words('what it says now') }
+			)
+		).toBe('rewritten');
 	});
 });

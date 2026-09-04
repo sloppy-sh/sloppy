@@ -181,11 +181,13 @@ export class NodeRepository {
     );
   }
 
-  /** A node and its interior leave together; a block outliving its node is unreachable. */
+  /** A node leaves with its interior and with what other people left pointing
+   *  at it; either one outliving the note is unreachable. */
   async remove(did: string, nodes: readonly Node[]): Promise<void> {
     if (nodes.length === 0) return;
     await this.db.handle.query(
       `DELETE block WHERE created_by = $did AND node IN $refs;
+       DELETE comment_pointer WHERE created_by = $did AND note IN $refs;
        DELETE node WHERE id IN $ids;`,
       {
         did,

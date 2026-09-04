@@ -266,14 +266,21 @@ different note in each version the reader is told both, one gone and one arrived
 `PublishedNoteChange` in `@sloppy/types` is that shape and `publishedChangesReader` its
 boundary. **The author's own instance answers it as a peer's does** — `/changes` above is
 public, so the surface a person reads it on asks over `GET /api/peers/changes` whether the
-publication is theirs or somebody else's, and one path serves both. A comparison is a READ
-of two versions and never of a draft. What a person has written since the newest version is
-not a snapshot: its sections cite the author's own uploads rather than the copies a
-publication owns, and its citations still name notes nobody published, so comparing one
-against a version would report a difference for every picture in it and call writing
-changed that nobody touched (§ "Pictures"). A surface says that a branch has changed since
-it was last published, which is what a person acts on; what MOVED is answered between two
-versions, once both exist.
+publication is theirs or somebody else's, and one path serves both.
+
+**What is answered is the difference between two VERSIONS. What a person has written since
+the newest one is not answered by anything, and that is a gap rather than a rule.** A draft
+is not a snapshot: its sections cite the author's own uploads rather than the copies a
+publication owns, and its citations still name notes nobody published, so running the
+comparison above over one would report a difference for every picture in it and call
+writing changed that nobody touched (§ "Pictures"). That is an argument about THIS
+comparison and not about the question — which notes a branch has gained and lost, what has
+been retitled and retagged, and which sections have been written in since a version, are
+all answerable without touching an upload reference, and a section's own `updated_at`
+against the version's `published_at` says the last of them without comparing a document at
+all. Nothing serves that today, so the decision to publish again is made on "this branch
+has changed since then" and the difference is read afterwards, between the two versions
+that then exist.
 
 **Who is invited to comment is the publication's to say, and it is an invitation rather
 than a lock.** `CommentAccess` is an enum on the publication — `anyone` by default, which
@@ -526,13 +533,13 @@ ULID everywhere, and may carry colons of its own, which is also why this is not 
 Two consequences follow from pull-only discovery, and both are the product's to state
 rather than gaps to close:
 
-- **A note shows the comments and reactions written by the reader and by the identities
-  they follow, and cannot show more.** Each of those is read from the store that holds it,
-  and the reader's own store is one of them — nobody follows themselves, and a reader whose
-  own comment vanished on reload would be reading a thread they are not in. Reaching a
-  stranger's comment would need a firehose syr does not have. A surface that implies it is showing every comment on a note is lying, and there is
-  no total to show beside one either — nobody can compute one, which is also why nothing
-  here counts toward a score (PRODUCT.md § "Anti-references").
+- **A note shows the comments and reactions written by the reader, by the identities they
+  follow, and — on the reader's OWN note — by whoever left a pointer on it.** Each of those
+  is read from the store that holds it, and the reader's own store is one of them — nobody
+  follows themselves, and a reader whose own comment vanished on reload would be reading a
+  thread they are not in. A surface that implies it is showing every comment on a note is
+  lying, and there is no total to show beside one either — nobody can compute one, which is
+  also why nothing here counts toward a score (PRODUCT.md § "Anti-references").
 - **A comment can be signed, and is signed in a second step.** syr's create route drops
   the signed envelope it accepts, so the comment is written unsigned and a `comment@v1`
   payload is signed through `platform.sign` and patched onto it; an identity's public
@@ -546,11 +553,46 @@ rather than gaps to close:
   three fields on one and its public listing does not serve them, so a reaction never
   arrives with anything to check, and no surface may claim otherwise.
 
+**A pointer is how a stranger's answer arrives, and it is a claim rather than a copy.**
+Pull-only federation has no relay and no firehose, so an instance is never told that
+somebody it has never heard of answered one of its notes. `POST
+/api/nodes/{did}/{localId}/replies` is where that is said: public, because the identity
+saying it has no relationship with the author, and it carries **no words and no place** —
+one DID and one comment's citation. A `comment_pointer` row is the author's, not the
+depositor's (`created_by` is the note's author, so their purge reaches it and their note's
+deletion takes it), and it is kept only where one of the author's own snapshots both
+carries that note and invites `anyone`. The route always answers 204: whether a bound
+refused it, or the note takes no answers, is a fact about somebody else's graph.
+
+Three rules make an unauthenticated deposit safe to hold, and each answers a way the
+depositor would otherwise decide something that is not theirs:
+
+- **Where a voice's store answers is resolved, never carried.** A DID names a person and
+  never a place, and **nothing in syr binds one to the other**: an identity manifest is
+  whatever the origin serving it says, so a depositor naming the store would be vouching
+  for the identity they claim to be, and any instance could put words under any name. The
+  read therefore asks the READER's own instance to place the claimed DID (`providerFor`)
+  and asks whatever that names. **A voice it cannot place is left out**, which is the whole
+  cost of the rule: syr's per-identity manifest is a local lookup, so a stranger on ANOTHER
+  instance leaves a pointer that is kept and not yet shown. Showing one safely means
+  checking a comment's signature against the key its DID already carries, and no signature
+  is verified anywhere in this build (§ below) — that, and not a wider trust in whoever
+  deposited the claim, is what closes the gap.
+- **A resolved store is still an address somebody else chose**, so reading one goes through
+  `media/remote-host.ts` — the same answer a picture's address is held to, on every hop, and
+  within a bound on how much of the answer is read. `SyrService.readJson` takes that policy
+  for a store this instance was pointed at and none for the deployment's own.
+- **A full note makes room rather than refusing.** A DID costs nothing to mint, so a cap
+  that turned away the newest deposit would hand a note to whoever filled it first. The
+  oldest pointer of whichever voice holds the most is dropped instead, which never costs a
+  voice holding one.
+
 **An identity's answer is held to that identity.** Each of those listings is one
 identity's own public endpoint asked about one note, so a record carrying anybody else's
 DID is dropped rather than drawn — `fromEveryVoice` in `api/src/social/social.service.ts`
 is the one comparison, made where the record and the store that served it are still
-together. It is the rule § "Federating the graph" applies to a peer's published notes, and
+together. It is what a pointer is finally believed on: the claim gets a store asked, and
+that store's answer in that name is the whole of what is shown. It is the rule § "Federating the graph" applies to a peer's published notes, and
 here it is the only line there is: a reaction arrives with nothing to check at all, and no
 signature is verified anywhere in this build. Without it any instance could put words
 under any name and face the reader knows, including the reader's own.

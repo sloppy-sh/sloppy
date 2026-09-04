@@ -19,7 +19,10 @@ import {
   syrPostRefFor,
 } from "@sloppy/types";
 import type { z } from "zod";
+import { AppConfigService } from "../config/app-config.service";
 import { AssetLinks } from "../media/asset-link";
+import type { HostPolicy } from "../media/remote-host";
+import { peerReach } from "../peer/peer-fetch";
 import { type Delegation, SyrService } from "../syr/syr.service";
 import { PointerRepository } from "./pointer.repository";
 
@@ -37,10 +40,15 @@ type PostRef = ReturnType<typeof syrPostRefFor>;
  * and never a place, so the instance travels with it everywhere: an identity
  * hosted elsewhere is not in this instance's manifest and asking here for one
  * of their records answers nothing at all.
+ *
+ * `reach` is present on every store but the reader's own, whose address the
+ * deployment chose: everywhere else is an address somebody named, held to the
+ * one answer `media/remote-host.ts` gives about which this instance connects to.
  */
 interface Voice {
   did: DidSyr;
   where: string;
+  reach?: HostPolicy;
 }
 
 /** What one voice held, kept beside the voice so a second read of the same
@@ -68,12 +76,14 @@ export class SocialService {
     private readonly syr: SyrService,
     private readonly links: AssetLinks,
     private readonly pointers: PointerRepository,
+    private readonly config: AppConfigService,
   ) {}
 
   /**
    * Somebody's claim that they said something about a note of the author's. It
-   * is stored and nothing more: what makes it show is the read, which asks the
-   * store it names and keeps only what that store serves in that name.
+   * is stored and nothing more: what makes it show is the read, which resolves
+   * the claimed identity to its own store and keeps only what that store serves
+   * in that name.
    *
    * The answer says nothing about whether it was kept. A depositor learning
    * that a bound refused them, or that a note admits no answers, learns
@@ -81,7 +91,7 @@ export class SocialService {
    */
   async leaveReply(
     note: OwnedRef,
-    left: { voice: DidSyr; where: string; comment_id: string },
+    left: { voice: DidSyr; comment_id: string },
   ): Promise<void> {
     const author = splitOwnedRef(note).did;
     if (left.voice === author) return;
@@ -97,7 +107,8 @@ export class SocialService {
     const post = syrPostRefFor(node);
     const written = await this.fromEveryVoice(
       delegation,
-      (where, did) => this.syr.listPublicComments(where, did, post),
+      (voice) =>
+        this.syr.listPublicComments(voice.where, voice.did, post, voice.reach),
       node,
     );
     return written
@@ -146,11 +157,12 @@ export class SocialService {
     const post = syrPostRefFor(node);
     const made = await this.fromEveryVoice(
       delegation,
-      (where, did) => this.syr.listPublicReactions(where, did, post),
+      (voice) =>
+        this.syr.listPublicReactions(voice.where, voice.did, post, voice.reach),
       node,
     );
-    const catalogs = new Catalogs((where, did) =>
-      this.syr.listPublicEmoji(where, did),
+    const catalogs = new Catalogs((voice) =>
+      this.syr.listPublicEmoji(voice.where, voice.did, voice.reach),
     );
     const drawn: NoteReaction[] = [];
     for (const held of made.sort((a, b) =>
@@ -158,7 +170,7 @@ export class SocialService {
     )) {
       if (!this.isOn(held.record, post)) continue;
       const view = await this.reactionView(
-        held.from.where,
+        held.from,
         held.record,
         node,
         catalogs,
@@ -197,12 +209,12 @@ export class SocialService {
         "That reaction could not be added. Try again.",
       );
     }
-    const catalogs = new Catalogs((where, did) =>
-      this.syr.listPublicEmoji(where, did),
+    const catalogs = new Catalogs((voice) =>
+      this.syr.listPublicEmoji(voice.where, voice.did, voice.reach),
     );
     // The reader's own reaction, so their own instance is where it is read back.
     const view = await this.reactionView(
-      delegation.syr_instance_url,
+      { did: delegation.did, where: delegation.syr_instance_url },
       made,
       node,
       catalogs,
@@ -225,23 +237,32 @@ export class SocialService {
   /**
    * Every store the reader can reach: their own, and those of the identities
    * they follow, each at the instance that hosts it.
+   *
+   * A pointer carries no address, so where its voice answers is asked of the
+   * READER's own instance and never taken from the deposit. Nothing in syr
+   * binds a DID to a place — a store answering in a name proves nothing about
+   * whose name it is — so a voice this instance cannot place is one whose words
+   * nobody here can attribute, and it is left out. docs/ARCHITECTURE.md
+   * § "Federating the graph" carries what that costs.
    */
   private async voices(
     delegation: Delegation,
     about?: OwnedRef,
   ): Promise<Voice[]> {
-    const reachable: Voice[] = [
-      { did: delegation.did, where: delegation.syr_instance_url },
-    ];
+    const own = delegation.syr_instance_url;
+    const elsewhere = peerReach(this.config);
+    const at = (did: DidSyr, where: string): Voice =>
+      where === own ? { did, where } : { did, where, reach: elsewhere };
+
+    const reachable: Voice[] = [at(delegation.did, own)];
     const already = new Set<DidSyr>([delegation.did]);
     try {
       for (const follow of await this.syr.listFollowing(delegation)) {
         if (already.has(follow.followed_did)) continue;
         already.add(follow.followed_did);
-        reachable.push({
-          did: follow.followed_did,
-          where: follow.followed_provider_url ?? delegation.syr_instance_url,
-        });
+        reachable.push(
+          at(follow.followed_did, follow.followed_provider_url ?? own),
+        );
       }
     } catch (err) {
       this.logger.warn(
@@ -252,14 +273,22 @@ export class SocialService {
     // they do not follow can still have left a pointer on it, which is the whole
     // of how a stranger's answer arrives at all.
     if (about !== undefined && splitOwnedRef(about).did === delegation.did) {
+      const claimed: DidSyr[] = [];
       for (const left of await this.pointers.pointersOn(
         delegation.did,
         about,
       )) {
         if (already.has(left.voice)) continue;
         already.add(left.voice);
-        reachable.push({ did: left.voice, where: left.where });
+        claimed.push(left.voice);
       }
+      const stores = await Promise.all(
+        claimed.map((voice) => this.syr.providerFor(own, voice)),
+      );
+      claimed.forEach((did, which) => {
+        const where = stores[which];
+        if (where !== null) reachable.push(at(did, where));
+      });
     }
     return reachable;
   }
@@ -276,13 +305,11 @@ export class SocialService {
    */
   private async fromEveryVoice<T extends { did: DidSyr }>(
     delegation: Delegation,
-    read: (instanceUrl: string, did: DidSyr) => Promise<T[]>,
+    read: (voice: Voice) => Promise<T[]>,
     about?: OwnedRef,
   ): Promise<Held<T>[]> {
     const voices = await this.voices(delegation, about);
-    const answers = await Promise.allSettled(
-      voices.map((voice) => read(voice.where, voice.did)),
-    );
+    const answers = await Promise.allSettled(voices.map(read));
     const held: Held<T>[] = [];
     answers.forEach((answer, at) => {
       const from = voices[at];
@@ -324,6 +351,7 @@ export class SocialService {
         author.where,
         author.did,
         post,
+        author.reach,
       );
       const held = theirs.find(
         (one) => one.did === author.did && one.local_id === parent.localId,
@@ -449,11 +477,11 @@ export class SocialService {
    * Dropped rather than refused: one reaction nobody can see must not cost the
    * reader the rest of them.
    *
-   * `where` is the instance that served the reaction, which is also the one
-   * holding the catalog it names.
+   * `from` is the store that served the reaction, which is also the one holding
+   * the catalog it names.
    */
   private async reactionView(
-    where: string,
+    from: Voice,
     reaction: SyrReaction,
     node: OwnedRef,
     catalogs: Catalogs,
@@ -467,7 +495,7 @@ export class SocialService {
       return { kind: "character", ...held, character: reaction.value };
     }
     if (reaction.kind === "gif") return null;
-    const entry = await catalogs.entry(where, reaction.did, reaction.value);
+    const entry = await catalogs.entry(from, reaction.value);
     return entry
       ? { kind: "emoji", ...held, emoji: this.emojiView(entry) }
       : null;
@@ -515,22 +543,13 @@ export class SocialService {
 class Catalogs {
   private readonly held = new Map<string, Promise<SyrEmoji[]>>();
 
-  constructor(
-    private readonly read: (
-      instanceUrl: string,
-      did: DidSyr,
-    ) => Promise<SyrEmoji[]>,
-  ) {}
+  constructor(private readonly read: (voice: Voice) => Promise<SyrEmoji[]>) {}
 
-  async entry(
-    instanceUrl: string,
-    did: DidSyr,
-    shortcode: string,
-  ): Promise<SyrEmoji | undefined> {
-    const key = `${instanceUrl}|${did}`;
+  async entry(voice: Voice, shortcode: string): Promise<SyrEmoji | undefined> {
+    const key = `${voice.where}|${voice.did}`;
     let catalog = this.held.get(key);
     if (!catalog) {
-      catalog = this.read(instanceUrl, did).catch(() => []);
+      catalog = this.read(voice).catch(() => []);
       this.held.set(key, catalog);
     }
     const code = shortcode.toLowerCase();

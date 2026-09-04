@@ -41,6 +41,22 @@ describe("what became of a note between two versions", () => {
     ).toEqual([]);
   });
 
+  // A note's look is not published, so a recoloured note reaches here as one
+  // whose timestamp moved and whose every readable field did not.
+  it("says nothing about one whose writing did not move", () => {
+    const held = note({ address: "1a" });
+    expect(
+      noteChanges(
+        [side(held, [section()])],
+        [
+          side({ ...held, updated_at: "2026-06-01T00:00:00.000Z" }, [
+            section(),
+          ]),
+        ],
+      ),
+    ).toEqual([]);
+  });
+
   it("reports a note that arrived, with its whole stack added", () => {
     const held = note({ address: "1a1" });
     expect(noteChanges([], [side(held, [section()])])).toEqual([

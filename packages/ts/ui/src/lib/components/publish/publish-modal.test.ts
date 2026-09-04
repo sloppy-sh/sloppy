@@ -13,13 +13,15 @@ const ref = (mark: string): OwnedRef => `${AUTHOR}/01JQXR${'0'.repeat(19)}${mark
 
 const FIRST = ref('1');
 const SECOND = ref('2');
+const THIRD = ref('3');
+
+const V1 = { ref: FIRST, sequence: 1, published_at: '2026-02-01T00:00:00.000Z' };
+const V2 = { ref: SECOND, sequence: 2, published_at: '2026-02-02T00:00:00.000Z' };
+const V3 = { ref: THIRD, sequence: 3, published_at: '2026-02-03T00:00:00.000Z' };
 
 const branch: PublishedBranch = {
-	latest: { ref: SECOND, sequence: 2, published_at: '2026-02-02T00:00:00.000Z' },
-	versions: [
-		{ ref: SECOND, sequence: 2, published_at: '2026-02-02T00:00:00.000Z' },
-		{ ref: FIRST, sequence: 1, published_at: '2026-02-01T00:00:00.000Z' }
-	],
+	latest: V2,
+	versions: [V2, V1],
 	comments: 'anyone'
 };
 
@@ -58,13 +60,20 @@ const changes: PublishedNoteChange[] = [
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 
-function open(onchanges: (from: OwnedRef, to: OwnedRef) => Promise<{ changes: typeof changes }>) {
+function open(
+	onchanges: (
+		from: OwnedRef,
+		to: OwnedRef,
+		cursor?: string
+	) => Promise<{ changes: typeof changes } | null>,
+	published: PublishedBranch = branch
+) {
 	mounted = mount(PublishModal, {
 		target,
 		props: {
 			open: true,
 			address: '1',
-			published: branch,
+			published,
 			onchanges,
 			onpublish: async () => undefined,
 			oncomments: async () => undefined,
@@ -73,6 +82,15 @@ function open(onchanges: (from: OwnedRef, to: OwnedRef) => Promise<{ changes: ty
 	});
 	flushSync();
 	return mounted;
+}
+
+/** The way back out of a comparison, which stays live while one is in flight. */
+function back(): HTMLElement {
+	const arrow = [...document.body.querySelectorAll('button')].find(
+		(button) => button.textContent?.trim() === 'Publishing'
+	);
+	if (!arrow) throw new Error('no way back');
+	return arrow;
 }
 
 /** The row for one version, which is what a person opens a comparison from. */
@@ -104,7 +122,7 @@ describe('a branch already published', () => {
 		open(asked);
 
 		version(2).click();
-		await vi.waitFor(() => expect(asked).toHaveBeenCalledWith(FIRST, SECOND));
+		await vi.waitFor(() => expect(asked).toHaveBeenCalledWith(FIRST, SECOND, undefined));
 		flushSync();
 
 		const shown = document.body.textContent ?? '';
@@ -138,5 +156,91 @@ describe('a branch already published', () => {
 
 		expect(asked).not.toHaveBeenCalled();
 		expect(document.body.textContent).toContain('This is where 1 was first published');
+	});
+
+	// A reorder moves the ord and not one word, so a was/now pair around it draws
+	// the same writing twice and calls it a difference.
+	it('says a section that only took a new place moved', async () => {
+		open(async () => ({
+			changes: [
+				{
+					change: 'changed' as const,
+					note: note('A', '1', 'Where thought starts'),
+					before: note('A', '1', 'Where thought starts'),
+					sections: [
+						{
+							change: 'changed' as const,
+							section: {
+								ref: ref('S'),
+								node: ref('A'),
+								ord: 'Zx',
+								content: words('Section A, written first.')
+							},
+							before: {
+								ref: ref('S'),
+								node: ref('A'),
+								ord: 'Zz',
+								content: words('Section A, written first.')
+							}
+						}
+					]
+				}
+			]
+		}));
+
+		version(2).click();
+		await vi.waitFor(() =>
+			expect(document.body.textContent).toContain('Section A, written first.')
+		);
+		flushSync();
+
+		const shown = document.body.textContent ?? '';
+		expect(shown).toContain('Moved');
+		expect(shown).not.toContain('was');
+		// Drawn once: the same words either side is not a difference to show.
+		expect(shown.split('Section A, written first.')).toHaveLength(2);
+	});
+
+	// The back arrow stays live while a read is in flight, so the answer to a
+	// question that has been left behind must not land under the next one.
+	it('drops a comparison the reader has already moved on from', async () => {
+		const deep: PublishedBranch = { latest: V3, versions: [V3, V2, V1], comments: 'anyone' };
+		const held = new Map<OwnedRef, (page: { changes: typeof changes }) => void>();
+		open(
+			(from) =>
+				new Promise((settle) => {
+					held.set(from, settle);
+				}),
+			deep
+		);
+
+		version(3).click();
+		await vi.waitFor(() => expect(held.has(SECOND)).toBe(true));
+		back().click();
+		flushSync();
+		version(2).click();
+		await vi.waitFor(() => expect(held.has(FIRST)).toBe(true));
+
+		// The abandoned read answers second, which is the whole of the race.
+		held.get(SECOND)?.({
+			changes: [
+				{ change: 'added' as const, note: note('Z', '1z', 'From the other publish'), sections: [] }
+			]
+		});
+		for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+		flushSync();
+
+		expect(document.body.textContent).toContain('What version 2 changed');
+		expect(document.body.textContent).not.toContain('From the other publish');
+	});
+});
+
+describe('a chain longer than the list shows', () => {
+	it('reads the oldest one listed against the publish kept back for it', async () => {
+		const asked = vi.fn(async () => ({ changes }));
+		open(asked, { latest: V3, versions: [V3, V2], earlier: V1, comments: 'anyone' });
+
+		version(2).click();
+		await vi.waitFor(() => expect(asked).toHaveBeenCalledWith(FIRST, SECOND, undefined));
 	});
 });

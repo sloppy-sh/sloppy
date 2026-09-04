@@ -116,6 +116,11 @@ function sectionChanges(
   return changes;
 }
 
+/**
+ * Every field of the note a reader is handed, except `updated_at`: it is a
+ * record of a change rather than one, and a note's look is not published at all,
+ * so recolouring one would otherwise report a difference with nothing in it.
+ */
 function sameNote(a: PublishedNode, b: PublishedNode): boolean {
   return (
     a.address === b.address &&
@@ -123,7 +128,6 @@ function sameNote(a: PublishedNode, b: PublishedNode): boolean {
     a.origin === b.origin &&
     a.title === b.title &&
     a.created_at === b.created_at &&
-    a.updated_at === b.updated_at &&
     a.content_signature === b.content_signature &&
     a.signed_payload_json === b.signed_payload_json &&
     a.signing_device_public_key === b.signing_device_public_key &&

@@ -1,7 +1,7 @@
 // Publishing all the way through, over real HTTP: a branch copied into a
 // version, read back by somebody with no session, held still while its author
-// writes on, compared against a second version, and taken down with its
-// pictures.
+// writes on, compared against a second version, taken down with its pictures,
+// and answered by a stranger with no relationship to its author.
 //
 // None of this is observable from the source. That a peer reads a COPY rather
 // than the author's live rows is the whole of the milestone, and the only place
@@ -22,6 +22,8 @@ import {
   EMOJI_UPLOAD_ATTR,
   type NodeView,
   type OwnedRef,
+  POINTERS_PER_NOTE,
+  POINTERS_PER_VOICE,
   type PublicationView,
   type PublishedIndex,
   type PublishedSubtreePage,
@@ -51,6 +53,10 @@ const PIXEL = Buffer.from(
 
 /** A branch long enough that one answer cannot carry it. */
 const LONG_BRANCH = 260;
+
+/** Somebody the author has never heard of, whose identity is kept somewhere
+ *  this instance has no relationship with. */
+const STRANGER = "did:syr:z6MkStrangerStrangerStrangerStranger";
 
 function reachable(endpoint: URL): Promise<boolean> {
   return new Promise((resolve) => {
@@ -156,6 +162,19 @@ describe("publishing a branch, and what a peer reads back", () => {
   const publish = (root: OwnedRef): Promise<PublicationView> =>
     ok("POST", "/publications", ada, { root }) as Promise<PublicationView>;
 
+  /** Somebody else's instance leaving a claim, with no session of any kind. */
+  const reply = async (
+    note: OwnedRef,
+    voice: string,
+    commentId: string,
+  ): Promise<number> =>
+    (
+      await call("POST", `/nodes/${at(note)}/replies`, null, {
+        voice,
+        comment_id: commentId,
+      })
+    ).status;
+
   /** As a peer's instance reads it: no session at all. */
   const read = async (
     publication: OwnedRef,
@@ -207,6 +226,20 @@ describe("publishing a branch, and what a peer reads back", () => {
       ),
       ada.did,
     );
+  }
+
+  /** What somebody with no relationship to the author has left pointing at one
+   *  of their notes. Straight off the store: the read that draws one asks an
+   *  identity store, and the embedded IdP serves no conversation. */
+  async function pointersOn(note: OwnedRef): Promise<{ voice: string }[]> {
+    const { DbService: Db } = await import("../db/db.service");
+    const [rows] = await app
+      .get<DbService>(Db)
+      .handle.query<[{ voice: string }[]]>(
+        "SELECT voice FROM comment_pointer WHERE created_by = $did AND note = $note",
+        { did: ada.did, note },
+      );
+    return rows;
   }
 
   /** Straight off the store, because a chain with no version is served to
@@ -936,4 +969,126 @@ describe("publishing a branch, and what a peer reads back", () => {
     },
     120_000,
   );
+
+  // Pull-only federation has no firehose, so a pointer is the whole of how an
+  // instance learns that somebody it has never heard of answered one of its
+  // notes. The route is public and always answers 204, so what it did is only
+  // visible in the store.
+  scenario(
+    "takes an answer from a stranger to a branch that invites one",
+    async () => {
+      const branch = await newNode({ title: "Open to answers" });
+      const under = await newNode({
+        from: { relation: "under", note: branch.ref },
+        title: "Also open",
+      });
+      await publish(branch.ref);
+
+      expect(await reply(under.ref, STRANGER, `${STRANGER}:01ANSWER`)).toBe(
+        204,
+      );
+      expect((await pointersOn(under.ref)).map((one) => one.voice)).toEqual([
+        STRANGER,
+      ]);
+
+      // The same claim twice is the same claim.
+      expect(await reply(under.ref, STRANGER, `${STRANGER}:01ANSWER`)).toBe(
+        204,
+      );
+      expect(await pointersOn(under.ref)).toHaveLength(1);
+    },
+  );
+
+  scenario(
+    "keeps nothing for a note nobody was invited to answer",
+    async () => {
+      const nowhere = await newNode({ title: "Never published" });
+      expect(await reply(nowhere.ref, STRANGER, `${STRANGER}:01NOWHERE`)).toBe(
+        204,
+      );
+      expect(await pointersOn(nowhere.ref)).toEqual([]);
+
+      const shut = await newNode({ title: "Published, answering nobody" });
+      const publication = await publish(shut.ref);
+      await ok("PATCH", `/publications/${at(publication.ref)}`, ada, {
+        comments: "nobody",
+      });
+      expect(await reply(shut.ref, STRANGER, `${STRANGER}:01SHUT`)).toBe(204);
+      expect(await pointersOn(shut.ref)).toEqual([]);
+    },
+  );
+
+  // A DID costs nothing to mint, so a bound that turned away the newest deposit
+  // would hand a note to whoever filled it first.
+  scenario(
+    "makes room for a new voice by taking it off the crowd",
+    async () => {
+      const branch = await newNode({ title: "Answered by a crowd" });
+      await publish(branch.ref);
+
+      // A DID's tail is base58btc, which has no 0, O, I or l in it.
+      const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+      const voice = (which: number) => `did:syr:z6MkCrowd${B58[which]}`;
+      const QUIET = 20;
+      const GREEDY = (POINTERS_PER_NOTE - QUIET) / POINTERS_PER_VOICE;
+      const rows: Record<string, unknown>[] = [];
+      const now = new Date().toISOString();
+      for (let one = 0; one < GREEDY; one++) {
+        for (let held = 0; held < POINTERS_PER_VOICE; held++) {
+          rows.push({
+            id: createOwnedRecordId("comment_pointer", ada.did),
+            created_by: ada.did,
+            note: branch.ref,
+            voice: voice(one),
+            comment_id: `${voice(one)}:c${held}`,
+            created_at: now,
+            updated_at: now,
+          });
+        }
+      }
+      for (let one = 0; one < QUIET; one++) {
+        rows.push({
+          id: createOwnedRecordId("comment_pointer", ada.did),
+          created_by: ada.did,
+          note: branch.ref,
+          voice: voice(GREEDY + one),
+          comment_id: `${voice(GREEDY + one)}:c0`,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+      expect(rows).toHaveLength(POINTERS_PER_NOTE);
+      const { DbService: Db } = await import("../db/db.service");
+      await app
+        .get<DbService>(Db)
+        .handle.query("INSERT INTO comment_pointer $rows", { rows });
+
+      const newcomer = "did:syr:z6MkNewcomerWithSomethingToSay";
+      expect(await reply(branch.ref, newcomer, `${newcomer}:c0`)).toBe(204);
+
+      const held = await pointersOn(branch.ref);
+      expect(held).toHaveLength(POINTERS_PER_NOTE);
+      expect(held.filter((one) => one.voice === newcomer)).toHaveLength(1);
+      // The crowd paid for the newcomer, and a voice holding one did not.
+      const quiet = held.filter((one) => one.voice === voice(GREEDY));
+      expect(quiet).toHaveLength(1);
+      const crowd = Array.from(
+        { length: GREEDY },
+        (_, one) => held.filter((row) => row.voice === voice(one)).length,
+      );
+      expect(
+        crowd.filter((one) => one === POINTERS_PER_VOICE - 1),
+      ).toHaveLength(1);
+    },
+  );
+
+  scenario("lets go of what pointed at a note that has gone", async () => {
+    const branch = await newNode({ title: "Answered, then deleted" });
+    await publish(branch.ref);
+    expect(await reply(branch.ref, STRANGER, `${STRANGER}:01GONE`)).toBe(204);
+    expect(await pointersOn(branch.ref)).toHaveLength(1);
+
+    await ok("DELETE", `/nodes/${at(branch.ref)}`, ada);
+    expect(await pointersOn(branch.ref)).toEqual([]);
+  });
 });

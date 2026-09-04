@@ -14,7 +14,7 @@
 	// note by note, in address order, with the writing either side of it.
 	import type { BlockDocument, PublishedSectionChange } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { sectionLines } from './section-text.js';
+	import { sectionDifference, sectionLines } from './section-text.js';
 
 	let {
 		changes,
@@ -51,6 +51,37 @@
 	function renamed(entry: PublishedNoteChange): string | null {
 		if (entry.change !== 'changed' || entry.before.title === entry.note.title) return null;
 		return entry.before.title || 'Untitled';
+	}
+
+	/**
+	 * One section as it can be drawn. Both sides only where they read
+	 * differently: a section that was reordered, or one whose difference is a
+	 * picture swapped, has the same writing either way, and a was/now pair around
+	 * identical lines shows a difference that is not there.
+	 */
+	type Drawn =
+		| { both: true; was: BlockDocument; now: BlockDocument }
+		| { both: false; said: string; content: BlockDocument; gone: boolean };
+
+	function drawn(section: PublishedSectionChange): Drawn {
+		if (section.change !== 'changed') {
+			return {
+				both: false,
+				said: section.change === 'added' ? 'Added' : 'Taken out',
+				content: section.section.content,
+				gone: section.change === 'removed'
+			};
+		}
+		const apart = sectionDifference(section.before, section.section);
+		if (apart === 'rewritten') {
+			return { both: true, was: section.before.content, now: section.section.content };
+		}
+		return {
+			both: false,
+			said: apart === 'moved' ? 'Moved' : 'Edited',
+			content: section.section.content,
+			gone: false
+		};
 	}
 </script>
 
@@ -91,17 +122,16 @@
 				{/if}
 
 				{#each sectionsOf(entry) as section (section.section.ref)}
+					{@const shown = drawn(section)}
 					<div class="space-y-1 border-l-2 border-border pl-3">
-						{#if section.change === 'changed'}
+						{#if shown.both}
 							<p class="text-xs text-muted-foreground">was</p>
-							{@render writing(section.before.content, true)}
+							{@render writing(shown.was, true)}
 							<p class="pt-1 text-xs text-muted-foreground">now</p>
-							{@render writing(section.section.content, false)}
+							{@render writing(shown.now, false)}
 						{:else}
-							<p class="text-xs text-muted-foreground">
-								{section.change === 'added' ? 'Added' : 'Taken out'}
-							</p>
-							{@render writing(section.section.content, section.change === 'removed')}
+							<p class="text-xs text-muted-foreground">{shown.said}</p>
+							{@render writing(shown.content, shown.gone)}
 						{/if}
 					</div>
 				{/each}

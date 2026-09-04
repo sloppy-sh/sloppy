@@ -721,6 +721,56 @@ describe("holding a region of somebody else's graph", () => {
     },
   );
 
+  // The surface names no instance for a branch of the reader's own, so this
+  // instance asks itself — the one path a person actually takes, and the one no
+  // fake peer stands in for.
+  scenario(
+    "reads its own publication's history without being told where",
+    async () => {
+      const branch = (await ok("POST", "/nodes", {
+        title: "Read against itself",
+      })) as NodeView;
+      await ok("POST", "/blocks", {
+        node: branch.ref,
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "as first written" }],
+            },
+          ],
+        },
+      });
+      const first = (await ok("POST", "/publications", {
+        root: branch.ref,
+      })) as { ref: string; latest: PublishedVersion };
+      await ok("PATCH", `/nodes/${at(branch.ref)}`, {
+        title: "Read against itself, again",
+      });
+      const second = (await ok("POST", "/publications", {
+        root: branch.ref,
+      })) as { ref: string; latest: PublishedVersion };
+
+      const chain = (await ok(
+        "GET",
+        `/peers/versions?publication=${encodeURIComponent(first.ref)}`,
+      )) as PublishedVersionsPage;
+      expect(chain.versions.map((one) => one.sequence)).toEqual([2, 1]);
+
+      const difference = (await ok(
+        "GET",
+        `/peers/changes?publication=${encodeURIComponent(first.ref)}` +
+          `&from=${encodeURIComponent(first.latest.ref)}` +
+          `&to=${encodeURIComponent(second.latest.ref)}`,
+      )) as PublishedChangesPage;
+      expect(difference.changes).toHaveLength(1);
+      const only = difference.changes[0];
+      expect(only.change).toBe("changed");
+      expect(only.note.title).toBe("Read against itself, again");
+    },
+  );
+
   scenario(
     "says so where the instance has nothing at that address",
     async () => {

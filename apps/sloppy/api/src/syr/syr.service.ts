@@ -42,6 +42,7 @@ import {
   syrEnvelope,
 } from "@sloppy/types";
 import { z } from "zod";
+import { type HostPolicy, fetchReachable } from "../media/remote-host";
 
 /** syr's own `Cache-Control` on the manifest is 300s; this matches it. */
 const MANIFEST_TTL_MS = 5 * 60 * 1000;
@@ -134,7 +135,10 @@ export class SyrService {
    *  under us, so a hit stays true for this process's life. */
   private readonly folders = new Map<string, string>();
 
-  async manifest(instanceUrl: string): Promise<SyrInstanceManifest> {
+  async manifest(
+    instanceUrl: string,
+    reach?: HostPolicy,
+  ): Promise<SyrInstanceManifest> {
     const cached = this.manifests.get(instanceUrl);
     if (cached && Date.now() - cached.at < MANIFEST_TTL_MS)
       return cached.manifest;
@@ -143,6 +147,7 @@ export class SyrService {
       `${instanceUrl}/.well-known/syr`,
       { headers: { accept: "application/json" } },
       "We could not reach that instance. Check the address and try again.",
+      reach,
     );
     const parsed = SyrInstanceManifestSchema.safeParse(body);
     if (!parsed.success) {
@@ -296,13 +301,14 @@ export class SyrService {
   async identityManifest(
     instanceUrl: string,
     did: string,
+    reach?: HostPolicy,
   ): Promise<SyrIdentityManifest> {
     const key = `${instanceUrl}|${did}`;
     const cached = this.identityManifests.get(key);
     if (cached && Date.now() - cached.at < MANIFEST_TTL_MS)
       return cached.manifest;
 
-    const template = (await this.manifest(instanceUrl))
+    const template = (await this.manifest(instanceUrl, reach))
       .identity_manifest_template;
     const url = template.replace("{did}", encodeURIComponent(did));
     const failure = "We could not read that identity. Try again in a moment.";
@@ -310,6 +316,7 @@ export class SyrService {
       url,
       { headers: { accept: "application/json" } },
       failure,
+      reach,
     );
     const manifest = this.readShape(
       SyrIdentityManifestSchema,
@@ -602,8 +609,12 @@ export class SyrService {
   /** Anyone's catalog, as that identity's own instance publishes it. An empty
    *  answer where the manifest names no such endpoint: nothing to show is the
    *  same outcome as an instance that does not host emoji. */
-  async listPublicEmoji(instanceUrl: string, did: string): Promise<SyrEmoji[]> {
-    const { endpoints } = await this.identityManifest(instanceUrl, did);
+  async listPublicEmoji(
+    instanceUrl: string,
+    did: string,
+    reach?: HostPolicy,
+  ): Promise<SyrEmoji[]> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did, reach);
     if (!endpoints.public_emojis) return [];
     const url = `${endpoints.public_emojis}?limit=100`;
     const failure = "We could not read that emoji set. Try again in a moment.";
@@ -611,6 +622,7 @@ export class SyrService {
       url,
       { headers: { accept: "application/json" } },
       failure,
+      reach,
     );
     return this.readShape(
       syrEnvelope(z.array(SyrEmojiSchema)),
@@ -663,8 +675,9 @@ export class SyrService {
     instanceUrl: string,
     did: string,
     post: { post_did: string; post_id: string },
+    reach?: HostPolicy,
   ): Promise<SyrComment[]> {
-    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    const { endpoints } = await this.identityManifest(instanceUrl, did, reach);
     if (!endpoints.public_comments) return [];
     const url =
       `${endpoints.public_comments}?post_did=${encodeURIComponent(post.post_did)}` +
@@ -675,6 +688,7 @@ export class SyrService {
       url,
       { headers: { accept: "application/json" } },
       failure,
+      reach,
     );
     return this.readShape(
       syrEnvelope(z.array(SyrCommentSchema)),
@@ -734,8 +748,9 @@ export class SyrService {
     instanceUrl: string,
     did: string,
     post: { post_did: string; post_id: string },
+    reach?: HostPolicy,
   ): Promise<SyrReaction[]> {
-    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    const { endpoints } = await this.identityManifest(instanceUrl, did, reach);
     if (!endpoints.public_reactions) return [];
     const url =
       `${endpoints.public_reactions}?parent_type=post` +
@@ -747,6 +762,7 @@ export class SyrService {
       url,
       { headers: { accept: "application/json" } },
       failure,
+      reach,
     );
     return this.readShape(
       syrEnvelope(z.array(SyrReactionSchema)),
@@ -901,27 +917,31 @@ export class SyrService {
     return parsed.data;
   }
 
+  /**
+   * `reach` is for an address somebody else chose — a store this instance was
+   * pointed at rather than configured with. It answers the same question a
+   * picture's address is held to, once, in `media/remote-host.ts`; a caller
+   * reading the deployment's own instance passes none.
+   */
   private async readJson(
     url: string,
     init: RequestInit,
     failure: string,
+    reach?: HostPolicy,
   ): Promise<unknown> {
-    let response: Response;
+    let answer: Answered;
     try {
-      response = await fetch(url, {
-        ...init,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+      answer = await answered(url, init, reach);
     } catch (err) {
       this.logger.warn(
         `${url} did not answer: ${err instanceof Error ? err.message : err}`,
       );
       throw new ServiceUnavailableException(failure);
     }
-    const body = await response.text().catch(() => "");
-    if (!response.ok) {
-      this.logger.warn(`${url} answered ${response.status} ${body}`);
-      throw this.refusal(response.status, body, failure);
+    const body = answer.body;
+    if (!answer.ok) {
+      this.logger.warn(`${url} answered ${answer.status} ${body}`);
+      throw this.refusal(answer.status, body, failure);
     }
     // A store reporting a change it made sends no body — a 204 on one instance,
     // an empty 200 on another. Neither is JSON, and both read as `null` here.
@@ -987,4 +1007,69 @@ function parseJson(body: string): unknown {
   } catch {
     return null;
   }
+}
+
+/** What one store said, as much of it as this instance is willing to hold. */
+interface Answered {
+  ok: boolean;
+  status: number;
+  body: string;
+}
+
+/**
+ * How much of one answer is read. A store this instance was pointed at chooses
+ * how long to keep talking, so the read gives up rather than growing with it;
+ * an identity's own records are far under this.
+ */
+const MAX_ANSWER_BYTES = 4 * 1024 * 1024;
+
+/**
+ * One read of a store. `reach` marks an address somebody else chose, which is
+ * checked on every hop and answered within a bound — `media/remote-host.ts`.
+ */
+async function answered(
+  url: string,
+  init: RequestInit,
+  reach?: HostPolicy,
+): Promise<Answered> {
+  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  if (reach === undefined) {
+    const response = await fetch(url, { ...init, signal });
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: await response.text().catch(() => ""),
+    };
+  }
+  const response = await fetchReachable(url, reach, {
+    ...(init as Parameters<typeof fetchReachable>[2]),
+    signal,
+  });
+  return {
+    ok: response.ok,
+    status: response.status,
+    body: await bounded(response.body),
+  };
+}
+
+async function bounded(
+  stream: { getReader(): ReadableStreamDefaultReader<Uint8Array> } | null,
+): Promise<string> {
+  if (!stream) return "";
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let read = "";
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_ANSWER_BYTES) throw new Error("answer too large");
+      read += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return read + decoder.decode();
 }

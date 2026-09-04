@@ -3,12 +3,17 @@
 	import type { VersionComparison } from './version-changes.svelte';
 
 	/** A branch as it stands published: the version a reader gets, the chain
-	 *  behind it newest first, and who the author invites to answer it. */
+	 *  behind it newest first, the version just before the oldest of those, and
+	 *  who the author invites to answer it. */
 	export interface PublishedBranch {
 		latest: PublishedVersion;
 		/** Empty until the chain has been read, and `latest` is the whole of what
 		 *  is known then. */
 		versions: readonly PublishedVersion[];
+		/** The publish before the oldest one listed, where the chain runs back
+		 *  further than a person is shown. What the oldest listed one is read
+		 *  against, and never a row of its own. */
+		earlier?: PublishedVersion;
 		comments: CommentAccess;
 	}
 
@@ -86,58 +91,78 @@
 	let against = $state<PublishedVersion | null>(null);
 	let compared = $state<VersionComparison | null>(null);
 	let reading = $state(false);
+	/** The newest ask. The back arrow stays live while one is in flight, so an
+	 *  answer to a question that has been left behind is dropped rather than
+	 *  drawn under the heading of the one that replaced it. */
+	let latest = 0;
 
-	/** The version published before this one, as far as the chain in hand goes. */
+	/** The version published before this one, as far as the chain in hand goes.
+	 *  Past the end of the list, the one the caller kept back for exactly this. */
 	function before(at: number): PublishedVersion | undefined {
-		return chain[at + 1];
+		return chain[at + 1] ?? (at === chain.length - 1 ? published?.earlier : undefined);
 	}
 
 	function comparable(version: PublishedVersion, at: number): boolean {
 		return version.sequence === 1 || before(at) !== undefined;
 	}
 
+	/** One page of one comparison, kept only while it is still the one being
+	 *  read. */
+	async function ask(
+		from: PublishedVersion,
+		to: PublishedVersion,
+		cursor: string | undefined,
+		keep: (page: VersionComparison) => void
+	): Promise<void> {
+		const mine = ++latest;
+		reading = true;
+		try {
+			const page = await onchanges(from.ref, to.ref, cursor);
+			if (mine !== latest || !page) return;
+			keep(page);
+		} finally {
+			if (mine === latest) reading = false;
+		}
+	}
+
 	async function review(
 		version: PublishedVersion,
 		earlier: PublishedVersion | undefined
 	): Promise<void> {
+		latest += 1;
 		reviewing = version;
 		against = earlier ?? null;
 		compared = null;
 		if (!earlier) return;
-		reading = true;
-		try {
-			compared = await onchanges(earlier.ref, version.ref);
-		} finally {
-			reading = false;
-		}
+		await ask(earlier, version, undefined, (page) => {
+			compared = page;
+		});
 	}
 
 	/** The next page of one comparison, with anything it repeats left out — a
 	 *  note that moved, moved once. */
 	async function more(cursor: string): Promise<void> {
-		if (!reviewing || !against) return;
-		reading = true;
-		let page: VersionComparison | null;
-		try {
-			page = await onchanges(against.ref, reviewing.ref, cursor);
-		} finally {
-			reading = false;
-		}
-		if (!page) return;
-		const held = new Set((compared?.changes ?? []).map((one) => one.note.ref));
-		compared = {
-			changes: [
-				...(compared?.changes ?? []),
-				...page.changes.filter((one) => !held.has(one.note.ref))
-			],
-			...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor })
-		};
+		const to = reviewing;
+		const from = against;
+		if (!to || !from) return;
+		await ask(from, to, cursor, (page) => {
+			const held = new Set((compared?.changes ?? []).map((one) => one.note.ref));
+			compared = {
+				changes: [
+					...(compared?.changes ?? []),
+					...page.changes.filter((one) => !held.has(one.note.ref))
+				],
+				...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor })
+			};
+		});
 	}
 
 	// Nothing about one comparison belongs to the next thing this sheet is
 	// opened for.
 	$effect(() => {
 		if (open) return;
+		latest += 1;
+		reading = false;
 		reviewing = null;
 		against = null;
 		compared = null;
@@ -185,7 +210,11 @@
 		{#if reviewing}
 			<button
 				type="button"
-				onclick={() => (reviewing = null)}
+				onclick={() => {
+					latest += 1;
+					reading = false;
+					reviewing = null;
+				}}
 				class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 			>
 				<ArrowLeft class="size-4" />
@@ -233,7 +262,9 @@
 									<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
 										{when(version.published_at)}
 									</span>
-									<span class="sr-only">See what it changed</span>
+									<span class="sr-only">
+										{before(at) ? 'See what it changed' : 'See what was first published'}
+									</span>
 									<ChevronRight class="size-4 shrink-0 text-muted-foreground" />
 								</button>
 							</li>

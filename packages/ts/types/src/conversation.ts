@@ -8,8 +8,8 @@
 //
 // Discovery is per-identity and pull-only, so a reader reaches their own store
 // and those of the identities they follow — and, for a note of their own, the
-// stores a `CommentPointer` names, which is how somebody they do not follow can
-// still reach them.
+// stores of the voices a `CommentPointer` names, which is how somebody they do
+// not follow can still reach them.
 // docs/ARCHITECTURE.md § "Federating the graph" carries what that means for the
 // product.
 
@@ -21,7 +21,6 @@ import {
   StoreRefSchema,
   TimestampSchema,
 } from "./common.js";
-import { PeerOriginSchema } from "./federation.js";
 import { CustomEmojiSchema } from "./emoji.js";
 
 /**
@@ -130,22 +129,21 @@ export type CreateNoteReactionRequest = z.input<
  * federation has no relay and no firehose, so nothing else would tell an
  * instance that a stranger's comment now exists.
  *
- * **It carries no words.** The comment stays in the store of whoever wrote it
- * and is read from there, which is what makes a pointer safe to accept from an
- * identity the author has no relationship with: it is a claim to check, never a
- * copy to trust. A pointer whose store serves nothing, or serves a comment
- * carrying a different DID, or one about a different note, is dropped on the
- * way in and never shown.
+ * **It carries no words, and it does not carry a place either.** A DID names a
+ * person and never a place, so where that person's store answers is resolved by
+ * the READER's own instance when the note is read — a depositor who named the
+ * store would be vouching for the identity they are claiming to be. What is
+ * kept is the claim and nothing else: a store that serves nothing under that
+ * DID, or serves nothing about this note, leaves the pointer showing nothing,
+ * and so does a voice the reader's instance cannot place at all.
  *
  * `created_by` is the NOTE's author — the person it was left for, and the one
  * whose purge has to reach it.
  */
 export const CommentPointerSchema = OwnedEntitySchema.extend({
   note: OwnedRefSchema,
-  /** Who says they wrote it. Held to what their store actually serves. */
+  /** Who says they wrote it. Held to what their own store actually serves. */
   voice: DidSyrSchema,
-  /** The instance to ask. Bounded to an origin this build will speak to. */
-  where: PeerOriginSchema,
   comment_id: StoreRefSchema,
 });
 export type CommentPointer = z.infer<typeof CommentPointerSchema>;
@@ -153,7 +151,6 @@ export type CommentPointer = z.infer<typeof CommentPointerSchema>;
 /** What `POST /nodes/{did}/{localId}/replies` binds. */
 export const LeaveCommentPointerRequestSchema = z.object({
   voice: DidSyrSchema,
-  where: PeerOriginSchema,
   comment_id: StoreRefSchema,
 });
 export type LeaveCommentPointerRequest = z.input<
@@ -162,8 +159,15 @@ export type LeaveCommentPointerRequest = z.input<
 
 /**
  * How many pointers one instance keeps for a note, and how many of those any
- * single voice may account for. The per-voice bound is the one that matters: a
- * cap on the note alone lets one identity crowd out everybody else on it.
+ * single voice may account for. Together they bound how many stores reading one
+ * note asks: a voice is asked once however many pointers it left, so a note
+ * reaches at most `POINTERS_PER_NOTE / POINTERS_PER_VOICE` of them.
+ *
+ * Neither bound decides who gets in, because a DID costs nothing to mint and a
+ * cap that refuses the newest would hand a note to whoever filled it first.
+ * A full note makes room by dropping the oldest pointer of whichever voice
+ * holds the most, so the crowd pays for the newcomer and a voice holding one
+ * pointer is never the one dropped.
  */
 export const POINTERS_PER_NOTE = 500;
 export const POINTERS_PER_VOICE = 20;

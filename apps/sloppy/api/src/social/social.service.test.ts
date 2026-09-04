@@ -2,10 +2,23 @@ import { Logger } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
 import { DidSyrSchema, type OwnedRef } from "@sloppy/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppConfigService } from "../config/app-config.service";
 import { AssetLinks } from "../media/asset-link";
 import { SyrService } from "../syr/syr.service";
 import type { PointerRepository } from "./pointer.repository";
 import { SocialService } from "./social.service";
+
+// A store this instance was pointed at is read through the address policy,
+// whose connection is undici's own — `media/remote-host.ts`. What these tests
+// stand on is what a store ANSWERS, so both reads land on the one stub.
+vi.mock("undici", async (real) => {
+  const undici = await real<typeof import("undici")>();
+  return {
+    ...undici,
+    fetch: (...args: unknown[]) =>
+      (globalThis.fetch as (...given: unknown[]) => unknown)(...args),
+  };
+});
 
 const INSTANCE = "https://syr.is";
 /** Where an identity this reader follows is hosted instead. A DID names a
@@ -135,6 +148,13 @@ function standing(asked: URL, hostOf: (did: string) => string): Answer {
   return { status: 404, body: {} };
 }
 
+/** Which addresses this build will connect to, as the deployment answers it.
+ *  A test instance is at a public name, so nothing here turns on the range. */
+const REACH = {
+  isProduction: false,
+  publicUrl: "https://sloppy.example",
+} as unknown as AppConfigService;
+
 function social(): SocialService {
   const config = { get: () => "a-session-secret" } as unknown as ConfigService;
   // No pointer has been left in these, so the reachable set is the reader and
@@ -143,9 +163,13 @@ function social(): SocialService {
     pointersOn: async () => [],
     admitsAnswers: async () => false,
     leave: async () => null,
-    forgetNote: async () => {},
   } as unknown as PointerRepository;
-  return new SocialService(new SyrService(), new AssetLinks(config), pointers);
+  return new SocialService(
+    new SyrService(),
+    new AssetLinks(config),
+    pointers,
+    REACH,
+  );
 }
 
 function comment(
@@ -741,7 +765,9 @@ describe("reacting to a note", () => {
 });
 
 describe("an answer from somebody the reader does not follow", () => {
-  const ELSEWHERE = "https://elsewhere.example";
+  /** Where the stranger's store actually answers, as this reader's own instance
+   *  resolves the DID. Nothing about a pointer says it. */
+  const THEIR_STORE = "https://elsewhere.example";
   /** A service whose author has one pointer standing on their own note. */
   function withPointer(over: Record<string, unknown> = {}): SocialService {
     const config = {
@@ -749,29 +775,28 @@ describe("an answer from somebody the reader does not follow", () => {
     } as unknown as ConfigService;
     const pointers = {
       pointersOn: async () => [
-        {
-          voice: STRANGER,
-          where: ELSEWHERE,
-          comment_id: `${STRANGER}:01POINTED`,
-        },
+        { voice: STRANGER, comment_id: `${STRANGER}:01POINTED` },
       ],
       admitsAnswers: async () => true,
       leave: async () => null,
-      forgetNote: async () => {},
       ...over,
     } as unknown as PointerRepository;
     return new SocialService(
       new SyrService(),
       new AssetLinks(config),
       pointers,
+      REACH,
     );
   }
 
   // The whole point: pull-only federation tells an instance nothing, so without
   // the pointer a stranger's answer stays unreachable however long they wait.
-  it("reaches the store a pointer names, though nobody follows it", async () => {
+  it("reaches the store a pointed-at identity is resolved to", async () => {
     const asked: string[] = [];
     vi.spyOn(SyrService.prototype, "listFollowing").mockResolvedValue([]);
+    const resolved = vi
+      .spyOn(SyrService.prototype, "providerFor")
+      .mockResolvedValue(THEIR_STORE);
     vi.spyOn(SyrService.prototype, "listPublicComments").mockImplementation(
       async (where: string) => {
         asked.push(where);
@@ -781,14 +806,36 @@ describe("an answer from somebody the reader does not follow", () => {
 
     await withPointer().comments(DELEGATION, NOTE);
 
-    expect(asked).toContain(ELSEWHERE);
+    // Resolved through the reader's own instance: a depositor vouching for the
+    // identity they claim to be is a depositor vouching for themselves.
+    expect(resolved).toHaveBeenCalledWith(INSTANCE, STRANGER);
+    expect(asked).toContain(THEIR_STORE);
+  });
+
+  it("leaves out a voice whose own store cannot be found", async () => {
+    const asked: string[] = [];
+    vi.spyOn(SyrService.prototype, "listFollowing").mockResolvedValue([]);
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(null);
+    vi.spyOn(SyrService.prototype, "listPublicComments").mockImplementation(
+      async (_where: string, did: string) => {
+        asked.push(did);
+        return [];
+      },
+    );
+
+    await withPointer().comments(DELEGATION, NOTE);
+
+    expect(asked).not.toContain(STRANGER);
   });
 
   it("asks a store once for somebody both followed and pointed at", async () => {
     const asked: string[] = [];
     vi.spyOn(SyrService.prototype, "listFollowing").mockResolvedValue([
-      { followed_did: STRANGER, followed_provider_url: ELSEWHERE },
+      { followed_did: STRANGER, followed_provider_url: THEIR_STORE },
     ] as never);
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(
+      THEIR_STORE,
+    );
     vi.spyOn(SyrService.prototype, "listPublicComments").mockImplementation(
       async (_where: string, did: string) => {
         asked.push(did);
@@ -799,6 +846,45 @@ describe("an answer from somebody the reader does not follow", () => {
     await withPointer().comments(DELEGATION, NOTE);
 
     expect(asked.filter((did) => did === STRANGER)).toHaveLength(1);
+  });
+
+  // A store answering in somebody else's name is the whole reason a pointer is
+  // a claim rather than a copy.
+  it("draws nothing a store says in a name it does not hold", async () => {
+    vi.spyOn(SyrService.prototype, "listFollowing").mockResolvedValue([]);
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(
+      THEIR_STORE,
+    );
+    vi.spyOn(SyrService.prototype, "listPublicComments").mockImplementation(
+      async (_where: string, did: string) =>
+        did === STRANGER
+          ? [comment(THEM, "forged"), comment(STRANGER, "theirs")]
+          : [],
+    );
+
+    const said = await withPointer().comments(DELEGATION, NOTE);
+
+    expect(said.map((one) => one.author)).toEqual([STRANGER]);
+  });
+
+  it("holds a foreign store to the addresses this instance will connect to", async () => {
+    vi.spyOn(SyrService.prototype, "listFollowing").mockResolvedValue([]);
+    vi.spyOn(SyrService.prototype, "providerFor").mockResolvedValue(
+      THEIR_STORE,
+    );
+    const read = vi
+      .spyOn(SyrService.prototype, "listPublicComments")
+      .mockResolvedValue([]);
+
+    await withPointer().comments(DELEGATION, NOTE);
+
+    const own = read.mock.calls.find((call) => call[0] === INSTANCE);
+    const foreign = read.mock.calls.find((call) => call[0] === THEIR_STORE);
+    expect(own?.[3]).toBeUndefined();
+    expect(foreign?.[3]).toEqual({
+      allowPrivate: true,
+      ownOrigin: "https://sloppy.example",
+    });
   });
 
   it("keeps a pointer on a note that takes no answers out of the store", async () => {
@@ -813,7 +899,6 @@ describe("an answer from somebody the reader does not follow", () => {
 
     await service.leaveReply(NOTE, {
       voice: STRANGER,
-      where: ELSEWHERE,
       comment_id: `${STRANGER}:01POINTED`,
     });
 

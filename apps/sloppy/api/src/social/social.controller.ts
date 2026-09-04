@@ -76,8 +76,9 @@ export class NoteConversationController {
   /**
    * Somebody else's instance saying that one of their people answered this
    * note. Public, because the identity leaving it has no relationship with the
-   * author — and safe to be, because it carries no words and is believed only
-   * as far as the store it names will back it up on the way out.
+   * author — and safe to be, because it carries neither words nor a place: it
+   * names an identity, and where that identity's store answers is resolved by
+   * the reader's own instance when the note is read.
    *
    * It always answers 204: whether a bound refused it, or the note takes no
    * answers, is not something a depositor may learn.

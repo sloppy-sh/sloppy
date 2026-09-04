@@ -378,15 +378,16 @@
 					.map((under) => under.root_address)
 			: []
 	);
-	const branch = $derived(
-		publication
-			? {
-					latest: publication.latest,
-					versions: publications.versions(publication.ref),
-					comments: publication.comments
-				}
-			: null
-	);
+	const branch = $derived.by(() => {
+		if (!publication) return null;
+		const earlier = publications.versionBefore(publication.ref);
+		return {
+			latest: publication.latest,
+			versions: publications.versions(publication.ref),
+			...(earlier === undefined ? {} : { earlier }),
+			comments: publication.comments
+		};
+	});
 
 	/**
 	 * True where this branch has changed since the newest version was published.

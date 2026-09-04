@@ -24,11 +24,13 @@ export const STATEMENTS: readonly string[] = [
   `DELETE snapshot_asset WHERE ${OWNED};`,
   `DELETE publication_version WHERE ${OWNED};`,
   `DELETE publication WHERE ${OWNED};`,
+  // Left ON this person's notes by other people, and theirs for the same reason
+  // the notes are: they are the one it was left for.
+  `DELETE comment_pointer WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
   // A held copy of somebody else's region is the reader's row, so it goes with
   // the reader — the author erasing their own identity elsewhere never reaches
   // it, which is the same fact the product states about unpublishing.
-  `DELETE comment_pointer WHERE ${OWNED};`,
   `DELETE pull_member WHERE ${OWNED};`,
   `DELETE pulled_block WHERE ${OWNED};`,
   `DELETE pulled_node WHERE ${OWNED};`,
