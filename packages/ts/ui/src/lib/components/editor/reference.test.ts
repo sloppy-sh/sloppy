@@ -33,23 +33,26 @@ function note(address: string, title: string): NodeView {
 	return { ...NOTE, ref: ref(), address, depth: address.length, title };
 }
 
-/** The notes a graph holds, and what happens when one more is written. */
+const carries = (one: NodeView, query: string) =>
+	!query ||
+	one.address.startsWith(query.toLowerCase()) ||
+	one.title.toLowerCase().includes(query.toLowerCase());
+
+/** The notes a graph holds, and what happens when one more is written.
+ *  `away` are the notes of another graph of the same person. */
 function graph(
 	held: NodeView[],
 	writing: (title: string, relation: 'under' | 'after') => Promise<NodeView> = async () => {
 		throw new Error('That note could not be added. Try again in a moment.');
 	},
-	opened: OwnedRef[] = []
+	opened: OwnedRef[] = [],
+	away: NodeView[] = []
 ): NoteReferences {
 	return {
-		find: (query) =>
-			held.filter(
-				(one) =>
-					!query ||
-					one.address.startsWith(query.toLowerCase()) ||
-					one.title.toLowerCase().includes(query.toLowerCase())
-			),
-		read: async (target) => held.find((one) => one.ref === target) ?? null,
+		find: (query) => held.filter((one) => carries(one, query)),
+		elsewhere: (query) =>
+			away.filter((one) => carries(one, query)).map((note) => ({ note, graph: 'Garden' })),
+		read: async (target) => [...held, ...away].find((one) => one.ref === target) ?? null,
 		write: writing,
 		open: (target) => void opened.push(target)
 	};
@@ -405,6 +408,51 @@ describe('the menu never writes a note by itself', () => {
 		open(graph([]));
 		await type(`[[${'a name that runs on and on '.repeat(4)}`);
 		expect(menu()).toHaveLength(0);
+	});
+});
+
+// The developer's ruling: writing here stays the primary act, and reaching a
+// note in another graph is offered beside it rather than instead of it.
+describe('a note in another of the same person’s graphs', () => {
+	const away = (address: string, title: string) => note(address, title);
+
+	it('is offered under the rows this graph answers with, and after both ways of writing one', async () => {
+		open(
+			graph([note('1b', 'Photosynthesis')], undefined, [], [away('1a', 'Photosynthesis in ferns')])
+		);
+		await type('as in [[photo');
+		const rows = menu().map((row) => (row.textContent ?? '').replace(/\s+/g, ' ').trim());
+		expect(rows).toHaveLength(4);
+		expect(rows[0]).toContain('Photosynthesis');
+		expect(rows[1]).toBe('Write “photo” under this note');
+		expect(rows[2]).toBe('Write “photo” after this note');
+		expect(rows[3]).toContain('Photosynthesis in ferns');
+	});
+
+	// An address means one thing inside one graph, so the row says which one it
+	// came from — and the row for a note in this graph says nothing.
+	it('says which graph it is read in', async () => {
+		open(graph([note('1b', 'Photosynthesis')], undefined, [], [away('1a', 'Beds')]));
+		await type('[[');
+		const rows = menu();
+		expect(rows[0].textContent).not.toContain('Garden');
+		expect(rows.at(-1)?.textContent).toContain('Garden');
+		expect(rows.at(-1)?.getAttribute('aria-label')).toBe('1a Beds, in Garden');
+	});
+
+	it('writes the reference to it, exactly as one to a note here', async () => {
+		const there = away('1a', 'Beds');
+		open(graph([], undefined, [], [there]));
+		await type('[[Beds');
+		tap(menu().at(-1) as HTMLElement);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(referencesIn(writingIn())).toEqual([{ note: there.ref, label: 'Beds' }]);
+	});
+
+	it('offers nothing extra where the person keeps one graph', async () => {
+		open(graph([note('1b', 'Photosynthesis')]));
+		await type('[[photo');
+		expect(menu()).toHaveLength(3);
 	});
 });
 

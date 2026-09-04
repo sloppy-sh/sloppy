@@ -22,6 +22,21 @@
         --font-address: ui-monospace, monospace;
         color-scheme: light;
       }
+      /* The dark family's ends and its own hue slots, so the picture under the
+         field is judged on both sides of the theme axis. */
+      :root[data-theme='dark'] {
+        --graph-ink: oklch(0.905 0.006 250);
+        --graph-paper: oklch(0.215 0.008 260);
+        --facet-1: oklch(0.54 0.13 25);
+        --facet-2: oklch(0.54 0.13 70);
+        --facet-3: oklch(0.54 0.13 115);
+        --facet-4: oklch(0.54 0.13 160);
+        --facet-5: oklch(0.54 0.13 205);
+        --facet-6: oklch(0.54 0.13 250);
+        --facet-7: oklch(0.54 0.13 295);
+        --facet-8: oklch(0.54 0.13 340);
+        color-scheme: dark;
+      }
       * {
         box-sizing: border-box;
       }

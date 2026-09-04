@@ -86,17 +86,49 @@ ships both branches to every platform.
 The part that has to be right first, because peers hold each other's addresses. AI.md § "The
 Address Is the Protocol" states the rules; this is the mechanism.
 
+- A person keeps one or more **graphs**, and an address is read inside one of them. `graph`
+  on a note is the ref of the graph it is in, and `node_owner_graph_address UNIQUE` is what
+  makes an address resolve one way there.
 - Root nodes take integers: `1`, `2`, `3`.
 - A child alternates segment type: `1` → `1a` → `1a1` → `1a1a`.
 - A sibling increments the last segment: `1a` → `1b`.
 - Addresses are assigned at creation and **never change**. Moving a node writes an alias;
-  it never renumbers.
+  it never renumbers. `graph` is immutable for the same reason.
 - The address hashes to a stable **angular sector**, so a subtree radiates in the same
   direction from its origin on every peer's screen. The sector is derived on read, never
-  stored.
+  stored. It is a function of the address alone, so a `1` in each of two graphs seeds the
+  same direction, exactly as two authors' `1`s already do. Nothing in the layout tells them
+  apart. Between two graphs the reader keeps, what keeps it from being a collision is that
+  each is drawn in its own field, offset from the last — DESIGN.md § "Several graphs on one
+  canvas". Between the reader's and another author's, it is that a pulled region is drawn
+  on its own, and § "Federating the graph" is where that rule is held.
 
 Determinism is a property test over generated creation sequences: two simulated peers
-applying identical operations must produce byte-identical addresses.
+applying identical operations must produce byte-identical addresses. The rules above do not
+mention a graph; what a graph decides is which run of siblings the next address follows.
+
+**The home graph.** Everybody has a graph before they open a second one, and its local id is
+reserved — `HOME_GRAPH_ULID` in `@sloppy/types` — so `homeGraphRef(did)` is a function of the
+identity rather than a row to look up, and the boot migration can spell it in SurrealQL.
+`ulid()` writes the current time into a ULID's first ten characters, so nothing minted can
+collide with it. It is listed, named and written into like any other graph; its row is
+written the first time the listing is asked for, which is what gives a rename something to
+rename.
+
+**Absent means the home graph**, on the wire and on a row written before graphs existed.
+The two columns a UNIQUE index reads — `node.graph` and `pulled_node.source_graph` — are the
+exception: they are always present, because SurrealDB does not constrain a row whose indexed
+column is absent, and two rows with no `graph` and one address are both accepted, measured on
+3.1.3. So `schema.ts` fills them once on a store that predates graphs and then declares both
+`TYPE string`, which is what leaves the index holding the address rule rather than the
+application's discipline. `schema.integration.test.ts` holds a store built the old way
+against both halves. `publication.graph` is in no unique index and stays optional.
+
+**The graph travels with a published region.** `PublishedSubtreePage` and
+`PublishedPublication` carry it, because a reader holding two regions of one author cannot
+otherwise tell that author's two `1a`s apart. A region lies in one graph — the branch it is
+rooted at does — so `publishedSubtreeReader` holds every page of a run to the same one, the
+way it holds them to one version.
 
 ## syr integration
 
@@ -378,20 +410,19 @@ what it may name is bounded in three places and none of them is a server's own i
   per publication, so a publication listed twice is refused the way a second note at a
   taken address is.
 
-  Two of those refusals are the address protocol, held on rows a peer handed us. Two
-  notes at one address is `node_owner_address UNIQUE`: our own rows cannot do it, and a
-  copy of somebody else's may not either, or a citation of that author's `1a1` resolves two
-  ways in the reader's graph. Where a note hangs is the other half of the same rule — a
-  mark's position seeds from its address alone, so a genealogy that disagrees with the
-  addresses draws a shape the two peers do not share, and a CYCLE of parents is that
-  disagreement at its worst: our own rows cannot hold one, so the walk up a note's
-  ancestors does not guard against one and the first draw of that region would never
-  return. And every reference is held to its author because the published shape reaches an
-  anonymous caller: a `links` entry naming one of the READER's own notes would otherwise
-  draw a stranger's note into their graph as a link they had drawn themselves. The one
-  timestamp width is the last of them — a signature is over the bytes the author sent, so a
-  published node is not something to normalize on arrival, and one encoding on the wire is
-  what leaves the stored copy checkable.
+  Two of those refusals are the address protocol, held on rows a peer handed us. Two notes at
+  one address is `node_owner_graph_address UNIQUE`, and a region lies in one graph: our own rows
+  cannot do it, and a copy of somebody else's may not either, or a citation of that author's
+  `1a1` resolves two ways in the reader's graph. Where a note hangs is the other half of the
+  same rule — a mark's position seeds from its address alone, so a genealogy that disagrees with
+  the addresses draws a shape the two peers do not share, and a CYCLE of parents is that
+  disagreement at its worst: our own rows cannot hold one, so the walk up a note's ancestors
+  does not guard against one and the first draw of that region would never return. And every
+  reference is held to its author because the published shape reaches an anonymous caller: a
+  `links` entry naming one of the READER's own notes would otherwise draw a stranger's note into
+  their graph as a link they had drawn themselves. The one timestamp width is the last of them —
+  a signature is over the bytes the author sent, so a published node is not something to
+  normalize on arrival, and one encoding on the wire is what leaves the stored copy checkable.
 
   `MAX_PUBLISHED_NODES_PER_PAGE`, `MAX_PUBLISHED_BLOCKS_PER_PAGE`,
   `MAX_PUBLISHED_PUBLICATIONS_PER_PAGE`, `MAX_PUBLISHED_VERSIONS_PER_PAGE` and
@@ -817,8 +848,13 @@ without renaming it. A **ref** below is how one row points at another: the strin
 `created_at` and `updated_at` as **iso** — see the timestamp rule below.
 
 ```
+graph:{ created_by: <did>, id: <ulid> }
+  created_by  did       the owner, flat and immutable
+  title       string    what they call it
+
 node:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
+  graph       ref       the graph its address is read in, immutable
   address     string    Folgezettel, immutable
   depth       int       the address's segment count; a root is 1, immutable
   parent      ref?      absent on a root
@@ -846,10 +882,20 @@ forever, but nothing sweeps the stale refs. Whichever milestone adds a sweep own
 whether it runs on delete or on read; until then the stored array is a superset of what
 resolves.
 
+**A link may cross into another of its author's graphs, and it is an ordinary link.** A
+`links` entry is a ref, and a ref names one note across every graph its author keeps, so
+nothing refuses one that points out of the graph it was written in and the note surface
+resolves and opens it — `GET /api/nodes/{did}/{ulid}` is addressed by ref and is not scoped
+to a graph. The canvas draws the edge wherever both ends are on it — across two fields as
+readily as inside one — and draws none for a target that is not, exactly as it draws none
+for a target in a subtree that is not loaded. What is drawn is a subset of what is stored;
+what is stored resolves either way.
+
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
   root          ref       the subtree it publishes, immutable
   root_address  string    the label a person cites, immutable
+  graph         ref?      the graph that label is read in, immutable; absent is home
   comments      string    who the author invites to answer it
 
 publication_version:{ created_by: <did>, id: <ulid> }
@@ -888,6 +934,7 @@ pull:{ created_by: <did>, id: <ulid> }
   publication   ref       the region, as its author's instance names it, immutable
   version       object    which snapshot this copy is of
   root_address  string    the label the answer carried
+  graph         ref?      the AUTHOR's graph the region is in; absent is their home one
   comments      string    who the author invites, as of the last refresh
   source_url    url       the instance that served it, and the one a refresh asks
   updated_at    iso       when the copy was last refreshed
@@ -901,6 +948,7 @@ pulled_node:{ created_by: <did>, id: <ulid> }
   created_by    did       the reader
   source        ref       the node as its AUTHOR addresses it, immutable
   source_did    did       who wrote it, immutable
+  source_graph  ref       which of their graphs addressed it, immutable
   address       string    where its author addressed it, immutable
   depth         int       the reader's own mint from the address, immutable
   node          object    the published node, carried untouched
@@ -965,13 +1013,16 @@ The rules AI.md's foundation-wave section states, applied here:
 - **`node_tags` is the exception to that, and it is read pinned.** An index over an array
   column holds one entry per element, so `tags = $tag` is a membership seek — but only
   while that index is the one answering it, and plain array equality otherwise. Measured
-  on 3.1.3, an unpinned read the planner hands to another index (an `ORDER BY` is enough)
-  comes back with **zero rows and no error**, and a composite `created_by, tags` fails the
-  same silent way. So the owner is a filter over the seek rather than the leading column,
-  and every tag read is written
+  on 3.1.3, a read the planner hands to any other index comes back with **zero rows and no
+  error**, and a composite `created_by, tags` fails the same silent way. Which index
+  answers a read is the planner's to decide and changes as the index set does, so the pin
+  is the guarantee rather than a workaround: the owner is a filter over the seek rather
+  than the leading column, and every tag read is written
   `FROM node WITH INDEX node_tags WHERE tags = $tag AND created_by = $did`.
   `tags CONTAINS $tag` is always correct and never uses the index; it is not the spelling.
-  `schema.integration.test.ts` holds both halves against a running server.
+  `schema.integration.test.ts` holds both halves against a running server, forcing the
+  failing half with `WITH NOINDEX` so the claim does not rest on which other indexes
+  happen to exist.
 
   **`snapshot_node_owner_source` is pinned for a milder version of the same reason.**
   Asking which versions carry a note orders by version, and the planner prefers an index
@@ -1007,7 +1058,10 @@ The rules AI.md's foundation-wave section states, applied here:
   reader gets.
 - **Nothing derivable from the address is stored, except `depth`** — AI.md § "The Address
   Is the Protocol" states the rule, and this is the one ratified exception to it. The
-  angular sector and subtree membership stay functions in `address.ts`.
+  angular sector and subtree membership stay functions in `address.ts`. `graph` is not an
+  exception and not a derived value: nothing computes which graph a note is in, its author
+  chose one, and it is the scope the address is unique under rather than a fact the address
+  states.
 
   The read that buys the exception is level of detail. It collapses a subtree past a
   threshold measured from the node in focus, which reads at first like something a stored
@@ -1048,7 +1102,10 @@ The rules AI.md's foundation-wave section states, applied here:
 
 Tables are `SCHEMALESS`, and `DEFINE FIELD` is spent only where the database has to enforce
 something the application cannot be trusted to. What qualifies is all of it stated above:
-`node.address` and every table's `created_by`, made immutable with `READONLY`; `created_at`
+`node.address`, `node.graph`, `pulled_node.source_graph` and `publication.graph`, each
+immutable because a row that changed one would move a note into a graph where its address
+may already be taken, or answer for a region it is not a copy of; every table's
+`created_by`, made immutable with `READONLY`; `created_at`
 / `updated_at` as `TYPE string`, which is what makes a write in the wrong encoding fail at
 the write; `node.depth` and `pulled_node.depth`, immutable like the addresses they mirror
 and `TYPE int ASSERT $value > 0`, because a depth is read as a range and a range is where a
@@ -1183,6 +1240,12 @@ section can hold several drawings and prose between them.
 internals. Use a separate `ready` flag for post-mount UI.
 
 ## Tagging a note
+
+**The tag axis is read inside one graph.** `GET /api/nodes/tags` counts the notes of one
+graph — the caller's home graph where they name none — because the rail is the legend for
+the canvas beside it, and a count that includes notes that canvas will never light is a
+number nobody can act on. Selecting tags still intersects sets across the genealogical tree,
+which is the axis AI.md means; what it does not cross is a graph.
 
 `TagPicker`, in `@sloppy/ui`'s `components/tags/`, is the one surface that edits a note's
 tags. It is **controlled and does not persist**:

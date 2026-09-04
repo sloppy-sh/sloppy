@@ -80,6 +80,13 @@ export function mixOklab(from: Oklch, to: Oklch, t: number): Oklch {
   });
 }
 
+/** How far apart two colours look, as a distance in OKLab. */
+export function apart(a: Oklch, b: Oklch): number {
+  const p = toOklab(a);
+  const q = toOklab(b);
+  return Math.hypot(p.l - q.l, p.a - q.a, p.b - q.b);
+}
+
 /** WCAG 2.2 contrast ratio, 1–21, measured on the bytes a display is handed. */
 export function contrastRatio(a: Oklch, b: Oklch): number {
   const la = relativeLuminance(toSrgb8(a));
@@ -94,24 +101,64 @@ export function contrastRatio(a: Oklch, b: Oklch): number {
  * A ramp's far end is the one that runs out of contrast, and a mark that has
  * faded into the paper is not a quieter mark — it is a missing one. Returns
  * `anchor` when even that cannot clear the floor, so this is total.
+ *
+ * Several grounds must ALL be cleared at once, which is what a mark drawn over
+ * a picture is asked for: the ground is then a band rather than one colour, and
+ * clearing its near end alone leaves a fill that has crossed the far one.
  */
 export function raiseToFloor(
   color: Oklch,
-  ground: Oklch,
+  ground: Oklch | readonly Oklch[],
   anchor: Oklch,
   floor: number,
 ): Oklch {
-  if (contrastRatio(color, ground) >= floor) return color;
-  if (contrastRatio(anchor, ground) < floor) return anchor;
+  const clears = clearing(ground, floor);
+  if (clears(color)) return color;
+  if (!clears(anchor)) return anchor;
 
   let lo = 0;
   let hi = 1;
   for (let i = 0; i < 12; i++) {
     const mid = (lo + hi) / 2;
-    if (contrastRatio(mixOklab(anchor, color, mid), ground) >= floor) lo = mid;
+    if (clears(mixOklab(anchor, color, mid))) lo = mid;
     else hi = mid;
   }
   return mixOklab(anchor, color, lo);
+}
+
+/**
+ * `color` moved in LIGHTNESS alone, toward `l`, until it clears `floor` against
+ * every ground — the correction for a colour whose hue is the meaning, since a
+ * set of them pulled toward one anchor converges and stops being a language.
+ * Returns the nearest showable colour, so this is total.
+ */
+export function shadeToFloor(
+  color: Oklch,
+  ground: Oklch | readonly Oklch[],
+  l: number,
+  floor: number,
+): Oklch {
+  const clears = clearing(ground, floor);
+  if (clears(color)) return color;
+  const at = (t: number): Oklch =>
+    intoGamut({ ...color, l: color.l + (l - color.l) * t });
+
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (clears(at(mid))) hi = mid;
+    else lo = mid;
+  }
+  return at(hi);
+}
+
+function clearing(
+  ground: Oklch | readonly Oklch[],
+  floor: number,
+): (color: Oklch) => boolean {
+  const grounds: readonly Oklch[] = Array.isArray(ground) ? ground : [ground];
+  return (color) => grounds.every((g) => contrastRatio(color, g) >= floor);
 }
 
 /** Whether sRGB can show this colour without clipping a channel. */
@@ -150,6 +197,12 @@ export function toOklab({ l, c, h }: Oklch): Oklab {
 export function fromOklab({ l, a, b }: Oklab): Oklch {
   const h = (Math.atan2(b, a) * 180) / Math.PI;
   return { l, c: Math.hypot(a, b), h: h < 0 ? h + 360 : h };
+}
+
+/** {@link toSrgb8} inverted, for a colour arrived at by compositing bytes —
+ *  which is the space a browser lays one layer over another in. */
+export function fromSrgb8(bytes: readonly number[]): Oklch {
+  return fromSrgb([bytes[0] / 255, bytes[1] / 255, bytes[2] / 255]);
 }
 
 /** 8-bit sRGB, gamut-clamped — the bytes a display is handed. */

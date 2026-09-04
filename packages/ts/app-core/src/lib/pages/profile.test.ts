@@ -1,7 +1,8 @@
-import type { ProfileView } from '@sloppy/types';
+import { HOME_GRAPH_TITLE, homeGraphRef, type ProfileView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import { AT, DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { people } from '../stores/people.svelte.js';
 import Profile from './profile.svelte';
@@ -62,9 +63,19 @@ function button(labelled: string): HTMLButtonElement {
 beforeEach(() => {
 	stubBrowser();
 	nodes.clear();
+	graphs.clear();
 	people.hold(null);
 	api = useFakeApi();
 	api.on('GET /profile/me', () => STORED);
+	api.on('GET /graphs', () => [
+		{
+			ref: homeGraphRef(DID),
+			created_by: DID,
+			created_at: AT,
+			updated_at: AT,
+			title: HOME_GRAPH_TITLE
+		}
+	]);
 	api.on('GET /nodes', (url) =>
 		url.searchParams.get('origin')
 			? [node(1, '1'), node(2, '1a', { origin: ROOT, parent: ROOT })]

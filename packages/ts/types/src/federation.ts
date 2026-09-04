@@ -13,6 +13,7 @@ import { addressDepth, AddressSchema } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
 import { DidSyrSchema, OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
+import { requireOwnGraph } from "./graph.js";
 import { NodeDepthMismatchError } from "./node.js";
 import {
   CommentAccessSchema,
@@ -151,6 +152,10 @@ export const PullSchema = OwnedEntitySchema.extend({
   /** The address the author gave the region, as the answer carried it — the
    *  label a reader cites, not what the copy is found by. */
   root_address: AddressSchema,
+  /** Which of the author's graphs the region is in, as the answer carried it:
+   *  the context that address is read in. Absent is the author's home graph,
+   *  which is also what a region served before graphs existed carries. */
+  graph: OwnedRefSchema.optional(),
   /** Who the author invites to answer what is in it, as it stood when the copy
    *  was last refreshed. */
   comments: CommentAccessSchema,
@@ -191,9 +196,16 @@ export const PulledNodeSchema = OwnedEntitySchema.extend({
   /** Its author, beside `source` rather than read out of it, because an index
    *  cannot seek on half a column. `parsePulledNode` holds the two together. */
   source_did: DidSyrSchema,
+  /**
+   * Which of the AUTHOR's graphs it sits in, beside the node for the reason
+   * `source_did` is, and half of what an address is unique under here. Absent
+   * on a copy held before graphs existed, where it reads as the author's home
+   * graph and where `schema.ts` fills it in at boot.
+   */
+  source_graph: OwnedRefSchema.optional(),
   /** `node.address`, beside the node rather than inside it for the same reason,
-   *  and unique per author: an address a peer handed us resolves one way, the
-   *  way our own do. */
+   *  and unique per author's graph: an address a peer handed us resolves one
+   *  way inside it, the way our own do. */
   address: AddressSchema,
   /**
    * `addressDepth(node.address)`, minted here because a published node carries
@@ -228,6 +240,7 @@ export function parsePulledNode(row: unknown): PulledNode {
       `Held node ${pulled.source} says it was written by ${pulled.source_did}`,
     );
   }
+  requireOwnGraph(pulled.source_did, pulled.source_graph);
   return pulled;
 }
 

@@ -22,7 +22,7 @@ import { clamp } from "./color.js";
 import type {
   GraphPickMarks,
   GraphReadingMarks,
-  MarkPictures,
+  GraphPictures,
 } from "./contract.js";
 import type { GraphGround } from "./ground.js";
 import { GroundLayer } from "./ground-layer.js";
@@ -34,6 +34,7 @@ import {
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
   MARK_PICTURE_PX,
+  type NamedField,
   PREVIEW_SPAN,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
@@ -65,6 +66,17 @@ const LABEL_GAP = 6;
 const LABEL_LINE = 15;
 /** A title long enough to crowd its neighbours off the canvas is not a title. */
 const TITLE_CHARS = 32;
+
+/** How many graphs may stand on one canvas, which is how many names this scene
+ *  keeps to write over them. */
+export const MAX_FIELDS = 6;
+/** A graph's name is written over its field, quiet enough to stay ground: it
+ *  says which of them you are in, and nothing about any note. */
+const FIELD_NAME_SIZE = 15;
+const FIELD_NAME_ALPHA = 0.55;
+const FIELD_NAME_CHARS = 36;
+/** What a name held against a screen edge keeps clear of it. */
+const FIELD_NAME_GAP = 10;
 
 /** How far outside a mark the orbit sits. Clear of the edge, so nothing drawn
  *  there reads as the provenance ring DESIGN.md § Form draws ON the edge. */
@@ -132,7 +144,7 @@ export interface SceneOptions {
   palette: GraphPalette;
   resolution: number;
   /** Absent draws every mark without its author's picture. */
-  pictures?: MarkPictures;
+  pictures?: GraphPictures;
 }
 
 export interface FrameStats {
@@ -189,6 +201,7 @@ export class GraphScene {
   private runPairs: number[] = [];
   private linkPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
+  private fieldNames: readonly NamedField[] = [];
   private selecting = false;
   private readonly ground: GroundLayer;
   private picking: GraphPickMarks | null = null;
@@ -224,6 +237,7 @@ export class GraphScene {
     private readonly picks: Graphics,
     private readonly labels: Container,
     private readonly labelPool: LabelSlot[],
+    private readonly fieldPool: Text[],
     private readonly textures: MarkTextures,
     private options: SceneOptions,
   ) {
@@ -307,6 +321,23 @@ export class GraphScene {
       };
     });
 
+    const fieldPool = Array.from({ length: MAX_FIELDS }, () => {
+      const text = new pixi.Text({
+        text: "",
+        style: {
+          fontFamily: options.fonts.ui,
+          fontSize: FIELD_NAME_SIZE,
+          fill: 0xffffff,
+        },
+        resolution: options.resolution,
+      });
+      text.visible = false;
+      text.alpha = FIELD_NAME_ALPHA;
+      text.anchor.set(0.5, 1);
+      labels.addChild(text);
+      return text;
+    });
+
     return new GraphScene(
       pixi,
       app,
@@ -322,6 +353,7 @@ export class GraphScene {
       picks,
       labels,
       labelPool,
+      fieldPool,
       textures,
       options,
     );
@@ -421,8 +453,21 @@ export class GraphScene {
       this.edgesByDepth[depth - 1].push(a, b);
     });
 
+    this.nameFields(model.fields);
     this.modelDirty = true;
     this.positionsDirty = true;
+  }
+
+  /** Setting a `Text`'s string re-rasterises it, so the names are written once
+   *  per model rather than once per frame — only their placing moves. */
+  private nameFields(fields: readonly NamedField[]): void {
+    this.fieldNames = fields.slice(0, this.fieldPool.length);
+    this.fieldPool.forEach((text, at) => {
+      const field = this.fieldNames[at];
+      text.text =
+        field === undefined ? "" : shorten(field.title, FIELD_NAME_CHARS);
+      text.visible = false;
+    });
   }
 
   setPositions(positions: Float32Array): void {
@@ -572,6 +617,7 @@ export class GraphScene {
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
+    if (this.positionsDirty || scaleMoved) this.layoutFieldNames();
 
     this.world.position.set(this.viewport.x, this.viewport.y);
     this.world.scale.set(this.viewport.scale);
@@ -981,6 +1027,44 @@ export class GraphScene {
       held.set(mark.ref, at);
     }
 
+    this.placeMarkLabels(wanted);
+  }
+
+  /**
+   * A graph's name, held over the field it belongs to: pinned to the top of the
+   * screen while the reader is inside that field, gone once the field is not.
+   * DESIGN.md § "Several graphs on one canvas".
+   */
+  private layoutFieldNames(): void {
+    for (const [at, text] of this.fieldPool.entries()) {
+      const field = this.fieldNames[at];
+      if (field === undefined || text.text === "") {
+        text.visible = false;
+        continue;
+      }
+      const left = this.viewport.toScreen(field.minX, field.y).x;
+      const right = this.viewport.toScreen(field.maxX, field.y).x;
+      if (right < 0 || left > this.width) {
+        text.visible = false;
+        continue;
+      }
+      // Held inside its own field as well as inside the screen, so a name never
+      // drifts over the field beside it.
+      const edge = text.width / 2 + FIELD_NAME_GAP;
+      const lowest = Math.max(edge, left);
+      const highest = Math.min(this.width - edge, right);
+      const where = this.viewport.toScreen(field.x, field.y);
+      text.position.set(
+        highest < lowest ? (left + right) / 2 : clamp(where.x, lowest, highest),
+        Math.max(where.y, FIELD_NAME_SIZE + FIELD_NAME_GAP),
+      );
+      text.tint = this.options.palette.ink;
+      text.visible = true;
+    }
+  }
+
+  private placeMarkLabels(wanted: readonly Mark[]): void {
+    const held = this.labelSlots;
     // Placed biggest first, and a label that would land on one already placed is
     // dropped for this frame rather than overprinted. It keeps its slot, so the
     // next pan brings it back without paying to rasterise it again.

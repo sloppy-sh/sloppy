@@ -1,3 +1,4 @@
+import { HOME_GRAPH_ULID } from "@sloppy/types";
 import type { Surreal } from "surrealdb";
 
 /**
@@ -10,11 +11,41 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 }
 
 /**
+ * Widening the address scope from the author to one of their graphs, on a store
+ * that already holds notes. Every note keeps the address, the ref and the
+ * timestamps it had; it gains the graph its author started with.
+ * docs/ARCHITECTURE.md § "The addressing protocol" says why the column is
+ * filled rather than its absence read as the home graph.
+ *
+ * Gated on the index it replaces rather than on the rows, so a store that has
+ * migrated does not scan the table again and one created after this never scans
+ * it at all. The fill runs BEFORE the two columns are defined below, which is
+ * the only order in which it is allowed to.
+ */
+const MIGRATIONS = `
+  LET $node_indexes = (INFO FOR TABLE node).indexes;
+  IF $node_indexes.node_owner_address != NONE {
+    UPDATE node SET graph = string::concat(created_by, "/${HOME_GRAPH_ULID}")
+      WHERE graph = NONE;
+    REMOVE INDEX IF EXISTS node_owner_address ON node;
+  };
+
+  LET $held_indexes = (INFO FOR TABLE pulled_node).indexes;
+  IF $held_indexes.pulled_node_owner_author_address != NONE {
+    UPDATE pulled_node
+      SET source_graph = string::concat(source_did, "/${HOME_GRAPH_ULID}")
+      WHERE source_graph = NONE;
+    REMOVE INDEX IF EXISTS pulled_node_owner_author_address ON pulled_node;
+  };
+`;
+
+/**
  * Tables stay SCHEMALESS; a `DEFINE FIELD` below is an invariant the database
  * has to hold itself rather than trust the application for, and everything else
  * is a plain column. docs/ARCHITECTURE.md § "Data model" says why each qualifies.
  */
 export const SCHEMA = `
+  DEFINE TABLE IF NOT EXISTS graph SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS block SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
@@ -28,9 +59,24 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS pulled_block SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS comment_pointer SCHEMALESS;
 
+${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS depth ON node TYPE int ASSERT $value > 0 READONLY;
+  -- Which of its author's graphs a note is in, and so the context its address
+  -- is read in. Immutable for the reason the address is: a note that moved
+  -- graph would land in one where its address may already be taken, and a
+  -- citation there would resolve two ways.
+  --
+  -- Required on the two columns a UNIQUE address index reads, because a UNIQUE
+  -- index does not constrain a row whose indexed column is absent: leave either
+  -- optional and a row that omits it is a second note at a taken address that
+  -- the database accepts. A publication's graph is in no such index, and old
+  -- rows of it are deliberately not filled.
+  DEFINE FIELD IF NOT EXISTS graph ON node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source_graph ON pulled_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS graph ON publication TYPE option<string> READONLY;
 
+  DEFINE FIELD IF NOT EXISTS created_by ON graph TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON publication TYPE string READONLY;
@@ -92,6 +138,7 @@ export const SCHEMA = `
   -- source is: a row that changed it would be a copy of something else.
   DEFINE FIELD IF NOT EXISTS publication ON pull TYPE string READONLY;
 
+  DEFINE FIELD IF NOT EXISTS created_at ON graph TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON publication TYPE string READONLY;
@@ -104,6 +151,7 @@ export const SCHEMA = `
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_block TYPE string READONLY;
 
+  DEFINE FIELD IF NOT EXISTS updated_at ON graph TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON block TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON publication TYPE string;
@@ -121,12 +169,16 @@ export const SCHEMA = `
   -- and never another row's column. docs/ARCHITECTURE.md § "Data model" says
   -- why, and why most of these lead with created_by.
 
-  -- UNIQUE is the address protocol, enforced: one address per author, so a
+  REMOVE INDEX IF EXISTS node_owner_parent ON node;
+
+  -- UNIQUE is the address protocol, enforced: one address per graph, so a
   -- second row claiming a taken address fails at write rather than becoming a
-  -- citation that resolves two ways.
-  DEFINE INDEX IF NOT EXISTS node_owner_address ON node FIELDS created_by, address UNIQUE;
-  -- The children of a node, which is how the graph walks down a branch.
-  DEFINE INDEX IF NOT EXISTS node_owner_parent ON node FIELDS created_by, parent;
+  -- citation that resolves two ways inside the graph it is read in.
+  DEFINE INDEX IF NOT EXISTS node_owner_graph_address ON node FIELDS created_by, graph, address UNIQUE;
+  -- The children of a node, and — bound to NONE — the branches one graph opens.
+  DEFINE INDEX IF NOT EXISTS node_owner_graph_parent ON node FIELDS created_by, graph, parent;
+  -- Somebody's graphs, which is also the purge's reach.
+  DEFINE INDEX IF NOT EXISTS graph_owner ON graph FIELDS created_by;
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing
   -- AND depth <= $max bounds it to the levels around a focus. One index rather
   -- than two, because the pair is this one's prefix.
@@ -202,11 +254,10 @@ export const SCHEMA = `
   DEFINE INDEX IF NOT EXISTS comment_pointer_owner_voice_comment ON comment_pointer FIELDS created_by, voice, comment_id UNIQUE;
   -- What a note's author reads, and what the per-voice bound is counted over.
   DEFINE INDEX IF NOT EXISTS comment_pointer_owner_note_voice ON comment_pointer FIELDS created_by, note, voice;
-  -- The address protocol on rows a peer handed us: one address per author, so a
-  -- second copy claiming a taken one fails at write rather than becoming a
-  -- citation that resolves two ways. It is also how a held note is reached by
-  -- the address a reader cites.
-  DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_address ON pulled_node FIELDS created_by, source_did, address UNIQUE;
+  -- The address protocol on rows a peer handed us, at the scope it now has: one
+  -- address per author's GRAPH. It is also how a held note is reached by the
+  -- address a reader cites.
+  DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_graph_address ON pulled_node FIELDS created_by, source_did, source_graph, address UNIQUE;
 
   -- Which notes a region served, and which regions still serve a note: the
   -- first is how a refresh finds what to drop, the second is what stops a drop

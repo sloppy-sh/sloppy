@@ -10,6 +10,7 @@
 	import { onMount } from 'svelte';
 	import { api } from '../api.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 
@@ -30,7 +31,9 @@
 		return profile && { profile, person: personFrom(profile) };
 	});
 
-	const branches = $derived(nodes.region());
+	/** Across every graph they keep: what somebody has written is the person's,
+	 *  not one notebook's. */
+	const branches = $derived(graphs.all.flatMap((graph) => nodes.region({ graph: graph.ref })));
 	const written = $derived.by(() => {
 		let total = 0;
 		const walk = (list: NodeView[]) => {
@@ -59,8 +62,13 @@
 
 	async function measureGraph(): Promise<void> {
 		try {
-			const mine = await nodes.load();
-			await Promise.all(mine.map((root) => nodes.load({ origin: root.ref })));
+			const kept = await graphs.load();
+			await Promise.all(
+				kept.map(async (graph) => {
+					const mine = await nodes.load({ graph: graph.ref });
+					await Promise.all(mine.map((root) => nodes.load({ origin: root.ref })));
+				})
+			);
 			measured = true;
 		} catch {
 			// A graph that cannot be reached is the graph page's news to break; here

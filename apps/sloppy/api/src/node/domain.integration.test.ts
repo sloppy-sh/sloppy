@@ -18,6 +18,7 @@ import {
   addressDepth,
   type BlockView,
   compareAddresses,
+  type GraphView,
   MAX_DOCUMENT_NESTING,
   MAX_NOTES_PER_BULK_ACT,
   type NodeBulkResult,
@@ -142,6 +143,16 @@ describe("the domain routes", () => {
     note: note.ref,
   });
   const follows = (note: NodeView) => ({ relation: "after", note: note.ref });
+
+  const newGraph = (person: Person, title: string): Promise<GraphView> =>
+    ok("POST", "/graphs", person, { title }) as Promise<GraphView>;
+
+  const branchesOf = (person: Person, graph?: OwnedRef): Promise<NodeView[]> =>
+    ok(
+      "GET",
+      graph ? `/nodes?graph=${encodeURIComponent(graph)}` : "/nodes",
+      person,
+    ) as Promise<NodeView[]>;
 
   /** Register on this instance's own provider, then spend the consent code the
    *  way a browser does, so the session is a real one. */
@@ -309,6 +320,72 @@ describe("the domain routes", () => {
       expect(bramsOwn.address).toBe("4096");
     });
 
+    scenario(
+      "gives each graph a person keeps its own number line",
+      async () => {
+        // The whole of the ruling, end to end: `1a` is a label read inside one
+        // graph, so two of a person's own graphs each hold one and they are
+        // different notes.
+        const beside = await newGraph(ada, "Beside the first");
+
+        const root = await ok("POST", "/nodes", ada, {
+          from: { relation: "branch", graph: beside.ref },
+          title: "A second notebook",
+        });
+        const opened = root as NodeView;
+        expect(opened.address).toBe("1");
+        expect(opened.graph).toBe(beside.ref);
+
+        const under = await newNode(ada, {
+          from: springsFrom(opened),
+          title: "Under it",
+        });
+        expect(under.address).toBe("1a");
+        // A note placed against another is in that note's graph; nothing said so.
+        expect(under.graph).toBe(beside.ref);
+
+        // The home graph already holds a `1`, and it is somewhere else entirely.
+        const home = await branchesOf(ada);
+        const hers = await branchesOf(ada, beside.ref);
+        expect(home.map((note) => note.address)).toContain("1");
+        expect(hers.map((note) => note.address)).toEqual(["1"]);
+        expect(home.map((note) => note.ref)).not.toContain(opened.ref);
+
+        // A note that follows a BRANCH has no parent to read a graph off, and
+        // takes it off the note it follows: a run continued in the second
+        // notebook stays in the second notebook, and takes the next number on
+        // that notebook's line rather than on the home one's.
+        const next = await newNode(ada, { from: follows(opened) });
+        expect(next.graph).toBe(beside.ref);
+        expect(next.parent).toBeUndefined();
+        expect(next.address).toBe("2");
+
+        // A number this person already used, taken again in the other graph.
+        const numbered = await newNode(ada, {
+          from: { relation: "root", address: "4096", graph: beside.ref },
+        });
+        expect(numbered.address).toBe("4096");
+        expect(numbered.graph).toBe(beside.ref);
+
+        expect(
+          (await branchesOf(ada, beside.ref)).map((note) => note.address),
+        ).toEqual(["1", "2", "4096"]);
+      },
+    );
+
+    scenario("refuses a note in a graph that is not the caller's", async () => {
+      const bramsOwn = await newGraph(bram, "Not hers");
+      for (const graph of [
+        bramsOwn.ref,
+        `${ada.did}/01JGRAPHNTHERE000000000000`,
+      ]) {
+        const answer = await call("POST", "/nodes", ada, {
+          from: { relation: "branch", graph },
+        });
+        expect(answer.status, `${graph} was accepted`).toBe(400);
+      }
+    });
+
     scenario("refuses a number that is not a branch's to hold", async () => {
       for (const address of ["1a", "0", "-3", "", "1.5"]) {
         const answer = await call("POST", "/nodes", ada, {
@@ -386,15 +463,17 @@ describe("the domain routes", () => {
     scenario("survives two writers with no queue in common", async () => {
       const { NodeService } = await import("./node.service");
       const { NodeRepository } = await import("./node.repository");
+      const { GraphService } = await import("./graph.service");
       const { MediaService } = await import("../media/media.service");
       const { PublicationService } = await import(
         "../publication/publication.service"
       );
       const repository = app.get(NodeRepository);
+      const graphs = app.get(GraphService);
       const media = app.get(MediaService);
       const publications = app.get(PublicationService);
-      const one = new NodeService(repository, media, publications);
-      const other = new NodeService(repository, media, publications);
+      const one = new NodeService(repository, graphs, media, publications);
+      const other = new NodeService(repository, graphs, media, publications);
 
       const parent = await newNode(ada, { title: "Two writers" });
       const born = await Promise.all(
@@ -455,8 +534,10 @@ describe("the domain routes", () => {
 
       const rows: unknown[] = [];
       const now = "2026-01-01T00:00:00.000Z";
+      const { homeGraphRef } = await import("@sloppy/types");
       const shared = {
         created_by: bram.did,
+        graph: homeGraphRef(bram.did),
         origin,
         created_at: now,
         updated_at: now,
@@ -860,6 +941,59 @@ describe("the domain routes", () => {
       for (const note of [first, second, under, opened]) {
         expect((await read(note)).links).toEqual([]);
       }
+    });
+  });
+
+  describe("the graphs a person keeps", () => {
+    scenario(
+      "lists the one they started with first, and their own only",
+      async () => {
+        const { homeGraphRef } = await import("@sloppy/types");
+        const listed = (await ok("GET", "/graphs", bram)) as GraphView[];
+
+        expect(listed[0].ref).toBe(homeGraphRef(bram.did));
+        expect(listed.every((graph) => graph.ref.startsWith(bram.did))).toBe(
+          true,
+        );
+
+        const opened = await newGraph(bram, "Field notes");
+        const after = (await ok("GET", "/graphs", bram)) as GraphView[];
+        expect(after[0].ref).toBe(homeGraphRef(bram.did));
+        expect(after.map((graph) => graph.title)).toContain("Field notes");
+      },
+    );
+
+    scenario("renames the one that had no name of its own", async () => {
+      // Everybody has that graph before anything is written down about it, so
+      // naming it is the first thing that is.
+      const { homeGraphRef } = await import("@sloppy/types");
+      const home = homeGraphRef(ada.did);
+      const renamed = (await ok("PATCH", `/graphs/${at(home)}`, ada, {
+        title: "Everything so far",
+      })) as GraphView;
+
+      expect(renamed.ref).toBe(home);
+      expect(renamed.title).toBe("Everything so far");
+
+      const listed = (await ok("GET", "/graphs", ada)) as GraphView[];
+      expect(listed[0].title).toBe("Everything so far");
+    });
+
+    scenario("refuses to name one, or to rename somebody else's", async () => {
+      expect((await call("POST", "/graphs", ada, { title: "" })).status).toBe(
+        400,
+      );
+      const bramsOwn = await newGraph(bram, "His");
+      expect(
+        (
+          await call("PATCH", `/graphs/${at(bramsOwn.ref)}`, ada, {
+            title: "Hers now",
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        ((await ok("GET", "/graphs", bram)) as GraphView[]).map((g) => g.title),
+      ).toContain("His");
     });
   });
 

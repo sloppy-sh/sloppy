@@ -1,7 +1,8 @@
 import type { NodeView, OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import { node, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { prefs } from '../stores/prefs.svelte.js';
 import { session } from '../stores/session.svelte.js';
@@ -374,7 +375,9 @@ function broughtIntoView(address: string): boolean {
 beforeEach(() => {
 	nodes.clear();
 	tags.clear();
+	graphs.clear();
 	api = useFakeApi();
+	session.adopt(VIEWER, 'a-session');
 	installGraph();
 	scrolling.mockClear();
 	Element.prototype.scrollIntoView = scrolling;

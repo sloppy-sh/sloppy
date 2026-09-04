@@ -6,7 +6,13 @@
 import { type Address, parseAddress } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { makeCorpus, mulberry32 } from "../corpus.test-support.js";
-import { seedAddress, seedField } from "./geometry.js";
+import {
+  placeFields,
+  seedAddress,
+  seedBox,
+  type SeedBox,
+  seedField,
+} from "./geometry.js";
 
 const corpus = makeCorpus();
 const addresses = corpus.nodes.map((node) => node.address);
@@ -71,6 +77,53 @@ describe("seedField", () => {
         );
       }
     }
+  });
+});
+
+describe("placeFields", () => {
+  const boxes: SeedBox[] = [
+    { minX: -1400, maxX: 1400, minY: -1400 },
+    { minX: -900, maxX: 2100, minY: -600 },
+    { minX: -1400, maxX: 1400, minY: -1400 },
+  ];
+
+  it("leaves the field being read exactly where it was", () => {
+    for (const many of [1, 2, 3]) {
+      const placed = placeFields(boxes.slice(0, many));
+      expect(placed[0].dx, `${many}`).toBe(0);
+    }
+  });
+
+  it("never lets one field reach into the next", () => {
+    const placed = placeFields(boxes);
+    for (const [at, where] of placed.entries()) {
+      if (at === 0) continue;
+      expect(where.minX).toBeGreaterThan(placed[at - 1].maxX);
+    }
+  });
+
+  it("names each field over the field it belongs to", () => {
+    for (const where of placeFields(boxes)) {
+      expect(where.nameX).toBeGreaterThanOrEqual(where.minX);
+      expect(where.nameX).toBeLessThanOrEqual(where.maxX);
+    }
+  });
+
+  // Two graphs of one person each hold a `1`, which seeds one point — so the
+  // field is what moves, never the place a note has inside it.
+  it("moves a whole field together, and nothing within it", () => {
+    const [, second] = placeFields(boxes.slice(0, 2));
+    const seeds = seedField(["1", "1a", "2"] as Address[]);
+    const moved = [...seeds.values()].map((seed) => seed.x + second.dx);
+    const spans = [...seeds.values()].map((seed) => seed.x);
+    for (const [at, x] of moved.entries()) {
+      expect(x - moved[0]).toBeCloseTo(spans[at] - spans[0], 10);
+    }
+  });
+
+  it("gives a graph with nothing in it a field of its own", () => {
+    const placed = placeFields([boxes[0], seedBox([])]);
+    expect(placed[1].minX).toBeGreaterThan(placed[0].maxX);
   });
 });
 

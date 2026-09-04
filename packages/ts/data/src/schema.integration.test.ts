@@ -11,7 +11,12 @@
 // runs `pnpm test`. `docker compose up -d` is what turns it on.
 
 import { createConnection } from "node:net";
-import { DidSyrSchema, OwnedRefSchema, UlidSchema } from "@sloppy/types";
+import {
+  DidSyrSchema,
+  homeGraphRef,
+  OwnedRefSchema,
+  UlidSchema,
+} from "@sloppy/types";
 import { RecordId, Surreal, Table } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { STATEMENTS } from "./purge.js";
@@ -32,6 +37,9 @@ const AVA = DidSyrSchema.parse("did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva");
 const BOB = DidSyrSchema.parse("did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob");
 const CAI = DidSyrSchema.parse("did:syr:z6MkCaiCaiCaiCaiCaiCaiCaiCaiCaiCai");
 
+/** A graph AVA opened beside the one she started with. */
+const SECOND_GRAPH = OwnedRefSchema.parse(`${AVA}/01JGRAPH2ND000000000000000`);
+
 type NodeRow = ReturnType<typeof nodeRow>;
 
 function nodeId(did: string, localId: string): RecordId {
@@ -50,10 +58,12 @@ function nodeRow(
   localId: string,
   depth = 1,
   origin = `${did}/${localId}`,
+  graph = homeGraphRef(did),
 ) {
   return {
     id: nodeId(did, localId),
     created_by: did,
+    graph,
     address,
     depth,
     origin: OwnedRefSchema.parse(origin),
@@ -103,6 +113,7 @@ function heldNodeRow(localId: string, address: string, depth: number) {
     created_by: AVA,
     source: OwnedRefSchema.parse(`${BOB}/${localId}`),
     source_did: BOB,
+    source_graph: homeGraphRef(BOB),
     address,
     depth,
     node: {
@@ -251,7 +262,7 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     await expect(db.create(row.id).content(row)).rejects.toThrow();
   });
 
-  it("refuses a second node at an address its owner already used", async () => {
+  it("refuses a second node at an address its graph already holds", async () => {
     const first = nodeRow(AVA, "3", "01JADDRESSTAKEN00000000000");
     await db.create(first.id).content(first);
 
@@ -261,6 +272,67 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     // Another author holding the same address is the normal federated case.
     const peer = nodeRow(BOB, "3", "01JADDRESSPEER000000000000");
     await expect(db.create(peer.id).content(peer)).resolves.toBeDefined();
+
+    // And so, now, is another graph of the SAME author holding it: an address
+    // is a label read inside one graph, and the two `3`s are different notes.
+    const beside = nodeRow(
+      AVA,
+      "3",
+      "01JADDRBESDE00000000000000",
+      1,
+      `${AVA}/01JADDRBESDE00000000000000`,
+      SECOND_GRAPH,
+    );
+    await expect(db.create(beside.id).content(beside)).resolves.toBeDefined();
+
+    const again = nodeRow(
+      AVA,
+      "3",
+      "01JADDRBESDE20000000000000",
+      1,
+      `${AVA}/01JADDRBESDE20000000000000`,
+      SECOND_GRAPH,
+    );
+    await expect(db.create(again.id).content(again)).rejects.toThrow();
+
+    // A note cannot be moved into a graph where its address is already taken,
+    // which is what makes the rule above hold for as long as the row exists.
+    await expect(
+      db.update(beside.id).merge({ graph: homeGraphRef(AVA) }),
+    ).rejects.toThrow();
+
+    // And all of it rests on the column being there. A UNIQUE index does not
+    // constrain a row whose indexed column is absent, so a note with no graph
+    // would be a third `3` the database accepts — it is refused at the column
+    // instead, which is what leaves the index rather than the writer holding
+    // the rule.
+    const { graph: _absent, ...graphless } = nodeRow(
+      AVA,
+      "3",
+      "01JADDRNGRAPH0000000000000",
+    );
+    await expect(db.create(graphless.id).content(graphless)).rejects.toThrow();
+  });
+
+  it("reads one graph's branches through the index that ends at the parent", async () => {
+    // Without the graph in the middle this read is "every note the person has
+    // written, filtered to the ones with no parent" — the whole graph scanned
+    // to answer a question about its handful of branches.
+    const BRANCHES = `SELECT address FROM node
+       WHERE created_by = $did AND graph = $graph AND parent = NONE`;
+    const bound = { did: AVA, graph: SECOND_GRAPH };
+
+    const [plan] = await db.query(`${BRANCHES} EXPLAIN;`, bound);
+    const explained = JSON.stringify(plan);
+    expect(explained).toContain('"index":"node_owner_graph_parent"');
+    expect(explained).toContain(SECOND_GRAPH);
+    expect(explained).not.toContain('"operator":"Filter"');
+
+    const [branches] = await db.query<[{ address: string }[]]>(
+      `${BRANCHES};`,
+      bound,
+    );
+    expect(branches.map((row) => row.address)).toEqual(["3"]);
   });
 
   it("refuses a timestamp that is not a string", async () => {
@@ -346,14 +418,15 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     );
     expect(carriers.map((row) => row.address)).toEqual(["8", "8a"]);
 
-    // The trap the pin exists for, held against the server so that the day it
-    // stops being true is a failing test rather than a silent one.
-    const [unpinned] = await db.query<[{ address: string }[]]>(
-      `SELECT address FROM node
+    // The trap the pin exists for, forced rather than waited for: the planner
+    // decides which index answers a read, and everywhere but `node_tags` the
+    // same equality is plain array comparison — no rows, no error.
+    const [elsewhere] = await db.query<[{ address: string }[]]>(
+      `SELECT address FROM node WITH NOINDEX
          WHERE tags = $tag AND created_by = $did ORDER BY address;`,
       bound,
     );
-    expect(unpinned).toEqual([]);
+    expect(elsewhere).toEqual([]);
 
     const [counts] = await db.query<[{ tag: string; notes: number }[]]>(
       `SELECT tags AS tag, count() AS notes
@@ -482,9 +555,10 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     expect(shared).toHaveLength(1);
   });
 
-  it("refuses a second held note at an address it already holds of one author", async () => {
-    // `node_owner_address UNIQUE` on rows a peer handed us: a citation of that
-    // author's `4a` has to resolve one way in the reader's copy too.
+  it("refuses a second held note at an address it already holds of one graph", async () => {
+    // `node_owner_graph_address UNIQUE` on rows a peer handed us: a citation of
+    // that author's `4a` has to resolve one way in the reader's copy too, and
+    // "one way" is now one way inside the graph the region came from.
     const first = heldNodeRow("01JPEERADDRA00000000000000", "4a", 2);
     await db.create(first.id).content(first);
 
@@ -497,14 +571,38 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
       ...heldNodeRow("01JPEERADDRC00000000000000", "4a", 2),
       source: OwnedRefSchema.parse(`${CAI}/01JPEERADDRC00000000000000`),
       source_did: CAI,
+      source_graph: homeGraphRef(CAI),
     };
     await expect(
       db.create(elsewhere.id).content(elsewhere),
     ).resolves.toBeDefined();
 
+    // And two notebooks of ONE author is the case this scope exists for: a
+    // reader who pulls a region from each holds both `4a`s.
+    const otherNotebook = {
+      ...heldNodeRow("01JPEERADDRD00000000000000", "4a", 2),
+      source_graph: OwnedRefSchema.parse(`${BOB}/01JGRAPHBRAM2N000000000000`),
+    };
     await expect(
-      db.update(first.id).merge({ address: "4b" }),
-    ).rejects.toThrow();
+      db.create(otherNotebook.id).content(otherNotebook),
+    ).resolves.toBeDefined();
+
+    for (const reassignment of [
+      { address: "4b" },
+      { source_graph: `${BOB}/01JGRAPHBRAM2N000000000000` },
+    ]) {
+      await expect(db.update(first.id).merge(reassignment)).rejects.toThrow();
+    }
+
+    // A held copy with no graph on it is one the unique index above cannot
+    // constrain at all, so the column is required here for the reason
+    // `node.graph` is.
+    const { source_graph: _absent, ...graphless } = heldNodeRow(
+      "01JPEERADDRE00000000000000",
+      "4a",
+      2,
+    );
+    await expect(db.create(graphless.id).content(graphless)).rejects.toThrow();
   });
 
   it("records which region served a note, and reads it both ways", async () => {
@@ -751,5 +849,116 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The store somebody already has.
+//
+// Every note written before a person could keep more than one graph is in the
+// graph they started with, and none of them may lose the address rule on the
+// way — a person with seven thousand notes is holding seven thousand addresses
+// that have to keep resolving one way each.
+// ---------------------------------------------------------------------------
+
+/** The `node` and `pulled_node` shape as it stood before graphs, enough of it
+ *  to hold rows and to enforce the address rule the old way. */
+const BEFORE_GRAPHS = `
+  DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS pulled_node SCHEMALESS;
+  DEFINE FIELD IF NOT EXISTS created_by ON node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source_did ON pulled_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS address ON pulled_node TYPE string READONLY;
+  DEFINE INDEX IF NOT EXISTS node_owner_address ON node FIELDS created_by, address UNIQUE;
+  DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_address ON pulled_node FIELDS created_by, source_did, address UNIQUE;
+`;
+
+describe.skipIf(!listening)("a store written before graphs existed", () => {
+  const DATABASE_BEFORE = `before_graphs_${Date.now()}`;
+  let db: Surreal;
+
+  beforeAll(async () => {
+    db = new Surreal();
+    await db.connect(ENDPOINT.href);
+    await db.signin({ username: USER, password: PASS });
+    await db.use({ namespace: NAMESPACE, database: DATABASE_BEFORE });
+    await db.query(BEFORE_GRAPHS);
+    for (const [address, localId] of [
+      ["1", "01JPREGRAPHA00000000000000"],
+      ["1a", "01JPREGRAPHB00000000000000"],
+      ["2", "01JPREGRAPHC00000000000000"],
+    ] as const) {
+      const { graph: _graph, ...before } = nodeRow(AVA, address, localId);
+      await db.create(before.id).content(before);
+    }
+    const { source_graph: _source, ...held } = heldNodeRow(
+      "01JPREGRAPHD00000000000000",
+      "1",
+      1,
+    );
+    await db.create(held.id).content(held);
+
+    await defineCoreSchema(db);
+    // Twice, because the fill is part of a script that runs on every boot.
+    await defineCoreSchema(db);
+  });
+
+  afterAll(async () => {
+    if (!db) return;
+    await db.query(`REMOVE DATABASE IF EXISTS ${DATABASE_BEFORE};`);
+    await db.close();
+  });
+
+  it("files every note it already held in the graph its author started with", async () => {
+    const [rows] = await db.query<[{ address: string; graph: string }[]]>(
+      "SELECT address, graph FROM node ORDER BY address;",
+    );
+    expect(rows).toEqual([
+      { address: "1", graph: homeGraphRef(AVA) },
+      { address: "1a", graph: homeGraphRef(AVA) },
+      { address: "2", graph: homeGraphRef(AVA) },
+    ]);
+
+    const [held] = await db.query<[{ source_graph: string }[]]>(
+      "SELECT source_graph FROM pulled_node;",
+    );
+    expect(held).toEqual([{ source_graph: homeGraphRef(BOB) }]);
+  });
+
+  it("keeps every address resolving one way inside that graph", async () => {
+    // The rule the old index held, still held — and the whole reason the column
+    // is filled rather than its absence read as the home graph: a UNIQUE index
+    // does not constrain a row whose indexed column is absent.
+    const clash = nodeRow(AVA, "1", "01JPREGRAPHRETAKE000000000");
+    await expect(db.create(clash.id).content(clash)).rejects.toThrow();
+
+    const beside = nodeRow(
+      AVA,
+      "1",
+      "01JPREGRAPHBESDE0000000000",
+      1,
+      `${AVA}/01JPREGRAPHBESDE0000000000`,
+      SECOND_GRAPH,
+    );
+    await expect(db.create(beside.id).content(beside)).resolves.toBeDefined();
+  });
+
+  it("leaves the notes themselves alone", async () => {
+    const stored = await db.select<NodeRow>(
+      nodeId(AVA, "01JPREGRAPHA00000000000000"),
+    );
+    expect(stored?.address).toBe("1");
+    expect(stored?.created_at).toBe("2026-01-01T00:00:00.000Z");
+    expect(stored?.updated_at).toBe("2026-01-01T00:00:00.000Z");
+    expect(stored?.origin).toBe(`${AVA}/01JPREGRAPHA00000000000000`);
+  });
+
+  it("has taken the index it replaced off the store", async () => {
+    const [info] = await db.query<[{ indexes: Record<string, string> }]>(
+      "INFO FOR TABLE node;",
+    );
+    expect(Object.keys(info.indexes)).not.toContain("node_owner_address");
+    expect(Object.keys(info.indexes)).toContain("node_owner_graph_address");
   });
 });

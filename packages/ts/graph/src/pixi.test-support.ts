@@ -19,7 +19,12 @@ export class FakeContainer {
   eventMode = "auto";
   x = 0;
   y = 0;
-  readonly position = { set: () => {} };
+  readonly position = {
+    set: (x: number, y: number) => {
+      this.x = x;
+      this.y = y;
+    },
+  };
   readonly scale = { set: () => {} };
   addChild(...kids: FakeContainer[]): void {
     this.children.push(...kids);

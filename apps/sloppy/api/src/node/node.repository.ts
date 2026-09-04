@@ -5,6 +5,7 @@ import { Injectable } from "@nestjs/common";
 import {
   type Address,
   compareAddresses,
+  homeGraphRef,
   isAncestorAddress,
   type Node,
   type NodeAppearance,
@@ -40,10 +41,16 @@ export type NodeBulkPatch = Partial<Pick<Node, "tags">> & {
 export class NodeRepository {
   constructor(private readonly db: DbService) {}
 
-  async roots(did: string): Promise<Node[]> {
+  /** The branches one graph opens, the caller's home graph where none is
+   *  named. */
+  async roots(
+    did: string,
+    graph: OwnedRef = homeGraphRef(did),
+  ): Promise<Node[]> {
     return this.read(
-      "SELECT * FROM node WHERE created_by = $did AND parent = NONE",
-      { did },
+      `SELECT * FROM node
+         WHERE created_by = $did AND graph = $graph AND parent = NONE`,
+      { did, graph },
     );
   }
 
@@ -74,18 +81,24 @@ export class NodeRepository {
 
   /**
    * The addresses already taken among the children of `parent`, or among the
-   * roots when it is absent.
+   * branches of `graph` when there is no parent — which is why a graph is asked
+   * for beside the parent that would otherwise name one.
    *
    * Children are read through the tree-and-level index rather than through
    * `parent`: measured on 3.1.3, an equality on `parent` bound as a parameter
    * is left as a filter over the whole owner, while `origin` and `depth` fold
    * into the index access.
    */
-  async childAddresses(did: string, parent: Node | null): Promise<Address[]> {
+  async childAddresses(
+    did: string,
+    parent: Node | null,
+    graph: OwnedRef,
+  ): Promise<Address[]> {
     if (parent === null) {
       const [rows] = await this.query<string>(
-        "SELECT VALUE address FROM node WHERE created_by = $did AND parent = NONE",
-        { did },
+        `SELECT VALUE address FROM node
+           WHERE created_by = $did AND graph = $graph AND parent = NONE`,
+        { did, graph },
       );
       return rows;
     }
@@ -103,10 +116,18 @@ export class NodeRepository {
     return rows;
   }
 
-  async addressTaken(did: string, address: Address): Promise<boolean> {
+  /** Whether one graph already holds this address. Another graph of the same
+   *  person holding it is not this question. */
+  async addressTaken(
+    did: string,
+    graph: OwnedRef,
+    address: Address,
+  ): Promise<boolean> {
     const [rows] = await this.query<string>(
-      "SELECT VALUE address FROM node WHERE created_by = $did AND address = $address LIMIT 1",
-      { did, address },
+      `SELECT VALUE address FROM node
+         WHERE created_by = $did AND graph = $graph AND address = $address
+         LIMIT 1`,
+      { did, graph, address },
     );
     return rows.length > 0;
   }
@@ -198,18 +219,23 @@ export class NodeRepository {
   }
 
   /**
-   * The owner's tags, most-used first, ties alphabetical. Counted from the
-   * notes on every call because that is where a tag lives: there is no row to
-   * keep in step, and so no way for the count to be wrong.
+   * The tags carried inside ONE graph, most-used first, ties alphabetical —
+   * what the rail beside a canvas drawing that graph is a legend for. Counted
+   * from the notes on every call because that is where a tag lives: there is no
+   * row to keep in step, and so no way for the count to be wrong.
    */
-  async tagCounts(did: string): Promise<TagCount[]> {
+  async tagCounts(
+    did: string,
+    graph: OwnedRef = homeGraphRef(did),
+  ): Promise<TagCount[]> {
     const [rows] = await this.query<TagCount>(
       `SELECT tags AS tag, count() AS notes
          FROM (SELECT tags FROM node
-                 WHERE created_by = $did AND array::len(tags ?? []) > 0
+                 WHERE created_by = $did AND graph = $graph
+                   AND array::len(tags ?? []) > 0
                  SPLIT tags)
          GROUP BY tag ORDER BY notes DESC, tag ASC`,
-      { did },
+      { did, graph },
     );
     return rows.map((row) => TagCountSchema.parse(row));
   }

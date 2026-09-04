@@ -10,13 +10,18 @@ import type { NoteReferences } from './contract.js';
 import { citedAs, REFERENCE_NODE } from './reference-node.js';
 
 const SHOWN = 6;
+/** How many notes from the author's other graphs are offered beside them. Fewer,
+ *  because writing here is the primary act and reaching across is the second. */
+const SHOWN_ELSEWHERE = 4;
 /** Past this many characters what follows `[[` is a sentence rather than a name,
  *  and the menu lets go of it. */
 const NAME_LIMIT = 80;
 
-/** A note to reference, or a note to write and then reference. */
+/** A note to reference, or a note to write and then reference. `graph` is what
+ *  the author calls the graph a note is in, and is carried only for one in
+ *  another graph than the note being written. */
 export type NoteChoice =
-	| { kind: 'note'; note: NodeView }
+	| { kind: 'note'; note: NodeView; graph?: string }
 	| { kind: 'make'; name: string; relation: 'under' | 'after' };
 
 const COULD_NOT_WRITE = 'That note could not be added. Try again in a moment.';
@@ -109,7 +114,13 @@ function choicesFor(query: string, references: NoteReferences | undefined): Note
 	if (name.length > NAME_LIMIT) return [];
 	const found = references.find(name);
 	const cite = (note: NodeView): NoteChoice => ({ kind: 'note', note });
-	if (!name) return found.slice(0, SHOWN).map(cite);
+	// Writing a note here stays the primary act, so what is offered from another
+	// graph comes after it rather than in front of it.
+	const away: NoteChoice[] = references
+		.elsewhere(name)
+		.slice(0, SHOWN_ELSEWHERE)
+		.map(({ note, graph }) => ({ kind: 'note', note, graph }));
+	if (!name) return [...found.slice(0, SHOWN).map(cite), ...away];
 
 	const wanted = name.toLowerCase();
 	// A name a note already carries is that note, wherever its address sorts it,
@@ -119,11 +130,12 @@ function choicesFor(query: string, references: NoteReferences | undefined): Note
 	const shown = [...carrying, ...found.filter((note) => note.title.toLowerCase() !== wanted)]
 		.slice(0, SHOWN)
 		.map(cite);
-	if (carrying.length > 0) return shown;
+	if (carrying.length > 0) return [...shown, ...away];
 	return [
 		...shown,
 		{ kind: 'make', name, relation: 'under' },
-		{ kind: 'make', name, relation: 'after' }
+		{ kind: 'make', name, relation: 'after' },
+		...away
 	];
 }
 

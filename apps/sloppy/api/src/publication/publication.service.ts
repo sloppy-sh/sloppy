@@ -346,6 +346,7 @@ export class PublicationService {
         created_by: did,
         root: ref,
         root_address: root.address,
+        graph: root.graph,
         comments: DEFAULT_COMMENT_ACCESS,
         identity_store: store,
         created_at: now,

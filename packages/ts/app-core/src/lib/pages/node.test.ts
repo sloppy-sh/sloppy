@@ -6,8 +6,10 @@ import type {
 	OwnedRef,
 	Tag
 } from '@sloppy/types';
+import { homeGraphRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import {
@@ -1193,5 +1195,127 @@ describe('how a note looks', () => {
 		expect(screen()).toContain('That look is more than a note can carry.');
 		expect(screen()).not.toContain('Sloppy API');
 		expect(exactly('Heavy').getAttribute('aria-pressed')).toBe('false');
+	});
+});
+
+// The developer's ruling: a link across graphs behaves exactly like a link
+// within one, and means the same thing from both ends.
+describe('linking a note to one in another graph', () => {
+	const GARDEN = ref(30);
+	const BEDS = ref(31);
+	const HOME = homeGraphRef(DID);
+	let graph: Map<OwnedRef, NodeView>;
+
+	function listedGraph(self: OwnedRef, title: string) {
+		return { ref: self, created_by: DID, created_at: AT, updated_at: AT, title };
+	}
+
+	beforeEach(async () => {
+		graphs.clear();
+		graph = installGraph();
+		graph.set(BEDS, node(31, '1', { title: 'Beds', graph: GARDEN }));
+		api.on('GET /graphs', () => [listedGraph(HOME, 'My graph'), listedGraph(GARDEN, 'Garden')]);
+		api.on(`GET ${path(BEDS)}`, () => graph.get(BEDS) ?? null);
+		api.on(`GET ${path(BEDS)}/blocks`, () => []);
+		api.on('GET /nodes', (url) => {
+			const origin = url.searchParams.get('origin');
+			if (origin) {
+				return [...graph.values()].filter((n) => n.origin === origin && n.ref !== origin);
+			}
+			const of = url.searchParams.get('graph') ?? HOME;
+			return [...graph.values()].filter((n) => n.ref === n.origin && (n.graph ?? HOME) === of);
+		});
+		await loadGraph();
+	});
+
+	it('offers it to link to, saying which graph it is read in', async () => {
+		await openNote(SECOND);
+		await until(() => nodes.get(BEDS) !== undefined);
+		await findToLink('beds');
+
+		expect(offered()).toContain('Beds');
+		expect(offered()).toContain('Garden');
+	});
+
+	it('links to it, and the row says which graph it went to', async () => {
+		await openNote(SECOND);
+		await until(() => nodes.get(BEDS) !== undefined);
+		await findToLink('beds');
+		noteRow('Beds').click();
+		await settle();
+		await settle();
+
+		expect(graph.get(SECOND)?.links).toEqual([BEDS]);
+		expect(labelled('1 Beds, in Garden')).toBeTruthy();
+	});
+
+	it('tells the note in the other graph where the link came from', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, links: [BEDS] });
+		nodes.clear();
+		await loadGraph();
+		await openNote(BEDS);
+		await until(() => screen().includes('Linked from'));
+
+		expect(noteRow('Cells')).toBeTruthy();
+		expect(labelled('1a Cells, in My graph')).toBeTruthy();
+	});
+
+	/** Garden will not read; every other graph answers as it did. */
+	function gardenWillNotRead(): void {
+		api.on('GET /nodes', (url) => {
+			const origin = url.searchParams.get('origin');
+			if (origin) {
+				return [...graph.values()].filter((n) => n.origin === origin && n.ref !== origin);
+			}
+			const of = url.searchParams.get('graph') ?? HOME;
+			if (of === GARDEN) throw new Error('unreachable');
+			return [...graph.values()].filter((n) => n.ref === n.origin && (n.graph ?? HOME) === of);
+		});
+	}
+
+	it('never says there is no such note while a graph has not read', async () => {
+		gardenWillNotRead();
+		nodes.clear();
+		await loadGraph();
+		await openNote(SECOND);
+		await findToLink('beds');
+		await until(() => screen().includes('Look again'));
+
+		expect(screen()).not.toContain('Nothing here matches that.');
+	});
+
+	it('reads the graphs after one that will not read', async () => {
+		const COMPOST = ref(40);
+		const HEAP = ref(41);
+		graph.set(HEAP, node(41, '1', { title: 'Heaps', graph: COMPOST }));
+		api.on('GET /graphs', () => [
+			listedGraph(HOME, 'My graph'),
+			listedGraph(GARDEN, 'Garden'),
+			listedGraph(COMPOST, 'Compost')
+		]);
+		gardenWillNotRead();
+		api.on(`GET ${path(HEAP)}`, () => graph.get(HEAP) ?? null);
+		nodes.clear();
+		await loadGraph();
+		await openNote(SECOND);
+		await until(() => nodes.get(HEAP) !== undefined);
+		await findToLink('heap');
+
+		expect(offered()).toContain('Heaps');
+		expect(offered()).toContain('Compost');
+	});
+
+	// Deleting either end does what it does within one graph: the note goes, and
+	// the ref left behind stops resolving.
+	it('says so at the near end once the far note is gone', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, links: [BEDS] });
+		nodes.clear();
+		await loadGraph();
+		graph.delete(BEDS);
+		nodes.forget(BEDS);
+		await openNote(SECOND);
+		await until(() => screen().includes('A note that is no longer here.'));
+
+		expect(screen()).toContain('A note that is no longer here.');
 	});
 });

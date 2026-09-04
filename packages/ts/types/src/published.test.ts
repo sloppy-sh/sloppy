@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyDocument } from "./document.js";
+import { homeGraphRef } from "./graph.js";
 import {
   MAX_PUBLISHED_NODES_PER_PAGE,
   MAX_PUBLISHED_PAGES,
@@ -149,6 +150,32 @@ describe("a region a peer answered with", () => {
     );
   });
 
+  it("is refused when a later page is in another of the author's graphs", () => {
+    // An address is a label read inside one graph, so a region spliced out of
+    // two would hand the reader a tree whose addresses mean two things.
+    const reader = publishedSubtreeReader(asked);
+    reader.take(subtree({ graph: `${AUTHOR}/${ulid(50)}`, next_cursor: "m" }));
+    expect(() =>
+      reader.take(nextPage({ graph: `${AUTHOR}/${ulid(51)}` })),
+    ).toThrow(UnaskedAnswerError);
+  });
+
+  it("reads an absent graph and the home graph's own ref as one graph", () => {
+    // A peer that names the graph a region is in has not changed its answer
+    // half way through by naming the one an earlier page left unsaid.
+    const reader = publishedSubtreeReader(asked);
+    reader.take(subtree({ next_cursor: "more" }));
+    expect(() =>
+      reader.take(nextPage({ graph: homeGraphRef(AUTHOR) })),
+    ).not.toThrow();
+  });
+
+  it("is refused when the graph it names is somebody else's", () => {
+    expect(() =>
+      takeWhole(subtree({ graph: `${STRANGER}/${ulid(50)}` })),
+    ).toThrow(UnaskedAnswerError);
+  });
+
   it("is taken when the invitation on it is one this build has never heard of", () => {
     // A narrower invitation is a value somebody else's build may already have.
     // Refusing the page would cost the reader every note in the region over a
@@ -199,10 +226,10 @@ describe("a region a peer answered with", () => {
   });
 
   it("is refused when two notes claim one address", () => {
-    // `node_owner_address UNIQUE` is the address protocol on our own rows: a
-    // second note at a taken address is a citation that resolves two ways. A
-    // peer's answer is held to it too, and the region's own root included —
-    // otherwise which of the two is the root is whichever arrived first.
+    // A second note at a taken address is a citation that resolves two ways,
+    // which our own rows cannot hold. A peer's answer is held to the same rule,
+    // and the region's own root included — otherwise which of the two is the
+    // root is whichever arrived first.
     const twoBelow = subtree();
     twoBelow.nodes = [
       ...twoBelow.nodes,

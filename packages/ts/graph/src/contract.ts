@@ -5,6 +5,16 @@
 import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
 import type { GraphGround } from "./ground.js";
 
+/**
+ * A graph on the canvas: the ref its notes carry, and what its owner calls it.
+ * Several of them draw as fields side by side, each named at its own field —
+ * DESIGN.md § "Several graphs on one canvas".
+ */
+export interface GraphField {
+  ref: OwnedRef;
+  title: string;
+}
+
 /** The notes a picking canvas outlines, so a tap is answered before it lands. */
 export interface GraphPickMarks {
   /** The note the choice is being made for. */
@@ -39,16 +49,32 @@ export interface GraphReadingMarks {
 }
 
 /**
- * How a mark's preview picture reaches the canvas: the host resolves one,
- * because this package reaches no server and a raw remote URL in a texture is
- * the privacy bug it is in an `<img>`.
+ * How a picture reaches the canvas — a mark's preview, and the ground's own:
+ * the host resolves one, because this package reaches no server and a raw
+ * remote URL in a texture is the privacy bug it is in an `<img>`.
  *
  * `null` is nothing to draw — a picture the store no longer holds included — and
- * the mark then draws exactly as a mark with no picture. `release` frees
- * whatever `src` held; the canvas calls it once the bytes are on the GPU.
+ * what asked for it then draws exactly as it does with no picture. `release`
+ * frees whatever `src` held; the canvas calls it once it is done with the bytes.
  */
-export interface MarkPictures {
-  read(preview: string): Promise<{ src: string; release: () => void } | null>;
+export interface GraphPictures {
+  read(picture: string): Promise<{ src: string; release: () => void } | null>;
+}
+
+/**
+ * A picture under the field — a ground, like the paper it is laid behind, and
+ * nothing about any note. DESIGN.md § "The wallpaper".
+ */
+export interface GraphWallpaper {
+  /** The picture showing, named as {@link GraphSurfaceProps.pictures} resolves
+   *  one. `null` draws no wallpaper. */
+  picture: string | null;
+  /**
+   * How much of it the reader asked for, 0–1 of what this ground can carry.
+   * What that is comes from the theme — `paperCeiling` in `palette.ts` — so a
+   * host asking for 1 gets the most the floors allow rather than a raw picture.
+   */
+  strength: number;
 }
 
 /** Where a menu was asked for, and what it was asked on. */
@@ -83,6 +109,13 @@ export interface GraphHoverAt {
 export interface GraphSurfaceProps {
   /** The region to draw, in address order. */
   nodes: readonly NodeView[];
+  /**
+   * The graphs on the canvas, in the order the reader put them there. Fewer
+   * than two is one field, drawn where the addresses alone put it and named
+   * only in the chrome: with nothing to tell apart there is no question for a
+   * name on the canvas to answer.
+   */
+  fields?: readonly GraphField[];
   /** Subtree roots to draw as one mega-node — {@link drawnNodes}. */
   collapsed: ReadonlySet<OwnedRef>;
   /**
@@ -123,7 +156,7 @@ export interface GraphSurfaceProps {
   reading?: GraphReadingMarks;
   /** Read once, as the canvas starts: absent draws every mark without the
    *  picture its author gave it. */
-  pictures?: MarkPictures;
+  pictures?: GraphPictures;
   /**
    * The notes somebody has picked out to act on — DESIGN.md § "The mark" calls
    * this the chosen set, and never a selection, because `selection` above is
@@ -155,6 +188,9 @@ export interface GraphSurfaceProps {
    * notes say. Absent draws no ground at all.
    */
   ground?: GraphGround;
+  /** A picture behind that paper. Absent is the plain theme, and the two are
+   *  independent: a reader may have either, both or neither. */
+  wallpaper?: GraphWallpaper;
   onOpenNode: (ref: OwnedRef) => void;
   /** Draw this mega-node's subtree instead of folding it. */
   onExpand: (ref: OwnedRef) => void;

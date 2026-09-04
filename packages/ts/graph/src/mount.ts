@@ -18,9 +18,16 @@ import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
 import { applyLod, DEFAULT_BUDGET, type LodBudget } from "./lod.js";
 import { buildModel, type GraphEdgeAttributes } from "./model.js";
-import { type GraphPalette, readPalette } from "./palette.js";
+import {
+  buildPalette,
+  type GraphPalette,
+  paperCeiling,
+  type PaletteTokens,
+  readPaletteTokens,
+} from "./palette.js";
 import { type FrameStats, GraphScene } from "./scene.js";
 import type { Bounds, Point, Viewport } from "./viewport.js";
+import { WallLayer } from "./wall.js";
 
 /** How hard each kind of edge pulls: the tree holds its shape, an association
  *  crossing it barely tugs. */
@@ -83,8 +90,12 @@ export function mountGraph(
     "touch-action:none;overscroll-behavior:contain;user-select:none;" +
     "-webkit-user-select:none;-webkit-tap-highlight-color:transparent";
 
+  // Positioned, so the wallpaper before it in the surface paints beneath it.
+  // An unpositioned canvas paints under EVERY positioned sibling, tree order
+  // notwithstanding, which would put the picture over the field.
   const canvas = document.createElement("canvas");
-  canvas.style.cssText = "display:block;width:100%;height:100%";
+  canvas.style.cssText =
+    "position:relative;display:block;width:100%;height:100%";
 
   const ink = document.createElement("div");
   ink.dataset.graphInk = "";
@@ -99,16 +110,28 @@ export function mountGraph(
     "border:1px solid color-mix(in oklab, currentColor 55%, transparent);" +
     "background:color-mix(in oklab, currentColor 8%, transparent)";
 
-  surface.append(canvas, ink, sweep);
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const wall = new WallLayer(reduced);
+
+  surface.append(wall.element, canvas, ink, sweep);
   host.append(surface);
 
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
   const fonts = readFonts(host);
 
   let props = options;
   let scene: GraphScene | null = null;
   let detachGestures: (() => void) | null = null;
-  let palette: GraphPalette = readPalette(host);
+  let tokens: PaletteTokens = readPaletteTokens(host);
+  // Held back rather than computed: the walk-up and its bisections cost several
+  // milliseconds of the first paint, and buy nothing for a reader who has
+  // chosen no picture.
+  let ceilingNow: number | null = null;
+  const ceiling = (): number => (ceilingNow ??= paperCeiling(tokens));
+  let presence = presenceOf(props, ceiling);
+  let palette: GraphPalette = buildPalette(tokens, presence);
+  // Before the renderer is up: the picture is the reader's ground, and it has
+  // nothing to wait for.
+  wall.show(options.wallpaper?.picture ?? null, options.pictures, presence);
   let focus = options.focus;
   let epoch = 0;
   let settled = false;
@@ -153,6 +176,7 @@ export function mountGraph(
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),
+      fields: props.fields,
     });
 
     scene.setModel(model, props.selection.length > 0);
@@ -301,9 +325,19 @@ export function mountGraph(
     layout.send({ kind: "pin", epoch, index, x: world.x, y: world.y, held });
   };
 
-  const themes = new MutationObserver(() => {
-    palette = readPalette(host);
+  /** The floors are measured on the ground the marks are actually on, so a
+   *  theme change and a change to the picture both land here. */
+  const repaint = (): void => {
+    presence = presenceOf(props, ceiling);
+    palette = buildPalette(tokens, presence);
     scene?.setPalette(palette);
+    wall.show(props.wallpaper?.picture ?? null, props.pictures, presence);
+  };
+
+  const themes = new MutationObserver(() => {
+    tokens = readPaletteTokens(host);
+    ceilingNow = null;
+    repaint();
     rebuild(false);
   });
   themes.observe(document.documentElement, {
@@ -320,8 +354,12 @@ export function mountGraph(
       const asking = next.picking?.from !== props.picking?.from;
       const grounded = next.ground !== props.ground;
       const takingOver = asked(next) && !asked(props);
+      const papered =
+        next.wallpaper?.picture !== props.wallpaper?.picture ||
+        next.wallpaper?.strength !== props.wallpaper?.strength;
       props = next;
       if (grounded) scene?.setGround(next.ground ?? "none");
+      if (papered) repaint();
       if (takingOver) next.onHover?.(null);
       // The canvas comes to the note the choice is being made for, so the reader
       // is never asked to pick against a viewport they left somewhere else.
@@ -343,6 +381,7 @@ export function mountGraph(
       detachGestures?.();
       layout.destroy();
       scene?.destroy();
+      wall.destroy();
       surface.remove();
     },
     ink,
@@ -376,6 +415,17 @@ export function mountGraph(
       };
     },
   };
+}
+
+/**
+ * How much of the picture actually reaches the reader: what they asked for, of
+ * what this ground can carry. A surface with no picture up is presence 0, so
+ * the palette is the plain theme's to the byte.
+ */
+function presenceOf(props: GraphSurfaceProps, ceiling: () => number): number {
+  const paper = props.wallpaper;
+  if (!paper || paper.picture === null) return 0;
+  return Math.max(0, Math.min(1, paper.strength)) * ceiling();
 }
 
 /**

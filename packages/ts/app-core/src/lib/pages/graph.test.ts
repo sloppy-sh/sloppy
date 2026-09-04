@@ -1040,9 +1040,7 @@ describe('a branch started from a shape', () => {
 	// The shape is handed to the note once. Back unmounts it and Forward mounts
 	// it again from the same entry, so a shape still on offer would be taken twice.
 	it('writes the sections once, however often the reader comes back to the note', async () => {
-		mounted = mount(Graph, { target });
-		flushSync();
-		await settle();
+		await open();
 
 		labelled('A new branch, from a shape').click();
 		await settle();

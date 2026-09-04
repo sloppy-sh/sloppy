@@ -13,6 +13,12 @@ const QUALITY = 0.82;
  *  these may carry one. */
 const ANIMATABLE: ReadonlySet<string> = new Set(['image/gif', 'image/webp']);
 
+/** Whether a picture of this type MAY carry an animation. The type is all that
+ *  can be known without decoding it, so a still GIF answers true. */
+export function animatable(mimeType: string): boolean {
+	return ANIMATABLE.has(mimeType);
+}
+
 /**
  * `source` redrawn with its longest side at `longest`, or null where it is
  * already within that, or where the browser would neither draw nor encode it.

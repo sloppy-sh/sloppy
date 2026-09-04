@@ -14,6 +14,11 @@
 
 	const key = (choice: NoteChoice) =>
 		choice.kind === 'note' ? choice.note.ref : `make-${choice.relation}`;
+
+	const label = (choice: NoteChoice) =>
+		choice.kind === 'note' && choice.graph
+			? `${choice.note.address} ${choice.note.title || 'Untitled'}, in ${choice.graph}`
+			: undefined;
 </script>
 
 <CaretMenu
@@ -37,6 +42,7 @@
 			<button
 				type="button"
 				role="option"
+				aria-label={label(choice)}
 				aria-selected={i === completions.index}
 				class="flex min-h-11 w-full items-baseline gap-2.5 rounded-md px-2 py-1.5 text-left text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
 				onmousedown={(event) => {
@@ -47,6 +53,11 @@
 				{#if choice.kind === 'note'}
 					<span class="shrink-0 address text-xs text-muted-foreground">{choice.note.address}</span>
 					<span class="min-w-0 flex-1 truncate">{choice.note.title || 'Untitled'}</span>
+					{#if choice.graph}
+						<span class="max-w-24 shrink-0 truncate text-xs text-muted-foreground">
+							{choice.graph}
+						</span>
+					{/if}
 				{:else}
 					<span class="shrink-0 self-center text-muted-foreground">
 						{#if choice.relation === 'under'}

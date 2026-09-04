@@ -12,6 +12,7 @@ import {
   type CopyEmojiRequest,
   type CreateBlockRequest,
   type CreateEmojiRequest,
+  type CreateGraphRequest,
   type CreateNodeRequest,
   type CreateNoteCommentRequest,
   type CreateNoteReactionRequest,
@@ -24,6 +25,8 @@ import {
   type FollowedIdentity,
   FollowedIdentitySchema,
   type FollowRequest,
+  type GraphView,
+  GraphViewSchema,
   type HealthReport,
   HealthReportSchema,
   type MediaAsset,
@@ -60,6 +63,7 @@ import {
   type TagCount,
   TagCountSchema,
   type UpdateBlockRequest,
+  type UpdateGraphRequest,
   type UpdateNodeRequest,
   type UpdateProfileRequest,
   type UnpublishedChanges,
@@ -274,18 +278,44 @@ export class SloppyClient {
     await this.send("POST", "/auth/logout", {});
   }
 
+  // ── Graphs ───────────────────────────────────────────────────────────────
+
+  /** The caller's graphs, the one they started with first. */
+  async listGraphs(): Promise<GraphView[]> {
+    const body = await this.json("/graphs", { method: "GET" });
+    return (body as unknown[]).map((row) => GraphViewSchema.parse(row));
+  }
+
+  async createGraph(request: CreateGraphRequest): Promise<GraphView> {
+    return GraphViewSchema.parse(await this.send("POST", "/graphs", request));
+  }
+
+  /** Rename one. Renaming the graph somebody started with is what first writes
+   *  a row for it, so it answers the same either way. */
+  async updateGraph(
+    ref: OwnedRef,
+    request: UpdateGraphRequest,
+  ): Promise<GraphView> {
+    return GraphViewSchema.parse(
+      await this.send("PATCH", `/graphs${refPath(ref)}`, request),
+    );
+  }
+
   // ── Nodes ────────────────────────────────────────────────────────────────
 
   /**
-   * A region of the caller's own graph. With no `origin` this is their roots;
-   * with one it is that tree, and `maxDepth` bounds it — the level-of-detail
-   * read docs/ARCHITECTURE.md § "Data model" keeps `node.depth` for.
+   * A region of one of the caller's graphs. With no `origin` this is the
+   * branches of `graph` — their home graph where they name none; with one it is
+   * that tree, whose graph its root already says, and `maxDepth` bounds it —
+   * the level-of-detail read docs/ARCHITECTURE.md § "Data model" keeps
+   * `node.depth` for.
    */
   async listNodes(
-    query: { origin?: OwnedRef; maxDepth?: number } = {},
+    query: { origin?: OwnedRef; maxDepth?: number; graph?: OwnedRef } = {},
   ): Promise<NodeView[]> {
     const params = new URLSearchParams();
     if (query.origin) params.set("origin", query.origin);
+    if (query.graph) params.set("graph", query.graph);
     if (query.maxDepth != null) params.set("max_depth", String(query.maxDepth));
     const search = params.toString();
     const path = search ? `/nodes?${search}` : "/nodes";
@@ -326,10 +356,14 @@ export class SloppyClient {
     return parseNodeBulkResult(await this.send("POST", "/nodes/bulk", request));
   }
 
-  /** Every tag the caller has used, most-used first. A tag is written by
-   *  putting it on a note, so there is nothing else here to call. */
-  async listTags(): Promise<TagCount[]> {
-    const body = await this.json("/nodes/tags", { method: "GET" });
+  /** Every tag the caller has used inside one graph — their home graph where
+   *  they name none — most-used first. A tag is written by putting it on a
+   *  note, so there is nothing else here to call. */
+  async listTags(graph?: OwnedRef): Promise<TagCount[]> {
+    const path = graph
+      ? `/nodes/tags?graph=${encodeURIComponent(graph)}`
+      : "/nodes/tags";
+    const body = await this.json(path, { method: "GET" });
     return (body as unknown[]).map((t) => TagCountSchema.parse(t));
   }
 

@@ -265,8 +265,9 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 | **The disc's imagery**                            | the author's picture, at the share of the disc they set |
 | **The orbit outside it**                          | the mode the canvas is in — picking, or choosing        |
 | **The paper under it** — how far it lifts         | this note is open, and whether it is the one being read |
+| **Which field it stands in**                      | which graph it is in (§ "Several graphs on one canvas") |
 
-Ten rulings hold that table together:
+Eleven rulings hold that table together:
 
 - **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
   ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
@@ -387,6 +388,43 @@ Ten rulings hold that table together:
 - **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
   the question the hue channel answers. The notes somebody has picked out to act on are
   **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.
+- **Which graph a mark is in takes the one thing no meaning on the mark had: where its
+  field stands.** Every row above spends the disc itself or the ground touching it, so a
+  mark drawn in a second graph is drawn identically — the same fill, the same edge, the
+  same ring, the same radius — and what says which graph it is in is that it stands in
+  that graph's field, with that graph's name written over it. § "Several graphs on one
+  canvas" is the section.
+
+### Several graphs on one canvas
+
+A person keeps a graph per body of thought, and puts more than one up at a time to work
+across them. Each one is drawn as a **field**: the same shape it has alone, laid out
+beside the last rather than over it.
+
+- **A field's place is what tells it from the next, because place is the only channel
+  nothing else had spent.** Within one graph, where a mark sits is the address's
+  (`geometry.ts`), and that is untouched: the whole field moves, and every mark keeps the
+  place its address gave it inside it. Two graphs each holding a `1` seed the same point,
+  so without this they would be drawn on top of each other — the gutter between fields is
+  what stops them. `model.test.ts` in `@sloppy/graph` holds both of those: a mark keeps
+  the place its address gave it, and no field is seeded inside another's span. The force
+  pass afterwards is not held to the gutter — a field of a few hundred notes spreads
+  wider than one — so what keeps the fields apart on screen is where each one's weight
+  settles, not a line no mark ever crosses.
+- **The field being read never moves.** Fields are laid out in the order the reader put
+  them up, from the first, so standing another graph up beside the one in front of you
+  does not shift the one you were reading.
+- **A graph's name is written over its field, and only where there are several.** With one
+  graph on the canvas there is nothing to tell apart, so the name lives in the chrome and
+  the canvas carries none. The name is quiet ink rather than a mark — it says which field
+  this is and nothing about any note — and it holds the top of the screen while the reader
+  is inside its field, the way § Form names a region's author in the chrome above it.
+- **Where the reader's field arrangement is kept is this device's** (§ Persistence), like
+  the ground and the theme. It is not the addresses: nothing about it reaches a note, and
+  a peer pulling a subtree receives nothing of it.
+- **A pulled region is still one graph at a time.** § Form's rule holds — a peer's `1a`
+  seeds where the reader's own does — and a held region is never one of these fields,
+  because a field is a graph the reader themselves keeps.
 
 ### A note's look never uses colour
 
@@ -483,6 +521,11 @@ so.
 
 - **Canvas-first.** The graph is the page; there is no page around it. Chrome floats over
   the canvas and is dismissible.
+- **The graph you are in leads the chrome over the canvas.** Which notebook a person is
+  writing in decides where every act in the row after it lands, so it is named first,
+  full-width on a phone, and it is the way to every other graph — moving into one, standing
+  one up beside it, naming one, starting one. Moving between graphs is a top-level act on
+  the surface the graphs are on, never a setting.
 - **Floating nav, not a top bar.** A pill anchored bottom-centre (`fixed`, safe-area
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
@@ -719,6 +762,73 @@ the one thing on the canvas a reader is meant to stop seeing.
   anything about the notes. A peer pulling a subtree receives nothing of it, because there is
   nothing there to receive.
 
+### The wallpaper
+
+Behind that paper the reader may put a picture of their own — one, or a few that take turns.
+It is a ground for the same reason the lattice is: it carries no meaning, nothing drawn on it
+says anything, and it sits under everything the canvas draws. **It is behind the paper rather
+than instead of it**, so dots or rules and a picture are two independent choices and a reader
+may have either, both or neither — the lattice goes on reading as the paper's own grain, laid
+over whatever is behind it.
+
+- **It is pinned to the screen, where the lattice is pinned to the world.** How far you went
+  is the lattice's to say, and a second thing moving with the field would answer the same
+  question twice. Standing still is also what makes it free: it is one composited layer
+  behind a canvas that already clears transparent, so no frame writes anything for it. On the
+  2,400-note corpus `bench/` reports idle and pan at **8.3/9.3 ms with a picture and 8.3/9.3
+  without** — the same numbers the ground is measured at, and the same with both on. Which is
+  meant literally, so **a picture that may animate is not offered**: a GIF or an animated
+  WebP would repaint that layer under the whole field every frame — the one cost this ground
+  is measured not to have — and nothing would stop it short of taking the picture off.
+- **The mask over it is the theme's own paper, and nobody picks its colour.** A hue chosen
+  here would be the one thing on the canvas carrying colour that answers no question
+  (§ Hue), and it would shift every hue drawn over it. So the picture shows through the
+  paper at one strength, and that strength is the only knob: `--graph-paper` at
+  `1 − presence` over the picture, composited in sRGB, which is what the floors below are
+  measured on.
+- **What the ground can carry is computed, not chosen.** A picture may hold any pixel, so the
+  ground under a mark becomes a BAND — the theme's paper with the darkest and the lightest
+  pixel showing through it — and everything drawn on it owes its floor against both ends.
+  `paperCeiling` in `@sloppy/graph` walks a picture up until one of two things gives: the ink
+  the canvas letters in falls under **4.5:1**, the floor small text owes, or the tag slots
+  close to within a tenth of what tells them apart on the plain theme. **The ceiling is
+  whichever comes first**, because the label is not the only thing that has to survive the
+  ground: a picture strong enough to darken eight hues into one has taken the reader's
+  question, and on a light theme it takes it a long way before the label gives. **The
+  reader's control spans that range**, so its full travel is the most the theme will carry
+  rather than a number that stops meaning anything half way along, and a theme change
+  re-reads it. It opens at a quarter of the way up, which is quiet enough to read as paper
+  with a picture in it.
+- **A picture moves the palette, because the palette is derived from the ground.** The depth
+  ramp already mixes between the theme's ends and is pulled back until it clears the mark
+  floor; with a picture under it, it is pulled back against that band instead. The cost is
+  the ramp's far end, which compresses as the picture strengthens: the six generations a
+  level of detail budget draws still recede one behind the next, but the deepest of them
+  share a fill — at the top of the travel a dark theme's last four are one — so beyond a
+  point depth is being read off the tree and not off the fill. That is the trade the control
+  is for, and it is the reader's to make.
+- **A tag slot moves in LIGHTNESS and in nothing else.** It has to clear the mark floor on
+  the same band, and the correction `--primary-mark` already ships for Ochre is the one that
+  applies: pulling eight hues toward one anchor converges them, and a palette whose slots
+  have converged has stopped being a language. `wallpaper.test.ts` in `@sloppy/graph` holds
+  the mark floor, the separation the ceiling is drawn at and the hue at every strength up to
+  it, holds that the ceiling is a picture somebody can actually see, and holds that a dimmed
+  note never out-reads a lit one on the same ground. **The rail's chip and the canvas's mark
+  answer in the same hue and the same slot, and that is what the reader reads across.** The
+  chip is drawn on chrome, which no picture reaches, so it is the mark alone that moves — as
+  far as the ground under it moved, and no further, which is why the ceiling ends where the
+  eight are still eight.
+- **A series changes while nobody is watching it.** Whose turn it is comes off the clock —
+  `floor(now / every) % count` — and is read when the graph opens and when the app comes back
+  from the background, never on a timer. So there is no rotation state to keep, two devices
+  land on the same picture at the same hour with nothing to sync, and the ground cannot move
+  under somebody who is reading.
+- **The pictures are the reader's own**, from what they have already put in a note, resolved
+  the way a mark's preview is (§ "The mark") and never as a remote URL.
+- **It is a per-device view preference, kept against the graph it is under**, and never
+  anything about the notes. What one graph is drawn over says nothing about another, and a
+  peer pulling a subtree receives nothing of it.
+
 ## Scrolling (themed scroller + edge fades)
 
 Scroll chrome is part of the theme, not the OS's. Both halves live in `@sloppy/ui`'s
@@ -793,8 +903,10 @@ possible (inline head script) to avoid a flash of the wrong theme. No account re
 choices carry over if someone signs in.
 
 The same store holds the view choices that are nobody's business but this device's — the
-tags the graph opens lit by, the ground it is drawn on (§ "The ground"), and how much room
-a docked note was last given. None of them is an attribute on `<html>`, so none is a thing
-the boot script has to know: the canvas reads them once it is up, and a first paint with
-the right theme is all that flash-of-the-wrong anything is about. None of them reaches a
-note either — a peer pulling a subtree receives nothing of how it was read.
+tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
+it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
+(§ "Several graphs on one canvas"), and how much room a docked note was last given. None of
+them is an attribute on `<html>`, so none is a thing the boot script has to know: the canvas
+reads them once it is up, and a first paint with the right theme is all that
+flash-of-the-wrong anything is about. None of them reaches a note either — a peer pulling a
+subtree receives nothing of how it was read.

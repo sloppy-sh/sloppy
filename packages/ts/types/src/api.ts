@@ -3,7 +3,6 @@
 
 import type { RecordId } from "surrealdb";
 import { z } from "zod";
-import { addressDepth } from "./address.js";
 import { BlockSchema } from "./block.js";
 import { ownedRefFrom, splitOwnedRef } from "./codecs.js";
 import {
@@ -12,7 +11,8 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
-import { NodeDepthMismatchError, nodeDepthMatchesAddress } from "./node.js";
+import { GraphSchema } from "./graph.js";
+import { requireNodeConsistent } from "./node.js";
 import { NodeSchema } from "./node.js";
 import { type PulledBlock, type PulledNode, PullSchema } from "./federation.js";
 import { PublicationSchema } from "./publication.js";
@@ -44,6 +44,16 @@ export const BlockViewSchema = BlockSchema.omit({ id: true }).extend({
   ref: OwnedRefSchema,
 });
 export type BlockView = z.infer<typeof BlockViewSchema>;
+
+/**
+ * A graph as a listing carries it. The home graph is listed like any other and
+ * carries the ref its absence stands for, so a surface picking one has a single
+ * kind of value to hold — whether or not a row has ever been written for it.
+ */
+export const GraphViewSchema = GraphSchema.omit({ id: true }).extend({
+  ref: OwnedRefSchema,
+});
+export type GraphView = z.infer<typeof GraphViewSchema>;
 
 /**
  * One tag somebody has used, and how many of their notes carry it. There is no
@@ -78,7 +88,7 @@ export type PullView = z.infer<typeof PullViewSchema>;
 /**
  * A held node as the rest of Sloppy reads it, addressed by its AUTHOR — which
  * is what `provenanceOf` in `@sloppy/graph` reads to draw it as foreign, and it
- * needs the viewer beside it to do so.
+ * needs the viewer beside it to do so. `graph` is the author's too.
  *
  * `published` is asserted, not read: no publication row on this instance covers
  * a foreign node, and whether the author still publishes it is not something a
@@ -90,6 +100,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
   return {
     ref: row.source,
     created_by: splitOwnedRef(row.source).did,
+    graph: row.source_graph,
     address: node.address,
     depth: row.depth,
     parent: node.parent,
@@ -122,16 +133,10 @@ export function pulledBlockView(row: PulledBlock): BlockView {
   };
 }
 
-/** `parseNode`'s boundary, on the wire: a node arrives depth-checked or not at all. */
+/** `parseNode`'s boundary, on the wire: a node arrives checked or not at all. */
 export function parseNodeView(value: unknown): NodeView {
   const view = NodeViewSchema.parse(value);
-  if (!nodeDepthMatchesAddress(view)) {
-    throw new NodeDepthMismatchError(
-      view.address,
-      view.depth,
-      addressDepth(view.address),
-    );
-  }
+  requireNodeConsistent(view);
   return view;
 }
 

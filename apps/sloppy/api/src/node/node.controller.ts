@@ -22,6 +22,7 @@ import type { AuthedRequest } from "../auth/authed-request";
 import { NodeService } from "./node.service";
 import {
   depthBound,
+  graphOrRefuse,
   ownedRefOrRefuse,
   parseBody,
   parsePatch,
@@ -34,24 +35,33 @@ import {
 export class NodeController {
   constructor(private readonly nodes: NodeService) {}
 
-  /** With no `origin`, the caller's roots; with one, that tree, cut off past
-   *  `max_depth` levels. */
+  /** With no `origin`, the branches of one `graph` — the caller's home graph
+   *  where they named none; with one, that tree, cut off past `max_depth`
+   *  levels. */
   @Get()
   list(
     @Req() req: AuthedRequest,
     @Query("origin") origin?: string,
     @Query("max_depth") maxDepth?: string,
+    @Query("graph") graph?: string,
   ): Promise<NodeView[]> {
-    return this.nodes.list(viewerDid(req), {
+    const did = viewerDid(req);
+    return this.nodes.list(did, {
       origin: ownedRefOrRefuse(origin),
       maxDepth: depthBound(maxDepth),
+      graph: graphOrRefuse(graph, did),
     });
   }
 
-  /** Every tag the caller has used, most-used first. */
+  /** Every tag the caller has used inside one `graph` — their home graph where
+   *  they named none — most-used first. */
   @Get("tags")
-  tags(@Req() req: AuthedRequest): Promise<TagCount[]> {
-    return this.nodes.tags(viewerDid(req));
+  tags(
+    @Req() req: AuthedRequest,
+    @Query("graph") graph?: string,
+  ): Promise<TagCount[]> {
+    const did = viewerDid(req);
+    return this.nodes.tags(did, graphOrRefuse(graph, did));
   }
 
   @Get(":did/:localId")

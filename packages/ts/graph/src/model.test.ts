@@ -351,6 +351,24 @@ describe("the run of thought", () => {
     );
   });
 
+  // Two of one person's graphs each hold a `1`, and those are two beginnings
+  // rather than a run. Keyed by author they would be one.
+  it("never runs from one graph's branches into another of the same person's", () => {
+    const beside = `${corpus.owner}/01JGRAPH2ND000000000000000` as OwnedRef;
+    const mine = [note("1"), note("2")];
+    const other = [note("1", beside), note("2", beside)];
+    const built = buildModel(drawnNodes([...mine, ...other], new Set()), {
+      selection: [],
+      palette,
+    });
+    expect(runsOf(built)).toHaveLength(2);
+    expect(built.graph.hasEdge(mine[0].ref, other[0].ref)).toBe(false);
+    expect(built.graph.hasEdge(mine[1].ref, other[1].ref)).toBe(false);
+    expect(built.graph.getEdgeAttributes(other[0].ref, other[1].ref).kind).toBe(
+      "run",
+    );
+  });
+
   // The point of deriving it: nothing is left holding a reference to the note
   // that went, so the two either side of the gap read as what they now are.
   it("reads across a note that is gone", () => {
@@ -385,11 +403,13 @@ describe("the run of thought", () => {
 });
 
 /** A root of the corpus owner's, addressed by hand. */
-function note(address: string): NodeView {
-  const ref = `${corpus.owner}/${address}` as OwnedRef;
+function note(address: string, graph?: OwnedRef): NodeView {
+  const ref =
+    `${corpus.owner}/${graph ? `${graph}|` : ""}${address}` as OwnedRef;
   return {
     ref,
     created_by: corpus.owner,
+    ...(graph ? { graph } : {}),
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     address: address as Address,
@@ -511,5 +531,99 @@ describe("the look a note's author gave it", () => {
     });
     expect(mark.ringWeight).toBe("hairline");
     expect(mark.radius).toBeGreaterThan(radiusOf([plain("1")]));
+  });
+});
+
+// DESIGN.md § "Several graphs on one canvas": what tells two graphs apart is
+// where their fields sit, and every other channel on the mark stays what it was.
+describe("several graphs on one canvas", () => {
+  const HOME = `${corpus.owner}/00000000000000000000000000` as OwnedRef;
+  const OTHER = `${corpus.owner}/00000000000000000000000002` as OwnedRef;
+  const inOther = (node: NodeView): NodeView => ({
+    ...node,
+    ref: `${node.ref}x` as OwnedRef,
+    graph: OTHER,
+    ...(node.parent === undefined
+      ? {}
+      : { parent: `${node.parent}x` as OwnedRef }),
+    origin: `${node.origin}x` as OwnedRef,
+  });
+
+  const mine = drawn.filter((entry) => entry.node.created_by === corpus.owner);
+  const twin = mine.map((entry) => ({ ...entry, node: inOther(entry.node) }));
+  const fields = [
+    { ref: HOME, title: "Thesis" },
+    { ref: OTHER, title: "Garden" },
+  ];
+  const options = { selection: [], palette, viewer: corpus.owner };
+  const model = buildModel([...mine, ...twin], { ...options, fields });
+  const alone = buildModel(mine, options);
+
+  const gapAt = (node: NodeView) =>
+    model.graph.getNodeAttributes(inOther(node).ref).anchorX -
+    model.graph.getNodeAttributes(node.ref).anchorX;
+
+  it("keeps a note's place inside its own field, and moves the field", () => {
+    for (const { node } of mine) {
+      const here = model.graph.getNodeAttributes(node.ref);
+      const there = model.graph.getNodeAttributes(inOther(node).ref);
+      expect(there.anchorY).toBe(here.anchorY);
+      expect(gapAt(node)).toBeCloseTo(gapAt(mine[0].node), 6);
+    }
+  });
+
+  it("never lets one field's marks reach into the next", () => {
+    const spanOf = (entries: readonly DrawnNode[]) => {
+      let minX = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      for (const { node } of entries) {
+        const mark = model.graph.getNodeAttributes(node.ref);
+        minX = Math.min(minX, mark.anchorX - mark.radius);
+        maxX = Math.max(maxX, mark.anchorX + mark.radius);
+      }
+      return { minX, maxX };
+    };
+    expect(spanOf(twin).minX).toBeGreaterThan(spanOf(mine).maxX);
+  });
+
+  it("names every field it drew, in the order it was given them", () => {
+    expect(model.fields.map((field) => field.title)).toEqual([
+      "Thesis",
+      "Garden",
+    ]);
+    for (const field of model.fields) {
+      expect(field.x).toBeGreaterThanOrEqual(field.minX);
+      expect(field.x).toBeLessThanOrEqual(field.maxX);
+    }
+  });
+
+  // The rule that keeps the channel honest: place is the only thing spent on
+  // telling graphs apart, so the mark itself says exactly what it said before.
+  it("draws each mark exactly as one graph alone would", () => {
+    for (const { node } of mine) {
+      expect(model.graph.getNodeAttributes(node.ref)).toEqual(
+        alone.graph.getNodeAttributes(node.ref),
+      );
+    }
+  });
+
+  // One graph on the canvas answers no question a name could answer.
+  it("writes no name where there is only one field", () => {
+    expect(
+      buildModel(mine, { ...options, fields: [fields[0]] }).fields,
+    ).toEqual([]);
+    expect(alone.fields).toEqual([]);
+  });
+
+  it("never runs from a branch of one graph into a branch of another", () => {
+    const byRef = new Map(
+      [...mine, ...twin].map((entry) => [entry.node.ref, entry.node]),
+    );
+    model.graph.forEachEdge((_edge, attributes, source, target) => {
+      if (attributes.kind !== "run") return;
+      expect(byRef.get(source as OwnedRef)?.graph).toBe(
+        byRef.get(target as OwnedRef)?.graph,
+      );
+    });
   });
 });

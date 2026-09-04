@@ -79,6 +79,7 @@ export function noEmoji(catalog: readonly CustomEmojiEntry[] = []): NoteEmoji {
 export function noNotes(): NoteReferences {
 	return {
 		find: () => [],
+		elsewhere: () => [],
 		read: async () => null,
 		write: async () => {
 			throw new Error('That note could not be added. Try again in a moment.');
