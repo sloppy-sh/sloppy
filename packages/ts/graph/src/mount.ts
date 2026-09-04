@@ -34,7 +34,7 @@ import { WallLayer } from "./wall.js";
 const SPRING: Record<GraphEdgeAttributes["kind"], number> = {
   genealogy: 0.55,
   run: 0.3,
-  link: 0.12,
+  connection: 0.12,
 };
 
 export interface GraphMountOptions extends GraphSurfaceProps {

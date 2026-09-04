@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { nodes } from './nodes.svelte.js';
+import type { OwnedRef } from '@sloppy/types';
 import { node, ref, useFakeApi, type FakeApi } from './fake-api.test-support.js';
 
 const ROOT = ref(1);
 const OTHER_ROOT = ref(4);
+
+/** The two path segments `@sloppy/client` binds a reference as. */
+function path(of: OwnedRef): string {
+	const cut = of.lastIndexOf('/');
+	return `/nodes/${encodeURIComponent(of.slice(0, cut))}/${encodeURIComponent(of.slice(cut + 1))}`;
+}
 
 /** One tree under ROOT — `1`, `1a`, `1a1` — plus a second root beside it. */
 const TREE = [
@@ -122,6 +129,35 @@ describe('the node cache', () => {
 		answer();
 		await creating;
 		expect(nodes.get(ref(9))).toBeUndefined();
+	});
+
+	it('issues one request when two surfaces ask for the same node at once', async () => {
+		api.on(`GET ${path(ROOT)}`, () => node(1, '1'));
+		await Promise.all([nodes.fetch(ROOT), nodes.fetch(ROOT)]);
+		expect(api.countOf(`GET ${path(ROOT)}`)).toBe(1);
+	});
+
+	// A note's row moves under a surface that has already asked for it — what its
+	// writing names is derived server-side, so a block write changes the row
+	// without anybody touching it. The answer in the air was read before that.
+	it('asks again for a node where the ask in flight was read before the change', async () => {
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		let asks = 0;
+		api.on(`GET ${path(ROOT)}`, async () => {
+			asks += 1;
+			if (asks === 1) await held;
+			return node(1, '1', { title: asks === 1 ? 'as it was' : 'as it now is' });
+		});
+
+		const asking = nodes.fetch(ROOT);
+		const again = nodes.refetch(ROOT);
+		answer();
+		await asking;
+		await again;
+
+		expect(asks).toBe(2);
+		expect(nodes.get(ROOT)?.title).toBe('as it now is');
 	});
 
 	it('keeps a sibling whose address merely starts with the same characters', async () => {

@@ -12,6 +12,7 @@ import {
   OwnedRefSchema,
   type OwnedRef,
   type PublishedNode,
+  REFERENCE_NOTE_ATTR,
 } from "@sloppy/types";
 
 /**
@@ -25,12 +26,11 @@ const EMOJI_SRC_ATTR = "src";
 const EMOJI_NAME_ATTR = "name";
 
 /**
- * How one note cites another inside a section, and the words it was cited under
- * — `reference-node.ts` in `@sloppy/ui`. The words are the CITED note's title,
- * so a citation the reader cannot follow loses both: a title is what a note
- * says, and an unpublished note says nothing to anybody.
+ * The words a note was cited under, beside the {@link REFERENCE_NOTE_ATTR} that
+ * names it. The words are the CITED note's title, so a citation the reader
+ * cannot follow loses both: a title is what a note says, and an unpublished
+ * note says nothing to anybody.
  */
-const NOTE_ATTR = "note";
 const NOTE_LABEL_ATTR = "label";
 
 /** `upload_id`, or anything ending `_upload_id` — `citedUploads`' convention,
@@ -60,17 +60,6 @@ export function citedEmoji(content: BlockDocument): string[] {
   };
   walk(content.content);
   return [...named];
-}
-
-/** Every note a section cites, in the order it cites them. */
-export function citedNotes(content: BlockDocument): OwnedRef[] {
-  const cited = new Set<OwnedRef>();
-  walkValues(content.content, (key, held) => {
-    if (key !== NOTE_ATTR || typeof held !== "string") return;
-    const ref = OwnedRefSchema.safeParse(held);
-    if (ref.success) cited.add(ref.data);
-  });
-  return [...cited];
 }
 
 /**
@@ -195,13 +184,13 @@ function withheld(
   attrs: Record<string, unknown>,
   held: Snapshotted,
 ): Record<string, unknown> {
-  const cited = attrs[NOTE_ATTR];
+  const cited = attrs[REFERENCE_NOTE_ATTR];
   if (typeof cited !== "string" || !cited) return attrs;
   const ref = OwnedRefSchema.safeParse(cited);
   if (ref.success && held.reaches(ref.data)) return attrs;
   return {
     ...attrs,
-    [NOTE_ATTR]: "",
+    [REFERENCE_NOTE_ATTR]: "",
     ...(NOTE_LABEL_ATTR in attrs ? { [NOTE_LABEL_ATTR]: "" } : {}),
   };
 }
@@ -212,15 +201,4 @@ function customEmojiIn(node: DocumentNode): string | undefined {
   const src = node.attrs?.[EMOJI_SRC_ATTR];
   if (typeof name !== "string" || !name) return undefined;
   return typeof src === "string" && src ? name : undefined;
-}
-
-function walkValues(
-  value: unknown,
-  seen: (key: string, held: unknown) => void,
-): void {
-  if (value === null || typeof value !== "object") return;
-  for (const [key, held] of Object.entries(value)) {
-    seen(key, held);
-    walkValues(held, seen);
-  }
 }

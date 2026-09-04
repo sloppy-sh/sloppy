@@ -73,9 +73,10 @@ export interface GraphPalette {
   run: number;
   runAlpha: number;
   runAlphaWhileSelecting: number;
-  /** Associative links, drawn above the tree because they cross it. */
-  link: number;
-  linkAlpha: number;
+  /** What a person put together — `links` and `references` alike — drawn above
+   *  the tree because it crosses it. DESIGN.md § Edges. */
+  connection: number;
+  connectionAlpha: number;
 }
 
 const TOKENS = [
@@ -262,7 +263,7 @@ export function buildPalette(
     run: inkRgb,
     runAlpha: 0.55,
     runAlphaWhileSelecting: 0.18,
-    link: inkRgb,
-    linkAlpha: 0.34,
+    connection: inkRgb,
+    connectionAlpha: 0.34,
   };
 }

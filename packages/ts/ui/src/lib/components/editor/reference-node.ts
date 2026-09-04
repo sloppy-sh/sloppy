@@ -1,10 +1,9 @@
 // A note named inside somebody's writing. What is STORED is the reference —
 // `<did>/<ulid>`, which outlives every rename — beside the words it was cited
-// under, so a note that has since gone still reads as something.
-//
-// A reference is not a link: `./contract.ts` § NoteReferences says why.
+// under, so a note that has since gone still reads as something. The canvas
+// draws a line for it: DESIGN.md § Edges is the ruling.
 
-import type { OwnedRef } from '@sloppy/types';
+import { type OwnedRef, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { NoteReferences } from './contract.js';
 
@@ -31,10 +30,10 @@ export function ReferenceNode(references: () => ReferenceReader | undefined) {
 
 		addAttributes() {
 			return {
-				note: {
+				[REFERENCE_NOTE_ATTR]: {
 					default: '',
 					parseHTML: (el) => el.getAttribute('data-note') ?? '',
-					renderHTML: (attrs) => ({ 'data-note': attrs.note })
+					renderHTML: (attrs) => ({ 'data-note': attrs[REFERENCE_NOTE_ATTR] })
 				},
 				label: {
 					default: '',
@@ -87,7 +86,7 @@ export function ReferenceNode(references: () => ReferenceReader | undefined) {
 				/** A note is renamed after it is cited, so what it says now wins over
 				 *  what it said then. */
 				async function resolve(): Promise<void> {
-					const note = current.attrs.note as string;
+					const note = current.attrs[REFERENCE_NOTE_ATTR] as string;
 					if (!note || asked === note) return;
 					asked = note;
 					try {
@@ -104,7 +103,7 @@ export function ReferenceNode(references: () => ReferenceReader | undefined) {
 
 				function open(event: Event): void {
 					event.preventDefault();
-					const note = current.attrs.note as string;
+					const note = current.attrs[REFERENCE_NOTE_ATTR] as string;
 					if (!note || standing?.gone) return;
 					references()?.open(note as OwnedRef);
 				}
@@ -124,7 +123,8 @@ export function ReferenceNode(references: () => ReferenceReader | undefined) {
 					dom,
 					update: (updated) => {
 						if (updated.type.name !== REFERENCE_NODE) return false;
-						if (updated.attrs.note !== current.attrs.note) standing = null;
+						if (updated.attrs[REFERENCE_NOTE_ATTR] !== current.attrs[REFERENCE_NOTE_ATTR])
+							standing = null;
 						current = updated;
 						draw();
 						void resolve();

@@ -2,7 +2,7 @@
 // `./emoji-suggestion.svelte.ts`: one `@tiptap/suggestion` plugin, one state
 // object, one popup.
 
-import type { NodeView } from '@sloppy/types';
+import { type NodeView, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { Extension, type Editor } from '@tiptap/core';
 import { PluginKey } from '@tiptap/pm/state';
 import Suggestion from '@tiptap/suggestion';
@@ -176,7 +176,7 @@ function place(editor: Editor, at: Trigger, note: NodeView): void {
 		.chain()
 		.focus()
 		.insertContentAt({ from: at.from, to: at.to }, [
-			{ type: REFERENCE_NODE, attrs: { note: note.ref, label: citedAs(note) } },
+			{ type: REFERENCE_NODE, attrs: { [REFERENCE_NOTE_ATTR]: note.ref, label: citedAs(note) } },
 			{ type: 'text', text: ' ' }
 		])
 		.run();

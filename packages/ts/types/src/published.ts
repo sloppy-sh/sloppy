@@ -137,10 +137,10 @@ export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
  * and carry no `depth`: a reader computes it, the sector, and which addresses
  * lie under which, from the address.
  *
- * **Every reference on it names a note the caller may read**, because this
- * whole shape reaches an anonymous one. A `<did>/<ulid>` is not readable by
- * itself, but it says a note exists and when it was written; the three fields
- * below each carry the rule that keeps one out.
+ * **Every ref on it names a note the caller may read**, because this whole
+ * shape reaches an anonymous one. A `<did>/<ulid>` is not readable by itself,
+ * but it says a note exists and when it was written; the three fields below
+ * each carry the rule that keeps one out.
  */
 export const PublishedNodeSchema = z.object({
   ref: OwnedRefSchema,

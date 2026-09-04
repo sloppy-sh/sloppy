@@ -19,10 +19,12 @@
 	import X from '@lucide/svelte/icons/x';
 	import {
 		alongRun,
+		citedNotes,
 		compareOrd,
 		graphOf,
 		isInSubtree,
 		runKeyOf,
+		type BlockDocument,
 		type BlockView,
 		type CommentAccess,
 		type CreateBlockRequest,
@@ -810,11 +812,31 @@
 		void write(act, shape);
 	}
 
+	/**
+	 * The note this write named, as the server has it now. A `[[` draws a line on
+	 * the canvas — DESIGN.md § Edges — and the server derives that line off the
+	 * writing, so a write that changed which notes are named leaves every surface
+	 * reading this row out of date. Asked for only when it did.
+	 */
+	function reread(of: OwnedRef, before: BlockDocument | null, after: BlockDocument | null): void {
+		const named = (content: BlockDocument | null) =>
+			content === null ? '' : citedNotes(content).sort().join(' ');
+		if (named(before) === named(after)) return;
+		void nodes.refetch(of).catch(() => null);
+	}
+
+	/** What a section says now, of the stacks in hand. */
+	function sectionIn(of: OwnedRef, block: OwnedRef): BlockDocument | null {
+		const stack = of === ref ? blocks : (read.get(of) ?? []);
+		return stack.find((held) => held.ref === block)?.content ?? null;
+	}
+
 	async function addBlock(request: CreateBlockRequest): Promise<BlockView> {
 		surfaceWrites += 1;
 		try {
 			const block = await api.createBlock(request);
 			amend(block.node, (stack) => [...stack, block]);
+			reread(block.node, null, block.content);
 			return block;
 		} finally {
 			surfaceWrites -= 1;
@@ -823,9 +845,11 @@
 
 	async function editBlock(block: OwnedRef, request: UpdateBlockRequest): Promise<BlockView> {
 		surfaceWrites += 1;
+		const before = sectionIn(holderOf(block) ?? ref, block);
 		try {
 			const saved = await api.updateBlock(block, request);
 			amend(saved.node, (stack) => stack.map((held) => (held.ref === saved.ref ? saved : held)));
+			reread(saved.node, before, saved.content);
 			return saved;
 		} finally {
 			surfaceWrites -= 1;
@@ -834,10 +858,14 @@
 
 	async function dropBlock(block: OwnedRef): Promise<void> {
 		const of = holderOf(block);
+		const before = of === null ? null : sectionIn(of, block);
 		surfaceWrites += 1;
 		try {
 			await api.deleteBlock(block);
-			if (of) amend(of, (stack) => stack.filter((held) => held.ref !== block));
+			if (of) {
+				amend(of, (stack) => stack.filter((held) => held.ref !== block));
+				reread(of, before, null);
+			}
 		} finally {
 			surfaceWrites -= 1;
 		}

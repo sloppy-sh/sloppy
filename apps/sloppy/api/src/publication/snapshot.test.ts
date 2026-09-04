@@ -9,7 +9,6 @@ import { RecordId } from "surrealdb";
 import { describe, expect, it } from "vitest";
 import {
   citedEmoji,
-  citedNotes,
   publishedDocument,
   publishedNodeOf,
   type Snapshotted,
@@ -45,7 +44,7 @@ const reference = (note: string, label: string): DocumentNode => ({
   attrs: { note, label },
 });
 
-describe("what a section cites", () => {
+describe("the custom emoji a section draws", () => {
   it("names a custom emoji by its shortcode and leaves a glyph alone", () => {
     expect(
       citedEmoji(
@@ -58,34 +57,6 @@ describe("what a section cites", () => {
         }),
       ),
     ).toEqual(["kite"]);
-  });
-
-  it("finds a note cited anywhere in the document", () => {
-    expect(
-      citedNotes(
-        doc({
-          type: "paragraph",
-          content: [reference(PUBLISHED_NOTE, "A published thought")],
-        }),
-      ),
-    ).toEqual([PUBLISHED_NOTE]);
-  });
-
-  it("finds one cited by a mark on a run of text", () => {
-    expect(
-      citedNotes(
-        doc({
-          type: "paragraph",
-          content: [
-            {
-              type: "text",
-              text: "there",
-              marks: [{ type: "link", attrs: { note: PRIVATE_NOTE } }],
-            },
-          ],
-        }),
-      ),
-    ).toEqual([PRIVATE_NOTE]);
   });
 });
 
@@ -243,5 +214,24 @@ describe("a note as a version froze it", () => {
     );
     expect(written.parent).toBeUndefined();
     expect(written.origin).toBe(region.root);
+  });
+
+  // Every ref a peer receives names a note they may go and read, and a
+  // derivation is over writing the publication redacts on its way out — so the
+  // lines a pulled note draws are the ones a hand drew. DESIGN.md § Edges says
+  // so as the gap it is; this is what keeps the gap from closing by accident.
+  it("carries none of what the writing names, published or not", () => {
+    const written = publishedNodeOf(
+      note({
+        address: "1a",
+        depth: 2,
+        links: [PUBLISHED_NOTE],
+        references: [PUBLISHED_NOTE, PRIVATE_NOTE],
+      }),
+      region,
+      [PUBLISHED_NOTE],
+    );
+    expect(written).not.toHaveProperty("references");
+    expect(written.links).toEqual([PUBLISHED_NOTE]);
   });
 });

@@ -457,25 +457,51 @@ answerable at a glance. Hue is not one of the channels that answers it — that 
 the tags (§ Hue) — so they separate by weight, by lightness and by whether the line is
 broken.
 
-| Edge                                | Drawn as                           | What it says                          |
-| ----------------------------------- | ---------------------------------- | ------------------------------------- |
-| **Genealogy** — parent to child     | the depth ramp, thin, lowest alpha | this thought sprang out of that one   |
-| **The run** — consecutive addresses | ink, solid, heaviest line drawn    | this thought carries on from that one |
-| **A link** (`links[]`)              | ink, dashed, drawn above both      | somebody drew this by hand            |
+| Edge                                     | Drawn as                           | What it says                          |
+| ---------------------------------------- | ---------------------------------- | ------------------------------------- |
+| **Genealogy** — parent to child          | the depth ramp, thin, lowest alpha | this thought sprang out of that one   |
+| **The run** — consecutive addresses      | ink, solid, heaviest line drawn    | this thought carries on from that one |
+| **A connection** — `links`, `references` | ink, dashed, drawn above both      | a person put these two together       |
 
 Genealogy is everywhere, so it recedes. The run is the line a reader walks — `1 → 2 → 3`,
 `1a → 1b` — so it is the one that carries weight, and it is **derived from the addresses,
 never stored** (AI.md § "The Address Is the Protocol"): the two notes either side of a
-deleted one still read as consecutive, because they are. A link is the only line a person
-drew, so it is the only broken one; it crosses the tree and would otherwise read as
-parentage. Where somebody has drawn a link along a run, the hand wins and the line is
-dashed.
+deleted one still read as consecutive, because they are. A connection is the only line a
+person made on purpose, so it is the only broken one; it crosses the tree and would
+otherwise read as parentage. Where somebody has connected two notes the graph already
+joins — along a run, or along the tree's own line from parent to child — the connection
+wins and the line is dashed: citing the note a thought sprang from is one of the most
+ordinary things a person does here, and a line they made that drew nothing would be a
+gesture the canvas swallowed. **What a connection never does is move them.** How far apart
+two notes sit is the addresses' to set, so a connection onto a line that is already there
+takes that line's look and leaves its spacing alone.
 
-**A reference is none of the three.** `[[` names another note from inside a sentence, and
-the canvas draws nothing for it: it belongs to the writing it was typed into, not to the
-shape of the graph. `links[]` therefore stays what somebody drew by hand — a reference
-that wrote one would put a dashed hand-drawn line over a run that is already solid, and
-claim a gesture nobody made.
+**A reference is that dashed line.** Typing `[[X]]` is a person saying this note and that
+one go together — the same thing drawing a link says — so the canvas draws it. A reference
+that drew nothing would leave the two notes reading as strangers on the one surface whose
+whole job is to show what is connected to what.
+
+**Two ways of making that line, and they end differently.** A note carries both, and which
+one made a line is what says how it goes away:
+
+- **`links`** is drawn by hand and removed by hand. Nothing anybody writes adds one, and
+  nothing they write takes one away.
+- **`references`** is derived from the note's own writing and follows it. Typing `[[X]]`
+  makes the line; deleting those words takes it away, because there is nothing left to
+  derive it from.
+
+**The canvas draws the union, as one line.** Two notes connected both ways are one dashed
+line and not two: the reader is being told the pair is connected, and how somebody made the
+connection is not a second thing to see. Taking one of the two away leaves the line, which
+is what makes each way of making it independent of the other.
+
+**A reference does not reach a peer yet, and a pulled region draws only what a hand drew
+there.** `PublishedNodeSchema` carries `links` and no `references`, so a note somebody
+pulled shows the connections its author made by hand and none of the ones its writing
+makes — fewer lines than the same writing draws on the author's own canvas. The publishing
+milestone owns closing that, and the reason it is not free is the same one that keeps a
+look off a published node: what a peer may be shown is bounded by what they may follow,
+and docs/ARCHITECTURE.md § "Federating the graph" owns that bound.
 
 **With tags selected, genealogy and the run both dim**: the reader has asked to see sets,
 and the tree is momentarily the background.

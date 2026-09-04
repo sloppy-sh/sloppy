@@ -31,7 +31,7 @@ function startFor(count: number): LayoutStart {
       source: index(source),
       target: index(target),
       distance: attributes.distance,
-      strength: attributes.kind === "link" ? 0.12 : 0.55,
+      strength: attributes.kind === "connection" ? 0.12 : 0.55,
     });
   });
   return {

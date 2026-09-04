@@ -386,9 +386,9 @@ describe("the run of thought", () => {
     expect(runsOf(gapped)).toEqual([[whole[0].ref, whole[2].ref]]);
   });
 
-  // DESIGN.md § Edges: where somebody has drawn a link along a run, the hand
-  // wins and the line is dashed.
-  it("gives way to a link somebody drew along it", () => {
+  // DESIGN.md § Edges: where somebody has connected two notes already along a
+  // run, the connection wins and the line is dashed.
+  it("gives way to a connection somebody made along it", () => {
     const first = note("1");
     const second = note("2");
     const drew = buildModel(
@@ -396,9 +396,119 @@ describe("the run of thought", () => {
       { selection: [], palette },
     );
     expect(drew.graph.getEdgeAttributes(first.ref, second.ref).kind).toBe(
-      "link",
+      "connection",
     );
     expect(runsOf(drew)).toEqual([]);
+  });
+});
+
+// DESIGN.md § Edges: a note carries both ways of connecting, and the canvas
+// draws their union as one line.
+describe("what a connection is drawn from", () => {
+  const options = { selection: [], palette };
+  const built = (nodes: readonly NodeView[]) =>
+    buildModel(drawnNodes(nodes, new Set()), options);
+  const connections = (model: ReturnType<typeof buildModel>) => {
+    const pairs: [string, string][] = [];
+    model.graph.forEachEdge((_edge, attributes, source, target) => {
+      if (attributes.kind === "connection") pairs.push([source, target]);
+    });
+    return pairs;
+  };
+
+  // A `[[` in the writing, which the server derived onto the note.
+  it("draws one for a note the writing names", () => {
+    const from = note("1");
+    const cited = note("2a");
+    expect(
+      connections(built([{ ...from, references: [cited.ref] }, cited])),
+    ).toEqual([[from.ref, cited.ref]]);
+  });
+
+  // The words went, so the derivation went with them.
+  it("draws none once the words that named it are gone", () => {
+    const from = note("1");
+    const cited = note("2a");
+    expect(connections(built([{ ...from, references: [] }, cited]))).toEqual(
+      [],
+    );
+  });
+
+  it("reads an absent derivation as naming nothing", () => {
+    const from = note("1");
+    const cited = note("2a");
+    expect(from).not.toHaveProperty("references");
+    expect(connections(built([from, cited]))).toEqual([]);
+  });
+
+  // Each way of connecting is independent of the other, so taking one away
+  // leaves the line.
+  it("draws one line for a pair connected both ways", () => {
+    const from = note("1");
+    const to = note("2a");
+    const both = built([
+      { ...from, links: [to.ref], references: [to.ref] },
+      to,
+    ]);
+    expect(connections(both)).toEqual([[from.ref, to.ref]]);
+    expect(
+      connections(built([{ ...from, links: [to.ref], references: [] }, to])),
+    ).toEqual([[from.ref, to.ref]]);
+  });
+
+  // A note naming itself is not an edge — the server does not derive one, and
+  // nothing here would draw one either.
+  it("draws none from a note to itself", () => {
+    const alone = note("1");
+    expect(connections(built([{ ...alone, references: [alone.ref] }]))).toEqual(
+      [],
+    );
+  });
+
+  // Writing about the note a thought sprang from is ordinary Zettelkasten, so
+  // the line is drawn — but how far apart the two sit is the addresses' to say.
+  it("draws a connection to a parent without moving it", () => {
+    const parent = note("1");
+    const child = { ...note("1a"), parent: parent.ref, origin: parent.ref };
+    const bare = built([parent, child]);
+    const apart = bare.graph.getEdgeAttribute(
+      bare.graph.undirectedEdge(parent.ref, child.ref),
+      "distance",
+    );
+
+    for (const citing of [
+      built([parent, { ...child, references: [parent.ref] }]),
+      built([{ ...parent, references: [child.ref] }, child]),
+      built([parent, { ...child, links: [parent.ref] }]),
+    ]) {
+      expect(connections(citing)).toEqual([[parent.ref, child.ref]]);
+      expect(
+        citing.graph.getEdgeAttribute(
+          citing.graph.undirectedEdge(parent.ref, child.ref),
+          "distance",
+        ),
+      ).toBe(apart);
+    }
+  });
+
+  // The same holds along the run, where the gap is the seeds' own.
+  it("draws a connection along a run without moving it", () => {
+    const first = note("1");
+    const second = note("2");
+    const bare = built([first, second]);
+    const apart = bare.graph.getEdgeAttribute(
+      bare.graph.undirectedEdge(first.ref, second.ref),
+      "distance",
+    );
+
+    const citing = built([{ ...first, references: [second.ref] }, second]);
+    expect(connections(citing)).toEqual([[first.ref, second.ref]]);
+    expect(
+      citing.graph.getEdgeAttribute(
+        citing.graph.undirectedEdge(first.ref, second.ref),
+        "distance",
+      ),
+    ).toBe(apart);
   });
 });
 
@@ -625,5 +735,25 @@ describe("several graphs on one canvas", () => {
         byRef.get(target as OwnedRef)?.graph,
       );
     });
+  });
+
+  // A ref names one note across every graph its author keeps, so a citation
+  // typed into one graph and pointing into another draws wherever both ends
+  // are on the canvas — docs/ARCHITECTURE.md § "Data model".
+  it("draws a connection from a note in one field to a note in the next", () => {
+    const here = mine[0].node;
+    const away = inOther(mine[1].node);
+    const across = buildModel(
+      [
+        { ...mine[0], node: { ...here, references: [away.ref] } },
+        { ...twin[1], node: away },
+      ],
+      { ...options, fields },
+    );
+    const drawn: [string, string][] = [];
+    across.graph.forEachEdge((_edge, attributes, source, target) => {
+      if (attributes.kind === "connection") drawn.push([source, target]);
+    });
+    expect(drawn).toEqual([[here.ref, away.ref]]);
   });
 });

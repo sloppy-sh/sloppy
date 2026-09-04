@@ -80,6 +80,17 @@ export class BlockRepository {
     return written;
   }
 
+  /** Which note holds this block, `null` where the caller has no such block. A
+   *  section's document is what makes reading one expensive, and none of it is
+   *  read here. */
+  async nodeOf(did: string, ref: OwnedRef): Promise<OwnedRef | null> {
+    const [rows] = await this.db.handle.query<[OwnedRef[]]>(
+      "SELECT VALUE node FROM block WHERE id = $id AND created_by = $did",
+      { id: recordIdFromOwnedRef("block", ref), did },
+    );
+    return rows[0] ?? null;
+  }
+
   async find(did: string, ref: OwnedRef): Promise<Block | null> {
     const [rows] = await this.query(
       "SELECT * FROM block WHERE id = $id AND created_by = $did",

@@ -107,7 +107,7 @@ const LIFT_BANDS = 16;
 const EDGE_WIDTH = 1.2;
 /** DESIGN.md § Edges: the run is the line a reader walks, so it is the heaviest. */
 const RUN_WEIGHT = 1.8;
-const LINK_DASH = 9;
+const CONNECTION_DASH = 9;
 /** The most segments one dashed edge may cost. Reached only by an edge long
  *  enough that the dashes stretch to meet it. */
 const MAX_DASHES = 60;
@@ -199,7 +199,7 @@ export class GraphScene {
   /** Genealogy edges as index pairs, one bucket per step of the depth ramp. */
   private edgesByDepth: number[][] = [];
   private runPairs: number[] = [];
-  private linkPairs: number[] = [];
+  private connectionPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
   private fieldNames: readonly NamedField[] = [];
   private selecting = false;
@@ -229,7 +229,7 @@ export class GraphScene {
     private readonly lift: Graphics,
     private readonly edges: Graphics,
     private readonly runs: Graphics,
-    private readonly links: Graphics,
+    private readonly connections: Graphics,
     private readonly fills: ParticleContainer,
     private readonly previews: Container,
     private readonly rings: ParticleContainer,
@@ -268,7 +268,7 @@ export class GraphScene {
     const lift = new pixi.Graphics();
     const edges = new pixi.Graphics();
     const runs = new pixi.Graphics();
-    const links = new pixi.Graphics();
+    const connections = new pixi.Graphics();
     const particleOptions = {
       dynamicProperties: {
         position: true,
@@ -287,7 +287,7 @@ export class GraphScene {
       lift,
       edges,
       runs,
-      links,
+      connections,
       fills,
       previews,
       rings,
@@ -345,7 +345,7 @@ export class GraphScene {
       lift,
       edges,
       runs,
-      links,
+      connections,
       fills,
       previews,
       rings,
@@ -367,8 +367,8 @@ export class GraphScene {
     return this.app.renderer.screen.height;
   }
 
-  /** Edges, links and labels. Mark fills live on the model, so they arrive
-   *  with the next {@link setModel}. */
+  /** Edges, connections and labels. Mark fills live on the model, so they
+   *  arrive with the next {@link setModel}. */
   setPalette(palette: GraphPalette): void {
     this.options = { ...this.options, palette };
     this.ground.setInk(palette.ink);
@@ -432,13 +432,13 @@ export class GraphScene {
     const byRef = new Map(model.order.map((ref, index) => [ref, index]));
     this.edgesByDepth = Array.from({ length: DEPTH_STEPS + 1 }, () => []);
     this.runPairs = [];
-    this.linkPairs = [];
+    this.connectionPairs = [];
     model.graph.forEachEdge((_edge, attributes, source, target) => {
       const a = byRef.get(source);
       const b = byRef.get(target);
       if (a === undefined || b === undefined) return;
-      if (attributes.kind === "link") {
-        this.linkPairs.push(a, b);
+      if (attributes.kind === "connection") {
+        this.connectionPairs.push(a, b);
         return;
       }
       if (attributes.kind === "run") {
@@ -580,7 +580,8 @@ export class GraphScene {
       frameP95: percentile(this.frameSamples, 0.95),
       frames: this.frameSamples.length,
       drawn: this.marks.length,
-      edges: (genealogy + this.runPairs.length + this.linkPairs.length) / 2,
+      edges:
+        (genealogy + this.runPairs.length + this.connectionPairs.length) / 2,
       labels: this.labelSlots.size,
     };
   }
@@ -867,13 +868,13 @@ export class GraphScene {
       });
     }
 
-    this.links.clear();
-    const dash = LINK_DASH / this.viewport.scale;
-    for (let at = 0; at < this.linkPairs.length; at += 2) {
-      const a = this.linkPairs[at] * 2;
-      const b = this.linkPairs[at + 1] * 2;
+    this.connections.clear();
+    const dash = CONNECTION_DASH / this.viewport.scale;
+    for (let at = 0; at < this.connectionPairs.length; at += 2) {
+      const a = this.connectionPairs[at] * 2;
+      const b = this.connectionPairs[at + 1] * 2;
       dashLine(
-        this.links,
+        this.connections,
         this.positions[a],
         this.positions[a + 1],
         this.positions[b],
@@ -881,10 +882,10 @@ export class GraphScene {
         dash,
       );
     }
-    if (this.linkPairs.length > 0) {
-      this.links.stroke({
-        color: palette.link,
-        alpha: palette.linkAlpha,
+    if (this.connectionPairs.length > 0) {
+      this.connections.stroke({
+        color: palette.connection,
+        alpha: palette.connectionAlpha,
         width,
       });
     }
@@ -1306,9 +1307,9 @@ function strokeRing(
 }
 
 /**
- * Where each dash of a link falls, as distances along the line. The segment
- * count is capped for cost, and the SPACING absorbs the cap — so a long edge
- * draws longer dashes rather than stopping partway and leaving a link that
+ * Where each dash of a connection falls, as distances along the line. The
+ * segment count is capped for cost, and the SPACING absorbs the cap — so a long
+ * edge draws longer dashes rather than stopping partway and leaving a line that
  * appears to go nowhere.
  */
 export function dashSegments(

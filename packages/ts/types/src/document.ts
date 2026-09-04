@@ -2,6 +2,7 @@
 // docs/ARCHITECTURE.md § "Blocks and ink".
 
 import { z } from "zod";
+import { type OwnedRef, OwnedRefSchema } from "./common.js";
 
 /** A mark on a run of text — emphasis, a link — carrying its own attributes. */
 export interface DocumentMark {
@@ -132,6 +133,43 @@ export function citedUploads(content: BlockDocument): string[] {
     for (const [key, held] of Object.entries(value)) {
       if (CITES_UPLOAD.test(key) && typeof held === "string" && held) {
         cited.add(held);
+      } else {
+        walk(held);
+      }
+    }
+  };
+  walk(content.content);
+  return [...cited];
+}
+
+/**
+ * How a section cites another note: an `attrs` key named `note` holding a
+ * `<did>/<ulid>`. `reference-node.ts` in `@sloppy/ui` is the element a `[[`
+ * writes one on, and publishing blanks the ones a reader may not follow.
+ */
+export const REFERENCE_NOTE_ATTR = "note";
+
+/**
+ * Every note a section's document cites, in the order it cites them and
+ * without repeats — which is what a note's `references` are derived from, and
+ * so which dashed lines its writing draws. DESIGN.md § Edges rules on the line.
+ *
+ * {@link REFERENCE_NOTE_ATTR} is a convention across elements rather than a
+ * list of them, the way {@link citedUploads} reads a picture: an element kind
+ * this build has no renderer for is walked like any other, and so is a mark on
+ * a run of text. Publishing withholds a citation by blanking that key rather
+ * than by removing the element, so a stored document is also whatever some
+ * client wrote — anything held there that is not a `<did>/<ulid>` names no note
+ * and is skipped, because an edge to nowhere must not be drawn.
+ */
+export function citedNotes(content: BlockDocument): OwnedRef[] {
+  const cited = new Set<OwnedRef>();
+  const walk = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return;
+    for (const [key, held] of Object.entries(value)) {
+      if (key === REFERENCE_NOTE_ATTR) {
+        const named = OwnedRefSchema.safeParse(held);
+        if (named.success) cited.add(named.data);
       } else {
         walk(held);
       }

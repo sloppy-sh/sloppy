@@ -39,6 +39,14 @@ export const NodeSchema = OwnedEntitySchema.extend({
    */
   links: z.array(OwnedRefSchema).default([]),
   /**
+   * The notes this one's own writing names, derived from its blocks and
+   * rewritten whenever they change — so the words going takes the line with
+   * them, where a link stays until a hand removes it. Absent is a note nothing
+   * has ever derived them for, and every reader takes that as none. Derived
+   * means the server alone writes it: docs/ARCHITECTURE.md § "Data model".
+   */
+  references: z.array(OwnedRefSchema).optional(),
+  /**
    * Whether a publication row roots at this note or at one of its ancestors,
    * denormalized so a mark can be drawn without the publication list beside it.
    * What makes a subtree readable is still the row; docs/ARCHITECTURE.md

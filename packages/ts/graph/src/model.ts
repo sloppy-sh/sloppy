@@ -92,7 +92,7 @@ const UNSTYLED: ResolvedAppearance = resolveAppearance(null);
 const EDGE_FIRST = 300;
 const EDGE_DECAY = 0.8;
 const EDGE_MIN = 34;
-const LINK_DISTANCE = 520;
+const CONNECTION_DISTANCE = 520;
 
 /**
  * How hard a node is held to its seed — a nudge, because the seed fixes the
@@ -141,7 +141,7 @@ export interface GraphNodeAttributes {
 }
 
 export interface GraphEdgeAttributes {
-  kind: "genealogy" | "run" | "link";
+  kind: "genealogy" | "run" | "connection";
   distance: number;
 }
 
@@ -264,20 +264,35 @@ export function buildModel(
     });
   }
 
-  // Last, so a link somebody drew stays drawn as one even where the run or the
-  // genealogy already joins those two.
+  // Last, so a connection somebody made stays drawn as one even where the run
+  // or the tree already joins those two. Merged rather than added, so a pair
+  // connected both ways is the one line DESIGN.md § Edges calls for.
   for (const { node } of drawn) {
-    for (const target of node.links) {
-      if (target !== node.ref && graph.hasNode(target)) {
-        graph.mergeUndirectedEdge(node.ref, target, {
-          kind: "link",
-          distance: LINK_DISTANCE,
-        });
-      }
+    for (const target of connectedTo(node)) {
+      if (target === node.ref || !graph.hasNode(target)) continue;
+      const already = graph.undirectedEdge(node.ref, target);
+      graph.mergeUndirectedEdge(node.ref, target, {
+        kind: "connection",
+        // A connection changes how the line is drawn, never how far apart the
+        // two notes sit: that is the addresses' to set — DESIGN.md § Edges.
+        distance:
+          already === undefined
+            ? CONNECTION_DISTANCE
+            : graph.getEdgeAttribute(already, "distance"),
+      });
     }
   }
 
   return { graph, order: drawn.map((entry) => entry.node.ref), fields };
+}
+
+/** The notes a note is connected to, drawn by hand and derived from its own
+ *  writing alike. Absent `references` is a note nothing derived them for.
+ *  DESIGN.md § Edges. */
+function connectedTo(node: NodeView): readonly OwnedRef[] {
+  return node.references === undefined
+    ? node.links
+    : [...node.links, ...node.references];
 }
 
 const ORIGIN: SeedPoint = { x: 0, y: 0, outward: 0 };

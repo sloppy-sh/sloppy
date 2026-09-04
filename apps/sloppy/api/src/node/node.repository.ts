@@ -16,6 +16,7 @@ import {
   type TagCount,
   TagCountSchema,
 } from "@sloppy/types";
+import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
 import { replacement } from "./patch";
 
@@ -152,6 +153,70 @@ export class NodeRepository {
 
   patch(did: string, ref: OwnedRef, changes: NodePatch): Promise<Node | null> {
     return this.set(PATCHABLE, did, ref, changes);
+  }
+
+  /**
+   * The notes a note's own writing names, as the server derived them — never
+   * through {@link patch}, whose columns a request can name.
+   *
+   * `updated_at` is deliberately left where it was: the writing is what moved,
+   * and its own row already records that. A derivation catching up with words
+   * that were already there is not the note changing, and the note surface
+   * reads this timestamp to say whether a published branch has.
+   */
+  async setReferences(
+    did: string,
+    ref: OwnedRef,
+    references: readonly OwnedRef[],
+  ): Promise<void> {
+    await this.query(
+      "UPDATE $id SET references = $references WHERE created_by = $did",
+      {
+        id: recordIdFromOwnedRef("node", ref),
+        did,
+        references: [...references],
+      },
+    );
+  }
+
+  /**
+   * The same over a run of notes, and only for a note that still has none: a
+   * block written into one between the read these were made from and this write
+   * derives that note itself, off a newer stack, and that answer must stand.
+   *
+   * The notes that name nothing go in one statement, because most of a graph
+   * names nothing and a round trip each is what makes sweeping one slow. No
+   * owner is bound: every reference here was read off this instance's own rows
+   * rather than asked for by a caller, and the key already names its owner.
+   */
+  async fillReferences(
+    derived: ReadonlyMap<OwnedRef, readonly OwnedRef[]>,
+  ): Promise<void> {
+    const names =
+      "UPDATE $id SET references = $references WHERE references = NONE";
+    const nothing: RecordId[] = [];
+    for (const [ref, references] of derived) {
+      const id = recordIdFromOwnedRef("node", ref);
+      if (references.length === 0) nothing.push(id);
+      else await this.query(names, { id, references: [...references] });
+    }
+    if (nothing.length > 0) {
+      await this.query(
+        "UPDATE $ids SET references = [] WHERE references = NONE",
+        { ids: nothing },
+      );
+    }
+  }
+
+  /** Up to `limit` notes nothing has derived `references` for yet, across every
+   *  author this instance holds. Refs alone: a whole row is what makes reading a
+   *  graph expensive, and none of one is read here. */
+  async withoutReferences(limit: number): Promise<OwnedRef[]> {
+    const [ids] = await this.query<RecordId>(
+      "SELECT VALUE id FROM node WHERE references = NONE LIMIT $limit",
+      { limit },
+    );
+    return ids.map(ownedRefFrom);
   }
 
   /**

@@ -19,7 +19,9 @@ export interface GraphField {
 export interface GraphPickMarks {
   /** The note the choice is being made for. */
   from: OwnedRef;
-  /** What `from` already points at. */
+  /** What `from` is already linked to BY HAND. A note its writing names is not
+   *  one of these: drawing a link there is a second, independent connection,
+   *  and it is the one that stays when the words go. DESIGN.md § Edges. */
   taken: ReadonlySet<OwnedRef>;
 }
 

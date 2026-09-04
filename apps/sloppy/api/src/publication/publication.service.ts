@@ -12,6 +12,7 @@ import {
 import {
   type Address,
   type Block,
+  citedNotes,
   citedUploads,
   createOwnedRecordId,
   DEFAULT_COMMENT_ACCESS,
@@ -50,7 +51,6 @@ import {
 } from "./publication.repository";
 import {
   citedEmoji,
-  citedNotes,
   publishedDocument,
   publishedNodeOf,
   type Snapshotted,
