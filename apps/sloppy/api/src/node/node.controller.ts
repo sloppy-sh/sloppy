@@ -53,10 +53,15 @@ export class NodeController {
     });
   }
 
-  /** Every tag the caller has used, most-used first. */
+  /** Every tag the caller has used inside one `graph` — their home graph where
+   *  they named none — most-used first. */
   @Get("tags")
-  tags(@Req() req: AuthedRequest): Promise<TagCount[]> {
-    return this.nodes.tags(viewerDid(req));
+  tags(
+    @Req() req: AuthedRequest,
+    @Query("graph") graph?: string,
+  ): Promise<TagCount[]> {
+    const did = viewerDid(req);
+    return this.nodes.tags(did, graphOrRefuse(graph, did));
   }
 
   @Get(":did/:localId")

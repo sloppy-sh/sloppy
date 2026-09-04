@@ -14,6 +14,7 @@ import {
   resolveAppearance,
   type RingStyle,
   type RingWeight,
+  runKeyOf,
   runPairs,
   type Tag,
 } from "@sloppy/types";
@@ -262,13 +263,13 @@ export function buildModel(
 
 /**
  * The run of thought, in pairs. Only which notes are alongside each other is
- * decided here: those that sprang from the same note, or one author's own
- * branches.
+ * decided here: those that sprang from the same note, or the branches of one
+ * graph.
  */
 function runs(drawn: readonly DrawnNode[]): [NodeView, NodeView][] {
   const levels = new Map<string, NodeView[]>();
   for (const { node } of drawn) {
-    const level = node.parent ?? node.created_by;
+    const level = runKeyOf(node);
     const alongside = levels.get(level);
     if (alongside === undefined) levels.set(level, [node]);
     else alongside.push(node);

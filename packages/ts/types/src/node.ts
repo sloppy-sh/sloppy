@@ -131,14 +131,14 @@ export function parseNode(row: unknown): Node {
  * Absent, as everywhere, is the author's home graph.
  */
 export const NodePlacementSchema = z.discriminatedUnion("relation", [
-  z.object({ relation: z.literal("under"), note: OwnedRefSchema }),
-  z.object({ relation: z.literal("after"), note: OwnedRefSchema }),
-  z.object({
+  z.strictObject({ relation: z.literal("under"), note: OwnedRefSchema }),
+  z.strictObject({ relation: z.literal("after"), note: OwnedRefSchema }),
+  z.strictObject({
     relation: z.literal("root"),
     address: RootAddressSchema,
     graph: OwnedRefSchema.optional(),
   }),
-  z.object({
+  z.strictObject({
     relation: z.literal("branch"),
     graph: OwnedRefSchema.optional(),
   }),
@@ -160,10 +160,10 @@ export function graphAsked(
  * another could mint a citation into somebody else's graph.
  *
  * An absent `from` opens a branch at the next number in the home graph, which
- * is what `branch` says with a graph beside it. An unknown field beside
- * it is refused rather than dropped: an address is assigned once and never
- * rewritten, so a caller that placed a note through a field this route no
- * longer reads would be handed a permanent place it did not ask for.
+ * is what `branch` says with a graph beside it. An unknown field, in the body
+ * or in the placement, is refused rather than dropped: a place is assigned once
+ * and never rewritten, so a caller that placed a note through a field this
+ * route no longer reads would be handed a permanent place it did not ask for.
  */
 export const CreateNodeRequestSchema = z.strictObject(
   {

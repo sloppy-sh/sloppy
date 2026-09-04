@@ -88,8 +88,7 @@ export type PullView = z.infer<typeof PullViewSchema>;
 /**
  * A held node as the rest of Sloppy reads it, addressed by its AUTHOR — which
  * is what `provenanceOf` in `@sloppy/graph` reads to draw it as foreign, and it
- * needs the viewer beside it to do so. `graph` is the author's, which is what
- * keeps two `1a`s from two of their notebooks apart in the reader's copy.
+ * needs the viewer beside it to do so. `graph` is the author's too.
  *
  * `published` is asserted, not read: no publication row on this instance covers
  * a foreign node, and whether the author still publishes it is not something a

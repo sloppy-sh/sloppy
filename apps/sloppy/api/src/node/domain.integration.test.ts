@@ -351,12 +351,25 @@ describe("the domain routes", () => {
         expect(hers.map((note) => note.address)).toEqual(["1"]);
         expect(home.map((note) => note.ref)).not.toContain(opened.ref);
 
+        // A note that follows a BRANCH has no parent to read a graph off, and
+        // takes it off the note it follows: a run continued in the second
+        // notebook stays in the second notebook, and takes the next number on
+        // that notebook's line rather than on the home one's.
+        const next = await newNode(ada, { from: follows(opened) });
+        expect(next.graph).toBe(beside.ref);
+        expect(next.parent).toBeUndefined();
+        expect(next.address).toBe("2");
+
         // A number this person already used, taken again in the other graph.
         const numbered = await newNode(ada, {
           from: { relation: "root", address: "4096", graph: beside.ref },
         });
         expect(numbered.address).toBe("4096");
         expect(numbered.graph).toBe(beside.ref);
+
+        expect(
+          (await branchesOf(ada, beside.ref)).map((note) => note.address),
+        ).toEqual(["1", "2", "4096"]);
       },
     );
 

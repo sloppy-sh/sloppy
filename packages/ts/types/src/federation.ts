@@ -198,10 +198,9 @@ export const PulledNodeSchema = OwnedEntitySchema.extend({
   source_did: DidSyrSchema,
   /**
    * Which of the AUTHOR's graphs it sits in, beside the node for the reason
-   * `source_did` is, and absent on a copy held before graphs existed — where it
-   * reads as the author's home graph, and where `schema.ts` fills it in at boot.
-   * It is half of what an address is unique under here: one author may hold a
-   * `1a` in each of their notebooks, and a reader may hold both.
+   * `source_did` is, and half of what an address is unique under here. Absent
+   * on a copy held before graphs existed, where it reads as the author's home
+   * graph and where `schema.ts` fills it in at boot.
    */
   source_graph: OwnedRefSchema.optional(),
   /** `node.address`, beside the node rather than inside it for the same reason,

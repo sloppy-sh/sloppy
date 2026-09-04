@@ -57,8 +57,8 @@ what a person reads, cites and navigates by, and it is read inside a graph the w
 page number is read inside a book.
 
 - **An address resolves one way inside one graph, and that is the whole guarantee.**
-  `node_owner_graph_address UNIQUE` enforces it, on our own rows and on the ones a peer
-  hands us. Two notes at `1a` in one graph would be a citation that means two things;
+  The database holds it rather than the code around it, on our own rows and on the ones a
+  peer hands us. Two notes at `1a` in one graph would be a citation that means two things;
   two across a person's graphs are two labels, the way two people's `1a`s always were.
   So an address travels with the graph it is read in, and one shown with no graph beside
   it means the graph in front of you.

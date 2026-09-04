@@ -300,6 +300,18 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     await expect(
       db.update(beside.id).merge({ graph: homeGraphRef(AVA) }),
     ).rejects.toThrow();
+
+    // And all of it rests on the column being there. A UNIQUE index does not
+    // constrain a row whose indexed column is absent, so a note with no graph
+    // would be a third `3` the database accepts — it is refused at the column
+    // instead, which is what leaves the index rather than the writer holding
+    // the rule.
+    const { graph: _absent, ...graphless } = nodeRow(
+      AVA,
+      "3",
+      "01JADDRNGRAPH0000000000000",
+    );
+    await expect(db.create(graphless.id).content(graphless)).rejects.toThrow();
   });
 
   it("reads one graph's branches through the index that ends at the parent", async () => {
@@ -581,6 +593,16 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     ]) {
       await expect(db.update(first.id).merge(reassignment)).rejects.toThrow();
     }
+
+    // A held copy with no graph on it is one the unique index above cannot
+    // constrain at all, so the column is required here for the reason
+    // `node.graph` is.
+    const { source_graph: _absent, ...graphless } = heldNodeRow(
+      "01JPEERADDRE00000000000000",
+      "4a",
+      2,
+    );
+    await expect(db.create(graphless.id).content(graphless)).rejects.toThrow();
   });
 
   it("records which region served a note, and reads it both ways", async () => {

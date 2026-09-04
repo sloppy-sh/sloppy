@@ -356,10 +356,14 @@ export class SloppyClient {
     return parseNodeBulkResult(await this.send("POST", "/nodes/bulk", request));
   }
 
-  /** Every tag the caller has used, most-used first. A tag is written by
-   *  putting it on a note, so there is nothing else here to call. */
-  async listTags(): Promise<TagCount[]> {
-    const body = await this.json("/nodes/tags", { method: "GET" });
+  /** Every tag the caller has used inside one graph — their home graph where
+   *  they name none — most-used first. A tag is written by putting it on a
+   *  note, so there is nothing else here to call. */
+  async listTags(graph?: OwnedRef): Promise<TagCount[]> {
+    const path = graph
+      ? `/nodes/tags?graph=${encodeURIComponent(graph)}`
+      : "/nodes/tags";
+    const body = await this.json(path, { method: "GET" });
     return (body as unknown[]).map((t) => TagCountSchema.parse(t));
   }
 

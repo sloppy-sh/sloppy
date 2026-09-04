@@ -195,10 +195,8 @@ export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
  * version froze it — the snapshot is what a peer reads, and who is welcome to
  * answer it is a live term of the author's.
  *
- * `graph` is the notebook every address on the page is read in. Without it a
- * reader holding two regions of one author cannot tell a `1a` in one from a
- * `1a` in the other, which is what an address being a label within a context
- * means for somebody who is not the author.
+ * `graph` is the notebook every address on the page is read in; absent is the
+ * author's home graph.
  */
 export const PublishedSubtreePageSchema = z.object({
   publication: OwnedRefSchema,
@@ -383,10 +381,9 @@ export interface AskedSubtree {
  * Reads one version of one publication, holding every page to what was asked
  * for and to the pages already taken: a note's parent may have arrived on an
  * earlier one, and a note may not claim an address another already has, on this
- * page or any before it — the same rule `node_owner_graph_address UNIQUE` holds
- * our own rows to, on rows a peer handed us. A region lies in ONE of the
- * author's graphs, so that rule reaches this far unchanged: two of their `1a`s
- * can never be in one region. A note hangs off the note at its own parent
+ * page or any before it — the address rule our own rows are held to, on rows a
+ * peer handed us, and it reaches this far unchanged because a region lies in
+ * ONE of the author's graphs. A note hangs off the note at its own parent
  * address, so the tree a peer draws is the one its addresses already state.
  *
  * Every page carries one version and one graph, and each is the same one all

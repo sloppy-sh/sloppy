@@ -12,26 +12,22 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 
 /**
  * Widening the address scope from the author to one of their graphs, on a store
- * that already holds notes.
+ * that already holds notes. Every note keeps the address, the ref and the
+ * timestamps it had; it gains the graph its author started with.
+ * docs/ARCHITECTURE.md § "The addressing protocol" says why the column is
+ * filled rather than its absence read as the home graph.
  *
- * **A UNIQUE index does not constrain a row whose indexed column is absent** —
- * measured on 3.1.3, two rows with no `graph` and one address are both accepted
- * — so leaving the home graph to be read as the absence of the column would
- * take the address rule off every note written before this. The column is
- * therefore filled in, once, and the note keeps the address, the ref and the
- * timestamps it already had.
- *
- * It is gated on the index it replaces rather than on the rows, so a store that
- * has already migrated does not scan the table on every boot, and a store
- * created after this never scans it at all. The fill runs BEFORE the field is
- * defined READONLY below, which is the only order in which it is allowed to.
+ * Gated on the index it replaces rather than on the rows, so a store that has
+ * migrated does not scan the table again and one created after this never scans
+ * it at all. The fill runs BEFORE the two columns are defined below, which is
+ * the only order in which it is allowed to.
  */
 const MIGRATIONS = `
   LET $node_indexes = (INFO FOR TABLE node).indexes;
   IF $node_indexes.node_owner_address != NONE {
     UPDATE node SET graph = string::concat(created_by, "/${HOME_GRAPH_ULID}")
       WHERE graph = NONE;
-    REMOVE INDEX node_owner_address ON node;
+    REMOVE INDEX IF EXISTS node_owner_address ON node;
   };
 
   LET $held_indexes = (INFO FOR TABLE pulled_node).indexes;
@@ -39,7 +35,7 @@ const MIGRATIONS = `
     UPDATE pulled_node
       SET source_graph = string::concat(source_did, "/${HOME_GRAPH_ULID}")
       WHERE source_graph = NONE;
-    REMOVE INDEX pulled_node_owner_author_address ON pulled_node;
+    REMOVE INDEX IF EXISTS pulled_node_owner_author_address ON pulled_node;
   };
 `;
 
@@ -70,8 +66,14 @@ ${MIGRATIONS}
   -- is read in. Immutable for the reason the address is: a note that moved
   -- graph would land in one where its address may already be taken, and a
   -- citation there would resolve two ways.
-  DEFINE FIELD IF NOT EXISTS graph ON node TYPE option<string> READONLY;
-  DEFINE FIELD IF NOT EXISTS source_graph ON pulled_node TYPE option<string> READONLY;
+  --
+  -- Required on the two columns a UNIQUE address index reads, because a UNIQUE
+  -- index does not constrain a row whose indexed column is absent: leave either
+  -- optional and a row that omits it is a second note at a taken address that
+  -- the database accepts. A publication's graph is in no such index, and old
+  -- rows of it are deliberately not filled.
+  DEFINE FIELD IF NOT EXISTS graph ON node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source_graph ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS graph ON publication TYPE option<string> READONLY;
 
   DEFINE FIELD IF NOT EXISTS created_by ON graph TYPE string READONLY;
@@ -171,8 +173,7 @@ ${MIGRATIONS}
 
   -- UNIQUE is the address protocol, enforced: one address per graph, so a
   -- second row claiming a taken address fails at write rather than becoming a
-  -- citation that resolves two ways INSIDE the graph it is read in. Across two
-  -- graphs an address is two labels, and what tells those apart is the ref.
+  -- citation that resolves two ways inside the graph it is read in.
   DEFINE INDEX IF NOT EXISTS node_owner_graph_address ON node FIELDS created_by, graph, address UNIQUE;
   -- The children of a node, and — bound to NONE — the branches one graph opens.
   DEFINE INDEX IF NOT EXISTS node_owner_graph_parent ON node FIELDS created_by, graph, parent;
@@ -254,9 +255,8 @@ ${MIGRATIONS}
   -- What a note's author reads, and what the per-voice bound is counted over.
   DEFINE INDEX IF NOT EXISTS comment_pointer_owner_note_voice ON comment_pointer FIELDS created_by, note, voice;
   -- The address protocol on rows a peer handed us, at the scope it now has: one
-  -- address per author's GRAPH, so a reader may hold the 1a of each notebook a
-  -- person keeps and still resolve a citation into one of them. It is also how
-  -- a held note is reached by the address a reader cites.
+  -- address per author's GRAPH. It is also how a held note is reached by the
+  -- address a reader cites.
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_graph_address ON pulled_node FIELDS created_by, source_did, source_graph, address UNIQUE;
 
   -- Which notes a region served, and which regions still serve a note: the

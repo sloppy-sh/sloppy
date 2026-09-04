@@ -351,6 +351,24 @@ describe("the run of thought", () => {
     );
   });
 
+  // Two of one person's graphs each hold a `1`, and those are two beginnings
+  // rather than a run. Keyed by author they would be one.
+  it("never runs from one graph's branches into another of the same person's", () => {
+    const beside = `${corpus.owner}/01JGRAPH2ND000000000000000` as OwnedRef;
+    const mine = [note("1"), note("2")];
+    const other = [note("1", beside), note("2", beside)];
+    const built = buildModel(drawnNodes([...mine, ...other], new Set()), {
+      selection: [],
+      palette,
+    });
+    expect(runsOf(built)).toHaveLength(2);
+    expect(built.graph.hasEdge(mine[0].ref, other[0].ref)).toBe(false);
+    expect(built.graph.hasEdge(mine[1].ref, other[1].ref)).toBe(false);
+    expect(built.graph.getEdgeAttributes(other[0].ref, other[1].ref).kind).toBe(
+      "run",
+    );
+  });
+
   // The point of deriving it: nothing is left holding a reference to the note
   // that went, so the two either side of the gap read as what they now are.
   it("reads across a note that is gone", () => {
@@ -385,11 +403,13 @@ describe("the run of thought", () => {
 });
 
 /** A root of the corpus owner's, addressed by hand. */
-function note(address: string): NodeView {
-  const ref = `${corpus.owner}/${address}` as OwnedRef;
+function note(address: string, graph?: OwnedRef): NodeView {
+  const ref =
+    `${corpus.owner}/${graph ? `${graph}|` : ""}${address}` as OwnedRef;
   return {
     ref,
     created_by: corpus.owner,
+    ...(graph ? { graph } : {}),
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     address: address as Address,

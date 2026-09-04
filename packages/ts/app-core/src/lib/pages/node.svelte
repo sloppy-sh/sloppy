@@ -21,6 +21,7 @@
 		alongRun,
 		compareOrd,
 		isInSubtree,
+		runKeyOf,
 		type BlockView,
 		type CommentAccess,
 		type CreateBlockRequest,
@@ -114,13 +115,13 @@
 	const suggestions = $derived(tags.all.map((entry) => entry.tag));
 
 	/** The notes this one is alongside, grouped the way the canvas groups them
-	 *  for the run it draws: what sprang from the same note, or an author's own
-	 *  branches. */
+	 *  for the run it draws: what sprang from the same note, or the branches of
+	 *  one graph. */
 	const alongside = $derived.by(() => {
 		if (!node) return [];
-		return node.parent
-			? nodes.children(node.parent)
-			: nodes.region().filter((root) => root.created_by === node.created_by);
+		if (node.parent) return nodes.children(node.parent);
+		const run = runKeyOf(node);
+		return nodes.region().filter((root) => runKeyOf(root) === run);
 	});
 
 	const along = $derived(node ? alongRun(node.address, alongside) : { before: null, after: null });

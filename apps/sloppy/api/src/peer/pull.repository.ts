@@ -110,9 +110,9 @@ export class PullRepository {
    * One page of an answer, written under the reader's name.
    *
    * Held rows the page replaces go first, and a note the author now addresses
-   * differently goes with them — `pulled_node` is UNIQUE on author and address,
-   * and an author who deletes a branch's first child and writes a new one hands
-   * out an address the reader is still holding.
+   * differently goes with them — `pulled_node` is UNIQUE on the author, their
+   * graph and the address, and an author who deletes a branch's first child and
+   * writes a new one hands out an address the reader is still holding.
    *
    * The region's own membership is written before the notes it serves. A run
    * that fails between the two leaves a region saying it serves a note that is
@@ -130,9 +130,8 @@ export class PullRepository {
     const addresses = page.nodes.map((node) => node.address);
 
     if (addresses.length > 0) {
-      // Bound to the graph the region came from: the same author's `4a` in
-      // another notebook is a different note, and dropping it here would take a
-      // copy the reader holds for a region that never served it.
+      // Bound to the graph the region came from, or the drop takes a copy the
+      // reader holds for a region that never served it.
       const [taken] = await this.query<OwnedRef>(
         `SELECT VALUE source FROM pulled_node
            WHERE created_by = $reader AND source_did = $author

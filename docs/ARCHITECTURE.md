@@ -97,8 +97,9 @@ Address Is the Protocol" states the rules; this is the mechanism.
 - The address hashes to a stable **angular sector**, so a subtree radiates in the same
   direction from its origin on every peer's screen. The sector is derived on read, never
   stored. It is a function of the address alone, so a `1` in each of two graphs seeds the
-  same direction — which is what already happens between two authors, and what the canvas
-  already resolves by drawing one graph and however many foreign regions beside it.
+  same direction, exactly as two authors' `1`s already do. Nothing in the layout tells them
+  apart; what keeps it from being a collision is that the canvas draws one graph at a time,
+  and § "Federating the graph" is where that rule is held.
 
 Determinism is a property test over generated creation sequences: two simulated peers
 applying identical operations must produce byte-identical addresses. The rules above do not
@@ -113,11 +114,13 @@ written the first time the listing is asked for, which is what gives a rename so
 rename.
 
 **Absent means the home graph**, on the wire and on a row written before graphs existed.
-On the two columns a UNIQUE index reads — `node.graph` and `pulled_node.source_graph` — the
-value is additionally always filled in, because SurrealDB does not constrain a row whose
-indexed column is absent: two rows with no `graph` and one address are both accepted,
-measured on 3.1.3. `schema.ts` carries the one-time fill that makes those columns whole, and
-`schema.integration.test.ts` holds a store built the old way against it.
+The two columns a UNIQUE index reads — `node.graph` and `pulled_node.source_graph` — are the
+exception: they are always present, because SurrealDB does not constrain a row whose indexed
+column is absent, and two rows with no `graph` and one address are both accepted, measured on
+3.1.3. So `schema.ts` fills them once on a store that predates graphs and then declares both
+`TYPE string`, which is what leaves the index holding the address rule rather than the
+application's discipline. `schema.integration.test.ts` holds a store built the old way
+against both halves. `publication.graph` is in no unique index and stays optional.
 
 **The graph travels with a published region.** `PublishedSubtreePage` and
 `PublishedPublication` carry it, because a reader holding two regions of one author cannot
@@ -405,20 +408,19 @@ what it may name is bounded in three places and none of them is a server's own i
   per publication, so a publication listed twice is refused the way a second note at a
   taken address is.
 
-  Two of those refusals are the address protocol, held on rows a peer handed us. Two
-  notes at one address is `node_owner_address UNIQUE`: our own rows cannot do it, and a
-  copy of somebody else's may not either, or a citation of that author's `1a1` resolves two
-  ways in the reader's graph. Where a note hangs is the other half of the same rule — a
-  mark's position seeds from its address alone, so a genealogy that disagrees with the
-  addresses draws a shape the two peers do not share, and a CYCLE of parents is that
-  disagreement at its worst: our own rows cannot hold one, so the walk up a note's
-  ancestors does not guard against one and the first draw of that region would never
-  return. And every reference is held to its author because the published shape reaches an
-  anonymous caller: a `links` entry naming one of the READER's own notes would otherwise
-  draw a stranger's note into their graph as a link they had drawn themselves. The one
-  timestamp width is the last of them — a signature is over the bytes the author sent, so a
-  published node is not something to normalize on arrival, and one encoding on the wire is
-  what leaves the stored copy checkable.
+  Two of those refusals are the address protocol, held on rows a peer handed us. Two notes at
+  one address is `node_owner_graph_address UNIQUE`, and a region lies in one graph: our own rows
+  cannot do it, and a copy of somebody else's may not either, or a citation of that author's
+  `1a1` resolves two ways in the reader's graph. Where a note hangs is the other half of the
+  same rule — a mark's position seeds from its address alone, so a genealogy that disagrees with
+  the addresses draws a shape the two peers do not share, and a CYCLE of parents is that
+  disagreement at its worst: our own rows cannot hold one, so the walk up a note's ancestors
+  does not guard against one and the first draw of that region would never return. And every
+  reference is held to its author because the published shape reaches an anonymous caller: a
+  `links` entry naming one of the READER's own notes would otherwise draw a stranger's note into
+  their graph as a link they had drawn themselves. The one timestamp width is the last of them —
+  a signature is over the bytes the author sent, so a published node is not something to
+  normalize on arrival, and one encoding on the wire is what leaves the stored copy checkable.
 
   `MAX_PUBLISHED_NODES_PER_PAGE`, `MAX_PUBLISHED_BLOCKS_PER_PAGE`,
   `MAX_PUBLISHED_PUBLICATIONS_PER_PAGE`, `MAX_PUBLISHED_VERSIONS_PER_PAGE` and
@@ -878,6 +880,14 @@ forever, but nothing sweeps the stale refs. Whichever milestone adds a sweep own
 whether it runs on delete or on read; until then the stored array is a superset of what
 resolves.
 
+**A link may cross into another of its author's graphs, and it is an ordinary link.** A
+`links` entry is a ref, and a ref names one note across every graph its author keeps, so
+nothing refuses one that points out of the graph it was written in and the note surface
+resolves and opens it — `GET /api/nodes/{did}/{ulid}` is addressed by ref and is not scoped
+to a graph. The canvas draws one graph, so it draws no edge for a target outside the region
+on screen, exactly as it draws none for a target in a subtree that is not loaded. What is
+drawn is a subset of what is stored; what is stored resolves either way.
+
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
   root          ref       the subtree it publishes, immutable
@@ -1227,6 +1237,12 @@ section can hold several drawings and prose between them.
 internals. Use a separate `ready` flag for post-mount UI.
 
 ## Tagging a note
+
+**The tag axis is read inside one graph.** `GET /api/nodes/tags` counts the notes of one
+graph — the caller's home graph where they name none — because the rail is the legend for
+the canvas beside it, and a count that includes notes that canvas will never light is a
+number nobody can act on. Selecting tags still intersects sets across the genealogical tree,
+which is the axis AI.md means; what it does not cross is a graph.
 
 `TagPicker`, in `@sloppy/ui`'s `components/tags/`, is the one surface that edits a note's
 tags. It is **controlled and does not persist**:

@@ -88,15 +88,12 @@ export class NodeService {
     return node === null ? null : entityView(node);
   }
 
-  tags(did: string): Promise<TagCount[]> {
-    return this.nodes.tagCounts(did);
+  tags(did: string, graph?: OwnedRef): Promise<TagCount[]> {
+    return this.nodes.tagCounts(did, graph);
   }
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
-    const parent = await this.parentFor(did, request.from);
-    const graph = parent
-      ? graphOf(parent)
-      : await this.graphFor(did, request.from);
+    const { graph, parent } = await this.placeFor(did, request.from);
     const named =
       request.from?.relation === "root" ? request.from.address : null;
     return this.creations.run(`${graph}|${parent?.address ?? ""}`, () =>
@@ -106,11 +103,8 @@ export class NodeService {
     );
   }
 
-  /**
-   * The graph a new branch opens in. A note placed against another takes that
-   * note's graph and never asks for one, so this is reached only where nothing
-   * else answers.
-   */
+  /** The graph a new branch opens in, where the placement is one that names a
+   *  graph at all. */
   private async graphFor(
     did: string,
     from: CreateRequest["from"],
@@ -283,16 +277,17 @@ export class NodeService {
   }
 
   /**
-   * The node the new one hangs under. A note placed `after` another takes the
-   * same parent as that one, which is what makes `1a` → `1b` and `1` → `2` the
-   * same act at two depths.
+   * Where a new node goes: the graph it is filed in and the node it hangs
+   * under. A note placed `after` another takes that note's parent, which is
+   * what makes `1a` → `1b` and `1` → `2` the same act at two depths. It takes
+   * that note's GRAPH either way — a branch has no parent to read one off.
    */
-  private async parentFor(
+  private async placeFor(
     did: string,
     from: CreateRequest["from"],
-  ): Promise<Node | null> {
+  ): Promise<{ graph: OwnedRef; parent: Node | null }> {
     if (!from || from.relation === "root" || from.relation === "branch") {
-      return null;
+      return { graph: await this.graphFor(did, from), parent: null };
     }
     const anchor = await this.nodes.find(did, from.note);
     if (!anchor) {
@@ -302,13 +297,14 @@ export class NodeService {
           : "The note this follows is not here.",
       );
     }
-    if (from.relation === "under") return anchor;
-    if (!anchor.parent) return null;
+    const graph = graphOf(anchor);
+    if (from.relation === "under") return { graph, parent: anchor };
+    if (!anchor.parent) return { graph, parent: null };
     const parent = await this.nodes.find(did, anchor.parent);
     if (!parent) {
       throw new BadRequestException("The note this follows is not here.");
     }
-    return parent;
+    return { graph, parent };
   }
 
   /** A branch at the number its author picked, which nothing else in that graph

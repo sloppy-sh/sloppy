@@ -223,14 +223,20 @@ export class NodeRepository {
    * notes on every call because that is where a tag lives: there is no row to
    * keep in step, and so no way for the count to be wrong.
    */
-  async tagCounts(did: string): Promise<TagCount[]> {
+  /** The tags carried inside ONE graph, which is what the rail beside a canvas
+   *  drawing that graph is a legend for. */
+  async tagCounts(
+    did: string,
+    graph: OwnedRef = homeGraphRef(did),
+  ): Promise<TagCount[]> {
     const [rows] = await this.query<TagCount>(
       `SELECT tags AS tag, count() AS notes
          FROM (SELECT tags FROM node
-                 WHERE created_by = $did AND array::len(tags ?? []) > 0
+                 WHERE created_by = $did AND graph = $graph
+                   AND array::len(tags ?? []) > 0
                  SPLIT tags)
          GROUP BY tag ORDER BY notes DESC, tag ASC`,
-      { did },
+      { did, graph },
     );
     return rows.map((row) => TagCountSchema.parse(row));
   }

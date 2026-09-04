@@ -1,5 +1,4 @@
-// A graph: one person's notebook, and the context an address is read in. A
-// person may have several, and `1a` in one is not `1a` in another.
+// A graph: one person's notebook, and the context an address is read in.
 //
 // AI.md § "The Address Is the Protocol" states the scope; docs/ARCHITECTURE.md
 // § "The addressing protocol" states the mechanism.

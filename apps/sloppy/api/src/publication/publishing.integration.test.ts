@@ -22,6 +22,7 @@ import {
   childAddress,
   createOwnedRecordId,
   EMOJI_UPLOAD_ATTR,
+  homeGraphRef,
   type NodeView,
   type OwnedRef,
   POINTERS_PER_NOTE,
@@ -1144,6 +1145,7 @@ describe("publishing a branch, and what a peer reads back", () => {
         rows.push({
           id: createOwnedRecordId("node", ada.did),
           created_by: ada.did,
+          graph: homeGraphRef(ada.did),
           address,
           depth: addressDepth(address),
           parent: root.ref,
@@ -1201,6 +1203,7 @@ describe("publishing a branch, and what a peer reads back", () => {
         rows.push({
           id: createOwnedRecordId("node", ada.did),
           created_by: ada.did,
+          graph: homeGraphRef(ada.did),
           address,
           depth: addressDepth(address),
           parent: root.ref,

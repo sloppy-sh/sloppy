@@ -226,10 +226,10 @@ describe("a region a peer answered with", () => {
   });
 
   it("is refused when two notes claim one address", () => {
-    // `node_owner_address UNIQUE` is the address protocol on our own rows: a
-    // second note at a taken address is a citation that resolves two ways. A
-    // peer's answer is held to it too, and the region's own root included —
-    // otherwise which of the two is the root is whichever arrived first.
+    // A second note at a taken address is a citation that resolves two ways,
+    // which our own rows cannot hold. A peer's answer is held to the same rule,
+    // and the region's own root included — otherwise which of the two is the
+    // root is whichever arrived first.
     const twoBelow = subtree();
     twoBelow.nodes = [
       ...twoBelow.nodes,
