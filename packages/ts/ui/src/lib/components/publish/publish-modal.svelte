@@ -339,31 +339,30 @@
 				</Button>
 			</section>
 
-			<section class="space-y-2">
-				<h3 class="text-sm font-medium">Who may answer</h3>
-				{#if !answersReach}
-					<p class="text-sm text-muted-foreground">You will not see what they say.</p>
-				{/if}
-				{#each terms as term (term.value)}
-					<button
-						type="button"
-						disabled={working}
-						aria-pressed={published.comments === term.value}
-						onclick={() => act(() => oncomments(term.value))}
-						class="flex min-h-12 w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-					>
-						<Check
-							class="size-4 shrink-0 {published.comments === term.value
-								? 'text-foreground'
-								: 'text-transparent'}"
-						/>
-						<span class="min-w-0 flex-1">
-							<span class="block text-sm">{term.label}</span>
-							<span class="block text-xs text-muted-foreground">{term.says}</span>
-						</span>
-					</button>
-				{/each}
-			</section>
+			{#if answersReach}
+				<section class="space-y-2">
+					<h3 class="text-sm font-medium">Who may answer</h3>
+					{#each terms as term (term.value)}
+						<button
+							type="button"
+							disabled={working}
+							aria-pressed={published.comments === term.value}
+							onclick={() => act(() => oncomments(term.value))}
+							class="flex min-h-12 w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						>
+							<Check
+								class="size-4 shrink-0 {published.comments === term.value
+									? 'text-foreground'
+									: 'text-transparent'}"
+							/>
+							<span class="min-w-0 flex-1">
+								<span class="block text-sm">{term.label}</span>
+								<span class="block text-xs text-muted-foreground">{term.says}</span>
+							</span>
+						</button>
+					{/each}
+				</section>
+			{/if}
 
 			{#if refused}
 				<p class="text-sm text-destructive" role="alert">{refused}</p>
@@ -394,8 +393,6 @@
 				<p>If you take it down, whoever has already read it keeps their copy.</p>
 				{#if answersReach}
 					<p>Anyone reading it may answer, until you say otherwise here.</p>
-				{:else}
-					<p>Anyone reading it may answer, and you will not see what they say.</p>
 				{/if}
 				{#if carriedBy}
 					<p>{carriedBy} already carries this branch, on its own terms.</p>
