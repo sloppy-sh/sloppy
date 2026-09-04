@@ -2,6 +2,7 @@
 	// What somebody has chosen on the canvas, and the acts on it. Pinned to the
 	// bottom, above the nav pill and the system bar under it.
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
+	import Globe from '@lucide/svelte/icons/globe';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -11,6 +12,7 @@
 		says = null,
 		onTags,
 		onLook,
+		onPublish,
 		onDelete,
 		onDone
 	}: {
@@ -20,6 +22,7 @@
 		says?: string | null;
 		onTags: () => void;
 		onLook: () => void;
+		onPublish: () => void;
 		onDelete: () => void;
 		onDone: () => void;
 	} = $props();
@@ -33,6 +36,7 @@
 	const acts = $derived([
 		{ label: 'Tags', icon: Tag, onSelect: onTags },
 		{ label: 'Look', icon: CircleDashed, onSelect: onLook },
+		{ label: 'Publish', icon: Globe, onSelect: onPublish },
 		{ label: 'Delete', icon: Trash2, onSelect: onDelete, destructive: true }
 	]);
 </script>
@@ -54,7 +58,7 @@
 		{/if}
 
 		{#if count > 0}
-			<div class="grid grid-cols-3 gap-1">
+			<div class="grid grid-cols-4 gap-1">
 				{#each acts as act (act.label)}
 					<Button
 						variant="ghost"

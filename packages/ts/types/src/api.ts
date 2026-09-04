@@ -140,9 +140,10 @@ export function parseNodeView(value: unknown): NodeView {
  *
  * `notes` is what the act left behind — every note it reached, as that note now
  * stands — and is empty where the act was to delete them, which is why the
- * count is its own field. `missed` is the rest of what was asked for: gone, or
- * never the caller's. An act that reaches nothing is refused instead, so a
- * reader of these two numbers is always reading a partial success.
+ * count is its own field. `missed` is the rest of what was asked for: gone,
+ * never the caller's, or — publishing — one this instance could not put out. An
+ * act that reaches nothing is refused instead, so a reader of these two numbers
+ * is always reading a partial success.
  */
 export const NodeBulkResultSchema = z.object({
   reached: z.int().nonnegative(),

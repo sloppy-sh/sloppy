@@ -387,10 +387,14 @@ describe("the domain routes", () => {
       const { NodeService } = await import("./node.service");
       const { NodeRepository } = await import("./node.repository");
       const { MediaService } = await import("../media/media.service");
+      const { PublicationService } = await import(
+        "../publication/publication.service"
+      );
       const repository = app.get(NodeRepository);
       const media = app.get(MediaService);
-      const one = new NodeService(repository, media);
-      const other = new NodeService(repository, media);
+      const publications = app.get(PublicationService);
+      const one = new NodeService(repository, media, publications);
+      const other = new NodeService(repository, media, publications);
 
       const parent = await newNode(ada, { title: "Two writers" });
       const born = await Promise.all(

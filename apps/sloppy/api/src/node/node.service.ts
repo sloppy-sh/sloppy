@@ -13,6 +13,8 @@ import {
   type CreateNodeRequestSchema,
   createOwnedRecordId,
   entityView,
+  isAncestorAddress,
+  isInSubtree,
   isRootAddress,
   isUnstyled,
   MAX_TAGS_PER_NODE,
@@ -33,6 +35,7 @@ import {
 } from "@sloppy/types";
 import type { z } from "zod";
 import { MediaService } from "../media/media.service";
+import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
 import { nextChildAddress } from "./address-assignment";
 import type { NodeBulkPatch } from "./node.repository";
@@ -44,7 +47,7 @@ type UpdateRequest = z.output<typeof UpdateNodeRequestSchema>;
 type BulkRequest = z.output<typeof NodeBulkRequestSchema>;
 type ChangingAct = Exclude<
   z.output<typeof NodeBulkActSchema>,
-  { act: "delete" }
+  { act: "delete" } | { act: "publish" }
 >;
 
 /**
@@ -60,6 +63,7 @@ export class NodeService {
   constructor(
     private readonly nodes: NodeRepository,
     private readonly media: MediaService,
+    private readonly publications: PublicationService,
   ) {}
 
   async list(
@@ -149,11 +153,56 @@ export class NodeService {
       return answer(asked.length, mine.length, []);
     }
 
+    if (request.act.act === "publish") {
+      if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+      return this.publishEach(delegation, asked.length, mine);
+    }
+
     const written = await this.nodes.patchAll(
       did,
       await this.writes(mine, request.act, delegation),
     );
     return answer(asked.length, written.length, written.map(entityView));
+  }
+
+  /**
+   * Each chosen note published as it stands, and how much of the set that
+   * reached. Publishing puts a note out once: one the set already carries goes
+   * out inside its carrier, and every note under a carrier that failed is
+   * counted rather than reported as published.
+   */
+  private async publishEach(
+    delegation: Delegation,
+    asked: number,
+    mine: readonly Node[],
+  ): Promise<NodeBulkResult> {
+    const put: Node[] = [];
+    let refusal: unknown;
+    for (const root of outermost(mine)) {
+      try {
+        await this.publications.publish(delegation, {
+          root: ownedRefFrom(root.id),
+        });
+        put.push(root);
+      } catch (err) {
+        refusal ??= err;
+      }
+    }
+    // Nothing went out, so the person reads why rather than a count of it.
+    if (put.length === 0) throw refusal;
+
+    const out = mine.filter((note) =>
+      put.some(
+        (root) =>
+          root.origin === note.origin &&
+          isInSubtree(root.address, note.address),
+      ),
+    );
+    const after = await this.nodes.many(
+      delegation.did,
+      out.map((note) => ownedRefFrom(note.id)),
+    );
+    return answer(asked, after.length, after.map(entityView));
   }
 
   /** What each note the act reached is about to be set to. */
@@ -271,6 +320,23 @@ export class NodeService {
       }
     }
   }
+}
+
+/**
+ * The chosen notes no other chosen note carries. Publishing an inner one as
+ * well would put one piece of writing out twice, in two snapshots each on their
+ * own terms.
+ */
+function outermost(chosen: readonly Node[]): Node[] {
+  return chosen.filter(
+    (note) =>
+      !chosen.some(
+        (other) =>
+          other !== note &&
+          other.origin === note.origin &&
+          isAncestorAddress(other.address, note.address),
+      ),
+  );
 }
 
 function answer(

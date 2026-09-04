@@ -23,6 +23,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
+	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -50,6 +51,7 @@
 		CanvasMenu,
 		ChosenBar,
 		ChosenLook,
+		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
 		GraphSurface,
@@ -88,6 +90,7 @@
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
+	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -139,6 +142,7 @@
 	let hoverAt = $state<GraphHoverAt | null>(null);
 	let tagging = $state(false);
 	let styling = $state(false);
+	let publishing = $state(false);
 	let deleting = $state(false);
 	/** How many notes the delete question was asked about, and what it costs.
 	 *  Latched: the set is let go the moment the act lands, while the question is
@@ -261,6 +265,19 @@
 		acted.map((ref) => nodes.get(ref)).filter((note) => note !== undefined)
 	);
 	const actedTags = $derived([...new Set(actedNotes.flatMap((note) => note.tags))]);
+	/** How many of the chosen notes a version already carries. */
+	const alreadyOut = $derived(actedNotes.filter((note) => note.published).length);
+	/** Branches under the chosen notes that were published inviting fewer people
+	 *  to answer, whose notes a publish here carries on its own terms. */
+	const narrowerUnderChosen = $derived([
+		...new Set(
+			actedNotes.flatMap((note) =>
+				publications
+					.narrowerUnder(note, publications.at(note)?.comments ?? 'anyone')
+					.map((under) => under.root_address)
+			)
+		)
+	]);
 	const overGraph = $derived(overlay.open || menuAt !== null);
 
 	/** What the mark under the pointer stands for: the note it IS, and — since a
@@ -591,13 +608,26 @@
 			missed = (await nodes.act({ notes: asked, act })).missed;
 		} catch (error) {
 			actRefused =
-				serverMessage(error) ?? 'Sloppy could not change those notes. Try again in a moment.';
+				serverMessage(error) ??
+				(act.act === 'publish'
+					? 'Sloppy could not publish those notes. Try again in a moment.'
+					: 'Sloppy could not change those notes. Try again in a moment.');
 			throw error;
 		}
-		const shortfall = missed === 0 ? null : alreadyGone(missed, asked.length);
+		const shortfall =
+			missed === 0
+				? null
+				: act.act === 'publish'
+					? notPublished(missed, asked.length)
+					: alreadyGone(missed, asked.length);
 		// A tag exists as long as a note carries one, so the rail's counts are stale
 		// the moment notes are tagged — or taken away with the tags they carried.
-		if (act.act !== 'set_appearance') void tags.reload();
+		if (act.act !== 'set_appearance' && act.act !== 'publish') void tags.reload();
+		if (act.act === 'publish') {
+			actMissed = shortfall;
+			refreshPublished(asked);
+			return;
+		}
 		if (act.act !== 'delete') {
 			actMissed = shortfall;
 			return;
@@ -607,6 +637,26 @@
 		oneNote = null;
 		stopChoosing();
 		refused = shortfall;
+	}
+
+	/**
+	 * A publish moves more marks than the notes it was asked about: every note
+	 * under a published root draws as published too, and what this person
+	 * publishes is read on surfaces this one does not draw.
+	 */
+	function refreshPublished(asked: readonly OwnedRef[]): void {
+		const origins = new Set(
+			asked.map((ref) => nodes.get(ref)?.origin).filter((origin) => origin !== undefined)
+		);
+		for (const origin of origins) void nodes.reload({ origin }).catch(() => {});
+		void publications.reload().catch(() => {});
+	}
+
+	function notPublished(missed: number, asked: number): string {
+		if (asked === 1) return 'That note is not published.';
+		return missed === 1
+			? 'One of the notes you chose is not published.'
+			: `${missed.toLocaleString()} of the notes you chose are not published.`;
 	}
 
 	function alreadyGone(missed: number, asked: number): string {
@@ -638,6 +688,11 @@
 			items.push(
 				{ label: 'Tags', icon: Tag, onSelect: () => openTags(null) },
 				{ label: 'Give them a look', icon: CircleDashed, onSelect: () => openLook(null) },
+				{
+					label: picked.size === 1 ? 'Publish it' : `Publish these ${picked.size}`,
+					icon: Globe,
+					onSelect: openPublish
+				},
 				{
 					label: picked.size === 1 ? 'Delete it' : `Delete these ${picked.size}`,
 					icon: Trash2,
@@ -693,6 +748,15 @@
 		oneNote = one;
 		forgetLastAct();
 		styling = true;
+	}
+
+	/** Always the chosen set: one note is published from its own page, where the
+	 *  versions of it are. */
+	function openPublish(): void {
+		oneNote = null;
+		forgetLastAct();
+		void publications.load().catch(() => {});
+		publishing = true;
 	}
 
 	function askToDelete(one: OwnedRef | null): void {
@@ -1133,6 +1197,7 @@
 			says={actRefused ?? actMissed}
 			onTags={() => openTags(null)}
 			onLook={() => openLook(null)}
+			onPublish={openPublish}
 			onDelete={() => askToDelete(null)}
 			onDone={stopChoosing}
 		/>
@@ -1179,6 +1244,16 @@
 			actOnThem({ act: 'set_appearance', appearance: look })}
 	/>
 {/if}
+
+<ChosenPublish
+	bind:open={publishing}
+	count={acted.length}
+	{alreadyOut}
+	narrower={narrowerUnderChosen}
+	answersReach={identity.kind !== 'local'}
+	refused={actRefused}
+	onpublish={() => actOnThem({ act: 'publish' })}
+/>
 
 <ConfirmModal
 	bind:open={deleting}

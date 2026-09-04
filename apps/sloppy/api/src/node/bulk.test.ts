@@ -3,7 +3,11 @@
 // blocks with it — is a claim about a running system and lives in
 // `domain.integration.test.ts`.
 
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import {
   createOwnedRecordId,
   MAX_TAGS_PER_NODE,
@@ -16,6 +20,8 @@ import {
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import type { MediaService } from "../media/media.service";
+import type { PublicationService } from "../publication/publication.service";
+import type { Delegation } from "../syr/syr.service";
 import type { NodeBulkPatch, NodeRepository } from "./node.repository";
 import { NodeService } from "./node.service";
 
@@ -24,7 +30,14 @@ const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 /** Nothing here names a picture, so no store is ever asked for one. */
 const media = {} as MediaService;
 
-function note(address: string, tags: string[] = []): Node {
+const ada: Delegation = {
+  did: DID,
+  syr_instance_url: "https://syr.test",
+  delegate_public_key: "z6MkDelegate",
+  access_token: "token",
+};
+
+function note(address: string, tags: string[] = [], published = false): Node {
   const id = createOwnedRecordId("node", DID);
   const now = nowIso();
   return {
@@ -36,16 +49,29 @@ function note(address: string, tags: string[] = []): Node {
     title: "",
     tags,
     links: [],
-    published: false,
+    published,
     created_at: now,
     updated_at: now,
   } as Node;
 }
 
-/** The writes an act asked for, alongside the service that made them. */
-function serviceOver(notes: Node[]) {
+/** One tree, rooted at the first address: what descends from what is read off
+ *  the addresses, and only within an origin. */
+function tree(...addresses: string[]): Node[] {
+  const notes = addresses.map((address) => note(address));
+  const origin = ownedRefFrom(notes[0].id);
+  return notes.map((one) => ({ ...one, origin }));
+}
+
+/**
+ * The writes an act asked for, alongside the service that made them. `refuses`
+ * names the roots the publish half turns down, which is what a set publishing
+ * partway looks like from here.
+ */
+function serviceOver(notes: Node[], refuses: readonly OwnedRef[] = []) {
   const writes: NodeBulkPatch[] = [];
   const removed: Node[] = [];
+  const published: OwnedRef[] = [];
   const repository = {
     many: (_did: string, refs: readonly OwnedRef[]) =>
       Promise.resolve(notes.filter((n) => refs.includes(ownedRefFrom(n.id)))),
@@ -60,7 +86,23 @@ function serviceOver(notes: Node[]) {
       return Promise.resolve();
     },
   } as unknown as NodeRepository;
-  return { service: new NodeService(repository, media), writes, removed };
+  const publications = {
+    publish: (_delegation: Delegation, request: { root: OwnedRef }) => {
+      if (refuses.includes(request.root)) {
+        return Promise.reject(
+          new BadRequestException("A picture in 1 is not in your library."),
+        );
+      }
+      published.push(request.root);
+      return Promise.resolve({});
+    },
+  } as unknown as PublicationService;
+  return {
+    service: new NodeService(repository, media, publications),
+    writes,
+    removed,
+    published,
+  };
 }
 
 const over = (
@@ -172,5 +214,116 @@ describe("one act over the notes somebody chose", () => {
 
     expect(removed).toHaveLength(2);
     expect(result).toEqual({ reached: 2, missed: 0, notes: [] });
+  });
+});
+
+describe("publishing the notes somebody chose", () => {
+  it("puts each chosen note out as a branch of its own", async () => {
+    const notes = [note("1"), note("2")];
+    const { service, published } = serviceOver(notes);
+
+    const result = await service.bulk(
+      DID,
+      over(notes, { act: "publish" }),
+      ada,
+    );
+
+    expect(published).toEqual(notes.map((n) => ownedRefFrom(n.id)));
+    expect(result.reached).toBe(2);
+    expect(result.missed).toBe(0);
+  });
+
+  // Publishing both roots would put one piece of writing out twice, in two
+  // snapshots each on their own terms.
+  it("puts a note the set already carries out inside the one that carries it", async () => {
+    const notes = tree("1", "1a", "1a1");
+    const { service, published } = serviceOver(notes);
+
+    const result = await service.bulk(
+      DID,
+      over(notes, { act: "publish" }),
+      ada,
+    );
+
+    expect(published).toEqual([ownedRefFrom(notes[0].id)]);
+    expect(result.reached).toBe(3);
+  });
+
+  // Two branches of one tree are two publications; only descent carries.
+  it("puts a branch beside another out on its own", async () => {
+    const notes = tree("1", "1a", "1b").slice(1);
+    const { service, published } = serviceOver(notes);
+
+    await service.bulk(DID, over(notes, { act: "publish" }), ada);
+
+    expect(published).toHaveLength(2);
+  });
+
+  it("sends a note that is already published again", async () => {
+    const notes = [note("1", [], true)];
+    const { service, published } = serviceOver(notes);
+
+    await service.bulk(DID, over(notes, { act: "publish" }), ada);
+
+    expect(published).toEqual([ownedRefFrom(notes[0].id)]);
+  });
+
+  it("counts the ones that did not go out and leaves the rest published", async () => {
+    const notes = [note("1"), note("2")];
+    const { service, published } = serviceOver(notes, [
+      ownedRefFrom(notes[0].id),
+    ]);
+
+    const result = await service.bulk(
+      DID,
+      over(notes, { act: "publish" }),
+      ada,
+    );
+
+    expect(published).toEqual([ownedRefFrom(notes[1].id)]);
+    expect(result.reached).toBe(1);
+    expect(result.missed).toBe(1);
+  });
+
+  // A note under a root that never went out did not go out either, however
+  // much of the rest of the set landed.
+  it("counts a note whose carrier was turned down", async () => {
+    const notes = [...tree("1", "1a"), ...tree("2")];
+    const { service, published } = serviceOver(notes, [
+      ownedRefFrom(notes[0].id),
+    ]);
+
+    const result = await service.bulk(
+      DID,
+      over(notes, { act: "publish" }),
+      ada,
+    );
+
+    expect(published).toEqual([ownedRefFrom(notes[2].id)]);
+    expect(result.reached).toBe(1);
+    expect(result.missed).toBe(2);
+  });
+
+  it("is refused in the words it was refused in where nothing went out", async () => {
+    const notes = [note("1"), note("2")];
+    const { service } = serviceOver(
+      notes,
+      notes.map((n) => ownedRefFrom(n.id)),
+    );
+
+    const asked = service.bulk(DID, over(notes, { act: "publish" }), ada);
+
+    await expect(asked).rejects.toBeInstanceOf(BadRequestException);
+    await expect(asked).rejects.toThrow(/not in your library/);
+  });
+
+  it("is refused where nothing signed in is asking", async () => {
+    const notes = [note("1")];
+    const { service, published } = serviceOver(notes);
+
+    const asked = service.bulk(DID, over(notes, { act: "publish" }), undefined);
+
+    await expect(asked).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(published).toEqual([]);
   });
 });

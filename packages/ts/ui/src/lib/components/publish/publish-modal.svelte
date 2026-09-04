@@ -69,6 +69,7 @@
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { when } from '../social/when.js';
 	import PendingChanges from './pending-changes.svelte';
+	import { publishingAgain, publishingSays } from './terms.js';
 	import VersionChanges from './version-changes.svelte';
 
 	let {
@@ -325,9 +326,7 @@
 				{:else if changedSince}
 					<p class="text-sm text-muted-foreground">This branch has changed since then.</p>
 				{/if}
-				<p class="text-sm text-muted-foreground">
-					Publishing again sends {address} as it stands now. Every version before it stays readable.
-				</p>
+				<p class="text-sm text-muted-foreground">{publishingAgain({ address })}</p>
 				{#each narrower as under (under)}
 					<p class="text-sm text-muted-foreground">
 						{under} is published inviting fewer people to answer. What is published here carries it on
@@ -385,23 +384,9 @@
 			</Button>
 		{:else}
 			<div class="space-y-3 text-sm text-muted-foreground">
-				<p>
-					Everything under {address} goes out: every note in it, finished or not, and every picture in
-					them.
-				</p>
-				<p>
-					Anyone who can find your profile can read it. There is no link to keep back and nobody to
-					let in.
-				</p>
-				<p>If you take it down, whoever has already read it keeps their copy.</p>
-				{#if answersReach}
-					<p>Anyone reading it may answer, until you say otherwise here.</p>
-				{:else}
-					<p>
-						Anyone reading it may answer. Their answers reach people reading it elsewhere — you will
-						not see them here.
-					</p>
-				{/if}
+				{#each publishingSays({ address }, answersReach) as line (line)}
+					<p>{line}</p>
+				{/each}
 				{#if carriedBy}
 					<p>{carriedBy} already carries this branch, on its own terms.</p>
 				{/if}

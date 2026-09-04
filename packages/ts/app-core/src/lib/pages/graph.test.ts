@@ -50,16 +50,38 @@ let graph: Map<OwnedRef, NodeView>;
 /** Every act the server was asked for, in the order it was asked. */
 let acts: NodeBulkRequest[];
 
+/** What one act leaves a note as, standing in for the server that writes it. */
+function acted(note: NodeView, act: NodeBulkRequest['act']): NodeView {
+	switch (act.act) {
+		case 'tag':
+			return { ...note, tags: [...new Set([...note.tags, ...act.tags])] };
+		case 'untag':
+			return { ...note, tags: note.tags.filter((tag) => !act.tags.includes(tag)) };
+		case 'publish':
+			return { ...note, published: true };
+		case 'set_appearance':
+			return { ...note, appearance: act.appearance ?? undefined };
+		default:
+			return note;
+	}
+}
+
 function path(of: OwnedRef): string {
 	const cut = of.lastIndexOf('/');
 	return `/nodes/${encodeURIComponent(of.slice(0, cut))}/${encodeURIComponent(of.slice(cut + 1))}`;
 }
 
-function stubViewport(): void {
+/** `answers` decides which media queries hold: the default is the widest
+ *  surface, and a phone is the one that answers `(max-width: 639px)`. */
+function stubViewport(answers: (query: string) => boolean = () => false): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
 		writable: true,
-		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
+		value: (query: string) => ({
+			matches: answers(query),
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		})
 	});
 	Object.defineProperty(globalThis, 'ResizeObserver', {
 		configurable: true,
@@ -239,12 +261,7 @@ beforeEach(() => {
 			return { reached: reached.length, missed: 0, notes: [] };
 		}
 		const notes = reached.map((note) => {
-			const after: NodeView =
-				act.act === 'tag'
-					? { ...note, tags: [...new Set([...note.tags, ...act.tags])] }
-					: act.act === 'untag'
-						? { ...note, tags: note.tags.filter((tag) => !act.tags.includes(tag)) }
-						: { ...note, appearance: act.appearance ?? undefined };
+			const after: NodeView = acted(note, act);
 			graph.set(after.ref, after);
 			return after;
 		});
@@ -488,7 +505,13 @@ describe('choosing several notes to act on', () => {
 		await settle();
 		menuOn('the canvas').click();
 		await settle();
-		expect(offered()).toEqual(['Tags', 'Give them a look', 'Delete it', 'Done choosing']);
+		expect(offered()).toEqual([
+			'Tags',
+			'Give them a look',
+			'Publish it',
+			'Delete it',
+			'Done choosing'
+		]);
 	});
 
 	it('tags every chosen note at once', async () => {
@@ -666,6 +689,75 @@ describe('choosing several notes to act on', () => {
 
 		expect(screen()).not.toContain('notes chosen');
 		expect(screen()).toContain('2 of the notes you chose were already gone.');
+	});
+
+	it('publishes every chosen note in one act', async () => {
+		await chooseThree();
+
+		button('Publish').click();
+		await settle();
+		expect(inSheet()).toContain('Publish these 3 notes?');
+		button('Publish 3 notes').click();
+		await settle();
+
+		expect(acts).toEqual([{ notes: [FIRST, SECOND, THIRD], act: { act: 'publish' } }]);
+		expect(graph.get(SECOND)?.published).toBe(true);
+	});
+
+	// PRODUCT.md § "Design Principles" 5: said once, for the set, at the decision.
+	it('says what publishing puts out, for the whole set', async () => {
+		await chooseThree();
+
+		button('Publish').click();
+		await settle();
+
+		const asked = inSheet();
+		expect(asked).toContain('Everything under these 3 notes goes out');
+		expect(asked).toContain('Anyone who can find your profile can read them');
+		expect(asked).toContain('whoever has already read them keeps their copy');
+	});
+
+	// Sending twenty branches again is a different act from putting out what is
+	// not out yet, so it is not done quietly.
+	it('says how many of them are already published before sending them again', async () => {
+		await chooseThree();
+		button('Publish').click();
+		await settle();
+		button('Publish 3 notes').click();
+		await settle();
+
+		button('Publish').click();
+		await settle();
+
+		expect(inSheet()).toContain('the 3 you have already published');
+	});
+
+	it('says how many of the chosen did not go out', async () => {
+		await chooseThree();
+		api.on('POST /nodes/bulk', () => ({ reached: 2, missed: 1, notes: [] }));
+
+		button('Publish').click();
+		await settle();
+		button('Publish 3 notes').click();
+		await settle();
+
+		expect(screen()).toContain('One of the notes you chose is not published.');
+	});
+
+	// DESIGN.md § "Mobile and tablet first": the surface a phone gets is the one
+	// the act is asked for on, so it is asked for there.
+	it('publishes the chosen set from the sheet a phone gets', async () => {
+		stubViewport((query) => query.includes('max-width: 639px'));
+		await chooseThree();
+
+		button('Publish').click();
+		await settle();
+		expect(document.body.querySelector('[data-slot="modal-grabber"]')).not.toBeNull();
+		expect(inSheet()).toContain('Publish these 3 notes?');
+		button('Publish 3 notes').click();
+		await settle();
+
+		expect(acts).toEqual([{ notes: [FIRST, SECOND, THIRD], act: { act: 'publish' } }]);
 	});
 
 	// DESIGN.md § Layout: a component renders only when it has something to do,

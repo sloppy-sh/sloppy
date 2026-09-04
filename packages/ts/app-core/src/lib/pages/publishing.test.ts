@@ -601,7 +601,7 @@ describe('publishing where answers cannot come back', () => {
 		flushSync();
 
 		expect(says()).toContain('you will not see them here');
-		expect(says()).not.toContain('until you say otherwise here');
+		expect(says()).not.toContain('until you say otherwise');
 	});
 
 	it('promises them where the identity is kept somewhere that answers', async () => {
@@ -612,7 +612,7 @@ describe('publishing where answers cannot come back', () => {
 		await settle();
 		flushSync();
 
-		expect(says()).toContain('until you say otherwise here');
+		expect(says()).toContain('until you say otherwise');
 		expect(says()).not.toContain('you will not see what they say');
 	});
 

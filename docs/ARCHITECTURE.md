@@ -234,6 +234,18 @@ creating the chain if the note has none, and writing a version either way;
 travels **without its `depth` and without its look** — a reader recomputes depth, sector
 and which addresses lie under which from the address, and draws a pulled mark unstyled.
 
+**Publishing several notes at once is one act, and it puts each of them out once.**
+`POST /api/nodes/bulk` carries a `publish` act beside `tag`, `set_appearance` and
+`delete`, and each chosen note becomes a publication rooted at itself. A chosen note that
+another chosen note carries goes out inside that one rather than as a second publication:
+publishing both would put one piece of writing out twice, in two snapshots each with
+their own terms and their own history. A chosen note that is already published takes
+another version, exactly as publishing it from its own surface does — which is a
+different act from putting out what is not out yet, so the question says how much of the
+set it is before it is answered. Some of a set going out and some not is the ordinary
+case rather than a failure, and `reached` and `missed` on `NodeBulkResult` carry it;
+where nothing went out at all, the refusal itself is the answer.
+
 **Deleting a publication cascades.** Every version, every copied note and section, and
 every copied asset — a copy exists only to serve what that publication published, so
 nothing outlives it here. What it cannot undo is what was already read: a peer who pulled

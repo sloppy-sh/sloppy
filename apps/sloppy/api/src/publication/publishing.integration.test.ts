@@ -522,6 +522,59 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(JSON.stringify(page)).not.toContain(root.ref);
   });
 
+  scenario("puts every note somebody chose out, each on its own", async () => {
+    const first = await newNode({ title: "Aqueducts" });
+    const under = await newNode({
+      from: { relation: "under", note: first.ref },
+      title: "The channel",
+    });
+    const beside = await newNode({ title: "Cisterns" });
+    await newBlock(under.ref, {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Stone, and a slope." }],
+        },
+      ],
+    });
+
+    // `under` is chosen as well, and goes out inside the note that carries it.
+    const done = (await ok("POST", "/nodes/bulk", ada, {
+      notes: [first.ref, under.ref, beside.ref],
+      act: { act: "publish" },
+    })) as { reached: number; missed: number; notes: NodeView[] };
+    expect(done).toMatchObject({ reached: 3, missed: 0 });
+    expect(done.notes.every((note) => note.published)).toBe(true);
+
+    const mine = (await ok("GET", "/publications", ada)) as PublicationView[];
+    const rooted = new Set(mine.map((one) => one.root_address));
+    expect(rooted.has(first.address)).toBe(true);
+    expect(rooted.has(beside.address)).toBe(true);
+    expect(rooted.has(under.address)).toBe(false);
+
+    const publication = mine.find((one) => one.root_address === first.address);
+    if (!publication) throw new Error("the chosen note published nothing");
+    const page = publishedSubtreeReader({
+      publication: publication.ref,
+    }).take(await read(publication.ref));
+    expect(page.nodes.map((node) => node.address)).toEqual([
+      first.address,
+      under.address,
+    ]);
+    expect(page.blocks).toHaveLength(1);
+
+    // Chosen again, it is another version of what is already out.
+    await ok("POST", "/nodes/bulk", ada, {
+      notes: [first.ref],
+      act: { act: "publish" },
+    });
+    const after = (
+      (await ok("GET", "/publications", ada)) as PublicationView[]
+    ).find((one) => one.ref === publication.ref);
+    expect(after?.latest.sequence).toBe(2);
+  });
+
   scenario(
     "keeps the copy still while its author writes on, and publishes again to move it",
     async () => {

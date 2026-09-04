@@ -153,6 +153,13 @@ export const NodeBulkActSchema = z.discriminatedUnion("act", [
   }),
   /** Each note leaves with everything that sprang from it, and with its blocks. */
   z.object({ act: z.literal("delete") }),
+  /**
+   * Each chosen note is published as it stands, rooted at itself and carrying
+   * its subtree. A note another chosen note carries goes out inside that one
+   * rather than a second time; one that is already published takes another
+   * version. docs/ARCHITECTURE.md § "Federating the graph".
+   */
+  z.object({ act: z.literal("publish") }),
 ]);
 export type NodeBulkAct = z.input<typeof NodeBulkActSchema>;
 
