@@ -106,6 +106,9 @@
 	let switching = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
+	/** A field that would not read while the others drew. Beside the graph, never
+	 *  instead of it: one graph short must not cost the reader the rest. */
+	let shortField = $state<string | null>(null);
 	/** An action failed while the graph is fine; it sits beside the graph. */
 	let refused = $state<string | null>(null);
 	/** Where the reader was when opening another note was refused for want of
@@ -398,20 +401,40 @@
 		// against whose they are, so nothing is asked for until that is known.
 		if (!session.viewer) return;
 		unreachable = null;
+		shortField = null;
 		// What the graphs are called is chrome: one whose name did not arrive still
 		// draws, and the sheet that lists them is where that is said.
 		void graphs.load().catch(() => {});
+		const fields = onCanvas;
 		// A field already cached is drawn while the rest arrives; only a canvas
 		// with nothing on it yet is worth a skeleton.
-		loading = !onCanvas.every((graph) => nodes.status({ graph }).loaded);
-		try {
-			await Promise.all(onCanvas.map(loadField));
-		} catch (error) {
+		loading = !fields.some((graph) => nodes.status({ graph }).loaded);
+		// Each on its own, because one field that will not read must not cost the
+		// others theirs — `node.svelte`'s `reachEveryGraph` reads them the same way.
+		const missed = (
+			await Promise.all(
+				fields.map((graph) =>
+					loadField(graph).then(
+						() => null,
+						(error: unknown) => ({ graph, error })
+					)
+				)
+			)
+		).filter((miss) => miss !== null);
+		loading = false;
+		if (missed.length === 0) return;
+		if (missed.length === fields.length) {
 			unreachable =
-				serverMessage(error) ?? 'Sloppy could not reach your graph. Try again in a moment.';
-		} finally {
-			loading = false;
+				serverMessage(missed[0].error) ??
+				`Sloppy could not reach ${fields.length > 1 ? 'those graphs' : 'your graph'}. Try again in a moment.`;
+			return;
 		}
+		// What the graphs are called may not have arrived either, so one with no
+		// name yet is still said — just not by name.
+		const named = missed.length === 1 ? graphs.titleOf(missed[0].graph) : '';
+		shortField = named
+			? `${named} could not be read. Everything else on the canvas is here.`
+			: `${missed.length === 1 ? 'A graph' : 'Some graphs'} on the canvas could not be read. Everything else is here.`;
 	}
 
 	// A note reached by its address arrives in the URL and nowhere else, at either
@@ -1320,6 +1343,10 @@
 
 				{#if railTags.length > 0 || selection.length > 0}
 					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
+				{/if}
+
+				{#if shortField}
+					<p class="text-sm text-destructive" role="alert">{shortField}</p>
 				{/if}
 
 				{#if refused}

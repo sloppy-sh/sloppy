@@ -62,6 +62,8 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 /** Every note the page asked the server to write, in order. */
 let written: CreateNodeRequest[];
+/** Graphs whose branches the server refuses, so a field can be made to fail. */
+let willNotRead: Set<OwnedRef>;
 
 function stubViewport(): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
@@ -157,6 +159,7 @@ beforeEach(() => {
 	graphs.clear();
 	peers.clear();
 	written = [];
+	willNotRead = new Set();
 	listed = [graph(HOME, 'My graph'), graph(GARDEN, 'Garden')];
 	held = [
 		node(1, '1', { title: 'Origins' }),
@@ -170,6 +173,7 @@ beforeEach(() => {
 		const origin = url.searchParams.get('origin');
 		if (origin) return held.filter((one) => one.origin === origin && one.ref !== origin);
 		const of = url.searchParams.get('graph') ?? HOME;
+		if (willNotRead.has(of as OwnedRef)) return new Response('{}', { status: 500 });
 		return held.filter((one) => one.ref === one.origin && (one.graph ?? HOME) === of);
 	});
 	for (const one of held) {
@@ -313,6 +317,28 @@ describe('more than one graph at once', () => {
 		labelled('Show Garden beside this one').click();
 		await settle();
 	}
+
+	it('keeps the field being read drawn while another stands up beside it', async () => {
+		await open();
+		await openGraphs();
+		labelled('Show Garden beside this one').click();
+		flushSync();
+
+		// Deliberately unsettled: this is the stretch the reader spends watching the
+		// canvas while the second field reads, and what they must not lose.
+		expect(document.body.querySelector('[aria-label="The graph"]')).not.toBeNull();
+		expect(drawn()).toContain('1');
+	});
+
+	it('keeps the canvas when a graph standing beside it will not read', async () => {
+		willNotRead.add(GARDEN);
+		await alsoShowGarden();
+
+		expect(document.body.querySelector('[aria-label="The graph"]')).not.toBeNull();
+		expect(drawn()).toEqual(['1']);
+		expect(document.body.textContent).toContain('Garden could not be read');
+		expect(document.body.textContent).not.toContain('could not reach');
+	});
 
 	it('draws the notes of both, and says how many graphs are up', async () => {
 		await alsoShowGarden();
