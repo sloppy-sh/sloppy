@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { OwnedRef } from '@sloppy/types';
+	import type { Address, OwnedRef } from '@sloppy/types';
 	import { SvelteSet } from 'svelte/reactivity';
 
 	// Outside the component: the nav pill's destinations are real navigations, so
@@ -283,14 +283,18 @@
 	const keepsTerms = $derived(chosenChains.some((chain) => chain.comments !== 'anyone'));
 	/** Branches rooted above the notes going out that already carry them, which
 	 *  a publish here puts out a second time on terms of its own. */
-	const carriedAbove = $derived([
-		...new Set(
-			goingOut
-				.filter((note) => publications.at(note) === undefined)
-				.map((note) => publications.above(note)?.root_address)
-				.filter((address) => address !== undefined)
-		)
-	]);
+	const carriedAbove = $derived.by(() => {
+		const held: { address: Address; notes: number }[] = [];
+		for (const note of goingOut) {
+			if (publications.at(note) !== undefined) continue;
+			const above = publications.above(note)?.root_address;
+			if (above === undefined) continue;
+			const standing = held.find((one) => one.address === above);
+			if (standing) standing.notes += 1;
+			else held.push({ address: above, notes: 1 });
+		}
+		return held;
+	});
 	/** Branches under the notes going out that were published inviting fewer
 	 *  people to answer, whose notes a publish here carries on its own terms. */
 	const narrowerUnderChosen = $derived([

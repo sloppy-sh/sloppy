@@ -31,8 +31,9 @@
 		/** True where one of those was published inviting fewer people to answer,
 		 *  which publishing again leaves as it is. */
 		keepsTerms?: boolean;
-		/** Branches rooted above the chosen notes that already carry them. */
-		carriedBy?: readonly Address[];
+		/** Branches rooted above the chosen notes that already carry them, each with
+		 *  how many of those notes it carries. */
+		carriedBy?: readonly { address: Address; notes: number }[];
 		/** Branches under the chosen notes published inviting fewer people. */
 		narrower?: readonly Address[];
 		/** False where answers people write will never reach this person, so the
@@ -73,8 +74,8 @@
 					<p>{KEEPS_TERMS}</p>
 				{/if}
 			{/if}
-			{#each carriedBy as by (by)}
-				<p>{alreadyCarried({ notes: count }, by)}</p>
+			{#each carriedBy as by (by.address)}
+				<p>{alreadyCarried({ notes: by.notes }, by.address)}</p>
 			{/each}
 			{#each narrower as under (under)}
 				<p>{narrowerSays(under, 'going')}</p>

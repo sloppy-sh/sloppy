@@ -44,7 +44,8 @@ export function publishingAgain(of: PublishSubject): string {
 			: of.notes === 1
 				? 'the one you have already published'
 				: `the ${of.notes.toLocaleString()} you have already published`;
-	return `Publishing again sends ${name} as ${stands} now. Every version before it stays readable.`;
+	const before = 'address' in of || of.notes === 1 ? 'it' : 'them';
+	return `Publishing again sends ${name} as ${stands} now. Every version before ${before} stays readable.`;
 }
 
 /** What publishing again does to who may answer: nothing. */
