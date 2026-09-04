@@ -22,6 +22,7 @@ import type { AuthedRequest } from "../auth/authed-request";
 import { NodeService } from "./node.service";
 import {
   depthBound,
+  graphOrRefuse,
   ownedRefOrRefuse,
   parseBody,
   parsePatch,
@@ -34,17 +35,21 @@ import {
 export class NodeController {
   constructor(private readonly nodes: NodeService) {}
 
-  /** With no `origin`, the caller's roots; with one, that tree, cut off past
-   *  `max_depth` levels. */
+  /** With no `origin`, the branches of one `graph` — the caller's home graph
+   *  where they named none; with one, that tree, cut off past `max_depth`
+   *  levels. */
   @Get()
   list(
     @Req() req: AuthedRequest,
     @Query("origin") origin?: string,
     @Query("max_depth") maxDepth?: string,
+    @Query("graph") graph?: string,
   ): Promise<NodeView[]> {
-    return this.nodes.list(viewerDid(req), {
+    const did = viewerDid(req);
+    return this.nodes.list(did, {
       origin: ownedRefOrRefuse(origin),
       maxDepth: depthBound(maxDepth),
+      graph: graphOrRefuse(graph, did),
     });
   }
 

@@ -33,6 +33,10 @@ export const PublicationSchema = OwnedEntitySchema.extend({
   root: OwnedRefSchema,
   /** The address the root note sits at, so a listing needs no join. */
   root_address: AddressSchema,
+  /** The graph that address is read in, beside it for the same reason and
+   *  absent for the author's home graph. A region lies in one graph, because
+   *  the branch it is rooted at does. */
+  graph: OwnedRefSchema.optional(),
   comments: CommentAccessSchema.default(DEFAULT_COMMENT_ACCESS),
   /**
    * Where the author's identity answered from when they last published. It is

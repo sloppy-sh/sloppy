@@ -21,6 +21,7 @@ import {
   addressDepth,
   compareAddresses,
   entityView,
+  graphRef,
   publishedSubtreeReader,
   pulledBlockView,
   pulledNodeView,
@@ -94,6 +95,7 @@ export class PullService {
         publication,
         version: page.version,
         root_address: page.root_address,
+        graph: graphRef(author, page.graph),
         comments: page.comments,
         source_url: origin,
       };
@@ -102,7 +104,7 @@ export class PullService {
         reader,
         author,
         pullRef(region),
-        held(page, author),
+        held(page, author, graphRef(author, page.graph)),
       );
       cursor = page.next_cursor;
     } while (cursor !== undefined);
@@ -207,11 +209,16 @@ export class PullService {
   }
 }
 
-function held(page: PublishedSubtreePage, author: DidSyr): HeldPage {
+function held(
+  page: PublishedSubtreePage,
+  author: DidSyr,
+  graph: OwnedRef,
+): HeldPage {
   return {
     nodes: page.nodes.map(({ ref, ...node }) => ({
       source: ref,
       source_did: author,
+      source_graph: graph,
       address: node.address,
       depth: addressDepth(node.address),
       node: { ...node },

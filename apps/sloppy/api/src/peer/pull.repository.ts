@@ -27,7 +27,10 @@ import { DbService } from "../db/db.service";
 type Held<T> = Omit<T, "id" | "created_by" | "created_at" | "updated_at">;
 
 export interface HeldPage {
-  nodes: readonly Held<PulledNode>[];
+  /** `source_graph` is narrowed to required: it is half of what an address is
+   *  unique under here, and a row written without it is one the unique index
+   *  cannot constrain at all. */
+  nodes: readonly (Held<PulledNode> & { source_graph: OwnedRef })[];
   blocks: readonly Held<PulledBlock>[];
 }
 
@@ -88,11 +91,13 @@ export class PullRepository {
   async settleRegion(pull: Pull, region: RegionTerms): Promise<Pull> {
     const [written] = await this.query(
       `UPDATE $id SET version = $version, root_address = $address,
-         comments = $comments, source_url = $url, updated_at = $at RETURN AFTER`,
+         graph = $graph, comments = $comments, source_url = $url,
+         updated_at = $at RETURN AFTER`,
       {
         id: pull.id,
         version: region.version,
         address: region.root_address,
+        graph: region.graph,
         comments: region.comments,
         url: region.source_url,
         at: nowIso(),
@@ -125,11 +130,14 @@ export class PullRepository {
     const addresses = page.nodes.map((node) => node.address);
 
     if (addresses.length > 0) {
+      // Bound to the graph the region came from: the same author's `4a` in
+      // another notebook is a different note, and dropping it here would take a
+      // copy the reader holds for a region that never served it.
       const [taken] = await this.query<OwnedRef>(
         `SELECT VALUE source FROM pulled_node
            WHERE created_by = $reader AND source_did = $author
-             AND address IN $addresses`,
-        { reader, author, addresses },
+             AND source_graph = $graph AND address IN $addresses`,
+        { reader, author, graph: page.nodes[0].source_graph, addresses },
       );
       await this.forget(
         reader,

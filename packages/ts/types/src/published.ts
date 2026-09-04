@@ -22,6 +22,7 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
+import { homeGraphRef } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
 /**
@@ -95,12 +96,16 @@ export type PublishedVersion = z.infer<typeof PublishedVersionSchema>;
  * one and pull it, and nothing that is not already public in it.
  *
  * `root_address` is a label a person cites and reads a shape from, not what the
- * publication is found by — `ref` is. `title` and `latest` are the newest
- * version's, which is what a plain read of the publication answers with.
+ * publication is found by — `ref` is. `graph` is which of the author's
+ * notebooks that label is read in, absent for their home graph and so for
+ * everything published before an author could have a second. `title` and
+ * `latest` are the newest version's, which is what a plain read of the
+ * publication answers with.
  */
 export const PublishedPublicationSchema = z.object({
   ref: OwnedRefSchema,
   root_address: AddressSchema,
+  graph: OwnedRefSchema.optional(),
   title: z.string().max(512),
   latest: PublishedVersionSchema,
 });
@@ -189,11 +194,17 @@ export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
  * `comments` is the author's invitation as it stands NOW rather than as the
  * version froze it — the snapshot is what a peer reads, and who is welcome to
  * answer it is a live term of the author's.
+ *
+ * `graph` is the notebook every address on the page is read in. Without it a
+ * reader holding two regions of one author cannot tell a `1a` in one from a
+ * `1a` in the other, which is what an address being a label within a context
+ * means for somebody who is not the author.
  */
 export const PublishedSubtreePageSchema = z.object({
   publication: OwnedRefSchema,
   version: PublishedVersionSchema,
   root_address: AddressSchema,
+  graph: OwnedRefSchema.optional(),
   comments: ReceivedCommentAccessSchema,
   nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES_PER_PAGE),
   blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS_PER_PAGE),
@@ -208,6 +219,7 @@ export interface PublishedSubtree {
   publication: OwnedRef;
   version: PublishedVersion;
   root_address: Address;
+  graph?: OwnedRef;
   comments: CommentAccess;
   nodes: PublishedNode[];
   blocks: PublishedBlock[];
@@ -319,6 +331,9 @@ export function parsePublishedIndex(
   for (const publication of read.data.publications) {
     requireAuthor(publication.ref, did);
     requireAuthor(publication.latest.ref, did);
+    if (publication.graph !== undefined) {
+      requireAuthor(publication.graph, did);
+    }
   }
   return read.data;
 }
@@ -368,13 +383,15 @@ export interface AskedSubtree {
  * Reads one version of one publication, holding every page to what was asked
  * for and to the pages already taken: a note's parent may have arrived on an
  * earlier one, and a note may not claim an address another already has, on this
- * page or any before it — the same rule `node_owner_address UNIQUE` holds our
- * own rows to, on rows a peer handed us. A note hangs off the note at its own
- * parent address, so the tree a peer draws is the one its addresses already
- * state.
+ * page or any before it — the same rule `node_owner_graph_address UNIQUE` holds
+ * our own rows to, on rows a peer handed us. A region lies in ONE of the
+ * author's graphs, so that rule reaches this far unchanged: two of their `1a`s
+ * can never be in one region. A note hangs off the note at its own parent
+ * address, so the tree a peer draws is the one its addresses already state.
  *
- * Every page carries one version, and it is the same one: a run that changed
- * version half way would splice two snapshots into one region.
+ * Every page carries one version and one graph, and each is the same one all
+ * the way through: a run that changed either half way would splice two
+ * snapshots, or two notebooks, into one region.
  */
 export interface PublishedSubtreeReader {
   /**
@@ -399,6 +416,7 @@ export function publishedSubtreeReader(
   let regionRoot: OwnedRef | undefined;
   let heldVersion: OwnedRef | undefined;
   let heldAddress: Address | undefined;
+  let heldGraph: OwnedRef | undefined;
   let pages = 0;
 
   return {
@@ -426,6 +444,14 @@ export function publishedSubtreeReader(
         throw new UnaskedAnswerError(
           `a region rooted at ${page.root_address} and at ${heldAddress}`,
         );
+      }
+      if (page.graph !== undefined) requireAuthor(page.graph, author);
+      // Resolved rather than compared as it arrived: absent and the home
+      // graph's own ref are one graph said two ways, and a peer that spells it
+      // the other way has not changed its answer half way through.
+      const graph = page.graph ?? homeGraphRef(author);
+      if (heldGraph !== undefined && graph !== heldGraph) {
+        throw new UnaskedAnswerError("a region in two of one author's graphs");
       }
       const rootAddress = page.root_address;
       const root =
@@ -493,6 +519,7 @@ export function publishedSubtreeReader(
       regionRoot = root;
       heldVersion = page.version.ref;
       heldAddress = rootAddress;
+      heldGraph = graph;
       pages += 1;
       for (const node of page.nodes) {
         heldNodes.add(node.ref);

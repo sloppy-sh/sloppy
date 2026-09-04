@@ -48,19 +48,37 @@ address cannot, because **a peer somewhere is holding it.** Once a subtree has b
 published and pulled, its addresses are load-bearing on machines we do not control and
 cannot migrate.
 
+**An address is a human-readable label within a graph, and never a machine identifier.**
+A person keeps as many graphs as they like — a notebook each for the thesis, the garden
+and the company — and every one of them has its own `1a`. What identifies a note
+anywhere is the ref it already travels by, `<did>/<ulid>`: that is what a link holds,
+what a publication is rooted at, and what a pulled region is a copy of. The address is
+what a person reads, cites and navigates by, and it is read inside a graph the way a
+page number is read inside a book.
+
+- **An address resolves one way inside one graph, and that is the whole guarantee.**
+  `node_owner_graph_address UNIQUE` enforces it, on our own rows and on the ones a peer
+  hands us. Two notes at `1a` in one graph would be a citation that means two things;
+  two across a person's graphs are two labels, the way two people's `1a`s always were.
+  So an address travels with the graph it is read in, and one shown with no graph beside
+  it means the graph in front of you.
 - **An address is assigned at creation and never changes.** Moving a node writes an
   alias; it never renumbers. Renumbering is not a refactor here, it is a broken link in
-  somebody else's graph.
+  somebody else's graph. Which graph a note is in is fixed at creation for the same
+  reason: a note that changed graph would land where its address may already be taken.
 - **Assignment is deterministic, and determinism is proved, never asserted.** Two peers
   applying the same creation operations must produce byte-identical addresses. That is
   the protocol claim, so it ships as a property test over generated operation
-  sequences, not as a handful of hand-picked cases.
+  sequences, not as a handful of hand-picked cases. The rules do not mention a graph:
+  what a graph decides is which run of siblings a new address is assigned against.
 - **Anything derived from an address is derived, never stored.** The angular sector a
   subtree radiates into, its collapse key — both are functions of the address. Persisting
   one creates a second copy of a truth that no longer has a single author, and it will
   disagree with the function the day the function changes. `node.depth` is the one ratified
   exception; `docs/ARCHITECTURE.md` § "Data model" carries the ruling and the conditions it
-  is held to.
+  is held to. **And anything that groups notes by address needs the graph beside it** —
+  a person's branches are a run within one graph, so grouping them by author draws a line
+  between two notebooks.
 - **A change to the addressing rules is a protocol break, and is treated as one.** It
   does not land inside a feature commit. If implementation shows a rule is wrong, stop
   and say so.
@@ -117,17 +135,17 @@ lexicon system and no extension point for third-party record types — its own c
 doc names "third-party repo pollution: structurally prevented" as a feature. So the
 split is not a preference we could revisit; it is the shape syr enforces:
 
-| Concern                                 | Owner                                           |
-| --------------------------------------- | ----------------------------------------------- |
-| Identity, DID, keys, signing            | **syr** — Platform Delegation                   |
-| Profile data                            | **syr** — resolved from the manifest and cached |
-| Media blobs (block images, ink rasters) | **syr** — presign → PUT → complete              |
-| Emoji, stickers, reactions, comments    | **syr** — per-DID catalogs, federated           |
-| **Nodes, addresses, tags, blocks, ink** | **Sloppy's own API + SurrealDB**                |
+| Concern                                         | Owner                                           |
+| ----------------------------------------------- | ----------------------------------------------- |
+| Identity, DID, keys, signing                    | **syr** — Platform Delegation                   |
+| Profile data                                    | **syr** — resolved from the manifest and cached |
+| Media blobs (block images, ink rasters)         | **syr** — presign → PUT → complete              |
+| Emoji, stickers, reactions, comments            | **syr** — per-DID catalogs, federated           |
+| **Graphs, nodes, addresses, tags, blocks, ink** | **Sloppy's own API + SurrealDB**                |
 
-- **`node` and `block` are Sloppy's vocabulary.** Putting them in someone's identity
-  store is precisely what syr is built to prevent. If a feature seems to need a new
-  record type in syr, it needs a table in Sloppy instead.
+- **`graph`, `node` and `block` are Sloppy's vocabulary.** Putting them in someone's
+  identity store is precisely what syr is built to prevent. If a feature seems to need a
+  new record type in syr, it needs a table in Sloppy instead.
 - **Sloppy never holds a private key.** Content is signed through `platform.sign`; the
   syr instance holds the delegate key. Code that wants to sign locally has misread the
   delegation model.

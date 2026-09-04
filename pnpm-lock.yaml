@@ -435,13 +435,14 @@ importers:
         version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(terser@5.51.0)(yaml@2.9.0))
 
   packages/ts/data:
+    dependencies:
+      '@sloppy/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       '@biomejs/biome':
         specifier: 2.5.0
         version: 2.5.0
-      '@sloppy/types':
-        specifier: workspace:*
-        version: link:../types
       '@types/node':
         specifier: ^24.10.1
         version: 24.13.3

@@ -122,6 +122,7 @@ export class PublishedService {
       publication,
       version: publicationVersion(version),
       root_address: chain.root_address,
+      graph: chain.graph,
       comments: chain.comments,
       nodes: page.nodes,
       blocks: page.blocks,
@@ -509,6 +510,7 @@ function published(
     {
       ref: ownedRefFrom(row.id),
       root_address: row.root_address,
+      graph: row.graph,
       title: titles.get(ref) ?? "",
       latest: publicationVersion(version),
     },

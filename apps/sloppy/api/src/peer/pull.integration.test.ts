@@ -23,6 +23,7 @@ import type {
   PublishedVersionsPage,
   PullView,
 } from "@sloppy/types";
+import { homeGraphRef } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const ENDPOINT = new URL(
@@ -843,5 +844,48 @@ describe("holding a region of somebody else's graph", () => {
   scenario("will not let a reader follow themselves", async () => {
     const refused = await call("POST", "/following", { did: reader.did });
     expect(refused.status).toBe(400);
+  });
+
+  scenario("holds one `1a` of each notebook the author keeps", async () => {
+    // The part of this ruling that reaches other people's machines. Two regions
+    // of one author, one from each of their graphs: both rooted at `1`, both
+    // carrying a `1a`, and the reader ends up holding four notes rather than
+    // having the second region evict the first's copies.
+    const secondGraph = `${AUTHOR}/${ulid("G")}`;
+    const beside = published(ulid("H"), ulid("J"), "1");
+    const besideRoot = `${AUTHOR}/${ulid("K")}`;
+    const besideChild = `${AUTHOR}/${ulid("M")}`;
+
+    serves(page(WIDE, [note("1", "1"), note("1", "1a")]));
+    const home = await pulled(WIDE);
+    expect(home.graph).toBe(homeGraphRef(AUTHOR));
+
+    serves({
+      ...page(beside, []),
+      graph: secondGraph,
+      nodes: [
+        { ...note("1", "1"), ref: besideRoot, origin: besideRoot },
+        {
+          ...note("1", "1a"),
+          ref: besideChild,
+          origin: besideRoot,
+          parent: besideRoot,
+        },
+      ],
+    });
+    const other = await pulled(beside);
+
+    expect(other.graph).toBe(secondGraph);
+    const inOther = await heldIn(other);
+    expect(inOther.map((held) => held.address)).toEqual(["1", "1a"]);
+    expect(inOther.map((held) => held.ref)).toEqual([besideRoot, besideChild]);
+    expect(inOther.every((held) => held.graph === secondGraph)).toBe(true);
+
+    // The notes the first region served are still the ones it serves.
+    const inHome = await heldIn(home);
+    expect(inHome.map((held) => held.ref)).toEqual([ref(ID.root), ref(ID.a)]);
+    expect(inHome.every((held) => held.graph === homeGraphRef(AUTHOR))).toBe(
+      true,
+    );
   });
 });

@@ -34,9 +34,11 @@
   "peerDependencies": {
     "surrealdb": ">=2.0.0"
   },
+  "dependencies": {
+    "@sloppy/types": "workspace:*"
+  },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
-    "@sloppy/types": "workspace:*",
     "@types/node": "^24.10.1",
     "surrealdb": "catalog:",
     "tsdown": "^0.22.14",

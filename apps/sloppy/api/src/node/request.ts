@@ -11,6 +11,8 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
+  homeGraphRef,
+  splitOwnedRef,
 } from "@sloppy/types";
 import type { z } from "zod";
 import type { AuthedRequest } from "../auth/authed-request";
@@ -103,6 +105,26 @@ export function requireRef(did: string, localId: string): OwnedRef {
   const ref = refOrNull(did, localId);
   if (!ref) throw new NotFoundException("That note is not here.");
   return ref;
+}
+
+export function requireGraphRef(did: string, localId: string): OwnedRef {
+  const ref = refOrNull(did, localId);
+  if (!ref) throw new NotFoundException("That graph is not here.");
+  return ref;
+}
+
+/**
+ * Which of the caller's graphs a read is about. An absent parameter is their
+ * home graph, the way an address with no graph beside it means the one they are
+ * looking at.
+ */
+export function graphOrRefuse(raw: string | undefined, did: DidSyr): OwnedRef {
+  if (!raw) return homeGraphRef(did);
+  const parsed = OwnedRefSchema.safeParse(raw);
+  if (!parsed.success || splitOwnedRef(parsed.data).did !== did) {
+    throw new NotFoundException("That graph is not here.");
+  }
+  return parsed.data;
 }
 
 /** How many levels of a tree to read. Absent reads all of it. */

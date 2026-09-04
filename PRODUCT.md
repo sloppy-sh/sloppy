@@ -12,11 +12,14 @@ One person thinking, and the people they let read over their shoulder.
   student, a writer, an engineer keeping a design journal. They want to put a half-formed
   idea down _now_, in the place it actually sprang from, without first deciding which
   folder it belongs in. They come back a year later and need the graph to have kept its
-  shape. They may never publish a single node.
+  shape. They keep a graph per body of thought where the bodies are genuinely separate —
+  the thesis, the garden, the company — and each one numbers its own thinking from `1`.
+  They may never publish a single node.
 - **The peer** — someone who follows a thinker's DID and pulls a published subtree into
   their own graph as a foreign, read-only region. They read, they comment, they branch
-  their own thinking off what they found. The pulled region keeps its original addresses,
-  so they can cite it back and the author knows exactly which node they meant.
+  their own thinking off what they found. The pulled region keeps its original addresses
+  and the graph they belong to, so they can cite one back and the author knows exactly
+  which node they meant.
 - **The annotator** — the same two people on a tablet with a pencil. They ink over the
   canvas to think spatially, and ink inside a node when a diagram is the note.
 
@@ -28,7 +31,9 @@ fully-local modes that serve all three.
 Sloppy helps a person grow a body of thought whose **shape survives being read by
 somebody else**. Every node's address derives from where the thought came from, by rules
 that are the same on every peer, so a subtree collapses identically on your screen and
-mine and a citation still resolves in ten years.
+mine and a citation still resolves in ten years. An address is a label read inside one
+graph, the way a page number is read inside a book — so it is short enough to say out
+loud, and it says which graph it came from when it travels.
 
 Success is when someone puts down a messy thought in four seconds and finds it two years
 later by following the trail it grew out of — and when a stranger pulls that trail in and
@@ -67,8 +72,10 @@ precise rather than clever. A good notebook does not have opinions about your ha
    folder, no tag. The address is assigned for you, from where you were when you wrote.
    Structure is something the protocol supplies, never a tax charged at the door.
 3. **The address is permanent, and the interface says so.** An address is shown wherever
-   it helps somebody navigate or cite, and moving a node never changes it. A UI that
-   implies notes can be re-filed is lying about the protocol.
+   it helps somebody navigate or cite, and moving a node never changes it. It is read
+   inside a graph, so a surface showing notes from more than one says which — and one
+   showing a single graph does not repeat it. A UI that implies notes can be re-filed, or
+   that `1a` means one thing everywhere, is lying about the protocol.
 4. **Pulled is never mistaken for yours.** A foreign region reads as foreign at a glance
    and at every zoom level, by more than colour. Whose thought this is, is never a
    question the reader has to work out.

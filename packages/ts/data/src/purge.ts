@@ -28,6 +28,8 @@ export const STATEMENTS: readonly string[] = [
   // the notes are: they are the one it was left for.
   `DELETE comment_pointer WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
+  // After the notes, because a graph is what they name.
+  `DELETE graph WHERE ${OWNED};`,
   // A held copy of somebody else's region is the reader's row, so it goes with
   // the reader — the author erasing their own identity elsewhere never reaches
   // it, which is the same fact the product states about unpublishing.
@@ -55,6 +57,7 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "publication_version",
   "publication",
   "node",
+  "graph",
   "comment_pointer",
   "pull_member",
   "pulled_block",

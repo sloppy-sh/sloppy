@@ -12,7 +12,10 @@ import {
   addressDepth,
   type CreateNodeRequestSchema,
   createOwnedRecordId,
+  homeGraphRef,
   entityView,
+  graphAsked,
+  graphOf,
   isInSubtree,
   isRootAddress,
   isUnstyled,
@@ -38,6 +41,7 @@ import { MediaService } from "../media/media.service";
 import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
 import { nextChildAddress } from "./address-assignment";
+import { GraphService } from "./graph.service";
 import type { NodeBulkPatch } from "./node.repository";
 import { NodeRepository } from "./node.repository";
 import { SerialQueue } from "./serial-queue";
@@ -62,17 +66,20 @@ export class NodeService {
 
   constructor(
     private readonly nodes: NodeRepository,
+    private readonly graphs: GraphService,
     private readonly media: MediaService,
     private readonly publications: PublicationService,
   ) {}
 
+  /** `graph` is read only when no `origin` is: a tree is in the graph its root
+   *  is in, so naming one beside it could only disagree. */
   async list(
     did: string,
-    query: { origin?: OwnedRef; maxDepth?: number },
+    query: { origin?: OwnedRef; maxDepth?: number; graph?: OwnedRef },
   ): Promise<NodeView[]> {
     const rows = query.origin
       ? await this.nodes.region(did, query.origin, query.maxDepth)
-      : await this.nodes.roots(did);
+      : await this.nodes.roots(did, query.graph);
     return rows.map(entityView);
   }
 
@@ -87,13 +94,31 @@ export class NodeService {
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
     const parent = await this.parentFor(did, request.from);
+    const graph = parent
+      ? graphOf(parent)
+      : await this.graphFor(did, request.from);
     const named =
       request.from?.relation === "root" ? request.from.address : null;
-    return this.creations.run(`${did}|${parent?.address ?? ""}`, () =>
+    return this.creations.run(`${graph}|${parent?.address ?? ""}`, () =>
       named === null
-        ? this.write(did, parent, request)
-        : this.writeAt(did, named, request),
+        ? this.write(did, graph, parent, request)
+        : this.writeAt(did, graph, named, request),
     );
+  }
+
+  /**
+   * The graph a new branch opens in. A note placed against another takes that
+   * note's graph and never asks for one, so this is reached only where nothing
+   * else answers.
+   */
+  private async graphFor(
+    did: string,
+    from: CreateRequest["from"],
+  ): Promise<OwnedRef> {
+    const asked = graphAsked(from);
+    if (asked === undefined) return homeGraphRef(did);
+    await this.graphs.requireHeld(did, asked);
+    return asked;
   }
 
   async update(
@@ -266,7 +291,9 @@ export class NodeService {
     did: string,
     from: CreateRequest["from"],
   ): Promise<Node | null> {
-    if (!from || from.relation === "root") return null;
+    if (!from || from.relation === "root" || from.relation === "branch") {
+      return null;
+    }
     const anchor = await this.nodes.find(did, from.note);
     if (!anchor) {
       throw new BadRequestException(
@@ -284,32 +311,38 @@ export class NodeService {
     return parent;
   }
 
-  /** A branch at the number its author picked, which nothing else may hold. */
+  /** A branch at the number its author picked, which nothing else in that graph
+   *  may hold. */
   private async writeAt(
     did: string,
+    graph: OwnedRef,
     address: Address,
     request: CreateRequest,
   ): Promise<NodeView> {
-    if (await this.nodes.addressTaken(did, address)) throw taken(address);
+    if (await this.nodes.addressTaken(did, graph, address))
+      throw taken(address);
     try {
       return entityView(
-        await this.nodes.insert(newNode(did, address, null, request)),
+        await this.nodes.insert(newNode(did, graph, address, null, request)),
       );
     } catch (err) {
-      if (await this.nodes.addressTaken(did, address)) throw taken(address);
+      if (await this.nodes.addressTaken(did, graph, address)) {
+        throw taken(address);
+      }
       throw err;
     }
   }
 
   private async write(
     did: string,
+    graph: OwnedRef,
     parent: Node | null,
     request: CreateRequest,
   ): Promise<NodeView> {
     for (let attempt = 1; ; attempt++) {
       const address = nextChildAddress(
         parent?.address ?? null,
-        await this.nodes.childAddresses(did, parent),
+        await this.nodes.childAddresses(did, parent, graph),
       );
       // A branch the server numbers has to be one a person could have named,
       // or the branch after it would have no number left to take.
@@ -320,12 +353,14 @@ export class NodeService {
       }
       try {
         return entityView(
-          await this.nodes.insert(newNode(did, address, parent, request)),
+          await this.nodes.insert(
+            newNode(did, graph, address, parent, request),
+          ),
         );
       } catch (err) {
         const lost =
           attempt < ADDRESS_ATTEMPTS &&
-          (await this.nodes.addressTaken(did, address));
+          (await this.nodes.addressTaken(did, graph, address));
         if (!lost) throw err;
       }
     }
@@ -366,6 +401,7 @@ function taken(address: Address): BadRequestException {
 
 function newNode(
   did: string,
+  graph: OwnedRef,
   address: Address,
   parent: Node | null,
   request: CreateRequest,
@@ -375,6 +411,7 @@ function newNode(
   return parseNode({
     id,
     created_by: did,
+    graph,
     address,
     depth: addressDepth(address),
     ...(parent ? { parent: ownedRefFrom(parent.id) } : {}),

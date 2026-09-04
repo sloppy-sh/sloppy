@@ -22,6 +22,7 @@ import type { z } from "zod";
 import type { MediaService } from "../media/media.service";
 import type { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
+import type { GraphService } from "./graph.service";
 import type { NodeBulkPatch, NodeRepository } from "./node.repository";
 import { NodeService } from "./node.service";
 
@@ -91,6 +92,8 @@ function serviceOver(
       return Promise.resolve();
     },
   } as unknown as NodeRepository;
+  /** No act here opens a branch, so no graph is ever looked up. */
+  const graphs = {} as GraphService;
   const publications = {
     rootedAmong: (_did: string, asked: readonly OwnedRef[]) =>
       Promise.resolve(new Set(asked.filter((ref) => chains.includes(ref)))),
@@ -105,7 +108,7 @@ function serviceOver(
     },
   } as unknown as PublicationService;
   return {
-    service: new NodeService(repository, media, publications),
+    service: new NodeService(repository, graphs, media, publications),
     writes,
     removed,
     published,
