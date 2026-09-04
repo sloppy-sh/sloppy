@@ -69,7 +69,7 @@
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { when } from '../social/when.js';
 	import PendingChanges from './pending-changes.svelte';
-	import { publishingAgain, publishingSays } from './terms.js';
+	import { alreadyCarried, narrowerSays, publishingAgain, publishingSays } from './terms.js';
 	import VersionChanges from './version-changes.svelte';
 
 	let {
@@ -328,10 +328,7 @@
 				{/if}
 				<p class="text-sm text-muted-foreground">{publishingAgain({ address })}</p>
 				{#each narrower as under (under)}
-					<p class="text-sm text-muted-foreground">
-						{under} is published inviting fewer people to answer. What is published here carries it on
-						these terms.
-					</p>
+					<p class="text-sm text-muted-foreground">{narrowerSays(under, 'already')}</p>
 				{/each}
 				<Button class="h-11 w-full" disabled={working} onclick={() => act(onpublish)}>
 					Publish again
@@ -388,13 +385,10 @@
 					<p>{line}</p>
 				{/each}
 				{#if carriedBy}
-					<p>{carriedBy} already carries this branch, on its own terms.</p>
+					<p>{alreadyCarried({ address }, carriedBy)}</p>
 				{/if}
 				{#each narrower as under (under)}
-					<p>
-						{under} is published inviting fewer people to answer. What you publish here carries it on
-						these terms.
-					</p>
+					<p>{narrowerSays(under, 'going')}</p>
 				{/each}
 			</div>
 

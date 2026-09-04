@@ -3,13 +3,21 @@
 	// publish exposes is `terms.ts`, which the single-note sheet reads too.
 	import type { Address } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { publishingAgain, publishingSays } from '../publish/terms.js';
+	import {
+		alreadyCarried,
+		KEEPS_TERMS,
+		narrowerSays,
+		publishingAgain,
+		publishingSays
+	} from '../publish/terms.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	let {
 		open = $bindable(false),
 		count,
 		alreadyOut = 0,
+		keepsTerms = false,
+		carriedBy = [],
 		narrower = [],
 		answersReach = true,
 		refused = null,
@@ -17,8 +25,14 @@
 	}: {
 		open?: boolean;
 		count: number;
-		/** How many of them a version already carries, which go out again. */
+		/** How many of them already root a publication, which go out again as
+		 *  another version of it. */
 		alreadyOut?: number;
+		/** True where one of those was published inviting fewer people to answer,
+		 *  which publishing again leaves as it is. */
+		keepsTerms?: boolean;
+		/** Branches rooted above the chosen notes that already carry them. */
+		carriedBy?: readonly Address[];
 		/** Branches under the chosen notes published inviting fewer people. */
 		narrower?: readonly Address[];
 		/** False where answers people write will never reach this person, so the
@@ -55,12 +69,15 @@
 			{/each}
 			{#if alreadyOut > 0}
 				<p>{publishingAgain({ notes: alreadyOut })}</p>
+				{#if keepsTerms}
+					<p>{KEEPS_TERMS}</p>
+				{/if}
 			{/if}
+			{#each carriedBy as by (by)}
+				<p>{alreadyCarried({ notes: count }, by)}</p>
+			{/each}
 			{#each narrower as under (under)}
-				<p>
-					{under} is published inviting fewer people to answer. What you publish here carries it on these
-					terms.
-				</p>
+				<p>{narrowerSays(under, 'going')}</p>
 			{/each}
 		</div>
 

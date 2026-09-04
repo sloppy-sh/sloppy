@@ -22,12 +22,15 @@ function subjectOf(of: PublishSubject): { name: string; it: string; stands: stri
  *  `answersReach` is false where answers people write never arrive here. */
 export function publishingSays(of: PublishSubject, answersReach: boolean): string[] {
 	const { name, it } = subjectOf(of);
+	// "here" names the control the branch's own sheet carries. A set of notes is
+	// told otherwise on each note's own surface, so there is no here to point at.
+	const otherwise = 'address' in of ? 'until you say otherwise here' : 'until you say otherwise';
 	return [
 		`Everything under ${name} goes out: every note in ${it}, finished or not, and every picture in them.`,
 		`Anyone who can find your profile can read ${it}. There is no link to keep back and nobody to let in.`,
 		`If you take ${it} down, whoever has already read ${it} keeps their copy.`,
 		answersReach
-			? `Anyone reading ${it} may answer, until you say otherwise.`
+			? `Anyone reading ${it} may answer, ${otherwise}.`
 			: `Anyone reading ${it} may answer. Their answers reach people reading ${it} elsewhere — you will not see them here.`
 	];
 }
@@ -42,4 +45,22 @@ export function publishingAgain(of: PublishSubject): string {
 				? 'the one you have already published'
 				: `the ${of.notes.toLocaleString()} you have already published`;
 	return `Publishing again sends ${name} as ${stands} now. Every version before it stays readable.`;
+}
+
+/** What publishing again does to who may answer: nothing. */
+export const KEEPS_TERMS = 'What you have already published keeps the terms you set on it.';
+
+/** A branch rooted above this one that already carries it, so publishing here
+ *  puts that writing out a second time. */
+export function alreadyCarried(of: PublishSubject, by: Address): string {
+	const what =
+		'address' in of ? 'this branch' : of.notes === 1 ? 'the note you chose' : 'notes you chose';
+	return `${by} already carries ${what}, on its own terms.`;
+}
+
+/** A branch under this one published inviting fewer people to answer. What goes
+ *  out here carries it on these terms. */
+export function narrowerSays(under: Address, out: 'going' | 'already'): string {
+	const carrier = out === 'going' ? 'What you publish here' : 'What is published here';
+	return `${under} is published inviting fewer people to answer. ${carrier} carries it on these terms.`;
 }

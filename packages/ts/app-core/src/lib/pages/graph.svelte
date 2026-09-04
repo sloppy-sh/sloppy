@@ -265,8 +265,26 @@
 		acted.map((ref) => nodes.get(ref)).filter((note) => note !== undefined)
 	);
 	const actedTags = $derived([...new Set(actedNotes.flatMap((note) => note.tags))]);
-	/** How many of the chosen notes a version already carries. */
-	const alreadyOut = $derived(actedNotes.filter((note) => note.published).length);
+	/** The publication rooted at each chosen note, where there is one — what a
+	 *  publish here sends another version of. A note that merely sits inside a
+	 *  branch published from above has none, and publishing it opens one. */
+	const chosenChains = $derived(
+		actedNotes.map((note) => publications.at(note)).filter((chain) => chain !== undefined)
+	);
+	const alreadyOut = $derived(chosenChains.length);
+	/** True where one of those invites fewer people to answer than a first
+	 *  publish does, which publishing again leaves as it is. */
+	const keepsTerms = $derived(chosenChains.some((chain) => chain.comments !== 'anyone'));
+	/** Branches rooted above the chosen notes that already carry them, which a
+	 *  publish here puts out a second time on terms of its own. */
+	const carriedAbove = $derived([
+		...new Set(
+			actedNotes
+				.filter((note) => publications.at(note) === undefined)
+				.map((note) => publications.above(note)?.root_address)
+				.filter((address) => address !== undefined)
+		)
+	]);
 	/** Branches under the chosen notes that were published inviting fewer people
 	 *  to answer, whose notes a publish here carries on its own terms. */
 	const narrowerUnderChosen = $derived([
@@ -607,10 +625,13 @@
 		try {
 			missed = (await nodes.act({ notes: asked, act })).missed;
 		} catch (error) {
+			// Each note is published on its own, so a request that stops partway
+			// leaves some of them out and the canvas a version behind.
+			if (act.act === 'publish') refreshPublished(asked);
 			actRefused =
 				serverMessage(error) ??
 				(act.act === 'publish'
-					? 'Sloppy could not publish those notes. Try again in a moment.'
+					? 'Sloppy could not finish publishing those notes. Some of them may be out. Try again in a moment.'
 					: 'Sloppy could not change those notes. Try again in a moment.');
 			throw error;
 		}
@@ -1249,6 +1270,8 @@
 	bind:open={publishing}
 	count={acted.length}
 	{alreadyOut}
+	{keepsTerms}
+	carriedBy={carriedAbove}
 	narrower={narrowerUnderChosen}
 	answersReach={identity.kind !== 'local'}
 	refused={actRefused}

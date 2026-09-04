@@ -1,14 +1,17 @@
 import type {
 	BlockView,
+	CommentAccess,
 	CreateBlockRequest,
 	NodeBulkRequest,
 	NodeView,
-	OwnedRef
+	OwnedRef,
+	PublicationView
 } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AT, DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
 import { at, back, forward, pushed, replaced, startAt } from './page.test-support.svelte.js';
@@ -47,8 +50,30 @@ let api: FakeApi;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let graph: Map<OwnedRef, NodeView>;
+/** What this person has published, as the instance answers for it. */
+let held: PublicationView[];
 /** Every act the server was asked for, in the order it was asked. */
 let acts: NodeBulkRequest[];
+
+/** A branch this person publishes, rooted at `root`. */
+function publication(
+	seed: number,
+	root: OwnedRef,
+	rootAddress: string,
+	comments: CommentAccess = 'anyone'
+): PublicationView {
+	const self = ref(seed);
+	return {
+		ref: self,
+		created_by: DID,
+		created_at: AT,
+		updated_at: AT,
+		root,
+		root_address: rootAddress,
+		comments,
+		latest: { ref: ref(seed + 100), sequence: 1, published_at: AT }
+	};
+}
 
 /** What one act leaves a note as, standing in for the server that writes it. */
 function acted(note: NodeView, act: NodeBulkRequest['act']): NodeView {
@@ -248,8 +273,11 @@ beforeEach(() => {
 	stubViewport();
 	nodes.clear();
 	tags.clear();
+	publications.clear();
 	api = useFakeApi();
 	graph = installGraph();
+	held = [];
+	api.on('GET /publications', () => held);
 	acts = [];
 	api.on('POST /nodes/bulk', (_url, init) => {
 		const request = JSON.parse(String(init?.body)) as NodeBulkRequest;
@@ -465,19 +493,19 @@ describe('acting on one note from the canvas', () => {
 // DESIGN.md § "The mark" keeps the word "chosen" for the notes somebody picked
 // out to act on; a selection is already the reader's tags.
 describe('choosing several notes to act on', () => {
-	/** `1` through the menu, which is the phone's way in. */
-	async function chooseOne(): Promise<void> {
+	/** One note through its own menu, which is the phone's way in. */
+	async function chooseOnly(address: string): Promise<void> {
 		await open();
-		menuOn('1').click();
+		menuOn(address).click();
 		await settle();
 		item('Choose this and others').click();
 		await settle();
 	}
 
-	/** Then `1a` and `2` by tapping: the mode is entered by name and then taps
-	 *  add to it. */
+	/** `1` through the menu, then `1a` and `2` by tapping: the mode is entered by
+	 *  name and then taps add to it. */
 	async function chooseThree(): Promise<void> {
-		await chooseOne();
+		await chooseOnly('1');
 		onCanvas('1a').click();
 		onCanvas('2').click();
 		await settle();
@@ -567,7 +595,7 @@ describe('choosing several notes to act on', () => {
 	// A set of one is still a set somebody built by hand, so neither question may
 	// talk about them.
 	it('asks about one chosen note in the singular', async () => {
-		await chooseOne();
+		await chooseOnly('1');
 
 		button('Tags').click();
 		await settle();
@@ -577,7 +605,7 @@ describe('choosing several notes to act on', () => {
 	});
 
 	it('offers a look to one chosen note in the singular', async () => {
-		await chooseOne();
+		await chooseOnly('1');
 
 		button('Look').click();
 		await settle();
@@ -631,7 +659,7 @@ describe('choosing several notes to act on', () => {
 	// The one act that cannot be taken back, so the question counts everything
 	// that goes — the notes chosen are never all of them.
 	it('asks before deleting, counting what goes with the notes chosen', async () => {
-		await chooseOne();
+		await chooseOnly('1');
 
 		button('Delete').click();
 		await settle();
@@ -720,16 +748,71 @@ describe('choosing several notes to act on', () => {
 	// Sending twenty branches again is a different act from putting out what is
 	// not out yet, so it is not done quietly.
 	it('says how many of them are already published before sending them again', async () => {
+		held = [
+			publication(10, FIRST, '1'),
+			publication(11, SECOND, '1a'),
+			publication(12, THIRD, '2')
+		];
 		await chooseThree();
-		button('Publish').click();
-		await settle();
-		button('Publish 3 notes').click();
-		await settle();
 
 		button('Publish').click();
 		await settle();
 
 		expect(inSheet()).toContain('the 3 you have already published');
+	});
+
+	// A note inside a published branch roots nothing: publishing it opens a
+	// publication of its own, with no version behind it.
+	it('counts only the chosen notes a publication of their own is rooted at', async () => {
+		held = [publication(10, FIRST, '1')];
+		// What `1`'s publication carries draws as published, and roots nothing.
+		graph.set(SECOND, { ...graph.get(SECOND)!, published: true });
+		await chooseOnly('1a');
+
+		button('Publish').click();
+		await settle();
+
+		const asked = inSheet();
+		expect(asked).not.toContain('already published');
+		expect(asked).toContain('1 already carries the note you chose, on its own terms.');
+	});
+
+	it('says a branch under the chosen set invites fewer people to answer', async () => {
+		held = [publication(10, SECOND, '1a', 'nobody')];
+		await chooseOnly('1');
+
+		button('Publish').click();
+		await settle();
+
+		expect(inSheet()).toContain('1a is published inviting fewer people to answer.');
+	});
+
+	// The blanket promise is about what goes out for the first time; a chain
+	// already set to take no answers keeps that.
+	it('says publishing again leaves the terms already set on it', async () => {
+		held = [publication(10, FIRST, '1', 'nobody')];
+		await chooseOnly('1');
+
+		button('Publish').click();
+		await settle();
+
+		expect(inSheet()).toContain('What you have already published keeps the terms you set on it.');
+	});
+
+	// Each note is published on its own, so a request that stops partway leaves
+	// some of them readable while the person is still being asked.
+	it('says some may be out where publishing stopped partway', async () => {
+		await chooseThree();
+		api.on('POST /nodes/bulk', () => {
+			throw new Error('the connection went away');
+		});
+
+		button('Publish').click();
+		await settle();
+		button('Publish 3 notes').click();
+		await settle();
+
+		expect(inSheet()).toContain('Some of them may be out.');
 	});
 
 	it('says how many of the chosen did not go out', async () => {

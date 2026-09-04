@@ -242,7 +242,14 @@ publishing both would put one piece of writing out twice, in two snapshots each 
 their own terms and their own history. A chosen note that is already published takes
 another version, exactly as publishing it from its own surface does — which is a
 different act from putting out what is not out yet, so the question says how much of the
-set it is before it is answered. Some of a set going out and some not is the ordinary
+set it is before it is answered. A chosen note counts as already published only where a
+publication is rooted at it: `node.published` is true of every note inside a published
+branch and answers a different question. So a chosen note that a branch above already
+carries opens a publication of its own, which the question names before it is answered,
+and a chain that is already out keeps the terms its author set on it. Each note is
+published on its own, so a request that stops partway leaves the ones that went out
+readable — the surface says so and reads the branches again rather than reporting that
+nothing landed. Some of a set going out and some not is the ordinary
 case rather than a failure, and `reached` and `missed` on `NodeBulkResult` carry it;
 where nothing went out at all, the refusal itself is the answer.
 
