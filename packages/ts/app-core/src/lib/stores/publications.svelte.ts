@@ -12,6 +12,8 @@ import {
 	addressDepth,
 	type CommentAccess,
 	compareAddresses,
+	graphOf,
+	graphRef,
 	isInSubtree,
 	type NodeView,
 	type OwnedRef,
@@ -112,7 +114,7 @@ class PublicationsStore {
 	at(note: NodeView): PublicationView | undefined {
 		return this.all.find(
 			(publication) =>
-				this.authorOf(publication) === note.created_by && publication.root_address === note.address
+				this.graphRefOf(publication) === graphOf(note) && publication.root_address === note.address
 		);
 	}
 
@@ -122,7 +124,7 @@ class PublicationsStore {
 		return this.all
 			.filter(
 				(publication) =>
-					this.authorOf(publication) === note.created_by &&
+					this.graphRefOf(publication) === graphOf(note) &&
 					publication.root_address !== note.address &&
 					isInSubtree(publication.root_address, note.address)
 			)
@@ -140,7 +142,7 @@ class PublicationsStore {
 		if (terms !== 'anyone') return [];
 		return this.all.filter(
 			(publication) =>
-				this.authorOf(publication) === note.created_by &&
+				this.graphRefOf(publication) === graphOf(note) &&
 				publication.root_address !== note.address &&
 				isInSubtree(note.address, publication.root_address) &&
 				publication.comments !== 'anyone'
@@ -156,7 +158,7 @@ class PublicationsStore {
 	answersOn(note: NodeView): CommentAccess | null {
 		const covering = this.all.filter(
 			(publication) =>
-				this.authorOf(publication) === note.created_by &&
+				this.graphRefOf(publication) === graphOf(note) &&
 				isInSubtree(publication.root_address, note.address)
 		);
 		if (covering.length === 0) return null;
@@ -265,8 +267,11 @@ class PublicationsStore {
 		this.#state = IDLE;
 	}
 
-	private authorOf(publication: PublicationView): string {
-		return splitOwnedRef(publication.ref).did;
+	/** Which of its author's graphs a publication is rooted in. Comparing this
+	 *  to a note's graph settles author and notebook at once, so neither is
+	 *  asked separately: two graphs of one person each hold a `1`. */
+	private graphRefOf(publication: PublicationView): OwnedRef {
+		return graphRef(splitOwnedRef(publication.ref).did, publication.graph);
 	}
 }
 

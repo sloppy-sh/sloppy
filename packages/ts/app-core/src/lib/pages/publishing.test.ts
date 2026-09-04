@@ -32,6 +32,8 @@ const UNDER = ref(2);
 const PUBLICATION = ref(10);
 const UNDER_PUBLICATION = ref(11);
 const VERSION_ONE = ref(20);
+// Seeded away from zero: `ulid(0)` pads to the home graph's own local id.
+const OTHER_GRAPH = ref(99);
 const VERSION_TWO = ref(21);
 
 const PHONE = 390;
@@ -295,6 +297,30 @@ describe('publishing a branch', () => {
 	});
 
 	it('says nothing about a branch above it where there is none', async () => {
+		await open(UNDER);
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).not.toContain('already carries this branch');
+	});
+
+	it('leaves a note unpublished where the branch at its address is another graph’s', async () => {
+		held = [publication({ graph: OTHER_GRAPH })];
+		chain = [version(VERSION_ONE, 1)];
+
+		await open();
+		await settle();
+		flushSync();
+
+		expect(has('Published · version 1')).toBe(false);
+	});
+
+	it('says nothing about a branch above it where that branch is another graph’s', async () => {
+		held = [publication({ graph: OTHER_GRAPH })];
+		chain = [version(VERSION_ONE, 1)];
+
 		await open(UNDER);
 		await openActs();
 		button('Publishing').click();
