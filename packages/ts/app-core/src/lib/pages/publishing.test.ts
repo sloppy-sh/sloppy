@@ -600,7 +600,7 @@ describe('publishing where answers cannot come back', () => {
 		await settle();
 		flushSync();
 
-		expect(says()).toContain('you will not see what they say');
+		expect(says()).toContain('you will not see them here');
 		expect(says()).not.toContain('until you say otherwise here');
 	});
 

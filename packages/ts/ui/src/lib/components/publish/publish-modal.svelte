@@ -342,7 +342,9 @@
 			<section class="space-y-2">
 				<h3 class="text-sm font-medium">Who may answer</h3>
 				{#if !answersReach}
-					<p class="text-sm text-muted-foreground">You will not see what they say.</p>
+					<p class="text-sm text-muted-foreground">
+						Answers still reach people reading it elsewhere — you just will not see them here.
+					</p>
 				{/if}
 				{#each terms as term (term.value)}
 					<button
@@ -395,7 +397,10 @@
 				{#if answersReach}
 					<p>Anyone reading it may answer, until you say otherwise here.</p>
 				{:else}
-					<p>Anyone reading it may answer, and you will not see what they say.</p>
+					<p>
+						Anyone reading it may answer. Their answers reach people reading it elsewhere — you will
+						not see them here.
+					</p>
 				{/if}
 				{#if carriedBy}
 					<p>{carriedBy} already carries this branch, on its own terms.</p>
