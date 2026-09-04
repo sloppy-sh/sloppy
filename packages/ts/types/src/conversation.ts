@@ -6,18 +6,22 @@
 // shapes Sloppy's own API hands a surface, already resolved to something it can
 // draw.
 //
-// Discovery is per-identity and pull-only, so what a reader sees on a note is
-// what they and the identities they follow have written on it.
+// Discovery is per-identity and pull-only, so a reader reaches their own store
+// and those of the identities they follow — and, for a note of their own, the
+// stores a `CommentPointer` names, which is how somebody they do not follow can
+// still reach them.
 // docs/ARCHITECTURE.md § "Federating the graph" carries what that means for the
 // product.
 
 import { z } from "zod";
 import {
   DidSyrSchema,
+  OwnedEntitySchema,
   OwnedRefSchema,
   StoreRefSchema,
   TimestampSchema,
 } from "./common.js";
+import { PeerOriginSchema } from "./federation.js";
 import { CustomEmojiSchema } from "./emoji.js";
 
 /**
@@ -119,3 +123,47 @@ export const CreateNoteReactionRequestSchema = z.discriminatedUnion("kind", [
 export type CreateNoteReactionRequest = z.input<
   typeof CreateNoteReactionRequestSchema
 >;
+
+/**
+ * That somebody said something about a note, left at the note author's instance
+ * so they learn of it without having to follow whoever wrote it. Pull-only
+ * federation has no relay and no firehose, so nothing else would tell an
+ * instance that a stranger's comment now exists.
+ *
+ * **It carries no words.** The comment stays in the store of whoever wrote it
+ * and is read from there, which is what makes a pointer safe to accept from an
+ * identity the author has no relationship with: it is a claim to check, never a
+ * copy to trust. A pointer whose store serves nothing, or serves a comment
+ * carrying a different DID, or one about a different note, is dropped on the
+ * way in and never shown.
+ *
+ * `created_by` is the NOTE's author — the person it was left for, and the one
+ * whose purge has to reach it.
+ */
+export const CommentPointerSchema = OwnedEntitySchema.extend({
+  note: OwnedRefSchema,
+  /** Who says they wrote it. Held to what their store actually serves. */
+  voice: DidSyrSchema,
+  /** The instance to ask. Bounded to an origin this build will speak to. */
+  where: PeerOriginSchema,
+  comment_id: StoreRefSchema,
+});
+export type CommentPointer = z.infer<typeof CommentPointerSchema>;
+
+/** What `POST /nodes/{did}/{localId}/replies` binds. */
+export const LeaveCommentPointerRequestSchema = z.object({
+  voice: DidSyrSchema,
+  where: PeerOriginSchema,
+  comment_id: StoreRefSchema,
+});
+export type LeaveCommentPointerRequest = z.input<
+  typeof LeaveCommentPointerRequestSchema
+>;
+
+/**
+ * How many pointers one instance keeps for a note, and how many of those any
+ * single voice may account for. The per-voice bound is the one that matters: a
+ * cap on the note alone lets one identity crowd out everybody else on it.
+ */
+export const POINTERS_PER_NOTE = 500;
+export const POINTERS_PER_VOICE = 20;

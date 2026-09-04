@@ -11,10 +11,12 @@ import {
 import {
   CreateNoteCommentRequestSchema,
   CreateNoteReactionRequestSchema,
+  LeaveCommentPointerRequestSchema,
   type NoteComment,
   type NoteReaction,
 } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
+import { Public } from "../auth/public.decorator";
 import { parseBody, requireRef, viewerDelegation } from "../node/request";
 import { SocialService } from "./social.service";
 
@@ -70,6 +72,29 @@ export class SocialController {
 @Controller("nodes")
 export class NoteConversationController {
   constructor(private readonly social: SocialService) {}
+
+  /**
+   * Somebody else's instance saying that one of their people answered this
+   * note. Public, because the identity leaving it has no relationship with the
+   * author — and safe to be, because it carries no words and is believed only
+   * as far as the store it names will back it up on the way out.
+   *
+   * It always answers 204: whether a bound refused it, or the note takes no
+   * answers, is not something a depositor may learn.
+   */
+  @Public()
+  @HttpCode(204)
+  @Post(":did/:localId/replies")
+  async reply(
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    await this.social.leaveReply(
+      requireRef(did, localId),
+      parseBody(LeaveCommentPointerRequestSchema, body),
+    );
+  }
 
   @Get(":did/:localId/comments")
   comments(

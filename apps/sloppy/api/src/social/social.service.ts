@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import {
+  splitOwnedRef,
   asTimestamp,
   type CommentSignedPayloadV1,
   CreateNoteCommentRequestSchema,
@@ -20,6 +21,7 @@ import {
 import type { z } from "zod";
 import { AssetLinks } from "../media/asset-link";
 import { type Delegation, SyrService } from "../syr/syr.service";
+import { PointerRepository } from "./pointer.repository";
 
 /** As the route parsed them: what the wire accepts is the request type, and
  *  what a schema hands back after trimming and defaulting is this. */
@@ -65,7 +67,27 @@ export class SocialService {
   constructor(
     private readonly syr: SyrService,
     private readonly links: AssetLinks,
+    private readonly pointers: PointerRepository,
   ) {}
+
+  /**
+   * Somebody's claim that they said something about a note of the author's. It
+   * is stored and nothing more: what makes it show is the read, which asks the
+   * store it names and keeps only what that store serves in that name.
+   *
+   * The answer says nothing about whether it was kept. A depositor learning
+   * that a bound refused them, or that a note admits no answers, learns
+   * something about somebody else's graph they did not already know.
+   */
+  async leaveReply(
+    note: OwnedRef,
+    left: { voice: DidSyr; where: string; comment_id: string },
+  ): Promise<void> {
+    const author = splitOwnedRef(note).did;
+    if (left.voice === author) return;
+    if (!(await this.pointers.admitsAnswers(author, note))) return;
+    await this.pointers.leave({ author, note, ...left });
+  }
 
   /** Oldest first, which is the order a conversation is read in. */
   async comments(
@@ -73,8 +95,10 @@ export class SocialService {
     node: OwnedRef,
   ): Promise<NoteComment[]> {
     const post = syrPostRefFor(node);
-    const written = await this.fromEveryVoice(delegation, (where, did) =>
-      this.syr.listPublicComments(where, did, post),
+    const written = await this.fromEveryVoice(
+      delegation,
+      (where, did) => this.syr.listPublicComments(where, did, post),
+      node,
     );
     return written
       .map((held) => held.record)
@@ -120,8 +144,10 @@ export class SocialService {
     node: OwnedRef,
   ): Promise<NoteReaction[]> {
     const post = syrPostRefFor(node);
-    const made = await this.fromEveryVoice(delegation, (where, did) =>
-      this.syr.listPublicReactions(where, did, post),
+    const made = await this.fromEveryVoice(
+      delegation,
+      (where, did) => this.syr.listPublicReactions(where, did, post),
+      node,
     );
     const catalogs = new Catalogs((where, did) =>
       this.syr.listPublicEmoji(where, did),
@@ -200,13 +226,18 @@ export class SocialService {
    * Every store the reader can reach: their own, and those of the identities
    * they follow, each at the instance that hosts it.
    */
-  private async voices(delegation: Delegation): Promise<Voice[]> {
+  private async voices(
+    delegation: Delegation,
+    about?: OwnedRef,
+  ): Promise<Voice[]> {
     const reachable: Voice[] = [
       { did: delegation.did, where: delegation.syr_instance_url },
     ];
+    const already = new Set<DidSyr>([delegation.did]);
     try {
       for (const follow of await this.syr.listFollowing(delegation)) {
-        if (follow.followed_did === delegation.did) continue;
+        if (already.has(follow.followed_did)) continue;
+        already.add(follow.followed_did);
         reachable.push({
           did: follow.followed_did,
           where: follow.followed_provider_url ?? delegation.syr_instance_url,
@@ -216,6 +247,19 @@ export class SocialService {
       this.logger.warn(
         `Could not read who ${delegation.did} follows: ${reason(err)}`,
       );
+    }
+    // A note of the reader's own reaches further than the reader does: somebody
+    // they do not follow can still have left a pointer on it, which is the whole
+    // of how a stranger's answer arrives at all.
+    if (about !== undefined && splitOwnedRef(about).did === delegation.did) {
+      for (const left of await this.pointers.pointersOn(
+        delegation.did,
+        about,
+      )) {
+        if (already.has(left.voice)) continue;
+        already.add(left.voice);
+        reachable.push({ did: left.voice, where: left.where });
+      }
     }
     return reachable;
   }
@@ -233,8 +277,9 @@ export class SocialService {
   private async fromEveryVoice<T extends { did: DidSyr }>(
     delegation: Delegation,
     read: (instanceUrl: string, did: DidSyr) => Promise<T[]>,
+    about?: OwnedRef,
   ): Promise<Held<T>[]> {
-    const voices = await this.voices(delegation);
+    const voices = await this.voices(delegation, about);
     const answers = await Promise.allSettled(
       voices.map((voice) => read(voice.where, voice.did)),
     );

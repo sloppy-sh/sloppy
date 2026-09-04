@@ -26,6 +26,7 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS pull_member SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pulled_node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pulled_block SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS comment_pointer SCHEMALESS;
 
   DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS depth ON node TYPE int ASSERT $value > 0 READONLY;
@@ -41,6 +42,13 @@ export const SCHEMA = `
   -- the purge has to reach. docs/ARCHITECTURE.md § "Federating the graph".
   DEFINE FIELD IF NOT EXISTS created_by ON pull TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pull_member TYPE string READONLY;
+  -- On a pointer the owner is the note's AUTHOR: it was left for them, and they
+  -- are the one whose purge has to reach it. Whoever wrote the comment owns the
+  -- comment, in their own store, and nothing here.
+  DEFINE FIELD IF NOT EXISTS created_by ON comment_pointer TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS note ON comment_pointer TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS voice ON comment_pointer TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS comment_id ON comment_pointer TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
 
@@ -189,6 +197,11 @@ export const SCHEMA = `
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_depth ON pulled_node FIELDS created_by, source_did, depth;
   -- One copy per foreign node however many regions serve it.
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_source ON pulled_node FIELDS created_by, source UNIQUE;
+  -- Leaving the same pointer twice is the same pointer, so a repeat deposit is
+  -- idempotent rather than a second row.
+  DEFINE INDEX IF NOT EXISTS comment_pointer_owner_voice_comment ON comment_pointer FIELDS created_by, voice, comment_id UNIQUE;
+  -- What a note's author reads, and what the per-voice bound is counted over.
+  DEFINE INDEX IF NOT EXISTS comment_pointer_owner_note_voice ON comment_pointer FIELDS created_by, note, voice;
   -- The address protocol on rows a peer handed us: one address per author, so a
   -- second copy claiming a taken one fails at write rather than becoming a
   -- citation that resolves two ways. It is also how a held note is reached by

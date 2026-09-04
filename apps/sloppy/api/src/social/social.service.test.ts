@@ -4,6 +4,7 @@ import { DidSyrSchema, type OwnedRef } from "@sloppy/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssetLinks } from "../media/asset-link";
 import { SyrService } from "../syr/syr.service";
+import type { PointerRepository } from "./pointer.repository";
 import { SocialService } from "./social.service";
 
 const INSTANCE = "https://syr.is";
@@ -136,7 +137,15 @@ function standing(asked: URL, hostOf: (did: string) => string): Answer {
 
 function social(): SocialService {
   const config = { get: () => "a-session-secret" } as unknown as ConfigService;
-  return new SocialService(new SyrService(), new AssetLinks(config));
+  // No pointer has been left in these, so the reachable set is the reader and
+  // who they follow — which is what every one of them is about.
+  const pointers = {
+    pointersOn: async () => [],
+    admitsAnswers: async () => false,
+    leave: async () => null,
+    forgetNote: async () => {},
+  } as unknown as PointerRepository;
+  return new SocialService(new SyrService(), new AssetLinks(config), pointers);
 }
 
 function comment(
@@ -728,5 +737,86 @@ describe("reacting to a note", () => {
     expect(drawn.emoji.emoji_id).toBe(`${ME}/e1`);
     // The picture reads from this instance, never from the store that holds it.
     expect(drawn.emoji.src.startsWith("/proxy?ref=")).toBe(true);
+  });
+});
+
+describe("an answer from somebody the reader does not follow", () => {
+  const ELSEWHERE = "https://elsewhere.example";
+  /** A service whose author has one pointer standing on their own note. */
+  function withPointer(over: Record<string, unknown> = {}): SocialService {
+    const config = {
+      get: () => "a-session-secret",
+    } as unknown as ConfigService;
+    const pointers = {
+      pointersOn: async () => [
+        {
+          voice: STRANGER,
+          where: ELSEWHERE,
+          comment_id: `${STRANGER}:01POINTED`,
+        },
+      ],
+      admitsAnswers: async () => true,
+      leave: async () => null,
+      forgetNote: async () => {},
+      ...over,
+    } as unknown as PointerRepository;
+    return new SocialService(
+      new SyrService(),
+      new AssetLinks(config),
+      pointers,
+    );
+  }
+
+  // The whole point: pull-only federation tells an instance nothing, so without
+  // the pointer a stranger's answer stays unreachable however long they wait.
+  it("reaches the store a pointer names, though nobody follows it", async () => {
+    const asked: string[] = [];
+    vi.spyOn(SyrService.prototype, "listFollowing").mockResolvedValue([]);
+    vi.spyOn(SyrService.prototype, "listPublicComments").mockImplementation(
+      async (where: string) => {
+        asked.push(where);
+        return [];
+      },
+    );
+
+    await withPointer().comments(DELEGATION, NOTE);
+
+    expect(asked).toContain(ELSEWHERE);
+  });
+
+  it("asks a store once for somebody both followed and pointed at", async () => {
+    const asked: string[] = [];
+    vi.spyOn(SyrService.prototype, "listFollowing").mockResolvedValue([
+      { followed_did: STRANGER, followed_provider_url: ELSEWHERE },
+    ] as never);
+    vi.spyOn(SyrService.prototype, "listPublicComments").mockImplementation(
+      async (_where: string, did: string) => {
+        asked.push(did);
+        return [];
+      },
+    );
+
+    await withPointer().comments(DELEGATION, NOTE);
+
+    expect(asked.filter((did) => did === STRANGER)).toHaveLength(1);
+  });
+
+  it("keeps a pointer on a note that takes no answers out of the store", async () => {
+    let left = 0;
+    const service = withPointer({
+      admitsAnswers: async () => false,
+      leave: async () => {
+        left += 1;
+        return null;
+      },
+    });
+
+    await service.leaveReply(NOTE, {
+      voice: STRANGER,
+      where: ELSEWHERE,
+      comment_id: `${STRANGER}:01POINTED`,
+    });
+
+    expect(left).toBe(0);
   });
 });

@@ -5,6 +5,7 @@ import {
   NoteConversationController,
   SocialController,
 } from "./social.controller";
+import { PointerRepository } from "./pointer.repository";
 import { SocialService } from "./social.service";
 
 /** What people say back, and who a reader hears it from. Every record here
@@ -12,6 +13,6 @@ import { SocialService } from "./social.service";
 @Module({
   imports: [SyrModule, MediaModule],
   controllers: [SocialController, NoteConversationController],
-  providers: [SocialService],
+  providers: [SocialService, PointerRepository],
 })
 export class SocialModule {}
