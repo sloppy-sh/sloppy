@@ -1,52 +1,62 @@
 /**
- * The tag axis: every tag the reader has used, and which of them the graph is
- * lit by. One reader over the API's tag route.
+ * The tag axis: every tag the reader has used in a graph, and which of them the
+ * canvas is lit by. One reader over the API's tag route.
  *
  * There is no tag row to cache — a tag exists exactly as long as a note carries
- * one — so this holds a count that goes stale the moment a note is retagged,
- * and {@link reload} is how a surface asks again.
+ * one — so this holds counts that go stale the moment a note is retagged, and
+ * {@link TagsStore.reload} is how a surface asks again.
  *
- * The selection is persisted, so it lives in the prefs store; this store is
- * where it is read and changed, because the rail and the canvas both need it
- * beside the counts.
+ * The counts are per graph, because the rail is the legend for the canvas beside
+ * it. The selection is not: a reader asks one question of whatever is on screen,
+ * and it is persisted, so it lives in the prefs store.
  */
 
-import type { Tag, TagCount } from '@sloppy/types';
+import type { OwnedRef, Tag, TagCount } from '@sloppy/types';
+import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { serverMessage } from './errors.js';
 import { prefs } from './prefs.svelte.js';
 
+export interface TagsState {
+	loading: boolean;
+	loaded: boolean;
+	failed: boolean;
+	/** The server's own words, where it gave any. */
+	error?: string;
+}
+
+const IDLE: TagsState = { loading: false, loaded: false, failed: false };
+
 class TagsStore {
-	#all = $state<TagCount[]>([]);
-	#loading = $state(false);
-	#loaded = $state(false);
-	#failed = $state(false);
-	#error = $state<string | undefined>(undefined);
-	#inflight: Promise<TagCount[]> | null = null;
+	#byGraph = new SvelteMap<OwnedRef, TagCount[]>();
+	#states = new SvelteMap<OwnedRef, TagsState>();
+	#inflight = new Map<OwnedRef, Promise<TagCount[]>>();
 	// A {@link clear} that lands mid-request must not be undone by the answer:
 	// nothing the previous person's graph returns belongs to the next one.
 	#epoch = 0;
 
 	/** Most-used first, which is the order the read answers in. */
-	get all(): TagCount[] {
-		return this.#all;
+	of(graph: OwnedRef): TagCount[] {
+		return this.#byGraph.get(graph) ?? [];
 	}
 
-	get loading(): boolean {
-		return this.#loading;
+	/** The tags carried across every graph on the canvas, counted together —
+	 *  what the rail beside that canvas is the legend for. */
+	across(graphs: readonly OwnedRef[]): TagCount[] {
+		if (graphs.length === 1) return this.of(graphs[0]);
+		const counted: Record<string, number> = {};
+		for (const graph of graphs) {
+			for (const { tag, notes } of this.of(graph)) {
+				counted[tag] = (counted[tag] ?? 0) + notes;
+			}
+		}
+		return Object.entries(counted)
+			.map(([tag, notes]) => ({ tag: tag as Tag, notes }))
+			.sort((a, b) => b.notes - a.notes || a.tag.localeCompare(b.tag));
 	}
 
-	get loaded(): boolean {
-		return this.#loaded;
-	}
-
-	get failed(): boolean {
-		return this.#failed;
-	}
-
-	/** The server's own words, where it gave any. */
-	get error(): string | undefined {
-		return this.#error;
+	status(graph: OwnedRef): TagsState {
+		return this.#states.get(graph) ?? IDLE;
 	}
 
 	/** In selection order — DESIGN.md § Hue reads the slots off that order. */
@@ -59,52 +69,52 @@ class TagsStore {
 	}
 
 	/** Deduped and idempotent: every surface may call it on mount. */
-	load(): Promise<TagCount[]> {
-		if (this.#inflight) return this.#inflight;
-		if (this.#loaded) return Promise.resolve(this.#all);
-		return this.reload();
+	load(graph: OwnedRef): Promise<TagCount[]> {
+		const inflight = this.#inflight.get(graph);
+		if (inflight) return inflight;
+		if (this.status(graph).loaded) return Promise.resolve(this.of(graph));
+		return this.reload(graph);
 	}
 
-	reload(): Promise<TagCount[]> {
-		if (this.#inflight) return this.#inflight;
+	reload(graph: OwnedRef): Promise<TagCount[]> {
+		const inflight = this.#inflight.get(graph);
+		if (inflight) return inflight;
 		const epoch = this.#epoch;
 		const current = () => epoch === this.#epoch;
-		this.#loading = true;
-		this.#failed = false;
-		this.#error = undefined;
+		const before = this.status(graph);
+		this.#states.set(graph, { ...before, loading: true, failed: false, error: undefined });
 		const request = api
-			.listTags()
+			.listTags(graph)
 			.then((list) => {
 				if (!current()) return [];
-				this.#all = list;
-				this.#loaded = true;
+				this.#byGraph.set(graph, list);
+				this.#states.set(graph, { loading: false, loaded: true, failed: false });
 				return list;
 			})
 			.catch((err: unknown) => {
 				if (current()) {
-					this.#failed = true;
-					this.#error = serverMessage(err);
+					this.#states.set(graph, {
+						loading: false,
+						loaded: before.loaded,
+						failed: true,
+						error: serverMessage(err)
+					});
 				}
 				throw err;
 			})
 			.finally(() => {
-				if (!current()) return;
-				this.#loading = false;
-				this.#inflight = null;
+				if (current()) this.#inflight.delete(graph);
 			});
-		this.#inflight = request;
+		this.#inflight.set(graph, request);
 		return request;
 	}
 
 	/** After a sign-out or an erase: nothing cached belongs to the next person. */
 	clear(): void {
 		this.#epoch++;
-		this.#all = [];
-		this.#loaded = false;
-		this.#loading = false;
-		this.#failed = false;
-		this.#error = undefined;
-		this.#inflight = null;
+		this.#byGraph.clear();
+		this.#states.clear();
+		this.#inflight.clear();
 		this.select([]);
 	}
 }

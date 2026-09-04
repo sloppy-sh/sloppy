@@ -20,6 +20,7 @@
 	import {
 		alongRun,
 		compareOrd,
+		graphOf,
 		isInSubtree,
 		runKeyOf,
 		type BlockView,
@@ -62,6 +63,7 @@
 	import { deletionCost } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people } from '../stores/people.svelte.js';
@@ -112,7 +114,6 @@
 	const children = $derived(nodes.children(ref));
 	const parent = $derived(node?.parent ? nodes.get(node.parent) : undefined);
 	const emoji = $derived(noteEmoji(session.viewer?.did ?? ''));
-	const suggestions = $derived(tags.all.map((entry) => entry.tag));
 
 	/** The notes this one is alongside, grouped the way the canvas groups them
 	 *  for the run it draws: what sprang from the same note, or the branches of
@@ -307,7 +308,8 @@
 
 	const suggested = $derived(offered === 'this' ? null : suggestedFor(offered));
 
-	/** Every note the cache holds — what a link may point at, in address order. */
+	/** Every note the cache holds, across every graph — a link crosses them, and
+	 *  so does what points back at this note. In address order within a graph. */
 	const everyNote = $derived.by(() => {
 		const out: NodeView[] = [];
 		const walk = (list: NodeView[]) => {
@@ -319,6 +321,17 @@
 		walk(nodes.region());
 		return out;
 	});
+
+	/** The graph this note is read in, which is the one `[[` writes into. */
+	const inGraph = $derived(node ? graphOf(node) : null);
+	/** The words that graph already uses, which is where a tag put here is read. */
+	const suggestions = $derived(inGraph === null ? [] : tags.of(inGraph).map((one) => one.tag));
+	const here = $derived(everyNote.filter((note) => graphOf(note) === inGraph));
+	/** What the author calls a note's graph, where that is not this one. */
+	function graphAway(note: NodeView): string | null {
+		const of = graphOf(note);
+		return of === inGraph ? null : graphs.titleOf(of) || 'Another graph';
+	}
 
 	const linked = $derived(
 		(node?.links ?? []).map((target) => ({ target, note: nodes.get(target) }))
@@ -336,19 +349,32 @@
 		return note.address.startsWith(needle) || note.title.toLowerCase().includes(needle);
 	}
 
+	/** A link crosses graphs, so what a person may point at does too — this
+	 *  note's own graph first, since that is where most of them are. */
 	const citable = $derived.by(() => {
 		const needle = cited.trim().toLowerCase();
 		if (!needle) return [];
 		const already = new Set(node?.links ?? []);
-		return everyNote
-			.filter((note) => note.ref !== ref && !already.has(note.ref) && carries(note, needle))
-			.slice(0, MATCHES);
+		const wanted = (note: NodeView) =>
+			note.ref !== ref && !already.has(note.ref) && carries(note, needle);
+		return [
+			...here.filter(wanted),
+			...everyNote.filter((note) => graphAway(note) !== null && wanted(note))
+		].slice(0, MATCHES);
 	});
 
 	const references: NoteReferences = {
 		find: (query: string) => {
 			const needle = query.toLowerCase();
-			return everyNote.filter((note) => note.ref !== ref && (!needle || carries(note, needle)));
+			return here.filter((note) => note.ref !== ref && (!needle || carries(note, needle)));
+		},
+		elsewhere: (query: string) => {
+			const needle = query.toLowerCase();
+			return everyNote.flatMap((note) => {
+				const graph = graphAway(note);
+				if (graph === null || (needle && !carries(note, needle))) return [];
+				return [{ note, graph }];
+			});
 		},
 		read: async (target: OwnedRef) => nodes.get(target) ?? (await nodes.fetch(target)),
 		write: async (name: string, relation: 'under' | 'after') => {
@@ -363,6 +389,24 @@
 		},
 		open: (target: OwnedRef) => onOpen(target)
 	};
+
+	/**
+	 * Every graph this person keeps, read once. A note reaches the ones beside it
+	 * in three places — what `[[` offers, what a link may be pointed at, and what
+	 * points back at this note — and all three are wrong while a graph is unread.
+	 */
+	async function reachEveryGraph(): Promise<void> {
+		for (const graph of await graphs.load()) {
+			const branches = await nodes.load({ graph: graph.ref });
+			await Promise.all(branches.map((root) => nodes.load({ origin: root.ref })));
+		}
+	}
+
+	$effect(() => {
+		// A graph that will not read leaves those three answers short of the notes
+		// it holds, which is what the rows themselves already say.
+		untrack(() => void reachEveryGraph().catch(() => {}));
+	});
 
 	const consequence = $derived(deletionCost([ref]));
 
@@ -822,7 +866,7 @@
 		}
 		// A tag exists exactly as long as a note carries one, so a word written
 		// here is what puts it in the rail and in everybody else's completions.
-		void tags.reload().catch(() => {});
+		if (inGraph !== null) void tags.reload(inGraph).catch(() => {});
 	}
 
 	async function relook(appearance: NodeAppearance | null): Promise<void> {
@@ -1024,14 +1068,21 @@
 </script>
 
 {#snippet row(note: NodeView, choose: () => void, beside = false)}
+	{@const away = graphAway(note)}
 	<div class="flex flex-1 items-center gap-1">
 		<button
 			type="button"
 			onclick={choose}
+			aria-label={away ? `${note.address} ${note.title || 'Untitled'}, in ${away}` : undefined}
 			class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 		>
 			<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
 			<span class="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
+			<!-- An address means one thing inside one graph, so a note from another
+			     says which one it is read in. -->
+			{#if away}
+				<span class="max-w-28 shrink-0 truncate text-xs text-muted-foreground">{away}</span>
+			{/if}
 		</button>
 		{#if beside && onOpenAlso && !openNotes.includes(note.ref)}
 			<Button

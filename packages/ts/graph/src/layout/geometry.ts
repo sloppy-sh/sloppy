@@ -107,3 +107,68 @@ function fanOffset(ordinal: number): number {
 function signedUnit(sector: number): number {
   return sector / Math.PI - 1;
 }
+
+/**
+ * The box a field's seeds span — the two edges that decide where the next field
+ * starts, and the top its name is written off.
+ */
+export interface SeedBox {
+  minX: number;
+  maxX: number;
+  minY: number;
+}
+
+/** Where one graph's field sits on a canvas holding several. */
+export interface FieldPlacement {
+  /** Every seed in the field moves by this much along x. */
+  dx: number;
+  /** How far the placed field reaches, in world coordinates. */
+  minX: number;
+  maxX: number;
+  /** Where the field's name is written, in world coordinates. */
+  nameX: number;
+  nameY: number;
+}
+
+/** How far one field stands off the next, in world units. Wide enough that the
+ *  crowding the force pass resolves never carries a mark out of its own field. */
+const FIELD_GUTTER = 900;
+/** How far above its seeds a field's name is written. */
+const FIELD_NAME_RISE = 320;
+
+/** An empty box, for a graph on the canvas that has nothing in it yet. */
+export function seedBox(seeds: Iterable<SeedPoint>): SeedBox {
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  for (const seed of seeds) {
+    minX = Math.min(minX, seed.x);
+    maxX = Math.max(maxX, seed.x);
+    minY = Math.min(minY, seed.y);
+  }
+  return Number.isFinite(minX)
+    ? { minX, maxX, minY }
+    : { minX: 0, maxX: 0, minY: 0 };
+}
+
+/**
+ * Several graphs on one canvas, each field beside the last in the order given.
+ * The first does not move, so putting another graph up never shifts the one
+ * being read. DESIGN.md § "Several graphs on one canvas".
+ */
+export function placeFields(boxes: readonly SeedBox[]): FieldPlacement[] {
+  const placed: FieldPlacement[] = [];
+  let cursor: number | null = null;
+  for (const box of boxes) {
+    const dx: number = cursor === null ? 0 : cursor + FIELD_GUTTER - box.minX;
+    placed.push({
+      dx,
+      minX: box.minX + dx,
+      maxX: box.maxX + dx,
+      nameX: (box.minX + box.maxX) / 2 + dx,
+      nameY: box.minY - FIELD_NAME_RISE,
+    });
+    cursor = box.maxX + dx;
+  }
+  return placed;
+}

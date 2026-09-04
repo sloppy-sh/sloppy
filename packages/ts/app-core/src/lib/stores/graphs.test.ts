@@ -1,0 +1,155 @@
+import type { GraphView, OwnedRef } from '@sloppy/types';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { graphs, MOST_ON_CANVAS } from './graphs.svelte.js';
+import { prefs } from './prefs.svelte.js';
+import { session } from './session.svelte.js';
+import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
+
+const HOME = `${DID}/00000000000000000000000000` as OwnedRef;
+
+function graph(seed: number, title: string): GraphView {
+	return { ref: ref(seed), created_by: DID, created_at: AT, updated_at: AT, title };
+}
+
+const GARDEN = graph(20, 'Garden');
+const COMPANY = graph(21, 'Company');
+const LISTED: GraphView[] = [
+	{ ref: HOME, created_by: DID, created_at: AT, updated_at: AT, title: 'My graph' },
+	GARDEN,
+	COMPANY
+];
+
+let api: FakeApi;
+
+beforeEach(async () => {
+	localStorage.clear();
+	prefs.init();
+	graphs.clear();
+	api = useFakeApi();
+	api.on('GET /auth/me', () => VIEWER);
+	api.on('GET /graphs', () => LISTED);
+	await session.refresh();
+});
+
+afterEach(() => {
+	localStorage.clear();
+	session.clear();
+});
+
+describe('the graphs somebody keeps', () => {
+	it('is the one they started with before anything has been read', () => {
+		expect(graphs.current).toBe(HOME);
+		expect(graphs.onCanvas).toEqual([HOME]);
+	});
+
+	it('answers the listing, and asks once however many surfaces call it', async () => {
+		await Promise.all([graphs.load(), graphs.load()]);
+		expect(graphs.all).toEqual(LISTED);
+		expect(api.countOf('GET /graphs')).toBe(1);
+		expect(graphs.several).toBe(true);
+	});
+
+	it('names each of them', async () => {
+		await graphs.load();
+		expect(graphs.titleOf(GARDEN.ref)).toBe('Garden');
+	});
+
+	it("keeps the server's own words when the listing fails", async () => {
+		api.on('GET /graphs', () => new Response('{"message":"Not right now."}', { status: 503 }));
+		await expect(graphs.load()).rejects.toThrow();
+		expect(graphs.state.error).toBe('Not right now.');
+		expect(graphs.current).toBe(HOME);
+	});
+});
+
+describe('moving between them', () => {
+	beforeEach(async () => {
+		await graphs.load();
+	});
+
+	it('puts a new note where the reader is, and remembers it', () => {
+		graphs.enter(GARDEN.ref);
+		expect(graphs.current).toBe(GARDEN.ref);
+		prefs.init();
+		expect(graphs.current).toBe(GARDEN.ref);
+	});
+
+	it('opens a new graph and moves the reader into it', async () => {
+		const made = graph(30, 'Thesis');
+		api.on('POST /graphs', () => made);
+		await graphs.open({ title: 'Thesis' });
+		expect(graphs.current).toBe(made.ref);
+		expect(graphs.all).toContainEqual(made);
+	});
+
+	it('renames one in place', async () => {
+		const named = { ...GARDEN, title: 'Allotment' };
+		api.on(`PATCH /graphs/${encodeURIComponent(DID)}/${GARDEN.ref.split('/')[1]}`, () => named);
+		await graphs.rename(GARDEN.ref, { title: 'Allotment' });
+		expect(graphs.titleOf(GARDEN.ref)).toBe('Allotment');
+	});
+
+	// A choice saved on this device outlives the person who made it, and a graph
+	// belongs to one identity.
+	it('falls back to the one they started with for a graph they do not keep', () => {
+		prefs.set('graph', ref(99));
+		expect(graphs.current).toBe(HOME);
+	});
+});
+
+describe('the graphs on the canvas', () => {
+	beforeEach(async () => {
+		await graphs.load();
+	});
+
+	it('is the one being read until another is put up beside it', () => {
+		expect(graphs.onCanvas).toEqual([HOME]);
+		graphs.toggleOnCanvas(GARDEN.ref);
+		expect(graphs.onCanvas).toEqual([HOME, GARDEN.ref]);
+	});
+
+	it('takes one back down', () => {
+		graphs.toggleOnCanvas(GARDEN.ref);
+		graphs.toggleOnCanvas(GARDEN.ref);
+		expect(graphs.onCanvas).toEqual([HOME]);
+	});
+
+	// Moving into a graph already up beside the one being read is a switch, not a
+	// second field of the same notebook.
+	it('never holds the same graph twice', () => {
+		graphs.toggleOnCanvas(GARDEN.ref);
+		graphs.enter(GARDEN.ref);
+		expect(graphs.onCanvas).toEqual([GARDEN.ref]);
+	});
+
+	it('leaves the others up when the reader moves', () => {
+		graphs.toggleOnCanvas(GARDEN.ref);
+		graphs.enter(COMPANY.ref);
+		expect(graphs.onCanvas).toEqual([COMPANY.ref, GARDEN.ref]);
+	});
+
+	it('names every field for the renderer', () => {
+		graphs.toggleOnCanvas(GARDEN.ref);
+		expect(graphs.fields).toEqual([
+			{ ref: HOME, title: 'My graph' },
+			{ ref: GARDEN.ref, title: 'Garden' }
+		]);
+	});
+
+	it('drops a graph the reader no longer keeps', () => {
+		prefs.set('alsoOnCanvas', [ref(99)]);
+		expect(graphs.onCanvas).toEqual([HOME]);
+	});
+
+	it('holds no more than a canvas can carry', async () => {
+		const many = [
+			...LISTED,
+			...Array.from({ length: MOST_ON_CANVAS + 2 }, (_, at) => graph(200 + at, `Notebook ${at}`))
+		];
+		api.on('GET /graphs', () => many);
+		await graphs.reload();
+		for (const one of many) graphs.toggleOnCanvas(one.ref);
+		expect(graphs.onCanvas.length).toBe(MOST_ON_CANVAS);
+		expect(graphs.canvasFull).toBe(true);
+	});
+});

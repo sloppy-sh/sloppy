@@ -8,6 +8,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
+	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
@@ -39,6 +40,7 @@
 			await session.signOut();
 		} finally {
 			nodes.clear();
+			graphs.clear();
 			tags.clear();
 			peers.clear();
 			people.hold(null);

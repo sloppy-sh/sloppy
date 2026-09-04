@@ -6,6 +6,7 @@ import {
   assignTagHueSlots,
   type Address,
   type DidSyr,
+  graphOf,
   type MarkRadius,
   type NodeView,
   type OwnedRef,
@@ -19,8 +20,13 @@ import {
   type Tag,
 } from "@sloppy/types";
 import Graph from "graphology";
-import type { DrawnNode } from "./contract.js";
-import { seedField } from "./layout/geometry.js";
+import type { DrawnNode, GraphField } from "./contract.js";
+import {
+  placeFields,
+  type SeedPoint,
+  seedBox,
+  seedField,
+} from "./layout/geometry.js";
 import type { GraphPalette } from "./palette.js";
 import { MAX_SCALE } from "./viewport.js";
 
@@ -149,12 +155,25 @@ export interface ModelOptions {
   viewer?: DidSyr;
   /** Positions to carry over, so an update does not restart the settle. */
   keep?: ReadonlyMap<OwnedRef, { x: number; y: number }>;
+  /** {@link GraphSurfaceProps.fields} — the graphs on the canvas, in order. */
+  fields?: readonly GraphField[];
+}
+
+/** A graph's name, where the canvas writes it, and how far its field reaches —
+ *  world coordinates, so a name stays over the field it belongs to. */
+export interface NamedField extends GraphField {
+  x: number;
+  y: number;
+  minX: number;
+  maxX: number;
 }
 
 export interface BuiltModel {
   graph: GraphModel;
   /** Drawn order, which is address order — the layout indexes by position. */
   order: readonly OwnedRef[];
+  /** Empty on a canvas drawing one graph, which needs no name to tell apart. */
+  fields: readonly NamedField[];
 }
 
 export function buildModel(
@@ -166,13 +185,13 @@ export function buildModel(
   // Ranked off the slot map's keys rather than off the selection, so the dedupe
   // rule that hands out the hues is the same one that picks between them.
   const rank = new Map([...slots.keys()].map((tag, at) => [tag, at] as const));
-  const seeds = seedField(drawn.map((entry) => entry.node.address));
+  const { seedOf, fields } = seedFields(drawn, options.fields ?? []);
 
   drawn.forEach((entry, index) => {
     const { node } = entry;
     const tag = earliestSelected(entry.tags, rank);
     const slot = tag === undefined ? undefined : slots.get(tag);
-    const seed = seeds.get(node.address) ?? { x: 0, y: 0, outward: 0 };
+    const seed = seedOf(node);
     const kept = options.keep?.get(node.ref);
     // A mega-node wears the look of the note it IS, never an average of the
     // looks it folded — DESIGN.md § "The mark".
@@ -258,7 +277,71 @@ export function buildModel(
     }
   }
 
-  return { graph, order: drawn.map((entry) => entry.node.ref) };
+  return { graph, order: drawn.map((entry) => entry.node.ref), fields };
+}
+
+const ORIGIN: SeedPoint = { x: 0, y: 0, outward: 0 };
+
+/**
+ * Where each drawn note starts, and where each field's name is written. An
+ * address seeds the same point in every graph — that is the protocol — so on a
+ * canvas holding several the field a note is in is what moves it, and the note's
+ * place inside its own field is untouched.
+ */
+function seedFields(
+  drawn: readonly DrawnNode[],
+  asked: readonly GraphField[],
+): { seedOf: (node: NodeView) => SeedPoint; fields: NamedField[] } {
+  if (asked.length < 2) {
+    const seeds = seedField(drawn.map((entry) => entry.node.address));
+    return { seedOf: (node) => seeds.get(node.address) ?? ORIGIN, fields: [] };
+  }
+
+  const byField = new Map<OwnedRef, NodeView[]>();
+  for (const { node } of drawn) {
+    const of = graphOf(node);
+    const held = byField.get(of);
+    if (held === undefined) byField.set(of, [node]);
+    else held.push(node);
+  }
+
+  // A graph the host did not name still gets a field of its own rather than
+  // being drawn over one it does not belong to.
+  const order = [
+    ...new Set([...asked.map((field) => field.ref), ...byField.keys()]),
+  ];
+  const seeds = new Map(
+    order.map((of) => [
+      of,
+      seedField((byField.get(of) ?? []).map((node) => node.address)),
+    ]),
+  );
+
+  const placed = new Map(
+    placeFields(
+      order.map((of) => seedBox((seeds.get(of) ?? new Map()).values())),
+    ).map((where, at) => [order[at], where] as const),
+  );
+  const named = new Map(asked.map((field) => [field.ref, field.title]));
+  return {
+    seedOf: (node) => {
+      const of = graphOf(node);
+      const seed = seeds.get(of)?.get(node.address);
+      if (seed === undefined) return ORIGIN;
+      return { ...seed, x: seed.x + (placed.get(of)?.dx ?? 0) };
+    },
+    fields: order.map((ref) => {
+      const where = placed.get(ref);
+      return {
+        ref,
+        title: named.get(ref) ?? "",
+        x: where?.nameX ?? 0,
+        y: where?.nameY ?? 0,
+        minX: where?.minX ?? 0,
+        maxX: where?.maxX ?? 0,
+      };
+    }),
+  };
 }
 
 /**

@@ -10,6 +10,7 @@
 import {
 	compareAddresses,
 	type CreateNodeRequest,
+	graphOf,
 	isAncestorAddress,
 	type NodeBulkRequest,
 	type NodeBulkResult,
@@ -21,12 +22,18 @@ import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { serverMessage } from './errors.js';
 
-/** A region of the caller's own graph, exactly as `listNodes` takes it. */
+/** A region of one of the caller's graphs, exactly as `listNodes` takes it. */
 export interface NodeRegion {
-	/** Absent asks for the roots. */
+	/** Absent asks for the branches of `graph`. */
 	origin?: OwnedRef;
 	/** Absent asks for the whole tree under `origin`. */
 	maxDepth?: number;
+	/**
+	 * Which graph the branches are of. Read only where there is no `origin` — a
+	 * tree is in the graph its root is in — and absent there asks the caller's
+	 * home graph, the way it does on the wire.
+	 */
+	graph?: OwnedRef;
 }
 
 export interface RegionState {
@@ -42,7 +49,7 @@ export interface RegionState {
 const IDLE: RegionState = { loading: false, loaded: false, failed: false };
 
 function regionKey(region: NodeRegion): string {
-	return `${region.origin ?? ''} ${region.maxDepth ?? ''}`;
+	return `${region.origin ?? ''} ${region.maxDepth ?? ''} ${region.origin ? '' : (region.graph ?? '')}`;
 }
 
 const byAddress = (a: NodeView, b: NodeView) => compareAddresses(a.address, b.address);
@@ -80,11 +87,12 @@ class NodesStore {
 
 	/** Cached nodes matching `region`, in address order. */
 	region(region: NodeRegion = {}): NodeView[] {
-		const { origin, maxDepth } = region;
+		const { origin, maxDepth, graph } = region;
 		const out: NodeView[] = [];
 		for (const node of this.#byRef.values()) {
-			// A root is its own origin, so that equality IS the roots query.
+			// A root is its own origin, so that equality IS the branches query.
 			if (origin === undefined ? node.ref !== node.origin : node.origin !== origin) continue;
+			if (origin === undefined && graph !== undefined && graphOf(node) !== graph) continue;
 			if (maxDepth !== undefined && node.depth > maxDepth) continue;
 			out.push(node);
 		}

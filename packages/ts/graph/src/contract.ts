@@ -5,6 +5,16 @@
 import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
 import type { GraphGround } from "./ground.js";
 
+/**
+ * A graph on the canvas: the ref its notes carry, and what its owner calls it.
+ * Several of them draw as fields side by side, each named at its own field —
+ * DESIGN.md § "Several graphs on one canvas".
+ */
+export interface GraphField {
+  ref: OwnedRef;
+  title: string;
+}
+
 /** The notes a picking canvas outlines, so a tap is answered before it lands. */
 export interface GraphPickMarks {
   /** The note the choice is being made for. */
@@ -83,6 +93,13 @@ export interface GraphHoverAt {
 export interface GraphSurfaceProps {
   /** The region to draw, in address order. */
   nodes: readonly NodeView[];
+  /**
+   * The graphs on the canvas, in the order the reader put them there. Fewer
+   * than two is one field, drawn where the addresses alone put it and named
+   * only in the chrome: with nothing to tell apart there is no question for a
+   * name on the canvas to answer.
+   */
+  fields?: readonly GraphField[];
   /** Subtree roots to draw as one mega-node — {@link drawnNodes}. */
   collapsed: ReadonlySet<OwnedRef>;
   /**

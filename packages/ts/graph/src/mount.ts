@@ -153,6 +153,7 @@ export function mountGraph(
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),
+      fields: props.fields,
     });
 
     scene.setModel(model, props.selection.length > 0);

@@ -10,7 +10,7 @@
  */
 
 import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
-import { type Tag, TagSchema } from '@sloppy/types';
+import { type OwnedRef, OwnedRefSchema, type Tag, TagSchema } from '@sloppy/types';
 
 export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
 export type Accent = 'indigo' | 'moss' | 'rust' | 'sea' | 'iris' | 'ochre' | 'slate';
@@ -26,6 +26,12 @@ export interface Prefs {
 	tags: Tag[];
 	/** The paper the graph is drawn on — DESIGN.md § "The ground". */
 	ground: GraphGround;
+	/** The graph the reader is in. Null is the one they started with, which is
+	 *  also what a ref belonging to somebody else falls back to. */
+	graph: OwnedRef | null;
+	/** The graphs standing on the canvas beside that one, in the order they went
+	 *  up — DESIGN.md § "Several graphs on one canvas". */
+	alsoOnCanvas: OwnedRef[];
 	/** How much room the reader has taken for a note docked beside the graph, in
 	 *  px. Null is the width it opens at, and a number from a wider window is
 	 *  still safe to hand over: the surface bounds it against the window it is
@@ -78,6 +84,8 @@ function defaults(): Prefs {
 		style: 'default',
 		tags: [],
 		ground: 'dots',
+		graph: null,
+		alsoOnCanvas: [],
 		readingWidth: null
 	};
 }
@@ -115,6 +123,22 @@ function tagsIn(value: unknown): Tag[] {
 	return out;
 }
 
+function refIn(value: unknown): OwnedRef | null {
+	const parsed = OwnedRefSchema.safeParse(value);
+	return parsed.success ? parsed.data : null;
+}
+
+/** Each entry through `OwnedRefSchema`, keeping the order and dropping the rest. */
+function refsIn(value: unknown): OwnedRef[] {
+	if (!Array.isArray(value)) return [];
+	const out: OwnedRef[] = [];
+	for (const entry of value) {
+		const ref = refIn(entry);
+		if (ref !== null && !out.includes(ref)) out.push(ref);
+	}
+	return out;
+}
+
 class PrefsStore {
 	#current = $state<Prefs>(defaults());
 
@@ -137,6 +161,8 @@ class PrefsStore {
 			style: oneOf(saved.style, STYLES, base.style),
 			tags: tagsIn(saved.tags),
 			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground),
+			graph: refIn(saved.graph),
+			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			readingWidth: widthIn(saved.readingWidth)
 		};
 		this.apply();

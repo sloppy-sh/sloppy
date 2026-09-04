@@ -36,6 +36,7 @@
 	import {
 		NodeBulkRequestSchema,
 		RootAddressSchema,
+		graphOf,
 		peerOrigin,
 		publishRootsOf,
 		splitOwnedRef,
@@ -55,6 +56,7 @@
 		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
+		GraphsSheet,
 		GraphSurface,
 		GroundChoice,
 		HeldNote,
@@ -79,13 +81,14 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
@@ -98,7 +101,9 @@
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
 
-	let loading = $state(!nodes.status().loaded);
+	let loading = $state(true);
+	/** Whether the graphs this person keeps are being looked through. */
+	let switching = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
 	/** An action failed while the graph is fine; it sits beside the graph. */
@@ -189,7 +194,10 @@
 		}
 	};
 
-	const roots = $derived(nodes.region());
+	/** The graphs on the canvas, in the order the reader put them there. */
+	const onCanvas = $derived(graphs.onCanvas);
+	/** Every branch drawn: those of each graph up, in the order the fields sit in. */
+	const roots = $derived(onCanvas.flatMap((graph) => nodes.region({ graph })));
 	const open = $derived(page.state.note ?? null);
 	/** Every note open on the reading surface, in the order they were opened. */
 	const openNotes = $derived<readonly OwnedRef[]>(page.state.notes ?? (open ? [open] : []));
@@ -342,7 +350,7 @@
 	/** The rail is the legend for the graph on screen, so inside a region it
 	 *  counts the region's notes rather than the reader's own. */
 	const railTags = $derived.by(() => {
-		if (!foreign) return tags.all;
+		if (!foreign) return tags.across(onCanvas);
 		const counted: Record<string, number> = {};
 		for (const note of heldNotes) {
 			for (const tag of note.tags) counted[tag] = (counted[tag] ?? 0) + 1;
@@ -364,23 +372,40 @@
 			? `${lit.toLocaleString()} of ${count(visible.length, 'note', 'notes')} lit up`
 			: foreign
 				? count(visible.length, 'note', 'notes')
-				: `${count(visible.length, 'note', 'notes')} across ${count(roots.length, 'branch', 'branches')}`
+				: onCanvas.length > 1
+					? `${count(visible.length, 'note', 'notes')} across ${count(onCanvas.length, 'graph', 'graphs')}`
+					: `${count(visible.length, 'note', 'notes')} across ${count(roots.length, 'branch', 'branches')}`
 	);
 
 	function count(n: number, one: string, many: string): string {
 		return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 	}
 
+	const graphName = $derived(graphs.titleOf(graphs.current) || 'Your graph');
+	/** How many other graphs are standing beside this one, where any are. */
+	const besideIt = $derived(onCanvas.length > 1 ? `+${onCanvas.length - 1}` : null);
+
+	/** Everything one graph puts on the canvas: its tags for the rail, and every
+	 *  note of it — one branch missing would leave the counts under every
+	 *  mega-node wrong with nothing to say so. */
+	async function loadField(graph: OwnedRef): Promise<void> {
+		const [, branches] = await Promise.all([tags.load(graph), nodes.load({ graph })]);
+		await Promise.all(branches.map((root) => nodes.load({ origin: root.ref })));
+	}
+
 	async function loadGraph(): Promise<void> {
-		// A branch already cached is drawn while the rest arrives; only a graph
-		// that is not here yet is worth a skeleton.
-		loading = !nodes.status().loaded;
+		// A graph is one person's, and which graphs are on the canvas is read
+		// against whose they are, so nothing is asked for until that is known.
+		if (!session.viewer) return;
 		unreachable = null;
+		// What the graphs are called is chrome: one whose name did not arrive still
+		// draws, and the sheet that lists them is where that is said.
+		void graphs.load().catch(() => {});
+		// A field already cached is drawn while the rest arrives; only a canvas
+		// with nothing on it yet is worth a skeleton.
+		loading = !onCanvas.every((graph) => nodes.status({ graph }).loaded);
 		try {
-			const [, mine] = await Promise.all([tags.load(), nodes.load()]);
-			// One branch missing would leave the counts under every mega-node wrong
-			// with nothing to say so, which is worse than saying the graph is not here.
-			await Promise.all(mine.map((root) => nodes.load({ origin: root.ref })));
+			await Promise.all(onCanvas.map(loadField));
 		} catch (error) {
 			unreachable =
 				serverMessage(error) ?? 'Sloppy could not reach your graph. Try again in a moment.';
@@ -399,8 +424,15 @@
 
 	onMount(() => {
 		openCited();
-		void loadGraph();
 		void peers.load();
+	});
+
+	// A graph the reader has moved into, or stood up beside the one they were
+	// reading, is a field with nothing in it until it has been read.
+	$effect(() => {
+		void onCanvas;
+		void session.viewer;
+		untrack(() => void loadGraph());
 	});
 
 	afterNavigate(openCited);
@@ -640,6 +672,9 @@
 
 	async function runAct(asked: OwnedRef[], act: NodeBulkAct): Promise<void> {
 		forgetLastAct();
+		// Read before the act, since a delete takes the notes out of the cache
+		// this reads their graph from.
+		const acrossGraphs = graphsOf(asked);
 		let missed: number;
 		try {
 			missed = (await nodes.act({ notes: asked, act })).missed;
@@ -662,7 +697,9 @@
 					: alreadyGone(missed, asked.length);
 		// A tag exists as long as a note carries one, so the rail's counts are stale
 		// the moment notes are tagged — or taken away with the tags they carried.
-		if (act.act !== 'set_appearance' && act.act !== 'publish') void tags.reload();
+		if (act.act !== 'set_appearance' && act.act !== 'publish') {
+			for (const graph of acrossGraphs) void tags.reload(graph).catch(() => {});
+		}
 		if (act.act === 'publish') {
 			actMissed = shortfall;
 			refreshPublished(asked);
@@ -677,6 +714,18 @@
 		oneNote = null;
 		stopChoosing();
 		refused = shortfall;
+	}
+
+	/** The graphs a set of notes lies in, of the ones still cached. */
+	function graphsOf(asked: readonly OwnedRef[]): OwnedRef[] {
+		return [
+			...new Set(
+				asked
+					.map((ref) => nodes.get(ref))
+					.filter((note) => note !== undefined)
+					.map(graphOf)
+			)
+		];
 	}
 
 	/**
@@ -808,13 +857,17 @@
 		deleting = true;
 	}
 
-	/** A branch of its own. A note that continues one is written from inside it. */
+	/** A branch of its own, in the graph the reader is in. A note that continues
+	 *  one is written from inside it. */
 	async function writeBranch(shape: NoteTemplate | null): Promise<void> {
 		if (creating) return;
 		creating = true;
 		refused = null;
 		try {
-			show((await nodes.create({})).ref, { from: null, shape });
+			const written = await nodes.create({
+				from: { relation: 'branch', graph: graphs.current }
+			});
+			show(written.ref, { from: null, shape });
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
@@ -895,7 +948,7 @@
 				? (state.error ?? 'Sloppy could not read what people said. Try again in a moment.')
 				: null,
 			onsay: (content: string, replyTo: StoreRef | undefined) =>
-				answering(
+				inTheirWords(
 					() =>
 						conversation.say({
 							node: note,
@@ -905,26 +958,26 @@
 					'That could not be posted. Try again in a moment.'
 				),
 			onunsay: (commentId: StoreRef) =>
-				answering(
+				inTheirWords(
 					() => conversation.unsay(note, commentId),
 					'That could not be removed. Try again in a moment.'
 				),
 			onreact: (pick: ReactionPick) =>
-				answering(
+				inTheirWords(
 					() => conversation.react({ node: note, ...pick }),
 					'That reaction could not be added. Try again in a moment.'
 				),
 			onunreact: (reactionId: StoreRef) =>
-				answering(
+				inTheirWords(
 					() => conversation.unreact(note, reactionId),
 					'That reaction could not be removed. Try again in a moment.'
 				)
 		};
 	});
 
-	/** Thrown on so the conversation shows the answer where it was asked, in the
-	 *  server's own words where it gave any. */
-	async function answering(act: () => Promise<unknown>, otherwise: string): Promise<void> {
+	/** Thrown on so the surface that asked shows the answer where it was asked,
+	 *  in the server's own words where it gave any. */
+	async function inTheirWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
 		try {
 			await act();
 		} catch (error) {
@@ -1016,7 +1069,7 @@
 		numberRefused = null;
 		try {
 			const written = await nodes.create({
-				from: { relation: 'root', address: picked.data }
+				from: { relation: 'root', address: picked.data, graph: graphs.current }
 			});
 			numbering = false;
 			show(written.ref, { from: null, shape: null });
@@ -1054,6 +1107,7 @@
 				nodes={visible}
 				{collapsed}
 				{selection}
+				fields={foreign ? undefined : graphs.fields}
 				viewer={session.viewer?.did}
 				remountKey={foreign?.ref}
 				focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
@@ -1104,7 +1158,8 @@
 				{:else}
 					<div class="mx-auto max-w-sm space-y-6 py-20 text-center">
 						<p class="text-lg leading-relaxed">
-							Your graph starts with one note, and everything else grows out of it.
+							{graphs.several ? `${graphName} starts` : 'Your graph starts'} with one note, and everything
+							else grows out of it.
 						</p>
 						<div class="flex flex-col items-center gap-2">
 							<Button class="h-11" disabled={creating} onclick={() => writeBranch(null)}>
@@ -1120,6 +1175,9 @@
 							</Button>
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
 								Number it yourself
+							</Button>
+							<Button variant="ghost" class="h-11" onclick={() => (switching = true)}>
+								Your graphs
 							</Button>
 							<Button variant="ghost" class="h-11" onclick={visitPeers}>
 								Read somebody else's
@@ -1179,9 +1237,20 @@
 					</div>
 				{:else}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-						<p class="w-full min-w-0 truncate text-sm text-muted-foreground sm:w-auto sm:flex-1">
-							{summary}
-						</p>
+						<!-- The graph you are in leads the chrome, because everything the
+						     row after it does happens inside that one. -->
+						<button
+							type="button"
+							aria-label="Your graphs"
+							onclick={() => (switching = true)}
+							class="-mx-2 flex min-h-9 w-full min-w-0 items-baseline gap-2 rounded-md px-2 text-left text-sm hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-auto sm:flex-1"
+						>
+							<span class="min-w-0 shrink truncate font-medium">{graphName}</span>
+							{#if besideIt}
+								<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
+							{/if}
+							<span class="min-w-0 shrink truncate text-muted-foreground">· {summary}</span>
+						</button>
 						<Button
 							variant="outline"
 							class="ms-auto h-9 shrink-0 rounded-full"
@@ -1264,7 +1333,7 @@
 	bind:open={tagging}
 	count={acted.length}
 	tags={actedTags}
-	suggestions={tags.all}
+	suggestions={railTags}
 	refused={actRefused}
 	missed={actMissed}
 	onadd={(added: TagName[]) => actOnThem({ act: 'tag', tags: added })}
@@ -1319,6 +1388,21 @@
 		shaping = false;
 		void writeBranch(shape);
 	}}
+/>
+
+<GraphsSheet
+	bind:open={switching}
+	graphs={graphs.all}
+	current={graphs.current}
+	alsoUp={new Set(onCanvas.slice(1))}
+	full={graphs.canvasFull}
+	busy={graphs.state.loading}
+	says={graphs.state.failed ? (graphs.state.error ?? null) : null}
+	onEnter={(ref) => graphs.enter(ref)}
+	onToggle={(ref) => graphs.toggleOnCanvas(ref)}
+	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
+	onRename={(ref, title) =>
+		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
 />
 
 <PeersSheet

@@ -61,6 +61,14 @@ export interface NoteEmoji {
 	remove(id: CustomEmojiEntry['id']): Promise<void>;
 }
 
+/** A note in one of the author's other graphs, and what they call that graph.
+ *  An address means one thing inside one graph, so the name is what tells the
+ *  two `1a`s apart. */
+export interface NoteElsewhere {
+	note: NodeView;
+	graph: string;
+}
+
 /**
  * How a note reaches the others from inside the writing: what `[[` finds, and
  * what a reference in a section resolves against. Nothing here writes
@@ -70,9 +78,12 @@ export interface NoteEmoji {
  * is the shell's to know: a relation is `under` this note or `after` it.
  */
 export interface NoteReferences {
-	/** Notes whose address or title carries `query`; all of them where it is
-	 *  empty, in address order. */
+	/** Notes in THIS note's graph whose address or title carries `query`; all of
+	 *  them where it is empty, in address order. */
 	find(query: string): readonly NodeView[];
+	/** The same, in the author's other graphs. Empty where they keep one — and a
+	 *  reference into another graph is an ordinary reference once it is made. */
+	elsewhere(query: string): readonly NoteElsewhere[];
 	/** The note a reference names, as it stands now; `null` once there is no such
 	 *  note. A rejection says nothing about whether it is there. */
 	read(note: OwnedRef): Promise<NodeView | null>;

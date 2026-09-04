@@ -1,4 +1,6 @@
+import type { OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DID, ref } from './fake-api.test-support.js';
 import { prefs } from './prefs.svelte.js';
 
 function osPrefersDark(dark: boolean) {
@@ -79,6 +81,8 @@ describe('the saved look', () => {
 				style: 'sketch',
 				tags: 'seed',
 				ground: 'graph paper',
+				graph: 'not a ref',
+				alsoOnCanvas: ['neither is this'],
 				readingWidth: 'wide'
 			})
 		);
@@ -89,8 +93,22 @@ describe('the saved look', () => {
 			style: 'default',
 			tags: [],
 			ground: 'dots',
+			graph: null,
+			alsoOnCanvas: [],
 			readingWidth: null
 		});
+	});
+
+	// Which graph somebody is in, and which they have stood up beside it, are
+	// this device's — DESIGN.md § Persistence.
+	it('brings back the graphs the canvas was left showing', () => {
+		const home = `${DID}/00000000000000000000000000` as OwnedRef;
+		const garden = ref(20);
+		prefs.set('graph', home);
+		prefs.set('alsoOnCanvas', [garden]);
+		prefs.init();
+		expect(prefs.current.graph).toBe(home);
+		expect(prefs.current.alsoOnCanvas).toEqual([garden]);
 	});
 
 	// The order the tags were selected in is what assigns their hues, so a

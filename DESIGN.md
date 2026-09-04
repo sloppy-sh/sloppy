@@ -265,6 +265,7 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 | **The disc's imagery**                            | the author's picture, at the share of the disc they set |
 | **The orbit outside it**                          | the mode the canvas is in — picking, or choosing        |
 | **The paper under it** — how far it lifts         | this note is open, and whether it is the one being read |
+| **Which field it stands in**                      | which graph it is in (§ "Several graphs on one canvas") |
 
 Ten rulings hold that table together:
 
@@ -387,6 +388,40 @@ Ten rulings hold that table together:
 - **"Selection" already means the reader's selected TAGS** — `GraphSurfaceProps.selection`,
   the question the hue channel answers. The notes somebody has picked out to act on are
   **the chosen set**, everywhere, and nothing else on the canvas may be called a selection.
+- **Which graph a mark is in takes the one thing no meaning on the mark had: where its
+  field stands.** Every row above spends the disc itself or the ground touching it, so a
+  mark drawn in a second graph is drawn identically — the same fill, the same edge, the
+  same ring, the same radius — and what says which graph it is in is that it stands in
+  that graph's field, with that graph's name written over it. § "Several graphs on one
+  canvas" is the section.
+
+### Several graphs on one canvas
+
+A person keeps a graph per body of thought, and puts more than one up at a time to work
+across them. Each one is drawn as a **field**: the same shape it has alone, laid out
+beside the last rather than over it.
+
+- **A field's place is what tells it from the next, because place is the only channel
+  nothing else had spent.** Within one graph, where a mark sits is the address's
+  (`geometry.ts`), and that is untouched: the whole field moves, and every mark keeps the
+  place its address gave it inside it. Two graphs each holding a `1` seed the same point,
+  so without this they would be drawn on top of each other — the gutter between fields is
+  what stops them, and it is wide enough that the force pass never carries a mark out of
+  its own field. `model.test.ts` in `@sloppy/graph` holds both halves.
+- **The field being read never moves.** Fields are laid out in the order the reader put
+  them up, from the first, so standing another graph up beside the one in front of you
+  does not shift the one you were reading.
+- **A graph's name is written over its field, and only where there are several.** With one
+  graph on the canvas there is nothing to tell apart, so the name lives in the chrome and
+  the canvas carries none. The name is quiet ink rather than a mark — it says which field
+  this is and nothing about any note — and it holds the top of the screen while the reader
+  is inside its field, the way § Form names a region's author in the chrome above it.
+- **Where the reader's field arrangement is kept is this device's** (§ Persistence), like
+  the ground and the theme. It is not the addresses: nothing about it reaches a note, and
+  a peer pulling a subtree receives nothing of it.
+- **A pulled region is still one graph at a time.** § Form's rule holds — a peer's `1a`
+  seeds where the reader's own does — and a held region is never one of these fields,
+  because a field is a graph the reader themselves keeps.
 
 ### A note's look never uses colour
 
@@ -483,6 +518,11 @@ so.
 
 - **Canvas-first.** The graph is the page; there is no page around it. Chrome floats over
   the canvas and is dismissible.
+- **The graph you are in leads the chrome over the canvas.** Which notebook a person is
+  writing in decides where every act in the row after it lands, so it is named first,
+  full-width on a phone, and it is the way to every other graph — moving into one, standing
+  one up beside it, naming one, starting one. Moving between graphs is a top-level act on
+  the surface the graphs are on, never a setting.
 - **Floating nav, not a top bar.** A pill anchored bottom-centre (`fixed`, safe-area
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
@@ -793,7 +833,9 @@ possible (inline head script) to avoid a flash of the wrong theme. No account re
 choices carry over if someone signs in.
 
 The same store holds the view choices that are nobody's business but this device's — the
-tags the graph opens lit by, the ground it is drawn on (§ "The ground"), and how much room
+tags the graph opens lit by, the ground it is drawn on (§ "The ground"), which graph the
+reader is in and which they have stood up beside it (§ "Several graphs on one canvas"),
+and how much room
 a docked note was last given. None of them is an attribute on `<html>`, so none is a thing
 the boot script has to know: the canvas reads them once it is up, and a first paint with
 the right theme is all that flash-of-the-wrong anything is about. None of them reaches a
