@@ -559,9 +559,11 @@ saying it has no relationship with the author, and it carries **no words and no 
 one DID and one comment's citation. A `comment_pointer` row is the author's, not the
 depositor's (`created_by` is the note's author, so their purge reaches it and their note's
 deletion takes it), and it is written only where one of the author's own snapshots both
-carries that note and invites `anyone`. The route always answers 204: whether a bound
-refused it, whether the note takes answers, and whether the identity resolves are all
-facts about somebody else's graph.
+carries that note and invites `anyone`. A deposit that is taken answers 204 whatever
+became of it: whether a bound refused it, whether the note takes answers, and whether the
+identity resolves are all facts about somebody else's graph. The one thing a caller can
+learn is how much of this instance they have already spent, which is their own — a rate
+limit answers 429.
 
 Four rules make an unauthenticated deposit safe to hold. The first is the one the rest
 hang off:

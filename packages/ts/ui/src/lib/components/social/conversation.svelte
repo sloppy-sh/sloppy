@@ -213,7 +213,8 @@
 	<div class="space-y-1">
 		<h2 class="text-sm font-medium text-muted-foreground">Conversation</h2>
 		<p class="text-xs text-muted-foreground">
-			You see what you and the people you follow have written.
+			You see what you and the people you follow have written — and, on a note of your own, whoever
+			answered it.
 		</p>
 	</div>
 

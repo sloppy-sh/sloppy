@@ -23,6 +23,14 @@ interface Crowd {
   held: number;
 }
 
+/** What SurrealDB says when a UNIQUE index refuses a second row for one key. */
+function alreadyThere(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    err.message.includes("comment_pointer_owner_voice_comment")
+  );
+}
+
 @Injectable()
 export class PointerRepository {
   constructor(private readonly db: DbService) {}
@@ -75,19 +83,28 @@ export class PointerRepository {
       return;
     }
     const at = nowIso();
-    await this.query(
-      `CREATE comment_pointer CONTENT {
-         created_by: $author, created_at: $at, updated_at: $at,
-         note: $note, voice: $voice, comment_id: $comment
-       } RETURN NONE`,
-      {
-        author: pointer.author,
-        at,
-        note: pointer.note,
-        voice: pointer.voice,
-        comment: pointer.comment_id,
-      },
-    );
+    try {
+      await this.query(
+        `CREATE comment_pointer CONTENT {
+           created_by: $author, created_at: $at, updated_at: $at,
+           note: $note, voice: $voice, comment_id: $comment
+         } RETURN NONE`,
+        {
+          author: pointer.author,
+          at,
+          note: pointer.note,
+          voice: pointer.voice,
+          comment: pointer.comment_id,
+        },
+      );
+    } catch (err) {
+      // The standing read above is separated from this write by the outbound
+      // check the caller ran, which is a store fetch and not an instant — so
+      // two deposits of one claim can both find nothing and both write. The
+      // index is what settles it, and the loser has nothing to report: the row
+      // it wanted is there. Anything else is a real failure.
+      if (!alreadyThere(err)) throw err;
+    }
   }
 
   /**
