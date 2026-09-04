@@ -1260,6 +1260,51 @@ describe('linking a note to one in another graph', () => {
 		expect(labelled('1a Cells, in My graph')).toBeTruthy();
 	});
 
+	/** Garden will not read; every other graph answers as it did. */
+	function gardenWillNotRead(): void {
+		api.on('GET /nodes', (url) => {
+			const origin = url.searchParams.get('origin');
+			if (origin) {
+				return [...graph.values()].filter((n) => n.origin === origin && n.ref !== origin);
+			}
+			const of = url.searchParams.get('graph') ?? HOME;
+			if (of === GARDEN) throw new Error('unreachable');
+			return [...graph.values()].filter((n) => n.ref === n.origin && (n.graph ?? HOME) === of);
+		});
+	}
+
+	it('never says there is no such note while a graph has not read', async () => {
+		gardenWillNotRead();
+		nodes.clear();
+		await loadGraph();
+		await openNote(SECOND);
+		await findToLink('beds');
+		await until(() => screen().includes('Look again'));
+
+		expect(screen()).not.toContain('Nothing here matches that.');
+	});
+
+	it('reads the graphs after one that will not read', async () => {
+		const COMPOST = ref(40);
+		const HEAP = ref(41);
+		graph.set(HEAP, node(41, '1', { title: 'Heaps', graph: COMPOST }));
+		api.on('GET /graphs', () => [
+			listedGraph(HOME, 'My graph'),
+			listedGraph(GARDEN, 'Garden'),
+			listedGraph(COMPOST, 'Compost')
+		]);
+		gardenWillNotRead();
+		api.on(`GET ${path(HEAP)}`, () => graph.get(HEAP) ?? null);
+		nodes.clear();
+		await loadGraph();
+		await openNote(SECOND);
+		await until(() => nodes.get(HEAP) !== undefined);
+		await findToLink('heap');
+
+		expect(offered()).toContain('Heaps');
+		expect(offered()).toContain('Compost');
+	});
+
 	// Deleting either end does what it does within one graph: the note goes, and
 	// the ref left behind stops resolving.
 	it('says so at the near end once the far note is gone', async () => {

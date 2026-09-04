@@ -53,8 +53,6 @@
 				{#if choice.kind === 'note'}
 					<span class="shrink-0 address text-xs text-muted-foreground">{choice.note.address}</span>
 					<span class="min-w-0 flex-1 truncate">{choice.note.title || 'Untitled'}</span>
-					<!-- An address means one thing inside one graph, so a note from
-					     another says which one it came from. -->
 					{#if choice.graph}
 						<span class="max-w-24 shrink-0 truncate text-xs text-muted-foreground">
 							{choice.graph}

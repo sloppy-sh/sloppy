@@ -219,12 +219,11 @@ export class NodeRepository {
   }
 
   /**
-   * The owner's tags, most-used first, ties alphabetical. Counted from the
-   * notes on every call because that is where a tag lives: there is no row to
-   * keep in step, and so no way for the count to be wrong.
+   * The tags carried inside ONE graph, most-used first, ties alphabetical —
+   * what the rail beside a canvas drawing that graph is a legend for. Counted
+   * from the notes on every call because that is where a tag lives: there is no
+   * row to keep in step, and so no way for the count to be wrong.
    */
-  /** The tags carried inside ONE graph, which is what the rail beside a canvas
-   *  drawing that graph is a legend for. */
   async tagCounts(
     did: string,
     graph: OwnedRef = homeGraphRef(did),

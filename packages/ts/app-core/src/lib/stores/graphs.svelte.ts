@@ -8,6 +8,7 @@
  * this device may belong to somebody who is no longer signed in.
  */
 
+import { MAX_FIELDS } from '@sloppy/graph';
 import {
 	homeGraphRef,
 	type GraphView,
@@ -21,9 +22,8 @@ import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
 
 /** How many graphs may stand on one canvas at once. Past a handful the fields
- *  are further apart than a reader can hold in their head — and `scene.ts` has
- *  as many names to write with. */
-export const MOST_ON_CANVAS = 6;
+ *  are further apart than a reader can hold in their head. */
+export const MOST_ON_CANVAS = MAX_FIELDS;
 
 export interface GraphsState {
 	loading: boolean;
@@ -147,8 +147,9 @@ class GraphsStore {
 		return named;
 	}
 
-	/** Move into a graph. It leaves the canvas's other fields where they are, so
-	 *  a reader reading two graphs stays reading two graphs. */
+	/** Move into a graph. One that was standing beside the graph being read
+	 *  trades places with it: it becomes the one you are in, and the one you
+	 *  were in comes down off the canvas. */
 	enter(ref: OwnedRef): void {
 		prefs.set('graph', ref);
 		prefs.set(
@@ -175,12 +176,15 @@ class GraphsStore {
 		return this.onCanvas.length >= MOST_ON_CANVAS;
 	}
 
-	/** After a sign-out or an erase: nothing cached belongs to the next person. */
+	/** After a sign-out or an erase: nothing cached belongs to the next person,
+	 *  and a saved graph choice names the identity that kept it. */
 	clear(): void {
 		this.#epoch++;
 		this.#all = [];
 		this.#state = IDLE;
 		this.#inflight = null;
+		prefs.set('graph', null);
+		prefs.set('alsoOnCanvas', []);
 	}
 
 	/** A ref this person actually keeps, or `null`. A saved choice outlives the

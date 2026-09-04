@@ -267,7 +267,7 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 | **The paper under it** — how far it lifts         | this note is open, and whether it is the one being read |
 | **Which field it stands in**                      | which graph it is in (§ "Several graphs on one canvas") |
 
-Ten rulings hold that table together:
+Eleven rulings hold that table together:
 
 - **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
   ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
@@ -406,8 +406,11 @@ beside the last rather than over it.
   (`geometry.ts`), and that is untouched: the whole field moves, and every mark keeps the
   place its address gave it inside it. Two graphs each holding a `1` seed the same point,
   so without this they would be drawn on top of each other — the gutter between fields is
-  what stops them, and it is wide enough that the force pass never carries a mark out of
-  its own field. `model.test.ts` in `@sloppy/graph` holds both halves.
+  what stops them. `model.test.ts` in `@sloppy/graph` holds both of those: a mark keeps
+  the place its address gave it, and no field is seeded inside another's span. The force
+  pass afterwards is not held to the gutter — a field of a few hundred notes spreads
+  wider than one — so what keeps the fields apart on screen is where each one's weight
+  settles, not a line no mark ever crosses.
 - **The field being read never moves.** Fields are laid out in the order the reader put
   them up, from the first, so standing another graph up beside the one in front of you
   does not shift the one you were reading.

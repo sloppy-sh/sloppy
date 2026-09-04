@@ -390,22 +390,38 @@
 		open: (target: OwnedRef) => onOpen(target)
 	};
 
+	/** Only at `whole` does this note know every note it could point at, so only
+	 *  there may a surface say there is no such note. */
+	let reach = $state<'reading' | 'whole' | 'short'>('reading');
+
 	/**
 	 * Every graph this person keeps, read once. A note reaches the ones beside it
 	 * in three places — what `[[` offers, what a link may be pointed at, and what
-	 * points back at this note — and all three are wrong while a graph is unread.
+	 * points back at this note — and all three are short of a graph left unread.
+	 * One graph that will not read must not cost the others theirs.
 	 */
 	async function reachEveryGraph(): Promise<void> {
-		for (const graph of await graphs.load()) {
-			const branches = await nodes.load({ graph: graph.ref });
-			await Promise.all(branches.map((root) => nodes.load({ origin: root.ref })));
-		}
+		reach = 'reading';
+		let whole = true;
+		const kept = await graphs.load().catch(() => {
+			whole = false;
+			return [];
+		});
+		await Promise.all(
+			kept.map(async ({ ref: graph }) => {
+				try {
+					const branches = await nodes.load({ graph });
+					await Promise.all(branches.map((root) => nodes.load({ origin: root.ref })));
+				} catch {
+					whole = false;
+				}
+			})
+		);
+		reach = whole ? 'whole' : 'short';
 	}
 
 	$effect(() => {
-		// A graph that will not read leaves those three answers short of the notes
-		// it holds, which is what the rows themselves already say.
-		untrack(() => void reachEveryGraph().catch(() => {}));
+		untrack(() => void reachEveryGraph());
 	});
 
 	const consequence = $derived(deletionCost([ref]));
@@ -1078,8 +1094,6 @@
 		>
 			<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
 			<span class="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
-			<!-- An address means one thing inside one graph, so a note from another
-			     says which one it is read in. -->
 			{#if away}
 				<span class="max-w-28 shrink-0 truncate text-xs text-muted-foreground">{away}</span>
 			{/if}
@@ -1458,6 +1472,16 @@
 						<p class="text-sm text-destructive" role="alert">{refused.link}</p>
 					{/if}
 
+					{#if cited.trim() && reach === 'short'}
+						<p class="px-2 text-sm text-muted-foreground">
+							Sloppy could not open all of your graphs, so a note in one of them may be missing
+							here.
+						</p>
+						<Button variant="outline" class="h-11 w-full" onclick={() => void reachEveryGraph()}>
+							Look again
+						</Button>
+					{/if}
+
 					{#if citable.length > 0}
 						<ul
 							aria-label="Notes to link to"
@@ -1468,7 +1492,11 @@
 								<li>{@render row(note, () => linkTo(note.ref))}</li>
 							{/each}
 						</ul>
-					{:else if cited.trim()}
+					{:else if cited.trim() && reach === 'reading'}
+						<p class="px-2 text-sm text-muted-foreground">
+							Still looking through your other graphs.
+						</p>
+					{:else if cited.trim() && reach === 'whole'}
 						<p class="px-2 text-sm text-muted-foreground">Nothing here matches that.</p>
 					{/if}
 				</div>

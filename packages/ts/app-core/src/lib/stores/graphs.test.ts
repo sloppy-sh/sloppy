@@ -141,6 +141,18 @@ describe('the graphs on the canvas', () => {
 		expect(graphs.onCanvas).toEqual([HOME]);
 	});
 
+	// A graph ref names the identity that keeps it, so it is one of theirs and
+	// must not still be on the device for whoever signs in next.
+	it('keeps nothing of the arrangement after a sign-out', () => {
+		graphs.toggleOnCanvas(GARDEN.ref);
+		graphs.enter(COMPANY.ref);
+		graphs.clear();
+
+		expect(prefs.current.graph).toBeNull();
+		expect(prefs.current.alsoOnCanvas).toEqual([]);
+		expect(localStorage.getItem('sloppy_prefs') ?? '').not.toContain(DID);
+	});
+
 	it('holds no more than a canvas can carry', async () => {
 		const many = [
 			...LISTED,

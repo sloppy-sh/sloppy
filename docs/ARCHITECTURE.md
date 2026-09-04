@@ -98,8 +98,10 @@ Address Is the Protocol" states the rules; this is the mechanism.
   direction from its origin on every peer's screen. The sector is derived on read, never
   stored. It is a function of the address alone, so a `1` in each of two graphs seeds the
   same direction, exactly as two authors' `1`s already do. Nothing in the layout tells them
-  apart; what keeps it from being a collision is that the canvas draws one graph at a time,
-  and § "Federating the graph" is where that rule is held.
+  apart. Between two graphs the reader keeps, what keeps it from being a collision is that
+  each is drawn in its own field, offset from the last — DESIGN.md § "Several graphs on one
+  canvas". Between the reader's and another author's, it is that a pulled region is drawn
+  on its own, and § "Federating the graph" is where that rule is held.
 
 Determinism is a property test over generated creation sequences: two simulated peers
 applying identical operations must produce byte-identical addresses. The rules above do not
@@ -884,9 +886,10 @@ resolves.
 `links` entry is a ref, and a ref names one note across every graph its author keeps, so
 nothing refuses one that points out of the graph it was written in and the note surface
 resolves and opens it — `GET /api/nodes/{did}/{ulid}` is addressed by ref and is not scoped
-to a graph. The canvas draws one graph, so it draws no edge for a target outside the region
-on screen, exactly as it draws none for a target in a subtree that is not loaded. What is
-drawn is a subset of what is stored; what is stored resolves either way.
+to a graph. The canvas draws the edge wherever both ends are on it — across two fields as
+readily as inside one — and draws none for a target that is not, exactly as it draws none
+for a target in a subtree that is not loaded. What is drawn is a subset of what is stored;
+what is stored resolves either way.
 
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did

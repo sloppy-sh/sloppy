@@ -67,8 +67,8 @@ const LABEL_LINE = 15;
 /** A title long enough to crowd its neighbours off the canvas is not a title. */
 const TITLE_CHARS = 32;
 
-/** How many graphs may stand on one canvas — `graphs.svelte.ts` holds the same
- *  bound where a reader puts them there. */
+/** How many graphs may stand on one canvas, which is how many names this scene
+ *  keeps to write over them. */
 export const MAX_FIELDS = 6;
 /** A graph's name is written over its field, quiet enough to stay ground: it
  *  says which of them you are in, and nothing about any note. */
