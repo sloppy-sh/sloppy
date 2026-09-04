@@ -418,7 +418,7 @@ what it may name is bounded in three places and none of them is a server's own i
   the addresses draws a shape the two peers do not share, and a CYCLE of parents is that
   disagreement at its worst: our own rows cannot hold one, so the walk up a note's ancestors
   does not guard against one and the first draw of that region would never return. And every
-  reference is held to its author because the published shape reaches an anonymous caller: a
+  ref is held to its author because the published shape reaches an anonymous caller: a
   `links` entry naming one of the READER's own notes would otherwise draw a stranger's note into
   their graph as a link they had drawn themselves. The one timestamp width is the last of them —
   a signature is over the bytes the author sent, so a published node is not something to
@@ -438,7 +438,7 @@ what it may name is bounded in three places and none of them is a server's own i
   server is not one of the servers AI.md § "User-Facing Copy" means by "where the server
   explains itself".
 
-**A published node carries only references a peer may follow.** The shape reaches an
+**A published node carries only refs a peer may follow.** The shape reaches an
 anonymous caller, and a `<did>/<ulid>` is not readable on its own but still says a note
 exists and when it was written. So `origin` on a published node is the root of the REGION
 rather than of the author's tree, which for a publication rooted below depth 1 would
@@ -861,7 +861,8 @@ node:{ created_by: <did>, id: <ulid> }
   origin      ref       the root of this node's tree; a root is its own origin
   title       string
   tags        string[]  normalized, deduplicated, sorted — @sloppy/types' TagsSchema
-  links       ref[]     non-genealogical associative links
+  links       ref[]     non-genealogical associative links, drawn by hand
+  references  ref[]?    the notes its own blocks cite, derived; absent is none derived
   published   bool
   appearance  object?   the look its author gave the mark; absent is unstyled
   created_at  iso       immutable — it is a field of the signed payload
@@ -882,14 +883,25 @@ forever, but nothing sweeps the stale refs. Whichever milestone adds a sweep own
 whether it runs on delete or on read; until then the stored array is a superset of what
 resolves.
 
-**A link may cross into another of its author's graphs, and it is an ordinary link.** A
-`links` entry is a ref, and a ref names one note across every graph its author keeps, so
-nothing refuses one that points out of the graph it was written in and the note surface
-resolves and opens it — `GET /api/nodes/{did}/{ulid}` is addressed by ref and is not scoped
-to a graph. The canvas draws the edge wherever both ends are on it — across two fields as
-readily as inside one — and draws none for a target that is not, exactly as it draws none
-for a target in a subtree that is not loaded. What is drawn is a subset of what is stored;
-what is stored resolves either way.
+**A connection may cross into another of its author's graphs, and it is an ordinary
+connection.** A `links` or `references` entry is a ref, and a ref names one note across
+every graph its author keeps, so nothing refuses one that points out of the graph it was
+written in and the note surface resolves and opens it — `GET /api/nodes/{did}/{ulid}` is
+addressed by ref and is not scoped to a graph. The canvas draws the edge wherever both ends
+are on it — across two fields as readily as inside one — and draws none for a target that is
+not, exactly as it draws none for a target in a subtree that is not loaded. What is drawn is
+a subset of what is stored; what is stored resolves either way.
+
+**`references` is derived, so only the server writes it.** It is `citedNotes` over the
+note's blocks in `ord` order without repeats — every note a `[[` in them names — recomputed
+whenever one of those blocks is written, which is what makes deleting the words delete the
+line. The order is fixed rather than incidental so that re-deriving an unchanged note
+produces the same array it already holds. It is therefore absent from
+`PATCHABLE` and from every create and update request: a client that could set it could draw
+a line out of a note it is not allowed to read. It carries no `DEFINE FIELD` for the same
+reason `links` carries none, and absent on a row is a note nothing has derived them for,
+read as none. The canvas draws `links` and `references` as one dashed line — DESIGN.md
+§ Edges is the ruling, and says which of the two goes away with the writing.
 
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
@@ -1218,8 +1230,10 @@ replacement and durable-ref pattern. Markdown shorthands are still how prose is 
 **`reference-node.ts` is Sloppy's own inline atom, on that same footing.** `[[` opens a
 menu of notes and writes the one picked into the sentence; what is STORED is the note's
 ref — which outlives every rename — beside the words it was cited under, so a note that
-has since gone still reads as something. It is an element inside a stored document like
-any other: no column, no row, and no entry in `links`, which DESIGN.md § Edges rules on.
+has since gone still reads as something. It is an element inside a stored document like any
+other — no column and no row — and it is also an edge: `citedNotes` in `@sloppy/types` reads
+the notes a document names, and `node.references` is that read. It writes no `links` entry,
+which stays what a hand drew; DESIGN.md § Edges rules on both.
 
 **A shape leaves no trace of itself.** `templates.ts` in `@sloppy/ui` turns a shape into
 a list of documents and `writeTemplate` creates one row for each, after whatever the note

@@ -71,8 +71,10 @@ export interface NoteElsewhere {
 
 /**
  * How a note reaches the others from inside the writing: what `[[` finds, and
- * what a reference in a section resolves against. Nothing here writes
- * `node.links` — DESIGN.md § Edges is the ruling.
+ * what a reference in a section resolves against. A reference draws a line on
+ * the canvas, but not by writing one: `references` are derived from the words
+ * themselves, and `links` stays what a hand drew — DESIGN.md § Edges rules on
+ * both.
  *
  * `find` and `write` are both answered against the note being written in, which
  * is the shell's to know: a relation is `under` this note or `after` it.

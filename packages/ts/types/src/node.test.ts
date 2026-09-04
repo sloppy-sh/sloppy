@@ -7,7 +7,13 @@ import {
   parseAddress,
   siblingAddress,
 } from "./address.js";
-import { NodeDepthMismatchError, NodeSchema, parseNode } from "./node.js";
+import {
+  CreateNodeRequestSchema,
+  NodeDepthMismatchError,
+  NodeSchema,
+  parseNode,
+  UpdateNodeRequestSchema,
+} from "./node.js";
 
 const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 const ULID = "01JSPREAD00000000000000000";
@@ -77,5 +83,17 @@ describe("depth against the address it duplicates", () => {
     for (const depth of [0, -1, 1.5, Number.NaN]) {
       expect(() => NodeSchema.parse(row("1a", depth))).toThrow();
     }
+  });
+});
+
+describe("the references a note's writing names", () => {
+  it("stay absent on a row nothing derived them for, rather than becoming none", () => {
+    expect(parseNode(row("1"))).not.toHaveProperty("references");
+  });
+
+  it("are the server's alone to write, so no request carries them", () => {
+    const asked = { references: [`${DID}/${ULID}`] };
+    expect(UpdateNodeRequestSchema.parse(asked)).toEqual({});
+    expect(() => CreateNodeRequestSchema.parse(asked)).toThrow();
   });
 });

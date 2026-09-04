@@ -93,7 +93,7 @@ export type PullView = z.infer<typeof PullViewSchema>;
  * `published` is asserted, not read: no publication row on this instance covers
  * a foreign node, and whether the author still publishes it is not something a
  * reader can learn, so this says what was true when the copy arrived. There is
- * no look, because a published node travels without one.
+ * no look and no references, because a published node travels without either.
  */
 export function pulledNodeView(row: PulledNode): NodeView {
   const { node } = row;

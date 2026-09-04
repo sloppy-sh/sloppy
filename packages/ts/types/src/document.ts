@@ -2,6 +2,7 @@
 // docs/ARCHITECTURE.md § "Blocks and ink".
 
 import { z } from "zod";
+import { type OwnedRef, OwnedRefSchema } from "./common.js";
 
 /** A mark on a run of text — emphasis, a link — carrying its own attributes. */
 export interface DocumentMark {
@@ -135,6 +136,38 @@ export function citedUploads(content: BlockDocument): string[] {
       } else {
         walk(held);
       }
+    }
+  };
+  walk(content.content);
+  return [...cited];
+}
+
+// The element a `[[` writes, and the attribute on it naming the note cited.
+// `reference-node.ts` in `@sloppy/ui` is what renders one; the two names live
+// here because {@link citedNotes} has to read what that renderer wrote.
+export const REFERENCE_NODE = "reference";
+export const REFERENCE_NOTE_ATTR = "note";
+
+/**
+ * Every note a section's document cites, in the order it cites them and
+ * without repeats — which is what a note's `references` are derived from, and
+ * so which dashed lines its writing draws. DESIGN.md § Edges rules on the line.
+ *
+ * A stored document is whatever some client wrote, so an element naming
+ * anything that is not a `<did>/<ulid>` names no note and is skipped: a
+ * reference nobody can resolve must not become an edge to nowhere.
+ */
+export function citedNotes(content: BlockDocument): OwnedRef[] {
+  const cited = new Set<OwnedRef>();
+  const walk = (nodes: readonly DocumentNode[] | undefined): void => {
+    for (const node of nodes ?? []) {
+      if (node.type === REFERENCE_NODE) {
+        const named = OwnedRefSchema.safeParse(
+          node.attrs?.[REFERENCE_NOTE_ATTR],
+        );
+        if (named.success) cited.add(named.data);
+      }
+      walk(node.content);
     }
   };
   walk(content.content);

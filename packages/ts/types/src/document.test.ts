@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { BlockSchema } from "./block.js";
 import {
   BlockDocumentSchema,
+  citedNotes,
   citedUploads,
   EMOJI_UPLOAD_ATTR,
   MAX_DOCUMENT_NESTING,
+  REFERENCE_NODE,
+  REFERENCE_NOTE_ATTR,
 } from "./document.js";
 
 /**
@@ -233,6 +236,96 @@ describe("the assets a section cites", () => {
         { type: "picture", attrs: { upload_id: "" } },
         { type: "picture", attrs: { upload_id: null } },
         { type: "paragraph", content: [{ type: "text", text: "upload_id" }] },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("the notes a section cites", () => {
+  const AVA = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
+  const BEN = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob";
+  const ulid = (n: number) => `01JPBSHEDX${String(n).padStart(16, "0")}`;
+  const SEED = `${AVA}/${ulid(1)}`;
+  const TIDE = `${BEN}/${ulid(2)}`;
+
+  const cite = (content: unknown[]) =>
+    citedNotes(BlockDocumentSchema.parse({ type: "doc", content }));
+
+  const reference = (note: unknown, label = "a note") => ({
+    type: REFERENCE_NODE,
+    attrs: { [REFERENCE_NOTE_ATTR]: note, label },
+  });
+
+  it("are nothing where nobody cited one", () => {
+    expect(
+      cite([
+        { type: "paragraph", content: [{ type: "text", text: "a thought" }] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("are the notes its references name, however deep the writing goes", () => {
+    expect(
+      cite([
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "text", text: "see " },
+                    reference(SEED, "The seed"),
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        { type: "paragraph", content: [reference(TIDE, "The tide")] },
+      ]),
+    ).toEqual([SEED, TIDE]);
+  });
+
+  it("name one note once however often the writing cites it", () => {
+    expect(
+      cite([
+        { type: "paragraph", content: [reference(SEED), reference(SEED)] },
+        { type: "paragraph", content: [reference(TIDE)] },
+        { type: "paragraph", content: [reference(SEED)] },
+      ]),
+    ).toEqual([SEED, TIDE]);
+  });
+
+  it("skip a reference that names anything but a note", () => {
+    expect(
+      cite([
+        {
+          type: "paragraph",
+          content: [
+            reference(""),
+            reference("the seed"),
+            reference(AVA),
+            reference(`${AVA}/not-a-ulid`),
+            reference(null),
+            reference(7),
+            { type: REFERENCE_NODE },
+            reference(SEED),
+          ],
+        },
+      ]),
+    ).toEqual([SEED]);
+  });
+
+  it("are nothing on an element that merely holds a ref", () => {
+    // A ref in another element's payload is not a citation, and reading one as
+    // an edge would draw a line nobody wrote.
+    expect(
+      cite([
+        { type: "picture", attrs: { upload_id: SEED } },
+        { type: "paragraph", content: [{ type: "text", text: SEED }] },
       ]),
     ).toEqual([]);
   });
