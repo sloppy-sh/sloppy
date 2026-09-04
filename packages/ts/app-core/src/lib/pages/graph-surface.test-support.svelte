@@ -7,6 +7,7 @@
 
 	let {
 		nodes,
+		wallpaper,
 		picking,
 		chosen,
 		reading,
@@ -19,7 +20,12 @@
 	}: GraphSurfaceProps = $props();
 </script>
 
-<ul aria-label="The graph" data-focus={focus} data-choosing={chosen ? 'yes' : undefined}>
+<ul
+	aria-label="The graph"
+	data-focus={focus}
+	data-choosing={chosen ? 'yes' : undefined}
+	data-wallpaper={wallpaper?.picture ?? ''}
+>
 	{#each nodes as note (note.ref)}
 		{@const marked =
 			picking?.from === note.ref ? 'from' : picking?.taken.has(note.ref) ? 'taken' : undefined}

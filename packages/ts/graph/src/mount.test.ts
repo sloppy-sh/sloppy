@@ -4,7 +4,7 @@ import type {
   GraphHoverAt,
   GraphPickMarks,
   GraphReadingMarks,
-  MarkPictures,
+  GraphPictures,
 } from "./contract.js";
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
@@ -495,7 +495,7 @@ describe("mountGraph", () => {
   // Nothing else can resolve one: this package reaches no server, so a mark
   // draws its author's picture only if the host's way of reading one arrives.
   it("hands the canvas the host's way of reading a mark's picture", async () => {
-    const pictures: MarkPictures = { read: async () => null };
+    const pictures: GraphPictures = { read: async () => null };
     const graph = await mount({ pictures });
     expect(graph.scene.options?.pictures).toBe(pictures);
   });

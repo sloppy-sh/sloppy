@@ -10,6 +10,7 @@
 import type { Tag } from "@sloppy/types";
 import LayoutWorker from "../src/layout-worker.ts?worker";
 import { makeCorpus } from "../src/corpus.test-support.js";
+import type { GraphPictures, GraphWallpaper } from "../src/contract.js";
 import type { GraphGround } from "../src/ground.js";
 import {
   type GraphHandle,
@@ -62,7 +63,41 @@ const withWorker = !asked.has("inline");
 const maxDrawn = Number(asked.get("drawn")) || undefined;
 let selection: Tag[] = [];
 let ground: GraphGround = "none";
+let wallpaper: GraphWallpaper = { picture: null, strength: 1 };
 let handle: GraphHandle;
+
+/**
+ * A stand-in for the reader's own picture: soft colour over a full frame, with
+ * both ends of the tone scale in it, because what a wallpaper has to survive is
+ * the darkest and lightest pixel it holds.
+ */
+const painted = (() => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 1000;
+  const onto = canvas.getContext("2d") as CanvasRenderingContext2D;
+  onto.fillStyle = "#101820";
+  onto.fillRect(0, 0, canvas.width, canvas.height);
+  const blobs: [number, number, number, string][] = [
+    [420, 300, 620, "#ffd8a8"],
+    [1180, 260, 520, "#8fd3ff"],
+    [860, 880, 700, "#ffffff"],
+    [180, 880, 460, "#2b1a3d"],
+  ];
+  for (const [x, y, r, colour] of blobs) {
+    const glow = onto.createRadialGradient(x, y, 0, x, y, r);
+    glow.addColorStop(0, colour);
+    glow.addColorStop(1, "transparent");
+    onto.fillStyle = glow;
+    onto.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  return canvas.toDataURL("image/jpeg", 0.85);
+})();
+
+const pictures: GraphPictures = {
+  read: async (picture) =>
+    picture === "painted" ? { src: painted, release: () => {} } : null,
+};
 
 // Starts empty: level of detail is what bounds the field, and a host that
 // folded it first would be measuring its own policy instead of this package's.
@@ -73,6 +108,8 @@ const props = (): GraphMountOptions => ({
   collapsed,
   selection,
   ground,
+  wallpaper,
+  pictures,
   viewer: corpus.owner,
   onOpenNode: (ref) => say(`open ${ref.slice(-8)}`),
   onExpand: (ref) => {
@@ -239,6 +276,25 @@ async function run(): Promise<void> {
   ground = "none";
   handle.update(props());
 
+  // A picture is one composited layer behind a canvas that already clears
+  // transparent, so what it costs is measured against the same passes with none.
+  say("");
+  wallpaper = { picture: "painted", strength: 1 };
+  handle.update(props());
+  await measure("idle, wallpaper", async () => {
+    await frames(120);
+  });
+  await measure("pan, wallpaper", () => panRun(120));
+  ground = "dots";
+  handle.update(props());
+  await measure("idle, wallpaper + dots", async () => {
+    await frames(120);
+  });
+  await measure("pan, wallpaper + dots", () => panRun(120));
+  ground = "none";
+  wallpaper = { picture: null, strength: 1 };
+  handle.update(props());
+
   say("");
   // The number the tag rail is judged on: a reader ticks a tag and the answer
   // has to be on the canvas before the next frame, with the field where they
@@ -314,6 +370,23 @@ Object.assign(window, {
   __select: cycleSelection,
   __ground: (paper: GraphGround) => {
     ground = paper;
+    handle.update(props());
+  },
+  __wallpaper: (strength: number | null) => {
+    wallpaper = {
+      picture: strength === null ? null : "painted",
+      strength: strength ?? 1,
+    };
+    handle.update(props());
+  },
+  __dark: (on: boolean) => {
+    // `data-theme` and not a name of this file's own: the renderer re-reads its
+    // tokens off that attribute, so anything else swaps the page and not the
+    // canvas.
+    document.documentElement.setAttribute("data-theme", on ? "dark" : "light");
+  },
+  __tags: (count: number) => {
+    selection = corpus.tags.slice(0, count);
     handle.update(props());
   },
   __stats: () => handle.stats(),

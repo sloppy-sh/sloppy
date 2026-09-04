@@ -83,6 +83,7 @@ describe('the saved look', () => {
 				ground: 'graph paper',
 				graph: 'not a ref',
 				alsoOnCanvas: ['neither is this'],
+				wallpapers: 'a picture',
 				readingWidth: 'wide'
 			})
 		);
@@ -95,6 +96,7 @@ describe('the saved look', () => {
 			ground: 'dots',
 			graph: null,
 			alsoOnCanvas: [],
+			wallpapers: {},
 			readingWidth: null
 		});
 	});
@@ -109,6 +111,21 @@ describe('the saved look', () => {
 		prefs.init();
 		expect(prefs.current.graph).toBe(home);
 		expect(prefs.current.alsoOnCanvas).toEqual([garden]);
+	});
+
+	// DESIGN.md § "The wallpaper": a picture belongs to the graph it is under,
+	// so what one graph is drawn over says nothing about another.
+	it('keeps each graph its own picture', () => {
+		const home = `${DID}/00000000000000000000000000` as OwnedRef;
+		const garden = ref(20);
+		prefs.init();
+		prefs.setWallpaper(home, { uploads: ['a'], strength: 0.3, every: 60 });
+		expect(prefs.wallpaper(home)?.uploads).toEqual(['a']);
+		expect(prefs.wallpaper(garden)).toBeNull();
+
+		prefs.setWallpaper(home, null);
+		expect(prefs.wallpaper(home)).toBeNull();
+		expect(prefs.current.wallpapers).toEqual({});
 	});
 
 	// The order the tags were selected in is what assigns their hues, so a

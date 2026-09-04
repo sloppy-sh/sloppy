@@ -5,7 +5,7 @@
 
 import { type NodeView, type OwnedRef, PREVIEW_SIZES } from "@sloppy/types";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { DrawnNode, MarkPictures } from "./contract.js";
+import type { DrawnNode, GraphPictures } from "./contract.js";
 import {
   buildModel,
   MARK_PICTURE_PX,
@@ -99,7 +99,7 @@ function drawn(
 
 async function sceneOn(
   field: DrawnNode[],
-  pictures?: MarkPictures,
+  pictures?: GraphPictures,
 ): Promise<{
   scene: Awaited<ReturnType<typeof GraphScene.create>>;
   app: FakeApplication;
@@ -129,7 +129,7 @@ function previewsOf(app: FakeApplication): FakeContainer {
 const settle = (): Promise<void> => new Promise((done) => setTimeout(done, 0));
 
 /** A host that answers with a picture and counts what it was asked for. */
-function host(): MarkPictures & { asked: string[]; released: string[] } {
+function host(): GraphPictures & { asked: string[]; released: string[] } {
   const asked: string[] = [];
   const released: string[] = [];
   return {
@@ -247,7 +247,7 @@ describe("a picture reaching a mark", () => {
 describe("what a picture landing costs the marks already wearing one", () => {
   it("leaves their sprites alone rather than rebuilding every one of them", async () => {
     const held = new Map<string, () => void>();
-    const pictures: MarkPictures = {
+    const pictures: GraphPictures = {
       read: (preview) =>
         new Promise((answer) => {
           held.set(preview, () =>

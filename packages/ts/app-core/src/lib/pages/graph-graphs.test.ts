@@ -116,6 +116,13 @@ function onCanvasMark(address: string): HTMLButtonElement {
 	return found as HTMLButtonElement;
 }
 
+/** The canvas itself, which carries what it is drawn over. */
+function field(): HTMLElement {
+	const found = document.body.querySelector<HTMLElement>('[aria-label="The graph"]');
+	if (!found) throw new Error('The canvas is not drawn');
+	return found;
+}
+
 /** Whether a note is open on the reading surface at all. */
 const reading = () => document.body.querySelector('[aria-label="Title"]') !== null;
 
@@ -232,6 +239,22 @@ describe('which graph you are in', () => {
 		expect(graphs.current).toBe(ref(40));
 		// A graph with nothing in it yet says so under its own name.
 		expect(target.textContent).toContain('Thesis starts with one note');
+	});
+
+	// A picture belongs to a graph, so moving between them changes what the
+	// canvas is drawn over — DESIGN.md § "The wallpaper".
+	it('draws each graph over its own picture', async () => {
+		await open();
+		prefs.setWallpaper(HOME, { uploads: ['dawn'], strength: 0.4, every: 60 });
+		prefs.setWallpaper(GARDEN, { uploads: ['moss'], strength: 0.4, every: 60 });
+		await settle();
+		expect(field().dataset.wallpaper).toBe('dawn');
+
+		await openGraphs();
+		button('Garden').click();
+		await settle();
+
+		expect(field().dataset.wallpaper).toBe('moss');
 	});
 
 	it('moves into another one, and draws that one instead', async () => {

@@ -762,6 +762,73 @@ the one thing on the canvas a reader is meant to stop seeing.
   anything about the notes. A peer pulling a subtree receives nothing of it, because there is
   nothing there to receive.
 
+### The wallpaper
+
+Behind that paper the reader may put a picture of their own — one, or a few that take turns.
+It is a ground for the same reason the lattice is: it carries no meaning, nothing drawn on it
+says anything, and it sits under everything the canvas draws. **It is behind the paper rather
+than instead of it**, so dots or rules and a picture are two independent choices and a reader
+may have either, both or neither — the lattice goes on reading as the paper's own grain, laid
+over whatever is behind it.
+
+- **It is pinned to the screen, where the lattice is pinned to the world.** How far you went
+  is the lattice's to say, and a second thing moving with the field would answer the same
+  question twice. Standing still is also what makes it free: it is one composited layer
+  behind a canvas that already clears transparent, so no frame writes anything for it. On the
+  2,400-note corpus `bench/` reports idle and pan at **8.3/9.3 ms with a picture and 8.3/9.3
+  without** — the same numbers the ground is measured at, and the same with both on. Which is
+  meant literally, so **a picture that may animate is not offered**: a GIF or an animated
+  WebP would repaint that layer under the whole field every frame — the one cost this ground
+  is measured not to have — and nothing would stop it short of taking the picture off.
+- **The mask over it is the theme's own paper, and nobody picks its colour.** A hue chosen
+  here would be the one thing on the canvas carrying colour that answers no question
+  (§ Hue), and it would shift every hue drawn over it. So the picture shows through the
+  paper at one strength, and that strength is the only knob: `--graph-paper` at
+  `1 − presence` over the picture, composited in sRGB, which is what the floors below are
+  measured on.
+- **What the ground can carry is computed, not chosen.** A picture may hold any pixel, so the
+  ground under a mark becomes a BAND — the theme's paper with the darkest and the lightest
+  pixel showing through it — and everything drawn on it owes its floor against both ends.
+  `paperCeiling` in `@sloppy/graph` walks a picture up until one of two things gives: the ink
+  the canvas letters in falls under **4.5:1**, the floor small text owes, or the tag slots
+  close to within a tenth of what tells them apart on the plain theme. **The ceiling is
+  whichever comes first**, because the label is not the only thing that has to survive the
+  ground: a picture strong enough to darken eight hues into one has taken the reader's
+  question, and on a light theme it takes it a long way before the label gives. **The
+  reader's control spans that range**, so its full travel is the most the theme will carry
+  rather than a number that stops meaning anything half way along, and a theme change
+  re-reads it. It opens at a quarter of the way up, which is quiet enough to read as paper
+  with a picture in it.
+- **A picture moves the palette, because the palette is derived from the ground.** The depth
+  ramp already mixes between the theme's ends and is pulled back until it clears the mark
+  floor; with a picture under it, it is pulled back against that band instead. The cost is
+  the ramp's far end, which compresses as the picture strengthens: the six generations a
+  level of detail budget draws still recede one behind the next, but the deepest of them
+  share a fill — at the top of the travel a dark theme's last four are one — so beyond a
+  point depth is being read off the tree and not off the fill. That is the trade the control
+  is for, and it is the reader's to make.
+- **A tag slot moves in LIGHTNESS and in nothing else.** It has to clear the mark floor on
+  the same band, and the correction `--primary-mark` already ships for Ochre is the one that
+  applies: pulling eight hues toward one anchor converges them, and a palette whose slots
+  have converged has stopped being a language. `wallpaper.test.ts` in `@sloppy/graph` holds
+  the mark floor, the separation the ceiling is drawn at and the hue at every strength up to
+  it, holds that the ceiling is a picture somebody can actually see, and holds that a dimmed
+  note never out-reads a lit one on the same ground. **The rail's chip and the canvas's mark
+  answer in the same hue and the same slot, and that is what the reader reads across.** The
+  chip is drawn on chrome, which no picture reaches, so it is the mark alone that moves — as
+  far as the ground under it moved, and no further, which is why the ceiling ends where the
+  eight are still eight.
+- **A series changes while nobody is watching it.** Whose turn it is comes off the clock —
+  `floor(now / every) % count` — and is read when the graph opens and when the app comes back
+  from the background, never on a timer. So there is no rotation state to keep, two devices
+  land on the same picture at the same hour with nothing to sync, and the ground cannot move
+  under somebody who is reading.
+- **The pictures are the reader's own**, from what they have already put in a note, resolved
+  the way a mark's preview is (§ "The mark") and never as a remote URL.
+- **It is a per-device view preference, kept against the graph it is under**, and never
+  anything about the notes. What one graph is drawn over says nothing about another, and a
+  peer pulling a subtree receives nothing of it.
+
 ## Scrolling (themed scroller + edge fades)
 
 Scroll chrome is part of the theme, not the OS's. Both halves live in `@sloppy/ui`'s
@@ -836,10 +903,10 @@ possible (inline head script) to avoid a flash of the wrong theme. No account re
 choices carry over if someone signs in.
 
 The same store holds the view choices that are nobody's business but this device's — the
-tags the graph opens lit by, the ground it is drawn on (§ "The ground"), which graph the
-reader is in and which they have stood up beside it (§ "Several graphs on one canvas"),
-and how much room
-a docked note was last given. None of them is an attribute on `<html>`, so none is a thing
-the boot script has to know: the canvas reads them once it is up, and a first paint with
-the right theme is all that flash-of-the-wrong anything is about. None of them reaches a
-note either — a peer pulling a subtree receives nothing of how it was read.
+tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
+it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
+(§ "Several graphs on one canvas"), and how much room a docked note was last given. None of
+them is an attribute on `<html>`, so none is a thing the boot script has to know: the canvas
+reads them once it is up, and a first paint with the right theme is all that
+flash-of-the-wrong anything is about. None of them reaches a note either — a peer pulling a
+subtree receives nothing of how it was read.

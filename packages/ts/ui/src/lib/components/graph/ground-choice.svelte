@@ -2,16 +2,23 @@
 	// The paper the graph is drawn on, chosen from the graph's own chrome —
 	// DESIGN.md § "The ground".
 	import Grid2x2 from '@lucide/svelte/icons/grid-2x2';
+	import Image from '@lucide/svelte/icons/image';
 	import { GRAPH_GROUNDS, type GraphGround } from '@sloppy/graph';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 
 	let {
 		value,
-		onchange
+		pictured,
+		onchange,
+		onpicture
 	}: {
 		value: GraphGround;
+		/** A picture is under the field already, so the way to it says so. */
+		pictured: boolean;
 		onchange: (ground: GraphGround) => void;
+		/** Absent leaves the menu offering paper alone. */
+		onpicture?: () => void;
 	} = $props();
 
 	const LABELS: Record<GraphGround, string> = {
@@ -48,5 +55,13 @@
 				</DropdownMenu.RadioItem>
 			{/each}
 		</DropdownMenu.RadioGroup>
+
+		{#if onpicture}
+			<DropdownMenu.Separator />
+			<DropdownMenu.Item class="min-h-11" onSelect={onpicture}>
+				<Image class="size-4" />
+				{pictured ? 'Change the picture' : 'Add a picture'}
+			</DropdownMenu.Item>
+		{/if}
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

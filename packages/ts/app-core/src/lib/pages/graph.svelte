@@ -32,7 +32,7 @@
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
-	import type { GraphHoverAt, GraphMenuAt, MarkPictures } from '@sloppy/graph';
+	import type { GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
 	import {
 		NodeBulkRequestSchema,
 		RootAddressSchema,
@@ -68,6 +68,7 @@
 		ResponsiveModal,
 		TagRail,
 		TemplatePicker,
+		WallpaperSheet,
 		type CanvasMenuItem,
 		type ConversationProps,
 		type HeldRegion,
@@ -98,6 +99,7 @@
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
+	import { OPENING_STRENGTH, OPENING_TURN, WALLPAPER_TURNS, wallpaperTurn } from '../wallpaper.js';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
 
@@ -180,7 +182,14 @@
 	/** Why the held note in front of the reader has no sections. */
 	let reachRefused = $state<string | null>(null);
 
-	const markPictures: MarkPictures = { read: (upload) => api.ownPicture(upload) };
+	const ownPictures: GraphPictures = { read: (upload) => api.ownPicture(upload) };
+
+	const graph = $derived(graphs.current);
+	const wallpaper = $derived(prefs.wallpaper(graph));
+	let choosingWallpaper = $state(false);
+	/** The picture up now. Written over when the app comes back from the
+	 *  background, so the ground takes its turn while nobody is looking at it. */
+	let showing = $derived(wallpaper ? wallpaperTurn(wallpaper, Date.now()) : null);
 
 	/** A picture inside a held note. Publishing the branch is what made it
 	 *  readable, and the fetch is the API's, so the author's instance never
@@ -470,6 +479,13 @@
 	onMount(() => {
 		openCited();
 		void peers.load();
+		const back = (): void => {
+			if (document.visibilityState === 'visible' && wallpaper) {
+				showing = wallpaperTurn(wallpaper, Date.now());
+			}
+		};
+		document.addEventListener('visibilitychange', back);
+		return () => document.removeEventListener('visibilitychange', back);
 	});
 
 	// A graph the reader has moved into, or stood up beside the one they were
@@ -1163,9 +1179,10 @@
 							onPick: (ref) => void pointAt(ref)
 						}
 					: undefined}
-				pictures={markPictures}
+				pictures={ownPictures}
 				reading={foreign ? undefined : reading}
 				ground={prefs.current.ground}
+				wallpaper={{ picture: showing, strength: wallpaper?.strength ?? 0 }}
 				onHover={(at) => (hoverAt = overGraph ? null : at)}
 				chosen={foreign ? undefined : chosen}
 				onChoose={pointing || foreign ? undefined : chooseAlso}
@@ -1277,7 +1294,9 @@
 						</Button>
 						<GroundChoice
 							value={prefs.current.ground}
+							pictured={wallpaper !== null}
 							onchange={(ground) => prefs.set('ground', ground)}
+							onpicture={() => (choosingWallpaper = true)}
 						/>
 					</div>
 				{:else}
@@ -1336,7 +1355,9 @@
 						</Button>
 						<GroundChoice
 							value={prefs.current.ground}
+							pictured={wallpaper !== null}
 							onchange={(ground) => prefs.set('ground', ground)}
+							onpicture={() => (choosingWallpaper = true)}
 						/>
 					</div>
 				{/if}
@@ -1458,6 +1479,14 @@
 	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
 	onRename={(ref, title) =>
 		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
+/>
+
+<WallpaperSheet
+	bind:open={choosingWallpaper}
+	media={noteMedia}
+	turns={WALLPAPER_TURNS}
+	choice={wallpaper ?? { uploads: [], strength: OPENING_STRENGTH, every: OPENING_TURN }}
+	onchange={(next) => prefs.setWallpaper(graph, next.uploads.length === 0 ? null : next)}
 />
 
 <PeersSheet
