@@ -6,7 +6,7 @@ import type {
 	OwnedRef,
 	Tag
 } from '@sloppy/types';
-import { homeGraphRef } from '@sloppy/types';
+import { citedNotes, homeGraphRef, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -1037,6 +1037,53 @@ describe('the sections of a note walked away from', () => {
 		await settle();
 		expect(screen()).toContain('Mitochondria');
 		expect(screen()).not.toContain('Ribosomes');
+	});
+});
+
+// DESIGN.md § Edges: a `[[` draws a line, and what a note cites is derived from
+// its own writing — so saving a section moves the note's row under every surface
+// reading it, this one included.
+describe('a section naming another note', () => {
+	let graph: Map<OwnedRef, NodeView>;
+	let held: BlockView;
+
+	/** TipTap hangs the editor off the element it writes into. */
+	const writingIn = (): { commands: { insertContentAt(at: number, content: unknown): boolean } } =>
+		(
+			document.body.querySelector('.sloppy-prose') as unknown as {
+				editor: { commands: { insertContentAt(at: number, content: unknown): boolean } };
+			}
+		).editor;
+
+	beforeEach(async () => {
+		graph = installRun();
+		await loadGraph();
+		held = section(SECOND, 'Ribosomes');
+		api.on(`GET ${path(SECOND)}/blocks`, () => [held]);
+		api.on(`GET ${path(SECOND)}`, () => ({
+			...(graph.get(SECOND) as NodeView),
+			references: citedNotes(held.content)
+		}));
+		api.on(`PATCH /blocks${refPath(SECTION)}`, (_url, init) => {
+			const { content } = JSON.parse(String(init?.body)) as Pick<BlockView, 'content'>;
+			held = { ...held, content };
+			return held;
+		});
+	});
+
+	it('reaches the canvas without the note itself being written to', async () => {
+		await openNote(SECOND);
+		writingIn().commands.insertContentAt(2, {
+			type: 'reference',
+			attrs: { [REFERENCE_NOTE_ATTR]: THIRD, label: 'Membranes' }
+		});
+
+		labelled('The note after this, 1c').click();
+		await until(() => api.countOf(`PATCH /blocks${refPath(SECTION)}`) === 1);
+		await until(() => (nodes.get(SECOND)?.references ?? []).length > 0);
+
+		expect(nodes.get(SECOND)?.references).toEqual([THIRD]);
+		expect(api.countOf(`PATCH ${path(SECOND)}`)).toBe(0);
 	});
 });
 

@@ -3,6 +3,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -35,6 +36,7 @@ export class BlockService {
    * and with themselves.
    */
   private readonly perNote = new SerialQueue();
+  private readonly logger = new Logger(BlockService.name);
 
   constructor(
     private readonly blocks: BlockRepository,
@@ -79,55 +81,73 @@ export class BlockService {
     ref: OwnedRef,
     request: UpdateRequest,
   ): Promise<BlockView> {
-    const block = await this.blocks.find(did, ref);
-    if (!block) throw new NotFoundException("That block is not here.");
-
-    const changes: BlockPatch = {};
-    if (request.content !== undefined) changes.content = request.content;
-
+    const node = await this.blocks.nodeOf(did, ref);
+    if (!node) throw new NotFoundException("That block is not here.");
     if (request.after === ref) {
       throw new BadRequestException("A block cannot follow itself.");
     }
-    const written = await this.perNote.run(block.node, async () => {
+
+    const { written, moved } = await this.perNote.run(node, async () => {
+      // Read inside the queue: what this write replaced is what says whether the
+      // note's citations moved, and a writer ahead in the queue has already
+      // replaced anything read before it.
+      const before = await this.blocks.find(did, ref);
+      if (!before) throw new NotFoundException("That block is not here.");
+
+      const changes: BlockPatch = {};
+      if (request.content !== undefined) changes.content = request.content;
       if (request.after !== undefined) {
-        const stack = (await this.stack(block.node)).filter(
+        const stack = (await this.stack(node)).filter(
           (other) => other.ref !== ref,
         );
         changes.ord = this.place(stack, request.after ?? null);
       }
-      return this.save(did, ref, changes);
+      const saved = await this.save(did, ref, changes);
+      return {
+        written: saved,
+        // A section moved within the stack names the same notes in a new order.
+        moved:
+          request.after !== undefined ||
+          citationsMoved(before.content, saved.content),
+      };
     });
-    // A section moved within the stack names the same notes in a new order.
-    if (
-      request.after !== undefined ||
-      citationsMoved(block.content, written.content)
-    ) {
-      await this.derive(did, block.node);
-    }
+    if (moved) await this.derive(did, node);
     return entityView(written);
   }
 
   async remove(did: string, ref: OwnedRef): Promise<void> {
-    const block = await this.blocks.find(did, ref);
-    await this.blocks.remove(did, ref);
-    if (block && citationsMoved(block.content, null)) {
-      await this.derive(did, block.node);
-    }
+    const node = await this.blocks.nodeOf(did, ref);
+    if (node === null) return;
+    const moved = await this.perNote.run(node, async () => {
+      const held = await this.blocks.find(did, ref);
+      await this.blocks.remove(did, ref);
+      return held !== null && citationsMoved(held.content, null);
+    });
+    if (moved) await this.derive(did, node);
   }
 
   /**
    * Brings the note's `references` back into step with what its stack now says,
    * which is what makes a `[[` draw a line and deleting those words take it
    * away. docs/ARCHITECTURE.md § "Data model".
+   *
+   * The section is stored by the time this runs, so a failure is logged rather
+   * than raised: a write answered with an error is one the editor stores a
+   * second time.
    */
   private async derive(did: string, node: OwnedRef): Promise<void> {
-    await this.perNote.run(node, async () => {
-      const held = await this.nodes.find(did, node);
-      if (!held) return;
-      const derived = referencesOf(node, await this.blocks.listByNode(node));
-      if (alreadyDerived(held.references, derived)) return;
-      await this.nodes.setReferences(did, node, derived);
-    });
+    try {
+      await this.perNote.run(node, async () => {
+        const held = await this.nodes.find(did, node);
+        if (!held) return;
+        const derived = referencesOf(node, await this.blocks.listByNode(node));
+        if (alreadyDerived(held.references, derived)) return;
+        await this.nodes.setReferences(did, node, derived);
+      });
+    } catch (err) {
+      const said = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Could not derive what a note cites: ${said}`);
+    }
   }
 
   private async stack(node: OwnedRef): Promise<Placed[]> {

@@ -464,6 +464,26 @@ describe("what a connection is drawn from", () => {
       [],
     );
   });
+
+  // Writing about the note a thought sprang from is ordinary Zettelkasten, and
+  // the dash would say the two are connected while taking away the line that
+  // says which one came first.
+  it("leaves the tree's own line where the connection is to a parent", () => {
+    const parent = note("1");
+    const child = { ...note("1a"), parent: parent.ref, origin: parent.ref };
+    const bare = built([parent, child]);
+
+    for (const citing of [
+      built([parent, { ...child, references: [parent.ref] }]),
+      built([{ ...parent, references: [child.ref] }, child]),
+      built([parent, { ...child, links: [parent.ref] }]),
+    ]) {
+      expect(connections(citing)).toEqual([]);
+      expect(citing.graph.getEdgeAttributes(parent.ref, child.ref)).toEqual(
+        bare.graph.getEdgeAttributes(parent.ref, child.ref),
+      );
+    }
+  });
 });
 
 /** A root of the corpus owner's, addressed by hand. */

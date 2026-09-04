@@ -170,6 +170,15 @@ class NodesStore {
 		return request;
 	}
 
+	/** Ask again for one node, even where an ask for it is already in flight: an
+	 *  answer already on its way was read before whatever prompted this. */
+	refetch(ref: OwnedRef): Promise<NodeView | null> {
+		const inflight = this.#nodesInflight.get(ref);
+		if (!inflight) return this.fetch(ref);
+		const again = () => this.fetch(ref);
+		return inflight.then(again, again);
+	}
+
 	async create(request: CreateNodeRequest): Promise<NodeView> {
 		const epoch = this.#epoch;
 		const node = await api.createNode(request);

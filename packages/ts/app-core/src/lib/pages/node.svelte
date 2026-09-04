@@ -822,7 +822,7 @@
 		const named = (content: BlockDocument | null) =>
 			content === null ? '' : citedNotes(content).sort().join(' ');
 		if (named(before) === named(after)) return;
-		void nodes.fetch(of).catch(() => null);
+		void nodes.refetch(of).catch(() => null);
 	}
 
 	/** What a section says now, of the stacks in hand. */
