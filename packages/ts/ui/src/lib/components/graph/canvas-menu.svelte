@@ -74,8 +74,7 @@
 
 	/** The bar the platform draws over the bottom of the screen, which the menu
 	 *  has to sit clear of — DESIGN.md § "The four inset vars". */
-	const CLEAR_BOTTOM =
-		'var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--sysnav-inset-bottom, 0px)';
+	const CLEAR_BOTTOM = 'var(--sysnav-clearance)';
 </script>
 
 <svelte:window

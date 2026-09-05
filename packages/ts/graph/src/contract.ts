@@ -79,6 +79,18 @@ export interface GraphWallpaper {
   strength: number;
 }
 
+/**
+ * The room the host's chrome takes, as CSS lengths. The ground covers the
+ * surface whole either way — DESIGN.md § "The wallpaper" — so this holds the
+ * marks off the chrome without cutting the picture out from behind it. A bottom
+ * length owes DESIGN.md § "The four inset vars", never a bare `env()`.
+ */
+export interface GraphFieldInset {
+  /** Absent is the surface's own edge. */
+  top?: string;
+  bottom?: string;
+}
+
 /** Where a menu was asked for, and what it was asked on. */
 export interface GraphMenuAt {
   /** Viewport coordinates, so the menu can be placed against the screen. */
@@ -134,6 +146,7 @@ export interface GraphSurfaceProps {
    * drag must never remount, or the viewport is lost on every gesture.
    */
   remountKey?: string;
+  inset?: GraphFieldInset;
   /**
    * Who is reading. DESIGN.md § Form draws provenance, and without this every
    * node reads as the reader's own — so a surface that leaves it out is saying

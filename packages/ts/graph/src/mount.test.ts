@@ -1,5 +1,13 @@
 import type { OwnedRef, Tag } from "@sloppy/types";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type {
   GraphHoverAt,
   GraphPickMarks,
@@ -102,7 +110,12 @@ class StandInScene {
     return (this.attributesOf(ref)?.children ?? 0) > 0;
   }
 
-  hitTest(): string | null {
+  /** The world point the last hit test was asked at, which is what says a tap
+   *  was mapped through the box the marks are drawn in. */
+  hitAt: { x: number; y: number } | null = null;
+
+  hitTest(world: { x: number; y: number }): string | null {
+    this.hitAt = world;
     return this.under;
   }
 
@@ -144,6 +157,10 @@ class StandInScene {
     this.fits += 1;
   }
   invalidate(): void {}
+  resizes = 0;
+  resize(): void {
+    this.resizes += 1;
+  }
   resetStats(): void {}
   destroy(): void {}
 }
@@ -158,13 +175,15 @@ function element() {
   const listeners = new Map<string, Set<Listener>>();
   const node = {
     dataset: {} as Record<string, string>,
-    style: { cssText: "" },
+    style: { cssText: "" } as Record<string, string>,
     children: [] as unknown[],
+    /** Where a test has put this box on the screen. */
+    rect: { left: 0, top: 0 },
     append(...kids: unknown[]) {
       node.children.push(...kids);
     },
     remove() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    getBoundingClientRect: () => node.rect,
     setPointerCapture() {},
     hasPointerCapture: () => false,
     releasePointerCapture() {},
@@ -197,15 +216,30 @@ beforeAll(() => {
     fontFamily: "",
     getPropertyValue: () => "",
   }));
-  for (const observer of ["MutationObserver", "ResizeObserver"]) {
-    vi.stubGlobal(
-      observer,
-      class {
-        observe(): void {}
-        disconnect(): void {}
-      },
-    );
-  }
+  vi.stubGlobal(
+    "MutationObserver",
+    class {
+      observe(): void {}
+      disconnect(): void {}
+    },
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private readonly said: () => void) {}
+      observe(target: FakeElement): void {
+        watched.push({ target, said: this.said });
+      }
+      disconnect(): void {}
+    },
+  );
+});
+
+/** Boxes something has asked to hear the size of, so a test can move one. */
+const watched: { target: FakeElement; said: () => void }[] = [];
+
+beforeEach(() => {
+  watched.length = 0;
 });
 
 afterAll(() => vi.unstubAllGlobals());
@@ -258,6 +292,9 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
   await vi.waitFor(() => expect(StandInScene.latest?.model).toBeTruthy());
   const scene = StandInScene.latest as StandInScene;
   const surface = host.children[0] as FakeElement;
+  // What the gestures are on, and what every screen-to-world reading measures:
+  // the box the field is drawn in, inside the surface the picture covers.
+  const field = surface.children[1] as FakeElement;
 
   const pressAndRelease = (
     ref: string,
@@ -277,14 +314,16 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
       metaKey: false,
       ...modifiers,
     };
-    surface.send("pointerdown", event as Partial<PointerEvent>);
-    surface.send("pointerup", event as Partial<PointerEvent>);
+    field.send("pointerdown", event as Partial<PointerEvent>);
+    field.send("pointerup", event as Partial<PointerEvent>);
   };
 
   return {
     handle,
     props,
     scene,
+    surface,
+    field,
     expanded,
     opened,
     /** Settles the layout has been asked to run. */
@@ -295,6 +334,9 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
       sent.filter((command) => command.kind === "pin"),
     model: (): BuiltModel => scene.model as BuiltModel,
     tap: (ref: string): void => pressAndRelease(ref, "touch", 1),
+    /** A finger landing on a named point of the SCREEN, chrome included. */
+    tapAt: (ref: string, at: { clientX: number; clientY: number }): void =>
+      pressAndRelease(ref, "touch", 1, at),
     /** The mouse's tap: down and up on `ref` with the pointer never moving. */
     click: (ref: string): void => pressAndRelease(ref, "mouse", 3),
     /** The desk's "and this one too". */
@@ -304,7 +346,7 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     press: (ref: string | null): void => {
       vi.useFakeTimers();
       scene.under = ref;
-      surface.send("pointerdown", {
+      field.send("pointerdown", {
         pointerId: 5,
         pointerType: "touch",
         button: 0,
@@ -321,7 +363,7 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     rest: (ref: string | null): void => {
       vi.useFakeTimers();
       scene.under = ref;
-      surface.send("pointermove", {
+      field.send("pointermove", {
         pointerId: 6,
         pointerType: "mouse",
         button: -1,
@@ -334,7 +376,7 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     /** The right button, which asks for the menu rather than taking hold. */
     rightClick: (ref: string | null, x = 0, y = 0): void => {
       scene.under = ref;
-      surface.send("contextmenu", {
+      field.send("contextmenu", {
         clientX: x,
         clientY: y,
         preventDefault: () => {},
@@ -354,12 +396,12 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
           ctrlKey: false,
           metaKey: false,
         }) as Partial<PointerEvent>;
-      surface.send("pointerdown", at(from, true));
-      surface.send("pointermove", at(to, false));
-      surface.send("pointerup", at(to, false));
+      field.send("pointerdown", at(from, true));
+      field.send("pointermove", at(to, false));
+      field.send("pointerup", at(to, false));
     },
     pen(type: string, x: number, y: number): void {
-      surface.send(type, {
+      field.send(type, {
         pointerId: 2,
         pointerType: "pen",
         clientX: x,
@@ -370,7 +412,7 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
     drag(ref: string, path: readonly { x: number; y: number }[]): void {
       scene.under = ref;
       for (const [at, point] of path.entries()) {
-        surface.send(at === 0 ? "pointerdown" : "pointermove", {
+        field.send(at === 0 ? "pointerdown" : "pointermove", {
           pointerId: 3,
           pointerType: "mouse",
           button: at === 0 ? 0 : -1,
@@ -1037,5 +1079,87 @@ describe("the ground under the graph", () => {
 
     expect(graph.scene.ground).toBe("lines");
     expect(graph.starts()).toBe(settles);
+  });
+});
+
+// DESIGN.md § "The canvas": the ground is the page's and the field is a box
+// inside it, so a reading taken on the surface lands the chrome's height out.
+describe("the room the chrome takes", () => {
+  const AT = { top: "64px", bottom: "20px" };
+
+  it("keeps the picture on the surface and the field inside it", async () => {
+    const graph = await mount({ inset: AT });
+    const [wall, field] = graph.surface.children as FakeElement[];
+
+    expect(wall.dataset.graphWall).toBe("");
+    expect(wall.style.cssText).toContain("inset:0");
+    expect(field.dataset.graphField).toBe("");
+    expect(field.style.top).toBe("64px");
+    expect(field.style.bottom).toBe("20px");
+    expect(field.children).toHaveLength(3);
+  });
+
+  it("draws the field edge to edge where the host asks for no room", async () => {
+    const graph = await mount();
+    expect(graph.field.style.top).toBe("0px");
+    expect(graph.field.style.bottom).toBe("0px");
+  });
+
+  it("moves the field when the chrome changes height", async () => {
+    const graph = await mount({ inset: AT });
+    graph.handle.update({ ...graph.props, inset: { ...AT, top: "112px" } });
+    expect(graph.field.style.top).toBe("112px");
+  });
+
+  it("sizes the renderer off the field, and not off the surface", async () => {
+    const graph = await mount({ inset: AT });
+    const heard = watched.filter(({ target }) => target === graph.field);
+    expect(heard.length).toBeGreaterThan(0);
+    expect(watched.some(({ target }) => target === graph.surface)).toBe(false);
+
+    for (const { said } of heard) said();
+
+    expect(graph.scene.resizes).toBeGreaterThan(0);
+  });
+
+  it("lands a tap on the mark under it", async () => {
+    const graph = await mount({ inset: AT });
+    graph.field.rect = { left: 0, top: 64 };
+    const ref = graph.model().order[0];
+    const mark = graph.model().graph.getNodeAttributes(ref);
+    graph.scene.movePosition(mark.index, { x: 40, y: 60 });
+    graph.scene.viewport.scale = 2;
+    graph.scene.viewport.x = 10;
+    graph.scene.viewport.y = 5;
+    const drawn = graph.scene.viewport.toScreen(40, 60);
+
+    graph.tapAt(ref, { clientX: drawn.x, clientY: drawn.y + 64 });
+
+    expect(graph.scene.hitAt).toEqual({ x: 40, y: 60 });
+    expect(graph.opened).toEqual([ref]);
+  });
+
+  it("puts a stroke where the pen touched the field", async () => {
+    const graph = await mount({ inset: AT });
+    graph.field.rect = { left: 0, top: 64 };
+    graph.scene.viewport.scale = 2;
+    graph.scene.viewport.x = 10;
+    graph.scene.viewport.y = 5;
+
+    expect(graph.handle.toWorld(50, 129)).toEqual({ x: 20, y: 30 });
+  });
+
+  it("places a preview against the mark as it is drawn on the screen", async () => {
+    const rested: (GraphHoverAt | null)[] = [];
+    const graph = await mount({ inset: AT, onHover: (at) => rested.push(at) });
+    graph.field.rect = { left: 0, top: 64 };
+    const ref = graph.model().order[0];
+    const mark = graph.model().graph.getNodeAttributes(ref);
+    graph.scene.movePosition(mark.index, { x: 40, y: 60 });
+
+    graph.rest(ref);
+
+    expect(rested[0]?.clientX).toBe(40);
+    expect(rested[0]?.clientY).toBe(124);
   });
 });

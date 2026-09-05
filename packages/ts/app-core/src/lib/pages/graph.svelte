@@ -1160,11 +1160,12 @@
 	<h1 class="sr-only">Your graph</h1>
 
 	{#if populated}
-		<!-- DESIGN.md § "The canvas": never a scroller. It clears the chrome
-		     rather than passing under it, because the graph frames itself to
-		     whatever box it is given. -->
-		<div class="clear-sysnav absolute inset-x-0 bottom-0" style:top="{railHeight}px">
+		<!-- DESIGN.md § "The canvas": never a scroller, and the ground is the
+		     page's — the field is inset off the chrome rather than stopping the
+		     picture at it. -->
+		<div class="absolute inset-0">
 			<GraphSurface
+				inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
 				nodes={visible}
 				{collapsed}
 				{selection}
@@ -1255,11 +1256,16 @@
 	{/if}
 
 	{#if populated}
+		<!-- Opaque, not a scrim: the chips in here answer a tag question in the
+		     same hue the canvas does, and DESIGN.md § "The wallpaper" holds that
+		     floor on the theme's own surface rather than on a band. -->
 		<div
 			bind:clientHeight={railHeight}
-			class="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-background via-background to-transparent pt-[max(0.75rem,env(safe-area-inset-top))] pb-5"
+			class="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-5 sm:px-6"
 		>
-			<div class="pointer-events-auto mx-auto w-full max-w-4xl space-y-2 px-3 sm:px-6">
+			<div
+				class="pointer-events-auto mx-auto w-full max-w-4xl space-y-2 rounded-2xl border bg-card p-3 shadow-lg"
+			>
 				{#if pointing}
 					<div class="flex items-center gap-3">
 						<p class="min-w-0 flex-1 text-sm">

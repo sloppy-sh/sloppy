@@ -175,11 +175,11 @@ function record(name: string, input: readonly number[] = []): void {
   );
 }
 
-const surface = (): HTMLElement =>
-  host.querySelector("[data-graph-surface]") as HTMLElement;
+const field = (): HTMLElement =>
+  host.querySelector("[data-graph-field]") as HTMLElement;
 
 function touch(type: string, id: number, x: number, y: number): void {
-  surface().dispatchEvent(
+  field().dispatchEvent(
     new PointerEvent(type, {
       pointerId: id,
       pointerType: "touch",
@@ -192,7 +192,7 @@ function touch(type: string, id: number, x: number, y: number): void {
 }
 
 async function panRun(steps: number): Promise<number[]> {
-  const box = surface().getBoundingClientRect();
+  const box = field().getBoundingClientRect();
   const latencies: number[] = [];
   const y = box.top + box.height * 0.5;
   let x = box.left + box.width * 0.8;
@@ -208,7 +208,7 @@ async function panRun(steps: number): Promise<number[]> {
 }
 
 async function pinchRun(steps: number): Promise<number[]> {
-  const box = surface().getBoundingClientRect();
+  const box = field().getBoundingClientRect();
   const cx = box.left + box.width / 2;
   const cy = box.top + box.height / 2;
   const latencies: number[] = [];
