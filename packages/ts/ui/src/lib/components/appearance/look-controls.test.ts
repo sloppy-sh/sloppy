@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
-import { MARK_PICTURE_PX } from '@sloppy/graph';
-import { PICTURE_TURN_MAX, type MediaAsset, type NodeAppearance } from '@sloppy/types';
+import { LOOK_RING_AT, LOOK_RING_WIDTH, MARK_PICTURE_PX } from '@sloppy/graph';
+import {
+	MARK_RADIUS_SCALE,
+	MARK_SCALE_MAX,
+	MARK_SCALE_MIN,
+	PICTURE_TURN_MAX,
+	PREVIEW_COVER_MAX,
+	PREVIEW_COVER_MIN,
+	type MediaAsset,
+	type NodeAppearance
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeldPicture, NoteMedia } from '../editor/contract.js';
@@ -16,6 +25,9 @@ let sent: File[];
 let held: HeldPicture[];
 
 const UPLOAD = 'did:syr:ham/01UP';
+
+/** The row a picture's share of the mark is dragged along. */
+const COVER = 'How much it covers';
 
 /** What the client actually throws when a save is refused — a status, a route
  *  and a record id, none of which may reach a person. */
@@ -89,6 +101,22 @@ async function tap(label: string, within?: ParentNode): Promise<void> {
 	await settle();
 }
 
+/** The thumb under a legend, which is what carries the value and the range. */
+function thumb(legend: string): HTMLElement {
+	const found = group(legend).querySelector<HTMLElement>('[role="slider"]');
+	if (!found) throw new Error(`no slider named ${legend}`);
+	return found;
+}
+
+const at = (legend: string): number => Number(thumb(legend).getAttribute('aria-valuenow'));
+
+/** Dragged with a keyboard, which is the one way jsdom can hold a thumb:
+ *  `Home` and `End` are the ends of the range, the arrows are one step. */
+async function drag(legend: string, key: string): Promise<void> {
+	thumb(legend).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+	await settle();
+}
+
 /** A picture is taken off where it is shown, by its turn in the series. */
 async function takeOff(turn: number): Promise<void> {
 	const tile = document.body.querySelector<HTMLButtonElement>(
@@ -155,26 +183,35 @@ describe('giving a note a look', () => {
 	// `appearance.ts`: there is no reason to store a look whose every channel
 	// says what a plain note already draws.
 	it('stores nothing for a choice a plain note already draws', async () => {
-		open();
-		await tap('Medium', group('Size'));
+		open({ mark_scale: 1.01 });
+		await drag('Size', 'ArrowLeft');
 		expect(saved).toEqual([null]);
 	});
 
-	it('leaves the ring style alone while there is no ring', () => {
+	// A style says nothing with no ring to break, so the control that would
+	// have been dead offers a ring instead of a greyed-out row.
+	it('gives the note a ring where a style is chosen without one', async () => {
 		open();
-		expect(group('Ring style').disabled).toBe(true);
-		expect(named('Dashed').matches(':disabled')).toBe(true);
-		open({ ring_weight: 'hairline' });
-		expect(group('Ring style').disabled).toBe(false);
 		expect(named('Dashed').matches(':disabled')).toBe(false);
+		await tap('Dashed', group('Ring style'));
+		expect(saved).toEqual([{ ring_weight: 'regular', ring_style: 'dashed' }]);
+	});
+
+	it('holds no style while there is no ring to break', () => {
+		open();
+		for (const style of ['Solid', 'Open', 'Notched', 'Dashed']) {
+			expect(named(style, group('Ring style')).getAttribute('aria-pressed'), style).toBe('false');
+		}
+		open({ ring_weight: 'hairline' });
+		expect(named('Solid', group('Ring style')).getAttribute('aria-pressed')).toBe('true');
 	});
 
 	// A ring style says nothing with no ring, and a size that says what a plain
 	// note draws is not a look either — so what is stored draws what is shown.
 	it('stores nothing for a channel that draws what a plain note does', async () => {
 		open({ ring_weight: 'none', ring_style: 'dashed' });
-		await tap('Large', group('Size'));
-		expect(saved).toEqual([{ mark_radius: 'large' }]);
+		await drag('Size', 'End');
+		expect(saved).toEqual([{ mark_scale: MARK_SCALE_MAX }]);
 
 		open({ ring_weight: 'heavy', ring_style: 'dashed' });
 		await tap('Solid', group('Ring style'));
@@ -200,7 +237,7 @@ describe('giving a note a look', () => {
 		await tap('Heavy');
 		expect(document.body.querySelector('[role="alert"]')?.textContent).toBe(refuse);
 		expect(named('Heavy').getAttribute('aria-pressed')).toBe('false');
-		expect(named('Large').getAttribute('aria-pressed')).toBe('true');
+		expect(at('Size')).toBe(MARK_RADIUS_SCALE.large);
 	});
 
 	// A style says nothing with no ring, and a stored look that draws nothing
@@ -314,30 +351,41 @@ describe('a picture for the mark', () => {
 describe('how big the picture is drawn', () => {
 	it('is asked for only once there is a picture to size', () => {
 		open();
-		expect(() => group('Picture size')).toThrow();
+		expect(() => group(COVER)).toThrow();
 		open({ preview: UPLOAD });
-		expect(named('Small', group('Picture size')).getAttribute('aria-pressed')).toBe('true');
+		expect(at(COVER)).toBe(PREVIEW_COVER_MIN);
 	});
 
-	it('saves the size its author chose', async () => {
+	it('saves how much of the mark its author dragged it over', async () => {
 		open({ preview: UPLOAD });
-		await tap('Large', group('Picture size'));
-		expect(saved).toEqual([{ preview: UPLOAD, preview_size: 'large' }]);
+		await drag(COVER, 'ArrowRight');
+		expect(saved).toEqual([{ preview: UPLOAD, preview_cover: 0.4225 }]);
+	});
+
+	// The developer's complaint the range answers: a picture could never reach
+	// the ring, let alone lie over it. All the way is now the disc's own edge.
+	it('drags all the way over the ring, to the edge of the disc', async () => {
+		open({ preview: UPLOAD, ring_weight: 'heavy' });
+		await drag(COVER, 'End');
+		expect(saved).toEqual([
+			{ preview: UPLOAD, ring_weight: 'heavy', preview_cover: PREVIEW_COVER_MAX }
+		]);
+		expect(PREVIEW_COVER_MAX).toBeGreaterThan(LOOK_RING_AT + LOOK_RING_WIDTH.heavy / 2);
 	});
 
 	it('stores nothing for the size a picture already draws at', async () => {
-		open({ preview: UPLOAD, preview_size: 'large' });
-		await tap('Small', group('Picture size'));
+		open({ preview: UPLOAD, preview_cover: 0.4225 });
+		await drag(COVER, 'Home');
 		expect(saved).toEqual([{ preview: UPLOAD }]);
 	});
 
 	it('goes with the picture it sized', async () => {
-		open({ preview: UPLOAD, preview_size: 'large' });
+		open({ preview: UPLOAD, preview_cover: PREVIEW_COVER_MAX });
 		await takeOff(1);
 		expect(saved).toEqual([null]);
 	});
 
-	// The swatch is what somebody reads before they save, so it draws the size
+	// The swatch is what somebody reads before they save, so it draws the cover
 	// the canvas will.
 	it('is what the swatch draws before it is saved', async () => {
 		const across = (): number =>
@@ -347,7 +395,7 @@ describe('how big the picture is drawn', () => {
 		await settle();
 		const small = across();
 
-		open({ preview: UPLOAD, preview_size: 'large' });
+		open({ preview: UPLOAD, preview_cover: PREVIEW_COVER_MAX });
 		await settle();
 		expect(across()).toBeGreaterThan(small);
 	});
@@ -356,33 +404,45 @@ describe('how big the picture is drawn', () => {
 // DESIGN.md § "The mark": the fold is capped and the author's step is spent on
 // top of it, so this is the control for a note somebody wants bigger.
 describe('how big the note is drawn', () => {
-	it('offers every step on the ladder', () => {
+	// The developer's complaint the slider answers: five words were the whole
+	// of the channel, and a size between two of them could not be asked for.
+	it('is dragged across the whole range rather than picked off a ladder', () => {
 		open();
-		const steps = buttons(group('Size')).map((button) => button.textContent?.trim());
-		expect(steps).toEqual(['Small', 'Medium', 'Large', 'Huge', 'Giant']);
+		expect(buttons(group('Size'))).toEqual([]);
+		expect(Number(thumb('Size').getAttribute('aria-valuemin'))).toBe(MARK_SCALE_MIN);
+		expect(Number(thumb('Size').getAttribute('aria-valuemax'))).toBe(MARK_SCALE_MAX);
 	});
 
-	it('stores the step its author chose', async () => {
+	it('stores the size its author dragged to', async () => {
 		open();
-		await tap('Giant', group('Size'));
-		expect(saved).toEqual([{ mark_radius: 'giant' }]);
+		await drag('Size', 'End');
+		expect(saved).toEqual([{ mark_scale: MARK_SCALE_MAX }]);
+	});
+
+	// A note spelt in the old steps opens where that step always drew, and the
+	// step goes as soon as the number says it more finely.
+	it('opens a note spelt in a step at that step, and drags off it', async () => {
+		open({ mark_radius: 'large' });
+		expect(at('Size')).toBe(MARK_RADIUS_SCALE.large);
+		await drag('Size', 'ArrowRight');
+		expect(saved).toEqual([{ mark_scale: 1.35 }]);
 	});
 
 	// The complaint the control answers is that a mark's size was the fold's
-	// alone, so the row has to say whose the step is.
-	it('says whose the step is, over what the fold already did', () => {
+	// alone, so the row has to say whose the size is.
+	it('says whose the size is, over what the fold already did', () => {
 		open();
 		expect(group('Size').textContent).toContain('folded');
 	});
 
-	// A swatch that clips the top of the ladder draws its last steps alike, and
-	// somebody choosing between them is choosing blind.
-	it('draws every step apart, up to the top of the ladder', () => {
+	// A swatch that clips the top of the range draws the sizes near it alike,
+	// and somebody dragging between them is dragging blind.
+	it('draws every size apart, up to the top of the range', () => {
 		const across = (): number =>
 			Number(document.body.querySelector('svg circle')?.getAttribute('r'));
 
-		const drawn = (['small', 'regular', 'large', 'huge', 'giant'] as const).map((step) => {
-			open({ mark_radius: step });
+		const drawn = [MARK_SCALE_MIN, 1, 1.34, 1.8, MARK_SCALE_MAX].map((mark_scale) => {
+			open({ mark_scale });
 			return across();
 		});
 

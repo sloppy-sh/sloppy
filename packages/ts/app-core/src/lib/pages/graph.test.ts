@@ -7,6 +7,7 @@ import type {
 	OwnedRef,
 	PublicationView
 } from '@sloppy/types';
+import { MARK_SCALE_MAX } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -633,7 +634,9 @@ describe('choosing several notes to act on', () => {
 		await settle();
 		expect(button('Give them this look').disabled).toBe(true);
 
-		button('Large').click();
+		const thumb = document.body.querySelector<HTMLElement>('[role="slider"]');
+		if (!thumb) throw new Error('the look has no size to drag');
+		thumb.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
 		await settle();
 		expect(button('Give them this look').disabled).toBe(false);
 
@@ -642,7 +645,7 @@ describe('choosing several notes to act on', () => {
 		expect(acts).toEqual([
 			{
 				notes: [FIRST, SECOND, THIRD],
-				act: { act: 'set_appearance', appearance: { mark_radius: 'large' } }
+				act: { act: 'set_appearance', appearance: { mark_scale: MARK_SCALE_MAX } }
 			}
 		]);
 	});

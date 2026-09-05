@@ -6,7 +6,7 @@ import type {
 	OwnedRef,
 	Tag
 } from '@sloppy/types';
-import { citedNotes, homeGraphRef, REFERENCE_NOTE_ATTR } from '@sloppy/types';
+import { citedNotes, homeGraphRef, MARK_SCALE_MAX, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -1225,6 +1225,14 @@ describe('how a note looks', () => {
 		await settle();
 	}
 
+	/** A size is dragged, and a keyboard is the one way jsdom holds a thumb. */
+	async function dragSize(key: string): Promise<void> {
+		const thumb = side('Look').querySelector<HTMLElement>('[role="slider"]');
+		if (!thumb) throw new Error('the Look side has no size to drag');
+		thumb.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+		await settle();
+	}
+
 	it('is reached from the note itself, without opening what to do with it', async () => {
 		await openNote(SECOND);
 		expect(side('Look').hidden).toBe(true);
@@ -1270,12 +1278,11 @@ describe('how a note looks', () => {
 		await openLook(SECOND);
 		button('Heavy').click();
 		await settle();
-		exactly('Large').click();
-		await settle();
+		await dragSize('End');
 
 		expect(graph.get(SECOND)?.appearance).toEqual({
 			ring_weight: 'heavy',
-			mark_radius: 'large'
+			mark_scale: MARK_SCALE_MAX
 		});
 		expect(graph.get(THIRD)?.appearance).toBeUndefined();
 	});
@@ -1300,10 +1307,18 @@ describe('how a note looks', () => {
 	// cant, its just auto determined from the amount of collapsed notes in it".
 	it('stores a size past the one a fold alone reaches', async () => {
 		await openLook(SECOND);
-		exactly('Giant').click();
-		await settle();
+		await dragSize('End');
 
-		expect(graph.get(SECOND)?.appearance).toEqual({ mark_radius: 'giant' });
+		expect(graph.get(SECOND)?.appearance).toEqual({ mark_scale: MARK_SCALE_MAX });
+	});
+
+	// "give me sliders ... rather than give me pre set sizes for the node": a
+	// size between two of the old steps is one somebody can now ask for.
+	it('stores a size no step on the old ladder could say', async () => {
+		await openLook(SECOND);
+		await dragSize('ArrowRight');
+
+		expect(graph.get(SECOND)?.appearance).toEqual({ mark_scale: 1.01 });
 	});
 });
 

@@ -8,11 +8,11 @@ import {
   type DidSyr,
   type EdgeKind,
   graphOf,
-  type MarkRadius,
+  MARK_SCALE_MAX,
   type NodeView,
   type OwnedRef,
   type PictureSeries,
-  type PreviewSize,
+  PREVIEW_COVER_MAX,
   type ResolvedAppearance,
   resolveAppearance,
   type RingStyle,
@@ -42,21 +42,9 @@ export const LEAF_RADIUS = 9;
 const MEGA_GROWTH = 0.42;
 export const MAX_RADIUS = 46;
 
-/** What a look multiplies a mark's radius by. DESIGN.md § "The mark" carries the
- *  ladder, and the ruling that the fold's cap is scaled by it rather than
- *  capping it again. */
-export const LOOK_SCALE: Record<MarkRadius, number> = {
-  small: 0.78,
-  regular: 1,
-  large: 1.34,
-  huge: 1.8,
-  giant: 2.4,
-};
-
-/** The largest mark any canvas draws: the fold's cap at the top of the ladder.
- *  Everything sized for the worst case a mark can be is sized off this. */
-export const LADDER_TOP = Math.max(...Object.values(LOOK_SCALE));
-export const WIDEST_RADIUS = MAX_RADIUS * LADDER_TOP;
+/** The largest mark any canvas draws: the fold's cap at the top of the size
+ *  channel. Everything sized for the worst case a mark can be is sized off this. */
+export const WIDEST_RADIUS = MAX_RADIUS * MARK_SCALE_MAX;
 
 /** A look's ring, as fractions of the mark's radius — its centre line, and what
  *  each weight strokes. Inside the mark, since the edge is provenance's. */
@@ -66,24 +54,21 @@ export const LOOK_RING_WIDTH: Record<Exclude<RingWeight, "none">, number> = {
   regular: 0.14,
   heavy: 0.22,
 };
-/** Dashes around a broken one, and how much of each one's turn is drawn — the
- *  rest is the gap, which `scene.test.ts` keeps wider than the heaviest stroke. */
-export const LOOK_RING_DASHES = 7;
-export const LOOK_RING_DUTY = 0.4;
-
-/** What a picture covers where its author has not chosen a size. */
-export const PREVIEW_AT = 0.42;
 
 /**
- * How much of the mark's radius the picture covers, at each size an author may
- * ask for. What is left is the fill the reader's selected tags answer in, and
- * the look's ring is the ceiling — DESIGN.md § "The mark" carries both bounds,
- * and `scene.test.ts` measures them against the radii `scene.ts` draws at.
+ * How each style breaks the ring: the marks it is stepped round in, and the
+ * share of each mark's turn that is drawn — the rest is the gap, which
+ * `scene.test.ts` keeps wider than the heaviest stroke. No marks strokes it
+ * whole. DESIGN.md § "The mark" carries what a style has to be worth.
  */
-export const PREVIEW_SPAN: Record<PreviewSize, number> = {
-  small: PREVIEW_AT,
-  medium: LOOK_RING_AT - LOOK_RING_WIDTH.heavy / 2,
-  large: LOOK_RING_AT,
+export const LOOK_RING_BREAK: Record<
+  RingStyle,
+  { dashes: number; duty: number }
+> = {
+  solid: { dashes: 0, duty: 1 },
+  open: { dashes: 1, duty: 0.86 },
+  notched: { dashes: 3, duty: 0.72 },
+  dashed: { dashes: 7, duty: 0.4 },
 };
 
 /** Assumed of the densest screen Sloppy runs on. */
@@ -91,9 +76,9 @@ const DENSE_SCREEN = 2;
 
 /**
  * The side of the square a picture is STORED at: the most any mark could ever
- * show of it — the biggest mega-node at the top of the ladder, wearing the
- * largest picture, at full zoom, on a dense display. A picture is stored with
- * its SHORT side at this, because the crop spends the long one.
+ * show of it — the biggest mega-node at the largest a look may size one, covered
+ * whole, at full zoom, on a dense display. A picture is stored with its SHORT
+ * side at this, because the crop spends the long one.
  *
  * The cut is taken once, when somebody chooses the file, and the look it is
  * chosen for goes on being edited afterwards — so it is cut for the size the
@@ -101,7 +86,7 @@ const DENSE_SCREEN = 2;
  * the other budget, and {@link markPictureSide} is that one.
  */
 export const MARK_PICTURE_PX = Math.ceil(
-  WIDEST_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
+  WIDEST_RADIUS * PREVIEW_COVER_MAX * 2 * MAX_SCALE * DENSE_SCREEN,
 );
 
 /**
@@ -114,8 +99,8 @@ export const MARK_PICTURE_PX = Math.ceil(
  * Rounded UP to a power of two, so the same picture worn by marks a hair apart
  * in size is one texture rather than a dozen cuts of one file.
  */
-export function markPictureSide(radius: number, size: PreviewSize): number {
-  const wanted = radius * PREVIEW_SPAN[size] * 2 * MAX_SCALE * DENSE_SCREEN;
+export function markPictureSide(radius: number, cover: number): number {
+  const wanted = radius * cover * 2 * MAX_SCALE * DENSE_SCREEN;
   const stepped = 2 ** Math.ceil(Math.log2(Math.max(1, wanted)));
   return Math.min(MARK_PICTURE_PX, stepped);
 }
@@ -164,8 +149,8 @@ export interface GraphNodeAttributes {
    *  can answer for. No pictures is a mark with none; whose turn it is among
    *  several is the scene's to read off the clock. */
   preview: PictureSeries;
-  /** The share of the mark it covers — {@link PREVIEW_SPAN}. */
-  previewSize: PreviewSize;
+  /** The share of the mark's radius they cover. */
+  previewCover: number;
   fill: number;
   /** Below 1 for a node the selection has nothing to say about. */
   alpha: number;
@@ -252,7 +237,7 @@ export function buildModel(
       ringWeight: look.ringWeight,
       ringStyle: look.ringStyle,
       preview: look.preview,
-      previewSize: look.previewSize,
+      previewCover: look.previewCover,
       fill:
         slot === undefined
           ? options.palette.depth(node.depth)
@@ -449,12 +434,12 @@ function earliestSelected(
 }
 
 function radiusFor(entry: DrawnNode, look: ResolvedAppearance): number {
-  const scale = LOOK_SCALE[look.markRadius];
+  const scale = look.markScale;
   if (entry.folded === 0) return LEAF_RADIUS * scale;
   const grown = LEAF_RADIUS * (1 + Math.log2(1 + entry.folded) * MEGA_GROWTH);
-  // The cap is the fold's, so the author's step scales it too: a bigger step
-  // draws bigger at every fold, which a flat cap took away from exactly the
-  // mega-nodes a step is asked for — DESIGN.md § "The mark".
+  // The cap is the fold's, so the author's own size scales it too: bigger draws
+  // bigger at every fold, which a flat cap took away from exactly the
+  // mega-nodes the control is asked for — DESIGN.md § "The mark".
   return Math.min(grown * scale, MAX_RADIUS * scale);
 }
 

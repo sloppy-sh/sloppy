@@ -1,16 +1,8 @@
 <script lang="ts">
 	// A mark drawn the way the canvas draws it, so what somebody picks here is
 	// what they get out there. `model.ts` in @sloppy/graph owns every fraction.
-	import {
-		FILL_AT,
-		LOOK_RING_AT,
-		LOOK_RING_DASHES,
-		LOOK_RING_DUTY,
-		LOOK_RING_WIDTH,
-		LOOK_SCALE,
-		PREVIEW_SPAN
-	} from '@sloppy/graph';
-	import { type NodeAppearance, resolveAppearance } from '@sloppy/types';
+	import { FILL_AT, LOOK_RING_AT, LOOK_RING_BREAK, LOOK_RING_WIDTH } from '@sloppy/graph';
+	import { MARK_SCALE_MAX, type NodeAppearance, resolveAppearance } from '@sloppy/types';
 	import { cn } from '$lib/utils.js';
 
 	let {
@@ -31,17 +23,21 @@
 	const clip = $props.id();
 	const look = $derived(resolveAppearance(appearance));
 
-	/** The box holds the ladder's whole span, so the top step fills it and every
-	 *  step below reads as the share of it the canvas will draw. */
-	const TOP = Math.max(...Object.values(LOOK_SCALE));
-	const radius = $derived(((size / 2) * LOOK_SCALE[look.markRadius]) / TOP);
+	/** The box holds the whole size channel, so the largest mark fills it and
+	 *  everything below reads as the share of it the canvas will draw. */
+	const radius = $derived(((size / 2) * look.markScale) / MARK_SCALE_MAX);
 	const ringAt = $derived(radius * LOOK_RING_AT);
 	const ringWidth = $derived(
 		look.ringWeight === 'none' ? 0 : radius * LOOK_RING_WIDTH[look.ringWeight]
 	);
-	const covered = $derived(radius * PREVIEW_SPAN[look.previewSize]);
-	const turn = $derived((2 * Math.PI * ringAt) / LOOK_RING_DASHES);
-	const dash = $derived(turn * LOOK_RING_DUTY);
+	const covered = $derived(radius * look.previewCover);
+	/** The ring's gaps as SVG asks for them — one mark and the gap after it. */
+	const gaps = $derived.by(() => {
+		const { dashes, duty } = LOOK_RING_BREAK[look.ringStyle];
+		if (dashes === 0) return undefined;
+		const turn = (2 * Math.PI * ringAt) / dashes;
+		return `${turn * duty} ${turn * (1 - duty)}`;
+	});
 	const half = $derived(size / 2);
 </script>
 
@@ -75,7 +71,7 @@
 			fill="none"
 			stroke="var(--graph-paper)"
 			stroke-width={ringWidth}
-			stroke-dasharray={look.ringStyle === 'dashed' ? `${dash} ${turn - dash}` : undefined}
+			stroke-dasharray={gaps}
 		/>
 	{/if}
 </svg>
