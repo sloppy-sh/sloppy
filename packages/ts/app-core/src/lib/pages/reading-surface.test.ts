@@ -423,9 +423,19 @@ describe.each([
 
 		const menu = screen();
 		expect(menu).toContain('Tags');
-		expect(menu).toContain('Give it a look');
 		expect(menu).toContain('Link to another note');
 		expect(menu).toContain('Delete this note');
+	});
+
+	// How a note is drawn is a side of the note rather than an occasional act,
+	// so it is on the surface at every width and never behind that control.
+	it('carries how the note is drawn as a side of it', async () => {
+		await readCells(width);
+
+		const look = [...surface().querySelectorAll('[role="tab"]')].find(
+			(tab) => tab.textContent?.trim() === 'Look'
+		);
+		expect(look).toBeTruthy();
 	});
 
 	it('reaches the tags on this note from there', async () => {
@@ -839,6 +849,72 @@ describe.each([
 		await settle();
 
 		expect(openTabs()).toEqual({ addresses: ['1a', '1b'], reading: '1b' });
+	});
+});
+
+// Look stands beside the note rather than over it, so the note is hidden while
+// it is in front and a browser has nothing left to scroll.
+describe('looking at how a note is drawn, and going back to reading it', () => {
+	let laidOutAgain: MutationObserver | undefined;
+	afterEach(() => laidOutAgain?.disconnect());
+
+	/** jsdom lays nothing out, so a box keeps whatever `scrollTop` it is handed
+	 *  however short its content has become. A browser holds it to what is left to
+	 *  scroll the moment the note collapses, and forgets the rest — which is what
+	 *  takes a reader's place away behind Look. */
+	function clamps(box: HTMLElement): void {
+		let at = 0;
+		const room = () => {
+			const note = document.body.querySelector('[data-slot="tabs-content"][data-value="note"]');
+			return note && !note.hasAttribute('hidden') ? 4000 : 0;
+		};
+		Object.defineProperty(box, 'scrollTop', {
+			configurable: true,
+			get: () => at,
+			set: (to: number) => (at = Math.max(0, Math.min(to, room())))
+		});
+		laidOutAgain = new MutationObserver(() => (at = Math.min(at, room())));
+		laidOutAgain.observe(document.body, {
+			subtree: true,
+			attributes: true,
+			attributeFilter: ['hidden']
+		});
+	}
+
+	it('leaves the reader where they were in the note', async () => {
+		await readCells(PHONE);
+		const box = noteBox();
+		clamps(box);
+		box.scrollTop = 3000;
+
+		exactly('Look').click();
+		await settle();
+		exactly('Note').click();
+		await settle();
+
+		expect(box.scrollTop).toBe(3000);
+	});
+
+	// A note the reader walked away from while looking at its look is a note they
+	// left where they were reading it, not where Look was scrolled to.
+	it('keeps that place across a walk to another note and back', async () => {
+		await readCells(PHONE);
+		await alsoOpen('1b');
+		tab('1a').click();
+		await settle();
+
+		const box = noteBox();
+		clamps(box);
+		box.scrollTop = 3000;
+		exactly('Look').click();
+		await settle();
+
+		tab('1b').click();
+		await settle();
+		tab('1a').click();
+		await settle();
+
+		expect(box.scrollTop).toBe(3000);
 	});
 });
 

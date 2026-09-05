@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { MARK_PICTURE_PX } from '@sloppy/graph';
-import type { MediaAsset, NodeAppearance } from '@sloppy/types';
+import { PICTURE_TURN_MAX, type MediaAsset, type NodeAppearance } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeldPicture, NoteMedia } from '../editor/contract.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import { NOTE_PX } from '../editor/fit.js';
-import AppearanceModal from './appearance-modal.svelte';
+import LookControls from './look-controls.svelte';
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
@@ -33,7 +33,11 @@ const picture = (id: string): HeldPicture => ({
 const media: NoteMedia = {
 	send(file) {
 		sent.push(file);
-		const asset: MediaAsset = { upload_id: 'sent-1', mime_type: file.type, size: file.size };
+		const asset: MediaAsset = {
+			upload_id: `sent-${sent.length}`,
+			mime_type: file.type,
+			size: file.size
+		};
 		return { asset: Promise.resolve(asset), cancel: () => {} };
 	},
 	picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} }),
@@ -45,10 +49,9 @@ function open(appearance: NodeAppearance | null = null) {
 	document.body.innerHTML = '';
 	target = document.createElement('div');
 	document.body.appendChild(target);
-	mounted = mount(AppearanceModal, {
+	mounted = mount(LookControls, {
 		target,
 		props: {
-			open: true,
 			appearance,
 			media,
 			refused: refuse,
@@ -83,6 +86,16 @@ const named = (label: string, within?: ParentNode): HTMLButtonElement => {
 
 async function tap(label: string, within?: ParentNode): Promise<void> {
 	named(label, within).click();
+	await settle();
+}
+
+/** A picture is taken off where it is shown, by its turn in the series. */
+async function takeOff(turn: number): Promise<void> {
+	const tile = document.body.querySelector<HTMLButtonElement>(
+		`button[aria-label="Take picture ${turn} off"]`
+	);
+	if (!tile) throw new Error(`no picture is showing at turn ${turn}`);
+	tile.click();
 	await settle();
 }
 
@@ -291,7 +304,7 @@ describe('a picture for the mark', () => {
 
 	it('takes the picture off without disturbing the rest of the look', async () => {
 		open({ ring_weight: 'heavy', preview: UPLOAD });
-		await tap('Remove');
+		await takeOff(1);
 		expect(saved).toEqual([{ ring_weight: 'heavy' }]);
 	});
 });
@@ -320,7 +333,7 @@ describe('how big the picture is drawn', () => {
 
 	it('goes with the picture it sized', async () => {
 		open({ preview: UPLOAD, preview_size: 'large' });
-		await tap('Remove');
+		await takeOff(1);
 		expect(saved).toEqual([null]);
 	});
 
@@ -337,5 +350,124 @@ describe('how big the picture is drawn', () => {
 		open({ preview: UPLOAD, preview_size: 'large' });
 		await settle();
 		expect(across()).toBeGreaterThan(small);
+	});
+});
+
+// DESIGN.md § "The mark": the fold is capped and the author's step is spent on
+// top of it, so this is the control for a note somebody wants bigger.
+describe('how big the note is drawn', () => {
+	it('offers every step on the ladder', () => {
+		open();
+		const steps = buttons(group('Size')).map((button) => button.textContent?.trim());
+		expect(steps).toEqual(['Small', 'Medium', 'Large', 'Huge', 'Giant']);
+	});
+
+	it('stores the step its author chose', async () => {
+		open();
+		await tap('Giant', group('Size'));
+		expect(saved).toEqual([{ mark_radius: 'giant' }]);
+	});
+
+	// The complaint the control answers is that a mark's size was the fold's
+	// alone, so the row has to say whose the step is.
+	it('says whose the step is, over what the fold already did', () => {
+		open();
+		expect(group('Size').textContent).toContain('folded');
+	});
+
+	// A swatch that clips the top of the ladder draws its last steps alike, and
+	// somebody choosing between them is choosing blind.
+	it('draws every step apart, up to the top of the ladder', () => {
+		const across = (): number =>
+			Number(document.body.querySelector('svg circle')?.getAttribute('r'));
+
+		const drawn = (['small', 'regular', 'large', 'huge', 'giant'] as const).map((step) => {
+			open({ mark_radius: step });
+			return across();
+		});
+
+		expect(drawn).toEqual([...drawn].sort((a, b) => a - b));
+		expect(new Set(drawn).size).toBe(drawn.length);
+	});
+});
+
+// DESIGN.md § "A picture that takes turns": a mark reads the same model the
+// ground does, so somebody who has learnt one has learnt the other.
+describe('a mark that wears more than one picture', () => {
+	it('keeps the second behind the first, in the order they take turns', async () => {
+		open({ preview: UPLOAD });
+		await choose(new File([new Uint8Array(90)], 'kite.webp', { type: 'image/webp' }));
+
+		expect(saved).toEqual([{ preview: UPLOAD, preview_more: ['sent-1'] }]);
+	});
+
+	it('asks nothing about turns while there is one picture to show', () => {
+		open({ preview: UPLOAD });
+		const words = document.body.textContent ?? '';
+		expect(words).not.toContain('Takes turns');
+		expect(words).not.toContain('How it changes');
+	});
+
+	it('asks how one gives way to the next as soon as there are two', () => {
+		open({ preview: UPLOAD, preview_more: ['b'] });
+		const words = document.body.textContent ?? '';
+		expect(words).toContain('Takes turns');
+		for (const word of ['Crossfade', 'Slide', 'Slow zoom']) expect(words).toContain(word);
+	});
+
+	it('stores the transition chosen, and nothing for the quietest', async () => {
+		open({ preview: UPLOAD, preview_more: ['b'] });
+		await tap('Slow zoom');
+		expect(saved).toEqual([{ preview: UPLOAD, preview_more: ['b'], preview_transition: 'zoom' }]);
+
+		open({ preview: UPLOAD, preview_more: ['b'], preview_transition: 'zoom' });
+		await tap('Crossfade');
+		expect(saved.at(-1)).toEqual({ preview: UPLOAD, preview_more: ['b'] });
+	});
+
+	// A cadence and a transition say nothing about a picture that never changes,
+	// so they go with the second picture rather than being stored unread.
+	it('drops the cadence and the transition with the picture that earned them', async () => {
+		open({
+			preview: UPLOAD,
+			preview_more: ['b'],
+			preview_every: 30,
+			preview_transition: 'slide'
+		});
+		await takeOff(2);
+		expect(saved).toEqual([{ preview: UPLOAD }]);
+	});
+
+	it('promotes the next picture where the first is taken off', async () => {
+		open({ preview: UPLOAD, preview_more: ['b', 'c'] });
+		await takeOff(1);
+		expect(saved).toEqual([{ preview: 'b', preview_more: ['c'] }]);
+	});
+
+	it('stops offering more once the series is as long as one is written with', () => {
+		open({ preview: UPLOAD, preview_more: ['b', 'c', 'd', 'e', 'f', 'g', 'h'] });
+		expect(buttons().some((button) => button.textContent?.trim() === 'Add a picture')).toBe(false);
+	});
+
+	// A newer Sloppy may write a longer series and a slower cadence than this one
+	// draws, and a request may carry neither. Changing the ring on such a note is
+	// still a change the reader gets to make.
+	it('sends what it drew where a newer Sloppy wrote more than a request carries', async () => {
+		open({
+			preview: UPLOAD,
+			preview_more: ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+			preview_every: PICTURE_TURN_MAX * 3
+		});
+
+		await tap('Heavy', group('Ring'));
+
+		expect(saved).toEqual([
+			{
+				ring_weight: 'heavy',
+				preview: UPLOAD,
+				preview_more: ['b', 'c', 'd', 'e', 'f', 'g', 'h'],
+				preview_every: PICTURE_TURN_MAX
+			}
+		]);
 	});
 });

@@ -119,8 +119,8 @@ describe('the saved look', () => {
 		const home = `${DID}/00000000000000000000000000` as OwnedRef;
 		const garden = ref(20);
 		prefs.init();
-		prefs.setWallpaper(home, { uploads: ['a'], strength: 0.3, every: 60 });
-		expect(prefs.wallpaper(home)?.uploads).toEqual(['a']);
+		prefs.setWallpaper(home, { pictures: ['a'], strength: 0.3, every: 60, transition: 'fade' });
+		expect(prefs.wallpaper(home)?.pictures).toEqual(['a']);
 		expect(prefs.wallpaper(garden)).toBeNull();
 
 		prefs.setWallpaper(home, null);

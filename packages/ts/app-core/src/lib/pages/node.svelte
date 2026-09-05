@@ -7,7 +7,6 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
-	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Files from '@lucide/svelte/icons/files';
@@ -37,10 +36,10 @@
 		type UpdateBlockRequest
 	} from '@sloppy/types';
 	import {
-		AppearanceModal,
 		BlockStack,
 		ConfirmModal,
 		Conversation,
+		LookControls,
 		NoteMenu,
 		PublishModal,
 		ResponsiveModal,
@@ -58,6 +57,7 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
+	import * as Tabs from '@sloppy/ui/tabs';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import NoteAuthor from '../components/note-author.svelte';
@@ -228,10 +228,13 @@
 	/** The surfaces the one control at the head opens, none of which is writing. */
 	let acting = $state(false);
 	let tagging = $state(false);
-	let looking = $state(false);
 	let linking = $state(false);
 	let publishing = $state(false);
 	let removing = $state(false);
+
+	/** Which side of the note is in front of the reader: what it says, or how it
+	 *  is drawn on the graph. */
+	let side = $state<'note' | 'look'>('note');
 
 	/** Typed into the field that reaches a note by the address a person cites. */
 	let cited = $state('');
@@ -498,7 +501,6 @@
 	let actsFrom = $state<HTMLElement | null>(null);
 	const acts = $derived<NoteMenuItem[]>([
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
-		{ label: 'Give it a look', icon: CircleDashed, onSelect: () => (looking = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
 		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
 		{
@@ -517,7 +519,7 @@
 		(!removing && refused.remove) ||
 			(!publishing && refused.publish) ||
 			(!linking && refused.link) ||
-			(!looking && refused.look) ||
+			(side !== 'look' && refused.look) ||
 			(!tagging && refused.tag) ||
 			null
 	);
@@ -619,11 +621,24 @@
 		stopped = setTimeout(() => (writing = false), 250);
 	}
 
-	// Read before the swap, never after: by the time a render effect runs, the box
-	// has been re-laid around the next note and `scrollTop` comes back clamped.
+	// Read before the swap, never after: by the time a render effect runs the box
+	// has been re-laid — around the next note, or around a Look side a fraction of
+	// its height — and `scrollTop` comes back clamped.
 	$effect.pre(() => {
 		const leaving = ref;
-		return () => keepPlace(leaving);
+		const reading = side === 'note';
+		return () => {
+			if (reading) keepPlace(leaving);
+		};
+	});
+
+	// The note stays mounted behind Look but hidden, so the box is only as tall as
+	// Look until the note is back on screen, and a place set any earlier is clamped
+	// away.
+	$effect(() => {
+		const opening = side === 'note' ? ref : null;
+		if (!opening) return;
+		void tick().then(() => startAtTheirPlace(opening));
 	});
 
 	$effect(() => {
@@ -640,14 +655,13 @@
 		cited = '';
 		acting = false;
 		tagging = false;
-		looking = false;
+		side = 'note';
 		linking = false;
 		publishing = false;
 		removing = false;
 		unread = null;
 		shaping = null;
 		writing = false;
-		startAtTheirPlace(opening);
 		void (async () => {
 			let held = false;
 			try {
@@ -1260,165 +1274,204 @@
 			{/if}
 		</div>
 
-		{#if loading || seeding.has(ref)}
-			<Skeleton class="h-24 w-full" />
-		{:else if unreachable}
-			<p class="text-sm text-destructive" role="alert">{unreachable}</p>
-		{:else}
-			{#key rebuilt}
-				<BlockStack
-					{node}
-					{blocks}
-					{emoji}
-					{references}
-					media={noteMedia}
-					onCreate={addBlock}
-					onUpdate={editBlock}
-					onRemove={dropBlock}
-					onReorder={(block: OwnedRef, after: OwnedRef | null) => editBlock(block, { after })}
-				/>
-			{/key}
-		{/if}
+		<Tabs.Root
+			value={side}
+			onValueChange={(chosen: string) => (side = chosen === 'look' ? 'look' : 'note')}
+			class="gap-4"
+		>
+			<Tabs.List class="h-11 w-full p-1 sm:w-fit">
+				<Tabs.Trigger value="note" class="px-6">Note</Tabs.Trigger>
+				<Tabs.Trigger value="look" class="px-6">Look</Tabs.Trigger>
+			</Tabs.List>
 
-		{#if !loading && !unreachable && shapeable}
-			<Button
-				variant="ghost"
-				class="-mt-4 h-11 w-fit text-muted-foreground"
-				disabled={seeding.has(ref)}
-				onclick={() => offerShapes('this')}
-			>
-				<LayoutTemplate class="size-4" />
-				Add a shape
-			</Button>
-		{/if}
+			<Tabs.Content value="note" class="flex flex-col gap-7">
+				{#if loading || seeding.has(ref)}
+					<Skeleton class="h-24 w-full" />
+				{:else if unreachable}
+					<p class="text-sm text-destructive" role="alert">{unreachable}</p>
+				{:else}
+					{#key rebuilt}
+						<BlockStack
+							{node}
+							{blocks}
+							{emoji}
+							{references}
+							media={noteMedia}
+							onCreate={addBlock}
+							onUpdate={editBlock}
+							onRemove={dropBlock}
+							onReorder={(block: OwnedRef, after: OwnedRef | null) => editBlock(block, { after })}
+						/>
+					{/key}
+				{/if}
 
-		{#if refused.shape}
-			<p class="text-sm text-destructive" role="alert">{refused.shape}</p>
-		{/if}
+				{#if !loading && !unreachable && shapeable}
+					<Button
+						variant="ghost"
+						class="-mt-4 h-11 w-fit text-muted-foreground"
+						disabled={seeding.has(ref)}
+						onclick={() => offerShapes('this')}
+					>
+						<LayoutTemplate class="size-4" />
+						Add a shape
+					</Button>
+				{/if}
 
-		<!-- Container query, never `sm:` — DESIGN.md § Layout: the room the acts
+				{#if refused.shape}
+					<p class="text-sm text-destructive" role="alert">{refused.shape}</p>
+				{/if}
+
+				<!-- Container query, never `sm:` — DESIGN.md § Layout: the room the acts
 		     lay out in is the reading surface's, not the window's. -->
-		<div class="@container space-y-3 border-t border-border pt-6">
-			{#if children.length > 0}
-				<h2 class="text-sm font-medium text-muted-foreground">Under this</h2>
-				<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
-					{#each children as child (child.ref)}
-						<li class="flex items-center">{@render row(child, () => onOpen(child.ref), true)}</li>
-					{/each}
-				</ul>
-			{/if}
-
-			<div class="flex flex-col gap-2 @md:flex-row">
-				<div class="flex gap-2 @md:flex-1">
-					<Button
-						variant="outline"
-						class="h-11 flex-1"
-						disabled={adding.has(ref)}
-						onclick={() => write('under', null)}
-					>
-						<CornerDownRight class="size-4" />
-						Write a note under this
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						class="size-11 shrink-0 text-muted-foreground"
-						aria-label="Write a note under this, from a shape"
-						disabled={adding.has(ref)}
-						onclick={() => offerShapes('under')}
-					>
-						<LayoutTemplate class="size-4" />
-					</Button>
-				</div>
-				<div class="flex gap-2 @md:flex-1">
-					<Button
-						variant="outline"
-						class="h-11 flex-1"
-						disabled={adding.has(ref)}
-						onclick={() => write('after', null)}
-					>
-						<ArrowRight class="size-4" />
-						Write the next note
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						class="size-11 shrink-0 text-muted-foreground"
-						aria-label="Write the next note, from a shape"
-						disabled={adding.has(ref)}
-						onclick={() => offerShapes('after')}
-					>
-						<LayoutTemplate class="size-4" />
-					</Button>
-				</div>
-			</div>
-
-			{#if refused.add}<p class="text-sm text-destructive" role="alert">{refused.add}</p>{/if}
-		</div>
-
-		{#if linked.length > 0 || backlinks.length > 0}
-			<div class="space-y-3 border-t border-border pt-6">
-				{#if linked.length > 0}
-					<h2 class="text-sm font-medium text-muted-foreground">Links to</h2>
-					<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
-						{#each linked as { target, note: to } (target)}
-							<li class="flex items-center gap-1">
-								{#if to}
-									{@render row(to, () => onOpen(target), true)}
-								{:else if gone.has(target)}
-									<p class="flex min-h-11 flex-1 items-center px-2 text-muted-foreground">
-										A note that is no longer here.
-									</p>
-								{:else}
-									<Skeleton class="h-9 flex-1" />
-								{/if}
-								<Button
-									variant="ghost"
-									size="icon"
-									class="size-11 shrink-0 text-muted-foreground hover:text-destructive"
-									aria-label={to ? `Unlink ${to.address}` : 'Unlink'}
-									disabled={relinking.has(ref)}
-									onclick={() => unlink(target)}
-								>
-									<X class="size-4" />
-								</Button>
-							</li>
-						{/each}
-					</ul>
-
-					{#if refused.unlink}
-						<p class="text-sm text-destructive" role="alert">{refused.unlink}</p>
+				<div class="@container space-y-3 border-t border-border pt-6">
+					{#if children.length > 0}
+						<h2 class="text-sm font-medium text-muted-foreground">Under this</h2>
+						<ul
+							class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
+							{@attach scrollFade('y')}
+						>
+							{#each children as child (child.ref)}
+								<li class="flex items-center">
+									{@render row(child, () => onOpen(child.ref), true)}
+								</li>
+							{/each}
+						</ul>
 					{/if}
+
+					<div class="flex flex-col gap-2 @md:flex-row">
+						<div class="flex gap-2 @md:flex-1">
+							<Button
+								variant="outline"
+								class="h-11 flex-1"
+								disabled={adding.has(ref)}
+								onclick={() => write('under', null)}
+							>
+								<CornerDownRight class="size-4" />
+								Write a note under this
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								class="size-11 shrink-0 text-muted-foreground"
+								aria-label="Write a note under this, from a shape"
+								disabled={adding.has(ref)}
+								onclick={() => offerShapes('under')}
+							>
+								<LayoutTemplate class="size-4" />
+							</Button>
+						</div>
+						<div class="flex gap-2 @md:flex-1">
+							<Button
+								variant="outline"
+								class="h-11 flex-1"
+								disabled={adding.has(ref)}
+								onclick={() => write('after', null)}
+							>
+								<ArrowRight class="size-4" />
+								Write the next note
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								class="size-11 shrink-0 text-muted-foreground"
+								aria-label="Write the next note, from a shape"
+								disabled={adding.has(ref)}
+								onclick={() => offerShapes('after')}
+							>
+								<LayoutTemplate class="size-4" />
+							</Button>
+						</div>
+					</div>
+
+					{#if refused.add}<p class="text-sm text-destructive" role="alert">{refused.add}</p>{/if}
+				</div>
+
+				{#if linked.length > 0 || backlinks.length > 0}
+					<div class="space-y-3 border-t border-border pt-6">
+						{#if linked.length > 0}
+							<h2 class="text-sm font-medium text-muted-foreground">Links to</h2>
+							<ul
+								class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
+								{@attach scrollFade('y')}
+							>
+								{#each linked as { target, note: to } (target)}
+									<li class="flex items-center gap-1">
+										{#if to}
+											{@render row(to, () => onOpen(target), true)}
+										{:else if gone.has(target)}
+											<p class="flex min-h-11 flex-1 items-center px-2 text-muted-foreground">
+												A note that is no longer here.
+											</p>
+										{:else}
+											<Skeleton class="h-9 flex-1" />
+										{/if}
+										<Button
+											variant="ghost"
+											size="icon"
+											class="size-11 shrink-0 text-muted-foreground hover:text-destructive"
+											aria-label={to ? `Unlink ${to.address}` : 'Unlink'}
+											disabled={relinking.has(ref)}
+											onclick={() => unlink(target)}
+										>
+											<X class="size-4" />
+										</Button>
+									</li>
+								{/each}
+							</ul>
+
+							{#if refused.unlink}
+								<p class="text-sm text-destructive" role="alert">{refused.unlink}</p>
+							{/if}
+						{/if}
+
+						{#if backlinks.length > 0}
+							<h2 class="text-sm font-medium text-muted-foreground">Linked from</h2>
+							<ul
+								class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
+								{@attach scrollFade('y')}
+							>
+								{#each backlinks as from (from.ref)}
+									<li class="flex items-center">
+										{@render row(from, () => onOpen(from.ref), true)}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
 				{/if}
 
-				{#if backlinks.length > 0}
-					<h2 class="text-sm font-medium text-muted-foreground">Linked from</h2>
-					<ul class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto" {@attach scrollFade('y')}>
-						{#each backlinks as from (from.ref)}
-							<li class="flex items-center">{@render row(from, () => onOpen(from.ref), true)}</li>
-						{/each}
-					</ul>
+				{#if answerable}
+					<Conversation
+						comments={conversation.comments(ref)}
+						reactions={conversation.reactions(ref)}
+						mine={session.viewer?.did ?? ''}
+						people={conversationPeople}
+						{emoji}
+						loading={conversing.loading}
+						unreadable={conversing.failed
+							? (conversing.error ??
+								'Sloppy could not read what people said. Try again in a moment.')
+							: null}
+						onsay={say}
+						onunsay={unsay}
+						onreact={react}
+						onunreact={unreact}
+					/>
 				{/if}
-			</div>
-		{/if}
+			</Tabs.Content>
 
-		{#if answerable}
-			<Conversation
-				comments={conversation.comments(ref)}
-				reactions={conversation.reactions(ref)}
-				mine={session.viewer?.did ?? ''}
-				people={conversationPeople}
-				{emoji}
-				loading={conversing.loading}
-				unreadable={conversing.failed
-					? (conversing.error ?? 'Sloppy could not read what people said. Try again in a moment.')
-					: null}
-				onsay={say}
-				onunsay={unsay}
-				onreact={react}
-				onunreact={unreact}
-			/>
-		{/if}
+			<Tabs.Content value="look">
+				{#if side === 'look'}
+					<p class="pb-4 text-sm text-muted-foreground">How this note is drawn on the graph.</p>
+					<LookControls
+						appearance={node.appearance}
+						media={noteMedia}
+						onchange={relook}
+						refused={refused.look ?? null}
+					/>
+				{/if}
+			</Tabs.Content>
+		</Tabs.Root>
 
 		{#if !writing && ways.some((way) => way.to)}
 			<!-- `--foot` is the OS bar and a breath above it: the bar is padded by it
@@ -1462,14 +1515,6 @@
 					/>
 				</div>
 			</ResponsiveModal>
-
-			<AppearanceModal
-				bind:open={looking}
-				appearance={node.appearance}
-				media={noteMedia}
-				onchange={relook}
-				refused={refused.look ?? null}
-			/>
 
 			<ResponsiveModal bind:open={linking} title="Link to another note">
 				<div class="space-y-3 px-2 pt-2">
