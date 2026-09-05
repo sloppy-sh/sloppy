@@ -1,10 +1,15 @@
 <script lang="ts">
-	// Choosing the picture under the graph — DESIGN.md § "The wallpaper".
+	// Choosing the picture under the graph — DESIGN.md § "The wallpaper", and
+	// § "A picture that takes turns" for everything it shares with a mark's.
 	import Check from '@lucide/svelte/icons/check';
+	import ImagePlus from '@lucide/svelte/icons/image-plus';
+	import type { PictureSeries, PictureTransition } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import * as Select from '$lib/components/ui/select/index.js';
 	import type { HeldPicture, NoteMedia, ShownPicture } from '../editor/contract.js';
+	import { fitted, NOTE_PX } from '../editor/fit.js';
+	import MediaPicker from '../editor/media-picker.svelte';
 	import { tileSized } from '../editor/thumbnail.js';
+	import SeriesControls from '../picture/series-controls.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	/** A screenful of originals at once is how a phone loses the tab. */
@@ -14,23 +19,14 @@
 		open = $bindable(false),
 		media,
 		choice,
-		turns,
 		onchange
 	}: {
 		open?: boolean;
-		/** Pictures come from what the reader has already put in a note; this
-		 *  surface adds none of its own. */
-		media: Pick<NoteMedia, 'library' | 'picture'>;
-		choice: {
-			/** The pictures, in the order they take turns. Empty is no wallpaper. */
-			uploads: string[];
+		media: NoteMedia;
+		choice: PictureSeries & {
 			/** How much of the picture shows, 0–1 of what the ground can carry. */
 			strength: number;
-			/** Minutes a picture holds before the next takes its turn. */
-			every: number;
 		};
-		/** The turns on offer, longest last. */
-		turns: readonly { value: number; label: string }[];
 		onchange: (next: typeof choice) => void;
 	} = $props();
 
@@ -38,6 +34,9 @@
 	let reading = $state(false);
 	let unreadable = $state(false);
 	let thumbnails = $state<Record<string, string>>({});
+	let choosing = $state(false);
+	let sending = $state(false);
+	let trouble = $state<string | null>(null);
 
 	let shown: Record<string, ShownPicture> = {};
 	let tiles: { node: HTMLElement; picture: HeldPicture }[] = [];
@@ -46,10 +45,6 @@
 	let waiting: HeldPicture[] = [];
 	let fetching = 0;
 	let era = 0;
-
-	const turnLabel = $derived(
-		turns.find((turn) => turn.value === choice.every)?.label ?? turns[0].label
-	);
 
 	function forget(): void {
 		era += 1;
@@ -141,11 +136,36 @@
 		};
 	}
 
-	function toggle(upload: string): void {
-		const uploads = choice.uploads.includes(upload)
-			? choice.uploads.filter((one) => one !== upload)
-			: [...choice.uploads, upload];
-		onchange({ ...choice, uploads });
+	function toggle(picture: string): void {
+		const pictures = choice.pictures.includes(picture)
+			? choice.pictures.filter((one) => one !== picture)
+			: [...choice.pictures, picture];
+		onchange({ ...choice, pictures });
+	}
+
+	/** Straight into the turn it was added for: somebody who went looking for a
+	 *  picture came here to put it behind their graph. */
+	async function take(picked: { file: File } | { held: HeldPicture }): Promise<void> {
+		if (sending) return;
+		trouble = null;
+		sending = true;
+		try {
+			if ('held' in picked) {
+				if (!choice.pictures.includes(picked.held.upload_id)) toggle(picked.held.upload_id);
+				return;
+			}
+			const asset = await media.send(await fitted(picked.file, NOTE_PX), () => {}).asset;
+			toggle(asset.upload_id);
+			// The picture is already behind the graph; a grid that would not read
+			// again is no reason to say it failed.
+			held = await media.library().catch(() => held);
+		} catch (error) {
+			trouble =
+				(error instanceof Error && error.message) ||
+				'That picture could not be added. Try again in a moment.';
+		} finally {
+			sending = false;
+		}
 	}
 </script>
 
@@ -162,7 +182,7 @@
 				</p>
 			{:else if held.length === 0}
 				<p class="py-6 text-center text-sm text-muted-foreground">
-					Pictures you add to a note can be used here.
+					Choose a picture, or use one you have already put in a note.
 				</p>
 			{:else}
 				<div
@@ -171,7 +191,7 @@
 					{@attach scroller}
 				>
 					{#each held as picture (picture.upload_id)}
-						{@const turn = choice.uploads.indexOf(picture.upload_id)}
+						{@const turn = choice.pictures.indexOf(picture.upload_id)}
 						<button
 							type="button"
 							aria-label={picture.filename}
@@ -194,7 +214,7 @@
 								<span
 									class="absolute end-1 bottom-1 flex size-5 items-center justify-center rounded-full bg-primary text-[0.625rem] font-medium text-primary-foreground"
 								>
-									{#if choice.uploads.length > 1}
+									{#if choice.pictures.length > 1}
 										{turn + 1}
 									{:else}
 										<Check class="size-3" />
@@ -205,11 +225,25 @@
 					{/each}
 				</div>
 			{/if}
+
+			<Button
+				variant="outline"
+				class="h-11 w-full"
+				disabled={sending}
+				onclick={() => (choosing = true)}
+			>
+				<ImagePlus class="size-4" />
+				{sending ? 'Adding…' : 'Choose a picture'}
+			</Button>
+
+			{#if trouble}
+				<p class="text-sm text-destructive" role="alert">{trouble}</p>
+			{/if}
 		</div>
 
-		{#if choice.uploads.length > 0}
+		{#if choice.pictures.length > 0}
 			<div class="space-y-2">
-				<label class="text-sm" for="wallpaper-strength">How much shows</label>
+				<label class="text-sm font-medium" for="wallpaper-strength">How much shows</label>
 				<input
 					id="wallpaper-strength"
 					type="range"
@@ -223,36 +257,23 @@
 				/>
 			</div>
 
-			{#if choice.uploads.length > 1}
-				<div class="space-y-2">
-					<span class="text-sm">Takes turns</span>
-					<Select.Root
-						type="single"
-						value={String(choice.every)}
-						onValueChange={(next: string) => onchange({ ...choice, every: Number(next) })}
-					>
-						<Select.Trigger class="h-11 w-full">{turnLabel}</Select.Trigger>
-						<Select.Content>
-							{#each turns as turn (turn.value)}
-								<Select.Item value={String(turn.value)} class="min-h-11">
-									{turn.label}
-								</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
-					<p class="text-xs text-muted-foreground">
-						The next one is up when you come back, never while you are reading.
-					</p>
-				</div>
-			{/if}
+			<SeriesControls
+				count={choice.pictures.length}
+				every={choice.every}
+				transition={choice.transition}
+				onevery={(minutes: number) => onchange({ ...choice, every: minutes })}
+				ontransition={(next: PictureTransition) => onchange({ ...choice, transition: next })}
+			/>
 
 			<Button
 				variant="outline"
 				class="h-11 w-full"
-				onclick={() => onchange({ ...choice, uploads: [] })}
+				onclick={() => onchange({ ...choice, pictures: [] })}
 			>
 				No picture
 			</Button>
 		{/if}
 	</div>
 </ResponsiveModal>
+
+<MediaPicker bind:open={choosing} {media} onpick={(picked) => void take(picked)} />

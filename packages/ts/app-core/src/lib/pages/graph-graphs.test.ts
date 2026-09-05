@@ -245,8 +245,13 @@ describe('which graph you are in', () => {
 	// canvas is drawn over — DESIGN.md § "The wallpaper".
 	it('draws each graph over its own picture', async () => {
 		await open();
-		prefs.setWallpaper(HOME, { uploads: ['dawn'], strength: 0.4, every: 60 });
-		prefs.setWallpaper(GARDEN, { uploads: ['moss'], strength: 0.4, every: 60 });
+		prefs.setWallpaper(HOME, { pictures: ['dawn'], strength: 0.4, every: 60, transition: 'fade' });
+		prefs.setWallpaper(GARDEN, {
+			pictures: ['moss'],
+			strength: 0.4,
+			every: 60,
+			transition: 'fade'
+		});
 		await settle();
 		expect(field().dataset.wallpaper).toBe('dawn');
 

@@ -35,6 +35,7 @@
 	import type { GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
 	import {
 		NodeBulkRequestSchema,
+		pictureTurn,
 		RootAddressSchema,
 		graphOf,
 		peerOrigin,
@@ -99,7 +100,7 @@
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
-	import { OPENING_STRENGTH, OPENING_TURN, WALLPAPER_TURNS, wallpaperTurn } from '../wallpaper.js';
+	import { openingWallpaper } from '../wallpaper.js';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
 
@@ -189,7 +190,7 @@
 	let choosingWallpaper = $state(false);
 	/** The picture up now. Written over when the app comes back from the
 	 *  background, so the ground takes its turn while nobody is looking at it. */
-	let showing = $derived(wallpaper ? wallpaperTurn(wallpaper, Date.now()) : null);
+	let showing = $derived(wallpaper ? (pictureTurn(wallpaper, Date.now()) ?? null) : null);
 
 	/** A picture inside a held note. Publishing the branch is what made it
 	 *  readable, and the fetch is the API's, so the author's instance never
@@ -481,7 +482,7 @@
 		void peers.load();
 		const back = (): void => {
 			if (document.visibilityState === 'visible' && wallpaper) {
-				showing = wallpaperTurn(wallpaper, Date.now());
+				showing = pictureTurn(wallpaper, Date.now()) ?? null;
 			}
 		};
 		document.addEventListener('visibilitychange', back);
@@ -1490,9 +1491,8 @@
 <WallpaperSheet
 	bind:open={choosingWallpaper}
 	media={noteMedia}
-	turns={WALLPAPER_TURNS}
-	choice={wallpaper ?? { uploads: [], strength: OPENING_STRENGTH, every: OPENING_TURN }}
-	onchange={(next) => prefs.setWallpaper(graph, next.uploads.length === 0 ? null : next)}
+	choice={wallpaper ?? openingWallpaper()}
+	onchange={(next) => prefs.setWallpaper(graph, next.pictures.length === 0 ? null : next)}
 />
 
 <PeersSheet

@@ -1209,10 +1209,62 @@ describe('how a note looks', () => {
 		await loadGraph();
 	});
 
+	/** What one of the note's two sides is showing. Both stay on the page, so
+	 *  which one a reader is on is read off the side itself. */
+	function side(named: string): HTMLElement {
+		const shows = exactly(named).getAttribute('aria-controls');
+		const found = shows ? document.getElementById(shows) : null;
+		if (!found) throw new Error(`the ${named} tab shows nothing`);
+		return found;
+	}
+
+	/** How a note is drawn is a side of it, so this is the whole way in. */
 	async function openLook(at: OwnedRef): Promise<void> {
 		await openNote(at);
-		await act('Give it a look');
+		exactly('Look').click();
+		await settle();
 	}
+
+	it('is reached from the note itself, without opening what to do with it', async () => {
+		await openNote(SECOND);
+		expect(side('Look').hidden).toBe(true);
+
+		exactly('Look').click();
+		await settle();
+
+		expect(side('Look').hidden).toBe(false);
+		expect(side('Look').textContent).toContain('Ring');
+	});
+
+	// Two places that set the same thing is one of them being wrong.
+	it('is not also an act on the note menu', async () => {
+		await openNote(SECOND);
+		labelled('What to do with this note').click();
+		await settle();
+
+		expect(screen()).not.toContain('Give it a look');
+	});
+
+	it('opens on what the note says, and comes back to it', async () => {
+		await openNote(SECOND);
+		expect(side('Note').hidden).toBe(false);
+
+		exactly('Look').click();
+		await settle();
+		expect(side('Note').hidden).toBe(true);
+
+		exactly('Note').click();
+		await settle();
+		expect(side('Note').hidden).toBe(false);
+	});
+
+	it('opens the next note on what it says, whichever side the last was left on', async () => {
+		await openLook(SECOND);
+		labelled('The first note under this, 1a1').click();
+		await settle();
+
+		expect(side('Note').hidden).toBe(false);
+	});
 
 	it('writes the whole look on the note it was chosen on', async () => {
 		await openLook(SECOND);
@@ -1242,6 +1294,16 @@ describe('how a note looks', () => {
 		expect(screen()).toContain('That look is more than a note can carry.');
 		expect(screen()).not.toContain('Sloppy API');
 		expect(exactly('Heavy').getAttribute('aria-pressed')).toBe('false');
+	});
+
+	// "give me some control to increase the size of the whole node currently i
+	// cant, its just auto determined from the amount of collapsed notes in it".
+	it('stores a size past the one a fold alone reaches', async () => {
+		await openLook(SECOND);
+		exactly('Giant').click();
+		await settle();
+
+		expect(graph.get(SECOND)?.appearance).toEqual({ mark_radius: 'giant' });
 	});
 });
 

@@ -31,10 +31,10 @@
 	const clip = $props.id();
 	const look = $derived(resolveAppearance(appearance));
 
-	// Pinned rather than the ladder's top, so a rung added above it leaves every
-	// swatch below drawing the size it drew before. A step past it fills the box.
-	const grown = LOOK_SCALE.large;
-	const radius = $derived(Math.min((size / 2 / grown) * LOOK_SCALE[look.markRadius], size / 2));
+	/** The box holds the ladder's whole span, so the top step fills it and every
+	 *  step below reads as the share of it the canvas will draw. */
+	const TOP = Math.max(...Object.values(LOOK_SCALE));
+	const radius = $derived(((size / 2) * LOOK_SCALE[look.markRadius]) / TOP);
 	const ringAt = $derived(radius * LOOK_RING_AT);
 	const ringWidth = $derived(
 		look.ringWeight === 'none' ? 0 : radius * LOOK_RING_WIDTH[look.ringWeight]

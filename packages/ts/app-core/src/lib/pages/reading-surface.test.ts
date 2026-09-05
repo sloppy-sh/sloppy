@@ -423,9 +423,19 @@ describe.each([
 
 		const menu = screen();
 		expect(menu).toContain('Tags');
-		expect(menu).toContain('Give it a look');
 		expect(menu).toContain('Link to another note');
 		expect(menu).toContain('Delete this note');
+	});
+
+	// How a note is drawn is a side of the note rather than an occasional act,
+	// so it is on the surface at every width and never behind that control.
+	it('carries how the note is drawn as a side of it', async () => {
+		await readCells(width);
+
+		const look = [...surface().querySelectorAll('[role="tab"]')].find(
+			(tab) => tab.textContent?.trim() === 'Look'
+		);
+		expect(look).toBeTruthy();
 	});
 
 	it('reaches the tags on this note from there', async () => {
