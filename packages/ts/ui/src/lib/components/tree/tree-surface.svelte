@@ -67,7 +67,12 @@
 	const drawn = $derived(
 		groups.map((group) => ({
 			group,
-			rows: walkTree({ notes: group.notes, opened, shown: paged.get(group.key) ?? EMPTY })
+			rows: walkTree({
+				notes: group.notes,
+				opened,
+				shown: paged.get(group.key) ?? EMPTY,
+				reading
+			})
 		}))
 	);
 

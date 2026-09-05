@@ -166,13 +166,23 @@ afterEach(() => {
 });
 
 describe('walking the notes instead of looking at them', () => {
-	it('is offered on the graph page, and takes the canvas away', async () => {
+	// The canvas is put away, not torn down: coming back to a pan and a zoom the
+	// reader had already set is the difference between a view and a reload.
+	it('is offered on the graph page, and puts the canvas away without losing it', async () => {
 		await open();
-		expect(canvas()).not.toBeNull();
+		const field = canvas();
+		expect(field).not.toBeNull();
+
 		labelled('Walk the notes one at a time').click();
 		await settle();
-		expect(canvas()).toBeNull();
 		expect(addresses()).toEqual(['1', '2']);
+		expect(canvas()).toBe(field);
+		expect(field?.closest('.invisible')).not.toBeNull();
+
+		labelled('Back to the graph').click();
+		await settle();
+		expect(canvas()).toBe(field);
+		expect(field?.closest('.invisible')).toBeNull();
 	});
 
 	it('gives the canvas back', async () => {

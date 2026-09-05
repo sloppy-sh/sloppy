@@ -1198,18 +1198,10 @@
 		     page's — the field is inset off the chrome rather than stopping the
 		     picture at it. -->
 		<div class="absolute inset-0">
-			{#if walkingNow}
-				<GraphTree
-					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
-					notes={visible}
-					fields={foreign ? undefined : graphs.fields}
-					{selection}
-					reading={foreign ? reached : open}
-					opened={unfolded}
-					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
-					onOpen={foreign ? (ref) => void readHeld(ref) : show}
-				/>
-			{:else}
+			<!-- The canvas stays mounted while the tree is up: tearing it down would take
+			     the reader's pan, their zoom and a settled layout with it, and it is the
+			     same graph they come back to. -->
+			<div class="absolute inset-0" class:invisible={walkingNow} inert={walkingNow}>
 				<GraphSurface
 					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
 					nodes={visible}
@@ -1229,7 +1221,11 @@
 					pictures={ownPictures}
 					reading={foreign ? undefined : reading}
 					ground={prefs.current.ground}
-					wallpaper={{ picture: showing, strength: wallpaper?.strength ?? 0 }}
+					wallpaper={{
+						picture: showing,
+						strength: wallpaper?.strength ?? 0,
+						transition: wallpaper?.transition
+					}}
 					onHover={(at) => (hoverAt = overGraph ? null : at)}
 					chosen={foreign ? undefined : chosen}
 					onChoose={pointing || foreign ? undefined : chooseAlso}
@@ -1241,6 +1237,19 @@
 						if (pointing) looking = ref;
 					}}
 					onCollapse={(ref) => folded.add(ref)}
+				/>
+			</div>
+
+			{#if walkingNow}
+				<GraphTree
+					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
+					notes={visible}
+					fields={foreign ? undefined : graphs.fields}
+					{selection}
+					reading={foreign ? reached : open}
+					opened={unfolded}
+					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
+					onOpen={foreign ? (ref) => void readHeld(ref) : show}
 				/>
 			{/if}
 		</div>

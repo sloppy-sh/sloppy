@@ -880,11 +880,14 @@ export class GraphScene {
       mark.drawing = texture === null ? undefined : wanted;
       this.endTurn(mark);
       // A picture arriving where none was drawn is the graph opening rather than
-      // a turn, so only a mark that had one already draws the change.
+      // a turn, so only a mark that had one already draws the change. Nor is a
+      // bigger cut of the SAME picture, which is what folding a mark asks for:
+      // the texture is a new one, the picture is not, and nobody turned.
       view ??= visibleBounds(this.viewport, this.width, this.height);
       if (
         before !== null &&
         leaving !== undefined &&
+        leaving !== wanted &&
         texture !== null &&
         this.turnDrawn(mark, view)
       ) {
@@ -1106,8 +1109,10 @@ export class GraphScene {
       });
     }
 
-    // One stroke for both: a reference and a hand link separate on the break
-    // alone — DESIGN.md § Edges.
+    // Two strokes, because the two do not recede together. A reference is
+    // solid, so while a tag question is being asked it steps back with the
+    // lines the addresses draw; a hand link is the one somebody made and stays
+    // where it was — DESIGN.md § Edges.
     this.connections.clear();
     for (let at = 0; at < this.referencePairs.length; at += 2) {
       const a = this.referencePairs[at] * 2;
@@ -1115,6 +1120,16 @@ export class GraphScene {
       this.connections.moveTo(this.positions[a], this.positions[a + 1]);
       this.connections.lineTo(this.positions[b], this.positions[b + 1]);
     }
+    if (this.referencePairs.length > 0) {
+      this.connections.stroke({
+        color: palette.connection,
+        alpha: this.selecting
+          ? palette.connectionAlphaWhileSelecting
+          : palette.connectionAlpha,
+        width: width * CONNECTION_WEIGHT,
+      });
+    }
+
     const dash = CONNECTION_DASH / this.viewport.scale;
     for (let at = 0; at < this.linkPairs.length; at += 2) {
       const a = this.linkPairs[at] * 2;
@@ -1128,12 +1143,10 @@ export class GraphScene {
         dash,
       );
     }
-    if (this.referencePairs.length + this.linkPairs.length > 0) {
+    if (this.linkPairs.length > 0) {
       this.connections.stroke({
         color: palette.connection,
-        alpha: this.selecting
-          ? palette.connectionAlphaWhileSelecting
-          : palette.connectionAlpha,
+        alpha: palette.connectionAlpha,
         width: width * CONNECTION_WEIGHT,
       });
     }

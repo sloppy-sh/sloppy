@@ -571,7 +571,12 @@ the same one that keeps a look off a published node: what a peer may be shown is
 what they may follow, and docs/ARCHITECTURE.md § "Federating the graph" owns that bound.
 
 **With tags selected, genealogy and the run both dim**: the reader has asked to see sets,
-and the tree is momentarily the background.
+and the tree is momentarily the background. **A reference dims with them, and a hand link
+does not.** A reference is solid, so it sits on the same ladder of weight the addresses'
+lines do and would read as the darkest thing on the canvas if it stayed while they stepped
+back. A hand link is broken, is on no ladder, and is the one line somebody made on purpose —
+the canvas swallowing it the moment a tag is ticked would take back the whole reason it
+leads the order above.
 
 ### Contrast is measured, not assumed
 
@@ -886,8 +891,14 @@ over whatever is behind it.
   floating over it: a ground that stopped where the chrome starts is a picture let into the
   page rather than the page's own. Standing still is also what makes it free: it is one
   composited layer behind a canvas that already clears transparent, so no frame writes
-  anything for it. On the 2,400-note corpus `bench/` reports idle and pan at **8.3/9.3 ms
-  with a picture and 8.3/9.3 without** — the same numbers the ground is measured at, and the same with both on. Those
+  anything for it. On the 2,400-note corpus `bench/` reported idle and pan at **8.3/9.3 ms
+  with a picture and 8.3/9.3 without** — the same numbers the ground is measured at, and the
+  same with both on. **Those were taken before a mark could wear a series or a ladder step,
+  and the corpus they were taken on has since gained both; they are the ground's number and
+  not the ladder's until `bench/` is run again.** What the ladder costs is known without
+  running it: the mark atlas goes from 0.92 MB to 5.31 MB of RGBA, paid once by every graph,
+  and a picture is cut for the mark that wears it, so a leaf takes 64 px where one global cut
+  made it 332 px. Those
   numbers are a still picture's. **A picture may move if that is what somebody wants behind
   their graph** — a background that lives is a thing people put behind their work, and the
   ground is theirs. It costs what it looks like it costs: an animated picture repaints that

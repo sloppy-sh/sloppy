@@ -140,6 +140,19 @@ describe('a run longer than a page', () => {
 		});
 	});
 
+	// A reader on note 200 of a run must not have to press "show more" to find
+	// the row they are standing on.
+	it('reaches the note being read, however far along the run it sits', () => {
+		const far = notes.find((one) => one.address === `1${letters(200)}`);
+		if (!far) throw new Error('the corpus has no 200th note');
+		const rows = walkTree({ notes, opened: opened('1'), reading: far.ref });
+
+		const drawn = rows.filter((row) => row.kind === 'note');
+		expect(drawn.some((row) => row.kind === 'note' && row.note.ref === far.ref)).toBe(true);
+		expect(drawn).toHaveLength(1 + 200);
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, drawn: 200 });
+	});
+
 	it('draws the next page once it has been asked for, and no more', () => {
 		const shown = new Map([[held('1'), RUN_PAGE * 2]]);
 		const rows = walkTree({ notes, opened: opened('1'), shown });

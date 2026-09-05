@@ -62,6 +62,9 @@ export interface TreeWalk {
 	/** How much of a run has been asked for, keyed the way {@link TreeRest} is. */
 	shown?: ReadonlyMap<string, number>;
 	page?: number;
+	/** The note the reader is on. A run is drawn at least as far as this one, so
+	 *  the row they are reading is never the one behind "show more". */
+	reading?: OwnedRef | null;
 }
 
 const NONE: ReadonlyMap<string, number> = new Map();
@@ -72,7 +75,13 @@ const NONE: ReadonlyMap<string, number> = new Map();
  * among `notes` starts a run of its own, so a tree given a branch draws that
  * branch rather than nothing.
  */
-export function walkTree({ notes, opened, shown = NONE, page = RUN_PAGE }: TreeWalk): TreeRow[] {
+export function walkTree({
+	notes,
+	opened,
+	shown = NONE,
+	page = RUN_PAGE,
+	reading = null
+}: TreeWalk): TreeRow[] {
 	const runs = runsOf(notes);
 	const roots = runs.get(TOP) ?? [];
 	const under = countUnder(runs, roots);
@@ -87,7 +96,11 @@ export function walkTree({ notes, opened, shown = NONE, page = RUN_PAGE }: TreeW
 
 	while (stack.length > 0) {
 		const frame = stack[stack.length - 1];
-		const drawn = Math.min(frame.run.length, shown.get(frame.key) ?? page);
+		const asked = shown.get(frame.key) ?? page;
+		// A page that stops short of the note being read would leave the reader
+		// looking for themselves behind "show more".
+		const held = reading === null ? -1 : frame.run.findIndex((one) => one.ref === reading);
+		const drawn = Math.min(frame.run.length, Math.max(asked, held + 1));
 		const at = frame.at;
 		if (at >= drawn) {
 			stack.pop();
