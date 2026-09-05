@@ -331,11 +331,17 @@ async function run(): Promise<void> {
     await frames(120);
   });
   await measure("pan, pictures", () => panRun(120));
-  await measure("a field turning at once", async () => {
+  const turn = async (): Promise<void> => {
     clockOffset += PICTURE_TURN_MIN * 60_000;
     document.dispatchEvent(new Event("visibilitychange"));
     await frames(60);
-  });
+  };
+  await measure("a field turning at once", turn);
+  // The change is drawn only where somebody could see it, so the framed view
+  // above is almost all exchange. Pinched all the way in, the marks on screen
+  // are carrying their looks, and this is what paying for the motion costs.
+  for (let at = 0; at < 4; at++) await pinchRun(90);
+  await measure("a turn drawn, pinched in", turn);
   pictured = false;
   handle.update(props());
   await settle();
