@@ -59,9 +59,6 @@ const TEXTURE_RESOLUTION = 4 * LADDER_TOP;
  *  the shape beside it. */
 const SHEET_PAD = 4;
 const SHEET_CELL = TEXTURE_RADIUS * 2 + SHEET_PAD * 2;
-/** Wrapped rather than laid in one row, so the sheet's width stays well inside
- *  the smallest texture a GPU Sloppy runs on will hold. */
-const SHEET_COLUMNS = 4;
 
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
@@ -1460,16 +1457,9 @@ async function markPicture(
  */
 function markTextures(pixi: Pixi, app: Application): MarkTextures {
   const cells: Graphics[] = [];
-  const corner = (at: number): { x: number; y: number } => ({
-    x: (at % SHEET_COLUMNS) * SHEET_CELL + SHEET_PAD,
-    y: Math.floor(at / SHEET_COLUMNS) * SHEET_CELL + SHEET_PAD,
-  });
   const cell = (draw: (into: Graphics) => void): number => {
     const graphics = new pixi.Graphics();
     draw(graphics);
-    const at = corner(cells.length);
-    graphics.x = at.x;
-    graphics.y = at.y;
     cells.push(graphics);
     return cells.length - 1;
   };
@@ -1503,6 +1493,20 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
     }
   }
 
+  // Squared off rather than laid in one row: the sheet's density follows the
+  // ladder, so a row of it would run past the smallest texture a GPU Sloppy
+  // runs on will hold, and a square wastes the least of what it does hold.
+  const columns = Math.ceil(Math.sqrt(cells.length));
+  const corner = (at: number): { x: number; y: number } => ({
+    x: (at % columns) * SHEET_CELL + SHEET_PAD,
+    y: Math.floor(at / columns) * SHEET_CELL + SHEET_PAD,
+  });
+  for (const [at, graphics] of cells.entries()) {
+    const { x, y } = corner(at);
+    graphics.x = x;
+    graphics.y = y;
+  }
+
   const sheet = new pixi.Container();
   sheet.addChild(...cells);
   const { source } = app.renderer.generateTexture({
@@ -1510,22 +1514,19 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
     frame: new pixi.Rectangle(
       0,
       0,
-      Math.min(cells.length, SHEET_COLUMNS) * SHEET_CELL,
-      Math.ceil(cells.length / SHEET_COLUMNS) * SHEET_CELL,
+      columns * SHEET_CELL,
+      Math.ceil(cells.length / columns) * SHEET_CELL,
     ),
     resolution: TEXTURE_RESOLUTION,
     antialias: true,
   });
-  const cut = (at: number): Texture =>
-    new pixi.Texture({
+  const cut = (at: number): Texture => {
+    const { x, y } = corner(at);
+    return new pixi.Texture({
       source,
-      frame: new pixi.Rectangle(
-        corner(at).x,
-        corner(at).y,
-        TEXTURE_RADIUS * 2,
-        TEXTURE_RADIUS * 2,
-      ),
+      frame: new pixi.Rectangle(x, y, TEXTURE_RADIUS * 2, TEXTURE_RADIUS * 2),
     });
+  };
 
   return {
     disc: cut(disc),
