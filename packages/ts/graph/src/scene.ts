@@ -33,8 +33,7 @@ import {
   LOOK_RING_DASHES,
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
-  markPicturePx,
-  MAX_MARK_RADIUS,
+  MARK_PICTURE_PX,
   type NamedField,
   PREVIEW_SPAN,
 } from "./model.js";
@@ -50,31 +49,11 @@ type Pixi = typeof import("pixi.js");
 
 /** Radius the mark textures are drawn at; every mark is a scale of this. */
 const TEXTURE_RADIUS = 16;
-/** Texture pixels the sheet holds per world unit at the largest mark the ladder
- *  reaches. Below it the rim, the provenance stroke and the look ring's dashes
- *  soften on exactly the marks an author enlarged in order to look at them. */
-const SHEET_DENSITY = 1.4;
-const TEXTURE_RESOLUTION = Math.ceil(
-  (MAX_MARK_RADIUS * SHEET_DENSITY) / TEXTURE_RADIUS,
-);
+const TEXTURE_RESOLUTION = 4;
 /** Empty margin around each shape on the sheet, so sampling one never catches
  *  the shape beside it. */
 const SHEET_PAD = 4;
 const SHEET_CELL = TEXTURE_RADIUS * 2 + SHEET_PAD * 2;
-/** The shapes cut from it: the disc, provenance's two edges, and a look ring per
- *  weight in both styles. Laid out square rather than in a row, so the sheet
- *  stays well inside one texture as the density and the vocabulary grow. */
-const SHEET_CELLS = 3 + Object.keys(LOOK_RING_WIDTH).length * 2;
-const SHEET_COLUMNS = Math.ceil(Math.sqrt(SHEET_CELLS));
-
-/** The sheet in texture pixels, and the density that buys at the largest mark
- *  the ladder reaches. `scene.test.ts` holds both. */
-export const MARK_SHEET = {
-  width: SHEET_COLUMNS * SHEET_CELL * TEXTURE_RESOLUTION,
-  height:
-    Math.ceil(SHEET_CELLS / SHEET_COLUMNS) * SHEET_CELL * TEXTURE_RESOLUTION,
-  density: (TEXTURE_RADIUS * TEXTURE_RESOLUTION) / MAX_MARK_RADIUS,
-};
 
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
@@ -234,9 +213,8 @@ export class GraphScene {
   private previewsDirty = false;
   private lastEdgeScale = 0;
 
-  /** Keyed by {@link pictureKey}: one texture per picture per cut, however many
-   *  marks wear it; `null` is one that will not draw, cached so it is asked for
-   *  once. */
+  /** One texture per picture, however many marks wear it; `null` is one that
+   *  will not draw, cached so it is asked for once. */
   private readonly previewTextures = new Map<string, Texture | null>();
   private readonly previewsAsked = new Set<string>();
   private destroyed = false;
@@ -769,15 +747,14 @@ export class GraphScene {
     this.previewsDirty = false;
     let moved = false;
     for (const mark of this.marks) {
-      const { preview, previewSize, alpha } = mark.attributes;
-      let key: string | null = null;
-      if (preview !== undefined) {
-        const side = markPicturePx(mark.radius, previewSize);
-        key = pictureKey(preview, side);
-        if (!this.previewTextures.has(key)) this.wantPicture(preview, side);
+      const { preview, alpha } = mark.attributes;
+      if (preview !== undefined && !this.previewTextures.has(preview)) {
+        this.wantPicture(preview);
       }
       const texture =
-        key === null ? null : (this.previewTextures.get(key) ?? null);
+        preview === undefined
+          ? null
+          : (this.previewTextures.get(preview) ?? null);
       if ((mark.preview?.texture ?? null) === texture) continue;
 
       moved = true;
@@ -806,17 +783,16 @@ export class GraphScene {
     for (const mark of this.marks) mark.preview = null;
   }
 
-  private wantPicture(preview: string, side: number): void {
+  private wantPicture(preview: string): void {
     const pictures = this.options.pictures;
-    const key = pictureKey(preview, side);
-    if (pictures === undefined || this.previewsAsked.has(key)) return;
-    this.previewsAsked.add(key);
+    if (pictures === undefined || this.previewsAsked.has(preview)) return;
+    this.previewsAsked.add(preview);
     void pictures
       .read(preview)
       .then(async (held) => {
         if (held === null) return null;
         try {
-          return await markPicture(this.pixi, held.src, side);
+          return await markPicture(this.pixi, held.src);
         } finally {
           held.release();
         }
@@ -829,7 +805,7 @@ export class GraphScene {
           texture?.destroy(true);
           return;
         }
-        this.previewTextures.set(key, texture);
+        this.previewTextures.set(preview, texture);
         this.previewsDirty = true;
       });
   }
@@ -840,18 +816,15 @@ export class GraphScene {
     this.dropPreviewSprites();
     if (this.previewTextures.size === 0) return;
     const wanted = new Set(
-      this.marks.flatMap((mark) => {
-        const { preview, previewSize } = mark.attributes;
-        return preview === undefined
-          ? []
-          : [pictureKey(preview, markPicturePx(mark.radius, previewSize))];
-      }),
+      this.marks
+        .map((mark) => mark.attributes.preview)
+        .filter((preview) => preview !== undefined),
     );
-    for (const [key, texture] of this.previewTextures) {
-      if (wanted.has(key)) continue;
+    for (const [preview, texture] of this.previewTextures) {
+      if (wanted.has(preview)) continue;
       texture?.destroy(true);
-      this.previewTextures.delete(key);
-      this.previewsAsked.delete(key);
+      this.previewTextures.delete(preview);
+      this.previewsAsked.delete(preview);
     }
   }
 
@@ -1215,26 +1188,19 @@ function lookKey(weight: RingWeight, style: RingStyle): string {
   return `${weight}:${style}`;
 }
 
-/** Two marks wearing one picture share a texture only where they show it at the
- *  same size — `markPicturePx` in `model.ts` is what says that size. */
-function pictureKey(preview: string, side: number): string {
-  return `${preview}@${side}`;
-}
-
-/** A picture cut to the disc it is drawn on and decoded at `cut`, the square the
- *  mark wearing it shows. */
-async function markPicture(
-  pixi: Pixi,
-  src: string,
-  cut: number,
-): Promise<Texture | null> {
+/** A picture cut to the disc it is drawn on and decoded at the size a mark shows
+ *  it, which `MARK_PICTURE_PX` in `model.ts` bounds. */
+async function markPicture(pixi: Pixi, src: string): Promise<Texture | null> {
   const picture = new Image();
   picture.src = src;
   await picture.decode();
 
-  // Never larger than the picture can fill: one stored below the cut draws at
+  // Never larger than the picture can fill: one stored below the bound draws at
   // what it has rather than being enlarged into a disc it cannot cover.
-  const side = Math.max(1, Math.min(cut, picture.width, picture.height));
+  const side = Math.max(
+    1,
+    Math.min(MARK_PICTURE_PX, picture.width, picture.height),
+  );
   const canvas = document.createElement("canvas");
   canvas.width = side;
   canvas.height = side;
@@ -1263,11 +1229,10 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
   const cell = (draw: (into: Graphics) => void): number => {
     const graphics = new pixi.Graphics();
     draw(graphics);
-    const at = cells.length;
-    graphics.x = column(at) * SHEET_CELL + SHEET_PAD;
-    graphics.y = row(at) * SHEET_CELL + SHEET_PAD;
+    graphics.x = cells.length * SHEET_CELL + SHEET_PAD;
+    graphics.y = SHEET_PAD;
     cells.push(graphics);
-    return at;
+    return cells.length - 1;
   };
 
   const disc = cell((into) => {
@@ -1303,12 +1268,7 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
   sheet.addChild(...cells);
   const { source } = app.renderer.generateTexture({
     target: sheet,
-    frame: new pixi.Rectangle(
-      0,
-      0,
-      Math.min(cells.length, SHEET_COLUMNS) * SHEET_CELL,
-      Math.ceil(cells.length / SHEET_COLUMNS) * SHEET_CELL,
-    ),
+    frame: new pixi.Rectangle(0, 0, cells.length * SHEET_CELL, SHEET_CELL),
     resolution: TEXTURE_RESOLUTION,
     antialias: true,
   });
@@ -1316,8 +1276,8 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
     new pixi.Texture({
       source,
       frame: new pixi.Rectangle(
-        column(at) * SHEET_CELL + SHEET_PAD,
-        row(at) * SHEET_CELL + SHEET_PAD,
+        at * SHEET_CELL + SHEET_PAD,
+        SHEET_PAD,
         TEXTURE_RADIUS * 2,
         TEXTURE_RADIUS * 2,
       ),
@@ -1329,15 +1289,6 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
     dashed: cut(dashed),
     looks: new Map([...looks].map(([key, at]) => [key, cut(at)])),
   };
-}
-
-/** Where the shape at `at` sits on the sheet, in cells. */
-function column(at: number): number {
-  return at % SHEET_COLUMNS;
-}
-
-function row(at: number): number {
-  return Math.floor(at / SHEET_COLUMNS);
 }
 
 /** `dashes` of 0 strokes the ring whole; `duty` is the share of each dash's

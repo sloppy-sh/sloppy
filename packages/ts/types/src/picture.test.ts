@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   boundedTurn,
   knownTransition,
+  PICTURE_TRANSITION_LABELS,
   PICTURE_TRANSITIONS,
   PICTURE_TURN_DEFAULT,
   PICTURE_TURN_MAX,
@@ -103,5 +104,13 @@ describe("a transition this build cannot draw", () => {
     for (const transition of PICTURE_TRANSITIONS) {
       expect(knownTransition(transition)).toBe(transition);
     }
+  });
+
+  it("is offered in one set of words, so the ground and a mark agree", () => {
+    const words = PICTURE_TRANSITIONS.map(
+      (one) => PICTURE_TRANSITION_LABELS[one],
+    );
+    expect(words.filter(Boolean)).toHaveLength(PICTURE_TRANSITIONS.length);
+    expect(new Set(words).size).toBe(PICTURE_TRANSITIONS.length);
   });
 });

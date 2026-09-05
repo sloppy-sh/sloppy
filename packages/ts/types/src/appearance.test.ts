@@ -8,6 +8,7 @@ import {
   RING_WEIGHTS,
   resolveAppearance,
   seriesChannels,
+  seriesIsWhole,
   WrittenAppearanceSchema,
 } from "./appearance.js";
 import { NodeSchema } from "./node.js";
@@ -209,6 +210,30 @@ describe("the pictures a mark wears", () => {
       preview: "a",
       preview_more: ["b", "c"],
     });
+  });
+
+  // The two channels can be written apart, and a surface that writes only the
+  // second one loses every picture behind the first without failing anything.
+  it("are recognised as lost where nothing starts the series", () => {
+    expect(seriesIsWhole({ preview_more: ["b", "c"] })).toBe(false);
+    expect(seriesIsWhole({ preview: "a", preview_more: ["b"] })).toBe(true);
+    expect(seriesIsWhole({ preview_more: [] })).toBe(true);
+    expect(seriesIsWhole({ mark_radius: "giant" })).toBe(true);
+    expect(seriesIsWhole(null)).toBe(true);
+    for (let count = 0; count <= PICTURES_PER_SERIES; count += 1) {
+      const pictures = Array.from({ length: count }, (_, at) => `p${at}`);
+      expect(seriesIsWhole(seriesChannels(pictures)), `${count}`).toBe(true);
+    }
+  });
+
+  // AI.md: a refinement makes `.omit()` and `.partial()` throw at module
+  // evaluation, which no build catches — and the surfaces that build a look
+  // reshape this schema.
+  it("leave the write contract a schema a form can still reshape", () => {
+    expect(() => WrittenAppearanceSchema.partial()).not.toThrow();
+    expect(() =>
+      WrittenAppearanceSchema.omit({ preview_more: true }),
+    ).not.toThrow();
   });
 
   it("take their turns off the same clock the ground under them does", () => {

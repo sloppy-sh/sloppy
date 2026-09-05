@@ -40,7 +40,7 @@ const MEGA_GROWTH = 0.42;
 export const MAX_RADIUS = 46;
 
 /** What a look multiplies a mark's radius by. DESIGN.md § "The mark" carries the
- *  ladder and what a step of it may reach. */
+ *  ladder, and the cap it is still held under here. */
 export const LOOK_SCALE: Record<MarkRadius, number> = {
   small: 0.78,
   regular: 1,
@@ -48,11 +48,6 @@ export const LOOK_SCALE: Record<MarkRadius, number> = {
   huge: 1.8,
   giant: 2.4,
 };
-
-/** The largest mark any canvas draws: the fold's cap at the top of the ladder,
- *  since {@link MAX_RADIUS} caps the fold and a look scales what it reached. */
-export const MAX_MARK_RADIUS =
-  MAX_RADIUS * Math.max(...Object.values(LOOK_SCALE));
 
 /** A look's ring, as fractions of the mark's radius — its centre line, and what
  *  each weight strokes. Inside the mark, since the edge is provenance's. */
@@ -82,41 +77,16 @@ export const PREVIEW_SPAN: Record<PreviewSize, number> = {
   large: LOOK_RING_AT,
 };
 
-/** Assumed of the densest screen Sloppy runs on. */
+/** Assumed of the densest screen Sloppy runs on, for {@link MARK_PICTURE_PX}. */
 const DENSE_SCREEN = 2;
 
-/** The most of a picture any mark shows: the largest mark drawn, wearing the
- *  largest picture, at full zoom, on a dense display. */
-export const MAX_MARK_PICTURE_PX = Math.ceil(
-  MAX_MARK_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
+/** The side of the square a mark's picture is cropped to, at the most of one a
+ *  screen ever shows: the biggest mega-node wearing the largest picture, at full
+ *  zoom, on a dense display. A picture is stored with its SHORT side at this,
+ *  because the crop spends the long one. */
+export const MARK_PICTURE_PX = Math.ceil(
+  MAX_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
 );
-
-/** Cuts are rounded up to this, so marks of nearby sizes share one cut of a
- *  picture rather than each holding a texture of its own. */
-const MARK_PICTURE_STEP = 32;
-
-/**
- * The side of the square a picture is cropped to for a mark drawn at `radius`
- * world units, covering `size` of it. A picture is stored with its SHORT side at
- * this, because the crop spends the long one. DESIGN.md § "The mark" carries why
- * it is the mark's own size and not the largest one anybody draws.
- */
-export function markPicturePx(radius: number, size: PreviewSize): number {
-  const drawn = Math.max(
-    radius * PREVIEW_SPAN[size] * 2 * MAX_SCALE * DENSE_SCREEN,
-    1,
-  );
-  return Math.min(
-    Math.ceil(drawn / MARK_PICTURE_STEP) * MARK_PICTURE_STEP,
-    MAX_MARK_PICTURE_PX,
-  );
-}
-
-/** What a picture chosen for this look is stored at: that mark at the fold's
- *  cap, so a note that later folds a subtree still has bytes to draw. */
-export function lookPicturePx(mark: MarkRadius, size: PreviewSize): number {
-  return markPicturePx(MAX_RADIUS * LOOK_SCALE[mark], size);
-}
 
 /** What a note nobody styled draws as, held once rather than resolved per node. */
 const UNSTYLED: ResolvedAppearance = resolveAppearance(null);
@@ -432,7 +402,7 @@ function radiusFor(entry: DrawnNode, look: ResolvedAppearance): number {
   const scale = LOOK_SCALE[look.markRadius];
   if (entry.folded === 0) return LEAF_RADIUS * scale;
   const grown = LEAF_RADIUS * (1 + Math.log2(1 + entry.folded) * MEGA_GROWTH);
-  return Math.min(grown, MAX_RADIUS) * scale;
+  return Math.min(grown * scale, MAX_RADIUS);
 }
 
 function provenanceOf(node: NodeView, viewer: DidSyr | undefined): Provenance {

@@ -302,9 +302,15 @@ Twelve rulings hold that table together:
   its density is measured at the top of the ladder and paid once, by everybody; a picture is
   a texture per mark, so it is cut for the mark that wears it and a leaf never carries what
   the top step needs — a phone holding hundreds of pictured marks is what that difference is
-  for. `model.test.ts` in `@sloppy/graph` sweeps the ladder (`0.78`, `1`, `1.34`, `1.8`,
-  `2.4`, each about a third larger than the last) against every fold, and `scene.test.ts`
-  holds the sheet's density against the top step.
+  for. The ladder is `0.78`, `1`, `1.34`, `1.8`, `2.4`, each about a third larger than the
+  last.
+  **The canvas has not been moved onto this yet.** `LOOK_SCALE` in `@sloppy/graph` carries
+  all five steps, but `radiusFor` still caps the fold and the look together, so the top steps
+  are taken back on a mark that has grown to the cap — the case an author reaches for the
+  control in. Moving the cap under the look is what makes the control what this ruling says
+  it is, and it moves what every existing graph draws: a `small` mark over a large fold
+  shrinks by the same step it should have grown by. The sheet's density and the per-mark cut
+  are the same work, because both are measured against the largest mark drawn.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
   picture its own author gave it. What a fold aggregates is a set a mark can be IN — its
@@ -340,14 +346,26 @@ Twelve rulings hold that table together:
   two facts — the clearance held is half the thinnest line drawn, which the middle size meets
   exactly against a regular ring and spends entirely against a heavy one, where it stops
   tangent to the ring instead. `scene.test.ts` holds those bounds against the radii `scene.ts` draws at, and
-  `PREVIEW_SPAN` in `model.ts` is what each size is worth. **A picture is cut once, when
-  somebody chooses it, for the size they chose at the fold's cap** — so one chosen on a leaf
-  still has bytes once a subtree folds under it, and a small mark never sends what a giant
-  one needs. Growing the look afterwards can outrun what was stored, and a mark drawn bigger
-  than the bytes it holds draws them softer rather than refusing them. **A mark may wear more
-  than one, taking turns the way the ground under it does** — § "A picture that takes turns"
-  is the model both read, and every picture in a series is cut and sized the same as the one
-  before it, because the size is the mark's channel and not any one picture's.
+  `PREVIEW_SPAN` in `model.ts` is what each size is worth. **What a picture is STORED at and
+  what a mark DRAWS it at are two different budgets, and confusing them is what makes a
+  picture go soft.** A picture is cut once, when somebody chooses it, and it is cut for the
+  largest mark that look could ever become — the top of the ladder at the fold's cap, for the
+  share of the disc they chose. That is bytes spent once, and it is what makes the size
+  control safe to reach for: **the control and the picture button are the same modal**, so
+  adding a picture and then growing the note is the ordinary order, and a cut made for the
+  size the look happened to be at that moment would leave the picture permanently soft with
+  nothing said and nothing to do about it but choose the file again. What the phone holds is
+  the other budget, and it is answered separately: the texture a mark decodes is cut for the
+  mark that wears it, so a leaf never carries a mega-node's pixels however large the stored
+  picture is. **A mark may wear more than one, taking turns the way the ground under it
+  does** — § "A picture that takes turns" is the model both read, and every picture in a
+  series is cut and sized the same as the one before it, because the size is the mark's
+  channel and not any one picture's.
+  **Neither budget is drawn yet.** `MARK_PICTURE_PX` in `@sloppy/graph` is one constant for
+  every mark, which the fold's cap keeps every mark under today; both halves arrive with the
+  cap ruling above, and a picture stored under this build's constant is one an enlarged mark
+  draws softer rather than refuses. A series is stored but not drawn: a mark shows the
+  picture its series starts at and never takes a turn.
 - **Where an author spends both, the ring wins the band they share.** A solid heavy ring
   covers the annulus the two largest pictures differ across, so on such a note they draw
   alike; a dashed one leaves most of its turn open, and the two rims show apart through the
@@ -486,6 +504,12 @@ broken.
 | **A reference** — `references`, from the writing | ink, solid, a middle weight and lightness          | this note's own words name that one   |
 | **A link** — `links`, drawn by hand              | ink, broken, at a reference's weight and lightness | somebody put these two together       |
 | **The run** — consecutive addresses              | ink, solid, the heaviest and darkest line drawn    | this thought carries on from that one |
+
+**The canvas draws three of those four.** `model.ts` in `@sloppy/graph` still builds one
+`connection` out of `links` and `references` together and `scene.ts` strokes it broken, so a
+note's own words currently read as a line somebody drew by hand — which is the one thing the
+break is supposed to mean. `EDGE_KINDS` in `@sloppy/types` is the vocabulary that tells them
+apart; nothing reads it yet. Splitting the two is what the table above is a ruling for.
 
 Seven rulings hold that table together:
 
@@ -916,9 +940,8 @@ over whatever is behind it.
 - **A series changes while nobody is watching it, and how it changes is the reader's.**
   § "A picture that takes turns" is the model — the ground and a mark's imagery are both it,
   written once so the two cannot drift into two spellings of the same choice. The ground has
-  not been moved onto it yet: `wallpaper.ts` in `@sloppy/app-core` keeps a cadence list and a
-  turn of its own, and the ground carries no transition at all. Retiring those onto
-  `picture.ts` is the work that gives the ground its transitions.
+  not been moved onto it yet and carries no transition at all; that section names what is
+  still to be retired.
 - **The pictures are the reader's own**, from what they have already put in a note, resolved
   the way a mark's pictures are (§ "The mark") and never as a remote URL.
 - **It is a per-device view preference, kept against the graph it is under**, and never
@@ -931,6 +954,13 @@ A reader may put more than one picture behind their graph, and an author more th
 their mark. Both are the same thing — a series, a cadence, and a transition — so both read
 one model, `picture.ts` in `@sloppy/types`. A surface that grew its own spelling of it would
 let the two disagree about a choice somebody made once.
+
+**The mark is on that model; the ground is not yet.** `wallpaper.ts` in `@sloppy/app-core`
+keeps `WALLPAPER_TURNS`, `wallpaperTurn` and its own bounds — a cadence list missing the
+five-minute step, and the numbers `1` and `10080` written out again where `PICTURE_TURN_MIN`
+and `PICTURE_TURN_MAX` now say them. Those are the second spelling this section exists to
+prevent, and the work that gives the ground its transitions deletes them rather than
+importing beside them. Until it does, the rulings below describe the mark alone.
 
 - **Whose turn it is comes off the clock** — `floor(now / every) % count` — and is read when
   the graph opens and when the app comes back from the background, never on a timer. So
@@ -948,10 +978,12 @@ let the two disagree about a choice somebody made once.
   Under `prefers-reduced-motion` the picture changes without moving.
 - **The values are an open set**, the way a look's are: a transition this build cannot draw
   is stored and handed back untouched, and meanwhile crossfades. So is the count and so is
-  the cadence: **eight pictures is what Sloppy writes** — past that somebody is keeping an
-  album rather than choosing what stands behind their work — and a series a later Sloppy
-  widened is read, kept whole and drawn to the first eight. A picture that costs somebody the
-  note it is on is the one thing none of this may do.
+  the cadence: **eight pictures is what a look is written with** — past that somebody is
+  keeping an album rather than choosing what a note is known by — and a series a later Sloppy
+  widened is read, kept whole and drawn to the first eight. `PICTURES_PER_SERIES` bounds a
+  look on the way in; **what the ground is written with is the ground's own**, and it is
+  unbounded today. A picture that costs somebody the note it is on is the one thing none of
+  this may do.
 - **What each surface carries beside the series is its own.** The ground has a strength,
   because a picture under a whole field is held to what the reader must still be able to read
   on it (§ "The wallpaper"); a mark has the share of the disc its imagery covers (§ "The

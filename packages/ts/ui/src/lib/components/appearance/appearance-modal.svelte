@@ -3,7 +3,7 @@
 	// channel offered here is shape or picture, so the hue on the canvas stays
 	// the reader's own question.
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
-	import { lookPicturePx } from '@sloppy/graph';
+	import { MARK_PICTURE_PX } from '@sloppy/graph';
 	import {
 		isUnstyled,
 		MARK_RADII,
@@ -146,10 +146,9 @@
 		return set({ ...(shown ?? {}), [channel]: value });
 	}
 
-	/** A mark never draws a picture wider than the size its author chose shows,
-	 *  so nothing wider is sent. */
-	async function sent(file: File, side: number): Promise<string> {
-		const asset = await media.send(await flattened(file, side), () => {}).asset;
+	/** A mark never draws a picture wider than this, so nothing wider is sent. */
+	async function sent(file: File): Promise<string> {
+		const asset = await media.send(await flattened(file, MARK_PICTURE_PX), () => {}).asset;
 		return asset.upload_id;
 	}
 
@@ -159,14 +158,14 @@
 	 * anything else is re-used where it lies. `null` is both of those: already
 	 * small enough, and bytes that would not read.
 	 */
-	async function cutForAMark(held: HeldPicture, side: number): Promise<File | null> {
+	async function cutForAMark(held: HeldPicture): Promise<File | null> {
 		let source: ShownPicture | null = null;
 		try {
 			source = await media.picture(held.upload_id);
 			const whole = new File([await (await fetch(source.src)).blob()], held.filename, {
 				type: held.mime_type
 			});
-			const bytes = await flattened(whole, side);
+			const bytes = await flattened(whole, MARK_PICTURE_PX);
 			return bytes === whole ? null : bytes;
 		} catch {
 			return null;
@@ -180,13 +179,12 @@
 		trouble = null;
 		sending = true;
 		try {
-			const side = lookPicturePx(look.markRadius, look.previewSize);
 			let preview: string;
 			if ('held' in choice) {
-				const cut = await cutForAMark(choice.held, side);
-				preview = cut === null ? choice.held.upload_id : await sent(cut, side);
+				const cut = await cutForAMark(choice.held);
+				preview = cut === null ? choice.held.upload_id : await sent(cut);
 			} else {
-				preview = await sent(choice.file, side);
+				preview = await sent(choice.file);
 			}
 			await set({ ...(shown ?? {}), preview });
 		} catch (error) {

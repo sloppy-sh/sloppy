@@ -7,6 +7,14 @@
 export const PICTURE_TRANSITIONS = ["fade", "slide", "zoom"] as const;
 export type PictureTransition = (typeof PICTURE_TRANSITIONS)[number];
 
+/** The words every surface offers them in, so the ground and a mark never name
+ *  one stored choice two ways. */
+export const PICTURE_TRANSITION_LABELS: Record<PictureTransition, string> = {
+  fade: "Crossfade",
+  slide: "Slide",
+  zoom: "Slow zoom",
+};
+
 /** What a series nobody chose a transition for takes, and what one this build
  *  cannot draw settles on. */
 export const QUIETEST_TRANSITION: PictureTransition = "fade";

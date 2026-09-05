@@ -10,7 +10,6 @@ import {
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
   LOOK_SCALE,
-  MAX_MARK_RADIUS,
   MAX_RADIUS,
   PREVIEW_AT,
   PREVIEW_SPAN,
@@ -26,7 +25,6 @@ import {
   type LiftBand,
   liftOf,
   looksDrawn,
-  MARK_SHEET,
   PICK_GAP,
 } from "./scene.js";
 import { type Bounds, MAX_SCALE, MIN_SCALE, Viewport } from "./viewport.js";
@@ -268,7 +266,6 @@ describe("the lift under an open note", () => {
       LEAF * LOOK_SCALE.large,
       20,
       MAX_RADIUS,
-      MAX_MARK_RADIUS,
     ];
     for (const radius of sizes) {
       for (const scale of [MIN_SCALE, 0.25, 0.5, 1, 1.5, 2, MAX_SCALE]) {
@@ -318,24 +315,5 @@ describe("the lift under an open note", () => {
         6,
       );
     }
-  });
-});
-
-// DESIGN.md § "The mark": an author may grow a mark up the ladder, and every
-// mark is a scale of one shared sheet — so the sheet's density follows the
-// ladder rather than being outgrown by it.
-describe("the sheet every mark's shape is cut from", () => {
-  /** How far a shape is enlarged to reach the screen at the top of the ladder:
-   *  full zoom on a dense display, against the density the sheet holds. */
-  const enlargement = (MAX_SCALE * 2) / MARK_SHEET.density;
-
-  it("never blows the largest mark up more than four and a half times", () => {
-    expect(enlargement).toBeLessThanOrEqual(4.5);
-  });
-
-  it("stays inside one texture on the smallest GPU Sloppy runs on", () => {
-    expect(Math.max(MARK_SHEET.width, MARK_SHEET.height)).toBeLessThanOrEqual(
-      2048,
-    );
   });
 });

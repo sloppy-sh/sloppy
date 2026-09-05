@@ -901,9 +901,9 @@ than incidental so that re-deriving an unchanged note produces the array it alre
 It is therefore absent from `PATCHABLE` and from every create and update request: a client
 that could set it could draw a line out of a note it is not allowed to read. It carries no
 `DEFINE FIELD` for the same reason `links` carries none, and absent on a row is a note
-nothing has derived them for, read as none. The canvas draws the two apart — a reference
-whole, a hand-drawn link broken — and draws one line for a pair that carries both; DESIGN.md
-§ Edges is the ruling, and says which of them the line then takes.
+nothing has derived them for, read as none. DESIGN.md § Edges is the ruling: a reference is
+drawn whole and a hand-drawn link broken, one line for a pair that carries both. The canvas
+still draws them as one dashed line, and that section names the gap.
 
 **What a document counts as a citation is a key, not a list of element kinds.** `citedNotes`
 in `@sloppy/types` reads an `attrs` key named `note` holding a `<did>/<ulid>`, wherever it
@@ -1132,7 +1132,12 @@ The rules AI.md's foundation-wave section states, applied here:
   one. The row spells that series across `preview` and `preview_more` so a note styled before
   there could be more than one goes on parsing unchanged, and `resolveAppearance` is where
   the two become the single list every renderer reads: nothing downstream sees them apart, so
-  there is no second spelling to keep in step.
+  there is no second spelling to keep in step. Splitting a series across two channels is what
+  lets one be written without the other, which stores pictures nothing will draw;
+  `seriesIsWhole` is the rule that names that shape, and the API is where a request is held
+  to it. It is a free predicate rather than a check on the schema because a refinement makes
+  `.omit()` and `.partial()` throw at import, and the surfaces that build a look reshape
+  `WrittenAppearanceSchema`.
 
 - `schema.ts` is one contiguous string literal, so it is foundation-wave territory rather
   than per-track. Production SurrealDB serves only `DEFINE`d tables; dev does not enforce

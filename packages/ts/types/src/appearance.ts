@@ -86,10 +86,13 @@ export const NodeAppearanceSchema = z.object({
   /**
    * The rest of the series, after {@link NodeAppearance.preview} and in the
    * order they take turns. Absent is a mark whose picture never changes, and so
-   * is an empty one. Says nothing without a `preview`, because that is the
-   * picture the series starts at — {@link seriesChannels} is what spells a
-   * series across the two, so taking the first picture off promotes the next
-   * rather than dropping the rest.
+   * is an empty one.
+   *
+   * A caller must not send these without a `preview`: that is the picture the
+   * series starts at, so pictures behind an absent one are ids nothing will ever
+   * draw. {@link seriesChannels} is what spells a series across the two — taking
+   * the first picture off promotes the next rather than dropping the rest — and
+   * {@link seriesIsWhole} is what recognises the shape that lost them.
    */
   preview_more: z.array(PictureIdSchema).optional(),
   /** Minutes one picture holds before the next takes its turn. Absent is
@@ -167,6 +170,24 @@ export function seriesChannels(
     preview: first,
     preview_more: rest.length === 0 ? undefined : rest,
   };
+}
+
+/**
+ * Whether a series is spelt across its two channels the way
+ * {@link seriesChannels} spells one. False is pictures written behind an absent
+ * first one, which stores ids that never draw and reads as a styled note.
+ *
+ * A rule rather than a schema check: {@link WrittenAppearanceSchema} is a plain
+ * object so the surfaces that build a look may still `.omit()` and `.partial()`
+ * it, and a refinement is what takes that away.
+ */
+export function seriesIsWhole(
+  appearance: NodeAppearance | null | undefined,
+): boolean {
+  return (
+    appearance?.preview !== undefined ||
+    (appearance?.preview_more ?? []).length === 0
+  );
 }
 
 /** Nothing set — what a form has left behind once every channel is taken back
