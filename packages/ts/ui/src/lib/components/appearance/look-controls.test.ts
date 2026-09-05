@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { MARK_PICTURE_PX } from '@sloppy/graph';
-import type { MediaAsset, NodeAppearance } from '@sloppy/types';
+import { PICTURE_TURN_MAX, type MediaAsset, type NodeAppearance } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeldPicture, NoteMedia } from '../editor/contract.js';
@@ -447,5 +447,27 @@ describe('a mark that wears more than one picture', () => {
 	it('stops offering more once the series is as long as one is written with', () => {
 		open({ preview: UPLOAD, preview_more: ['b', 'c', 'd', 'e', 'f', 'g', 'h'] });
 		expect(buttons().some((button) => button.textContent?.trim() === 'Add a picture')).toBe(false);
+	});
+
+	// A newer Sloppy may write a longer series and a slower cadence than this one
+	// draws, and a request may carry neither. Changing the ring on such a note is
+	// still a change the reader gets to make.
+	it('sends what it drew where a newer Sloppy wrote more than a request carries', async () => {
+		open({
+			preview: UPLOAD,
+			preview_more: ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+			preview_every: PICTURE_TURN_MAX * 3
+		});
+
+		await tap('Heavy', group('Ring'));
+
+		expect(saved).toEqual([
+			{
+				ring_weight: 'heavy',
+				preview: UPLOAD,
+				preview_more: ['b', 'c', 'd', 'e', 'f', 'g', 'h'],
+				preview_every: PICTURE_TURN_MAX
+			}
+		]);
 	});
 });

@@ -621,11 +621,24 @@
 		stopped = setTimeout(() => (writing = false), 250);
 	}
 
-	// Read before the swap, never after: by the time a render effect runs, the box
-	// has been re-laid around the next note and `scrollTop` comes back clamped.
+	// Read before the swap, never after: by the time a render effect runs the box
+	// has been re-laid — around the next note, or around a Look side a fraction of
+	// its height — and `scrollTop` comes back clamped.
 	$effect.pre(() => {
 		const leaving = ref;
-		return () => keepPlace(leaving);
+		const reading = side === 'note';
+		return () => {
+			if (reading) keepPlace(leaving);
+		};
+	});
+
+	// The note stays mounted behind Look but hidden, so the box is only as tall as
+	// Look until the note is back on screen, and a place set any earlier is clamped
+	// away.
+	$effect(() => {
+		const opening = side === 'note' ? ref : null;
+		if (!opening) return;
+		void tick().then(() => startAtTheirPlace(opening));
 	});
 
 	$effect(() => {
@@ -649,7 +662,6 @@
 		unread = null;
 		shaping = null;
 		writing = false;
-		startAtTheirPlace(opening);
 		void (async () => {
 			let held = false;
 			try {

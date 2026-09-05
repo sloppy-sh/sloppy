@@ -27,8 +27,21 @@
 		ontransition: (transition: PictureTransition) => void;
 	} = $props();
 
+	/** The cadences a series may carry are an open set, so one written by a
+	 *  Sloppy that offered more of them than this build does still has to read as
+	 *  itself. */
+	function spelt(minutes: number): string {
+		if (minutes % 1440 === 0) return counted(minutes / 1440, 'day');
+		if (minutes % 60 === 0) return counted(minutes / 60, 'hour');
+		return counted(minutes, 'minute');
+	}
+
+	function counted(many: number, unit: string): string {
+		return many === 1 ? `Every ${unit}` : `Every ${many} ${unit}s`;
+	}
+
 	const turnLabel = $derived(
-		PICTURE_TURNS.find((turn) => turn.value === every)?.label ?? PICTURE_TURNS[0].label
+		PICTURE_TURNS.find((turn) => turn.value === every)?.label ?? spelt(every)
 	);
 </script>
 

@@ -155,6 +155,14 @@ describe('choosing the picture under the graph', () => {
 		expect(says()).toContain('Every half hour');
 	});
 
+	// The cadences are an open set, so one a newer Sloppy offered still has to
+	// read as itself rather than as the shortest one this build knows.
+	it('reads back a cadence it does not offer as the one that is stored', async () => {
+		await open(ground(['a', 'b'], { every: 10_080 }));
+		expect(says()).toContain('Every 7 days');
+		expect(says()).not.toContain('Every five minutes');
+	});
+
 	// DESIGN.md § Layout: the graph's chrome is thumb-sized, and this surface is
 	// on the phone as much as on the desk.
 	it('offers controls a thumb can land on', async () => {
@@ -218,14 +226,26 @@ describe('getting a picture in from here', () => {
 		expect(changed.at(-1)?.pictures).toEqual(['sent-1']);
 	});
 
-	it('offers one already in a note without sending it again', async () => {
+	// The sheet is already showing every picture in their notes, and a second copy
+	// of that grid is a phone gone two full surfaces deep for one picture.
+	it('does not ask again for what the sheet is already offering', async () => {
+		await open(ground([]));
+		expect(tiles().map((tile) => tile.getAttribute('aria-label'))).toEqual(['a.webp', 'b.webp']);
+
+		named('Choose a picture').click();
+		await settle();
+
+		expect(document.body.querySelectorAll('button[aria-label="b.webp"]')).toHaveLength(1);
+		expect(says()).not.toContain('Already in your notes');
+	});
+
+	// The picker is a note's as much as the graph's, and it says which.
+	it('says the picture it is asking for is the graph', async () => {
 		await open(ground([]));
 		named('Choose a picture').click();
 		await settle();
-		(document.body.querySelectorAll('button[aria-label="b.webp"]')[1] as HTMLButtonElement).click();
-		await settle();
 
-		expect(sent).toEqual([]);
-		expect(changed.at(-1)?.pictures).toEqual(['b']);
+		expect(says()).toContain('It goes behind the graph.');
+		expect(says()).not.toContain('Add one to this note.');
 	});
 });

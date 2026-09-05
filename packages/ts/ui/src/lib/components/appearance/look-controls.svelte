@@ -162,12 +162,22 @@
 		}
 	}
 
+	/** The whole look goes back on every choice, so the channels with a bound go
+	 *  back as this build read them — a series past eight or a cadence past a week
+	 *  is more than a request carries. Tokens have no bound, and one this build
+	 *  cannot draw passes through untouched. */
+	const editable = $derived({
+		...(shown ?? {}),
+		...seriesChannels(series),
+		preview_every: look.preview.every
+	});
+
 	function pick(channel: keyof NodeAppearance, value: string | number): Promise<void> {
-		return set({ ...(shown ?? {}), [channel]: value });
+		return set({ ...editable, [channel]: value });
 	}
 
 	function keeps(pictures: readonly string[]): Promise<void> {
-		return set({ ...(shown ?? {}), ...seriesChannels(pictures) });
+		return set({ ...editable, ...seriesChannels(pictures) });
 	}
 
 	/** A mark never draws a picture wider than this, so nothing wider is sent. */

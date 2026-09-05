@@ -276,4 +276,11 @@
 	</div>
 </ResponsiveModal>
 
-<MediaPicker bind:open={choosing} {media} onpick={(picked) => void take(picked)} />
+<MediaPicker
+	bind:open={choosing}
+	{media}
+	title="From your device"
+	description="It goes behind the graph."
+	offersHeld={false}
+	onpick={(picked) => void take(picked)}
+/>

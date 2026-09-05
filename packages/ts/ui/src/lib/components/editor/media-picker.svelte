@@ -1,6 +1,7 @@
 <script lang="ts">
-	// Getting a picture into a note: one chosen from the device, or one already
-	// in the person's own store. `./contract.ts` says what either half is handed.
+	// Getting a picture in: one chosen from the device, or one already in the
+	// person's own store. `./contract.ts` says what either half is handed; the
+	// caller says what it is being chosen for.
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import type { HeldPicture, NoteMedia, ShownPicture } from './contract.js';
@@ -16,11 +17,20 @@
 	let {
 		open = $bindable(false),
 		media,
-		onpick
+		onpick,
+		title = 'Picture',
+		description = 'Add one to this note.',
+		offersHeld = true
 	}: {
 		open?: boolean;
 		media: NoteMedia;
 		onpick: (choice: { file: File } | { held: HeldPicture }) => void;
+		/** What the picture is being chosen for. The default is a note's own. */
+		title?: string;
+		description?: string;
+		/** Whether to offer the pictures already in their notes. False is a caller
+		 *  drawing them itself, which is asked for one from the device alone. */
+		offersHeld?: boolean;
 	} = $props();
 
 	let chooser = $state<HTMLInputElement | null>(null);
@@ -51,7 +61,7 @@
 	}
 
 	$effect(() => {
-		if (!open) return;
+		if (!open || !offersHeld) return;
 		let live = true;
 		reading = true;
 		unreadable = false;
@@ -147,7 +157,7 @@
 	}
 </script>
 
-<ResponsiveModal bind:open title="Picture" description="Add one to this note.">
+<ResponsiveModal bind:open {title} {description}>
 	<div
 		class="space-y-4 px-4 pb-[max(1rem,var(--safe-area-inset-bottom,env(safe-area-inset-bottom)))]"
 	>
@@ -185,47 +195,49 @@
 			</button>
 		</div>
 
-		<div class="space-y-2">
-			<p class="text-xs tracking-wide text-muted-foreground uppercase">Already in your notes</p>
-			{#if reading}
-				<p class="py-6 text-center text-sm text-muted-foreground">Looking…</p>
-			{:else if unreadable}
-				<p class="py-6 text-center text-sm text-muted-foreground">
-					Sloppy could not read these just now. Try again in a moment.
-				</p>
-			{:else if held.length === 0}
-				<p class="py-6 text-center text-sm text-muted-foreground">
-					Pictures you add to a note show up here.
-				</p>
-			{:else}
-				<div
-					class="grid max-h-[40vh] grid-cols-3 gap-2 overflow-y-auto scroll-fade-y [--scroll-fade:1rem] sm:grid-cols-4"
-					onscroll={reach}
-					{@attach scroller}
-				>
-					{#each held as picture (picture.upload_id)}
-						<button
-							type="button"
-							title={picture.filename}
-							aria-label={picture.filename}
-							onclick={() => {
-								onpick({ held: picture });
-								open = false;
-							}}
-							class="aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out hover:border-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-							{@attach tile(picture)}
-						>
-							{#if thumbnails[picture.upload_id]}
-								<img
-									src={thumbnails[picture.upload_id]}
-									alt={picture.filename}
-									class="size-full object-cover"
-								/>
-							{/if}
-						</button>
-					{/each}
-				</div>
-			{/if}
-		</div>
+		{#if offersHeld}
+			<div class="space-y-2">
+				<p class="text-xs tracking-wide text-muted-foreground uppercase">Already in your notes</p>
+				{#if reading}
+					<p class="py-6 text-center text-sm text-muted-foreground">Looking…</p>
+				{:else if unreadable}
+					<p class="py-6 text-center text-sm text-muted-foreground">
+						Sloppy could not read these just now. Try again in a moment.
+					</p>
+				{:else if held.length === 0}
+					<p class="py-6 text-center text-sm text-muted-foreground">
+						Pictures you add to a note show up here.
+					</p>
+				{:else}
+					<div
+						class="grid max-h-[40vh] grid-cols-3 gap-2 overflow-y-auto scroll-fade-y [--scroll-fade:1rem] sm:grid-cols-4"
+						onscroll={reach}
+						{@attach scroller}
+					>
+						{#each held as picture (picture.upload_id)}
+							<button
+								type="button"
+								title={picture.filename}
+								aria-label={picture.filename}
+								onclick={() => {
+									onpick({ held: picture });
+									open = false;
+								}}
+								class="aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out hover:border-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+								{@attach tile(picture)}
+							>
+								{#if thumbnails[picture.upload_id]}
+									<img
+										src={thumbnails[picture.upload_id]}
+										alt={picture.filename}
+										class="size-full object-cover"
+									/>
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</div>
 </ResponsiveModal>
