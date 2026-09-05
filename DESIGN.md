@@ -802,10 +802,12 @@ over whatever is behind it.
   question twice. Standing still is also what makes it free: it is one composited layer
   behind a canvas that already clears transparent, so no frame writes anything for it. On the
   2,400-note corpus `bench/` reports idle and pan at **8.3/9.3 ms with a picture and 8.3/9.3
-  without** — the same numbers the ground is measured at, and the same with both on. Which is
-  meant literally, so **a picture that may animate is not offered**: a GIF or an animated
-  WebP would repaint that layer under the whole field every frame — the one cost this ground
-  is measured not to have — and nothing would stop it short of taking the picture off.
+  without** — the same numbers the ground is measured at, and the same with both on. Those
+  numbers are a still picture's. **A picture may move if that is what somebody wants behind
+  their graph** — a background that lives is a thing people put behind their work, and the
+  ground is theirs. It costs what it looks like it costs: an animated picture repaints that
+  layer under the whole field, so the idle number above is not the one a reader gets. That
+  is a price they chose by choosing the picture, and it is taken off the way it was put on.
 - **The mask over it is the theme's own paper, and nobody picks its colour.** A hue chosen
   here would be the one thing on the canvas carrying colour that answers no question
   (§ Hue), and it would shift every hue drawn over it. So the picture shows through the
