@@ -26,6 +26,7 @@ let mounted: ReturnType<typeof mount> | undefined;
 let read: OwnedRef[];
 /** The branches the reader has opened, held the way the graph page holds them. */
 let unfolded: SvelteSet<OwnedRef>;
+let scrolledTo: HTMLElement[];
 
 function render(props: {
 	notes: readonly NodeView[];
@@ -62,6 +63,23 @@ const labelled = (address: string) =>
 beforeEach(() => {
 	read = [];
 	unfolded = new SvelteSet<OwnedRef>();
+	scrolledTo = [];
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	});
+	Object.defineProperty(Element.prototype, 'scrollIntoView', {
+		configurable: true,
+		writable: true,
+		value: function (this: HTMLElement) {
+			scrolledTo.push(this);
+		}
+	});
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -109,6 +127,7 @@ describe('the graph walked as a tree', () => {
 		});
 		expect(shown()).toEqual(['1', '1a', '1a1', '2']);
 		expect(labelled('1a1').getAttribute('aria-selected')).toBe('true');
+		expect(scrolledTo).toEqual([labelled('1a1')]);
 	});
 
 	it('never branches on the notes a note names', () => {
@@ -193,11 +212,12 @@ describe('a graph of a few thousand notes', () => {
 });
 
 describe('the tree and the canvas show the same graphs', () => {
-	it('leaves out a note whose graph is not one of the fields', () => {
+	it('gives a graph the host did not name a tree of its own, rather than dropping it', () => {
 		render({
 			notes: [node(30, '1', { graph: THESIS }), node(31, '1', { graph: GARDEN })],
 			fields: [{ ref: THESIS, title: 'Thesis' }]
 		});
-		expect(rows()).toHaveLength(1);
+		expect(rows()).toHaveLength(2);
+		expect(target.querySelectorAll('[role="tree"]')).toHaveLength(2);
 	});
 });

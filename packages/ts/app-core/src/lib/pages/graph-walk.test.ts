@@ -119,6 +119,19 @@ async function walk(): Promise<void> {
 	await settle();
 }
 
+/** One note through its own menu, which is the phone's way into choosing. */
+async function choose(address: string): Promise<void> {
+	const menu = document.body.querySelector<HTMLButtonElement>(`[data-menu="${address}"]`);
+	menu?.click();
+	await settle();
+	const item = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+		(row) => row.textContent?.trim() === 'Choose this and others'
+	);
+	if (!item) throw new Error('The menu does not offer choosing');
+	item.click();
+	await settle();
+}
+
 beforeEach(() => {
 	startAt('/');
 	stubViewport();
@@ -168,6 +181,25 @@ describe('walking the notes instead of looking at them', () => {
 		await settle();
 		expect(canvas()).not.toBeNull();
 		expect(rows()).toHaveLength(0);
+	});
+
+	it('takes the ground control away with the canvas it answers for', async () => {
+		await open();
+		expect(labelled('Background')).toBeTruthy();
+		labelled('Walk the notes one at a time').click();
+		await settle();
+		expect(
+			[...document.body.querySelectorAll('button')].some(
+				(one) => one.getAttribute('aria-label') === 'Background'
+			)
+		).toBe(false);
+	});
+
+	it('is not offered while a set is being chosen, which the tree cannot mark', async () => {
+		await open();
+		await choose('1');
+		expect(document.body.textContent).toContain('1 note chosen');
+		expect(() => labelled('Walk the notes one at a time')).toThrow();
 	});
 
 	it('opens a note where the reader taps one', async () => {

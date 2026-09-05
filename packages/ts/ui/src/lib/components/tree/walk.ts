@@ -1,6 +1,6 @@
-// The rows a tree draws, from the genealogy and nothing else. DESIGN.md
-// § Edges: a note's references and the links drawn on it are the note's own to
-// show, so neither is a branch here.
+// The rows a tree draws, from the genealogy and nothing else. A note's
+// references and the links drawn on it are the note's own to show, so neither
+// is a branch here.
 
 import { type Address, compareAddresses, type OwnedRef, type Tag } from '@sloppy/types';
 

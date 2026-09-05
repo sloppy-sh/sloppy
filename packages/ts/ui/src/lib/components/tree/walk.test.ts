@@ -106,7 +106,7 @@ describe('the shape a tree walks', () => {
 
 	it('never branches on the notes a note names', () => {
 		// `references` and `links` ride along on a NodeView and are no part of the
-		// walk — DESIGN.md § Edges.
+		// walk.
 		const cited = note('9');
 		const citing = { ...note('1'), references: [cited.ref], links: [cited.ref] };
 		const rows = walkTree({ notes: [citing, cited], opened: opened('1', '9') });

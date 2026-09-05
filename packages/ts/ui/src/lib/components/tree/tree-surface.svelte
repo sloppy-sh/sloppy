@@ -29,11 +29,13 @@
 
 <script lang="ts">
 	// The graph walked rather than drawn: down into a note's children, along the
-	// run to the note after it, and back up. DESIGN.md § Edges is what it shows,
-	// and § Layout is why a plain tap replaces the note being read.
+	// run to the note after it, and back up. The notes a note names are the
+	// note's own to show, so neither a reference nor a hand-drawn link branches
+	// here; DESIGN.md § Layout is why a plain tap replaces the note being read.
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { assignTagHueSlots, type TagHueSlot } from '@sloppy/types';
+	import { assignTagHueSlots } from '@sloppy/types';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { RUN_PAGE, type TreeRow, walkTree } from './walk.js';
 
 	let {
@@ -82,9 +84,16 @@
 		return rows.length > 0 ? rowKey(rows[0]) : '';
 	}
 
-	/** The selected tags a note carries, as the rail's own hues. */
-	function hues(note: TreeNote): TagHueSlot[] {
-		return [...slots.entries()].filter(([tag]) => note.tags.includes(tag)).map(([, slot]) => slot);
+	/** The selected tags a note carries, earliest-selected first: DESIGN.md § Hue
+	 *  gives a note in several sets the first one's hue and no other. */
+	function askedOf(note: TreeNote): Tag[] {
+		return [...slots.keys()].filter((tag) => note.tags.includes(tag));
+	}
+
+	/** A note's tags as the row says them, the asked-about ones first so the hue
+	 *  sits beside the tag it stands for. */
+	function tagsOf(note: TreeNote, asked: readonly Tag[]): Tag[] {
+		return [...asked, ...note.tags.filter((tag) => !asked.includes(tag))];
 	}
 
 	function reveal(group: string, row: Extract<TreeRow, { kind: 'rest' }>): void {
@@ -152,20 +161,34 @@
 	}
 
 	let scroller = $state<HTMLElement>();
+	let landed: OwnedRef | null = null;
+
+	/** The note being read, once there is a row for it. The branches above it
+	 *  unfold after the note itself arrives, so the walk has to wait for them. */
+	const landing = $derived(
+		reading !== null &&
+			drawn.some(({ rows }) => rows.some((row) => row.kind === 'note' && row.note.ref === reading))
+			? reading
+			: null
+	);
 
 	// The note being read is where the reader is, so the tree goes to it — a note
 	// opened from anywhere else lands the walk beside it rather than at the top.
+	// Once per note, so a reader who has scrolled away is left where they are.
 	$effect(() => {
-		if (!reading || !scroller) return;
-		const row = scroller.querySelector<HTMLElement>(`[data-row="${CSS.escape(reading)}"]`);
-		row?.scrollIntoView?.({ block: 'nearest' });
+		if (!landing || !scroller || landed === landing) return;
+		landed = landing;
+		scroller
+			.querySelector<HTMLElement>(`[data-row="${CSS.escape(landing)}"]`)
+			?.scrollIntoView?.({ block: 'nearest' });
 	});
 </script>
 
 <div
 	bind:this={scroller}
 	class="size-full overflow-y-auto overscroll-contain scroll-fade-y [--scroll-fade:1rem] [--tree-step:0.625rem] sm:[--tree-step:1rem]"
-	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}"
+	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}; scroll-padding-top: {inset.top}; scroll-padding-bottom: {inset.bottom}"
+	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
 		{#each drawn as { group, rows } (group.key)}
@@ -187,7 +210,8 @@
 							{@const key = rowKey(row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
 							{#if row.kind === 'note'}
-								{@const lit = hues(row.note)}
+								{@const asked = askedOf(row.note)}
+								{@const listed = tagsOf(row.note, asked)}
 								<div
 									role="treeitem"
 									data-row={key}
@@ -201,7 +225,7 @@
 									onkeydown={(event) => keys(event, group.key, rows)}
 									onfocusin={() => tabbed.set(group.key, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
-										0 && lit.length === 0
+										0 && asked.length === 0
 										? 'opacity-45'
 										: ''}"
 									style="padding-inline-start: {step}"
@@ -212,7 +236,7 @@
 											tabindex="-1"
 											aria-label={row.open
 												? `Fold ${row.note.address}`
-												: `Open ${row.note.address}`}
+												: `Unfold ${row.note.address}`}
 											onclick={(event) => {
 												event.stopPropagation();
 												onToggle(row.note.ref, !row.open);
@@ -236,12 +260,20 @@
 										{row.note.title || 'Untitled'}
 									</span>
 
-									{#each lit as slot (slot)}
+									{#if listed.length > 0}
 										<span
-											class="size-2 shrink-0 rounded-full"
-											style="background-color: var(--facet-{slot})"
-										></span>
-									{/each}
+											class="flex max-w-[45%] min-w-0 shrink items-center gap-1.5 text-xs text-muted-foreground"
+										>
+											{#if asked.length > 0}
+												<span
+													class="size-2 shrink-0 rounded-full"
+													style="background-color: var(--facet-{slots.get(asked[0])})"
+													aria-hidden="true"
+												></span>
+											{/if}
+											<span class="truncate">{listed.join(', ')}</span>
+										</span>
+									{/if}
 
 									{#if row.under > 0}
 										<span class="shrink-0 text-xs text-muted-foreground tabular-nums">

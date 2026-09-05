@@ -346,8 +346,8 @@
 	);
 	const overGraph = $derived(overlay.open || menuAt !== null);
 
-	/** Pointing a link at a note is a question put to the canvas, so it takes the
-	 *  canvas back for as long as it is being asked — DESIGN.md § Layout. */
+	/** Pointing a link at a note is a question put to the canvas, so the canvas
+	 *  comes back for as long as it is being asked. */
 	const walkingNow = $derived(walking && !pointing);
 
 	/** What the mark under the pointer stands for: the note it IS, and — since a
@@ -1170,20 +1170,23 @@
 />
 
 {#snippet walk()}
-	<Button
-		variant="ghost"
-		size="icon"
-		class="size-9 shrink-0 rounded-full"
-		aria-pressed={walking}
-		aria-label={walking ? 'Back to the graph' : 'Walk the notes one at a time'}
-		onclick={() => (walking = !walking)}
-	>
-		{#if walking}
-			<Network class="size-4" />
-		{:else}
-			<ListTree class="size-4" />
-		{/if}
-	</Button>
+	<!-- Out of the chrome while a set is being chosen: the bar over that set acts
+	     on notes the tree does not mark. -->
+	{#if !choosing}
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-9 shrink-0 rounded-full"
+			aria-label={walking ? 'Back to the graph' : 'Walk the notes one at a time'}
+			onclick={() => (walking = !walking)}
+		>
+			{#if walking}
+				<Network class="size-4" />
+			{:else}
+				<ListTree class="size-4" />
+			{/if}
+		</Button>
+	{/if}
 {/snippet}
 
 <div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
@@ -1342,12 +1345,14 @@
 							Your graph
 						</Button>
 						{@render walk()}
-						<GroundChoice
-							value={prefs.current.ground}
-							pictured={wallpaper !== null}
-							onchange={(ground) => prefs.set('ground', ground)}
-							onpicture={() => (choosingWallpaper = true)}
-						/>
+						{#if !walkingNow}
+							<GroundChoice
+								value={prefs.current.ground}
+								pictured={wallpaper !== null}
+								onchange={(ground) => prefs.set('ground', ground)}
+								onpicture={() => (choosingWallpaper = true)}
+							/>
+						{/if}
 					</div>
 				{:else}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1404,12 +1409,14 @@
 							<Users class="size-4" />
 						</Button>
 						{@render walk()}
-						<GroundChoice
-							value={prefs.current.ground}
-							pictured={wallpaper !== null}
-							onchange={(ground) => prefs.set('ground', ground)}
-							onpicture={() => (choosingWallpaper = true)}
-						/>
+						{#if !walkingNow}
+							<GroundChoice
+								value={prefs.current.ground}
+								pictured={wallpaper !== null}
+								onchange={(ground) => prefs.set('ground', ground)}
+								onpicture={() => (choosingWallpaper = true)}
+							/>
+						{/if}
 					</div>
 				{/if}
 

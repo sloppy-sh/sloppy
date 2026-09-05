@@ -41,8 +41,13 @@
 			if (run) run.push(note);
 			else held.set(field, [note]);
 		}
-		return fields
-			.map((field) => ({ key: field.ref, title: field.title, notes: held.get(field.ref) ?? [] }))
+		// A graph the host did not name still gets a tree of its own, the way
+		// `seedFields` in `@sloppy/graph` gives it a field of its own — the canvas
+		// and the tree are handed the same notes and leave none of them out.
+		const named = new Map(fields.map((field) => [field.ref, field.title]));
+		const order = [...new Set([...named.keys(), ...held.keys()])];
+		return order
+			.map((of) => ({ key: of, title: named.get(of) ?? '', notes: held.get(of) ?? [] }))
 			.filter((group) => group.notes.length > 0);
 	});
 

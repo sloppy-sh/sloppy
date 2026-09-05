@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import type { Address, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
+import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { stubResizeObserver } from '../dom.test-support.js';
 import TreeSurface, { type TreeGroup } from './tree-surface.svelte';
 import { RUN_PAGE, type TreeNote } from './walk.js';
 
@@ -36,6 +38,7 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let openedNotes: OwnedRef[];
 let toggled: [OwnedRef, boolean][];
+let scrolledTo: HTMLElement[];
 
 function render(
 	props: {
@@ -73,6 +76,15 @@ const press = (row: HTMLElement, key: string) => {
 beforeEach(() => {
 	openedNotes = [];
 	toggled = [];
+	scrolledTo = [];
+	stubResizeObserver();
+	Object.defineProperty(Element.prototype, 'scrollIntoView', {
+		configurable: true,
+		writable: true,
+		value: function (this: HTMLElement) {
+			scrolledTo.push(this);
+		}
+	});
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -131,6 +143,27 @@ describe('walking the notes', () => {
 		expect(labelled('About 2').getAttribute('aria-selected')).toBe('true');
 		expect(labelled('About 1').getAttribute('aria-selected')).toBe('false');
 	});
+
+	it('goes to the note being read', () => {
+		render({ reading: held('2') });
+		expect(scrolledTo).toEqual([labelled('About 2')]);
+	});
+
+	it('waits for the branches above the note to unfold, then goes once', () => {
+		const opened = new SvelteSet([held('1')]);
+		render({ opened, reading: held('1a1') });
+		expect(scrolledTo).toEqual([]);
+
+		opened.add(held('1a'));
+		flushSync();
+		expect(scrolledTo).toEqual([labelled('About 1a1')]);
+
+		// The row leaving and coming back is not a new place to go.
+		opened.delete(held('1a'));
+		opened.add(held('1a'));
+		flushSync();
+		expect(scrolledTo).toHaveLength(1);
+	});
 });
 
 describe('a keyboard', () => {
@@ -177,6 +210,46 @@ describe('a keyboard', () => {
 	it('leaves one tab stop, on the note being read', () => {
 		render({ opened: new Set([held('1')]), reading: held('1b') });
 		expect(rows().filter((row) => row.tabIndex === 0)).toEqual([labelled('About 1b')]);
+	});
+});
+
+describe('the tags a note carries', () => {
+	const dots = (row: HTMLElement) => [...row.querySelectorAll<HTMLElement>('[style*="--facet-"]')];
+
+	it('says them in words, whether or not any is selected', () => {
+		render({
+			groups: [
+				{ key: 'one', title: '', notes: [note('1', undefined, { tags: ['biology'] as Tag[] })] }
+			]
+		});
+		expect(rows()[0].textContent).toContain('biology');
+	});
+
+	it('draws one hue on a note in several selected sets, the earliest-selected', () => {
+		render({
+			groups: [
+				{
+					key: 'one',
+					title: '',
+					notes: [note('1', undefined, { tags: ['seed', 'question'] as Tag[] })]
+				}
+			],
+			selection: ['question', 'seed'] as Tag[]
+		});
+		expect(dots(rows()[0])).toHaveLength(1);
+		expect(dots(rows()[0])[0].getAttribute('style')).toContain('--facet-1');
+		expect(rows()[0].textContent).toContain('question, seed');
+	});
+
+	it('draws no hue on a note in none of them', () => {
+		render({
+			groups: [
+				{ key: 'one', title: '', notes: [note('1', undefined, { tags: ['seed'] as Tag[] })] }
+			],
+			selection: ['question'] as Tag[]
+		});
+		expect(dots(rows()[0])).toHaveLength(0);
+		expect(rows()[0].textContent).toContain('seed');
 	});
 });
 
