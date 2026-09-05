@@ -199,7 +199,11 @@ describe("a picture reaching a mark", () => {
   });
 
   it("covers the disc from its short side, and is never enlarged to do it", async () => {
-    decoded.set("blob:wide", { width: 800, height: 600 });
+    // Both sides past the bound, so the square is the bound's own.
+    decoded.set("blob:wide", {
+      width: MARK_PICTURE_PX * 2,
+      height: MARK_PICTURE_PX * 1.5,
+    });
     decoded.set("blob:small", { width: 120, height: 90 });
     const { scene } = await sceneOn(
       [drawn("1", "wide"), drawn("2", "small")],
@@ -213,7 +217,7 @@ describe("a picture reaching a mark", () => {
       "the picture with room to spare fills the square",
     ).toBeDefined();
     // Centred, and wider than the square by exactly its aspect ratio.
-    expect(wide?.box[2]).toBeCloseTo((MARK_PICTURE_PX * 800) / 600, 6);
+    expect(wide?.box[2]).toBeCloseTo((MARK_PICTURE_PX * 4) / 3, 6);
     expect(wide?.box[3]).toBeCloseTo(MARK_PICTURE_PX, 6);
     expect(wide?.box[1]).toBeCloseTo(0, 6);
 

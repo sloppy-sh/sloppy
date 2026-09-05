@@ -10,6 +10,7 @@ import {
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
   LOOK_SCALE,
+  MAX_MARK_RADIUS,
   MAX_RADIUS,
   PREVIEW_AT,
   PREVIEW_SPAN,
@@ -266,6 +267,7 @@ describe("the lift under an open note", () => {
       LEAF * LOOK_SCALE.large,
       20,
       MAX_RADIUS,
+      MAX_MARK_RADIUS,
     ];
     for (const radius of sizes) {
       for (const scale of [MIN_SCALE, 0.25, 0.5, 1, 1.5, 2, MAX_SCALE]) {

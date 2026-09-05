@@ -7,17 +7,32 @@ import {
   RING_STYLES,
   RING_WEIGHTS,
   resolveAppearance,
+  seriesChannels,
+  WrittenAppearanceSchema,
 } from "./appearance.js";
 import { NodeSchema } from "./node.js";
 import {
   PICTURE_TRANSITIONS,
   PICTURE_TURN_DEFAULT,
+  PICTURE_TURN_MAX,
   PICTURES_PER_SERIES,
   pictureTurn,
   QUIETEST_TRANSITION,
 } from "./picture.js";
 
 const PICTURE = "did:syr:z6Mk/01J";
+
+const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
+
+const row = (appearance: unknown) => ({
+  created_by: DID,
+  address: "1a",
+  depth: 2,
+  origin: `${DID}/01JSPREAD00000000000000000`,
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z",
+  appearance,
+});
 
 const CHANNELS: Record<string, unknown> = {
   ring_weight: "regular",
@@ -47,15 +62,33 @@ const UNSTYLED = {
 // peer is a separate thing and does not happen yet — DESIGN.md § "A note's look
 // never uses colour". AI.md § "Provider-Agnostic Data Shapes".
 describe("a look this build cannot draw", () => {
+  const later = {
+    ring_weight: "gossamer",
+    ring_style: "double",
+    mark_radius: "enormous",
+    preview_size: "whole",
+    preview_transition: "dissolve",
+    preview: "p0",
+    preview_more: Array.from({ length: 15 }, (_, at) => `p${at + 1}`),
+    preview_every: PICTURE_TURN_MAX * 2,
+  };
+
   it("is carried untouched rather than refused", () => {
-    const later = {
-      ring_weight: "gossamer",
-      ring_style: "double",
-      mark_radius: "enormous",
-      preview_size: "whole",
-      preview_transition: "dissolve",
-    };
     expect(NodeAppearanceSchema.parse(later)).toEqual(later);
+  });
+
+  // A channel that refused would take the whole row with it, and `appearance`
+  // sits inside `NodeSchema`: a look Sloppy cannot draw costs that look and
+  // never the note.
+  it("leaves the note it is on readable", () => {
+    const parsed = NodeSchema.omit({ id: true }).parse(row(later));
+    expect(parsed.appearance).toEqual(later);
+  });
+
+  it("is drawn at the count and the cadence this build holds", () => {
+    const look = resolveAppearance(later);
+    expect(look.preview.pictures).toHaveLength(PICTURES_PER_SERIES);
+    expect(look.preview.every).toBe(PICTURE_TURN_MAX);
   });
 
   it("draws as an unstyled note does, so nothing renders a token it cannot", () => {
@@ -137,15 +170,45 @@ describe("the pictures a mark wears", () => {
     ).toEqual([]);
   });
 
-  it("are bounded, so a mark cannot be handed a library to wear", () => {
+  it("are bounded where a look is written, and kept where one is read", () => {
     const more = Array.from(
       { length: PICTURES_PER_SERIES },
       (_, at) => `p${at}`,
     );
-    expect(() => NodeAppearanceSchema.parse({ preview_more: more })).toThrow();
+    expect(() =>
+      WrittenAppearanceSchema.parse({ preview_more: more }),
+    ).toThrow();
     expect(
-      NodeAppearanceSchema.parse({ preview_more: more.slice(1) }).preview_more,
+      WrittenAppearanceSchema.parse({ preview_more: more.slice(1) })
+        .preview_more,
     ).toHaveLength(PICTURES_PER_SERIES - 1);
+    expect(NodeAppearanceSchema.parse({ preview_more: more })).toEqual({
+      preview_more: more,
+    });
+  });
+
+  it("hold the cadence a request asks for to the range one may take", () => {
+    expect(() =>
+      WrittenAppearanceSchema.parse({ preview_every: PICTURE_TURN_MAX + 1 }),
+    ).toThrow();
+    expect(
+      WrittenAppearanceSchema.parse({ preview_every: PICTURE_TURN_MAX })
+        .preview_every,
+    ).toBe(PICTURE_TURN_MAX);
+  });
+
+  it("are spelt back across the two channels they are stored in", () => {
+    for (let count = 0; count <= PICTURES_PER_SERIES; count += 1) {
+      const pictures = Array.from({ length: count }, (_, at) => `p${at}`);
+      expect(
+        resolveAppearance(seriesChannels(pictures)).preview.pictures,
+        `${count}`,
+      ).toEqual(pictures);
+    }
+    expect(seriesChannels(["a", "b", "c"])).toEqual({
+      preview: "a",
+      preview_more: ["b", "c"],
+    });
   });
 
   it("take their turns off the same clock the ground under them does", () => {
@@ -161,16 +224,8 @@ describe("the pictures a mark wears", () => {
 
 describe("a note nobody styled", () => {
   it("parses without an appearance, so a row written before this one does too", () => {
-    const did = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
-    const row = {
-      created_by: did,
-      address: "1a",
-      depth: 2,
-      origin: `${did}/01JSPREAD00000000000000000`,
-      created_at: "2026-01-01T00:00:00.000Z",
-      updated_at: "2026-01-01T00:00:00.000Z",
-    };
-    const parsed = NodeSchema.omit({ id: true }).parse(row);
+    const { appearance: _, ...without } = row(undefined);
+    const parsed = NodeSchema.omit({ id: true }).parse(without);
     expect(parsed.appearance).toBeUndefined();
     expect("appearance" in parsed).toBe(false);
   });
@@ -183,6 +238,8 @@ describe("a note nobody styled", () => {
     expect(isUnstyled(undefined)).toBe(true);
     expect(isUnstyled(null)).toBe(true);
     expect(isUnstyled(NodeAppearanceSchema.parse({}))).toBe(true);
+    expect(isUnstyled(seriesChannels([]))).toBe(true);
+    expect(isUnstyled({ preview_more: [] })).toBe(true);
     expect(isUnstyled({ ring_weight: "none" })).toBe(false);
     expect(isUnstyled({ preview_size: "large" })).toBe(false);
   });

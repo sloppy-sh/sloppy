@@ -299,8 +299,10 @@ Twelve rulings hold that table together:
   draws bigger**, at every fold, which is the whole of what the control is. The largest mark
   any canvas draws is therefore the fold's cap at the ladder's top step, and the picture a
   mark is cut to is measured there so that mark still has bytes to draw. `model.test.ts` in
-  `@sloppy/graph` owes both, and the steps themselves (`0.78`, `1`, `1.34`, `1.8`, `2.4`,
-  each about a third larger than the last) are targets until it holds them.
+  `@sloppy/graph` sweeps the ladder (`0.78`, `1`, `1.34`, `1.8`, `2.4`, each about a third
+  larger than the last) against every fold, and a picture cut before the ladder reached past
+  `large` draws softer on a mark grown into one — which is what a mark drawn bigger than the
+  bytes it holds does everywhere else.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
   picture its own author gave it. What a fold aggregates is a set a mark can be IN — its
@@ -495,8 +497,7 @@ Seven rulings hold that table together:
 - **The break says how the line was made, and it is the only thing that says it.** A hand
   drew it, and a hand is what takes it away. Every other line on the canvas comes out of
   something the note already holds — its address, or its own words — and those are drawn
-  whole. So a broken line is exactly one fact, and the reader never has to hold two meanings
-  for a dash.
+  whole. So a broken line between two marks is exactly one fact: a hand made it.
 - **Genealogy is everywhere, so it recedes.** The run is the line a reader walks —
   `1 → 2 → 3`, `1a → 1b` — so it is the one that carries weight, and it is **derived from
   the addresses, never stored** (AI.md § "The Address Is the Protocol"): the two notes either
@@ -519,7 +520,10 @@ Seven rulings hold that table together:
   is being told the pair is connected rather than shown an inventory of the ways it is.
   - **A line somebody made beats the run and beats the tree.** Citing the note a thought
     sprang from is one of the most ordinary things a person does here, and a line they made
-    that drew nothing would be a gesture the canvas swallowed.
+    that drew nothing would be a gesture the canvas swallowed. What it costs is the run's own
+    step: a pair that is consecutive AND cited draws one weight lighter than a run alone, so
+    on a corpus where citing a parent is ordinary the run reads patchy. The rarer fact is the
+    one worth the line, and the order the run carries is written on the marks themselves.
   - **The writing beats the hand.** Where a note both names another and was linked to it by
     hand, the two are the same fact and the one inside the thought is the stronger statement;
     drawing it broken would say a hand is all that holds the pair together, which the note's
@@ -907,7 +911,10 @@ over whatever is behind it.
   ends where the eight are still eight.
 - **A series changes while nobody is watching it, and how it changes is the reader's.**
   § "A picture that takes turns" is the model — the ground and a mark's imagery are both it,
-  written once so the two cannot drift into two spellings of the same choice.
+  written once so the two cannot drift into two spellings of the same choice. The ground has
+  not been moved onto it yet: `wallpaper.ts` in `@sloppy/app-core` keeps a cadence list and a
+  turn of its own, and the ground carries no transition at all. Retiring those onto
+  `picture.ts` is the work that gives the ground its transitions.
 - **The pictures are the reader's own**, from what they have already put in a note, resolved
   the way a mark's pictures are (§ "The mark") and never as a remote URL.
 - **It is a per-device view preference, kept against the graph it is under**, and never
@@ -936,7 +943,11 @@ let the two disagree about a choice somebody made once.
   time on both, inside § Motion's band, so one screen never changes a picture at two speeds.
   Under `prefers-reduced-motion` the picture changes without moving.
 - **The values are an open set**, the way a look's are: a transition this build cannot draw
-  is stored and handed back untouched, and meanwhile crossfades.
+  is stored and handed back untouched, and meanwhile crossfades. So is the count and so is
+  the cadence: **eight pictures is what Sloppy writes** — past that somebody is keeping an
+  album rather than choosing what stands behind their work — and a series a later Sloppy
+  widened is read, kept whole and drawn to the first eight. A picture that costs somebody the
+  note it is on is the one thing none of this may do.
 - **What each surface carries beside the series is its own.** The ground has a strength,
   because a picture under a whole field is held to what the reader must still be able to read
   on it (§ "The wallpaper"); a mark has the share of the disc its imagery covers (§ "The

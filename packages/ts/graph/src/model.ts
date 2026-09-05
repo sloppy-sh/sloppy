@@ -49,6 +49,11 @@ export const LOOK_SCALE: Record<MarkRadius, number> = {
   giant: 2.4,
 };
 
+/** The largest mark any canvas draws: the fold's cap at the top of the ladder,
+ *  since {@link MAX_RADIUS} caps the fold and a look scales what it reached. */
+export const MAX_MARK_RADIUS =
+  MAX_RADIUS * Math.max(...Object.values(LOOK_SCALE));
+
 /** A look's ring, as fractions of the mark's radius — its centre line, and what
  *  each weight strokes. Inside the mark, since the edge is provenance's. */
 export const LOOK_RING_AT = 0.6;
@@ -81,11 +86,11 @@ export const PREVIEW_SPAN: Record<PreviewSize, number> = {
 const DENSE_SCREEN = 2;
 
 /** The side of the square a mark's picture is cropped to, at the most of one a
- *  screen ever shows: the biggest mega-node wearing the largest picture, at full
- *  zoom, on a dense display. A picture is stored with its SHORT side at this,
- *  because the crop spends the long one. */
+ *  screen ever shows: the largest mark drawn, wearing the largest picture, at
+ *  full zoom, on a dense display. A picture is stored with its SHORT side at
+ *  this, because the crop spends the long one. */
 export const MARK_PICTURE_PX = Math.ceil(
-  MAX_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
+  MAX_MARK_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
 );
 
 /** What a note nobody styled draws as, held once rather than resolved per node. */
@@ -402,7 +407,7 @@ function radiusFor(entry: DrawnNode, look: ResolvedAppearance): number {
   const scale = LOOK_SCALE[look.markRadius];
   if (entry.folded === 0) return LEAF_RADIUS * scale;
   const grown = LEAF_RADIUS * (1 + Math.log2(1 + entry.folded) * MEGA_GROWTH);
-  return Math.min(grown * scale, MAX_RADIUS);
+  return Math.min(grown, MAX_RADIUS) * scale;
 }
 
 function provenanceOf(node: NodeView, viewer: DidSyr | undefined): Provenance {

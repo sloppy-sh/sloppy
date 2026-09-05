@@ -62,6 +62,11 @@ const PictureIdSchema = z.string().min(1).max(512);
  * channel inside a present appearance means the same for that channel by
  * itself. There is therefore never a reason to store an appearance whose every
  * channel is absent; {@link isUnstyled} is what recognises one.
+ *
+ * Nothing here refuses a value: a row is read by builds that did not write it,
+ * so what THIS build offers is bounded by {@link WrittenAppearanceSchema} on the
+ * way in and by {@link resolveAppearance} on the way out. A note whose look a
+ * later Sloppy widened past either still opens.
  */
 export const NodeAppearanceSchema = z.object({
   ring_weight: AppearanceTokenSchema.optional(),
@@ -82,15 +87,14 @@ export const NodeAppearanceSchema = z.object({
    * The rest of the series, after {@link NodeAppearance.preview} and in the
    * order they take turns. Absent is a mark whose picture never changes, and so
    * is an empty one. Says nothing without a `preview`, because that is the
-   * picture the series starts at.
+   * picture the series starts at — {@link seriesChannels} is what spells a
+   * series across the two, so taking the first picture off promotes the next
+   * rather than dropping the rest.
    */
-  preview_more: z
-    .array(PictureIdSchema)
-    .max(PICTURES_PER_SERIES - 1)
-    .optional(),
+  preview_more: z.array(PictureIdSchema).optional(),
   /** Minutes one picture holds before the next takes its turn. Absent is
    *  `PICTURE_TURN_DEFAULT`, and says nothing on a mark wearing one picture. */
-  preview_every: z.int().min(PICTURE_TURN_MIN).max(PICTURE_TURN_MAX).optional(),
+  preview_every: z.number().optional(),
   /** How one picture gives way to the next. Absent is the quietest, and says
    *  nothing on a mark wearing one picture. */
   preview_transition: AppearanceTokenSchema.optional(),
@@ -98,6 +102,20 @@ export const NodeAppearanceSchema = z.object({
   preview_size: AppearanceTokenSchema.optional(),
 });
 export type NodeAppearance = z.infer<typeof NodeAppearanceSchema>;
+
+/**
+ * The same channels, held to the series this build offers — what every request
+ * that sets a look is read through. A request carrying more than Sloppy draws
+ * can be refused and asked again; a stored row carrying it cannot, which is why
+ * the bound is here and not on {@link NodeAppearanceSchema}.
+ */
+export const WrittenAppearanceSchema = NodeAppearanceSchema.extend({
+  preview_more: z
+    .array(PictureIdSchema)
+    .max(PICTURES_PER_SERIES - 1)
+    .optional(),
+  preview_every: z.int().min(PICTURE_TURN_MIN).max(PICTURE_TURN_MAX).optional(),
+});
 
 /** Every channel resolved to one this build draws. */
 export interface ResolvedAppearance {
@@ -125,11 +143,29 @@ export function resolveAppearance(
     markRadius: known(MARK_RADII, appearance?.mark_radius, "regular"),
     preview: {
       pictures:
-        first === undefined ? [] : [first, ...(appearance?.preview_more ?? [])],
+        first === undefined
+          ? []
+          : [first, ...(appearance?.preview_more ?? [])].slice(
+              0,
+              PICTURES_PER_SERIES,
+            ),
       every: boundedTurn(appearance?.preview_every),
       transition: knownTransition(appearance?.preview_transition),
     },
     previewSize: known(PREVIEW_SIZES, appearance?.preview_size, "small"),
+  };
+}
+
+/** A series spelt back across the two channels that store it, in the order it
+ *  takes turns. Longer than {@link PICTURES_PER_SERIES} is the caller's to
+ *  avoid; {@link WrittenAppearanceSchema} refuses it. */
+export function seriesChannels(
+  pictures: readonly string[],
+): Pick<NodeAppearance, "preview" | "preview_more"> {
+  const [first, ...rest] = pictures;
+  return {
+    preview: first,
+    preview_more: rest.length === 0 ? undefined : rest,
   };
 }
 
@@ -140,7 +176,10 @@ export function isUnstyled(
 ): boolean {
   return (
     appearance == null ||
-    Object.values(appearance).every((v) => v === undefined)
+    Object.values(appearance).every(
+      (value) =>
+        value === undefined || (Array.isArray(value) && value.length === 0),
+    )
   );
 }
 

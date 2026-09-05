@@ -610,13 +610,24 @@ describe("the look a note's author gave it", () => {
     expect(mark.previewSize).toBe("small");
   });
 
-  // DESIGN.md § "The mark": radius is the one channel the fold and the author
-  // share, and a look that could grow a leaf as far as the smallest mega-node
-  // would have taken the fold's channel rather than scaling it.
-  it("never grows a leaf as far as one folded note", () => {
-    const grown = radiusOf([styled("1", { mark_radius: "large" })]);
-    expect(grown).toBeGreaterThan(radiusOf([plain("1")]));
-    expect(grown).toBeLessThan(radiusOf([plain("1", 1)]));
+  // DESIGN.md § "The mark": the cap is the fold's and the author spends theirs
+  // on top of it, so a step up the ladder draws bigger at every fold — the ones
+  // whose growth is already at the cap included.
+  it("draws every step of the ladder bigger than the one below it", () => {
+    for (const folded of [0, 1, 20, 103, 900, 7000]) {
+      let below = 0;
+      for (const mark_radius of MARK_RADII) {
+        const drawn = radiusOf([
+          {
+            ...styled("1", { mark_radius }),
+            collapsed: folded > 0,
+            folded,
+          },
+        ]);
+        expect(drawn, `${mark_radius} at ${folded}`).toBeGreaterThan(below);
+        below = drawn;
+      }
+    }
   });
 
   it("keeps a folded subtree bigger than a leaf wearing the same look", () => {

@@ -58,9 +58,9 @@ export function pictureTurn(
   ];
 }
 
-/** The cadence a value asks for, held inside the range a series may take —
- *  anything else, an older stored shape and a hand-edited store alike, lands on
- *  {@link PICTURE_TURN_DEFAULT}. */
+/** The cadence a value asks for, held inside the range a series may take. What
+ *  is not a cadence at all — an absent channel, a hand-edited store — lands on
+ *  {@link PICTURE_TURN_DEFAULT} instead. */
 export function boundedTurn(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.min(PICTURE_TURN_MAX, Math.max(PICTURE_TURN_MIN, Math.round(value)))

@@ -1115,8 +1115,12 @@ The rules AI.md's foundation-wave section states, applied here:
   SCHEMALESS table, because the database has nothing to enforce about it that
   `@sloppy/types`' `appearance.ts` does not — and that schema bounds it by SHAPE rather than
   by vocabulary, the way a block's document is bounded, so a look this build has no renderer
-  for is carried untouched instead of refused. DESIGN.md § "The mark" is the doc of record
-  for which channel means what, and for the ruling that none of them is a colour.
+  for is carried untouched instead of refused. Where a bound is Sloppy's own — how many
+  pictures a series holds, how slowly it may turn — it is held on the way IN, by
+  `WrittenAppearanceSchema`, which every request that sets a look is read through: a request
+  carrying more than this build draws can be refused and asked again, where a stored row
+  carrying it has to go on opening the note it is on. DESIGN.md § "The mark" is the doc of
+  record for which channel means what, and for the ruling that none of them is a colour.
 
   A mark's pictures are stored as upload ids and never as addresses or URLs — § "Pictures"
   is why. An id outlives the bytes: a picture deleted from the person's store leaves it

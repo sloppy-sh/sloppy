@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import { addressDepth, AddressSchema, RootAddressSchema } from "./address.js";
-import { NodeAppearanceSchema } from "./appearance.js";
+import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import { OwnedEntitySchema, type OwnedRef, OwnedRefSchema } from "./common.js";
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
@@ -195,7 +195,7 @@ export const UpdateNodeRequestSchema = z.object({
   links: z.array(OwnedRefSchema).optional(),
   /** `null` takes the look back off and leaves the note unstyled; absent leaves
    *  whatever look it has alone. */
-  appearance: NodeAppearanceSchema.nullable().optional(),
+  appearance: WrittenAppearanceSchema.nullable().optional(),
 });
 export type UpdateNodeRequest = z.input<typeof UpdateNodeRequestSchema>;
 
@@ -218,7 +218,7 @@ export const NodeBulkActSchema = z.discriminatedUnion("act", [
   /** `null` leaves every note it reaches unstyled. */
   z.object({
     act: z.literal("set_appearance"),
-    appearance: NodeAppearanceSchema.nullable(),
+    appearance: WrittenAppearanceSchema.nullable(),
   }),
   /** Each note leaves with everything that sprang from it, and with its blocks. */
   z.object({ act: z.literal("delete") }),
