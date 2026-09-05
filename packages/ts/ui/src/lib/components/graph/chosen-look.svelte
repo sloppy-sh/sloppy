@@ -3,20 +3,18 @@
 	// never uses colour" is why every control here is a shape.
 	import {
 		isUnstyled,
-		MARK_RADII,
+		MARK_SCALE_MAX,
+		MARK_SCALE_MIN,
 		RING_STYLES,
 		RING_WEIGHTS,
-		type MarkRadius,
 		type NodeAppearance,
 		type RingStyle,
 		type RingWeight
 	} from '@sloppy/types';
+	import MarkSwatch from '../appearance/mark-swatch.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import {
-		MARK_RADIUS_LABELS,
-		RING_STYLE_LABELS,
-		RING_WEIGHT_LABELS
-	} from '../appearance/labels.js';
+	import { RING_STYLE_LABELS, RING_WEIGHT_LABELS } from '../appearance/labels.js';
+	import LookSlider from '../appearance/look-slider.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	let {
@@ -37,11 +35,13 @@
 
 	const rings = choices(RING_WEIGHTS, RING_WEIGHT_LABELS);
 	const lines = choices(RING_STYLES, RING_STYLE_LABELS);
-	const sizes = choices(MARK_RADII, MARK_RADIUS_LABELS);
+
+	/** What a mark with nothing set is drawn at, which is where the size starts. */
+	const PLAIN_SCALE = 1;
 
 	let ring = $state<RingWeight>('none');
 	let line = $state<RingStyle>('solid');
-	let size = $state<MarkRadius>('regular');
+	let scale = $state(PLAIN_SCALE);
 	let working = $state(false);
 
 	// Mounted for the page's life, so without this it reopens holding the look
@@ -50,7 +50,7 @@
 		if (!open) return;
 		ring = 'none';
 		line = 'solid';
-		size = 'regular';
+		scale = PLAIN_SCALE;
 	});
 
 	// A channel left where an unstyled note already sits says nothing, so it is
@@ -61,9 +61,13 @@
 			chosen.ring_weight = ring;
 			if (line !== 'solid') chosen.ring_style = line;
 		}
-		if (size !== 'regular') chosen.mark_radius = size;
+		if (scale !== PLAIN_SCALE) chosen.mark_scale = scale;
 		return isUnstyled(chosen) ? null : chosen;
 	});
+
+	function sizeTo(next: number): void {
+		scale = next;
+	}
 
 	async function apply(next: NodeAppearance | null): Promise<void> {
 		working = true;
@@ -109,12 +113,24 @@
 		: 'This replaces the look they have now, including any picture on them.'}
 >
 	<div class="space-y-5 px-2 pt-4">
+		<!-- The words used to carry the size; a track does not, so the mark does. -->
+		<div class="flex justify-center pb-1">
+			<MarkSwatch appearance={look} size={76} />
+		</div>
 		{@render row('Ring', rings, ring, (v) => (ring = v as RingWeight))}
 		{#if ring !== 'none'}
 			{@render row('Ring style', lines, line, (v) => (line = v as RingStyle))}
-			<p class="-mt-3 text-sm text-muted-foreground">A dashed ring reads as a draft.</p>
+			<p class="-mt-3 text-sm text-muted-foreground">A broken ring reads as a draft.</p>
 		{/if}
-		{@render row('Size', sizes, size, (v) => (size = v as MarkRadius))}
+		<LookSlider
+			label="Size"
+			value={scale}
+			min={MARK_SCALE_MIN}
+			max={MARK_SCALE_MAX}
+			step={0.01}
+			ondrag={sizeTo}
+			onchange={sizeTo}
+		/>
 
 		{#if refused}
 			<p class="text-sm text-destructive" role="alert">{refused}</p>

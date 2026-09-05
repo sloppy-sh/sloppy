@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   isUnstyled,
   MARK_RADII,
+  MARK_RADIUS_SCALE,
+  MARK_SCALE_MAX,
+  MARK_SCALE_MIN,
   NodeAppearanceSchema,
+  PREVIEW_COVER_MAX,
+  PREVIEW_COVER_MIN,
+  PREVIEW_SIZE_COVER,
   PREVIEW_SIZES,
   RING_STYLES,
   RING_WEIGHTS,
@@ -39,23 +45,25 @@ const CHANNELS: Record<string, unknown> = {
   ring_weight: "regular",
   ring_style: "regular",
   mark_radius: "regular",
+  mark_scale: 1.5,
   preview: PICTURE,
   preview_more: [`${PICTURE}b`],
   preview_every: 360,
   preview_transition: "regular",
   preview_size: "regular",
+  preview_cover: 0.5,
 };
 
 const UNSTYLED = {
   ringWeight: "none",
   ringStyle: "solid",
-  markRadius: "regular",
+  markScale: 1,
   preview: {
     pictures: [],
     every: PICTURE_TURN_DEFAULT,
     transition: QUIETEST_TRANSITION,
   },
-  previewSize: "small",
+  previewCover: PREVIEW_COVER_MIN,
 };
 
 // The round trip is the contract rather than the vocabulary: a look an older
@@ -67,7 +75,9 @@ describe("a look this build cannot draw", () => {
     ring_weight: "gossamer",
     ring_style: "double",
     mark_radius: "enormous",
+    mark_scale: 6,
     preview_size: "whole",
+    preview_cover: 1,
     preview_transition: "dissolve",
     preview: "p0",
     preview_more: Array.from({ length: 15 }, (_, at) => `p${at + 1}`),
@@ -92,6 +102,19 @@ describe("a look this build cannot draw", () => {
     expect(look.preview.every).toBe(PICTURE_TURN_MAX);
   });
 
+  // A number is bounded rather than fallen back from: what a later Sloppy
+  // widened past is drawn at the widest this one has, which is nearer what its
+  // author asked for than a mark with nothing set.
+  it("is drawn at the size and the cover this build reaches", () => {
+    const look = resolveAppearance(later);
+    expect(look.markScale).toBe(MARK_SCALE_MAX);
+    expect(look.previewCover).toBe(PREVIEW_COVER_MAX);
+
+    const narrow = resolveAppearance({ mark_scale: 0.01, preview_cover: 0.01 });
+    expect(narrow.markScale).toBe(MARK_SCALE_MIN);
+    expect(narrow.previewCover).toBe(PREVIEW_COVER_MIN);
+  });
+
   it("draws as an unstyled note does, so nothing renders a token it cannot", () => {
     expect(
       resolveAppearance(
@@ -112,11 +135,13 @@ describe("a look this build cannot draw", () => {
       expect(resolveAppearance({ ring_style }).ringStyle).toBe(ring_style);
     }
     for (const mark_radius of MARK_RADII) {
-      expect(resolveAppearance({ mark_radius }).markRadius).toBe(mark_radius);
+      expect(resolveAppearance({ mark_radius }).markScale).toBe(
+        MARK_RADIUS_SCALE[mark_radius],
+      );
     }
     for (const preview_size of PREVIEW_SIZES) {
-      expect(resolveAppearance({ preview_size }).previewSize).toBe(
-        preview_size,
+      expect(resolveAppearance({ preview_size }).previewCover).toBe(
+        PREVIEW_SIZE_COVER[preview_size],
       );
     }
     for (const preview_transition of PICTURE_TRANSITIONS) {
@@ -145,6 +170,86 @@ describe("the channels a look may spend", () => {
     expect(Object.keys(NodeAppearanceSchema.parse(CHANNELS)).sort()).toEqual(
       Object.keys(CHANNELS).sort(),
     );
+  });
+});
+
+// DESIGN.md § "The mark": size and cover are one channel each, and the steps are
+// the coarse way of saying what a number says exactly.
+describe("a size and a cover an author dragged to", () => {
+  it("is what the mark is drawn at, over the step beside it", () => {
+    const both = resolveAppearance({
+      mark_radius: "giant",
+      mark_scale: 1.11,
+      preview_size: "large",
+      preview_cover: 0.55,
+    });
+    expect(both.markScale).toBe(1.11);
+    expect(both.previewCover).toBe(0.55);
+  });
+
+  it("falls back to the step where an author dragged nothing", () => {
+    expect(resolveAppearance({ mark_radius: "huge" }).markScale).toBe(
+      MARK_RADIUS_SCALE.huge,
+    );
+    expect(resolveAppearance({ preview_size: "medium" }).previewCover).toBe(
+      PREVIEW_SIZE_COVER.medium,
+    );
+  });
+
+  // Every note already spelt in the steps keeps the mark it has, so what each
+  // step is worth cannot move — and the ends of the range are the ladder's own.
+  it("is worth for each step exactly what that step has always drawn", () => {
+    expect(MARK_RADIUS_SCALE).toEqual({
+      small: 0.78,
+      regular: 1,
+      large: 1.34,
+      huge: 1.8,
+      giant: 2.4,
+    });
+    expect(PREVIEW_SIZE_COVER).toEqual({
+      small: 0.42,
+      medium: 0.49,
+      large: 0.6,
+    });
+    for (const [ladder, min, max] of [
+      [MARK_RADIUS_SCALE, MARK_SCALE_MIN, MARK_SCALE_MAX],
+      [PREVIEW_SIZE_COVER, PREVIEW_COVER_MIN, PREVIEW_COVER_MAX],
+    ] as const) {
+      for (const [step, worth] of Object.entries(ladder)) {
+        expect(worth, step).toBeGreaterThanOrEqual(min);
+        expect(worth, step).toBeLessThanOrEqual(max);
+      }
+    }
+  });
+
+  // A picture can be dragged over the whole face of the mark, which is more
+  // than any step ever reached.
+  it("reaches further than the largest step a picture could be spelt in", () => {
+    expect(PREVIEW_COVER_MAX).toBeGreaterThan(PREVIEW_SIZE_COVER.large);
+  });
+
+  it("is held where a look is written to the range a mark draws", () => {
+    for (const channel of ["mark_scale", "preview_cover"] as const) {
+      const range =
+        channel === "mark_scale"
+          ? [MARK_SCALE_MIN, MARK_SCALE_MAX]
+          : [PREVIEW_COVER_MIN, PREVIEW_COVER_MAX];
+      for (const [at, edge] of range.entries()) {
+        expect(
+          WrittenAppearanceSchema.safeParse({ [channel]: edge }).success,
+          `${channel} at ${edge}`,
+        ).toBe(true);
+        const past = at === 0 ? edge - 0.01 : edge + 0.01;
+        expect(
+          WrittenAppearanceSchema.safeParse({ [channel]: past }).success,
+          `${channel} past ${edge}`,
+        ).toBe(false);
+      }
+      // The stored shape keeps what a request may not send.
+      expect(NodeAppearanceSchema.safeParse({ [channel]: 99 }).success).toBe(
+        true,
+      );
+    }
   });
 });
 

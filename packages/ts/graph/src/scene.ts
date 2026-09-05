@@ -7,7 +7,13 @@
 // and the author's look (DESIGN.md § Form), so each gets a shape of its own: a
 // tint cannot make one texture read as two shapes.
 
-import { pictureTurn, type RingStyle, type RingWeight } from "@sloppy/types";
+import {
+  MARK_SCALE_MAX,
+  pictureTurn,
+  RING_STYLES,
+  type RingStyle,
+  type RingWeight,
+} from "@sloppy/types";
 import type {
   Application,
   Container,
@@ -29,14 +35,11 @@ import { GroundLayer } from "./ground-layer.js";
 import type { GraphNodeAttributes } from "./model.js";
 import {
   type BuiltModel,
-  LADDER_TOP,
   LOOK_RING_AT,
-  LOOK_RING_DASHES,
-  LOOK_RING_DUTY,
+  LOOK_RING_BREAK,
   LOOK_RING_WIDTH,
   markPictureSide,
   type NamedField,
-  PREVIEW_SPAN,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
 import { pictureStep, shownAt, TURN_MS } from "./turn.js";
@@ -52,13 +55,24 @@ type Pixi = typeof import("pixi.js");
 /** Radius the mark textures are drawn at; every mark is a scale of this. */
 const TEXTURE_RADIUS = 16;
 /** What the sheet is rasterised at. One sheet serves every mark, so its density
- *  is measured at the top of the ladder and paid once, by everybody —
+ *  is measured at the largest a look may draw one and paid once, by everybody —
  *  DESIGN.md § "The mark". */
-const TEXTURE_RESOLUTION = 4 * LADDER_TOP;
+const TEXTURE_RESOLUTION = 4 * MARK_SCALE_MAX;
 /** Empty margin around each shape on the sheet, so sampling one never catches
  *  the shape beside it. */
 const SHEET_PAD = 4;
 const SHEET_CELL = TEXTURE_RADIUS * 2 + SHEET_PAD * 2;
+/** A disc, the two provenance edges, and one per ring weight and style. */
+const SHEET_CELLS =
+  3 + Object.keys(LOOK_RING_WIDTH).length * RING_STYLES.length;
+/**
+ * The sheet's side in device pixels. **2048 is the smallest a GPU Sloppy runs
+ * on is guaranteed to hold**, and past it the atlas is refused on the phones
+ * least able to say why — so a ring weight or a style added here is bounded by
+ * this, and `scene.test.ts` is what keeps that true rather than hoped.
+ */
+export const MARK_SHEET_PX =
+  Math.ceil(Math.sqrt(SHEET_CELLS)) * SHEET_CELL * TEXTURE_RESOLUTION;
 
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
@@ -123,7 +137,7 @@ const MAX_DASHES = 60;
 /** Below this drawn radius, in CSS pixels, a mark is too small to carry its
  *  author's look — DESIGN.md § "The mark", where the look is the first thing to
  *  go. `scene.test.ts` holds the figure against the view a graph opens on. */
-const LOOK_MIN_RADIUS = 4;
+export const LOOK_MIN_RADIUS = 4;
 /** How far past that a look hangs on, so a pinch does not strobe it. */
 const LOOK_HYSTERESIS = 0.75;
 
@@ -321,15 +335,19 @@ export class GraphScene {
     const looks = new pixi.ParticleContainer(particleOptions);
     const picks = new pixi.Graphics();
     // The lift is under everything: it is paper, not a line drawn on the field.
+    // The author's ring is UNDER their picture, so widening the cover past it
+    // takes it — which is what the cover slider is for. Provenance is OVER the
+    // picture, so no cover can take that: it is the graph's word, not the
+    // author's. DESIGN.md § "The mark".
     world.addChild(
       lift,
       edges,
       runs,
       connections,
       fills,
+      looks,
       previews,
       rings,
-      looks,
       picks,
     );
 
@@ -799,8 +817,8 @@ export class GraphScene {
   private placePictures(mark: Mark): void {
     const x = this.positions[mark.index * 2];
     const y = this.positions[mark.index * 2 + 1];
-    const { alpha, previewSize, preview } = mark.attributes;
-    const across = mark.radius * PREVIEW_SPAN[previewSize];
+    const { alpha, previewCover, preview } = mark.attributes;
+    const across = mark.radius * previewCover;
     if (mark.turn === null) {
       if (!mark.preview) return;
       lay(mark.preview, x, y, across * 2, alpha, mark.looking);
@@ -968,7 +986,7 @@ export class GraphScene {
   /** What this mark decodes its picture at — the mark's own size, never the
    *  largest one a look could reach. */
   private sideFor(mark: Mark): number {
-    return markPictureSide(mark.radius, mark.attributes.previewSize);
+    return markPictureSide(mark.radius, mark.attributes.previewCover);
   }
 
   /** Marks share one texture per picture, so a sprite goes without its own. */
@@ -1516,9 +1534,12 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
   const dashed = cell((into) =>
     strokeRing(into, edgeAt, edgeWidth, EDGE_DASHES),
   );
+  // One cell per weight and style both, so the sheet grows with the product of
+  // the two — DESIGN.md § "The mark" is where a style has to earn that.
   const looks = new Map<string, number>();
   for (const [weight, fraction] of Object.entries(LOOK_RING_WIDTH)) {
-    for (const style of ["solid", "dashed"] as const) {
+    for (const style of RING_STYLES) {
+      const { dashes, duty } = LOOK_RING_BREAK[style];
       looks.set(
         lookKey(weight as RingWeight, style),
         cell((into) =>
@@ -1526,8 +1547,8 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
             into,
             TEXTURE_RADIUS * LOOK_RING_AT,
             TEXTURE_RADIUS * fraction,
-            style === "dashed" ? LOOK_RING_DASHES : 0,
-            LOOK_RING_DUTY,
+            dashes,
+            duty,
           ),
         ),
       );
@@ -1537,7 +1558,9 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
   // Squared off rather than laid in one row: the sheet's density follows the
   // ladder, so a row of it would run past the smallest texture a GPU Sloppy
   // runs on will hold, and a square wastes the least of what it does hold.
-  const columns = Math.ceil(Math.sqrt(cells.length));
+  // From the sets rather than the array, so `MARK_SHEET_PX` above is the size
+  // this actually builds and a test can hold it to the GPU's floor.
+  const columns = Math.ceil(Math.sqrt(SHEET_CELLS));
   const corner = (at: number): { x: number; y: number } => ({
     x: (at % columns) * SHEET_CELL + SHEET_PAD,
     y: Math.floor(at / columns) * SHEET_CELL + SHEET_PAD,

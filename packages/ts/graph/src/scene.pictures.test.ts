@@ -3,7 +3,12 @@
 // in for, because what is checked here is the bookkeeping around the GPU — who
 // is asked, what is freed, and what is left holding it — never the pixels.
 
-import { type NodeView, type OwnedRef, PREVIEW_SIZES } from "@sloppy/types";
+import {
+  type NodeView,
+  type OwnedRef,
+  PREVIEW_COVER_MAX,
+  PREVIEW_COVER_MIN,
+} from "@sloppy/types";
 import {
   afterEach,
   beforeAll,
@@ -20,8 +25,6 @@ import {
   LEAF_RADIUS,
   MARK_PICTURE_PX,
   markPictureSide,
-  PREVIEW_AT,
-  PREVIEW_SPAN,
 } from "./model.js";
 import { buildPalette } from "./palette.js";
 import { TURN_MS } from "./turn.js";
@@ -38,7 +41,7 @@ vi.mock("pixi.js", async () => {
   return fakePixi();
 });
 
-const { GraphScene } = await import("./scene.js");
+const { FILL_AT, GraphScene } = await import("./scene.js");
 
 /** What each decoded picture measures, keyed by the `src` it was handed. */
 const decoded = new Map<string, { width: number; height: number }>();
@@ -90,7 +93,7 @@ const palette = buildPalette({ ink: "#000", paper: "#fff", hues: [] });
 function drawn(
   address: string,
   preview?: string,
-  preview_size?: string,
+  preview_cover?: number,
 ): DrawnNode {
   const ref = `${OWNER}/${address}` as OwnedRef;
   const node = {
@@ -105,7 +108,9 @@ function drawn(
     tags: [],
     links: [],
     published: false,
-    ...(preview === undefined ? {} : { appearance: { preview, preview_size } }),
+    ...(preview === undefined
+      ? {}
+      : { appearance: { preview, preview_cover } }),
   } as NodeView;
   return { node, collapsed: false, folded: 0, tags: [] };
 }
@@ -197,16 +202,17 @@ describe("a picture reaching a mark", () => {
     const model = buildModel(field, { selection: [], palette });
     const { radius } = model.graph.getNodeAttributes(field[0].node.ref);
     const sprite = previewsOf(app).children[0] as FakeSprite;
-    expect(sprite.width).toBeCloseTo(radius * PREVIEW_AT * 2, 6);
+    expect(sprite.width).toBeCloseTo(radius * PREVIEW_COVER_MIN * 2, 6);
     expect(sprite.height).toBe(sprite.width);
     scene.destroy();
   });
 
   // DESIGN.md § "The mark": how much of the mark a picture covers is a channel
-  // its author spends, and the sizes are what `PREVIEW_SPAN` holds.
-  it("grows to the share its author asked for", async () => {
-    const field = PREVIEW_SIZES.map((size, at) =>
-      drawn(`${at + 1}`, `up_${size}`, size),
+  // its author spends, all the way to the disc the picture is drawn on.
+  it("grows to the share its author dragged to, up to the disc's own edge", async () => {
+    const covers = [PREVIEW_COVER_MIN, 0.7, PREVIEW_COVER_MAX];
+    const field = covers.map((cover, at) =>
+      drawn(`${at + 1}`, `up_${at}`, cover),
     );
     const { scene, app } = await sceneOn(field, host());
     await settle();
@@ -217,13 +223,16 @@ describe("a picture reaching a mark", () => {
     let widest = 0;
     field.forEach((entry, at) => {
       const { radius } = model.graph.getNodeAttributes(entry.node.ref);
-      expect(sprites[at].width, PREVIEW_SIZES[at]).toBeCloseTo(
-        radius * PREVIEW_SPAN[PREVIEW_SIZES[at]] * 2,
+      expect(sprites[at].width, `${covers[at]}`).toBeCloseTo(
+        radius * covers[at] * 2,
         6,
       );
       expect(sprites[at].width).toBeGreaterThan(widest);
       widest = sprites[at].width;
     });
+    // The disc the picture is cut to, which is what stops it spilling out.
+    const { radius } = model.graph.getNodeAttributes(field[2].node.ref);
+    expect(widest).toBeCloseTo(radius * FILL_AT * 2, 6);
     scene.destroy();
   });
 
@@ -236,7 +245,7 @@ describe("a picture reaching a mark", () => {
     );
     await settle();
 
-    const leaf = markPictureSide(LEAF_RADIUS, "small");
+    const leaf = markPictureSide(LEAF_RADIUS, PREVIEW_COVER_MIN);
     const wide = painted.find((cut) => cut.canvas === leaf);
     expect(
       wide,
@@ -273,7 +282,7 @@ describe("a picture reaching a mark", () => {
             cut.canvas ===
             markPictureSide(
               model.graph.getNodeAttributes(entry.node.ref).radius,
-              "small",
+              PREVIEW_COVER_MIN,
             ),
         )?.canvas,
     );

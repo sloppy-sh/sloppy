@@ -1,3 +1,10 @@
+import {
+  MARK_RADIUS_SCALE,
+  PREVIEW_COVER_MAX,
+  PREVIEW_COVER_MIN,
+  PREVIEW_SIZE_COVER,
+  RING_STYLES,
+} from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
@@ -6,13 +13,9 @@ import {
   buildModel,
   LEAF_RADIUS,
   LOOK_RING_AT,
-  LOOK_RING_DASHES,
-  LOOK_RING_DUTY,
+  LOOK_RING_BREAK,
   LOOK_RING_WIDTH,
-  LOOK_SCALE,
   MAX_RADIUS,
-  PREVIEW_AT,
-  PREVIEW_SPAN,
 } from "./model.js";
 import { buildPalette } from "./palette.js";
 import {
@@ -24,10 +27,21 @@ import {
   liftInk,
   type LiftBand,
   liftOf,
+  LOOK_MIN_RADIUS,
   looksDrawn,
+  MARK_SHEET_PX,
   PICK_GAP,
 } from "./scene.js";
 import { type Bounds, MAX_SCALE, MIN_SCALE, Viewport } from "./viewport.js";
+
+// The sheet's own comment says a row of it would run past the smallest texture
+// a GPU Sloppy runs on will hold. 2048 is that floor, and every ring weight or
+// style added after this one is bounded by it.
+describe("the sheet every mark is cut from", () => {
+  it("stays inside the smallest texture a GPU is guaranteed to hold", () => {
+    expect(MARK_SHEET_PX).toBeLessThanOrEqual(2048);
+  });
+});
 
 describe("a dashed link", () => {
   it("reaches the far note however long it is", () => {
@@ -144,68 +158,64 @@ describe("the bands drawn on one mark", () => {
   });
 
   // A gap the stroke can close is a draft that reads as a note somebody
-  // weighted, which is the one thing the broken ring exists to say apart.
-  it("leaves a broken ring a gap wider than its heaviest stroke", () => {
-    const turn = (2 * Math.PI * LOOK_RING_AT) / LOOK_RING_DASHES;
-    expect(turn * (1 - LOOK_RING_DUTY)).toBeGreaterThan(LOOK_RING_WIDTH.heavy);
+  // weighted, which is the one thing a broken ring exists to say apart.
+  it("leaves every broken ring a gap wider than its heaviest stroke", () => {
+    for (const [style, { dashes, duty }] of Object.entries(LOOK_RING_BREAK)) {
+      if (dashes === 0) continue;
+      const turn = (2 * Math.PI * LOOK_RING_AT) / dashes;
+      expect(turn * (1 - duty), style).toBeGreaterThan(LOOK_RING_WIDTH.heavy);
+    }
+  });
+
+  // A style a reader cannot tell from the one beside it is a row in a picker
+  // rather than a look, and the smallest mark that carries one is where that
+  // has to hold — DESIGN.md § "The mark".
+  it("draws each style a different length of ring from every other", () => {
+    const smallest = LOOK_MIN_RADIUS * LOOK_RING_AT;
+    const drawn = RING_STYLES.map((style) => {
+      const { dashes, duty } = LOOK_RING_BREAK[style];
+      return { style, gaps: dashes, ink: 2 * Math.PI * smallest * duty };
+    });
+
+    for (const [at, one] of drawn.entries()) {
+      for (const other of drawn.slice(at + 1)) {
+        const apart = `${one.style} against ${other.style}`;
+        expect(one.gaps, apart).not.toBe(other.gaps);
+        // A pixel of ink between two styles is a difference nobody sees on a
+        // mark this size, whatever the arithmetic says.
+        expect(Math.abs(one.ink - other.ink), apart).toBeGreaterThan(1);
+      }
+    }
   });
 });
 
-// DESIGN.md § "The mark": how much of the mark a picture takes is its author's
-// to choose, and what bounds it is what it leaves — the band of fill the
-// reader's own selection speaks in, the edge that is provenance's, and the
-// author's own ring, which is drawn over a picture rather than beside it.
-describe("a picture at every size its author may ask for", () => {
-  const sizes = Object.entries(PREVIEW_SPAN);
-  const rings = Object.entries(LOOK_RING_WIDTH);
-
-  // Where the fill is last visible, which is not the mark's radius: the disc
-  // stops short of it, and a published note's ink edge is drawn over the
-  // outside of what is left. A pulled mark is hollow, so its hue is the dashed
-  // edge and a picture takes none of it.
-  const fillEndsAt = {
-    own: FILL_AT,
-    published: EDGE_RING_AT - EDGE_RING_WIDTH / 2,
-  };
-
+// DESIGN.md § "The mark": how much of the mark a picture covers is its author's
+// to spend, and what bounds it is the disc it is drawn on — the fill stops short
+// of the mark's edge, and past that a picture would spill outside the mark.
+describe("a picture at every cover its author may ask for", () => {
   // The anchor, not the alias: every note already carrying a picture keeps the
-  // mark it has only because this number does not move.
-  it("covers what it always has where nobody chose a size", () => {
-    expect(PREVIEW_SPAN.small).toBe(0.42);
+  // mark it has only because these numbers do not move.
+  it("covers what it always has where nobody said how much", () => {
+    expect(PREVIEW_COVER_MIN).toBe(0.42);
+    expect(PREVIEW_SIZE_COVER).toEqual({
+      small: 0.42,
+      medium: 0.49,
+      large: 0.6,
+    });
   });
 
-  it("leaves the hue a band wider than the heaviest ring a look can draw", () => {
-    for (const [size, at] of sizes) {
-      for (const [provenance, ends] of Object.entries(fillEndsAt)) {
-        expect(ends - at, `${size} on a ${provenance} note`).toBeGreaterThan(
-          LOOK_RING_WIDTH.heavy,
-        );
-      }
+  it("reaches the disc's own edge at full cover, and stops there", () => {
+    expect(PREVIEW_COVER_MAX).toBe(FILL_AT);
+    for (const cover of Object.values(PREVIEW_SIZE_COVER)) {
+      expect(cover).toBeLessThanOrEqual(PREVIEW_COVER_MAX);
     }
   });
 
-  it("never reaches the mark's own edge, which is provenance's", () => {
-    for (const [size, at] of sizes) {
-      expect(at, size).toBeLessThan(EDGE_RING_AT - EDGE_RING_WIDTH / 2);
-    }
-  });
-
-  // A rim that stops under the ring is framed by it, and one well inside it is
-  // a circle of its own. A rim a hair from either edge of the ring is neither:
-  // the two read as one thick edge instead of two facts.
-  it("ends under the author's ring or well inside it, never alongside", () => {
-    for (const [size, at] of sizes) {
-      for (const [weight, width] of rings) {
-        const clear = Math.max(
-          LOOK_RING_AT - width / 2 - at,
-          at - (LOOK_RING_AT + width / 2),
-        );
-        expect(
-          clear <= 0 || clear >= LOOK_RING_WIDTH.hairline / 2,
-          `${size} ends alongside a ${weight} ring`,
-        ).toBe(true);
-      }
-    }
+  // The ring is drawn over the picture, so at full cover the author's own line
+  // lies on their own picture — theirs to spend. Provenance is not: its edge is
+  // drawn over the picture too, and it is what a picture may never reach past.
+  it("leaves the mark's own edge, which is provenance's, outside it", () => {
+    expect(PREVIEW_COVER_MAX).toBeLessThan(EDGE_RING_AT + EDGE_RING_WIDTH / 2);
   });
 });
 
@@ -261,9 +271,9 @@ describe("the lift under an open note", () => {
   // that is what is swept.
   it("outweighs the lift wherever the chosen band lands", () => {
     const sizes = [
-      LEAF * LOOK_SCALE.small,
+      LEAF * MARK_RADIUS_SCALE.small,
       LEAF,
-      LEAF * LOOK_SCALE.large,
+      LEAF * MARK_RADIUS_SCALE.large,
       20,
       MAX_RADIUS,
     ];

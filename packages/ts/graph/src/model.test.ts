@@ -4,8 +4,14 @@ import {
   assignTagHueSlots,
   type EdgeKind,
   MARK_RADII,
+  MARK_RADIUS_SCALE,
+  MARK_SCALE_MAX,
+  MARK_SCALE_MIN,
   type NodeAppearance,
   type NodeView,
+  PREVIEW_COVER_MAX,
+  PREVIEW_COVER_MIN,
+  PREVIEW_SIZE_COVER,
   PREVIEW_SIZES,
   type OwnedRef,
   siblingAddress,
@@ -18,7 +24,6 @@ import { applyLod } from "./lod.js";
 import {
   buildModel,
   LEAF_RADIUS,
-  LOOK_SCALE,
   MARK_PICTURE_PX,
   markPictureSide,
   WIDEST_RADIUS,
@@ -616,7 +621,7 @@ describe("the look a note's author gave it", () => {
     const mark = markOf(plain("1"));
     expect(mark.ringWeight).toBe("none");
     expect(mark.preview.pictures).toEqual([]);
-    expect(mark.previewSize).toBe("small");
+    expect(mark.previewCover).toBe(PREVIEW_COVER_MIN);
   });
 
   it("carries the ring and the picture its author chose", () => {
@@ -631,7 +636,35 @@ describe("the look a note's author gave it", () => {
     expect(mark.ringWeight).toBe("heavy");
     expect(mark.ringStyle).toBe("dashed");
     expect(mark.preview.pictures).toEqual(["upload-1"]);
-    expect(mark.previewSize).toBe("large");
+    expect(mark.previewCover).toBe(PREVIEW_SIZE_COVER.large);
+  });
+
+  // The channel a slider spends. It is the same channel the steps spell, said
+  // finely, so a note carrying both is drawn at the number.
+  it("carries the size and the cover its author dragged to", () => {
+    const mark = markOf(
+      styled("1", {
+        mark_radius: "small",
+        mark_scale: 2.11,
+        preview: "upload-1",
+        preview_size: "small",
+        preview_cover: PREVIEW_COVER_MAX,
+      }),
+    );
+    expect(mark.radius).toBe(LEAF_RADIUS * 2.11);
+    expect(mark.previewCover).toBe(PREVIEW_COVER_MAX);
+  });
+
+  // A number past what this build draws falls back the way a token it cannot
+  // draw does: held to the range, never refused and never drawn outside it.
+  it("holds a size a newer Sloppy widened past to the range it draws", () => {
+    const wide = markOf(styled("1", { mark_scale: 40, preview_cover: 40 }));
+    expect(wide.radius).toBe(LEAF_RADIUS * MARK_SCALE_MAX);
+    expect(wide.previewCover).toBe(PREVIEW_COVER_MAX);
+
+    const narrow = markOf(styled("1", { mark_scale: 0, preview_cover: 0 }));
+    expect(narrow.radius).toBe(LEAF_RADIUS * MARK_SCALE_MIN);
+    expect(narrow.previewCover).toBe(PREVIEW_COVER_MIN);
   });
 
   // `appearance.ts` bounds a look by shape rather than by vocabulary, so one
@@ -647,7 +680,19 @@ describe("the look a note's author gave it", () => {
     );
     expect(mark.ringWeight).toBe("none");
     expect(mark.radius).toBe(radiusOf([plain("1")]));
-    expect(mark.previewSize).toBe("small");
+    expect(mark.previewCover).toBe(PREVIEW_COVER_MIN);
+  });
+
+  // Every note already spelt in the steps keeps the mark it has: what each one
+  // is worth is frozen, and the slider's ends are the ladder's own.
+  it("draws a note spelt in the steps at exactly what they were worth", () => {
+    for (const mark_radius of MARK_RADII) {
+      expect(radiusOf([styled("1", { mark_radius })]), mark_radius).toBe(
+        LEAF_RADIUS * MARK_RADIUS_SCALE[mark_radius],
+      );
+    }
+    expect(MARK_RADIUS_SCALE.small).toBe(MARK_SCALE_MIN);
+    expect(MARK_RADIUS_SCALE.giant).toBe(MARK_SCALE_MAX);
   });
 
   // DESIGN.md § "The mark": the ladder ascends, so a step up it is a bigger mark.
@@ -819,27 +864,45 @@ describe("several graphs on one canvas", () => {
 describe("the two budgets a picture is cut against", () => {
   it("stores enough for the largest mark a look could ever become", () => {
     for (const size of PREVIEW_SIZES) {
-      expect(markPictureSide(WIDEST_RADIUS, size), size).toBeLessThanOrEqual(
-        MARK_PICTURE_PX,
-      );
+      expect(
+        markPictureSide(WIDEST_RADIUS, PREVIEW_SIZE_COVER[size]),
+        size,
+      ).toBeLessThanOrEqual(MARK_PICTURE_PX);
     }
-    expect(markPictureSide(WIDEST_RADIUS, "large")).toBe(MARK_PICTURE_PX);
+    expect(markPictureSide(WIDEST_RADIUS, PREVIEW_COVER_MAX)).toBe(
+      MARK_PICTURE_PX,
+    );
   });
 
   it("decodes a leaf at a fraction of a percent of what it stores", () => {
-    const leaf = markPictureSide(LEAF_RADIUS * LOOK_SCALE.small, "small");
+    const leaf = markPictureSide(
+      LEAF_RADIUS * MARK_SCALE_MIN,
+      PREVIEW_COVER_MIN,
+    );
     // Squared, because a texture costs the square of its side.
     expect((leaf / MARK_PICTURE_PX) ** 2).toBeLessThan(0.01);
   });
 
+  // The cut is per mark and not per look, so covering a leaf's whole face is
+  // still nothing beside what the widest mark on the field decodes.
+  it("decodes a leaf at full cover for a leaf, not for a mega-node", () => {
+    const leaf = markPictureSide(LEAF_RADIUS, PREVIEW_COVER_MAX);
+    expect((leaf / MARK_PICTURE_PX) ** 2).toBeLessThan(0.02);
+  });
+
   it("cuts marks a hair apart in size to one texture", () => {
-    expect(markPictureSide(20, "small")).toBe(markPictureSide(21, "small"));
+    expect(markPictureSide(20, PREVIEW_COVER_MIN)).toBe(
+      markPictureSide(21, PREVIEW_COVER_MIN),
+    );
   });
 
   it("grows the cut with the mark, up to what it stores", () => {
     let below = 0;
     for (const step of MARK_RADII) {
-      const cut = markPictureSide(WIDEST_RADIUS * LOOK_SCALE[step], "small");
+      const cut = markPictureSide(
+        WIDEST_RADIUS * MARK_RADIUS_SCALE[step],
+        PREVIEW_COVER_MIN,
+      );
       expect(cut, step).toBeGreaterThanOrEqual(below);
       expect(cut, step).toBeLessThanOrEqual(MARK_PICTURE_PX);
       below = cut;

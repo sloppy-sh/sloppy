@@ -254,18 +254,18 @@ thought came from, how its author asked it to look, whether it is one of the not
 is being pointed at, whether it is one of the notes somebody has chosen to act on, and
 whether it is one of the notes open in front of the reader. Each gets its own channel.
 
-| Channel on the mark                               | Carries                                                                        |
-| ------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Fill hue                                          | the selected tags (§ Hue)                                                      |
-| Fill lightness                                    | genealogical depth (§ Lightness)                                               |
-| Fill alpha                                        | carries none of the selected tags (§ Hue)                                      |
-| **Its own edge** — present, and whether broken    | provenance (§ Form)                                                            |
-| **A ring inside it** — weight, and whether broken | the author's look                                                              |
-| **Its radius**                                    | how much is folded into it, times the size its author asked for                |
-| **The disc's imagery**                            | the author's picture, or a few taking turns, at the share of the disc they set |
-| **The orbit outside it**                          | the mode the canvas is in — picking, or choosing                               |
-| **The paper under it** — how far it lifts         | this note is open, and whether it is the one being read                        |
-| **Which field it stands in**                      | which graph it is in (§ "Several graphs on one canvas")                        |
+| Channel on the mark                            | Carries                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------ |
+| Fill hue                                       | the selected tags (§ Hue)                                                      |
+| Fill lightness                                 | genealogical depth (§ Lightness)                                               |
+| Fill alpha                                     | carries none of the selected tags (§ Hue)                                      |
+| **Its own edge** — present, and whether broken | provenance (§ Form)                                                            |
+| **A ring inside it** — weight, and how broken  | the author's look                                                              |
+| **Its radius**                                 | how much is folded into it, times the size its author asked for                |
+| **The disc's imagery**                         | the author's picture, or a few taking turns, at the share of the disc they set |
+| **The orbit outside it**                       | the mode the canvas is in — picking, or choosing                               |
+| **The paper under it** — how far it lifts      | this note is open, and whether it is the one being read                        |
+| **Which field it stands in**                   | which graph it is in (§ "Several graphs on one canvas")                        |
 
 Twelve rulings hold that table together:
 
@@ -274,7 +274,16 @@ Twelve rulings hold that table together:
   they separate by radius rather than by which of them gets to be dashed. A pulled draft
   is two dashed rings at two radii, and reads as two facts. Provenance is the one that
   must never be a question the reader works out (PRODUCT.md principle 4), so it is the one
-  that does not move.
+  that does not move. **The look's ring has more than one way of being broken, and they
+  separate by how much of the ring is missing rather than by how finely it is chopped.**
+  A mark is tens of pixels wide and its ring is a fraction of that, so a style told apart
+  by dot density is a grey haze at the size the look is still drawn at — where two styles
+  cannot be told apart on the smallest mark that carries one, the second is a row in a
+  picker rather than a look. What survives is the count of gaps and their width: whole,
+  one gap, a few, and ticked all the way round. `LOOK_RING_BREAK` in `model.ts` is what
+  each is drawn as, and `scene.test.ts` holds them apart on a mark at the threshold.
+  **The cost is charged in cells:** the sheet every mark is cut from holds one per ring
+  weight AND style, so a style widens it for everybody — the reason the set is short.
 - **Picking and choosing share the orbit outside the mark**, because a canvas is in one
   mode or the other and never both: you are picking the note a link points at, or you are
   choosing notes to act on. They are still drawn apart so nobody has to know that —
@@ -284,9 +293,9 @@ Twelve rulings hold that table together:
 - **Radius is the one channel two meanings share, and the fold does not hold it alone.**
   A radius says how much thought is folded into a mark, and a look scales that rather than
   replacing it — the two multiply, so a fold is always bigger than the note it collapsed and
-  a mega-node its author sized up is bigger than the same fold left alone. What the ladder
-  costs, past its middle, is the glance: a leaf an author grew can reach the size a small
-  mega-node draws at, so a big mark stops proving a fold. **The count was never the radius's
+  a mega-node its author sized up is bigger than the same fold left alone. What the size
+  channel costs, past its middle, is the glance: a leaf an author grew can reach the size a
+  small mega-node draws at, so a big mark stops proving a fold. **The count was never the radius's
   to say and still is not** — it is a logarithm of it, readable only against a neighbour,
   while the number itself is written on the mark (`1a +12`) and a tap on a fold opens it
   where a tap on a leaf opens a note. So what the reader loses is an inference that was
@@ -294,19 +303,27 @@ Twelve rulings hold that table together:
   for to say this one matters.
 - **The cap is the fold's, and the author spends theirs on top of it.** A fold's growth has
   no natural end — a subtree can hold anything — so it is capped, which is what stops one
-  mega-node eating the field. A look's ladder is short and chosen by hand, so capping it
-  again would only take back what somebody deliberately asked for: **a bigger step always
-  draws bigger**, at every fold, which is the whole of what the control is. The largest mark
-  any canvas draws is therefore the fold's cap at the ladder's top step. **What that step
-  costs is charged where it is spent.** The shapes are one sheet every mark is a scale of, so
-  its density is measured at the top of the ladder and paid once, by everybody; a picture is
-  a texture per mark, so it is cut for the mark that wears it and a leaf never carries what
-  the top step needs — a phone holding hundreds of pictured marks is what that difference is
-  for. The ladder is `0.78`, `1`, `1.34`, `1.8`, `2.4`, each about a third larger than the
-  last.
+  mega-node eating the field. What an author sets is bounded at both ends by hand, so capping
+  it again would only take back what somebody deliberately asked for: **bigger always draws
+  bigger**, at every fold, which is the whole of what the control is. The largest mark any
+  canvas draws is therefore the fold's cap at the top of that range. **What the top costs is
+  charged where it is spent.** The shapes are one sheet every mark is a scale of, so its
+  density is measured at the largest a look may draw one and paid once, by everybody; a
+  picture is a texture per mark, so it is cut for the mark that wears it and a leaf never
+  carries what the largest needs — a phone holding hundreds of pictured marks is what that
+  difference is for.
+  **The size is one continuous channel, dragged, and its ends are `0.78` and `2.4`.** A
+  handful of words cannot hold a channel like this: the size somebody wants is usually
+  between two of them, and no amount of picking reaches it. So the words are the COARSE way
+  of spelling the same channel rather than the channel itself — `small`, `regular`, `large`,
+  `huge`, `giant` are worth `0.78`, `1`, `1.34`, `1.8`, `2.4`, a number says the same thing
+  finely, and a note carrying both is drawn at the number, because that is the one its author
+  dragged. What each word is worth is frozen for the reason an address is: a mark that
+  redrew itself when the numbers behind the words moved is a graph somebody else has already
+  read.
   Moving the cap under the look is what makes the control this, and it moves what every
-  existing graph draws: a `small` mark over a large fold shrinks by the same step a `giant`
-  one grows by.
+  existing graph draws: a mark set small over a large fold shrinks by the same factor one set
+  large grows by.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
   picture its own author gave it. What a fold aggregates is a set a mark can be IN — its
@@ -324,51 +341,50 @@ Twelve rulings hold that table together:
   measured against that view — a phone, the whole field framed — and `scene.test.ts` holds
   it there. Where the field is too big to hold one, looks survive on the mega-nodes and a
   pinch brings the rest back.
-- **A picture may grow, and what bounds it is what it leaves.** How much of the disc the
-  imagery covers is a channel its author spends, so a picture can be the thing you see
-  rather than a dot in the middle. What stops it is the band of fill outside it, where the
-  reader's own question is answered (§ Hue): that band stays wider than the heaviest ring
-  an author may draw, because a picture that left the reader's channel thinner than the
-  author's own decoration would have taken the loudest thing on the mark from the question
-  it exists to answer. **The ring is drawn inside that band, so where an author spends one
-  the hue is what the ring does not cover** — at the largest picture under a heavy ring that
-  is about half the band, and still the widest single thing left on the mark. **The band is measured where it is drawn, not out to the radius** —
-  the fill stops short of the mark's edge, and on a published note the ink edge is drawn
-  over the outside of what is left, so the tighter of those two is what the largest picture
-  is worth. That lands the ceiling on the look's ring, which is where it belongs: **the
-  ring is drawn over the picture**, so a rim that stops under the ring is framed by it and
-  one well inside it is a circle of its own. A rim that stops just short of a ring's edge is
-  the case guarded against, because two circles that close read as one thick edge instead of
-  two facts — the clearance held is half the thinnest line drawn, which the middle size meets
-  exactly against a regular ring and spends entirely against a heavy one, where it stops
-  tangent to the ring instead. `scene.test.ts` holds those bounds against the radii `scene.ts` draws at, and
-  `PREVIEW_SPAN` in `model.ts` is what each size is worth. **What a picture is STORED at and
+- **A picture may grow until it is the mark, and what bounds it is the disc it is drawn
+  on.** How much of the disc the imagery covers is a channel its author spends, dragged the
+  way the size is, so a picture can be the whole face of the mark rather than a dot in the
+  middle. The ceiling is where the fill itself stops, a hair inside the mark's edge: past
+  that a picture would spill outside the mark, and no author asked for that. **What the
+  picture may cover on the way there is the author's own, including their own ring.** The
+  ring is drawn UNDER the picture, so a cover taken past it takes it — the author asked for
+  their picture and got all of it, and a ceiling drawn short of that would be Sloppy deciding
+  an author may not. Somebody who wants the ring back drags the cover in, which is the
+  control they were already holding. **The hue band is
+  spent as well, and that is the honest cost**: the fill outside the picture is where the
+  reader's own question is answered (§ Hue), and a picture dragged all the way leaves none
+  of it. Nothing else on the mark moves — the tags still dim what carries none of them,
+  and the answer to "which of these did I select" is still there in every mark whose author
+  did not spend it. **Provenance is not the author's to spend**, and does not have to be
+  reserved: its edge is drawn over the picture, so a mark stays readable as own, published or
+  pulled at every cover. That is the whole of the order — the author's ring under their
+  picture because it is theirs to cover, the graph's word over it because it is not. `PREVIEW_COVER_MIN` and `PREVIEW_COVER_MAX` in
+  `@sloppy/types` are the ends, `PREVIEW_SIZE_COVER` beside them is what the words a cover
+  may also be spelt in are worth, and `scene.test.ts` holds the top against the disc
+  `scene.ts` cuts. **What a picture is STORED at and
   what a mark DRAWS it at are two different budgets, and confusing them is what makes a
   picture go soft.** A picture is cut once, when somebody chooses it, and it is cut for the
-  largest mark that look could ever become — the top of the ladder at the fold's cap, for the
-  share of the disc they chose. That is bytes spent once, and it is what makes the size
-  control safe to reach for: **the control and the picture button are the same modal**, so
+  largest mark that look could ever become — the widest mark at the fold's cap, covered
+  whole. That is bytes spent once, and it is what makes both controls safe to reach for:
+  **they and the picture button are the same modal**, so
   adding a picture and then growing the note is the ordinary order, and a cut made for the
   size the look happened to be at that moment would leave the picture permanently soft with
-  nothing said and nothing to do about it but choose the file again. What the phone holds is
+  nothing said and nothing to do about it but choose the file again. Widening what a picture
+  may cover therefore widens what EVERY picture is stored at, in proportion, and that is the
+  price the ceiling is worth paying at rather than a detail of it. What the phone holds is
   the other budget, and it is answered separately: the texture a mark decodes is cut for the
   mark that wears it, so a leaf never carries a mega-node's pixels however large the stored
   picture is. **A mark may wear more than one, taking turns the way the ground under it
   does** — § "A picture that takes turns" is the model both read, and every picture in a
   series is cut and sized the same as the one before it, because the size is the mark's
   channel and not any one picture's.
-  **Neither budget is drawn yet.** `MARK_PICTURE_PX` in `@sloppy/graph` is one constant for
-  every mark, which the fold's cap keeps every mark under today; both halves arrive with the
-  cap ruling above, and a picture stored under this build's constant is one an enlarged mark
-  draws softer rather than refuses. A series is stored but not drawn: a mark shows the
-  picture its series starts at and never takes a turn.
-- **Where an author spends both, the ring wins the band they share.** A solid heavy ring
-  covers the annulus the two largest pictures differ across, so on such a note they draw
-  alike; a dashed one leaves most of its turn open, and the two rims show apart through the
-  gaps. That is the ring's, not a size that failed to act: the ring is the author's own
-  line and a picture that erased it would have taken a channel that was not its. An author
-  who wants every pixel of the picture has a lighter ring, or none, and none is what a note
-  draws with nothing set.
+  A picture stored under an older build's constant is one an enlarged mark draws softer
+  rather than refuses.
+- **Where an author spends both, the ring is drawn on the picture, not around it.** A solid
+  heavy ring over a picture dragged past it is a line across the imagery; a broken one shows
+  the picture through its gaps, and how much shows is which style they chose. Both are the
+  author's, and neither is the picture failing to act — an author who wants every pixel of
+  the picture has a lighter ring, or none, and none is what a note draws with nothing set.
 - **Being open lifts the mark off the paper, because the paper was the one surface no
   meaning had taken.** Every other channel spends the mark itself — its fill, its edge, the
   ring inside it, its radius, the imagery on it, and the orbit ruled around it. Being open
@@ -464,10 +480,10 @@ beside the last rather than over it.
 
 ### A note's look never uses colour
 
-Every channel a look may spend is shape or imagery: ring weight, whether the ring is
-broken, mark radius, the pictures the mark wears, how much of the mark they cover, and how
-one gives way to the next. There is no colour picker on a note, and a build that grows one
-has grown a bug.
+Every channel a look may spend is shape or imagery: ring weight, how the ring is broken,
+how big the mark is drawn, the pictures the mark wears, how much of the mark they cover,
+and how one gives way to the next. There is no colour picker on a note, and a build that
+grows one has grown a bug.
 
 Hue here is the reader's own question — the tags THEY selected, in the order they selected
 them — and it has to stay legible across a graph pulled whole from somebody else, styled
@@ -478,7 +494,10 @@ question nobody asked, in the one channel reserved for the question they did.
 The VALUES those channels take are an open set, for the same reason the element kinds
 inside a block are: a look this build has no renderer for is stored and handed back
 untouched, and draws meanwhile as an unstyled note does. Adding a look is a value; adding
-a channel is a change to the table above.
+a channel is a change to the table above. **A channel that is a NUMBER is open the same
+way and falls back differently**: a size or a cover past the range this build draws is
+stored untouched and drawn at the nearest end of that range, because the widest mark this
+build has is nearer what its author asked for than a mark with nothing set.
 
 **A look does not reach a peer yet, and a pulled region draws unstyled.** `PublishedNodeSchema`
 carries no appearance. Ring weight, ring style and radius are plain shape and could travel;
@@ -893,12 +912,16 @@ over whatever is behind it.
   composited layer behind a canvas that already clears transparent, so no frame writes
   anything for it. On the 2,400-note corpus `bench/` reported idle and pan at **8.3/9.3 ms
   with a picture and 8.3/9.3 without** — the same numbers the ground is measured at, and the
-  same with both on. **Those were taken before a mark could wear a series or a ladder step,
-  and the corpus they were taken on has since gained both; they are the ground's number and
-  not the ladder's until `bench/` is run again.** What the ladder costs is known without
-  running it: the mark atlas goes from 0.92 MB to 5.31 MB of RGBA, paid once by every graph,
-  and a picture is cut for the mark that wears it, so a leaf takes 64 px where one global cut
-  made it 332 px. Those
+  same with both on. **Those were taken before a mark could wear a series or a size of its
+  own, and the corpus they were taken on has since gained both; they are the ground's number and
+  not the mark's until `bench/` is run again.** What the mark costs is known without
+  running it: the atlas every mark is cut from is 9.44 MB of RGBA, paid once by every graph
+  — 0.92 MB before a look could scale a mark, 5.31 MB once the sheet's density followed that,
+  and the rest is one cell per ring weight AND style, which is why the styles are four and
+  not ten. A picture is cut for the mark that wears it, so a leaf still takes 64 px where the
+  stored cut is 1,242 px on a side — that cut is 1.56× what it was when a picture could only
+  reach the look's ring, which is 2.4× the pixels behind every stored picture and the price
+  of letting one cover the mark. Those
   numbers are a still picture's. **A picture may move if that is what somebody wants behind
   their graph** — a background that lives is a thing people put behind their work, and the
   ground is theirs. It costs what it looks like it costs: an animated picture repaints that
