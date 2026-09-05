@@ -347,16 +347,18 @@ Twelve rulings hold that table together:
   middle. The ceiling is where the fill itself stops, a hair inside the mark's edge: past
   that a picture would spill outside the mark, and no author asked for that. **What the
   picture may cover on the way there is the author's own, including their own ring.** The
-  ring is drawn over the picture rather than beside it, so at full cover an author's line
-  lies on their own picture — that is a look, not a cover that failed to act, and a ceiling
-  drawn short of it would be Sloppy deciding an author may not. **The hue band is
+  ring is drawn UNDER the picture, so a cover taken past it takes it — the author asked for
+  their picture and got all of it, and a ceiling drawn short of that would be Sloppy deciding
+  an author may not. Somebody who wants the ring back drags the cover in, which is the
+  control they were already holding. **The hue band is
   spent as well, and that is the honest cost**: the fill outside the picture is where the
   reader's own question is answered (§ Hue), and a picture dragged all the way leaves none
   of it. Nothing else on the mark moves — the tags still dim what carries none of them,
   and the answer to "which of these did I select" is still there in every mark whose author
   did not spend it. **Provenance is not the author's to spend**, and does not have to be
-  reserved: its edge is drawn over the picture too, last, so a mark stays readable as own,
-  published or pulled at every cover. `PREVIEW_COVER_MIN` and `PREVIEW_COVER_MAX` in
+  reserved: its edge is drawn over the picture, so a mark stays readable as own, published or
+  pulled at every cover. That is the whole of the order — the author's ring under their
+  picture because it is theirs to cover, the graph's word over it because it is not. `PREVIEW_COVER_MIN` and `PREVIEW_COVER_MAX` in
   `@sloppy/types` are the ends, `PREVIEW_SIZE_COVER` beside them is what the words a cover
   may also be spelt in are worth, and `scene.test.ts` holds the top against the disc
   `scene.ts` cuts. **What a picture is STORED at and

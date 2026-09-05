@@ -165,7 +165,9 @@
 	const editable = $derived({
 		...(shown ?? {}),
 		...seriesChannels(series),
-		preview_every: look.preview.every
+		preview_every: look.preview.every,
+		...(shown?.mark_scale === undefined ? {} : { mark_scale: look.markScale }),
+		...(shown?.preview_cover === undefined ? {} : { preview_cover: look.previewCover })
 	});
 
 	function pick(channel: keyof NodeAppearance, value: string | number): Promise<void> {
@@ -350,7 +352,7 @@
 	{#if series.length > 0}
 		<LookSlider
 			label="How much it covers"
-			says="All the way covers the ring, which is a look of its own."
+			says="All the way covers your ring, and the colour a tag would light."
 			value={look.previewCover}
 			min={PREVIEW_COVER_MIN}
 			max={PREVIEW_COVER_MAX}

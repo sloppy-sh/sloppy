@@ -62,6 +62,17 @@ const TEXTURE_RESOLUTION = 4 * MARK_SCALE_MAX;
  *  the shape beside it. */
 const SHEET_PAD = 4;
 const SHEET_CELL = TEXTURE_RADIUS * 2 + SHEET_PAD * 2;
+/** A disc, the two provenance edges, and one per ring weight and style. */
+const SHEET_CELLS =
+  3 + Object.keys(LOOK_RING_WIDTH).length * RING_STYLES.length;
+/**
+ * The sheet's side in device pixels. **2048 is the smallest a GPU Sloppy runs
+ * on is guaranteed to hold**, and past it the atlas is refused on the phones
+ * least able to say why — so a ring weight or a style added here is bounded by
+ * this, and `scene.test.ts` is what keeps that true rather than hoped.
+ */
+export const MARK_SHEET_PX =
+  Math.ceil(Math.sqrt(SHEET_CELLS)) * SHEET_CELL * TEXTURE_RESOLUTION;
 
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
@@ -324,15 +335,19 @@ export class GraphScene {
     const looks = new pixi.ParticleContainer(particleOptions);
     const picks = new pixi.Graphics();
     // The lift is under everything: it is paper, not a line drawn on the field.
+    // The author's ring is UNDER their picture, so widening the cover past it
+    // takes it — which is what the cover slider is for. Provenance is OVER the
+    // picture, so no cover can take that: it is the graph's word, not the
+    // author's. DESIGN.md § "The mark".
     world.addChild(
       lift,
       edges,
       runs,
       connections,
       fills,
+      looks,
       previews,
       rings,
-      looks,
       picks,
     );
 
@@ -1543,7 +1558,9 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
   // Squared off rather than laid in one row: the sheet's density follows the
   // ladder, so a row of it would run past the smallest texture a GPU Sloppy
   // runs on will hold, and a square wastes the least of what it does hold.
-  const columns = Math.ceil(Math.sqrt(cells.length));
+  // From the sets rather than the array, so `MARK_SHEET_PX` above is the size
+  // this actually builds and a test can hold it to the GPU's floor.
+  const columns = Math.ceil(Math.sqrt(SHEET_CELLS));
   const corner = (at: number): { x: number; y: number } => ({
     x: (at % columns) * SHEET_CELL + SHEET_PAD,
     y: Math.floor(at / columns) * SHEET_CELL + SHEET_PAD,

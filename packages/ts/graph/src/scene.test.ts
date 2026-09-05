@@ -29,9 +29,19 @@ import {
   liftOf,
   LOOK_MIN_RADIUS,
   looksDrawn,
+  MARK_SHEET_PX,
   PICK_GAP,
 } from "./scene.js";
 import { type Bounds, MAX_SCALE, MIN_SCALE, Viewport } from "./viewport.js";
+
+// The sheet's own comment says a row of it would run past the smallest texture
+// a GPU Sloppy runs on will hold. 2048 is that floor, and every ring weight or
+// style added after this one is bounded by it.
+describe("the sheet every mark is cut from", () => {
+  it("stays inside the smallest texture a GPU is guaranteed to hold", () => {
+    expect(MARK_SHEET_PX).toBeLessThanOrEqual(2048);
+  });
+});
 
 describe("a dashed link", () => {
   it("reaches the far note however long it is", () => {

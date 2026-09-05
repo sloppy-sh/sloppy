@@ -11,6 +11,7 @@
 		type RingStyle,
 		type RingWeight
 	} from '@sloppy/types';
+	import MarkSwatch from '../appearance/mark-swatch.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { RING_STYLE_LABELS, RING_WEIGHT_LABELS } from '../appearance/labels.js';
 	import LookSlider from '../appearance/look-slider.svelte';
@@ -112,6 +113,10 @@
 		: 'This replaces the look they have now, including any picture on them.'}
 >
 	<div class="space-y-5 px-2 pt-4">
+		<!-- The words used to carry the size; a track does not, so the mark does. -->
+		<div class="flex justify-center pb-1">
+			<MarkSwatch appearance={look} size={76} />
+		</div>
 		{@render row('Ring', rings, ring, (v) => (ring = v as RingWeight))}
 		{#if ring !== 'none'}
 			{@render row('Ring style', lines, line, (v) => (line = v as RingStyle))}
