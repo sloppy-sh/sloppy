@@ -567,6 +567,13 @@ export class GraphScene {
     this.positionsDirty = true;
   }
 
+  /** Re-read the box the canvas is drawn in. pixi's own `resizeTo` hears the
+   *  window and nothing else, so a host that moves that box has to say so. */
+  resize(): void {
+    this.app.resize();
+    this.positionsDirty = true;
+  }
+
   stats(): FrameStats {
     const genealogy = this.edgesByDepth.reduce(
       (total, pairs) => total + pairs.length,

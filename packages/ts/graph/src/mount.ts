@@ -10,6 +10,7 @@ import type { OwnedRef } from "@sloppy/types";
 import {
   drawnNodes,
   drawnReading,
+  type GraphFieldInset,
   type GraphHoverAt,
   type GraphSurfaceProps,
 } from "./contract.js";
@@ -87,15 +88,20 @@ export function mountGraph(
   surface.dataset.graphSurface = "";
   surface.style.cssText =
     "position:relative;width:100%;height:100%;overflow:hidden;" +
-    "touch-action:none;overscroll-behavior:contain;user-select:none;" +
-    "-webkit-user-select:none;-webkit-tap-highlight-color:transparent";
+    "pointer-events:none;user-select:none;-webkit-user-select:none;" +
+    "-webkit-tap-highlight-color:transparent";
 
-  // Positioned, so the wallpaper before it in the surface paints beneath it.
-  // An unpositioned canvas paints under EVERY positioned sibling, tree order
-  // notwithstanding, which would put the picture over the field.
+  // The box the marks are drawn in: the surface less the room the host's chrome
+  // takes. Every screen-to-world reading measures THIS, never the surface, which
+  // the picture behind the chrome goes on covering.
+  const field = document.createElement("div");
+  field.dataset.graphField = "";
+  field.style.cssText =
+    "position:absolute;left:0;right:0;overflow:hidden;pointer-events:auto;" +
+    "touch-action:none;overscroll-behavior:contain";
+
   const canvas = document.createElement("canvas");
-  canvas.style.cssText =
-    "position:relative;display:block;width:100%;height:100%";
+  canvas.style.cssText = "display:block;width:100%;height:100%";
 
   const ink = document.createElement("div");
   ink.dataset.graphInk = "";
@@ -113,7 +119,16 @@ export function mountGraph(
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
   const wall = new WallLayer(reduced);
 
-  surface.append(wall.element, canvas, ink, sweep);
+  const frame = (inset: GraphFieldInset | undefined): void => {
+    field.style.top = inset?.top ?? "0px";
+    field.style.bottom = inset?.bottom ?? "0px";
+  };
+  frame(options.inset);
+
+  field.append(canvas, ink, sweep);
+  // Both positioned and neither given a z-index, so tree order alone is what
+  // holds the picture under the field rather than over it.
+  surface.append(wall.element, field);
   host.append(surface);
 
   const fonts = readFonts(host);
@@ -121,6 +136,8 @@ export function mountGraph(
   let props = options;
   let scene: GraphScene | null = null;
   let detachGestures: (() => void) | null = null;
+  const resized = new ResizeObserver(() => scene?.resize());
+  resized.observe(field);
   let tokens: PaletteTokens = readPaletteTokens(host);
   // Held back rather than computed: the walk-up and its bisections cost several
   // milliseconds of the first paint, and buy nothing for a reader who has
@@ -224,7 +241,7 @@ export function mountGraph(
     }
     scene = built;
     built.setGround(props.ground ?? "none");
-    detachGestures = attachGestures(surface, built.viewport, {
+    detachGestures = attachGestures(field, built.viewport, {
       hitTest: (world) => built.hitTest(world),
       onTap: (target, _world, withModifier) => {
         if (target === null) return;
@@ -270,7 +287,7 @@ export function mountGraph(
         props.onHover?.(
           target === null || asked(props)
             ? null
-            : hoverAt(built, surface, target),
+            : hoverAt(built, field, target),
         );
       },
       canSweep: () => props.onChooseWithin !== undefined,
@@ -357,7 +374,11 @@ export function mountGraph(
       const papered =
         next.wallpaper?.picture !== props.wallpaper?.picture ||
         next.wallpaper?.strength !== props.wallpaper?.strength;
+      const reframed =
+        next.inset?.top !== props.inset?.top ||
+        next.inset?.bottom !== props.inset?.bottom;
       props = next;
+      if (reframed) frame(next.inset);
       if (grounded) scene?.setGround(next.ground ?? "none");
       if (papered) repaint();
       if (takingOver) next.onHover?.(null);
@@ -378,6 +399,7 @@ export function mountGraph(
     destroy() {
       destroyed = true;
       themes.disconnect();
+      resized.disconnect();
       detachGestures?.();
       layout.destroy();
       scene?.destroy();
@@ -386,7 +408,7 @@ export function mountGraph(
     },
     ink,
     toWorld(clientX, clientY) {
-      const box = surface.getBoundingClientRect();
+      const box = field.getBoundingClientRect();
       const view = scene?.viewport;
       if (!view) return { x: clientX - box.left, y: clientY - box.top };
       return view.toWorld(clientX - box.left, clientY - box.top);
@@ -461,13 +483,13 @@ function asked(props: GraphSurfaceProps): boolean {
  *  rather than against the pointer that found it. */
 function hoverAt(
   scene: GraphScene,
-  surface: HTMLElement,
+  field: HTMLElement,
   ref: string,
 ): GraphHoverAt | null {
   const node = scene.attributesOf(ref);
   const index = scene.indexOf(ref);
   if (!node || index === undefined) return null;
-  const box = surface.getBoundingClientRect();
+  const box = field.getBoundingClientRect();
   const world = scene.positionOf(index);
   const at = scene.viewport.toScreen(world.x, world.y);
   return {

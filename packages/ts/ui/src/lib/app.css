@@ -519,13 +519,20 @@
 	padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
-/** …and the floating nav pill on top of it. Unset where the pill is hidden, so
-    the surface takes the bar alone. */
-@utility clear-sysnav {
-	padding-bottom: calc(
+/* The bottom edge's whole clearance as a length, for a surface that has to inset
+   something by it rather than pad by it. The two terms keep their own absences —
+   this is a sum of the vars above, not a default for either. */
+:root {
+	--sysnav-clearance: calc(
 		var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) +
 			var(--sysnav-inset-bottom, 0px)
 	);
+}
+
+/** …and the floating nav pill on top of it. Unset where the pill is hidden, so
+    the surface takes the bar alone. */
+@utility clear-sysnav {
+	padding-bottom: var(--sysnav-clearance);
 }
 
 /** A composer riding above the keyboard. The breath sits INSIDE the bar term

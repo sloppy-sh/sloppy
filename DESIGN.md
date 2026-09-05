@@ -696,6 +696,12 @@ Three vars live on `<html>`, and a fourth mirrors them at the top:
   unconditionally** — the two shells gate chrome differently, so a route exempt on one is
   often not exempt on the other, and the fallback is the no-chrome height to the pixel.
 
+The bottom edge is two of those terms and is asked for as one, so **`--sysnav-clearance`
+names their sum** — the OS bar plus the pill standing on it. `clear-sysnav` is that sum as
+padding; the var is the same sum as a length, for a surface that needs to inset something
+rather than pad it. A surface takes one or the other and never re-derives the formula, which
+is what stops one of them going on spelling `env()` after the other stopped.
+
 `--reading-head` is the same bargain kept inside one surface: the reading panel publishes
 how tall its own head stands, and the note under it sticks its own head below that rather
 than beneath it. **The head is what it holds** — the strip across it, and whatever the
@@ -736,6 +742,14 @@ up and the lift can be 0 in the panned case.
   draws as one mega-node sized by descendant count; a tag selection lights the notes that
   carry it and dims the rest along with the genealogical edges. **Neither mode ever draws
   more than a bounded node count** — legibility and frame time are the same constraint here (PRODUCT.md principle 7).
+- **The page is the ground; the field is a box inside it.** The paper and whatever picture
+  is under it reach every edge of the page — behind the chrome at the head, under the bar at
+  the foot — while the field the marks are drawn in is held off that chrome by the room the
+  chrome says it takes. So a reader's ground is never cut into a panel, and no mark is ever
+  drawn where something else is written over it. **Everything that reads a screen point
+  reads it against that inner box** — a tap, a hover, a stroke, and the size the renderer is
+  given; read against the page instead, every one of them lands the chrome's height away
+  from the mark it was aimed at.
 - **The canvas is not a scroller.** Pan and zoom are pixi's; the scroll rules below do not
   apply to it, and it must never be wrapped in something that scrolls.
 - **Pointing at a note says what it is, and that is all hover ever does.** A pointer resting
@@ -799,10 +813,12 @@ over whatever is behind it.
 
 - **It is pinned to the screen, where the lattice is pinned to the world.** How far you went
   is the lattice's to say, and a second thing moving with the field would answer the same
-  question twice. Standing still is also what makes it free: it is one composited layer
-  behind a canvas that already clears transparent, so no frame writes anything for it. On the
-  2,400-note corpus `bench/` reports idle and pan at **8.3/9.3 ms with a picture and 8.3/9.3
-  without** — the same numbers the ground is measured at, and the same with both on. Those
+  question twice. The screen means the whole page, to all four edges and under the chrome
+  floating over it: a ground that stopped where the chrome starts is a picture let into the
+  page rather than the page's own. Standing still is also what makes it free: it is one
+  composited layer behind a canvas that already clears transparent, so no frame writes
+  anything for it. On the 2,400-note corpus `bench/` reports idle and pan at **8.3/9.3 ms
+  with a picture and 8.3/9.3 without** — the same numbers the ground is measured at, and the same with both on. Those
   numbers are a still picture's. **A picture may move if that is what somebody wants behind
   their graph** — a background that lives is a thing people put behind their work, and the
   ground is theirs. It costs what it looks like it costs: an animated picture repaints that
@@ -843,9 +859,12 @@ over whatever is behind it.
   it, holds that the ceiling is a picture somebody can actually see, and holds that a dimmed
   note never out-reads a lit one on the same ground. **The rail's chip and the canvas's mark
   answer in the same hue and the same slot, and that is what the reader reads across.** The
-  chip is drawn on chrome, which no picture reaches, so it is the mark alone that moves — as
-  far as the ground under it moved, and no further, which is why the ceiling ends where the
-  eight are still eight.
+  chip is drawn on chrome, and **the chrome that carries it stands on the theme's own opaque
+  surface** — the picture runs beneath that chrome and never reaches it. That is what keeps
+  the chip's ground a token `token-contrast.test.ts` has already swept, and so a floor known
+  to hold over every picture rather than over the one somebody tried. So it is the mark alone
+  that moves — as far as the ground under it moved, and no further, which is why the ceiling
+  ends where the eight are still eight.
 - **A series changes while nobody is watching it.** Whose turn it is comes off the clock —
   `floor(now / every) % count` — and is read when the graph opens and when the app comes back
   from the background, never on a timer. So there is no rotation state to keep, two devices
