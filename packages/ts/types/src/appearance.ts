@@ -3,6 +3,14 @@
 // table that says which channel on the mark means what.
 
 import { z } from "zod";
+import {
+  boundedTurn,
+  knownTransition,
+  PICTURE_TURN_MAX,
+  PICTURE_TURN_MIN,
+  PICTURES_PER_SERIES,
+  type PictureSeries,
+} from "./picture.js";
 
 /**
  * One channel's value, bounded by shape rather than by vocabulary: a look this
@@ -24,7 +32,15 @@ export type RingWeight = (typeof RING_WEIGHTS)[number];
 export const RING_STYLES = ["solid", "dashed"] as const;
 export type RingStyle = (typeof RING_STYLES)[number];
 
-export const MARK_RADII = ["small", "regular", "large"] as const;
+/** Ascending. DESIGN.md § "The mark" carries what each step is worth and the
+ *  ruling that lets an author past the size a fold alone reaches. */
+export const MARK_RADII = [
+  "small",
+  "regular",
+  "large",
+  "huge",
+  "giant",
+] as const;
 export type MarkRadius = (typeof MARK_RADII)[number];
 
 /** How much of the mark a picture covers; `small` is what a note whose author
@@ -32,6 +48,10 @@ export type MarkRadius = (typeof MARK_RADII)[number];
  *  on the largest. */
 export const PREVIEW_SIZES = ["small", "medium", "large"] as const;
 export type PreviewSize = (typeof PREVIEW_SIZES)[number];
+
+/** An upload in the author's own store — the `upload_id` a completed upload
+ *  answers with, never an address. */
+const PictureIdSchema = z.string().min(1).max(512);
 
 /**
  * A note's look, as its author set it.
@@ -49,16 +69,31 @@ export const NodeAppearanceSchema = z.object({
   ring_style: AppearanceTokenSchema.optional(),
   mark_radius: AppearanceTokenSchema.optional(),
   /**
-   * An upload in the author's own store — the `upload_id` a completed upload
-   * answers with, never an address. `ownPicture` in `@sloppy/client` is the only
-   * way one of these draws, because a note is private until its subtree is
-   * published and so is its picture.
+   * The picture the mark wears, and the first of however many take turns on it.
+   * `ownPicture` in `@sloppy/client` is the only way one of these draws, because
+   * a note is private until its subtree is published and so is its picture.
    *
    * The id outlives the bytes: a picture deleted from the store leaves this
    * standing, and a mark that cannot load one draws exactly as a mark with no
    * picture rather than showing a gap.
    */
-  preview: z.string().min(1).max(512).optional(),
+  preview: PictureIdSchema.optional(),
+  /**
+   * The rest of the series, after {@link NodeAppearance.preview} and in the
+   * order they take turns. Absent is a mark whose picture never changes, and so
+   * is an empty one. Says nothing without a `preview`, because that is the
+   * picture the series starts at.
+   */
+  preview_more: z
+    .array(PictureIdSchema)
+    .max(PICTURES_PER_SERIES - 1)
+    .optional(),
+  /** Minutes one picture holds before the next takes its turn. Absent is
+   *  `PICTURE_TURN_DEFAULT`, and says nothing on a mark wearing one picture. */
+  preview_every: z.int().min(PICTURE_TURN_MIN).max(PICTURE_TURN_MAX).optional(),
+  /** How one picture gives way to the next. Absent is the quietest, and says
+   *  nothing on a mark wearing one picture. */
+  preview_transition: AppearanceTokenSchema.optional(),
   /** Says nothing without a {@link NodeAppearance.preview} to size. */
   preview_size: AppearanceTokenSchema.optional(),
 });
@@ -69,7 +104,9 @@ export interface ResolvedAppearance {
   ringWeight: RingWeight;
   ringStyle: RingStyle;
   markRadius: MarkRadius;
-  preview: string | undefined;
+  /** No pictures is a mark with none: the two stored channels a series is spelt
+   *  across are read once, here, and nothing downstream sees them apart. */
+  preview: PictureSeries;
   previewSize: PreviewSize;
 }
 
@@ -81,11 +118,17 @@ export interface ResolvedAppearance {
 export function resolveAppearance(
   appearance: NodeAppearance | null | undefined,
 ): ResolvedAppearance {
+  const first = appearance?.preview;
   return {
     ringWeight: known(RING_WEIGHTS, appearance?.ring_weight, "none"),
     ringStyle: known(RING_STYLES, appearance?.ring_style, "solid"),
     markRadius: known(MARK_RADII, appearance?.mark_radius, "regular"),
-    preview: appearance?.preview,
+    preview: {
+      pictures:
+        first === undefined ? [] : [first, ...(appearance?.preview_more ?? [])],
+      every: boundedTurn(appearance?.preview_every),
+      transition: knownTransition(appearance?.preview_transition),
+    },
     previewSize: known(PREVIEW_SIZES, appearance?.preview_size, "small"),
   };
 }

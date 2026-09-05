@@ -39,12 +39,14 @@ export const LEAF_RADIUS = 9;
 const MEGA_GROWTH = 0.42;
 export const MAX_RADIUS = 46;
 
-/** What a look multiplies a mark's radius by. DESIGN.md § "The mark" bounds it:
- *  a look may not grow a leaf as far as the smallest mega-node. */
+/** What a look multiplies a mark's radius by. DESIGN.md § "The mark" carries the
+ *  ladder and what a step of it may reach. */
 export const LOOK_SCALE: Record<MarkRadius, number> = {
   small: 0.78,
   regular: 1,
   large: 1.34,
+  huge: 1.8,
+  giant: 2.4,
 };
 
 /** A look's ring, as fractions of the mark's radius — its centre line, and what
@@ -126,7 +128,8 @@ export interface GraphNodeAttributes {
   ringWeight: RingWeight;
   /** Says nothing while {@link ringWeight} is `none`. */
   ringStyle: RingStyle;
-  /** The author's picture, as an upload only their own instance can answer for. */
+  /** The picture the mark draws, as an upload only their own instance can answer
+   *  for: the one its author's series starts at. */
   preview: string | undefined;
   /** The share of the mark it covers — {@link PREVIEW_SPAN}. */
   previewSize: PreviewSize;
@@ -213,7 +216,7 @@ export function buildModel(
       tag,
       ringWeight: look.ringWeight,
       ringStyle: look.ringStyle,
-      preview: look.preview,
+      preview: look.preview.pictures[0],
       previewSize: look.previewSize,
       fill:
         slot === undefined

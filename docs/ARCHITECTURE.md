@@ -698,9 +698,9 @@ policy:
 | `emoji`                    | `public/sloppy/…` | anyone — a federated `:shortcode:` renders for everybody |
 | `block` (a note's picture) | `sloppy/notes`    | its owner alone                                          |
 
-A mark's preview picture is deliberately that same role rather than a new one: the folder
-is the access rule, a mark's picture wants exactly the note picture's rule, and one library
-means a picture already in a note can go on its mark without being sent twice.
+A mark's pictures are deliberately that same role rather than a new one: the folder is the
+access rule, a mark's picture wants exactly the note picture's rule, and one library means a
+picture already in a note can go on its mark without being sent twice.
 
 Publishing adds a fifth placement and no fifth role: the copies below land in
 `public/sloppy/notes` and anyone may read them. It is deliberately **not** a value of
@@ -761,8 +761,8 @@ answers "already copied?" for a whole branch.
 picture dropped into a note inside a published branch is in no version until its author
 publishes again, so nothing crosses that line while somebody is writing.
 
-A mark's preview picture is not among them: a published node travels without its look, so
-nothing a peer holds ever cites one, and it stays private.
+A mark's pictures are not among them: a published node travels without its look, so nothing
+a peer holds ever cites one, and they stay private.
 **A public copy is public to anybody, not only to somebody holding the address.** syr
 decides `is_public` from the folder a blob is in, and an identity's `uploads` endpoint
 serves every public one it has, paginated, with its filename and size — so from the moment
@@ -901,9 +901,9 @@ than incidental so that re-deriving an unchanged note produces the array it alre
 It is therefore absent from `PATCHABLE` and from every create and update request: a client
 that could set it could draw a line out of a note it is not allowed to read. It carries no
 `DEFINE FIELD` for the same reason `links` carries none, and absent on a row is a note
-nothing has derived them for, read as none. The canvas draws `links` and `references` as
-one dashed line — DESIGN.md § Edges is the ruling, and says which of the two goes away with
-the writing.
+nothing has derived them for, read as none. The canvas draws the two apart — a reference
+whole, a hand-drawn link broken — and draws one line for a pair that carries both; DESIGN.md
+§ Edges is the ruling, and says which of them the line then takes.
 
 **What a document counts as a citation is a key, not a list of element kinds.** `citedNotes`
 in `@sloppy/types` reads an `attrs` key named `note` holding a `<did>/<ulid>`, wherever it
@@ -1118,10 +1118,17 @@ The rules AI.md's foundation-wave section states, applied here:
   for is carried untouched instead of refused. DESIGN.md § "The mark" is the doc of record
   for which channel means what, and for the ruling that none of them is a colour.
 
-  The preview picture is stored as an upload id and never as an address or a URL —
-  § "Pictures" is why. The id outlives the bytes: a picture deleted from the person's store
-  leaves it standing, and the mark then draws exactly as a mark with no picture, because
-  nothing sweeps a row for a blob somebody else's store no longer holds.
+  A mark's pictures are stored as upload ids and never as addresses or URLs — § "Pictures"
+  is why. An id outlives the bytes: a picture deleted from the person's store leaves it
+  standing, and the mark then draws exactly as a mark with no picture, because nothing sweeps
+  a row for a blob somebody else's store no longer holds.
+
+  A mark may wear several, taking turns — DESIGN.md § "A picture that takes turns" is the
+  model, and `@sloppy/types`' `picture.ts` is where the ground under the graph reads the same
+  one. The row spells that series across `preview` and `preview_more` so a note styled before
+  there could be more than one goes on parsing unchanged, and `resolveAppearance` is where
+  the two become the single list every renderer reads: nothing downstream sees them apart, so
+  there is no second spelling to keep in step.
 
 - `schema.ts` is one contiguous string literal, so it is foundation-wave territory rather
   than per-track. Production SurrealDB serves only `DEFINE`d tables; dev does not enforce

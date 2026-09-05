@@ -191,10 +191,10 @@ and § "The mark" bounds it; nothing else there is shared.
 appears when the reader asks a question of the graph, and it means the answer. A
 permanently rainbow canvas is the Obsidian failure with extra steps.
 
-The one thing that carries colour of its own is an author's preview picture, and it is a
-picture — imagery inside the disc, never a fill (§ "The mark"). It says nothing about
-which sets a note is in, and every fill, edge and line around it stays monochrome until a
-tag is selected.
+The one thing that carries colour of its own is the picture an author put on their mark,
+and it is a picture — imagery inside the disc, never a fill (§ "The mark"). It says nothing
+about which sets a note is in, and every fill, edge and line around it stays monochrome
+until a tag is selected.
 
 - **A tag has no colour of its own.** It borrows one for as long as it is selected: the
   first selected tag takes `--facet-1`, the second `--facet-2`, and so on. There is
@@ -254,20 +254,20 @@ thought came from, how its author asked it to look, whether it is one of the not
 is being pointed at, whether it is one of the notes somebody has chosen to act on, and
 whether it is one of the notes open in front of the reader. Each gets its own channel.
 
-| Channel on the mark                               | Carries                                                 |
-| ------------------------------------------------- | ------------------------------------------------------- |
-| Fill hue                                          | the selected tags (§ Hue)                               |
-| Fill lightness                                    | genealogical depth (§ Lightness)                        |
-| Fill alpha                                        | carries none of the selected tags (§ Hue)               |
-| **Its own edge** — present, and whether broken    | provenance (§ Form)                                     |
-| **A ring inside it** — weight, and whether broken | the author's look                                       |
-| **Its radius**                                    | how much is folded into it, scaled by the author's look |
-| **The disc's imagery**                            | the author's picture, at the share of the disc they set |
-| **The orbit outside it**                          | the mode the canvas is in — picking, or choosing        |
-| **The paper under it** — how far it lifts         | this note is open, and whether it is the one being read |
-| **Which field it stands in**                      | which graph it is in (§ "Several graphs on one canvas") |
+| Channel on the mark                               | Carries                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Fill hue                                          | the selected tags (§ Hue)                                                      |
+| Fill lightness                                    | genealogical depth (§ Lightness)                                               |
+| Fill alpha                                        | carries none of the selected tags (§ Hue)                                      |
+| **Its own edge** — present, and whether broken    | provenance (§ Form)                                                            |
+| **A ring inside it** — weight, and whether broken | the author's look                                                              |
+| **Its radius**                                    | how much is folded into it, times the size its author asked for                |
+| **The disc's imagery**                            | the author's picture, or a few taking turns, at the share of the disc they set |
+| **The orbit outside it**                          | the mode the canvas is in — picking, or choosing                               |
+| **The paper under it** — how far it lifts         | this note is open, and whether it is the one being read                        |
+| **Which field it stands in**                      | which graph it is in (§ "Several graphs on one canvas")                        |
 
-Eleven rulings hold that table together:
+Twelve rulings hold that table together:
 
 - **Provenance keeps the mark's own edge, and a look draws INSIDE the mark.** Both want a
   ring and both want to be broken — a pulled region is dashed, and a draft is dashed — so
@@ -281,13 +281,26 @@ Eleven rulings hold that table together:
   **picking outlines, choosing fills.** A hairline ring in the orbit is a note already
   linked and a heavier one is the note being linked from; a solid band in that same orbit
   is a note in the chosen set. The chrome names the mode; the mark says membership.
-- **Size stays the fold's, and radius is the one channel two meanings share.** A radius
-  says how much thought is folded into a mark; a look scales that rather than replacing it.
-  The bound is what keeps both readable, and it is tighter than it sounds: the smallest
-  mega-node is one note folded, `9 × (1 + log2(2) × 0.42) ≈ 12.78` against a leaf's 9, so
-  **a look may grow a leaf by strictly less than 1.42×**. A look that could make a leaf
-  read as a folded subtree has taken a channel that was not its. `model.test.ts` in
-  `@sloppy/graph` holds that bound over every size a look offers.
+- **Radius is the one channel two meanings share, and the fold does not hold it alone.**
+  A radius says how much thought is folded into a mark, and a look scales that rather than
+  replacing it — the two multiply, so a fold is always bigger than the note it collapsed and
+  a mega-node its author sized up is bigger than the same fold left alone. What the ladder
+  costs, past its middle, is the glance: a leaf an author grew can reach the size a small
+  mega-node draws at, so a big mark stops proving a fold. **The count was never the radius's
+  to say and still is not** — it is a logarithm of it, readable only against a neighbour,
+  while the number itself is written on the mark (`1a +12`) and a tap on a fold opens it
+  where a tap on a leaf opens a note. So what the reader loses is an inference that was
+  already approximate, and what the author gains is the channel a person actually reaches
+  for to say this one matters.
+- **The cap is the fold's, and the author spends theirs on top of it.** A fold's growth has
+  no natural end — a subtree can hold anything — so it is capped, which is what stops one
+  mega-node eating the field. A look's ladder is short and chosen by hand, so capping it
+  again would only take back what somebody deliberately asked for: **a bigger step always
+  draws bigger**, at every fold, which is the whole of what the control is. The largest mark
+  any canvas draws is therefore the fold's cap at the ladder's top step, and the picture a
+  mark is cut to is measured there so that mark still has bytes to draw. `model.test.ts` in
+  `@sloppy/graph` owes both, and the steps themselves (`0.78`, `1`, `1.34`, `1.8`, `2.4`,
+  each about a third larger than the last) are targets until it holds them.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
   picture its own author gave it. What a fold aggregates is a set a mark can be IN — its
@@ -325,7 +338,10 @@ Eleven rulings hold that table together:
   tangent to the ring instead. `scene.test.ts` holds those bounds against the radii `scene.ts` draws at, and
   `PREVIEW_SPAN` in `model.ts` is what each size is worth. A picture is cut to the largest
   of them once, when somebody chooses it; a mark drawn bigger than the bytes it holds draws
-  them softer rather than refusing them.
+  them softer rather than refusing them. **A mark may wear more than one, taking turns the
+  way the ground under it does** — § "A picture that takes turns" is the model both read,
+  and every picture in a series is cut and sized the same as the one before it, because the
+  size is the mark's channel and not any one picture's.
 - **Where an author spends both, the ring wins the band they share.** A solid heavy ring
   covers the annulus the two largest pictures differ across, so on such a note they draw
   alike; a dashed one leaves most of its turn open, and the two rims show apart through the
@@ -429,8 +445,9 @@ beside the last rather than over it.
 ### A note's look never uses colour
 
 Every channel a look may spend is shape or imagery: ring weight, whether the ring is
-broken, mark radius, a picture, and how much of the mark that picture covers. There is no
-colour picker on a note, and a build that grows one has grown a bug.
+broken, mark radius, the pictures the mark wears, how much of the mark they cover, and how
+one gives way to the next. There is no colour picker on a note, and a build that grows one
+has grown a bug.
 
 Hue here is the reader's own question — the tags THEY selected, in the order they selected
 them — and it has to stay legible across a graph pulled whole from somebody else, styled
@@ -445,63 +462,84 @@ a channel is a change to the table above.
 
 **A look does not reach a peer yet, and a pulled region draws unstyled.** `PublishedNodeSchema`
 carries no appearance. Ring weight, ring style and radius are plain shape and could travel;
-the picture cannot, because a preview is an upload in the author's own private store, which
+the pictures cannot, because each is an upload in the author's own private store, which
 docs/ARCHITECTURE.md § "Pictures" already owns as an open gap. The publishing milestone owns
-both halves and settles the picture's fate before the other three go, so that a peer either
-sees the look its author gave a note or sees none of it.
+both halves and settles their fate before the other three go, so that a peer either sees the
+look its author gave a note or sees none of it.
 
 ### Edges
 
-Three kinds of line cross the canvas, and which one a reader is looking at has to be
+Four kinds of line cross the canvas, and which one a reader is looking at has to be
 answerable at a glance. Hue is not one of the channels that answers it — that belongs to
 the tags (§ Hue) — so they separate by weight, by lightness and by whether the line is
 broken.
 
-| Edge                                     | Drawn as                           | What it says                          |
-| ---------------------------------------- | ---------------------------------- | ------------------------------------- |
-| **Genealogy** — parent to child          | the depth ramp, thin, lowest alpha | this thought sprang out of that one   |
-| **The run** — consecutive addresses      | ink, solid, heaviest line drawn    | this thought carries on from that one |
-| **A connection** — `links`, `references` | ink, dashed, drawn above both      | a person put these two together       |
+| Edge                                             | Drawn as                                           | What it says                          |
+| ------------------------------------------------ | -------------------------------------------------- | ------------------------------------- |
+| **Genealogy** — parent to child                  | the depth ramp, thinnest, lowest alpha, solid      | this thought sprang out of that one   |
+| **A reference** — `references`, from the writing | ink, solid, a middle weight and lightness          | this note's own words name that one   |
+| **A link** — `links`, drawn by hand              | ink, broken, at a reference's weight and lightness | somebody put these two together       |
+| **The run** — consecutive addresses              | ink, solid, the heaviest and darkest line drawn    | this thought carries on from that one |
 
-Genealogy is everywhere, so it recedes. The run is the line a reader walks — `1 → 2 → 3`,
-`1a → 1b` — so it is the one that carries weight, and it is **derived from the addresses,
-never stored** (AI.md § "The Address Is the Protocol"): the two notes either side of a
-deleted one still read as consecutive, because they are. A connection is the only line a
-person made on purpose, so it is the only broken one; it crosses the tree and would
-otherwise read as parentage. Where somebody has connected two notes the graph already
-joins — along a run, or along the tree's own line from parent to child — the connection
-wins and the line is dashed: citing the note a thought sprang from is one of the most
-ordinary things a person does here, and a line they made that drew nothing would be a
-gesture the canvas swallowed. **What a connection never does is move them.** How far apart
-two notes sit is the addresses' to set, so a connection onto a line that is already there
-takes that line's look and leaves its spacing alone.
+Seven rulings hold that table together:
 
-**A reference is that dashed line.** Typing `[[X]]` is a person saying this note and that
-one go together — the same thing drawing a link says — so the canvas draws it. A reference
-that drew nothing would leave the two notes reading as strangers on the one surface whose
-whole job is to show what is connected to what.
-
-**Two ways of making that line, and they end differently.** A note carries both, and which
-one made a line is what says how it goes away:
-
-- **`links`** is drawn by hand and removed by hand. Nothing anybody writes adds one, and
-  nothing they write takes one away.
-- **`references`** is derived from the note's own writing and follows it. Typing `[[X]]`
-  makes the line; deleting those words takes it away, because there is nothing left to
-  derive it from.
-
-**The canvas draws the union, as one line.** Two notes connected both ways are one dashed
-line and not two: the reader is being told the pair is connected, and how somebody made the
-connection is not a second thing to see. Taking one of the two away leaves the line, which
-is what makes each way of making it independent of the other.
+- **The three solid kinds are three steps of one ladder, and they move on both channels at
+  once.** Genealogy is the depth ramp at the thinnest line and the faintest ink; a reference
+  is ink a step heavier and a step darker; the run is heaviest and darkest. Both channels
+  rather than one because a line's width is clamped as a field is zoomed out — past a point
+  every line on the canvas is the same hairline — and the reader who has lost the width still
+  has the order. The two lines a person made are drawn over the two the addresses make, so a
+  crossing never hides the rarer of them. `scene.test.ts` and `palette.test.ts` in
+  `@sloppy/graph` owe that order at every scale the viewport reaches, and the figure each
+  step takes is a target until they hold it.
+- **The break says how the line was made, and it is the only thing that says it.** A hand
+  drew it, and a hand is what takes it away. Every other line on the canvas comes out of
+  something the note already holds — its address, or its own words — and those are drawn
+  whole. So a broken line is exactly one fact, and the reader never has to hold two meanings
+  for a dash.
+- **Genealogy is everywhere, so it recedes.** The run is the line a reader walks —
+  `1 → 2 → 3`, `1a → 1b` — so it is the one that carries weight, and it is **derived from
+  the addresses, never stored** (AI.md § "The Address Is the Protocol"): the two notes either
+  side of a deleted one still read as consecutive, because they are.
+- **A reference is solid, because it is the note's own words.** Typing `[[X]]` is the author
+  saying inside the thought itself that this note and that one go together — a statement of
+  the same kind the address makes, and drawn whole for the same reason. A reference that drew
+  nothing would leave the two notes reading as strangers on the one surface whose whole job
+  is to show what is connected to what. A hand-drawn link is that statement made beside the
+  note rather than in it, and it is the broken line.
+- **Two ways of making a line, and they end differently.** A note carries both, and which one
+  made a line is what says how it goes away:
+  - **`links`** is drawn by hand and removed by hand. Nothing anybody writes adds one, and
+    nothing they write takes one away.
+  - **`references`** is derived from the note's own writing and follows it. Typing `[[X]]`
+    makes the line; deleting those words takes it away, because there is nothing left to
+    derive it from.
+- **A pair draws one line, and it is the strongest thing true of it: a reference, then a
+  hand link, then the run, then parentage.** A pair may be all four at once, and the reader
+  is being told the pair is connected rather than shown an inventory of the ways it is.
+  - **A line somebody made beats the run and beats the tree.** Citing the note a thought
+    sprang from is one of the most ordinary things a person does here, and a line they made
+    that drew nothing would be a gesture the canvas swallowed.
+  - **The writing beats the hand.** Where a note both names another and was linked to it by
+    hand, the two are the same fact and the one inside the thought is the stronger statement;
+    drawing it broken would say a hand is all that holds the pair together, which the note's
+    own words contradict. What the ⋯ menu is FOR is joining two notes the writing does not
+    join, and there it is the only thing true of the pair and draws.
+  - So taking one way away leaves the line and may change how it is drawn: delete the
+    `[[X]]` from a pair a hand also linked and the line breaks; take the hand link off a pair
+    the writing names and nothing moves. Each way still ends independently, and the line goes
+    when the last of them does.
+- **What a connection never does is move them.** How far apart two notes sit is the
+  addresses' to set, so a connection onto a line that is already there takes that line's look
+  and leaves its spacing alone.
 
 **A reference does not reach a peer yet, and a pulled region draws only what a hand drew
 there.** `PublishedNodeSchema` carries `links` and no `references`, so a note somebody
 pulled shows the connections its author made by hand and none of the ones its writing
-makes — fewer lines than the same writing draws on the author's own canvas. The publishing
-milestone owns closing that, and the reason it is not free is the same one that keeps a
-look off a published node: what a peer may be shown is bounded by what they may follow,
-and docs/ARCHITECTURE.md § "Federating the graph" owns that bound.
+makes — fewer lines than the same writing draws on the author's own canvas, and every one
+of them broken. The publishing milestone owns closing that, and the reason it is not free is
+the same one that keeps a look off a published node: what a peer may be shown is bounded by
+what they may follow, and docs/ARCHITECTURE.md § "Federating the graph" owns that bound.
 
 **With tags selected, genealogy and the run both dim**: the reader has asked to see sets,
 and the tree is momentarily the background.
@@ -867,16 +905,42 @@ over whatever is behind it.
   to hold over every picture rather than over the one somebody tried. So it is the mark alone
   that moves — as far as the ground under it moved, and no further, which is why the ceiling
   ends where the eight are still eight.
-- **A series changes while nobody is watching it.** Whose turn it is comes off the clock —
-  `floor(now / every) % count` — and is read when the graph opens and when the app comes back
-  from the background, never on a timer. So there is no rotation state to keep, two devices
-  land on the same picture at the same hour with nothing to sync, and the ground cannot move
-  under somebody who is reading.
+- **A series changes while nobody is watching it, and how it changes is the reader's.**
+  § "A picture that takes turns" is the model — the ground and a mark's imagery are both it,
+  written once so the two cannot drift into two spellings of the same choice.
 - **The pictures are the reader's own**, from what they have already put in a note, resolved
-  the way a mark's preview is (§ "The mark") and never as a remote URL.
+  the way a mark's pictures are (§ "The mark") and never as a remote URL.
 - **It is a per-device view preference, kept against the graph it is under**, and never
   anything about the notes. What one graph is drawn over says nothing about another, and a
   peer pulling a subtree receives nothing of it.
+
+### A picture that takes turns
+
+A reader may put more than one picture behind their graph, and an author more than one on
+their mark. Both are the same thing — a series, a cadence, and a transition — so both read
+one model, `picture.ts` in `@sloppy/types`. A surface that grew its own spelling of it would
+let the two disagree about a choice somebody made once.
+
+- **Whose turn it is comes off the clock** — `floor(now / every) % count` — and is read when
+  the graph opens and when the app comes back from the background, never on a timer. So
+  there is no rotation state to keep, two devices land on the same picture at the same minute
+  with nothing to sync, and nothing changes under somebody who is reading.
+- **One picture is a still one.** A cadence and a transition say nothing about a series of
+  one, so neither is worth putting in front of somebody until there is a second picture to
+  change to.
+- **Three transitions, and every one of them is transform and opacity alone**: a crossfade, a
+  slide, and a slow zoom that settles down to full size and never past it, so a picture
+  cropped to fill cannot reveal its edges mid-change. Opacity multiplies into whatever the
+  layer is already drawn at, so a picture somebody has quietened never pops to full strength
+  half way through. They are the same three on the ground and on a mark and take the same
+  time on both, inside § Motion's band, so one screen never changes a picture at two speeds.
+  Under `prefers-reduced-motion` the picture changes without moving.
+- **The values are an open set**, the way a look's are: a transition this build cannot draw
+  is stored and handed back untouched, and meanwhile crossfades.
+- **What each surface carries beside the series is its own.** The ground has a strength,
+  because a picture under a whole field is held to what the reader must still be able to read
+  on it (§ "The wallpaper"); a mark has the share of the disc its imagery covers (§ "The
+  mark"). Neither belongs in the model they share.
 
 ## Scrolling (themed scroller + edge fades)
 

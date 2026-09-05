@@ -9,14 +9,38 @@ import {
   resolveAppearance,
 } from "./appearance.js";
 import { NodeSchema } from "./node.js";
+import {
+  PICTURE_TRANSITIONS,
+  PICTURE_TURN_DEFAULT,
+  PICTURES_PER_SERIES,
+  pictureTurn,
+  QUIETEST_TRANSITION,
+} from "./picture.js";
 
-const CHANNELS = [
-  "ring_weight",
-  "ring_style",
-  "mark_radius",
-  "preview",
-  "preview_size",
-];
+const PICTURE = "did:syr:z6Mk/01J";
+
+const CHANNELS: Record<string, unknown> = {
+  ring_weight: "regular",
+  ring_style: "regular",
+  mark_radius: "regular",
+  preview: PICTURE,
+  preview_more: [`${PICTURE}b`],
+  preview_every: 360,
+  preview_transition: "regular",
+  preview_size: "regular",
+};
+
+const UNSTYLED = {
+  ringWeight: "none",
+  ringStyle: "solid",
+  markRadius: "regular",
+  preview: {
+    pictures: [],
+    every: PICTURE_TURN_DEFAULT,
+    transition: QUIETEST_TRANSITION,
+  },
+  previewSize: "small",
+};
 
 // The round trip is the contract rather than the vocabulary: a look an older
 // build cannot draw survives being read and written back by it. Crossing to a
@@ -29,6 +53,7 @@ describe("a look this build cannot draw", () => {
       ring_style: "double",
       mark_radius: "enormous",
       preview_size: "whole",
+      preview_transition: "dissolve",
     };
     expect(NodeAppearanceSchema.parse(later)).toEqual(later);
   });
@@ -39,15 +64,10 @@ describe("a look this build cannot draw", () => {
         NodeAppearanceSchema.parse({
           ring_style: "double",
           preview_size: "whole",
+          preview_transition: "dissolve",
         }),
       ),
-    ).toEqual({
-      ringWeight: "none",
-      ringStyle: "solid",
-      markRadius: "regular",
-      preview: undefined,
-      previewSize: "small",
-    });
+    ).toEqual(UNSTYLED);
   });
 
   it("resolves every value this build does draw to itself", () => {
@@ -63,6 +83,11 @@ describe("a look this build cannot draw", () => {
     for (const preview_size of PREVIEW_SIZES) {
       expect(resolveAppearance({ preview_size }).previewSize).toBe(
         preview_size,
+      );
+    }
+    for (const preview_transition of PICTURE_TRANSITIONS) {
+      expect(resolveAppearance({ preview_transition }).preview.transition).toBe(
+        preview_transition,
       );
     }
   });
@@ -83,15 +108,54 @@ describe("the channels a look may spend", () => {
   });
 
   it("are the only keys the schema knows", () => {
-    const every = Object.fromEntries(
-      CHANNELS.map((channel) => [
-        channel,
-        channel === "preview" ? "did:syr:z6Mk/01J" : "regular",
-      ]),
+    expect(Object.keys(NodeAppearanceSchema.parse(CHANNELS)).sort()).toEqual(
+      Object.keys(CHANNELS).sort(),
     );
-    expect(Object.keys(NodeAppearanceSchema.parse(every)).sort()).toEqual(
-      [...CHANNELS].sort(),
+  });
+});
+
+// DESIGN.md § "A picture that takes turns". The mark spells a series across two
+// stored channels so a row written before there could be several still parses;
+// what a renderer reads is one list.
+describe("the pictures a mark wears", () => {
+  it("start at the one a row written before there could be several holds", () => {
+    expect(resolveAppearance({ preview: PICTURE }).preview.pictures).toEqual([
+      PICTURE,
+    ]);
+  });
+
+  it("are that one and then the rest, in the order they take turns", () => {
+    expect(
+      resolveAppearance({ preview: "a", preview_more: ["b", "c"] }).preview
+        .pictures,
+    ).toEqual(["a", "b", "c"]);
+  });
+
+  it("are none where nothing starts the series, however many follow it", () => {
+    expect(
+      resolveAppearance({ preview_more: ["b", "c"] }).preview.pictures,
+    ).toEqual([]);
+  });
+
+  it("are bounded, so a mark cannot be handed a library to wear", () => {
+    const more = Array.from(
+      { length: PICTURES_PER_SERIES },
+      (_, at) => `p${at}`,
     );
+    expect(() => NodeAppearanceSchema.parse({ preview_more: more })).toThrow();
+    expect(
+      NodeAppearanceSchema.parse({ preview_more: more.slice(1) }).preview_more,
+    ).toHaveLength(PICTURES_PER_SERIES - 1);
+  });
+
+  it("take their turns off the same clock the ground under them does", () => {
+    const look = resolveAppearance({
+      preview: "a",
+      preview_more: ["b"],
+      preview_every: 30,
+    });
+    expect(pictureTurn(look.preview, 0)).toBe("a");
+    expect(pictureTurn(look.preview, 30 * 60_000)).toBe("b");
   });
 });
 
@@ -112,13 +176,7 @@ describe("a note nobody styled", () => {
   });
 
   it("draws as the graph's own language alone says", () => {
-    expect(resolveAppearance(undefined)).toEqual({
-      ringWeight: "none",
-      ringStyle: "solid",
-      markRadius: "regular",
-      preview: undefined,
-      previewSize: "small",
-    });
+    expect(resolveAppearance(undefined)).toEqual(UNSTYLED);
   });
 
   it("is what an appearance with every channel taken back off is", () => {
