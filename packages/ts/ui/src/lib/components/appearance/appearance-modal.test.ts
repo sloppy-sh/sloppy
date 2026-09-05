@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { MARK_PICTURE_PX } from '@sloppy/graph';
+import { lookPicturePx } from '@sloppy/graph';
 import type { MediaAsset, NodeAppearance } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +16,9 @@ let sent: File[];
 let held: HeldPicture[];
 
 const UPLOAD = 'did:syr:ham/01UP';
+
+/** The square a picture is cut to for a mark with nothing else set. */
+const PLAIN_MARK_PX = lookPicturePx('regular', 'small');
 
 /** What the client actually throws when a save is refused — a status, a route
  *  and a record id, none of which may reach a person. */
@@ -230,13 +233,24 @@ describe('a picture for the mark', () => {
 		open();
 		await choose(new File([new Uint8Array(4_200_000)], 'IMG_0042.jpeg', { type: 'image/jpeg' }));
 
-		expect(drawnAt).toEqual([MARK_PICTURE_PX]);
+		expect(drawnAt).toEqual([PLAIN_MARK_PX]);
 		expect(sent.map((file) => file.size)).toEqual([20_000]);
 		expect(saved).toEqual([{ preview: 'sent-1' }]);
 	});
 
 	it('is cut smaller for a mark than for the note it was written in', () => {
-		expect(MARK_PICTURE_PX).toBeLessThan(NOTE_PX);
+		expect(PLAIN_MARK_PX).toBeLessThan(NOTE_PX);
+	});
+
+	// DESIGN.md § "The mark": the cut follows the size its author chose, so a
+	// plain mark never carries what the top of the ladder needs.
+	it('is cut for the size the mark was given, not the largest one drawn', async () => {
+		const { drawnAt } = fromACamera();
+		open({ mark_radius: 'giant', preview_size: 'large' });
+		await choose(new File([new Uint8Array(4_200_000)], 'IMG_0042.jpeg', { type: 'image/jpeg' }));
+
+		expect(drawnAt).toEqual([lookPicturePx('giant', 'large')]);
+		expect(drawnAt[0]).toBeGreaterThan(PLAIN_MARK_PX * 2);
 	});
 
 	/** What `media.picture` hands back is a URL the bytes are read from. */
@@ -259,7 +273,7 @@ describe('a picture for the mark', () => {
 		readable();
 		await chooseHeld();
 
-		expect(drawnAt).not.toContain(MARK_PICTURE_PX);
+		expect(drawnAt).not.toContain(PLAIN_MARK_PX);
 		expect(sent).toEqual([]);
 		expect(saved).toEqual([{ preview: UPLOAD }]);
 	});
@@ -272,7 +286,7 @@ describe('a picture for the mark', () => {
 		readable();
 		await chooseHeld();
 
-		expect(drawnAt).toContain(MARK_PICTURE_PX);
+		expect(drawnAt).toContain(PLAIN_MARK_PX);
 		expect(saved).toEqual([{ preview: 'sent-1' }]);
 	});
 

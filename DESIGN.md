@@ -297,12 +297,14 @@ Twelve rulings hold that table together:
   mega-node eating the field. A look's ladder is short and chosen by hand, so capping it
   again would only take back what somebody deliberately asked for: **a bigger step always
   draws bigger**, at every fold, which is the whole of what the control is. The largest mark
-  any canvas draws is therefore the fold's cap at the ladder's top step, and the picture a
-  mark is cut to is measured there so that mark still has bytes to draw. `model.test.ts` in
-  `@sloppy/graph` sweeps the ladder (`0.78`, `1`, `1.34`, `1.8`, `2.4`, each about a third
-  larger than the last) against every fold, and a picture cut before the ladder reached past
-  `large` draws softer on a mark grown into one — which is what a mark drawn bigger than the
-  bytes it holds does everywhere else.
+  any canvas draws is therefore the fold's cap at the ladder's top step. **What that step
+  costs is charged where it is spent.** The shapes are one sheet every mark is a scale of, so
+  its density is measured at the top of the ladder and paid once, by everybody; a picture is
+  a texture per mark, so it is cut for the mark that wears it and a leaf never carries what
+  the top step needs — a phone holding hundreds of pictured marks is what that difference is
+  for. `model.test.ts` in `@sloppy/graph` sweeps the ladder (`0.78`, `1`, `1.34`, `1.8`,
+  `2.4`, each about a third larger than the last) against every fold, and `scene.test.ts`
+  holds the sheet's density against the top step.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
   picture its own author gave it. What a fold aggregates is a set a mark can be IN — its
@@ -338,12 +340,14 @@ Twelve rulings hold that table together:
   two facts — the clearance held is half the thinnest line drawn, which the middle size meets
   exactly against a regular ring and spends entirely against a heavy one, where it stops
   tangent to the ring instead. `scene.test.ts` holds those bounds against the radii `scene.ts` draws at, and
-  `PREVIEW_SPAN` in `model.ts` is what each size is worth. A picture is cut to the largest
-  of them once, when somebody chooses it; a mark drawn bigger than the bytes it holds draws
-  them softer rather than refusing them. **A mark may wear more than one, taking turns the
-  way the ground under it does** — § "A picture that takes turns" is the model both read,
-  and every picture in a series is cut and sized the same as the one before it, because the
-  size is the mark's channel and not any one picture's.
+  `PREVIEW_SPAN` in `model.ts` is what each size is worth. **A picture is cut once, when
+  somebody chooses it, for the size they chose at the fold's cap** — so one chosen on a leaf
+  still has bytes once a subtree folds under it, and a small mark never sends what a giant
+  one needs. Growing the look afterwards can outrun what was stored, and a mark drawn bigger
+  than the bytes it holds draws them softer rather than refusing them. **A mark may wear more
+  than one, taking turns the way the ground under it does** — § "A picture that takes turns"
+  is the model both read, and every picture in a series is cut and sized the same as the one
+  before it, because the size is the mark's channel and not any one picture's.
 - **Where an author spends both, the ring wins the band they share.** A solid heavy ring
   covers the annulus the two largest pictures differ across, so on such a note they draw
   alike; a dashed one leaves most of its turn open, and the two rims show apart through the

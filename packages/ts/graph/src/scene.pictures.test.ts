@@ -8,7 +8,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { DrawnNode, GraphPictures } from "./contract.js";
 import {
   buildModel,
-  MARK_PICTURE_PX,
+  LEAF_RADIUS,
+  markPicturePx,
   PREVIEW_AT,
   PREVIEW_SPAN,
 } from "./model.js";
@@ -74,10 +75,14 @@ afterEach(() => {
 const OWNER = "did:syr:someone";
 const palette = buildPalette({ ink: "#000", paper: "#fff", hues: [] });
 
+/** The square a leaf with nothing else set shows its picture in. */
+const LEAF_CUT = markPicturePx(LEAF_RADIUS, "small");
+
 function drawn(
   address: string,
   preview?: string,
   preview_size?: string,
+  mark_radius?: string,
 ): DrawnNode {
   const ref = `${OWNER}/${address}` as OwnedRef;
   const node = {
@@ -92,7 +97,9 @@ function drawn(
     tags: [],
     links: [],
     published: false,
-    ...(preview === undefined ? {} : { appearance: { preview, preview_size } }),
+    ...(preview === undefined
+      ? {}
+      : { appearance: { preview, preview_size, mark_radius } }),
   } as NodeView;
   return { node, collapsed: false, folded: 0, tags: [] };
 }
@@ -199,31 +206,58 @@ describe("a picture reaching a mark", () => {
   });
 
   it("covers the disc from its short side, and is never enlarged to do it", async () => {
-    // Both sides past the bound, so the square is the bound's own.
+    // Both sides past the cut, so the square is the cut's own.
     decoded.set("blob:wide", {
-      width: MARK_PICTURE_PX * 2,
-      height: MARK_PICTURE_PX * 1.5,
+      width: LEAF_CUT * 2,
+      height: LEAF_CUT * 1.5,
     });
-    decoded.set("blob:small", { width: 120, height: 90 });
+    decoded.set("blob:small", { width: LEAF_CUT - 20, height: LEAF_CUT - 30 });
     const { scene } = await sceneOn(
       [drawn("1", "wide"), drawn("2", "small")],
       host(),
     );
     await settle();
 
-    const wide = painted.find((cut) => cut.canvas === MARK_PICTURE_PX);
+    const wide = painted.find((cut) => cut.canvas === LEAF_CUT);
     expect(
       wide,
       "the picture with room to spare fills the square",
     ).toBeDefined();
     // Centred, and wider than the square by exactly its aspect ratio.
-    expect(wide?.box[2]).toBeCloseTo((MARK_PICTURE_PX * 4) / 3, 6);
-    expect(wide?.box[3]).toBeCloseTo(MARK_PICTURE_PX, 6);
+    expect(wide?.box[2]).toBeCloseTo((LEAF_CUT * 4) / 3, 6);
+    expect(wide?.box[3]).toBeCloseTo(LEAF_CUT, 6);
     expect(wide?.box[1]).toBeCloseTo(0, 6);
 
-    const small = painted.find((cut) => cut.canvas === 90);
-    expect(small, "one below the bound draws at what it has").toBeDefined();
-    expect(small?.box[3]).toBeCloseTo(90, 6);
+    const small = painted.find((cut) => cut.canvas === LEAF_CUT - 30);
+    expect(small, "one below the cut draws at what it has").toBeDefined();
+    expect(small?.box[3]).toBeCloseTo(LEAF_CUT - 30, 6);
+    scene.destroy();
+  });
+
+  // DESIGN.md § "The mark": a picture is cut for the mark that wears it, so one
+  // picture on two marks of different sizes is two cuts and not the larger one
+  // twice — which is what would put a mega-node's bytes behind every leaf.
+  it("is cut again where another mark shows it bigger", async () => {
+    decoded.set("blob:up_a", { width: 4000, height: 4000 });
+    const pictures = host();
+    const { scene } = await sceneOn(
+      [
+        drawn("1", "up_a"),
+        {
+          ...drawn("2", "up_a", "large", "giant"),
+          collapsed: true,
+          folded: 5_000,
+        },
+      ],
+      pictures,
+    );
+    await settle();
+
+    expect(pictures.asked).toEqual(["up_a", "up_a"]);
+    const sides = painted.map((cut) => cut.canvas).sort((a, b) => a - b);
+    expect(sides).toHaveLength(2);
+    expect(sides[0]).toBe(LEAF_CUT);
+    expect(sides[0] * 4, "a leaf pays a giant's bytes").toBeLessThan(sides[1]);
     scene.destroy();
   });
 

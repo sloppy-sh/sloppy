@@ -6,6 +6,8 @@ import {
   type NodeAppearance,
   type NodeView,
   type OwnedRef,
+  PREVIEW_SIZES,
+  type PreviewSize,
   siblingAddress,
   type Tag,
 } from "@sloppy/types";
@@ -13,7 +15,17 @@ import { describe, expect, it } from "vitest";
 import { type DrawnNode, drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import { applyLod } from "./lod.js";
-import { buildModel } from "./model.js";
+import {
+  buildModel,
+  LEAF_RADIUS,
+  LOOK_SCALE,
+  lookPicturePx,
+  markPicturePx,
+  MAX_MARK_PICTURE_PX,
+  MAX_MARK_RADIUS,
+  MAX_RADIUS,
+  PREVIEW_SPAN,
+} from "./model.js";
 import { buildPalette } from "./palette.js";
 
 const corpus = makeCorpus();
@@ -652,6 +664,83 @@ describe("the look a note's author gave it", () => {
     });
     expect(mark.ringWeight).toBe("hairline");
     expect(mark.radius).toBeGreaterThan(radiusOf([plain("1")]));
+  });
+
+  // DESIGN.md § "The mark": the cut follows the mark that wears the picture, so
+  // a leaf never holds what the top of the ladder needs.
+  describe("the square its picture is cut to", () => {
+    /** Picture pixels one world unit of a mark's imagery is worth, read off the
+     *  largest cut rather than restating the arithmetic under test. */
+    const perWorldUnit =
+      MAX_MARK_PICTURE_PX / (MAX_MARK_RADIUS * PREVIEW_SPAN.large * 2);
+    const shown = (radius: number, size: PreviewSize): number =>
+      radius * PREVIEW_SPAN[size] * 2 * perWorldUnit;
+
+    const radii = [
+      LEAF_RADIUS * LOOK_SCALE.small,
+      LEAF_RADIUS,
+      20,
+      MAX_RADIUS,
+      MAX_MARK_RADIUS,
+    ];
+
+    it("covers every pixel the mark draws, and never twice as many", () => {
+      for (const radius of radii) {
+        for (const size of PREVIEW_SIZES) {
+          const cut = markPicturePx(radius, size);
+          const draws = shown(radius, size);
+          expect(cut, `${radius} ${size}`).toBeGreaterThanOrEqual(draws);
+          expect(cut, `${radius} ${size}`).toBeLessThanOrEqual(draws * 2);
+        }
+      }
+    });
+
+    it("costs the smallest mark under a hundredth of the largest one", () => {
+      const leaf = markPicturePx(LEAF_RADIUS * LOOK_SCALE.small, "small");
+      expect((leaf / MAX_MARK_PICTURE_PX) ** 2).toBeLessThan(0.01);
+      expect(markPicturePx(MAX_MARK_RADIUS, "large")).toBe(MAX_MARK_PICTURE_PX);
+    });
+
+    it("grows with every step of both ladders", () => {
+      for (const size of PREVIEW_SIZES) {
+        let below = 0;
+        for (const mark_radius of MARK_RADII) {
+          const cut = lookPicturePx(mark_radius, size);
+          expect(cut, `${mark_radius} ${size}`).toBeGreaterThan(below);
+          below = cut;
+        }
+      }
+      for (const mark_radius of MARK_RADII) {
+        let below = 0;
+        for (const size of PREVIEW_SIZES) {
+          const cut = lookPicturePx(mark_radius, size);
+          expect(cut, `${mark_radius} ${size}`).toBeGreaterThan(below);
+          below = cut;
+        }
+      }
+    });
+
+    // A picture is chosen on a note that may fold a subtree later, so what it is
+    // stored at has to cover that note's own mark at every fold it can reach.
+    it("stores enough for the note's own mark however much folds under it", () => {
+      for (const mark_radius of MARK_RADII) {
+        for (const size of PREVIEW_SIZES) {
+          for (const folded of [0, 1, 20, 900, 90_000]) {
+            const radius = radiusOf([
+              {
+                ...styled("1", { mark_radius }),
+                collapsed: folded > 0,
+                folded,
+              },
+            ]);
+            expect(
+              markPicturePx(radius, size),
+              `${mark_radius} ${size} at ${folded}`,
+            ).toBeLessThanOrEqual(lookPicturePx(mark_radius, size));
+          }
+        }
+      }
+    });
   });
 });
 

@@ -82,16 +82,41 @@ export const PREVIEW_SPAN: Record<PreviewSize, number> = {
   large: LOOK_RING_AT,
 };
 
-/** Assumed of the densest screen Sloppy runs on, for {@link MARK_PICTURE_PX}. */
+/** Assumed of the densest screen Sloppy runs on. */
 const DENSE_SCREEN = 2;
 
-/** The side of the square a mark's picture is cropped to, at the most of one a
- *  screen ever shows: the largest mark drawn, wearing the largest picture, at
- *  full zoom, on a dense display. A picture is stored with its SHORT side at
- *  this, because the crop spends the long one. */
-export const MARK_PICTURE_PX = Math.ceil(
+/** The most of a picture any mark shows: the largest mark drawn, wearing the
+ *  largest picture, at full zoom, on a dense display. */
+export const MAX_MARK_PICTURE_PX = Math.ceil(
   MAX_MARK_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
 );
+
+/** Cuts are rounded up to this, so marks of nearby sizes share one cut of a
+ *  picture rather than each holding a texture of its own. */
+const MARK_PICTURE_STEP = 32;
+
+/**
+ * The side of the square a picture is cropped to for a mark drawn at `radius`
+ * world units, covering `size` of it. A picture is stored with its SHORT side at
+ * this, because the crop spends the long one. DESIGN.md § "The mark" carries why
+ * it is the mark's own size and not the largest one anybody draws.
+ */
+export function markPicturePx(radius: number, size: PreviewSize): number {
+  const drawn = Math.max(
+    radius * PREVIEW_SPAN[size] * 2 * MAX_SCALE * DENSE_SCREEN,
+    1,
+  );
+  return Math.min(
+    Math.ceil(drawn / MARK_PICTURE_STEP) * MARK_PICTURE_STEP,
+    MAX_MARK_PICTURE_PX,
+  );
+}
+
+/** What a picture chosen for this look is stored at: that mark at the fold's
+ *  cap, so a note that later folds a subtree still has bytes to draw. */
+export function lookPicturePx(mark: MarkRadius, size: PreviewSize): number {
+  return markPicturePx(MAX_RADIUS * LOOK_SCALE[mark], size);
+}
 
 /** What a note nobody styled draws as, held once rather than resolved per node. */
 const UNSTYLED: ResolvedAppearance = resolveAppearance(null);
