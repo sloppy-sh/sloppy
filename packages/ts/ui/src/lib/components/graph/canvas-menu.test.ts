@@ -50,8 +50,7 @@ describe('the canvas menu', () => {
 	// and the var is what carries it because Android reports the raw probe as 0.
 	it('is held clear of the bar the platform draws under it', () => {
 		open();
-		expect(menu()?.style.top).toContain('var(--safe-area-inset-bottom');
-		expect(menu()?.style.top).toContain('var(--sysnav-inset-bottom');
+		expect(menu()?.style.top).toContain('var(--sysnav-clearance)');
 	});
 
 	// The reader asked for a menu, not for the tap under it, so the first pointer

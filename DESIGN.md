@@ -742,11 +742,13 @@ up and the lift can be 0 in the panned case.
   draws as one mega-node sized by descendant count; a tag selection lights the notes that
   carry it and dims the rest along with the genealogical edges. **Neither mode ever draws
   more than a bounded node count** — legibility and frame time are the same constraint here (PRODUCT.md principle 7).
-- **The page is the ground; the field is a box inside it.** The paper and whatever picture
-  is under it reach every edge of the page — behind the chrome at the head, under the bar at
-  the foot — while the field the marks are drawn in is held off that chrome by the room the
-  chrome says it takes. So a reader's ground is never cut into a panel, and no mark is ever
-  drawn where something else is written over it. **Everything that reads a screen point
+- **The page is the ground; the field is a box inside it.** A picture reaches every edge of
+  the page — behind the chrome at the head, under the bar at the foot — while the field the
+  marks are drawn in is held off that chrome by the room the chrome says it takes. So no mark
+  is ever drawn where something else is written over it. **The lattice is the field's**, not
+  the page's: it is drawn in the canvas with the marks, so it stops where they do, and over a
+  picture that carries on past it that edge is visible. It is the one part of the ground that
+  is still cut to the box. **Everything that reads a screen point
   reads it against that inner box** — a tap, a hover, a stroke, and the size the renderer is
   given; read against the page instead, every one of them lands the chrome's height away
   from the mark it was aimed at.
