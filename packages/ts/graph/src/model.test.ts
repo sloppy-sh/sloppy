@@ -2,9 +2,11 @@ import {
   type Address,
   addressDepth,
   assignTagHueSlots,
+  type EdgeKind,
   MARK_RADII,
   type NodeAppearance,
   type NodeView,
+  PREVIEW_SIZES,
   type OwnedRef,
   siblingAddress,
   type Tag,
@@ -13,7 +15,14 @@ import { describe, expect, it } from "vitest";
 import { type DrawnNode, drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
 import { applyLod } from "./lod.js";
-import { buildModel } from "./model.js";
+import {
+  buildModel,
+  LEAF_RADIUS,
+  LOOK_SCALE,
+  MARK_PICTURE_PX,
+  markPictureSide,
+  WIDEST_RADIUS,
+} from "./model.js";
 import { buildPalette } from "./palette.js";
 
 const corpus = makeCorpus();
@@ -45,17 +54,23 @@ describe("buildModel", () => {
     expect(model.graph.order).toBe(drawn.length);
   });
 
+  // Every drawn parent and child are joined, and nothing else is joined as
+  // parentage — the line may read as something stronger where a person also
+  // connected the two, which is DESIGN.md § Edges' ruling and not a missing edge.
   it("draws a genealogical edge only where both ends are drawn", () => {
     const present = new Set(model.order);
-    let expected = 0;
+    const pair = (a: string, b: string) => [a, b].sort().join(" ");
+    const parented = new Set<string>();
     for (const { node } of drawn) {
-      if (node.parent !== undefined && present.has(node.parent)) expected += 1;
+      if (node.parent === undefined || !present.has(node.parent)) continue;
+      parented.add(pair(node.parent, node.ref));
+      expect(model.graph.hasEdge(node.parent, node.ref)).toBe(true);
     }
-    let found = 0;
-    model.graph.forEachEdge((_e, attributes) => {
-      if (attributes.kind === "genealogy") found += 1;
+    expect(parented.size).toBeGreaterThan(0);
+    model.graph.forEachEdge((_e, attributes, source, target) => {
+      if (attributes.kind !== "genealogy") return;
+      expect(parented.has(pair(source, target))).toBe(true);
     });
-    expect(found).toBe(expected);
   });
 
   it("never draws a link to a node that is not there, or to itself", () => {
@@ -386,9 +401,9 @@ describe("the run of thought", () => {
     expect(runsOf(gapped)).toEqual([[whole[0].ref, whole[2].ref]]);
   });
 
-  // DESIGN.md § Edges: where somebody has connected two notes already along a
-  // run, the connection wins and the line is dashed.
-  it("gives way to a connection somebody made along it", () => {
+  // DESIGN.md § Edges: the hand leads, so a link drawn along a run takes the
+  // run's line — and a note's own writing naming its neighbour does not.
+  it("gives way to a link somebody drew along it", () => {
     const first = note("1");
     const second = note("2");
     const drew = buildModel(
@@ -396,78 +411,99 @@ describe("the run of thought", () => {
       { selection: [], palette },
     );
     expect(drew.graph.getEdgeAttributes(first.ref, second.ref).kind).toBe(
-      "connection",
+      "link",
     );
     expect(runsOf(drew)).toEqual([]);
   });
 });
 
-// DESIGN.md § Edges: a note carries both ways of connecting, and the canvas
-// draws their union as one line.
-describe("what a connection is drawn from", () => {
+// DESIGN.md § Edges: a note carries two ways of connecting, and they are two
+// lines rather than one — the writing's own naming is drawn whole and a hand's
+// is drawn broken, so the break says how the line was made and nothing else.
+describe("the two ways of connecting two notes", () => {
   const options = { selection: [], palette };
   const built = (nodes: readonly NodeView[]) =>
     buildModel(drawnNodes(nodes, new Set()), options);
-  const connections = (model: ReturnType<typeof buildModel>) => {
+  const drawnAs = (
+    model: ReturnType<typeof buildModel>,
+    kind: EdgeKind,
+  ): [string, string][] => {
     const pairs: [string, string][] = [];
     model.graph.forEachEdge((_edge, attributes, source, target) => {
-      if (attributes.kind === "connection") pairs.push([source, target]);
+      if (attributes.kind === kind) pairs.push([source, target]);
     });
     return pairs;
   };
+  /** A note across the tree from `1`: it sprang from `2`, so it is neither `1`'s
+   *  child nor alongside it, and the only line the two can draw is the one
+   *  somebody made. */
+  const across = (): NodeView => {
+    const sprang = note("2");
+    return { ...note("2a"), parent: sprang.ref, origin: sprang.ref };
+  };
 
-  // A `[[` in the writing, which the server derived onto the note.
-  it("draws one for a note the writing names", () => {
+  // A `[[` in the writing, which the server derived onto the note, against the
+  // same pair joined by hand instead.
+  it("tells a note's own words apart from a line somebody drew", () => {
     const from = note("1");
-    const cited = note("2a");
-    expect(
-      connections(built([{ ...from, references: [cited.ref] }, cited])),
-    ).toEqual([[from.ref, cited.ref]]);
+    const cited = across();
+    const writing = built([{ ...from, references: [cited.ref] }, cited]);
+    expect(drawnAs(writing, "reference")).toEqual([[from.ref, cited.ref]]);
+    expect(drawnAs(writing, "link")).toEqual([]);
+
+    const hand = built([{ ...from, links: [cited.ref] }, cited]);
+    expect(drawnAs(hand, "link")).toEqual([[from.ref, cited.ref]]);
+    expect(drawnAs(hand, "reference")).toEqual([]);
   });
 
   // The words went, so the derivation went with them.
   it("draws none once the words that named it are gone", () => {
     const from = note("1");
-    const cited = note("2a");
-    expect(connections(built([{ ...from, references: [] }, cited]))).toEqual(
-      [],
-    );
+    const cited = across();
+    expect(
+      drawnAs(built([{ ...from, references: [] }, cited]), "reference"),
+    ).toEqual([]);
   });
 
   it("reads an absent derivation as naming nothing", () => {
     const from = note("1");
-    const cited = note("2a");
+    const cited = across();
     expect(from).not.toHaveProperty("references");
-    expect(connections(built([from, cited]))).toEqual([]);
+    expect(drawnAs(built([from, cited]), "reference")).toEqual([]);
   });
 
-  // Each way of connecting is independent of the other, so taking one away
-  // leaves the line.
-  it("draws one line for a pair connected both ways", () => {
+  // A pair is drawn once, as the strongest thing true of it, and the hand leads:
+  // somebody reached for the menu and asked for a line, so the act has an answer
+  // on the surface it was made on.
+  it("draws a pair connected both ways as the line the hand made", () => {
     const from = note("1");
-    const to = note("2a");
+    const to = across();
     const both = built([
       { ...from, links: [to.ref], references: [to.ref] },
       to,
     ]);
-    expect(connections(both)).toEqual([[from.ref, to.ref]]);
-    expect(
-      connections(built([{ ...from, links: [to.ref], references: [] }, to])),
-    ).toEqual([[from.ref, to.ref]]);
+    expect(drawnAs(both, "link")).toEqual([[from.ref, to.ref]]);
+    expect(drawnAs(both, "reference")).toEqual([]);
+
+    // Each way still ends independently: take the hand's away and the line the
+    // writing makes is left, drawn whole.
+    const written = built([{ ...from, references: [to.ref] }, to]);
+    expect(drawnAs(written, "reference")).toEqual([[from.ref, to.ref]]);
   });
 
   // A note naming itself is not an edge — the server does not derive one, and
   // nothing here would draw one either.
   it("draws none from a note to itself", () => {
     const alone = note("1");
-    expect(connections(built([{ ...alone, references: [alone.ref] }]))).toEqual(
-      [],
-    );
+    expect(
+      drawnAs(built([{ ...alone, references: [alone.ref] }]), "reference"),
+    ).toEqual([]);
   });
 
-  // Writing about the note a thought sprang from is ordinary Zettelkasten, so
-  // the line is drawn — but how far apart the two sit is the addresses' to say.
-  it("draws a connection to a parent without moving it", () => {
+  // Writing about the note a thought sprang from is ordinary Zettelkasten, and
+  // there the citation is the rarer fact — so it takes the line from parentage.
+  // How far apart the two sit is still the addresses' to say.
+  it("takes a parent's line without moving it", () => {
     const parent = note("1");
     const child = { ...note("1a"), parent: parent.ref, origin: parent.ref };
     const bare = built([parent, child]);
@@ -476,12 +512,12 @@ describe("what a connection is drawn from", () => {
       "distance",
     );
 
-    for (const citing of [
-      built([parent, { ...child, references: [parent.ref] }]),
-      built([{ ...parent, references: [child.ref] }, child]),
-      built([parent, { ...child, links: [parent.ref] }]),
-    ]) {
-      expect(connections(citing)).toEqual([[parent.ref, child.ref]]);
+    for (const [kind, citing] of [
+      ["reference", built([parent, { ...child, references: [parent.ref] }])],
+      ["reference", built([{ ...parent, references: [child.ref] }, child])],
+      ["link", built([parent, { ...child, links: [parent.ref] }])],
+    ] as const) {
+      expect(drawnAs(citing, kind)).toEqual([[parent.ref, child.ref]]);
       expect(
         citing.graph.getEdgeAttribute(
           citing.graph.undirectedEdge(parent.ref, child.ref),
@@ -491,8 +527,11 @@ describe("what a connection is drawn from", () => {
     }
   });
 
-  // The same holds along the run, where the gap is the seeds' own.
-  it("draws a connection along a run without moving it", () => {
+  // Nobody draws on the canvas by typing `[[1a]]` in `1b`: the two are already
+  // joined by the line a reader walks, and trading that for a line that reads
+  // like any citation across the tree would make the run patchy exactly where a
+  // train of thought carries itself forward.
+  it("leaves the run the line it is where the writing names the next note", () => {
     const first = note("1");
     const second = note("2");
     const bare = built([first, second]);
@@ -502,7 +541,8 @@ describe("what a connection is drawn from", () => {
     );
 
     const citing = built([{ ...first, references: [second.ref] }, second]);
-    expect(connections(citing)).toEqual([[first.ref, second.ref]]);
+    expect(drawnAs(citing, "run")).toEqual([[first.ref, second.ref]]);
+    expect(drawnAs(citing, "reference")).toEqual([]);
     expect(
       citing.graph.getEdgeAttribute(
         citing.graph.undirectedEdge(first.ref, second.ref),
@@ -575,7 +615,7 @@ describe("the look a note's author gave it", () => {
   it("draws nothing of its own for a note nobody styled", () => {
     const mark = markOf(plain("1"));
     expect(mark.ringWeight).toBe("none");
-    expect(mark.preview).toBeUndefined();
+    expect(mark.preview.pictures).toEqual([]);
     expect(mark.previewSize).toBe("small");
   });
 
@@ -590,7 +630,7 @@ describe("the look a note's author gave it", () => {
     );
     expect(mark.ringWeight).toBe("heavy");
     expect(mark.ringStyle).toBe("dashed");
-    expect(mark.preview).toBe("upload-1");
+    expect(mark.preview.pictures).toEqual(["upload-1"]);
     expect(mark.previewSize).toBe("large");
   });
 
@@ -755,7 +795,7 @@ describe("several graphs on one canvas", () => {
   // A ref names one note across every graph its author keeps, so a citation
   // typed into one graph and pointing into another draws wherever both ends
   // are on the canvas — docs/ARCHITECTURE.md § "Data model".
-  it("draws a connection from a note in one field to a note in the next", () => {
+  it("draws a reference from a note in one field to a note in the next", () => {
     const here = mine[0].node;
     const away = inOther(mine[1].node);
     const across = buildModel(
@@ -767,8 +807,42 @@ describe("several graphs on one canvas", () => {
     );
     const drawn: [string, string][] = [];
     across.graph.forEachEdge((_edge, attributes, source, target) => {
-      if (attributes.kind === "connection") drawn.push([source, target]);
+      if (attributes.kind === "reference") drawn.push([source, target]);
     });
     expect(drawn).toEqual([[here.ref, away.ref]]);
+  });
+});
+
+// DESIGN.md § "The mark": what a picture is stored at and what a mark decodes it
+// to are two budgets. Confusing them is what makes a picture go permanently
+// soft, or a phone hold a mega-node's pixels for every leaf on the field.
+describe("the two budgets a picture is cut against", () => {
+  it("stores enough for the largest mark a look could ever become", () => {
+    for (const size of PREVIEW_SIZES) {
+      expect(markPictureSide(WIDEST_RADIUS, size), size).toBeLessThanOrEqual(
+        MARK_PICTURE_PX,
+      );
+    }
+    expect(markPictureSide(WIDEST_RADIUS, "large")).toBe(MARK_PICTURE_PX);
+  });
+
+  it("decodes a leaf at a fraction of a percent of what it stores", () => {
+    const leaf = markPictureSide(LEAF_RADIUS * LOOK_SCALE.small, "small");
+    // Squared, because a texture costs the square of its side.
+    expect((leaf / MARK_PICTURE_PX) ** 2).toBeLessThan(0.01);
+  });
+
+  it("cuts marks a hair apart in size to one texture", () => {
+    expect(markPictureSide(20, "small")).toBe(markPictureSide(21, "small"));
+  });
+
+  it("grows the cut with the mark, up to what it stores", () => {
+    let below = 0;
+    for (const step of MARK_RADII) {
+      const cut = markPictureSide(WIDEST_RADIUS * LOOK_SCALE[step], "small");
+      expect(cut, step).toBeGreaterThanOrEqual(below);
+      expect(cut, step).toBeLessThanOrEqual(MARK_PICTURE_PX);
+      below = cut;
+    }
   });
 });

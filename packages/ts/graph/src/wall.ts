@@ -5,11 +5,19 @@
 // Plain elements rather than anything in the scene: the canvas clears
 // transparent, so a layer behind it composites once and no frame pays for it.
 
+import {
+  knownTransition,
+  type PictureTransition,
+  QUIETEST_TRANSITION,
+} from "@sloppy/types";
 import type { GraphPictures } from "./contract.js";
-
-/** DESIGN.md § Motion. A picture only changes while nobody is looking at it, so
- *  this is what somebody coming back finds already under way. */
-const FADE_MS = 200;
+import {
+  type PictureRole,
+  type PictureStep,
+  pictureStep,
+  TURN_EASING,
+  TURN_MS,
+} from "./turn.js";
 
 type Held = { src: string; release: () => void };
 
@@ -20,6 +28,7 @@ export class WallLayer {
   private held: Held | null = null;
   private wanted: string | null = null;
   private presence = 0;
+  private transition: PictureTransition = QUIETEST_TRANSITION;
   /** Bumped on every change, so a picture still arriving when the next one is
    *  asked for is dropped rather than drawn over it. */
   private era = 0;
@@ -40,13 +49,18 @@ export class WallLayer {
    * The picture to draw and how much of it reaches the reader, 0–1 — already
    * bounded by what the ground can carry. A picture that will not resolve or
    * will not decode leaves no wallpaper, which is what `null` draws too.
+   *
+   * `transition` is how this picture gives way to the next; one this build
+   * cannot draw crossfades.
    */
   show(
     picture: string | null,
     pictures: GraphPictures | undefined,
     presence: number,
+    transition?: PictureTransition,
   ): void {
     this.presence = presence;
+    this.transition = knownTransition(transition);
     this.scrim.style.opacity = `${1 - presence}`;
     this.settle();
     if (picture === this.wanted) return;
@@ -118,12 +132,21 @@ export class WallLayer {
     next.style.cssText =
       "position:absolute;inset:0;background-position:center;background-size:cover";
     next.style.backgroundImage = `url("${held.src.replace(/["\\]/g, "\\$&")}")`;
-    const fading = !this.reduced.matches && this.picture !== null;
-    next.style.opacity = fading ? "0" : "1";
-    if (fading) next.style.transition = `opacity ${FADE_MS}ms ease-out`;
+    // A picture arriving where none was drawn is the graph opening rather than a
+    // turn, and a reader who asked for less motion gets the change without it.
+    const turning = !this.reduced.matches && this.picture !== null;
 
     const under = this.picture;
     const underHeld = this.held;
+    if (turning) {
+      // Declared before the layers are moved, so the browser has a curve to
+      // carry them along rather than a value that jumps.
+      move(next, "arriving");
+      draw(next, pictureStep(this.transition, "arriving", 0));
+      if (under) move(under, "leaving");
+    } else {
+      next.style.opacity = "1";
+    }
     this.element.insertBefore(next, this.scrim);
     this.picture = next;
     this.held = held;
@@ -135,13 +158,31 @@ export class WallLayer {
       under?.remove();
       underHeld?.release();
     };
-    if (!fading) {
+    if (!turning) {
       drop();
       return;
     }
     requestAnimationFrame(() => {
-      next.style.opacity = "1";
+      draw(next, pictureStep(this.transition, "arriving", 1));
+      if (under) draw(under, pictureStep(this.transition, "leaving", 0));
     });
-    setTimeout(drop, FADE_MS * 2);
+    setTimeout(drop, TURN_MS * 2);
   }
+}
+
+/** Where one layer of the ground is, mid-change. The transform is the whole of
+ *  it: the picture is `background-size: cover`, so it fills its layer at every
+ *  step and the layer is what moves. */
+function draw(layer: HTMLElement, step: PictureStep): void {
+  layer.style.opacity = `${step.opacity}`;
+  layer.style.transform = `translateX(${step.shift * 100}%) scale(${step.scale})`;
+}
+
+/** The change handed to the browser rather than driven a frame at a time: the
+ *  ground is one composited layer, and a frame that wrote to it would be the one
+ *  frame it costs anything. */
+function move(layer: HTMLElement, role: PictureRole): void {
+  layer.style.transition =
+    `opacity ${TURN_MS}ms ${TURN_EASING[role]},` +
+    ` transform ${TURN_MS}ms ${TURN_EASING[role]}`;
 }

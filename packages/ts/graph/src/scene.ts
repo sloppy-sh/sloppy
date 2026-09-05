@@ -7,7 +7,7 @@
 // and the author's look (DESIGN.md § Form), so each gets a shape of its own: a
 // tint cannot make one texture read as two shapes.
 
-import type { RingStyle, RingWeight } from "@sloppy/types";
+import { pictureTurn, type RingStyle, type RingWeight } from "@sloppy/types";
 import type {
   Application,
   Container,
@@ -29,15 +29,17 @@ import { GroundLayer } from "./ground-layer.js";
 import type { GraphNodeAttributes } from "./model.js";
 import {
   type BuiltModel,
+  LADDER_TOP,
   LOOK_RING_AT,
   LOOK_RING_DASHES,
   LOOK_RING_DUTY,
   LOOK_RING_WIDTH,
-  MARK_PICTURE_PX,
+  markPictureSide,
   type NamedField,
   PREVIEW_SPAN,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
+import { pictureStep, shownAt, TURN_MS } from "./turn.js";
 import {
   type Bounds,
   type Point,
@@ -49,11 +51,17 @@ type Pixi = typeof import("pixi.js");
 
 /** Radius the mark textures are drawn at; every mark is a scale of this. */
 const TEXTURE_RADIUS = 16;
-const TEXTURE_RESOLUTION = 4;
+/** What the sheet is rasterised at. One sheet serves every mark, so its density
+ *  is measured at the top of the ladder and paid once, by everybody —
+ *  DESIGN.md § "The mark". */
+const TEXTURE_RESOLUTION = 4 * LADDER_TOP;
 /** Empty margin around each shape on the sheet, so sampling one never catches
  *  the shape beside it. */
 const SHEET_PAD = 4;
 const SHEET_CELL = TEXTURE_RADIUS * 2 + SHEET_PAD * 2;
+/** Wrapped rather than laid in one row, so the sheet's width stays well inside
+ *  the smallest texture a GPU Sloppy runs on will hold. */
+const SHEET_COLUMNS = 4;
 
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
@@ -104,8 +112,11 @@ const LIFT_FLOOR = { open: 5, active: 8 };
 /** Rings the lift is laid down as. Enough that its outer edge is not a line. */
 const LIFT_BANDS = 16;
 
+/** Three steps of one ladder — genealogy, then the two lines a person made,
+ *  then the run. It climbs in lightness too, and those alphas are the palette's;
+ *  DESIGN.md § Edges is the doc of record for both channels. */
 const EDGE_WIDTH = 1.2;
-/** DESIGN.md § Edges: the run is the line a reader walks, so it is the heaviest. */
+const CONNECTION_WEIGHT = 1.4;
 const RUN_WEIGHT = 1.8;
 const CONNECTION_DASH = 9;
 /** The most segments one dashed edge may cost. Reached only by an edge long
@@ -145,6 +156,9 @@ export interface SceneOptions {
   resolution: number;
   /** Absent draws every mark without its author's picture. */
   pictures?: GraphPictures;
+  /** Absent lets a picture change on a mark move; DESIGN.md § Motion has it
+   *  change without moving where a reader has asked for less motion. */
+  reduced?: MediaQueryList;
 }
 
 export interface FrameStats {
@@ -161,6 +175,14 @@ export interface FrameStats {
   labels: number;
 }
 
+/** One picture giving way to the next on a mark: the one going, the sprite still
+ *  drawing it, and when the change began. */
+interface Turn {
+  from: string;
+  sprite: Sprite;
+  since: number;
+}
+
 interface Mark {
   ref: string;
   index: number;
@@ -171,7 +193,14 @@ interface Mark {
   ring: Particle | null;
   /** The author's look, drawn inside the mark. */
   look: Particle | null;
+  /** Which of its author's pictures it is the turn of, read off the clock by
+   *  {@link GraphScene.takeTurns}. */
+  showing: string | undefined;
+  /** What {@link Mark.preview} is actually drawing, which trails `showing` from
+   *  the moment a turn comes round until the bytes for it land. */
+  drawing: string | undefined;
   preview: Sprite | null;
+  turn: Turn | null;
   /** Whether the look is being drawn, which {@link looksDrawn} latches. Carried
    *  across a rebuild the way positions are, so selecting a tag does not take a
    *  look off a mark sitting inside the latch's own margin. */
@@ -199,7 +228,10 @@ export class GraphScene {
   /** Genealogy edges as index pairs, one bucket per step of the depth ramp. */
   private edgesByDepth: number[][] = [];
   private runPairs: number[] = [];
-  private connectionPairs: number[] = [];
+  /** The two lines a person made, kept apart because one is drawn whole and the
+   *  other broken — DESIGN.md § Edges. */
+  private referencePairs: number[] = [];
+  private linkPairs: number[] = [];
   private readonly labelSlots = new Map<string, number>();
   private fieldNames: readonly NamedField[] = [];
   private selecting = false;
@@ -213,10 +245,17 @@ export class GraphScene {
   private previewsDirty = false;
   private lastEdgeScale = 0;
 
-  /** One texture per picture, however many marks wear it; `null` is one that
-   *  will not draw, cached so it is asked for once. */
-  private readonly previewTextures = new Map<string, Texture | null>();
-  private readonly previewsAsked = new Set<string>();
+  /** One texture per picture, however many marks wear it, cut for the biggest
+   *  of them — `side` is what it was cut at. `null` is a picture that will not
+   *  draw, held so it is asked for once. */
+  private readonly previewTextures = new Map<
+    string,
+    { texture: Texture | null; side: number }
+  >();
+  private readonly previewsAsked = new Map<string, number>();
+  /** Marks with a change under way, so an idle frame costs nothing to find
+   *  them and a field where nothing is turning costs nothing at all. */
+  private readonly turning = new Set<Mark>();
   private destroyed = false;
 
   private readonly cpuSamples: number[] = [];
@@ -423,22 +462,36 @@ export class GraphScene {
         fill: null,
         ring: null,
         look: null,
+        showing: undefined,
+        drawing: undefined,
         preview: null,
+        turn: null,
         looking: looking.get(ref) ?? false,
       };
     });
+    // A model change is not a turn: every sprite goes, so the picture whose turn
+    // it is now is simply the one the next frame draws.
+    this.takeTurns();
+    // The sprites go first: a texture freed under one still on the display list
+    // is drawn from freed memory the next time anything renders.
+    this.dropPreviewSprites();
     this.forgetUnwantedPictures();
 
     const byRef = new Map(model.order.map((ref, index) => [ref, index]));
     this.edgesByDepth = Array.from({ length: DEPTH_STEPS + 1 }, () => []);
     this.runPairs = [];
-    this.connectionPairs = [];
+    this.referencePairs = [];
+    this.linkPairs = [];
     model.graph.forEachEdge((_edge, attributes, source, target) => {
       const a = byRef.get(source);
       const b = byRef.get(target);
       if (a === undefined || b === undefined) return;
-      if (attributes.kind === "connection") {
-        this.connectionPairs.push(a, b);
+      if (attributes.kind === "link") {
+        this.linkPairs.push(a, b);
+        return;
+      }
+      if (attributes.kind === "reference") {
+        this.referencePairs.push(a, b);
         return;
       }
       if (attributes.kind === "run") {
@@ -588,7 +641,11 @@ export class GraphScene {
       frames: this.frameSamples.length,
       drawn: this.marks.length,
       edges:
-        (genealogy + this.runPairs.length + this.connectionPairs.length) / 2,
+        (genealogy +
+          this.runPairs.length +
+          this.referencePairs.length +
+          this.linkPairs.length) /
+        2,
       labels: this.labelSlots.size,
     };
   }
@@ -603,7 +660,9 @@ export class GraphScene {
     this.app.ticker.remove(this.draw);
     this.ground.destroy();
     this.dropPreviewSprites();
-    for (const texture of this.previewTextures.values()) texture?.destroy(true);
+    for (const held of this.previewTextures.values()) {
+      held.texture?.destroy(true);
+    }
     this.previewTextures.clear();
     this.app.destroy(true, { children: true, texture: true });
   }
@@ -620,7 +679,9 @@ export class GraphScene {
       this.lastEdgeScale * SCALE_REBUILD;
 
     this.ground.update(this.viewport, this.width, this.height);
+    const turning = this.turning.size > 0;
     if (this.positionsDirty) this.syncMarks();
+    if (turning) this.advanceTurns();
     if (this.positionsDirty || scaleMoved) this.drawLift();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
@@ -728,11 +789,56 @@ export class GraphScene {
         mark.look.y = y;
         mark.look.alpha = mark.looking ? mark.attributes.alpha : 0;
       }
-      if (mark.preview) {
-        mark.preview.position.set(x, y);
-        mark.preview.visible = mark.looking;
-      }
+      if (mark.preview) this.placePictures(mark);
     }
+  }
+
+  /** Where a mark's imagery is drawn: the picture whose turn it is, and the one
+   *  giving way while a change is under way. */
+  private placePictures(mark: Mark): void {
+    const x = this.positions[mark.index * 2];
+    const y = this.positions[mark.index * 2 + 1];
+    const { alpha, previewSize, preview } = mark.attributes;
+    const across = mark.radius * PREVIEW_SPAN[previewSize];
+    if (mark.turn === null) {
+      if (!mark.preview) return;
+      lay(mark.preview, x, y, across * 2, alpha, mark.looking);
+      return;
+    }
+
+    const progress = this.turnProgress(mark.turn);
+    const layers = [
+      ["arriving", mark.preview],
+      ["leaving", mark.turn.sprite],
+    ] as const;
+    for (const [role, sprite] of layers) {
+      if (!sprite) continue;
+      const step = pictureStep(
+        preview.transition,
+        role,
+        shownAt(role, progress),
+      );
+      // A mark has no clip to slide a picture behind, so the travel is the room
+      // the mark leaves it rather than the picture's own width: the imagery
+      // crosses the face of the mark and never leaves it.
+      lay(
+        sprite,
+        x + step.shift * (mark.radius - across),
+        y,
+        across * 2 * step.scale,
+        alpha * step.opacity,
+        mark.looking,
+      );
+    }
+  }
+
+  /** How far through its change a mark is, 0–1. A change takes no time at all
+   *  where the reader has asked for less motion — DESIGN.md § Motion. */
+  private turnProgress(turn: Turn): number {
+    const over = this.options.reduced?.matches ? 0 : TURN_MS;
+    return over === 0
+      ? 1
+      : Math.min(1, (performance.now() - turn.since) / over);
   }
 
   /**
@@ -746,53 +852,138 @@ export class GraphScene {
   private rebuildPreviews(): void {
     this.previewsDirty = false;
     let moved = false;
+    let view: Bounds | null = null;
     for (const mark of this.marks) {
-      const { preview, alpha } = mark.attributes;
-      if (preview !== undefined && !this.previewTextures.has(preview)) {
-        this.wantPicture(preview);
+      const wanted = mark.showing;
+      let texture: Texture | null = null;
+      if (wanted !== undefined) {
+        const held = this.previewTextures.get(wanted);
+        if (held === undefined) {
+          // Still on its way, so the mark goes on drawing what it has rather
+          // than blanking until the next picture lands.
+          this.wantPicture(wanted, this.sideFor(mark));
+          continue;
+        }
+        texture = held.texture;
       }
-      const texture =
-        preview === undefined
-          ? null
-          : (this.previewTextures.get(preview) ?? null);
       if ((mark.preview?.texture ?? null) === texture) continue;
 
       moved = true;
-      if (mark.preview) {
-        this.previews.removeChild(mark.preview);
-        mark.preview.destroy();
-        mark.preview = null;
+      const before = mark.preview;
+      const leaving = mark.drawing;
+      mark.preview = texture === null ? null : this.laySprite(texture);
+      mark.drawing = texture === null ? undefined : wanted;
+      this.endTurn(mark);
+      // A picture arriving where none was drawn is the graph opening rather than
+      // a turn, so only a mark that had one already draws the change.
+      view ??= visibleBounds(this.viewport, this.width, this.height);
+      if (
+        before !== null &&
+        leaving !== undefined &&
+        texture !== null &&
+        this.turnDrawn(mark, view)
+      ) {
+        mark.turn = { from: leaving, sprite: before, since: performance.now() };
+        this.turning.add(mark);
+      } else {
+        this.drop(before);
       }
-      if (texture === null) continue;
-      const sprite = new this.pixi.Sprite(texture);
-      sprite.anchor.set(0.5);
-      sprite.width =
-        mark.radius * PREVIEW_SPAN[mark.attributes.previewSize] * 2;
-      sprite.height = sprite.width;
-      sprite.alpha = alpha;
-      sprite.visible = false;
-      mark.preview = sprite;
-      this.previews.addChild(sprite);
     }
     if (moved) this.positionsDirty = true;
+  }
+
+  /**
+   * Whose turn it is on every mark wearing more than one picture. Read off the
+   * clock rather than off a timer — DESIGN.md § "A picture that takes turns" —
+   * so a host calls this when the graph opens and when the app comes back from
+   * the background, two devices land on the same picture at the same minute with
+   * nothing to sync, and nothing changes under somebody who is reading.
+   */
+  takeTurns(at = Date.now()): void {
+    for (const mark of this.marks) {
+      const next = pictureTurn(mark.attributes.preview, at);
+      if (next === mark.showing) continue;
+      mark.showing = next;
+      this.previewsDirty = true;
+    }
+  }
+
+  /** Whether a change on this mark is drawn rather than simply made. Nobody is
+   *  watching a mark too small to carry its look or one off the screen, which is
+   *  what holds a whole field's turn to the cost of what is on the screen. */
+  private turnDrawn(mark: Mark, view: Bounds): boolean {
+    if (this.options.reduced?.matches) return false;
+    if (!looksDrawn(mark.radius * this.viewport.scale, mark.looking)) {
+      return false;
+    }
+    const x = this.positions[mark.index * 2];
+    const y = this.positions[mark.index * 2 + 1];
+    return x >= view.minX && x <= view.maxX && y >= view.minY && y <= view.maxY;
+  }
+
+  /** The one place a change ends, so the frame that draws it and the frame that
+   *  finishes it cannot disagree about which sprites are on the canvas. */
+  private advanceTurns(): void {
+    for (const mark of [...this.turning]) {
+      this.placePictures(mark);
+      if (mark.turn !== null && this.turnProgress(mark.turn) >= 1) {
+        this.endTurn(mark);
+      }
+    }
+    if (this.turning.size === 0) this.forgetUnwantedPictures();
+  }
+
+  private endTurn(mark: Mark): void {
+    if (mark.turn === null) return;
+    this.drop(mark.turn.sprite);
+    mark.turn = null;
+    this.turning.delete(mark);
+  }
+
+  private laySprite(texture: Texture): Sprite {
+    // Added last, so the picture arriving is drawn over the one giving way.
+    const sprite = new this.pixi.Sprite(texture);
+    sprite.anchor.set(0.5);
+    sprite.visible = false;
+    this.previews.addChild(sprite);
+    return sprite;
+  }
+
+  private drop(sprite: Sprite | null): void {
+    if (sprite === null) return;
+    this.previews.removeChild(sprite);
+    sprite.destroy();
+  }
+
+  /** What this mark decodes its picture at — the mark's own size, never the
+   *  largest one a look could reach. */
+  private sideFor(mark: Mark): number {
+    return markPictureSide(mark.radius, mark.attributes.previewSize);
   }
 
   /** Marks share one texture per picture, so a sprite goes without its own. */
   private dropPreviewSprites(): void {
     for (const sprite of this.previews.removeChildren()) sprite.destroy();
-    for (const mark of this.marks) mark.preview = null;
+    for (const mark of this.marks) {
+      mark.preview = null;
+      mark.drawing = undefined;
+      mark.turn = null;
+    }
+    this.turning.clear();
   }
 
-  private wantPicture(preview: string): void {
+  private wantPicture(preview: string, side: number): void {
     const pictures = this.options.pictures;
-    if (pictures === undefined || this.previewsAsked.has(preview)) return;
-    this.previewsAsked.add(preview);
+    if (pictures === undefined) return;
+    if ((this.previewTextures.get(preview)?.side ?? 0) >= side) return;
+    if ((this.previewsAsked.get(preview) ?? 0) >= side) return;
+    this.previewsAsked.set(preview, side);
     void pictures
       .read(preview)
       .then(async (held) => {
         if (held === null) return null;
         try {
-          return await markPicture(this.pixi, held.src);
+          return await markPicture(this.pixi, held.src, side);
         } finally {
           held.release();
         }
@@ -801,28 +992,44 @@ export class GraphScene {
       // picture, which is also what a picture since deleted leaves behind.
       .catch(() => null)
       .then((texture) => {
-        if (this.destroyed) {
+        if (
+          this.destroyed ||
+          (this.previewTextures.get(preview)?.side ?? 0) >= side
+        ) {
           texture?.destroy(true);
           return;
         }
-        this.previewTextures.set(preview, texture);
+        // A picture that will not draw is held at every size, so a bigger mark
+        // wearing it does not send the host after it again.
+        this.previewTextures.set(preview, {
+          texture,
+          side: texture === null ? Number.POSITIVE_INFINITY : side,
+        });
         this.previewsDirty = true;
       });
   }
 
-  /** The sprites go first: a texture freed under one still on the display list
-   *  is drawn from freed memory the next time anything renders. */
+  /**
+   * Textures no mark is drawing, and any held at a smaller cut than the mark now
+   * wearing it needs. What every live sprite draws is kept: a sprite outliving
+   * its texture is drawn from freed memory.
+   */
   private forgetUnwantedPictures(): void {
-    this.dropPreviewSprites();
     if (this.previewTextures.size === 0) return;
-    const wanted = new Set(
-      this.marks
-        .map((mark) => mark.attributes.preview)
-        .filter((preview) => preview !== undefined),
-    );
-    for (const [preview, texture] of this.previewTextures) {
-      if (wanted.has(preview)) continue;
-      texture?.destroy(true);
+    const wanted = new Map<string, number>();
+    const keep = (picture: string, side: number): void => {
+      wanted.set(picture, Math.max(wanted.get(picture) ?? 0, side));
+    };
+    for (const mark of this.marks) {
+      const side = this.sideFor(mark);
+      if (mark.showing !== undefined) keep(mark.showing, side);
+      if (mark.drawing !== undefined) keep(mark.drawing, side);
+      if (mark.turn !== null) keep(mark.turn.from, side);
+    }
+    for (const [preview, held] of this.previewTextures) {
+      const side = wanted.get(preview);
+      if (side !== undefined && held.side >= side) continue;
+      held.texture?.destroy(true);
       this.previewTextures.delete(preview);
       this.previewsAsked.delete(preview);
     }
@@ -875,11 +1082,20 @@ export class GraphScene {
       });
     }
 
+    // One stroke for both: a reference and a hand link separate on the break
+    // alone, and neither recedes with the tree while tags are selected —
+    // DESIGN.md § Edges.
     this.connections.clear();
+    for (let at = 0; at < this.referencePairs.length; at += 2) {
+      const a = this.referencePairs[at] * 2;
+      const b = this.referencePairs[at + 1] * 2;
+      this.connections.moveTo(this.positions[a], this.positions[a + 1]);
+      this.connections.lineTo(this.positions[b], this.positions[b + 1]);
+    }
     const dash = CONNECTION_DASH / this.viewport.scale;
-    for (let at = 0; at < this.connectionPairs.length; at += 2) {
-      const a = this.connectionPairs[at] * 2;
-      const b = this.connectionPairs[at + 1] * 2;
+    for (let at = 0; at < this.linkPairs.length; at += 2) {
+      const a = this.linkPairs[at] * 2;
+      const b = this.linkPairs[at + 1] * 2;
       dashLine(
         this.connections,
         this.positions[a],
@@ -889,11 +1105,11 @@ export class GraphScene {
         dash,
       );
     }
-    if (this.connectionPairs.length > 0) {
+    if (this.referencePairs.length + this.linkPairs.length > 0) {
       this.connections.stroke({
         color: palette.connection,
         alpha: palette.connectionAlpha,
-        width,
+        width: width * CONNECTION_WEIGHT,
       });
     }
 
@@ -1178,6 +1394,23 @@ export function liftInk(bands: readonly LiftBand[], at: number): number {
   return on?.alpha ?? 0;
 }
 
+/** One picture sprite, sized rather than scaled: a mark's imagery is drawn at a
+ *  width in world units, and scaling would fight the width the size sets. */
+function lay(
+  sprite: Sprite,
+  x: number,
+  y: number,
+  across: number,
+  alpha: number,
+  shown: boolean,
+): void {
+  sprite.position.set(x, y);
+  sprite.width = across;
+  sprite.height = across;
+  sprite.alpha = alpha;
+  sprite.visible = shown;
+}
+
 /** Whether a mark drawn at `radius` screen pixels carries its look. The latch is
  *  the caller's: pass whether it is carrying one now, or it will strobe. */
 export function looksDrawn(radius: number, looking: boolean): boolean {
@@ -1188,19 +1421,20 @@ function lookKey(weight: RingWeight, style: RingStyle): string {
   return `${weight}:${style}`;
 }
 
-/** A picture cut to the disc it is drawn on and decoded at the size a mark shows
- *  it, which `MARK_PICTURE_PX` in `model.ts` bounds. */
-async function markPicture(pixi: Pixi, src: string): Promise<Texture | null> {
+/** A picture cut to the disc it is drawn on, decoded at `at` — the size the mark
+ *  wearing it shows, which `markPictureSide` in `model.ts` sets. */
+async function markPicture(
+  pixi: Pixi,
+  src: string,
+  at: number,
+): Promise<Texture | null> {
   const picture = new Image();
   picture.src = src;
   await picture.decode();
 
   // Never larger than the picture can fill: one stored below the bound draws at
   // what it has rather than being enlarged into a disc it cannot cover.
-  const side = Math.max(
-    1,
-    Math.min(MARK_PICTURE_PX, picture.width, picture.height),
-  );
+  const side = Math.max(1, Math.min(at, picture.width, picture.height));
   const canvas = document.createElement("canvas");
   canvas.width = side;
   canvas.height = side;
@@ -1226,11 +1460,16 @@ async function markPicture(pixi: Pixi, src: string): Promise<Texture | null> {
  */
 function markTextures(pixi: Pixi, app: Application): MarkTextures {
   const cells: Graphics[] = [];
+  const corner = (at: number): { x: number; y: number } => ({
+    x: (at % SHEET_COLUMNS) * SHEET_CELL + SHEET_PAD,
+    y: Math.floor(at / SHEET_COLUMNS) * SHEET_CELL + SHEET_PAD,
+  });
   const cell = (draw: (into: Graphics) => void): number => {
     const graphics = new pixi.Graphics();
     draw(graphics);
-    graphics.x = cells.length * SHEET_CELL + SHEET_PAD;
-    graphics.y = SHEET_PAD;
+    const at = corner(cells.length);
+    graphics.x = at.x;
+    graphics.y = at.y;
     cells.push(graphics);
     return cells.length - 1;
   };
@@ -1268,7 +1507,12 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
   sheet.addChild(...cells);
   const { source } = app.renderer.generateTexture({
     target: sheet,
-    frame: new pixi.Rectangle(0, 0, cells.length * SHEET_CELL, SHEET_CELL),
+    frame: new pixi.Rectangle(
+      0,
+      0,
+      Math.min(cells.length, SHEET_COLUMNS) * SHEET_CELL,
+      Math.ceil(cells.length / SHEET_COLUMNS) * SHEET_CELL,
+    ),
     resolution: TEXTURE_RESOLUTION,
     antialias: true,
   });
@@ -1276,8 +1520,8 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
     new pixi.Texture({
       source,
       frame: new pixi.Rectangle(
-        at * SHEET_CELL + SHEET_PAD,
-        SHEET_PAD,
+        corner(at).x,
+        corner(at).y,
         TEXTURE_RADIUS * 2,
         TEXTURE_RADIUS * 2,
       ),

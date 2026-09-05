@@ -210,6 +210,9 @@ beforeAll(() => {
   vi.stubGlobal("document", {
     createElement: () => element(),
     documentElement: element(),
+    hidden: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
   });
   vi.stubGlobal("matchMedia", () => ({ matches: true }));
   vi.stubGlobal("getComputedStyle", () => ({

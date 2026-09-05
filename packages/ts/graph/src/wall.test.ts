@@ -250,6 +250,67 @@ describe("the picture under the field", () => {
     ]);
   });
 
+  // DESIGN.md § "A picture that takes turns": the ground and a mark take the same
+  // three, and every one of them is transform and opacity alone.
+  it("gives way with the transition the reader chose", async () => {
+    const pictures = store();
+    const wall = new WallLayer(stillLooking);
+    wall.show("a", pictures, 0.3, "slide");
+    await settled();
+    wall.show("b", pictures, 0.3, "slide");
+    await settled();
+
+    const [leaving, arriving] = laid(wall);
+    expect(arriving.style.transform).toBe("translateX(0%) scale(1)");
+    expect(arriving.style.opacity).toBe("1");
+    expect(leaving.style.transform).toBe("translateX(-100%) scale(1)");
+    expect(leaving.style.opacity).toBe("0");
+  });
+
+  it("settles a zoom down to full size and never past it", async () => {
+    const pictures = store();
+    const wall = new WallLayer(stillLooking);
+    wall.show("a", pictures, 0.3, "zoom");
+    await settled();
+    wall.show("b", pictures, 0.3, "zoom");
+    await settled();
+
+    const [leaving, arriving] = laid(wall);
+    expect(arriving.style.transform).toBe("translateX(0%) scale(1)");
+    expect(leaving.style.transform).toBe("translateX(0%) scale(1.06)");
+  });
+
+  // A transition a later Sloppy chose is stored and handed back untouched, and
+  // meanwhile crossfades — the values are an open set the way a look's are.
+  it("crossfades where it has no way to draw what was chosen", async () => {
+    const pictures = store();
+    const wall = new WallLayer(stillLooking);
+    wall.show("a", pictures, 0.3, "kaleidoscope" as never);
+    await settled();
+    wall.show("b", pictures, 0.3, "kaleidoscope" as never);
+    await settled();
+
+    const [leaving, arriving] = laid(wall);
+    expect(arriving.style.transform).toBe("translateX(0%) scale(1)");
+    expect(leaving.style.transform).toBe("translateX(0%) scale(1)");
+    expect(leaving.style.opacity).toBe("0");
+  });
+
+  // DESIGN.md § Motion: the picture changes without moving.
+  it("changes without moving where the reader asked for less motion", async () => {
+    const pictures = store();
+    const wall = new WallLayer({ matches: true } as MediaQueryList);
+    wall.show("a", pictures, 0.3, "slide");
+    await settled();
+    wall.show("b", pictures, 0.3, "slide");
+    await settled();
+
+    const laidNow = laid(wall);
+    expect(laidNow).toHaveLength(1);
+    expect(laidNow[0].style.backgroundImage).toBe('url("blob:b")');
+    expect(laidNow[0].style.transform).toBeUndefined();
+  });
+
   it("hands back what it is holding when the canvas goes", async () => {
     const pictures = store();
     const wall = new WallLayer(stillLooking);
