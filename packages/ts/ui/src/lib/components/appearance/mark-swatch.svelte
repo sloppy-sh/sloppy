@@ -31,8 +31,10 @@
 	const clip = $props.id();
 	const look = $derived(resolveAppearance(appearance));
 
-	const grown = Math.max(...Object.values(LOOK_SCALE));
-	const radius = $derived((size / 2 / grown) * LOOK_SCALE[look.markRadius]);
+	// Pinned rather than the ladder's top, so a rung added above it leaves every
+	// swatch below drawing the size it drew before. A step past it fills the box.
+	const grown = LOOK_SCALE.large;
+	const radius = $derived(Math.min((size / 2 / grown) * LOOK_SCALE[look.markRadius], size / 2));
 	const ringAt = $derived(radius * LOOK_RING_AT);
 	const ringWidth = $derived(
 		look.ringWeight === 'none' ? 0 : radius * LOOK_RING_WIDTH[look.ringWeight]

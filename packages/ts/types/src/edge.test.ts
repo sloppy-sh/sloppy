@@ -13,8 +13,8 @@ const PAIRS = EDGE_KINDS.flatMap((a) =>
 // DESIGN.md § Edges: a pair may be parent and child, consecutive, referenced and
 // hand-linked at once, and draws one line.
 describe("the line a pair draws when several kinds are true of it", () => {
-  it("is the developer's ruling: a reference, then a hand link, then the run", () => {
-    expect(EDGE_KINDS).toEqual(["reference", "link", "run", "genealogy"]);
+  it("is the ruling: the hand, then the run, then a reference", () => {
+    expect(EDGE_KINDS).toEqual(["link", "run", "reference", "genealogy"]);
   });
 
   it("is one of the two, whichever order they are asked in", () => {
@@ -41,15 +41,24 @@ describe("the line a pair draws when several kinds are true of it", () => {
     }
   });
 
-  it("keeps a note's own writing above the hand that linked the same pair", () => {
-    expect(strongestEdge("link", "reference")).toBe("reference");
+  it("keeps the hand above every line the addresses already draw", () => {
+    expect(strongestEdge("link", "reference")).toBe("link");
     expect(strongestEdge("run", "link")).toBe("link");
+  });
+
+  // The run is the line a reader walks, and a note naming its neighbour drew
+  // nothing on the canvas — DESIGN.md § Edges.
+  it("leaves the run standing where a note cites the neighbour it follows", () => {
+    expect(strongestEdge("run", "reference")).toBe("run");
+  });
+
+  it("still lifts a citation off the tree's own line", () => {
     expect(strongestEdge("genealogy", "reference")).toBe("reference");
   });
 });
 
 describe("a line somebody made on purpose", () => {
   it("is either way of making one, and neither way the addresses make", () => {
-    expect(EDGE_KINDS.filter(isConnection)).toEqual(["reference", "link"]);
+    expect(EDGE_KINDS.filter(isConnection)).toEqual(["link", "reference"]);
   });
 });

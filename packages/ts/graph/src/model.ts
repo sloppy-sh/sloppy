@@ -402,7 +402,10 @@ function radiusFor(entry: DrawnNode, look: ResolvedAppearance): number {
   const scale = LOOK_SCALE[look.markRadius];
   if (entry.folded === 0) return LEAF_RADIUS * scale;
   const grown = LEAF_RADIUS * (1 + Math.log2(1 + entry.folded) * MEGA_GROWTH);
-  return Math.min(grown * scale, MAX_RADIUS);
+  // The cap is the fold's, so the author's step scales it too: a bigger step
+  // draws bigger at every fold, which a flat cap took away from exactly the
+  // mega-nodes a step is asked for — DESIGN.md § "The mark".
+  return Math.min(grown * scale, MAX_RADIUS * scale);
 }
 
 function provenanceOf(node: NodeView, viewer: DidSyr | undefined): Provenance {

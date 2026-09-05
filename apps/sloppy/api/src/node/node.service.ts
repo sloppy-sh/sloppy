@@ -19,6 +19,8 @@ import {
   isInSubtree,
   isRootAddress,
   isUnstyled,
+  resolveAppearance,
+  seriesIsWhole,
   MAX_TAGS_PER_NODE,
   type Node,
   type NodeAppearance,
@@ -268,10 +270,19 @@ export class NodeService {
     delegation: Delegation | undefined,
   ): Promise<NodeAppearance | null> {
     if (isUnstyled(appearance)) return null;
-    const preview = appearance?.preview;
-    if (preview !== undefined) {
+    // Pictures behind an absent first one never draw and would read as a
+    // styled note, so the shape is refused rather than stored.
+    if (!seriesIsWhole(appearance)) {
+      throw new BadRequestException("Choose a picture for this note first.");
+    }
+    // EVERY picture in the series, not just the first: the rest reach the same
+    // request and the guard is what says a person may only show their own.
+    const series = resolveAppearance(appearance).preview.pictures;
+    if (series.length > 0) {
       if (!delegation) throw new UnauthorizedException("Sign in to continue.");
-      await this.media.ownPicture(delegation, preview, "block");
+      for (const picture of series) {
+        await this.media.ownPicture(delegation, picture, "block");
+      }
     }
     return appearance;
   }

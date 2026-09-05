@@ -304,13 +304,9 @@ Twelve rulings hold that table together:
   the top step needs — a phone holding hundreds of pictured marks is what that difference is
   for. The ladder is `0.78`, `1`, `1.34`, `1.8`, `2.4`, each about a third larger than the
   last.
-  **The canvas has not been moved onto this yet.** `LOOK_SCALE` in `@sloppy/graph` carries
-  all five steps, but `radiusFor` still caps the fold and the look together, so the top steps
-  are taken back on a mark that has grown to the cap — the case an author reaches for the
-  control in. Moving the cap under the look is what makes the control what this ruling says
-  it is, and it moves what every existing graph draws: a `small` mark over a large fold
-  shrinks by the same step it should have grown by. The sheet's density and the per-mark cut
-  are the same work, because both are measured against the largest mark drawn.
+  Moving the cap under the look is what makes the control this, and it moves what every
+  existing graph draws: a `small` mark over a large fold shrinks by the same step a `giant`
+  one grows by.
 - **A mega-node draws its own look, and none of the looks it folded.** A mega-node IS a
   note — the root the fold collapsed to — so it wears the ring, the radius scale and the
   picture its own author gave it. What a fold aggregates is a set a mark can be IN — its
@@ -543,24 +539,25 @@ Seven rulings hold that table together:
   - **`references`** is derived from the note's own writing and follows it. Typing `[[X]]`
     makes the line; deleting those words takes it away, because there is nothing left to
     derive it from.
-- **A pair draws one line, and it is the strongest thing true of it: a reference, then a
-  hand link, then the run, then parentage.** A pair may be all four at once, and the reader
-  is being told the pair is connected rather than shown an inventory of the ways it is.
-  - **A line somebody made beats the run and beats the tree.** Citing the note a thought
-    sprang from is one of the most ordinary things a person does here, and a line they made
-    that drew nothing would be a gesture the canvas swallowed. What it costs is the run's own
-    step: a pair that is consecutive AND cited draws one weight lighter than a run alone, so
-    on a corpus where citing a parent is ordinary the run reads patchy. The rarer fact is the
-    one worth the line, and the order the run carries is written on the marks themselves.
-  - **The writing beats the hand.** Where a note both names another and was linked to it by
-    hand, the two are the same fact and the one inside the thought is the stronger statement;
-    drawing it broken would say a hand is all that holds the pair together, which the note's
-    own words contradict. What the ⋯ menu is FOR is joining two notes the writing does not
-    join, and there it is the only thing true of the pair and draws.
-  - So taking one way away leaves the line and may change how it is drawn: delete the
-    `[[X]]` from a pair a hand also linked and the line breaks; take the hand link off a pair
-    the writing names and nothing moves. Each way still ends independently, and the line goes
-    when the last of them does.
+- **A pair draws one line, and it is the strongest thing true of it: a hand link, then the
+  run, then a reference, then parentage.** A pair may be all four at once, and the reader is
+  being told the pair is connected rather than shown an inventory of the ways it is.
+  - **The hand leads, because a gesture the canvas swallowed is a gesture lost.** Somebody
+    reached for the ⋯ menu and asked for a line; if the pair were already joined and nothing
+    changed, the act would have no answer on the surface it was made on.
+  - **The run beats a reference, because nobody drew anything by typing.** `[[1a]]` in `1b`
+    is a note naming its neighbour, and the two are already joined by the heaviest line
+    there is — the one a reader walks. Trading that for a line that reads like any reference
+    across the tree would make the run patchy exactly where a train of thought carries itself
+    forward, which on a Zettelkasten is the common case and not the exotic one. The citation
+    is not lost: it is in the writing, where it was made.
+  - **A reference still beats parentage.** Citing the note a thought sprang from is ordinary,
+    the tree's own line is the quietest thing on the canvas, and there the citation is the
+    rarer fact and the one worth the line.
+  - So taking one way away leaves the line and may change how it is drawn: take the hand
+    link off a pair the writing also names and the line closes up from broken to solid;
+    delete the `[[X]]` from a pair a hand linked and nothing moves. Each way still ends
+    independently, and the line goes when the last of them does.
 - **What a connection never does is move them.** How far apart two notes sit is the
   addresses' to set, so a connection onto a line that is already there takes that line's look
   and leaves its spacing alone.

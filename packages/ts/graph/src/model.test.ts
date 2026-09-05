@@ -610,13 +610,25 @@ describe("the look a note's author gave it", () => {
     expect(mark.previewSize).toBe("small");
   });
 
-  // DESIGN.md § "The mark": the ladder ascends, so a step up it is a bigger
-  // mark. The fold's cap still takes the top steps back — that is the § "The
-  // mark" ruling the canvas has yet to draw.
+  // DESIGN.md § "The mark": the ladder ascends, so a step up it is a bigger mark.
   it("draws every step of the ladder bigger than the one below it", () => {
     let below = 0;
     for (const mark_radius of MARK_RADII) {
       const drawn = radiusOf([styled("1", { mark_radius })]);
+      expect(drawn, mark_radius).toBeGreaterThan(below);
+      below = drawn;
+    }
+  });
+
+  // The cap is the fold's and the author's step scales it, so the ladder still
+  // ascends on a mega-node grown well past it — the case the control is reached
+  // for, and the one a flat cap took back. DESIGN.md § "The mark".
+  it("keeps the ladder ascending on a fold grown past the cap", () => {
+    let below = 0;
+    for (const mark_radius of MARK_RADII) {
+      const drawn = radiusOf([
+        { ...styled("1", { mark_radius }), collapsed: true, folded: 4000 },
+      ]);
       expect(drawn, mark_radius).toBeGreaterThan(below);
       below = drawn;
     }
