@@ -7,6 +7,12 @@
 	// and which branches the reader folded is their place in it.
 	const folded = new SvelteSet<OwnedRef>();
 
+	// Kept for the same reason, and separately: the canvas draws every note and
+	// folds what the reader folds, while the tree draws none and opens what they
+	// open, so one place cannot answer for the other.
+	let walking = $state(false);
+	const unfolded = new SvelteSet<OwnedRef>();
+
 	/** How many notes may be open at once — DESIGN.md § Layout. */
 	const MOST_OPEN = 6;
 </script>
@@ -27,7 +33,9 @@
 	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import ListTree from '@lucide/svelte/icons/list-tree';
 	import Minus from '@lucide/svelte/icons/minus';
+	import Network from '@lucide/svelte/icons/network';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -100,6 +108,7 @@
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
 	import { OPENING_STRENGTH, OPENING_TURN, WALLPAPER_TURNS, wallpaperTurn } from '../wallpaper.js';
+	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
 
@@ -336,6 +345,10 @@
 				: null)
 	);
 	const overGraph = $derived(overlay.open || menuAt !== null);
+
+	/** Pointing a link at a note is a question put to the canvas, so it takes the
+	 *  canvas back for as long as it is being asked — DESIGN.md § Layout. */
+	const walkingNow = $derived(walking && !pointing);
 
 	/** What the mark under the pointer stands for: the note it IS, and — since a
 	 *  fold is drawn rather than stored — what the canvas folded into it. */
@@ -1156,6 +1169,23 @@
 	}}
 />
 
+{#snippet walk()}
+	<Button
+		variant="ghost"
+		size="icon"
+		class="size-9 shrink-0 rounded-full"
+		aria-pressed={walking}
+		aria-label={walking ? 'Back to the graph' : 'Walk the notes one at a time'}
+		onclick={() => (walking = !walking)}
+	>
+		{#if walking}
+			<Network class="size-4" />
+		{:else}
+			<ListTree class="size-4" />
+		{/if}
+	</Button>
+{/snippet}
+
 <div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
 	<h1 class="sr-only">Your graph</h1>
 
@@ -1164,38 +1194,51 @@
 		     page's — the field is inset off the chrome rather than stopping the
 		     picture at it. -->
 		<div class="absolute inset-0">
-			<GraphSurface
-				inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
-				nodes={visible}
-				{collapsed}
-				{selection}
-				fields={foreign ? undefined : graphs.fields}
-				viewer={session.viewer?.did}
-				remountKey={foreign?.ref}
-				focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
-				picking={pointing && pointingNote
-					? {
-							from: pointing,
-							taken: new Set(pointingNote.links),
-							onPick: (ref) => void pointAt(ref)
-						}
-					: undefined}
-				pictures={ownPictures}
-				reading={foreign ? undefined : reading}
-				ground={prefs.current.ground}
-				wallpaper={{ picture: showing, strength: wallpaper?.strength ?? 0 }}
-				onHover={(at) => (hoverAt = overGraph ? null : at)}
-				chosen={foreign ? undefined : chosen}
-				onChoose={pointing || foreign ? undefined : chooseAlso}
-				onChooseWithin={pointing || foreign ? undefined : chooseWithin}
-				onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
-				onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
-				onExpand={(ref) => {
-					folded.delete(ref);
-					if (pointing) looking = ref;
-				}}
-				onCollapse={(ref) => folded.add(ref)}
-			/>
+			{#if walkingNow}
+				<GraphTree
+					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
+					notes={visible}
+					fields={foreign ? undefined : graphs.fields}
+					{selection}
+					reading={foreign ? reached : open}
+					opened={unfolded}
+					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
+					onOpen={foreign ? (ref) => void readHeld(ref) : show}
+				/>
+			{:else}
+				<GraphSurface
+					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
+					nodes={visible}
+					{collapsed}
+					{selection}
+					fields={foreign ? undefined : graphs.fields}
+					viewer={session.viewer?.did}
+					remountKey={foreign?.ref}
+					focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
+					picking={pointing && pointingNote
+						? {
+								from: pointing,
+								taken: new Set(pointingNote.links),
+								onPick: (ref) => void pointAt(ref)
+							}
+						: undefined}
+					pictures={ownPictures}
+					reading={foreign ? undefined : reading}
+					ground={prefs.current.ground}
+					wallpaper={{ picture: showing, strength: wallpaper?.strength ?? 0 }}
+					onHover={(at) => (hoverAt = overGraph ? null : at)}
+					chosen={foreign ? undefined : chosen}
+					onChoose={pointing || foreign ? undefined : chooseAlso}
+					onChooseWithin={pointing || foreign ? undefined : chooseWithin}
+					onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
+					onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
+					onExpand={(ref) => {
+						folded.delete(ref);
+						if (pointing) looking = ref;
+					}}
+					onCollapse={(ref) => folded.add(ref)}
+				/>
+			{/if}
 		</div>
 	{:else}
 		<div class="clear-sysnav absolute inset-0 overflow-y-auto px-3 sm:px-6">
@@ -1298,6 +1341,7 @@
 						>
 							Your graph
 						</Button>
+						{@render walk()}
 						<GroundChoice
 							value={prefs.current.ground}
 							pictured={wallpaper !== null}
@@ -1359,6 +1403,7 @@
 						>
 							<Users class="size-4" />
 						</Button>
+						{@render walk()}
 						<GroundChoice
 							value={prefs.current.ground}
 							pictured={wallpaper !== null}
