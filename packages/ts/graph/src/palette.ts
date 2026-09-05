@@ -77,6 +77,10 @@ export interface GraphPalette {
    *  the tree because it crosses it. DESIGN.md § Edges. */
   connection: number;
   connectionAlpha: number;
+  /** Under {@link runAlphaWhileSelecting} and over
+   *  {@link edgeAlphaWhileSelecting}: a zoom clamps the three widths together,
+   *  and the order is what is left to tell the solid lines apart. */
+  connectionAlphaWhileSelecting: number;
 }
 
 const TOKENS = [
@@ -265,5 +269,6 @@ export function buildPalette(
     runAlphaWhileSelecting: 0.18,
     connection: inkRgb,
     connectionAlpha: 0.34,
+    connectionAlphaWhileSelecting: 0.12,
   };
 }

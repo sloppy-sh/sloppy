@@ -378,7 +378,7 @@ export function mountGraph(
 
   // A mark wearing several pictures shows whichever one the clock says, read
   // when the graph opens and when the app comes back — DESIGN.md § "A picture
-  // that takes turns", where a timer is what would change one under a reader.
+  // that takes turns".
   const returned = (): void => {
     if (!document.hidden) scene?.takeTurns();
   };

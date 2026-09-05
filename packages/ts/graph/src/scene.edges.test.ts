@@ -177,21 +177,25 @@ describe("the ladder the solid lines climb", () => {
     scene.destroy();
   });
 
-  // With tags selected the tree and the run recede so the sets can be read; the
-  // two lines a person made are what stays, so they do not dim with them.
-  it("leaves what a person made alone while the tree recedes", async () => {
+  // With tags selected the lines recede so the sets can be read, and the ladder
+  // keeps its order on the way down: a reference drawn darker than the run is a
+  // reference read as the run, which is the one thing the order is for.
+  it("keeps its order while the reader is asking a tag question", async () => {
     const plain = await canvasOn(field);
     const asked = await canvasOn(field, true);
+    const rungs = (passes: Passes) => ({
+      tree: passes.genealogy.lines[0].alpha,
+      written: passes.connections.lines[0].alpha,
+      run: passes.runs.lines[0].alpha,
+    });
+    const before = rungs(plain.passes);
+    const after = rungs(asked.passes);
 
-    expect(asked.passes.genealogy.lines[0].alpha).toBeLessThan(
-      plain.passes.genealogy.lines[0].alpha,
-    );
-    expect(asked.passes.runs.lines[0].alpha).toBeLessThan(
-      plain.passes.runs.lines[0].alpha,
-    );
-    expect(asked.passes.connections.lines[0].alpha).toBe(
-      plain.passes.connections.lines[0].alpha,
-    );
+    for (const rung of ["tree", "written", "run"] as const) {
+      expect(after[rung], rung).toBeLessThan(before[rung]);
+    }
+    expect(after.tree).toBeLessThan(after.written);
+    expect(after.written).toBeLessThan(after.run);
     plain.scene.destroy();
     asked.scene.destroy();
   });

@@ -29,6 +29,7 @@ import {
   FakeApplication,
   FakeContainer,
   FakeSprite,
+  FakeTexture,
   worldOf,
 } from "./pixi.test-support.js";
 
@@ -282,6 +283,30 @@ describe("a picture reaching a mark", () => {
     scene.destroy();
   });
 
+  // Sharing one upload across two notes is ordinary, and one of them being a
+  // mega-node is too: the two ask at their own sizes, and the canvas ends up
+  // holding one texture rather than the loser of the race between them.
+  it("holds one cut of a picture two marks of different sizes wear", async () => {
+    const cuts = vi.spyOn(FakeTexture, "from");
+    const field = [
+      drawn("1", "shared"),
+      { ...drawn("2", "shared"), collapsed: true, folded: 4000 },
+    ];
+    const { scene, app } = await sceneOn(field, host());
+    await settle();
+    app.tick();
+    const made = cuts.mock.results.map((cut) => cut.value as FakeTexture);
+    cuts.mockRestore();
+
+    const sprites = previewsOf(app).children as FakeSprite[];
+    expect(sprites).toHaveLength(2);
+    expect(sprites[0].texture).toBe(sprites[1].texture);
+    expect(made.filter((cut) => !cut.destroyed)).toEqual([sprites[0].texture]);
+
+    scene.destroy();
+    expect(made.every((cut) => cut.destroyed)).toBe(true);
+  });
+
   it("leaves the mark drawing as one with no picture where the host has none", async () => {
     const { scene, app } = await sceneOn([drawn("1", "up_a")], {
       read: async () => null,
@@ -446,6 +471,7 @@ describe("a mark wearing more than one picture", () => {
     const { scene, app, pictures } = await framed([wearing("1", ["a", "b"])], {
       matches: true,
     } as MediaQueryList);
+    const held = (previewsOf(app).children[0] as FakeSprite).texture;
 
     vi.setSystemTime(HOUR);
     scene.takeTurns();
@@ -454,6 +480,8 @@ describe("a mark wearing more than one picture", () => {
     app.tick();
     expect(pictures.asked).toEqual(["a", "b"]);
     expect(previewsOf(app).children).toHaveLength(1);
+    // A change nobody watched is still a change: what it turned away from goes.
+    expect(held.destroyed).toBe(true);
     scene.destroy();
   });
 
@@ -466,6 +494,7 @@ describe("a mark wearing more than one picture", () => {
     // Left where a fresh viewport sits, which is not where the field is.
     await settle();
     app.tick();
+    const held = (previewsOf(app).children[0] as FakeSprite).texture;
 
     vi.setSystemTime(HOUR);
     scene.takeTurns();
@@ -474,6 +503,7 @@ describe("a mark wearing more than one picture", () => {
     app.tick();
     expect(pictures.asked).toEqual(["a", "b"]);
     expect(previewsOf(app).children).toHaveLength(1);
+    expect(held.destroyed).toBe(true);
     scene.destroy();
   });
 

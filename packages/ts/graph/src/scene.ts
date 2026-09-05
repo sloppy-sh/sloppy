@@ -250,6 +250,8 @@ export class GraphScene {
     { texture: Texture | null; side: number }
   >();
   private readonly previewsAsked = new Map<string, number>();
+  /** Cuts a bigger one took the place of, freed once no sprite draws them. */
+  private readonly retiredTextures: Texture[] = [];
   /** Marks with a change under way, so an idle frame costs nothing to find
    *  them and a field where nothing is turning costs nothing at all. */
   private readonly turning = new Set<Mark>();
@@ -661,6 +663,8 @@ export class GraphScene {
       held.texture?.destroy(true);
     }
     this.previewTextures.clear();
+    for (const texture of this.retiredTextures) texture.destroy(true);
+    this.retiredTextures.length = 0;
     this.app.destroy(true, { children: true, texture: true });
   }
 
@@ -854,13 +858,17 @@ export class GraphScene {
       const wanted = mark.showing;
       let texture: Texture | null = null;
       if (wanted !== undefined) {
+        const side = this.sideFor(mark);
         const held = this.previewTextures.get(wanted);
         if (held === undefined) {
           // Still on its way, so the mark goes on drawing what it has rather
           // than blanking until the next picture lands.
-          this.wantPicture(wanted, this.sideFor(mark));
+          this.wantPicture(wanted, side);
           continue;
         }
+        // A mark bigger than the cut the canvas holds asks for its own, and
+        // draws this one meanwhile.
+        if (held.side < side) this.wantPicture(wanted, side);
         texture = held.texture;
       }
       if ((mark.preview?.texture ?? null) === texture) continue;
@@ -887,14 +895,16 @@ export class GraphScene {
       }
     }
     if (moved) this.positionsDirty = true;
+    // A mark exchanges its picture whether or not anybody watches the change,
+    // so what it turned away from cannot be freed off the animation alone.
+    this.forgetUnwantedPictures();
   }
 
   /**
    * Whose turn it is on every mark wearing more than one picture. Read off the
    * clock rather than off a timer — DESIGN.md § "A picture that takes turns" —
    * so a host calls this when the graph opens and when the app comes back from
-   * the background, two devices land on the same picture at the same minute with
-   * nothing to sync, and nothing changes under somebody who is reading.
+   * the background.
    */
   takeTurns(at = Date.now()): void {
     for (const mark of this.marks) {
@@ -989,43 +999,60 @@ export class GraphScene {
       // picture, which is also what a picture since deleted leaves behind.
       .catch(() => null)
       .then((texture) => {
+        // A cut a bigger ask has since gone out for is dropped rather than
+        // stored: two marks of different sizes wearing one picture ask twice,
+        // and the canvas keeps one texture, the bigger of them.
         if (
           this.destroyed ||
+          (this.previewsAsked.get(preview) ?? 0) > side ||
           (this.previewTextures.get(preview)?.side ?? 0) >= side
         ) {
           texture?.destroy(true);
           return;
         }
+        const displaced = this.previewTextures.get(preview)?.texture ?? null;
         // A picture that will not draw is held at every size, so a bigger mark
         // wearing it does not send the host after it again.
         this.previewTextures.set(preview, {
           texture,
           side: texture === null ? Number.POSITIVE_INFINITY : side,
         });
+        if (displaced !== null) this.retiredTextures.push(displaced);
         this.previewsDirty = true;
       });
   }
 
   /**
-   * Textures no mark is drawing, and any held at a smaller cut than the mark now
-   * wearing it needs. What every live sprite draws is kept: a sprite outliving
-   * its texture is drawn from freed memory.
+   * Textures no mark is drawing, and the cuts a bigger one took the place of.
+   * What every live sprite draws is kept: a sprite outliving its texture is
+   * drawn from freed memory.
    */
   private forgetUnwantedPictures(): void {
-    if (this.previewTextures.size === 0) return;
-    const wanted = new Map<string, number>();
-    const keep = (picture: string, side: number): void => {
-      wanted.set(picture, Math.max(wanted.get(picture) ?? 0, side));
-    };
-    for (const mark of this.marks) {
-      const side = this.sideFor(mark);
-      if (mark.showing !== undefined) keep(mark.showing, side);
-      if (mark.drawing !== undefined) keep(mark.drawing, side);
-      if (mark.turn !== null) keep(mark.turn.from, side);
+    if (this.previewTextures.size === 0 && this.retiredTextures.length === 0) {
+      return;
     }
+    const drawn = new Set<Texture>();
+    const wanted = new Set<string>();
+    for (const mark of this.marks) {
+      if (mark.preview !== null) drawn.add(mark.preview.texture);
+      if (mark.showing !== undefined) wanted.add(mark.showing);
+      if (mark.drawing !== undefined) wanted.add(mark.drawing);
+      if (mark.turn !== null) {
+        drawn.add(mark.turn.sprite.texture);
+        wanted.add(mark.turn.from);
+      }
+    }
+
+    for (let at = this.retiredTextures.length - 1; at >= 0; at--) {
+      const texture = this.retiredTextures[at];
+      if (drawn.has(texture)) continue;
+      texture.destroy(true);
+      this.retiredTextures.splice(at, 1);
+    }
+
     for (const [preview, held] of this.previewTextures) {
-      const side = wanted.get(preview);
-      if (side !== undefined && held.side >= side) continue;
+      if (wanted.has(preview)) continue;
+      if (held.texture !== null && drawn.has(held.texture)) continue;
       held.texture?.destroy(true);
       this.previewTextures.delete(preview);
       this.previewsAsked.delete(preview);
@@ -1080,8 +1107,7 @@ export class GraphScene {
     }
 
     // One stroke for both: a reference and a hand link separate on the break
-    // alone, and neither recedes with the tree while tags are selected —
-    // DESIGN.md § Edges.
+    // alone — DESIGN.md § Edges.
     this.connections.clear();
     for (let at = 0; at < this.referencePairs.length; at += 2) {
       const a = this.referencePairs[at] * 2;
@@ -1105,7 +1131,9 @@ export class GraphScene {
     if (this.referencePairs.length + this.linkPairs.length > 0) {
       this.connections.stroke({
         color: palette.connection,
-        alpha: palette.connectionAlpha,
+        alpha: this.selecting
+          ? palette.connectionAlphaWhileSelecting
+          : palette.connectionAlpha,
         width: width * CONNECTION_WEIGHT,
       });
     }
