@@ -7,7 +7,7 @@
 //
 // `pnpm --filter @sloppy/graph bench`, then read the panel or `window.__bench`.
 
-import type { Tag } from "@sloppy/types";
+import { PICTURE_TURN_MIN, type NodeView, type Tag } from "@sloppy/types";
 import LayoutWorker from "../src/layout-worker.ts?worker";
 import { makeCorpus } from "../src/corpus.test-support.js";
 import type { GraphPictures, GraphWallpaper } from "../src/contract.js";
@@ -96,15 +96,40 @@ const painted = (() => {
 
 const pictures: GraphPictures = {
   read: async (picture) =>
-    picture === "painted" ? { src: painted, release: () => {} } : null,
+    picture.startsWith("painted") ? { src: painted, release: () => {} } : null,
 };
+
+/**
+ * Every note wearing a series of two, which is the field this bench exists to
+ * price: a mark's picture is a texture per mark, and a turn is every one of them
+ * changing at once — what coming back from the background does.
+ *
+ * Two ids for one file: what a turn costs is the swap and the second sprite, and
+ * a second file would price the decode twice over instead.
+ */
+const withPictures: NodeView[] = corpus.nodes.map((node, at) => ({
+  ...node,
+  appearance: {
+    preview: `painted-${at % 2}`,
+    preview_more: [`painted-${(at + 1) % 2}`],
+    preview_every: PICTURE_TURN_MIN,
+  },
+}));
+
+/** A turn comes off the clock, so standing somewhere else on it is the only way
+ *  to ask a whole field to change. */
+let clockOffset = 0;
+const trueNow = Date.now.bind(Date);
+Date.now = () => trueNow() + clockOffset;
 
 // Starts empty: level of detail is what bounds the field, and a host that
 // folded it first would be measuring its own policy instead of this package's.
 const collapsed = new Set<string>();
 
+let pictured = false;
+
 const props = (): GraphMountOptions => ({
-  nodes: corpus.nodes,
+  nodes: pictured ? withPictures : corpus.nodes,
   collapsed,
   selection,
   ground,
@@ -294,6 +319,32 @@ async function run(): Promise<void> {
   ground = "none";
   wallpaper = { picture: null, strength: 1 };
   handle.update(props());
+
+  // A mark's picture is a texture of its own, cut for the mark that wears it —
+  // so what a field of them costs, and what one turning at once costs, are
+  // measured against the same passes with none.
+  say("");
+  pictured = true;
+  handle.update(props());
+  await settle();
+  await measure("idle, pictures", async () => {
+    await frames(120);
+  });
+  await measure("pan, pictures", () => panRun(120));
+  const turn = async (): Promise<void> => {
+    clockOffset += PICTURE_TURN_MIN * 60_000;
+    document.dispatchEvent(new Event("visibilitychange"));
+    await frames(60);
+  };
+  await measure("a field turning at once", turn);
+  // The change is drawn only where somebody could see it, so the framed view
+  // above is almost all exchange. Pinched all the way in, the marks on screen
+  // are carrying their looks, and this is what paying for the motion costs.
+  for (let at = 0; at < 4; at++) await pinchRun(90);
+  await measure("a turn drawn, pinched in", turn);
+  pictured = false;
+  handle.update(props());
+  await settle();
 
   say("");
   // The number the tag rail is judged on: a reader ticks a tag and the answer

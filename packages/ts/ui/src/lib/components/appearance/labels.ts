@@ -19,7 +19,9 @@ export const RING_STYLE_LABELS: Record<RingStyle, string> = {
 export const MARK_RADIUS_LABELS: Record<MarkRadius, string> = {
 	small: 'Small',
 	regular: 'Medium',
-	large: 'Large'
+	large: 'Large',
+	huge: 'Huge',
+	giant: 'Giant'
 };
 
 export const PREVIEW_SIZE_LABELS: Record<PreviewSize, string> = {

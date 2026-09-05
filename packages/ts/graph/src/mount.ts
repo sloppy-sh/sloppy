@@ -31,11 +31,14 @@ import type { Bounds, Point, Viewport } from "./viewport.js";
 import { WallLayer } from "./wall.js";
 
 /** How hard each kind of edge pulls: the tree holds its shape, an association
- *  crossing it barely tugs. */
+ *  crossing it barely tugs. The two a person made pull alike — how far apart two
+ *  notes sit is the addresses' to set (DESIGN.md § Edges), so which way somebody
+ *  made the line cannot move them differently. */
 const SPRING: Record<GraphEdgeAttributes["kind"], number> = {
   genealogy: 0.55,
   run: 0.3,
-  connection: 0.12,
+  reference: 0.12,
+  link: 0.12,
 };
 
 export interface GraphMountOptions extends GraphSurfaceProps {
@@ -148,7 +151,12 @@ export function mountGraph(
   let palette: GraphPalette = buildPalette(tokens, presence);
   // Before the renderer is up: the picture is the reader's ground, and it has
   // nothing to wait for.
-  wall.show(options.wallpaper?.picture ?? null, options.pictures, presence);
+  wall.show(
+    options.wallpaper?.picture ?? null,
+    options.pictures,
+    presence,
+    options.wallpaper?.transition,
+  );
   let focus = options.focus;
   let epoch = 0;
   let settled = false;
@@ -234,6 +242,7 @@ export function mountGraph(
       palette,
       resolution: Math.min(globalThis.devicePixelRatio || 1, 2),
       pictures: props.pictures,
+      reduced,
     });
     if (destroyed) {
       built.destroy();
@@ -348,7 +357,12 @@ export function mountGraph(
     presence = presenceOf(props, ceiling);
     palette = buildPalette(tokens, presence);
     scene?.setPalette(palette);
-    wall.show(props.wallpaper?.picture ?? null, props.pictures, presence);
+    wall.show(
+      props.wallpaper?.picture ?? null,
+      props.pictures,
+      presence,
+      props.wallpaper?.transition,
+    );
   };
 
   const themes = new MutationObserver(() => {
@@ -362,6 +376,14 @@ export function mountGraph(
     attributeFilter: ["data-theme", "data-accent", "class"],
   });
 
+  // A mark wearing several pictures shows whichever one the clock says, read
+  // when the graph opens and when the app comes back — DESIGN.md § "A picture
+  // that takes turns".
+  const returned = (): void => {
+    if (!document.hidden) scene?.takeTurns();
+  };
+  document.addEventListener("visibilitychange", returned);
+
   void start();
 
   return {
@@ -373,7 +395,8 @@ export function mountGraph(
       const takingOver = asked(next) && !asked(props);
       const papered =
         next.wallpaper?.picture !== props.wallpaper?.picture ||
-        next.wallpaper?.strength !== props.wallpaper?.strength;
+        next.wallpaper?.strength !== props.wallpaper?.strength ||
+        next.wallpaper?.transition !== props.wallpaper?.transition;
       const reframed =
         next.inset?.top !== props.inset?.top ||
         next.inset?.bottom !== props.inset?.bottom;
@@ -398,6 +421,7 @@ export function mountGraph(
     },
     destroy() {
       destroyed = true;
+      document.removeEventListener("visibilitychange", returned);
       themes.disconnect();
       resized.disconnect();
       detachGestures?.();

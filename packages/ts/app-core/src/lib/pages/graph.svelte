@@ -7,6 +7,12 @@
 	// and which branches the reader folded is their place in it.
 	const folded = new SvelteSet<OwnedRef>();
 
+	// Kept for the same reason, and separately: the canvas draws every note and
+	// folds what the reader folds, while the tree draws none and opens what they
+	// open, so one place cannot answer for the other.
+	let walking = $state(false);
+	const unfolded = new SvelteSet<OwnedRef>();
+
 	/** How many notes may be open at once — DESIGN.md § Layout. */
 	const MOST_OPEN = 6;
 </script>
@@ -27,7 +33,9 @@
 	import Hash from '@lucide/svelte/icons/hash';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import ListTree from '@lucide/svelte/icons/list-tree';
 	import Minus from '@lucide/svelte/icons/minus';
+	import Network from '@lucide/svelte/icons/network';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -35,6 +43,7 @@
 	import type { GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
 	import {
 		NodeBulkRequestSchema,
+		pictureTurn,
 		RootAddressSchema,
 		graphOf,
 		peerOrigin,
@@ -99,7 +108,8 @@
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
-	import { OPENING_STRENGTH, OPENING_TURN, WALLPAPER_TURNS, wallpaperTurn } from '../wallpaper.js';
+	import { openingWallpaper } from '../wallpaper.js';
+	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
 
@@ -189,7 +199,7 @@
 	let choosingWallpaper = $state(false);
 	/** The picture up now. Written over when the app comes back from the
 	 *  background, so the ground takes its turn while nobody is looking at it. */
-	let showing = $derived(wallpaper ? wallpaperTurn(wallpaper, Date.now()) : null);
+	let showing = $derived(wallpaper ? (pictureTurn(wallpaper, Date.now()) ?? null) : null);
 
 	/** A picture inside a held note. Publishing the branch is what made it
 	 *  readable, and the fetch is the API's, so the author's instance never
@@ -337,6 +347,10 @@
 	);
 	const overGraph = $derived(overlay.open || menuAt !== null);
 
+	/** Pointing a link at a note is a question put to the canvas, so the canvas
+	 *  comes back for as long as it is being asked. */
+	const walkingNow = $derived(walking && !pointing);
+
 	/** What the mark under the pointer stands for: the note it IS, and — since a
 	 *  fold is drawn rather than stored — what the canvas folded into it. */
 	const previewed = $derived.by((): PreviewedNote | undefined => {
@@ -481,7 +495,7 @@
 		void peers.load();
 		const back = (): void => {
 			if (document.visibilityState === 'visible' && wallpaper) {
-				showing = wallpaperTurn(wallpaper, Date.now());
+				showing = pictureTurn(wallpaper, Date.now()) ?? null;
 			}
 		};
 		document.addEventListener('visibilitychange', back);
@@ -1156,6 +1170,26 @@
 	}}
 />
 
+{#snippet walk()}
+	<!-- Out of the chrome while a set is being chosen: the bar over that set acts
+	     on notes the tree does not mark. -->
+	{#if !choosing}
+		<Button
+			variant="ghost"
+			size="icon"
+			class="size-9 shrink-0 rounded-full"
+			aria-label={walking ? 'Back to the graph' : 'Walk the notes one at a time'}
+			onclick={() => (walking = !walking)}
+		>
+			{#if walking}
+				<Network class="size-4" />
+			{:else}
+				<ListTree class="size-4" />
+			{/if}
+		</Button>
+	{/if}
+{/snippet}
+
 <div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
 	<h1 class="sr-only">Your graph</h1>
 
@@ -1164,38 +1198,60 @@
 		     page's — the field is inset off the chrome rather than stopping the
 		     picture at it. -->
 		<div class="absolute inset-0">
-			<GraphSurface
-				inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
-				nodes={visible}
-				{collapsed}
-				{selection}
-				fields={foreign ? undefined : graphs.fields}
-				viewer={session.viewer?.did}
-				remountKey={foreign?.ref}
-				focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
-				picking={pointing && pointingNote
-					? {
-							from: pointing,
-							taken: new Set(pointingNote.links),
-							onPick: (ref) => void pointAt(ref)
-						}
-					: undefined}
-				pictures={ownPictures}
-				reading={foreign ? undefined : reading}
-				ground={prefs.current.ground}
-				wallpaper={{ picture: showing, strength: wallpaper?.strength ?? 0 }}
-				onHover={(at) => (hoverAt = overGraph ? null : at)}
-				chosen={foreign ? undefined : chosen}
-				onChoose={pointing || foreign ? undefined : chooseAlso}
-				onChooseWithin={pointing || foreign ? undefined : chooseWithin}
-				onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
-				onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
-				onExpand={(ref) => {
-					folded.delete(ref);
-					if (pointing) looking = ref;
-				}}
-				onCollapse={(ref) => folded.add(ref)}
-			/>
+			<!-- The canvas stays mounted while the tree is up: tearing it down would take
+			     the reader's pan, their zoom and a settled layout with it, and it is the
+			     same graph they come back to. -->
+			<div class="absolute inset-0" class:invisible={walkingNow} inert={walkingNow}>
+				<GraphSurface
+					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
+					nodes={visible}
+					{collapsed}
+					{selection}
+					fields={foreign ? undefined : graphs.fields}
+					viewer={session.viewer?.did}
+					remountKey={foreign?.ref}
+					focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
+					picking={pointing && pointingNote
+						? {
+								from: pointing,
+								taken: new Set(pointingNote.links),
+								onPick: (ref) => void pointAt(ref)
+							}
+						: undefined}
+					pictures={ownPictures}
+					reading={foreign ? undefined : reading}
+					ground={prefs.current.ground}
+					wallpaper={{
+						picture: showing,
+						strength: wallpaper?.strength ?? 0,
+						transition: wallpaper?.transition
+					}}
+					onHover={(at) => (hoverAt = overGraph ? null : at)}
+					chosen={foreign ? undefined : chosen}
+					onChoose={pointing || foreign ? undefined : chooseAlso}
+					onChooseWithin={pointing || foreign ? undefined : chooseWithin}
+					onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
+					onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
+					onExpand={(ref) => {
+						folded.delete(ref);
+						if (pointing) looking = ref;
+					}}
+					onCollapse={(ref) => folded.add(ref)}
+				/>
+			</div>
+
+			{#if walkingNow}
+				<GraphTree
+					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
+					notes={visible}
+					fields={foreign ? undefined : graphs.fields}
+					{selection}
+					reading={foreign ? reached : open}
+					opened={unfolded}
+					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
+					onOpen={foreign ? (ref) => void readHeld(ref) : show}
+				/>
+			{/if}
 		</div>
 	{:else}
 		<div class="clear-sysnav absolute inset-0 overflow-y-auto px-3 sm:px-6">
@@ -1298,12 +1354,15 @@
 						>
 							Your graph
 						</Button>
-						<GroundChoice
-							value={prefs.current.ground}
-							pictured={wallpaper !== null}
-							onchange={(ground) => prefs.set('ground', ground)}
-							onpicture={() => (choosingWallpaper = true)}
-						/>
+						{@render walk()}
+						{#if !walkingNow}
+							<GroundChoice
+								value={prefs.current.ground}
+								pictured={wallpaper !== null}
+								onchange={(ground) => prefs.set('ground', ground)}
+								onpicture={() => (choosingWallpaper = true)}
+							/>
+						{/if}
 					</div>
 				{:else}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1359,12 +1418,15 @@
 						>
 							<Users class="size-4" />
 						</Button>
-						<GroundChoice
-							value={prefs.current.ground}
-							pictured={wallpaper !== null}
-							onchange={(ground) => prefs.set('ground', ground)}
-							onpicture={() => (choosingWallpaper = true)}
-						/>
+						{@render walk()}
+						{#if !walkingNow}
+							<GroundChoice
+								value={prefs.current.ground}
+								pictured={wallpaper !== null}
+								onchange={(ground) => prefs.set('ground', ground)}
+								onpicture={() => (choosingWallpaper = true)}
+							/>
+						{/if}
 					</div>
 				{/if}
 
@@ -1490,9 +1552,8 @@
 <WallpaperSheet
 	bind:open={choosingWallpaper}
 	media={noteMedia}
-	turns={WALLPAPER_TURNS}
-	choice={wallpaper ?? { uploads: [], strength: OPENING_STRENGTH, every: OPENING_TURN }}
-	onchange={(next) => prefs.setWallpaper(graph, next.uploads.length === 0 ? null : next)}
+	choice={wallpaper ?? openingWallpaper()}
+	onchange={(next) => prefs.setWallpaper(graph, next.pictures.length === 0 ? null : next)}
 />
 
 <PeersSheet

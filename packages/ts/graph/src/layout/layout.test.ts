@@ -1,4 +1,4 @@
-import type { OwnedRef } from "@sloppy/types";
+import { isConnection, type OwnedRef } from "@sloppy/types";
 import { describe, expect, it, vi } from "vitest";
 import { drawnNodes } from "../contract.js";
 import { makeCorpus } from "../corpus.test-support.js";
@@ -31,7 +31,7 @@ function startFor(count: number): LayoutStart {
       source: index(source),
       target: index(target),
       distance: attributes.distance,
-      strength: attributes.kind === "connection" ? 0.12 : 0.55,
+      strength: isConnection(attributes.kind) ? 0.12 : 0.55,
     });
   });
   return {

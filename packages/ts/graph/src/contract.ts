@@ -2,7 +2,13 @@
 // draws the ownership line this expresses: the host owns which nodes exist, the
 // surface owns pan, zoom and drag.
 
-import type { DidSyr, NodeView, OwnedRef, Tag } from "@sloppy/types";
+import type {
+  DidSyr,
+  NodeView,
+  OwnedRef,
+  PictureTransition,
+  Tag,
+} from "@sloppy/types";
 import type { GraphGround } from "./ground.js";
 
 /**
@@ -69,7 +75,8 @@ export interface GraphPictures {
  */
 export interface GraphWallpaper {
   /** The picture showing, named as {@link GraphSurfaceProps.pictures} resolves
-   *  one. `null` draws no wallpaper. */
+   *  one. `null` draws no wallpaper. Whose turn it is among several is the
+   *  host's to read, off `pictureTurn` in `@sloppy/types`. */
   picture: string | null;
   /**
    * How much of it the reader asked for, 0–1 of what this ground can carry.
@@ -77,6 +84,9 @@ export interface GraphWallpaper {
    * host asking for 1 gets the most the floors allow rather than a raw picture.
    */
   strength: number;
+  /** How one picture gives way to the next. Absent crossfades, which is what a
+   *  reader who has chosen nothing gets. */
+  transition?: PictureTransition;
 }
 
 /**

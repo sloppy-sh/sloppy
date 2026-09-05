@@ -128,13 +128,23 @@ export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
   }
   nodes.sort((a, b) => compareAddresses(a.address, b.address));
 
-  // Associative links, the ones genealogy does not carry: a handful, so the
-  // dashed pass has something to draw and the layout has a cross-tree spring.
-  for (let at = 0; at < Math.floor(nodes.length / 60); at++) {
-    const from = nodes[Math.floor(random() * nodes.length)];
-    const to = nodes[Math.floor(random() * nodes.length)];
-    if (from !== to) from.links.push(to.ref);
-  }
+  // The connections genealogy does not carry, both ways of making one: a handful
+  // drawn by hand and rather more the writing named, so each pass has something
+  // to draw and the layout has a cross-tree spring.
+  const joining = (
+    count: number,
+    join: (from: NodeView, to: OwnedRef) => void,
+  ): void => {
+    for (let at = 0; at < count; at++) {
+      const from = nodes[Math.floor(random() * nodes.length)];
+      const to = nodes[Math.floor(random() * nodes.length)];
+      if (from !== to) join(from, to.ref);
+    }
+  };
+  joining(Math.floor(nodes.length / 60), (from, to) => from.links.push(to));
+  joining(Math.floor(nodes.length / 30), (from, to) => {
+    from.references = [...(from.references ?? []), to];
+  });
 
   const carriers = new Map<Tag, number>();
   for (const node of nodes) {

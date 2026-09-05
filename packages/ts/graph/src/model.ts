@@ -6,10 +6,12 @@ import {
   assignTagHueSlots,
   type Address,
   type DidSyr,
+  type EdgeKind,
   graphOf,
   type MarkRadius,
   type NodeView,
   type OwnedRef,
+  type PictureSeries,
   type PreviewSize,
   type ResolvedAppearance,
   resolveAppearance,
@@ -17,6 +19,7 @@ import {
   type RingWeight,
   runKeyOf,
   runPairs,
+  strongestEdge,
   type Tag,
 } from "@sloppy/types";
 import Graph from "graphology";
@@ -39,13 +42,21 @@ export const LEAF_RADIUS = 9;
 const MEGA_GROWTH = 0.42;
 export const MAX_RADIUS = 46;
 
-/** What a look multiplies a mark's radius by. DESIGN.md § "The mark" bounds it:
- *  a look may not grow a leaf as far as the smallest mega-node. */
+/** What a look multiplies a mark's radius by. DESIGN.md § "The mark" carries the
+ *  ladder, and the ruling that the fold's cap is scaled by it rather than
+ *  capping it again. */
 export const LOOK_SCALE: Record<MarkRadius, number> = {
   small: 0.78,
   regular: 1,
   large: 1.34,
+  huge: 1.8,
+  giant: 2.4,
 };
+
+/** The largest mark any canvas draws: the fold's cap at the top of the ladder.
+ *  Everything sized for the worst case a mark can be is sized off this. */
+export const LADDER_TOP = Math.max(...Object.values(LOOK_SCALE));
+export const WIDEST_RADIUS = MAX_RADIUS * LADDER_TOP;
 
 /** A look's ring, as fractions of the mark's radius — its centre line, and what
  *  each weight strokes. Inside the mark, since the edge is provenance's. */
@@ -75,16 +86,39 @@ export const PREVIEW_SPAN: Record<PreviewSize, number> = {
   large: LOOK_RING_AT,
 };
 
-/** Assumed of the densest screen Sloppy runs on, for {@link MARK_PICTURE_PX}. */
+/** Assumed of the densest screen Sloppy runs on. */
 const DENSE_SCREEN = 2;
 
-/** The side of the square a mark's picture is cropped to, at the most of one a
- *  screen ever shows: the biggest mega-node wearing the largest picture, at full
- *  zoom, on a dense display. A picture is stored with its SHORT side at this,
- *  because the crop spends the long one. */
+/**
+ * The side of the square a picture is STORED at: the most any mark could ever
+ * show of it — the biggest mega-node at the top of the ladder, wearing the
+ * largest picture, at full zoom, on a dense display. A picture is stored with
+ * its SHORT side at this, because the crop spends the long one.
+ *
+ * The cut is taken once, when somebody chooses the file, and the look it is
+ * chosen for goes on being edited afterwards — so it is cut for the size the
+ * look could reach rather than the size it happens to be. What a MARK decodes is
+ * the other budget, and {@link markPictureSide} is that one.
+ */
 export const MARK_PICTURE_PX = Math.ceil(
-  MAX_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
+  WIDEST_RADIUS * PREVIEW_SPAN.large * 2 * MAX_SCALE * DENSE_SCREEN,
 );
+
+/**
+ * The side of the square a mark drawn at `radius` world units decodes its
+ * picture to, held under {@link MARK_PICTURE_PX}. A leaf never carries a
+ * mega-node's pixels however large the stored picture is, which is what makes a
+ * phone holding hundreds of pictured marks affordable — `model.test.ts` holds
+ * the two budgets apart.
+ *
+ * Rounded UP to a power of two, so the same picture worn by marks a hair apart
+ * in size is one texture rather than a dozen cuts of one file.
+ */
+export function markPictureSide(radius: number, size: PreviewSize): number {
+  const wanted = radius * PREVIEW_SPAN[size] * 2 * MAX_SCALE * DENSE_SCREEN;
+  const stepped = 2 ** Math.ceil(Math.log2(Math.max(1, wanted)));
+  return Math.min(MARK_PICTURE_PX, stepped);
+}
 
 /** What a note nobody styled draws as, held once rather than resolved per node. */
 const UNSTYLED: ResolvedAppearance = resolveAppearance(null);
@@ -126,8 +160,10 @@ export interface GraphNodeAttributes {
   ringWeight: RingWeight;
   /** Says nothing while {@link ringWeight} is `none`. */
   ringStyle: RingStyle;
-  /** The author's picture, as an upload only their own instance can answer for. */
-  preview: string | undefined;
+  /** The pictures the mark wears, as uploads only their author's own instance
+   *  can answer for. No pictures is a mark with none; whose turn it is among
+   *  several is the scene's to read off the clock. */
+  preview: PictureSeries;
   /** The share of the mark it covers — {@link PREVIEW_SPAN}. */
   previewSize: PreviewSize;
   fill: number;
@@ -141,7 +177,9 @@ export interface GraphNodeAttributes {
 }
 
 export interface GraphEdgeAttributes {
-  kind: "genealogy" | "run" | "connection";
+  /** A pair several of these are true of draws one line, and it is the
+   *  strongest of them — `EDGE_KINDS` in `@sloppy/types` is the order. */
+  kind: EdgeKind;
   distance: number;
 }
 
@@ -231,6 +269,29 @@ export function buildModel(
     });
   });
 
+  // One line per pair, and it is the strongest kind true of it — DESIGN.md
+  // § Edges. Distance belongs to whichever line got there first, which is why
+  // the addresses' two kinds are laid before the two a person made: a
+  // connection changes how a line is drawn and never how far apart the two
+  // notes sit.
+  const join = (
+    a: OwnedRef,
+    b: OwnedRef,
+    kind: EdgeKind,
+    apart: () => number,
+  ): void => {
+    const already = graph.undirectedEdge(a, b);
+    if (already === undefined) {
+      graph.addUndirectedEdge(a, b, { kind, distance: apart() });
+      return;
+    }
+    graph.setEdgeAttribute(
+      already,
+      "kind",
+      strongestEdge(graph.getEdgeAttribute(already, "kind"), kind),
+    );
+  };
+
   for (const { node } of drawn) {
     if (node.parent !== undefined && graph.hasNode(node.parent)) {
       graph.updateNodeAttribute(
@@ -238,13 +299,12 @@ export function buildModel(
         "children",
         (count) => (count ?? 0) + 1,
       );
-      graph.mergeUndirectedEdge(node.parent, node.ref, {
-        kind: "genealogy",
-        distance: Math.max(
+      join(node.parent, node.ref, "genealogy", () =>
+        Math.max(
           EDGE_MIN,
           EDGE_FIRST * EDGE_DECAY ** Math.max(node.depth - 2, 0),
         ),
-      });
+      );
     }
   }
 
@@ -253,46 +313,39 @@ export function buildModel(
   // together — with the shared floor still holding the most crowded
   // generations apart.
   for (const [before, after] of runs(drawn)) {
-    const from = graph.getNodeAttributes(before.ref);
-    const to = graph.getNodeAttributes(after.ref);
-    graph.mergeUndirectedEdge(before.ref, after.ref, {
-      kind: "run",
-      distance: Math.max(
+    join(before.ref, after.ref, "run", () => {
+      const from = graph.getNodeAttributes(before.ref);
+      const to = graph.getNodeAttributes(after.ref);
+      return Math.max(
         EDGE_MIN,
         Math.hypot(to.anchorX - from.anchorX, to.anchorY - from.anchorY),
-      ),
+      );
     });
   }
 
-  // Last, so a connection somebody made stays drawn as one even where the run
-  // or the tree already joins those two. Merged rather than added, so a pair
-  // connected both ways is the one line DESIGN.md § Edges calls for.
   for (const { node } of drawn) {
-    for (const target of connectedTo(node)) {
-      if (target === node.ref || !graph.hasNode(target)) continue;
-      const already = graph.undirectedEdge(node.ref, target);
-      graph.mergeUndirectedEdge(node.ref, target, {
-        kind: "connection",
-        // A connection changes how the line is drawn, never how far apart the
-        // two notes sit: that is the addresses' to set — DESIGN.md § Edges.
-        distance:
-          already === undefined
-            ? CONNECTION_DISTANCE
-            : graph.getEdgeAttribute(already, "distance"),
-      });
+    for (const [kind, targets] of connectionsOf(node)) {
+      for (const target of targets) {
+        if (target === node.ref || !graph.hasNode(target)) continue;
+        join(node.ref, target, kind, () => CONNECTION_DISTANCE);
+      }
     }
   }
 
   return { graph, order: drawn.map((entry) => entry.node.ref), fields };
 }
 
-/** The notes a note is connected to, drawn by hand and derived from its own
- *  writing alike. Absent `references` is a note nothing derived them for.
- *  DESIGN.md § Edges. */
-function connectedTo(node: NodeView): readonly OwnedRef[] {
-  return node.references === undefined
-    ? node.links
-    : [...node.links, ...node.references];
+/**
+ * The notes a note is connected to, by each of the two ways of making a line:
+ * `links` a hand drew, and `references` the note's own writing named. Absent
+ * `references` is a note nothing derived them for. DESIGN.md § Edges draws the
+ * two apart, so nothing here unions them.
+ */
+function connectionsOf(node: NodeView): [EdgeKind, readonly OwnedRef[]][] {
+  return [
+    ["link", node.links],
+    ["reference", node.references ?? []],
+  ];
 }
 
 const ORIGIN: SeedPoint = { x: 0, y: 0, outward: 0 };
@@ -399,7 +452,10 @@ function radiusFor(entry: DrawnNode, look: ResolvedAppearance): number {
   const scale = LOOK_SCALE[look.markRadius];
   if (entry.folded === 0) return LEAF_RADIUS * scale;
   const grown = LEAF_RADIUS * (1 + Math.log2(1 + entry.folded) * MEGA_GROWTH);
-  return Math.min(grown * scale, MAX_RADIUS);
+  // The cap is the fold's, so the author's step scales it too: a bigger step
+  // draws bigger at every fold, which a flat cap took away from exactly the
+  // mega-nodes a step is asked for — DESIGN.md § "The mark".
+  return Math.min(grown * scale, MAX_RADIUS * scale);
 }
 
 function provenanceOf(node: NodeView, viewer: DidSyr | undefined): Provenance {

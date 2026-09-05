@@ -52,12 +52,28 @@ export interface StrokedRing {
   alpha: number;
 }
 
+/** One `moveTo(…).lineTo(…)`, which is how an edge is drawn — and how each dash
+ *  of a broken one is. The style is the pass's, filled in when it is stroked. */
+export interface StrokedLine {
+  from: [number, number];
+  to: [number, number];
+  width: number;
+  color: number;
+  alpha: number;
+}
+
 export class FakeGraphics extends FakeContainer {
   readonly rings: StrokedRing[] = [];
+  readonly lines: StrokedLine[] = [];
   private pending: { x: number; y: number; radius: number } | null = null;
+  private pen: [number, number] | null = null;
+  private unstroked: StrokedLine[] = [];
   clear(): this {
     this.rings.length = 0;
+    this.lines.length = 0;
     this.pending = null;
+    this.pen = null;
+    this.unstroked = [];
     return this;
   }
   circle(x = 0, y = 0, radius = 0): this {
@@ -73,21 +89,36 @@ export class FakeGraphics extends FakeContainer {
     return this;
   }
   stroke(style?: { color?: number; alpha?: number; width?: number }): this {
+    const drawn = {
+      color: style?.color ?? 0,
+      alpha: style?.alpha ?? 1,
+      width: style?.width ?? 1,
+    };
     if (this.pending) {
-      this.rings.push({
-        ...this.pending,
-        color: style?.color ?? 0,
-        alpha: style?.alpha ?? 1,
-        width: style?.width ?? 1,
-      });
+      this.rings.push({ ...this.pending, ...drawn });
       this.pending = null;
     }
+    for (const line of this.unstroked) Object.assign(line, drawn);
+    this.unstroked = [];
     return this;
   }
-  moveTo(): this {
+  moveTo(x = 0, y = 0): this {
+    this.pen = [x, y];
     return this;
   }
-  lineTo(): this {
+  lineTo(x = 0, y = 0): this {
+    if (this.pen !== null) {
+      const line: StrokedLine = {
+        from: this.pen,
+        to: [x, y],
+        width: 1,
+        color: 0,
+        alpha: 1,
+      };
+      this.lines.push(line);
+      this.unstroked.push(line);
+    }
+    this.pen = [x, y];
     return this;
   }
 }

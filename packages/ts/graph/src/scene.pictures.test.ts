@@ -4,19 +4,32 @@
 // is asked, what is freed, and what is left holding it — never the pixels.
 
 import { type NodeView, type OwnedRef, PREVIEW_SIZES } from "@sloppy/types";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  vi,
+} from "vitest";
 import type { DrawnNode, GraphPictures } from "./contract.js";
 import {
   buildModel,
+  LEAF_RADIUS,
   MARK_PICTURE_PX,
+  markPictureSide,
   PREVIEW_AT,
   PREVIEW_SPAN,
 } from "./model.js";
 import { buildPalette } from "./palette.js";
+import { TURN_MS } from "./turn.js";
 import {
   FakeApplication,
   FakeContainer,
   FakeSprite,
+  FakeTexture,
   worldOf,
 } from "./pixi.test-support.js";
 
@@ -97,9 +110,24 @@ function drawn(
   return { node, collapsed: false, folded: 0, tags: [] };
 }
 
+/** A mark whose author put several pictures on it, in the order they take
+ *  turns. */
+function wearing(address: string, pictures: string[], every = 60): DrawnNode {
+  const [first, ...rest] = pictures;
+  const entry = drawn(address, first);
+  return {
+    ...entry,
+    node: {
+      ...entry.node,
+      appearance: { preview: first, preview_more: rest, preview_every: every },
+    } as NodeView,
+  };
+}
+
 async function sceneOn(
   field: DrawnNode[],
   pictures?: GraphPictures,
+  reduced?: MediaQueryList,
 ): Promise<{
   scene: Awaited<ReturnType<typeof GraphScene.create>>;
   app: FakeApplication;
@@ -109,6 +137,7 @@ async function sceneOn(
     palette,
     resolution: 2,
     pictures,
+    reduced,
   });
   const app = FakeApplication.latest as FakeApplication;
   scene.setModel(buildModel(field, { selection: [], palette }), false);
@@ -200,27 +229,82 @@ describe("a picture reaching a mark", () => {
 
   it("covers the disc from its short side, and is never enlarged to do it", async () => {
     decoded.set("blob:wide", { width: 800, height: 600 });
-    decoded.set("blob:small", { width: 120, height: 90 });
+    decoded.set("blob:small", { width: 48, height: 36 });
     const { scene } = await sceneOn(
       [drawn("1", "wide"), drawn("2", "small")],
       host(),
     );
     await settle();
 
-    const wide = painted.find((cut) => cut.canvas === MARK_PICTURE_PX);
+    const leaf = markPictureSide(LEAF_RADIUS, "small");
+    const wide = painted.find((cut) => cut.canvas === leaf);
     expect(
       wide,
       "the picture with room to spare fills the square",
     ).toBeDefined();
     // Centred, and wider than the square by exactly its aspect ratio.
-    expect(wide?.box[2]).toBeCloseTo((MARK_PICTURE_PX * 800) / 600, 6);
-    expect(wide?.box[3]).toBeCloseTo(MARK_PICTURE_PX, 6);
+    expect(wide?.box[2]).toBeCloseTo((leaf * 800) / 600, 6);
+    expect(wide?.box[3]).toBeCloseTo(leaf, 6);
     expect(wide?.box[1]).toBeCloseTo(0, 6);
 
-    const small = painted.find((cut) => cut.canvas === 90);
+    const small = painted.find((cut) => cut.canvas === 36);
     expect(small, "one below the bound draws at what it has").toBeDefined();
-    expect(small?.box[3]).toBeCloseTo(90, 6);
+    expect(small?.box[3]).toBeCloseTo(36, 6);
     scene.destroy();
+  });
+
+  // DESIGN.md § "The mark": what a picture is stored at and what a mark decodes
+  // it to are two budgets. The store is cut for the largest mark a look could
+  // ever become; the texture is cut for the mark that wears it, so a phone
+  // holding hundreds of pictured marks never pays for the biggest of them.
+  it("decodes for the mark wearing it, never for the biggest mark there is", async () => {
+    const field = [
+      drawn("1", "leaf"),
+      { ...drawn("2", "mega"), collapsed: true, folded: 4000 },
+    ];
+    const { scene } = await sceneOn(field, host());
+    await settle();
+
+    const model = buildModel(field, { selection: [], palette });
+    const cuts = field.map(
+      (entry) =>
+        painted.find(
+          (cut) =>
+            cut.canvas ===
+            markPictureSide(
+              model.graph.getNodeAttributes(entry.node.ref).radius,
+              "small",
+            ),
+        )?.canvas,
+    );
+    expect(cuts.every((cut) => cut !== undefined)).toBe(true);
+    expect(cuts[0]).toBeLessThan(cuts[1] as number);
+    expect(cuts[1]).toBeLessThan(MARK_PICTURE_PX);
+    scene.destroy();
+  });
+
+  // Sharing one upload across two notes is ordinary, and one of them being a
+  // mega-node is too: the two ask at their own sizes, and the canvas ends up
+  // holding one texture rather than the loser of the race between them.
+  it("holds one cut of a picture two marks of different sizes wear", async () => {
+    const cuts = vi.spyOn(FakeTexture, "from");
+    const field = [
+      drawn("1", "shared"),
+      { ...drawn("2", "shared"), collapsed: true, folded: 4000 },
+    ];
+    const { scene, app } = await sceneOn(field, host());
+    await settle();
+    app.tick();
+    const made = cuts.mock.results.map((cut) => cut.value as FakeTexture);
+    cuts.mockRestore();
+
+    const sprites = previewsOf(app).children as FakeSprite[];
+    expect(sprites).toHaveLength(2);
+    expect(sprites[0].texture).toBe(sprites[1].texture);
+    expect(made.filter((cut) => !cut.destroyed)).toEqual([sprites[0].texture]);
+
+    scene.destroy();
+    expect(made.every((cut) => cut.destroyed)).toBe(true);
   });
 
   it("leaves the mark drawing as one with no picture where the host has none", async () => {
@@ -314,5 +398,131 @@ describe("a picture the graph no longer draws", () => {
     scene.destroy();
     expect(sprite.destroyed).toBe(true);
     expect(sprite.texture.destroyed).toBe(true);
+  });
+});
+
+// DESIGN.md § "A picture that takes turns": whose turn it is comes off the clock
+// and is read when the graph opens and when the app comes back, so nothing
+// changes under somebody who is reading and two devices agree with nothing to
+// sync.
+describe("a mark wearing more than one picture", () => {
+  const HOUR = 60 * 60_000;
+  let clock: MockInstance<() => number>;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(0);
+    clock = vi.spyOn(performance, "now").mockReturnValue(0);
+  });
+  afterEach(() => {
+    clock.mockRestore();
+    vi.useRealTimers();
+  });
+
+  /** A canvas with the field framed on it, so every mark is on the screen and
+   *  big enough to be drawing its picture. */
+  async function framed(field: DrawnNode[], reduced?: MediaQueryList) {
+    const pictures = host();
+    const { scene, app } = await sceneOn(field, pictures, reduced);
+    scene.fit();
+    await settle();
+    app.tick();
+    return { scene, app, pictures };
+  }
+
+  it("shows the one whose turn it is, and takes the next when it comes", async () => {
+    const { scene, app, pictures } = await framed([wearing("1", ["a", "b"])]);
+    expect(pictures.asked).toEqual(["a"]);
+    const first = previewsOf(app).children[0] as FakeSprite;
+
+    vi.setSystemTime(HOUR);
+    scene.takeTurns();
+    app.tick();
+    await settle();
+    app.tick();
+    expect(pictures.asked).toEqual(["a", "b"]);
+
+    // Both are up while the change is drawn, the one arriving over the one
+    // giving way; once it is over, the second is what the mark wears.
+    expect(previewsOf(app).children).toHaveLength(2);
+    expect(previewsOf(app).children[0]).toBe(first);
+
+    clock.mockReturnValue(TURN_MS);
+    app.tick();
+    expect(previewsOf(app).children).toHaveLength(1);
+    expect(previewsOf(app).children[0]).not.toBe(first);
+    expect(first.destroyed).toBe(true);
+    scene.destroy();
+  });
+
+  // A cadence says nothing about a series of one, so nothing is ever asked for
+  // beyond the picture the mark wears.
+  it("leaves a mark wearing one picture still", async () => {
+    const { scene, pictures } = await framed([wearing("1", ["a"])]);
+    vi.setSystemTime(HOUR * 9);
+    scene.takeTurns();
+    expect(pictures.asked).toEqual(["a"]);
+    scene.destroy();
+  });
+
+  // DESIGN.md § Motion: a reader who asked for less motion gets the change
+  // without it, which is the picture exchanged and never two of them at once.
+  it("changes without moving where the reader asked for less motion", async () => {
+    const { scene, app, pictures } = await framed([wearing("1", ["a", "b"])], {
+      matches: true,
+    } as MediaQueryList);
+    const held = (previewsOf(app).children[0] as FakeSprite).texture;
+
+    vi.setSystemTime(HOUR);
+    scene.takeTurns();
+    app.tick();
+    await settle();
+    app.tick();
+    expect(pictures.asked).toEqual(["a", "b"]);
+    expect(previewsOf(app).children).toHaveLength(1);
+    // A change nobody watched is still a change: what it turned away from goes.
+    expect(held.destroyed).toBe(true);
+    scene.destroy();
+  });
+
+  // The cost of a field coming back from the background is held to what the
+  // screen is showing: a mark nobody can see exchanges its picture rather than
+  // drawing the change.
+  it("exchanges without drawing the change on a mark off the screen", async () => {
+    const pictures = host();
+    const { scene, app } = await sceneOn([wearing("1", ["a", "b"])], pictures);
+    // Left where a fresh viewport sits, which is not where the field is.
+    await settle();
+    app.tick();
+    const held = (previewsOf(app).children[0] as FakeSprite).texture;
+
+    vi.setSystemTime(HOUR);
+    scene.takeTurns();
+    app.tick();
+    await settle();
+    app.tick();
+    expect(pictures.asked).toEqual(["a", "b"]);
+    expect(previewsOf(app).children).toHaveLength(1);
+    expect(held.destroyed).toBe(true);
+    scene.destroy();
+  });
+
+  // Nothing is left holding the picture a mark has finished with.
+  it("frees the picture it turned away from", async () => {
+    const { scene, app } = await framed([wearing("1", ["a", "b"])]);
+    const first = previewsOf(app).children[0] as FakeSprite;
+    const held = first.texture;
+
+    vi.setSystemTime(HOUR);
+    scene.takeTurns();
+    app.tick();
+    await settle();
+    app.tick();
+    expect(held.destroyed, "freed under a sprite still drawing it").toBe(false);
+
+    clock.mockReturnValue(TURN_MS);
+    app.tick();
+    expect(held.destroyed).toBe(true);
+    scene.destroy();
   });
 });

@@ -22,11 +22,9 @@ export {
 export type { Accent, Prefs, Style, Theme } from './stores/prefs.svelte.js';
 export {
 	OPENING_STRENGTH,
-	OPENING_TURN,
+	openingWallpaper,
 	sanitizeWallpaper,
-	sanitizeWallpapers,
-	WALLPAPER_TURNS,
-	wallpaperTurn
+	sanitizeWallpapers
 } from './wallpaper.js';
 export type { WallpaperPrefs } from './wallpaper.js';
 export { nodes } from './stores/nodes.svelte.js';
