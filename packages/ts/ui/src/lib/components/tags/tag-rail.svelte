@@ -5,6 +5,7 @@
 	// the hues.
 	import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 	import { tick } from 'svelte';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import { cn } from '$lib/utils.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 
@@ -23,7 +24,7 @@
 	const slots = $derived(assignTagHueSlots(selected));
 	const counts = $derived(new Map(tags.map((entry) => [entry.tag, entry.notes])));
 
-	/** More tags than a phone width draws at once. */
+	/** Chips past which scrolling the rail costs more than typing the word. */
 	const CROWDED = 12;
 	let typed = $state('');
 	const offered = $derived(tags.length > CROWDED);
@@ -38,7 +39,7 @@
 			.map((entry) => entry.tag)
 			.filter((tag) => !slots.has(tag) && (needle === '' || tag.includes(needle)))
 	]);
-	const nothingMatched = $derived(needle !== '' && order.length === selected.length);
+	const nothingMatched = $derived(needle !== '' && !order.some((tag) => tag.includes(needle)));
 
 	let rail = $state<HTMLElement | null>(null);
 
@@ -89,15 +90,15 @@
 	</div>
 
 	{#if offered}
-		<input
+		<Input
 			bind:value={typed}
 			type="search"
+			class="h-11"
 			autocapitalize="none"
 			autocomplete="off"
 			spellcheck="false"
 			aria-label="Find a tag"
 			placeholder="Find a tag"
-			class="min-h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
 		/>
 	{/if}
 

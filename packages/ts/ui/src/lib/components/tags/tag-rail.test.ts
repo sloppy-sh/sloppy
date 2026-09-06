@@ -3,6 +3,7 @@ import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
+import { reactive } from '../props.test-support.svelte.js';
 import TagRail from './tag-rail.svelte';
 
 const TAGS: TagCount[] = [
@@ -16,11 +17,10 @@ let mounted: ReturnType<typeof mount> | undefined;
 let asked: Tag[][];
 
 function render(selected: Tag[] = [], tags: TagCount[] = TAGS) {
-	mounted = mount(TagRail, {
-		target,
-		props: { tags, selected, onselect: (next: Tag[]) => asked.push(next) }
-	});
+	const props = reactive({ tags, selected, onselect: (next: Tag[]) => asked.push(next) });
+	mounted = mount(TagRail, { target, props });
 	flushSync();
+	return props;
 }
 
 const chips = () => [...target.querySelectorAll('button[aria-pressed]')] as HTMLButtonElement[];
@@ -204,6 +204,24 @@ describe('typing for a tag', () => {
 		type('zzz');
 		expect(names()).toEqual([]);
 		expect(target.textContent).toContain('No tag has that in it.');
+	});
+
+	it('does not say nothing has it while the tag holding it is a selected one', () => {
+		render(['ecology'] as Tag[], MANY);
+		type('ecolo');
+		expect(names()).toEqual(['ecology']);
+		expect(target.textContent).not.toContain('No tag has that in it.');
+	});
+
+	// A filter stands until the reader clears it: the word is still in the field
+	// above the chips, and emptying it out from under them would be the surprise.
+	it("holds what was typed when the rail is handed another read's tags", () => {
+		const props = render([], MANY);
+		type('ology');
+		props.tags = MANY.filter((entry) => entry.tag !== 'geology');
+		flushSync();
+		expect(filter()?.value).toBe('ology');
+		expect(names()).toEqual(['biology', 'ecology']);
 	});
 
 	it('still selects the tag that was tapped out of a narrowed rail', () => {
