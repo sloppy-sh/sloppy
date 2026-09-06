@@ -1187,12 +1187,24 @@ describe('writing a note from the keyboard', () => {
 		expect(placed).toBeUndefined();
 	});
 
-	it('leaves the keys to the writing they were typed into', async () => {
+	it('continues the note being read from inside its writing', async () => {
 		await openNote();
 		const writing = document.body.querySelector('.sloppy-prose');
 		if (!writing) throw new Error('The note has no writing surface');
 
-		strike(false, writing);
+		strike(true, writing);
+		await settle();
+
+		expect(placed).toEqual({ relation: 'under', note: SECOND });
+	});
+
+	it('leaves the keys the writing answers to the writing', async () => {
+		await openNote();
+		const writing = document.body.querySelector('.sloppy-prose');
+		if (!writing) throw new Error('The note has no writing surface');
+		writing.addEventListener('keydown', (event) => event.preventDefault());
+
+		strike(true, writing);
 		await settle();
 
 		expect(placed).toBeUndefined();

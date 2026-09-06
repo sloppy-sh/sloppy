@@ -34,11 +34,12 @@ export function acceleratorFor(event: KeyboardEvent): 'branch' | 'under' | null 
 	return event.shiftKey ? 'under' : 'branch';
 }
 
-const WRITING =
-	'input, textarea, [contenteditable]:not([contenteditable="false"]), [role="textbox"]';
+const WRITING = 'input, textarea';
 
-/** Whether the keystroke was typed into writing, where Enter is the writing's
- *  own and a page over it has no business answering. */
+/** Whether the keystroke was typed into a field whose Enter is its own. The
+ *  note's writing is not one: it refuses the default on every chord it binds,
+ *  so a page over it reads `defaultPrevented` rather than standing down for the
+ *  chords the writing leaves alone. */
 export function typedIntoWriting(event: KeyboardEvent): boolean {
 	const at = event.target;
 	return at instanceof Element && at.closest(WRITING) !== null;

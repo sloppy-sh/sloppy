@@ -507,8 +507,8 @@
 		resolve: (did: string) => people.resolve(did)
 	};
 
-	/** What a reader DOES to a note, as against what they read off it. The
-	 *  writing leads and Delete comes last and apart — DESIGN.md § Layout. */
+	/** What a reader DOES to a note, as against what they read off it. Delete
+	 *  comes last and apart — DESIGN.md § Layout. */
 	let actsFrom = $state<HTMLElement | null>(null);
 	const acts = $derived<NoteMenuItem[]>([
 		{
@@ -1245,11 +1245,15 @@
 				onkeydown={(e) => {
 					const out = e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey);
 					if (!out || e.metaKey || e.ctrlKey || e.altKey) return;
-					e.preventDefault();
 					// A title is done with when the writing starts, and on a phone the
 					// keyboard has to stay up between the two.
-					if (bodyStack) bodyStack.focusBody();
-					else e.currentTarget.blur();
+					if (bodyStack) {
+						e.preventDefault();
+						bodyStack.focusBody();
+					} else if (e.key === 'Enter') {
+						e.preventDefault();
+						e.currentTarget.blur();
+					}
 				}}
 				onblur={() => saveTitle(ref)}
 				placeholder="Untitled"

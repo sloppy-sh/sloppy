@@ -208,6 +208,26 @@ describe('a note opened to read', () => {
 		expect(document.body.textContent).toContain('Close it and open it again');
 		expect(document.body.textContent).not.toContain('Nothing written here yet');
 	});
+
+	it('leaves Tab in the title to the browser where there is no writing to reach', async () => {
+		stubViewport(WIDE);
+		await nodes.create({});
+		api.on(`GET ${path(FIRST)}/blocks`, () => {
+			throw new Error('unreachable');
+		});
+
+		mounted = mount(NoteOnSurface, { target, props: { opened: FIRST, fresh: false } });
+		flushSync();
+		await settle();
+		const field = title();
+		if (!field) throw new Error('The note has no title');
+
+		const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+		field.dispatchEvent(tab);
+		await settle();
+
+		expect(tab.defaultPrevented).toBe(false);
+	});
 });
 
 describe('what a note is written with', () => {
