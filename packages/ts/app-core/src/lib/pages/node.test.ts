@@ -327,7 +327,7 @@ async function loadGraph(): Promise<void> {
 
 async function openNote(
 	at: OwnedRef,
-	handlers: { onclose?: () => void; onlink?: () => void } = {}
+	handlers: { onclose?: () => void; onlink?: () => void; onback?: () => void } = {}
 ): Promise<void> {
 	stubViewport(WIDE);
 	mounted = mount(NoteOnSurface, { target, props: { opened: at, fresh: false, ...handlers } });
@@ -1724,5 +1724,151 @@ describe('writing the next note while the server is still assigning its address'
 
 		expect(document.body.querySelector('.address')?.textContent).toBe('1b');
 		expect(title()?.value).toBe('Membranes');
+	});
+});
+
+describe('what points back at a note', () => {
+	let graph: Map<OwnedRef, NodeView>;
+
+	/** The list one of the note's headings stands over. */
+	function listUnder(heading: string): HTMLElement {
+		const head = [...document.body.querySelectorAll('h2')].find(
+			(one) => one.textContent?.trim() === heading
+		);
+		const list = head?.nextElementSibling;
+		if (!(list instanceof HTMLElement)) throw new Error(`Nothing is listed under "${heading}"`);
+		return list;
+	}
+
+	beforeEach(() => {
+		graph = installGraph();
+	});
+
+	// DESIGN.md § "Edges": a hand draws a link and a hand takes it away; a
+	// reference is the note's own words and goes when they do. Two lists.
+	it('keeps the notes whose writing names this one apart from the ones a hand linked', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, references: [FOURTH] });
+		graph.set(THIRD, { ...graph.get(THIRD)!, links: [FOURTH] });
+		await loadGraph();
+		await openNote(FOURTH);
+
+		expect(listUnder('Named in').textContent).toContain('Cells');
+		expect(listUnder('Named in').textContent).not.toContain('Membranes');
+		expect(listUnder('Linked from').textContent).toContain('Membranes');
+		expect(listUnder('Linked from').textContent).not.toContain('Cells');
+	});
+
+	it('opens the note that named this one', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, references: [FOURTH] });
+		await loadGraph();
+		await openNote(FOURTH);
+
+		noteRow('Cells').click();
+		await settle();
+
+		expect(document.body.querySelector('.address')?.textContent).toBe('1a');
+	});
+
+	// The words made the line, so this is not the side it can be taken off.
+	it('offers no way to take a reference off from here', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, references: [FOURTH] });
+		await loadGraph();
+		await openNote(FOURTH);
+
+		expect(listUnder('Named in').querySelector('[aria-label^="Unlink"]')).toBeNull();
+	});
+
+	it('names nothing where no note names this one', async () => {
+		await loadGraph();
+		await openNote(FOURTH);
+
+		expect(screen()).not.toContain('Named in');
+	});
+});
+
+describe('the way out of a note', () => {
+	beforeEach(async () => {
+		installGraph();
+		await loadGraph();
+	});
+
+	function wayOut(): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll('button')].find((b) =>
+			['Graph', 'Back'].includes(b.textContent?.trim() ?? '')
+		);
+		if (!found) throw new Error('The note on screen has no way out');
+		return found;
+	}
+
+	it('is the graph at the head of the trail', async () => {
+		let closed = 0;
+		await openNote(SECOND, { onclose: () => (closed += 1) });
+
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+		wayOut().click();
+		await settle();
+
+		expect(closed).toBe(1);
+	});
+
+	it('is the way back where the reader came here from another note', async () => {
+		let walked = 0;
+		let closed = 0;
+		await openNote(SECOND, { onback: () => (walked += 1), onclose: () => (closed += 1) });
+
+		expect(wayOut().textContent?.trim()).toBe('Back');
+		wayOut().click();
+		await settle();
+
+		expect(walked).toBe(1);
+		expect(closed).toBe(0);
+	});
+});
+
+describe('the sections this device kept', () => {
+	beforeEach(async () => {
+		session.adopt(VIEWER, 'a-session');
+		installGraph();
+		await loadGraph();
+	});
+
+	async function reopen(of: OwnedRef): Promise<void> {
+		unmount(mounted!, { outro: false });
+		mounted = undefined;
+		await openNote(of);
+	}
+
+	it('shows a note as it was last read, without waiting on the server', async () => {
+		api.on(`GET ${path(SECOND)}/blocks`, () => [section(SECOND, 'The wall is the point')]);
+		await openNote(SECOND);
+		expect(screen()).toContain('The wall is the point');
+
+		api.on(`GET ${path(SECOND)}/blocks`, () => {
+			throw new Error('nothing is listening');
+		});
+		await reopen(SECOND);
+
+		expect(screen()).toContain('The wall is the point');
+		expect(screen()).not.toContain('Close it and open it again');
+	});
+
+	it('takes what the server says over what was kept', async () => {
+		api.on(`GET ${path(SECOND)}/blocks`, () => [section(SECOND, 'The wall is the point')]);
+		await openNote(SECOND);
+
+		api.on(`GET ${path(SECOND)}/blocks`, () => [section(SECOND, 'The pore is the point')]);
+		await reopen(SECOND);
+
+		expect(screen()).toContain('The pore is the point');
+		expect(screen()).not.toContain('The wall is the point');
+	});
+
+	it('keeps nothing for a note this device never read', async () => {
+		api.on(`GET ${path(THIRD)}/blocks`, () => {
+			throw new Error('nothing is listening');
+		});
+		await openNote(THIRD);
+
+		expect(screen()).toContain('Close it and open it again');
 	});
 });

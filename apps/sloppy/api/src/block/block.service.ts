@@ -10,9 +10,9 @@ import {
 import {
   type Block,
   type BlockView,
+  blockView,
   type CreateBlockRequestSchema,
   createOwnedRecordId,
-  entityView,
   nowIso,
   type OwnedRef,
   ownedRefFrom,
@@ -53,7 +53,7 @@ export class BlockService {
     if (!(await this.nodes.find(did, node))) {
       throw new NotFoundException("That note is not here.");
     }
-    return (await this.blocks.listByNode(node)).map(entityView);
+    return (await this.blocks.listByNode(node)).map(blockView);
   }
 
   async create(did: string, request: CreateRequest): Promise<BlockView> {
@@ -79,7 +79,7 @@ export class BlockService {
     if (citationsMoved(null, request.content)) {
       await this.derive(did, request.node);
     }
-    return entityView(written);
+    return blockView(written);
   }
 
   async update(
@@ -134,7 +134,7 @@ export class BlockService {
       };
     });
     if (moved) await this.derive(did, node);
-    return entityView(written);
+    return blockView(written);
   }
 
   async remove(did: string, ref: OwnedRef): Promise<void> {

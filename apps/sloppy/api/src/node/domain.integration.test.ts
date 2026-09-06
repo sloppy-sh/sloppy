@@ -25,6 +25,7 @@ import {
   type NodeBulkResult,
   type NodeView,
   type OwnedRef,
+  type SearchHit,
   siblingAddress,
   type TagCount,
 } from "@sloppy/types";
@@ -464,17 +465,31 @@ describe("the domain routes", () => {
     scenario("survives two writers with no queue in common", async () => {
       const { NodeService } = await import("./node.service");
       const { NodeRepository } = await import("./node.repository");
+      const { FindRepository } = await import("./find.repository");
       const { GraphService } = await import("./graph.service");
       const { MediaService } = await import("../media/media.service");
       const { PublicationService } = await import(
         "../publication/publication.service"
       );
       const repository = app.get(NodeRepository);
+      const finds = app.get(FindRepository);
       const graphs = app.get(GraphService);
       const media = app.get(MediaService);
       const publications = app.get(PublicationService);
-      const one = new NodeService(repository, graphs, media, publications);
-      const other = new NodeService(repository, graphs, media, publications);
+      const one = new NodeService(
+        repository,
+        finds,
+        graphs,
+        media,
+        publications,
+      );
+      const other = new NodeService(
+        repository,
+        finds,
+        graphs,
+        media,
+        publications,
+      );
 
       const parent = await newNode(ada, { title: "Two writers" });
       const born = await Promise.all(
@@ -956,6 +971,178 @@ describe("the domain routes", () => {
     });
   });
 
+  describe("finding a note again", () => {
+    /** A section of plain prose, one paragraph per line. */
+    const prose = (...lines: string[]) => ({
+      type: "doc",
+      content: lines.map((line) => ({
+        type: "paragraph",
+        content: [{ type: "text", text: line }],
+      })),
+    });
+
+    const write = (person: Person, note: NodeView, ...lines: string[]) =>
+      ok("POST", "/blocks", person, {
+        node: note.ref,
+        content: prose(...lines),
+      }) as Promise<BlockView>;
+
+    const searching = (person: Person, asked: string, graph?: OwnedRef) =>
+      ok(
+        "GET",
+        `/nodes/search?q=${encodeURIComponent(asked)}${
+          graph ? `&graph=${encodeURIComponent(graph)}` : ""
+        }`,
+        person,
+      ) as Promise<SearchHit[]>;
+
+    const written = (person: Person, query = "") =>
+      ok("GET", `/nodes/recent${query}`, person) as Promise<NodeView[]>;
+
+    scenario("answers with a note by a phrase written inside it", async () => {
+      const note = await newNode(ada, { title: "Where the spores went" });
+      await write(
+        ada,
+        note,
+        "The chanterelles came back after a fortnight of rain.",
+      );
+
+      const hit = (await searching(ada, "chanterelle")).find(
+        (one) => one.note === note.ref,
+      );
+
+      expect(hit).toBeDefined();
+      expect(hit?.title).toBe("Where the spores went");
+      expect(hit?.address).toBe(note.address);
+      expect(hit?.held).toBe(false);
+      expect(hit?.snippet).toContain("chanterelles");
+    });
+
+    scenario("keeps one person's writing out of another's", async () => {
+      const theirs = await newNode(bram, { title: "His own" });
+      await write(bram, theirs, "A word only he wrote down: syzygy.");
+
+      expect(await searching(ada, "syzygy")).toEqual([]);
+      expect((await searching(bram, "syzygy")).map((one) => one.note)).toEqual([
+        theirs.ref,
+      ]);
+    });
+
+    scenario("follows the writing when it is written over", async () => {
+      const note = await newNode(ada, { title: "Rewritten" });
+      const section = await write(ada, note, "About the quagga.");
+
+      await ok("PATCH", `/blocks/${at(section.ref)}`, ada, {
+        content: prose("About the axolotl instead."),
+      });
+
+      expect(await searching(ada, "quagga")).toEqual([]);
+      expect((await searching(ada, "axolotl")).map((one) => one.note)).toEqual([
+        note.ref,
+      ]);
+    });
+
+    scenario("stops answering with a note that has been deleted", async () => {
+      const note = await newNode(ada, { title: "Going" });
+      await write(ada, note, "It smelled of petrichor all afternoon.");
+      expect(
+        (await searching(ada, "petrichor")).map((one) => one.note),
+      ).toEqual([note.ref]);
+
+      expect((await call("DELETE", `/nodes/${at(note.ref)}`, ada)).status).toBe(
+        204,
+      );
+
+      expect(await searching(ada, "petrichor")).toEqual([]);
+    });
+
+    scenario("narrows to the graph somebody names", async () => {
+      const elsewhere = await newGraph(ada, "The kitchen");
+      const here = await newNode(ada, { title: "In the home graph" });
+      const there = await newNode(ada, {
+        from: { relation: "branch", graph: elsewhere.ref },
+        title: "In the other one",
+      });
+      await write(ada, here, "A note on sourdough.");
+      await write(ada, there, "Another note on sourdough.");
+
+      expect(
+        (await searching(ada, "sourdough")).map((one) => one.note).sort(),
+      ).toEqual([here.ref, there.ref].sort());
+      expect(
+        (await searching(ada, "sourdough", elsewhere.ref)).map(
+          (one) => one.note,
+        ),
+      ).toEqual([there.ref]);
+    });
+
+    scenario("answers nothing when nothing was asked", async () => {
+      expect(await searching(ada, "   ")).toEqual([]);
+    });
+
+    scenario("puts what was last written into first", async () => {
+      const older = await newNode(ada, { title: "Written into first" });
+      await write(ada, older, "The first thing written.");
+      const newer = await newNode(ada, { title: "Written into second" });
+      await write(ada, newer, "The second thing written.");
+
+      const order = (notes: NodeView[]) =>
+        notes.findIndex((one) => one.ref === newer.ref) <
+        notes.findIndex((one) => one.ref === older.ref);
+      expect(order(await written(ada))).toBe(true);
+
+      // A title is not writing, so it does not move a note up the list.
+      await ok("PATCH", `/nodes/${at(older.ref)}`, ada, { title: "Renamed" });
+      expect(order(await written(ada))).toBe(true);
+
+      await write(ada, older, "And now something written into it.");
+      expect((await written(ada))[0].ref).toBe(older.ref);
+    });
+
+    scenario("answers with as many as it was asked for", async () => {
+      expect((await written(ada, "?limit=1")).length).toBe(1);
+      expect((await call("GET", "/nodes/recent?limit=0", ada)).status).toBe(
+        400,
+      );
+    });
+
+    scenario("names only the notes in the graph it was given", async () => {
+      const elsewhere = await newGraph(ada, "The greenhouse");
+      const there = await newNode(ada, {
+        from: { relation: "branch", graph: elsewhere.ref },
+        title: "Under glass",
+      });
+      await write(ada, there, "Tomatoes in February.");
+
+      const listed = await written(
+        ada,
+        `?graph=${encodeURIComponent(elsewhere.ref)}`,
+      );
+
+      expect(listed.map((one) => one.ref)).toEqual([there.ref]);
+    });
+
+    scenario("reaches writing stored before anything read it", async () => {
+      const note = await newNode(ada, { title: "Written long ago" });
+      await write(ada, note, "A word from before all this: hoopoe.");
+
+      const { DbService } = await import("../db/db.service");
+      await app
+        .get(DbService)
+        .handle.query("UPDATE block SET text = NONE WHERE created_by = $did", {
+          did: ada.did,
+        });
+      expect(await searching(ada, "hoopoe")).toEqual([]);
+
+      const { TextBackfill } = await import("../block/text-backfill");
+      expect(await app.get(TextBackfill).run()).toBeGreaterThan(0);
+
+      expect((await searching(ada, "hoopoe")).map((one) => one.note)).toEqual([
+        note.ref,
+      ]);
+    });
+  });
+
   describe("the run a note continues", () => {
     // AI.md § "The Address Is the Protocol": the run is a function of the two
     // addresses, so no placement writes one down. `links` stays what a person
@@ -991,7 +1178,7 @@ describe("the domain routes", () => {
           true,
         );
 
-        const opened = await newGraph(bram, "Field notes");
+        await newGraph(bram, "Field notes");
         const after = (await ok("GET", "/graphs", bram)) as GraphView[];
         expect(after[0].ref).toBe(homeGraphRef(bram.did));
         expect(after.map((graph) => graph.title)).toContain("Field notes");
