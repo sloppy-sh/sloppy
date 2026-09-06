@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import { createServer as createSocket } from "node:net";
 import { MAX_PUBLISHED_PAGE_BYTES } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { readPeerJson } from "./peer-fetch";
+import { readPeerJson, tellPeerJson } from "./peer-fetch";
 
 /** A development machine's policy: two instances on one host are a real test. */
 const HERE = { allowPrivate: true };
@@ -91,5 +91,67 @@ describe("reading a peer's public endpoint", () => {
     await expect(
       readPeerJson(`${origin}/here`, { allowPrivate: false }),
     ).rejects.toThrow(/could not reach that instance/);
+  });
+});
+
+describe("leaving something at a peer's public endpoint", () => {
+  let server: Server;
+  let origin: string;
+  let taken: { path: string; body: string; type: string | undefined }[] = [];
+
+  beforeAll(async () => {
+    const port = await freePort();
+    origin = `http://127.0.0.1:${port}`;
+    server = createServer((req, res) => {
+      const path = req.url ?? "/";
+      let body = "";
+      req.on("data", (chunk) => {
+        body += String(chunk);
+      });
+      req.on("end", () => {
+        taken.push({ path, body, type: req.headers["content-type"] });
+        res.writeHead(path === "/refused" ? 500 : 204).end();
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(port, "127.0.0.1", resolve),
+    );
+  });
+
+  afterAll(() => server?.close());
+
+  it("says it, and says it as JSON", async () => {
+    taken = [];
+    expect(
+      await tellPeerJson(`${origin}/left`, { voice: "somebody" }, HERE),
+    ).toBe(true);
+    expect(taken).toEqual([
+      {
+        path: "/left",
+        body: JSON.stringify({ voice: "somebody" }),
+        type: "application/json",
+      },
+    ]);
+  });
+
+  // The caller's own work is already done, so a peer that will not take this
+  // costs an answer and never an exception.
+  it("answers no where the peer refuses it", async () => {
+    expect(await tellPeerJson(`${origin}/refused`, {}, HERE)).toBe(false);
+  });
+
+  it("answers no where nothing is listening at all", async () => {
+    const port = await freePort();
+    expect(await tellPeerJson(`http://127.0.0.1:${port}/left`, {}, HERE)).toBe(
+      false,
+    );
+  });
+
+  it("answers no at an address this deployment will not connect to", async () => {
+    taken = [];
+    expect(
+      await tellPeerJson(`${origin}/left`, {}, { allowPrivate: false }),
+    ).toBe(false);
+    expect(taken).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import { Injectable } from "@nestjs/common";
 import {
   type Address,
   type DidSyr,
+  graphRef,
   MAX_PUBLISHED_CHANGES_PER_PAGE,
   type OwnedRef,
   ownedRefFrom,
@@ -79,10 +80,14 @@ export class PublishedService {
           : [{ version: ownedRefFrom(version.id), address: row.root_address }];
       }),
     );
+    const notebooks = await this.publications.graphTitles(
+      did,
+      listed.map((row) => graphRef(did, row.graph)),
+    );
     return {
       did,
       publications: listed.flatMap((row) =>
-        published(row, latest.get(ownedRefFrom(row.id)), titles),
+        published(row, latest.get(ownedRefFrom(row.id)), titles, notebooks),
       ),
       ...(run.length > PUBLICATIONS_PER_PAGE
         ? {
@@ -118,11 +123,13 @@ export class PublishedService {
       of,
       pageMark(cursor, of),
     );
+    const notebook = await this.notebook(did, chain.graph);
     return {
       publication,
       version: publicationVersion(version),
       root_address: chain.root_address,
       graph: chain.graph,
+      ...(notebook === undefined ? {} : { graph_title: notebook }),
       comments: chain.comments,
       nodes: page.nodes,
       blocks: page.blocks,
@@ -200,6 +207,16 @@ export class PublishedService {
         ? {}
         : { next_cursor: markPage({ of, at: resume }) }),
     };
+  }
+
+  /** What the author calls the notebook a region's addresses are read in;
+   *  `undefined` where they have not named it. */
+  private async notebook(
+    did: DidSyr,
+    graph: OwnedRef | undefined,
+  ): Promise<string | undefined> {
+    const of = graphRef(did, graph);
+    return (await this.publications.graphTitles(did, [of])).get(of);
   }
 
   /** The version a read answers with: the one it names, or the newest. */
@@ -503,14 +520,17 @@ function published(
   row: Publication,
   version: PublicationVersion | undefined,
   titles: ReadonlyMap<OwnedRef, string>,
+  notebooks: ReadonlyMap<OwnedRef, string>,
 ): PublishedPublication[] {
   if (version === undefined) return [];
   const ref = ownedRefFrom(version.id);
+  const notebook = notebooks.get(graphRef(row.created_by, row.graph));
   return [
     {
       ref: ownedRefFrom(row.id),
       root_address: row.root_address,
       graph: row.graph,
+      ...(notebook === undefined ? {} : { graph_title: notebook }),
       title: titles.get(ref) ?? "",
       latest: publicationVersion(version),
     },

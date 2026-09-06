@@ -7,9 +7,14 @@
 	 *  crosses from one to the next. */
 	export interface TreeGroup {
 		key: string;
-		/** Drawn only where there is more than one group. */
+		/** Drawn where there is more than one group, or where somebody else wrote
+		 *  these notes. */
 		title: string;
 		notes: readonly TreeNote[];
+		/** Whoever wrote them, where that is not the reader — named over the tree
+		 *  and in the tree's own name, so a walk says whose graph it is in before
+		 *  it reads a title. */
+		author?: string;
 	}
 
 	export interface TreeSurfaceProps {
@@ -108,6 +113,7 @@
 							{
 								key: `lead:${group.key}`,
 								title: head.title,
+								author: group.author,
 								lead: true,
 								rows: leadRows(head.notes)
 							}
@@ -116,6 +122,7 @@
 				{
 					key: group.key,
 					title: group.title,
+					author: group.author,
 					lead: false,
 					rows: walkTree({
 						notes: group.notes,
@@ -275,21 +282,22 @@
 	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
-		{#each drawn as { key: group, title, lead: heads, rows } (group)}
+		{#each drawn as { key: group, title, author, lead: heads, rows } (group)}
 			{#if rows.length > 0}
 				{@const held = stop(group, heads, rows)}
+				{@const by = author ? `${title || 'Notes'} by ${author}` : null}
 				<section class="pt-2">
-					{#if heads || groups.length > 1}
+					{#if by || heads || groups.length > 1}
 						<!-- Stuck below the chrome the tree is inset off, not under it. -->
 						<h2
 							class="sticky z-10 truncate bg-background/95 py-2 text-xs font-medium text-muted-foreground backdrop-blur"
 							style="top: {inset.top}"
 						>
-							{title || 'Untitled'}
+							{by ?? (title || 'Untitled')}
 						</h2>
 					{/if}
 
-					<div role="tree" aria-label={title || 'Notes'}>
+					<div role="tree" aria-label={by ?? (title || 'Notes')}>
 						{#each rows as row (rowKey(heads, row))}
 							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}

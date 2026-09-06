@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import {
+  type Converses,
   type CreateUploadRequest,
   type SyrComment,
   type SyrCommentCreateRequest,
@@ -553,6 +554,23 @@ export class SyrService {
     return endpoints.public_following !== undefined;
   }
 
+  /**
+   * Whether this identity's store publishes what a conversation is read back
+   * from, each half on its own. A store that takes a comment and lists none
+   * hands the writer one that is gone on the next read, so the question is what
+   * it SERVES and never where the identity lives.
+   */
+  async keepsConversation(
+    instanceUrl: string,
+    did: string,
+  ): Promise<Converses> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    return {
+      comments: Boolean(endpoints.public_comments),
+      reactions: Boolean(endpoints.public_reactions),
+    };
+  }
+
   /** Who this person follows, as their own store keeps it. */
   async listFollowing(delegation: Delegation): Promise<SyrFollow[]> {
     const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
@@ -627,6 +645,35 @@ export class SyrService {
       if (page.length < EMOJI_PER_READ) break;
     }
     return held;
+  }
+
+  /**
+   * One page of what an identity keeps in the open, as their own instance
+   * publishes it. syr serves no public read of a single upload, so finding one
+   * is a walk of these pages rather than a lookup — docs/ARCHITECTURE.md
+   * § "Pictures", and `media/held-pictures.ts` is the walk.
+   */
+  async listPublicUploads(
+    instanceUrl: string,
+    did: string,
+    page: { limit: number; offset: number },
+    reach?: HostPolicy,
+  ): Promise<SyrOwnedUpload[]> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did, reach);
+    const url = `${endpoints.uploads}?limit=${page.limit}&offset=${page.offset}`;
+    const failure = "That picture could not be loaded.";
+    const body = await this.readJson(
+      url,
+      { headers: { accept: "application/json" } },
+      failure,
+      reach,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrOwnedUploadSchema)),
+      body,
+      url,
+      failure,
+    ).data;
   }
 
   /** Anyone's catalog, as that identity's own instance publishes it. An empty

@@ -378,6 +378,26 @@ export class PublicationRepository {
     return titles;
   }
 
+  /** What the author calls each of those notebooks. A graph with no row here
+   *  has no name to send, which is the absent answer on the wire. */
+  async graphTitles(
+    did: string,
+    graphs: readonly OwnedRef[],
+  ): Promise<Map<OwnedRef, string>> {
+    const named = new Map<OwnedRef, string>();
+    const wanted = [...new Set(graphs)];
+    if (wanted.length === 0) return named;
+    const [rows] = await this.query<{ id: RecordId; title: string }>(
+      "SELECT id, title FROM graph WHERE created_by = $did AND id IN $ids",
+      {
+        did,
+        ids: wanted.map((ref) => recordIdFromOwnedRef("graph", ref)),
+      },
+    );
+    for (const row of rows) named.set(ownedRefFrom(row.id), row.title);
+    return named;
+  }
+
   async assetsOf(did: string, publication: OwnedRef): Promise<SnapshotAsset[]> {
     const [rows] = await this.query(
       `SELECT * FROM snapshot_asset

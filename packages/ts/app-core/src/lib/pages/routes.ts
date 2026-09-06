@@ -27,6 +27,12 @@ export function navRoutes(person: Person | null): NavItem[] {
 /** Reachable with no account — DESIGN.md § Persistence, on appearance. */
 export const OPEN_ROUTES = ['/sign-in', '/settings'];
 
+/** Whether a path stands without an account. A cited note is one of them and is
+ *  not in the list above, because its path carries the note it names. */
+export function isOpenRoute(path: string): boolean {
+	return OPEN_ROUTES.includes(path) || refFromPath(path) !== null;
+}
+
 /** The graph is the fallback because every note sits on it. */
 export function activeRouteId(path: string): string {
 	const match = APP_ROUTES.filter((route) => route.href !== '/').find(
