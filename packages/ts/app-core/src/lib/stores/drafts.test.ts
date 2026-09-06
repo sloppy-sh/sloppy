@@ -65,6 +65,14 @@ describe('the writing a device is holding for a note', () => {
 		await expect(drafts.read(NOTE)).resolves.toBeNull();
 	});
 
+	it('is not written over by a surface taken down before it', async () => {
+		const leaving = drafts.keep(NOTE, draft('the one being left'));
+		drafts.keep(NOTE, draft('the one just written'));
+		drafts.keep(NOTE, draft('what the surface being left is still holding'), leaving);
+
+		await expect(drafts.read(NOTE).then(said)).resolves.toBe('the one just written');
+	});
+
 	it('is not worth saying anything about until it has been waiting', () => {
 		drafts.keep(NOTE, draft('on its way'));
 		expect(drafts.waiting(NOTE)).toBe(false);
@@ -74,6 +82,19 @@ describe('the writing a device is holding for a note', () => {
 
 		drafts.forget(NOTE);
 		expect(drafts.waiting(NOTE)).toBe(false);
+	});
+
+	it('is on its way again for as long as the server keeps taking it', () => {
+		drafts.keep(NOTE, draft('the first of it'));
+		vi.advanceTimersByTime(2000);
+		drafts.landed(NOTE);
+		drafts.keep(NOTE, draft('and more of it'));
+
+		vi.advanceTimersByTime(2000);
+		expect(drafts.waiting(NOTE)).toBe(false);
+
+		vi.advanceTimersByTime(2000);
+		expect(drafts.waiting(NOTE)).toBe(true);
 	});
 
 	it('is said of a note opened on writing left here before', async () => {

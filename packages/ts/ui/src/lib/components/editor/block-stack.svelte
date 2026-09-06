@@ -141,25 +141,23 @@
 		from: Editor;
 		rows: SavedBlock[];
 		next: DocBlock[];
-		/** The surface it left from, so a trip outliving that surface stops
-		 *  writing down what a later one is now holding. */
-		era: number;
+		/** The draft this trip is the last one kept for, so a trip outliving its
+		 *  surface writes over its own and never what a later one is holding. */
+		kept: number;
 	}
 
 	/** The trip still in the air, so the next one queues behind it rather than racing it. */
 	let inFlight: Promise<void> = Promise.resolve();
-	/** Which draft this surface last wrote, so the one it wrote is the one it drops. */
-	let kept = 0;
 
 	function plan(): Write | null {
 		const current = editor;
 		if (!current || current.isDestroyed) return null;
 		const next = docBlocks(current.state.doc);
-		// The device holds the writing exactly as long as the API is missing some.
-		if (planSave(saved, next).length > 0) {
-			kept = drafts?.keep(writingTo, { rows: saved, next }) ?? kept;
-		}
-		return { note: writingTo, from: current, rows: saved, next, era };
+		const outstanding = planSave(saved, next).length > 0;
+		const kept = outstanding
+			? (drafts?.keep(writingTo, { rows: saved, next }) ?? 0)
+			: (drafts?.last(writingTo) ?? 0);
+		return { note: writingTo, from: current, rows: saved, next, kept };
 	}
 
 	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
@@ -184,9 +182,9 @@
 					// it rather than asking for the section a second time.
 					const made = write.next.find((block) => block.uid === uid);
 					if (made) made.ref = ref;
-					if (write.era === era) {
-						kept = drafts?.keep(write.note, { rows: write.rows, next: write.next }) ?? kept;
-					}
+					write.kept =
+						drafts?.keep(write.note, { rows: write.rows, next: write.next }, write.kept) ??
+						write.kept;
 				}
 			});
 		});
@@ -235,9 +233,10 @@
 			if (mine === era) {
 				saveState = 'saved';
 				failed = null;
+				drafts?.landed(write.note);
 				// Nothing was written while the trip was in the air, so what the
 				// device was holding for this note is now the note.
-				if (changedAt === 0 && !again) drafts?.forget(write.note);
+				if (changedAt === 0 && !again) drafts?.forget(write.note, write.kept);
 			}
 		} catch (error: unknown) {
 			if (mine === era) {
@@ -600,10 +599,6 @@
 			failed = null;
 			refreshMarks();
 
-			// The note is on screen from what the API answered with, and reopens
-			// from the writing this device is still holding for it the moment that
-			// answers — measured against the stack, so what was written elsewhere
-			// in between is not written over.
 			let opened = true;
 			void (async () => {
 				const held = await drafts?.read(opening);
@@ -632,7 +627,6 @@
 				clearTimeout(settling);
 				settle();
 				const last = plan();
-				const wrote = kept;
 				era += 1;
 				again = false;
 				saving = false;
@@ -649,7 +643,7 @@
 				// and the note opens from there when it does not.
 				if (last) {
 					void run(last).then(
-						() => drafts?.forget(last.note, wrote),
+						() => drafts?.forget(last.note, last.kept),
 						() => undefined
 					);
 				}

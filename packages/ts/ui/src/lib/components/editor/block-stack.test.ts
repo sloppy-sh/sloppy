@@ -53,6 +53,8 @@ function reading(element: DocumentNode): string {
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let written: Written;
+/** The rows the creates became, so a note can be opened again on what landed. */
+let made: BlockView[];
 /** Set to keep every create in flight until the test lets it answer. */
 let answering: Promise<void> | null;
 
@@ -62,18 +64,25 @@ function deviceDrafts(held: Record<string, NoteDraft> = {}) {
 	const kept: NoteDraft[] = [];
 	const forgotten: OwnedRef[] = [];
 	let which = 0;
+	const last = new Map<OwnedRef, number>();
 	const store: DraftStore = {
 		read: async (note) => held[note] ?? null,
-		keep: (note, draft) => {
+		last: (note) => last.get(note) ?? 0,
+		keep: (note, draft, since) => {
+			if (since !== undefined && (last.get(note) ?? 0) > since) return since;
 			const copy = structuredClone(draft);
 			kept.push(copy);
 			held[note] = copy;
-			return ++which;
+			last.set(note, ++which);
+			return which;
 		},
-		forget: (note) => {
+		forget: (note, since) => {
+			if (since !== undefined && (last.get(note) ?? 0) > since) return;
+			last.delete(note);
 			forgotten.push(note);
 			delete held[note];
-		}
+		},
+		landed: () => undefined
 	};
 	return { store, kept, forgotten, holds: (note: OwnedRef) => note in held };
 }
@@ -106,7 +115,9 @@ function open(
 				written.created.push(request);
 				if (answering) await answering;
 				refused();
-				return block({ content: request.content as BlockDocument, ref: ref() });
+				const row = block({ content: request.content as BlockDocument, ref: ref() });
+				made.push(row);
+				return row;
 			},
 			onUpdate: async (block: OwnedRef, request: Record<string, unknown>) => {
 				written.updated.push({ ref: block, ...request });
@@ -163,6 +174,7 @@ function penEvent(type: string, x: number, y: number, pressure = 0.5): PointerEv
 
 beforeEach(() => {
 	written = { created: [], updated: [], removed: [], moved: [] };
+	made = [];
 	answering = null;
 	stubResizeObserver();
 	stubMediaQuery(() => false);
@@ -491,6 +503,34 @@ describe('writing that has not reached the server', () => {
 		answer();
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(device.forgotten).toEqual([NOTE.ref]);
+	});
+
+	it('names a section whose create landed on the way out, so it is not written twice', async () => {
+		const device = deviceDrafts();
+		let reached = 0;
+		open([], {
+			drafts: device.store,
+			refuse: () => (++reached > 1 ? new SaveFailure('transient') : undefined)
+		});
+		const of = writingIn();
+		of.commands.insertContent('the first');
+		of.commands.addSection();
+		of.commands.insertContent('and one more');
+		close();
+		await vi.advanceTimersByTimeAsync(1000);
+
+		const stack = made;
+		expect(stack.map((row) => wording(row.content)[0])).toEqual(['the first']);
+
+		written = { created: [], updated: [], removed: [], moved: [] };
+		open(stack, { drafts: device.store });
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(target.querySelector('.sloppy-prose')?.textContent).toBe('the firstand one more');
+		expect(written.created.map((row) => wording(row.content as BlockDocument)[0])).toEqual([
+			'and one more'
+		]);
+		expect(device.holds(NOTE.ref)).toBe(false);
 	});
 
 	it('is still there when the note is left and the last write does not land', async () => {

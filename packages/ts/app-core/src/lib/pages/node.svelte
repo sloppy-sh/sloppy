@@ -575,8 +575,7 @@
 	 *  reader reaches from anywhere in a long note — so its answers have to reach
 	 *  them from there too. Gravest first. */
 	const saysHere = $derived(
-		refused.writing ||
-			(!removing && refused.remove) ||
+		(!removing && refused.remove) ||
 			(!publishing && refused.publish) ||
 			(!linking && refused.link) ||
 			(side !== 'look' && refused.look) ||
@@ -1323,6 +1322,9 @@
 			{/if}
 		</div>
 
+		{#if refused.writing}
+			<p class="pb-1 text-sm text-destructive" role="alert">{refused.writing}</p>
+		{/if}
 		{#if saysHere}
 			<p class="pb-1 text-sm text-destructive" role="alert">{saysHere}</p>
 		{:else if unsaved}

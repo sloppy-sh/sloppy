@@ -31,33 +31,47 @@ class DraftsStore implements DraftStore {
 		return held;
 	}
 
-	keep(note: OwnedRef, draft: NoteDraft): number {
-		const which = ++this.#count;
-		this.#last.set(note, which);
+	last(note: OwnedRef): number {
+		return this.#last.get(note) ?? 0;
+	}
+
+	keep(note: OwnedRef, draft: NoteDraft, which?: number): number {
+		if (which !== undefined && this.last(note) > which) return which;
+		const now = ++this.#count;
+		this.#last.set(note, now);
 		this.#hold(note);
 		// The surface hands over its own live rows, so what is written down is a
 		// copy taken now rather than whatever they say by the time it lands.
 		void this.#area()
 			?.set(note, structuredClone(draft))
 			.catch(() => undefined);
-		return which;
+		return now;
 	}
 
 	forget(note: OwnedRef, which?: number): void {
-		if (which !== undefined && this.#last.get(note) !== which) return;
+		if (which !== undefined && this.last(note) > which) return;
 		this.#last.delete(note);
-		clearTimeout(this.#holding.get(note));
-		this.#holding.delete(note);
-		this.#waiting.delete(note);
+		this.#rest(note);
 		void this.#area()
 			?.delete(note)
 			.catch(() => undefined);
+	}
+
+	landed(note: OwnedRef): void {
+		this.#rest(note);
+		if (this.#last.has(note)) this.#hold(note);
 	}
 
 	/** Whether this device is still holding writing for a note that the server
 	 *  has not taken. False while one is simply on its way. */
 	waiting(note: OwnedRef): boolean {
 		return this.#waiting.has(note);
+	}
+
+	#rest(note: OwnedRef): void {
+		clearTimeout(this.#holding.get(note));
+		this.#holding.delete(note);
+		this.#waiting.delete(note);
 	}
 
 	#hold(note: OwnedRef): void {

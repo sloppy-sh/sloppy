@@ -64,11 +64,17 @@ export interface NoteDraft {
  *  the app hands in the store it keeps. */
 export interface DraftStore {
 	read(note: OwnedRef): Promise<NoteDraft | null>;
-	/** Answers with which draft this is, so a surface being taken down can drop
-	 *  the one it wrote and not one written after it. */
-	keep(note: OwnedRef, draft: NoteDraft): number;
-	/** `which` drops the draft only where it is still the last one kept. */
+	/** Which draft the note holds now; 0 where none has been kept for it. */
+	last(note: OwnedRef): number;
+	/** Answers with which draft this is. `which` writes only where nothing has
+	 *  been kept for the note since, so a trip outliving the surface that asked
+	 *  for it cannot write over what a later surface is holding. */
+	keep(note: OwnedRef, draft: NoteDraft, which?: number): number;
+	/** `which` drops the draft only where nothing has been kept since. */
 	forget(note: OwnedRef, which?: number): void;
+	/** A write reached the server: whatever is still held for the note is on its
+	 *  way rather than waiting here. */
+	landed(note: OwnedRef): void;
 }
 
 /** Why a write did not land, as far as it decides what the surface does next. */

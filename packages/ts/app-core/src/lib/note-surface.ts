@@ -28,7 +28,11 @@ export function saveFailure(error: unknown): SaveFailure {
 	if (error.status === 409) return new SaveFailure('elsewhere');
 	if (error.status === 401) return new SaveFailure('refused', 'Sign in again to keep this note.');
 	if (error.status >= 500 || BUSY.has(error.status)) return new SaveFailure('transient');
-	return new SaveFailure('refused', serverMessage(error) ?? 'Sloppy cannot save this note.');
+	return new SaveFailure(
+		'refused',
+		serverMessage(error) ??
+			'Sloppy cannot save this note. Your writing is kept on this device — try again in a moment.'
+	);
 }
 
 export const noteMedia: NoteMedia = {
