@@ -25,9 +25,12 @@ export const TOP = '';
 export const RUN_PAGE = 100;
 
 /**
- * How many rows the reader's tags open. Nothing else bounds this the way
- * {@link RUN_PAGE} bounds a run: every branch holding a lit note would unfold
- * at once. Past it a branch is left for the reader to open.
+ * How many rows the reader's tags draw, over every branch they open together.
+ * Nothing else bounds this the way {@link RUN_PAGE} bounds a run: a graph is
+ * deep as well as wide, so every branch holding a lit note would unfold at once
+ * and each one draw a run. Past it a run stops at its rest row, which says how
+ * many of the waiting notes are lit, and the branches below it are left for the
+ * reader to open.
  */
 export const LIT_PAGE = 100;
 
@@ -124,7 +127,8 @@ export function walkTree({
 		// A page that stops short of the note being read would leave the reader
 		// looking for themselves behind "show more".
 		const held = reading === null ? -1 : frame.run.findIndex((one) => one.ref === reading);
-		const drawn = Math.min(frame.run.length, Math.max(asked, held + 1));
+		const litRoom = frame.underLit ? Math.max(frame.at, held + 1, budget) : frame.run.length;
+		const drawn = Math.min(frame.run.length, Math.max(asked, held + 1), litRoom);
 		const at = frame.at;
 		if (at >= drawn) {
 			stack.pop();

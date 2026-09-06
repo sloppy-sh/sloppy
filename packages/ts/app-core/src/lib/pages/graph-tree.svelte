@@ -38,29 +38,24 @@
 
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
 
-	let written = $state<readonly OwnedRef[]>([]);
-	const own = $derived(fields !== undefined);
+	let written = $state<readonly { graph: OwnedRef; notes: readonly OwnedRef[] }[]>([]);
 
 	$effect(() => {
-		if (!own) return;
+		if (!fields) return;
 		let live = true;
-		void api
-			.recentNotes()
-			.then((recent) => {
-				if (live) written = recent.map((note) => note.ref);
+		void Promise.all(
+			fields.map(async (field) => {
+				const recent = await api
+					.recentNotes({ graph: field.ref, limit: LAST_WRITTEN })
+					.catch(() => []);
+				return { graph: field.ref, notes: recent.map((note) => note.ref) };
 			})
-			.catch(() => {});
+		).then((runs) => {
+			if (live) written = runs;
+		});
 		return () => {
 			live = false;
 		};
-	});
-
-	const lead = $derived.by((): TreeSurfaceProps['lead'] => {
-		const last = written
-			.map((ref) => byRef.get(ref))
-			.filter((note): note is NodeView => note !== undefined)
-			.slice(0, LAST_WRITTEN);
-		return last.length > 0 ? { title: 'Last written', notes: last } : undefined;
 	});
 
 	const groups = $derived.by((): TreeGroup[] => {
@@ -81,6 +76,20 @@
 		return order
 			.map((of) => ({ key: of, title: named.get(of) ?? '', notes: held.get(of) ?? [] }))
 			.filter((group) => group.notes.length > 0);
+	});
+
+	const lead = $derived.by((): TreeSurfaceProps['lead'] => {
+		const runs = groups.flatMap((group) => {
+			const last = (written.find((run) => run.graph === group.key)?.notes ?? [])
+				.map((ref) => byRef.get(ref))
+				.filter((note): note is NodeView => note !== undefined)
+				.slice(0, LAST_WRITTEN);
+			if (last.length === 0) return [];
+			const title =
+				groups.length > 1 ? `Last written in ${group.title || 'Untitled'}` : 'Last written';
+			return [{ group: group.key, title, notes: last }];
+		});
+		return runs.length > 0 ? runs : undefined;
 	});
 
 	// A note reached from anywhere else — the canvas, a link inside another note,

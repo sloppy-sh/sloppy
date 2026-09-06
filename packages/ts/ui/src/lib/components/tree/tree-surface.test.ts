@@ -44,7 +44,7 @@ let scrolledTo: HTMLElement[];
 function render(
 	props: {
 		groups?: TreeGroup[];
-		lead?: { title: string; notes: TreeNote[] };
+		lead?: { group: string; title: string; notes: TreeNote[] }[];
 		opened?: Set<OwnedRef>;
 		selection?: Tag[];
 		reading?: OwnedRef | null;
@@ -440,7 +440,7 @@ describe('a run longer than a page', () => {
 // PRODUCT.md § Purpose: capture demands nothing, so yesterday's note is often
 // untitled and untagged, and the only thing anybody remembers of it is when.
 describe('the notes last written into', () => {
-	const last = { title: 'Last written', notes: [note('2'), note('1a', '1')] };
+	const last = [{ group: 'one', title: 'Last written', notes: [note('2'), note('1a', '1')] }];
 
 	it('heads the walk, in the order it was given rather than in address order', () => {
 		render({ lead: last });
@@ -461,7 +461,7 @@ describe('the notes last written into', () => {
 	});
 
 	it('counts nothing and branches nowhere', () => {
-		render({ lead: { title: 'Last written', notes: [note('1')] } });
+		render({ lead: [{ group: 'one', title: 'Last written', notes: [note('1')] }] });
 		const first = rows()[0];
 		expect(first.querySelector('[aria-label^="Unfold"]')).toBeNull();
 		expect(first.getAttribute('aria-expanded')).toBeNull();
@@ -469,13 +469,58 @@ describe('the notes last written into', () => {
 	});
 
 	it('draws nothing where nothing has been written into', () => {
-		render({ lead: { title: 'Last written', notes: [] } });
+		render({ lead: [{ group: 'one', title: 'Last written', notes: [] }] });
 		expect(target.querySelector('h2')).toBeNull();
 		expect(target.querySelectorAll('[role="tree"]')).toHaveLength(1);
 	});
 
+	it('draws nothing for a graph it was given no run for', () => {
+		render({
+			groups: [
+				{ key: 'a', title: 'Thesis', notes: [note('1')] },
+				{ key: 'b', title: 'Garden', notes: [note('2')] }
+			],
+			lead: [{ group: 'b', title: 'Last written in Garden', notes: [note('2')] }]
+		});
+		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
+			'Thesis',
+			'Last written in Garden',
+			'Garden'
+		]);
+	});
+
+	it('stands each run over the tree of the graph it was written in', () => {
+		render({
+			groups: [
+				{ key: 'a', title: 'Thesis', notes: [note('1')] },
+				{ key: 'b', title: 'Garden', notes: [note('2')] }
+			],
+			lead: [
+				{ group: 'a', title: 'Last written in Thesis', notes: [note('1')] },
+				{ group: 'b', title: 'Last written in Garden', notes: [note('2')] }
+			]
+		});
+		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
+			'Last written in Thesis',
+			'Thesis',
+			'Last written in Garden',
+			'Garden'
+		]);
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(trees).toHaveLength(4);
+		expect(trees.map((tree) => tree.querySelector('.address')?.textContent?.trim())).toEqual([
+			'1',
+			'1',
+			'2',
+			'2'
+		]);
+	});
+
 	it('leaves the walk landing on the tree’s row rather than on its own', () => {
-		render({ lead: { title: 'Last written', notes: [note('2')] }, reading: held('2') });
+		render({
+			lead: [{ group: 'one', title: 'Last written', notes: [note('2')] }],
+			reading: held('2')
+		});
 		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
 		expect(scrolledTo).toEqual([trees[1].querySelector(`[data-row="${held('2')}"]`)]);
 	});

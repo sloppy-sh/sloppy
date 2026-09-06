@@ -14,9 +14,11 @@
 
 	export interface TreeSurfaceProps {
 		groups: readonly TreeGroup[];
-		/** A short run drawn above the trees, in the order it is given rather than
-		 *  in address order, with nothing under it. */
-		lead?: { title: string; notes: readonly TreeNote[] };
+		/** A short run drawn at the head of one group's tree, in the order it is
+		 *  given rather than in address order and with nothing under it. It names
+		 *  the group it belongs to: an address is read inside the graph it was
+		 *  written in, so a run never stands over the trees as one list. */
+		lead?: readonly { group: string; title: string; notes: readonly TreeNote[] }[];
 		/** The notes whose children are drawn. */
 		opened: ReadonlySet<OwnedRef>;
 		/** The reader's tags, in selection order — the order the hues go out in,
@@ -79,7 +81,7 @@
 	const tabbed = new SvelteMap<string, string>();
 
 	/** The branches the reader folded back up, so a selected tag stops opening
-	 *  them. Letting the tag go returns every branch to the fold it was left at. */
+	 *  them. */
 	const shut = new SvelteSet<OwnedRef>();
 	let shutFor = '';
 	$effect(() => {
@@ -97,24 +99,36 @@
 
 	const slots = $derived(assignTagHueSlots(selection));
 
-	const drawn = $derived([
-		...(lead && lead.notes.length > 0
-			? [{ key: 'lead', title: lead.title, lead: true, rows: leadRows(lead.notes) }]
-			: []),
-		...groups.map((group) => ({
-			key: group.key,
-			title: group.title,
-			lead: false,
-			rows: walkTree({
-				notes: group.notes,
-				opened,
-				shown: paged.get(group.key) ?? EMPTY,
-				reading,
-				selection,
-				shut
-			})
-		}))
-	]);
+	const drawn = $derived(
+		groups.flatMap((group) => {
+			const head = lead?.find((one) => one.group === group.key);
+			return [
+				...(head && head.notes.length > 0
+					? [
+							{
+								key: `lead:${group.key}`,
+								title: head.title,
+								lead: true,
+								rows: leadRows(head.notes)
+							}
+						]
+					: []),
+				{
+					key: group.key,
+					title: group.title,
+					lead: false,
+					rows: walkTree({
+						notes: group.notes,
+						opened,
+						shown: paged.get(group.key) ?? EMPTY,
+						reading,
+						selection,
+						shut
+					})
+				}
+			];
+		})
+	);
 
 	function leadRows(notes: readonly TreeNote[]): TreeRow[] {
 		return notes.map((note, at) => ({

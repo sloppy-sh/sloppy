@@ -320,6 +320,36 @@ describe('the notes last written into', () => {
 		).toEqual(['2']);
 	});
 
+	it('asks each graph on the canvas for its own, and names the one each run is read in', async () => {
+		const thesis = node(90, '1', { graph: THESIS });
+		const garden = node(91, '1', { graph: GARDEN });
+		fake.on('GET /nodes/recent', (url) => [
+			url.searchParams.get('graph') === GARDEN ? garden : thesis
+		]);
+		render({
+			notes: [thesis, garden],
+			fields: [
+				{ ref: THESIS, title: 'Thesis' },
+				{ ref: GARDEN, title: 'Garden' }
+			]
+		});
+		await settle();
+
+		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
+			'Last written in Thesis',
+			'Thesis',
+			'Last written in Garden',
+			'Garden'
+		]);
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(trees).toHaveLength(4);
+		expect(
+			[trees[0], trees[2]].map((tree) =>
+				tree.querySelector('[role="treeitem"]')?.getAttribute('data-row')
+			)
+		).toEqual([`lead:${thesis.ref}`, `lead:${garden.ref}`]);
+	});
+
 	it('heads the walk with nothing when the list will not read', async () => {
 		fake.on('GET /nodes/recent', () => new Response('{"message":"Not now."}', { status: 500 }));
 		render({ notes: branch, fields });

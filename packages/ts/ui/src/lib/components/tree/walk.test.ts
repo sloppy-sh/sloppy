@@ -234,6 +234,36 @@ describe('a tag the reader selected', () => {
 		).toEqual(['1', '1a', '1a1', '1b', '2']);
 	});
 
+	/** A chain as deep as a Folgezettel branch gets, every level a full run and
+	 *  the tag on the note at the bottom of it. */
+	function chain(depth: number, run: number): TreeNote[] {
+		const notes: TreeNote[] = [];
+		let parent: string | undefined;
+		let head = '';
+		for (let level = 0; level < depth; level += 1) {
+			const step = (at: number) => (level % 2 === 0 ? `${at}` : letters(at));
+			for (let at = 1; at <= run; at += 1) {
+				notes.push(
+					note(`${head}${step(at)}`, parent, {
+						tags: level === depth - 1 && at === 1 ? question : []
+					})
+				);
+			}
+			head = `${head}${step(1)}`;
+			parent = head;
+		}
+		return notes;
+	}
+
+	it('stops drawing down a deep chain once a page of rows has been drawn', () => {
+		const notes = chain(20, RUN_PAGE);
+		expect(notes).toHaveLength(20 * RUN_PAGE);
+		const rows = walkTree({ notes, opened: opened(), selection: question });
+		expect(rows.length).toBeLessThanOrEqual(RUN_PAGE + LIT_PAGE * 2);
+		expect(addresses(rows)).toContain(notes.at(-RUN_PAGE)?.address);
+		expect(rows.some((row) => row.kind === 'rest')).toBe(true);
+	});
+
 	it('stops opening branches once a page of rows has been opened', () => {
 		const roots = Array.from({ length: 40 }, (_, at) => `${at + 1}`);
 		const notes = roots.flatMap((root) => [
