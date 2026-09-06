@@ -5,10 +5,11 @@
 	import LayoutWorker from '@sloppy/graph/layout-worker?worker';
 	import { untrack } from 'svelte';
 
-	let props: GraphSurfaceProps = $props();
+	// The handle is bound out rather than driven by a prop: asking twice for the
+	// same note has to move the canvas twice, which a value cannot say.
+	let { handle = $bindable(), ...props }: GraphSurfaceProps & { handle?: GraphHandle } = $props();
 
 	let host = $state<HTMLElement>();
-	let handle: GraphHandle | undefined;
 
 	const options = () => ({ ...props, createLayoutWorker: () => new LayoutWorker() });
 

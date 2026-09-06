@@ -71,7 +71,12 @@ export interface GraphHandle {
   readonly ink: HTMLElement;
   /** World coordinates for a client point, so a stroke sticks to the graph. */
   toWorld(clientX: number, clientY: number): Point;
-  focusOn(ref: OwnedRef): void;
+  /**
+   * Bring the canvas to a mark the reader opened, holding the ask until the
+   * mark is drawn and until the layout has settled under it. A mark already on
+   * screen is left where it is.
+   */
+  bringTo(ref: OwnedRef): void;
   fit(): void;
   stats(): GraphStats | null;
   /** Start a fresh timing window, so `stats` describes one thing at a time. */
@@ -169,7 +174,38 @@ export function mountGraph(
    * finger is worse than one that starts off-centre.
    */
   let framing = true;
+  /** Until the field has been framed once the viewport is still the default
+   *  1:1, so what is on screen says nothing about where a mark sits. */
+  let framed = false;
   let dragged: { index: number; world: Point } | null = null;
+  let bringing: OwnedRef | null = null;
+
+  const frameAll = (): void => {
+    if (!scene) return;
+    framed = true;
+    scene.fit();
+  };
+
+  /** A note is often asked for before its mark exists — a citation arrives while
+   *  the graph is still being read — so the ask waits rather than being spent on
+   *  a canvas that has not drawn it. Answers whether the mark was there. */
+  const arrive = (): boolean => {
+    if (bringing === null || scene === null) return false;
+    if (scene.indexOf(bringing) === undefined) return false;
+    // A frame still on its way puts the mark on screen with the rest of the
+    // field, so the ask is answered by it rather than taking the viewport off it.
+    if (framing && !framed) return true;
+    if (!scene.inView(bringing)) {
+      framing = false;
+      scene.centreOn(bringing);
+    }
+    return true;
+  };
+
+  const takeViewport = (): void => {
+    framing = false;
+    bringing = null;
+  };
 
   const layout = new LayoutClient({
     createWorker: options.createLayoutWorker,
@@ -178,7 +214,11 @@ export function mountGraph(
       settled = event.settled;
       scene?.setPositions(event.positions);
       if (dragged) scene?.movePosition(dragged.index, dragged.world);
-      if (framing) scene?.fit();
+      // Spent on the settle that follows the ask, never on the rest the field
+      // was already in: opening a note is itself a relayout, which would then
+      // carry the note back off screen with nothing holding it.
+      if (arrive() && settled) bringing = null;
+      if (framing) frameAll();
     },
   });
 
@@ -301,7 +341,7 @@ export function mountGraph(
       },
       canSweep: () => props.onChooseWithin !== undefined,
       onSweep: (box, done) => {
-        framing = false;
+        takeViewport();
         if (!done) {
           showSweep(box);
           return;
@@ -312,7 +352,7 @@ export function mountGraph(
         );
       },
       onDragStart: (target, world) => {
-        framing = false;
+        takeViewport();
         pin(target, world, true);
       },
       onDragMove: (target, world) => pin(target, world, true),
@@ -323,7 +363,7 @@ export function mountGraph(
         }
       },
       onViewportChange: () => {
-        framing = false;
+        takeViewport();
         built.invalidate();
       },
       inkTarget: () => props.onInkPointer,
@@ -390,6 +430,7 @@ export function mountGraph(
     update(next) {
       const remounting = next.remountKey !== mountedKey;
       const moved = layoutMoved(props, next);
+      const relayout = moved || remounting;
       const asking = next.picking?.from !== props.picking?.from;
       const grounded = next.ground !== props.ground;
       const takingOver = asked(next) && !asked(props);
@@ -408,16 +449,21 @@ export function mountGraph(
       // The canvas comes to the note the choice is being made for, so the reader
       // is never asked to pick against a viewport they left somewhere else.
       if (asking && next.picking) {
-        framing = false;
+        takeViewport();
         scene?.centreOn(next.picking.from);
       }
       if (next.focus !== undefined && next.focus !== focus) focus = next.focus;
       if (remounting) {
         mountedKey = next.remountKey;
         focus = next.focus;
+        framing = true;
+        framed = false;
       }
-      if (remounting) framing = true;
-      rebuild(moved || remounting);
+      rebuild(relayout);
+      // An act that starts no settle has nothing that could carry the mark off
+      // screen, so the ask ends with the act rather than waiting for whatever
+      // the reader does next.
+      if (!relayout && arrive()) bringing = null;
     },
     destroy() {
       destroyed = true;
@@ -437,13 +483,13 @@ export function mountGraph(
       if (!view) return { x: clientX - box.left, y: clientY - box.top };
       return view.toWorld(clientX - box.left, clientY - box.top);
     },
-    focusOn(ref) {
-      focus = ref;
-      scene?.centreOn(ref);
-      rebuild();
+    bringTo(ref) {
+      bringing = ref;
+      arrive();
     },
     fit() {
-      scene?.fit();
+      bringing = null;
+      frameAll();
     },
     resetStats() {
       scene?.resetStats();

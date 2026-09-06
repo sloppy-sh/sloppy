@@ -1,29 +1,39 @@
-import { isConnection, type OwnedRef } from "@sloppy/types";
+import { isConnection, type NodeView, type OwnedRef } from "@sloppy/types";
 import { describe, expect, it, vi } from "vitest";
 import { drawnNodes } from "../contract.js";
 import { makeCorpus } from "../corpus.test-support.js";
-import { applyLod } from "../lod.js";
-import { buildModel } from "../model.js";
+import { applyLod, type LodBudget } from "../lod.js";
+import { type BuiltModel, buildModel } from "../model.js";
 import { buildPalette } from "../palette.js";
+import type { Point } from "../viewport.js";
 import { LayoutClient } from "./client.js";
 import { LayoutEngine } from "./engine.js";
 import type { LayoutEvent, LayoutStart } from "./protocol.js";
 import { serveLayout } from "./serve.js";
 
 const corpus = makeCorpus();
+/** Nothing folded but what the test folds, so a fold is the only thing that
+ *  moves between two readings of the same field. */
+const WHOLE_FIELD: LodBudget = { depth: 99, maxDrawn: 100_000 };
 const palette = buildPalette({
   ink: "oklch(0.21 0.01 60)",
   paper: "oklch(0.98 0.006 85)",
   hues: [],
 });
 
-function startFor(count: number): LayoutStart {
-  const nodes = corpus.nodes.slice(0, count);
+function modelFor(
+  nodes: readonly NodeView[],
+  collapsed: ReadonlySet<OwnedRef>,
+  keep?: ReadonlyMap<OwnedRef, Point>,
+): BuiltModel {
   const drawn = drawnNodes(
     nodes,
-    applyLod(nodes, new Set<OwnedRef>(), undefined).collapsed,
+    applyLod(nodes, collapsed, undefined, WHOLE_FIELD).collapsed,
   );
-  const model = buildModel(drawn, { selection: [], palette });
+  return buildModel(drawn, { selection: [], palette, keep });
+}
+
+function startOf(model: BuiltModel): LayoutStart {
   const index = (ref: string) => model.graph.getNodeAttributes(ref).index;
   const edges: LayoutStart["edges"] = [];
   model.graph.forEachEdge((_edge, attributes, source, target) => {
@@ -51,6 +61,39 @@ function startFor(count: number): LayoutStart {
     }),
     edges,
   };
+}
+
+function startFor(count: number): LayoutStart {
+  const nodes = corpus.nodes.slice(0, count);
+  return startOf(
+    buildModel(
+      drawnNodes(
+        nodes,
+        applyLod(nodes, new Set<OwnedRef>(), undefined).collapsed,
+      ),
+      { selection: [], palette },
+    ),
+  );
+}
+
+function settledPlaces(
+  model: BuiltModel,
+  start: LayoutStart,
+): Map<OwnedRef, Point> {
+  const engine = new LayoutEngine(start);
+  engine.settle();
+  const at = engine.positions();
+  return new Map(
+    model.order.map((ref) => {
+      const { index } = model.graph.getNodeAttributes(ref);
+      return [ref, { x: at[index * 2], y: at[index * 2 + 1] }];
+    }),
+  );
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 /** The node with the most edges, which is the most a drag can disturb. */
@@ -172,6 +215,98 @@ describe("LayoutEngine", () => {
     });
     engine.settle();
     expect(engine.positions()).toHaveLength(0);
+  });
+});
+
+/**
+ * What a fold costs the picture, over enough branches that one branch's answer
+ * does not decide it. What is asserted is where a mark that went away comes
+ * BACK INTO the picture, which is what the seeding sets and what the reader
+ * watches; where the force pass then carries it is the force pass's answer.
+ */
+describe("a branch folded and unfolded again", () => {
+  const field = corpus.nodes.slice(0, 400);
+  const byRef = new Map(field.map((node) => [node.ref, node]));
+  const under = new Map<OwnedRef, number>();
+  for (const node of field) {
+    for (let at = node.parent; at !== undefined; at = byRef.get(at)?.parent) {
+      under.set(at, (under.get(at) ?? 0) + 1);
+    }
+  }
+
+  const open = modelFor(field, new Set());
+  const before = settledPlaces(open, startOf(open));
+
+  /** One branch folded and unfolded again: how far the marks that went away are
+   *  from where they stood, as they reappear and once the field has settled. */
+  function foldAndBack(branch: OwnedRef) {
+    const shut = modelFor(field, new Set([branch]), before);
+    const whileFolded = settledPlaces(shut, startOf(shut));
+    const again = modelFor(field, new Set(), whileFolded);
+    const gone = again.order.filter((ref) => !whileFolded.has(ref));
+    const start = startOf(again);
+    const seedOf = (ref: OwnedRef) => again.graph.getNodeAttributes(ref);
+
+    const off = (of: (ref: OwnedRef) => Point): number =>
+      median(
+        gone.map((ref) => {
+          const was = before.get(ref) as Point;
+          const now = of(ref);
+          return Math.hypot(now.x - was.x, now.y - was.y);
+        }),
+      );
+    const appearing = (from: LayoutStart) =>
+      off((ref) => from.nodes[seedOf(ref).index]);
+    const settling = (from: LayoutStart) => {
+      const places = settledPlaces(again, from);
+      return off((ref) => places.get(ref) as Point);
+    };
+    const instead = (
+      put: (node: LayoutStart["nodes"][number], ref: OwnedRef) => typeof node,
+    ): LayoutStart => ({
+      ...start,
+      nodes: again.order.map((ref, at) =>
+        whileFolded.has(ref) ? start.nodes[at] : put(start.nodes[at], ref),
+      ),
+    });
+
+    return {
+      gone: gone.length,
+      appears: appearing(start),
+      appearsFromSeed: appearing(
+        instead((node, ref) => ({
+          ...node,
+          x: seedOf(ref).anchorX,
+          y: seedOf(ref).anchorY,
+        })),
+      ),
+      settles: settling(start),
+      settlesHeldHarder: settling(
+        instead((node) => ({ ...node, anchorStrength: 0.2 })),
+      ),
+    };
+  }
+
+  const measured = [...under]
+    .filter(([ref, count]) => open.graph.hasNode(ref) && count >= 8)
+    .slice(0, 8)
+    .map(([ref]) => foldAndBack(ref));
+
+  it("puts a branch back beside its parent rather than at its bare seed", () => {
+    expect(measured.length).toBe(8);
+    const ratios = measured.map((one) => one.appears / one.appearsFromSeed);
+    expect(median(ratios)).toBeLessThan(0.9);
+    expect(ratios.filter((ratio) => ratio < 1).length * 2).toBeGreaterThan(
+      ratios.length,
+    );
+  });
+
+  // The other half of the same proposal, and the reason it is not taken: a
+  // settled field lives a long way from its seeds, so a returning mark held
+  // harder to its own seed is carried further from where it stood.
+  it("is not helped by holding a returning mark harder to its seed", () => {
+    const ratios = measured.map((one) => one.settles / one.settlesHeldHarder);
+    expect(median(ratios)).toBeLessThan(1);
   });
 });
 

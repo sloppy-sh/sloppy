@@ -31,7 +31,7 @@ import {
   seedField,
 } from "./layout/geometry.js";
 import type { GraphPalette } from "./palette.js";
-import { MAX_SCALE } from "./viewport.js";
+import { MAX_SCALE, type Point } from "./viewport.js";
 
 /** DESIGN.md § Form: provenance survives greyscale, so it is never a hue. */
 export type Provenance = "own" | "published" | "pulled";
@@ -209,13 +209,14 @@ export function buildModel(
   // rule that hands out the hues is the same one that picks between them.
   const rank = new Map([...slots.keys()].map((tag, at) => [tag, at] as const));
   const { seedOf, fields } = seedFields(drawn, options.fields ?? []);
+  const starts = startPoints(drawn, seedOf, options.keep);
 
   drawn.forEach((entry, index) => {
     const { node } = entry;
     const tag = earliestSelected(entry.tags, rank);
     const slot = tag === undefined ? undefined : slots.get(tag);
     const seed = seedOf(node);
-    const kept = options.keep?.get(node.ref);
+    const start = starts.get(node.ref) ?? seed;
     // A mega-node wears the look of the note it IS, never an average of the
     // looks it folded — DESIGN.md § "The mark".
     const look =
@@ -246,8 +247,8 @@ export function buildModel(
         slot === undefined && options.selection.length > 0
           ? options.palette.unselectedAlpha
           : 1,
-      x: kept?.x ?? seed.x,
-      y: kept?.y ?? seed.y,
+      x: start.x,
+      y: start.y,
       anchorX: seed.x,
       anchorY: seed.y,
       anchorStrength: SEED_ANCHOR,
@@ -334,6 +335,42 @@ function connectionsOf(node: NodeView): [EdgeKind, readonly OwnedRef[]][] {
 }
 
 const ORIGIN: SeedPoint = { x: 0, y: 0, outward: 0 };
+
+/** Where each mark starts this rebuild, which is one reader's session rather
+ *  than the protocol: the seeds a peer agrees with (`layout/geometry.ts`) are
+ *  untouched. DESIGN.md § "The canvas". */
+function startPoints(
+  drawn: readonly DrawnNode[],
+  seedOf: (node: NodeView) => SeedPoint,
+  keep: ReadonlyMap<OwnedRef, Point> | undefined,
+): ReadonlyMap<OwnedRef, Point> {
+  const byRef = new Map(drawn.map((entry) => [entry.node.ref, entry.node]));
+  const at = new Map<OwnedRef, Point>();
+
+  const place = (node: NodeView, seen: Set<OwnedRef>): Point => {
+    const held = at.get(node.ref);
+    if (held !== undefined) return held;
+    const kept = keep?.get(node.ref);
+    const seed = seedOf(node);
+    const parent =
+      node.parent === undefined ? undefined : byRef.get(node.parent);
+    let point: Point = kept ?? seed;
+    if (kept === undefined && parent !== undefined && !seen.has(node.ref)) {
+      seen.add(node.ref);
+      const from = place(parent, seen);
+      const parentSeed = seedOf(parent);
+      point = {
+        x: from.x + seed.x - parentSeed.x,
+        y: from.y + seed.y - parentSeed.y,
+      };
+    }
+    at.set(node.ref, point);
+    return point;
+  };
+
+  for (const entry of drawn) place(entry.node, new Set());
+  return at;
+}
 
 /**
  * Where each drawn note starts, and where each field's name is written. An

@@ -24,6 +24,7 @@ import {
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { peers } from '../stores/peers.svelte.js';
 import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
@@ -105,9 +106,14 @@ function acted(note: NodeView, act: NodeBulkRequest['act']): NodeView {
 	}
 }
 
-function path(of: OwnedRef): string {
+/** A ref as the two path segments every route binds it as. */
+function segments(of: OwnedRef): string {
 	const cut = of.lastIndexOf('/');
-	return `/nodes/${encodeURIComponent(of.slice(0, cut))}/${encodeURIComponent(of.slice(cut + 1))}`;
+	return `${encodeURIComponent(of.slice(0, cut))}/${encodeURIComponent(of.slice(cut + 1))}`;
+}
+
+function path(of: OwnedRef): string {
+	return `/nodes/${segments(of)}`;
 }
 
 /** `answers` decides which media queries hold: the default is the widest
@@ -183,9 +189,29 @@ function fold(address: string): HTMLButtonElement {
 	return found;
 }
 
+/** A note's row in the outline, by the address it carries. */
+function inOutline(address: string): HTMLElement {
+	const found = [...document.body.querySelectorAll('[role="treeitem"]')].find(
+		(row) => row.querySelector('.address')?.textContent?.trim() === address
+	);
+	if (!found) throw new Error(`No row of the outline is addressed ${address}`);
+	return found as HTMLElement;
+}
+
 /** Where the canvas has been told the reader is looking. */
 const looking = () =>
 	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.focus;
+
+/** The notes the canvas has been asked to come to, in the order it was asked. */
+const brought = () =>
+	document.body
+		.querySelector<HTMLElement>('[aria-label="The graph"]')
+		?.dataset.brought?.split(' ')
+		.filter(Boolean) ?? [];
+
+/** How often the canvas has been asked for the whole field. */
+const fitted = () =>
+	Number(document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.fitted ?? 0);
 
 /** Whether the canvas has been handed a set to choose into. */
 const choosingOnCanvas = () =>
@@ -330,6 +356,7 @@ beforeEach(() => {
 	startAt('/');
 	stubViewport();
 	nodes.clear();
+	peers.clear();
 	tags.clear();
 	publications.clear();
 	find.clear();
@@ -359,11 +386,129 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	// Walking the notes outlives a mount by design, so the outline is put away
+	// rather than left up for whatever runs next.
+	document.body.querySelector<HTMLButtonElement>('button[aria-label="Back to the graph"]')?.click();
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	session.clear();
 	target.remove();
 	document.body.innerHTML = '';
+});
+
+// PRODUCT.md: the graph is where the answer is read, so a note opened anywhere
+// else has to be findable on it.
+describe('finding your way back on the canvas', () => {
+	it('comes to a note opened from the graph', async () => {
+		await open();
+
+		onCanvas('1a').click();
+		await settle();
+
+		expect(brought()).toEqual([SECOND]);
+	});
+
+	it('comes to the note a citation opened', async () => {
+		const cut = SECOND.lastIndexOf('/');
+		startAt(
+			`/n/${encodeURIComponent(SECOND.slice(0, cut))}/${encodeURIComponent(SECOND.slice(cut + 1))}`
+		);
+		await open();
+
+		expect(brought()).toEqual([SECOND]);
+	});
+
+	it('comes again when the note already open is opened again', async () => {
+		await open();
+
+		onCanvas('1a').click();
+		await settle();
+		onCanvas('1a').click();
+		await settle();
+
+		expect(brought()).toEqual([SECOND, SECOND]);
+	});
+
+	it('fits the whole field when the reader asks where they are', async () => {
+		await open();
+		expect(fitted()).toBe(0);
+
+		labelled('See everything on the canvas').click();
+		await settle();
+
+		expect(fitted()).toBe(1);
+	});
+});
+
+// A held region is drawn on the same canvas, so opening a note in somebody
+// else's branch is the same act as opening one of your own.
+describe('a branch somebody else published', () => {
+	const AUTHOR = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
+	const REGION = ref(20);
+	const ROOT = ref(21, AUTHOR);
+	const UNDER = ref(22, AUTHOR);
+
+	const theirs = (seed: number, address: string, over: Partial<NodeView> = {}): NodeView => ({
+		...node(seed, address),
+		ref: ref(seed, AUTHOR),
+		created_by: AUTHOR,
+		origin: ROOT,
+		...over
+	});
+
+	beforeEach(() => {
+		api.on('GET /following', () => []);
+		api.on('GET /pulls', () => [
+			{
+				ref: REGION,
+				created_by: DID,
+				publication: ref(30, AUTHOR),
+				version: { ref: ref(31, AUTHOR), sequence: 1, published_at: AT },
+				root_address: '1',
+				comments: 'anyone',
+				source_url: 'http://peer.test',
+				created_at: AT,
+				updated_at: AT
+			}
+		]);
+		api.on(`GET /pulls/${segments(REGION)}/nodes`, () => [
+			theirs(21, '1', { title: 'Their origins' }),
+			theirs(22, '1a', { title: 'Their cells', parent: ROOT })
+		]);
+		api.on(`GET /pulls/nodes/${segments(UNDER)}/blocks`, () => []);
+	});
+
+	/** Onto the canvas of a region the reader holds, from the sheet that lists
+	 *  what they are holding. */
+	async function enterRegion(): Promise<void> {
+		await open();
+		labelled("Other people's graphs").click();
+		await settle();
+		button(AUTHOR).click();
+		await settle();
+	}
+
+	it('comes to a held note opened from the canvas', async () => {
+		await enterRegion();
+
+		onCanvas('1a').click();
+		await settle();
+
+		expect(brought()).toEqual([UNDER]);
+	});
+
+	it('comes to a held note opened from a row of the outline', async () => {
+		await enterRegion();
+
+		labelled('Walk the notes one at a time').click();
+		await settle();
+		labelled('Unfold 1').click();
+		await settle();
+		inOutline('1a').click();
+		await settle();
+
+		expect(brought()).toEqual([UNDER]);
+	});
 });
 
 describe('linking by pointing at the graph', () => {

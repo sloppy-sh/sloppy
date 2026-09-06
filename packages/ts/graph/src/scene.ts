@@ -626,6 +626,19 @@ export class GraphScene {
     this.positionsDirty = true;
   }
 
+  /** Whether a mark is drawn, and drawn whole inside the box on screen. */
+  inView(ref: string): boolean {
+    const index = this.indexOf(ref);
+    if (index === undefined) return false;
+    const at = this.positionOf(index);
+    return wholeInView(
+      this.viewport.toScreen(at.x, at.y),
+      (this.attributesOf(ref)?.radius ?? 0) * this.viewport.scale,
+      this.width,
+      this.height,
+    );
+  }
+
   centreOn(ref: string): void {
     const index = this.indexOf(ref);
     if (index === undefined) return;
@@ -1465,6 +1478,23 @@ function lay(
   sprite.height = across;
   sprite.alpha = alpha;
   sprite.visible = shown;
+}
+
+/** Whether a disc of `radius` screen pixels at screen point `on` falls whole
+ *  inside the field, `across` by `down` — the box the marks are drawn in, which
+ *  is already the surface less the chrome. */
+export function wholeInView(
+  on: Point,
+  radius: number,
+  across: number,
+  down: number,
+): boolean {
+  return (
+    on.x - radius >= 0 &&
+    on.y - radius >= 0 &&
+    on.x + radius <= across &&
+    on.y + radius <= down
+  );
 }
 
 /** Whether a mark drawn at `radius` screen pixels carries its look. The latch is

@@ -1,11 +1,23 @@
 <script lang="ts">
+	/* eslint-disable no-useless-assignment -- the page binds the handle out and
+	   calls it; nothing in here reads it back. */
+
 	// The canvas, cut down to what a page suite can tap: one control per drawn
 	// note, and one for opening the fold it stands for. What a tap MEANS is the
 	// real surface's contract, held by `@sloppy/graph`'s mount suite; this stands
 	// in for the pixels.
-	import type { GraphSurfaceProps } from '@sloppy/graph';
+	import type { GraphHandle, GraphSurfaceProps } from '@sloppy/graph';
+
+	let brought = $state<string[]>([]);
+	let fitted = $state(0);
+
+	const canvas = {
+		bringTo: (ref: string) => (brought = [...brought, ref]),
+		fit: () => (fitted += 1)
+	} as unknown as GraphHandle;
 
 	let {
+		handle = $bindable(),
 		nodes,
 		wallpaper,
 		picking,
@@ -17,7 +29,9 @@
 		onChoose,
 		onChooseWithin,
 		onMenu
-	}: GraphSurfaceProps = $props();
+	}: GraphSurfaceProps & { handle?: GraphHandle } = $props();
+
+	handle = canvas;
 </script>
 
 <ul
@@ -25,6 +39,8 @@
 	data-focus={focus}
 	data-choosing={chosen ? 'yes' : undefined}
 	data-wallpaper={wallpaper?.picture ?? ''}
+	data-brought={brought.join(' ')}
+	data-fitted={fitted}
 >
 	{#each nodes as note (note.ref)}
 		{@const marked =

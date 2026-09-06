@@ -31,6 +31,7 @@ import {
   looksDrawn,
   MARK_SHEET_PX,
   PICK_GAP,
+  wholeInView,
 } from "./scene.js";
 import { type Bounds, MAX_SCALE, MIN_SCALE, Viewport } from "./viewport.js";
 
@@ -325,5 +326,29 @@ describe("the lift under an open note", () => {
         6,
       );
     }
+  });
+});
+
+// What "a note already on screen is left where it is" rests on. The field is the
+// box the marks are drawn in, so a mark clear of its edges is one the canvas has
+// no reason to move to.
+describe("a mark drawn whole inside the field", () => {
+  const viewport = new Viewport();
+  viewport.fit({ minX: -100, minY: -100, maxX: 100, maxY: 100 }, 390, 740);
+  const seen = (x: number, y: number, radius: number): boolean =>
+    wholeInView(viewport.toScreen(x, y), radius * viewport.scale, 390, 740);
+
+  it("is in view in the middle of what the canvas shows", () => {
+    expect(seen(0, 0, 12)).toBe(true);
+  });
+
+  it("is out of view where it sits off the far side of the field", () => {
+    expect(seen(1000, 0, 12)).toBe(false);
+  });
+
+  // Half a mark is not the note the reader asked for.
+  it("is out of view where the field's edge cuts it, and in where it clears", () => {
+    expect(seen(100, 0, 40)).toBe(false);
+    expect(seen(100, 0, 10)).toBe(true);
   });
 });

@@ -101,6 +101,13 @@ class StandInScene {
     this.centred.push(ref);
   }
 
+  /** The marks a test says are on screen; every other one is off it. */
+  onScreen = new Set<string>();
+
+  inView(ref: string): boolean {
+    return this.onScreen.has(ref);
+  }
+
   attributesOf(ref: string) {
     if (!this.model?.graph.hasNode(ref)) return null;
     return this.model.graph.getNodeAttributes(ref);
@@ -428,7 +435,7 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
       }
     },
     /** The layout answering the settle it was last asked to run. */
-    answer(): void {
+    answer(settled = false): void {
       const start = [...sent]
         .reverse()
         .find((command) => command.kind === "start");
@@ -439,7 +446,7 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
           epoch: start.epoch,
           positions: new Float32Array(start.nodes.length * 2),
           alpha: 0.5,
-          settled: false,
+          settled,
         },
       } as MessageEvent<LayoutEvent>);
     },
@@ -682,6 +689,173 @@ describe("selecting tags", () => {
     });
 
     expect(graph.starts()).toBe(before + 1);
+  });
+});
+
+// A note opened by a deliberate act — a link followed, a row of the outline, an
+// address in the URL — is the one case the canvas moves itself, and it moves for
+// the act rather than for the focus, which changes under a reader's finger.
+describe("bringing the canvas to a note", () => {
+  const drawn = (graph: Awaited<ReturnType<typeof mount>>) =>
+    graph
+      .model()
+      .order.find(
+        (ref) => !graph.model().graph.getNodeAttributes(ref).collapsed,
+      )!;
+
+  it("comes to a note that is off screen", async () => {
+    const graph = await mount();
+    graph.answer();
+    const ref = drawn(graph);
+
+    graph.handle.bringTo(ref);
+
+    expect(graph.scene.centred).toEqual([ref]);
+  });
+
+  it("leaves a note already on screen where it is, and goes on framing", async () => {
+    const graph = await mount();
+    graph.answer();
+    const ref = drawn(graph);
+    graph.scene.onScreen.add(ref);
+
+    graph.handle.bringTo(ref);
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([]);
+    expect(graph.scene.fits).toBe(2);
+  });
+
+  // A note cited by its address opens the canvas that has never been framed:
+  // answering the ask there would leave the reader at 1:1 on one mark with no
+  // graph around it, when the frame on its way shows them both.
+  it("lets the first frame answer an ask that arrives before it", async () => {
+    const graph = await mount();
+
+    graph.handle.bringTo(drawn(graph));
+    graph.answer(true);
+
+    expect(graph.scene.centred).toEqual([]);
+    expect(graph.scene.fits).toBe(1);
+  });
+
+  it("stops framing the whole field once it has come to the note", async () => {
+    const graph = await mount();
+    graph.answer();
+    expect(graph.scene.fits).toBe(1);
+
+    graph.handle.bringTo(drawn(graph));
+    graph.answer();
+
+    expect(graph.scene.fits).toBe(1);
+  });
+
+  // A note is asked for while its branch is still folded: the ask waits for the
+  // mark rather than being spent on a canvas that has not drawn it.
+  it("waits for a note whose branch is still folded", async () => {
+    const graph = await mount();
+    graph.answer();
+    const mega = firstMegaNode(graph.model());
+    const child = childrenOf(mega)[0];
+    expect(graph.model().graph.hasNode(child)).toBe(false);
+
+    graph.handle.bringTo(child);
+    expect(graph.scene.centred).toEqual([]);
+
+    graph.handle.update({ ...graph.props, lod: { depth: 9, maxDrawn: 4000 } });
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([child]);
+  });
+
+  it("holds the note while the field settles, and lets it go once it has", async () => {
+    const graph = await mount();
+    graph.answer();
+    const ref = drawn(graph);
+
+    graph.handle.bringTo(ref);
+    graph.answer();
+    graph.answer(true);
+    expect(graph.scene.centred).toEqual([ref, ref, ref]);
+
+    graph.answer();
+    expect(graph.scene.centred).toEqual([ref, ref, ref]);
+  });
+
+  // The field a reader opens a note from is usually at rest, and opening it is
+  // itself a settle: the note has to be held through the one the act causes.
+  it("holds the note through the settle that opening it starts", async () => {
+    const graph = await mount();
+    const ref = drawn(graph);
+    graph.answer(true);
+
+    graph.handle.bringTo(ref);
+    expect(graph.scene.centred).toEqual([ref]);
+
+    graph.handle.update({ ...graph.props, focus: ref });
+    graph.answer();
+    graph.answer(true);
+    expect(graph.scene.centred).toEqual([ref, ref, ref]);
+
+    graph.answer();
+    expect(graph.scene.centred).toEqual([ref, ref, ref]);
+  });
+
+  // A note opened where it already sits on screen asks the canvas for nothing,
+  // and the ask goes with the act rather than waiting for the next settle —
+  // which would be a branch the reader folded long afterwards.
+  it("lets the note go when the act that opened it starts no settle", async () => {
+    const graph = await mount();
+    const ref = drawn(graph);
+    graph.answer(true);
+    graph.scene.onScreen.add(ref);
+
+    graph.handle.bringTo(ref);
+    graph.handle.update({ ...graph.props });
+    expect(graph.scene.centred).toEqual([]);
+
+    const elsewhere = graph
+      .model()
+      .order.find((of) => of !== ref && !ancestorsOf(ref).includes(of))!;
+    graph.scene.onScreen.delete(ref);
+    graph.handle.update({
+      ...graph.props,
+      collapsed: new Set<OwnedRef>([elsewhere]),
+    });
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([]);
+  });
+
+  it("drops a note still waiting when the reader takes hold of the canvas", async () => {
+    const graph = await mount();
+    const mega = firstMegaNode(graph.model());
+    const child = childrenOf(mega)[0];
+
+    graph.handle.bringTo(child);
+    graph.drag(drawn(graph), [
+      { x: 0, y: 0 },
+      { x: 60, y: 40 },
+    ]);
+
+    graph.handle.update({ ...graph.props, lod: { depth: 9, maxDrawn: 4000 } });
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([]);
+  });
+
+  it("drops a note still waiting when the reader asks for the whole field", async () => {
+    const graph = await mount();
+    const mega = firstMegaNode(graph.model());
+    const child = childrenOf(mega)[0];
+
+    graph.handle.bringTo(child);
+    graph.handle.fit();
+
+    graph.handle.update({ ...graph.props, lod: { depth: 9, maxDrawn: 4000 } });
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([]);
   });
 });
 
