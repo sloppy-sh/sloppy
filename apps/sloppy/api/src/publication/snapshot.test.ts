@@ -183,21 +183,67 @@ function note(of: Partial<Node> & { address: string; depth: number }): Node {
 describe("a note as a version froze it", () => {
   const region = { root: at(AVA, "RGNRT"), address: "1a" };
 
-  it("carries no depth and no look, and roots at the region", () => {
+  it("carries no depth, and roots at the region", () => {
     const written = publishedNodeOf(
-      note({
-        address: "1a1",
-        depth: 3,
-        parent: at(AVA, "PARENT"),
-        appearance: { ring_weight: "heavy" },
-      }),
+      note({ address: "1a1", depth: 3, parent: at(AVA, "PARENT") }),
       region,
       [],
     );
     expect(written).not.toHaveProperty("depth");
-    expect(written).not.toHaveProperty("appearance");
     expect(written.origin).toBe(region.root);
     expect(written.parent).toBe(at(AVA, "PARENT"));
+  });
+
+  it("carries the shape its author gave the mark", () => {
+    const written = publishedNodeOf(
+      note({
+        address: "1a1",
+        depth: 3,
+        appearance: {
+          ring_weight: "heavy",
+          ring_style: "dashed",
+          mark_radius: "large",
+          mark_scale: 1.34,
+        },
+      }),
+      region,
+      [],
+    );
+    expect(written.look).toEqual({
+      ring_weight: "heavy",
+      ring_style: "dashed",
+      mark_radius: "large",
+      mark_scale: 1.34,
+    });
+  });
+
+  // The pictures stay behind — DESIGN.md § "A note's look never uses colour" —
+  // so a mark shaped only by one is a mark a peer draws unstyled.
+  it("sends no picture, and no look at all where that is the whole of one", () => {
+    const written = publishedNodeOf(
+      note({
+        address: "1a1",
+        depth: 3,
+        appearance: {
+          preview: `${AVA}/PICTURE`,
+          preview_more: [`${AVA}/SECOND`],
+          preview_size: "large",
+          preview_cover: 0.6,
+          preview_every: 5,
+          preview_transition: "fade",
+        },
+      }),
+      region,
+      [],
+    );
+    expect(written).not.toHaveProperty("look");
+    expect(JSON.stringify(written)).not.toContain("PICTURE");
+  });
+
+  it("sends no look for a mark nobody shaped", () => {
+    expect(
+      publishedNodeOf(note({ address: "1a1", depth: 3 }), region, []),
+    ).not.toHaveProperty("look");
   });
 
   // A publication rooted below depth 1 has a parent outside it, and naming one

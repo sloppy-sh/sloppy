@@ -87,18 +87,54 @@ export class PullRepository {
     return PullSchema.parse(written[0]);
   }
 
+  /**
+   * A region the reader holds of one author's graph — where a picture inside a
+   * note they hold is fetched from, and nowhere else. Any of them will do: an
+   * author's pictures are served by the instance that served their branch, and
+   * two regions of one graph came from the same one.
+   */
+  async regionFrom(reader: DidSyr, author: DidSyr): Promise<Pull | null> {
+    const [rows] = await this.query(
+      `SELECT * FROM pull
+         WHERE created_by = $reader AND string::starts_with(publication, $of)
+         ORDER BY updated_at DESC LIMIT 1`,
+      { reader, of: `${author}/` },
+    );
+    return rows[0] === undefined ? null : PullSchema.parse(rows[0]);
+  }
+
+  /** The regions serving one held note, newest refresh first. Two overlapping
+   *  regions both serve the notes they share, and either opens one. */
+  async regionsServing(reader: DidSyr, source: OwnedRef): Promise<Pull[]> {
+    const [serving] = await this.query<OwnedRef>(
+      "SELECT VALUE pull FROM pull_member WHERE created_by = $reader AND source = $source",
+      { reader, source },
+    );
+    if (serving.length === 0) return [];
+    const [rows] = await this.query(
+      `SELECT * FROM pull WHERE created_by = $reader AND id IN $ids
+         ORDER BY updated_at DESC`,
+      {
+        reader,
+        ids: serving.map((ref) => recordIdFromOwnedRef("pull", ref)),
+      },
+    );
+    return rows.map((row) => PullSchema.parse(row));
+  }
+
   /** A refresh that reached the last page: the snapshot the copy is now of, and
    *  `updated_at` as the moment it was last made whole. */
   async settleRegion(pull: Pull, region: RegionTerms): Promise<Pull> {
     const [written] = await this.query(
       `UPDATE $id SET version = $version, root_address = $address,
-         graph = $graph, comments = $comments, source_url = $url,
-         updated_at = $at RETURN AFTER`,
+         graph = $graph, graph_title = $graphTitle, comments = $comments,
+         source_url = $url, updated_at = $at RETURN AFTER`,
       {
         id: pull.id,
         version: region.version,
         address: region.root_address,
         graph: region.graph,
+        graphTitle: region.graph_title,
         comments: region.comments,
         url: region.source_url,
         at: nowIso(),

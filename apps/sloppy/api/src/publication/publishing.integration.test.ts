@@ -1158,6 +1158,59 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(JSON.stringify(index)).not.toContain(hidden.ref);
   });
 
+  // Two of one author's notebooks each hand a reader a `1a`, so the name is
+  // what tells the two regions apart — AI.md § "The Address Is the Protocol".
+  scenario("names the notebook a branch's addresses are read in", async () => {
+    const [home] = (await ok("GET", "/graphs", ada)) as {
+      ref: OwnedRef;
+      title: string;
+    }[];
+    await ok("PATCH", `/graphs/${at(home.ref)}`, ada, {
+      title: "Waterworks",
+    });
+    const root = await newNode({ title: "A named notebook" });
+    const publication = await publish(root.ref);
+
+    const listed = (await published()).publications.find(
+      (one) => one.ref === publication.ref,
+    );
+    expect(listed?.graph_title).toBe("Waterworks");
+    expect((await read(publication.ref))?.graph_title).toBe("Waterworks");
+  });
+
+  scenario(
+    "sends the shape an author gave a mark, and no picture",
+    async () => {
+      const root = await newNode({ title: "A shaped branch" });
+      const plain = await newNode({
+        from: { relation: "under", note: root.ref },
+        title: "Left as it was",
+      });
+      const upload_id = await upload("on-the-mark.png");
+      await ok("PATCH", `/nodes/${at(root.ref)}`, ada, {
+        appearance: {
+          ring_weight: "heavy",
+          mark_radius: "large",
+          preview: upload_id,
+        },
+      });
+      const publication = await publish(root.ref);
+
+      const page = await read(publication.ref);
+      const served = page?.nodes.find((node) => node.ref === root.ref);
+      expect(served?.look).toEqual({
+        ring_weight: "heavy",
+        mark_radius: "large",
+      });
+      expect(
+        page?.nodes.find((node) => node.ref === plain.ref),
+      ).not.toHaveProperty("look");
+      // A mark's picture is the author's own and stays private, however much of
+      // the note is published — docs/ARCHITECTURE.md § "Pictures".
+      expect(JSON.stringify(page)).not.toContain(upload_id);
+    },
+  );
+
   scenario(
     "reads a branch too long for one answer a page at a time",
     async () => {
