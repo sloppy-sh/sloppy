@@ -1579,3 +1579,60 @@ describe('a note written before the server has answered', () => {
 		expect(openTabs().addresses).toEqual(['1', '2']);
 	});
 });
+
+describe('the graph as this device last read it', () => {
+	function nothingListening(): void {
+		const refuse = () => {
+			throw new Error('nothing is listening');
+		};
+		api.on('GET /nodes', refuse);
+		api.on('GET /nodes/tags', refuse);
+	}
+
+	/** The cache waits out the answers before it writes, and every case here
+	 *  turns on the device having what a first read left it. */
+	async function written(): Promise<void> {
+		await new Promise((done) => setTimeout(done, 250));
+	}
+
+	it('draws what this device kept when nothing can be reached, and says how old it may be', async () => {
+		await open();
+		expect(screen()).toContain('Origins');
+		await written();
+
+		nodes.clear();
+		tags.clear();
+		nothingListening();
+		await open();
+
+		expect(() => onCanvas('1')).not.toThrow();
+		expect(screen()).toContain('This is your graph as you last read it.');
+		expect(screen()).not.toContain('could not reach');
+	});
+
+	it('asks again from where the kept graph is drawn', async () => {
+		await open();
+		await written();
+		nodes.clear();
+		tags.clear();
+		nothingListening();
+		await open();
+		expect(screen()).toContain('This is your graph as you last read it.');
+
+		graph = installGraph();
+		button('Try again').click();
+		await settle();
+
+		expect(screen()).not.toContain('This is your graph as you last read it.');
+	});
+
+	it('says the graph could not be reached where this device kept none of it', async () => {
+		nodes.clear();
+		nothingListening();
+
+		await open();
+
+		expect(screen()).toContain('Sloppy could not reach your graph');
+		expect(screen()).not.toContain('This is your graph as you last read it.');
+	});
+});

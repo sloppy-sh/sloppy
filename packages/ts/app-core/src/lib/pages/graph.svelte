@@ -122,6 +122,9 @@
 	let switching = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
+	/** Nothing could be reached, but the canvas has what this device kept. The
+	 *  graph draws; this is the one line that says how old it may be. */
+	let asLastRead = $state(false);
 	/** A field that would not read while the others drew. Beside the graph, never
 	 *  instead of it: one graph short must not cost the reader the rest. */
 	let shortField = $state<string | null>(null);
@@ -488,13 +491,20 @@
 		if (!session.viewer) return;
 		unreachable = null;
 		shortField = null;
+		asLastRead = false;
+		// Which graphs stand on the canvas is read against the ones this person
+		// keeps, so what the device holds of both comes back before either is asked
+		// for — DESIGN.md § Persistence.
+		await Promise.all([graphs.restore(), nodes.restore()]);
 		// What the graphs are called is chrome: one whose name did not arrive still
 		// draws, and the sheet that lists them is where that is said.
 		void graphs.load().catch(() => {});
 		const fields = onCanvas;
-		// A field already cached is drawn while the rest arrives; only a canvas
+		// A field with anything on it draws while the rest arrives; only a canvas
 		// with nothing on it yet is worth a skeleton.
-		loading = !fields.some((graph) => nodes.status({ graph }).loaded);
+		loading = !fields.some(
+			(graph) => nodes.status({ graph }).loaded || nodes.region({ graph }).length > 0
+		);
 		// Each on its own, because one field that will not read must not cost the
 		// others theirs — `node.svelte`'s `reachEveryGraph` reads them the same way.
 		const missed = (
@@ -510,6 +520,10 @@
 		loading = false;
 		if (missed.length === 0) return;
 		if (missed.length === fields.length) {
+			if (fields.some((graph) => nodes.region({ graph }).length > 0)) {
+				asLastRead = true;
+				return;
+			}
 			unreachable =
 				serverMessage(missed[0].error) ??
 				`Sloppy could not reach ${fields.length > 1 ? 'those graphs' : 'your graph'}. Try again in a moment.`;
@@ -1594,6 +1608,17 @@
 
 				{#if railTags.length > 0 || selection.length > 0}
 					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
+				{/if}
+
+				{#if asLastRead}
+					<div class="flex items-center gap-2">
+						<p class="min-w-0 text-sm text-muted-foreground" role="status">
+							This is your graph as you last read it.
+						</p>
+						<Button variant="ghost" class="h-9 shrink-0 rounded-full text-sm" onclick={loadGraph}>
+							Try again
+						</Button>
+					</div>
 				{/if}
 
 				{#if shortField}

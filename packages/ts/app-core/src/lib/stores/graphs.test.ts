@@ -1,5 +1,7 @@
+import 'fake-indexeddb/auto';
 import type { GraphView, OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { deviceStore } from '../device-store.js';
 import { graphs, MOST_ON_CANVAS } from './graphs.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
@@ -20,6 +22,17 @@ const LISTED: GraphView[] = [
 ];
 
 let api: FakeApi;
+
+/** The listing the device holds, once whatever is on its way has landed. */
+async function keptGraphs(): Promise<GraphView[]> {
+	const area = deviceStore.area(DID, 'graphs');
+	for (let turn = 0; turn < 20; turn += 1) {
+		const held = await area.get<GraphView[]>('listing');
+		if (held?.length) return held;
+		await new Promise((done) => setTimeout(done, 0));
+	}
+	return [];
+}
 
 beforeEach(async () => {
 	localStorage.clear();
@@ -163,5 +176,66 @@ describe('the graphs on the canvas', () => {
 		for (const one of many) graphs.toggleOnCanvas(one.ref);
 		expect(graphs.onCanvas.length).toBe(MOST_ON_CANVAS);
 		expect(graphs.canvasFull).toBe(true);
+	});
+});
+
+describe('the graphs this device kept', () => {
+	// A saved arrangement names graphs by ref, and a ref is only one of this
+	// person's if the listing says so — so with no listing there is no canvas.
+	it('stands the arrangement back up with nothing to ask', async () => {
+		await graphs.load();
+		graphs.toggleOnCanvas(GARDEN.ref);
+		await keptGraphs();
+
+		graphs.clear();
+		prefs.set('alsoOnCanvas', [GARDEN.ref]);
+		api.on('GET /graphs', () => {
+			throw new Error('nothing is listening');
+		});
+		await graphs.restore();
+
+		expect(graphs.titleOf(GARDEN.ref)).toBe('Garden');
+		expect(graphs.onCanvas).toEqual([HOME, GARDEN.ref]);
+	});
+
+	// The sheet lists these graphs off the same store, and a listing that is
+	// standing has nothing to apologise for.
+	it('says nothing went wrong while the kept listing stands', async () => {
+		await graphs.load();
+		await keptGraphs();
+		graphs.clear();
+
+		api.on('GET /graphs', () => {
+			throw new Error('nothing is listening');
+		});
+		await graphs.restore();
+		await graphs.load().catch(() => {});
+
+		expect(graphs.all.map((one) => one.title)).toContain('Garden');
+		expect(graphs.state.failed).toBe(false);
+		expect(graphs.state.error).toBeUndefined();
+	});
+
+	it('says so where it kept no listing to stand', async () => {
+		graphs.clear();
+		api.on('GET /graphs', () => {
+			throw new Error('nothing is listening');
+		});
+
+		await graphs.load().catch(() => {});
+
+		expect(graphs.state.failed).toBe(true);
+	});
+
+	it('shows the listing the server answers with, never the one it kept', async () => {
+		await graphs.load();
+		await keptGraphs();
+		graphs.clear();
+
+		api.on('GET /graphs', () => [{ ...GARDEN, title: 'Allotment' }]);
+		await graphs.load();
+		await graphs.restore();
+
+		expect(graphs.all.map((one) => one.title)).toEqual(['Allotment']);
 	});
 });

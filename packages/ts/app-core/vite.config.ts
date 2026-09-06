@@ -8,5 +8,9 @@ export default defineConfig({
 	resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
 	// `src` only: packaging copies the suite into `dist` and
 	// `.svelte-kit/__package__`, and vitest would otherwise run all three.
-	test: { environment: 'jsdom', include: ['src/**/*.test.ts'] }
+	test: {
+		environment: 'jsdom',
+		include: ['src/**/*.test.ts'],
+		setupFiles: ['./src/lib/device-store.test-setup.ts']
+	}
 });
