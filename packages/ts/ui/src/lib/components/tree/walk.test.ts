@@ -124,6 +124,96 @@ describe('the shape a tree walks', () => {
 	});
 });
 
+describe('a tag the reader selected', () => {
+	const question = ['question'] as Tag[];
+	const deep = [
+		note('1'),
+		note('1a', '1'),
+		note('1a1', '1a', { tags: question }),
+		note('1b', '1'),
+		note('2')
+	];
+
+	it('walks into the branches holding a note that carries it, and no others', () => {
+		expect(addresses(walkTree({ notes: deep, opened: opened(), selection: question }))).toEqual([
+			'1',
+			'1a',
+			'1a1',
+			'1b',
+			'2'
+		]);
+	});
+
+	it('leaves every branch where the reader left it while nothing is selected', () => {
+		expect(addresses(walkTree({ notes: deep, opened: opened() }))).toEqual(['1', '2']);
+	});
+
+	it('leaves the branches folded again once the tag is let go', () => {
+		expect(addresses(walkTree({ notes: deep, opened: opened(), selection: [] }))).toEqual([
+			'1',
+			'2'
+		]);
+	});
+
+	it('says a branch is open, so the row it is drawn on can say so too', () => {
+		const rows = walkTree({ notes: deep, opened: opened(), selection: question });
+		expect(rows.find((row) => row.kind === 'note' && row.note.address === '1a')).toMatchObject({
+			open: true
+		});
+		expect(rows.find((row) => row.kind === 'note' && row.note.address === '1b')).toMatchObject({
+			open: false
+		});
+	});
+
+	it('walks into nothing for a tag no note carries', () => {
+		expect(
+			addresses(walkTree({ notes: deep, opened: opened(), selection: ['seed'] as Tag[] }))
+		).toEqual(['1', '2']);
+	});
+
+	it('opens a branch for any one of the selected tags', () => {
+		const notes = [note('1'), note('1a', '1', { tags: ['seed'] as Tag[] })];
+		expect(
+			addresses(walkTree({ notes, opened: opened(), selection: ['question', 'seed'] as Tag[] }))
+		).toEqual(['1', '1a']);
+	});
+
+	it('walks up a chain of parents outside the run it was given', () => {
+		const notes = [note('1a', '1'), note('1a1', '1a'), note('1a1a', '1a1', { tags: question })];
+		expect(addresses(walkTree({ notes, opened: opened(), selection: question }))).toEqual([
+			'1a',
+			'1a1',
+			'1a1a'
+		]);
+	});
+
+	it('says how many of the waiting notes carry it', () => {
+		const notes = [
+			note('1'),
+			...Array.from({ length: 150 }, (_, at) =>
+				note(`1${letters(at + 1)}`, '1', { tags: at >= 120 ? question : [] })
+			)
+		];
+		const rows = walkTree({ notes, opened: opened('1'), selection: question });
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 30 });
+	});
+
+	it('counts a waiting note that only holds one deeper down', () => {
+		const notes = [
+			note('1'),
+			...Array.from({ length: 150 }, (_, at) => note(`1${letters(at + 1)}`, '1')),
+			note(`1${letters(150)}a`, `1${letters(150)}`, { tags: question })
+		];
+		const rows = walkTree({ notes, opened: opened('1'), selection: question });
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 1 });
+	});
+
+	it('counts nothing waiting while no tag is selected', () => {
+		const rows = walkTree({ notes: wide(150), opened: opened('1') });
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 0 });
+	});
+});
+
 describe('a run longer than a page', () => {
 	const notes = wide(250);
 

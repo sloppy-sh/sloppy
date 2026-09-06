@@ -4,6 +4,7 @@
 	// Address Is the Protocol" — so each graph on the canvas is its own tree.
 	import { graphOf, type NodeView, type OwnedRef, type Tag } from '@sloppy/types';
 	import { TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
+	import { api } from '../api.js';
 
 	let {
 		notes,
@@ -33,7 +34,35 @@
 		writeUnder?: TreeSurfaceProps['writeUnder'];
 	} = $props();
 
+	/** How many of the notes last written into head the walk: a way back to
+	 *  yesterday's thought, not a feed. */
+	const LAST_WRITTEN = 8;
+
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
+
+	let written = $state<readonly OwnedRef[]>([]);
+	const own = $derived(fields !== undefined);
+
+	$effect(() => {
+		if (!own) return;
+		let live = true;
+		void api
+			.recentNotes({ limit: LAST_WRITTEN })
+			.then((recent) => {
+				if (live) written = recent.map((note) => note.ref);
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	});
+
+	const lead = $derived.by((): TreeSurfaceProps['lead'] => {
+		const last = written
+			.map((ref) => byRef.get(ref))
+			.filter((note): note is NodeView => note !== undefined);
+		return last.length > 0 ? { title: 'Last written', notes: last } : undefined;
+	});
 
 	const groups = $derived.by((): TreeGroup[] => {
 		if (!fields) return [{ key: 'held', title: '', notes }];
@@ -66,4 +95,14 @@
 	});
 </script>
 
-<TreeSurface {groups} {opened} {selection} {reading} {inset} {onToggle} {onOpen} {writeUnder} />
+<TreeSurface
+	{groups}
+	{lead}
+	{opened}
+	{selection}
+	{reading}
+	{inset}
+	{onToggle}
+	{onOpen}
+	{writeUnder}
+/>

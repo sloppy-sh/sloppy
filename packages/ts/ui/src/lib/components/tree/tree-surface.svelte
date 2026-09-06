@@ -14,6 +14,9 @@
 
 	export interface TreeSurfaceProps {
 		groups: readonly TreeGroup[];
+		/** A short run drawn above the trees, in the order it is given rather than
+		 *  in address order, with nothing under it. */
+		lead?: { title: string; notes: readonly TreeNote[] };
 		/** The notes whose children are drawn. */
 		opened: ReadonlySet<OwnedRef>;
 		/** The reader's tags, in selection order — the order the hues go out in. */
@@ -50,6 +53,7 @@
 
 	let {
 		groups,
+		lead,
 		opened,
 		selection = [],
 		reading = null,
@@ -75,29 +79,51 @@
 
 	const slots = $derived(assignTagHueSlots(selection));
 
-	const drawn = $derived(
-		groups.map((group) => ({
-			group,
+	const drawn = $derived([
+		...(lead && lead.notes.length > 0
+			? [{ key: 'lead', title: lead.title, lead: true, rows: listed(lead.notes) }]
+			: []),
+		...groups.map((group) => ({
+			key: group.key,
+			title: group.title,
+			lead: false,
 			rows: walkTree({
 				notes: group.notes,
 				opened,
 				shown: paged.get(group.key) ?? EMPTY,
-				reading
+				reading,
+				selection
 			})
 		}))
-	);
+	]);
 
-	const rowKey = (row: TreeRow): string => (row.kind === 'note' ? row.note.ref : `rest:${row.key}`);
+	/** A run drawn in the order it was given, with nothing under it. */
+	function listed(notes: readonly TreeNote[]): TreeRow[] {
+		return notes.map((note, at) => ({
+			kind: 'note',
+			note,
+			depth: 0,
+			children: 0,
+			under: 0,
+			open: false,
+			at: at + 1,
+			of: notes.length
+		}));
+	}
+
+	/** The lead's rows key apart from the trees', so a note in both is one row in
+	 *  each and the walk lands on the tree's rather than on the lead's. */
+	const rowKey = (heads: boolean, row: TreeRow): string =>
+		`${heads ? 'lead:' : ''}${row.kind === 'note' ? row.note.ref : `rest:${row.key}`}`;
 
 	/** The tab stop: wherever focus was left, else the note being read, else the
 	 *  first row — so arriving on the tree lands where the reader is. */
-	function stop(key: string, rows: readonly TreeRow[]): string {
+	function stop(key: string, heads: boolean, rows: readonly TreeRow[]): string {
 		const held = tabbed.get(key);
-		if (held !== undefined && rows.some((row) => rowKey(row) === held)) return held;
-		if (reading && rows.some((row) => row.kind === 'note' && row.note.ref === reading)) {
-			return reading;
-		}
-		return rows.length > 0 ? rowKey(rows[0]) : '';
+		if (held !== undefined && rows.some((row) => rowKey(heads, row) === held)) return held;
+		const here = rows.find((row) => row.kind === 'note' && row.note.ref === reading);
+		if (reading && here) return rowKey(heads, here);
+		return rows.length > 0 ? rowKey(heads, rows[0]) : '';
 	}
 
 	/** The selected tags a note carries, earliest-selected first: DESIGN.md § Hue
@@ -190,7 +216,10 @@
 	 *  unfold after the note itself arrives, so the walk has to wait for them. */
 	const landing = $derived(
 		reading !== null &&
-			drawn.some(({ rows }) => rows.some((row) => row.kind === 'note' && row.note.ref === reading))
+			drawn.some(
+				(one) =>
+					!one.lead && one.rows.some((row) => row.kind === 'note' && row.note.ref === reading)
+			)
 			? reading
 			: null
 	);
@@ -214,23 +243,23 @@
 	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
-		{#each drawn as { group, rows } (group.key)}
+		{#each drawn as { key: group, title, lead: heads, rows } (group)}
 			{#if rows.length > 0}
-				{@const held = stop(group.key, rows)}
+				{@const held = stop(group, heads, rows)}
 				<section class="pt-2">
-					{#if groups.length > 1}
+					{#if drawn.length > 1}
 						<!-- Stuck below the chrome the tree is inset off, not under it. -->
 						<h2
 							class="sticky z-10 truncate bg-background/95 py-2 text-xs font-medium text-muted-foreground backdrop-blur"
 							style="top: {inset.top}"
 						>
-							{group.title || 'Untitled'}
+							{title || 'Untitled'}
 						</h2>
 					{/if}
 
-					<div role="tree" aria-label={group.title || 'Notes'}>
-						{#each rows as row (rowKey(row))}
-							{@const key = rowKey(row)}
+					<div role="tree" aria-label={title || 'Notes'}>
+						{#each rows as row (rowKey(heads, row))}
+							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
 							{#if row.kind === 'note'}
 								{@const asked = askedOf(row.note)}
@@ -245,8 +274,8 @@
 									aria-expanded={row.children > 0 ? row.open : undefined}
 									aria-selected={row.note.ref === reading}
 									onclick={() => onOpen(row.note.ref)}
-									onkeydown={(event) => keys(event, group.key, rows)}
-									onfocusin={() => tabbed.set(group.key, key)}
+									onkeydown={(event) => keys(event, group, rows)}
+									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
 										0 && asked.length === 0
 										? 'opacity-45'
@@ -327,15 +356,17 @@
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
 									aria-selected={false}
-									onclick={() => reveal(group.key, row)}
-									onkeydown={(event) => keys(event, group.key, rows)}
-									onfocusin={() => tabbed.set(group.key, key)}
+									onclick={() => reveal(group, row)}
+									onkeydown={(event) => keys(event, group, rows)}
+									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 									style="padding-inline-start: {step}"
 								>
 									<span class="size-11 shrink-0" aria-hidden="true"></span>
 									<span class="min-w-0 truncate">
-										{row.rest.toLocaleString()} more{row.parent ? ` under ${row.parent}` : ''}
+										{row.rest.toLocaleString()} more{row.parent
+											? ` under ${row.parent}`
+											: ''}{row.lit > 0 ? `, ${row.lit.toLocaleString()} lit up` : ''}
 									</span>
 								</div>
 							{/if}

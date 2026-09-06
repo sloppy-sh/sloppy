@@ -1,8 +1,8 @@
-import type { NodeView, OwnedRef } from '@sloppy/types';
+import type { NodeView, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { node, ref } from '../stores/fake-api.test-support.js';
+import { type FakeApi, finding, node, ref, useFakeApi } from '../stores/fake-api.test-support.js';
 import GraphTree from './graph-tree.svelte';
 
 const OTHER = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH';
@@ -23,6 +23,7 @@ function letters(ordinal: number): string {
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+let fake: FakeApi;
 let read: OwnedRef[];
 /** The branches the reader has opened, held the way the graph page holds them. */
 let unfolded: SvelteSet<OwnedRef>;
@@ -32,6 +33,7 @@ function render(props: {
 	notes: readonly NodeView[];
 	fields?: { ref: OwnedRef; title: string }[];
 	reading?: OwnedRef | null;
+	selection?: Tag[];
 }) {
 	mounted = mount(GraphTree, {
 		target,
@@ -39,6 +41,7 @@ function render(props: {
 			notes: props.notes,
 			fields: props.fields,
 			reading: props.reading ?? null,
+			selection: props.selection ?? [],
 			opened: unfolded,
 			inset: { top: '0px', bottom: '0px' },
 			onToggle: (of: OwnedRef, open: boolean) => (open ? unfolded.add(of) : unfolded.delete(of)),
@@ -60,7 +63,16 @@ const labelled = (address: string) =>
 		(row) => row.querySelector('.address')?.textContent?.trim() === address
 	) as HTMLElement;
 
+async function settle(): Promise<void> {
+	for (let turn = 0; turn < 4; turn += 1) {
+		await new Promise((done) => setTimeout(done, 0));
+		flushSync();
+	}
+}
+
 beforeEach(() => {
+	fake = useFakeApi();
+	finding(fake);
 	read = [];
 	unfolded = new SvelteSet<OwnedRef>();
 	scrolledTo = [];
@@ -219,5 +231,92 @@ describe('the tree and the canvas show the same graphs', () => {
 		});
 		expect(rows()).toHaveLength(2);
 		expect(target.querySelectorAll('[role="tree"]')).toHaveLength(2);
+	});
+});
+
+describe('a tag the reader selected', () => {
+	it('reaches the notes carrying it inside branches the reader left folded', () => {
+		render({
+			notes: [
+				node(40, '1', { graph: THESIS }),
+				node(41, '1a', { graph: THESIS, parent: ref(40), origin: ref(40) }),
+				node(42, '1a1', {
+					graph: THESIS,
+					parent: ref(41),
+					origin: ref(40),
+					tags: ['question'] as Tag[]
+				}),
+				node(43, '2', { graph: THESIS })
+			],
+			fields: [{ ref: THESIS, title: 'Thesis' }],
+			selection: ['question'] as Tag[]
+		});
+		expect(shown()).toEqual(['1', '1a', '1a1', '2']);
+	});
+});
+
+// PRODUCT.md § Purpose: capture demands nothing, so the note put down yesterday
+// is often untitled and untagged, and when is all anybody remembers of it.
+describe('the notes last written into', () => {
+	const branch = [
+		node(50, '1', { graph: THESIS }),
+		node(51, '1a', { graph: THESIS, parent: ref(50), origin: ref(50) }),
+		node(52, '2', { graph: THESIS })
+	];
+	const fields = [{ ref: THESIS, title: 'Thesis' }];
+
+	it('heads the walk, most recent first, whatever their addresses', async () => {
+		finding(fake, { recent: [branch[1], branch[2]] });
+		render({ notes: branch, fields });
+		await settle();
+
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(
+			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
+		).toEqual(['1a', '2']);
+		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
+			'Last written',
+			'Thesis'
+		]);
+	});
+
+	it('opens the note whose row was tapped', async () => {
+		finding(fake, { recent: [branch[1]] });
+		render({ notes: branch, fields });
+		await settle();
+
+		rows()[0].click();
+		expect(read).toEqual([ref(51)]);
+	});
+
+	it('asks for nothing where the branch is somebody else’s', async () => {
+		const root = ref(60, OTHER);
+		render({
+			notes: [{ ...node(60, '3'), ref: root, created_by: OTHER, origin: root }],
+			fields: undefined
+		});
+		await settle();
+
+		expect(fake.countOf('GET /nodes/recent')).toBe(0);
+	});
+
+	it('leaves out a note this walk is not showing', async () => {
+		finding(fake, { recent: [node(70, '1', { graph: GARDEN }), branch[2]] });
+		render({ notes: branch, fields });
+		await settle();
+
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(
+			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
+		).toEqual(['2']);
+	});
+
+	it('heads the walk with nothing when the list will not read', async () => {
+		fake.on('GET /nodes/recent', () => new Response('{"message":"Not now."}', { status: 500 }));
+		render({ notes: branch, fields });
+		await settle();
+
+		expect(target.querySelector('h2')).toBeNull();
+		expect(shown()).toEqual(['1', '2']);
 	});
 });
