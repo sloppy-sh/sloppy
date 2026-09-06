@@ -152,8 +152,8 @@ describe.each([
 		expect(focused()).toBe(title());
 	});
 
-	// The obvious key out of the title used to hand focus to nothing, which on a
-	// phone drops the keyboard between the name and the thought.
+	// The key out of the title lands in the writing, so on a phone the keyboard
+	// stays up between the name and the thought.
 	it.each([['Enter'], ['Tab']])(
 		'carries the caret from the title into the writing on %s',
 		async (key) => {
@@ -513,7 +513,7 @@ describe('writing the note that comes next', () => {
 		await settle();
 	}
 
-	// A long note used to put its writing controls an unbounded scroll away.
+	// The head of the note is reachable however far the note runs.
 	it('springs a note out of the one being read, from the head of the note', async () => {
 		await openNote(SECOND);
 		await fromTheHead('Write a note under this');

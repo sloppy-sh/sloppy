@@ -3,7 +3,7 @@
 	// at a time. A run belongs to the graph it was written in — AI.md § "The
 	// Address Is the Protocol" — so each graph on the canvas is its own tree.
 	import { graphOf, type NodeView, type OwnedRef, type Tag } from '@sloppy/types';
-	import { TreeSurface, type TreeGroup } from '@sloppy/ui';
+	import { TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
 
 	let {
 		notes,
@@ -14,7 +14,7 @@
 		inset,
 		onToggle,
 		onOpen,
-		onWrite
+		writeUnder
 	}: {
 		/** Every note on the canvas, in any order — the tree finds its own shape. */
 		notes: readonly NodeView[];
@@ -28,9 +28,9 @@
 		inset: { top: string; bottom: string };
 		onToggle: (ref: OwnedRef, open: boolean) => void;
 		onOpen: (ref: OwnedRef) => void;
-		/** Write a note under the row. Absent where these notes are not the
-		 *  reader's to write under. */
-		onWrite?: (ref: OwnedRef) => void;
+		/** Writing a note under a row, from the row. Absent where these notes are
+		 *  not the reader's to write under. */
+		writeUnder?: TreeSurfaceProps['writeUnder'];
 	} = $props();
 
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
@@ -66,4 +66,4 @@
 	});
 </script>
 
-<TreeSurface {groups} {opened} {selection} {reading} {inset} {onToggle} {onOpen} {onWrite} />
+<TreeSurface {groups} {opened} {selection} {reading} {inset} {onToggle} {onOpen} {writeUnder} />

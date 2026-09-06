@@ -1093,8 +1093,8 @@ describe('writing a note from the keyboard', () => {
 	const WRITTEN = ref(9);
 	let placed: unknown;
 
-	function strike(shiftKey: boolean): void {
-		document.body.dispatchEvent(
+	function strike(shiftKey: boolean, from: Element = document.body): void {
+		from.dispatchEvent(
 			new KeyboardEvent('keydown', {
 				key: 'Enter',
 				metaKey: true,
@@ -1103,6 +1103,24 @@ describe('writing a note from the keyboard', () => {
 				cancelable: true
 			})
 		);
+	}
+
+	/** A row of the one control at the head of the note being read. */
+	async function fromTheNote(named: string): Promise<void> {
+		labelled('What to do with this note').click();
+		await settle();
+		const row = [...document.body.querySelectorAll('button')].find(
+			(one) => one.textContent?.trim() === named
+		);
+		if (!row) throw new Error(`The note's menu does not offer "${named}"`);
+		row.click();
+		await settle();
+	}
+
+	async function openNote(): Promise<void> {
+		await open();
+		onCanvas('1a').click();
+		await settle();
 	}
 
 	beforeEach(() => {
@@ -1125,9 +1143,7 @@ describe('writing a note from the keyboard', () => {
 	});
 
 	it('continues the note being read', async () => {
-		await open();
-		onCanvas('1a').click();
-		await settle();
+		await openNote();
 
 		strike(true);
 		await settle();
@@ -1144,6 +1160,50 @@ describe('writing a note from the keyboard', () => {
 		expect(inSheet()).toContain('Tag this note');
 
 		strike(false);
+		await settle();
+
+		expect(placed).toBeUndefined();
+	});
+
+	it('leaves the keys alone while the note being read is asking something', async () => {
+		await openNote();
+		labelled('What to do with this note').click();
+		await settle();
+
+		strike(false);
+		await settle();
+
+		expect(placed).toBeUndefined();
+	});
+
+	it('leaves the keys alone while the note is answering for what was asked', async () => {
+		await openNote();
+		await fromTheNote('Tags');
+		expect(inSheet()).toContain('Tags');
+
+		strike(false);
+		await settle();
+
+		expect(placed).toBeUndefined();
+	});
+
+	it('leaves the keys to the writing they were typed into', async () => {
+		await openNote();
+		const writing = document.body.querySelector('.sloppy-prose');
+		if (!writing) throw new Error('The note has no writing surface');
+
+		strike(false, writing);
+		await settle();
+
+		expect(placed).toBeUndefined();
+	});
+
+	it('leaves the keys to the title they were typed into', async () => {
+		await openNote();
+		const name = document.body.querySelector('[aria-label="Title"]');
+		if (!name) throw new Error('The note has no title');
+
+		strike(false, name);
 		await settle();
 
 		expect(placed).toBeUndefined();

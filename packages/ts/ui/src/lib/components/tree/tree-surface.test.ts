@@ -60,7 +60,17 @@ function render(
 			reading: props.reading ?? null,
 			onOpen: (ref: OwnedRef) => openedNotes.push(ref),
 			onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open]),
-			onWrite: props.writable ? (ref: OwnedRef) => written.push(ref) : undefined
+			writeUnder: props.writable
+				? {
+						keys: 'Meta+Shift+Enter Control+Shift+Enter',
+						typed: (event: KeyboardEvent) =>
+							event.key === 'Enter' &&
+							event.shiftKey &&
+							!event.altKey &&
+							(event.metaKey || event.ctrlKey),
+						write: (ref: OwnedRef) => written.push(ref)
+					}
+				: undefined
 		}
 	});
 	flushSync();
@@ -71,9 +81,11 @@ const rows = () => [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')
 const labelled = (address: string) =>
 	rows().find((row) => row.textContent?.includes(address)) as HTMLElement;
 
-const press = (row: HTMLElement, key: string) => {
+const press = (row: HTMLElement, key: string, held: KeyboardEventInit = {}) => {
 	row.focus();
-	row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+	row.dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...held })
+	);
 	flushSync();
 };
 
@@ -358,39 +370,40 @@ describe('writing from a row', () => {
 
 	it('asks for the same note from the keyboard, on the row the reader is on', () => {
 		render({ writable: true });
-		const row = labelled('About 2');
-		row.focus();
-		row.dispatchEvent(
-			new KeyboardEvent('keydown', {
-				key: 'Enter',
-				metaKey: true,
-				shiftKey: true,
-				bubbles: true,
-				cancelable: true
-			})
-		);
-		flushSync();
+		press(labelled('About 2'), 'Enter', { metaKey: true, shiftKey: true });
 
 		expect(written).toEqual([held('2')]);
 		expect(openedNotes).toEqual([]);
+	});
+
+	it('leaves a keystroke it does not answer for whoever is listening past it', () => {
+		render({ writable: true });
+		const row = labelled('About 2');
+		const past: string[] = [];
+		const onward = (event: KeyboardEvent) => past.push(event.key);
+		document.body.addEventListener('keydown', onward);
+
+		press(row, 'Enter', { metaKey: true });
+		press(row, 'Enter', { metaKey: true, shiftKey: true, altKey: true });
+		document.body.removeEventListener('keydown', onward);
+
+		expect(written).toEqual([]);
+		expect(openedNotes).toEqual([]);
+		expect(past).toEqual(['Enter', 'Enter']);
+	});
+
+	it('walks on with a key held, which the row does not answer for', () => {
+		render({ writable: true });
+		press(rows()[0], 'ArrowDown', { metaKey: true });
+
+		expect(document.activeElement).toBe(rows()[1]);
 	});
 
 	it('offers nothing to write with where the notes are not the reader’s', () => {
 		render();
 		expect(target.querySelector('[aria-label^="Write a note under"]')).toBeNull();
 
-		const row = labelled('About 1');
-		row.focus();
-		row.dispatchEvent(
-			new KeyboardEvent('keydown', {
-				key: 'Enter',
-				metaKey: true,
-				shiftKey: true,
-				bubbles: true,
-				cancelable: true
-			})
-		);
-		flushSync();
+		press(labelled('About 1'), 'Enter', { metaKey: true, shiftKey: true });
 
 		expect(written).toEqual([]);
 		expect(openedNotes).toEqual([]);

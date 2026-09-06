@@ -113,7 +113,7 @@
 	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
-	import { acceleratorFor, NEW_BRANCH } from './shortcuts.js';
+	import { acceleratorFor, NEW_BRANCH, typedIntoWriting, WRITE_UNDER } from './shortcuts.js';
 
 	let loading = $state(true);
 	/** Whether the graphs this person keeps are being looked through. */
@@ -143,6 +143,8 @@
 	let naming = $state<OwnedRef | null>(null);
 	/** The shape that note was written to start from, which it seeds itself with. */
 	let seed = $state<{ ref: OwnedRef; shape: NoteTemplate } | null>(null);
+	/** Whether the note on the reading surface has a question of its own up. */
+	let noteAsking = $state(false);
 	/** The note a link is being pointed FROM, while the graph is the picker. */
 	let pointing = $state<OwnedRef | null>(null);
 	/** The strip held while the surface is out of the graph's way, so a question
@@ -349,13 +351,14 @@
 	);
 	const overGraph = $derived(overlay.open || menuAt !== null);
 
-	/** A question this page has put to the reader. Not `overGraph`: where the
-	 *  reading panel cannot dock the note is a surface too, and reading one is
-	 *  not being asked anything. */
+	/** A question put to the reader over this page, the open note's own included.
+	 *  Not `overGraph`: where the reading panel cannot dock the note is a surface
+	 *  too, and reading one is not being asked anything. */
 	const asked = $derived(
 		menuAt !== null ||
 			choosingWallpaper ||
 			deleting ||
+			noteAsking ||
 			numbering ||
 			publishing ||
 			shaping ||
@@ -889,8 +892,7 @@
 		return items;
 	});
 
-	/** Kept short: the menu has a phone to fit on, beside the note it is about,
-	 *  so a row added here costs a row that is here. */
+	/** Kept short: the menu has a phone to fit on, beside the note it is about. */
 	function actsOnOne(on: OwnedRef, foldable: boolean): CanvasMenuItem[] {
 		const items: CanvasMenuItem[] = [
 			{ label: 'Open it', icon: FileText, onSelect: () => show(on) }
@@ -989,6 +991,12 @@
 			creating = false;
 		}
 	}
+
+	const writeFromRow = {
+		keys: WRITE_UNDER.keys,
+		typed: (event: KeyboardEvent) => acceleratorFor(event) === 'under',
+		write: (on: OwnedRef) => void writeUnder(on)
+	};
 
 	/**
 	 * Somebody else's region, on the canvas in place of the reader's own graph.
@@ -1212,6 +1220,7 @@
 		// Last resort: a row of the walk answers these keys for the note it is on,
 		// and has refused the default by the time they reach here.
 		if (event.defaultPrevented || asked || pointing || foreign) return;
+		if (typedIntoWriting(event)) return;
 		const act = acceleratorFor(event);
 		if (act === 'branch') {
 			event.preventDefault();
@@ -1303,7 +1312,7 @@
 					opened={unfolded}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
 					onOpen={foreign ? (ref) => void readHeld(ref) : show}
-					onWrite={foreign ? undefined : (ref) => void writeUnder(ref)}
+					writeUnder={foreign ? undefined : writeFromRow}
 				/>
 			{/if}
 		</div>
@@ -1720,6 +1729,7 @@
 			{naming}
 			{seed}
 			{openNotes}
+			onAsking={(up) => (noteAsking = up)}
 			onSeeded={() => (seed = null)}
 			onOpen={show}
 			onOpenAlso={showAlso}

@@ -80,6 +80,7 @@
 		naming = null,
 		seed = null,
 		openNotes = [],
+		onAsking,
 		onSeeded,
 		onOpen,
 		onOpenAlso,
@@ -98,6 +99,9 @@
 		onSeeded?: () => void;
 		/** Every note open on the reading surface, this one included. */
 		openNotes?: readonly OwnedRef[];
+		/** Called with whether this note has a question of its own in front of the
+		 *  reader, so whatever the note sits on can leave their answer alone. */
+		onAsking?: (asking: boolean) => void;
 		/** `wrote` is the note the new one was written from, which is the tab it
 		 *  takes the place of — not always the tab the reader is in by the time the
 		 *  note comes back. */
@@ -201,7 +205,7 @@
 
 	let titleField = $state<HTMLTextAreaElement | null>(null);
 	let noteBody = $state<HTMLElement | null>(null);
-	let stack = $state<{ focusBody: () => void } | null>(null);
+	let bodyStack = $state<{ focusBody: () => void } | null>(null);
 	let tagsSheet = $state<HTMLElement | null>(null);
 
 	/** Which act the shapes are being offered for: a note under this one, the one
@@ -233,6 +237,11 @@
 	let linking = $state(false);
 	let publishing = $state(false);
 	let removing = $state(false);
+
+	$effect(() => {
+		onAsking?.(acting || tagging || linking || publishing || removing || shaping !== null);
+		return () => onAsking?.(false);
+	});
 
 	/** Which side of the note is in front of the reader: what it says, or how it
 	 *  is drawn on the graph. */
@@ -1239,7 +1248,7 @@
 					e.preventDefault();
 					// A title is done with when the writing starts, and on a phone the
 					// keyboard has to stay up between the two.
-					if (stack) stack.focusBody();
+					if (bodyStack) bodyStack.focusBody();
 					else e.currentTarget.blur();
 				}}
 				onblur={() => saveTitle(ref)}
@@ -1303,7 +1312,7 @@
 				{:else}
 					{#key rebuilt}
 						<BlockStack
-							bind:this={stack}
+							bind:this={bodyStack}
 							{node}
 							{blocks}
 							{emoji}

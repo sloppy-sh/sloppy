@@ -33,7 +33,11 @@ export type { HeldRegion, Peer, PublishedThere } from './components/peers/peer.j
 
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export * from './components/graph/view.js';
-export { default as TreeSurface, type TreeGroup } from './components/tree/tree-surface.svelte';
+export {
+	default as TreeSurface,
+	type TreeGroup,
+	type TreeSurfaceProps
+} from './components/tree/tree-surface.svelte';
 export type { TreeNote, TreeRow } from './components/tree/walk.js';
 export { default as TagField } from './components/tags/tag-field.svelte';
 export { default as TagRail } from './components/tags/tag-rail.svelte';
