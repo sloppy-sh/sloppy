@@ -95,8 +95,8 @@ Address Is the Protocol" states the rules; this is the mechanism.
 - Addresses are assigned at creation and **never change**. Moving a node writes an alias;
   it never renumbers. `graph` is immutable for the same reason.
 - An address is assigned **once** in a graph and never assigned again. Deleting a note
-  does not free it, and neither does purging the row: `NodeRepository.remove` writes a
-  `retired_address` row for every note it takes. `childAddresses` and `addressTaken`
+  does not free it, and neither does purging the row: `NodeRepository.remove` stamps `deleted_at`, and
+  `purgeExpired` writes a `retired_address` row for every note it finally takes. `childAddresses` and `addressTaken`
   answer from the notes and those rows together, so `nextChildAddress` steps past a
   number the graph has spent and a branch numbered by hand at one is refused.
 - The address hashes to a stable **angular sector**, so a subtree radiates in the same
@@ -896,8 +896,8 @@ retired_address:{ created_by: <did>, id: <ulid> }
 is a note that is there, which is every row written before this column existed, so nothing
 has to be filled in. A stamped note and its sections are still stored, still the author's,
 and still at their addresses — what a person can put back is exactly what is still there to
-find. **Nothing stamps the column yet**: removal takes the rows, and the milestone that
-lands putting a note back is what makes it stamp instead. The reads that decide a NEW
+find. A deleted branch is listed by `GET /nodes/deleted` and put back by
+`POST /nodes/:did/:localId/restore` until the window closes. The reads that decide a NEW
 address are the ones that deliberately do not filter it:
 `childAddresses` and `addressTaken` count a deleted note among what a graph has assigned,
 because an address is spent whether or not the note comes back.
