@@ -1359,4 +1359,83 @@ describe('a note written before the server has answered', () => {
 		await until(() => created.length > 0);
 		expect(said(created[0])).toBe('two bars is still four seconds');
 	});
+
+	function shape(named: string): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll<HTMLButtonElement>('li button')].find(
+			(row) => row.querySelector('span')?.textContent?.trim() === named
+		);
+		if (!found) throw new Error(`No shape on screen is called "${named}"`);
+		return found;
+	}
+
+	async function writeFromTheCanvas(): Promise<void> {
+		await open();
+		menuOn('1a').click();
+		await settle();
+		item('Write a note under this').click();
+		await settle();
+	}
+
+	it('opens somewhere to write for a note asked for on the canvas, with nothing open', async () => {
+		await writeFromTheCanvas();
+
+		expect(reading()).toBe(true);
+		expect(screen()).toContain('Giving it an address');
+		expect(document.body.querySelector('.address')).toBeNull();
+	});
+
+	it('opens somewhere to write for a note asked for from a row of the outline', async () => {
+		await open();
+		labelled('Walk the notes one at a time').click();
+		await settle();
+		labelled('Unfold 1').click();
+		await settle();
+		labelled('Write a note under 1a').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+		expect(screen()).toContain('Giving it an address');
+	});
+
+	it('says a note asked for on the canvas would not go, and lets the writing be left', async () => {
+		await writeFromTheCanvas();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(
+			new Response('{"message":"That note would not go."}', {
+				status: 400,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+		await settle();
+
+		expect(screen()).toContain('That note would not go.');
+		expect(field('Note body').value).toBe('two bars is still four seconds');
+
+		button('Graph').click();
+		await settle();
+
+		expect(reading()).toBe(false);
+		expect(button('New branch').disabled).toBe(false);
+	});
+
+	it('keeps what was typed into a branch started from a shape, above its sections', async () => {
+		await open();
+		labelled('A new branch, from a shape').click();
+		await settle();
+		shape('Objection').click();
+		await settle();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(node(9, '3'));
+		await until(() => created.length === 3);
+
+		expect(created.map(said)).toEqual([
+			'two bars is still four seconds',
+			'The objection',
+			'What survives if I am right'
+		]);
+	});
 });

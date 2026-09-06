@@ -256,12 +256,6 @@
 	const open = $derived(page.state.note ?? null);
 	/** Every note open on the reading surface, in the order they were opened. */
 	const openNotes = $derived<readonly OwnedRef[]>(page.state.notes ?? (open ? [open] : []));
-	/** Whether the note being written stands in the tab in front of the reader.
-	 *  A tab closed while that note is being written leaves it nowhere to stand,
-	 *  and it joins the strip when it lands. */
-	const writingHere = $derived(
-		writing !== null && (writing.from === null || writing.from === open)
-	);
 	const tabs = $derived(
 		openNotes.map((ref) => {
 			const note = nodes.get(ref);
@@ -1784,20 +1778,20 @@
      somebody else's region — a history pop is the way in that nothing else
      closes. -->
 <ReadingPanel
-	open={(open !== null || writingHere) && !foreign}
+	open={writing !== null || (open !== null && !foreign)}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}
-	title={writingHere ? 'Note' : openNode?.title || 'Note'}
+	title={writing ? 'Note' : openNode?.title || 'Note'}
 	{tabs}
-	active={open}
+	active={writing ? null : open}
 	says={tooMany}
 	width={prefs.current.readingWidth}
 	onWidthChange={(px) => prefs.set('readingWidth', px)}
 	onActivate={activate}
 	onCloseTab={closeTab}
 >
-	{#if writing && writingHere}
+	{#if writing}
 		<Writing
 			title={writing.title}
 			body={writing.body}

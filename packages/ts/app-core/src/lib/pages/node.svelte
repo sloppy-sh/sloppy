@@ -47,6 +47,7 @@
 		suggestedFor,
 		TagField,
 		TemplatePicker,
+		textDocument,
 		writeTemplate,
 		type NoteMenuItem,
 		type NoteReferences,
@@ -702,15 +703,20 @@
 			onSeeded?.();
 			return shape;
 		});
-		untrack(() => {
+		// A shape writes this note's sections itself, so writing that arrived with
+		// the note goes down as the first of them rather than through the surface:
+		// two writers on one stack is what `stackSettled` exists to keep apart.
+		const opener = untrack(() => {
 			caretTo = 'title';
 			carried = null;
-			if (typed?.ref !== opening) return;
+			if (typed?.ref !== opening) return '';
 			const said = typed;
 			onTyped?.();
 			if (said.title) drafts.set(opening, said.title);
+			if (starting) return said.body;
 			caretTo = said.where;
 			if (said.body || said.where === 'body') carried = { ref: opening, body: said.body };
+			return '';
 		});
 		let live = true;
 		const known = read.get(opening);
@@ -751,7 +757,7 @@
 					};
 				}
 			}
-			if (live && held && starting) await shapeThisNote(starting);
+			if (live && held && starting) await shapeThisNote(starting, opener);
 		})();
 		// The note being left saves its title here rather than only on blur: a tab
 		// switched with a finger never blurs the field.
@@ -824,8 +830,9 @@
 		} while (surfaceWrites > 0);
 	}
 
-	/** Gives this note a shape, its sections landing under what is already here. */
-	async function shapeThisNote(shape: NoteTemplate): Promise<void> {
+	/** Gives this note a shape, its sections landing under what is already here.
+	 *  `first` is writing the note arrived holding, which goes down before them. */
+	async function shapeThisNote(shape: NoteTemplate, first = ''): Promise<void> {
 		const into = ref;
 		if (seeding.has(into)) return;
 		seeding.add(into);
@@ -834,11 +841,11 @@
 
 		let refusal: string | null = null;
 		try {
-			await writeTemplate(
-				shape,
-				{ node: into, after: read.get(into)?.at(-1)?.ref },
-				api.createBlock
-			);
+			let after = read.get(into)?.at(-1)?.ref;
+			if (first) {
+				after = (await api.createBlock({ node: into, content: textDocument(first) })).ref;
+			}
+			await writeTemplate(shape, { node: into, after }, api.createBlock);
 		} catch (error) {
 			refusal =
 				serverMessage(error) ?? 'Sloppy could not add those sections. Try again in a moment.';
