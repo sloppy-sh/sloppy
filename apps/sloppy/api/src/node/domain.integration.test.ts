@@ -1150,6 +1150,40 @@ describe("the domain routes", () => {
       },
     );
 
+    // A note that is waiting to come back takes no writing, from a surface
+    // still open on it or from anywhere else.
+    scenario("takes no writing while it is waiting to come back", async () => {
+      const doc = (text: string) => ({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      });
+      const going = await newNode(ada, { title: "Still open" });
+      const section = (await ok("POST", "/blocks", ada, {
+        node: going.ref,
+        content: doc("Written before it went."),
+      })) as BlockView;
+      await ok("DELETE", `/nodes/${at(going.ref)}`, ada);
+
+      const written = await call("PATCH", `/blocks/${at(section.ref)}`, ada, {
+        content: doc("Written after it went."),
+      });
+      expect(written.status).toBe(404);
+      const added = await call("POST", "/blocks", ada, {
+        node: going.ref,
+        content: doc("A whole new section."),
+      });
+      expect(added.status).toBe(400);
+
+      await ok("POST", `/nodes/${at(going.ref)}/restore`, ada);
+      const back = (await ok(
+        "GET",
+        `/nodes/${at(going.ref)}/blocks`,
+        ada,
+      )) as BlockView[];
+      expect(back.map((one) => one.ref)).toEqual([section.ref]);
+      expect(back[0].content).toEqual(section.content);
+    });
+
     scenario("leaves what was deleted before it alone", async () => {
       const root = await newNode(ada, { title: "Two acts" });
       const branch = await newNode(ada, { from: springsFrom(root) });

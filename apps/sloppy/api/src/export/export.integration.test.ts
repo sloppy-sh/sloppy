@@ -291,6 +291,29 @@ describe("a copy of everything somebody keeps", () => {
     30_000,
   );
 
+  scenario(
+    "carries a branch that was put back, and what was written in it",
+    async () => {
+      const back = await newNode(ada, { title: "Back again" });
+      const under = await newNode(ada, {
+        from: { relation: "under", note: back.ref },
+        title: "Under it",
+      });
+      const inside = await newBlock(ada, back.ref, "written before it went");
+      await ok("DELETE", `/nodes/${at(back.ref)}`, ada);
+      await ok("POST", `/nodes/${at(back.ref)}/restore`, ada);
+
+      const { held } = await copyFor(ada);
+
+      const notes = held.notes.map((note) => note.ref);
+      expect(notes).toContain(back.ref);
+      expect(notes).toContain(under.ref);
+      const kept = held.blocks.find((block) => block.ref === inside.ref);
+      expect(kept?.content).toEqual(inside.content);
+    },
+    30_000,
+  );
+
   // A note that can still be put back is not part of what somebody has.
   scenario(
     "leaves out a note that is waiting to come back",

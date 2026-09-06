@@ -89,6 +89,12 @@ export class BlockService {
   ): Promise<BlockView> {
     const node = await this.blocks.nodeOf(did, ref);
     if (!node) throw new NotFoundException("That block is not here.");
+    // A deleted note keeps its sections so they come back with it, and a write
+    // that landed in one would be neither read nor counted in what the note
+    // cites.
+    if (!(await this.nodes.find(did, node))) {
+      throw new NotFoundException("That note is not here.");
+    }
     if (request.after === ref) {
       throw new BadRequestException("A block cannot follow itself.");
     }

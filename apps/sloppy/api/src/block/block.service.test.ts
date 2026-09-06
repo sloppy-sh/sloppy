@@ -8,6 +8,7 @@ import {
   type BlockDocument,
   createOwnedRecordId,
   emptyDocument,
+  type Node,
   type OwnedRef,
   ownedRefFrom,
 } from "@sloppy/types";
@@ -26,9 +27,12 @@ const prose = (line: string): BlockDocument => ({
   content: [{ type: "paragraph", content: [{ type: "text", text: line }] }],
 });
 
-/** Nothing here names another note, so no derivation is reached and the note's
- *  own row is never asked for. */
-const nodes = {} as NodeRepository;
+/** Nothing here names another note, so no derivation is reached. The note's own
+ *  row is read only to answer that it has not been deleted out from under the
+ *  write. */
+const nodes = {
+  find: () => Promise.resolve({} as Node),
+} as unknown as NodeRepository;
 
 function sectionOn(updatedAt: string) {
   const id = createOwnedRecordId("block", ADA);
