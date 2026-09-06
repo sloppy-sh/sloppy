@@ -2,6 +2,7 @@ import {
   type Address,
   addressDepth,
   assignTagHueSlots,
+  type DidSyr,
   type EdgeKind,
   MARK_RADII,
   MARK_RADIUS_SCALE,
@@ -795,6 +796,56 @@ describe("the look a note's author gave it", () => {
     });
     expect(mark.ringWeight).toBe("hairline");
     expect(mark.radius).toBeGreaterThan(radiusOf([plain("1")]));
+  });
+
+  // DESIGN.md § "A note's look never uses colour": the shape channels travel, so
+  // a region a thinker shaped is read as they shaped it. `pulledNodeView` in
+  // `@sloppy/types` is what a held copy arrives through.
+  describe("a mark held from a peer", () => {
+    const PEER = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva" as DidSyr;
+    const THERE = `${PEER}/01JSPREAD00000000000000000` as OwnedRef;
+
+    const markOf = (appearance: NodeAppearance) => {
+      const entry: DrawnNode = {
+        node: {
+          ...note("1"),
+          ref: THERE,
+          created_by: PEER,
+          origin: THERE,
+          published: true,
+          appearance,
+        },
+        collapsed: false,
+        folded: 0,
+        tags: [],
+      };
+      const model = buildModel([entry], {
+        selection: [],
+        palette,
+        viewer: corpus.owner,
+      });
+      return model.graph.getNodeAttributes(THERE);
+    };
+
+    it("draws the shape its author gave it", () => {
+      const mark = markOf({
+        ring_weight: "heavy",
+        ring_style: "dashed",
+        mark_radius: "large",
+      });
+
+      expect(mark.provenance).toBe("pulled");
+      expect(mark.ringWeight).toBe("heavy");
+      expect(mark.ringStyle).toBe("dashed");
+      expect(mark.radius).toBe(LEAF_RADIUS * MARK_RADIUS_SCALE.large);
+    });
+
+    it("wears no picture, the pictures on a mark staying with their author", () => {
+      const mark = markOf({ ring_weight: "hairline" });
+
+      expect(mark.preview.pictures).toEqual([]);
+      expect(mark.previewCover).toBe(PREVIEW_COVER_MIN);
+    });
   });
 });
 
