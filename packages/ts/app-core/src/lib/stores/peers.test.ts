@@ -1,9 +1,18 @@
 // What the store does with what a peer's instance answers, and what it still
 // shows the reader when half of what it asked for did not arrive.
 
-import type { PullView } from '@sloppy/types';
+import type { NodeView, PullView } from '@sloppy/types';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
+import {
+	AT,
+	DID,
+	holding,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from './fake-api.test-support.js';
 import { peers } from './peers.svelte.js';
 import { session } from './session.svelte.js';
 
@@ -101,5 +110,115 @@ describe('the lists the reader opens onto', () => {
 		expect(peers.loaded).toBe(true);
 		expect(api.countOf('GET /pulls')).toBe(1);
 		expect(api.countOf('GET /following')).toBe(2);
+	});
+});
+
+describe('what the author has published since', () => {
+	const chain = (sequence: number) => ({
+		publication: held.publication,
+		versions: [{ ref: ref(sequence + 40, AUTHOR), sequence, published_at: AT }]
+	});
+
+	it('asks the instance the copy came from, and asks it once', async () => {
+		api.on('GET /peers/versions', () => chain(3));
+
+		await peers.readChain(held.publication, held.source_url);
+		await peers.readChain(held.publication, held.source_url);
+
+		expect(peers.newestOf(held.publication)?.sequence).toBe(3);
+		expect(api.countOf('GET /peers/versions')).toBe(1);
+		expect(api.calls.at(-1)).toContain(`source_url=${encodeURIComponent('http://peer.test')}`);
+	});
+
+	it('says nothing to the reader when their instance does not answer', async () => {
+		api.on('GET /peers/versions', () => new Response('{"message":"Not now."}', { status: 503 }));
+
+		expect(await peers.readChain(held.publication, held.source_url)).toBeNull();
+		expect(peers.newestOf(held.publication)).toBeUndefined();
+		expect(peers.says).toBeNull();
+	});
+
+	it('asks again after the copy is taken afresh', async () => {
+		let sequence = 3;
+		api.on('GET /peers/versions', () => chain(sequence));
+		api.on('POST /pulls', () => ({ ...held, version: chain(sequence).versions[0] }));
+		api.on('GET /pulls', () => [held]);
+
+		await peers.readChain(held.publication, held.source_url);
+		sequence = 4;
+		await peers.pull({ publication: held.publication, sourceUrl: held.source_url });
+		await peers.readChain(held.publication, held.source_url);
+
+		expect(peers.newestOf(held.publication)?.sequence).toBe(4);
+	});
+
+	it('reads what changed where the copy came from', async () => {
+		api.on('GET /peers/changes', () => ({
+			publication: held.publication,
+			root_address: held.root_address,
+			from: held.version.ref,
+			to: ref(43, AUTHOR),
+			changes: []
+		}));
+
+		const page = await peers.changesBetween(held.publication, held.version.ref, ref(43, AUTHOR), {
+			sourceUrl: held.source_url
+		});
+
+		expect(page?.changes).toEqual([]);
+		expect(api.calls.at(-1)).toContain(`source_url=${encodeURIComponent('http://peer.test')}`);
+	});
+});
+
+describe('a note somebody else wrote, cited to the reader', () => {
+	const theirs: NodeView = {
+		...node(12, '1a'),
+		ref: ref(12, AUTHOR),
+		created_by: AUTHOR,
+		origin: ref(12, AUTHOR),
+		published: true
+	};
+
+	it('answers with the region holding it, and keeps that region', async () => {
+		holding(api, [{ note: theirs, pull: held }]);
+
+		const hit = await peers.heldNote(theirs.ref);
+
+		expect(hit?.pull.ref).toBe(held.ref);
+		expect(peers.region(held.ref)).toBeDefined();
+	});
+
+	it('answers with nothing where the reader holds no copy of it', async () => {
+		api.on(
+			`GET /pulls/nodes/${encodeURIComponent(AUTHOR)}/${theirs.ref.split('/')[1]}`,
+			() => null
+		);
+
+		expect(await peers.heldNote(theirs.ref)).toBeNull();
+	});
+});
+
+describe('whoever was typed into the peer field', () => {
+	it('takes an identifier as itself, without asking anybody', async () => {
+		expect(await peers.identify(AUTHOR)).toBe(AUTHOR);
+		expect(api.calls).toHaveLength(0);
+	});
+
+	it('takes a name as whoever answers to it', async () => {
+		api.on(`GET /profile/alice`, () => ({
+			did: AUTHOR,
+			username: 'alice',
+			display_name: 'Alice',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+
+		expect(await peers.identify('alice')).toBe(AUTHOR);
+	});
+
+	it('says what to try instead where nobody answers to it', async () => {
+		expect(await peers.identify('nobody')).toBeNull();
+		expect(peers.says).toContain('identifier');
 	});
 });

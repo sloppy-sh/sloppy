@@ -9,15 +9,19 @@
  */
 
 import type {
+	AnsweredNote,
 	BlockView,
 	FollowedIdentity,
 	NodeView,
 	OwnedRef,
 	PublishedIndex,
 	PublishedIndexReader,
+	PublishedNoteChange,
+	PublishedVersion,
+	PulledNoteHit,
 	PullView
 } from '@sloppy/types';
-import { publishedIndexReader } from '@sloppy/types';
+import { DidSyrSchema, publishedIndexReader } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { serverMessage } from './errors.js';
@@ -41,6 +45,10 @@ class PeersStore {
 	#says = $state<string | null>(null);
 	#hasFollowing = $state(false);
 	#hasRegions = $state(false);
+	#chains = new SvelteMap<OwnedRef, PublishedVersion[]>();
+	#chainsInflight = new Map<OwnedRef, Promise<PublishedVersion[] | null>>();
+	#answered = $state<AnsweredNote[]>([]);
+	#hasAnswered = false;
 	/** Nothing held belongs to whoever signs in next. */
 	#reader: string | null = null;
 	/** The listing being walked, and whose it is: an identity publishes a region
@@ -69,8 +77,97 @@ class PeersStore {
 		return this.#hasFollowing && this.#hasRegions;
 	}
 
+	/** The reader's own notes strangers have answered, oldest first. */
+	get answered(): AnsweredNote[] {
+		return this.#answered;
+	}
+
 	region(ref: OwnedRef): PullView | undefined {
 		return this.#regions.find((held) => held.ref === ref);
+	}
+
+	/** The newest version of a publication the reader holds a copy of, as its
+	 *  author serves it now — `undefined` until {@link readChain} has answered. */
+	newestOf(publication: OwnedRef): PublishedVersion | undefined {
+		return this.#chains.get(publication)?.[0];
+	}
+
+	/**
+	 * The chain behind a held publication, newest first, read once a session and
+	 * again after a copy is refreshed. Silent about a failure: an author whose
+	 * instance did not answer leaves the copy in hand saying what it is, which is
+	 * still true.
+	 */
+	readChain(publication: OwnedRef, sourceUrl?: string): Promise<PublishedVersion[] | null> {
+		const held = this.#chains.get(publication);
+		if (held) return Promise.resolve(held);
+		const inflight = this.#chainsInflight.get(publication);
+		if (inflight) return inflight;
+		const request = api
+			.publishedVersions(publication, sourceUrl === undefined ? {} : { sourceUrl })
+			.then((page) => {
+				this.#chains.set(publication, page.versions);
+				return page.versions;
+			})
+			.catch(() => null)
+			.finally(() => {
+				this.#chainsInflight.delete(publication);
+			});
+		this.#chainsInflight.set(publication, request);
+		return request;
+	}
+
+	/** What one publication's writing did between two of its versions, from the
+	 *  instance the copy was read from. */
+	changesBetween(
+		publication: OwnedRef,
+		from: OwnedRef,
+		to: OwnedRef,
+		options: { sourceUrl?: string; cursor?: string } = {}
+	): Promise<{ changes: PublishedNoteChange[]; nextCursor?: string } | null> {
+		return this.attempt(async () => {
+			const page = await api.publishedChanges(publication, from, to, options);
+			return {
+				changes: page.changes,
+				...(page.next_cursor === undefined ? {} : { nextCursor: page.next_cursor })
+			};
+		}, 'Sloppy could not read what changed. Try again in a moment.');
+	}
+
+	/**
+	 * One note the reader holds a copy of, named the way its AUTHOR names it, and
+	 * the region serving it. The region is kept, so a citation may be the first
+	 * thing a session reads. `null` where they hold no copy of it.
+	 */
+	async heldNote(note: OwnedRef): Promise<PulledNoteHit | null> {
+		const hit = await this.attempt(
+			() => api.heldNoteBySource(note),
+			'Sloppy could not tell whether you hold that note. Try again in a moment.'
+		);
+		if (hit && !this.region(hit.pull.ref)) this.#regions = [...this.#regions, hit.pull];
+		return hit;
+	}
+
+	/**
+	 * Whoever was typed, as the identifier everything else here holds: an
+	 * identifier is itself, and a name is whoever answers to it. `null` where
+	 * nobody does, with {@link says} carrying what to try instead.
+	 */
+	async identify(typed: string): Promise<string | null> {
+		const named = typed.trim();
+		if (DidSyrSchema.safeParse(named).success) return named;
+		this.#busy = true;
+		this.#says = null;
+		try {
+			return (await api.profileOf(named)).did;
+		} catch {
+			// Nobody of that name is an answer rather than a refusal, so what the
+			// instance said about the ask itself is not what to tell the reader.
+			this.#says = 'Nobody here answers to that name. Try the identifier they gave you.';
+			return null;
+		} finally {
+			this.#busy = false;
+		}
 	}
 
 	/** A held region's notes, in address order — empty until {@link enter}. */
@@ -157,6 +254,7 @@ class PeersStore {
 			});
 			this.#regions = await api.listPulls();
 			this.#hasRegions = true;
+			this.#chains.delete(ask.publication);
 			this.#forget(held.ref);
 			return held;
 		}, 'Sloppy could not read that branch. Try again in a moment.');
@@ -195,6 +293,21 @@ class PeersStore {
 		return stack;
 	}
 
+	/**
+	 * The reader's own notes somebody answered, oldest first. Read once a
+	 * session and silent about a failure: it is a list of work to come back to,
+	 * not something to interrupt anybody about.
+	 */
+	async loadAnswered(): Promise<void> {
+		if (this.#hasAnswered) return;
+		this.#hasAnswered = true;
+		try {
+			this.#answered = await api.answeredNotes();
+		} catch {
+			this.#hasAnswered = false;
+		}
+	}
+
 	/** After a sign-out or an erase: nothing held belongs to the next person. */
 	clear(): void {
 		this.#reader = null;
@@ -202,6 +315,10 @@ class PeersStore {
 		this.#regions = [];
 		this.#held.clear();
 		this.#stacks.clear();
+		this.#chains.clear();
+		this.#chainsInflight.clear();
+		this.#answered = [];
+		this.#hasAnswered = false;
 		this.#says = null;
 		this.#hasFollowing = false;
 		this.#hasRegions = false;

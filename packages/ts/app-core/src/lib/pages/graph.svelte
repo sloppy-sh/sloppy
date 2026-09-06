@@ -240,6 +240,10 @@
 	let acting: Promise<void> = Promise.resolve();
 	/** Whether the graphs of other people are being looked through. */
 	let visiting = $state(false);
+	/** Somebody the peers sheet was raised about rather than opened on. */
+	let asking = $state<{ identity: string; from?: string } | null>(null);
+	/** Why the note citing a held one was not written. */
+	let citeRefused = $state<string | null>(null);
 	/**
 	 * The held region on the canvas, or `null` for the reader's own graph. One
 	 * author's graph is drawn at a time: an address is a place in the graph it
@@ -631,10 +635,30 @@
 	}
 
 	/** A note cited by its address is in whichever graph its author filed it in,
-	 *  so reaching one is what moves the reader into that graph. */
+	 *  so reaching one is what moves the reader into that graph. Somebody else's
+	 *  is read in the region the reader holds a copy of it in. */
 	async function reachCited(cited: OwnedRef): Promise<void> {
+		const reader = session.viewer?.did;
+		if (reader !== undefined && splitOwnedRef(cited).did !== reader) {
+			await reachHeld(cited);
+			return;
+		}
 		const note = nodes.get(cited) ?? (await nodes.fetch(cited).catch(() => null));
 		if (note && !graphs.onCanvas.includes(graphOf(note))) graphs.enter(graphOf(note));
+	}
+
+	/** Somebody else's note: the region holding it, opened at the note itself.
+	 *  Held by nobody here, the branch that carries it is what to offer instead. */
+	async function reachHeld(cited: OwnedRef): Promise<void> {
+		const hit = await peers.heldNote(cited);
+		hide();
+		if (hit) {
+			await enterRegion(hit.pull.ref);
+			await readHeld(hit.note.ref);
+			return;
+		}
+		asking = { identity: splitOwnedRef(cited).did };
+		visitPeers();
 	}
 
 	/** The notes the canvas has stopped drawing, closed with the field they were
@@ -1298,6 +1322,32 @@
 		reached = null;
 		reaching = null;
 		reachRefused = null;
+		citeRefused = null;
+	}
+
+	/** Whether the note citing a held one is being written, so a second tap on
+	 *  the act does not write a second note. */
+	let citing = false;
+
+	/** A note of the reader's own that cites a held one: theirs, in the notebook
+	 *  they are keeping, and starting from the note they were reading. */
+	async function writeCiting(held: OwnedRef): Promise<void> {
+		if (citing || creating) return;
+		citing = true;
+		citeRefused = null;
+		try {
+			const written = await nodes.create({
+				from: { relation: 'branch', graph: graphs.current }
+			});
+			await nodes.update(written.ref, { links: [held] });
+			closeHeld();
+			leaveRegion();
+			show(written.ref, { from: null, shape: null });
+		} catch (error) {
+			citeRefused = serverMessage(error) ?? 'Sloppy could not add that note.';
+		} finally {
+			citing = false;
+		}
 	}
 
 	/**
@@ -1369,11 +1419,18 @@
 		}
 	}
 
+	// Whoever the sheet was raised about is who it was raised about that once:
+	// the next reader to open it opened it themselves.
+	$effect(() => {
+		if (!visiting) asking = null;
+	});
+
 	/** Other people's graphs, and a second look at whatever did not arrive the
 	 *  first time. */
 	function visitPeers(): void {
 		visiting = true;
 		void peers.load();
+		void peers.loadAnswered();
 	}
 
 	/** Whose graph a held region copies: a publication is its author's, so their
@@ -1386,7 +1443,12 @@
 			publication: region.publication,
 			identity: authorOf(region),
 			person: people.of(authorOf(region)),
+			unplaced: people.unplaced(authorOf(region)),
 			address: region.root_address,
+			version: region.version,
+			readAt: region.updated_at,
+			...(region.graph === undefined ? {} : { graph: region.graph }),
+			...(region.graph_title === undefined ? {} : { notebook: region.graph_title }),
 			from: region.source_url
 		}))
 	);
@@ -1404,7 +1466,25 @@
 		peers.following.map((one) => ({
 			identity: one.did,
 			person: people.of(one.did),
+			unplaced: people.unplaced(one.did),
 			from: readAt(one)
+		}))
+	);
+
+	/** The reader's own notes strangers answered, in the notebooks they were
+	 *  written in. */
+	const answeredNotes = $derived(
+		peers.answered.map((answer) => ({
+			note: answer.note,
+			address: answer.address,
+			title: answer.title,
+			graph: answer.graph,
+			...(graphs.titleOf(answer.graph) ? { notebook: graphs.titleOf(answer.graph) } : {}),
+			voices: answer.voices.map((did) => ({
+				identity: did,
+				person: people.of(did),
+				unplaced: people.unplaced(did)
+			}))
 		}))
 	);
 
@@ -1681,6 +1761,9 @@
 						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
 							<span class="address">{foreign.root_address}</span>
 							<span>{regionAuthor ? nameOf(regionAuthor) : authorOf(foreign)}</span>
+							{#if foreign.graph_title}
+								<span class="text-muted-foreground">· {foreign.graph_title}</span>
+							{/if}
 							<span class="text-muted-foreground">· {summary}</span>
 						</p>
 						<Button
@@ -1761,7 +1844,7 @@
 							size="icon"
 							class="size-9 shrink-0 rounded-full"
 							aria-label="Other people's graphs"
-							onclick={() => (visiting = true)}
+							onclick={visitPeers}
 						>
 							<Users class="size-4" />
 						</Button>
@@ -1952,6 +2035,8 @@
 	bind:open={visiting}
 	regions={heldRegions}
 	following={followedPeople}
+	answers={answeredNotes}
+	{asking}
 	busy={peers.busy}
 	says={peers.says}
 	onEnter={(ref) => void enterRegion(ref)}
@@ -1959,10 +2044,22 @@
 		if (foreign?.ref === ref) leaveRegion();
 		void peers.drop(ref);
 	}}
-	onLook={async (who, where, cursor) => {
+	onLook={async (typed, where, cursor) => {
+		const who = await peers.identify(typed);
+		if (who === null) return null;
 		const page = await peers.publishedBy(who, { sourceUrl: where, cursor });
-		return page && { publications: page.publications, nextCursor: page.next_cursor };
+		return page && { identity: who, publications: page.publications, nextCursor: page.next_cursor };
 	}}
+	onChain={(region) => peers.readChain(region.publication, region.from)}
+	onChanges={async (region, to, cursor) => {
+		const page = await peers.changesBetween(region.publication, region.version.ref, to.ref, {
+			sourceUrl: region.from,
+			...(cursor === undefined ? {} : { cursor })
+		});
+		return page && { changes: page.changes, nextCursor: page.nextCursor };
+	}}
+	onRefresh={(region) =>
+		void peers.pull({ publication: region.publication, sourceUrl: region.from })}
 	onPull={async (where, publication) => {
 		const region = await peers.pull({ publication, sourceUrl: where });
 		if (!region) return;
@@ -1971,20 +2068,32 @@
 	}}
 	onFollow={(who) => void peers.follow(who)}
 	onUnfollow={(who) => void peers.unfollow(who)}
+	onOpenAnswer={(note) => {
+		leaveRegion();
+		void reachCited(note);
+		show(note);
+	}}
 	onRetry={peers.loaded ? undefined : () => void peers.load()}
 />
 
 {#if foreign}
 	<HeldNote
 		note={reachedNote}
-		author={{ identity: authorOf(foreign), person: regionAuthor }}
+		author={{
+			identity: authorOf(foreign),
+			person: regionAuthor,
+			unplaced: people.unplaced(authorOf(foreign))
+		}}
+		notebook={foreign.graph_title}
 		blocks={reached ? peers.stack(reached) : []}
 		loading={reaching !== null && reaching === reached}
 		says={reachRefused}
+		writingRefused={citeRefused}
 		pictures={heldPictures}
 		references={heldReferences}
 		emoji={heldEmoji}
 		conversation={heldConversation}
+		onCite={(note) => void writeCiting(note.ref)}
 		onClose={closeHeld}
 	/>
 {/if}
