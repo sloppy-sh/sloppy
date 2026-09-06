@@ -6,7 +6,14 @@ export type { SloppyApi } from './api.js';
 export { initRuntime, runtime } from './runtime.js';
 export type { AppRuntime, DeploymentMode } from './runtime.js';
 export { keyboard } from './keyboard.svelte.js';
-export { activeRouteId, APP_ROUTES, nodeHref, OPEN_ROUTES, refFromPath } from './pages/routes.js';
+export {
+	activeRouteId,
+	APP_ROUTES,
+	newHref,
+	nodeHref,
+	OPEN_ROUTES,
+	refFromPath
+} from './pages/routes.js';
 
 export { serverMessage } from './stores/errors.js';
 export { session } from './stores/session.svelte.js';

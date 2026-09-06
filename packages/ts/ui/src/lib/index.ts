@@ -47,6 +47,7 @@ export type {
 	SendingPicture,
 	ShownPicture
 } from './components/editor/contract.js';
+export { textDocument } from './components/editor/document.js';
 export type { PictureSource } from './components/editor/picture-node.js';
 export type { ReferenceReader } from './components/editor/reference-node.js';
 export type { CustomEmojiEntry } from './emoji/catalog.js';
