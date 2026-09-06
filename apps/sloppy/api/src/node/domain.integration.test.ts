@@ -1112,6 +1112,69 @@ describe("the domain routes", () => {
       });
       expect(next.address).toBe(`${root.address}c`);
     });
+
+    scenario("does not hand back the last address in a run", async () => {
+      const root = await newNode(ada, { title: "The end of a run" });
+      const first = await newNode(ada, { from: springsFrom(root) });
+      const last = await newNode(ada, { from: springsFrom(root) });
+      expect(last.address).toBe(`${root.address}b`);
+
+      await call("DELETE", `/nodes/${at(last.ref)}`, ada);
+      const next = await newNode(ada, { from: springsFrom(root) });
+      expect(next.address).toBe(`${root.address}c`);
+      expect(first.address).toBe(`${root.address}a`);
+    });
+
+    scenario("does not hand back the address of an only child", async () => {
+      const root = await newNode(ada, { title: "An only child" });
+      const only = await newNode(ada, { from: springsFrom(root) });
+
+      await call("DELETE", `/nodes/${at(only.ref)}`, ada);
+      const next = await newNode(ada, { from: springsFrom(root) });
+      expect(next.address).toBe(`${root.address}b`);
+    });
+
+    scenario("keeps every address a branch took with it", async () => {
+      // The whole subtree's numbers go with it: a peer holding a citation of
+      // any one of them must never be sent to a thought written afterwards.
+      const root = await newNode(ada, { title: "A branch that goes" });
+      const going = await newNode(ada, { from: springsFrom(root) });
+      const under = await newNode(ada, { from: springsFrom(going) });
+      const deeper = await newNode(ada, { from: springsFrom(under) });
+      expect([going.address, under.address, deeper.address]).toEqual([
+        `${root.address}a`,
+        `${root.address}a1`,
+        `${root.address}a1a`,
+      ]);
+
+      await call("DELETE", `/nodes/${at(going.ref)}`, ada);
+      const again = await newNode(ada, { from: springsFrom(root) });
+      expect(again.address).toBe(`${root.address}b`);
+
+      const beneath = await newNode(ada, { from: springsFrom(again) });
+      const beneathThat = await newNode(ada, { from: springsFrom(beneath) });
+      for (const written of [again, beneath, beneathThat]) {
+        expect([going.address, under.address, deeper.address]).not.toContain(
+          written.address,
+        );
+      }
+    });
+
+    scenario(
+      "refuses a branch numbered where a deleted one was, in words",
+      async () => {
+        const branch = await newNode(ada, {
+          from: { relation: "root", address: "8192" },
+        });
+        await call("DELETE", `/nodes/${at(branch.ref)}`, ada);
+
+        const again = await call("POST", "/nodes", ada, {
+          from: { relation: "root", address: "8192" },
+        });
+        expect(again.status).toBe(400);
+        expect(JSON.stringify(again.body)).toContain("since deleted");
+      },
+    );
   });
   describe("a note's look", () => {
     scenario(

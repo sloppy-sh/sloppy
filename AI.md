@@ -66,11 +66,17 @@ page number is read inside a book.
   alias; it never renumbers. Renumbering is not a refactor here, it is a broken link in
   somebody else's graph. Which graph a note is in is fixed at creation for the same
   reason: a note that changed graph would land where its address may already be taken.
+- **An address is assigned once inside a graph, and nothing frees it.** Deleting a note
+  does not hand its address back: the row keeps it while the note can still be put back,
+  and purging that row retires the address instead of releasing it. A number reissued to
+  a second thought is the same broken citation as a renumbering, arrived at from the
+  other side — and people cite their own addresses out loud long before a peer pulls one.
 - **Assignment is deterministic, and determinism is proved, never asserted.** Two peers
-  applying the same creation operations must produce byte-identical addresses. That is
-  the protocol claim, so it ships as a property test over generated operation
-  sequences, not as a handful of hand-picked cases. The rules do not mention a graph:
-  what a graph decides is which run of siblings a new address is assigned against.
+  applying the same operations — deleting and purging among them — must produce
+  byte-identical addresses, and neither may assign one twice. That is the protocol claim,
+  so it ships as a property test over generated operation sequences, not as a handful of
+  hand-picked cases. The rules do not mention a graph: what a graph decides is which run
+  of siblings a new address is assigned against.
 - **Anything derived from an address is derived, never stored.** The angular sector a
   subtree radiates into, its collapse key — both are functions of the address. Persisting
   one creates a second copy of a truth that no longer has a single author, and it will

@@ -94,6 +94,11 @@ Address Is the Protocol" states the rules; this is the mechanism.
 - A sibling increments the last segment: `1a` → `1b`.
 - Addresses are assigned at creation and **never change**. Moving a node writes an alias;
   it never renumbers. `graph` is immutable for the same reason.
+- An address is assigned **once** in a graph and never assigned again. Deleting a note
+  does not free it, and neither does purging the row: `NodeRepository.remove` writes a
+  `retired_address` row for every note it takes. `childAddresses` and `addressTaken`
+  answer from the notes and those rows together, so `nextChildAddress` steps past a
+  number the graph has spent and a branch numbered by hand at one is refused.
 - The address hashes to a stable **angular sector**, so a subtree radiates in the same
   direction from its origin on every peer's screen. The sector is derived on read, never
   stored. It is a function of the address alone, so a `1` in each of two graphs seeds the
@@ -103,9 +108,13 @@ Address Is the Protocol" states the rules; this is the mechanism.
   canvas". Between the reader's and another author's, it is that a pulled region is drawn
   on its own, and § "Federating the graph" is where that rule is held.
 
-Determinism is a property test over generated creation sequences: two simulated peers
-applying identical operations must produce byte-identical addresses. The rules above do not
-mention a graph; what a graph decides is which run of siblings the next address follows.
+Determinism is a property test over generated operation sequences — writing, deleting and
+purging — in `@sloppy/types`' `address.test.ts`: two simulated peers applying identical
+operations must produce byte-identical addresses, and neither may assign one twice. One
+replica holds the high-water mark of each run and the other holds nothing but addresses,
+in the three states a graph holds them in, so the union is what the two agree on rather
+than a detail either of them remembers. The rules above do not mention a graph; what a
+graph decides is which run of siblings the next address follows.
 
 **The home graph.** Everybody has a graph before they open a second one, and its local id is
 reserved — `HOME_GRAPH_ULID` in `@sloppy/types` — so `homeGraphRef(did)` is a function of the
@@ -875,6 +884,20 @@ block:{ created_by: <did>, id: <ulid> }
   ord         string    fractional index — reorder without renumbering
   content     object    the section's whole document, as the editor wrote it
 
+retired_address:{ created_by: <did>, id: <ulid> }
+  created_by  did       the owner, flat and immutable
+  graph       ref       the graph the address is read in, immutable
+  parent      ref?      the note it hung under, immutable; absent for a branch
+  address     string    the address, immutable
+
+**A deleted note leaves its address behind.** `retired_address` is a row per note a purge
+takes, and it is what makes the address protocol survive a deletion: the run a new address
+follows is the live notes, the deleted ones and these together, so nothing is ever assigned
+twice inside one graph. It carries the graph and the parent rather than the note, because
+the note is what has gone — the parent is how one index answers both the children of a note
+and the branches of a graph, `parent = NONE` standing for a branch as it does on `node`.
+Nothing reads it but address assignment, and the per-DID purge takes it with the graph.
+
 **A deleted note leaves its inbound links behind.** `links` is an array of refs on the
 *linking* node, so removing a note cannot reach the notes that pointed at it — deletion takes
 the subtree, not the mentions. The note surface renders a missing target honestly ("A note
@@ -1158,9 +1181,12 @@ a `pull`'s publication and a `pull_member`'s two halves, immutable for the reaso
 of the same node by somebody else, or the record of a region that never served it; what a
 publication is rooted at, which chain a version belongs to and its number in it, and which
 version each copied note and section sits in, because a peer is reading those and a row
-that moved would answer for something it is not a snapshot of; and a copied asset's two
-halves, because a copy pointing at a different original takes the wrong bytes public, and
-one whose public half changed strands the address a published section already cites.
+that moved would answer for something it is not a snapshot of; every column of a
+`retired_address`, the row being nothing but the fact that one graph has spent one number,
+so a row that moved either would free a number a peer holds a citation to; and a copied
+asset's two halves, because a copy pointing at a different original takes the wrong bytes
+public, and one whose public half changed strands the address a published section already
+cites.
 `created_at` is immutable
 too, being a field of the signed payload. Everything else is a plain column, which is what
 keeps a later track from having to edit the shared literal to add a field.

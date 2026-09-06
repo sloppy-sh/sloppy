@@ -34,3 +34,31 @@ describe("the next address under a parent", () => {
     expect(nextChildAddress("1", [...siblings].reverse())).toBe("1f");
   });
 });
+
+/** The run under one parent as a graph hands it over: the addresses notes are
+ *  at, and the ones notes have left behind. */
+function run(live: readonly Address[], gone: readonly Address[]): Address[] {
+  return [...live, ...gone];
+}
+
+describe("an address a note has left behind", () => {
+  it("does not go to the note written after the greatest sibling", () => {
+    expect(nextChildAddress("1", run(["1a", "1b"], ["1c"]))).toBe("1d");
+  });
+
+  it("does not come back when the only child goes", () => {
+    expect(nextChildAddress("1", run([], ["1a"]))).toBe("1b");
+  });
+
+  it("stays spent for every note a deleted branch took with it", () => {
+    // Deleting 1b takes 1b1 and 1b1a with it, and all three numbers go with
+    // them: a citation of any one must never resolve to a later thought.
+    expect(nextChildAddress("1", run(["1a"], ["1b"]))).toBe("1c");
+    expect(nextChildAddress("1b", run([], ["1b1"]))).toBe("1b2");
+    expect(nextChildAddress("1b1", run([], ["1b1a"]))).toBe("1b1b");
+  });
+
+  it("leaves a branch number spent too", () => {
+    expect(nextChildAddress(null, run(["1", "2"], ["3"]))).toBe("4");
+  });
+});

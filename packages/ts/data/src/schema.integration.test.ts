@@ -825,6 +825,52 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     }
   });
 
+  it("keeps an address a note spent, and reads a run of them from its index", async () => {
+    // The address protocol after the note is gone: the row is the whole of the
+    // fact that the number is spent, so every column of it is immutable.
+    const HOME = homeGraphRef(AVA);
+    const under = {
+      id: avaId("retired_address", "01JPXRET000000000000000000"),
+      created_by: AVA,
+      graph: HOME,
+      parent: OwnedRefSchema.parse(`${AVA}/01JREADBACK000000000000000`),
+      address: "1a",
+      created_at: "2026-03-01T00:00:00.000Z",
+      updated_at: "2026-03-01T00:00:00.000Z",
+    };
+    const branch = {
+      id: avaId("retired_address", "01JPXRET100000000000000000"),
+      created_by: AVA,
+      graph: HOME,
+      address: "9",
+      created_at: under.created_at,
+      updated_at: under.updated_at,
+    };
+    await db.create(under.id).content(under);
+    await db.create(branch.id).content(branch);
+
+    for (const reassignment of [
+      { graph: SECOND_GRAPH },
+      { parent: `${AVA}/01JREADBACK000000000000001` },
+      { address: "1b" },
+      { created_by: BOB },
+    ]) {
+      await expect(db.update(under.id).merge(reassignment)).rejects.toThrow();
+    }
+
+    // A branch's number retires with no parent above it, the way the note it
+    // outlives had none — which is how one index answers both shapes.
+    const SPENT = `SELECT VALUE address FROM retired_address
+       WHERE created_by = $did AND graph = $graph AND parent = NONE`;
+    const bound = { did: AVA, graph: HOME };
+    const [plan] = await db.query(`${SPENT} EXPLAIN;`, bound);
+    expect(JSON.stringify(plan)).toContain(
+      '"index":"retired_address_owner_graph_parent"',
+    );
+    const [spent] = await db.query<[string[]]>(`${SPENT};`, bound);
+    expect(spent).toEqual(["9"]);
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);
@@ -846,6 +892,7 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
       "publication_version",
       "snapshot_node",
       "snapshot_asset",
+      "retired_address",
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }

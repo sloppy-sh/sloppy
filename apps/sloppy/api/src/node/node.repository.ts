@@ -5,13 +5,17 @@ import { Injectable } from "@nestjs/common";
 import {
   type Address,
   compareAddresses,
+  createOwnedRecordId,
+  graphOf,
   homeGraphRef,
   isAncestorAddress,
   type Node,
   type NodeAppearance,
+  nowIso,
   ownedRefFrom,
   type OwnedRef,
   parseNode,
+  type RetiredAddress,
   recordIdFromOwnedRef,
   type TagCount,
   TagCountSchema,
@@ -21,6 +25,23 @@ import { DbService } from "../db/db.service";
 import { replacement } from "./patch";
 
 const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
+
+/** How a graph holds an address: a note is at it, or one was and has gone. */
+export type AddressHold = "live" | "deleted";
+
+/** The row that outlives a note, so its address is never assigned twice. */
+function retire(node: Node): RetiredAddress {
+  const now = nowIso();
+  return {
+    id: createOwnedRecordId("retired_address", node.created_by),
+    created_by: node.created_by,
+    graph: graphOf(node),
+    ...(node.parent ? { parent: node.parent } : {}),
+    address: node.address,
+    created_at: now,
+    updated_at: now,
+  };
+}
 
 /**
  * What a bulk act may write. A title is not one of them: an act says what a set
@@ -81,9 +102,13 @@ export class NodeRepository {
   }
 
   /**
-   * The addresses already taken among the children of `parent`, or among the
-   * branches of `graph` when there is no parent — which is why a graph is asked
-   * for beside the parent that would otherwise name one.
+   * Every address the children of `parent` have taken, or the branches of
+   * `graph` where there is no parent — which is why a graph is asked for beside
+   * the parent that would otherwise name one.
+   *
+   * The run includes the addresses of notes that are gone: an address is
+   * assigned once in a graph and never again, so a retired one still stands
+   * between the run and the address after it.
    *
    * Children are read through the tree-and-level index rather than through
    * `parent`: measured on 3.1.3, an equality on `parent` bound as a parameter
@@ -95,42 +120,50 @@ export class NodeRepository {
     parent: Node | null,
     graph: OwnedRef,
   ): Promise<Address[]> {
-    if (parent === null) {
-      const [rows] = await this.query<string>(
-        `SELECT VALUE address FROM node
-           WHERE created_by = $did AND graph = $graph AND parent = NONE`,
-        { did, graph },
-      );
-      return rows;
-    }
-    const [rows] = await this.query<string>(
-      `SELECT VALUE address FROM node
-         WHERE created_by = $did AND origin = $origin AND depth = $depth
-           AND parent = $parent`,
+    const under = parent === null ? "parent = NONE" : "parent = $parent";
+    const held =
+      parent === null
+        ? `SELECT VALUE address FROM node
+             WHERE created_by = $did AND graph = $graph AND ${under}`
+        : `SELECT VALUE address FROM node
+             WHERE created_by = $did AND origin = $origin AND depth = $depth
+               AND ${under}`;
+    const [taken, retired] = await this.db.handle.query<[string[], string[]]>(
+      `${held};
+       SELECT VALUE address FROM retired_address
+         WHERE created_by = $did AND graph = $graph AND ${under};`,
       {
         did,
-        origin: parent.origin,
-        depth: parent.depth + 1,
-        parent: ownedRefFrom(parent.id),
+        graph,
+        origin: parent?.origin,
+        depth: parent === null ? undefined : parent.depth + 1,
+        parent: parent === null ? undefined : ownedRefFrom(parent.id),
       },
     );
-    return rows;
+    return [...taken, ...retired];
   }
 
-  /** Whether one graph already holds this address. Another graph of the same
-   *  person holding it is not this question. */
+  /**
+   * Whether one graph has ever assigned this address, and whether the note that
+   * took it is still there — `null` where the graph has never assigned it.
+   * Another graph of the same person holding it is not this question.
+   */
   async addressTaken(
     did: string,
     graph: OwnedRef,
     address: Address,
-  ): Promise<boolean> {
-    const [rows] = await this.query<string>(
+  ): Promise<AddressHold | null> {
+    const [held, retired] = await this.db.handle.query<[string[], string[]]>(
       `SELECT VALUE address FROM node
          WHERE created_by = $did AND graph = $graph AND address = $address
-         LIMIT 1`,
+         LIMIT 1;
+       SELECT VALUE address FROM retired_address
+         WHERE created_by = $did AND graph = $graph AND address = $address
+         LIMIT 1;`,
       { did, graph, address },
     );
-    return rows.length > 0;
+    if (held.length > 0) return "live";
+    return retired.length > 0 ? "deleted" : null;
   }
 
   async insert(node: Node): Promise<Node> {
@@ -267,16 +300,22 @@ export class NodeRepository {
     );
   }
 
-  /** A node leaves with its interior and with what other people left pointing
-   *  at it; either one outliving the note is unreachable. */
+  /**
+   * A node leaves with its interior and with what other people left pointing at
+   * it; either one outliving the note is unreachable. Its address stays behind:
+   * the graph has assigned it, and a `retired_address` row is what keeps it
+   * from being assigned again — AI.md § "The Address Is the Protocol".
+   */
   async remove(did: string, nodes: readonly Node[]): Promise<void> {
     if (nodes.length === 0) return;
     await this.db.handle.query(
-      `DELETE block WHERE created_by = $did AND node IN $refs;
+      `INSERT INTO retired_address $retired;
+       DELETE block WHERE created_by = $did AND node IN $refs;
        DELETE comment_pointer WHERE created_by = $did AND note IN $refs;
        DELETE node WHERE id IN $ids;`,
       {
         did,
+        retired: nodes.map(retire),
         refs: nodes.map((node) => ownedRefFrom(node.id)),
         ids: nodes.map((node) => node.id),
       },

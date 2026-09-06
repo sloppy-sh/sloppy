@@ -66,6 +66,18 @@ export const NodeSchema = OwnedEntitySchema.extend({
 });
 export type Node = z.infer<typeof NodeSchema>;
 
+/**
+ * An address a graph has assigned and will not assign again, kept after the
+ * note that held it is purged — AI.md § "The Address Is the Protocol". `parent`
+ * is absent for a branch, as it is on the note the row outlives.
+ */
+export const RetiredAddressSchema = OwnedEntitySchema.extend({
+  graph: OwnedRefSchema,
+  parent: OwnedRefSchema.optional(),
+  address: AddressSchema,
+});
+export type RetiredAddress = z.infer<typeof RetiredAddressSchema>;
+
 export function nodeDepthMatchesAddress(
   node: Pick<Node, "address" | "depth">,
 ): boolean {

@@ -58,6 +58,7 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS pulled_node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pulled_block SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS comment_pointer SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS retired_address SCHEMALESS;
 
 ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
@@ -97,6 +98,14 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS comment_id ON comment_pointer TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON retired_address TYPE string READONLY;
+
+  -- An address its graph has assigned and will never assign again. Every column
+  -- immutable, this row being the whole of that fact: one that moved graph or
+  -- address would free a number a peer is holding a citation to.
+  DEFINE FIELD IF NOT EXISTS graph ON retired_address TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS parent ON retired_address TYPE option<string> READONLY;
+  DEFINE FIELD IF NOT EXISTS address ON retired_address TYPE string READONLY;
 
   -- Which foreign row a held row is a copy of, who wrote it, and where they
   -- addressed it. Immutable for the reason created_by is: a row that changed
@@ -150,6 +159,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_at ON pull_member TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_block TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON retired_address TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON graph TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
@@ -163,6 +173,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS updated_at ON pull_member TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_block TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON retired_address TYPE string;
 
   -- Every indexed column is a TOP-LEVEL STRING or an array of them, including
   -- the ones that point at another row: a composite record id is a row's own key
@@ -177,6 +188,14 @@ ${MIGRATIONS}
   DEFINE INDEX IF NOT EXISTS node_owner_graph_address ON node FIELDS created_by, graph, address UNIQUE;
   -- The children of a node, and — bound to NONE — the branches one graph opens.
   DEFINE INDEX IF NOT EXISTS node_owner_graph_parent ON node FIELDS created_by, graph, parent;
+  -- The addresses one run has already spent — bound to NONE, the branch numbers
+  -- a graph has spent. Read alongside node_owner_graph_parent, because the run a
+  -- new address follows is the two of them together.
+  DEFINE INDEX IF NOT EXISTS retired_address_owner_graph_parent ON retired_address FIELDS created_by, graph, parent;
+  -- Whether one address was ever assigned in this graph, which is what a branch
+  -- numbered by hand asks. Not UNIQUE: a retirement that landed while the
+  -- deletion beside it did not must be able to run again.
+  DEFINE INDEX IF NOT EXISTS retired_address_owner_graph_address ON retired_address FIELDS created_by, graph, address;
   -- Somebody's graphs, which is also the purge's reach.
   DEFINE INDEX IF NOT EXISTS graph_owner ON graph FIELDS created_by;
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing

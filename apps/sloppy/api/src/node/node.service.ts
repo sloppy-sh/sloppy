@@ -44,7 +44,7 @@ import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
 import { nextChildAddress } from "./address-assignment";
 import { GraphService } from "./graph.service";
-import type { NodeBulkPatch } from "./node.repository";
+import type { AddressHold, NodeBulkPatch } from "./node.repository";
 import { NodeRepository } from "./node.repository";
 import { SerialQueue } from "./serial-queue";
 
@@ -326,16 +326,15 @@ export class NodeService {
     address: Address,
     request: CreateRequest,
   ): Promise<NodeView> {
-    if (await this.nodes.addressTaken(did, graph, address))
-      throw taken(address);
+    const held = await this.nodes.addressTaken(did, graph, address);
+    if (held) throw taken(address, held);
     try {
       return entityView(
         await this.nodes.insert(newNode(did, graph, address, null, request)),
       );
     } catch (err) {
-      if (await this.nodes.addressTaken(did, graph, address)) {
-        throw taken(address);
-      }
+      const lost = await this.nodes.addressTaken(did, graph, address);
+      if (lost) throw taken(address, lost);
       throw err;
     }
   }
@@ -367,7 +366,7 @@ export class NodeService {
       } catch (err) {
         const lost =
           attempt < ADDRESS_ATTEMPTS &&
-          (await this.nodes.addressTaken(did, graph, address));
+          (await this.nodes.addressTaken(did, graph, address)) !== null;
         if (!lost) throw err;
       }
     }
@@ -400,9 +399,11 @@ function retag(note: Node, adding: boolean, named: Tags): Tags {
   return parsed.data;
 }
 
-function taken(address: Address): BadRequestException {
+function taken(address: Address, held: AddressHold): BadRequestException {
   return new BadRequestException(
-    `You already have a branch numbered ${address}. Pick another number.`,
+    held === "live"
+      ? `You already have a branch numbered ${address}. Pick another number.`
+      : `You used the number ${address} for a branch you have since deleted. Pick another number.`,
   );
 }
 

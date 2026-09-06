@@ -372,14 +372,16 @@ describe("the angular sector", () => {
 // ---------------------------------------------------------------------------
 // The protocol claim.
 //
-// Two peers applying the same creation operations must produce byte-identical
-// addresses. Proving that against one implementation replayed twice would prove
-// only that the code is a function, so the two replicas below assign addresses
-// from DIFFERENT state:
+// Two peers applying the same operations must produce byte-identical addresses,
+// and neither may ever assign one twice — deleting and purging a note included,
+// which is why the sequences below hold both. Proving that against one
+// implementation replayed twice would prove only that the code is a function,
+// so the two replicas assign addresses from DIFFERENT state:
 //
 //   - `AppendOrderPeer` remembers which node it wrote under which parent, and
-//     takes the last one it wrote.
-//   - `AddressOrderPeer` remembers nothing but a set of addresses. It recovers
+//     takes the last one it wrote. A note going never moves that mark.
+//   - `AddressOrderPeer` remembers nothing but addresses, in the three states a
+//     graph holds them in: at a note, at a deleted one, and retired. It recovers
 //     the tree from the addresses themselves and takes the greatest by
 //     `compareAddresses`.
 //
@@ -387,7 +389,9 @@ describe("the angular sector", () => {
 // it sits, and a peer holding only addresses reconstructs the same tree.
 // ---------------------------------------------------------------------------
 
-type Op = { kind: "root" } | { kind: "child" | "sibling"; target: number };
+type Op =
+  | { kind: "root" }
+  | { kind: "child" | "sibling" | "delete" | "purge"; target: number };
 
 interface Peer {
   /** The address assigned to each node, in creation order. */
@@ -401,6 +405,7 @@ class AppendOrderPeer implements Peer {
   private readonly childrenOf = new Map<number | null, number[]>();
 
   apply(op: Op): void {
+    if (op.kind === "delete" || op.kind === "purge") return;
     const parent =
       op.kind === "root"
         ? null
@@ -420,8 +425,26 @@ class AppendOrderPeer implements Peer {
 
 class AddressOrderPeer implements Peer {
   readonly assigned: Address[] = [];
+  private readonly live = new Set<Address>();
+  private readonly deleted = new Set<Address>();
+  private readonly retired = new Set<Address>();
 
   apply(op: Op): void {
+    if (op.kind === "delete") {
+      const going = this.assigned[op.target];
+      for (const address of [...this.live]) {
+        if (!isInSubtree(going, address)) continue;
+        this.live.delete(address);
+        this.deleted.add(address);
+      }
+      return;
+    }
+    if (op.kind === "purge") {
+      const address = this.assigned[op.target];
+      this.deleted.delete(address);
+      this.retired.add(address);
+      return;
+    }
     const parent =
       op.kind === "root"
         ? null
@@ -429,17 +452,20 @@ class AddressOrderPeer implements Peer {
           ? this.assigned[op.target]
           : parentAddress(this.assigned[op.target]);
     // Reversed, so a bug that depended on scan order would show up here.
-    const siblings = [...this.assigned]
+    const spent = [...this.live, ...this.deleted, ...this.retired];
+    const siblings = spent
       .reverse()
       .filter((address) => parentAddress(address) === parent);
-    if (siblings.length === 0) {
-      this.assigned.push(childAddress(parent));
-      return;
-    }
-    const greatest = siblings.reduce((best, address) =>
-      compareAddresses(address, best) > 0 ? address : best,
-    );
-    this.assigned.push(siblingAddress(greatest));
+    const address =
+      siblings.length === 0
+        ? childAddress(parent)
+        : siblingAddress(
+            siblings.reduce((best, sibling) =>
+              compareAddresses(sibling, best) > 0 ? sibling : best,
+            ),
+          );
+    this.live.add(address);
+    this.assigned.push(address);
   }
 }
 
@@ -454,17 +480,60 @@ function seededRandom(seed: number): () => number {
   };
 }
 
+/**
+ * `count` operations, of which some write a note, some delete one with
+ * everything under it, and some purge a note already deleted. A note that has
+ * gone is never written under or alongside again, which is the one thing the
+ * product will not let anybody ask for either.
+ */
 function generateOps(seed: number, count: number): Op[] {
   const random = seededRandom(seed);
   const ops: Op[] = [{ kind: "root" }];
-  for (let created = 1; created < count; created++) {
+  const parentOf: (number | null)[] = [null];
+  const live = new Set<number>([0]);
+  const deleted = new Set<number>();
+  const pick = (from: ReadonlySet<number>): number =>
+    [...from][Math.floor(random() * from.size)];
+  const under = (root: number, node: number): boolean => {
+    for (let walk: number | null = node; walk != null; walk = parentOf[walk]) {
+      if (walk === root) return true;
+    }
+    return false;
+  };
+
+  while (ops.length < count) {
     const roll = random();
     if (roll < 0.08) {
+      parentOf.push(null);
+      live.add(parentOf.length - 1);
       ops.push({ kind: "root" });
       continue;
     }
-    const target = Math.floor(random() * created);
-    ops.push({ kind: roll < 0.62 ? "child" : "sibling", target });
+    if (roll < 0.14 && live.size > 1) {
+      const target = pick(live);
+      const going = [...live].filter((node) => under(target, node));
+      // Never the last note: an op after it would have nothing to be written
+      // against, which is a sequence the product cannot produce either.
+      if (going.length < live.size) {
+        for (const node of going) {
+          live.delete(node);
+          deleted.add(node);
+        }
+        ops.push({ kind: "delete", target });
+        continue;
+      }
+    }
+    if (roll < 0.18 && deleted.size > 0) {
+      const target = pick(deleted);
+      deleted.delete(target);
+      ops.push({ kind: "purge", target });
+      continue;
+    }
+    const target = pick(live);
+    const kind = roll < 0.62 ? "child" : "sibling";
+    parentOf.push(kind === "child" ? target : parentOf[target]);
+    live.add(parentOf.length - 1);
+    ops.push({ kind, target });
   }
   return ops;
 }
@@ -487,14 +556,20 @@ describe("determinism across peers", () => {
     }
   });
 
-  it("never assigns one address twice", () => {
+  it("never assigns one address twice, however many notes have gone", () => {
+    let gone = 0;
     for (let seed = 1; seed <= SEEDS; seed++) {
-      const assigned = replay(
-        new AppendOrderPeer(),
-        generateOps(seed, OPS_PER_SEED),
-      );
-      expect(new Set(assigned).size).toBe(assigned.length);
+      const ops = generateOps(seed, OPS_PER_SEED);
+      gone += ops.filter(
+        (op) => op.kind === "delete" || op.kind === "purge",
+      ).length;
+      for (const peer of [new AppendOrderPeer(), new AddressOrderPeer()]) {
+        const assigned = replay(peer, ops);
+        expect(new Set(assigned).size).toBe(assigned.length);
+      }
     }
+    // The claim above is empty over sequences that never delete anything.
+    expect(gone).toBeGreaterThan(SEEDS);
   });
 
   it("never rewrites an address it has already assigned", () => {
