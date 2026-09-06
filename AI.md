@@ -406,23 +406,33 @@ for a compound prompt, not an optimization to reach for when a task looks big.
 
 ### Which model runs which role
 
-**Fable plans and reviews; Opus writes the code.** A spawned agent inherits the master
-agent's model unless it is told otherwise, so state the model explicitly on every call —
-`model: 'fable'` / `model: 'opus'` on `Agent`, `opts.model` on a workflow `agent()`.
-Leaving it off is how every role silently ends up on one model.
+**Opus is the default for every agent, and Fable has to earn its call.** A spawned agent
+inherits the master agent's model unless it is told otherwise, so state the model explicitly
+on every call — `model: 'opus'` on `Agent`, `opts.model` on a workflow `agent()`. Leaving it
+off is how every role silently ends up on the most expensive one.
 
-- **Fable — the roles that judge code without writing it.** Scoping the work (the track
-  split, territories, hard contracts, each track's intended-effect paragraph, the merge
-  bracket), and **both adversaries in every review round**, technical and vision alike.
-  Also the round-cap call: whether a track is clean, contested, or going again.
-- **Opus — the roles that write code.** The foundation wave, every track implementer, and
-  every merge agent. A merge agent is an implementer, not a reviewer: it resolves
-  conflicts, runs the checks for every package either branch touched, and fixes what
-  breaks on the winning branch.
+- **Opus — everything implementation-shaped.** The foundation wave, every track implementer,
+  every merge agent, and **both adversaries in every review round**, technical and vision
+  alike. Whether a build passes, whether a test is real, whether a surface matches
+  `DESIGN.md`, whether the delivered feature list matches the spec: each is a check against a
+  written standard, and checking is not creative. A merge agent is an implementer, not a
+  reviewer: it resolves conflicts, runs the checks for every package either branch touched,
+  and fixes what breaks on the winning branch.
+- **Fable — as sparingly as possible, and only for what is genuinely creative.** Work whose
+  answer is in no document and cannot be checked against one: a product or design call with no
+  precedent in `DESIGN.md` or `PRODUCT.md`, the first shape of a new piece of shared
+  vocabulary, a track split for work nobody has scoped yet, copy where the tone is the
+  deliverable. It reaches a conclusion and hands off. It does not write the code, run the
+  suite or review the result — once the shape is decided, everything after it is
+  implementation, and implementation is Opus.
+- **The test is whether an agent with the docs open could do it.** Applying a rule, comparing
+  to a spec, verifying a claim: Opus. Deciding what the rule should be where there is none yet:
+  that, and only that, is Fable's. The round-cap call — clean, contested, or going again — is
+  the orchestrator's own and is never spawned.
 - **A reviewer that wants a change still does not make it.** The finding goes back to the
-  Opus agent that owns the branch, exactly as the loop above requires — splitting the
-  models does not split the territories, and a Fable adversary editing the tree it just
-  reviewed removes the second pair of eyes the loop exists for.
+  Opus agent that owns the branch, exactly as the loop above requires — splitting roles does
+  not split the territories, and an adversary editing the tree it just reviewed removes the
+  second pair of eyes the loop exists for.
 
 ### The merge tournament
 
