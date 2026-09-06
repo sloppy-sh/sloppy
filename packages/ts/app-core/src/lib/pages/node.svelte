@@ -462,12 +462,16 @@
 	const suggestions = $derived(inGraph === null ? [] : tags.of(inGraph).map((one) => one.tag));
 	const here = $derived(everyNote.filter((note) => graphOf(note) === inGraph));
 	/** What a note's graph is called, where that is not this one. A held note is
-	 *  read in its author's graph, so their name is what tells the two apart. */
+	 *  read in one of its author's notebooks, and one person keeps several, so
+	 *  the two together are what tell one of theirs from another. */
 	function graphAway(note: NodeView): string | null {
 		const held = heldNotes.get(note.ref);
 		if (held) {
 			const author = people.of(note.created_by);
-			return author ? nameOf(author) : held.region.graph_title || 'A graph you hold';
+			const who = author ? nameOf(author) : null;
+			const notebook = held.region.graph_title ?? null;
+			if (who && notebook) return `${who} · ${notebook}`;
+			return who ?? notebook ?? 'A graph you hold';
 		}
 		const of = graphOf(note);
 		return of === inGraph ? null : graphs.titleOf(of) || 'Another graph';
@@ -547,8 +551,7 @@
 		reach = await reachEveryGraph();
 	}
 
-	/** The regions the reader holds, opened so their notes can be pointed at. A
-	 *  region already read costs nothing to ask for again. */
+	/** The regions the reader holds, opened so their notes can be pointed at. */
 	async function lookAtWhatIsHeld(): Promise<void> {
 		await peers.load();
 		await Promise.all(peers.regions.map((region) => peers.enter(region.ref)));
@@ -658,7 +661,6 @@
 		}
 	}
 
-	/** Whether this platform can hand a link to another app. */
 	const shareable = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
 	async function share(): Promise<void> {
@@ -1462,7 +1464,7 @@
 			{#if node}
 				<button
 					type="button"
-					aria-label="Copy this note's address"
+					aria-label={`Copy the address ${node.address}`}
 					onclick={() => void handOver(citation, 'Address copied.')}
 					class="address ml-auto min-h-11 truncate rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 				>
@@ -1490,7 +1492,8 @@
 			<p class="pb-1 text-sm text-muted-foreground">
 				Not saved yet. Your writing is kept on this device.
 			</p>
-		{:else if said}
+		{/if}
+		{#if said}
 			<p class="pb-1 text-sm text-muted-foreground" role="status">{said}</p>
 		{/if}
 	</header>

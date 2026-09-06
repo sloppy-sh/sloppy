@@ -4,7 +4,6 @@
 import type { OwnedRef, PublishedSubtreePage } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { people } from '../stores/people.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
 
@@ -130,7 +129,6 @@ async function open(): Promise<void> {
 
 beforeEach(() => {
 	session.clear();
-	people.hold(null);
 	where.url = new URL(`http://app.test/n${refPath(ROOT)}`);
 	where.gone.length = 0;
 	api = useFakeApi();
@@ -165,28 +163,42 @@ describe('a note somebody was sent to, with no account', () => {
 		await open();
 		await until(() => screen().includes('Ash keys'));
 
-		expect(screen()).toContain('Somebody else wrote this');
 		expect(screen()).not.toContain(AUTHOR);
 	});
 
-	it('offers signing in to keep it or answer it', async () => {
+	// An address is read in a notebook, so the one it came from is beside it.
+	it('reads the address under the notebook its author keeps it in', async () => {
+		api.on(`GET /public/publications${refPath(ROOT)}`, () => branch());
+
+		await open();
+		await until(() => screen().includes('Ash keys'));
+
+		expect(screen()).toContain('1 · Their notebook');
+	});
+
+	// The offer is the only act this page has, so it stands on the page itself
+	// rather than behind anything a phone would cover it with.
+	it('offers signing in beside the note, on the page the note is on', async () => {
 		api.on(`GET /public/publications${refPath(ROOT)}`, () => branch());
 
 		await open();
 		await until(() => screen().includes('Ash keys'));
 
 		expect(screen()).toContain('Sign in to keep it, or to answer it.');
+		expect(screen()).toContain('They hang on all winter');
+		expect(screen()).not.toContain('Their graph');
 	});
 
 	// The peer routes are the API's own, so a reader with no session never
-	// reaches another instance: what is not served here is not read here.
-	it('says plainly when nothing is published at that address', async () => {
+	// reaches another instance. What the page cannot tell apart it does not
+	// claim: a note under a published branch is not served here either.
+	it('offers the one thing that could open it, rather than calling it gone', async () => {
 		api.on(`GET /public/publications${refPath(ROOT)}`, () => null);
 
 		await open();
-		await until(() => screen().includes('nothing to read'));
+		await until(() => screen().includes('Sign in and look for it'));
 
-		expect(screen()).toContain('may keep their graph somewhere else');
+		expect(screen()).not.toContain('taken it down');
 		expect(screen()).not.toContain(AUTHOR);
 	});
 

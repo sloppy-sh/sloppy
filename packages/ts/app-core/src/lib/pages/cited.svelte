@@ -16,19 +16,19 @@
 		type PublishedNode,
 		type PublishedSubtree
 	} from '@sloppy/types';
-	import { HeldNote, type NoteEmoji, type PictureSource, type ReferenceReader } from '@sloppy/ui';
+	import { HeldStack, type NoteEmoji, type PictureSource, type ReferenceReader } from '@sloppy/ui';
+	import { Badge } from '@sloppy/ui/badge';
 	import { Button } from '@sloppy/ui/button';
+	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { serverMessage } from '../stores/errors.js';
-	import { people } from '../stores/people.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import Graph from './graph.svelte';
 	import { refFromPath } from './routes.js';
 
 	const asked = $derived(refFromPath(page.url.pathname));
-	const author = $derived(asked ? splitOwnedRef(asked).did : '');
 
 	/** The author's branch as they published it, and which of its notes is open.
 	 *  A reference inside one names another of the same branch, so the whole of
@@ -37,19 +37,12 @@
 	let showing = $state<OwnedRef | null>(null);
 	let reading = $state(false);
 	let says = $state<string | null>(null);
-	/** The panel put away, leaving the page it stands on. */
-	let dismissed = $state(false);
-	/** Which note has been asked for, so an answer that lands does not ask again. */
 	let asking: OwnedRef | null = null;
 
-	const NOTHING_THERE =
-		'There is nothing to read at this address. Whoever wrote it may have taken it down, or may keep their graph somewhere else.';
+	const NOT_OPEN =
+		'Sloppy cannot open that note for you without an account. Sign in and look for it.';
 
-	/**
-	 * The published answer as a reading surface takes it. What a peer receives
-	 * carries none of its author's timestamps for a section, so those say when
-	 * this reading happened — the same thing they say on a copy somebody holds.
-	 */
+	/** The published answer as a reading surface takes it. */
 	function noteOf(published: PublishedNode, of: PublishedSubtree): NodeView {
 		return {
 			ref: published.ref,
@@ -69,6 +62,8 @@
 		};
 	}
 
+	/** What a peer receives carries none of its author's timestamps for a
+	 *  section, so those say when this reading happened. */
 	function sectionsOf(of: PublishedSubtree, note: OwnedRef): BlockView[] {
 		const at = new Date().toISOString();
 		return of.blocks
@@ -91,6 +86,11 @@
 		return published ? noteOf(published, branch) : null;
 	});
 	const sections = $derived(branch && showing ? sectionsOf(branch, showing) : []);
+	/** The address as it is cited: the notebook it is read in comes with it where
+	 *  its author named one. */
+	const citation = $derived(
+		open ? (branch?.graph_title ? `${open.address} · ${branch.graph_title}` : open.address) : ''
+	);
 
 	async function read(of: OwnedRef): Promise<void> {
 		reading = true;
@@ -98,7 +98,7 @@
 		try {
 			const published = await api.readPublishedSubtree(of);
 			if (!published || !published.nodes.some((one) => one.ref === of)) {
-				says = NOTHING_THERE;
+				says = NOT_OPEN;
 				return;
 			}
 			branch = published;
@@ -117,10 +117,6 @@
 		void read(of);
 	});
 
-	$effect(() => {
-		if (author) people.resolve(author);
-	});
-
 	/** A picture inside a published note. The fetch is the API's, so the author's
 	 *  instance never learns who is reading. */
 	const pictures: PictureSource = { picture: (upload) => api.publishedPicture(upload) };
@@ -135,7 +131,6 @@
 		open: (note) => {
 			if (!branch?.nodes.some((one) => one.ref === note)) return;
 			showing = note;
-			dismissed = false;
 		}
 	};
 
@@ -147,39 +142,43 @@
 {#if session.ready && session.signedIn}
 	<Graph />
 {:else if session.ready}
-	<div class="mx-auto max-w-sm space-y-5 px-5 py-16 text-center">
+	<article class="mx-auto w-full max-w-2xl px-5 pt-8 pb-16 sm:px-6">
 		{#if reading}
-			<p class="text-muted-foreground">Opening that note…</p>
-		{:else if says}
-			<p class="text-muted-foreground" role="alert">{says}</p>
-			<p class="text-sm text-muted-foreground">Sign in to look for it among the graphs you hold.</p>
-		{:else}
-			<p class="text-muted-foreground">
-				Somebody published this note. Sign in to keep it, or to answer it.
-			</p>
+			<Skeleton class="h-4 w-24" />
+			<Skeleton class="mt-4 h-8 w-2/3" />
+			<Skeleton class="mt-6 h-24 w-full" />
+		{:else if open}
+			<p class="address text-sm text-muted-foreground select-text">{citation}</p>
+			<h1 class="mt-2 text-2xl leading-snug font-semibold tracking-tight">
+				{open.title || 'Untitled'}
+			</h1>
+			{#if open.tags.length > 0}
+				<div class="mt-3 flex flex-wrap items-center gap-1.5">
+					{#each open.tags as tag (tag)}
+						<Badge variant="outline" class="text-muted-foreground">{tag}</Badge>
+					{/each}
+				</div>
+			{/if}
+			{#if sections.length === 0}
+				<p class="py-8 text-muted-foreground">There is nothing written in this note.</p>
+			{:else}
+				{#key open.ref}
+					<div class="mt-6">
+						<HeldStack author={open.created_by} blocks={sections} {pictures} {references} {emoji} />
+					</div>
+				{/key}
+			{/if}
 		{/if}
 
-		<div class="flex flex-col items-center gap-3">
-			{#if dismissed && open}
-				<Button variant="outline" class="h-11 w-full" onclick={() => (dismissed = false)}>
-					Read it again
+		{#if !reading}
+			<div class="mt-10 space-y-4 border-t border-border pt-6">
+				<p class="text-muted-foreground" role={says ? 'alert' : undefined}>
+					{says ?? 'Somebody published this note. Sign in to keep it, or to answer it.'}
+				</p>
+				<Button class="h-11 w-full sm:w-auto sm:px-8" onclick={() => void goto('/sign-in')}>
+					Sign in
 				</Button>
-			{/if}
-			<Button class="h-11 w-full" onclick={() => void goto('/sign-in')}>Sign in</Button>
-		</div>
-	</div>
-
-	{#if !dismissed}
-		<!-- Nobody's profile resolves without an account, and an identity is not a
-		     name to put in front of a reader — AI.md § "User-Facing Copy". -->
-		<HeldNote
-			note={open}
-			author={{ identity: 'Somebody else', person: people.of(author) }}
-			blocks={sections}
-			{pictures}
-			{references}
-			{emoji}
-			onClose={() => (dismissed = true)}
-		/>
-	{/if}
+			</div>
+		{/if}
+	</article>
 {/if}

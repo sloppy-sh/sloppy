@@ -1936,12 +1936,26 @@ describe('citing a note held from somebody else', () => {
 		await loadGraph();
 	});
 
-	it('offers it to link to, named by whoever wrote it', async () => {
+	// One person keeps several notebooks, so the name alone would read the same
+	// for two of them.
+	it('offers it to link to, named by whoever wrote it and the notebook it is in', async () => {
 		await openNote(SECOND);
 		await findToLink('ash');
 		await until(() => offered().includes('Ada Lovelace'));
 
 		expect(offered()).toContain('Ash keys');
+		expect(offered()).toContain('Ada Lovelace · Their notebook');
+	});
+
+	it('names the person alone where the notebook arrived without a name', async () => {
+		const unnamed: PullView = { ...region };
+		delete unnamed.graph_title;
+		api.on('GET /pulls', () => [unnamed]);
+		await openNote(SECOND);
+		await findToLink('ash');
+		await until(() => offered().includes('Ada Lovelace'));
+
+		expect(offered()).not.toContain('·');
 	});
 
 	// Nobody's name is a fallback for their identity: what stands in is the
@@ -1975,7 +1989,7 @@ describe('citing a note held from somebody else', () => {
 		await until(() => screen().includes('Ada Lovelace'));
 
 		expect(screen()).toContain('Linked from');
-		expect(labelled('1a Ash keys, in Ada Lovelace')).toBeTruthy();
+		expect(labelled('1a Ash keys, in Ada Lovelace · Their notebook')).toBeTruthy();
 	});
 });
 
@@ -2017,7 +2031,7 @@ describe('handing a note to somebody', () => {
 		await graphs.load();
 		await openNote(SECOND);
 
-		labelled("Copy this note's address").click();
+		labelled('Copy the address 1a').click();
 		await settle();
 
 		expect(copied).toEqual(['1a · Biology']);
