@@ -9,12 +9,14 @@ import { BadRequestException } from "@nestjs/common";
 import {
   type Address,
   createOwnedRecordId,
+  DELETED_KEPT_FOR_DAYS,
   type Node,
   ownedRefFrom,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import type { MediaService } from "../media/media.service";
 import type { PublicationService } from "../publication/publication.service";
+import type { FindRepository } from "./find.repository";
 import type { GraphService } from "./graph.service";
 import type { NodeRepository } from "./node.repository";
 import { NodeService } from "./node.service";
@@ -25,6 +27,8 @@ const media = {} as MediaService;
  *  the home graph, which nothing has to look up. */
 const publications = {} as PublicationService;
 const graphs = {} as GraphService;
+/** Nor finds a note by what it says. */
+const finds = {} as FindRepository;
 
 describe("a branch the server numbers", () => {
   it("is refused in words when nothing could follow the highest one", async () => {
@@ -35,6 +39,7 @@ describe("a branch the server numbers", () => {
 
     const written = new NodeService(
       repository,
+      finds,
       graphs,
       media,
       publications,
@@ -84,7 +89,13 @@ function listing(notes: readonly (Node & { ref: string })[]) {
     purgeExpired: () => Promise.resolve([]),
     deletedNotes: () => Promise.resolve([...notes]),
   } as unknown as NodeRepository;
-  return new NodeService(repository, graphs, media, publications).deleted(DID);
+  return new NodeService(
+    repository,
+    finds,
+    graphs,
+    media,
+    publications,
+  ).deleted(DID);
 }
 
 describe("the branches somebody can still put back", () => {
@@ -129,5 +140,32 @@ describe("the branches somebody can still put back", () => {
     const branches = await listing([older, newer]);
 
     expect(branches.map((branch) => branch.address)).toEqual(["2", "1"]);
+  });
+});
+
+describe("the window closing on everybody at once", () => {
+  it("purges each person past it, against the one moment", async () => {
+    const purged: { did: string; before: string }[] = [];
+    const repository = {
+      authorsPast: () => Promise.resolve([DID, "did:syr:z6MkBram"]),
+      purgeExpired: (did: string, before: string) => {
+        purged.push({ did, before });
+        return Promise.resolve();
+      },
+    } as unknown as NodeRepository;
+
+    const swept = await new NodeService(
+      repository,
+      finds,
+      graphs,
+      media,
+      publications,
+    ).sweepEveryone();
+
+    expect(swept).toBe(2);
+    expect(purged.map((one) => one.did)).toEqual([DID, "did:syr:z6MkBram"]);
+    expect(new Set(purged.map((one) => one.before)).size).toBe(1);
+    const kept = Date.now() - Date.parse(purged[0].before);
+    expect(kept / (24 * 60 * 60 * 1000)).toBeCloseTo(DELETED_KEPT_FOR_DAYS, 3);
   });
 });

@@ -22,6 +22,7 @@ import type {
   PublishedVersion,
   PublishedVersionsPage,
   PullView,
+  SearchHit,
 } from "@sloppy/types";
 import { homeGraphRef } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -887,5 +888,32 @@ describe("holding a region of somebody else's graph", () => {
     expect(inHome.every((held) => held.graph === homeGraphRef(AUTHOR))).toBe(
       true,
     );
+  });
+
+  scenario("finds a held note by what its author wrote in it", async () => {
+    serves(
+      page(
+        WIDE,
+        [note("1", "1")],
+        [
+          {
+            ...section(ID.s1, ID.root, "a0"),
+            content: doc("A word only the author wrote: quokka."),
+          },
+        ],
+      ),
+    );
+    await pulled(WIDE);
+
+    const hits = (await ok("GET", "/nodes/search?q=quokka")) as SearchHit[];
+
+    expect(hits.map((one) => one.note)).toEqual([ref(ID.root)]);
+    // The address is the author's, read in the author's graph, and the reader
+    // is told the note is one they are holding.
+    expect(hits[0].address).toBe("1");
+    expect(hits[0].graph).toBe(homeGraphRef(AUTHOR));
+    expect(hits[0].title).toBe("Note 1");
+    expect(hits[0].held).toBe(true);
+    expect(hits[0].snippet).toContain("quokka");
   });
 });

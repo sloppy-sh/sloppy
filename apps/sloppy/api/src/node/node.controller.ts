@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -13,9 +15,14 @@ import {
 import {
   CreateNodeRequestSchema,
   type DeletedBranch,
+  MAX_RECENT_NOTES,
   type NodeBulkResult,
   NodeBulkRequestSchema,
   type NodeView,
+  type OwnedRef,
+  OwnedRefSchema,
+  RECENT_NOTES,
+  type SearchHit,
   type TagCount,
   UpdateNodeRequestSchema,
 } from "@sloppy/types";
@@ -31,6 +38,30 @@ import {
   requireRef,
   viewerDid,
 } from "./request";
+
+/**
+ * Which graph a find is narrowed to, or every graph the caller keeps where they
+ * name none. The graph need not be one of theirs — a note they hold is read in
+ * its AUTHOR's graph — and naming somebody else's tells them nothing, because
+ * the answer is their own rows either way.
+ */
+function narrowedTo(raw: string | undefined): OwnedRef | undefined {
+  if (!raw) return undefined;
+  const parsed = OwnedRefSchema.safeParse(raw);
+  if (!parsed.success) throw new NotFoundException("That graph is not here.");
+  return parsed.data;
+}
+
+/** How many notes to answer with, bounded; absent asks for {@link
+ *  RECENT_NOTES}. */
+function noteBound(raw: string | undefined): number {
+  if (!raw) return RECENT_NOTES;
+  const wanted = Number(raw);
+  if (!Number.isSafeInteger(wanted) || wanted < 1) {
+    throw new BadRequestException("Ask for at least one note.");
+  }
+  return Math.min(wanted, MAX_RECENT_NOTES);
+}
 
 @Controller("nodes")
 export class NodeController {
@@ -69,6 +100,30 @@ export class NodeController {
   @Get("deleted")
   deleted(@Req() req: AuthedRequest): Promise<DeletedBranch[]> {
     return this.nodes.deleted(viewerDid(req));
+  }
+
+  /** The notes whose writing carries `q`, best match first — their own and the
+   *  copies they hold. */
+  @Get("search")
+  search(
+    @Req() req: AuthedRequest,
+    @Query("q") q?: string,
+    @Query("graph") graph?: string,
+  ): Promise<SearchHit[]> {
+    return this.nodes.search(viewerDid(req), q ?? "", narrowedTo(graph));
+  }
+
+  /** The notes they last wrote a section into, newest first. */
+  @Get("recent")
+  recent(
+    @Req() req: AuthedRequest,
+    @Query("graph") graph?: string,
+    @Query("limit") limit?: string,
+  ): Promise<NodeView[]> {
+    return this.nodes.recent(viewerDid(req), {
+      graph: narrowedTo(graph),
+      limit: noteBound(limit),
+    });
   }
 
   @Get(":did/:localId")

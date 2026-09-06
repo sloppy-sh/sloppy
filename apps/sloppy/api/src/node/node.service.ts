@@ -25,6 +25,7 @@ import {
   isUnstyled,
   resolveAppearance,
   seriesIsWhole,
+  MAX_SEARCH_HITS,
   MAX_TAGS_PER_NODE,
   type Node,
   type NodeAppearance,
@@ -37,6 +38,7 @@ import {
   ownedRefFrom,
   parseNode,
   publishRootsOf,
+  type SearchHit,
   type TagCount,
   type Tags,
   TagsSchema,
@@ -47,9 +49,17 @@ import { MediaService } from "../media/media.service";
 import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
 import { nextChildAddress } from "./address-assignment";
+import { FindRepository } from "./find.repository";
 import { GraphService } from "./graph.service";
 import type { AddressHold, NodeBulkPatch } from "./node.repository";
 import { NodeRepository } from "./node.repository";
+import {
+  bestFirst,
+  notesAmong,
+  type Ranked,
+  searchWords,
+  type SectionMatch,
+} from "./search";
 import { SerialQueue } from "./serial-queue";
 
 type CreateRequest = z.output<typeof CreateNodeRequestSchema>;
@@ -74,6 +84,7 @@ export class NodeService {
 
   constructor(
     private readonly nodes: NodeRepository,
+    private readonly find: FindRepository,
     private readonly graphs: GraphService,
     private readonly media: MediaService,
     private readonly publications: PublicationService,
@@ -98,6 +109,122 @@ export class NodeService {
 
   tags(did: string, graph?: OwnedRef): Promise<TagCount[]> {
     return this.nodes.tagCounts(did, graph);
+  }
+
+  /**
+   * The notes whose writing carries `asked`, best match first: their own and the
+   * copies they hold, inside one graph where they name one and across every
+   * graph they keep where they name none. At most {@link MAX_SEARCH_HITS}.
+   */
+  async search(
+    did: string,
+    asked: string,
+    graph?: OwnedRef,
+  ): Promise<SearchHit[]> {
+    const words = searchWords(asked);
+    if (words === "") return [];
+    const [own, held] = await Promise.all([
+      this.find.writingMatches(did, words),
+      this.find.heldWritingMatches(did, words),
+    ]);
+    const found = [
+      ...(await this.ownHits(did, own, graph)),
+      ...(await this.heldHits(did, held, graph)),
+    ];
+    return found
+      .sort(bestFirst)
+      .slice(0, MAX_SEARCH_HITS)
+      .map((one) => one.hit);
+  }
+
+  /** The notes they last wrote INTO, newest first — never `node.updated_at`,
+   *  which a title or a tag moves and an afternoon of writing does not. */
+  async recent(
+    did: string,
+    query: { graph?: OwnedRef; limit: number },
+  ): Promise<NodeView[]> {
+    if (query.graph === undefined) {
+      return this.notesAt(did, await this.find.lastWritten(did, query.limit));
+    }
+    const within = new Set(await this.nodes.notesIn(did, query.graph));
+    if (within.size === 0) return [];
+    const written = (await this.find.lastWritten(did)).filter((ref) =>
+      within.has(ref),
+    );
+    return this.notesAt(did, written.slice(0, query.limit));
+  }
+
+  private async ownHits(
+    did: string,
+    sections: readonly SectionMatch[],
+    graph?: OwnedRef,
+  ): Promise<Ranked[]> {
+    const found = notesAmong(sections);
+    if (found.size === 0) return [];
+    const notes = await this.nodes.many(did, [...found.keys()]);
+    return notes.flatMap((note) => {
+      const ref = ownedRefFrom(note.id);
+      const carried = found.get(ref);
+      if (!carried || (graph !== undefined && graphOf(note) !== graph)) {
+        return [];
+      }
+      return [
+        {
+          matches: carried.matches,
+          hit: {
+            note: ref,
+            address: note.address,
+            graph: graphOf(note),
+            title: note.title,
+            snippet: carried.snippet,
+            held: false,
+          },
+        },
+      ];
+    });
+  }
+
+  private async heldHits(
+    did: string,
+    sections: readonly SectionMatch[],
+    graph?: OwnedRef,
+  ): Promise<Ranked[]> {
+    const found = notesAmong(sections);
+    if (found.size === 0) return [];
+    const notes = await this.find.heldNotes(did, [...found.keys()]);
+    return notes.flatMap((note) => {
+      const carried = found.get(note.source);
+      if (!carried || (graph !== undefined && note.graph !== graph)) return [];
+      return [
+        {
+          matches: carried.matches,
+          hit: {
+            note: note.source,
+            address: note.address,
+            graph: note.graph,
+            title: note.title,
+            snippet: carried.snippet,
+            held: true,
+          },
+        },
+      ];
+    });
+  }
+
+  /** The notes at these references, in the order they were named. */
+  private async notesAt(
+    did: string,
+    written: readonly OwnedRef[],
+  ): Promise<NodeView[]> {
+    if (written.length === 0) return [];
+    const at = new Map(written.map((ref, place) => [ref, place] as const));
+    const notes = await this.nodes.many(did, written);
+    return notes
+      .sort(
+        (a, b) =>
+          (at.get(ownedRefFrom(a.id)) ?? 0) - (at.get(ownedRefFrom(b.id)) ?? 0),
+      )
+      .map(entityView);
   }
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
@@ -186,12 +313,21 @@ export class NodeService {
     return entityView(back);
   }
 
+  /**
+   * Everything anybody deleted longer ago than they can put it back, and how
+   * many people that was for. The routes above sweep whoever walked them;
+   * somebody who deletes a branch and never comes back is only reached here.
+   */
+  async sweepEveryone(): Promise<number> {
+    const before = windowClosed();
+    const authors = await this.nodes.authorsPast(before);
+    for (const did of authors) await this.nodes.purgeExpired(did, before);
+    return authors.length;
+  }
+
   /** Everything they deleted longer ago than they can put it back. */
   private async sweep(did: string): Promise<void> {
-    const before = new Date(
-      Date.now() - DELETED_KEPT_FOR_DAYS * DAY_MS,
-    ).toISOString();
-    await this.nodes.purgeExpired(did, before);
+    await this.nodes.purgeExpired(did, windowClosed());
   }
 
   /**
@@ -445,6 +581,11 @@ export class NodeService {
       }
     }
   }
+}
+
+/** The moment before which a deleted branch can no longer be put back. */
+function windowClosed(): string {
+  return new Date(Date.now() - DELETED_KEPT_FOR_DAYS * DAY_MS).toISOString();
 }
 
 function answer(
