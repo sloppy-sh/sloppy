@@ -336,14 +336,9 @@ function connectionsOf(node: NodeView): [EdgeKind, readonly OwnedRef[]][] {
 
 const ORIGIN: SeedPoint = { x: 0, y: 0, outward: 0 };
 
-/**
- * Where each mark starts this rebuild: one already drawn stays where the last
- * settle left it, and one re-entering the drawn set comes back at its parent's
- * place plus the step its own address takes off its parent's seed.
- *
- * The seeds are untouched, and they are what a peer agrees with
- * (`layout/geometry.ts`); this is one reader's session, not the protocol.
- */
+/** Where each mark starts this rebuild, which is one reader's session rather
+ *  than the protocol: the seeds a peer agrees with (`layout/geometry.ts`) are
+ *  untouched. DESIGN.md § "The canvas". */
 function startPoints(
   drawn: readonly DrawnNode[],
   seedOf: (node: NodeView) => SeedPoint,

@@ -1174,6 +1174,7 @@
 	 *  second note opened while the first is still coming settles last. */
 	async function readHeld(ref: OwnedRef): Promise<void> {
 		reached = ref;
+		bringingTo = ref;
 		reachRefused = null;
 		if (peers.hasStack(ref)) return;
 		reaching = ref;

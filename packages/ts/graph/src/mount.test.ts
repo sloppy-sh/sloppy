@@ -712,14 +712,16 @@ describe("bringing the canvas to a note", () => {
     expect(graph.scene.centred).toEqual([ref]);
   });
 
-  it("leaves a note already on screen where it is", async () => {
+  it("leaves a note already on screen where it is, and goes on framing", async () => {
     const graph = await mount();
     const ref = drawn(graph);
     graph.scene.onScreen.add(ref);
 
     graph.handle.bringTo(ref);
+    graph.answer();
 
     expect(graph.scene.centred).toEqual([]);
+    expect(graph.scene.fits).toBe(1);
   });
 
   it("stops framing the whole field once it has come to the note", async () => {
@@ -759,6 +761,42 @@ describe("bringing the canvas to a note", () => {
 
     graph.answer();
     expect(graph.scene.centred).toEqual([ref, ref, ref]);
+  });
+
+  // The field a reader opens a note from is usually at rest, and opening it is
+  // itself a settle: the note has to be held through the one the act causes.
+  it("holds the note through the settle that opening it starts", async () => {
+    const graph = await mount();
+    const ref = drawn(graph);
+    graph.answer(true);
+
+    graph.handle.bringTo(ref);
+    expect(graph.scene.centred).toEqual([ref]);
+
+    graph.handle.update({ ...graph.props, focus: ref });
+    graph.answer();
+    graph.answer(true);
+    expect(graph.scene.centred).toEqual([ref, ref, ref]);
+
+    graph.answer();
+    expect(graph.scene.centred).toEqual([ref, ref, ref]);
+  });
+
+  it("drops a note still waiting when the reader takes hold of the canvas", async () => {
+    const graph = await mount();
+    const mega = firstMegaNode(graph.model());
+    const child = childrenOf(mega)[0];
+
+    graph.handle.bringTo(child);
+    graph.drag(drawn(graph), [
+      { x: 0, y: 0 },
+      { x: 60, y: 40 },
+    ]);
+
+    graph.handle.update({ ...graph.props, lod: { depth: 9, maxDrawn: 4000 } });
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([]);
   });
 
   it("drops a note still waiting when the reader asks for the whole field", async () => {

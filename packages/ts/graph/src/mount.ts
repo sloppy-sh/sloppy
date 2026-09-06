@@ -179,13 +179,20 @@ export function mountGraph(
 
   /** A note is often asked for before its mark exists — a citation arrives while
    *  the graph is still being read — so the ask waits rather than being spent on
-   *  a canvas that has not drawn it. */
-  const arrive = (): void => {
-    if (bringing === null || scene === null) return;
-    if (scene.indexOf(bringing) === undefined) return;
+   *  a canvas that has not drawn it. Answers whether the mark was there. */
+  const arrive = (): boolean => {
+    if (bringing === null || scene === null) return false;
+    if (scene.indexOf(bringing) === undefined) return false;
+    if (!scene.inView(bringing)) {
+      framing = false;
+      scene.centreOn(bringing);
+    }
+    return true;
+  };
+
+  const takeViewport = (): void => {
     framing = false;
-    if (!scene.inView(bringing)) scene.centreOn(bringing);
-    if (settled) bringing = null;
+    bringing = null;
   };
 
   const layout = new LayoutClient({
@@ -195,7 +202,10 @@ export function mountGraph(
       settled = event.settled;
       scene?.setPositions(event.positions);
       if (dragged) scene?.movePosition(dragged.index, dragged.world);
-      arrive();
+      // Spent on the settle that follows the ask, never on the rest the field
+      // was already in: opening a note is itself a relayout, which would then
+      // carry the note back off screen with nothing holding it.
+      if (arrive() && settled) bringing = null;
       if (framing) scene?.fit();
     },
   });
@@ -319,7 +329,7 @@ export function mountGraph(
       },
       canSweep: () => props.onChooseWithin !== undefined,
       onSweep: (box, done) => {
-        framing = false;
+        takeViewport();
         if (!done) {
           showSweep(box);
           return;
@@ -330,7 +340,7 @@ export function mountGraph(
         );
       },
       onDragStart: (target, world) => {
-        framing = false;
+        takeViewport();
         pin(target, world, true);
       },
       onDragMove: (target, world) => pin(target, world, true),
@@ -341,7 +351,7 @@ export function mountGraph(
         }
       },
       onViewportChange: () => {
-        framing = false;
+        takeViewport();
         built.invalidate();
       },
       inkTarget: () => props.onInkPointer,
@@ -426,7 +436,7 @@ export function mountGraph(
       // The canvas comes to the note the choice is being made for, so the reader
       // is never asked to pick against a viewport they left somewhere else.
       if (asking && next.picking) {
-        framing = false;
+        takeViewport();
         scene?.centreOn(next.picking.from);
       }
       if (next.focus !== undefined && next.focus !== focus) focus = next.focus;
