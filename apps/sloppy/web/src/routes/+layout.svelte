@@ -1,7 +1,8 @@
 <script lang="ts">
 	import '../app.css';
-	import { initRuntime, session } from '@sloppy/app-core';
+	import { initRuntime, session, trackKeyboard } from '@sloppy/app-core';
 	import Frame from '@sloppy/app-core/pages/frame';
+	import { onMount } from 'svelte';
 
 	let { children } = $props();
 
@@ -11,6 +12,10 @@
 		apiHost: () => import.meta.env.PUBLIC_SLOPPY_API_URL ?? '',
 		onAuthInvalid: () => session.clear()
 	});
+
+	// Publishes `--kb-inset-bottom` — DESIGN.md § "The four inset vars". A browser
+	// tells us nothing about the system bars, so the shell writes no inset here.
+	onMount(() => trackKeyboard());
 </script>
 
 <Frame>{@render children()}</Frame>
