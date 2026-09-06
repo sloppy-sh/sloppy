@@ -484,8 +484,8 @@
 				aria-label="Where their graph is"
 			/>
 			<p class="text-xs text-muted-foreground">
-				The name or the identifier they gave you. Leave the second line empty if their graph is kept
-				here.
+				The name or the identifier they gave you. Leave the second line empty for somebody on the
+				same instance as you.
 			</p>
 			<Button
 				variant="outline"

@@ -55,7 +55,7 @@ describe("what an identity publishes", () => {
     ],
   };
 
-  it("is asked of this instance when nowhere else is named", async () => {
+  it("names no instance where the reader named none", async () => {
     const { asked, client } = serving(index);
 
     const page = await client.publishedBy(AUTHOR);
@@ -107,7 +107,7 @@ describe("whoever a name names", () => {
     expect(asked[0].url).toContain(`source_url=${encodeURIComponent(PEER)}`);
   });
 
-  it("is asked of this instance when nowhere else is named", async () => {
+  it("names no instance where the reader named none", async () => {
     const { asked, client } = serving({ did: AUTHOR });
 
     await client.peerIdentity("charles");

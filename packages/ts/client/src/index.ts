@@ -577,9 +577,8 @@ export class SloppyClient {
   }
 
   /**
-   * Whoever a name names, as the identifier everything else here holds. The
-   * asking is done by the API, so the instance the name is kept on learns this
-   * instance and never the reader. Omitting `sourceUrl` asks this one.
+   * Whoever a name names, as the identifier everything else here holds.
+   * Omitting `sourceUrl` asks the instance the reader's own name is kept on.
    */
   async peerIdentity(
     name: string,

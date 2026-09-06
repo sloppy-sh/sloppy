@@ -898,8 +898,7 @@ describe("holding a region of somebody else's graph", () => {
   );
 
   // A person says their name out loud; the identifier is what everything else
-  // holds. Sloppy's own API is what closes that gap, so a reader's browser
-  // never has to reach the instance the name is kept on.
+  // holds, and this is what closes that gap.
   scenario(
     "finds somebody by the name their instance knows them by",
     async () => {
