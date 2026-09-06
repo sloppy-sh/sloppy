@@ -34,8 +34,6 @@
 		writeUnder?: TreeSurfaceProps['writeUnder'];
 	} = $props();
 
-	/** How many of the notes last written into head the walk: a way back to
-	 *  yesterday's thought, not a feed. */
 	const LAST_WRITTEN = 8;
 
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
@@ -47,7 +45,7 @@
 		if (!own) return;
 		let live = true;
 		void api
-			.recentNotes({ limit: LAST_WRITTEN })
+			.recentNotes()
 			.then((recent) => {
 				if (live) written = recent.map((note) => note.ref);
 			})
@@ -60,7 +58,8 @@
 	const lead = $derived.by((): TreeSurfaceProps['lead'] => {
 		const last = written
 			.map((ref) => byRef.get(ref))
-			.filter((note): note is NodeView => note !== undefined);
+			.filter((note): note is NodeView => note !== undefined)
+			.slice(0, LAST_WRITTEN);
 		return last.length > 0 ? { title: 'Last written', notes: last } : undefined;
 	});
 

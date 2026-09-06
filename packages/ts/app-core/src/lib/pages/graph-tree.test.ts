@@ -255,8 +255,6 @@ describe('a tag the reader selected', () => {
 	});
 });
 
-// PRODUCT.md § Purpose: capture demands nothing, so the note put down yesterday
-// is often untitled and untagged, and when is all anybody remembers of it.
 describe('the notes last written into', () => {
 	const branch = [
 		node(50, '1', { graph: THESIS }),
@@ -275,8 +273,7 @@ describe('the notes last written into', () => {
 			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
 		).toEqual(['1a', '2']);
 		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
-			'Last written',
-			'Thesis'
+			'Last written'
 		]);
 	});
 
@@ -298,6 +295,18 @@ describe('the notes last written into', () => {
 		await settle();
 
 		expect(fake.countOf('GET /nodes/recent')).toBe(0);
+	});
+
+	it('heads the walk with a handful, however many came back', async () => {
+		const dozen = Array.from({ length: 12 }, (_, at) =>
+			node(80 + at, `${at + 1}`, { graph: THESIS })
+		);
+		finding(fake, { recent: dozen });
+		render({ notes: dozen, fields });
+		await settle();
+
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(trees[0].querySelectorAll('.address')).toHaveLength(8);
 	});
 
 	it('leaves out a note this walk is not showing', async () => {

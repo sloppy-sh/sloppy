@@ -5,7 +5,7 @@ import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import TreeSurface, { type TreeGroup } from './tree-surface.svelte';
-import { RUN_PAGE, type TreeNote } from './walk.js';
+import { LIT_PAGE, RUN_PAGE, type TreeNote } from './walk.js';
 
 const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
@@ -329,6 +329,46 @@ describe('the tags a reader selected', () => {
 		]);
 		expect(labelled('About 1a').getAttribute('aria-expanded')).toBe('true');
 	});
+
+	it('folds a branch back up when the reader asks, tag or no tag', () => {
+		render({
+			groups: [
+				{
+					key: 'one',
+					title: '',
+					notes: [note('1'), note('1a', '1'), note('1a1', '1a', { tags: ['question'] as Tag[] })]
+				}
+			],
+			selection: ['question'] as Tag[]
+		});
+		expect(rows()).toHaveLength(3);
+
+		labelled('About 1a').querySelector<HTMLButtonElement>('[aria-label="Fold 1a"]')?.click();
+		flushSync();
+		expect(rows().map((row) => row.querySelector('.address')?.textContent?.trim())).toEqual([
+			'1',
+			'1a'
+		]);
+		expect(labelled('About 1a').getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('walks left out of a branch once the reader has folded it', () => {
+		render({
+			groups: [
+				{
+					key: 'one',
+					title: '',
+					notes: [note('1'), note('1a', '1'), note('1a1', '1a', { tags: ['question'] as Tag[] })]
+				}
+			],
+			selection: ['question'] as Tag[]
+		});
+		press(labelled('About 1a'), 'ArrowLeft');
+		expect(rows()).toHaveLength(2);
+
+		press(labelled('About 1a'), 'ArrowLeft');
+		expect(document.activeElement).toBe(labelled('About 1'));
+	});
 });
 
 describe('several graphs on the canvas', () => {
@@ -410,8 +450,7 @@ describe('the notes last written into', () => {
 			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
 		).toEqual(['2', '1a']);
 		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
-			'Last written',
-			'Field notes'
+			'Last written'
 		]);
 	});
 
@@ -452,6 +491,15 @@ describe('a graph of a few thousand notes', () => {
 		expect(notes.length).toBeGreaterThan(3_000);
 		render({ groups: [{ key: 'one', title: '', notes }] });
 		expect(rows()).toHaveLength(40);
+	});
+
+	it('draws a bounded walk when a tag most of them carry is selected', () => {
+		const asked = notes.map((one, at) =>
+			at % 3 === 0 ? { ...one, tags: ['question'] as Tag[] } : one
+		);
+		render({ groups: [{ key: 'one', title: '', notes: asked }], selection: ['question'] as Tag[] });
+		expect(rows().length).toBeGreaterThan(40);
+		expect(rows().length).toBeLessThanOrEqual(40 + LIT_PAGE + RUN_PAGE);
 	});
 });
 

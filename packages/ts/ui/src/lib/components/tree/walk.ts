@@ -24,6 +24,13 @@ export const TOP = '';
  */
 export const RUN_PAGE = 100;
 
+/**
+ * How many rows the reader's tags open. Nothing else bounds this the way
+ * {@link RUN_PAGE} bounds a run: every branch holding a lit note would unfold
+ * at once. Past it a branch is left for the reader to open.
+ */
+export const LIT_PAGE = 100;
+
 export interface TreeItem {
 	kind: 'note';
 	note: TreeNote;
@@ -69,13 +76,16 @@ export interface TreeWalk {
 	 *  the row they are reading is never the one behind "show more". */
 	reading?: OwnedRef | null;
 	/** The reader's tags. A branch holding a note that carries one is walked
-	 *  into, so the tag axis answers at whatever fold the tree was left at —
-	 *  the same question a mega-node answers on the canvas. */
+	 *  into, for at most {@link LIT_PAGE} rows and never one listed in `shut`. */
 	selection?: readonly Tag[];
+	/** The branches the reader folded back up, which a selected tag no longer
+	 *  opens. */
+	shut?: ReadonlySet<OwnedRef>;
 }
 
 const NONE: ReadonlyMap<string, number> = new Map();
 const NO_TAGS: readonly Tag[] = [];
+const NO_REFS: ReadonlySet<OwnedRef> = new Set();
 
 /**
  * The rows, in the order a reader walks them: down into a note's children, then
@@ -89,20 +99,24 @@ export function walkTree({
 	shown = NONE,
 	page = RUN_PAGE,
 	reading = null,
-	selection = NO_TAGS
+	selection = NO_TAGS,
+	shut = NO_REFS
 }: TreeWalk): TreeRow[] {
 	const runs = runsOf(notes);
 	const roots = runs.get(TOP) ?? [];
 	const under = countUnder(runs, roots);
 	const lit = litBy(notes, selection);
 	const rows: TreeRow[] = [];
+	let budget = LIT_PAGE;
 	const stack: {
 		run: readonly TreeNote[];
 		key: string;
 		parent: TreeNote | null;
 		depth: number;
 		at: number;
-	}[] = [{ run: roots, key: TOP, parent: null, depth: 0, at: 0 }];
+		/** Whether this run is drawn only because a tag was selected. */
+		underLit: boolean;
+	}[] = [{ run: roots, key: TOP, parent: null, depth: 0, at: 0, underLit: false }];
 
 	while (stack.length > 0) {
 		const frame = stack[stack.length - 1];
@@ -128,10 +142,13 @@ export function walkTree({
 			continue;
 		}
 		frame.at = at + 1;
+		if (frame.underLit) budget -= 1;
 		const note = frame.run[at];
 		const children = runs.get(note.ref) ?? [];
-		const open =
-			children.length > 0 && (opened.has(note.ref) || children.some((one) => lit.has(one.ref)));
+		const chose = opened.has(note.ref);
+		const lights =
+			!chose && budget > 0 && !shut.has(note.ref) && children.some((one) => lit.has(one.ref));
+		const open = children.length > 0 && (chose || lights);
 		rows.push({
 			kind: 'note',
 			note,
@@ -143,7 +160,14 @@ export function walkTree({
 			of: frame.run.length
 		});
 		if (open) {
-			stack.push({ run: children, key: note.ref, parent: note, depth: frame.depth + 1, at: 0 });
+			stack.push({
+				run: children,
+				key: note.ref,
+				parent: note,
+				depth: frame.depth + 1,
+				at: 0,
+				underLit: frame.underLit || lights
+			});
 		}
 	}
 	return rows;

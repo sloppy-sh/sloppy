@@ -19,7 +19,8 @@
 		lead?: { title: string; notes: readonly TreeNote[] };
 		/** The notes whose children are drawn. */
 		opened: ReadonlySet<OwnedRef>;
-		/** The reader's tags, in selection order — the order the hues go out in. */
+		/** The reader's tags, in selection order — the order the hues go out in,
+		 *  and which branches the walk opens of its own accord. */
 		selection?: readonly Tag[];
 		/** The note in front of the reader, which the tree marks and keeps in view. */
 		reading?: OwnedRef | null;
@@ -47,7 +48,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import { assignTagHueSlots } from '@sloppy/types';
-	import { SvelteMap } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { RUN_PAGE, type TreeRow, walkTree } from './walk.js';
 
@@ -77,11 +78,28 @@
 	 *  one Tab reaches the tree and the arrows walk it. */
 	const tabbed = new SvelteMap<string, string>();
 
+	/** The branches the reader folded back up, so a selected tag stops opening
+	 *  them. Letting the tag go returns every branch to the fold it was left at. */
+	const shut = new SvelteSet<OwnedRef>();
+	let shutFor = '';
+	$effect(() => {
+		const now = selection.join('\n');
+		if (now === shutFor) return;
+		shutFor = now;
+		shut.clear();
+	});
+
+	function toggle(ref: OwnedRef, open: boolean): void {
+		if (open) shut.delete(ref);
+		else shut.add(ref);
+		onToggle(ref, open);
+	}
+
 	const slots = $derived(assignTagHueSlots(selection));
 
 	const drawn = $derived([
 		...(lead && lead.notes.length > 0
-			? [{ key: 'lead', title: lead.title, lead: true, rows: listed(lead.notes) }]
+			? [{ key: 'lead', title: lead.title, lead: true, rows: leadRows(lead.notes) }]
 			: []),
 		...groups.map((group) => ({
 			key: group.key,
@@ -92,13 +110,13 @@
 				opened,
 				shown: paged.get(group.key) ?? EMPTY,
 				reading,
-				selection
+				selection,
+				shut
 			})
 		}))
 	]);
 
-	/** A run drawn in the order it was given, with nothing under it. */
-	function listed(notes: readonly TreeNote[]): TreeRow[] {
+	function leadRows(notes: readonly TreeNote[]): TreeRow[] {
 		return notes.map((note, at) => ({
 			kind: 'note',
 			note,
@@ -184,11 +202,11 @@
 				move(items.length - 1);
 				break;
 			case 'ArrowRight':
-				if (row.kind === 'note' && row.children > 0 && !row.open) onToggle(row.note.ref, true);
+				if (row.kind === 'note' && row.children > 0 && !row.open) toggle(row.note.ref, true);
 				else move(here + 1);
 				break;
 			case 'ArrowLeft':
-				if (row.kind === 'note' && row.open) onToggle(row.note.ref, false);
+				if (row.kind === 'note' && row.open) toggle(row.note.ref, false);
 				else move(above(rows, here));
 				break;
 			case 'Enter':
@@ -247,7 +265,7 @@
 			{#if rows.length > 0}
 				{@const held = stop(group, heads, rows)}
 				<section class="pt-2">
-					{#if drawn.length > 1}
+					{#if heads || groups.length > 1}
 						<!-- Stuck below the chrome the tree is inset off, not under it. -->
 						<h2
 							class="sticky z-10 truncate bg-background/95 py-2 text-xs font-medium text-muted-foreground backdrop-blur"
@@ -291,7 +309,7 @@
 												: `Unfold ${row.note.address}`}
 											onclick={(event) => {
 												event.stopPropagation();
-												onToggle(row.note.ref, !row.open);
+												toggle(row.note.ref, !row.open);
 											}}
 											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>

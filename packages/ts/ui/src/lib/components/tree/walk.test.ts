@@ -1,6 +1,6 @@
 import type { Address, OwnedRef, Tag } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
-import { RUN_PAGE, TOP, type TreeNote, type TreeRow, walkTree } from './walk.js';
+import { LIT_PAGE, RUN_PAGE, TOP, type TreeNote, type TreeRow, walkTree } from './walk.js';
 
 const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
@@ -211,6 +211,40 @@ describe('a tag the reader selected', () => {
 	it('counts nothing waiting while no tag is selected', () => {
 		const rows = walkTree({ notes: wide(150), opened: opened('1') });
 		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 0 });
+	});
+
+	it('leaves a branch the reader folded back up folded', () => {
+		const rows = walkTree({
+			notes: deep,
+			opened: opened(),
+			selection: question,
+			shut: opened('1a')
+		});
+		expect(addresses(rows)).toEqual(['1', '1a', '1b', '2']);
+		expect(rows.find((row) => row.kind === 'note' && row.note.address === '1a')).toMatchObject({
+			open: false
+		});
+	});
+
+	it('opens a branch the reader asked for even where they had folded it', () => {
+		expect(
+			addresses(
+				walkTree({ notes: deep, opened: opened('1a'), selection: question, shut: opened('1a') })
+			)
+		).toEqual(['1', '1a', '1a1', '1b', '2']);
+	});
+
+	it('stops opening branches once a page of rows has been opened', () => {
+		const roots = Array.from({ length: 40 }, (_, at) => `${at + 1}`);
+		const notes = roots.flatMap((root) => [
+			note(root),
+			...Array.from({ length: 80 }, (_, at) =>
+				note(`${root}${letters(at + 1)}`, root, { tags: at % 3 === 0 ? question : [] })
+			)
+		]);
+		const rows = walkTree({ notes, opened: opened(), selection: question });
+		expect(rows.length).toBeGreaterThan(roots.length);
+		expect(rows.length).toBeLessThanOrEqual(roots.length + LIT_PAGE + RUN_PAGE);
 	});
 });
 
