@@ -3,7 +3,14 @@ import type { BlockDocument, BlockView, OwnedRef } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
-import { docBlocks, planSave, runSave, type DocBlock, type SavedBlock } from './document.js';
+import {
+	docBlocks,
+	planSave,
+	runSave,
+	textSection,
+	type DocBlock,
+	type SavedBlock
+} from './document.js';
 import { block, makeEditor, section, stubCanvas, text } from './editor.test-support.js';
 
 let editor: Editor | undefined;
@@ -489,5 +496,26 @@ describe('a picture in a section', () => {
 		const of = open();
 		of.commands.insertPicture({ preview: 'blob:sloppy/1' });
 		expect(rows(of)).toEqual([]);
+	});
+});
+
+describe('the section a note opens on when somebody arrives holding writing', () => {
+	it('gives a paragraph to a line, and nothing to a blank one', () => {
+		const made = textSection('two bars\n\nstill four seconds\n');
+		expect(made?.content).toEqual([
+			{ type: 'paragraph', content: [{ type: 'text', text: 'two bars' }] },
+			{ type: 'paragraph', content: [{ type: 'text', text: 'still four seconds' }] }
+		]);
+	});
+
+	it('is a section a save can write, with no row behind it yet', () => {
+		const made = textSection('a thought');
+		expect(made?.type).toBe('section');
+		expect(made?.attrs?.blockRef).toBeNull();
+		expect(made?.attrs?.blockUid).toEqual(expect.any(String));
+	});
+
+	it('is nothing at all where nothing was written', () => {
+		expect(textSection('   \n\n ')).toBeNull();
 	});
 });

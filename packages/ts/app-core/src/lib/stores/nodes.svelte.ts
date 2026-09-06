@@ -36,6 +36,16 @@ export interface NodeRegion {
 	graph?: OwnedRef;
 }
 
+/** A note asked for, whose address the server has yet to assign. */
+export interface WritingNote {
+	/** What was asked for, so asking again asks for the same note. */
+	readonly asked: CreateNodeRequest;
+	/** The note as the server wrote it. Rejects where it would not be written. */
+	readonly note: Promise<NodeView>;
+	/** A fresh trip for the same note, for a first one that was refused. */
+	again(): WritingNote;
+}
+
 export interface RegionState {
 	loading: boolean;
 	/** True once a load has succeeded; stays true while a reload is in flight. */
@@ -177,6 +187,19 @@ class NodesStore {
 		if (!inflight) return this.fetch(ref);
 		const again = () => this.fetch(ref);
 		return inflight.then(again, again);
+	}
+
+	/**
+	 * Asks for a note and answers with the asking rather than with the note, so
+	 * a surface can open on the tap. The trip outlives whatever asked for it:
+	 * the cache learns the note whether or not that surface is still there.
+	 */
+	write(request: CreateNodeRequest): WritingNote {
+		return {
+			asked: request,
+			note: this.create(request),
+			again: () => this.write(request)
+		};
 	}
 
 	async create(request: CreateNodeRequest): Promise<NodeView> {

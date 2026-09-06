@@ -50,6 +50,7 @@
 		peerOrigin,
 		publishRootsOf,
 		splitOwnedRef,
+		type CreateNodeRequest,
 		type FollowedIdentity,
 		type NodeAppearance,
 		type NodeBulkAct,
@@ -101,7 +102,7 @@
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
-	import { nodes } from '../stores/nodes.svelte.js';
+	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
@@ -112,6 +113,7 @@
 	import { openingWallpaper } from '../wallpaper.js';
 	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
+	import Writing from './writing.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
 	import { acceleratorFor, NEW_BRANCH, typedIntoWriting, WRITE_UNDER } from './shortcuts.js';
 
@@ -130,7 +132,26 @@
 	 *  from this rather than latched, because Back and Forward reach `openNotes`
 	 *  through nothing this page runs — a message cleared by hand outlives them. */
 	let refusedAt = $state<{ strip: readonly OwnedRef[]; reading: OwnedRef | null } | null>(null);
-	let creating = $state(false);
+	/** A note asked for and not yet answered, with whatever has been typed into it
+	 *  in the meantime. `from` is the note it springs from, which is also the tab
+	 *  it takes; a branch takes the tab being read. */
+	interface NoteBeingWritten {
+		trip: WritingNote;
+		from: OwnedRef | null;
+		shape: NoteTemplate | null;
+		title: string;
+		body: string;
+		/** Which field the caret was in, so the note opens where it was left. */
+		where: 'title' | 'body';
+		/** Why it is not written yet, in words already fit to show. */
+		refused: string | null;
+	}
+	let writing = $state<NoteBeingWritten | null>(null);
+	/** A branch whose number the person picked, which is asked for from the sheet
+	 *  it was picked in: only there can a number the graph already carries be
+	 *  picked again. */
+	let numberingWrite = $state(false);
+	const creating = $derived(writing !== null || numberingWrite);
 	/** Naming a branch's number, which is the one address a person picks. */
 	let numbering = $state(false);
 	let branchNumber = $state('');
@@ -143,6 +164,14 @@
 	let naming = $state<OwnedRef | null>(null);
 	/** The shape that note was written to start from, which it seeds itself with. */
 	let seed = $state<{ ref: OwnedRef; shape: NoteTemplate } | null>(null);
+	/** What was written into that note before it had an address, which it puts
+	 *  down as its title and its first section. */
+	let typed = $state<{
+		ref: OwnedRef;
+		title: string;
+		body: string;
+		where: 'title' | 'body';
+	} | null>(null);
 	/** Whether the note on the reading surface has a question of its own up. */
 	let noteAsking = $state(false);
 	/** The note a link is being pointed FROM, while the graph is the picker. */
@@ -227,6 +256,12 @@
 	const open = $derived(page.state.note ?? null);
 	/** Every note open on the reading surface, in the order they were opened. */
 	const openNotes = $derived<readonly OwnedRef[]>(page.state.notes ?? (open ? [open] : []));
+	/** Whether the note being written stands in the tab in front of the reader.
+	 *  A tab closed while that note is being written leaves it nowhere to stand,
+	 *  and it joins the strip when it lands. */
+	const writingHere = $derived(
+		writing !== null && (writing.from === null || writing.from === open)
+	);
 	const tabs = $derived(
 		openNotes.map((ref) => {
 			const note = nodes.get(ref);
@@ -569,13 +604,20 @@
 	}
 
 	/** `wrote` marks a note just written, whose title is still to be given: `from`
-	 *  is the note it was written from, or nothing where it began a branch. */
+	 *  is the note it was written from, or nothing where it began a branch, and
+	 *  `typed` is what was written into it before it had an address. */
 	function show(
 		ref: OwnedRef,
-		wrote: { from: OwnedRef | null; shape: NoteTemplate | null } | null = null
+		wrote: {
+			from: OwnedRef | null;
+			shape: NoteTemplate | null;
+			typed?: { title: string; body: string; where: 'title' | 'body' };
+		} | null = null
 	): void {
 		naming = wrote ? ref : null;
 		seed = wrote?.shape ? { ref, shape: wrote.shape } : null;
+		typed =
+			wrote?.typed && (wrote.typed.title || wrote.typed.body) ? { ref, ...wrote.typed } : null;
 		refused = null;
 		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
 	}
@@ -592,6 +634,7 @@
 		}
 		naming = null;
 		seed = null;
+		typed = null;
 		goTo(ref, [...openNotes, ref]);
 	}
 
@@ -599,6 +642,7 @@
 		if (ref === open) return;
 		naming = null;
 		seed = null;
+		typed = null;
 		goTo(ref, openNotes);
 	}
 
@@ -614,6 +658,7 @@
 		}
 		naming = null;
 		seed = null;
+		typed = null;
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
@@ -636,6 +681,7 @@
 		}
 		naming = null;
 		seed = null;
+		typed = null;
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
@@ -653,6 +699,9 @@
 	function putAway(held: readonly OwnedRef[]): void {
 		naming = null;
 		seed = null;
+		typed = null;
+		// The note asked for is still on its way, and opens where it lands.
+		writing = null;
 		aside = held;
 		replaceState('/', {});
 	}
@@ -906,7 +955,7 @@
 			{
 				label: 'Write a note under this',
 				icon: CornerDownRight,
-				onSelect: () => void writeUnder(on)
+				onSelect: () => writeUnder(on)
 			},
 			{ label: 'Tags', icon: Tag, onSelect: () => openTags(on) },
 			{ label: 'Give it a look', icon: CircleDashed, onSelect: () => openLook(on) }
@@ -960,42 +1009,67 @@
 
 	/** A branch of its own, in the graph the reader is in — against
 	 *  {@link writeUnder}, which continues the note it is given. */
-	async function writeBranch(shape: NoteTemplate | null): Promise<void> {
-		if (creating) return;
-		creating = true;
-		refused = null;
-		try {
-			const written = await nodes.create({
-				from: { relation: 'branch', graph: graphs.current }
-			});
-			show(written.ref, { from: null, shape });
-		} catch (error) {
-			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
-		} finally {
-			creating = false;
-		}
+	function writeBranch(shape: NoteTemplate | null): void {
+		startWriting({ from: { relation: 'branch', graph: graphs.current } }, null, shape);
 	}
 
 	/** The note that springs from one already on the canvas, without opening it
 	 *  first. */
-	async function writeUnder(on: OwnedRef): Promise<void> {
+	function writeUnder(on: OwnedRef): void {
+		startWriting({ from: { relation: 'under', note: on } }, on, null);
+	}
+
+	/** The surface opens on the asking, not on the answer: what is typed into it
+	 *  before the address lands goes to the note the moment there is one. */
+	function startWriting(
+		asked: CreateNodeRequest,
+		from: OwnedRef | null,
+		shape: NoteTemplate | null
+	): void {
 		if (creating) return;
-		creating = true;
 		refused = null;
+		writing = {
+			trip: nodes.write(asked),
+			from,
+			shape,
+			title: '',
+			body: '',
+			where: 'title',
+			refused: null
+		};
+		void whenWritten(writing);
+	}
+
+	async function whenWritten(job: NoteBeingWritten): Promise<void> {
 		try {
-			const written = await nodes.create({ from: { relation: 'under', note: on } });
-			show(written.ref, { from: on, shape: null });
+			const written = await job.trip.note;
+			if (writing === job) writing = null;
+			show(written.ref, {
+				from: job.from,
+				shape: job.shape,
+				typed: { title: job.title, body: job.body, where: job.where }
+			});
 		} catch (error) {
-			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
-		} finally {
-			creating = false;
+			const says = serverMessage(error) ?? 'Sloppy could not add that note.';
+			// Beside the graph where the surface it was asked on has been put away,
+			// since there is nowhere else left to say it.
+			if (writing === job) job.refused = says;
+			else refused = says;
 		}
+	}
+
+	function writeAgain(): void {
+		const job = writing;
+		if (!job) return;
+		job.refused = null;
+		job.trip = job.trip.again();
+		void whenWritten(job);
 	}
 
 	const writeFromRow = {
 		keys: WRITE_UNDER.keys,
 		typed: (event: KeyboardEvent) => acceleratorFor(event) === 'under',
-		write: (on: OwnedRef) => void writeUnder(on)
+		write: (on: OwnedRef) => writeUnder(on)
 	};
 
 	/**
@@ -1188,7 +1262,7 @@
 			numberRefused = picked.error.issues[0].message;
 			return;
 		}
-		creating = true;
+		numberingWrite = true;
 		numberRefused = null;
 		try {
 			const written = await nodes.create({
@@ -1200,7 +1274,7 @@
 			numberRefused =
 				serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
-			creating = false;
+			numberingWrite = false;
 		}
 	}
 </script>
@@ -1224,10 +1298,10 @@
 		const act = acceleratorFor(event);
 		if (act === 'branch') {
 			event.preventDefault();
-			void writeBranch(null);
+			writeBranch(null);
 		} else if (act === 'under' && open) {
 			event.preventDefault();
-			void writeUnder(open);
+			writeUnder(open);
 		}
 	}}
 />
@@ -1589,7 +1663,7 @@
 	bind:open={shaping}
 	onpick={(shape) => {
 		shaping = false;
-		void writeBranch(shape);
+		writeBranch(shape);
 	}}
 />
 
@@ -1710,11 +1784,11 @@
      somebody else's region — a history pop is the way in that nothing else
      closes. -->
 <ReadingPanel
-	open={open !== null && !foreign}
+	open={(open !== null || writingHere) && !foreign}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}
-	title={openNode?.title || 'Note'}
+	title={writingHere ? 'Note' : openNode?.title || 'Note'}
 	{tabs}
 	active={open}
 	says={tooMany}
@@ -1723,14 +1797,35 @@
 	onActivate={activate}
 	onCloseTab={closeTab}
 >
-	{#if open}
+	{#if writing && writingHere}
+		<Writing
+			title={writing.title}
+			body={writing.body}
+			refused={writing.refused}
+			onTitle={(said) => {
+				if (writing) writing.title = said;
+			}}
+			onBody={(said) => {
+				if (writing) writing.body = said;
+			}}
+			onCaret={(where) => {
+				if (writing) writing.where = where;
+			}}
+			onAgain={writeAgain}
+			onClose={hide}
+		/>
+	{:else if open}
 		<Note
 			ref={open}
 			{naming}
 			{seed}
+			{typed}
 			{openNotes}
 			onAsking={(up) => (noteAsking = up)}
 			onSeeded={() => (seed = null)}
+			onTyped={() => (typed = null)}
+			onWrite={(want) =>
+				startWriting({ from: { relation: want.relation, note: want.from } }, want.from, want.shape)}
 			onOpen={show}
 			onOpenAlso={showAlso}
 			onLinkOnGraph={() => pointFrom(open)}

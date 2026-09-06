@@ -1531,3 +1531,46 @@ describe('linking a note to one in another graph', () => {
 		expect(screen()).toContain('A note that is no longer here.');
 	});
 });
+
+// PRODUCT.md § "Capture is one gesture": the note that springs from this one is
+// somewhere to write the moment it is asked for, not the moment it is answered.
+describe('writing the next note while the server is still assigning its address', () => {
+	const WRITTEN = ref(9);
+	let give: (value: NodeView) => void;
+
+	beforeEach(async () => {
+		installGraph();
+		await loadGraph();
+		const waiting = new Promise<NodeView>((settle) => (give = settle));
+		api.on('POST /nodes', () => waiting);
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '1b', { origin: FIRST, parent: FIRST }));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+	});
+
+	it('opens somewhere to write on the tap, with the address still being given', async () => {
+		await openNote(SECOND);
+		button('Write a note under this').click();
+		await settle();
+
+		expect(screen()).toContain('Giving it an address');
+		expect(focused()).toBe(title());
+		expect(document.body.querySelector('.address')).toBeNull();
+	});
+
+	it('keeps the title typed into it, and shows the address the server gave', async () => {
+		await openNote(SECOND);
+		button('Write the next note').click();
+		await settle();
+		const field = title();
+		if (!field) throw new Error('There is nowhere to write the title');
+		field.value = 'Membranes';
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+
+		give(node(9, '1b', { origin: FIRST, parent: FIRST }));
+		await settle();
+
+		expect(document.body.querySelector('.address')?.textContent).toBe('1b');
+		expect(title()?.value).toBe('Membranes');
+	});
+});

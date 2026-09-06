@@ -1237,3 +1237,126 @@ describe('writing a note from the keyboard', () => {
 		expect(branch.getAttribute('aria-label')).toMatch(/^New branch \(.+\)$/);
 	});
 });
+
+// PRODUCT.md § "Capture is one gesture": the four seconds belong to the product,
+// not to the network, so the surface opens on the tap and the writing waits for
+// the address rather than the other way round.
+describe('a note written before the server has answered', () => {
+	const WRITTEN = ref(9);
+	let stalled: { answer: (value: NodeView | Response) => void };
+	let created: CreateBlockRequest[];
+
+	function heldOpen(): {
+		answer: (value: NodeView | Response) => void;
+		route: () => Promise<NodeView | Response>;
+	} {
+		let give: (value: NodeView | Response) => void = () => {};
+		const waiting = new Promise<NodeView | Response>((settle) => (give = settle));
+		return { answer: (value) => give(value), route: () => waiting };
+	}
+
+	function field(label: string): HTMLTextAreaElement {
+		const found = document.body.querySelector<HTMLTextAreaElement>(
+			`textarea[aria-label="${label}"]`
+		);
+		if (!found) throw new Error(`No "${label}" field on screen`);
+		return found;
+	}
+
+	function type(into: HTMLTextAreaElement, said: string): void {
+		into.value = said;
+		into.dispatchEvent(new Event('input', { bubbles: true }));
+	}
+
+	/** Real timers: what is waited for is the writing settling, on its own clock,
+	 *  which is longer than a frame and shorter than this. */
+	async function until(ready: () => boolean): Promise<void> {
+		const stop = Date.now() + 4000;
+		while (!ready() && Date.now() < stop) {
+			await new Promise((wake) => setTimeout(wake, 10));
+			flushSync();
+		}
+		if (!ready()) throw new Error('The writing never reached the note');
+	}
+
+	const said = (of: CreateBlockRequest): string =>
+		((of.content?.content ?? []) as { content?: { text?: string }[] }[])
+			.flatMap((paragraph) => (paragraph.content ?? []).map((run) => run.text ?? ''))
+			.join('');
+
+	beforeEach(() => {
+		created = [];
+		const trip = heldOpen();
+		stalled = trip;
+		api.on('POST /nodes', () => trip.route());
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+		api.on('POST /blocks', (_url, init) => {
+			const request = JSON.parse(String(init?.body)) as CreateBlockRequest;
+			created.push(request);
+			return {
+				ref: ref(20 + created.length),
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				node: request.node,
+				ord: '0001',
+				content: request.content
+			};
+		});
+	});
+
+	it('opens somewhere to write on the tap, with the address still being given', async () => {
+		await open();
+		button('New branch').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+		expect(screen()).toContain('Giving it an address');
+		expect(document.body.querySelector('.address')).toBeNull();
+	});
+
+	it('puts what was typed into the note the moment there is one', async () => {
+		await open();
+		button('New branch').click();
+		await settle();
+		type(field('Title'), 'Membranes');
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(field('Title').value).toBe('Membranes');
+		await until(() => created.length > 0);
+		expect(created).toHaveLength(1);
+		expect(created[0].node).toBe(WRITTEN);
+		expect(said(created[0])).toBe('two bars is still four seconds');
+	});
+
+	it('keeps the writing and offers another go when the note will not be written', async () => {
+		await open();
+		button('New branch').click();
+		await settle();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(
+			new Response('{"message":"That note would not go."}', {
+				status: 400,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+		await settle();
+
+		expect(screen()).toContain('That note would not go.');
+		expect(field('Note body').value).toBe('two bars is still four seconds');
+
+		api.on('POST /nodes', () => node(9, '3'));
+		button('Try again').click();
+		await settle();
+
+		await until(() => created.length > 0);
+		expect(said(created[0])).toBe('two bars is still four seconds');
+	});
+});

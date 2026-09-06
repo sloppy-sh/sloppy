@@ -165,6 +165,13 @@ export function textDocument(text: string): BlockDocument {
 	return { type: 'doc', content };
 }
 
+/** The one section a note opens on when somebody arrives holding writing for
+ *  it. Null where they arrived with nothing. */
+export function textSection(text: string): JSONContent | null {
+	const said = textDocument(text).content as JSONContent[];
+	return said.length === 0 ? null : { ...emptySection(), content: said };
+}
+
 /**
  * The rows the document currently describes. A section holding nothing is not
  * one until it is one: the empty section a note opens on never becomes a row on

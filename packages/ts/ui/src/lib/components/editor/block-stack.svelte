@@ -34,6 +34,7 @@
 		openBlocks,
 		planSave,
 		runSave,
+		textSection,
 		type DocBlock,
 		type SavedBlock
 	} from './document.js';
@@ -474,10 +475,22 @@
 		});
 	}
 
-	/** Puts the caret at the start of the writing, for a field above the note to
-	 *  hand the keyboard on to. */
-	export function focusBody(): void {
-		editor?.commands.focus('start');
+	/** Puts the caret in the writing, for a field above the note to hand the
+	 *  keyboard on to. */
+	export function focusBody(at: 'start' | 'end' = 'start'): void {
+		editor?.commands.focus(at);
+	}
+
+	/** Puts writing somebody arrived with into the section this note opened on,
+	 *  from where it saves the way everything typed here saves. A note that
+	 *  already says something keeps what it says. */
+	export function carry(text: string): void {
+		const current = editor;
+		if (!current || current.isDestroyed || !current.isEmpty) return;
+		const section = textSection(text);
+		if (!section) return;
+		// The save waits on the update this emits, and nothing else would wake it.
+		current.commands.setContent({ type: 'doc', content: [section] }, { emitUpdate: true });
 	}
 
 	// ── The surface, rebuilt only when it is a different note ────────────────

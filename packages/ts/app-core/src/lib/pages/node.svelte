@@ -79,9 +79,12 @@
 		ref,
 		naming = null,
 		seed = null,
+		typed = null,
 		openNotes = [],
 		onAsking,
 		onSeeded,
+		onTyped,
+		onWrite,
 		onOpen,
 		onOpenAlso,
 		onLinkOnGraph,
@@ -97,15 +100,26 @@
 		/** Called the moment the shape is taken up, and it must not be offered
 		 *  again: a note reopened still carrying one would seed itself twice. */
 		onSeeded?: () => void;
+		/** What was written into this note on the surface it was written from,
+		 *  before it had an address to be written into. It is put down here, and
+		 *  the caret carries on where `where` says it was left. */
+		typed?: { ref: OwnedRef; title: string; body: string; where: 'title' | 'body' } | null;
+		/** Called once that writing has been taken up, for the same reason
+		 *  {@link onSeeded} is. */
+		onTyped?: () => void;
+		/** Write the note that springs from this one. The surface for it opens on
+		 *  the asking, which is whatever is showing this note. */
+		onWrite: (want: {
+			relation: 'under' | 'after';
+			from: OwnedRef;
+			shape: NoteTemplate | null;
+		}) => void;
 		/** Every note open on the reading surface, this one included. */
 		openNotes?: readonly OwnedRef[];
 		/** Called with whether this note has a question of its own in front of the
 		 *  reader, so whatever the note sits on can leave their answer alone. */
 		onAsking?: (asking: boolean) => void;
-		/** `wrote` is the note the new one was written from, which is the tab it
-		 *  takes the place of — not always the tab the reader is in by the time the
-		 *  note comes back. */
-		onOpen: (ref: OwnedRef, wrote?: { from: OwnedRef; shape: NoteTemplate | null }) => void;
+		onOpen: (ref: OwnedRef) => void;
 		/** Open a note beside this one rather than in its place. Absent leaves
 		 *  every row here a plain way to the note it names. */
 		onOpenAlso?: (ref: OwnedRef) => void;
@@ -165,7 +179,6 @@
 	 *  and an answer shown against the wrong note is a lie about that note. */
 	interface Refusals {
 		title?: string;
-		add?: string;
 		shape?: string;
 		link?: string;
 		unlink?: string;
@@ -199,13 +212,19 @@
 
 	/** Acts in the air, by the note they were asked in, so a wait in one tab does
 	 *  not disable the same act in the next. */
-	const adding = new SvelteSet<OwnedRef>();
 	const relinking = new SvelteSet<OwnedRef>();
 	const seeding = new SvelteSet<OwnedRef>();
 
 	let titleField = $state<HTMLTextAreaElement | null>(null);
 	let noteBody = $state<HTMLElement | null>(null);
-	let bodyStack = $state<{ focusBody: () => void } | null>(null);
+	let bodyStack = $state<{
+		focusBody: (at?: 'start' | 'end') => void;
+		carry: (text: string) => void;
+	} | null>(null);
+	/** Writing this note arrived with, until the surface it goes into is up. */
+	let carried = $state<{ ref: OwnedRef; body: string } | null>(null);
+	/** Which field the caret was in on the surface this note was written from. */
+	let caretTo = $state<'title' | 'body'>('title');
 	let tagsSheet = $state<HTMLElement | null>(null);
 
 	/** Which act the shapes are being offered for: a note under this one, the one
@@ -514,9 +533,9 @@
 		{
 			label: 'Write a note under this',
 			icon: CornerDownRight,
-			onSelect: () => void write('under', null)
+			onSelect: () => write('under', null)
 		},
-		{ label: 'Write the next note', icon: ArrowRight, onSelect: () => void write('after', null) },
+		{ label: 'Write the next note', icon: ArrowRight, onSelect: () => write('after', null) },
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
 		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
@@ -545,11 +564,28 @@
 	// can only be put in the title the frame after that.
 	$effect(() => {
 		const field = titleField;
-		if (naming !== ref || !field) return;
+		if (naming !== ref || !field || caretTo === 'body') return;
 		let frame = requestAnimationFrame(() => {
-			frame = requestAnimationFrame(() => field.focus());
+			frame = requestAnimationFrame(() => {
+				field.focus();
+				field.setSelectionRange(field.value.length, field.value.length);
+			});
 		});
 		return () => cancelAnimationFrame(frame);
+	});
+
+	// The writing surface is built after the note has been read, so writing the
+	// note arrived with waits for the surface rather than the other way round.
+	$effect(() => {
+		const stack = bodyStack;
+		const said = carried;
+		if (!stack || !said || said.ref !== ref) return;
+		carried = null;
+		const to = caretTo;
+		void tick().then(() => {
+			stack.carry(said.body);
+			if (to === 'body') stack.focusBody('end');
+		});
 	});
 
 	// Left to itself the sheet takes the first thing it can focus, which in a
@@ -666,6 +702,16 @@
 			onSeeded?.();
 			return shape;
 		});
+		untrack(() => {
+			caretTo = 'title';
+			carried = null;
+			if (typed?.ref !== opening) return;
+			const said = typed;
+			onTyped?.();
+			if (said.title) drafts.set(opening, said.title);
+			caretTo = said.where;
+			if (said.body || said.where === 'body') carried = { ref: opening, body: said.body };
+		});
 		let live = true;
 		const known = read.get(opening);
 		const wrote = landed;
@@ -763,25 +809,8 @@
 		}
 	}
 
-	/** The two ways a note is written from this one: one under it, or the one
-	 *  that comes after it. The server derives the address from either. */
-	async function write(relation: 'under' | 'after', shape: NoteTemplate | null): Promise<void> {
-		const from = ref;
-		if (adding.has(from)) return;
-		adding.add(from);
-		refuse(from, 'add', null);
-		try {
-			const made = await nodes.create({ from: { relation, note: from } });
-			onOpen(made.ref, { from, shape });
-		} catch (error) {
-			refuse(
-				from,
-				'add',
-				serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.'
-			);
-		} finally {
-			adding.delete(from);
-		}
+	function write(relation: 'under' | 'after', shape: NoteTemplate | null): void {
+		onWrite({ relation, from: ref, shape });
 	}
 
 	/** Two writers appending to one stack would interleave their sections, so a
@@ -840,7 +869,7 @@
 			if (shape) void shapeThisNote(shape);
 			return;
 		}
-		void write(act, shape);
+		write(act, shape);
 	}
 
 	/**
@@ -1368,7 +1397,6 @@
 							<Button
 								variant="outline"
 								class="h-11 flex-1"
-								disabled={adding.has(ref)}
 								aria-label="Write a note under this ({WRITE_UNDER.says})"
 								aria-keyshortcuts={WRITE_UNDER.keys}
 								onclick={() => write('under', null)}
@@ -1381,19 +1409,13 @@
 								size="icon"
 								class="size-11 shrink-0 text-muted-foreground"
 								aria-label="Write a note under this, from a shape"
-								disabled={adding.has(ref)}
 								onclick={() => offerShapes('under')}
 							>
 								<LayoutTemplate class="size-4" />
 							</Button>
 						</div>
 						<div class="flex gap-2 @md:flex-1">
-							<Button
-								variant="outline"
-								class="h-11 flex-1"
-								disabled={adding.has(ref)}
-								onclick={() => write('after', null)}
-							>
+							<Button variant="outline" class="h-11 flex-1" onclick={() => write('after', null)}>
 								<ArrowRight class="size-4" />
 								Write the next note
 							</Button>
@@ -1402,15 +1424,12 @@
 								size="icon"
 								class="size-11 shrink-0 text-muted-foreground"
 								aria-label="Write the next note, from a shape"
-								disabled={adding.has(ref)}
 								onclick={() => offerShapes('after')}
 							>
 								<LayoutTemplate class="size-4" />
 							</Button>
 						</div>
 					</div>
-
-					{#if refused.add}<p class="text-sm text-destructive" role="alert">{refused.add}</p>{/if}
 				</div>
 
 				{#if linked.length > 0 || backlinks.length > 0}
