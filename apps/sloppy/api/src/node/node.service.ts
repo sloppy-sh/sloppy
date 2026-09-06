@@ -13,6 +13,7 @@ import {
   compareAddresses,
   type CreateNodeRequestSchema,
   createOwnedRecordId,
+  DELETED_KEPT_FOR_DAYS,
   type DeletedBranch,
   homeGraphRef,
   entityView,
@@ -64,14 +65,6 @@ type ChangingAct = Exclude<
  * index. The bound is what stops a pathological loop, not a tuned number.
  */
 const ADDRESS_ATTEMPTS = 8;
-
-/**
- * How long a deleted branch stays where its author can put it back. The
- * confirmation a person reads before deleting says this same number, and the
- * two are only kept in step by hand: `deletion.ts` in `@sloppy/app-core` is the
- * other one.
- */
-const KEPT_FOR_DAYS = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -152,8 +145,8 @@ export class NodeService {
 
   /**
    * A node goes with everything that sprang from it, and can be put back until
-   * {@link KEPT_FOR_DAYS} have passed. Whatever the branch was publishing comes
-   * down first and does not come back with it.
+   * {@link DELETED_KEPT_FOR_DAYS} have passed. Whatever the branch was
+   * publishing comes down first and does not come back with it.
    */
   async remove(
     did: string,
@@ -195,7 +188,9 @@ export class NodeService {
 
   /** Everything they deleted longer ago than they can put it back. */
   private async sweep(did: string): Promise<void> {
-    const before = new Date(Date.now() - KEPT_FOR_DAYS * DAY_MS).toISOString();
+    const before = new Date(
+      Date.now() - DELETED_KEPT_FOR_DAYS * DAY_MS,
+    ).toISOString();
     await this.nodes.purgeExpired(did, before);
   }
 

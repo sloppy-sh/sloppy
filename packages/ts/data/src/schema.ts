@@ -296,6 +296,20 @@ ${MIGRATIONS}
   -- region reaches the blocks of the nodes it takes with it.
   DEFINE INDEX IF NOT EXISTS pulled_block_owner_node_ord ON pulled_block FIELDS created_by, node, ord;
   DEFINE INDEX IF NOT EXISTS pulled_block_owner_source ON pulled_block FIELDS created_by, source UNIQUE;
+
+  -- What somebody wrote, found again by a phrase they remember. Stemmed and
+  -- folded so "mushrooms" answers "mushroom" and an accent typed either way
+  -- answers the other.
+  DEFINE ANALYZER IF NOT EXISTS sloppy_text TOKENIZERS class FILTERS lowercase, ascii, snowball(english);
+  -- A full-text index takes ONE column — the server refuses two — so the owner
+  -- is a filter beside the match rather than the leading column it is
+  -- everywhere else here. A search reads
+  -- FROM block WHERE text @1@ $words AND created_by = $did, and the equality is
+  -- what keeps one person's words out of another's results.
+  DEFINE INDEX IF NOT EXISTS block_text ON block FIELDS text FULLTEXT ANALYZER sloppy_text BM25 HIGHLIGHTS;
+  -- The same over what a peer handed the reader, because a search that covered
+  -- only their own writing would answer "nothing" about a note they are holding.
+  DEFINE INDEX IF NOT EXISTS pulled_block_text ON pulled_block FIELDS text FULLTEXT ANALYZER sloppy_text BM25 HIGHLIGHTS;
 `;
 
 const DEFINE_TABLE = /DEFINE TABLE\s+(?:IF NOT EXISTS\s+)?(\w+)/g;

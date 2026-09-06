@@ -871,6 +871,66 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     expect(spent).toEqual(["9"]);
   });
 
+  it("finds a phrase somebody wrote, in their own writing and in what they hold", async () => {
+    const OWN = OwnedRefSchema.parse(`${AVA}/01JWRDSN000000000000000000`);
+    const THEIRS = OwnedRefSchema.parse(`${BOB}/01JWRDSD000000000000000000`);
+    const section = (
+      table: string,
+      owner: string,
+      localId: string,
+      text: string,
+    ) => ({
+      id: new RecordId(table, {
+        created_by: owner,
+        id: UlidSchema.parse(localId),
+      }),
+      created_by: owner,
+      node: table === "block" ? OWN : THEIRS,
+      ...(table === "block" ? {} : { source: THEIRS }),
+      ord: "a0",
+      content: { type: "doc", content: [] },
+      text,
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    });
+
+    for (const row of [
+      section(
+        "block",
+        AVA,
+        "01JWRDSA000000000000000000",
+        "seeds and mushrooms",
+      ),
+      section("block", BOB, "01JWRDSB000000000000000000", "mushrooms, again"),
+      section(
+        "pulled_block",
+        AVA,
+        "01JWRDSC000000000000000000",
+        "a mushroom somebody else wrote about",
+      ),
+    ]) {
+      await db.create(row.id).content(row);
+    }
+
+    // Stemmed: the singular a person types answers the plural they wrote.
+    const [own, held] = await db.query<[string[], string[]]>(
+      `SELECT VALUE text FROM block
+         WHERE text @1@ $words AND created_by = $did;
+       SELECT VALUE text FROM pulled_block
+         WHERE text @1@ $words AND created_by = $did;`,
+      { did: AVA, words: "mushroom" },
+    );
+    expect(own).toEqual(["seeds and mushrooms"]);
+    expect(held).toEqual(["a mushroom somebody else wrote about"]);
+
+    for (const table of ["block", "pulled_block"]) {
+      const [info] = await db.query<[{ indexes: Record<string, string> }]>(
+        `INFO FOR TABLE ${table};`,
+      );
+      expect(info.indexes[`${table}_text`]).toContain("FULLTEXT");
+    }
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);

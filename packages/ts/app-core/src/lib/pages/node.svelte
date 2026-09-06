@@ -64,6 +64,7 @@
 	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
+	import { carries, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { drafts } from '../stores/drafts.svelte.js';
@@ -392,12 +393,6 @@
 	/** Enough to recognise the one meant, never a list to browse. */
 	const MATCHES = 6;
 
-	/** How a note is reached by what a person cites: the address, or words in the
-	 *  title. `needle` is already lowercased. */
-	function carries(note: NodeView, needle: string): boolean {
-		return note.address.startsWith(needle) || note.title.toLowerCase().includes(needle);
-	}
-
 	/** A link crosses graphs, so what a person may point at does too — this
 	 *  note's own graph first, since that is where most of them are. */
 	const citable = $derived.by(() => {
@@ -441,36 +436,20 @@
 
 	/** Only at `whole` does this note know every note it could point at, so only
 	 *  there may a surface say there is no such note. */
-	let reach = $state<'reading' | 'whole' | 'short'>('reading');
+	let reach = $state<Reach | 'reading'>('reading');
 
 	/**
-	 * Every graph this person keeps, read once. A note reaches the ones beside it
-	 * in three places — what `[[` offers, what a link may be pointed at, and what
-	 * points back at this note — and all three are short of a graph left unread.
-	 * One graph that will not read must not cost the others theirs.
+	 * A note reaches the graphs beside it in three places — what `[[` offers,
+	 * what a link may be pointed at, and what points back at this note — and all
+	 * three are short of a graph left unread.
 	 */
-	async function reachEveryGraph(): Promise<void> {
+	async function lookEverywhere(): Promise<void> {
 		reach = 'reading';
-		let whole = true;
-		const kept = await graphs.load().catch(() => {
-			whole = false;
-			return [];
-		});
-		await Promise.all(
-			kept.map(async ({ ref: graph }) => {
-				try {
-					const branches = await nodes.load({ graph });
-					await Promise.all(branches.map((root) => nodes.load({ origin: root.ref })));
-				} catch {
-					whole = false;
-				}
-			})
-		);
-		reach = whole ? 'whole' : 'short';
+		reach = await reachEveryGraph();
 	}
 
 	$effect(() => {
-		untrack(() => void reachEveryGraph());
+		untrack(() => void lookEverywhere());
 	});
 
 	const consequence = $derived(deletionCost([ref]));
@@ -1690,7 +1669,7 @@
 							Sloppy could not open all of your graphs, so a note in one of them may be missing
 							here.
 						</p>
-						<Button variant="outline" class="h-11 w-full" onclick={() => void reachEveryGraph()}>
+						<Button variant="outline" class="h-11 w-full" onclick={() => void lookEverywhere()}>
 							Look again
 						</Button>
 					{/if}

@@ -1,6 +1,6 @@
-import type { NodeView, OwnedRef } from '@sloppy/types';
+import { DELETED_KEPT_FOR_DAYS, type NodeView, type OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { deletionCost, KEPT_FOR_DAYS, timeToPutBack } from './deletion.js';
+import { deletionCost, timeToPutBack } from './deletion.js';
 import { node, ref, useFakeApi, type FakeApi } from './stores/fake-api.test-support.js';
 import { nodes } from './stores/nodes.svelte.js';
 
@@ -37,13 +37,13 @@ describe('what a person is told before deleting', () => {
 		await loaded(branch(), under());
 
 		expect(deletionCost([ROOT])).toBe(
-			`It goes, and so does the one note that grew out of it. You can put it back from Your graphs for ${KEPT_FOR_DAYS} days.`
+			`It goes, and so does the one note that grew out of it. You can put it back from Your graphs for ${DELETED_KEPT_FOR_DAYS} days.`
 		);
 	});
 
 	it('names no number for a branch nothing has counted yet', () => {
 		expect(deletionCost([ROOT])).toBe(
-			`It goes, and so does everything written under it. You can put it back from Your graphs for ${KEPT_FOR_DAYS} days.`
+			`It goes, and so does everything written under it. You can put it back from Your graphs for ${DELETED_KEPT_FOR_DAYS} days.`
 		);
 	});
 
@@ -73,7 +73,7 @@ describe('what a person is told before deleting', () => {
 		await loaded(branch({ published: true }), under());
 
 		expect(deletionCost([ROOT, UNDER] as OwnedRef[])).toBe(
-			`They go. Some of these are published — whoever already has them keeps their copy. You can put them back from Your graphs for ${KEPT_FOR_DAYS} days.`
+			`They go. Some of these are published — whoever already has them keeps their copy. You can put them back from Your graphs for ${DELETED_KEPT_FOR_DAYS} days.`
 		);
 	});
 });

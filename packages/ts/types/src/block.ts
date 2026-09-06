@@ -20,6 +20,14 @@ export const BlockSchema = OwnedEntitySchema.extend({
   ord: z.string().min(1),
   /** The whole section, as the editor wrote it. */
   content: BlockDocumentSchema.default(emptyDocument),
+  /**
+   * The section's own words, plain, derived from `content` and rewritten
+   * whenever it changes — what a search of somebody's writing reads. Absent is
+   * a section nothing has derived them for, and every reader takes that as no
+   * words to find. Derived means the server alone writes it:
+   * docs/ARCHITECTURE.md § "Data model".
+   */
+  text: z.string().optional(),
   /** When it went with the note that holds it. Absent is a section that is
    *  there, which is every one stored before a note could be put back. */
   deleted_at: TimestampSchema.optional(),

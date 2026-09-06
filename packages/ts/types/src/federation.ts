@@ -271,5 +271,9 @@ export const PulledBlockSchema = OwnedEntitySchema.extend({
   node: OwnedRefSchema,
   ord: z.string().min(1),
   content: BlockDocumentSchema,
+  /** The held section's words, plain, derived on arrival the way a section of
+   *  one's own is — so a search reaches what a peer handed the reader. Absent
+   *  is a copy nothing has derived them for. */
+  text: z.string().optional(),
 });
 export type PulledBlock = z.infer<typeof PulledBlockSchema>;

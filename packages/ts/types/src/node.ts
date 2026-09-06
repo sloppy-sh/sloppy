@@ -79,6 +79,13 @@ export const NodeSchema = OwnedEntitySchema.extend({
 export type Node = z.infer<typeof NodeSchema>;
 
 /**
+ * How long a deleted branch stays where its author can put it back. The sweep
+ * that ends the window and the confirmation that promises it read this same
+ * number, so the promise cannot outlive what is kept.
+ */
+export const DELETED_KEPT_FOR_DAYS = 30;
+
+/**
  * An address a graph has assigned and will not assign again, kept after the
  * note that held it is purged — AI.md § "The Address Is the Protocol". `parent`
  * is absent for a branch, as it is on the note the row outlives.

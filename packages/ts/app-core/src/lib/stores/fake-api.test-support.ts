@@ -3,7 +3,14 @@
 // counting fetches here is what makes "one request" a measurement rather than a
 // claim.
 
-import { addressDepth, type NodeView, type OwnedRef, type Viewer } from '@sloppy/types';
+import {
+	addressDepth,
+	graphOf,
+	type NodeView,
+	type OwnedRef,
+	type SearchHit,
+	type Viewer
+} from '@sloppy/types';
 import { resetApi } from '../api.js';
 import { initRuntime } from '../runtime.js';
 
@@ -43,6 +50,30 @@ export function node(seed: number, address: string, over: Partial<NodeView> = {}
 		published: false,
 		...over
 	};
+}
+
+/** One note as a search answers with it. An empty `snippet` is a note whose
+ *  title carried the words rather than its writing. */
+export function hit(note: NodeView, over: Partial<SearchHit> = {}): SearchHit {
+	return {
+		note: note.ref,
+		address: note.address,
+		graph: graphOf(note),
+		title: note.title,
+		snippet: '',
+		held: false,
+		...over
+	};
+}
+
+/** Answer the two routes a find surface asks: what carries a word, and what was
+ *  written into last. */
+export function finding(
+	api: FakeApi,
+	held: { hits?: readonly SearchHit[]; recent?: readonly NodeView[] } = {}
+): void {
+	api.on('GET /nodes/search', () => held.hits ?? []);
+	api.on('GET /nodes/recent', () => held.recent ?? []);
 }
 
 export const VIEWER: Viewer = {

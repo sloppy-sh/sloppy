@@ -41,7 +41,14 @@ export const NodeViewSchema = NodeSchema.omit({ id: true }).extend({
 });
 export type NodeView = z.infer<typeof NodeViewSchema>;
 
-export const BlockViewSchema = BlockSchema.omit({ id: true }).extend({
+/**
+ * `text` stays behind: it is the words the document beside it already carries,
+ * and a reader of a stack has no use for them twice.
+ */
+export const BlockViewSchema = BlockSchema.omit({
+  id: true,
+  text: true,
+}).extend({
   ref: OwnedRefSchema,
 });
 export type BlockView = z.infer<typeof BlockViewSchema>;
@@ -179,6 +186,43 @@ export const DeletedBranchSchema = z.object({
   notes: z.int().positive(),
 });
 export type DeletedBranch = z.infer<typeof DeletedBranchSchema>;
+
+/**
+ * One note a search found, as the result list shows it. `note` is what opens,
+ * `address` is what the person reads it by, and `graph` is the graph that
+ * address is read in — the author's, where `held` says the note came from
+ * somebody else.
+ *
+ * `snippet` is the writing around what matched, plain and already cut to
+ * length. It is empty where nothing in the writing matched — a hit on the title
+ * or the address alone — and a surface shows the title there rather than a
+ * blank line.
+ */
+export const SearchHitSchema = z.object({
+  note: OwnedRefSchema,
+  address: AddressSchema,
+  graph: OwnedRefSchema,
+  title: z.string(),
+  snippet: z.string().default(""),
+  /** Whether this is a copy of somebody else's note rather than one of the
+   *  reader's own. Absent is their own. */
+  held: z.boolean().default(false),
+});
+export type SearchHit = z.infer<typeof SearchHitSchema>;
+
+/**
+ * The most hits `GET /nodes/search` answers with. A person recognising the one
+ * they meant stops long before it; the bound is what keeps a common word from
+ * answering with somebody's whole graph.
+ */
+export const MAX_SEARCH_HITS = 50;
+
+/**
+ * How many notes `GET /nodes/recent` answers with when the caller asks for no
+ * number, and the most it will answer with at all.
+ */
+export const RECENT_NOTES = 20;
+export const MAX_RECENT_NOTES = 100;
 
 /**
  * Everything `did` keeps, as JSON they can hold. A deleted note is not part of

@@ -1,15 +1,8 @@
 // What a person is told before deleting, asked from inside a note and from the
 // canvas about a whole chosen set, and how long they have to change their mind.
 
-import type { NodeView, OwnedRef } from '@sloppy/types';
+import { DELETED_KEPT_FOR_DAYS, type NodeView, type OwnedRef } from '@sloppy/types';
 import { nodes } from './stores/nodes.svelte.js';
-
-/**
- * How many days a deleted branch stays where its author can put it back. The
- * API sweeps on the same number and holds no copy of this one: `KEPT_FOR_DAYS`
- * in `apps/sloppy/api/src/node/node.service.ts` has to move with it.
- */
-export const KEPT_FOR_DAYS = 30;
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -48,7 +41,7 @@ export function deletionCost(refs: readonly OwnedRef[]): string {
 				: grown === 1
 					? `${goes}, and so does the one note that grew out of ${it}.`
 					: `${goes}, and so do the ${grown.toLocaleString()} notes that grew out of ${it}.`;
-	const back = `You can put ${it} back from Your graphs for ${KEPT_FOR_DAYS} days.`;
+	const back = `You can put ${it} back from Your graphs for ${DELETED_KEPT_FOR_DAYS} days.`;
 	const out = stillOut(refs, going);
 	return out === null ? `${takes} ${back}` : `${takes} ${out} ${back}`;
 }
@@ -69,7 +62,7 @@ function stillOut(refs: readonly OwnedRef[], going: NodeView[] | null): string |
 
 /** How long is left to put a deleted branch back, in the words a listing shows. */
 export function timeToPutBack(deletedAt: string, now: number = Date.now()): string {
-	const days = Math.ceil((new Date(deletedAt).getTime() + KEPT_FOR_DAYS * DAY - now) / DAY);
+	const days = Math.ceil((new Date(deletedAt).getTime() + DELETED_KEPT_FOR_DAYS * DAY - now) / DAY);
 	if (days <= 1) return 'Today is the last day';
 	return `${days.toLocaleString()} days left`;
 }

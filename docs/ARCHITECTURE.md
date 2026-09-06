@@ -884,6 +884,7 @@ block:{ created_by: <did>, id: <ulid> }
   node        ref
   ord         string    fractional index — reorder without renumbering
   content     object    the section's whole document, as the editor wrote it
+  text        string?   the section's words, plain, derived; absent is none derived
   deleted_at  iso?      when it went with its note; absent is a section that is there
 
 retired_address:{ created_by: <did>, id: <ulid> }
@@ -897,7 +898,9 @@ is a note that is there, which is every row written before this column existed, 
 has to be filled in. A stamped note and its sections are still stored, still the author's,
 and still at their addresses — what a person can put back is exactly what is still there to
 find. A deleted branch is listed by `GET /nodes/deleted` and put back by
-`POST /nodes/:did/:localId/restore` until the window closes. The reads that decide a NEW
+`POST /nodes/:did/:localId/restore` until the window closes. How long that window is is
+`DELETED_KEPT_FOR_DAYS` in `@sloppy/types`, read by the sweep that ends it and by the
+confirmation that promises it, so what a person is told cannot outlive what is kept. The reads that decide a NEW
 address are the ones that deliberately do not filter it:
 `childAddresses` and `addressTaken` count a deleted note among what a graph has assigned,
 because an address is spent whether or not the note comes back.
@@ -939,6 +942,32 @@ that could set it could draw a line out of a note it is not allowed to read. It 
 nothing has derived them for, read as none. DESIGN.md § Edges is the ruling: a reference is
 drawn whole and a hand-drawn link broken, one line for a pair that carries both. The canvas
 still draws them as one dashed line, and that section names the gap.
+
+**`text` is derived, so only the server writes it.** It is the plain words of a section's
+`content`, rewritten on the same path that re-derives what the note cites, so the words a
+search reads and the lines drawn out of them can never disagree about what a section says.
+It is therefore absent from `PATCHABLE` and from every create and update request, for the
+reason `references` is: a client that could write it could be found by words its document
+does not carry. `BlockView` omits it too — a reader of a stack already holds the document
+those words come from. `pulled_block` carries the same column, derived when the copy
+arrives, because a search that reached only somebody's own writing would answer "nothing"
+about a note they are holding and reading.
+
+**The index is one column, so the owner is an equality beside the match.** `sloppy_text` is
+the analyzer — class tokens, lowercased, accent-folded, English-stemmed — and `block_text`
+and `pulled_block_text` are `FULLTEXT` indexes over `text` alone: the server takes exactly
+one column in a full-text index, unlike every other index here, so a search reads
+`WHERE text @1@ $words AND created_by = $did` and that equality is the whole of what keeps
+one person's writing out of another's results. Nothing new is stored per person, so the
+per-DID purge takes the words with the sections that hold them.
+
+**`GET /nodes/search?q=&graph=` answers what somebody wrote, `GET /nodes/recent?graph=&limit=`
+what they wrote last.** A search names its hits by `SearchHit` — the note, the address, the
+graph that address is read in, the title, and the writing around what matched — and reaches
+the caller's own notes and what they hold of somebody else's, `held` saying which. Recent is
+ordered by when a note's SECTIONS were last written, never by `node.updated_at`: that column
+moves only when a title, tags, links or a look change, so a note somebody spent an afternoon
+writing into would otherwise rank as untouched since the day it was made.
 
 **What a document counts as a citation is a key, not a list of element kinds.** `citedNotes`
 in `@sloppy/types` reads an `attrs` key named `note` holding a `<did>/<ulid>`, wherever it
@@ -1021,6 +1050,7 @@ pulled_block:{ created_by: <did>, id: <ulid> }
   node          ref       the node it belongs to, as its author addresses it
   ord           string
   content       object
+  text          string?   the held section's words, plain, derived; absent is none
 ```
 
 **A version is what makes a subtree readable. `node.published` is not.** A peer reads

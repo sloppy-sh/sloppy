@@ -61,6 +61,8 @@ import {
   type PublishedVersionsPage,
   type PullView,
   PullViewSchema,
+  type SearchHit,
+  SearchHitSchema,
   type Session,
   SessionSchema,
   type StartLoginRequest,
@@ -375,6 +377,36 @@ export class SloppyClient {
     return parseNodeView(
       await this.send("POST", `/nodes${refPath(ref)}/restore`, {}),
     );
+  }
+
+  /**
+   * The notes whose writing carries `q`, best match first — inside one graph,
+   * or across every graph the caller keeps where they name none, and including
+   * what they hold of somebody else's. At most `MAX_SEARCH_HITS` of them.
+   */
+  async searchNotes(q: string, graph?: OwnedRef): Promise<SearchHit[]> {
+    const params = new URLSearchParams({ q });
+    if (graph) params.set("graph", graph);
+    const body = await this.json(`/nodes/search?${params}`, { method: "GET" });
+    return (body as unknown[]).map((row) => SearchHitSchema.parse(row));
+  }
+
+  /**
+   * The notes last written into, most recent first — written INTO, so a note
+   * whose title changed this morning does not outrank the one somebody spent
+   * yesterday writing. `limit` is bounded by `MAX_RECENT_NOTES`, and
+   * absent asks for `RECENT_NOTES`.
+   */
+  async recentNotes(
+    query: { graph?: OwnedRef; limit?: number } = {},
+  ): Promise<NodeView[]> {
+    const params = new URLSearchParams();
+    if (query.graph) params.set("graph", query.graph);
+    if (query.limit != null) params.set("limit", String(query.limit));
+    const search = params.toString();
+    const path = search ? `/nodes/recent?${search}` : "/nodes/recent";
+    const body = await this.json(path, { method: "GET" });
+    return (body as unknown[]).map(parseNodeView);
   }
 
   /** Every tag the caller has used inside one graph — their home graph where
