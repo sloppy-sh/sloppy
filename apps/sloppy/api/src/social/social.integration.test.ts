@@ -103,10 +103,16 @@ describe("what one person's instance assembles for them", () => {
   const wrote = async (title: string): Promise<NodeView> =>
     (await ok("POST", "/nodes", { title })) as NodeView;
 
+  // A deposit crosses the network, so no two share an instant. Written straight
+  // to the store they can, and then the order they arrived in is not there to
+  // be read back.
+  let arrival = 0;
+
   /** As a deposit that got in writes one: the author owns the row. */
   async function pointerOn(note: string, voice: string): Promise<void> {
     const { DbService } = await import("../db/db.service");
-    const at = new Date().toISOString();
+    arrival = Math.max(Date.now(), arrival + 1);
+    const at = new Date(arrival).toISOString();
     await app.get(DbService).handle.query(
       `CREATE comment_pointer CONTENT {
          created_by: $author, created_at: $at, updated_at: $at,
