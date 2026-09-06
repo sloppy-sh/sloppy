@@ -12,6 +12,7 @@ import {
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import Frame from './frame.test-support.svelte';
+import { nodeHref } from './routes.js';
 
 const where = vi.hoisted(() => ({ url: new URL('http://app.test/'), gone: [] as string[] }));
 
@@ -141,6 +142,34 @@ describe('the frame around every page', () => {
 
 	// A sign-in page reached because Sloppy could not ask who somebody is cannot
 	// help them either: they have a session, and nothing on it to do.
+	// PRODUCT.md § "The peer": a link somebody was handed opens for whoever
+	// follows it, and signing in is what they do to keep or answer the note.
+	it('lets somebody with no account stand on the note they were sent to', async () => {
+		api.on('GET /auth/me', () => undefined);
+		where.url = new URL(`http://app.test${nodeHref(ref(7))}`);
+
+		await show();
+
+		expect(where.gone).toEqual([]);
+		expect(target.textContent).toContain('The graph');
+	});
+
+	it('brings them back to that note once they have signed in', async () => {
+		api.on('GET /auth/me', () => undefined);
+		where.url = new URL(`http://app.test${nodeHref(ref(7))}`);
+		await show();
+
+		// They take the offer, which leaves the note for the sign-in page.
+		unmount(mounted!);
+		where.url = new URL('http://app.test/sign-in');
+		await show();
+		session.adopt(VIEWER, 'token');
+		flushSync();
+		await settle();
+
+		expect(where.gone.at(-1)).toBe(nodeHref(ref(7)));
+	});
+
 	it('says so and holds, rather than signing out a session it could not check', async () => {
 		api.on('GET /auth/me', () => unavailable());
 
