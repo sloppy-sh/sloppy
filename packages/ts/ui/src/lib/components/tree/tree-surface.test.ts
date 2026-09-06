@@ -38,6 +38,7 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let openedNotes: OwnedRef[];
 let toggled: [OwnedRef, boolean][];
+let written: OwnedRef[];
 let scrolledTo: HTMLElement[];
 
 function render(
@@ -46,6 +47,8 @@ function render(
 		opened?: Set<OwnedRef>;
 		selection?: Tag[];
 		reading?: OwnedRef | null;
+		/** Absent stands for a walk through notes that are not the reader's. */
+		writable?: boolean;
 	} = {}
 ) {
 	mounted = mount(TreeSurface, {
@@ -56,7 +59,18 @@ function render(
 			selection: props.selection,
 			reading: props.reading ?? null,
 			onOpen: (ref: OwnedRef) => openedNotes.push(ref),
-			onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open])
+			onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open]),
+			writeUnder: props.writable
+				? {
+						keys: 'Meta+Shift+Enter Control+Shift+Enter',
+						typed: (event: KeyboardEvent) =>
+							event.key === 'Enter' &&
+							event.shiftKey &&
+							!event.altKey &&
+							(event.metaKey || event.ctrlKey),
+						write: (ref: OwnedRef) => written.push(ref)
+					}
+				: undefined
 		}
 	});
 	flushSync();
@@ -67,15 +81,18 @@ const rows = () => [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')
 const labelled = (address: string) =>
 	rows().find((row) => row.textContent?.includes(address)) as HTMLElement;
 
-const press = (row: HTMLElement, key: string) => {
+const press = (row: HTMLElement, key: string, held: KeyboardEventInit = {}) => {
 	row.focus();
-	row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+	row.dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...held })
+	);
 	flushSync();
 };
 
 beforeEach(() => {
 	openedNotes = [];
 	toggled = [];
+	written = [];
 	scrolledTo = [];
 	stubResizeObserver();
 	Object.defineProperty(Element.prototype, 'scrollIntoView', {
@@ -331,5 +348,64 @@ describe('a graph of a few thousand notes', () => {
 		expect(notes.length).toBeGreaterThan(3_000);
 		render({ groups: [{ key: 'one', title: '', notes }] });
 		expect(rows()).toHaveLength(40);
+	});
+});
+
+// PRODUCT.md holds the walk a first-class equal of the canvas, so a thought that
+// springs from a row is put down without leaving the walk.
+describe('writing from a row', () => {
+	const writeOn = (address: string) =>
+		labelled(`About ${address}`).querySelector<HTMLButtonElement>(
+			'[aria-label^="Write a note under"]'
+		);
+
+	it('asks for a note under the row, and does not open the row', () => {
+		render({ writable: true });
+		writeOn('1')?.click();
+		flushSync();
+
+		expect(written).toEqual([held('1')]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('asks for the same note from the keyboard, on the row the reader is on', () => {
+		render({ writable: true });
+		press(labelled('About 2'), 'Enter', { metaKey: true, shiftKey: true });
+
+		expect(written).toEqual([held('2')]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('leaves a keystroke it does not answer for whoever is listening past it', () => {
+		render({ writable: true });
+		const row = labelled('About 2');
+		const past: string[] = [];
+		const onward = (event: KeyboardEvent) => past.push(event.key);
+		document.body.addEventListener('keydown', onward);
+
+		press(row, 'Enter', { metaKey: true });
+		press(row, 'Enter', { metaKey: true, shiftKey: true, altKey: true });
+		document.body.removeEventListener('keydown', onward);
+
+		expect(written).toEqual([]);
+		expect(openedNotes).toEqual([]);
+		expect(past).toEqual(['Enter', 'Enter']);
+	});
+
+	it('walks on with a key held, which the row does not answer for', () => {
+		render({ writable: true });
+		press(rows()[0], 'ArrowDown', { metaKey: true });
+
+		expect(document.activeElement).toBe(rows()[1]);
+	});
+
+	it('offers nothing to write with where the notes are not the reader’s', () => {
+		render();
+		expect(target.querySelector('[aria-label^="Write a note under"]')).toBeNull();
+
+		press(labelled('About 1'), 'Enter', { metaKey: true, shiftKey: true });
+
+		expect(written).toEqual([]);
+		expect(openedNotes).toEqual([]);
 	});
 });

@@ -9,6 +9,7 @@ import type {
 	OwnedRef
 } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
+import { Selection } from '@tiptap/pm/state';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
@@ -755,5 +756,20 @@ describe('putting a section somewhere else in the stack', () => {
 	it('offers no handle on a note with nothing to put in order', () => {
 		open([prose('only this')]);
 		expect(grips()).toEqual([]);
+	});
+});
+
+// The title above the note is a field of its own, and the key out of it has to
+// land somewhere: the note page asks for this.
+describe('the caret handed down from above the note', () => {
+	it('puts it at the start of the writing', () => {
+		const surface = open([prose('Cells divide')]) as unknown as { focusBody: () => void };
+		const editor = writingIn();
+		editor.commands.setTextSelection(editor.state.doc.content.size - 2);
+		expect(editor.state.selection.from).not.toBe(Selection.atStart(editor.state.doc).from);
+
+		surface.focusBody();
+
+		expect(editor.state.selection.from).toBe(Selection.atStart(editor.state.doc).from);
 	});
 });

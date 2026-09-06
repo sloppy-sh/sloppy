@@ -24,6 +24,15 @@
 		inset?: { top: string; bottom: string };
 		onToggle: (ref: OwnedRef, open: boolean) => void;
 		onOpen: (ref: OwnedRef) => void;
+		/** Writing a note under a row, from the row: `keys` spells the chord for
+		 *  `aria-keyshortcuts` and `typed` matches it, so the row advertises and
+		 *  answers the one the app binds for the same act elsewhere. Absent leaves
+		 *  the walk a way to read these notes and no way to continue them. */
+		writeUnder?: {
+			keys: string;
+			typed: (event: KeyboardEvent) => boolean;
+			write: (ref: OwnedRef) => void;
+		};
 	}
 </script>
 
@@ -33,6 +42,7 @@
 	// note's own to show, so neither a reference nor a hand-drawn link branches
 	// here; DESIGN.md § Layout is why a plain tap replaces the note being read.
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import { assignTagHueSlots } from '@sloppy/types';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
@@ -45,7 +55,8 @@
 		reading = null,
 		inset = { top: '0px', bottom: '0px' },
 		onToggle,
-		onOpen
+		onOpen,
+		writeUnder
 	}: TreeSurfaceProps = $props();
 
 	/** The deepest a row is set in. Past it every generation sits at the same
@@ -120,6 +131,13 @@
 		const here = items.indexOf(item);
 		if (here < 0) return;
 		const row = rows[here];
+		// Enter held with a key goes past the tree, save for the one that writes.
+		if (event.key === 'Enter' && (event.metaKey || event.ctrlKey || event.altKey)) {
+			if (!writeUnder?.typed(event) || row.kind !== 'note') return;
+			writeUnder.write(row.note.ref);
+			event.preventDefault();
+			return;
+		}
 		const move = (to: number): void => {
 			const next = items[Math.max(0, Math.min(items.length - 1, to))];
 			if (!next) return;
@@ -284,6 +302,22 @@
 										<span class="shrink-0 text-xs text-muted-foreground tabular-nums">
 											{row.under.toLocaleString()}
 										</span>
+									{/if}
+
+									{#if writeUnder}
+										<button
+											type="button"
+											tabindex="-1"
+											aria-label="Write a note under {row.note.address}"
+											aria-keyshortcuts={writeUnder.keys}
+											onclick={(event) => {
+												event.stopPropagation();
+												writeUnder?.write(row.note.ref);
+											}}
+											class="-me-1 flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+										>
+											<CornerDownRight class="size-4" />
+										</button>
 									{/if}
 								</div>
 							{:else}

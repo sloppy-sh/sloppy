@@ -26,6 +26,7 @@
 	// opens beside it. DESIGN.md § Layout — the graph is the page.
 	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
+	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
@@ -112,6 +113,7 @@
 	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
+	import { acceleratorFor, NEW_BRANCH, typedIntoWriting, WRITE_UNDER } from './shortcuts.js';
 
 	let loading = $state(true);
 	/** Whether the graphs this person keeps are being looked through. */
@@ -141,6 +143,8 @@
 	let naming = $state<OwnedRef | null>(null);
 	/** The shape that note was written to start from, which it seeds itself with. */
 	let seed = $state<{ ref: OwnedRef; shape: NoteTemplate } | null>(null);
+	/** Whether the note on the reading surface has a question of its own up. */
+	let noteAsking = $state(false);
 	/** The note a link is being pointed FROM, while the graph is the picker. */
 	let pointing = $state<OwnedRef | null>(null);
 	/** The strip held while the surface is out of the graph's way, so a question
@@ -346,6 +350,23 @@
 				: null)
 	);
 	const overGraph = $derived(overlay.open || menuAt !== null);
+
+	/** A question put to the reader over this page, the open note's own included.
+	 *  Not `overGraph`: where the reading panel cannot dock the note is a surface
+	 *  too, and reading one is not being asked anything. */
+	const asked = $derived(
+		menuAt !== null ||
+			choosingWallpaper ||
+			deleting ||
+			noteAsking ||
+			numbering ||
+			publishing ||
+			shaping ||
+			styling ||
+			switching ||
+			tagging ||
+			visiting
+	);
 
 	/** Pointing a link at a note is a question put to the canvas, so the canvas
 	 *  comes back for as long as it is being asked. */
@@ -882,6 +903,11 @@
 			items.push({ label: 'Open it as well', icon: Files, onSelect: () => showAlso(on) });
 		}
 		items.push(
+			{
+				label: 'Write a note under this',
+				icon: CornerDownRight,
+				onSelect: () => void writeUnder(on)
+			},
 			{ label: 'Tags', icon: Tag, onSelect: () => openTags(on) },
 			{ label: 'Give it a look', icon: CircleDashed, onSelect: () => openLook(on) }
 		);
@@ -932,8 +958,8 @@
 		deleting = true;
 	}
 
-	/** A branch of its own, in the graph the reader is in. A note that continues
-	 *  one is written from inside it. */
+	/** A branch of its own, in the graph the reader is in — against
+	 *  {@link writeUnder}, which continues the note it is given. */
 	async function writeBranch(shape: NoteTemplate | null): Promise<void> {
 		if (creating) return;
 		creating = true;
@@ -949,6 +975,28 @@
 			creating = false;
 		}
 	}
+
+	/** The note that springs from one already on the canvas, without opening it
+	 *  first. */
+	async function writeUnder(on: OwnedRef): Promise<void> {
+		if (creating) return;
+		creating = true;
+		refused = null;
+		try {
+			const written = await nodes.create({ from: { relation: 'under', note: on } });
+			show(written.ref, { from: on, shape: null });
+		} catch (error) {
+			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
+		} finally {
+			creating = false;
+		}
+	}
+
+	const writeFromRow = {
+		keys: WRITE_UNDER.keys,
+		typed: (event: KeyboardEvent) => acceleratorFor(event) === 'under',
+		write: (on: OwnedRef) => void writeUnder(on)
+	};
 
 	/**
 	 * Somebody else's region, on the canvas in place of the reader's own graph.
@@ -1168,6 +1216,20 @@
 		// puts the question away and ends what it was asked about.
 		else if (choosing && !overGraph) stopChoosing();
 	}}
+	onkeydown={(event) => {
+		// Last resort: a row of the walk answers these keys for the note it is on,
+		// and has refused the default by the time they reach here.
+		if (event.defaultPrevented || asked || pointing || foreign) return;
+		if (typedIntoWriting(event)) return;
+		const act = acceleratorFor(event);
+		if (act === 'branch') {
+			event.preventDefault();
+			void writeBranch(null);
+		} else if (act === 'under' && open) {
+			event.preventDefault();
+			void writeUnder(open);
+		}
+	}}
 />
 
 {#snippet walk()}
@@ -1250,6 +1312,7 @@
 					opened={unfolded}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
 					onOpen={foreign ? (ref) => void readHeld(ref) : show}
+					writeUnder={foreign ? undefined : writeFromRow}
 				/>
 			{/if}
 		</div>
@@ -1384,6 +1447,8 @@
 							variant="outline"
 							class="ms-auto h-9 shrink-0 rounded-full"
 							disabled={creating}
+							aria-label="New branch ({NEW_BRANCH.says})"
+							aria-keyshortcuts={NEW_BRANCH.keys}
 							onclick={() => writeBranch(null)}
 						>
 							<Plus class="size-4" />
@@ -1664,6 +1729,7 @@
 			{naming}
 			{seed}
 			{openNotes}
+			onAsking={(up) => (noteAsking = up)}
 			onSeeded={() => (seed = null)}
 			onOpen={show}
 			onOpenAlso={showAlso}

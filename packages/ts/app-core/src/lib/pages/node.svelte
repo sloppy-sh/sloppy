@@ -71,6 +71,7 @@
 	import { people } from '../stores/people.svelte.js';
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { WRITE_UNDER } from './shortcuts.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
 
@@ -79,6 +80,7 @@
 		naming = null,
 		seed = null,
 		openNotes = [],
+		onAsking,
 		onSeeded,
 		onOpen,
 		onOpenAlso,
@@ -97,6 +99,9 @@
 		onSeeded?: () => void;
 		/** Every note open on the reading surface, this one included. */
 		openNotes?: readonly OwnedRef[];
+		/** Called with whether this note has a question of its own in front of the
+		 *  reader, so whatever the note sits on can leave their answer alone. */
+		onAsking?: (asking: boolean) => void;
 		/** `wrote` is the note the new one was written from, which is the tab it
 		 *  takes the place of — not always the tab the reader is in by the time the
 		 *  note comes back. */
@@ -200,6 +205,7 @@
 
 	let titleField = $state<HTMLTextAreaElement | null>(null);
 	let noteBody = $state<HTMLElement | null>(null);
+	let bodyStack = $state<{ focusBody: () => void } | null>(null);
 	let tagsSheet = $state<HTMLElement | null>(null);
 
 	/** Which act the shapes are being offered for: a note under this one, the one
@@ -231,6 +237,11 @@
 	let linking = $state(false);
 	let publishing = $state(false);
 	let removing = $state(false);
+
+	$effect(() => {
+		onAsking?.(acting || tagging || linking || publishing || removing || shaping !== null);
+		return () => onAsking?.(false);
+	});
 
 	/** Which side of the note is in front of the reader: what it says, or how it
 	 *  is drawn on the graph. */
@@ -496,10 +507,16 @@
 		resolve: (did: string) => people.resolve(did)
 	};
 
-	/** Everything a reader occasionally DOES to a note, as against what they read
-	 *  off it. Delete comes last and apart — DESIGN.md § Layout. */
+	/** What a reader DOES to a note, as against what they read off it. Delete
+	 *  comes last and apart — DESIGN.md § Layout. */
 	let actsFrom = $state<HTMLElement | null>(null);
 	const acts = $derived<NoteMenuItem[]>([
+		{
+			label: 'Write a note under this',
+			icon: CornerDownRight,
+			onSelect: () => void write('under', null)
+		},
+		{ label: 'Write the next note', icon: ArrowRight, onSelect: () => void write('after', null) },
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
 		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
@@ -1226,7 +1243,14 @@
 					fitTitle(e.currentTarget);
 				}}
 				onkeydown={(e) => {
-					if (e.key === 'Enter') {
+					const out = e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey);
+					if (!out || e.metaKey || e.ctrlKey || e.altKey) return;
+					// A title is done with when the writing starts, and on a phone the
+					// keyboard has to stay up between the two.
+					if (bodyStack) {
+						e.preventDefault();
+						bodyStack.focusBody();
+					} else if (e.key === 'Enter') {
 						e.preventDefault();
 						e.currentTarget.blur();
 					}
@@ -1292,6 +1316,7 @@
 				{:else}
 					{#key rebuilt}
 						<BlockStack
+							bind:this={bodyStack}
 							{node}
 							{blocks}
 							{emoji}
@@ -1344,6 +1369,8 @@
 								variant="outline"
 								class="h-11 flex-1"
 								disabled={adding.has(ref)}
+								aria-label="Write a note under this ({WRITE_UNDER.says})"
+								aria-keyshortcuts={WRITE_UNDER.keys}
 								onclick={() => write('under', null)}
 							>
 								<CornerDownRight class="size-4" />
