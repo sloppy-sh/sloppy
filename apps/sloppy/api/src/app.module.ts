@@ -4,6 +4,7 @@ import { BlockModule } from "./block/block.module";
 import { AppConfigModule } from "./config/config.module";
 import { DbModule } from "./db/db.module";
 import { EmojiModule } from "./emoji/emoji.module";
+import { ExportModule } from "./export/export.module";
 import { HealthModule } from "./health/health.module";
 import { IdpModule } from "./idp/idp.module";
 import { MediaModule } from "./media/media.module";
@@ -33,6 +34,7 @@ import { SocialModule } from "./social/social.module";
     EmojiModule,
     PeerModule,
     SocialModule,
+    ExportModule,
   ],
 })
 export class AppModule {}
