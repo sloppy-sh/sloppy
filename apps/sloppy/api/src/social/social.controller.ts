@@ -8,14 +8,19 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   Req,
 } from "@nestjs/common";
 import {
+  type AnsweredNote,
+  type Converses,
   CreateNoteCommentRequestSchema,
   CreateNoteReactionRequestSchema,
   LeaveCommentPointerRequestSchema,
   type NoteComment,
   type NoteReaction,
+  type RefusedVoiceView,
+  RefuseVoiceRequestSchema,
 } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
 import { CallerRate, callerOf } from "../auth/caller-rate";
@@ -67,6 +72,49 @@ export class SocialController {
     @Param("reactionId") reactionId: string,
   ): Promise<void> {
     return this.social.removeReaction(viewerDelegation(req), reactionId);
+  }
+
+  @Get("converses")
+  converses(@Req() req: AuthedRequest): Promise<Converses> {
+    return this.social.converses(viewerDelegation(req));
+  }
+
+  @Get("refused-voices")
+  refusedVoices(@Req() req: AuthedRequest): Promise<RefusedVoiceView[]> {
+    return this.social.refusedVoices(viewerDelegation(req));
+  }
+
+  @Post("refused-voices")
+  refuseVoice(
+    @Req() req: AuthedRequest,
+    @Body() body: unknown,
+  ): Promise<RefusedVoiceView> {
+    return this.social.refuseVoice(
+      viewerDelegation(req),
+      parseBody(RefuseVoiceRequestSchema, body),
+    );
+  }
+
+  /** Named by the pair the refusal was made with, so taking one back does not
+   *  ask a surface to have listed them first. */
+  @Delete("refused-voices")
+  @HttpCode(204)
+  allowVoice(
+    @Req() req: AuthedRequest,
+    @Query("voice") voice?: string,
+    @Query("note") note?: string,
+  ): Promise<void> {
+    return this.social.allowVoice(
+      viewerDelegation(req),
+      parseBody(RefuseVoiceRequestSchema, { voice, note }),
+    );
+  }
+
+  /** The caller's own notes somebody answered. It reaches the voices that left
+   *  a pointer, so an answer from somebody the caller follows is not in it. */
+  @Get("answered-notes")
+  answeredNotes(@Req() req: AuthedRequest): Promise<AnsweredNote[]> {
+    return this.social.answeredNotes(viewerDelegation(req));
   }
 }
 

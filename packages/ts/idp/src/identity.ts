@@ -136,11 +136,18 @@ export async function resolveSession(
   return { did: row.did, sessionId };
 }
 
+/**
+ * Whoever `named` names: a DID, or the name they chose. Both resolve here
+ * because a person hands somebody their name and expects it to be enough,
+ * while what a link carries is the DID.
+ */
 export async function profileOf(
   ctx: IdpContext,
-  did: string,
+  named: string,
 ): Promise<Profile> {
-  const account = await findAccountByDid(ctx.db, did);
+  const account = named.startsWith("did:")
+    ? await findAccountByDid(ctx.db, named)
+    : await findAccountByUsername(ctx.db, named);
   if (!account) throw unknownIdentity();
   return profileView(account);
 }

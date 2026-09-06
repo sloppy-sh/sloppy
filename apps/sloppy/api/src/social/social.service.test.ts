@@ -1,11 +1,22 @@
 import { Logger } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
-import { DidSyrSchema, type OwnedRef } from "@sloppy/types";
+import {
+  canonicalize,
+  encodeMultibase,
+  encodePublicKey,
+  generateKeypair,
+  type JsonValue,
+  sign,
+} from "@sloppy/idp";
+import { DidSyrSchema, type OwnedRef, type RefusedVoice } from "@sloppy/types";
+import { RecordId } from "surrealdb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfigService } from "../config/app-config.service";
 import { AssetLinks } from "../media/asset-link";
+import type { NodeRepository } from "../node/node.repository";
 import { SyrService } from "../syr/syr.service";
 import type { PointerRepository } from "./pointer.repository";
+import type { RefusalRepository } from "./refusal.repository";
 import { SocialService } from "./social.service";
 
 // A store this instance was pointed at is read through the address policy,
@@ -155,21 +166,39 @@ const REACH = {
   publicUrl: "https://sloppy.example",
 } as unknown as AppConfigService;
 
-function social(): SocialService {
+/** The two stores of Sloppy's own a conversation reads: what a note has been
+ *  answered by, and who the reader will not be shown. */
+function assembledFrom(
+  pointers: Partial<Record<keyof PointerRepository, unknown>> = {},
+  refusals: RefusedVoice[] = [],
+  notes: Record<string, unknown> = {},
+): SocialService {
   const config = { get: () => "a-session-secret" } as unknown as ConfigService;
-  // No pointer has been left in these, so the reachable set is the reader and
-  // who they follow — which is what every one of them is about.
-  const pointers = {
-    voicesOn: async () => [],
-    answersFrom: async () => null,
-    leave: async () => undefined,
-  } as unknown as PointerRepository;
   return new SocialService(
     new SyrService(),
     new AssetLinks(config),
-    pointers,
+    {
+      voicesOn: async () => [],
+      answersFrom: async () => null,
+      leave: async () => undefined,
+      answered: async () => [],
+      sourceOf: async () => null,
+      ...pointers,
+    } as unknown as PointerRepository,
     REACH,
+    {
+      listRefusals: async () => refusals,
+      refuse: async () => refusals[0],
+      allow: async () => undefined,
+    } as unknown as RefusalRepository,
+    { many: async () => [], ...notes } as unknown as NodeRepository,
   );
+}
+
+/** No pointer has been left and nobody is refused, so the reachable set is the
+ *  reader and who they follow. */
+function social(): SocialService {
+  return assembledFrom();
 }
 
 function comment(
@@ -769,21 +798,17 @@ describe("an answer from somebody the reader does not follow", () => {
    *  resolves the DID. Nothing about a pointer says it. */
   const THEIR_STORE = "https://elsewhere.example";
   /** A service whose author has one pointer standing on their own note. */
-  function withPointer(over: Record<string, unknown> = {}): SocialService {
-    const config = {
-      get: () => "a-session-secret",
-    } as unknown as ConfigService;
-    const pointers = {
-      voicesOn: async () => [STRANGER],
-      answersFrom: async () => INSTANCE,
-      leave: async () => undefined,
-      ...over,
-    } as unknown as PointerRepository;
-    return new SocialService(
-      new SyrService(),
-      new AssetLinks(config),
-      pointers,
-      REACH,
+  function withPointer(
+    over: Record<string, unknown> = {},
+    refused: RefusedVoice[] = [],
+  ): SocialService {
+    return assembledFrom(
+      {
+        voicesOn: async () => [STRANGER],
+        answersFrom: async () => INSTANCE,
+        ...over,
+      },
+      refused,
     );
   }
 
@@ -1007,5 +1032,341 @@ describe("an answer from somebody the reader does not follow", () => {
 
     expect(left).toBe(0);
     expect(resolved).not.toHaveBeenCalled();
+  });
+});
+
+describe("answering somebody else's note", () => {
+  /** Where the author's graph is served, as the region the reader holds says. */
+  const SOURCE = "https://author.example";
+  const THEIR_NOTE = `${THEM}/${NOTE_ID}` as OwnedRef;
+  const written = { body: { data: comment(ME, "new", { post_did: THEM }) } };
+  const depositPath = `/api/nodes/${encodeURIComponent(THEM)}/${NOTE_ID}/replies`;
+
+  const deposits = (calls: { url: string; init?: RequestInit }[]) =>
+    calls.filter((call) => call.url === `${SOURCE}${depositPath}`);
+
+  function holding(source: string | null): SocialService {
+    return assembledFrom({ sourceOf: async () => source });
+  }
+
+  // Pull-only federation tells an author nothing, so without this the answer is
+  // read by the writer and by whoever already follows them, and never reaches
+  // the one person it was addressed to.
+  it("tells the author's instance that an answer exists", async () => {
+    const { calls } = instance({
+      "/api/comments": written,
+      "/api/platform/sign": SIGNED,
+      [signaturePath("new")]: { body: {} },
+      [depositPath]: { status: 204 },
+    });
+
+    await holding(SOURCE).comment(DELEGATION, {
+      node: THEIR_NOTE,
+      content: "answering",
+    });
+
+    await vi.waitFor(() => expect(deposits(calls)).toHaveLength(1));
+    const left = deposits(calls)[0];
+    expect(left.init?.method).toBe("POST");
+    // One identity and one citation: no words, and no address of any store.
+    expect(JSON.parse(String(left.init?.body))).toEqual({
+      voice: ME,
+      comment_id: `${ME}:new`,
+    });
+  });
+
+  it("leaves the writer with their comment when the deposit is refused", async () => {
+    const { calls } = instance({
+      "/api/comments": written,
+      "/api/platform/sign": SIGNED,
+      [signaturePath("new")]: { body: {} },
+      [depositPath]: { status: 500, body: {} },
+    });
+
+    const said = await holding(SOURCE).comment(DELEGATION, {
+      node: THEIR_NOTE,
+      content: "answering",
+    });
+
+    expect(said.comment_id).toBe(`${ME}:new`);
+    await vi.waitFor(() => expect(deposits(calls)).toHaveLength(1));
+  });
+
+  it("leaves nothing where the reader holds no copy of the note", async () => {
+    const { calls } = instance({
+      "/api/comments": written,
+      "/api/platform/sign": SIGNED,
+      [signaturePath("new")]: { body: {} },
+    });
+
+    await holding(null).comment(DELEGATION, {
+      node: THEIR_NOTE,
+      content: "answering",
+    });
+
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(calls.some((call) => call.url.endsWith("/replies"))).toBe(false);
+  });
+
+  it("leaves nothing on a note of the writer's own", async () => {
+    const { calls } = instance({
+      "/api/comments": { body: { data: comment(ME, "new") } },
+      "/api/platform/sign": SIGNED,
+      [signaturePath("new")]: { body: {} },
+    });
+
+    await holding(SOURCE).comment(DELEGATION, { node: NOTE, content: "mine" });
+
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(calls.some((call) => call.url.endsWith("/replies"))).toBe(false);
+  });
+});
+
+describe("a voice somebody will not be shown", () => {
+  const refusal = (over: Partial<RefusedVoice> = {}): RefusedVoice =>
+    ({
+      id: new RecordId("refused_voice", { created_by: ME, id: "01REFUSED" }),
+      created_by: ME,
+      voice: THEM,
+      created_at: "2026-03-01T09:00:00.000Z",
+      updated_at: "2026-03-01T09:00:00.000Z",
+      ...over,
+    }) as RefusedVoice;
+
+  // The follow branch is the one a per-pointer filter would miss: a refused
+  // voice the reader also follows arrives by both.
+  it("is dropped though the reader follows them", async () => {
+    const { calls } = instance({
+      "/api/follows": { body: following(THEM) },
+      [commentsPath(ME)]: { body: { data: [comment(ME, "mine")] } },
+      [commentsPath(THEM)]: { body: { data: [comment(THEM, "theirs")] } },
+    });
+
+    const said = await assembledFrom({}, [refusal()]).comments(
+      DELEGATION,
+      NOTE,
+    );
+
+    expect(said.map((one) => one.author)).toEqual([ME]);
+    expect(calls.some((call) => call.url.includes(commentsPath(THEM)))).toBe(
+      false,
+    );
+  });
+
+  it("is dropped on the note they were refused on, and nowhere else", async () => {
+    const ELSEWHERE_ID = "01JBBBBBBBBBBBBBBBBBBBBBBB";
+    const service = assembledFrom({}, [refusal({ note: NOTE })]);
+
+    instance({
+      "/api/follows": { body: following(THEM) },
+      [commentsPath(ME)]: { body: { data: [comment(ME, "mine")] } },
+      [commentsPath(THEM)]: { body: { data: [comment(THEM, "theirs")] } },
+    });
+    expect(
+      (await service.comments(DELEGATION, NOTE)).map((one) => one.author),
+    ).toEqual([ME]);
+
+    instance({
+      "/api/follows": { body: following(THEM) },
+      [commentsPath(ME)]: {
+        body: { data: [comment(ME, "mine", { post_id: ELSEWHERE_ID })] },
+      },
+      [commentsPath(THEM)]: {
+        body: { data: [comment(THEM, "theirs", { post_id: ELSEWHERE_ID })] },
+      },
+    });
+    expect(
+      (
+        await service.comments(DELEGATION, `${ME}/${ELSEWHERE_ID}` as OwnedRef)
+      ).map((one) => one.author),
+    ).toEqual([ME, THEM]);
+  });
+
+  it("has their deposits refused without being told so", async () => {
+    let left = 0;
+    const resolved = vi.spyOn(SyrService.prototype, "providerFor");
+    const service = assembledFrom(
+      {
+        voicesOn: async () => [STRANGER],
+        answersFrom: async () => INSTANCE,
+        leave: async () => {
+          left += 1;
+        },
+      },
+      [refusal({ voice: STRANGER })],
+    );
+
+    await expect(
+      service.leaveReply(NOTE, {
+        voice: STRANGER,
+        comment_id: `${STRANGER}:01POINTED`,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(left).toBe(0);
+    expect(resolved).not.toHaveBeenCalled();
+  });
+});
+
+describe("a comment carrying a signature", () => {
+  /** As the writer's own instance leaves one: over the canonical form of what
+   *  their store wrote. */
+  function signed(over: Record<string, unknown>): Record<string, unknown> {
+    const keys = generateKeypair();
+    const payload = {
+      type: "comment@v1",
+      did: ME,
+      comment_id: "signed",
+      post_did: ME,
+      post_id: NOTE_ID,
+      ancestor_chain: [],
+      content: "what was actually signed",
+      visibility: "public",
+      status: "completed",
+      created_at: "2026-03-01T10:00:00Z",
+    };
+    return {
+      ...comment(ME, "signed", { content: payload.content, ...over }),
+      content_signature: encodeMultibase(
+        sign(canonicalize(payload as JsonValue), keys.privateKey),
+      ),
+      signed_payload_json: JSON.stringify(payload),
+      signing_device_public_key: encodePublicKey(keys.publicKey),
+    };
+  }
+
+  it("is not drawn beside that name once the words have been changed", async () => {
+    instance({
+      "/api/follows": { body: following() },
+      [commentsPath(ME)]: {
+        body: {
+          data: [
+            comment(ME, "plain"),
+            signed({ content: "words nobody signed" }),
+          ],
+        },
+      },
+    });
+
+    const said = await social().comments(DELEGATION, NOTE);
+
+    expect(said.map((one) => one.comment_id)).toEqual([`${ME}:plain`]);
+  });
+
+  it("is drawn where it checks out", async () => {
+    instance({
+      "/api/follows": { body: following() },
+      [commentsPath(ME)]: { body: { data: [signed({})] } },
+    });
+
+    const said = await social().comments(DELEGATION, NOTE);
+
+    expect(said.map((one) => one.comment_id)).toEqual([`${ME}:signed`]);
+  });
+});
+
+describe("the notes somebody has been answered on", () => {
+  const ANSWERED_ID = "01JCCCCCCCCCCCCCCCCCCCCCCC";
+  const ANSWERED = `${ME}/${ANSWERED_ID}` as OwnedRef;
+
+  const note = () => ({
+    id: new RecordId("node", { created_by: ME, id: ANSWERED_ID }),
+    created_by: ME,
+    address: "1a",
+    depth: 2,
+    origin: `${ME}/01JCCCCCCCCCCCCCCCCCCCCCCB`,
+    title: "A city remembers",
+    tags: [],
+    links: [],
+    created_at: "2026-03-01T09:00:00.000Z",
+    updated_at: "2026-03-01T09:00:00.000Z",
+  });
+
+  it("names the notebook each address is read in, and who answered", async () => {
+    const service = assembledFrom(
+      { answered: async () => [{ note: ANSWERED, voices: [THEM, STRANGER] }] },
+      [],
+      { many: async () => [note()] },
+    );
+
+    await expect(service.answeredNotes(DELEGATION)).resolves.toEqual([
+      {
+        note: ANSWERED,
+        address: "1a",
+        graph: `${ME}/00000000000000000000000000`,
+        title: "A city remembers",
+        voices: [THEM, STRANGER],
+      },
+    ]);
+  });
+
+  it("leaves out a voice the reader refused, and a note nobody else answered", async () => {
+    const refused = {
+      id: new RecordId("refused_voice", { created_by: ME, id: "01REFUSED" }),
+      created_by: ME,
+      voice: THEM,
+      created_at: "2026-03-01T09:00:00.000Z",
+      updated_at: "2026-03-01T09:00:00.000Z",
+    } as RefusedVoice;
+    const service = assembledFrom(
+      { answered: async () => [{ note: ANSWERED, voices: [THEM] }] },
+      [refused],
+      { many: async () => [note()] },
+    );
+
+    await expect(service.answeredNotes(DELEGATION)).resolves.toEqual([]);
+  });
+
+  // A note its author deleted has nowhere to open, however many people
+  // answered it while it was there.
+  it("leaves out a note that is no longer there", async () => {
+    const service = assembledFrom(
+      { answered: async () => [{ note: ANSWERED, voices: [THEM] }] },
+      [],
+      { many: async () => [] },
+    );
+
+    await expect(service.answeredNotes(DELEGATION)).resolves.toEqual([]);
+  });
+});
+
+describe("whether somebody can hold a conversation at all", () => {
+  const manifestServing = (endpoints: Record<string, string>) => ({
+    version: 1,
+    did: ME,
+    provider: INSTANCE,
+    endpoints: {
+      profile: `${INSTANCE}/api/public/profile/${ME}`,
+      ...endpoints,
+    },
+    web_profile: `${INSTANCE}/u/${ME}`,
+  });
+
+  it("is what their own store serves, each half on its own", async () => {
+    instance();
+    vi.spyOn(SyrService.prototype, "identityManifest").mockResolvedValue(
+      manifestServing({
+        public_comments: `${INSTANCE}${commentsPath(ME)}`,
+      }) as never,
+    );
+
+    await expect(social().converses(DELEGATION)).resolves.toEqual({
+      comments: true,
+      reactions: false,
+    });
+  });
+
+  // What the embedded provider answers, and what an identity kept on another
+  // Sloppy's embedded provider answers though it is delegated from here.
+  it("is no on a store that publishes neither listing", async () => {
+    instance();
+    vi.spyOn(SyrService.prototype, "identityManifest").mockResolvedValue(
+      manifestServing({}) as never,
+    );
+
+    await expect(social().converses(DELEGATION)).resolves.toEqual({
+      comments: false,
+      reactions: false,
+    });
   });
 });
