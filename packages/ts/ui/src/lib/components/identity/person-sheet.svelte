@@ -30,6 +30,7 @@
 	import UserMinus from '@lucide/svelte/icons/user-minus';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import PublishedRoots from '../peers/published-roots.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import Avatar from './avatar.svelte';
@@ -52,20 +53,31 @@
 	}: PersonSheetProps = $props();
 
 	let found = $state<PublishedThere | null>(null);
+	let looking = $state(false);
 	/** Whose listing {@link found} is, so a sheet reopened on somebody else does
-	 *  not draw the last person's branches while theirs arrive. */
+	 *  not draw the last person's branches while theirs arrive. Dropped on close,
+	 *  so a listing that did not land is asked for again next time. */
 	let listed: string | null = null;
 
 	const shown = $derived(person ?? unplacedPerson(identity));
 
 	$effect(() => {
-		if (!open || listed === identity) return;
+		if (!open) {
+			listed = null;
+			return;
+		}
+		if (listed === identity) return;
 		const who = identity;
 		listed = who;
 		found = null;
-		void onLook().then((page) => {
-			if (listed === who) found = page;
-		});
+		looking = true;
+		void onLook()
+			.then((page) => {
+				if (listed === who) found = page;
+			})
+			.finally(() => {
+				if (listed === who) looking = false;
+			});
 	});
 
 	async function more(cursor: string): Promise<void> {
@@ -124,7 +136,9 @@
 
 		<section class="space-y-2 border-t border-border pt-4">
 			<h3 class="text-sm font-medium">What they publish</h3>
-			{#if found}
+			{#if looking}
+				<Skeleton class="h-11 w-full" />
+			{:else if found}
 				<PublishedRoots
 					publications={found.publications}
 					nextCursor={found.nextCursor}

@@ -145,7 +145,7 @@ describe('the page a person is on', () => {
 		expect(text).toContain('What you publish');
 		expect(text).toContain('1');
 		expect(text).toContain('The seed of the argument');
-		expect(text).toContain('Anyone can answer');
+		expect(text).toContain('Anyone reading it can answer');
 	});
 
 	it('opens the note the branch is rooted at', async () => {

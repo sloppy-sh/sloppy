@@ -92,8 +92,6 @@ describe('who wrote the note', () => {
 		expect(target.textContent).toContain('CB');
 	});
 
-	// Two strangers on two notes are two people on screen, and the label is what
-	// a reader cites back to reach one of them.
 	it('draws an author nobody here can place as the identifier they travel by', async () => {
 		show(STRANGER);
 		await settle();
@@ -112,6 +110,34 @@ describe('who wrote the note', () => {
 		expect(text).toContain('1a');
 		expect(text).toContain('The seed of the argument');
 		expect(text).toContain('Follow');
+	});
+
+	// The instance to ask is only known once the reader's follows are in, and
+	// this instance answers nothing about a stranger it has never held.
+	it('asks the instance they were followed from, not this one', async () => {
+		api.on('GET /following', () => [{ did: PEER, provider_url: 'https://elsewhere.test' }]);
+		show(PEER);
+		await settle();
+		target.querySelector('button')?.click();
+		await settle();
+
+		const asking = api.calls.find((call) => call.startsWith('GET /peers/publications'));
+		expect(asking).toBeDefined();
+		expect(new URL(asking!, 'http://api.test').searchParams.get('source_url')).toBe(
+			'https://elsewhere.test'
+		);
+	});
+
+	it('says nobody at all until their instance has answered', async () => {
+		let answer!: (profile: ProfileView) => void;
+		api.on(asked(PEER), () => new Promise<ProfileView>((done) => (answer = done)));
+		show(PEER);
+		await settle();
+		expect(target.textContent).toBe('');
+
+		answer(THEM);
+		await settle();
+		expect(target.textContent).toContain('Charles Babbage');
 	});
 
 	it('leaves the signed-in person’s own line alone', async () => {

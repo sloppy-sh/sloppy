@@ -575,6 +575,7 @@
 
 	const conversationPeople = {
 		of: (did: string) => people.of(did),
+		unplaced: (did: string) => people.unplaced(did),
 		resolve: (did: string) => people.resolve(did)
 	};
 

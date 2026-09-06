@@ -7,7 +7,7 @@
 	// place they change it.
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import { uploadFile } from '@sloppy/client';
-	import { graphRef, splitOwnedRef } from '@sloppy/types';
+	import { type CommentAccess, graphRef, splitOwnedRef } from '@sloppy/types';
 	import { IdentityLine, PersonEditor, PersonHeader, type PictureRole } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
@@ -19,6 +19,13 @@
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
 	import { nodeHref } from './routes.js';
+
+	/** An invitation the author sets, in the words the publishing sheet sets it
+	 *  with: it decides what Sloppy offers a reader, and never what they can do. */
+	const ANSWERS: Record<CommentAccess, string> = {
+		anyone: 'Anyone reading it can answer',
+		nobody: 'You are not taking answers'
+	};
 
 	let editing = $state(false);
 	let saving = $state(false);
@@ -49,7 +56,7 @@
 				address: branch.root_address,
 				title: root === undefined ? null : root.title.trim() || 'Untitled',
 				notebook: graphs.all.length > 1 ? (notebook?.title ?? null) : null,
-				answers: branch.comments === 'anyone' ? 'Anyone can answer' : 'Nobody can answer'
+				answers: ANSWERS[branch.comments]
 			};
 		})
 	);

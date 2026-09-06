@@ -22,12 +22,8 @@ export function nameOf(person: Person): string {
 	return person.displayName?.trim() || person.handle;
 }
 
-/**
- * Somebody nobody could place, drawn as the identifier they travel by: two
- * strangers read as two people, and what is on screen is what a reader cites
- * back to reach them. The whole identifier belongs beside it, so a surface that
- * shows one of these shows that too.
- */
+/** Somebody nobody could place, drawn as the identifier they travel by. A
+ *  surface that shows one of these shows the whole identifier beside it. */
 export function unplacedPerson(identity: string): Person {
 	const key = identity.slice(identity.lastIndexOf(':') + 1);
 	return {

@@ -66,7 +66,7 @@ function show(over: Partial<ComponentProps<typeof Conversation>> = {}): void {
 			comments: [],
 			reactions: [],
 			mine: ME,
-			people: { of: () => null, resolve: () => {} },
+			people: { of: () => null, unplaced: () => true, resolve: () => {} },
 			emoji: {
 				mine: ME,
 				catalog: () => Promise.resolve([]),
@@ -136,8 +136,21 @@ describe('a voice nobody could place', () => {
 	});
 
 	it('gives way to the name as soon as one is there', () => {
-		show({ comments: [said()], people: { of: () => CHARLES, resolve: () => {} } });
+		show({
+			comments: [said()],
+			people: { of: () => CHARLES, unplaced: () => false, resolve: () => {} }
+		});
 		expect(document.body.textContent).toContain('Charles Babbage');
+	});
+
+	it('names nobody while the ask is still out', () => {
+		show({
+			comments: [said()],
+			people: { of: () => null, unplaced: () => false, resolve: () => {} }
+		});
+		const text = document.body.textContent ?? '';
+		expect(text).not.toContain('z6MkfZ3U');
+		expect(text).toContain('A thought back.');
 	});
 });
 
@@ -162,6 +175,7 @@ describe('refusing one voice', () => {
 		show({
 			comments: [said()],
 			refusing: {
+				scope: 'note',
 				refuse: (voice) => {
 					gone.push(voice);
 					return Promise.resolve();
@@ -169,10 +183,12 @@ describe('refusing one voice', () => {
 				allow: () => Promise.resolve()
 			}
 		});
-		named('Do not show me their answers')?.click();
+		named('Do not show me their answers here')?.click();
 		await settle();
 		expect(gone).toEqual([THEM]);
-		expect(document.body.textContent).toContain('You will not be shown their answers.');
+		expect(document.body.textContent).toContain(
+			'You will not be shown their answers on this note.'
+		);
 	});
 
 	it('has a way back before the words leave the screen', async () => {
@@ -180,6 +196,7 @@ describe('refusing one voice', () => {
 		show({
 			comments: [said()],
 			refusing: {
+				scope: 'note',
 				refuse: () => Promise.resolve(),
 				allow: (voice) => {
 					back.push(voice);
@@ -187,27 +204,43 @@ describe('refusing one voice', () => {
 				}
 			}
 		});
-		named('Do not show me their answers')?.click();
+		named('Do not show me their answers here')?.click();
 		await settle();
 		named('Undo')?.click();
 		await settle();
 		expect(back).toEqual([THEM]);
 	});
 
+	it('says what it covers when the surface refuses a voice everywhere', async () => {
+		show({
+			comments: [said()],
+			refusing: {
+				scope: 'everywhere',
+				refuse: () => Promise.resolve(),
+				allow: () => Promise.resolve()
+			}
+		});
+		named('Do not show me their answers')?.click();
+		await settle();
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('You will not be shown their answers.');
+		expect(text).not.toContain('on this note');
+	});
+
 	it('is not offered on somebody else’s note', () => {
 		show({
 			comments: [said({ node: THEIR_NOTE })],
-			refusing: { refuse: () => Promise.resolve(), allow: () => Promise.resolve() }
+			refusing: { scope: 'note', refuse: () => Promise.resolve(), allow: () => Promise.resolve() }
 		});
-		expect(named('Do not show me their answers')).toBeUndefined();
+		expect(named('Do not show me their answers here')).toBeUndefined();
 	});
 
 	it('is not offered on the reader’s own words', () => {
 		show({
 			comments: [said({ comment_id: `${ME}:1`, author: ME })],
-			refusing: { refuse: () => Promise.resolve(), allow: () => Promise.resolve() }
+			refusing: { scope: 'note', refuse: () => Promise.resolve(), allow: () => Promise.resolve() }
 		});
-		expect(named('Do not show me their answers')).toBeUndefined();
+		expect(named('Do not show me their answers here')).toBeUndefined();
 	});
 });
 

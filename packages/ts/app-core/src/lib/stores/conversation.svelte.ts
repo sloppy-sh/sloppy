@@ -172,11 +172,8 @@ class ConversationStore {
 		);
 	}
 
-	/**
-	 * Stop being shown one voice: on one note, or wherever this reader reads. It
-	 * takes nothing from anybody else — a comment lives in the store of whoever
-	 * wrote it, and this decides what is assembled for the person refusing.
-	 */
+	/** Stop being shown one voice: on one note, or wherever this reader reads —
+	 *  docs/ARCHITECTURE.md § "Federating the graph". */
 	async refuse(voice: string, note?: OwnedRef): Promise<void> {
 		const epoch = this.#epoch;
 		const written = await api.refuseVoice(note === undefined ? { voice } : { voice, note });

@@ -12,7 +12,8 @@
 	let meeting = $state(false);
 
 	const person = $derived(people.of(did));
-	const shown = $derived(person ?? unplacedPerson(did));
+	/** Null until their instance has answered one way or the other. */
+	const shown = $derived(person ?? (people.unplaced(did) ? unplacedPerson(did) : null));
 	const mine = $derived(did === session.viewer?.did);
 	const following = $derived(peers.following.some((one) => one.did === did));
 	const held = $derived(new Set<OwnedRef>(peers.regions.map((region) => region.publication)));
@@ -32,19 +33,21 @@
 		people.resolve(did);
 	});
 
-	function meet(): void {
+	/** The sheet asks where to look the moment it opens, and {@link from} is only
+	 *  known once the reader's follows and regions are in. */
+	async function meet(): Promise<void> {
+		await peers.load();
 		meeting = true;
-		void peers.load();
 	}
 </script>
 
-{#if mine}
+{#if shown && mine}
 	<PersonChip person={shown} size={24} handle={false} class="gap-2 text-sm" />
-{:else}
+{:else if shown}
 	<button
 		type="button"
 		class="-mx-1 flex min-h-9 min-w-0 items-center rounded-md px-1 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-		onclick={meet}
+		onclick={() => void meet()}
 	>
 		<PersonChip person={shown} size={24} handle={false} class="gap-2 text-sm" />
 	</button>

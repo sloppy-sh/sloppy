@@ -6,13 +6,21 @@
 
 	/** Whoever a surface is about to name, and the ask that resolves them. */
 	export interface ConversationPeople {
+		/** Null while the ask is out AND where it came back with nobody;
+		 *  {@link ConversationPeople.unplaced} tells the two apart. */
 		of: (did: string) => Person | null;
+		/** True only once the ask has come back with nobody, so a name still on
+		 *  its way is not drawn as an identifier that will never settle. */
+		unplaced: (did: string) => boolean;
 		resolve: (did: string) => void;
 	}
 
 	/** Refusing one voice, and taking that back. Only the note's own author is
 	 *  offered this, and it decides what THEY are shown and nothing else. */
 	export interface RefusingVoices {
+		/** What refusing covers, which is what the reader is told it covers. */
+		scope: 'note' | 'everywhere';
+		/** Rejects with words fit for a person; the message is shown as it is. */
 		refuse: (voice: string) => Promise<void>;
 		allow: (voice: string) => Promise<void>;
 	}
@@ -38,7 +46,8 @@
 		/** Absent leaves the item off, and it is never drawn on somebody else's
 		 *  note whatever the host passes. */
 		refusing?: RefusingVoices;
-		/** Take an emoji somebody reacted with into the reader's own set. */
+		/** Take an emoji somebody reacted with into the reader's own set. Rejects
+		 *  with words fit for a person; the message is shown as it is. */
 		onkeep?: (ask: CopyEmojiRequest) => Promise<void>;
 	}
 </script>
@@ -90,6 +99,7 @@
 
 	const meetable = $derived(onperson !== undefined);
 	const keepable = $derived(onkeep !== undefined);
+	const hereOnly = $derived(refusing?.scope !== 'everywhere');
 
 	const ownEmoji = $derived(emojiCatalogs.of(mine, emoji.catalog));
 
@@ -130,14 +140,14 @@
 		for (const did of speakers) people.resolve(did);
 	});
 
-	/** Whoever nobody could place stands as their own identifier, so two
-	 *  strangers on a note are two people on screen. */
-	function personOf(did: string): Person {
-		return people.of(did) ?? unplacedPerson(did);
+	/** Null until their instance has answered one way or the other. */
+	function personOf(did: string): Person | null {
+		return people.of(did) ?? (people.unplaced(did) ? unplacedPerson(did) : null);
 	}
 
 	function named(did: string): string {
-		return nameOf(personOf(did));
+		const person = personOf(did);
+		return person ? nameOf(person) : '';
 	}
 
 	/** Whether the note this was left on is the reader's own: a note belongs to
@@ -181,6 +191,7 @@
 			await onsay(content, replyingTo?.comment_id);
 			draft = '';
 			replyingTo = null;
+			unwelcome = null;
 		} catch (error) {
 			refused = says(error, 'That could not be posted. Try again in a moment.');
 		} finally {
@@ -192,6 +203,7 @@
 		refused = null;
 		try {
 			await onreact(chosen);
+			unwelcome = null;
 		} catch (error) {
 			refused = says(error, 'That reaction could not be added. Try again in a moment.');
 		}
@@ -236,7 +248,7 @@
 {#snippet comment(one: NoteComment)}
 	{@const person = personOf(one.author)}
 	<article class="flex gap-3">
-		{#if meetable}
+		{#if person && meetable}
 			<button
 				type="button"
 				tabindex="-1"
@@ -246,12 +258,14 @@
 			>
 				<Avatar {person} size={28} />
 			</button>
-		{:else}
+		{:else if person}
 			<Avatar {person} size={28} />
+		{:else}
+			<span class="size-7 shrink-0 rounded-full bg-muted"></span>
 		{/if}
 		<div class="min-w-0 flex-1 space-y-1">
 			<div class="flex items-baseline gap-2">
-				{#if meetable}
+				{#if person && meetable}
 					<button
 						type="button"
 						class="min-w-0 truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -279,7 +293,7 @@
 						class="h-9 px-2 text-xs text-muted-foreground hover:text-destructive"
 						onclick={() => refuse(one.author)}
 					>
-						Do not show me their answers
+						{hereOnly ? 'Do not show me their answers here' : 'Do not show me their answers'}
 					</Button>
 				{/if}
 				{#if one.author === mine}
@@ -372,7 +386,11 @@
 	{#if unwelcome}
 		{@const voice = unwelcome}
 		<div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-			<span>You will not be shown their answers.</span>
+			<span>
+				{hereOnly
+					? 'You will not be shown their answers on this note.'
+					: 'You will not be shown their answers.'}
+			</span>
 			<Button variant="ghost" class="h-9 px-2 text-xs" onclick={() => allow(voice)}>Undo</Button>
 		</div>
 	{/if}
