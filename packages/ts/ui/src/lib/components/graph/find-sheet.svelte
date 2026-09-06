@@ -24,6 +24,7 @@
 	import Search from '@lucide/svelte/icons/search';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	let {
@@ -75,7 +76,9 @@
 	});
 
 	const nothing = $derived(settled && !looking && found.length === 0);
-	const reached = $derived(found.length === 1 ? '1 note' : `${found.length} notes`);
+	const showing = $derived(
+		found.length === 1 ? 'Showing 1 note.' : `Showing ${found.length} notes.`
+	);
 	const noMatch = $derived(
 		elsewhere
 			? 'Nothing on the canvas matches that. Show another graph to look in it too.'
@@ -123,8 +126,11 @@
 		{/if}
 
 		{#if found.length > 0}
-			<p class="sr-only" role="status">{reached} matched.</p>
-			<ul class="max-h-80 space-y-0.5 overflow-y-auto">
+			<p class="sr-only" role="status">{showing}</p>
+			<ul
+				class="max-h-[40vh] space-y-0.5 overflow-y-auto scroll-fade-y [--scroll-fade:1rem]"
+				{@attach scrollFade('y')}
+			>
 				{#each found as note (note.ref)}
 					<li>
 						<button

@@ -180,10 +180,10 @@ describe('the find sheet', () => {
 		expect(screen()).not.toContain('Nothing on the canvas matches that.');
 	});
 
-	it('says how many the words reached, for a reader who cannot see the list', async () => {
+	it('says how many the list is showing, for a reader who cannot see it', async () => {
 		await open({ query: 'mush', found: [found(), found({ ref: CELLS, address: '2' })] });
 
 		const said = document.querySelector('[role="status"]');
-		expect(said?.textContent).toBe('2 notes matched.');
+		expect(said?.textContent).toBe('Showing 2 notes.');
 	});
 });
