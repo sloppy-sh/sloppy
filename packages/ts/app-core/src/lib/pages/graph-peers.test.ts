@@ -7,6 +7,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	AT,
+	conversing,
 	DID,
 	node,
 	ref,
@@ -255,6 +256,9 @@ beforeEach(() => {
 	api.on(`GET /nodes${refPath(THEIRS_UNDER)}/comments`, () => said);
 	api.on(`GET /nodes${refPath(THEIRS_UNDER)}/reactions`, () => []);
 	api.on('GET /auth/own-instance', () => ({ instance_url: ownInstance }));
+	// What that identity's own store can hold, which is what a conversation is
+	// offered on.
+	conversing(api);
 	api.on('GET /emoji/me', () => []);
 
 	target = document.createElement('div');
@@ -440,8 +444,10 @@ describe('answering somebody else’s note', () => {
 		expect(api.countOf(`GET /nodes${refPath(THEIRS_UNDER)}/comments`)).toBe(0);
 	});
 
-	it('is not offered to somebody whose identity keeps none', async () => {
-		ownInstance = VIEWER.syr_instance_url;
+	// The gate is what the reader's own store serves, never where it stands: one
+	// that takes a comment and lists none hands back a comment that is gone.
+	it('is not offered where the reader’s own store cannot hold one', async () => {
+		conversing(api, { converses: { comments: false, reactions: false } });
 		said = [comment('c1', AUTHOR, 'A thought of my own')];
 
 		await openTheirNote();

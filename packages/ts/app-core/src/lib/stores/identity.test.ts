@@ -29,7 +29,6 @@ describe('where the signed-in person keeps their identity', () => {
 
 		const asking = identity.load();
 		expect(identity.kind).toBeUndefined();
-		expect(identity.converses).toBe(false);
 
 		answer(null);
 		await asking;
@@ -48,7 +47,6 @@ describe('where the signed-in person keeps their identity', () => {
 		await identity.load();
 
 		expect(identity.kind).toBe('delegated');
-		expect(identity.converses).toBe(true);
 	});
 
 	it('is delegated on an instance that keeps no identities of its own', async () => {
@@ -65,7 +63,6 @@ describe('where the signed-in person keeps their identity', () => {
 		await identity.load();
 
 		expect(identity.kind).toBe('local');
-		expect(identity.converses).toBe(false);
 	});
 
 	it('reads two spellings of one instance as one instance', async () => {
@@ -109,5 +106,79 @@ describe('where the signed-in person keeps their identity', () => {
 		await identity.load();
 
 		expect(identity.kind).toBe('delegated');
+	});
+});
+
+describe('whether this person’s own store can hold a conversation', () => {
+	let api: FakeApi;
+
+	beforeEach(() => {
+		identity.clear();
+		session.clear();
+		api = useFakeApi();
+		api.on('GET /auth/own-instance', () => ({ instance_url: null }));
+	});
+
+	it('answers nothing until the store has been asked', async () => {
+		let answer: () => void = () => {};
+		api.on(
+			'GET /converses',
+			() =>
+				new Promise((settle) => {
+					answer = () => settle({ comments: true, reactions: true });
+				})
+		);
+		session.adopt(VIEWER, 'a-session');
+
+		const asking = identity.load();
+		expect(identity.converses).toBeUndefined();
+
+		answer();
+		await asking;
+		expect(identity.converses).toBe(true);
+	});
+
+	// A store that takes a comment and lists none gives the writer a comment that
+	// is gone on the next read, so the surface is not offered.
+	it('says no where the store serves only half of one', async () => {
+		api.on('GET /converses', () => ({ comments: true, reactions: false }));
+		session.adopt(VIEWER, 'a-session');
+		await identity.load();
+
+		expect(identity.converses).toBe(false);
+	});
+
+	it('says nothing while nobody is signed in, and asks nobody', async () => {
+		api.on('GET /converses', () => ({ comments: true, reactions: true }));
+		await identity.load();
+
+		expect(identity.converses).toBeUndefined();
+		expect(api.countOf('GET /converses')).toBe(0);
+	});
+
+	it('does not remember an ask that did not land', async () => {
+		api.on('GET /converses', () => new Response('', { status: 503 }));
+		session.adopt(VIEWER, 'a-session');
+		await identity.load();
+		expect(identity.converses).toBeUndefined();
+
+		api.on('GET /converses', () => ({ comments: true, reactions: true }));
+		await identity.load();
+
+		expect(identity.converses).toBe(true);
+	});
+
+	it('asks again for whoever signs in next', async () => {
+		api.on('GET /converses', () => ({ comments: true, reactions: true }));
+		session.adopt(VIEWER, 'a-session');
+		await identity.load();
+		expect(identity.converses).toBe(true);
+
+		api.on('GET /converses', () => ({ comments: false, reactions: false }));
+		session.adopt({ ...VIEWER, did: 'did:syr:z6MkSomebodyElse' }, 'another-session');
+		await identity.load();
+
+		expect(identity.converses).toBe(false);
+		expect(api.countOf('GET /converses')).toBe(2);
 	});
 });
