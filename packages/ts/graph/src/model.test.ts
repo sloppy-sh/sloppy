@@ -590,6 +590,60 @@ describe("carrying positions across an update", () => {
     const fresh = model.graph.getNodeAttributes(drawn[20].node.ref);
     expect([fresh.x, fresh.y]).not.toEqual([7, -3]);
   });
+
+  const plain = buildModel(drawn, { selection: [], palette });
+  const underOne = drawn.find(
+    (entry) =>
+      entry.node.parent !== undefined && plain.graph.hasNode(entry.node.parent),
+  );
+  const child = underOne?.node;
+  const parent = child?.parent as OwnedRef;
+
+  it("puts a node back beside the parent it was folded away from", () => {
+    const moved = { x: 1234, y: -567 };
+    const model = buildModel(drawn, {
+      selection: [],
+      palette,
+      keep: new Map([[parent, moved]]),
+    });
+    const back = model.graph.getNodeAttributes(child!.ref);
+    const step = plain.graph.getNodeAttributes(parent);
+    expect(back.x).toBeCloseTo(moved.x + back.anchorX - step.anchorX, 6);
+    expect(back.y).toBeCloseTo(moved.y + back.anchorY - step.anchorY, 6);
+  });
+
+  it("carries the offset down a branch, not just to the first child", () => {
+    const under = drawn.find(
+      (entry) =>
+        entry.node.parent === child?.ref && plain.graph.hasNode(entry.node.ref),
+    );
+    if (!under) throw new Error("nothing was drawn under that note");
+    const moved = { x: -800, y: 400 };
+    const model = buildModel(drawn, {
+      selection: [],
+      palette,
+      keep: new Map([[parent, moved]]),
+    });
+    const back = model.graph.getNodeAttributes(under.node.ref);
+    const step = plain.graph.getNodeAttributes(parent);
+    expect(back.x).toBeCloseTo(moved.x + back.anchorX - step.anchorX, 6);
+    expect(back.y).toBeCloseTo(moved.y + back.anchorY - step.anchorY, 6);
+  });
+
+  // The seeds are what a peer agrees with, so what one reader's session did to
+  // the picture must not reach them.
+  it("leaves every seed where the address put it", () => {
+    const model = buildModel(drawn, {
+      selection: [],
+      palette,
+      keep: new Map([[parent, { x: 1234, y: -567 }]]),
+    });
+    for (const ref of plain.order) {
+      const was = plain.graph.getNodeAttributes(ref);
+      const now = model.graph.getNodeAttributes(ref);
+      expect([now.anchorX, now.anchorY]).toEqual([was.anchorX, was.anchorY]);
+    }
+  });
 });
 
 describe("the look a note's author gave it", () => {
