@@ -178,9 +178,13 @@ describe('where this device says its Sloppy is', () => {
 
 	// The app is pointed at it before any page mounts, which is before init().
 	it('is readable before the saved look has been read', () => {
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ origin: 'https://mine.example' }));
+		expect(storedOrigin()).toBe('https://mine.example');
+	});
+
+	it('survives the look being read back', () => {
 		prefs.init();
 		prefs.set('origin', 'https://mine.example');
-		expect(storedOrigin()).toBe('https://mine.example');
 		prefs.init();
 		expect(prefs.current.origin).toBe('https://mine.example');
 	});

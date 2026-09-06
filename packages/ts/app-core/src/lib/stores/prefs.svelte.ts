@@ -1,7 +1,8 @@
 /**
- * The look of the app, the tags it opens on, and which Sloppy this device
- * talks to — DESIGN.md § Persistence. One writer for `sloppy_prefs`, and the
- * only code that sets the three axis attributes on `<html>` after first paint.
+ * The look of the app and the tags it opens on — DESIGN.md § Persistence — and
+ * which Sloppy this device talks to — docs/ARCHITECTURE.md § "Deployment
+ * modes". One writer for `sloppy_prefs`, and the only code that sets the three
+ * axis attributes on `<html>` after first paint.
  *
  * The shells' `app.html` boot scripts read the SAME key to theme the first
  * paint, so the key, the field names, the first-visit defaults and the dark

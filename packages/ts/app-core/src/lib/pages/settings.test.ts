@@ -325,9 +325,54 @@ describe('where your Sloppy is', () => {
 		typeAddress('over there somewhere');
 		await settle();
 
-		expect(target.textContent).toContain("doesn't look like an address");
+		expect(target.textContent).toContain("doesn't look like a web address");
 		expect(prefs.current.origin).toBeNull();
 		expect(session.signedIn).toBe(true);
+	});
+
+	it('asks for an address rather than moving when nothing was typed', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('');
+		await settle();
+
+		expect(target.textContent).toContain('Type the web address of your Sloppy');
+		expect(target.textContent).not.toContain('back where it came from');
+		expect(prefs.current.origin).toBeNull();
+		expect(runtime.apiHost()).toBe('http://api.test');
+		expect(session.signedIn).toBe(true);
+	});
+
+	it('leaves a session alone when the address given is the one it is already on', async () => {
+		prefs.set('origin', 'https://mine.example');
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('mine.example');
+		await settle();
+
+		expect(target.textContent).toContain('Sloppy is already at mine.example');
+		expect(prefs.current.origin).toBe('https://mine.example');
+		expect(session.signedIn).toBe(true);
+	});
+
+	// A canvas is built from graphs the Sloppy being left minted, so it is not
+	// carried to another one.
+	it('leaves the canvas behind when the app is pointed elsewhere', async () => {
+		prefs.set('graph', ref(1));
+		prefs.set('alsoOnCanvas', [ref(2)]);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('mine.example');
+		await settle();
+
+		expect(prefs.current.graph).toBeNull();
+		expect(prefs.current.alsoOnCanvas).toEqual([]);
 	});
 
 	it('comes back to the one the app came with', async () => {

@@ -107,8 +107,6 @@ let current: AppRuntime = {
 	fetchImpl: () => globalThis.fetch.bind(globalThis)
 };
 
-/** Where this device's Sloppy is: the one the person chose, else the one the
- *  shell shipped with. */
 function host(): string {
 	return storedOrigin() ?? current.apiHost();
 }
@@ -136,6 +134,7 @@ export function repointRuntime(): void {
 
 /** Late-binding facade — modules hold this, never the config object itself. */
 export const runtime = {
+	/** The origin in use — the one this device names, else {@link AppRuntime.apiHost}. */
 	apiHost: () => host(),
 	mode: () => current.mode(),
 	token: {

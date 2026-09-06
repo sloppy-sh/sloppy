@@ -104,31 +104,41 @@
 		identity.clear();
 	}
 
-	/** Null returns to the Sloppy the app came with. Nothing read from the one
-	 *  being left stays on screen, and the session it opened ends with it. */
+	/** Null returns to the Sloppy the app came with. */
 	function pointAt(origin: string | null) {
+		typedOrigin = origin ?? '';
+		originProblem = null;
+		if (origin === prefs.current.origin) {
+			moved = origin
+				? `Sloppy is already at ${new URL(origin).host}.`
+				: 'Sloppy is already where it came from.';
+			return;
+		}
 		prefs.set('origin', origin);
+		prefs.set('graph', null);
+		prefs.set('alsoOnCanvas', []);
+		prefs.set('wallpapers', {});
 		repointRuntime();
 		session.clear();
 		letGoOfWhatWasRead();
-		typedOrigin = origin ?? '';
-		originProblem = null;
 		moved = origin
-			? `Sloppy is at ${new URL(origin).host} now. Sign in there to open your writing.`
-			: 'Sloppy is back where it came from. Sign in to open your writing.';
+			? `Sloppy is at ${new URL(origin).host} now. Sign in there to carry on.`
+			: 'Sloppy is back where it came from. Sign in to carry on.';
 	}
 
 	function pointHere(event: SubmitEvent) {
 		event.preventDefault();
 		const typed = typedOrigin.trim();
 		if (typed === '') {
-			pointAt(null);
+			moved = null;
+			originProblem = 'Type the web address of your Sloppy, like sloppy.example.com.';
 			return;
 		}
 		const origin = asOrigin(typed);
 		if (!origin) {
 			moved = null;
-			originProblem = "That doesn't look like an address. Try something like sloppy.example.com.";
+			originProblem =
+				"That doesn't look like a web address. Try something like sloppy.example.com.";
 			return;
 		}
 		pointAt(origin);
@@ -201,11 +211,12 @@
 		<div class="space-y-3 border-t border-border pt-8">
 			<h2 class="text-sm font-medium">Where your Sloppy is</h2>
 			<p class="text-sm text-muted-foreground">
-				Your writing lives wherever Sloppy is. Give the address of one you run yourself and it lives
-				there instead — you'll be signed out here, and can sign in there.
+				Your writing lives wherever Sloppy is. Give the web address of one you run yourself and
+				Sloppy reads and writes there from now on — you'll be signed out here, and can sign in
+				there. What you have already written stays on the Sloppy that holds it.
 			</p>
 			<form class="flex flex-col gap-2 sm:flex-row" onsubmit={pointHere}>
-				<Label for="sloppy-origin" class="sr-only">The address of your Sloppy</Label>
+				<Label for="sloppy-origin" class="sr-only">The web address of your Sloppy</Label>
 				<Input
 					id="sloppy-origin"
 					name="origin"
