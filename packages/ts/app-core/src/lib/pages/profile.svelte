@@ -1,10 +1,14 @@
 <script lang="ts">
+	/* eslint-disable svelte/no-navigation-without-resolve -- the route tree belongs
+	   to the shells, so this package has no manifest for `resolve()` to check
+	   against. */
+
 	// How somebody appears to anyone who pulls a note of theirs, and the one
 	// place they change it.
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import { uploadFile } from '@sloppy/client';
-	import type { NodeView } from '@sloppy/types';
-	import { PersonEditor, PersonHeader, type PictureRole } from '@sloppy/ui';
+	import { graphRef, splitOwnedRef } from '@sloppy/types';
+	import { IdentityLine, PersonEditor, PersonHeader, type PictureRole } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
@@ -13,6 +17,8 @@
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
+	import { publications } from '../stores/publications.svelte.js';
+	import { nodeHref } from './routes.js';
 
 	let editing = $state(false);
 	let saving = $state(false);
@@ -22,33 +28,31 @@
 	/** A change was refused while the page is fine; the editor puts it beside the
 	 *  control that asked for it. */
 	let refused = $state<{ picture: PictureRole | null; message: string } | null>(null);
-	/** False until every branch is in, because a branch still missing would put a
-	 *  smaller graph on the page than the person has. */
-	let measured = $state(false);
 
 	const shown = $derived.by(() => {
 		const profile = people.me;
 		return profile && { profile, person: personFrom(profile) };
 	});
 
-	/** Across every graph they keep: what somebody has written is the person's,
-	 *  not one notebook's. */
-	const branches = $derived(graphs.all.flatMap((graph) => nodes.region({ graph: graph.ref })));
-	const written = $derived.by(() => {
-		let total = 0;
-		const walk = (list: NodeView[]) => {
-			for (const node of list) {
-				total += 1;
-				walk(nodes.children(node.ref));
-			}
-		};
-		walk(branches);
-		return total;
-	});
-
-	function count(n: number, one: string, many: string): string {
-		return `${n.toLocaleString()} ${n === 1 ? one : many}`;
-	}
+	/** The branches a peer can read, each named the way the reader would find it
+	 *  again: an address, the notebook it is read in where they keep more than
+	 *  one, and the terms they set on answers. */
+	const published = $derived(
+		publications.all.map((branch) => {
+			const root = nodes.get(branch.root);
+			const notebook = graphs.all.find(
+				(graph) => graph.ref === graphRef(splitOwnedRef(branch.ref).did, branch.graph)
+			);
+			return {
+				ref: branch.ref,
+				root: branch.root,
+				address: branch.root_address,
+				title: root === undefined ? null : root.title.trim() || 'Untitled',
+				notebook: graphs.all.length > 1 ? (notebook?.title ?? null) : null,
+				answers: branch.comments === 'anyone' ? 'Anyone can answer' : 'Nobody can answer'
+			};
+		})
+	);
 
 	async function readProfile(): Promise<void> {
 		unreachable = null;
@@ -60,19 +64,15 @@
 		}
 	}
 
-	async function measureGraph(): Promise<void> {
+	/** Only what is published, and only the note each branch is rooted at: the
+	 *  page says what a peer can read, so it costs what that list costs. */
+	async function readPublished(): Promise<void> {
 		try {
-			const kept = await graphs.load();
-			await Promise.all(
-				kept.map(async (graph) => {
-					const mine = await nodes.load({ graph: graph.ref });
-					await Promise.all(mine.map((root) => nodes.load({ origin: root.ref })));
-				})
-			);
-			measured = true;
+			const [branches] = await Promise.all([publications.load(), graphs.load()]);
+			await Promise.all(branches.map((branch) => nodes.fetch(branch.root)));
 		} catch {
-			// A graph that cannot be reached is the graph page's news to break; here
-			// the line about its shape simply does not appear.
+			// The graph page is where a graph that cannot be reached is news; here
+			// the branches simply do not appear.
 		}
 	}
 
@@ -127,7 +127,7 @@
 
 	onMount(() => {
 		void readProfile();
-		void measureGraph();
+		void readPublished();
 	});
 </script>
 
@@ -170,15 +170,40 @@
 				{/snippet}
 			</PersonHeader>
 
-			{#if measured && written > 0}
-				<p class="text-sm text-muted-foreground">
-					{count(written, 'note', 'notes')} across {count(branches.length, 'branch', 'branches')}.
-				</p>
-			{/if}
+			<section class="space-y-2 border-t border-border pt-6">
+				<h2 class="text-sm font-medium">What you publish</h2>
+				{#if published.length === 0}
+					<p class="text-sm text-muted-foreground">
+						Nothing yet. A branch you publish can be read by anyone who has its address.
+					</p>
+				{:else}
+					<ul class="space-y-1">
+						{#each published as branch (branch.ref)}
+							<li>
+								<a
+									href={nodeHref(branch.root)}
+									class="flex min-h-11 items-center gap-3 rounded-md px-1 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+								>
+									<span class="shrink-0 address">{branch.address}</span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-sm">{branch.title ?? ''}</span>
+										{#if branch.notebook}
+											<span class="block truncate text-xs text-muted-foreground"
+												>{branch.notebook}</span
+											>
+										{/if}
+									</span>
+									<span class="shrink-0 text-xs text-muted-foreground">{branch.answers}</span>
+								</a>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
 
 			<section class="space-y-2 border-t border-border pt-6">
 				<h2 class="text-sm font-medium">Your identity</h2>
-				<p class="address text-sm break-all select-text">{shown.profile.did}</p>
+				<IdentityLine identity={shown.profile.did} label="Copy your identity" />
 			</section>
 		{/if}
 	</div>
