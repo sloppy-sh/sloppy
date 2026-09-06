@@ -495,15 +495,15 @@ describe('acting on one note from the canvas', () => {
 		]);
 	});
 
-	// The one act that cannot be taken back, in the words the rest of the product
-	// asks it in — never a second wording for the same question.
+	// The words the rest of the product asks this in — never a second wording for
+	// the same question.
 	it('asks before deleting it, counting what goes with it', async () => {
 		await askAbout('1');
 
 		item('Delete it').click();
 		await settle();
 		expect(screen()).toContain('Delete this note?');
-		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
+		expect(screen()).toContain('It goes, and so does the one note that grew out of it.');
 		expect(acts).toEqual([]);
 
 		button('Delete it').click();
@@ -692,15 +692,15 @@ describe('choosing several notes to act on', () => {
 		expect(button('Give them this look').disabled).toBe(true);
 	});
 
-	// The one act that cannot be taken back, so the question counts everything
-	// that goes — the notes chosen are never all of them.
+	// The question counts everything that goes — the notes chosen are never all
+	// of them.
 	it('asks before deleting, counting what goes with the notes chosen', async () => {
 		await chooseOnly('1');
 
 		button('Delete').click();
 		await settle();
 		expect(screen()).toContain('Delete this note?');
-		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
+		expect(screen()).toContain('It goes, and so does the one note that grew out of it.');
 		expect(acts).toEqual([]);
 
 		button('Delete it').click();
@@ -719,7 +719,7 @@ describe('choosing several notes to act on', () => {
 		await settle();
 
 		expect(screen()).toContain('Delete these 3 notes?');
-		expect(screen()).toContain('They go for good.');
+		expect(screen()).toContain('They go.');
 	});
 
 	// The server reaches what is still there and counts the rest; reporting a

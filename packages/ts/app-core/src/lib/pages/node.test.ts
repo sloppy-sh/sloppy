@@ -405,21 +405,21 @@ describe('deleting a note', () => {
 		await act('Delete this note');
 
 		expect(screen()).toContain('Delete this note?');
-		expect(screen()).toContain('It goes for good, and so do the 2 notes that grew out of it.');
+		expect(screen()).toContain('It goes, and so do the 2 notes that grew out of it.');
 	});
 
 	it('counts one note as one note', async () => {
 		await openNote(SECOND);
 		await act('Delete this note');
 
-		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
+		expect(screen()).toContain('It goes, and so does the one note that grew out of it.');
 	});
 
 	it('promises nothing extra where nothing grew out of it', async () => {
 		await openNote(THIRD);
 		await act('Delete this note');
 
-		expect(screen()).toContain('It goes for good.');
+		expect(screen()).toContain('It goes.');
 		expect(screen()).not.toContain('grew out of it');
 	});
 
@@ -429,7 +429,7 @@ describe('deleting a note', () => {
 		await openNote(FIRST);
 		await act('Delete this note');
 
-		expect(screen()).toContain('It goes for good, and so does everything written under it.');
+		expect(screen()).toContain('It goes, and so does everything written under it.');
 	});
 
 	it('leaves the reader on the note this one grew out of', async () => {

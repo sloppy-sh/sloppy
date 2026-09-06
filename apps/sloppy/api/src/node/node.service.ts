@@ -10,12 +10,15 @@ import {
 import {
   type Address,
   addressDepth,
+  compareAddresses,
   type CreateNodeRequestSchema,
   createOwnedRecordId,
+  type DeletedBranch,
   homeGraphRef,
   entityView,
   graphAsked,
   graphOf,
+  isAncestorAddress,
   isInSubtree,
   isRootAddress,
   isUnstyled,
@@ -61,6 +64,16 @@ type ChangingAct = Exclude<
  * index. The bound is what stops a pathological loop, not a tuned number.
  */
 const ADDRESS_ATTEMPTS = 8;
+
+/**
+ * How long a deleted branch stays where its author can put it back. The
+ * confirmation a person reads before deleting says this same number, and the
+ * two are only kept in step by hand: `deletion.ts` in `@sloppy/app-core` is the
+ * other one.
+ */
+const KEPT_FOR_DAYS = 30;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class NodeService {
@@ -137,11 +150,74 @@ export class NodeService {
     return entityView(updated);
   }
 
-  /** A node leaves with everything that sprang from it. */
-  async remove(did: string, ref: OwnedRef): Promise<void> {
+  /**
+   * A node goes with everything that sprang from it, and can be put back until
+   * {@link KEPT_FOR_DAYS} have passed. Whatever the branch was publishing comes
+   * down first and does not come back with it.
+   */
+  async remove(
+    did: string,
+    ref: OwnedRef,
+    delegation: Delegation | undefined,
+  ): Promise<void> {
+    await this.sweep(did);
     const node = await this.nodes.find(did, ref);
     if (!node) return;
-    await this.nodes.remove(did, await this.nodes.subtree(did, node));
+    const going = await this.nodes.subtree(did, node);
+    await this.takeDownWithin(did, going, delegation);
+    await this.nodes.remove(did, going);
+  }
+
+  /** The branches this person deleted and can still put back, newest first. */
+  async deleted(did: string): Promise<DeletedBranch[]> {
+    await this.sweep(did);
+    return branchesAmong(await this.nodes.deletedNotes(did));
+  }
+
+  /** One of them back where it was, with its addresses and its writing. */
+  async restore(did: string, ref: OwnedRef): Promise<NodeView> {
+    await this.sweep(did);
+    const gone = await this.nodes.findDeleted(did, ref);
+    if (!gone) {
+      throw new NotFoundException("That branch is not here to put back.");
+    }
+    if (gone.parent && (await this.nodes.findDeleted(did, gone.parent))) {
+      throw new BadRequestException(
+        "Put the branch above this one back first.",
+      );
+    }
+    await this.nodes.restore(did, gone);
+    const back = await this.nodes.find(did, ref);
+    if (!back)
+      throw new NotFoundException("That branch is not here to put back.");
+    return entityView(back);
+  }
+
+  /** Everything they deleted longer ago than they can put it back. */
+  private async sweep(did: string): Promise<void> {
+    const before = new Date(Date.now() - KEPT_FOR_DAYS * DAY_MS).toISOString();
+    await this.nodes.purgeExpired(did, before);
+  }
+
+  /**
+   * Every publication rooted inside a branch that is going, taken down before
+   * it does: a publication owns copies of its pictures, and only the take-down
+   * releases them.
+   */
+  private async takeDownWithin(
+    did: string,
+    going: readonly Node[],
+    delegation: Delegation | undefined,
+  ): Promise<void> {
+    const chains = await this.publications.rootedIn(
+      did,
+      new Set(going.map((node) => ownedRefFrom(node.id))),
+    );
+    if (chains.length === 0) return;
+    if (!delegation) throw new UnauthorizedException("Sign in to continue.");
+    for (const chain of chains) {
+      await this.publications.remove(delegation, chain);
+    }
   }
 
   /**
@@ -164,13 +240,16 @@ export class NodeService {
     }
 
     if (request.act.act === "delete") {
+      await this.sweep(did);
       const going = new Map<OwnedRef, Node>();
       for (const kin of await Promise.all(
         mine.map((note) => this.nodes.subtree(did, note)),
       )) {
         for (const node of kin) going.set(ownedRefFrom(node.id), node);
       }
-      await this.nodes.remove(did, [...going.values()]);
+      const all = [...going.values()];
+      await this.takeDownWithin(did, all, delegation);
+      await this.nodes.remove(did, all);
       return answer(asked.length, mine.length, []);
     }
 
@@ -379,6 +458,48 @@ function answer(
   notes: NodeView[],
 ): NodeBulkResult {
   return { reached, missed: asked - reached, notes };
+}
+
+/**
+ * Of the notes somebody deleted, the ones a listing offers back: those whose
+ * parent is still there, so putting one back never leaves a note hanging under
+ * nothing. A note deleted before the branch above it waits its turn and is
+ * offered again once that branch is back. Newest first.
+ *
+ * What comes back with one is what went with it in the same act, which is why
+ * a note deleted earlier is counted under nothing but itself.
+ */
+function branchesAmong(gone: readonly Node[]): DeletedBranch[] {
+  const away = new Set(gone.map((node) => ownedRefFrom(node.id)));
+  const under = (root: Node, at: string) =>
+    gone.filter(
+      (node) =>
+        node.deleted_at === at &&
+        node.origin === root.origin &&
+        (node.address === root.address ||
+          isAncestorAddress(root.address, node.address)),
+    ).length;
+  return gone
+    .flatMap((root) => {
+      const at = root.deleted_at;
+      if (at === undefined) return [];
+      if (root.parent && away.has(root.parent)) return [];
+      return [
+        {
+          ref: ownedRefFrom(root.id),
+          address: root.address,
+          graph: graphOf(root),
+          title: root.title,
+          deleted_at: at,
+          notes: under(root, at),
+        },
+      ];
+    })
+    .sort(
+      (a, b) =>
+        b.deleted_at.localeCompare(a.deleted_at) ||
+        compareAddresses(a.address, b.address),
+    );
 }
 
 /**
