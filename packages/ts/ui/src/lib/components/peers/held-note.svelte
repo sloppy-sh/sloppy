@@ -116,10 +116,13 @@
 			<h2 class="text-2xl leading-snug font-semibold tracking-tight">
 				{note.title || 'Untitled'}
 			</h2>
-			<p class="text-sm text-muted-foreground">
-				{author.person ? nameOf(author.person) : author.identity} wrote this{notebook
-					? ` in ${notebook}`
-					: ''}
+			<p class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-sm text-muted-foreground">
+				{#if author.person}
+					<span class="min-w-0 truncate">{nameOf(author.person)}</span>
+				{:else}
+					<span class="min-w-0 truncate font-mono text-xs select-text">{author.identity}</span>
+				{/if}
+				<span>wrote this{notebook ? ` in ${notebook}` : ''}</span>
 			</p>
 
 			{#if note.tags.length > 0}

@@ -204,7 +204,7 @@ describe('whoever was typed into the peer field', () => {
 		expect(api.calls).toHaveLength(0);
 	});
 
-	it('takes a name as whoever answers to it', async () => {
+	it('looks a name up, and holds whoever it is answered with', async () => {
 		api.on(`GET /profile/alice`, () => ({
 			did: AUTHOR,
 			username: 'alice',
@@ -217,7 +217,7 @@ describe('whoever was typed into the peer field', () => {
 		expect(await peers.identify('alice')).toBe(AUTHOR);
 	});
 
-	it('says what to try instead where nobody answers to it', async () => {
+	it('says what to try instead where the name did not lead anywhere', async () => {
 		expect(await peers.identify('nobody')).toBeNull();
 		expect(peers.says).toContain('identifier');
 	});

@@ -140,6 +140,9 @@ let answered: AnsweredNote[];
 /** Where this instance keeps its own identities: `null` makes the reader
  *  somebody whose identity is kept where it can answer for them. */
 let ownInstance: string | null;
+/** Put back by whichever case stood in for the clipboard, so the stand-in does
+ *  not outlive it. */
+let restoreClipboard: (() => void) | undefined;
 
 function stubViewport(): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
@@ -286,6 +289,8 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	session.clear();
+	restoreClipboard?.();
+	restoreClipboard = undefined;
 	target.remove();
 	document.body.innerHTML = '';
 });
@@ -537,16 +542,21 @@ describe('what the reader is holding', () => {
 		expect(screen()).toContain('1b');
 	});
 
-	it('takes the copy again where it is, at the instance it came from', async () => {
+	it('takes the copy again from the instance it came from, without leaving the sheet', async () => {
+		let asked: unknown;
 		publishes(3);
-		api.on('POST /pulls', () => held);
+		api.on('POST /pulls', (_url, init) => {
+			asked = JSON.parse(String(init?.body));
+			return held;
+		});
 		await openPeersSheet();
 		await settle();
 
 		labelledControl('Read this region again').click();
+		await until(() => asked !== undefined);
 		await settle();
 
-		expect(api.calls).toContain('POST /pulls');
+		expect(asked).toMatchObject({ publication: held.publication, source_url: held.source_url });
 		// The copy is taken where the reader already was.
 		expect(screen()).toContain('What you are holding');
 	});
@@ -605,6 +615,24 @@ describe('the reader’s own notes somebody answered', () => {
 
 		expect(screen()).toContain('From people you do not follow');
 	});
+
+	it('names whoever answered, where this instance can place them', async () => {
+		regions = [];
+		answered = [{ note: ref(1), address: '1', graph: ref(80), title: 'Mine', voices: [AUTHOR] }];
+		api.on(`GET /profile/${encodeURIComponent(AUTHOR)}`, () => ({
+			did: AUTHOR,
+			username: 'alice',
+			display_name: 'Alice Author',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+
+		await openPeersSheet();
+		await until(() => screen().includes('Alice Author'));
+
+		expect(screen()).not.toContain(AUTHOR);
+	});
 });
 
 describe('a citation to somebody else’s note', () => {
@@ -652,6 +680,24 @@ describe('a citation to somebody else’s note', () => {
 		expect(screen()).not.toContain('may have taken it down');
 		expect(screen()).toContain('Read it');
 	});
+
+	it('asks about them where the reader already knows their graph is kept', async () => {
+		api.on('GET /following', () => [{ did: AUTHOR, provider_url: 'https://theirs.example' }]);
+		api.on(`GET /pulls/nodes/${encodeURIComponent(AUTHOR)}/${ulid(12)}`, () => null);
+		api.on('GET /peers/publications', () => ({ did: AUTHOR, publications: [] }));
+		regions = [];
+		startAt(path);
+
+		mounted = mount(Graph, { target });
+		flushSync();
+		await until(() =>
+			api.calls.some(
+				(call) =>
+					call.startsWith('GET /peers/publications') &&
+					call.includes('source_url=https%3A%2F%2Ftheirs.example')
+			)
+		);
+	});
 });
 
 describe('a note of the reader’s own, off one they are holding', () => {
@@ -675,12 +721,39 @@ describe('a note of the reader’s own, off one they are holding', () => {
 		expect(drawn()).toEqual(['1', '2']);
 	});
 
+	it('leaves nothing behind in their notebook when it cannot be made to cite', async () => {
+		let gone = false;
+		api.on('POST /nodes', () => node(50, '2', { title: '' }));
+		api.on(
+			`PATCH /nodes${refPath(ref(50))}`,
+			() => new Response('{"message":"That note could not be changed."}', { status: 500 })
+		);
+		api.on(`DELETE /nodes${refPath(ref(50))}`, () => {
+			gone = true;
+			return undefined;
+		});
+
+		await enterHeldRegion();
+		onCanvas('1a').click();
+		await settle();
+		button('Write a note of your own').click();
+		await until(() => gone);
+		await settle();
+
+		expect(screen()).toContain('That note could not be changed.');
+	});
+
 	it('copies the address a peer would resolve, with the notebook it is read in', async () => {
 		const copied: string[] = [];
+		const board = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
 		Object.defineProperty(globalThis.navigator, 'clipboard', {
 			configurable: true,
 			value: { writeText: (text: string) => (copied.push(text), Promise.resolve()) }
 		});
+		restoreClipboard = () => {
+			if (board) Object.defineProperty(globalThis.navigator, 'clipboard', board);
+			else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+		};
 		regions = [{ ...held, graph: ref(90, AUTHOR), graph_title: 'The thesis' }];
 
 		await enterHeldRegion();

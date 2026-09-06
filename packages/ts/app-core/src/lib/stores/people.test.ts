@@ -90,6 +90,22 @@ describe('who somebody is', () => {
 		expect(api.countOf(asked(stranger))).toBe(1);
 	});
 
+	// A read that never landed says nothing about who somebody is, so the name is
+	// still coming and the next surface that wants it asks again.
+	it('asks again for somebody whose instance did not answer', async () => {
+		api.on(asked(PEER), () => new Response('', { status: 503 }));
+		people.resolve(PEER);
+		await settle();
+
+		expect(people.unplaced(PEER)).toBe(false);
+
+		api.on(asked(PEER), () => THEM);
+		people.resolve(PEER);
+		await settle();
+
+		expect(people.of(PEER)?.handle).toBe('charles');
+	});
+
 	it('holds somebody it has not asked about apart from somebody it could not place', async () => {
 		expect(people.unplaced(PEER)).toBe(false);
 		people.resolve(PEER);

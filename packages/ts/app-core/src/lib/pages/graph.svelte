@@ -657,7 +657,10 @@
 			await readHeld(hit.note.ref);
 			return;
 		}
-		asking = { identity: splitOwnedRef(cited).did };
+		const who = splitOwnedRef(cited).did;
+		const followed = peers.following.find((one) => one.did === who);
+		const from = followed && readAt(followed);
+		asking = { identity: who, ...(from ? { from } : {}) };
 		visitPeers();
 	}
 
@@ -1339,7 +1342,12 @@
 			const written = await nodes.create({
 				from: { relation: 'branch', graph: graphs.current }
 			});
-			await nodes.update(written.ref, { links: [held] });
+			try {
+				await nodes.update(written.ref, { links: [held] });
+			} catch (error) {
+				await nodes.remove(written.ref).catch(() => {});
+				throw error;
+			}
 			closeHeld();
 			leaveRegion();
 			show(written.ref, { from: null, shape: null });
@@ -1492,6 +1500,7 @@
 	$effect(() => {
 		for (const one of peers.following) people.resolve(one.did);
 		for (const region of peers.regions) people.resolve(authorOf(region));
+		for (const answer of peers.answered) for (const voice of answer.voices) people.resolve(voice);
 	});
 
 	// Where the reader's identity is kept decides whether a held note is offered
@@ -2079,11 +2088,7 @@
 {#if foreign}
 	<HeldNote
 		note={reachedNote}
-		author={{
-			identity: authorOf(foreign),
-			person: regionAuthor,
-			unplaced: people.unplaced(authorOf(foreign))
-		}}
+		author={{ identity: authorOf(foreign), person: regionAuthor }}
 		notebook={foreign.graph_title}
 		blocks={reached ? peers.stack(reached) : []}
 		loading={reaching !== null && reaching === reached}

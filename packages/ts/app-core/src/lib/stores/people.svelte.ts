@@ -5,7 +5,7 @@
  * so the nav, the settings row and a note's author cannot disagree.
  */
 
-import { proxied } from '@sloppy/client';
+import { proxied, SloppyApiError } from '@sloppy/client';
 import type { ProfileView } from '@sloppy/types';
 import type { Person } from '@sloppy/ui';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -20,6 +20,10 @@ export function personFrom(profile: ProfileView): Person {
 		avatar: profile.avatar_src && proxied(profile.avatar_src),
 		banner: profile.banner_src && proxied(profile.banner_src)
 	};
+}
+
+function answeredWithNobody(error: unknown): boolean {
+	return error instanceof SloppyApiError && error.status === 404;
 }
 
 class PeopleStore {
@@ -90,8 +94,8 @@ class PeopleStore {
 			.then((profile) => {
 				if (at === this.#epoch) this.#others.set(did, profile);
 			})
-			.catch(() => {
-				if (at === this.#epoch) this.#unplaced.add(did);
+			.catch((error: unknown) => {
+				if (at === this.#epoch && answeredWithNobody(error)) this.#unplaced.add(did);
 			})
 			.finally(() => {
 				this.#othersInflight.delete(did);

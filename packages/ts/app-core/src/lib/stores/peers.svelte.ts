@@ -150,8 +150,8 @@ class PeersStore {
 
 	/**
 	 * Whoever was typed, as the identifier everything else here holds: an
-	 * identifier is itself, and a name is whoever answers to it. `null` where
-	 * nobody does, with {@link says} carrying what to try instead.
+	 * identifier is itself, and a name is looked up. `null` where the lookup did
+	 * not land, with {@link says} carrying what to try instead.
 	 */
 	async identify(typed: string): Promise<string | null> {
 		const named = typed.trim();
@@ -161,9 +161,9 @@ class PeersStore {
 		try {
 			return (await api.profileOf(named)).did;
 		} catch {
-			// Nobody of that name is an answer rather than a refusal, so what the
-			// instance said about the ask itself is not what to tell the reader.
-			this.#says = 'Nobody here answers to that name. Try the identifier they gave you.';
+			// What the instance said is about the ask, not about the person asked
+			// after, so it is not what to put in front of the reader.
+			this.#says = 'Sloppy could not look that name up. Try the identifier they gave you.';
 			return null;
 		} finally {
 			this.#busy = false;

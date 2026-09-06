@@ -120,7 +120,8 @@
 	);
 
 	/** What each held region is asked about once: a copy taken again is a new
-	 *  question, and the chain behind it may have moved. */
+	 *  question, and the chain behind it may have moved. A question that went
+	 *  unanswered is let go of, so raising the sheet again asks it. */
 	const chainAsked = new SvelteSet<string>();
 
 	$effect(() => {
@@ -132,7 +133,11 @@
 				if (chainAsked.has(question)) continue;
 				chainAsked.add(question);
 				void onChain(region).then((chain) => {
-					const top = chain?.[0];
+					if (!chain) {
+						chainAsked.delete(question);
+						return;
+					}
+					const top = chain[0];
 					if (top) newest = { ...newest, [region.publication]: top };
 				});
 			}
@@ -403,11 +408,13 @@
 										<span class="shrink-0 address">{answer.address}</span>
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-sm">{answer.title || 'Untitled'}</span>
-											<span class="block truncate text-xs text-muted-foreground">
-												{answer.voices
-													.map((voice) => (voice.person ? nameOf(voice.person) : voice.identity))
-													.join(', ')}
-											</span>
+											<span class="block truncate text-xs text-muted-foreground"
+												>{#each answer.voices as voice, index (voice.identity)}{index > 0
+														? ', '
+														: ''}<span class={voice.person ? undefined : 'font-mono select-text'}
+														>{voice.person ? nameOf(voice.person) : voice.identity}</span
+													>{/each}</span
+											>
 										</span>
 									</button>
 								</li>
@@ -456,7 +463,7 @@
 				class="h-11"
 				autocomplete="off"
 				spellcheck="false"
-				placeholder="alice@sloppy.example"
+				placeholder="did:syr:…"
 				aria-label="Who to read"
 			/>
 			<Input
@@ -469,8 +476,7 @@
 				aria-label="Where their graph is"
 			/>
 			<p class="text-xs text-muted-foreground">
-				A name with the instance it is kept on, or the identifier they gave you. Leave the second
-				line empty if their graph is kept here.
+				The identifier they gave you. Leave the second line empty if their graph is kept here.
 			</p>
 			<Button
 				variant="outline"
