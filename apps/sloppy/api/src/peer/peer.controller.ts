@@ -1,13 +1,16 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get, Query, Req } from "@nestjs/common";
 import {
   PeerChangesQuerySchema,
+  type PeerIdentity,
+  PeerIdentityQuerySchema,
   PeerPublicationsQuerySchema,
   PeerVersionsQuerySchema,
   type PublishedChangesPage,
   type PublishedIndex,
   type PublishedVersionsPage,
 } from "@sloppy/types";
-import { parseBody } from "../node/request";
+import type { AuthedRequest } from "../auth/authed-request";
+import { parseBody, viewerDelegation } from "../node/request";
 import { PeerService } from "./peer.service";
 
 /** What another instance serves about an identity, read on the reader's behalf.
@@ -16,6 +19,19 @@ import { PeerService } from "./peer.service";
 @Controller("peers")
 export class PeerController {
   constructor(private readonly peers: PeerService) {}
+
+  /** Whoever a name names, so somebody can be found by what they say out loud. */
+  @Get("identity")
+  identity(
+    @Req() req: AuthedRequest,
+    @Query("name") name?: string,
+    @Query("source_url") sourceUrl?: string,
+  ): Promise<PeerIdentity> {
+    return this.peers.identify(
+      parseBody(PeerIdentityQuerySchema, { name, source_url: sourceUrl }),
+      viewerDelegation(req),
+    );
+  }
 
   /** What an identity publishes on an instance. */
   @Get("publications")

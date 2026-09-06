@@ -131,6 +131,22 @@ export const PeerChangesQuerySchema = z.object({
 });
 export type PeerChangesQuery = z.input<typeof PeerChangesQuerySchema>;
 
+/** A name is one segment of an address on the instance that holds it. */
+const PEER_NAME_MAX = 128;
+
+/** What `GET /peers/identity` binds: the name somebody was given out loud, and
+ *  the instance it is kept on. An absent `source_url` asks the instance the
+ *  reader's own name is kept on. */
+export const PeerIdentityQuerySchema = z.object({
+  name: z.string().trim().min(1).max(PEER_NAME_MAX),
+  source_url: PeerOriginSchema.optional(),
+});
+export type PeerIdentityQuery = z.input<typeof PeerIdentityQuerySchema>;
+
+/** Who that name turned out to be — the identifier everything else travels by. */
+export const PeerIdentitySchema = z.object({ did: DidSyrSchema });
+export type PeerIdentity = z.infer<typeof PeerIdentitySchema>;
+
 /**
  * A region of somebody else's graph the reader holds a copy of. One row per
  * reader and publication — pulling again refreshes this row rather than writing

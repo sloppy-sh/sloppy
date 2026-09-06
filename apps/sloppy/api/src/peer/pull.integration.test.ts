@@ -189,6 +189,8 @@ describe("holding a region of somebody else's graph", () => {
   let peer: Server;
   let peerOrigin: string;
   let reader: { did: string; cookie: string };
+  /** The name the reader registered under, which is what a peer resolves. */
+  let readerName: string;
 
   /** What the fake peer answers with, replaced per scenario. */
   let pages: unknown[] = [];
@@ -353,6 +355,10 @@ describe("holding a region of somebody else's graph", () => {
           name: "syr",
           public_url: peerOrigin,
           identity_manifest_template: `${peerOrigin}/.well-known/syr/{did}`,
+          api: { public_profile: `${peerOrigin}/public/profile` },
+        }),
+        "/public/profile/charles": () => ({
+          data: { did: AUTHOR, username: "charles" },
         }),
         [`/.well-known/syr/${encodeURIComponent(AUTHOR)}`]: () => ({
           version: 1,
@@ -416,7 +422,8 @@ describe("holding a region of somebody else's graph", () => {
     const { DbService: Store } = await import("../db/db.service");
     await app.get(Store).whenOpen();
 
-    reader = await signIn(`reader${Date.now().toString(36)}`);
+    readerName = `reader${Date.now().toString(36)}`;
+    reader = await signIn(readerName);
   }, 60_000);
 
   afterAll(async () => {
@@ -889,6 +896,34 @@ describe("holding a region of somebody else's graph", () => {
       await ok("DELETE", `/following/${encodeURIComponent(STRANGER)}`);
     },
   );
+
+  // A person says their name out loud; the identifier is what everything else
+  // holds, and this is what closes that gap.
+  scenario(
+    "finds somebody by the name their instance knows them by",
+    async () => {
+      serves();
+
+      const found = await ok(
+        "GET",
+        `/peers/identity?name=charles&source_url=${encodeURIComponent(peerOrigin)}`,
+      );
+      expect(found).toEqual({ did: AUTHOR });
+      expect(asked).toContain("/public/profile/charles");
+
+      const missing = await call(
+        "GET",
+        `/peers/identity?name=nobody&source_url=${encodeURIComponent(peerOrigin)}`,
+      );
+      expect(missing.status).toBe(404);
+    },
+  );
+
+  scenario("resolves a name kept here when no instance is named", async () => {
+    expect(await ok("GET", `/peers/identity?name=${readerName}`)).toEqual({
+      did: reader.did,
+    });
+  });
 
   scenario("will not let a reader follow themselves", async () => {
     const refused = await call("POST", "/following", { did: reader.did });

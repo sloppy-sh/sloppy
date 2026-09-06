@@ -205,20 +205,52 @@ describe('whoever was typed into the peer field', () => {
 	});
 
 	it('looks a name up, and holds whoever it is answered with', async () => {
-		api.on(`GET /profile/alice`, () => ({
-			did: AUTHOR,
-			username: 'alice',
-			display_name: 'Alice',
-			bio: null,
-			avatar_src: null,
-			banner_src: null
-		}));
+		api.on('GET /peers/identity', () => ({ did: AUTHOR }));
 
 		expect(await peers.identify('alice')).toBe(AUTHOR);
 	});
 
-	it('says what to try instead where the name did not lead anywhere', async () => {
+	// A name is kept somewhere, and the reader was told where along with it.
+	it('asks the instance the name carries, and never the peer’s server itself', async () => {
+		api.on('GET /peers/identity', () => ({ did: AUTHOR }));
+
+		expect(await peers.identify('alice@peer.example')).toBe(AUTHOR);
+		const asked = api.calls.find((call) => call.startsWith('GET /peers/identity'));
+		const query = new URL(asked!, 'http://api.test').searchParams;
+		expect(query.get('name')).toBe('alice');
+		expect(query.get('source_url')).toBe('https://peer.example');
+	});
+
+	it('takes an identifier written beside an instance as itself', async () => {
+		expect(await peers.identify(`${AUTHOR}@peer.example`)).toBe(AUTHOR);
+		expect(api.calls).toHaveLength(0);
+	});
+
+	it('says what an instance address looks like where what follows the name is not one', async () => {
+		expect(await peers.identify('alice@not a place')).toBeNull();
+		expect(peers.says).toContain('instance address');
+		expect(api.calls).toHaveLength(0);
+	});
+
+	it('says what to try instead where the lookup said nothing a person can read', async () => {
+		api.on('GET /peers/identity', () => new Response('', { status: 502 }));
+
 		expect(await peers.identify('nobody')).toBeNull();
 		expect(peers.says).toContain('identifier');
+	});
+
+	// The API says who is not there in words meant for a person; a second line
+	// written here would talk over it.
+	it('passes on what the server said about a name nobody answers to', async () => {
+		api.on(
+			'GET /peers/identity',
+			() =>
+				new Response(JSON.stringify({ message: 'Nobody there goes by that name.' }), {
+					status: 404
+				})
+		);
+
+		expect(await peers.identify('ghost@peer.example')).toBeNull();
+		expect(peers.says).toBe('Nobody there goes by that name.');
 	});
 });

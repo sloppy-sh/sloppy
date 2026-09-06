@@ -167,6 +167,15 @@ describe('meeting whoever spoke', () => {
 		show({ comments: [said()] });
 		expect(named('z6MkfZ3U')).toBeUndefined();
 	});
+
+	it('leaves the reader’s own voice as plain text', () => {
+		show({
+			comments: [said({ comment_id: `${ME}:1`, author: ME })],
+			onperson: () => {}
+		});
+		expect(document.body.textContent).toContain('z6MkAda');
+		expect(named('z6MkAda')).toBeUndefined();
+	});
 });
 
 describe('refusing one voice', () => {

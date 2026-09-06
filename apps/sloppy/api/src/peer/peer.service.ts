@@ -15,16 +15,23 @@ import {
 import {
   type FollowedIdentity,
   type PeerChangesQuery,
+  type PeerIdentity,
+  type PeerIdentityQuery,
+  type PeerOrigin,
   type PeerPublicationsQuery,
   type PeerVersionsQuery,
   type PublishedChangesPage,
   type PublishedIndex,
   type PublishedVersionsPage,
+  SyrProfileSchema,
   UnaskedAnswerError,
   parsePublishedIndex,
+  peerOrigin,
   publishedChangesReader,
   publishedVersionsReader,
+  syrEnvelope,
 } from "@sloppy/types";
+import { z } from "zod";
 import { AppConfigService } from "../config/app-config.service";
 import type { Delegation } from "../syr/syr.service";
 import { SyrService } from "../syr/syr.service";
@@ -37,10 +44,25 @@ import {
   versionsUrl,
 } from "./peer-fetch";
 
-/** Said where somebody's own store keeps no list of who they follow. They can
- *  still pull a branch, so the line says which of the two they have. */
+/** Said where somebody's own store keeps no list of who they follow. Reading a
+ *  stranger's branches never needed the list, so the line says what is left. */
 const NO_FOLLOW_LIST =
-  "This account cannot keep a list of who you follow. You can still pull a branch by its address.";
+  "This account cannot keep a list of who you follow. You can still look somebody up by their name or identifier and read what they publish.";
+
+/** Said where the instance holding the name answered about it with nobody. */
+const NO_SUCH_NAME =
+  "Nobody there goes by that name. Check the name, and the instance it is kept on.";
+
+/** Said where nothing at that address looks names up at all, so no name would
+ *  have been found there whatever it was. */
+const NO_NAMES_THERE =
+  "Sloppy could not look a name up there. Check the instance it is kept on, or use the identifier they gave you.";
+
+/** The one thing a peer's instance manifest is read for here: where its public
+ *  profiles answer. syr serves that route a name as readily as an identifier. */
+const ProfileRouteSchema = z.object({
+  api: z.object({ public_profile: z.url() }),
+});
 
 @Injectable()
 export class PeerService {
@@ -149,9 +171,45 @@ export class PeerService {
     );
   }
 
+  /**
+   * Whoever a name names, asked of the instance named or, absent one, of the
+   * store the reader's own name is kept on — which is where a name somebody was
+   * given in person usually lives.
+   */
+  async identify(
+    query: PeerIdentityQuery,
+    delegation: Delegation,
+  ): Promise<PeerIdentity> {
+    const origin = query.source_url ?? nameHome(delegation);
+    const reach = peerReach(this.config);
+    const route = ProfileRouteSchema.safeParse(
+      await readPeerJson(`${origin}/.well-known/syr`, reach),
+    );
+    if (!route.success) throw new NotFoundException(NO_NAMES_THERE);
+    const answer = syrEnvelope(SyrProfileSchema).safeParse(
+      await readPeerJson(
+        `${route.data.api.public_profile}/${encodeURIComponent(query.name.trim())}`,
+        reach,
+      ),
+    );
+    const did = answer.success ? answer.data.data.did : null;
+    if (!did) throw new NotFoundException(NO_SUCH_NAME);
+    return { did };
+  }
+
   private async keepsFollows(delegation: Delegation): Promise<boolean> {
     return this.syr.keepsFollows(delegation.syr_instance_url, delegation.did);
   }
+}
+
+/** Where the reader's own name is kept, which is the instance a lookup that
+ *  named none is made on. */
+function nameHome(delegation: Delegation): PeerOrigin {
+  const origin = peerOrigin(delegation.syr_instance_url);
+  if (origin === null) {
+    throw new BadRequestException("Name the instance to look on.");
+  }
+  return origin;
 }
 
 /** An answer held to the question that was asked. What the far end actually

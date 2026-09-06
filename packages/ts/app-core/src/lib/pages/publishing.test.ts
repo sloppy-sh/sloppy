@@ -166,6 +166,8 @@ let reacted: NoteReaction[];
 /** Where this instance keeps its own identities, which is `VIEWER`'s own only
  *  for somebody whose identity this instance holds itself. */
 let ownInstance: string | null;
+/** Where a peer reaches the graph kept here, as this instance names it. */
+let servedAt: string | undefined;
 
 beforeEach(() => {
 	nodes.clear();
@@ -179,6 +181,7 @@ beforeEach(() => {
 	said = [];
 	reacted = [];
 	ownInstance = null;
+	servedAt = 'https://sloppy.test';
 
 	api.on(`GET /nodes${refPath(FIRST)}`, () => node(1, '1'));
 	api.on(`GET /nodes${refPath(FIRST)}/blocks`, () => []);
@@ -194,7 +197,10 @@ beforeEach(() => {
 	api.on('GET /pulls', () => []);
 	// Where this instance's own identities live. Answering `null` makes every
 	// suite below a person whose identity is kept somewhere that answers for it.
-	api.on('GET /auth/own-instance', () => ({ instance_url: ownInstance }));
+	api.on('GET /auth/own-instance', () => ({
+		instance_url: ownInstance,
+		instance_origin: servedAt
+	}));
 	// What that identity's own store can hold, which is what a conversation is
 	// offered on.
 	conversing(api);
@@ -274,6 +280,37 @@ describe('publishing a branch', () => {
 		expect(api.calls).toContain('POST /publications');
 		expect(says()).toContain('1 is published');
 		expect(says()).toContain('Version 1');
+	});
+
+	it('hands over what a reader needs once the branch is out', async () => {
+		held = [publication()];
+		chain = [version(VERSION_ONE, 1)];
+
+		await open();
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('What a reader needs');
+		expect(says()).toContain('1');
+		expect(says()).toContain(DID);
+		expect(says()).toContain('https://sloppy.test');
+	});
+
+	it('leaves out where the graph is until this instance has said', async () => {
+		servedAt = undefined;
+		held = [publication()];
+		chain = [version(VERSION_ONE, 1)];
+
+		await open();
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('What a reader needs');
+		expect(says()).not.toContain('Where your graph is');
 	});
 
 	it('names the version on the note itself, without opening anything', async () => {
@@ -546,6 +583,37 @@ describe('the conversation on a note', () => {
 		expect(says()).toContain('Conversation');
 		expect(says()).toContain('A thought of my own');
 		expect(says()).toContain('A Peer');
+	});
+
+	// A name in a conversation is a person, and a peer's graph is what meeting
+	// them leads to.
+	it('opens whoever spoke, and what they publish, from their name', async () => {
+		held = [publication()];
+		chain = [version(VERSION_ONE, 1)];
+		said = [comment('c1', PEER, 'A thought of my own')];
+		api.on('GET /following', () => []);
+		api.on('GET /peers/publications', () => ({
+			did: PEER,
+			publications: [
+				{
+					ref: ref(40, PEER),
+					root_address: '2b',
+					title: 'What they think about it',
+					latest: { ref: ref(41, PEER), sequence: 1, published_at: AT }
+				}
+			]
+		}));
+
+		await open();
+		await until(() => conversation.status(FIRST).loaded);
+		await until(() => people.of(PEER) !== null);
+		flushSync();
+		button('A Peer').click();
+		await until(() => says().includes('What they think about it'));
+		flushSync();
+
+		expect(says()).toContain('2b');
+		expect(has('Follow')).toBe(true);
 	});
 
 	it('never claims to show every answer a note has', async () => {
