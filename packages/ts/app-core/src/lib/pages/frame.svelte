@@ -13,9 +13,16 @@
 	import { page } from '$app/state';
 	import { api } from '../api.js';
 	import { keyboard } from '../keyboard.svelte.js';
+	import { conversation } from '../stores/conversation.svelte.js';
+	import { graphs } from '../stores/graphs.svelte.js';
+	import { identity } from '../stores/identity.svelte.js';
+	import { nodes } from '../stores/nodes.svelte.js';
+	import { peers } from '../stores/peers.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
+	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
+	import { tags } from '../stores/tags.svelte.js';
 	import { activeRouteId, navRoutes, OPEN_ROUTES } from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
@@ -104,14 +111,43 @@
 	$effect(() => {
 		if (session.signedIn && !people.me) void people.read().catch(() => {});
 	});
+
+	let wasSignedIn = false;
+
+	// A session that ends takes the graph with it however it ended, so nothing of
+	// the person who was reading is left for whoever signs in next — DESIGN.md
+	// § Persistence. An outage is not an answer about who is signed in, so it
+	// leaves the graph standing.
+	$effect(() => {
+		if (session.unavailable) return;
+		const signedIn = session.signedIn;
+		if (wasSignedIn && !signedIn) {
+			conversation.clear();
+			graphs.clear();
+			identity.clear();
+			nodes.clear();
+			peers.clear();
+			people.hold(null);
+			publications.clear();
+			tags.clear();
+		}
+		wasSignedIn = signedIn;
+	});
 </script>
 
-<AppShell items={navRoutes(me)} {activeId} showNav={session.signedIn} keyboardOpen={keyboard.open}>
+<AppShell
+	items={navRoutes(me)}
+	{activeId}
+	showNav={session.ready && (session.signedIn || session.unavailable)}
+	keyboardOpen={keyboard.open}
+>
 	{#if admitted}
 		{@render children()}
 	{:else if held}
 		<div class="mx-auto max-w-sm space-y-5 px-5 py-16 text-center">
-			<p class="text-muted-foreground" role="alert">Sloppy could not load just now.</p>
+			<p class="text-muted-foreground" role="alert">
+				Sloppy could not load just now. Try again, or come back to it in a moment.
+			</p>
 			<Button
 				variant="outline"
 				disabled={session.loading}

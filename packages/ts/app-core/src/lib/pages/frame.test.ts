@@ -1,6 +1,7 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import { node, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import Frame from './frame.test-support.svelte';
 
@@ -68,6 +69,11 @@ function press(label: string): void {
 	flushSync();
 }
 
+/** Where the chrome around the page can take somebody. */
+function reachable(): string[] {
+	return [...document.body.querySelectorAll('nav a')].map((to) => to.getAttribute('href') ?? '');
+}
+
 function unavailable(): Response {
 	return new Response(JSON.stringify({ message: 'Try again in a moment.' }), {
 		status: 503,
@@ -77,6 +83,7 @@ function unavailable(): Response {
 
 beforeEach(() => {
 	session.clear();
+	nodes.clear();
 	where.url = new URL('http://app.test/');
 	where.gone.length = 0;
 	api = useFakeApi();
@@ -133,6 +140,56 @@ describe('the frame around every page', () => {
 		expect(where.gone).toEqual([]);
 		expect(target.textContent).toContain('Sloppy could not load just now.');
 		expect(target.textContent).not.toContain('The graph');
+	});
+
+	// Settings is reachable with no account, and it is the only page that can
+	// help somebody the app cannot ask about.
+	it('leaves the way to Settings open while it cannot be reached', async () => {
+		api.on('GET /auth/me', () => unavailable());
+
+		await show();
+
+		expect(reachable()).toContain('/settings');
+		expect(target.textContent).toContain('Try again, or come back to it in a moment.');
+	});
+
+	// A session can end without anybody asking it to, and the next person to sign
+	// in on this device must not be shown the last one's graph.
+	it('drops the graph when a session ends on its own', async () => {
+		api.on('GET /auth/me', () => VIEWER);
+		api.on('GET /nodes', () => [node(1, '1')]);
+		await show();
+		await nodes.load();
+		expect(nodes.region()).toHaveLength(1);
+
+		session.clear();
+		flushSync();
+		await settle();
+
+		expect(nodes.region()).toEqual([]);
+	});
+
+	it('keeps the graph standing while it only cannot be reached', async () => {
+		api.on('GET /auth/me', () => VIEWER);
+		api.on('GET /nodes', () => [node(1, '1')]);
+		await show();
+		await nodes.load();
+
+		api.on('GET /auth/me', () => unavailable());
+		await session.refresh();
+		flushSync();
+		await settle();
+
+		expect(nodes.region()).toHaveLength(1);
+	});
+
+	it('offers nothing to somebody who has not signed in yet', async () => {
+		api.on('GET /auth/me', () => undefined);
+		where.url = new URL('http://app.test/sign-in');
+
+		await show();
+
+		expect(reachable()).toEqual([]);
 	});
 
 	it('shows the page once it can be asked again', async () => {
