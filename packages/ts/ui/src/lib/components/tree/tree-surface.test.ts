@@ -397,6 +397,47 @@ describe('several graphs on the canvas', () => {
 	});
 });
 
+// PRODUCT.md principle 4: somebody else's region reads as theirs at a glance,
+// and the walk is the canvas's equal rather than the one surface where the line
+// goes missing.
+describe('notes somebody else wrote', () => {
+	const label = () => target.querySelector('[role="tree"]')?.getAttribute('aria-label');
+	const headings = () => [...target.querySelectorAll('h2')].map((one) => one.textContent?.trim());
+
+	it('names the author over the only tree there is, and in its own name', () => {
+		render({ groups: [{ key: 'held', title: '', notes: BRANCH, author: 'Ada Lovelace' }] });
+		expect(headings()).toEqual(['Notes by Ada Lovelace']);
+		expect(label()).toBe('Notes by Ada Lovelace');
+	});
+
+	it('names them beside the graph, where several trees stand together', () => {
+		render({
+			groups: [
+				{ key: 'a', title: 'Thesis', notes: [note('1')] },
+				{ key: 'b', title: 'Garden', notes: [note('1')], author: 'Ada Lovelace' }
+			]
+		});
+		expect(headings()).toEqual(['Thesis', 'Garden by Ada Lovelace']);
+		expect(
+			[...target.querySelectorAll('[role="tree"]')].map((one) => one.getAttribute('aria-label'))
+		).toEqual(['Thesis', 'Garden by Ada Lovelace']);
+	});
+
+	it('names them over the run at the head of their tree too', () => {
+		render({
+			groups: [{ key: 'held', title: '', notes: BRANCH, author: 'Ada Lovelace' }],
+			lead: [{ group: 'held', title: 'Last written', notes: [note('2')] }]
+		});
+		expect(headings()).toEqual(['Last written by Ada Lovelace', 'Notes by Ada Lovelace']);
+	});
+
+	it('names nobody over notes the reader wrote', () => {
+		render({ groups: [{ key: 'held', title: '', notes: BRANCH }] });
+		expect(target.querySelector('h2')).toBeNull();
+		expect(label()).toBe('Notes');
+	});
+});
+
 describe('a run longer than a page', () => {
 	const many = [
 		note('1'),

@@ -22,6 +22,18 @@ export function nameOf(person: Person): string {
 	return person.displayName?.trim() || person.handle;
 }
 
+/** Somebody nobody could place, drawn as the identifier they travel by. */
+export function unplacedPerson(identity: string): Person {
+	const key = identity.slice(identity.lastIndexOf(':') + 1);
+	return {
+		displayName: null,
+		handle: key.length > 14 ? `${key.slice(0, 8)}…${key.slice(-4)}` : key,
+		bio: null,
+		avatar: null,
+		banner: null
+	};
+}
+
 /** Up to two letters, for an avatar with no picture behind it. */
 export function initialsOf(person: Person): string {
 	const words = nameOf(person).split(/\s+/).filter(Boolean);

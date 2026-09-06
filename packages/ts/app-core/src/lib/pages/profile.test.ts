@@ -1,13 +1,38 @@
-import { HOME_GRAPH_TITLE, homeGraphRef, type ProfileView } from '@sloppy/types';
+import {
+	HOME_GRAPH_TITLE,
+	homeGraphRef,
+	type ProfileView,
+	type PublicationView
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AT, DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import {
+	AT,
+	DID,
+	node,
+	ref,
+	ulid,
+	useFakeApi,
+	type FakeApi
+} from '../stores/fake-api.test-support.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { people } from '../stores/people.svelte.js';
+import { publications } from '../stores/publications.svelte.js';
 import Profile from './profile.svelte';
 
 const ROOT = ref(1);
+
+const PUBLISHED: PublicationView = {
+	ref: ref(7),
+	created_by: DID,
+	created_at: AT,
+	updated_at: AT,
+	root: ROOT,
+	root_address: '1',
+	comments: 'anyone',
+	latest: { ref: ref(8), sequence: 1, published_at: AT }
+};
 
 const STORED: ProfileView = {
 	did: DID,
@@ -64,6 +89,7 @@ beforeEach(() => {
 	stubBrowser();
 	nodes.clear();
 	graphs.clear();
+	publications.clear();
 	people.hold(null);
 	api = useFakeApi();
 	api.on('GET /profile/me', () => STORED);
@@ -81,6 +107,11 @@ beforeEach(() => {
 			? [node(1, '1'), node(2, '1a', { origin: ROOT, parent: ROOT })]
 			: [node(1, '1')]
 	);
+	api.on(`GET /nodes/${encodeURIComponent(DID)}/${ulid(1)}`, () => ({
+		...node(1, '1'),
+		title: 'The seed of the argument'
+	}));
+	api.on('GET /publications', () => [PUBLISHED]);
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -107,10 +138,56 @@ describe('the page a person is on', () => {
 		expect(target.textContent).toContain(DID);
 	});
 
-	it('shows the shape of their graph', async () => {
+	it('shows the branches a peer can read, and who may answer each', async () => {
 		open();
 		await settle();
-		expect(target.textContent).toContain('2 notes across 1 branch');
+		const text = target.textContent ?? '';
+		expect(text).toContain('What you publish');
+		expect(text).toContain('1');
+		expect(text).toContain('The seed of the argument');
+		expect(text).toContain('Anyone reading it can answer');
+	});
+
+	it('opens the note the branch is rooted at', async () => {
+		open();
+		await settle();
+		const row = target.querySelector<HTMLAnchorElement>('a[href^="/n/"]');
+		expect(row?.getAttribute('href')).toBe(
+			`/n/${encodeURIComponent(DID)}/${encodeURIComponent(ulid(1))}`
+		);
+	});
+
+	// The page says what a peer can read, so it costs what that list costs and
+	// never a walk of everything the person has written.
+	it('reads no subtree to say it', async () => {
+		open();
+		await settle();
+		expect(api.calls.filter((call) => call.includes('origin='))).toEqual([]);
+	});
+
+	it('says what publishing one would mean where nothing is published yet', async () => {
+		api.on('GET /publications', () => []);
+		open();
+		await settle();
+		expect(target.textContent).toContain('read by anyone who has its address');
+	});
+
+	it('hands the identity over on a tap', async () => {
+		const copied: string[] = [];
+		Object.defineProperty(globalThis.navigator, 'clipboard', {
+			configurable: true,
+			value: {
+				writeText: (words: string) => {
+					copied.push(words);
+					return Promise.resolve();
+				}
+			}
+		});
+		open();
+		await settle();
+		target.querySelector<HTMLElement>('[aria-label="Copy your identity"]')?.click();
+		await settle();
+		expect(copied).toEqual([DID]);
 	});
 
 	it('asks the store once, however many surfaces want the answer', async () => {

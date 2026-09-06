@@ -77,6 +77,42 @@ describe('who somebody is', () => {
 		expect(people.of(stranger)).toBeNull();
 	});
 
+	// A surface draws them as the identifier they travel by, settled: telling one
+	// stranger from another is what the reader is left with.
+	it('holds somebody nobody could place as somebody nobody can, and stops asking', async () => {
+		const stranger = 'did:syr:z6MkfZ3Uc1nUxUeaKvcVjNbBidsWv5tvfAv1TFuxNvcbXeaC';
+		people.resolve(stranger);
+		await settle();
+		people.resolve(stranger);
+		await settle();
+
+		expect(people.unplaced(stranger)).toBe(true);
+		expect(api.countOf(asked(stranger))).toBe(1);
+	});
+
+	// A read that never landed says nothing about who somebody is, so the name is
+	// still coming and the next surface that wants it asks again.
+	it('asks again for somebody whose instance did not answer', async () => {
+		api.on(asked(PEER), () => new Response('', { status: 503 }));
+		people.resolve(PEER);
+		await settle();
+
+		expect(people.unplaced(PEER)).toBe(false);
+
+		api.on(asked(PEER), () => THEM);
+		people.resolve(PEER);
+		await settle();
+
+		expect(people.of(PEER)?.handle).toBe('charles');
+	});
+
+	it('holds somebody it has not asked about apart from somebody it could not place', async () => {
+		expect(people.unplaced(PEER)).toBe(false);
+		people.resolve(PEER);
+		await settle();
+		expect(people.unplaced(PEER)).toBe(false);
+	});
+
 	// Nothing the last person's graph named may be on screen for the next one.
 	it('forgets everybody when the person signs out', async () => {
 		await people.read();
@@ -85,6 +121,7 @@ describe('who somebody is', () => {
 		people.hold(null);
 		expect(people.me).toBeNull();
 		expect(people.of(PEER)).toBeNull();
+		expect(people.unplaced(PEER)).toBe(false);
 	});
 
 	it('does not let an answer in flight at sign-out land on the next person', async () => {

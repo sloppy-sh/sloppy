@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type FakeApi, finding, node, ref, useFakeApi } from '../stores/fake-api.test-support.js';
+import { people } from '../stores/people.svelte.js';
 import GraphTree from './graph-tree.svelte';
 
 const OTHER = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH';
@@ -73,6 +74,7 @@ async function settle(): Promise<void> {
 beforeEach(() => {
 	fake = useFakeApi();
 	finding(fake);
+	people.hold(null);
 	read = [];
 	unfolded = new SvelteSet<OwnedRef>();
 	scrolledTo = [];
@@ -182,18 +184,40 @@ describe('several graphs on the canvas', () => {
 });
 
 describe('a branch pulled from somebody else', () => {
-	it('is one tree of its own, with nobody named over it', () => {
-		const root = ref(20, OTHER);
-		render({
-			notes: [
-				{ ...node(20, '3'), ref: root, created_by: OTHER, origin: root },
-				{ ...node(21, '3a'), ref: ref(21, OTHER), created_by: OTHER, parent: root, origin: root }
-			],
-			fields: undefined
-		});
+	const root = ref(20, OTHER);
+	const region = [
+		{ ...node(20, '3'), ref: root, created_by: OTHER, origin: root },
+		{ ...node(21, '3a'), ref: ref(21, OTHER), created_by: OTHER, parent: root, origin: root }
+	];
+
+	function answersFor(did: string, displayName: string): void {
+		fake.on(`GET /profile/${encodeURIComponent(did)}`, () => ({
+			did,
+			username: 'ada',
+			display_name: displayName,
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+	}
+
+	// PRODUCT.md § Accessibility: the walk is a first-class way through the
+	// graph, so it says whose notes these are before it reads a title.
+	it('is one tree of its own, named for whoever wrote it', async () => {
+		answersFor(OTHER, 'Ada Lovelace');
+		render({ notes: region, fields: undefined });
+		await settle();
 		expect(shown()).toEqual(['3']);
-		expect(target.querySelector('h2')).toBeNull();
 		expect(target.querySelectorAll('[role="tree"]')).toHaveLength(1);
+		expect(target.querySelector('h2')?.textContent?.trim()).toBe('Notes by Ada Lovelace');
+		expect(target.querySelector('[role="tree"]')?.getAttribute('aria-label')).toBe(
+			'Notes by Ada Lovelace'
+		);
+	});
+
+	it('names them by the identity they travel under until their instance answers', () => {
+		render({ notes: region, fields: undefined });
+		expect(target.querySelector('h2')?.textContent?.trim()).toBe(`Notes by ${OTHER}`);
 	});
 });
 

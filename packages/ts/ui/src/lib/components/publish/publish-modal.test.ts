@@ -344,6 +344,93 @@ describe('the decision to publish again', () => {
 	});
 });
 
+describe('what a reader has to be given', () => {
+	const opened = (reader: { identity?: string; where?: string }) => {
+		mounted = mount(PublishModal, {
+			target,
+			props: {
+				open: true,
+				address: '1a',
+				reader,
+				published: branch,
+				onchanges: async () => null,
+				onpending: async () => null,
+				onpublish: async () => undefined,
+				oncomments: async () => undefined,
+				onunpublish: async () => undefined
+			}
+		});
+		flushSync();
+	};
+
+	const selectable = () =>
+		[...document.body.querySelectorAll('.select-text')].map((one) => one.textContent?.trim());
+
+	it('names the branch, the author and where their graph is', () => {
+		opened({ identity: AUTHOR, where: 'https://notes.example' });
+
+		expect(selectable()).toEqual(['1a', AUTHOR, 'https://notes.example']);
+	});
+
+	it('leaves out where the graph is where the instance could not say', () => {
+		opened({ identity: AUTHOR });
+
+		expect(selectable()).toEqual(['1a', AUTHOR]);
+		expect(document.body.textContent).not.toContain('Where your graph is');
+	});
+
+	it('says nothing at all where there is nothing to hand over', () => {
+		opened({});
+
+		expect(document.body.textContent).not.toContain('What a reader needs');
+	});
+});
+
+describe('the terms of a first publish', () => {
+	const asked = () => {
+		mounted = mount(PublishModal, {
+			target,
+			props: {
+				open: true,
+				address: '1a',
+				published: null,
+				onchanges: async () => null,
+				onpending: async () => null,
+				onpublish: async () => undefined,
+				oncomments: async () => undefined,
+				onunpublish: async () => undefined
+			}
+		});
+		flushSync();
+		return document.body.textContent ?? '';
+	};
+
+	it('says the graph goes out by name, and the look by shape alone', () => {
+		const shown = asked();
+
+		expect(shown).toContain('The name you gave the graph it sits in goes out too.');
+		expect(shown).toContain(
+			'How it looks on the graph goes out as well — the ring and the size, though not a picture you set there.'
+		);
+	});
+});
+
+describe('taking a branch down', () => {
+	it('says what stops, and what the people who read it keep', async () => {
+		open(async () => null);
+
+		const down = [...document.body.querySelectorAll('button')].find(
+			(button) => button.textContent?.trim() === 'Take it down'
+		);
+		down?.click();
+		flushSync();
+
+		const shown = document.body.textContent ?? '';
+		expect(shown).toContain('Nobody new can read it, and the pictures in it stop opening.');
+		expect(shown).toContain('Whoever has already read it keeps their copy of the writing.');
+	});
+});
+
 describe('a chain longer than the list shows', () => {
 	it('reads the oldest one listed against the publish kept back for it', async () => {
 		const asked = vi.fn(async () => ({ changes }));

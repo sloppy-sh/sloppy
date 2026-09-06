@@ -7,6 +7,7 @@ import {
   type Address,
   type DidSyr,
   childAddress,
+  homeGraphRef,
   MAX_PUBLISHED_PAGES,
   type OwnedRef,
   type Publication,
@@ -33,6 +34,8 @@ const tag = (at: number) => String(at).padStart(6, "0");
 const PUBLICATION = ref("PB");
 const VERSION = ref("VR");
 const NOW = "2026-01-01T00:00:00.000Z";
+/** What this author calls the notebook the chain below is read in. */
+const NOTEBOOK = "The garden";
 
 interface Snapshot {
   nodes: SnapshotNode[];
@@ -205,6 +208,13 @@ function repositoryOf(first: Snapshot): {
       }
       return run.slice(0, limit);
     },
+    async graphTitles(_did: string, graphs: readonly OwnedRef[]) {
+      return new Map(
+        graphs
+          .filter((of) => of === homeGraphRef(AVA))
+          .map((of) => [of, NOTEBOOK]),
+      );
+    },
     async blocksAfter(
       _did: string,
       version: OwnedRef,
@@ -286,6 +296,17 @@ describe("serving one version a page at a time", () => {
     expect(page?.nodes).toHaveLength(20);
     expect(page?.blocks).toHaveLength(60);
     expect(page?.next_cursor).toBeUndefined();
+  });
+
+  // A peer holding two regions of one author's graphs reads two `1a`s, and the
+  // name is what tells them apart.
+  it("names the notebook every address on the page is read in", async () => {
+    const service = new PublishedService(
+      repositoryOf(version({ notes: 2, sections: 0 })).repository,
+    );
+
+    const page = await service.subtree(AVA, PUBLICATION, undefined, undefined);
+    expect(page?.graph_title).toBe(NOTEBOOK);
   });
 
   it("answers nothing for a publication that is not here", async () => {

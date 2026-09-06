@@ -5,10 +5,10 @@
  * so the nav, the settings row and a note's author cannot disagree.
  */
 
-import { proxied } from '@sloppy/client';
+import { proxied, SloppyApiError } from '@sloppy/client';
 import type { ProfileView } from '@sloppy/types';
 import type { Person } from '@sloppy/ui';
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { api } from '../api.js';
 
 /** Their pictures resolved for an `<img>`; the rest is the store's own answer. */
@@ -22,11 +22,16 @@ export function personFrom(profile: ProfileView): Person {
 	};
 }
 
+function answeredWithNobody(error: unknown): boolean {
+	return error instanceof SloppyApiError && error.status === 404;
+}
+
 class PeopleStore {
 	#me = $state<ProfileView | null>(null);
 	#asking: Promise<ProfileView> | null = null;
 	#others = new SvelteMap<string, ProfileView>();
 	#othersInflight = new Map<string, Promise<void>>();
+	#unplaced = new SvelteSet<string>();
 	// A sign-out that lands while a read is in flight must not be undone by its
 	// answer, which belongs to whoever just left.
 	#epoch = 0;
@@ -61,6 +66,7 @@ class PeopleStore {
 		this.#me = profile;
 		this.#others.clear();
 		this.#othersInflight.clear();
+		this.#unplaced.clear();
 	}
 
 	/** Anyone, once their instance has answered {@link resolve}. */
@@ -69,19 +75,28 @@ class PeopleStore {
 		return known ? personFrom(known) : null;
 	}
 
+	/** Whether their instance answered with nobody. A surface draws them as the
+	 *  identifier they travel by, settled: no name is coming. */
+	unplaced(did: string): boolean {
+		return this.#unplaced.has(did);
+	}
+
 	/** Asks for somebody a surface is about to name. Deduped, and silent about a
 	 *  refusal: an identity nobody here can resolve is a name the surface does
 	 *  without, not news to break to the reader. */
 	resolve(did: string): void {
 		if (!did || did === this.#me?.did) return;
 		if (this.#others.has(did) || this.#othersInflight.has(did)) return;
+		if (this.#unplaced.has(did)) return;
 		const at = this.#epoch;
 		const request = api
 			.profileOf(did)
 			.then((profile) => {
 				if (at === this.#epoch) this.#others.set(did, profile);
 			})
-			.catch(() => {})
+			.catch((error: unknown) => {
+				if (at === this.#epoch && answeredWithNobody(error)) this.#unplaced.add(did);
+			})
 			.finally(() => {
 				this.#othersInflight.delete(did);
 			});

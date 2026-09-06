@@ -81,6 +81,43 @@ export async function readPeerJson(
   }
 }
 
+/**
+ * One thing said to a peer's public endpoint, and whether it was taken. The
+ * body of the answer is not read: a courtesy left at somebody else's instance
+ * is either accepted or it is not, and nothing the far end says back changes
+ * what the caller does next.
+ *
+ * Nothing here throws. A peer that is down, refuses, or sits at an address this
+ * deployment will not connect to is a `false`, so a caller can leave one
+ * without the person's own work turning on it.
+ */
+export async function tellPeerJson(
+  url: string,
+  body: unknown,
+  policy: HostPolicy,
+): Promise<boolean> {
+  try {
+    const response = await fetchReachable(url, policy, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    await response.body?.cancel().catch(() => undefined);
+    if (!response.ok) {
+      logger.warn(`${url} answered ${response.status}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    logger.warn(`${url} did not answer: ${reason(error)}`);
+    return false;
+  }
+}
+
 async function bounded(
   response: Awaited<ReturnType<typeof fetchReachable>>,
   url: string,

@@ -1,4 +1,4 @@
-import type { NoteReaction } from '@sloppy/types';
+import type { NoteComment, NoteReaction, OwnedRef, RefusedVoiceView } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { conversation } from './conversation.svelte.js';
 import { DID, ref, useFakeApi, type FakeApi } from './fake-api.test-support.js';
@@ -45,6 +45,26 @@ function pictureOf(reaction: NoteReaction | undefined): string {
 	if (reaction?.kind !== 'emoji') throw new Error('expected a reaction with a picture');
 	return reaction.emoji.src;
 }
+
+function answered(author: string, localId: string): NoteComment {
+	return {
+		comment_id: `${author}:${localId}`,
+		author,
+		node: NOTE,
+		content: 'A thought back.',
+		created_at: '2026-01-01T00:00:00.000Z',
+		updated_at: '2026-01-01T00:00:00.000Z'
+	};
+}
+
+const refusalOf = (voice: string, note?: OwnedRef): RefusedVoiceView => ({
+	ref: ref(9),
+	created_by: DID,
+	voice,
+	...(note === undefined ? {} : { note }),
+	created_at: '2026-01-01T00:00:00.000Z',
+	updated_at: '2026-01-01T00:00:00.000Z'
+});
 
 let api: FakeApi;
 
@@ -110,5 +130,82 @@ describe('reacting to a note', () => {
 		await conversation.react({ node: NOTE, kind: 'character', character: '👏' });
 
 		expect(conversation.reactions(NOTE)).toEqual([cheer(DID, 'r1'), clap]);
+	});
+});
+
+describe('a voice the reader refuses', () => {
+	beforeEach(() => {
+		api.on(`GET /nodes${refPath(NOTE)}/comments`, () => [
+			answered(PEER, 'c1'),
+			answered(DID, 'c2')
+		]);
+		api.on(`GET /nodes${refPath(NOTE)}/reactions`, () => [cheer(PEER, 'r1'), cheer(DID, 'r2')]);
+	});
+
+	it('is not shown on a note the reader opens', async () => {
+		api.on('GET /refused-voices', () => [refusalOf(PEER)]);
+		await conversation.load(NOTE);
+
+		expect(conversation.comments(NOTE).map((one) => one.author)).toEqual([DID]);
+		expect(conversation.reactions(NOTE).map((one) => one.author)).toEqual([DID]);
+	});
+
+	it('goes the moment they are refused, and comes back when that is undone', async () => {
+		api.on('GET /refused-voices', () => []);
+		api.on('POST /refused-voices', () => refusalOf(PEER, NOTE));
+		api.on('DELETE /refused-voices', () => undefined);
+		await conversation.load(NOTE);
+		expect(conversation.comments(NOTE)).toHaveLength(2);
+
+		await conversation.refuse(PEER, NOTE);
+		expect(conversation.comments(NOTE).map((one) => one.author)).toEqual([DID]);
+
+		await conversation.allow(PEER, NOTE);
+		expect(conversation.comments(NOTE)).toHaveLength(2);
+	});
+
+	it('is refused on one note without going quiet on another', async () => {
+		const elsewhere = ref(2);
+		api.on(`GET /nodes${refPath(elsewhere)}/comments`, () => [
+			{ ...answered(PEER, 'c3'), node: elsewhere }
+		]);
+		api.on(`GET /nodes${refPath(elsewhere)}/reactions`, () => []);
+		api.on('GET /refused-voices', () => [refusalOf(PEER, NOTE)]);
+		await conversation.load(NOTE);
+		await conversation.load(elsewhere);
+
+		expect(conversation.comments(NOTE).map((one) => one.author)).toEqual([DID]);
+		expect(conversation.comments(elsewhere).map((one) => one.author)).toEqual([PEER]);
+	});
+
+	it('is asked for once, however many notes are read', async () => {
+		api.on('GET /refused-voices', () => []);
+		api.on(`GET /nodes${refPath(ref(2))}/comments`, () => []);
+		api.on(`GET /nodes${refPath(ref(2))}/reactions`, () => []);
+		await conversation.load(NOTE);
+		await conversation.load(ref(2));
+
+		expect(api.countOf('GET /refused-voices')).toBe(1);
+	});
+
+	// The list is the reader's own, and what it hides is nothing anybody else
+	// asked for: a read that did not land hides nothing.
+	it('shows the conversation whole when that list could not be read', async () => {
+		await conversation.load(NOTE);
+
+		expect(conversation.comments(NOTE)).toHaveLength(2);
+		expect(conversation.status(NOTE).failed).toBe(false);
+	});
+
+	it('holds nothing of the last reader for the next', async () => {
+		api.on('GET /refused-voices', () => [refusalOf(PEER)]);
+		await conversation.load(NOTE);
+		expect(conversation.comments(NOTE)).toHaveLength(1);
+
+		conversation.clear();
+		api.on('GET /refused-voices', () => []);
+		await conversation.load(NOTE);
+
+		expect(conversation.comments(NOTE)).toHaveLength(2);
 	});
 });

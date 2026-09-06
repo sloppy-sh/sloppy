@@ -11,6 +11,8 @@ export type { DeviceArea } from './device-store.js';
 export {
 	activeRouteId,
 	APP_ROUTES,
+	citationUrl,
+	isOpenRoute,
 	newHref,
 	nodeHref,
 	OPEN_ROUTES,

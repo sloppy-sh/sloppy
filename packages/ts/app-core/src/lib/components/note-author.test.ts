@@ -1,11 +1,21 @@
-import type { ProfileView } from '@sloppy/types';
+import type { ProfileView, PublishedPublication } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DID, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import { peers } from '../stores/peers.svelte.js';
 import { people } from '../stores/people.svelte.js';
+import { session } from '../stores/session.svelte.js';
 import NoteAuthor from './note-author.svelte';
 
 const PEER = 'did:syr:z6MkjChhrJfLm9WGVUAnyLPnfPGmZDcyDKNsBTsAsn7RkAqB';
+const STRANGER = 'did:syr:z6MkfZ3Uc1nUxUeaKvcVjNbBidsWv5tvfAv1TFuxNvcbXeaC';
+
+const THEIR_BRANCH: PublishedPublication = {
+	ref: ref(3, PEER),
+	root_address: '1a',
+	title: 'The seed of the argument',
+	latest: { ref: ref(4, PEER), sequence: 1, published_at: AT }
+};
 
 /** As it reaches the server: an address is one path segment, colons and all. */
 const asked = (did: string) => `GET /profile/${encodeURIComponent(did)}`;
@@ -39,11 +49,30 @@ beforeEach(() => {
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
 		writable: true,
-		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
+		value: (query: string) => ({
+			matches: query.includes('min-width'),
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		})
+	});
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
 	});
 	people.hold(null);
+	peers.clear();
+	session.clear();
+	session.adopt(VIEWER, 'a-session');
 	api = useFakeApi();
 	api.on(asked(PEER), () => THEM);
+	api.on('GET /following', () => []);
+	api.on('GET /pulls', () => []);
+	api.on('GET /peers/publications', () => ({ did: PEER, publications: [THEIR_BRANCH] }));
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -63,10 +92,67 @@ describe('who wrote the note', () => {
 		expect(target.textContent).toContain('CB');
 	});
 
-	it('says nothing at all about an author nobody here can resolve', async () => {
-		show('did:syr:z6MkfZ3Uc1nUxUeaKvcVjNbBidsWv5tvfAv1TFuxNvcbXeaC');
+	it('draws an author nobody here can place as the identifier they travel by', async () => {
+		show(STRANGER);
+		await settle();
+		expect(target.textContent).toContain('z6MkfZ3U');
+	});
+
+	it('opens what they publish, and the way to follow them', async () => {
+		show(PEER);
+		await settle();
+		target.querySelector('button')?.click();
+		await settle();
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('Charles Babbage');
+		expect(text).toContain(PEER);
+		expect(text).toContain('1a');
+		expect(text).toContain('The seed of the argument');
+		expect(text).toContain('Follow');
+	});
+
+	// The instance to ask is only known once the reader's follows are in, and
+	// this instance answers nothing about a stranger it has never held.
+	it('asks the instance they were followed from, not this one', async () => {
+		api.on('GET /following', () => [{ did: PEER, provider_url: 'https://elsewhere.test' }]);
+		show(PEER);
+		await settle();
+		target.querySelector('button')?.click();
+		await settle();
+
+		const asking = api.calls.find((call) => call.startsWith('GET /peers/publications'));
+		expect(asking).toBeDefined();
+		expect(new URL(asking!, 'http://api.test').searchParams.get('source_url')).toBe(
+			'https://elsewhere.test'
+		);
+	});
+
+	it('says nobody at all until their instance has answered', async () => {
+		let answer!: (profile: ProfileView) => void;
+		api.on(asked(PEER), () => new Promise<ProfileView>((done) => (answer = done)));
+		show(PEER);
 		await settle();
 		expect(target.textContent).toBe('');
+
+		answer(THEM);
+		await settle();
+		expect(target.textContent).toContain('Charles Babbage');
+	});
+
+	it('leaves the signed-in person’s own line alone', async () => {
+		api.on('GET /profile/me', () => ({
+			did: DID,
+			username: 'ada',
+			display_name: 'Ada Lovelace',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		await people.read();
+		show(DID);
+		await settle();
+		expect(target.querySelector('button')).toBeNull();
 	});
 
 	// The note surface is where a graph is read, so the same author over and over

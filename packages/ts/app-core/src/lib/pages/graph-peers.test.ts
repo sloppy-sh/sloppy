@@ -2,12 +2,21 @@
 // is, what one of their notes opens as, and what the surface stops offering
 // while it is up.
 
-import type { BlockView, NodeView, NoteComment, OwnedRef, PullView } from '@sloppy/types';
+import type {
+	AnsweredNote,
+	BlockView,
+	NodeView,
+	NoteComment,
+	OwnedRef,
+	PullView
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	AT,
+	conversing,
 	DID,
+	holding,
 	node,
 	ref,
 	ulid,
@@ -127,9 +136,14 @@ let mounted: ReturnType<typeof mount> | undefined;
 /** The regions the reader holds, so a suite can vary the author's terms. */
 let regions: PullView[];
 let said: NoteComment[];
+/** The reader's own notes strangers answered. */
+let answered: AnsweredNote[];
 /** Where this instance keeps its own identities: `null` makes the reader
  *  somebody whose identity is kept where it can answer for them. */
 let ownInstance: string | null;
+/** Put back by whichever case stood in for the clipboard, so the stand-in does
+ *  not outlive it. */
+let restoreClipboard: (() => void) | undefined;
 
 function stubViewport(): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
@@ -209,6 +223,15 @@ const choosingOnCanvas = () =>
 
 const screen = () => document.body.textContent ?? '';
 
+/** Open the graph and raise the sheet the peer surfaces live on. */
+async function openPeersSheet(): Promise<void> {
+	mounted = mount(Graph, { target });
+	flushSync();
+	await settle();
+	labelledControl("Other people's graphs").click();
+	await settle();
+}
+
 /** Open the graph, then the region held from a peer. */
 async function enterHeldRegion(): Promise<void> {
 	mounted = mount(Graph, { target });
@@ -237,6 +260,7 @@ beforeEach(() => {
 	session.adopt(VIEWER, 'a-token');
 	regions = [held];
 	said = [];
+	answered = [];
 	ownInstance = null;
 
 	api.on('GET /nodes/tags', () => []);
@@ -255,7 +279,11 @@ beforeEach(() => {
 	api.on(`GET /nodes${refPath(THEIRS_UNDER)}/comments`, () => said);
 	api.on(`GET /nodes${refPath(THEIRS_UNDER)}/reactions`, () => []);
 	api.on('GET /auth/own-instance', () => ({ instance_url: ownInstance }));
+	// What that identity's own store can hold, which is what a conversation is
+	// offered on.
+	conversing(api);
 	api.on('GET /emoji/me', () => []);
+	api.on('GET /answered-notes', () => answered);
 
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -265,6 +293,8 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	session.clear();
+	restoreClipboard?.();
+	restoreClipboard = undefined;
 	target.remove();
 	document.body.innerHTML = '';
 });
@@ -440,8 +470,10 @@ describe('answering somebody else’s note', () => {
 		expect(api.countOf(`GET /nodes${refPath(THEIRS_UNDER)}/comments`)).toBe(0);
 	});
 
-	it('is not offered to somebody whose identity keeps none', async () => {
-		ownInstance = VIEWER.syr_instance_url;
+	// The gate is what the reader's own store serves, never where it stands: one
+	// that takes a comment and lists none hands back a comment that is gone.
+	it('is not offered where the reader’s own store cannot hold one', async () => {
+		conversing(api, { converses: { comments: false, reactions: false } });
 		said = [comment('c1', AUTHOR, 'A thought of my own')];
 
 		await openTheirNote();
@@ -450,5 +482,306 @@ describe('answering somebody else’s note', () => {
 		expect(screen()).not.toContain('Conversation');
 		expect(screen()).not.toContain('Say something');
 		expect(api.countOf(`GET /nodes${refPath(THEIRS_UNDER)}/comments`)).toBe(0);
+	});
+});
+
+describe('what the reader is holding', () => {
+	/** The chain the author's instance serves, newest first. */
+	function publishes(sequence: number): void {
+		api.on('GET /peers/versions', () => ({
+			publication: held.publication,
+			versions: [{ ref: ref(40 + sequence, AUTHOR), sequence, published_at: AT }]
+		}));
+	}
+
+	it('says which version it holds, and that the author has moved past it', async () => {
+		publishes(3);
+		await openPeersSheet();
+		await until(() => screen().includes('Version 3 is out'));
+
+		expect(screen()).toContain('Version 1, read');
+		expect(screen()).toContain('Version 3 is out');
+	});
+
+	it('says nothing about a newer one where it holds the newest', async () => {
+		publishes(1);
+		await openPeersSheet();
+		await settle();
+
+		expect(screen()).toContain('Version 1, read');
+		expect(screen()).not.toContain('is out');
+		expect(() => button('What changed')).toThrow();
+	});
+
+	it('shows what changed between the copy held and the one that is out', async () => {
+		publishes(3);
+		api.on('GET /peers/changes', () => ({
+			publication: held.publication,
+			root_address: held.root_address,
+			from: held.version.ref,
+			to: ref(43, AUTHOR),
+			changes: [
+				{
+					change: 'added',
+					note: {
+						ref: ref(13, AUTHOR),
+						address: '1b',
+						parent: THEIR_ROOT,
+						origin: THEIR_ROOT,
+						title: 'A new thought',
+						tags: [],
+						links: [],
+						created_at: AT,
+						updated_at: AT
+					},
+					sections: []
+				}
+			]
+		}));
+
+		await openPeersSheet();
+		await until(() => screen().includes('Version 3 is out'));
+		button('What changed').click();
+		await until(() => screen().includes('A new thought'));
+
+		expect(api.calls.some((call) => call.startsWith('GET /peers/changes'))).toBe(true);
+		expect(screen()).toContain('1b');
+	});
+
+	it('takes the copy again from the instance it came from, without leaving the sheet', async () => {
+		let asked: unknown;
+		publishes(3);
+		api.on('POST /pulls', (_url, init) => {
+			asked = JSON.parse(String(init?.body));
+			return held;
+		});
+		await openPeersSheet();
+		await settle();
+
+		labelledControl('Read this region again').click();
+		await until(() => asked !== undefined);
+		await settle();
+
+		expect(asked).toMatchObject({ publication: held.publication, source_url: held.source_url });
+		// The copy is taken where the reader already was.
+		expect(screen()).toContain('What you are holding');
+	});
+
+	it('tells two of one author’s notebooks apart by the names they travelled with', async () => {
+		const second = `${DID}/01JQXR000000000000000000RH` as OwnedRef;
+		regions = [
+			{ ...held, graph: ref(90, AUTHOR), graph_title: 'The thesis' },
+			{
+				...held,
+				ref: second,
+				publication: ref(33, AUTHOR),
+				graph: ref(91, AUTHOR),
+				graph_title: 'The garden'
+			}
+		];
+
+		await openPeersSheet();
+		await settle();
+
+		expect(screen()).toContain('The thesis');
+		expect(screen()).toContain('The garden');
+		// The notebook is named, never the thing that keys it.
+		expect(screen()).not.toContain(ulid(90));
+	});
+
+	it('names the notebook a region is read in while it is on the canvas', async () => {
+		regions = [{ ...held, graph: ref(90, AUTHOR), graph_title: 'The thesis' }];
+
+		await enterHeldRegion();
+
+		expect(screen()).toContain('The thesis');
+	});
+});
+
+describe('the reader’s own notes somebody answered', () => {
+	it('lists them without a count, and opens the note the answer is on', async () => {
+		answered = [{ note: ref(1), address: '1', graph: ref(80), title: 'Mine', voices: [AUTHOR] }];
+
+		await openPeersSheet();
+		await until(() => screen().includes('Answers on your notes'));
+
+		expect(screen()).toContain('Mine');
+		expect(screen()).not.toContain('1 answer');
+		button('Mine').click();
+		await settle();
+
+		expect(at.note).toBe(ref(1));
+	});
+
+	it('never claims to be every answer the notes have', async () => {
+		answered = [{ note: ref(1), address: '1', graph: ref(80), title: 'Mine', voices: [AUTHOR] }];
+
+		await openPeersSheet();
+		await until(() => screen().includes('Answers on your notes'));
+
+		expect(screen()).toContain('From people you do not follow');
+	});
+
+	it('names whoever answered, where this instance can place them', async () => {
+		regions = [];
+		answered = [{ note: ref(1), address: '1', graph: ref(80), title: 'Mine', voices: [AUTHOR] }];
+		api.on(`GET /profile/${encodeURIComponent(AUTHOR)}`, () => ({
+			did: AUTHOR,
+			username: 'alice',
+			display_name: 'Alice Author',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+
+		await openPeersSheet();
+		await until(() => screen().includes('Alice Author'));
+
+		expect(screen()).not.toContain(AUTHOR);
+	});
+});
+
+describe('a citation to somebody else’s note', () => {
+	const path = `/n/${encodeURIComponent(AUTHOR)}/${ulid(12)}`;
+
+	it('opens the note in the region the reader holds a copy of it in', async () => {
+		holding(api, [
+			{
+				note: theirs(12, '1a', { title: 'Note 1a', origin: THEIR_ROOT, parent: THEIR_ROOT }),
+				pull: held
+			}
+		]);
+		startAt(path);
+
+		mounted = mount(Graph, { target });
+		flushSync();
+		await until(() => screen().includes('What they wrote in 1a'));
+
+		expect(screen()).toContain('Note 1a');
+		expect(drawn()).toEqual(['1', '1a']);
+	});
+
+	it('offers the branch that carries it where the reader holds no copy', async () => {
+		api.on(`GET /pulls/nodes/${encodeURIComponent(AUTHOR)}/${ulid(12)}`, () => null);
+		api.on('GET /peers/publications', () => ({
+			did: AUTHOR,
+			publications: [
+				{
+					ref: ref(31, AUTHOR),
+					root_address: '1',
+					title: 'What they wrote',
+					latest: { ref: ref(32, AUTHOR), sequence: 1, published_at: AT }
+				}
+			]
+		}));
+		regions = [];
+		startAt(path);
+
+		mounted = mount(Graph, { target });
+		flushSync();
+		await until(() => screen().includes('What they wrote'));
+
+		// The sheet is up, asking about the person whose note was cited.
+		expect(api.calls.some((call) => call.includes(`did=${encodeURIComponent(AUTHOR)}`))).toBe(true);
+		expect(screen()).not.toContain('may have taken it down');
+		expect(screen()).toContain('Read it');
+	});
+
+	it('asks about them where the reader already knows their graph is kept', async () => {
+		api.on('GET /following', () => [{ did: AUTHOR, provider_url: 'https://theirs.example' }]);
+		api.on(`GET /pulls/nodes/${encodeURIComponent(AUTHOR)}/${ulid(12)}`, () => null);
+		api.on('GET /peers/publications', () => ({ did: AUTHOR, publications: [] }));
+		regions = [];
+		startAt(path);
+
+		mounted = mount(Graph, { target });
+		flushSync();
+		await until(() =>
+			api.calls.some(
+				(call) =>
+					call.startsWith('GET /peers/publications') &&
+					call.includes('source_url=https%3A%2F%2Ftheirs.example')
+			)
+		);
+	});
+});
+
+describe('a note of the reader’s own, off one they are holding', () => {
+	it('writes it in their own notebook, citing the note they were reading', async () => {
+		let written: unknown;
+		api.on('POST /nodes', () => node(50, '2', { title: '' }));
+		api.on(`PATCH /nodes${refPath(ref(50))}`, (_url, init) => {
+			written = JSON.parse(String(init?.body));
+			return node(50, '2', { links: [THEIRS_UNDER] });
+		});
+
+		await enterHeldRegion();
+		onCanvas('1a').click();
+		await settle();
+		button('Write a note of your own').click();
+		await until(() => written !== undefined);
+		await settle();
+
+		expect(written).toEqual({ links: [THEIRS_UNDER] });
+		// Their region is behind the reader now, on their own graph.
+		expect(drawn()).toEqual(['1', '2']);
+	});
+
+	it('leaves nothing behind in their notebook when it cannot be made to cite', async () => {
+		let gone = false;
+		api.on('POST /nodes', () => node(50, '2', { title: '' }));
+		api.on(
+			`PATCH /nodes${refPath(ref(50))}`,
+			() => new Response('{"message":"That note could not be changed."}', { status: 500 })
+		);
+		api.on(`DELETE /nodes${refPath(ref(50))}`, () => {
+			gone = true;
+			return undefined;
+		});
+
+		await enterHeldRegion();
+		onCanvas('1a').click();
+		await settle();
+		button('Write a note of your own').click();
+		await until(() => gone);
+		await settle();
+
+		expect(screen()).toContain('That note could not be changed.');
+	});
+
+	it('copies the address a peer would resolve, with the notebook it is read in', async () => {
+		const copied: string[] = [];
+		const board = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
+		Object.defineProperty(globalThis.navigator, 'clipboard', {
+			configurable: true,
+			value: { writeText: (text: string) => (copied.push(text), Promise.resolve()) }
+		});
+		restoreClipboard = () => {
+			if (board) Object.defineProperty(globalThis.navigator, 'clipboard', board);
+			else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+		};
+		regions = [{ ...held, graph: ref(90, AUTHOR), graph_title: 'The thesis' }];
+
+		await enterHeldRegion();
+		onCanvas('1a').click();
+		await settle();
+		labelledControl("Copy this note's address").click();
+		await settle();
+
+		expect(copied).toEqual(['1a · The thesis']);
+	});
+});
+
+describe('somebody nobody here could place', () => {
+	it('is drawn as the identifier they travel by, settled', async () => {
+		api.on('GET /following', () => [{ did: STRANGER, provider_url: 'https://theirs.example' }]);
+
+		await openPeersSheet();
+		await until(() => people.unplaced(STRANGER));
+		await settle();
+
+		expect(screen()).toContain(STRANGER);
+		// Nothing is still on its way, so nothing shimmers as though it were.
+		expect(document.body.querySelector('[data-slot="skeleton"]')).toBeNull();
 	});
 });

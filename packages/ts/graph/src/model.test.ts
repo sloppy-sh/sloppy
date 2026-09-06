@@ -2,6 +2,7 @@ import {
   type Address,
   addressDepth,
   assignTagHueSlots,
+  type DidSyr,
   type EdgeKind,
   MARK_RADII,
   MARK_RADIUS_SCALE,
@@ -14,6 +15,7 @@ import {
   PREVIEW_SIZE_COVER,
   PREVIEW_SIZES,
   type OwnedRef,
+  PublishedNodeSchema,
   siblingAddress,
   type Tag,
 } from "@sloppy/types";
@@ -795,6 +797,75 @@ describe("the look a note's author gave it", () => {
     });
     expect(mark.ringWeight).toBe("hairline");
     expect(mark.radius).toBeGreaterThan(radiusOf([plain("1")]));
+  });
+
+  // DESIGN.md § "A note's look never uses colour": the shape channels travel, so
+  // a region a thinker shaped is read as they shaped it. The look arrives
+  // through the wire schema, so a channel that started travelling would reach
+  // the mark here.
+  describe("a mark held from a peer", () => {
+    const PEER = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva" as DidSyr;
+    const THERE = `${PEER}/01JSPREAD00000000000000000` as OwnedRef;
+
+    const markOf = (look: Record<string, unknown>) => {
+      const arrived = PublishedNodeSchema.parse({
+        ref: THERE,
+        address: "1",
+        origin: THERE,
+        title: "1",
+        tags: [],
+        links: [],
+        look,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      });
+      const entry: DrawnNode = {
+        node: {
+          ...note("1"),
+          ref: THERE,
+          created_by: PEER,
+          origin: THERE,
+          published: true,
+          appearance: arrived.look,
+        },
+        collapsed: false,
+        folded: 0,
+        tags: [],
+      };
+      const model = buildModel([entry], {
+        selection: [],
+        palette,
+        viewer: corpus.owner,
+      });
+      return model.graph.getNodeAttributes(THERE);
+    };
+
+    it("draws the shape its author gave it", () => {
+      const mark = markOf({
+        ring_weight: "heavy",
+        ring_style: "dashed",
+        mark_radius: "large",
+      });
+
+      expect(mark.provenance).toBe("pulled");
+      expect(mark.ringWeight).toBe("heavy");
+      expect(mark.ringStyle).toBe("dashed");
+      expect(mark.radius).toBe(LEAF_RADIUS * MARK_RADIUS_SCALE.large);
+    });
+
+    it("wears no picture, the pictures on a mark staying with their author", () => {
+      const mark = markOf({
+        ring_weight: "hairline",
+        preview: "upload-1",
+        preview_more: ["upload-2"],
+        preview_size: "large",
+        preview_cover: PREVIEW_COVER_MAX,
+      });
+
+      expect(mark.ringWeight).toBe("hairline");
+      expect(mark.preview.pictures).toEqual([]);
+      expect(mark.previewCover).toBe(PREVIEW_COVER_MIN);
+    });
   });
 });
 

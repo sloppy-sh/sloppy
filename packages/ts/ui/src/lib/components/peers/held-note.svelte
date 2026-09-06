@@ -3,8 +3,11 @@
 	// their own notes get — DESIGN.md § Layout. Nothing here writes: the copy is
 	// the author's words as they published them.
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Check from '@lucide/svelte/icons/check';
+	import PenLine from '@lucide/svelte/icons/pen-line';
 	import type { BlockView, NodeView } from '@sloppy/types';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import type { NoteEmoji } from '../editor/contract.js';
 	import type { PictureSource } from '../editor/picture-node.js';
@@ -18,31 +21,60 @@
 	let {
 		note,
 		author,
+		notebook = undefined,
 		blocks,
 		loading = false,
 		says = null,
+		writingRefused = null,
 		pictures,
 		references,
 		emoji,
 		conversation = null,
+		onCite,
 		onClose
 	}: {
 		/** The note being read; null closes the surface. */
 		note: NodeView | null;
 		author: Peer;
+		/** What its author calls the notebook the address is read in, where the
+		 *  name travelled with the copy. */
+		notebook?: string;
 		/** Its stack, in `ord` order. */
 		blocks: readonly BlockView[];
 		loading?: boolean;
 		/** Why the note's sections are not here. */
 		says?: string | null;
+		/** Why the note of the reader's own was not written. */
+		writingRefused?: string | null;
 		pictures: PictureSource;
 		references: ReferenceReader;
 		emoji: NoteEmoji['catalog'];
 		/** What people said on this note, and the way to answer it. Absent draws
 		 *  no conversation at all: who may answer is the host's to weigh. */
 		conversation?: ConversationProps | null;
+		/** Write a note of the reader's own citing this one. Absent offers none. */
+		onCite?: (note: NodeView) => void;
 		onClose: () => void;
 	} = $props();
+
+	/** The citation, as somebody says it: the address, and the notebook it is
+	 *  read in where its name came with it. */
+	const citation = $derived(
+		note ? (notebook ? `${note.address} · ${notebook}` : note.address) : ''
+	);
+	let copied = $state(false);
+	let sayingCopied: ReturnType<typeof setTimeout> | undefined;
+
+	async function copy(): Promise<void> {
+		try {
+			await navigator.clipboard.writeText(citation);
+		} catch {
+			return;
+		}
+		copied = true;
+		clearTimeout(sayingCopied);
+		sayingCopied = setTimeout(() => (copied = false), 1600);
+	}
 </script>
 
 <ReadingPanel
@@ -66,9 +98,17 @@
 					<ArrowLeft class="size-4" />
 					Their graph
 				</button>
-				<span class="ml-auto truncate address text-sm text-foreground/70 select-text">
-					{note.address}
-				</span>
+				<button
+					type="button"
+					onclick={copy}
+					aria-label="Copy this note's address"
+					class="ml-auto inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				>
+					<span class="truncate address select-text">{note.address}</span>
+					{#if copied}
+						<Check class="size-4 shrink-0" />
+					{/if}
+				</button>
 			</div>
 		</header>
 
@@ -76,8 +116,13 @@
 			<h2 class="text-2xl leading-snug font-semibold tracking-tight">
 				{note.title || 'Untitled'}
 			</h2>
-			<p class="text-sm text-muted-foreground">
-				{author.person ? nameOf(author.person) : author.identity} wrote this
+			<p class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-sm text-muted-foreground">
+				{#if author.person}
+					<span class="min-w-0 truncate">{nameOf(author.person)}</span>
+				{:else}
+					<span class="min-w-0 truncate font-mono text-xs select-text">{author.identity}</span>
+				{/if}
+				<span>wrote this{notebook ? ` in ${notebook}` : ''}</span>
 			</p>
 
 			{#if note.tags.length > 0}
@@ -99,6 +144,24 @@
 			{#key note.ref}
 				<HeldStack author={note.created_by} {blocks} {pictures} {references} {emoji} />
 			{/key}
+		{/if}
+
+		{#if onCite}
+			<div class="mt-6 space-y-2">
+				<Button
+					variant="outline"
+					class="h-11 w-full"
+					onclick={() => {
+						if (note) onCite(note);
+					}}
+				>
+					<PenLine class="size-4" />
+					Write a note of your own
+				</Button>
+				{#if writingRefused}
+					<p class="text-sm text-destructive" role="alert">{writingRefused}</p>
+				{/if}
+			</div>
 		{/if}
 
 		{#if conversation}

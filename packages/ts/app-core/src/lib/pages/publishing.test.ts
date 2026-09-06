@@ -16,6 +16,7 @@ import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import {
 	AT,
+	conversing,
 	DID,
 	node,
 	ref,
@@ -194,6 +195,9 @@ beforeEach(() => {
 	// Where this instance's own identities live. Answering `null` makes every
 	// suite below a person whose identity is kept somewhere that answers for it.
 	api.on('GET /auth/own-instance', () => ({ instance_url: ownInstance }));
+	// What that identity's own store can hold, which is what a conversation is
+	// offered on.
+	conversing(api);
 
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -495,7 +499,7 @@ describe('a branch already published', () => {
 		flushSync();
 
 		expect(says()).toContain('Take 1 down?');
-		expect(says()).toContain('stop being readable');
+		expect(says()).toContain('stop opening');
 		expect(says()).toContain('keeps their copy of the writing');
 	});
 
@@ -599,8 +603,10 @@ describe('the conversation on a note', () => {
 		expect(says()).not.toContain('Conversation');
 	});
 
-	it('is not offered to somebody whose identity keeps none', async () => {
-		ownInstance = VIEWER.syr_instance_url;
+	// The gate is what the reader's own store serves, never where it stands: one
+	// that takes a comment and lists none hands back a comment that is gone.
+	it('is not offered where the reader’s own store cannot hold one', async () => {
+		conversing(api, { converses: { comments: false, reactions: false } });
 		held = [publication()];
 		chain = [version(VERSION_ONE, 1)];
 		said = [comment('c1', PEER, 'A thought of my own')];
