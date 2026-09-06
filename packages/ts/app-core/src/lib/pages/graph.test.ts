@@ -372,24 +372,22 @@ describe('finding your way back on the canvas', () => {
 		expect(brought()).toEqual([SECOND]);
 	});
 
-	it('comes again when the same note is opened twice', async () => {
+	it('comes again when the note already open is opened again', async () => {
 		await open();
 
 		onCanvas('1a').click();
 		await settle();
-		onCanvas('1').click();
-		await settle();
 		onCanvas('1a').click();
 		await settle();
 
-		expect(brought()).toEqual([SECOND, FIRST, SECOND]);
+		expect(brought()).toEqual([SECOND, SECOND]);
 	});
 
 	it('fits the whole field when the reader asks where they are', async () => {
 		await open();
 		expect(fitted()).toBe(0);
 
-		labelled('See the whole graph').click();
+		labelled('See everything on the canvas').click();
 		await settle();
 
 		expect(fitted()).toBe(1);

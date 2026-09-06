@@ -832,9 +832,10 @@ up and the lift can be 0 in the panned case.
 - **The canvas comes to a note the reader opened, and never to one the app moved to
   under them.** A link followed, a row of the outline, an address in the URL: each
   brings the mark under the canvas, and one already on screen is left exactly
-  where it is. It is held there until the field settles, since opening a note re-settles
-  it. Putting the whole field back in view is one control in the chrome, which is also
-  the answer to "where am I".
+  where it is. It is held there through the settle that opening it starts, and no
+  further — an ask that outlived its act would pull the canvas away from whatever the
+  reader unfolded next. Putting the whole field back in view is one control in the
+  chrome, which is also the answer to "where am I".
 - **Where a mark STARTS when the field is rebuilt is this reader's session, not the
   protocol.** One already drawn stays where the last settle left it, and one re-entering
   the drawn set — an unfolded branch — starts at its parent's current place plus the step

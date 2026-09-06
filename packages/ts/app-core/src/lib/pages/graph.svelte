@@ -1394,7 +1394,7 @@
 				variant="ghost"
 				size="icon"
 				class="size-9 shrink-0 rounded-full"
-				aria-label="See the whole graph"
+				aria-label="See everything on the canvas"
 				onclick={() => canvas?.fit()}
 			>
 				<Maximize class="size-4" />

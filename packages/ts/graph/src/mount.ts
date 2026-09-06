@@ -418,6 +418,7 @@ export function mountGraph(
     update(next) {
       const remounting = next.remountKey !== mountedKey;
       const moved = layoutMoved(props, next);
+      const relayout = moved || remounting;
       const asking = next.picking?.from !== props.picking?.from;
       const grounded = next.ground !== props.ground;
       const takingOver = asked(next) && !asked(props);
@@ -445,7 +446,11 @@ export function mountGraph(
         focus = next.focus;
       }
       if (remounting) framing = true;
-      rebuild(moved || remounting);
+      rebuild(relayout);
+      // An act that starts no settle has nothing that could carry the mark off
+      // screen, so the ask ends with the act rather than waiting for whatever
+      // the reader does next.
+      if (!relayout && arrive()) bringing = null;
     },
     destroy() {
       destroyed = true;

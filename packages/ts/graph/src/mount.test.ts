@@ -782,6 +782,32 @@ describe("bringing the canvas to a note", () => {
     expect(graph.scene.centred).toEqual([ref, ref, ref]);
   });
 
+  // A note opened where it already sits on screen asks the canvas for nothing,
+  // and the ask goes with the act rather than waiting for the next settle —
+  // which would be a branch the reader folded long afterwards.
+  it("lets the note go when the act that opened it starts no settle", async () => {
+    const graph = await mount();
+    const ref = drawn(graph);
+    graph.answer(true);
+    graph.scene.onScreen.add(ref);
+
+    graph.handle.bringTo(ref);
+    graph.handle.update({ ...graph.props });
+    expect(graph.scene.centred).toEqual([]);
+
+    const elsewhere = graph
+      .model()
+      .order.find((of) => of !== ref && !ancestorsOf(ref).includes(of))!;
+    graph.scene.onScreen.delete(ref);
+    graph.handle.update({
+      ...graph.props,
+      collapsed: new Set<OwnedRef>([elsewhere]),
+    });
+    graph.answer();
+
+    expect(graph.scene.centred).toEqual([]);
+  });
+
   it("drops a note still waiting when the reader takes hold of the canvas", async () => {
     const graph = await mount();
     const mega = firstMegaNode(graph.model());
