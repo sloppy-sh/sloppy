@@ -6,11 +6,14 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import { Input } from '@sloppy/ui/input';
+	import { Label } from '@sloppy/ui/label';
 	import { api } from '../api.js';
-	import { runtime } from '../runtime.js';
+	import { repointRuntime, runtime } from '../runtime.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
+	import { find } from '../stores/find.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -19,6 +22,7 @@
 	import {
 		ACCENT_LABELS,
 		ACCENTS,
+		asOrigin,
 		prefs,
 		STYLE_LABELS,
 		STYLES,
@@ -32,6 +36,9 @@
 	let leaving = $state(false);
 	let copying = $state(false);
 	let copyProblem = $state<string | null>(null);
+	let typedOrigin = $state(prefs.current.origin ?? '');
+	let originProblem = $state<string | null>(null);
+	let moved = $state<string | null>(null);
 
 	const savesFiles = runtime.saveFile() !== null;
 
@@ -79,17 +86,52 @@
 		try {
 			await session.signOut();
 		} finally {
-			nodes.clear();
-			deleted.clear();
-			graphs.clear();
-			tags.clear();
-			peers.clear();
-			people.hold(null);
-			publications.clear();
-			conversation.clear();
-			identity.clear();
+			letGoOfWhatWasRead();
 			leaving = false;
 		}
+	}
+
+	function letGoOfWhatWasRead() {
+		nodes.clear();
+		deleted.clear();
+		graphs.clear();
+		tags.clear();
+		peers.clear();
+		find.clear();
+		people.hold(null);
+		publications.clear();
+		conversation.clear();
+		identity.clear();
+	}
+
+	/** Null returns to the Sloppy the app came with. Nothing read from the one
+	 *  being left stays on screen, and the session it opened ends with it. */
+	function pointAt(origin: string | null) {
+		prefs.set('origin', origin);
+		repointRuntime();
+		session.clear();
+		letGoOfWhatWasRead();
+		typedOrigin = origin ?? '';
+		originProblem = null;
+		moved = origin
+			? `Sloppy is at ${new URL(origin).host} now. Sign in there to open your writing.`
+			: 'Sloppy is back where it came from. Sign in to open your writing.';
+	}
+
+	function pointHere(event: SubmitEvent) {
+		event.preventDefault();
+		const typed = typedOrigin.trim();
+		if (typed === '') {
+			pointAt(null);
+			return;
+		}
+		const origin = asOrigin(typed);
+		if (!origin) {
+			moved = null;
+			originProblem = "That doesn't look like an address. Try something like sloppy.example.com.";
+			return;
+		}
+		pointAt(origin);
 	}
 </script>
 
@@ -156,12 +198,48 @@
 			</div>
 		</fieldset>
 
+		<div class="space-y-3 border-t border-border pt-8">
+			<h2 class="text-sm font-medium">Where your Sloppy is</h2>
+			<p class="text-sm text-muted-foreground">
+				Your writing lives wherever Sloppy is. Give the address of one you run yourself and it lives
+				there instead — you'll be signed out here, and can sign in there.
+			</p>
+			<form class="flex flex-col gap-2 sm:flex-row" onsubmit={pointHere}>
+				<Label for="sloppy-origin" class="sr-only">The address of your Sloppy</Label>
+				<Input
+					id="sloppy-origin"
+					name="origin"
+					type="text"
+					inputmode="url"
+					autocomplete="url"
+					autocapitalize="none"
+					spellcheck={false}
+					placeholder="sloppy.example.com"
+					bind:value={typedOrigin}
+					class="h-11 sm:flex-1"
+				/>
+				<Button type="submit" variant="outline" class="h-11">Point Sloppy here</Button>
+			</form>
+			{#if originProblem}
+				<p class="text-sm text-destructive" role="alert">{originProblem}</p>
+			{/if}
+			{#if moved}
+				<p class="text-sm text-muted-foreground" role="status">{moved}</p>
+			{/if}
+			{#if prefs.current.origin}
+				<Button variant="ghost" class="h-11 px-0" onclick={() => pointAt(null)}>
+					Use the one Sloppy came with
+				</Button>
+			{/if}
+		</div>
+
 		{#if session.signedIn}
 			<div class="space-y-3 border-t border-border pt-8">
 				<h2 class="text-sm font-medium">Your writing</h2>
 				<p class="text-sm text-muted-foreground">
 					A copy of everything you have written — every graph, every note, and every section of them
-					— in one file that is yours to keep.
+					— in one file that is yours to keep. It holds what you have saved; writing still waiting
+					on this device isn't in it yet.
 				</p>
 				<Button variant="outline" onclick={takeCopy} disabled={copying || !savesFiles} class="h-11">
 					{copying ? 'Putting it together…' : 'Download a copy'}

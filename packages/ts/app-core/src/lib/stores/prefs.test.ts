@@ -1,7 +1,7 @@
 import type { OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DID, ref } from './fake-api.test-support.js';
-import { prefs } from './prefs.svelte.js';
+import { asOrigin, prefs, storedOrigin } from './prefs.svelte.js';
 
 function osPrefersDark(dark: boolean) {
 	vi.stubGlobal('matchMedia', (query: string) => ({
@@ -84,7 +84,8 @@ describe('the saved look', () => {
 				graph: 'not a ref',
 				alsoOnCanvas: ['neither is this'],
 				wallpapers: 'a picture',
-				readingWidth: 'wide'
+				readingWidth: 'wide',
+				origin: 'nowhere at all/ /'
 			})
 		);
 		prefs.init();
@@ -97,7 +98,8 @@ describe('the saved look', () => {
 			graph: null,
 			alsoOnCanvas: [],
 			wallpapers: {},
-			readingWidth: null
+			readingWidth: null,
+			origin: null
 		});
 	});
 
@@ -152,5 +154,41 @@ describe('the saved look', () => {
 		}).not.toThrow();
 		expect(prefs.current.accent).toBe('sea');
 		vi.restoreAllMocks();
+	});
+});
+
+describe('where this device says its Sloppy is', () => {
+	it('is nowhere of its own until somebody names one', () => {
+		prefs.init();
+		expect(prefs.current.origin).toBeNull();
+		expect(storedOrigin()).toBeNull();
+	});
+
+	it('keeps only what an app could be reached at, however it was typed', () => {
+		expect(asOrigin('https://sloppy.example.com')).toBe('https://sloppy.example.com');
+		expect(asOrigin('  sloppy.example.com  ')).toBe('https://sloppy.example.com');
+		expect(asOrigin('http://localhost:8020/')).toBe('http://localhost:8020');
+		// A path typed after the address cannot re-root the app.
+		expect(asOrigin('https://sloppy.example.com/somebody/else')).toBe('https://sloppy.example.com');
+		expect(asOrigin('javascript:alert(1)')).toBeNull();
+		expect(asOrigin('file:///etc/hosts')).toBeNull();
+		expect(asOrigin('')).toBeNull();
+		expect(asOrigin(7)).toBeNull();
+	});
+
+	// The app is pointed at it before any page mounts, which is before init().
+	it('is readable before the saved look has been read', () => {
+		prefs.init();
+		prefs.set('origin', 'https://mine.example');
+		expect(storedOrigin()).toBe('https://mine.example');
+		prefs.init();
+		expect(prefs.current.origin).toBe('https://mine.example');
+	});
+
+	it('goes back to the one the app came with', () => {
+		prefs.init();
+		prefs.set('origin', 'https://mine.example');
+		prefs.set('origin', null);
+		expect(storedOrigin()).toBeNull();
 	});
 });
