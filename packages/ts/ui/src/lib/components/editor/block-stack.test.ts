@@ -16,6 +16,7 @@ import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import BlockStack from './block-stack.svelte';
 import type { NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
+import { SaveFailure, type DraftStore, type NoteDraft } from './document.js';
 import {
 	NOTE,
 	OWNER,
@@ -55,25 +56,61 @@ let written: Written;
 /** Set to keep every create in flight until the test lets it answer. */
 let answering: Promise<void> | null;
 
+/** What a device holds for a note, and every act on it, so a test can say what
+ *  was kept and what was let go. */
+function deviceDrafts(held: Record<string, NoteDraft> = {}) {
+	const kept: NoteDraft[] = [];
+	const forgotten: OwnedRef[] = [];
+	let which = 0;
+	const store: DraftStore = {
+		read: async (note) => held[note] ?? null,
+		keep: (note, draft) => {
+			const copy = structuredClone(draft);
+			kept.push(copy);
+			held[note] = copy;
+			return ++which;
+		},
+		forget: (note) => {
+			forgotten.push(note);
+			delete held[note];
+		}
+	};
+	return { store, kept, forgotten, holds: (note: OwnedRef) => note in held };
+}
+
 function open(
 	blocks: BlockView[],
-	able: { media?: NoteMedia; emoji?: NoteEmoji; references?: NoteReferences } = {}
+	able: {
+		media?: NoteMedia;
+		emoji?: NoteEmoji;
+		references?: NoteReferences;
+		drafts?: DraftStore;
+		/** What the API refuses this write with, or nothing to let it land. */
+		refuse?: () => unknown;
+	} = {}
 ) {
+	const refused = () => {
+		const no = able.refuse?.();
+		if (no) throw no;
+	};
 	mounted = mount(BlockStack, {
 		target,
 		props: {
 			media: able.media ?? noMedia(),
 			emoji: able.emoji ?? noEmoji(),
 			references: able.references ?? noNotes(),
+			drafts: able.drafts,
 			node: NOTE,
 			blocks,
 			onCreate: async (request: CreateBlockRequest) => {
 				written.created.push(request);
 				if (answering) await answering;
+				refused();
 				return block({ content: request.content as BlockDocument, ref: ref() });
 			},
 			onUpdate: async (block: OwnedRef, request: Record<string, unknown>) => {
 				written.updated.push({ ref: block, ...request });
+				refused();
 				return {} as BlockView;
 			},
 			onRemove: async (block: OwnedRef) => {
@@ -364,6 +401,145 @@ describe('what a note keeps when it is left', () => {
 		}
 		expect(written.updated.map((row) => wording(row.content)[0])).toEqual([
 			'...............a thought'
+		]);
+	});
+});
+
+describe('writing that has not reached the server', () => {
+	/** The note's one section, as this device is holding it. */
+	const holding = (draft: NoteDraft) => draft.next.map((section) => wording(section.content)[0]);
+
+	it('is on the device while it is on its way, and let go once it lands', async () => {
+		const device = deviceDrafts();
+		open([prose('a thought')], { drafts: device.store });
+		writingIn().commands.insertContentAt(2, 'more of ');
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(device.kept.map(holding)).toEqual([['more of a thought']]);
+		expect(device.forgotten).toEqual([NOTE.ref]);
+		expect(device.holds(NOTE.ref)).toBe(false);
+	});
+
+	it('stays on the device while Sloppy cannot save it, and says so', async () => {
+		const device = deviceDrafts();
+		open([prose('a thought')], {
+			drafts: device.store,
+			refuse: () => new SaveFailure('transient')
+		});
+		writingIn().commands.insertContentAt(2, 'more of ');
+		await vi.advanceTimersByTimeAsync(1000);
+		flushSync();
+
+		expect(device.holds(NOTE.ref)).toBe(true);
+		expect(device.forgotten).toEqual([]);
+		const said = target.querySelector('[role="alert"]')?.textContent ?? '';
+		expect(said).toContain('Your writing is kept on this device.');
+		expect(said).not.toContain('Keep this note open');
+	});
+
+	it('is what the note opens on when it comes back, and is saved from there', async () => {
+		const device = deviceDrafts();
+		const stored = prose('as it was');
+		open([stored], { drafts: device.store, refuse: () => new SaveFailure('transient') });
+		writingIn().commands.insertContentAt(2, 'unsent, ');
+		await vi.advanceTimersByTimeAsync(1000);
+		close();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(device.holds(NOTE.ref)).toBe(true);
+
+		written = { created: [], updated: [], removed: [], moved: [] };
+		open([stored], { drafts: device.store });
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(target.querySelector('.sloppy-prose')?.textContent).toBe('unsent, as it was');
+		expect(written.updated.map((row) => wording(row.content)[0])).toEqual(['unsent, as it was']);
+		expect(device.holds(NOTE.ref)).toBe(false);
+	});
+
+	it('is let go when the note is left and the last write lands', async () => {
+		const device = deviceDrafts();
+		let answer = () => {};
+		answering = new Promise<void>((resolve) => (answer = resolve));
+
+		open([], { drafts: device.store });
+		writingIn().commands.insertContent('a thought on the way out');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(device.holds(NOTE.ref)).toBe(true);
+
+		close();
+		answer();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(device.forgotten).toEqual([NOTE.ref]);
+	});
+
+	it('is still there when the note is left and the last write does not land', async () => {
+		const device = deviceDrafts();
+		open([prose('a thought')], {
+			drafts: device.store,
+			refuse: () => new SaveFailure('transient')
+		});
+		writingIn().commands.insertContentAt(2, 'more of ');
+		await vi.advanceTimersByTimeAsync(100);
+
+		close();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(device.forgotten).toEqual([]);
+		expect(device.holds(NOTE.ref)).toBe(true);
+	});
+});
+
+describe('a save that does not land', () => {
+	const alert = () => target.querySelector('[role="alert"]')?.textContent?.trim() ?? '';
+	const tryNow = () =>
+		[...target.querySelectorAll('button')].find((button) =>
+			button.textContent?.includes('Try now')
+		);
+
+	async function typeInto(refuse: () => unknown) {
+		open([prose('a thought')], { refuse });
+		writingIn().commands.insertContentAt(2, 'more of ');
+		await vi.advanceTimersByTimeAsync(1000);
+		flushSync();
+	}
+
+	it('keeps trying while the trouble may pass', async () => {
+		await typeInto(() => new SaveFailure('transient'));
+		expect(written.updated).toHaveLength(1);
+		expect(alert()).toContain('Sloppy will keep trying to save this note.');
+		expect(tryNow()).not.toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.updated.length).toBeGreaterThan(1);
+	});
+
+	it('stops, and says what to do, when trying again cannot land it', async () => {
+		await typeInto(() => new SaveFailure('refused', 'Sign in again to keep this note.'));
+		expect(alert()).toContain('Sign in again to keep this note.');
+		expect(tryNow()).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(30000);
+		expect(written.updated).toHaveLength(1);
+	});
+
+	it('stops, and says so, when the note was written somewhere else', async () => {
+		await typeInto(() => new SaveFailure('elsewhere'));
+		expect(alert()).toContain('This note was also written somewhere else.');
+		expect(tryNow()).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(30000);
+		expect(written.updated).toHaveLength(1);
+	});
+
+	it('names the stamp the surface last saw on what it writes', async () => {
+		const stored = block({
+			content: section(...text('a thought')),
+			updated_at: '2026-03-04T05:06:07.000Z'
+		});
+		open([stored]);
+		writingIn().commands.insertContentAt(2, 'more of ');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(written.updated).toEqual([
+			{ ref: stored.ref, content: expect.anything(), expects: '2026-03-04T05:06:07.000Z' }
 		]);
 	});
 });

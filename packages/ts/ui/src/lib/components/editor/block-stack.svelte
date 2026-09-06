@@ -32,11 +32,16 @@
 	import {
 		docBlocks,
 		openBlocks,
+		openDraft,
 		planSave,
 		runSave,
+		SaveFailure,
 		textSection,
 		type DocBlock,
-		type SavedBlock
+		type DraftStore,
+		type Opened,
+		type SavedBlock,
+		type SaveTrouble
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
 	import { citedLarge, emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
@@ -71,8 +76,13 @@
 		onReorder,
 		media,
 		emoji,
-		references
-	}: BlockStackProps = $props();
+		references,
+		drafts
+	}: BlockStackProps & {
+		/** Where this note's unsent writing waits. Absent leaves it in the surface,
+		 *  for as long as the surface is open. */
+		drafts?: DraftStore;
+	} = $props();
 
 	const SAVE_AFTER_MS = 700;
 	/** However long the writing runs on, no change waits longer than this to be written. */
@@ -96,7 +106,9 @@
 	let empty = $state(true);
 	let editing = $state(false);
 	let marks = $state<Record<string, boolean>>({});
-	let saveState = $state<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+	let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
+	/** The last save that did not land, and why; null once one has. */
+	let failed = $state<{ trouble: SaveTrouble; says: string } | null>(null);
 	let pickerOpen = $state(false);
 	let mediaOpen = $state(false);
 
@@ -133,11 +145,18 @@
 
 	/** The trip still in the air, so the next one queues behind it rather than racing it. */
 	let inFlight: Promise<void> = Promise.resolve();
+	/** Which draft this surface last wrote, so the one it wrote is the one it drops. */
+	let kept = 0;
 
 	function plan(): Write | null {
 		const current = editor;
 		if (!current || current.isDestroyed) return null;
-		return { note: writingTo, from: current, rows: saved, next: docBlocks(current.state.doc) };
+		const next = docBlocks(current.state.doc);
+		// The device holds the writing exactly as long as the API is missing some.
+		if (planSave(saved, next).length > 0) {
+			kept = drafts?.keep(writingTo, { rows: saved, next }) ?? kept;
+		}
+		return { note: writingTo, from: current, rows: saved, next };
 	}
 
 	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
@@ -151,15 +170,30 @@
 						node: write.note,
 						content: request.content,
 						...(request.after ? { after: request.after } : {})
-					}).then((created) => created.ref),
-				update: (ref, content) => onUpdate(ref, { content }).then(() => undefined),
-				reorder: (ref, after) => onReorder(ref, after).then(() => undefined),
+					}).then((created) => ({ ref: created.ref, updated_at: created.updated_at })),
+				update: (ref, content, expects) =>
+					onUpdate(ref, { content, ...(expects ? { expects } : {}) }).then((row) => row.updated_at),
+				reorder: (ref, after) => onReorder(ref, after).then((row) => row.updated_at),
 				remove: (ref) => onRemove(ref),
 				placed: (uid, ref) => stamp(write.from, uid, ref)
 			});
 		});
 		inFlight = trip.catch(() => undefined);
 		return trip;
+	}
+
+	/** What the person is told, and whether Sloppy keeps trying on its own. A
+	 *  refusal arrives with words of its own; the rest are this surface's to say. */
+	function troubleWith(error: unknown): { trouble: SaveTrouble; says: string } {
+		const failure = error instanceof SaveFailure ? error : null;
+		switch (failure?.trouble) {
+			case 'refused':
+				return { trouble: 'refused', says: failure.message || 'Sloppy cannot save this note.' };
+			case 'elsewhere':
+				return { trouble: 'elsewhere', says: 'This note was also written somewhere else.' };
+			default:
+				return { trouble: 'transient', says: 'Sloppy will keep trying to save this note.' };
+		}
 	}
 
 	function scheduleSave(delay: number): void {
@@ -186,11 +220,18 @@
 		saveState = 'saving';
 		try {
 			await run(write);
-			if (mine === era) saveState = 'saved';
-		} catch {
 			if (mine === era) {
-				saveState = 'failed';
-				scheduleSave(RETRY_AFTER_MS);
+				saveState = 'saved';
+				failed = null;
+				// Nothing was written while the trip was in the air, so what the
+				// device was holding for this note is now the note.
+				if (changedAt === 0 && !again) drafts?.forget(write.note);
+			}
+		} catch (error: unknown) {
+			if (mine === era) {
+				saveState = 'idle';
+				failed = troubleWith(error);
+				if (failed.trouble === 'transient') scheduleSave(RETRY_AFTER_MS);
 			}
 		} finally {
 			saving = false;
@@ -534,14 +575,31 @@
 			});
 			editor = created;
 			inFlight = Promise.resolve();
-			const stack = openBlocks(blocks, created.schema);
-			created.commands.setContent(stack.doc, { emitUpdate: false });
-			showEmoji(created);
-			saved = stack.baseline(docBlocks(created.state.doc));
+			const stack = blocks;
+			const open = (from: Opened) => {
+				created.commands.setContent(from.doc, { emitUpdate: false });
+				showEmoji(created);
+				saved = from.baseline(docBlocks(created.state.doc));
+				empty = created.isEmpty;
+			};
+			open(openBlocks(stack, created.schema));
 			ready = true;
-			empty = created.isEmpty;
 			saveState = 'idle';
+			failed = null;
 			refreshMarks();
+
+			// The note is on screen from what the API answered with, and reopens
+			// from the writing this device is still holding for it the moment that
+			// answers — measured against the stack, so what was written elsewhere
+			// in between is not written over.
+			let opened = true;
+			void (async () => {
+				const held = await drafts?.read(opening);
+				if (!held || !opened || created.isDestroyed || changedAt !== 0) return;
+				open(openDraft(held, stack, created.schema));
+				refreshMarks();
+				saveSoon();
+			})();
 
 			// Listened for rather than bound: the surface is a writing area, not a
 			// control, and the pen handlers must be able to refuse the browser's
@@ -552,6 +610,7 @@
 			frame.addEventListener('pointercancel', onPenUp);
 
 			return () => {
+				opened = false;
 				for (const send of Object.values(sending)) send.cancel();
 				sending = {};
 				frame.removeEventListener('pointerdown', onPenDown, { capture: true });
@@ -561,6 +620,7 @@
 				clearTimeout(settling);
 				settle();
 				const last = plan();
+				const wrote = kept;
 				era += 1;
 				again = false;
 				saving = false;
@@ -572,9 +632,15 @@
 				editing = false;
 				editor = null;
 				created.destroy();
-				// The last write of a note being left: no surface stays open for a
-				// failure to be reported on, or retried from.
-				if (last) void run(last).catch(() => undefined);
+				// The last write of a note being left. No surface stays open for it
+				// to be reported on, so the device holds the writing until it lands,
+				// and the note opens from there when it does not.
+				if (last) {
+					void run(last).then(
+						() => drafts?.forget(last.note, wrote),
+						() => undefined
+					);
+				}
 			};
 		});
 	});
@@ -693,7 +759,7 @@
 	]);
 </script>
 
-<svelte:window onresize={repaintPen} />
+<svelte:window onresize={repaintPen} onpagehide={flush} />
 <svelte:document onvisibilitychange={whenHidden} />
 
 <div class="note-body space-y-2">
@@ -729,13 +795,18 @@
 		{/if}
 	</p>
 
-	{#if saveState === 'failed'}
+	{#if failed}
 		<div
 			class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
 			role="alert"
 		>
-			<span>Sloppy hasn't saved your last changes. Keep this note open — it will keep trying.</span>
-			<Button variant="outline" size="sm" onclick={() => scheduleSave(0)}>Try now</Button>
+			<span>
+				{failed.says}
+				{#if drafts}Your writing is kept on this device.{/if}
+			</span>
+			{#if failed.trouble === 'transient'}
+				<Button variant="outline" size="sm" onclick={() => scheduleSave(0)}>Try now</Button>
+			{/if}
 		</div>
 	{/if}
 

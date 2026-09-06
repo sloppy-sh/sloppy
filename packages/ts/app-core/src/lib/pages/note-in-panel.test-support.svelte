@@ -11,11 +11,14 @@
 	let {
 		opened,
 		fresh = true,
+		writingAnother = false,
 		onclose,
 		onlink
 	}: {
 		opened: OwnedRef;
 		fresh?: boolean;
+		/** As the canvas reports it: another note is being given its address. */
+		writingAnother?: boolean;
 		onclose?: () => void;
 		onlink?: () => void;
 	} = $props();
@@ -78,6 +81,7 @@
 		<Note
 			ref={showing}
 			{naming}
+			{writingAnother}
 			{seed}
 			{typed}
 			onSeeded={() => (seed = null)}

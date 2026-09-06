@@ -64,8 +64,9 @@
 	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
-	import { noteEmoji, noteMedia } from '../note-surface.js';
+	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { drafts } from '../stores/drafts.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -204,7 +205,7 @@
 	}
 
 	// These answer an act, not something left half-done on screen the way a title
-	// is — `drafts` keeps that beside it — and the fields they annotate are built
+	// is — `titles` keeps that beside it — and the fields they annotate are built
 	// from the server again on the way in, so at a note the reader comes back to
 	// all they can do is contradict what is on screen.
 	$effect(() => {
@@ -277,13 +278,14 @@
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
 
-	/** Kept per note until it is stored, so a save that fails still has it to try
-	 *  again — and so a note left mid-sentence still has it when it comes back. */
-	const drafts = new SvelteMap<OwnedRef, string>();
+	/** A title typed and not yet stored, kept per note so a save that fails still
+	 *  has it to try again — and so a note left mid-sentence still has it when it
+	 *  comes back. */
+	const titles = new SvelteMap<OwnedRef, string>();
 	/** Titles being stored, so a blur and a walk do not both send the same one. */
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- nothing renders off this.
 	const storing = new Set<OwnedRef>();
-	const title = $derived(drafts.get(ref) ?? node?.title ?? '');
+	const title = $derived(titles.get(ref) ?? node?.title ?? '');
 
 	const byOrd = (a: BlockView, b: BlockView) => compareOrd(a.ord, b.ord);
 
@@ -536,12 +538,18 @@
 	 *  comes last and apart — DESIGN.md § Layout. */
 	let actsFrom = $state<HTMLElement | null>(null);
 	const acts = $derived<NoteMenuItem[]>([
-		{
-			label: 'Write a note under this',
-			icon: CornerDownRight,
-			onSelect: () => write('under', null)
-		},
-		{ label: 'Write the next note', icon: ArrowRight, onSelect: () => write('after', null) },
+		// One note is written at a time, so while one is being given its address
+		// these are not offered at all rather than offered and unable to answer.
+		...(writingAnother
+			? []
+			: [
+					{
+						label: 'Write a note under this',
+						icon: CornerDownRight,
+						onSelect: () => write('under', null)
+					},
+					{ label: 'Write the next note', icon: ArrowRight, onSelect: () => write('after', null) }
+				]),
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
 		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
@@ -552,6 +560,9 @@
 			destructive: true
 		}
 	]);
+
+	/** Whether this device is still holding writing for the note on screen. */
+	const unsaved = $derived(drafts.waiting(ref));
 
 	/** What an act was refused, once the surface that asked has been put away. It
 	 *  rides the head with the one control every act is asked from, which a
@@ -661,7 +672,7 @@
 	// still worth keeping.
 	onDestroy(() => {
 		clearTimeout(stopped);
-		for (const of of drafts.keys()) void saveTitle(of);
+		for (const of of titles.keys()) void saveTitle(of);
 	});
 
 	function caretIn(target: EventTarget | null): void {
@@ -717,7 +728,7 @@
 			if (typed?.ref !== opening) return null;
 			const said = typed;
 			onTyped?.();
-			if (said.title) drafts.set(opening, said.title);
+			if (said.title) titles.set(opening, said.title);
 			if (starting) return said;
 			caretTo = said.where;
 			if (said.body || said.where === 'body') carried = { ref: opening, body: said.body };
@@ -805,13 +816,13 @@
 	});
 
 	async function saveTitle(of: OwnedRef): Promise<void> {
-		const draft = drafts.get(of);
+		const draft = titles.get(of);
 		if (draft === undefined || storing.has(of)) return;
 		if (draft === nodes.get(of)?.title) return;
 		storing.add(of);
 		try {
 			await nodes.update(of, { title: draft });
-			if (drafts.get(of) === draft) drafts.delete(of);
+			if (titles.get(of) === draft) titles.delete(of);
 			refuse(of, 'title', null);
 		} catch (error) {
 			refuse(
@@ -911,6 +922,39 @@
 		return stack.find((held) => held.ref === block)?.content ?? null;
 	}
 
+	/** Notes whose stack is being read again, so one refusal starts one read. */
+	const rereading = new SvelteSet<OwnedRef>();
+
+	/**
+	 * The note as it stands now, after a write was refused because the section
+	 * had been written somewhere else. The surface is built again from it, and
+	 * opens on what this device is still holding beside what came in.
+	 */
+	async function reopen(of: OwnedRef): Promise<void> {
+		if (rereading.has(of)) return;
+		rereading.add(of);
+		try {
+			const stack = (await api.listBlocks(of)).sort(byOrd);
+			remember(of, stack);
+			if (of !== ref) return;
+			shown = { of, stack };
+			rebuilt += 1;
+		} catch {
+			// The surface is holding the writing and says so; a read that will not
+			// answer takes nothing away from it.
+		} finally {
+			rereading.delete(of);
+		}
+	}
+
+	/** What the writing surface is told when a write does not land, which decides
+	 *  whether it keeps trying and what it says. */
+	function refusedWrite(of: OwnedRef, error: unknown): Error {
+		const failure = saveFailure(error);
+		if (failure.trouble === 'elsewhere') void reopen(of);
+		return failure;
+	}
+
 	async function addBlock(request: CreateBlockRequest): Promise<BlockView> {
 		surfaceWrites += 1;
 		try {
@@ -918,6 +962,8 @@
 			amend(block.node, (stack) => [...stack, block]);
 			reread(block.node, null, block.content);
 			return block;
+		} catch (error) {
+			throw refusedWrite(request.node, error);
 		} finally {
 			surfaceWrites -= 1;
 		}
@@ -925,12 +971,15 @@
 
 	async function editBlock(block: OwnedRef, request: UpdateBlockRequest): Promise<BlockView> {
 		surfaceWrites += 1;
-		const before = sectionIn(holderOf(block) ?? ref, block);
+		const of = holderOf(block) ?? ref;
+		const before = sectionIn(of, block);
 		try {
 			const saved = await api.updateBlock(block, request);
 			amend(saved.node, (stack) => stack.map((held) => (held.ref === saved.ref ? saved : held)));
 			reread(saved.node, before, saved.content);
 			return saved;
+		} catch (error) {
+			throw refusedWrite(of, error);
 		} finally {
 			surfaceWrites -= 1;
 		}
@@ -946,6 +995,8 @@
 				amend(of, (stack) => stack.filter((held) => held.ref !== block));
 				reread(of, before, null);
 			}
+		} catch (error) {
+			throw refusedWrite(of ?? ref, error);
 		} finally {
 			surfaceWrites -= 1;
 		}
@@ -1183,7 +1234,7 @@
 			// button tries again.
 			throw error;
 		}
-		drafts.delete(of);
+		titles.delete(of);
 		places.delete(of);
 		read.delete(of);
 		refusals.delete(of);
@@ -1266,6 +1317,10 @@
 
 		{#if saysHere}
 			<p class="pb-1 text-sm text-destructive" role="alert">{saysHere}</p>
+		{:else if unsaved}
+			<p class="pb-1 text-sm text-muted-foreground">
+				Not saved yet. Your writing is kept on this device.
+			</p>
 		{/if}
 	</header>
 
@@ -1288,7 +1343,7 @@
 				value={title}
 				rows="1"
 				oninput={(e) => {
-					drafts.set(ref, e.currentTarget.value);
+					titles.set(ref, e.currentTarget.value);
 					fitTitle(e.currentTarget);
 				}}
 				onkeydown={(e) => {
@@ -1371,6 +1426,7 @@
 							{emoji}
 							{references}
 							media={noteMedia}
+							{drafts}
 							onCreate={addBlock}
 							onUpdate={editBlock}
 							onRemove={dropBlock}

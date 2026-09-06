@@ -9,6 +9,8 @@ import type {
 import { citedNotes, homeGraphRef, MARK_SCALE_MAX, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { deviceStore } from '../device-store.js';
+import { drafts } from '../stores/drafts.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
@@ -1125,6 +1127,102 @@ describe('the sections of a note walked away from', () => {
 		await settle();
 		expect(screen()).toContain('Mitochondria');
 		expect(screen()).not.toContain('Ribosomes');
+	});
+});
+
+describe('a note written in two places at once', () => {
+	let held: BlockView;
+
+	/** TipTap hangs the editor off the element it writes into. */
+	const writingIn = (): { commands: { insertContentAt(at: number, text: string): boolean } } =>
+		(
+			document.body.querySelector('.sloppy-prose') as unknown as {
+				editor: { commands: { insertContentAt(at: number, text: string): boolean } };
+			}
+		).editor;
+
+	/** The app put away, which writes everything resting rather than waiting. */
+	function background(): void {
+		Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+		document.dispatchEvent(new Event('visibilitychange'));
+	}
+
+	const patch = `PATCH /blocks${refPath(SECTION)}`;
+
+	beforeEach(async () => {
+		session.adopt(VIEWER, 'a-session');
+		// A surface writes its last draft as it is taken down, which is after the
+		// suite's own teardown; so this device starts each of these clean.
+		drafts.forget(SECOND);
+		await deviceStore.forget(VIEWER.did);
+		installRun();
+		await loadGraph();
+		held = section(SECOND, 'Ribosomes');
+		api.on(`GET ${path(SECOND)}/blocks`, () => [held]);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+	});
+
+	it('reads the note again, and keeps the unsent writing beside what came in', async () => {
+		api.on(
+			patch,
+			() => new Response('{"message":"That section was written somewhere else."}', { status: 409 })
+		);
+		await openNote(SECOND);
+		writingIn().commands.insertContentAt(2, 'Free ');
+		held = { ...section(SECOND, 'Mitochondria'), updated_at: '2026-02-02T00:00:00.000Z' };
+
+		background();
+		await until(() => api.countOf(`GET ${path(SECOND)}/blocks`) >= 2);
+		await settle();
+
+		expect(screen()).toContain('Mitochondria');
+		expect(screen()).toContain('Free Ribosomes');
+	});
+
+	it('says on the note when the last writing has not been saved yet', async () => {
+		api.on(patch, () => new Response('{"message":"Sloppy is busy."}', { status: 503 }));
+		await openNote(SECOND);
+
+		// Only the clocks the surface and the device keep; the fake server runs on
+		// the loop.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		writingIn().commands.insertContentAt(2, 'Free ');
+		background();
+		await vi.advanceTimersByTimeAsync(4000);
+		flushSync();
+
+		expect(api.countOf(patch)).toBeGreaterThan(0);
+		expect(screen()).toContain('Not saved yet. Your writing is kept on this device.');
+	});
+});
+
+describe('the note menu while another note is being written', () => {
+	beforeEach(async () => {
+		installRun();
+		await loadGraph();
+	});
+
+	it('offers no row that could not be acted on', async () => {
+		stubViewport(WIDE);
+		mounted = mount(NoteOnSurface, {
+			target,
+			props: { opened: SECOND, fresh: false, writingAnother: true }
+		});
+		flushSync();
+		await settle();
+
+		labelled('What to do with this note').click();
+		await settle();
+
+		const menu = document.body.querySelector('[role="dialog"]') as HTMLElement;
+		const rows = [...menu.querySelectorAll('button')].map((b) => b.textContent?.trim());
+		expect(rows).toContain('Tags');
+		expect(rows).not.toContain('Write a note under this');
+		expect(rows).not.toContain('Write the next note');
 	});
 });
 

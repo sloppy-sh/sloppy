@@ -2,9 +2,9 @@
 // server, so `BlockStack`'s capabilities are built here — `contract.ts` in that
 // package states what each one promises.
 
-import { proxied, uploadFile } from '@sloppy/client';
+import { proxied, SloppyApiError, uploadFile } from '@sloppy/client';
 import type { CustomEmoji } from '@sloppy/types';
-import type { CustomEmojiEntry, NoteEmoji, NoteMedia } from '@sloppy/ui';
+import { SaveFailure, type CustomEmojiEntry, type NoteEmoji, type NoteMedia } from '@sloppy/ui';
 import { api } from './api.js';
 import { serverMessage } from './stores/errors.js';
 
@@ -12,6 +12,23 @@ import { serverMessage } from './stores/errors.js';
  *  server that explained itself in words for a human is the one they read. */
 function refusal(error: unknown, fallback: string): Error {
 	return new Error(serverMessage(error) ?? fallback);
+}
+
+/** Answers a server gives while it is busy or out of reach, which the next try
+ *  can land. Everything else it names is an answer that will not change. */
+const BUSY = new Set([408, 425, 429]);
+
+/**
+ * How a write to a note's stack failed, as far as the writing surface has to
+ * act on it. Anything that never reached a server at all is trouble worth
+ * trying again.
+ */
+export function saveFailure(error: unknown): SaveFailure {
+	if (!(error instanceof SloppyApiError)) return new SaveFailure('transient');
+	if (error.status === 409) return new SaveFailure('elsewhere');
+	if (error.status === 401) return new SaveFailure('refused', 'Sign in again to keep this note.');
+	if (error.status >= 500 || BUSY.has(error.status)) return new SaveFailure('transient');
+	return new SaveFailure('refused', serverMessage(error) ?? 'Sloppy cannot save this note.');
 }
 
 export const noteMedia: NoteMedia = {
