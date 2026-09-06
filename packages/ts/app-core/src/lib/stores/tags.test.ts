@@ -1,8 +1,11 @@
+import 'fake-indexeddb/auto';
 import type { OwnedRef, Tag, TagCount } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { deviceStore } from '../device-store.js';
 import { prefs } from './prefs.svelte.js';
+import { session } from './session.svelte.js';
 import { tags } from './tags.svelte.js';
-import { DID, ref, useFakeApi, type FakeApi } from './fake-api.test-support.js';
+import { DID, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
 
 const READ: TagCount[] = [
 	{ tag: 'biology' as Tag, notes: 431 },
@@ -18,6 +21,17 @@ const HOME = `${DID}/00000000000000000000000000` as OwnedRef;
 const OTHER = ref(9);
 
 let api: FakeApi;
+
+/** What the device holds for `graph`, once whatever is on its way has landed. */
+async function keptTags(graph: OwnedRef): Promise<TagCount[]> {
+	const area = deviceStore.area(DID, 'tags');
+	for (let turn = 0; turn < 20; turn += 1) {
+		const held = await area.get<TagCount[]>(graph);
+		if (held?.length) return held;
+		await new Promise((done) => setTimeout(done, 0));
+	}
+	return [];
+}
 
 beforeEach(() => {
 	localStorage.clear();
@@ -118,5 +132,41 @@ describe('the selection', () => {
 		answer(READ);
 		await asked;
 		expect(tags.of(HOME)).toEqual([]);
+	});
+});
+
+describe('the counts this device kept', () => {
+	beforeEach(() => {
+		// The counts are one identity's, so the store has to know whose these are.
+		session.adopt(VIEWER, 'a-session');
+	});
+
+	afterEach(() => {
+		session.clear();
+	});
+
+	it('is a legend for the canvas with nothing to ask', async () => {
+		await tags.load(HOME);
+		await keptTags(HOME);
+		tags.clear();
+
+		api.on('GET /nodes/tags', () => {
+			throw new Error('nothing is listening');
+		});
+		await tags.restore(HOME);
+
+		expect(tags.of(HOME)).toEqual(READ);
+	});
+
+	it('shows the counts the server answers with, never the ones it kept', async () => {
+		await tags.load(HOME);
+		await keptTags(HOME);
+		tags.clear();
+
+		api.on('GET /nodes/tags', () => GARDEN);
+		await tags.load(HOME);
+		await tags.restore(HOME);
+
+		expect(tags.of(HOME)).toEqual(GARDEN);
 	});
 });

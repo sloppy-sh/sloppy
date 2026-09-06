@@ -123,6 +123,8 @@
 	let switching = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
+	/** No note answered, and the canvas is drawing what this device kept. */
+	let asLastRead = $state(false);
 	/** A field that would not read while the others drew. Beside the graph, never
 	 *  instead of it: one graph short must not cost the reader the rest. */
 	let shortField = $state<string | null>(null);
@@ -475,12 +477,39 @@
 	/** How many other graphs are standing beside this one, where any are. */
 	const besideIt = $derived(onCanvas.length > 1 ? `+${onCanvas.length - 1}` : null);
 
-	/** Everything one graph puts on the canvas: its tags for the rail, and every
-	 *  note of it — one branch missing would leave the counts under every
-	 *  mega-node wrong with nothing to say so. */
-	async function loadField(graph: OwnedRef): Promise<void> {
-		const [, branches] = await Promise.all([tags.load(graph), nodes.load({ graph })]);
-		await Promise.all(branches.map((root) => nodes.load({ origin: root.ref })));
+	/** What one graph's read left on the canvas. */
+	interface FieldRead {
+		/** Every note of the field arrived. One branch missing would leave the
+		 *  counts under every mega-node wrong with nothing to say so. */
+		whole: boolean;
+		/** Any of its notes arrived: a field drawn from answers rather than from
+		 *  what this device kept. */
+		answered: boolean;
+		error?: unknown;
+	}
+
+	async function loadField(graph: OwnedRef): Promise<FieldRead> {
+		// The rail is the graph's legend, not the graph: a field whose tag counts
+		// will not read still draws.
+		void tags.load(graph).catch(() => {});
+		let error: unknown;
+		const branches = await nodes.load({ graph }).catch((err: unknown) => {
+			error = err;
+			return null;
+		});
+		if (!branches) return { whole: false, answered: false, error };
+		const trees = await Promise.all(
+			branches.map((root) =>
+				nodes.load({ origin: root.ref }).then(
+					() => true,
+					(err: unknown) => {
+						error ??= err;
+						return false;
+					}
+				)
+			)
+		);
+		return { whole: trees.every(Boolean), answered: true, error };
 	}
 
 	async function loadGraph(): Promise<void> {
@@ -489,39 +518,48 @@
 		if (!session.viewer) return;
 		unreachable = null;
 		shortField = null;
+		asLastRead = false;
+		// Which graphs stand on the canvas is read against the ones this person
+		// keeps, so what the device holds of both comes back before either is asked
+		// for — DESIGN.md § Persistence.
+		await Promise.all([graphs.restore(), nodes.restore()]);
 		// What the graphs are called is chrome: one whose name did not arrive still
 		// draws, and the sheet that lists them is where that is said.
 		void graphs.load().catch(() => {});
 		const fields = onCanvas;
-		// A field already cached is drawn while the rest arrives; only a canvas
+		// A field with anything on it draws while the rest arrives; only a canvas
 		// with nothing on it yet is worth a skeleton.
-		loading = !fields.some((graph) => nodes.status({ graph }).loaded);
+		loading = !fields.some(
+			(graph) => nodes.status({ graph }).loaded || nodes.region({ graph }).length > 0
+		);
 		// Each on its own, because one field that will not read must not cost the
 		// others theirs — `node.svelte`'s `reachEveryGraph` reads them the same way.
-		const missed = (
-			await Promise.all(
-				fields.map((graph) =>
-					loadField(graph).then(
-						() => null,
-						(error: unknown) => ({ graph, error })
-					)
-				)
-			)
-		).filter((miss) => miss !== null);
+		const reads = await Promise.all(
+			fields.map((graph) => loadField(graph).then((read) => ({ graph, ...read })))
+		);
 		loading = false;
-		if (missed.length === 0) return;
-		if (missed.length === fields.length) {
+		const short = reads.filter((read) => !read.whole);
+		if (short.length === 0) return;
+		if (!reads.some((read) => read.answered)) {
+			if (fields.some((graph) => nodes.region({ graph }).length > 0)) {
+				asLastRead = true;
+				return;
+			}
 			unreachable =
-				serverMessage(missed[0].error) ??
+				serverMessage(short[0].error) ??
 				`Sloppy could not reach ${fields.length > 1 ? 'those graphs' : 'your graph'}. Try again in a moment.`;
+			return;
+		}
+		if (short.some((read) => read.answered)) {
+			shortField = 'Some notes could not be read. Everything else on the canvas is here.';
 			return;
 		}
 		// What the graphs are called may not have arrived either, so one with no
 		// name yet is still said — just not by name.
-		const named = missed.length === 1 ? graphs.titleOf(missed[0].graph) : '';
+		const named = short.length === 1 ? graphs.titleOf(short[0].graph) : '';
 		shortField = named
 			? `${named} could not be read. Everything else on the canvas is here.`
-			: `${missed.length === 1 ? 'A graph' : 'Some graphs'} on the canvas could not be read. Everything else is here.`;
+			: `${short.length === 1 ? 'A graph' : 'Some graphs'} on the canvas could not be read. Everything else is here.`;
 	}
 
 	// A note reached by its address arrives in the URL and nowhere else, at either
@@ -1595,6 +1633,17 @@
 
 				{#if railTags.length > 0 || selection.length > 0}
 					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
+				{/if}
+
+				{#if asLastRead}
+					<div class="flex items-center gap-2">
+						<p class="min-w-0 text-sm text-muted-foreground" role="status">
+							This is your graph as you last read it.
+						</p>
+						<Button variant="ghost" class="h-9 shrink-0 rounded-full text-sm" onclick={loadGraph}>
+							Try again
+						</Button>
+					</div>
 				{/if}
 
 				{#if shortField}

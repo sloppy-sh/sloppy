@@ -12,11 +12,13 @@ import { MAX_FIELDS } from '@sloppy/graph';
 import {
 	homeGraphRef,
 	type GraphView,
+	GraphViewSchema,
 	type OwnedRef,
 	type CreateGraphRequest,
 	type UpdateGraphRequest
 } from '@sloppy/types';
 import { api } from '../api.js';
+import { type DeviceArea, deviceStore } from '../device-store.js';
 import { serverMessage } from './errors.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
@@ -36,6 +38,13 @@ export interface GraphsState {
 
 const IDLE: GraphsState = { loading: false, loaded: false, failed: false };
 
+const LISTING = 'listing';
+
+function kept(): DeviceArea | null {
+	const did = session.viewer?.did;
+	return did ? deviceStore.area(did, 'graphs') : null;
+}
+
 class GraphsStore {
 	#all = $state<GraphView[]>([]);
 	#state = $state<GraphsState>(IDLE);
@@ -43,6 +52,10 @@ class GraphsStore {
 	// A {@link clear} that lands mid-request must not be undone by the answer:
 	// nothing the previous person's graphs returns belongs to the next one.
 	#epoch = 0;
+	#restored: Promise<void> | null = null;
+	/** The listing standing is the one this device kept, so an ask that will not
+	 *  answer has nothing to report over it. */
+	#asLastRead = false;
 
 	/** The one they started with first, which is the order the route answers in. */
 	get all(): GraphView[] {
@@ -89,8 +102,30 @@ class GraphsStore {
 		return this.#all.find((graph) => graph.ref === ref)?.title ?? '';
 	}
 
+	/**
+	 * The listing as this device last held it, so a saved canvas resolves before
+	 * — or without — an answer. Idempotent, and never over an answer.
+	 */
+	restore(): Promise<void> {
+		if (this.#restored) return this.#restored;
+		const area = kept();
+		if (!area) return Promise.resolve();
+		const epoch = this.#epoch;
+		this.#restored = (async () => {
+			const held = await area.get<unknown[]>(LISTING);
+			if (!held || epoch !== this.#epoch || this.#state.loaded || this.#all.length > 0) return;
+			this.#all = held
+				.map((row) => GraphViewSchema.safeParse(row))
+				.filter((read) => read.success)
+				.map((read) => read.data);
+			this.#asLastRead = this.#all.length > 0;
+		})().catch(() => {});
+		return this.#restored;
+	}
+
 	/** Deduped and idempotent: every surface may call it on mount. */
 	load(): Promise<GraphView[]> {
+		void this.restore();
 		if (this.#inflight) return this.#inflight;
 		if (this.#state.loaded) return Promise.resolve(this.#all);
 		return this.reload();
@@ -107,17 +142,24 @@ class GraphsStore {
 			.then((list) => {
 				if (!current()) return [];
 				this.#all = list;
+				this.#asLastRead = false;
 				this.#state = { loading: false, loaded: true, failed: false };
+				this.#keep();
 				return list;
 			})
-			.catch((err: unknown) => {
+			.catch(async (err: unknown) => {
+				// Offline an ask can fail before the device has answered, and a
+				// listing this device kept is not something to report a failure over.
+				await this.restore();
 				if (current()) {
-					this.#state = {
-						loading: false,
-						loaded: before.loaded,
-						failed: true,
-						error: serverMessage(err)
-					};
+					this.#state = this.#asLastRead
+						? { loading: false, loaded: before.loaded, failed: false }
+						: {
+								loading: false,
+								loaded: before.loaded,
+								failed: true,
+								error: serverMessage(err)
+							};
 				}
 				throw err;
 			})
@@ -134,6 +176,7 @@ class GraphsStore {
 		const made = await api.createGraph(request);
 		if (epoch !== this.#epoch) return made;
 		this.#all = [...this.#all, made];
+		this.#keep();
 		this.enter(made.ref);
 		return made;
 	}
@@ -143,6 +186,7 @@ class GraphsStore {
 		const named = await api.updateGraph(ref, request);
 		if (epoch === this.#epoch) {
 			this.#all = this.#all.map((graph) => (graph.ref === ref ? named : graph));
+			this.#keep();
 		}
 		return named;
 	}
@@ -183,8 +227,16 @@ class GraphsStore {
 		this.#all = [];
 		this.#state = IDLE;
 		this.#inflight = null;
+		this.#restored = null;
+		this.#asLastRead = false;
 		prefs.set('graph', null);
 		prefs.set('alsoOnCanvas', []);
+	}
+
+	#keep(): void {
+		const area = kept();
+		if (!area) return;
+		void area.set(LISTING, $state.snapshot(this.#all)).catch(() => {});
 	}
 
 	/** A ref this person actually keeps, or `null`. A saved choice outlives the
