@@ -23,11 +23,22 @@
 	const slots = $derived(assignTagHueSlots(selected));
 	const counts = $derived(new Map(tags.map((entry) => [entry.tag, entry.notes])));
 
+	/** More tags than a phone width draws at once. */
+	const CROWDED = 12;
+	let typed = $state('');
+	const offered = $derived(tags.length > CROWDED);
+	const needle = $derived(offered ? typed.trim().toLowerCase() : '');
+
 	/** Selected first, in selection order; then the rest as the read ordered them. */
 	const order = $derived([
 		...selected,
-		...tags.map((entry) => entry.tag).filter((tag) => !slots.has(tag))
+		// The canvas is drawing the selection's hues, so the legend holds them
+		// whatever is typed; only the tail narrows.
+		...tags
+			.map((entry) => entry.tag)
+			.filter((tag) => !slots.has(tag) && (needle === '' || tag.includes(needle)))
 	]);
+	const nothingMatched = $derived(needle !== '' && order.length === selected.length);
 
 	let rail = $state<HTMLElement | null>(null);
 
@@ -77,6 +88,19 @@
 		{/if}
 	</div>
 
+	{#if offered}
+		<input
+			bind:value={typed}
+			type="search"
+			autocapitalize="none"
+			autocomplete="off"
+			spellcheck="false"
+			aria-label="Find a tag"
+			placeholder="Find a tag"
+			class="min-h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm"
+		/>
+	{/if}
+
 	<div
 		bind:this={rail}
 		class="-mx-1 flex gap-1.5 overflow-x-auto scroll-fade-x px-1 py-0.5 [scrollbar-width:none]"
@@ -110,4 +134,8 @@
 			</button>
 		{/each}
 	</div>
+
+	{#if nothingMatched}
+		<p role="status" class="px-1 text-sm text-muted-foreground">No tag has that in it.</p>
+	{/if}
 </div>
