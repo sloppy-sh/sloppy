@@ -81,6 +81,7 @@
 		naming = null,
 		seed = null,
 		typed = null,
+		writingAnother = false,
 		openNotes = [],
 		onAsking,
 		onSeeded,
@@ -115,6 +116,10 @@
 			from: OwnedRef;
 			shape: NoteTemplate | null;
 		}) => void;
+		/** Whether a note already asked for is still being given its address. One
+		 *  is written at a time, so the controls that would ask for another wait
+		 *  for it rather than taking a tap they cannot act on. */
+		writingAnother?: boolean;
 		/** Every note open on the reading surface, this one included. */
 		openNotes?: readonly OwnedRef[];
 		/** Called with whether this note has a question of its own in front of the
@@ -1412,6 +1417,7 @@
 							<Button
 								variant="outline"
 								class="h-11 flex-1"
+								disabled={writingAnother}
 								aria-label="Write a note under this ({WRITE_UNDER.says})"
 								aria-keyshortcuts={WRITE_UNDER.keys}
 								onclick={() => write('under', null)}
@@ -1424,13 +1430,19 @@
 								size="icon"
 								class="size-11 shrink-0 text-muted-foreground"
 								aria-label="Write a note under this, from a shape"
+								disabled={writingAnother}
 								onclick={() => offerShapes('under')}
 							>
 								<LayoutTemplate class="size-4" />
 							</Button>
 						</div>
 						<div class="flex gap-2 @md:flex-1">
-							<Button variant="outline" class="h-11 flex-1" onclick={() => write('after', null)}>
+							<Button
+								variant="outline"
+								class="h-11 flex-1"
+								disabled={writingAnother}
+								onclick={() => write('after', null)}
+							>
 								<ArrowRight class="size-4" />
 								Write the next note
 							</Button>
@@ -1439,6 +1451,7 @@
 								size="icon"
 								class="size-11 shrink-0 text-muted-foreground"
 								aria-label="Write the next note, from a shape"
+								disabled={writingAnother}
 								onclick={() => offerShapes('after')}
 							>
 								<LayoutTemplate class="size-4" />

@@ -281,6 +281,14 @@
 	});
 	/** The note being written, while it is the one the surface is showing. */
 	const writingNow = $derived(writingHere ? writing : null);
+	/** The tab the strip marks: the note on the surface, or, while one is being
+	 *  written, the note it was asked under. A branch was asked for on the graph
+	 *  rather than under any note open, so no tab is where the reader is. */
+	const markedTab = $derived.by(() => {
+		if (writingNow === null) return open;
+		const from = writingNow.from;
+		return from !== null && openNotes.includes(from) ? from : null;
+	});
 	const openNode = $derived(open ? nodes.get(open) : undefined);
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	/** The region's notes, already in address order. */
@@ -648,11 +656,13 @@
 	}
 
 	function activate(ref: OwnedRef): void {
+		// The tab a reader is already on is the way back off the writing surface,
+		// so it steps off before there is nowhere left to go.
+		leaveWriting();
 		if (ref === open) return;
 		naming = null;
 		seed = null;
 		typed = null;
-		leaveWriting();
 		goTo(ref, openNotes);
 	}
 
@@ -1803,7 +1813,7 @@
 	}}
 	title={writingNow ? 'Note' : openNode?.title || 'Note'}
 	{tabs}
-	active={open}
+	active={markedTab}
 	says={tooMany}
 	width={prefs.current.readingWidth}
 	onWidthChange={(px) => prefs.set('readingWidth', px)}
@@ -1833,6 +1843,7 @@
 			{naming}
 			{seed}
 			{typed}
+			writingAnother={creating}
 			{openNotes}
 			onAsking={(up) => (noteAsking = up)}
 			onSeeded={() => (seed = null)}

@@ -1533,4 +1533,49 @@ describe('a note written before the server has answered', () => {
 
 		expect(openTabs()).toEqual({ addresses: ['3', '2'], reading: '3' });
 	});
+
+	it('says the write controls are waiting in the note the reader steps onto', async () => {
+		await openTwo();
+		tab('1').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		tab('2').click();
+		await settle();
+
+		expect(screen()).not.toContain('Giving it an address');
+		expect(button('Write a note under this').disabled).toBe(true);
+		expect(button('Write the next note').disabled).toBe(true);
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(button('Write a note under this').disabled).toBe(false);
+	});
+
+	it('steps back onto the note when the tab it is being written in is tapped', async () => {
+		await openTwo();
+		tab('1').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		expect(screen()).toContain('Giving it an address');
+
+		tab('1').click();
+		await settle();
+
+		expect(screen()).not.toContain('Giving it an address');
+		expect(field('Title').value).toBe('Origins');
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '1' });
+	});
+
+	it('marks no note as the one being read while a branch is being written', async () => {
+		await openTwo();
+		button('New branch').click();
+		await settle();
+
+		expect(screen()).toContain('Giving it an address');
+		expect(openTabs().reading).toBeUndefined();
+		expect(openTabs().addresses).toEqual(['1', '2']);
+	});
 });
