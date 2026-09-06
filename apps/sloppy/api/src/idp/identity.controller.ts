@@ -87,12 +87,14 @@ export class IdentityController {
     });
   }
 
+  /** By DID, or by the name its holder chose — the one a person says out loud
+   *  and a peer resolves. */
   @Public()
-  @Get("public/profile/:did")
-  async profile(@Param("did") did: string): Promise<PublicRecord<Profile>> {
+  @Get("public/profile/:named")
+  async profile(@Param("named") named: string): Promise<PublicRecord<Profile>> {
     return {
       status: "success",
-      data: await profileOf(this.idp.context, decodeURIComponent(did)),
+      data: await profileOf(this.idp.context, decodeURIComponent(named)),
     };
   }
 

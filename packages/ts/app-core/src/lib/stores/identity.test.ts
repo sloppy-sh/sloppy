@@ -95,17 +95,42 @@ describe('where the signed-in person keeps their identity', () => {
 		expect(identity.kind).toBe('local');
 	});
 
+	it('carries where a reader reaches the graph kept here', async () => {
+		api.on('GET /auth/own-instance', () => ({
+			instance_url: null,
+			instance_origin: 'https://notes.example'
+		}));
+		session.adopt(VIEWER, 'a-session');
+		await identity.load();
+
+		expect(identity.servedAt).toBe('https://notes.example');
+	});
+
+	it('says nothing about where the graph is until the ask lands, or where none was named', async () => {
+		api.on('GET /auth/own-instance', () => ({ instance_url: null }));
+		session.adopt(VIEWER, 'a-session');
+		expect(identity.servedAt).toBeUndefined();
+
+		await identity.load();
+		expect(identity.servedAt).toBeUndefined();
+	});
+
 	it('holds nothing of the last person for the next', async () => {
-		api.on('GET /auth/own-instance', () => ({ instance_url: VIEWER.syr_instance_url }));
+		api.on('GET /auth/own-instance', () => ({
+			instance_url: VIEWER.syr_instance_url,
+			instance_origin: 'https://notes.example'
+		}));
 		session.adopt(VIEWER, 'a-session');
 		await identity.load();
 		expect(identity.kind).toBe('local');
 
 		identity.clear();
+		expect(identity.servedAt).toBeUndefined();
 		api.on('GET /auth/own-instance', () => ({ instance_url: 'https://elsewhere.test' }));
 		await identity.load();
 
 		expect(identity.kind).toBe('delegated');
+		expect(identity.servedAt).toBeUndefined();
 	});
 });
 

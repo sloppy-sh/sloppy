@@ -827,9 +827,20 @@ does. Nothing here can reach a copy of the bytes a peer made for themselves.
 the reader's instance and never the reader, and nothing is served that that store has not
 said is public. syr offers no single-upload public read, only the paginated listing at an
 identity's `uploads` endpoint, so finding one is a search of that listing rather than a
-lookup; the milestone serving the route owns making that cheap enough to sit behind an
-`<img>`, and it may not assume the listing is short — the copies above go into it, so
-somebody who publishes a branch full of pictures has a long one.
+lookup, and the listing is not short — the copies above go into it, so somebody who
+publishes a branch full of pictures has a long one.
+
+`api/src/media/held-pictures.ts` is what puts that search behind an `<img>`. It walks the
+listing a page at a time and stops at the picture asked for, and it holds what a walk
+passed for a few minutes, per author and per instance, so a note of twelve figures is one
+search rather than twelve. Which instance is asked comes off the region the reader holds
+and never off the request, so a caller cannot aim this one somewhere it was not already
+reading. Two consequences are accepted and both are the reader's, not the author's: a
+picture made public just after a walk reached the end of the listing is not found until
+that walk is forgotten, and a listing longer than ten thousand rows is walked no further.
+**A page shorter than the one asked for is not the end of a listing** — the far end is a
+stranger's instance and pages how it likes, so only an empty page ends the walk;
+concluding otherwise makes every picture past a peer's page size permanently unfindable.
 
 **Every renderable address is minted by the API, and none of them is a URL.** `AssetLinks`
 (`api/src/media/asset-link.ts`) signs the address a picture actually lives at and hands

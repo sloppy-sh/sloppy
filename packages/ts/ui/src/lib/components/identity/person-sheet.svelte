@@ -84,6 +84,7 @@
 		const page = await onLook(cursor);
 		if (!page) return;
 		found = {
+			identity: found?.identity ?? page.identity,
 			publications: [...(found?.publications ?? []), ...page.publications],
 			nextCursor: page.nextCursor
 		};

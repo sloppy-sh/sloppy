@@ -51,7 +51,7 @@ async function open(over: Partial<ComponentProps<typeof PersonSheet>> = {}): Pro
 			identity: THEM,
 			person: CHARLES,
 			following: false,
-			onLook: () => Promise.resolve<PublishedThere>({ publications: [branch()] }),
+			onLook: () => Promise.resolve<PublishedThere>({ identity: THEM, publications: [branch()] }),
 			onPull: () => {},
 			onFollow: () => {},
 			onUnfollow: () => {},
@@ -108,7 +108,7 @@ describe('meeting somebody', () => {
 		await open({
 			onLook: () => {
 				asked += 1;
-				return Promise.resolve<PublishedThere>({ publications: [] });
+				return Promise.resolve<PublishedThere>({ identity: THEM, publications: [] });
 			}
 		});
 		expect(asked).toBe(1);

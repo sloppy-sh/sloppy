@@ -4,6 +4,8 @@ import type {
 	DocumentNode,
 	NodeView,
 	OwnedRef,
+	ProfileView,
+	PullView,
 	Tag
 } from '@sloppy/types';
 import { citedNotes, homeGraphRef, MARK_SCALE_MAX, REFERENCE_NOTE_ATTR } from '@sloppy/types';
@@ -13,17 +15,21 @@ import { deviceStore } from '../device-store.js';
 import { drafts } from '../stores/drafts.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { peers } from '../stores/peers.svelte.js';
+import { people } from '../stores/people.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import {
 	AT,
 	DID,
 	node,
 	ref,
+	ulid,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
 import NoteOnSurface from './note-in-panel.test-support.svelte';
+import { nodeHref } from './routes.js';
 
 const FIRST = ref(1);
 const SECOND = ref(2);
@@ -116,6 +122,8 @@ let mounted: ReturnType<typeof mount> | undefined;
 
 beforeEach(() => {
 	nodes.clear();
+	peers.clear();
+	people.hold(null);
 	api = useFakeApi();
 	const written = [node(1, '1'), node(2, '1a', { origin: FIRST, parent: FIRST })];
 	api.on('POST /nodes', () => written.shift());
@@ -1870,5 +1878,217 @@ describe('the sections this device kept', () => {
 		await openNote(THIRD);
 
 		expect(screen()).toContain('Close it and open it again');
+	});
+});
+
+// PRODUCT.md § "The peer": what somebody pulled is what they answer, so a note
+// they hold is one their own writing may point at.
+describe('citing a note held from somebody else', () => {
+	const PEER = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
+	const REGION = `${DID}/${ulid(70)}` as OwnedRef;
+	const THEIRS = ref(71, PEER);
+
+	const region: PullView = {
+		ref: REGION,
+		created_by: DID,
+		publication: ref(72, PEER),
+		version: { ref: ref(73, PEER), sequence: 1, published_at: AT },
+		root_address: '1',
+		graph_title: 'Their notebook',
+		comments: 'anyone',
+		source_url: 'http://peer.test',
+		created_at: AT,
+		updated_at: AT
+	};
+
+	const ADA: ProfileView = {
+		did: PEER,
+		username: 'ada',
+		display_name: 'Ada Lovelace',
+		bio: null,
+		avatar_src: null,
+		banner_src: null
+	};
+
+	/** A note out of that region: addressed by its AUTHOR, as every held one is. */
+	function theirs(over: Partial<NodeView> = {}): NodeView {
+		return {
+			...node(71, '1a', { title: 'Ash keys' }),
+			ref: THEIRS,
+			created_by: PEER,
+			origin: THEIRS,
+			published: true,
+			...over
+		};
+	}
+
+	let graph: Map<OwnedRef, NodeView>;
+	let held: NodeView;
+
+	beforeEach(async () => {
+		session.adopt(VIEWER, 'a-session');
+		held = theirs();
+		api.on('GET /following', () => []);
+		api.on('GET /pulls', () => [region]);
+		api.on(`GET /pulls${refPath(REGION)}/nodes`, () => [held]);
+		api.on(`GET /profile/${encodeURIComponent(PEER)}`, () => ADA);
+		graph = installGraph();
+		await loadGraph();
+	});
+
+	// One person keeps several notebooks, so the name alone would read the same
+	// for two of them.
+	it('offers it to link to, named by whoever wrote it and the notebook it is in', async () => {
+		await openNote(SECOND);
+		await findToLink('ash');
+		await until(() => offered().includes('Ada Lovelace'));
+
+		expect(offered()).toContain('Ash keys');
+		expect(offered()).toContain('Ada Lovelace · Their notebook');
+	});
+
+	it('names the person alone where the notebook arrived without a name', async () => {
+		const unnamed: PullView = { ...region };
+		delete unnamed.graph_title;
+		api.on('GET /pulls', () => [unnamed]);
+		await openNote(SECOND);
+		await findToLink('ash');
+		await until(() => offered().includes('Ada Lovelace'));
+
+		expect(offered()).not.toContain('·');
+	});
+
+	// Nobody's name is a fallback for their identity: what stands in is the
+	// notebook the copy arrived under.
+	it('names the notebook where nobody here can say who wrote it', async () => {
+		api.on(`GET /profile/${encodeURIComponent(PEER)}`, () => {
+			throw new Error('unreachable');
+		});
+		await openNote(SECOND);
+		await findToLink('ash');
+		await until(() => offered().includes('Ash keys'));
+
+		expect(offered()).toContain('Their notebook');
+		expect(offered()).not.toContain(PEER);
+	});
+
+	it('resolves a link pointing at it rather than calling it gone', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, links: [THEIRS] });
+		nodes.clear();
+		await loadGraph();
+		await openNote(SECOND);
+		await until(() => screen().includes('Ash keys'));
+
+		expect(screen()).toContain('Links to');
+		expect(screen()).not.toContain('A note that is no longer here.');
+	});
+
+	it('shows a held note that points back at this one', async () => {
+		held = theirs({ links: [SECOND] });
+		await openNote(SECOND);
+		await until(() => screen().includes('Ada Lovelace'));
+
+		expect(screen()).toContain('Linked from');
+		expect(labelled('1a Ash keys, in Ada Lovelace · Their notebook')).toBeTruthy();
+	});
+});
+
+// PRODUCT.md principle 3: the address is what a person cites and a peer
+// resolves, so both have to have a way out of the app.
+describe('handing a note to somebody', () => {
+	let copied: string[];
+
+	function clipboardAnswers(writeText: (text: string) => Promise<void>): void {
+		Object.defineProperty(globalThis.navigator, 'clipboard', {
+			configurable: true,
+			value: { writeText }
+		});
+	}
+
+	const menuReads = (label: string): boolean =>
+		[...document.body.querySelectorAll('button')].some((b) => b.textContent?.trim() === label);
+
+	beforeEach(async () => {
+		copied = [];
+		clipboardAnswers((text) => {
+			copied.push(text);
+			return Promise.resolve();
+		});
+		graphs.clear();
+		installGraph();
+		await loadGraph();
+	});
+
+	afterEach(() => {
+		Reflect.deleteProperty(globalThis.navigator, 'clipboard');
+		Reflect.deleteProperty(globalThis.navigator, 'share');
+	});
+
+	it('copies the address under the name of the graph it is read in', async () => {
+		api.on('GET /graphs', () => [
+			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Biology' }
+		]);
+		await graphs.load();
+		await openNote(SECOND);
+
+		labelled('Copy the address 1a').click();
+		await settle();
+
+		expect(copied).toEqual(['1a · Biology']);
+		expect(noteHead()).toContain('Address copied.');
+	});
+
+	it('copies a link a peer can open', async () => {
+		await openNote(SECOND);
+		await act('Copy link');
+
+		expect(copied).toEqual([`${globalThis.location.origin}${nodeHref(SECOND)}`]);
+		expect(noteHead()).toContain('Link copied.');
+	});
+
+	it('says so rather than pretending, where the clipboard will not take it', async () => {
+		clipboardAnswers(() => Promise.reject(new Error('refused')));
+		await openNote(SECOND);
+		await act('Copy link');
+
+		expect(noteHead()).toContain('Sloppy could not copy that.');
+	});
+
+	it('offers no share where the platform has no sheet for one', async () => {
+		await openNote(SECOND);
+		labelled('What to do with this note').click();
+		await settle();
+
+		expect(menuReads('Copy link')).toBe(true);
+		expect(menuReads('Share')).toBe(false);
+	});
+
+	it('hands the link to the sheet where the platform has one', async () => {
+		const shared: { url?: string }[] = [];
+		Object.defineProperty(globalThis.navigator, 'share', {
+			configurable: true,
+			value: (data: { url?: string }) => {
+				shared.push(data);
+				return Promise.resolve();
+			}
+		});
+		await openNote(SECOND);
+		await act('Share');
+
+		expect(shared).toEqual([
+			{ url: `${globalThis.location.origin}${nodeHref(SECOND)}`, title: 'Cells' }
+		]);
+		expect(copied).toEqual([]);
+	});
+
+	it('copies the link where the sheet will not take it', async () => {
+		Object.defineProperty(globalThis.navigator, 'share', {
+			configurable: true,
+			value: () => Promise.reject(new Error('no sheet here'))
+		});
+		await openNote(SECOND);
+		await act('Share');
+
+		expect(copied).toEqual([`${globalThis.location.origin}${nodeHref(SECOND)}`]);
 	});
 });

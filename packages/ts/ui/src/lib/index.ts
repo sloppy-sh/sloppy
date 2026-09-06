@@ -32,6 +32,7 @@ export type { Person, PictureRole } from './components/identity/person.js';
 
 export { default as PeersSheet } from './components/peers/peers-sheet.svelte';
 export { default as HeldNote } from './components/peers/held-note.svelte';
+export { default as HeldStack } from './components/peers/held-stack.svelte';
 export type { HeldRegion, Peer, PublishedThere } from './components/peers/peer.js';
 
 export { default as FindSheet, type FoundNote } from './components/graph/find-sheet.svelte';

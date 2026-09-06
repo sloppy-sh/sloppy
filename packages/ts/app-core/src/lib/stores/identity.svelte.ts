@@ -26,6 +26,7 @@ class IdentityStore {
 	/** Where this instance's own identities live: `null` where it keeps none,
 	 *  `undefined` until it has been asked. */
 	#here = $state<string | null | undefined>(undefined);
+	#origin = $state<string | undefined>(undefined);
 	/** What the signed-in person's own store can hold, `undefined` until asked. */
 	#converses = $state<Converses | undefined>(undefined);
 	/** Whose answer {@link IdentityStore.#converses} is: two people signed in one
@@ -46,6 +47,12 @@ class IdentityStore {
 		return this.#here !== null && sameInstance(viewer.syr_instance_url, this.#here)
 			? 'local'
 			: 'delegated';
+	}
+
+	/** Where a peer reaches the graph kept here. `undefined` until the ask has
+	 *  landed, and where the instance named no origin. */
+	get servedAt(): string | undefined {
+		return this.#origin;
 	}
 
 	/**
@@ -75,9 +82,11 @@ class IdentityStore {
 		const request = Promise.all([
 			askHere
 				? api
-						.ownInstance()
-						.then((here) => {
-							if (current()) this.#here = here ?? null;
+						.instanceHome()
+						.then((home) => {
+							if (!current()) return;
+							this.#here = home.instance_url;
+							this.#origin = home.instance_origin;
 						})
 						.catch(() => {})
 				: Promise.resolve(),
@@ -105,6 +114,7 @@ class IdentityStore {
 	clear(): void {
 		this.#epoch++;
 		this.#here = undefined;
+		this.#origin = undefined;
 		this.#converses = undefined;
 		this.#answeredFor = null;
 		this.#inflight = null;

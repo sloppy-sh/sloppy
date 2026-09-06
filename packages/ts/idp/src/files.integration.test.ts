@@ -390,6 +390,25 @@ describe.skipIf(!listening)(`the file store against ${ENDPOINT.href}`, () => {
   });
 
   describe("a profile", () => {
+    // What somebody says out loud when they want to be read, against what a
+    // link carries. Both reach the same person or the name is decoration.
+    it("is found by the name its holder chose as well as by their DID", async () => {
+      const username = `named${++names}`;
+      const { did } = await register(ctx, { username, password: PASSWORD });
+      await updateProfile(ctx, did, { display_name: "Ada" });
+
+      expect(await profileOf(ctx, username)).toEqual(await profileOf(ctx, did));
+      expect(await profileOf(ctx, username)).toMatchObject({
+        did,
+        username,
+        display_name: "Ada",
+      });
+    });
+
+    it("is nobody at all under a name nobody took", async () => {
+      await expect(profileOf(ctx, `nobody${++names}`)).rejects.toThrow();
+    });
+
     it("changes only what the patch names, and clears what it nulls", async () => {
       const did = await someone();
       await updateProfile(ctx, did, {

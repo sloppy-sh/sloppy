@@ -499,7 +499,7 @@ describe('a branch already published', () => {
 		flushSync();
 
 		expect(says()).toContain('Take 1 down?');
-		expect(says()).toContain('stop being readable');
+		expect(says()).toContain('stop opening');
 		expect(says()).toContain('keeps their copy of the writing');
 	});
 

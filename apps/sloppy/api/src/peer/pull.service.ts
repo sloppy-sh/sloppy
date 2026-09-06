@@ -17,6 +17,7 @@ import {
   type Pull,
   type PullView,
   type PublishedSubtreePage,
+  type PulledNoteHit,
   UnaskedAnswerError,
   addressDepth,
   compareAddresses,
@@ -96,6 +97,9 @@ export class PullService {
         version: page.version,
         root_address: page.root_address,
         graph: graphRef(author, page.graph),
+        ...(page.graph_title === undefined
+          ? {}
+          : { graph_title: page.graph_title }),
         comments: page.comments,
         source_url: origin,
       };
@@ -153,6 +157,23 @@ export class PullService {
 
   async blocks(reader: DidSyr, node: OwnedRef): Promise<BlockView[]> {
     return (await this.pulls.blocksOf(reader, node)).map(pulledBlockView);
+  }
+
+  /**
+   * One note the reader holds a copy of, found by the reference its AUTHOR
+   * addresses it under — which is the reference a citation carries. `null`
+   * where they hold none of it, which is what a citation to a branch nobody
+   * here has pulled answers.
+   */
+  async heldBySource(
+    reader: DidSyr,
+    node: OwnedRef,
+  ): Promise<PulledNoteHit | null> {
+    const [held] = await this.pulls.nodesBySource(reader, [node]);
+    if (held === undefined) return null;
+    const [region] = await this.pulls.regionsServing(reader, node);
+    if (region === undefined) return null;
+    return { note: pulledNodeView(held), pull: entityView(region) };
   }
 
   /**

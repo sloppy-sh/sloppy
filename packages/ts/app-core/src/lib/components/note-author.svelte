@@ -62,7 +62,9 @@
 		says={peers.says}
 		onLook={async (cursor) => {
 			const page = await peers.publishedBy(did, { sourceUrl: from, cursor });
-			return page && { publications: page.publications, nextCursor: page.next_cursor };
+			return (
+				page && { identity: did, publications: page.publications, nextCursor: page.next_cursor }
+			);
 		}}
 		onPull={(publication) => void peers.pull({ publication, sourceUrl: from })}
 		onFollow={() => void peers.follow(did)}

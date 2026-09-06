@@ -9,8 +9,10 @@ import {
   type DocumentNode,
   EMOJI_UPLOAD_ATTR,
   type Node,
+  type NodeAppearance,
   OwnedRefSchema,
   type OwnedRef,
+  type PublishedLook,
   type PublishedNode,
   REFERENCE_NOTE_ATTR,
 } from "@sloppy/types";
@@ -76,10 +78,12 @@ export function publishedDocument(
 }
 
 /**
- * One note as a version froze it. It carries no `depth` and no look — a reader
- * computes the first from the address and draws a pulled mark unstyled — and
- * `origin` is the root of the REGION, which for a publication rooted below
- * depth 1 is not the root of the author's tree.
+ * One note as a version froze it. It carries no `depth` — a reader computes
+ * that from the address — and `origin` is the root of the REGION, which for a
+ * publication rooted below depth 1 is not the root of the author's tree.
+ *
+ * Its look is the shape channels alone; DESIGN.md § "A note's look never uses
+ * colour" carries why the pictures stay behind.
  */
 export function publishedNodeOf(
   node: Node,
@@ -87,12 +91,14 @@ export function publishedNodeOf(
   links: readonly OwnedRef[],
 ): Omit<PublishedNode, "ref"> {
   const root = node.address === region.address;
+  const look = travellingLook(node.appearance);
   return {
     address: node.address,
     ...(root || node.parent === undefined ? {} : { parent: node.parent }),
     origin: region.root,
     title: node.title,
     tags: node.tags,
+    ...(look === undefined ? {} : { look }),
     links: [...links],
     created_at: node.created_at,
     updated_at: node.updated_at,
@@ -106,6 +112,28 @@ export function publishedNodeOf(
       ? {}
       : { signing_device_public_key: node.signing_device_public_key }),
   };
+}
+
+/** `undefined` for a mark nobody shaped, and for one shaped only in the
+ *  channels that stay behind — a look with nothing in it is not a look. */
+function travellingLook(
+  appearance: NodeAppearance | undefined,
+): PublishedLook | undefined {
+  const look: PublishedLook = {
+    ...(appearance?.ring_weight === undefined
+      ? {}
+      : { ring_weight: appearance.ring_weight }),
+    ...(appearance?.ring_style === undefined
+      ? {}
+      : { ring_style: appearance.ring_style }),
+    ...(appearance?.mark_radius === undefined
+      ? {}
+      : { mark_radius: appearance.mark_radius }),
+    ...(appearance?.mark_scale === undefined
+      ? {}
+      : { mark_scale: appearance.mark_scale }),
+  };
+  return Object.keys(look).length === 0 ? undefined : look;
 }
 
 function element(node: DocumentNode, held: Snapshotted): DocumentNode {
