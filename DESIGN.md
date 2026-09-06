@@ -1101,3 +1101,17 @@ them is an attribute on `<html>`, so none is a thing the boot script has to know
 reads them once it is up, and a first paint with the right theme is all that
 flash-of-the-wrong anything is about. None of them reaches a note either — a peer pulling a
 subtree receives nothing of how it was read.
+
+Beside those choices, and answering to a different rule, is **what this device keeps for
+the person signed in**: the graph as it was last read, writing that has not reached Sloppy
+yet, and whatever else a surface has to put in front of somebody before an answer arrives.
+`deviceStore` in `@sloppy/app-core` is the one door to it, scoped by identity and by area
+so two surfaces cannot write over each other. Three rules hold it:
+
+- **It is a copy, never where something lives.** What a person wrote lives in their graph;
+  this is what makes the graph open on a train. A surface that can only read a thing from
+  here has lost it.
+- **It is one identity's, and it goes when they sign out.** `session.clear()` forgets
+  everything of whoever was signed in, whether they left on purpose or their session did.
+- **None of it reaches a note or a peer.** It is this device's, like the ground and the
+  theme, and nobody else can tell it exists.

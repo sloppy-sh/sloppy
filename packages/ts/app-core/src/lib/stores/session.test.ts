@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { deviceStore } from '../device-store.js';
 import { runtime } from '../runtime.js';
 import { useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
 import { session } from './session.svelte.js';
@@ -128,5 +129,14 @@ describe('the session', () => {
 		await session.signOut();
 		expect(session.signedIn).toBe(false);
 		expect(runtime.token.get()).toBeUndefined();
+	});
+
+	it('leaves nothing of the person on the device', async () => {
+		await session.refresh();
+		const notes = deviceStore.area(VIEWER.did, 'notes');
+		await notes.set('1a', 'what the graph looked like');
+
+		await session.signOut();
+		await vi.waitFor(async () => expect(await notes.keys()).toEqual([]));
 	});
 });

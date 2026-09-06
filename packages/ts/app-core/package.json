@@ -61,6 +61,7 @@
 		"eslint": "catalog:",
 		"eslint-config-prettier": "catalog:",
 		"eslint-plugin-svelte": "catalog:",
+		"fake-indexeddb": "^6.2.2",
 		"globals": "catalog:",
 		"jsdom": "^30.0.1",
 		"prettier": "catalog:",

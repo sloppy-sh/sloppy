@@ -874,6 +874,7 @@ node:{ created_by: <did>, id: <ulid> }
   references  ref[]?    the notes its own blocks cite, derived; absent is none derived
   published   bool
   appearance  object?   the look its author gave the mark; absent is unstyled
+  deleted_at  iso?      when its author deleted it; absent is a note that is there
   created_at  iso       immutable — it is a field of the signed payload
   updated_at  iso
   content_signature, signed_payload_json, signing_device_public_key
@@ -883,12 +884,21 @@ block:{ created_by: <did>, id: <ulid> }
   node        ref
   ord         string    fractional index — reorder without renumbering
   content     object    the section's whole document, as the editor wrote it
+  deleted_at  iso?      when it went with its note; absent is a section that is there
 
 retired_address:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
   graph       ref       the graph the address is read in, immutable
   parent      ref?      the note it hung under, immutable; absent for a branch
   address     string    the address, immutable
+
+**A deleted note keeps its row, and `deleted_at` is the whole of the difference.** Absent
+is a note that is there, which is every row written before this column existed, so nothing
+has to be filled in. A stamped note and its sections are still stored, still the author's,
+and still at their addresses — what a person can put back is exactly what is still there to
+find. The reads that decide a NEW address are the ones that deliberately do not filter it:
+`childAddresses` and `addressTaken` count a deleted note among what a graph has assigned,
+because an address is spent whether or not the note comes back.
 
 **A deleted note leaves its address behind.** `retired_address` is a row per note a purge
 takes, and it is what makes the address protocol survive a deletion: the run a new address
@@ -1105,7 +1115,10 @@ The rules AI.md's foundation-wave section states, applied here:
   JSON encoding round-trips back into the class that validates one. `PublicationView` adds
   the chain's newest version beside the row, which is read from the versions rather than
   kept on it. `PublishedSubtreePage` is the separate, deliberately narrower shape a foreign
-  reader gets.
+  reader gets. Two answers are counted rather than copied and so are shapes of their own:
+  `DeletedBranch`, one row per branch that can still be put back with the size of what
+  comes back with it, and `GraphExport`, one person's graphs, live notes and sections as
+  JSON they can hold.
 - **Nothing derivable from the address is stored, except `depth`** — AI.md § "The Address
   Is the Protocol" states the rule, and this is the one ratified exception to it. The
   angular sector and subtree membership stay functions in `address.ts`. `graph` is not an
@@ -1309,6 +1322,18 @@ section can hold several drawings and prose between them.
 
 **TipTap's editor instance must not be `$state`** — Svelte's deep proxy corrupts its
 internals. Use a separate `ready` flag for post-mount UI.
+
+**A write to a section may carry the version it was planned against.**
+`UpdateBlockRequest`'s `expects` is the `updated_at` the surface last read off that row.
+Absent asks for no precondition and writes over whatever is there, which is what a lone
+surface has always done; a value that does not match the row means the section was written
+somewhere else in between — the same note open on a phone and a tablet — and the write is
+refused instead of taking that writing with it. The row already carries the timestamp, so
+this adds a field to a request and nothing to the store.
+
+**A section goes and comes back with the note that holds it.** `deleted_at` on `block`
+says the note went, so it is stamped and cleared alongside the note's; taking one section
+out of a note on its own is still the row going, and no timestamp.
 
 ## Tagging a note
 

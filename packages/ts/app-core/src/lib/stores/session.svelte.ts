@@ -9,6 +9,7 @@
 import { SloppyApiError } from '@sloppy/client';
 import type { Viewer } from '@sloppy/types';
 import { api } from '../api.js';
+import { deviceStore } from '../device-store.js';
 import { runtime } from '../runtime.js';
 
 /** A credential the server turned down is an answer — nobody is signed in.
@@ -108,8 +109,10 @@ class SessionStore {
 		}
 	}
 
-	/** Drop the session locally. The shell calls this from `onAuthInvalid`. */
+	/** Drop the session locally, and everything this device kept for whoever was
+	 *  signed in. The shell calls this from `onAuthInvalid`. */
 	clear(): void {
+		const leaving = this.#viewer?.did;
 		this.#epoch++;
 		runtime.token.clear();
 		this.#viewer = null;
@@ -117,6 +120,9 @@ class SessionStore {
 		this.#ready = true;
 		this.#loading = false;
 		this.#inflight = null;
+		// Signing out is done the moment it is asked for; a device that cannot
+		// answer about its own store does not hold somebody in a session.
+		if (leaving) void deviceStore.forget(leaving).catch(() => {});
 	}
 }
 

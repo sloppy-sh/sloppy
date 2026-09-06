@@ -3,7 +3,11 @@
 // docs/ARCHITECTURE.md § "Blocks and ink".
 
 import { z } from "zod";
-import { OwnedEntitySchema, OwnedRefSchema } from "./common.js";
+import {
+  OwnedEntitySchema,
+  OwnedRefSchema,
+  TimestampSchema,
+} from "./common.js";
 import { BlockDocumentSchema, emptyDocument } from "./document.js";
 
 export const BlockSchema = OwnedEntitySchema.extend({
@@ -16,6 +20,9 @@ export const BlockSchema = OwnedEntitySchema.extend({
   ord: z.string().min(1),
   /** The whole section, as the editor wrote it. */
   content: BlockDocumentSchema.default(emptyDocument),
+  /** When it went with the note that holds it. Absent is a section that is
+   *  there, which is every one stored before a note could be put back. */
+  deleted_at: TimestampSchema.optional(),
 });
 export type Block = z.infer<typeof BlockSchema>;
 
@@ -40,9 +47,18 @@ export const CreateBlockRequestSchema = z.object({
 });
 export type CreateBlockRequest = z.input<typeof CreateBlockRequestSchema>;
 
-/** `after` absent leaves the position alone; `null` moves the block to the top. */
+/**
+ * `after` absent leaves the position alone; `null` moves the block to the top.
+ *
+ * `expects` is the `updated_at` the writer last read off this section. Absent
+ * asks for no precondition and overwrites whatever is there; a value that does
+ * not match the row the write lands on means the section was written somewhere
+ * else in between, and the write is refused rather than taking that writing
+ * with it.
+ */
 export const UpdateBlockRequestSchema = z.object({
   after: OwnedRefSchema.nullable().optional(),
   content: BlockDocumentSchema.optional(),
+  expects: TimestampSchema.optional(),
 });
 export type UpdateBlockRequest = z.input<typeof UpdateBlockRequestSchema>;

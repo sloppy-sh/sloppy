@@ -175,6 +175,12 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_block TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON retired_address TYPE string;
 
+  -- When a note, and the sections that go with it, were deleted. TYPE string
+  -- for the reason the two timestamps above are; option, because absent is a
+  -- note that is there and every row written before this existed says that.
+  DEFINE FIELD IF NOT EXISTS deleted_at ON node TYPE option<string>;
+  DEFINE FIELD IF NOT EXISTS deleted_at ON block TYPE option<string>;
+
   -- Every indexed column is a TOP-LEVEL STRING or an array of them, including
   -- the ones that point at another row: a composite record id is a row's own key
   -- and never another row's column. docs/ARCHITECTURE.md § "Data model" says

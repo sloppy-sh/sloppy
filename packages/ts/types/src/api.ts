@@ -3,6 +3,7 @@
 
 import type { RecordId } from "surrealdb";
 import { z } from "zod";
+import { AddressSchema } from "./address.js";
 import { BlockSchema } from "./block.js";
 import { ownedRefFrom, splitOwnedRef } from "./codecs.js";
 import {
@@ -162,6 +163,41 @@ export function parseNodeBulkResult(value: unknown): NodeBulkResult {
   const result = NodeBulkResultSchema.parse(value);
   return { ...result, notes: result.notes.map(parseNodeView) };
 }
+
+/**
+ * A branch its author deleted, as the listing of what can still be put back
+ * carries it. `ref` is the branch's root, `address` the label they cite it by,
+ * and `notes` how many notes come back with it — the root and everything under
+ * it — which is the size of the act a person is choosing.
+ */
+export const DeletedBranchSchema = z.object({
+  ref: OwnedRefSchema,
+  address: AddressSchema,
+  graph: OwnedRefSchema,
+  title: z.string(),
+  deleted_at: TimestampSchema,
+  notes: z.int().positive(),
+});
+export type DeletedBranch = z.infer<typeof DeletedBranchSchema>;
+
+/**
+ * Everything one person keeps, as JSON they can hold: the graphs they have, the
+ * notes still in them — a deleted note is not part of what somebody has — and
+ * every section of those notes with its document exactly as it is stored. A
+ * section names the note it belongs to rather than sitting inside it, which is
+ * the shape the rows are already in.
+ *
+ * `did` is whose data this is, and it is the answer to which addresses are read
+ * in which graphs: every graph, note and section here is theirs.
+ */
+export const GraphExportSchema = z.object({
+  exported_at: TimestampSchema,
+  did: DidSyrSchema,
+  graphs: z.array(GraphViewSchema),
+  notes: z.array(NodeViewSchema),
+  blocks: z.array(BlockViewSchema),
+});
+export type GraphExport = z.infer<typeof GraphExportSchema>;
 
 /**
  * Who the API believes is calling.

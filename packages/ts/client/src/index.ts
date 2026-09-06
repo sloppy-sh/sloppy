@@ -21,10 +21,14 @@ import {
   type CreateUploadRequest,
   type CustomEmoji,
   CustomEmojiSchema,
+  type DeletedBranch,
+  DeletedBranchSchema,
   type ExchangeSessionRequest,
   type FollowedIdentity,
   FollowedIdentitySchema,
   type FollowRequest,
+  type GraphExport,
+  GraphExportSchema,
   type GraphView,
   GraphViewSchema,
   type HealthReport,
@@ -356,6 +360,23 @@ export class SloppyClient {
     return parseNodeBulkResult(await this.send("POST", "/nodes/bulk", request));
   }
 
+  /**
+   * The branches the caller has deleted and can still put back, and how many
+   * notes each one brings with it.
+   */
+  async deletedBranches(): Promise<DeletedBranch[]> {
+    const body = await this.json("/nodes/deleted", { method: "GET" });
+    return (body as unknown[]).map((row) => DeletedBranchSchema.parse(row));
+  }
+
+  /** Put one back, with everything it took with it, at the addresses it had —
+   *  none of which anything else can have taken. Answers the branch's root. */
+  async restoreBranch(ref: OwnedRef): Promise<NodeView> {
+    return parseNodeView(
+      await this.send("POST", `/nodes${refPath(ref)}/restore`, {}),
+    );
+  }
+
   /** Every tag the caller has used inside one graph — their home graph where
    *  they name none — most-used first. A tag is written by putting it on a
    *  note, so there is nothing else here to call. */
@@ -392,6 +413,16 @@ export class SloppyClient {
 
   async deleteBlock(ref: OwnedRef): Promise<void> {
     await this.del(`/blocks${refPath(ref)}`);
+  }
+
+  // ── A copy of everything ─────────────────────────────────────────────────
+
+  /** Everything the caller keeps — their graphs, the notes in them, and every
+   *  section of those notes — in one answer they can hold. */
+  async exportEverything(): Promise<GraphExport> {
+    return GraphExportSchema.parse(
+      await this.json("/export", { method: "GET" }),
+    );
   }
 
   // ── Publishing, following, and what a peer holds ─────────────────────────

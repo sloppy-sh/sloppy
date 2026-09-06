@@ -145,25 +145,30 @@ export class NodeRepository {
 
   /**
    * Whether one graph has ever assigned this address, and whether the note that
-   * took it is still there — `null` where the graph has never assigned it.
-   * Another graph of the same person holding it is not this question.
+   * took it is still there — `null` where the graph has never assigned it. A
+   * note its author has deleted reads as `deleted` whether the row is still
+   * there to be put back or has been retired. Another graph of the same person
+   * holding the address is not this question.
    */
   async addressTaken(
     did: string,
     graph: OwnedRef,
     address: Address,
   ): Promise<AddressHold | null> {
-    const [held, retired] = await this.db.handle.query<[string[], string[]]>(
-      `SELECT VALUE address FROM node
-         WHERE created_by = $did AND graph = $graph AND address = $address
-         LIMIT 1;
+    const at = `FROM node
+         WHERE created_by = $did AND graph = $graph AND address = $address`;
+    const [held, deleted, retired] = await this.db.handle.query<
+      [string[], string[], string[]]
+    >(
+      `SELECT VALUE address ${at} AND deleted_at = NONE LIMIT 1;
+       SELECT VALUE address ${at} AND deleted_at != NONE LIMIT 1;
        SELECT VALUE address FROM retired_address
          WHERE created_by = $did AND graph = $graph AND address = $address
          LIMIT 1;`,
       { did, graph, address },
     );
     if (held.length > 0) return "live";
-    return retired.length > 0 ? "deleted" : null;
+    return deleted.length + retired.length > 0 ? "deleted" : null;
   }
 
   async insert(node: Node): Promise<Node> {

@@ -6,6 +6,8 @@ export type { SloppyApi } from './api.js';
 export { initRuntime, runtime } from './runtime.js';
 export type { AppRuntime, DeploymentMode } from './runtime.js';
 export { keyboard } from './keyboard.svelte.js';
+export { deviceStore } from './device-store.js';
+export type { DeviceArea } from './device-store.js';
 export {
 	activeRouteId,
 	APP_ROUTES,

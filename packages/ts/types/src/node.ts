@@ -5,7 +5,12 @@
 import { z } from "zod";
 import { addressDepth, AddressSchema, RootAddressSchema } from "./address.js";
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
-import { OwnedEntitySchema, type OwnedRef, OwnedRefSchema } from "./common.js";
+import {
+  OwnedEntitySchema,
+  type OwnedRef,
+  OwnedRefSchema,
+  TimestampSchema,
+} from "./common.js";
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -60,6 +65,13 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * then draws as.
    */
   appearance: NodeAppearanceSchema.optional(),
+  /**
+   * When its author deleted it. Absent is a note that is there, which is every
+   * note stored before anybody could put one back. A deleted note keeps its row
+   * and its address, and the address stays spent whether or not it comes back —
+   * AI.md § "The Address Is the Protocol".
+   */
+  deleted_at: TimestampSchema.optional(),
   content_signature: z.string().optional(),
   signed_payload_json: z.string().optional(),
   signing_device_public_key: z.string().optional(),
