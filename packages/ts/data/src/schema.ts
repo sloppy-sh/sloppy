@@ -94,6 +94,9 @@ ${MIGRATIONS}
   -- are the one whose purge has to reach it. Whoever wrote the comment owns the
   -- comment, in their own store, and nothing here.
   DEFINE FIELD IF NOT EXISTS created_by ON comment_pointer TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS note ON comment_pointer TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS voice ON comment_pointer TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS comment_id ON comment_pointer TYPE string READONLY;
   -- On a refusal the owner is the person who wrote it down: it decides what
   -- this instance assembles for them and for nobody else.
   DEFINE FIELD IF NOT EXISTS created_by ON refused_voice TYPE string READONLY;
@@ -104,9 +107,6 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS note ON refused_voice TYPE option<string> READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON refused_voice TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS updated_at ON refused_voice TYPE string;
-  DEFINE FIELD IF NOT EXISTS note ON comment_pointer TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS voice ON comment_pointer TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS comment_id ON comment_pointer TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON retired_address TYPE string READONLY;

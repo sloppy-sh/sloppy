@@ -111,9 +111,10 @@ export const PublishedPublicationSchema = z.object({
    * What the author calls that notebook. A label a reader shows beside an
    * address so two `1a`s from one author read apart, and never what the
    * notebook is found by — `graph` is. Absent is a notebook whose name did not
-   * travel, which is everything served before one could.
+   * travel, which is everything served before one could, and is the only
+   * spelling of one: a notebook a person named has a name.
    */
-  graph_title: z.string().max(512).optional(),
+  graph_title: z.string().min(1).max(512).optional(),
   title: z.string().max(512),
   latest: PublishedVersionSchema,
 });
@@ -141,14 +142,8 @@ export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
 
 /**
  * A note's look as it TRAVELS: the shape channels of {@link NodeAppearance} and
- * no others. A picture is an upload in the author's own store and what a peer
- * may read of one is docs/ARCHITECTURE.md § "Pictures"' open question, so the
- * channels that are plain shape go and the ones that name bytes stay behind.
- * DESIGN.md § "A note's look never uses colour" carries the ruling.
- *
- * The channels are spelled as the author's own row spells them, so a reader
- * resolves one through `resolveAppearance` exactly as it resolves a note of its
- * own — and a look with no picture in it resolves to a mark wearing none.
+ * no others, spelled as the author's own row spells them. DESIGN.md § "A note's
+ * look never uses colour" carries the ruling.
  */
 export const PublishedLookSchema = NodeAppearanceSchema.pick({
   ring_weight: true,
@@ -233,7 +228,7 @@ export const PublishedSubtreePageSchema = z.object({
   version: PublishedVersionSchema,
   root_address: AddressSchema,
   graph: OwnedRefSchema.optional(),
-  graph_title: z.string().max(512).optional(),
+  graph_title: z.string().min(1).max(512).optional(),
   comments: ReceivedCommentAccessSchema,
   nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES_PER_PAGE),
   blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS_PER_PAGE),

@@ -8,6 +8,7 @@ import {
   siblingAddress,
 } from "./address.js";
 import { parseNodeView, pulledBlockView, pulledNodeView } from "./api.js";
+import { MARK_RADIUS_SCALE, resolveAppearance } from "./appearance.js";
 import { emptyDocument } from "./document.js";
 import {
   CreatePullRequestSchema,
@@ -68,7 +69,6 @@ describe("a held node", () => {
       expect(view.created_by).toBe(AUTHOR);
       expect(view.address).toBe(address);
       expect(view.published).toBe(true);
-      expect(view.appearance).toBeUndefined();
     }
   });
 
@@ -127,6 +127,64 @@ describe("a held node", () => {
       source: held.source,
     });
     expect(served.source).toBe(held.source);
+  });
+});
+
+describe("the look a held node arrived wearing", () => {
+  /** The row as it reaches the reader's database, `look` and all. */
+  function looking(look: unknown): unknown {
+    const row = heldNode("1a");
+    return { ...row, node: { ...row.node, look } };
+  }
+
+  it("draws the mark the shape its author gave it", () => {
+    const view = parseNodeView(
+      pulledNodeView(
+        parsePulledNode(
+          looking({
+            ring_weight: "heavy",
+            ring_style: "dashed",
+            mark_radius: "large",
+          }),
+        ),
+      ),
+    );
+
+    expect(view.appearance).toEqual({
+      ring_weight: "heavy",
+      ring_style: "dashed",
+      mark_radius: "large",
+    });
+    expect(resolveAppearance(view.appearance)).toMatchObject({
+      ringWeight: "heavy",
+      ringStyle: "dashed",
+      markScale: MARK_RADIUS_SCALE.large,
+    });
+  });
+
+  it("wears no picture, whatever a peer put in front of it", () => {
+    // A picture is an upload in the AUTHOR's store, which the reader cannot
+    // read: an id that got this far would be a mark drawing a gap for good.
+    const held = parsePulledNode(
+      looking({
+        ring_weight: "hairline",
+        preview: "upload-1",
+        preview_more: ["upload-2"],
+      }),
+    );
+
+    const view = pulledNodeView(held);
+    expect(view.appearance).toEqual({ ring_weight: "hairline" });
+    expect(resolveAppearance(view.appearance).preview.pictures).toEqual([]);
+  });
+
+  it("is unstyled where the copy arrived without one", () => {
+    const view = pulledNodeView(heldNode("1a"));
+
+    expect(view.appearance).toBeUndefined();
+    expect(resolveAppearance(view.appearance)).toEqual(
+      resolveAppearance(undefined),
+    );
   });
 });
 

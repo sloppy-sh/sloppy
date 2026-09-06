@@ -180,14 +180,11 @@ export const VOICES_PER_NOTE = 50;
 
 /**
  * Whether an identity's own store can hold a conversation — asked of the store,
- * never of where the identity lives, because a store that takes a comment and
- * publishes no listing of one gives the writer a comment that is gone on the
- * next read. The two halves are separate because a store may serve either.
+ * never of where the identity lives. The two halves are separate because a
+ * store may serve either.
  *
  * A surface holds this UNKNOWN until the answer is in and offers nothing
- * meanwhile: an offer that refuses every time it is used is worse than an
- * absent one, and an alarming sentence about a store nobody has asked yet is
- * worse than both. docs/ARCHITECTURE.md § "Federating the graph".
+ * meanwhile. docs/ARCHITECTURE.md § "Federating the graph" carries the ruling.
  */
 export const ConversesSchema = z.object({
   comments: z.boolean(),
@@ -199,10 +196,9 @@ export type Converses = z.infer<typeof ConversesSchema>;
  * One voice a person will not be shown, and the note they refused it on —
  * absent refuses it everywhere they read.
  *
- * `created_by` is the person doing the refusing. It removes a voice from their
- * own reading and takes nothing from anybody else: a comment lives in the store
- * of whoever wrote it, which asks no permission to hold one, so what this
- * decides is what this instance assembles for the person who wrote it down.
+ * `created_by` is the person doing the refusing, and this decides what they are
+ * shown and nothing anybody else is. docs/ARCHITECTURE.md § "Federating the
+ * graph" carries the ruling.
  */
 export const RefusedVoiceSchema = OwnedEntitySchema.extend({
   voice: DidSyrSchema,

@@ -276,7 +276,7 @@ is no use in front of a person, so `graph_title` rides beside it on the listing 
 every page of a version, optional and absent reading as a notebook with no name to send.
 It is a name a reader shows and never a key: what a region is found by is the publication's
 ref, and what its addresses are read in is `graph`. The name is one more thing publishing
-puts out, and the copy at the decision says so.
+puts out, so the copy at the decision has to say so.
 
 The author's own need their session: `POST /api/publications` publishes a subtree —
 creating the chain if the note has none, and writing a version either way;

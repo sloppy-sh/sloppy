@@ -158,8 +158,9 @@ export const PullSchema = OwnedEntitySchema.extend({
   graph: OwnedRefSchema.optional(),
   /** What the author calls that notebook, as the answer carried it — what a
    *  reader shows beside the address so two regions rooted at one label read
-   *  apart. Absent is a notebook whose name did not travel. */
-  graph_title: z.string().max(512).optional(),
+   *  apart. Absent is a notebook whose name did not travel, and is the only
+   *  spelling of one. */
+  graph_title: z.string().min(1).max(512).optional(),
   /** Who the author invites to answer what is in it, as it stood when the copy
    *  was last refreshed. */
   comments: CommentAccessSchema,

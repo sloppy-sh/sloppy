@@ -402,6 +402,12 @@ describe("the notebook a region's addresses are read in", () => {
   it("reads a peer that names none as naming none", () => {
     expect(takeWhole(subtree()).graph_title).toBeUndefined();
   });
+
+  it("is refused a second spelling of no name at all", () => {
+    // Absence is what a reader falls back to an unnamed notebook on, and an
+    // empty name would draw a blank label instead.
+    expect(() => takeWhole(subtree({ graph_title: "" }))).toThrow();
+  });
 });
 
 function branch(from: number, count: number): PublishedNode[] {
