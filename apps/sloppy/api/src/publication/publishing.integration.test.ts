@@ -1369,23 +1369,33 @@ describe("publishing a branch, and what a peer reads back", () => {
     }
   });
 
-  scenario("lets go of what pointed at a note that has gone", async () => {
-    const branch = await newNode({ title: "Answered, then deleted" });
-    const publication = await publish(branch.ref);
-    const store = await strangerStore({
-      did: STRANGER,
-      localId: "01GONE",
-      post: syrPostRefFor(branch.ref),
-    });
-    try {
-      await answersFrom(publication.ref, store.url);
-      expect(await reply(branch.ref, STRANGER, `${STRANGER}:01GONE`)).toBe(204);
-      expect(await pointersOn(branch.ref)).toHaveLength(1);
-    } finally {
-      await store.close();
-    }
+  scenario(
+    "keeps what pointed at a note that can still come back",
+    async () => {
+      const branch = await newNode({ title: "Answered, then deleted" });
+      const publication = await publish(branch.ref);
+      const store = await strangerStore({
+        did: STRANGER,
+        localId: "01GONE",
+        post: syrPostRefFor(branch.ref),
+      });
+      try {
+        await answersFrom(publication.ref, store.url);
+        expect(await reply(branch.ref, STRANGER, `${STRANGER}:01GONE`)).toBe(
+          204,
+        );
+        expect(await pointersOn(branch.ref)).toHaveLength(1);
+      } finally {
+        await store.close();
+      }
 
-    await ok("DELETE", `/nodes/${at(branch.ref)}`, ada);
-    expect(await pointersOn(branch.ref)).toEqual([]);
-  });
+      // An answer somebody left is not derived from anything, so it could not be
+      // rebuilt for a note put back — it waits with the note rather than going.
+      await ok("DELETE", `/nodes/${at(branch.ref)}`, ada);
+      expect(await pointersOn(branch.ref)).toHaveLength(1);
+
+      await ok("POST", `/nodes/${at(branch.ref)}/restore`, ada);
+      expect(await pointersOn(branch.ref)).toHaveLength(1);
+    },
+  );
 });

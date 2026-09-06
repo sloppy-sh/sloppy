@@ -18,6 +18,7 @@ import {
   addressDepth,
   type BlockView,
   compareAddresses,
+  type DeletedBranch,
   type GraphView,
   MAX_DOCUMENT_NESTING,
   MAX_NOTES_PER_BULK_ACT,
@@ -1038,36 +1039,96 @@ describe("the domain routes", () => {
   });
 
   describe("removing a note", () => {
-    scenario("takes its branch and every interior with it", async () => {
-      const root = await newNode(ada, { title: "Doomed" });
-      const kept = await newNode(ada, {
-        from: springsFrom(root),
-        title: "Kept",
-      });
-      const doomed = await newNode(ada, {
-        from: springsFrom(root),
-        title: "Branch",
-      });
-      const under = await newNode(ada, {
-        from: springsFrom(doomed),
-        title: "Under",
-      });
-      const block = (await ok("POST", "/blocks", ada, {
-        node: under.ref,
-        content: {
-          type: "doc",
-          content: [
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: "Goes with it." }],
-            },
-          ],
-        },
-      })) as BlockView;
+    scenario(
+      "takes its branch and every interior with it, and gives them back",
+      async () => {
+        const root = await newNode(ada, { title: "Doomed" });
+        const kept = await newNode(ada, {
+          from: springsFrom(root),
+          title: "Kept",
+        });
+        const doomed = await newNode(ada, {
+          from: springsFrom(root),
+          title: "Branch",
+        });
+        const under = await newNode(ada, {
+          from: springsFrom(doomed),
+          title: "Under",
+        });
+        const block = (await ok("POST", "/blocks", ada, {
+          node: under.ref,
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Goes with it." }],
+              },
+            ],
+          },
+        })) as BlockView;
 
-      expect(
-        (await call("DELETE", `/nodes/${at(doomed.ref)}`, ada)).status,
-      ).toBe(204);
+        expect(
+          (await call("DELETE", `/nodes/${at(doomed.ref)}`, ada)).status,
+        ).toBe(204);
+
+        const left = (await ok(
+          "GET",
+          `/nodes?origin=${encodeURIComponent(root.ref)}`,
+          ada,
+        )) as NodeView[];
+        expect(left.map((node) => node.ref).sort()).toEqual(
+          [root.ref, kept.ref].sort(),
+        );
+        expect(
+          (await call("GET", `/nodes/${at(under.ref)}/blocks`, ada)).status,
+        ).toBe(404);
+
+        const listed = (await ok(
+          "GET",
+          "/nodes/deleted",
+          ada,
+        )) as DeletedBranch[];
+        const branch = listed.find((one) => one.ref === doomed.ref);
+        expect(branch).toMatchObject({ address: doomed.address, notes: 2 });
+
+        const back = (await ok(
+          "POST",
+          `/nodes/${at(doomed.ref)}/restore`,
+          ada,
+        )) as NodeView;
+        expect(back.address).toBe(doomed.address);
+
+        const again = (await ok(
+          "GET",
+          `/nodes?origin=${encodeURIComponent(root.ref)}`,
+          ada,
+        )) as NodeView[];
+        expect(again.map((node) => node.ref).sort()).toEqual(
+          [root.ref, kept.ref, doomed.ref, under.ref].sort(),
+        );
+        const writing = (await ok(
+          "GET",
+          `/nodes/${at(under.ref)}/blocks`,
+          ada,
+        )) as BlockView[];
+        expect(writing.map((one) => one.ref)).toEqual([block.ref]);
+      },
+    );
+
+    scenario("leaves what was deleted before it alone", async () => {
+      const root = await newNode(ada, { title: "Two acts" });
+      const branch = await newNode(ada, { from: springsFrom(root) });
+      const under = await newNode(ada, { from: springsFrom(branch) });
+
+      await ok("DELETE", `/nodes/${at(under.ref)}`, ada);
+      await ok("DELETE", `/nodes/${at(branch.ref)}`, ada);
+
+      const early = await call("POST", `/nodes/${at(under.ref)}/restore`, ada);
+      expect(early.status).toBe(400);
+      expect(JSON.stringify(early.body)).toContain("above this one back first");
+
+      await ok("POST", `/nodes/${at(branch.ref)}/restore`, ada);
 
       const left = (await ok(
         "GET",
@@ -1075,19 +1136,15 @@ describe("the domain routes", () => {
         ada,
       )) as NodeView[];
       expect(left.map((node) => node.ref).sort()).toEqual(
-        [root.ref, kept.ref].sort(),
+        [root.ref, branch.ref].sort(),
       );
 
-      const { DbService } = await import("../db/db.service");
-      const [orphans] = await app
-        .get(DbService)
-        .handle.query<[unknown[]]>("SELECT * FROM block WHERE id = $id", {
-          id: (await import("@sloppy/types")).recordIdFromOwnedRef(
-            "block",
-            block.ref,
-          ),
-        });
-      expect(orphans).toEqual([]);
+      const listed = (await ok(
+        "GET",
+        "/nodes/deleted",
+        ada,
+      )) as DeletedBranch[];
+      expect(listed.map((one) => one.ref)).toContain(under.ref);
     });
 
     scenario("does not reuse an address taken out of the middle", async () => {
@@ -1301,15 +1358,28 @@ describe("the domain routes", () => {
           ada,
         )) as NodeView[];
         expect(left.map((node) => node.ref)).toEqual([root.ref]);
+        expect(
+          (await call("GET", `/nodes/${at(under.ref)}/blocks`, ada)).status,
+        ).toBe(404);
 
-        const { DbService } = await import("../db/db.service");
-        const { recordIdFromOwnedRef } = await import("@sloppy/types");
-        const [orphans] = await app
-          .get(DbService)
-          .handle.query<[unknown[]]>("SELECT * FROM block WHERE id = $id", {
-            id: recordIdFromOwnedRef("block", block.ref),
-          });
-        expect(orphans).toEqual([]);
+        const listed = (await ok(
+          "GET",
+          "/nodes/deleted",
+          ada,
+        )) as DeletedBranch[];
+        expect(
+          listed
+            .filter((one) => [doomed.ref, alsoDoomed.ref].includes(one.ref))
+            .map((one) => one.notes),
+        ).toEqual([2, 1]);
+
+        await ok("POST", `/nodes/${at(doomed.ref)}/restore`, ada);
+        const writing = (await ok(
+          "GET",
+          `/nodes/${at(under.ref)}/blocks`,
+          ada,
+        )) as BlockView[];
+        expect(writing.map((one) => one.ref)).toEqual([block.ref]);
       },
     );
 
