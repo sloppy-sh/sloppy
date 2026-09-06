@@ -18,6 +18,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import {
 		alongRun,
+		BlockViewSchema,
 		citedNotes,
 		compareOrd,
 		graphOf,
@@ -64,6 +65,7 @@
 	import NoteAuthor from '../components/note-author.svelte';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
+	import { deviceStore, type DeviceArea } from '../device-store.js';
 	import { carries, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
@@ -303,9 +305,57 @@
 	/** How many notes back a walk stays instant. */
 	const REMEMBERED = 24;
 
+	/** What this device keeps of these stacks — DESIGN.md § "Persistence". */
+	function kept(): DeviceArea | null {
+		const did = session.viewer?.did;
+		return did ? deviceStore.area(did, 'sections') : null;
+	}
+
+	/** The notes kept, oldest first, so the device holds the same {@link
+	 *  REMEMBERED} a walk does rather than every note ever opened. */
+	const KEPT_ORDER = 'order';
+	const stackKey = (of: OwnedRef) => `of:${of}`;
+
+	/** One at a time: two walks landing together would each write the order they
+	 *  read, and the later write would drop the earlier note. */
+	let keeping: Promise<unknown> = Promise.resolve();
+
+	function keep(of: OwnedRef, stack: BlockView[]): void {
+		const held = $state.snapshot(stack) as BlockView[];
+		keeping = keeping
+			.then(async () => {
+				const area = kept();
+				if (!area) return;
+				await area.set(stackKey(of), held);
+				const order = ((await area.get<OwnedRef[]>(KEPT_ORDER)) ?? []).filter((one) => one !== of);
+				order.push(of);
+				const gone = order.splice(0, Math.max(0, order.length - REMEMBERED));
+				await area.set(KEPT_ORDER, order);
+				for (const one of gone) await area.delete(stackKey(one));
+			})
+			.catch(() => {});
+	}
+
+	/** What this device kept for `of`, or nothing where it kept none and nothing
+	 *  where what it kept is no longer a stack this build can read. */
+	async function keptStack(of: OwnedRef): Promise<BlockView[] | null> {
+		const area = kept();
+		if (!area) return null;
+		const held = await area.get<unknown>(stackKey(of)).catch(() => undefined);
+		if (!Array.isArray(held)) return null;
+		const stack: BlockView[] = [];
+		for (const row of held) {
+			const block = BlockViewSchema.safeParse(row);
+			if (!block.success) return null;
+			stack.push(block.data);
+		}
+		return stack;
+	}
+
 	function remember(of: OwnedRef, stack: BlockView[]): void {
 		read.delete(of);
 		read.set(of, stack);
+		keep(of, stack);
 		for (const oldest of read.keys()) {
 			if (read.size <= REMEMBERED) break;
 			read.delete(oldest);
@@ -743,14 +793,29 @@
 		writing = false;
 		void (async () => {
 			let held = false;
+			// Asked before the device is read, so reading the device never delays
+			// it. The empty catch only keeps a refusal from being loose while it is
+			// read; the try below is what answers for one.
+			const answer = Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
+			answer.catch(() => {});
+			/** What is on screen when the server answers, remembered or kept. */
+			let painted = known;
+			if (known === undefined) {
+				const before = await keptStack(opening);
+				if (live && before !== null && landed === wrote && read.get(opening) === undefined) {
+					remember(opening, before);
+					shown = { of: opening, stack: before };
+					painted = before;
+				}
+			}
 			try {
-				const [, stack] = await Promise.all([nodes.fetch(opening), api.listBlocks(opening)]);
+				const [, stack] = await answer;
 				// A write that landed while this was in the air says more than it does.
 				if (landed === wrote) {
 					// A surface built from what was remembered is holding a stack the
 					// server has moved past, and its next save would put that stack
 					// back over the newer one.
-					const rebuild = live && known !== undefined && differs(blocks, stack);
+					const rebuild = live && painted !== undefined && differs(blocks, stack);
 					remember(opening, stack);
 					if (live) shown = { of: opening, stack };
 					if (rebuild) rebuilt += 1;
@@ -759,7 +824,7 @@
 			} catch (error) {
 				// Sections already on screen are the note; taking them away to report
 				// a read behind them costs the reader more than it tells them.
-				if (live && !known) {
+				if (live && painted === undefined) {
 					unread = {
 						of: opening,
 						says:

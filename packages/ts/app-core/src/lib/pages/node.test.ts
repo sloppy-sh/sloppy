@@ -1824,3 +1824,51 @@ describe('the way out of a note', () => {
 		expect(closed).toBe(0);
 	});
 });
+
+describe('the sections this device kept', () => {
+	beforeEach(async () => {
+		session.adopt(VIEWER, 'a-session');
+		installGraph();
+		await loadGraph();
+	});
+
+	async function reopen(of: OwnedRef): Promise<void> {
+		unmount(mounted!, { outro: false });
+		mounted = undefined;
+		await openNote(of);
+	}
+
+	it('shows a note as it was last read, without waiting on the server', async () => {
+		api.on(`GET ${path(SECOND)}/blocks`, () => [section(SECOND, 'The wall is the point')]);
+		await openNote(SECOND);
+		expect(screen()).toContain('The wall is the point');
+
+		api.on(`GET ${path(SECOND)}/blocks`, () => {
+			throw new Error('nothing is listening');
+		});
+		await reopen(SECOND);
+
+		expect(screen()).toContain('The wall is the point');
+		expect(screen()).not.toContain('Close it and open it again');
+	});
+
+	it('takes what the server says over what was kept', async () => {
+		api.on(`GET ${path(SECOND)}/blocks`, () => [section(SECOND, 'The wall is the point')]);
+		await openNote(SECOND);
+
+		api.on(`GET ${path(SECOND)}/blocks`, () => [section(SECOND, 'The pore is the point')]);
+		await reopen(SECOND);
+
+		expect(screen()).toContain('The pore is the point');
+		expect(screen()).not.toContain('The wall is the point');
+	});
+
+	it('keeps nothing for a note this device never read', async () => {
+		api.on(`GET ${path(THIRD)}/blocks`, () => {
+			throw new Error('nothing is listening');
+		});
+		await openNote(THIRD);
+
+		expect(screen()).toContain('Close it and open it again');
+	});
+});
