@@ -495,15 +495,15 @@ describe('acting on one note from the canvas', () => {
 		]);
 	});
 
-	// The one act that cannot be taken back, in the words the rest of the product
-	// asks it in — never a second wording for the same question.
+	// The words the rest of the product asks this in — never a second wording for
+	// the same question.
 	it('asks before deleting it, counting what goes with it', async () => {
 		await askAbout('1');
 
 		item('Delete it').click();
 		await settle();
 		expect(screen()).toContain('Delete this note?');
-		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
+		expect(screen()).toContain('It goes, and so does the one note that grew out of it.');
 		expect(acts).toEqual([]);
 
 		button('Delete it').click();
@@ -692,15 +692,15 @@ describe('choosing several notes to act on', () => {
 		expect(button('Give them this look').disabled).toBe(true);
 	});
 
-	// The one act that cannot be taken back, so the question counts everything
-	// that goes — the notes chosen are never all of them.
+	// The question counts everything that goes — the notes chosen are never all
+	// of them.
 	it('asks before deleting, counting what goes with the notes chosen', async () => {
 		await chooseOnly('1');
 
 		button('Delete').click();
 		await settle();
 		expect(screen()).toContain('Delete this note?');
-		expect(screen()).toContain('It goes for good, and so does the one note that grew out of it.');
+		expect(screen()).toContain('It goes, and so does the one note that grew out of it.');
 		expect(acts).toEqual([]);
 
 		button('Delete it').click();
@@ -719,7 +719,7 @@ describe('choosing several notes to act on', () => {
 		await settle();
 
 		expect(screen()).toContain('Delete these 3 notes?');
-		expect(screen()).toContain('They go for good.');
+		expect(screen()).toContain('They go.');
 	});
 
 	// The server reaches what is still there and counts the rest; reporting a
@@ -1577,5 +1577,89 @@ describe('a note written before the server has answered', () => {
 		expect(screen()).toContain('Giving it an address');
 		expect(openTabs().reading).toBeUndefined();
 		expect(openTabs().addresses).toEqual(['1', '2']);
+	});
+});
+
+describe('the graph as this device last read it', () => {
+	function nothingListening(): void {
+		const refuse = () => {
+			throw new Error('nothing is listening');
+		};
+		api.on('GET /nodes', refuse);
+		api.on('GET /nodes/tags', refuse);
+	}
+
+	/** The cache waits out the answers before it writes, and every case here
+	 *  turns on the device having what a first read left it. */
+	async function written(): Promise<void> {
+		await new Promise((done) => setTimeout(done, 250));
+	}
+
+	it('draws what this device kept when nothing can be reached, and says how old it may be', async () => {
+		await open();
+		expect(screen()).toContain('Origins');
+		await written();
+
+		nodes.clear();
+		tags.clear();
+		nothingListening();
+		await open();
+
+		expect(() => onCanvas('1')).not.toThrow();
+		expect(screen()).toContain('This is your graph as you last read it.');
+		expect(screen()).not.toContain('could not reach');
+	});
+
+	it('asks again from where the kept graph is drawn', async () => {
+		await open();
+		await written();
+		nodes.clear();
+		tags.clear();
+		nothingListening();
+		await open();
+		expect(screen()).toContain('This is your graph as you last read it.');
+
+		graph = installGraph();
+		button('Try again').click();
+		await settle();
+
+		expect(screen()).not.toContain('This is your graph as you last read it.');
+	});
+
+	// The rail is the legend beside the graph, so its counts going missing is not
+	// the graph going missing.
+	it('draws what the server answered even where the tag counts would not read', async () => {
+		api.on('GET /nodes/tags', () => {
+			throw new Error('nothing is listening');
+		});
+
+		await open();
+
+		expect(() => onCanvas('1')).not.toThrow();
+		expect(screen()).not.toContain('This is your graph as you last read it.');
+		expect(screen()).not.toContain('could not be read');
+	});
+
+	it('says notes are missing rather than calling the graph old, where some of it answered', async () => {
+		api.on('GET /nodes', (url) => {
+			if (url.searchParams.get('origin')) throw new Error('nothing is listening');
+			return [...graph.values()].filter((one) => one.ref === one.origin);
+		});
+
+		await open();
+
+		expect(() => onCanvas('1')).not.toThrow();
+		expect(screen()).toContain('Some notes could not be read.');
+		expect(screen()).not.toContain('This is your graph as you last read it.');
+	});
+
+	it('says the graph could not be reached where this device kept none of it', async () => {
+		nodes.clear();
+		nothingListening();
+
+		await open();
+
+		expect(screen()).toContain('Sloppy could not reach your graph');
+		expect(screen()).not.toContain('This is your graph as you last read it.');
 	});
 });

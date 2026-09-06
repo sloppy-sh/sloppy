@@ -6,7 +6,11 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import { api } from '../api.js';
+	import { runtime } from '../runtime.js';
+	import { serverMessage } from '../stores/errors.js';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { deleted } from '../stores/deleted.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -26,6 +30,10 @@
 	import { tags } from '../stores/tags.svelte.js';
 
 	let leaving = $state(false);
+	let copying = $state(false);
+	let copyProblem = $state<string | null>(null);
+
+	const savesFiles = runtime.saveFile() !== null;
 
 	const instance = $derived(session.viewer ? new URL(session.viewer.syr_instance_url).host : null);
 	const profile = $derived(people.me);
@@ -34,12 +42,45 @@
 		if (session.signedIn && !people.me) void people.read().catch(() => {});
 	});
 
+	async function takeCopy() {
+		copying = true;
+		copyProblem = null;
+		try {
+			const held = await api.exportEverything();
+			const name = `sloppy-${held.exported_at.slice(0, 10)}.json`;
+			const body = new Blob([JSON.stringify(held)], { type: 'application/json' });
+			const save = runtime.saveFile();
+			if (save) await save(name, body);
+			else downloadHere(name, body);
+		} catch (error) {
+			copyProblem =
+				serverMessage(error) ??
+				'Sloppy could not put your copy together just now. Try again in a moment.';
+		} finally {
+			copying = false;
+		}
+	}
+
+	function downloadHere(name: string, body: Blob) {
+		const at = URL.createObjectURL(body);
+		const link = document.createElement('a');
+		link.href = at;
+		link.download = name;
+		document.body.append(link);
+		link.click();
+		link.remove();
+		// WebKit reads the blob after the click returns; revoking in this task
+		// loses the file.
+		setTimeout(() => URL.revokeObjectURL(at));
+	}
+
 	async function signOut() {
 		leaving = true;
 		try {
 			await session.signOut();
 		} finally {
 			nodes.clear();
+			deleted.clear();
 			graphs.clear();
 			tags.clear();
 			peers.clear();
@@ -114,6 +155,27 @@
 				{/each}
 			</div>
 		</fieldset>
+
+		{#if session.signedIn}
+			<div class="space-y-3 border-t border-border pt-8">
+				<h2 class="text-sm font-medium">Your writing</h2>
+				<p class="text-sm text-muted-foreground">
+					A copy of everything you have written — every graph, every note, and every section of them
+					— in one file that is yours to keep.
+				</p>
+				<Button variant="outline" onclick={takeCopy} disabled={copying || !savesFiles} class="h-11">
+					{copying ? 'Putting it together…' : 'Download a copy'}
+				</Button>
+				{#if !savesFiles}
+					<p class="text-sm text-muted-foreground">
+						Taking a copy isn't available here yet. Open Sloppy in a browser to take one.
+					</p>
+				{/if}
+				{#if copyProblem}
+					<p class="text-sm text-destructive" role="alert">{copyProblem}</p>
+				{/if}
+			</div>
+		{/if}
 
 		<div class="space-y-3 border-t border-border pt-8">
 			{#if session.signedIn}

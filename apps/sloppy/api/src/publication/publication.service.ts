@@ -103,6 +103,19 @@ export class PublicationService {
     return this.publications.rootsAmong(did, notes);
   }
 
+  /** The caller's publications rooted at one of these notes, by their own refs —
+   *  what a branch about to go is still putting out. */
+  async rootedIn(
+    did: string,
+    notes: ReadonlySet<OwnedRef>,
+  ): Promise<OwnedRef[]> {
+    if (notes.size === 0) return [];
+    const mine = await this.publications.listOwn(did);
+    return mine
+      .filter((row) => notes.has(row.root))
+      .map((row) => ownedRefFrom(row.id));
+  }
+
   async versions(
     did: string,
     ref: OwnedRef,

@@ -12,6 +12,7 @@ import {
 } from "@nestjs/common";
 import {
   CreateNodeRequestSchema,
+  type DeletedBranch,
   type NodeBulkResult,
   NodeBulkRequestSchema,
   type NodeView,
@@ -64,6 +65,12 @@ export class NodeController {
     return this.nodes.tags(did, graphOrRefuse(graph, did));
   }
 
+  /** The branches the caller has deleted and can still put back. */
+  @Get("deleted")
+  deleted(@Req() req: AuthedRequest): Promise<DeletedBranch[]> {
+    return this.nodes.deleted(viewerDid(req));
+  }
+
   @Get(":did/:localId")
   async get(
     @Req() req: AuthedRequest,
@@ -110,6 +117,16 @@ export class NodeController {
     );
   }
 
+  /** One deleted branch back where it was, with everything that went with it. */
+  @Post(":did/:localId/restore")
+  restore(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+  ): Promise<NodeView> {
+    return this.nodes.restore(viewerDid(req), requireRef(did, localId));
+  }
+
   @Delete(":did/:localId")
   @HttpCode(204)
   remove(
@@ -117,6 +134,10 @@ export class NodeController {
     @Param("did") did: string,
     @Param("localId") localId: string,
   ): Promise<void> {
-    return this.nodes.remove(viewerDid(req), requireRef(did, localId));
+    return this.nodes.remove(
+      viewerDid(req),
+      requireRef(did, localId),
+      req.delegation,
+    );
   }
 }

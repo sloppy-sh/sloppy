@@ -4,7 +4,7 @@
  * the ones a webview inside a native process can answer differently from a tab.
  */
 
-import { initRuntime } from '@sloppy/app-core';
+import { initRuntime, session } from '@sloppy/app-core';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { LOCAL_MODE_AVAILABLE } from './local-mode';
@@ -23,9 +23,12 @@ const API_HOST = (import.meta.env.PUBLIC_SLOPPY_API_URL || DEV_API_ORIGIN).repla
 export function initNativeRuntime(): void {
 	initRuntime({
 		apiHost: () => API_HOST,
+		onAuthInvalid: () => session.clear(),
 		// The return leg is `deep-link.ts`.
 		openExternal: (url) => openUrl(url),
 		// Only a build carrying the on-device engine has anything on disk to erase.
-		wipeLocal: LOCAL_MODE_AVAILABLE ? () => invoke<void>('db_wipe') : undefined
+		wipeLocal: LOCAL_MODE_AVAILABLE ? () => invoke<void>('db_wipe') : undefined,
+		// Nothing in this shell writes a file yet.
+		saveFile: null
 	});
 }

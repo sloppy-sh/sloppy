@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import 'fake-indexeddb/auto';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { nodes } from './nodes.svelte.js';
-import type { NodeView, OwnedRef } from '@sloppy/types';
-import { node, ref, useFakeApi, type FakeApi } from './fake-api.test-support.js';
+import { homeGraphRef, type NodeView, type OwnedRef } from '@sloppy/types';
+import { deviceStore } from '../device-store.js';
+import { session } from './session.svelte.js';
+import { DID, node, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
 
 const ROOT = ref(1);
 const OTHER_ROOT = ref(4);
+const SOMEONE_ELSE = 'did:syr:z6MkBramBramBramBramBramBramBram';
 
 /** The two path segments `@sloppy/client` binds a reference as. */
 function path(of: OwnedRef): string {
@@ -22,9 +26,27 @@ const TREE = [
 
 let api: FakeApi;
 
+/** What the device holds of `graph`, once it holds what `until` is waiting for —
+ *  the cache waits out the answers before it writes. */
+async function keptNotes(
+	graph: OwnedRef,
+	until: (held: NodeView[]) => boolean = (held) => held.length > 0
+): Promise<NodeView[]> {
+	const area = deviceStore.area(DID, 'notes');
+	let held: NodeView[] = [];
+	for (let turn = 0; turn < 40; turn += 1) {
+		held = (await area.get<NodeView[]>(graph)) ?? [];
+		if (until(held)) return held;
+		await new Promise((done) => setTimeout(done, 25));
+	}
+	return held;
+}
+
 beforeEach(() => {
 	nodes.clear();
 	api = useFakeApi();
+	// The cache is one identity's, so the store has to know whose these are.
+	session.adopt(VIEWER, 'a-session');
 	api.on('GET /nodes', (url) => {
 		const origin = url.searchParams.get('origin');
 		const maxDepth = url.searchParams.get('max_depth');
@@ -34,6 +56,10 @@ beforeEach(() => {
 				(maxDepth === null || n.depth <= Number(maxDepth))
 		);
 	});
+});
+
+afterEach(() => {
+	session.clear();
 });
 
 describe('the node cache', () => {
@@ -207,5 +233,86 @@ describe('a note asked for', () => {
 		const again = writing.again();
 		expect((await again.note).address).toBe('3');
 		expect(asked).toEqual([{ title: 'Membranes' }, { title: 'Membranes' }]);
+	});
+});
+
+describe('the graph this device kept', () => {
+	const HOME = homeGraphRef(DID);
+
+	it('draws again with nothing to ask', async () => {
+		await nodes.load();
+		await nodes.load({ origin: ROOT });
+		await keptNotes(HOME);
+
+		nodes.clear();
+		api.on('GET /nodes', () => {
+			throw new Error('nothing is listening');
+		});
+		await nodes.restore();
+
+		expect(nodes.region().map((n) => n.address)).toEqual(['1', '2']);
+		expect(nodes.region({ origin: ROOT }).map((n) => n.address)).toEqual(['1', '1a', '1a1']);
+	});
+
+	it('keeps nothing for anybody but the person signed in', async () => {
+		await nodes.load();
+		await keptNotes(HOME);
+
+		await expect(deviceStore.area(SOMEONE_ELSE, 'notes').keys()).resolves.toEqual([]);
+	});
+
+	it('shows the note the server answers with, never the one it kept', async () => {
+		await nodes.load();
+		await keptNotes(HOME);
+		nodes.clear();
+
+		api.on('GET /nodes', () => [node(1, '1', { title: 'as it now is' }), node(4, '2')]);
+		await nodes.load();
+		await nodes.restore();
+
+		expect(nodes.get(ROOT)?.title).toBe('as it now is');
+	});
+
+	// A note deleted from another device is gone, and the copy this one kept is
+	// the only thing that would say otherwise.
+	it('lets go of a note the graph came back without', async () => {
+		await nodes.load();
+		await keptNotes(HOME);
+		nodes.clear();
+
+		api.on('GET /nodes', (url) => (url.searchParams.get('origin') ? [] : [node(1, '1')]));
+		await nodes.restore();
+		expect(nodes.region().map((n) => n.address)).toEqual(['1', '2']);
+
+		await nodes.load();
+		expect(nodes.region().map((n) => n.address)).toEqual(['1']);
+		expect(nodes.get(OTHER_ROOT)).toBeUndefined();
+	});
+
+	it('keeps a note it went on to write, and lets go of one it deleted', async () => {
+		api.on('POST /nodes', () => node(9, '3'));
+		await nodes.load();
+		await nodes.create({ title: 'a thought' });
+		expect((await keptNotes(HOME)).map((n) => n.address)).toContain('3');
+
+		api.on(`DELETE ${path(ref(9))}`, () => undefined);
+		await nodes.remove(ref(9));
+		const after = await keptNotes(HOME, (held) => held.every((n) => n.address !== '3'));
+		expect(after.map((n) => n.address)).not.toContain('3');
+	});
+
+	// The kept copy is the older one either way round, so which of the two lands
+	// first must not decide whether a deleted note comes back.
+	it('lets go of a note the graph came back without, whichever answered first', async () => {
+		await nodes.load();
+		await keptNotes(HOME);
+		nodes.clear();
+
+		api.on('GET /nodes', (url) => (url.searchParams.get('origin') ? [] : [node(1, '1')]));
+		await nodes.reload();
+		await nodes.restore();
+
+		expect(nodes.region().map((n) => n.address)).toEqual(['1']);
+		expect(nodes.get(OTHER_ROOT)).toBeUndefined();
 	});
 });
