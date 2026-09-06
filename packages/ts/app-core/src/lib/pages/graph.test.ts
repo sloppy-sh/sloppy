@@ -232,6 +232,24 @@ function typeTag(word: string): void {
 	field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 }
 
+/** The rail's own find field, which it offers only once it is crowded. */
+function findTag(word: string): void {
+	const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
+	if (!field) throw new Error('The rail is offering nowhere to type');
+	field.value = word;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** The tags the rail is drawing, in the order it draws them. */
+const railChips = (): string[] => {
+	const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
+	const root = field?.parentElement;
+	if (!root) throw new Error('The rail is offering nowhere to type');
+	return [...root.querySelectorAll('button[aria-pressed]')].map(
+		(chip) => chip.textContent?.trim().split(/\s+/)[0] ?? ''
+	);
+};
+
 /** The words the tag field is showing. */
 const chips = (): string[] =>
 	[...document.body.querySelectorAll('button[aria-label^="Remove "]')].map((chip) =>
@@ -1102,6 +1120,29 @@ describe('choosing the notes a selection lit', () => {
 
 		expect(screen()).toContain(`${MAX_NOTES_PER_BULK_ACT.toLocaleString()} notes chosen`);
 		expect(screen()).not.toContain('Choose fewer');
+	});
+
+	// The rail narrows what it draws, never what the canvas lit, so the row still
+	// reaches the notes the reader can see are lit.
+	it('still offers the lit notes while the rail is narrowed past the tag that lit them', async () => {
+		light(SECOND, 'seed');
+		light(THIRD, 'seed');
+		api.on('GET /nodes/tags', () => [
+			{ tag: 'seed', notes: 2 },
+			...Array.from({ length: 20 }, (_, n) => ({ tag: `other${n}`, notes: 1 }))
+		]);
+		tags.select(['seed']);
+		await open();
+
+		findTag('other1');
+		await settle();
+
+		expect(railChips()).not.toContain('other0');
+		expect(railChips()).toContain('seed');
+		menuOn('the canvas').click();
+		await settle();
+
+		expect(offered()).toEqual(['Choose the 2 notes lit up', 'Choose notes']);
 	});
 });
 
