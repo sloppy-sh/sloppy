@@ -8,6 +8,7 @@ import GraphsSheet, { type DeletedChoice } from './graphs-sheet.svelte';
 const HOME = 'did:syr:z6MkAda/00000000000000000000000000' as OwnedRef;
 const GARDEN = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAV' as OwnedRef;
 const BRANCH = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAW' as OwnedRef;
+const OTHER = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAX' as OwnedRef;
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
@@ -17,6 +18,7 @@ let shown: number;
 const branch = (over: Partial<DeletedChoice> = {}): DeletedChoice => ({
 	ref: BRANCH,
 	address: '1a',
+	graph: HOME,
 	title: 'The seed of the argument',
 	notes: 12,
 	within: '20 days left',
@@ -103,6 +105,19 @@ describe('the graphs sheet', () => {
 		expect(text).toContain('The seed of the argument');
 		expect(text).toContain('12 notes');
 		expect(text).toContain('20 days left');
+		expect(text).toContain('My graph');
+	});
+
+	it('tells apart two branches at the same number in different graphs', async () => {
+		await open([branch(), branch({ ref: OTHER, graph: GARDEN, title: 'The other one' })]);
+
+		expect(find('Put 1a in My graph back')).not.toBeNull();
+		expect(find('Put 1a in Garden back')).not.toBeNull();
+
+		find('Put 1a in Garden back')?.click();
+		await settle();
+
+		expect(putBack).toEqual([OTHER]);
 	});
 
 	it('counts one note as one', async () => {
@@ -113,7 +128,7 @@ describe('the graphs sheet', () => {
 	it('puts one back when asked', async () => {
 		await open([branch()]);
 
-		find('Put 1a back')?.click();
+		find('Put 1a in My graph back')?.click();
 		await settle();
 
 		expect(putBack).toEqual([BRANCH]);
@@ -122,7 +137,7 @@ describe('the graphs sheet', () => {
 	it('says why one did not come back, in the words it was refused in', async () => {
 		await open([branch()], () => Promise.reject(new Error('That number is taken now.')));
 
-		find('Put 1a back')?.click();
+		find('Put 1a in My graph back')?.click();
 		await settle();
 
 		expect(document.querySelector('[role="alert"]')?.textContent).toContain(

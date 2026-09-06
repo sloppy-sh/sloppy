@@ -1698,10 +1698,15 @@
 	alsoUp={new Set(onCanvas.slice(1))}
 	full={graphs.canvasFull}
 	busy={graphs.state.loading}
-	says={graphs.state.failed ? (graphs.state.error ?? null) : null}
+	says={graphs.state.failed
+		? (graphs.state.error ?? null)
+		: deleted.state.failed
+			? (deleted.state.error ?? 'What you deleted could not be listed.')
+			: null}
 	deleted={deleted.all.map((branch) => ({
 		ref: branch.ref,
 		address: branch.address,
+		graph: branch.graph,
 		title: branch.title,
 		notes: branch.notes,
 		within: timeToPutBack(branch.deleted_at)
@@ -1713,6 +1718,7 @@
 			const graph = graphOf(back);
 			await Promise.all([nodes.reload({ graph }), nodes.reload({ origin: back.origin })]);
 			void tags.reload(graph).catch(() => {});
+			void deleted.reload().catch(() => {});
 		}, 'That branch could not be put back.')}
 	onEnter={(ref) => {
 		graphs.enter(ref);

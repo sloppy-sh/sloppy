@@ -1078,6 +1078,33 @@ describe("publishing a branch, and what a peer reads back", () => {
     60_000,
   );
 
+  // Deleting is the author taking a branch back, so what it was serving stops
+  // being served on the way out.
+  scenario(
+    "stops serving a branch its author deleted",
+    async () => {
+      const uploadId = await upload("deleted-branch.png");
+      const branch = await newNode({ title: "Out, then taken back" });
+      await newBlock(branch.ref, {
+        type: "doc",
+        content: [{ type: "picture", attrs: { upload_id: uploadId } }],
+      });
+      const publication = await publish(branch.ref);
+      expect((await read(publication.ref))?.nodes).toHaveLength(1);
+
+      await ok("DELETE", `/nodes/${at(branch.ref)}`, ada);
+
+      expect(await read(publication.ref)).toBeNull();
+      const index = await published();
+      expect(index.publications.map((one) => one.root_address)).not.toContain(
+        branch.address,
+      );
+      expect(await chainsRootedAt(branch.ref)).toEqual([]);
+      expect(await publicFilenames()).not.toContain("deleted-branch.png");
+    },
+    60_000,
+  );
+
   // Two publishes of one branch share the chain's copies, so they take their
   // turns: interleaved, the one that lost the race for a version number would
   // take back the copy the one that won had just published a version around.

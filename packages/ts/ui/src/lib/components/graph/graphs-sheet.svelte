@@ -12,6 +12,8 @@
 		ref: OwnedRef;
 		/** The number they cite it by, which is how they will recognise it. */
 		address: string;
+		/** The graph it comes back into. An address only means one thing inside one. */
+		graph: OwnedRef;
 		title: string;
 		/** The root and everything that comes back with it. */
 		notes: number;
@@ -84,6 +86,11 @@
 
 	function nameOf(graph: GraphChoice | DeletedChoice): string {
 		return graph.title || 'Untitled';
+	}
+
+	function graphHolding(branch: DeletedChoice): string {
+		const held = graphs.find((graph) => graph.ref === branch.graph);
+		return held ? nameOf(held) : 'Untitled';
 	}
 
 	async function putBack(branch: DeletedChoice): Promise<void> {
@@ -244,7 +251,8 @@
 									<span class="shrink-0 address text-xs">{branch.address}</span>
 									<span class="min-w-0 flex-1 truncate">{nameOf(branch)}</span>
 								</p>
-								<p class="text-xs text-muted-foreground">
+								<p class="truncate text-xs text-muted-foreground">
+									{graphHolding(branch)} ·
 									{branch.notes === 1 ? '1 note' : `${branch.notes.toLocaleString()} notes`} ·
 									{branch.within}
 								</p>
@@ -253,7 +261,7 @@
 								variant="outline"
 								class="h-9 shrink-0 rounded-full text-xs"
 								disabled={working || onRestore === undefined}
-								aria-label={`Put ${branch.address} back`}
+								aria-label={`Put ${branch.address} in ${graphHolding(branch)} back`}
 								onclick={() => void putBack(branch)}
 							>
 								<Undo2 class="size-4" />
