@@ -38,11 +38,13 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Network from '@lucide/svelte/icons/network';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Search from '@lucide/svelte/icons/search';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
 	import type { GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
 	import {
+		MAX_NOTES_PER_BULK_ACT,
 		NodeBulkRequestSchema,
 		pictureTurn,
 		RootAddressSchema,
@@ -67,6 +69,7 @@
 		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
+		FindSheet,
 		GraphsSheet,
 		GraphSurface,
 		GroundChoice,
@@ -82,6 +85,7 @@
 		WallpaperSheet,
 		type CanvasMenuItem,
 		type ConversationProps,
+		type FoundNote,
 		type HeldRegion,
 		type NoteTemplate,
 		type Peer,
@@ -101,6 +105,7 @@
 	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
+	import { find } from '../stores/find.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
@@ -121,6 +126,8 @@
 	let loading = $state(true);
 	/** Whether the graphs this person keeps are being looked through. */
 	let switching = $state(false);
+	/** Whether a note is being looked for by number, title or a word in it. */
+	let finding = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
 	/** No note answered, and the canvas is drawing what this device kept. */
@@ -185,6 +192,16 @@
 	/** The strip held while the surface is out of the graph's way, so a question
 	 *  put to the graph does not cost the reader the notes they had open. */
 	let aside = $state<readonly OwnedRef[]>([]);
+	/** The trail: what each entry behind the one being read holds — a note, or
+	 *  `null` for the graph alone — oldest first, and what each entry ahead of it
+	 *  holds, nearest first. */
+	let behind = $state<readonly (OwnedRef | null)[]>([]);
+	let ahead: readonly (OwnedRef | null)[] = [];
+	/** What the entry being read holds. */
+	let standing: OwnedRef | null = null;
+	/** How long the trail was when the writing surface went up, so walking off
+	 *  that entry takes the surface down with it. */
+	let writingAt = 0;
 	/** Where the reader has got to while looking for the note they mean: the one
 	 *  they are pointing from, and then whichever mega-node they opened. */
 	let looking = $state<OwnedRef | null>(null);
@@ -293,6 +310,15 @@
 		return from !== null && openNotes.includes(from) ? from : null;
 	});
 	const openNode = $derived(open ? nodes.get(open) : undefined);
+	/** The note the reader came here from, where the entry behind this one holds
+	 *  one the canvas is still drawing. At the head of the trail there is none,
+	 *  and the way out of a note is the graph. */
+	const wayBack = $derived.by(() => {
+		const previous = behind.length > 0 ? behind[behind.length - 1] : null;
+		if (previous === null || previous === open) return null;
+		const note = nodes.get(previous);
+		return note !== undefined && onCanvas.includes(graphOf(note)) ? previous : null;
+	});
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	/** The region's notes, already in address order. */
 	const heldNotes = $derived(foreign ? peers.held(foreign.ref) : []);
@@ -403,6 +429,7 @@
 		menuAt !== null ||
 			choosingWallpaper ||
 			deleting ||
+			finding ||
 			noteAsking ||
 			numbering ||
 			publishing ||
@@ -453,11 +480,12 @@
 	});
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
-	const lit = $derived(
+	const litNotes = $derived(
 		selection.length === 0
-			? 0
-			: visible.filter((note) => note.tags.some((tag) => selection.includes(tag))).length
+			? []
+			: visible.filter((note) => note.tags.some((tag) => selection.includes(tag)))
 	);
+	const lit = $derived(litNotes.length);
 
 	const summary = $derived(
 		selection.length > 0
@@ -476,6 +504,29 @@
 	const graphName = $derived(graphs.titleOf(graphs.current) || 'Your graph');
 	/** How many other graphs are standing beside this one, where any are. */
 	const besideIt = $derived(onCanvas.length > 1 ? `+${onCanvas.length - 1}` : null);
+
+	/** An address is read inside one graph, so a row names its own only where
+	 *  there is a second one on the canvas to tell it from. */
+	const foundNotes = $derived.by<FoundNote[]>(() => {
+		const several = onCanvas.length > 1;
+		return find.found.map((hit) => ({
+			ref: hit.note,
+			address: hit.address,
+			title: hit.title,
+			graph: hit.held || !several ? null : graphs.titleOf(hit.graph) || 'Untitled',
+			snippet: hit.snippet,
+			held: hit.held
+		}));
+	});
+
+	function openFound(ref: OwnedRef): void {
+		finding = false;
+		show(ref);
+	}
+
+	$effect(() => {
+		if (!finding) untrack(() => find.clear());
+	});
 
 	/** What one graph's read left on the canvas. */
 	interface FieldRead {
@@ -568,7 +619,7 @@
 	function openCited(): void {
 		const cited = refFromPath(page.url.pathname);
 		if (!cited) return;
-		if (!page.state.note) replaceState('', { note: cited, notes: [cited] });
+		if (!page.state.note) stayAt('', { note: cited, notes: [cited] });
 		void reachCited(cited);
 	}
 
@@ -646,8 +697,45 @@
 	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
 	function goTo(ref: OwnedRef, strip: readonly OwnedRef[]): void {
 		aside = [];
+		behind = [...behind, standing];
+		ahead = [];
+		standing = ref;
 		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
 	}
+
+	/** The entry being read, made to say something else. Tidying up is not
+	 *  somewhere the reader went, so the trail does not grow by it. */
+	function stayAt(path: string, state: App.PageState): void {
+		standing = state.note ?? null;
+		replaceState(path, state);
+	}
+
+	function walkBack(): void {
+		if (wayBack !== null) history.back();
+	}
+
+	// `goTo` is the only thing that adds an entry and `stayAt` the only thing that
+	// changes the one being read, so `open` changing without either is the reader
+	// walking the trail, and the two above are squared up against it here.
+	$effect(() => {
+		const now = open;
+		untrack(() => {
+			if (now !== standing) {
+				if (behind.length > 0 && behind[behind.length - 1] === now) {
+					ahead = [standing, ...ahead];
+					behind = behind.slice(0, -1);
+				} else if (ahead.length > 0 && ahead[0] === now) {
+					behind = [...behind, standing];
+					ahead = ahead.slice(1);
+				}
+				standing = now;
+			}
+			// The writing surface holds the only copy of what is typed into it, so
+			// it survives the entry it went up on being replaced — but not the
+			// reader walking off that entry.
+			if (writingHere && behind.length !== writingAt) leaveWriting();
+		});
+	});
 
 	/** Off the writing surface and onto a note. A note still being answered is on
 	 *  its way and opens where it lands; a refused one was never written at all,
@@ -719,7 +807,7 @@
 		seed = null;
 		typed = null;
 		leaveWriting();
-		replaceState(nodeHref(next), { note: next, notes: left });
+		stayAt(nodeHref(next), { note: next, notes: left });
 	}
 
 	/** Notes that are no longer there leave the strip with them — the ones deleted,
@@ -743,7 +831,7 @@
 		seed = null;
 		typed = null;
 		leaveWriting();
-		replaceState(nodeHref(next), { note: next, notes: left });
+		stayAt(nodeHref(next), { note: next, notes: left });
 	}
 
 	/** The surface put away, and every note on it closed with it. */
@@ -763,7 +851,7 @@
 		typed = null;
 		leaveWriting();
 		aside = held;
-		replaceState('/', {});
+		stayAt('/', {});
 	}
 
 	/** The note steps aside so the graph it belongs to can answer the question. */
@@ -962,12 +1050,31 @@
 			: `${missed.toLocaleString()} of the notes you chose were already gone.`;
 	}
 
+	/** The notes the selection lit, as one act can take them. The row counts what
+	 *  it reaches, so a set over the bound is answered before the tap. */
+	const chooseLit = $derived.by((): CanvasMenuItem | null => {
+		if (lit === 0) return null;
+		const reach = litNotes.slice(0, MAX_NOTES_PER_BULK_ACT).map((note) => note.ref);
+		const label =
+			reach.length < lit
+				? `Choose ${reach.length.toLocaleString()} of the ${count(lit, 'note', 'notes')} lit up`
+				: lit === 1
+					? 'Choose the note lit up'
+					: `Choose the ${count(lit, 'note', 'notes')} lit up`;
+		return { label, icon: Hash, onSelect: () => chooseWithin(reach) };
+	});
+
 	const menuItems = $derived.by((): CanvasMenuItem[] => {
 		const at = menuAt;
 		if (!at) return [];
 		const on = at.ref;
 		if (!choosing) {
-			if (!on) return [{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }];
+			if (!on) {
+				const bare: CanvasMenuItem[] = [
+					{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }
+				];
+				return chooseLit ? [chooseLit, ...bare] : bare;
+			}
 			return actsOnOne(on, at.foldable);
 		}
 
@@ -1090,6 +1197,7 @@
 		if (creating) return;
 		refused = null;
 		if (from !== null && from !== open && openNotes.includes(from)) activate(from);
+		writingAt = behind.length;
 		writing = {
 			trip: nodes.write(asked),
 			from,
@@ -1579,6 +1687,15 @@
 							{/if}
 							<span class="min-w-0 shrink truncate text-muted-foreground">· {summary}</span>
 						</button>
+						<button
+							type="button"
+							aria-label="Find a note"
+							onclick={() => (finding = true)}
+							class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
+						>
+							<Search class="size-4 shrink-0" />
+							<span class="hidden min-w-0 truncate sm:inline">Find a note</span>
+						</button>
 						<Button
 							variant="outline"
 							class="ms-auto h-9 shrink-0 rounded-full"
@@ -1738,6 +1855,19 @@
 		shaping = false;
 		writeBranch(shape);
 	}}
+/>
+
+<FindSheet
+	bind:open={finding}
+	query={find.query}
+	found={foundNotes}
+	looking={find.looking}
+	settled={find.settled}
+	elsewhere={graphs.all.length > onCanvas.length}
+	unreadable={find.unreadable}
+	exact={find.exact}
+	onquery={(words) => find.type(words)}
+	onopen={openFound}
 />
 
 <GraphsSheet
@@ -1925,6 +2055,7 @@
 			onOpenAlso={showAlso}
 			onLinkOnGraph={() => pointFrom(open)}
 			onDeleted={(of, above) => closeGone([of], above)}
+			onBack={wayBack === null ? null : walkBack}
 			onClose={hide}
 		/>
 	{/if}

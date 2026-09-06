@@ -944,8 +944,8 @@ drawn whole and a hand-drawn link broken, one line for a pair that carries both.
 still draws them as one dashed line, and that section names the gap.
 
 **`text` is derived, so only the server writes it.** It is the plain words of a section's
-`content`, rewritten on the same path that re-derives what the note cites, so the words a
-search reads and the lines drawn out of them can never disagree about what a section says.
+`content`, written in the same statement as the document they are taken from, so the words
+a search reads and the document behind them can never disagree about what a section says.
 It is therefore absent from `PATCHABLE` and from every create and update request, for the
 reason `references` is: a client that could write it could be found by words its document
 does not carry. `BlockView` has no field for it, and `blockView` in `@sloppy/types` is how

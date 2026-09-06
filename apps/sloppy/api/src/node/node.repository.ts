@@ -283,6 +283,18 @@ export class NodeRepository {
     return ids.map(ownedRefFrom);
   }
 
+  /** Every note of theirs that is in one graph and still there. Refs alone: a
+   *  whole row is what makes reading a graph expensive, and none of one is read
+   *  here. */
+  async notesIn(did: string, graph: OwnedRef): Promise<OwnedRef[]> {
+    const [ids] = await this.query<RecordId>(
+      `SELECT VALUE id FROM node
+         WHERE created_by = $did AND graph = $graph AND ${THERE}`,
+      { did, graph },
+    );
+    return ids.map(ownedRefFrom);
+  }
+
   /**
    * One act's writes, each note taking its own value — the tag arithmetic is
    * per note, so there is a value per row rather than one for the set. A note
@@ -409,6 +421,18 @@ export class NodeRepository {
         ids: going.map((node) => node.id),
       },
     );
+  }
+
+  /** Everybody holding a note deleted before `before`, which is who a sweep of
+   *  the window has anything to do for. */
+  async authorsPast(before: string): Promise<string[]> {
+    const [rows] = await this.query<{ created_by: string }>(
+      `SELECT created_by FROM node
+         WHERE ${GONE} AND deleted_at < $before
+         GROUP BY created_by`,
+      { before },
+    );
+    return rows.map((row) => row.created_by);
   }
 
   /**

@@ -45,7 +45,12 @@ function note(ref: OwnedRef, address: Address, graph: OwnedRef): Node {
   };
 }
 
-function section(ref: OwnedRef, node: OwnedRef, ord: string): Block {
+function section(
+  ref: OwnedRef,
+  node: OwnedRef,
+  ord: string,
+  wrote = ord,
+): Block {
   return {
     id: new RecordId("block", { created_by: DID, id: localId(ref) }),
     created_by: DID,
@@ -55,8 +60,11 @@ function section(ref: OwnedRef, node: OwnedRef, ord: string): Block {
     ord,
     content: {
       type: "doc",
-      content: [{ type: "paragraph", content: [{ type: "text", text: ord }] }],
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: wrote }] },
+      ],
     },
+    text: wrote,
   };
 }
 
@@ -174,6 +182,27 @@ describe("a copy of everything somebody keeps", () => {
     expect(Date.parse(held.exported_at)).toBeLessThanOrEqual(
       Date.parse(nowIso()),
     );
+  });
+
+  // Asserted against the document itself: parsing it through
+  // `GraphExportSchema` would strip the extra column before anything saw it.
+  it("carries a section's document and not the words derived from it", async () => {
+    const only = `${DID}/00000000000000000000000001` as OwnedRef;
+    const { service } = holding({
+      notes: [note(only, "1", HOME)],
+      blocks: [
+        section(
+          `${DID}/0000000000000000000000000A` as OwnedRef,
+          only,
+          "a0",
+          "hoopoe",
+        ),
+      ],
+    });
+
+    const document = await written(service);
+
+    expect(document.split("hoopoe").length - 1).toBe(1);
   });
 
   it("is still one document when there is nothing in it yet", async () => {

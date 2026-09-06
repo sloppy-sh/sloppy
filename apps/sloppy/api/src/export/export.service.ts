@@ -5,6 +5,7 @@ import { Injectable } from "@nestjs/common";
 import {
   type Address,
   type BlockView,
+  blockView,
   type DidSyr,
   entityView,
   type GraphView,
@@ -90,7 +91,7 @@ export class ExportService {
     let from: BlockCursor | undefined;
     for (;;) {
       const page = await this.rows.blocksOf(did, notes, from, BLOCKS_PER_READ);
-      for (const block of page) yield entityView(block);
+      for (const block of page) yield blockView(block);
       if (page.length < BLOCKS_PER_READ) return;
       const last = page[page.length - 1];
       from = { node: last.node, ord: last.ord };

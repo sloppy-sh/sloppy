@@ -5,6 +5,7 @@
 	// the hues.
 	import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 	import { tick } from 'svelte';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import { cn } from '$lib/utils.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 
@@ -23,11 +24,22 @@
 	const slots = $derived(assignTagHueSlots(selected));
 	const counts = $derived(new Map(tags.map((entry) => [entry.tag, entry.notes])));
 
+	/** Chips past which scrolling the rail costs more than typing the word. */
+	const CROWDED = 12;
+	let typed = $state('');
+	const offered = $derived(tags.length > CROWDED);
+	const needle = $derived(offered ? typed.trim().toLowerCase() : '');
+
 	/** Selected first, in selection order; then the rest as the read ordered them. */
 	const order = $derived([
 		...selected,
-		...tags.map((entry) => entry.tag).filter((tag) => !slots.has(tag))
+		// The canvas is drawing the selection's hues, so the legend holds them
+		// whatever is typed; only the tail narrows.
+		...tags
+			.map((entry) => entry.tag)
+			.filter((tag) => !slots.has(tag) && (needle === '' || tag.includes(needle)))
 	]);
+	const nothingMatched = $derived(needle !== '' && !order.some((tag) => tag.includes(needle)));
 
 	let rail = $state<HTMLElement | null>(null);
 
@@ -77,6 +89,19 @@
 		{/if}
 	</div>
 
+	{#if offered}
+		<Input
+			bind:value={typed}
+			type="search"
+			class="h-11"
+			autocapitalize="none"
+			autocomplete="off"
+			spellcheck="false"
+			aria-label="Find a tag"
+			placeholder="Find a tag"
+		/>
+	{/if}
+
 	<div
 		bind:this={rail}
 		class="-mx-1 flex gap-1.5 overflow-x-auto scroll-fade-x px-1 py-0.5 [scrollbar-width:none]"
@@ -110,4 +135,8 @@
 			</button>
 		{/each}
 	</div>
+
+	{#if nothingMatched}
+		<p role="status" class="px-1 text-sm text-muted-foreground">No tag has that in it.</p>
+	{/if}
 </div>
