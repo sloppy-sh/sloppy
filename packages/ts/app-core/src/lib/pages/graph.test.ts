@@ -386,8 +386,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	// Walking the notes outlives a mount by design, so the outline is put away
-	// rather than left up for whatever runs next.
+	// Walking the notes outlives a mount by design, and so do the branches it was
+	// left open on, so both are put back rather than left for whatever runs next.
+	for (let deep = 0; deep < 8; deep += 1) {
+		const open = [...document.body.querySelectorAll<HTMLButtonElement>('[aria-label^="Fold "]')];
+		if (open.length === 0) break;
+		for (const branch of open) branch.click();
+		flushSync();
+	}
 	document.body.querySelector<HTMLButtonElement>('button[aria-label="Back to the graph"]')?.click();
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
