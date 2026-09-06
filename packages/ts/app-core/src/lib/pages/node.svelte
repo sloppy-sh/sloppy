@@ -67,6 +67,7 @@
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import NoteAuthor from '../components/note-author.svelte';
+	import PersonSurface from '../components/person-surface.svelte';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
 	import { deviceStore, type DeviceArea } from '../device-store.js';
@@ -282,6 +283,8 @@
 	let tagging = $state(false);
 	let linking = $state(false);
 	let publishing = $state(false);
+	/** Whoever the reader tapped in the conversation, until they close them. */
+	let meeting = $state<string | null>(null);
 	let removing = $state(false);
 
 	$effect(() => {
@@ -605,6 +608,13 @@
 		return nodes
 			.region({ origin: node.origin })
 			.some((other) => isInSubtree(node.address, other.address) && other.updated_at > since);
+	});
+
+	/** What somebody has to be handed beside the address before they can read a
+	 *  branch published from here. Each half is left out until it is known. */
+	const readerNeeds = $derived({
+		...(session.viewer ? { identity: session.viewer.did } : {}),
+		...(identity.servedAt ? { where: identity.servedAt } : {})
 	});
 
 	/** What the publishing sheet says went wrong: the last act's refusal, or that
@@ -1775,7 +1785,9 @@
 						onunsay={unsay}
 						onreact={react}
 						onunreact={unreact}
+						onperson={(who) => (meeting = who)}
 					/>
+					<PersonSurface bind:did={meeting} />
 				{/if}
 			</Tabs.Content>
 
@@ -1909,6 +1921,7 @@
 			<PublishModal
 				bind:open={publishing}
 				address={node.address}
+				reader={readerNeeds}
 				published={branch}
 				carriedBy={carriedBy?.root_address ?? null}
 				{narrower}

@@ -187,6 +187,16 @@ function button(labelled: string): HTMLButtonElement {
 	return found;
 }
 
+/** The control whose whole label is `text`, so a name in a conversation is told
+ *  from every surface that merely mentions it. */
+function named(text: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find(
+		(b) => b.textContent?.trim() === text
+	);
+	if (!found) throw new Error(`Nothing on screen is just "${text}"`);
+	return found as HTMLButtonElement;
+}
+
 function labelledControl(label: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find(
 		(b) => b.getAttribute('aria-label') === label
@@ -337,6 +347,30 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		expect(screen()).toContain('What they wrote in 1a');
 	});
 
+	// The copy is what the reader has. Nothing they do to it fetches the picture
+	// from its author, so there is no second try to offer.
+	it('says a picture the copy did not bring is not readable here', async () => {
+		api.on(`GET /pulls/nodes/${encodeURIComponent(AUTHOR)}/${ulid(12)}/blocks`, () => [
+			{
+				...section(21, THEIRS_UNDER, 'What they wrote in 1a'),
+				content: {
+					type: 'doc',
+					content: [{ type: 'picture', attrs: { upload_id: ref(50, AUTHOR) } }]
+				}
+			}
+		]);
+
+		await enterHeldRegion();
+		onCanvas('1a').click();
+		await until(
+			() => (document.body.querySelector('.sloppy-picture-note')?.textContent ?? '') !== ''
+		);
+
+		const note = document.body.querySelector('.sloppy-picture-note')?.textContent ?? '';
+		expect(note).toContain("isn't readable here");
+		expect(note).not.toContain('Open the note again');
+	});
+
 	it('offers no way to write in a note it is showing', async () => {
 		await enterHeldRegion();
 		onCanvas('1a').click();
@@ -398,6 +432,41 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		expect(api.calls).toContain(asking(AUTHOR, 'http://peer.test'));
 	});
 
+	// A person hands somebody their name, not an identifier, and where it is
+	// kept comes with it.
+	it('finds somebody by a name and the instance it is kept on', async () => {
+		api.on('GET /peers/identity', () => ({ did: STRANGER }));
+		api.on('GET /peers/publications', () => ({ did: STRANGER, publications: [] }));
+		await openPeersSheet();
+
+		const who = document.body.querySelector<HTMLInputElement>('[aria-label="Who to read"]');
+		if (!who) throw new Error('There is nowhere to say who to read');
+		who.value = 'charles@peer.example';
+		who.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+		button('See what they publish').click();
+		await settle();
+
+		const looked = api.calls.find((call) => call.startsWith('GET /peers/identity'));
+		expect(looked).toBeDefined();
+		const asked = new URL(looked!, 'http://api.test').searchParams;
+		expect(asked.get('name')).toBe('charles');
+		expect(asked.get('source_url')).toBe('https://peer.example');
+
+		// Whoever the name turned out to be is who a follow is written against.
+		expect(api.calls).toContain(
+			`GET /peers/publications?did=${encodeURIComponent(STRANGER)}` +
+				`&source_url=${encodeURIComponent('https://peer.example')}`
+		);
+		expect(screen()).toContain(STRANGER);
+	});
+
+	it('says a name or an identifier is what the field takes', async () => {
+		await openPeersSheet();
+
+		expect(screen()).toContain('The name or the identifier they gave you');
+	});
+
 	it('counts the region’s own tags on the rail, not the reader’s', async () => {
 		api.on('GET /nodes/tags', () => [{ tag: 'biology', notes: 412 }]);
 		await enterHeldRegion();
@@ -431,6 +500,39 @@ describe('answering somebody else’s note', () => {
 		await settle();
 
 		expect(screen()).toContain('You see what you and the people you follow have written');
+	});
+
+	// A voice on a held note is a person the reader can go on to read.
+	it('opens whoever spoke, and what they publish, from their name', async () => {
+		said = [comment('c1', STRANGER, 'A thought of my own')];
+		api.on(`GET /profile/${encodeURIComponent(STRANGER)}`, () => ({
+			did: STRANGER,
+			username: 'charles',
+			display_name: 'Charles Babbage',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		api.on('GET /peers/publications', () => ({
+			did: STRANGER,
+			publications: [
+				{
+					ref: ref(41, STRANGER),
+					root_address: '2b',
+					title: 'What they think about it',
+					latest: { ref: ref(42, STRANGER), sequence: 1, published_at: AT }
+				}
+			]
+		}));
+
+		await openTheirNote();
+		await until(() => conversation.status(THEIRS_UNDER).loaded);
+		await until(() => people.of(STRANGER) !== null);
+		await settle();
+		named('Charles Babbage').click();
+		await until(() => screen().includes('What they think about it'));
+
+		expect(screen()).toContain('2b');
 	});
 
 	it('answers it under the address its own author gave it', async () => {

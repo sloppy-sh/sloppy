@@ -14,6 +14,9 @@ import { placeBlock } from './placement.js';
 export const PICTURE_NODE = 'picture';
 
 const COULD_NOT_DRAW = "This picture didn't load. Open the note again in a moment.";
+/** A picture inside a copy of somebody else's note. Whatever the copy did not
+ *  bring is not somewhere the reader can go and get. */
+const NOT_HELD = "This picture isn't readable here.";
 
 /**
  * How a picture is written into a section's document: the upload, and what it
@@ -70,8 +73,9 @@ function numberAttr(value: string | null): number | null {
 }
 
 /** Only what a picture on the page needs, so a surface that reads without
- *  writing has nothing to send from. */
-export type PictureSource = Pick<NoteMedia, 'picture'>;
+ *  writing has nothing to send from. `held` marks a copy of somebody else's
+ *  note: a picture that does not draw there will not draw later either. */
+export type PictureSource = Pick<NoteMedia, 'picture'> & { held?: boolean };
 
 export function PictureNode(media: () => PictureSource | undefined) {
 	return Node.create({
@@ -234,7 +238,7 @@ export function PictureNode(media: () => PictureSource | undefined) {
 						note.textContent = '';
 					} catch {
 						if (drawn !== wanted) return;
-						note.textContent = COULD_NOT_DRAW;
+						note.textContent = media()?.held ? NOT_HELD : COULD_NOT_DRAW;
 					}
 				}
 
@@ -266,7 +270,7 @@ export function PictureNode(media: () => PictureSource | undefined) {
 
 				image.addEventListener('error', () => {
 					if (current.attrs.upload_id && image.getAttribute('src')) {
-						note.textContent = COULD_NOT_DRAW;
+						note.textContent = media()?.held ? NOT_HELD : COULD_NOT_DRAW;
 					}
 				});
 

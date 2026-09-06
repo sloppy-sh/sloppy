@@ -101,6 +101,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import PersonSurface from '../components/person-surface.svelte';
 	import { api } from '../api.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
@@ -255,6 +256,9 @@
 	let reached = $state<OwnedRef | null>(null);
 	/** The held note whose sections are still on their way. */
 	let reaching = $state<OwnedRef | null>(null);
+	/** Whoever the reader tapped in a held note's conversation, until they close
+	 *  them. */
+	let meeting = $state<string | null>(null);
 	/** Why the held note in front of the reader has no sections. */
 	let reachRefused = $state<string | null>(null);
 
@@ -270,7 +274,10 @@
 	/** A picture inside a held note. Publishing the branch is what made it
 	 *  readable, and the fetch is the API's, so the author's instance never
 	 *  learns who is reading. */
-	const heldPictures: PictureSource = { picture: (upload) => api.publishedPicture(upload) };
+	const heldPictures: PictureSource = {
+		held: true,
+		picture: (upload) => api.publishedPicture(upload)
+	};
 
 	/** Where a reference inside a held note leads: the region either holds the
 	 *  note it names or nothing does, since the reader's own graph is not the
@@ -1414,7 +1421,8 @@
 				inTheirWords(
 					() => conversation.unreact(note, reactionId),
 					'That reaction could not be removed. Try again in a moment.'
-				)
+				),
+			onperson: (who: string) => void (meeting = who)
 		};
 	});
 
@@ -2103,6 +2111,8 @@
 		onClose={closeHeld}
 	/>
 {/if}
+
+<PersonSurface bind:did={meeting} />
 
 <ResponsiveModal
 	bind:open={numbering}
