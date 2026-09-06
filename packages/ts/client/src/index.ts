@@ -51,6 +51,8 @@ import {
   type OwnedRef,
   type OwnInstance,
   OwnInstanceSchema,
+  type PeerIdentity,
+  PeerIdentitySchema,
   PeerOriginSchema,
   type ProfileView,
   ProfileViewSchema,
@@ -572,6 +574,22 @@ export class SloppyClient {
       nodes,
       blocks,
     };
+  }
+
+  /**
+   * Whoever a name names, as the identifier everything else here holds. The
+   * asking is done by the API, so the instance the name is kept on learns this
+   * instance and never the reader. Omitting `sourceUrl` asks this one.
+   */
+  async peerIdentity(
+    name: string,
+    options: { sourceUrl?: string } = {},
+  ): Promise<PeerIdentity> {
+    const query = new URLSearchParams({ name });
+    this.askingPeer(query, options);
+    return PeerIdentitySchema.parse(
+      await this.json(`/peers/identity?${query.toString()}`, { method: "GET" }),
+    );
   }
 
   /**

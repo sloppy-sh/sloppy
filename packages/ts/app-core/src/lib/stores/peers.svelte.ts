@@ -21,7 +21,7 @@ import type {
 	PulledNoteHit,
 	PullView
 } from '@sloppy/types';
-import { DidSyrSchema, publishedIndexReader } from '@sloppy/types';
+import { DidSyrSchema, peerOrigin, publishedIndexReader } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { serverMessage } from './errors.js';
@@ -150,20 +150,29 @@ class PeersStore {
 
 	/**
 	 * Whoever was typed, as the identifier everything else here holds: an
-	 * identifier is itself, and a name is looked up. `null` where the lookup did
-	 * not land, with {@link says} carrying what to try instead.
+	 * identifier is itself, and a name is looked up on the instance it carries
+	 * after the `@`, or on this one where it names none. `null` where the lookup
+	 * did not land, with {@link says} carrying what to try instead.
 	 */
 	async identify(typed: string): Promise<string | null> {
 		const named = typed.trim();
 		if (DidSyrSchema.safeParse(named).success) return named;
+		const cut = named.lastIndexOf('@');
+		const who = cut > 0 ? named.slice(0, cut) : named;
+		if (DidSyrSchema.safeParse(who).success) return who;
+		const at = cut > 0 ? peerOrigin(named.slice(cut + 1)) : undefined;
+		if (at === null) {
+			this.#says = 'Enter an instance address, like https://sloppy.example';
+			return null;
+		}
 		this.#busy = true;
 		this.#says = null;
 		try {
-			return (await api.profileOf(named)).did;
-		} catch {
-			// What the instance said is about the ask, not about the person asked
-			// after, so it is not what to put in front of the reader.
-			this.#says = 'Sloppy could not look that name up. Try the identifier they gave you.';
+			return (await api.peerIdentity(who, at === undefined ? {} : { sourceUrl: at })).did;
+		} catch (error) {
+			this.#says =
+				serverMessage(error) ??
+				'Sloppy could not look that name up. Try the identifier they gave you.';
 			return null;
 		} finally {
 			this.#busy = false;

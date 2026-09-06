@@ -15,16 +15,21 @@ import {
 import {
   type FollowedIdentity,
   type PeerChangesQuery,
+  type PeerIdentity,
+  type PeerIdentityQuery,
   type PeerPublicationsQuery,
   type PeerVersionsQuery,
   type PublishedChangesPage,
   type PublishedIndex,
   type PublishedVersionsPage,
+  SyrProfileSchema,
   UnaskedAnswerError,
   parsePublishedIndex,
   publishedChangesReader,
   publishedVersionsReader,
+  syrEnvelope,
 } from "@sloppy/types";
+import { z } from "zod";
 import { AppConfigService } from "../config/app-config.service";
 import type { Delegation } from "../syr/syr.service";
 import { SyrService } from "../syr/syr.service";
@@ -37,10 +42,21 @@ import {
   versionsUrl,
 } from "./peer-fetch";
 
-/** Said where somebody's own store keeps no list of who they follow. They can
- *  still pull a branch, so the line says which of the two they have. */
+/** Said where somebody's own store keeps no list of who they follow. Reading a
+ *  stranger's branches never needed the list, so the line says what is left. */
 const NO_FOLLOW_LIST =
-  "This account cannot keep a list of who you follow. You can still pull a branch by its address.";
+  "This account cannot keep a list of who you follow. You can still look somebody up by their name or identifier and read what they publish.";
+
+/** Said where nothing at that instance answers to that name, whether it said so
+ *  or said nothing Sloppy could read. */
+const NO_SUCH_NAME =
+  "Nobody there goes by that name. Check the name and the address you were given.";
+
+/** The one thing a peer's instance manifest is read for here: where its public
+ *  profiles answer. syr serves that route a name as readily as an identifier. */
+const ProfileRouteSchema = z.object({
+  api: z.object({ public_profile: z.url() }),
+});
 
 @Injectable()
 export class PeerService {
@@ -147,6 +163,29 @@ export class PeerService {
       () => publishedChangesReader({ publication, from, to }).take(body),
       "Sloppy could not read what changed there.",
     );
+  }
+
+  /**
+   * Whoever a name names. This instance asks theirs, so the instance holding
+   * the name learns this one and never the reader — the same reason every other
+   * read here runs on the server.
+   */
+  async identify(query: PeerIdentityQuery): Promise<PeerIdentity> {
+    const origin = query.source_url ?? hereOrigin(this.config);
+    const reach = peerReach(this.config);
+    const route = ProfileRouteSchema.safeParse(
+      await readPeerJson(`${origin}/.well-known/syr`, reach),
+    );
+    if (!route.success) throw new NotFoundException(NO_SUCH_NAME);
+    const answer = syrEnvelope(SyrProfileSchema).safeParse(
+      await readPeerJson(
+        `${route.data.api.public_profile}/${encodeURIComponent(query.name.trim())}`,
+        reach,
+      ),
+    );
+    const did = answer.success ? answer.data.data.did : null;
+    if (!did) throw new NotFoundException(NO_SUCH_NAME);
+    return { did };
   }
 
   private async keepsFollows(delegation: Delegation): Promise<boolean> {

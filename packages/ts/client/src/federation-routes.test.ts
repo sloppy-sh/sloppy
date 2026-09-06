@@ -95,6 +95,27 @@ describe("what an identity publishes", () => {
   });
 });
 
+describe("whoever a name names", () => {
+  it("is resolved by the API, so the browser never asks their instance", async () => {
+    const { asked, client } = serving({ did: AUTHOR });
+
+    const found = await client.peerIdentity("charles", { sourceUrl: PEER });
+
+    expect(found.did).toBe(AUTHOR);
+    expect(asked[0].url.startsWith("/api/peers/identity?")).toBe(true);
+    expect(asked[0].url).toContain("name=charles");
+    expect(asked[0].url).toContain(`source_url=${encodeURIComponent(PEER)}`);
+  });
+
+  it("is asked of this instance when nowhere else is named", async () => {
+    const { asked, client } = serving({ did: AUTHOR });
+
+    await client.peerIdentity("charles");
+
+    expect(asked[0].url).toBe("/api/peers/identity?name=charles");
+  });
+});
+
 describe("a publication's history", () => {
   const chain = { publication: PUBLICATION, versions: [version] };
 

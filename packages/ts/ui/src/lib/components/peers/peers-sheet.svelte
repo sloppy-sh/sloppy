@@ -60,10 +60,12 @@
 		onEnter: (ref: HeldRegion['ref']) => void;
 		onDrop: (ref: HeldRegion['ref']) => void;
 		/** What somebody publishes, on the instance named or on this one. A page at
-		 *  a time; `cursor` asks for the one after. `identity` on the answer is who
-		 *  the name typed turned out to be. */
+		 *  a time; `cursor` asks for the one after. The first argument is what was
+		 *  typed — an identifier, or a name carrying the instance it is kept on
+		 *  after an `@` — and `identity` on the answer is who that turned out to
+		 *  be. */
 		onLook: (
-			identity: string,
+			typed: string,
 			where: string | undefined,
 			cursor?: string
 		) => Promise<PublishedThere | null>;
@@ -179,6 +181,12 @@
 		return peerOrigin(named);
 	}
 
+	/** The two lines back as the one thing the host looks up, which is the form
+	 *  {@link split} takes apart. */
+	function joined(who: string, at: string | undefined): string {
+		return at === undefined ? who : `${who}@${at}`;
+	}
+
 	/** What somebody was handed, as the two lines this asks for: a name carries
 	 *  the instance it is kept on, so one paste fills both. An identifier carries
 	 *  no `@`. */
@@ -209,7 +217,7 @@
 		identity = named.who;
 		found = null;
 		looking = null;
-		const page = await onLook(named.who, at);
+		const page = await onLook(joined(named.who, at), at);
 		if (!page) return;
 		looking = { identity: page.identity, where: at };
 		found = page;
@@ -463,7 +471,7 @@
 				class="h-11"
 				autocomplete="off"
 				spellcheck="false"
-				placeholder="did:syr:…"
+				placeholder="alice@sloppy.example"
 				aria-label="Who to read"
 			/>
 			<Input
@@ -476,7 +484,8 @@
 				aria-label="Where their graph is"
 			/>
 			<p class="text-xs text-muted-foreground">
-				The identifier they gave you. Leave the second line empty if their graph is kept here.
+				The name or the identifier they gave you. Leave the second line empty if their graph is kept
+				here.
 			</p>
 			<Button
 				variant="outline"

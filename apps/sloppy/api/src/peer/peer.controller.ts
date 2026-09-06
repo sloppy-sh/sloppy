@@ -1,6 +1,8 @@
 import { Controller, Get, Query } from "@nestjs/common";
 import {
   PeerChangesQuerySchema,
+  type PeerIdentity,
+  PeerIdentityQuerySchema,
   PeerPublicationsQuerySchema,
   PeerVersionsQuerySchema,
   type PublishedChangesPage,
@@ -16,6 +18,17 @@ import { PeerService } from "./peer.service";
 @Controller("peers")
 export class PeerController {
   constructor(private readonly peers: PeerService) {}
+
+  /** Whoever a name names, so somebody can be found by what they say out loud. */
+  @Get("identity")
+  identity(
+    @Query("name") name?: string,
+    @Query("source_url") sourceUrl?: string,
+  ): Promise<PeerIdentity> {
+    return this.peers.identify(
+      parseBody(PeerIdentityQuerySchema, { name, source_url: sourceUrl }),
+    );
+  }
 
   /** What an identity publishes on an instance. */
   @Get("publications")
