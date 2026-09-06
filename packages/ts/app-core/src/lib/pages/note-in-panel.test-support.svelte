@@ -12,6 +12,7 @@
 		opened,
 		fresh = true,
 		writingAnother = false,
+		onback = null,
 		onclose,
 		onlink
 	}: {
@@ -19,6 +20,8 @@
 		fresh?: boolean;
 		/** As the canvas reports it: another note is being given its address. */
 		writingAnother?: boolean;
+		/** As the page reports it: the trail has a note behind this one. */
+		onback?: (() => void) | null;
 		onclose?: () => void;
 		onlink?: () => void;
 	} = $props();
@@ -94,6 +97,7 @@
 				typed = null;
 			}}
 			onLinkOnGraph={() => onlink?.()}
+			onBack={onback}
 			onDeleted={(_gone, above) => {
 				if (!above) {
 					onclose?.();

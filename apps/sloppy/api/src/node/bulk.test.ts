@@ -22,6 +22,7 @@ import type { z } from "zod";
 import type { MediaService } from "../media/media.service";
 import type { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
+import type { FindRepository } from "./find.repository";
 import type { GraphService } from "./graph.service";
 import type { NodeBulkPatch, NodeRepository } from "./node.repository";
 import { NodeService } from "./node.service";
@@ -30,6 +31,9 @@ const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
 
 /** Nothing here names a picture, so no store is ever asked for one. */
 const media = {} as MediaService;
+
+/** Nor finds a note by what it says, so those reads are never reached. */
+const finds = {} as FindRepository;
 
 const ada: Delegation = {
   did: DID,
@@ -117,7 +121,7 @@ function serviceOver(
     },
   } as unknown as PublicationService;
   return {
-    service: new NodeService(repository, graphs, media, publications),
+    service: new NodeService(repository, finds, graphs, media, publications),
     writes,
     removed,
     published,
