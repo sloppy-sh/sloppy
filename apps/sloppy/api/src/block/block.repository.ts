@@ -10,16 +10,23 @@ import {
   OwnedRefSchema,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
+import type { RecordId } from "surrealdb";
 import { z } from "zod";
 import { DbService } from "../db/db.service";
 import { replacement } from "../node/patch";
+import { wordsOf } from "./text";
 
 const PATCHABLE = ["ord", "content"] as const;
+
+/** What a write sets: the columns a request may name, and beside them the words
+ *  derived from the document it wrote. */
+const WRITTEN = [...PATCHABLE, "text"] as const;
 
 /** How many references one `IN` carries. */
 const PER_STATEMENT = 500;
 
 export type BlockPatch = Partial<Pick<Block, (typeof PATCHABLE)[number]>>;
+type BlockWrite = Partial<Pick<Block, (typeof WRITTEN)[number]>>;
 
 /**
  * A row read only for what its writing NAMES, which is why `content` is taken
@@ -34,6 +41,13 @@ const StoredSchema = z.object({
   content: z.unknown(),
 });
 export type StoredBlock = z.infer<typeof StoredSchema>;
+
+/** A section as a backfill reads it: the row to write, and the document the
+ *  words are derived from. */
+export interface Underived {
+  id: RecordId;
+  content: unknown;
+}
 
 @Injectable()
 export class BlockRepository {
@@ -139,6 +153,35 @@ export class BlockRepository {
     return rows[0] ?? null;
   }
 
+  /** Up to `limit` sections nothing has derived words for yet, across every
+   *  author this instance holds. */
+  async withoutText(limit: number): Promise<Underived[]> {
+    const [rows] = await this.db.handle.query<[Underived[]]>(
+      "SELECT id, content FROM block WHERE text = NONE LIMIT $limit",
+      { limit },
+    );
+    return rows;
+  }
+
+  /**
+   * Words for sections that had none, and only for a section that still has
+   * none: one written into between the read these came from and this write
+   * derived its own, off a newer document, and that answer must stand.
+   *
+   * No owner is bound: every section here was read off this instance's own rows
+   * rather than asked for by a caller.
+   */
+  async fillText(derived: readonly Underived[]): Promise<void> {
+    if (derived.length === 0) return;
+    const vars: Record<string, unknown> = {};
+    const statements = derived.map((section, at) => {
+      vars[`id${at}`] = section.id;
+      vars[`text${at}`] = wordsOf(section.content);
+      return `UPDATE $id${at} SET text = $text${at} WHERE text = NONE;`;
+    });
+    await this.db.handle.query(statements.join("\n"), vars);
+  }
+
   async find(did: string, ref: OwnedRef): Promise<Block | null> {
     const [rows] = await this.query(
       "SELECT * FROM block WHERE id = $id AND created_by = $did",
@@ -148,13 +191,16 @@ export class BlockRepository {
     return row === undefined ? null : BlockSchema.parse(row);
   }
 
-  async insert(block: Block): Promise<Block> {
+  /** The words are derived here rather than handed in, so a document and the
+   *  words a search reads it by are written in one statement and cannot
+   *  disagree. */
+  async insert(block: Omit<Block, "text">): Promise<Block> {
     const { id, ...content } = block;
     const [rows] = await this.query(
       "CREATE $id CONTENT $content RETURN AFTER",
       {
         id,
-        content,
+        content: { ...content, text: wordsOf(block.content) },
       },
     );
     return BlockSchema.parse(rows[0]);
@@ -165,7 +211,11 @@ export class BlockRepository {
     ref: OwnedRef,
     changes: BlockPatch,
   ): Promise<Block | null> {
-    const set = replacement(PATCHABLE, changes);
+    const written: BlockWrite =
+      changes.content === undefined
+        ? changes
+        : { ...changes, text: wordsOf(changes.content) };
+    const set = replacement(WRITTEN, written);
     const [rows] = await this.query(
       `UPDATE $id SET ${set.clause} WHERE created_by = $did RETURN AFTER`,
       { id: recordIdFromOwnedRef("block", ref), did, ...set.vars },
