@@ -31,12 +31,17 @@
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
+		heldApart,
 		openBlocks,
+		openDraft,
 		planSave,
 		runSave,
+		SaveFailure,
 		textSection,
 		type DocBlock,
-		type SavedBlock
+		type Opened,
+		type SavedBlock,
+		type SaveTrouble
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
 	import { citedLarge, emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
@@ -71,7 +76,8 @@
 		onReorder,
 		media,
 		emoji,
-		references
+		references,
+		drafts
 	}: BlockStackProps = $props();
 
 	const SAVE_AFTER_MS = 700;
@@ -96,7 +102,9 @@
 	let empty = $state(true);
 	let editing = $state(false);
 	let marks = $state<Record<string, boolean>>({});
-	let saveState = $state<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+	let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
+	/** The last save that did not land, and why; null once one has. */
+	let failed = $state<{ trouble: SaveTrouble; says: string } | null>(null);
 	let pickerOpen = $state(false);
 	let mediaOpen = $state(false);
 
@@ -120,6 +128,12 @@
 	let era = 0;
 	/** The note this surface is writing into, captured with the surface itself. */
 	let writingTo: OwnedRef = untrack(() => node.ref);
+	/** Whether this surface has read what the device holds for the note. A draft
+	 *  it has never seen is a later surface's to open from, so it is neither
+	 *  written over nor let go. */
+	let readHeld = false;
+	/** Whether anything has been written here since the note opened. */
+	let touched = false;
 
 	// ── Saving ───────────────────────────────────────────────────────────────
 	/** One trip to the API, holding everything it needs to outlive this surface. */
@@ -129,6 +143,12 @@
 		from: Editor;
 		rows: SavedBlock[];
 		next: DocBlock[];
+		/** The draft this trip is the last one kept for, so a trip outliving its
+		 *  surface writes over its own and never what a later one is holding.
+		 *  Zero where this surface has kept none. */
+		kept: number;
+		/** `DraftStore.leaving`'s call, made once this trip has settled. */
+		arrived: () => void;
 	}
 
 	/** The trip still in the air, so the next one queues behind it rather than racing it. */
@@ -137,7 +157,20 @@
 	function plan(): Write | null {
 		const current = editor;
 		if (!current || current.isDestroyed) return null;
-		return { note: writingTo, from: current, rows: saved, next: docBlocks(current.state.doc) };
+		const next = docBlocks(current.state.doc);
+		let kept = 0;
+		if (readHeld) {
+			const outstanding = planSave(saved, next).length > 0;
+			kept = outstanding ? drafts.keep(writingTo, { rows: saved, next }) : drafts.last(writingTo);
+		}
+		return {
+			note: writingTo,
+			from: current,
+			rows: saved,
+			next,
+			kept,
+			arrived: drafts.leaving(writingTo)
+		};
 	}
 
 	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
@@ -151,15 +184,54 @@
 						node: write.note,
 						content: request.content,
 						...(request.after ? { after: request.after } : {})
-					}).then((created) => created.ref),
-				update: (ref, content) => onUpdate(ref, { content }).then(() => undefined),
-				reorder: (ref, after) => onReorder(ref, after).then(() => undefined),
+					}).then((created) => ({ ref: created.ref, updated_at: created.updated_at })),
+				update: (ref, content, expects) =>
+					onUpdate(ref, { content, ...(expects ? { expects } : {}) }).then((row) => row.updated_at),
+				reorder: (ref, after) => onReorder(ref, after).then((row) => row.updated_at),
 				remove: (ref) => onRemove(ref),
-				placed: (uid, ref) => stamp(write.from, uid, ref)
+				placed: (uid, ref) => {
+					stamp(write.from, uid, ref);
+					// The row is there from this moment, so what the device holds names
+					// it rather than asking for the section a second time.
+					const made = write.next.find((block) => block.uid === uid);
+					if (made) made.ref = ref;
+					if (write.kept > 0) {
+						write.kept = drafts.keep(
+							write.note,
+							{ rows: write.rows, next: write.next },
+							write.kept
+						);
+					}
+				}
 			});
 		});
 		inFlight = trip.catch(() => undefined);
 		return trip;
+	}
+
+	/** What the person is told, and whether Sloppy keeps trying on its own. A
+	 *  refusal arrives with words of its own; the rest are this surface's to say. */
+	function troubleWith(error: unknown): { trouble: SaveTrouble; says: string } {
+		const failure = error instanceof SaveFailure ? error : null;
+		switch (failure?.trouble) {
+			case 'refused':
+				return { trouble: 'refused', says: failure.message || 'Sloppy cannot save this note.' };
+			case 'elsewhere':
+				return { trouble: 'elsewhere', says: 'This note was also written somewhere else.' };
+			default:
+				return { trouble: 'transient', says: 'Sloppy will keep trying to save this note.' };
+		}
+	}
+
+	/** A note left before this surface had read what the device holds: its last
+	 *  writing was never put there, so whatever of it the API did not take goes
+	 *  there once the trip settles — unless the device is holding a draft of its
+	 *  own that no surface has read. */
+	async function holdOnLeaving(write: Write): Promise<void> {
+		await drafts.settled(write.note);
+		if (planSave(write.rows, write.next).length === 0) return;
+		if (await drafts.read(write.note)) return;
+		write.kept = drafts.keep(write.note, { rows: write.rows, next: write.next });
 	}
 
 	function scheduleSave(delay: number): void {
@@ -169,6 +241,7 @@
 
 	/** A change waits for the writing to pause, but never past its own deadline. */
 	function saveSoon(): void {
+		touched = true;
 		changedAt ||= Date.now();
 		scheduleSave(Math.max(0, Math.min(SAVE_AFTER_MS, changedAt + SAVE_WITHIN_MS - Date.now())));
 	}
@@ -186,14 +259,23 @@
 		saveState = 'saving';
 		try {
 			await run(write);
-			if (mine === era) saveState = 'saved';
-		} catch {
 			if (mine === era) {
-				saveState = 'failed';
-				scheduleSave(RETRY_AFTER_MS);
+				saveState = 'saved';
+				failed = null;
+				drafts.landed(write.note);
+				// Nothing was written while the trip was in the air, so what the
+				// device was holding for this note is now the note.
+				if (changedAt === 0 && !again && readHeld) drafts.forget(write.note, write.kept);
+			}
+		} catch (error: unknown) {
+			if (mine === era) {
+				saveState = 'idle';
+				failed = troubleWith(error);
+				if (failed.trouble === 'transient') scheduleSave(RETRY_AFTER_MS);
 			}
 		} finally {
 			saving = false;
+			write.arrived();
 		}
 		if (again && mine === era) {
 			again = false;
@@ -534,14 +616,40 @@
 			});
 			editor = created;
 			inFlight = Promise.resolve();
-			const stack = openBlocks(blocks, created.schema);
-			created.commands.setContent(stack.doc, { emitUpdate: false });
-			showEmoji(created);
-			saved = stack.baseline(docBlocks(created.state.doc));
+			const stack = blocks;
+			const open = (from: Opened) => {
+				created.commands.setContent(from.doc, { emitUpdate: false });
+				showEmoji(created);
+				saved = from.baseline(docBlocks(created.state.doc));
+				empty = created.isEmpty;
+			};
+			open(openBlocks(stack, created.schema));
 			ready = true;
-			empty = created.isEmpty;
 			saveState = 'idle';
+			failed = null;
 			refreshMarks();
+
+			let opened = true;
+			readHeld = false;
+			touched = false;
+			void (async () => {
+				await drafts.settled(opening);
+				const held = await drafts.read(opening);
+				if (!opened || created.isDestroyed) return;
+				readHeld = true;
+				if (!held) return;
+				// Writing done here since the note opened is what stands, so the draft
+				// goes in beside it rather than opening over it.
+				if (touched) {
+					for (const { at, sections } of heldApart(held, created.state.doc, created.schema)) {
+						created.commands.insertContentAt(at, sections, { updateSelection: false });
+					}
+				} else {
+					open(openDraft(held, stack, created.schema));
+				}
+				refreshMarks();
+				saveSoon();
+			})();
 
 			// Listened for rather than bound: the surface is a writing area, not a
 			// control, and the pen handlers must be able to refuse the browser's
@@ -552,6 +660,7 @@
 			frame.addEventListener('pointercancel', onPenUp);
 
 			return () => {
+				opened = false;
 				for (const send of Object.values(sending)) send.cancel();
 				sending = {};
 				frame.removeEventListener('pointerdown', onPenDown, { capture: true });
@@ -561,6 +670,7 @@
 				clearTimeout(settling);
 				settle();
 				const last = plan();
+				const knew = readHeld;
 				era += 1;
 				again = false;
 				saving = false;
@@ -572,9 +682,20 @@
 				editing = false;
 				editor = null;
 				created.destroy();
-				// The last write of a note being left: no surface stays open for a
-				// failure to be reported on, or retried from.
-				if (last) void run(last).catch(() => undefined);
+				// The last write of a note being left. No surface stays open for it
+				// to be reported on, so the device holds the writing until it lands,
+				// and the note opens from there when it does not.
+				if (last) {
+					if (!knew) void holdOnLeaving(last);
+					void run(last)
+						.then(
+							() => {
+								if (knew) drafts.forget(last.note, last.kept);
+							},
+							() => undefined
+						)
+						.finally(last.arrived);
+				}
 			};
 		});
 	});
@@ -693,7 +814,7 @@
 	]);
 </script>
 
-<svelte:window onresize={repaintPen} />
+<svelte:window onresize={repaintPen} onpagehide={flush} />
 <svelte:document onvisibilitychange={whenHidden} />
 
 <div class="note-body space-y-2">
@@ -729,13 +850,15 @@
 		{/if}
 	</p>
 
-	{#if saveState === 'failed'}
+	{#if failed}
 		<div
 			class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
 			role="alert"
 		>
-			<span>Sloppy hasn't saved your last changes. Keep this note open — it will keep trying.</span>
-			<Button variant="outline" size="sm" onclick={() => scheduleSave(0)}>Try now</Button>
+			<span>{failed.says}</span>
+			{#if failed.trouble === 'transient'}
+				<Button variant="outline" size="sm" onclick={() => scheduleSave(0)}>Try now</Button>
+			{/if}
 		</div>
 	{/if}
 

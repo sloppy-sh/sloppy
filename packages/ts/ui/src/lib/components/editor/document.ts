@@ -8,6 +8,7 @@ import {
 	type BlockView,
 	type DocumentNode,
 	type OwnedRef,
+	type Timestamp,
 	readsAsInk
 } from '@sloppy/types';
 import type { JSONContent } from '@tiptap/core';
@@ -43,6 +44,65 @@ export interface SavedBlock {
 	uid: string;
 	ref: OwnedRef;
 	content: BlockDocument;
+	/** The stamp the row carried when the surface last saw it. The next write to
+	 *  it is conditioned on this; absent asks for no condition. */
+	updated_at?: Timestamp;
+}
+
+/**
+ * A note's writing that has not reached the API: what the surface planned to
+ * write, and the rows it was measured against. Kept on the device, so it holds
+ * plain data only. The uids in it belong to the page that wrote it, and a draft
+ * opened again is given fresh ones.
+ */
+export interface NoteDraft {
+	rows: SavedBlock[];
+	next: DocBlock[];
+}
+
+/** Where a note's unsent writing waits. This package keeps nothing of its own;
+ *  the app hands in the store it keeps. */
+export interface DraftStore {
+	read(note: OwnedRef): Promise<NoteDraft | null>;
+	/** Which draft the note holds now; 0 where none has been kept for it. */
+	last(note: OwnedRef): number;
+	/** Answers with which draft this is. `which` writes only where nothing has
+	 *  been kept for the note since, so a trip outliving the surface that asked
+	 *  for it cannot write over what a later surface is holding. */
+	keep(note: OwnedRef, draft: NoteDraft, which?: number): number;
+	/** `which` drops the draft only where nothing has been kept since. */
+	forget(note: OwnedRef, which?: number): void;
+	/** A write reached the server: whatever is still held for the note is on its
+	 *  way rather than waiting here. */
+	landed(note: OwnedRef): void;
+	/** Says a note's writing has left for the API; the returned call says that
+	 *  trip has settled, however it went. */
+	leaving(note: OwnedRef): () => void;
+	/** Resolves once no trip for the note is still in the air. A draft read
+	 *  before then can name a section the API is answering for right now, so a
+	 *  surface opening from it would ask for that section a second time. */
+	settled(note: OwnedRef): Promise<void>;
+}
+
+/** Why a write did not land, as far as it decides what the surface does next. */
+export type SaveTrouble =
+	/** Trying again is what fixes it. */
+	| 'transient'
+	/** The section was written somewhere else in between, and this write was
+	 *  refused rather than taking that writing with it. */
+	| 'elsewhere'
+	/** Trying again cannot land it; `message` is already fit to show somebody. */
+	| 'refused';
+
+/** What a write capability rejects with when the surface has to act on WHY.
+ *  Anything else it rejects with is read as trouble worth trying again. */
+export class SaveFailure extends Error {
+	constructor(
+		readonly trouble: SaveTrouble,
+		says = ''
+	) {
+		super(says);
+	}
 }
 
 /** `after` is the uid of the block this one follows, so a create can anchor to a create. */
@@ -98,12 +158,16 @@ function readable(node: DocumentNode, schema: Schema): boolean {
 	return (node.content ?? []).every((child) => readable(child, schema));
 }
 
-function sectionFrom(block: BlockView, schema: Schema): JSONContent | null {
-	const elements = block.content?.content ?? [];
+function sectionOf(
+	content: BlockDocument,
+	ref: OwnedRef | null,
+	schema: Schema
+): JSONContent | null {
+	const elements = content?.content ?? [];
 	if (!elements.every((element) => readable(element, schema))) return null;
 	return {
 		type: SECTION_NODE,
-		attrs: { blockUid: nextUid(), blockRef: block.ref },
+		attrs: { blockUid: nextUid(), blockRef: ref },
 		content: elements.length > 0 ? (elements as JSONContent[]) : [{ type: 'paragraph' }]
 	};
 }
@@ -126,6 +190,34 @@ export interface Opened {
 }
 
 /**
+ * `apart` is what the API holds for a row the document on screen does not say:
+ * one a draft has unsent writing for, and one it has taken away. Everywhere
+ * else the document is what the API answered with, and the editor's own reading
+ * of it is what the next plan is measured against.
+ */
+function baselineOf(
+	blocks: readonly BlockView[],
+	apart?: ReadonlyMap<OwnedRef, BlockDocument>
+): (opened: readonly DocBlock[]) => SavedBlock[] {
+	return (opened) => {
+		const read = new Map(opened.flatMap((row) => (row.ref ? [[row.ref, row] as const] : [])));
+		return blocks.flatMap((block) => {
+			const row = read.get(block.ref);
+			const held = apart?.get(block.ref);
+			if (!row && !held) return [];
+			return [
+				{
+					uid: row?.uid ?? nextUid(),
+					ref: block.ref,
+					content: held ?? (row as DocBlock).content,
+					updated_at: block.updated_at
+				}
+			];
+		});
+	};
+}
+
+/**
  * The document a stack of rows opens as, and the truth a save plan is measured
  * against. A row holding an element this build cannot read is in neither, and
  * so is carried untouched. A note with no rows yet opens as one empty section,
@@ -133,25 +225,130 @@ export interface Opened {
  */
 export function openBlocks(blocks: readonly BlockView[], schema: Schema): Opened {
 	const content: JSONContent[] = [];
-	const opening: OwnedRef[] = [];
 	for (const block of blocks) {
-		const section = sectionFrom(block, schema);
-		if (!section) continue;
-		opening.push(block.ref);
-		content.push(section);
+		const section = sectionOf(block.content, block.ref, schema);
+		if (section) content.push(section);
 	}
 	if (content.length === 0) content.push(emptySection());
 
-	return {
-		doc: { type: 'doc', content },
-		baseline(opened) {
-			const read = new Map(opened.flatMap((row) => (row.ref ? [[row.ref, row] as const] : [])));
-			return opening.flatMap((ref) => {
-				const row = read.get(ref);
-				return row ? [{ uid: row.uid, ref, content: row.content }] : [];
-			});
-		}
+	return { doc: { type: 'doc', content }, baseline: baselineOf(blocks) };
+}
+
+/**
+ * The same, for a note this device is still holding writing for: the draft is
+ * what opens, measured against the stack the API has answered with since.
+ *
+ * A section taken away elsewhere is not brought back, and one written elsewhere
+ * stands as it came in with the unsent writing beside it as a section of its
+ * own — neither version of a section is ever dropped for the other.
+ */
+export function openDraft(draft: NoteDraft, blocks: readonly BlockView[], schema: Schema): Opened {
+	const held = new Map(blocks.map((block) => [block.ref, block]));
+	const measured = new Map(draft.rows.map((row) => [row.ref, row]));
+	const elsewhere = (ref: OwnedRef): boolean => {
+		const was = measured.get(ref);
+		const now = held.get(ref);
+		return was !== undefined && now !== undefined && was.updated_at !== now.updated_at;
 	};
+
+	const entries: { content: BlockDocument; ref: OwnedRef | null }[] = [];
+	/** What the API holds for a row the document on screen does not say. */
+	const apart = new Map<OwnedRef, BlockDocument>();
+	for (const block of draft.next) {
+		if (!block.ref) {
+			entries.push({ content: block.content, ref: null });
+			continue;
+		}
+		const row = held.get(block.ref);
+		if (!row) continue;
+		if (elsewhere(block.ref)) {
+			entries.push({ content: row.content, ref: row.ref });
+			if (!sameDocument(row.content, block.content)) {
+				entries.push({ content: block.content, ref: null });
+			}
+			continue;
+		}
+		entries.push({ content: block.content, ref: block.ref });
+		apart.set(block.ref, measured.get(block.ref)?.content ?? row.content);
+	}
+
+	let at = -1;
+	for (const block of blocks) {
+		const found = entries.findIndex((entry) => entry.ref === block.ref);
+		if (found >= 0) {
+			at = found;
+			continue;
+		}
+		// A section the draft took away stays away, unless somebody has written
+		// into it since: nobody's writing goes because somebody else's went.
+		if (measured.has(block.ref) && !elsewhere(block.ref)) continue;
+		entries.splice(at + 1, 0, { content: block.content, ref: block.ref });
+		at += 1;
+	}
+
+	// A section this device took away is still a row the API holds, so the plan
+	// measured against this baseline is what takes it away there too.
+	for (const was of draft.rows) {
+		if (elsewhere(was.ref) || entries.some((entry) => entry.ref === was.ref)) continue;
+		apart.set(was.ref, was.content);
+	}
+
+	const content: JSONContent[] = [];
+	for (const entry of entries) {
+		const section = sectionOf(entry.content, entry.ref, schema);
+		if (section) content.push(section);
+	}
+	if (content.length === 0) content.push(emptySection());
+
+	return { doc: { type: 'doc', content }, baseline: baselineOf(blocks, apart) };
+}
+
+/** Where the section carrying `ref` ends, or null where the document has none. */
+function sectionEnd(doc: ProseMirrorNode, ref: OwnedRef): number | null {
+	let end: number | null = null;
+	doc.forEach((section, offset) => {
+		if (section.type.name === SECTION_NODE && section.attrs.blockRef === ref) {
+			end = offset + section.nodeSize;
+		}
+	});
+	return end;
+}
+
+/**
+ * What a held draft says that the document on screen does not: a section it
+ * never sent, and its own reading of a row somebody has written into since.
+ * Each goes in as a section of its own, at the position it belongs beside, so
+ * neither version of a section is dropped for the other. Ordered last position
+ * first, so inserting them in turn leaves each position true when its turn
+ * comes.
+ */
+export function heldApart(
+	draft: NoteDraft,
+	doc: ProseMirrorNode,
+	schema: Schema
+): { at: number; sections: JSONContent[] }[] {
+	const shown = new Map(
+		docBlocks(doc).flatMap((block) => (block.ref ? [[block.ref, block] as const] : []))
+	);
+	const measured = new Map(draft.rows.map((row) => [row.ref, row]));
+	const groups: { at: number; sections: JSONContent[] }[] = [];
+	let at = 0;
+	for (const block of draft.next) {
+		if (block.ref) {
+			const row = shown.get(block.ref);
+			if (!row) continue;
+			at = sectionEnd(doc, block.ref) ?? at;
+			const was = measured.get(block.ref)?.content;
+			if (was && sameDocument(was, block.content)) continue;
+			if (sameDocument(row.content, block.content)) continue;
+		}
+		const section = sectionOf(block.content, null, schema);
+		if (!section) continue;
+		const last = groups.at(-1);
+		if (last?.at === at) last.sections.push(section);
+		else groups.push({ at, sections: [section] });
+	}
+	return groups.reverse().sort((first, second) => second.at - first.at);
 }
 
 /** One section holding a run of text somebody arrived with, a paragraph to a
@@ -261,9 +458,22 @@ export function planSave(saved: readonly SavedBlock[], next: readonly DocBlock[]
 }
 
 export interface BlockWriter {
-	create(request: { after: OwnedRef | null; content: BlockDocument }): Promise<OwnedRef>;
-	update(ref: OwnedRef, content: BlockDocument): Promise<void>;
-	reorder(ref: OwnedRef, after: OwnedRef | null): Promise<void>;
+	/** The row the block became, and the stamp it carries now. */
+	create(request: {
+		after: OwnedRef | null;
+		content: BlockDocument;
+	}): Promise<{ ref: OwnedRef; updated_at?: Timestamp }>;
+	/**
+	 * `expects` is the stamp the surface last saw on this row. A row that has
+	 * moved past it refuses the write rather than taking whatever was written
+	 * there with it. Answers with the stamp the row carries now.
+	 */
+	update(
+		ref: OwnedRef,
+		content: BlockDocument,
+		expects: Timestamp | undefined
+	): Promise<Timestamp | undefined>;
+	reorder(ref: OwnedRef, after: OwnedRef | null): Promise<Timestamp | undefined>;
 	remove(ref: OwnedRef): Promise<void>;
 	/** The row a new block became, so the document can carry it from here on. */
 	placed(uid: string, ref: OwnedRef): void;
@@ -293,19 +503,31 @@ export async function runSave(
 	for (const op of ops) {
 		if (op.kind === 'create') {
 			const after = anchor(op.after);
-			const ref = await writer.create({ after, content: op.content });
-			refs.set(op.uid, ref);
-			place(saved, after, { uid: op.uid, ref, content: op.content });
-			writer.placed(op.uid, ref);
+			const made = await writer.create({ after, content: op.content });
+			refs.set(op.uid, made.ref);
+			place(saved, after, {
+				uid: op.uid,
+				ref: made.ref,
+				content: op.content,
+				updated_at: made.updated_at
+			});
+			writer.placed(op.uid, made.ref);
 		} else if (op.kind === 'update') {
-			await writer.update(op.ref, op.content);
 			const row = saved.find((row) => row.ref === op.ref);
-			if (row) row.content = op.content;
+			const stamp = await writer.update(op.ref, op.content, row?.updated_at);
+			if (row) {
+				row.content = op.content;
+				row.updated_at = stamp ?? row.updated_at;
+			}
 		} else if (op.kind === 'reorder') {
 			const after = anchor(op.after);
-			await writer.reorder(op.ref, after);
+			const stamp = await writer.reorder(op.ref, after);
 			const at = saved.findIndex((row) => row.ref === op.ref);
-			if (at >= 0) place(saved, after, saved.splice(at, 1)[0]);
+			if (at >= 0) {
+				const [row] = saved.splice(at, 1);
+				row.updated_at = stamp ?? row.updated_at;
+				place(saved, after, row);
+			}
 		} else {
 			await writer.remove(op.ref);
 			const at = saved.findIndex((row) => row.ref === op.ref);

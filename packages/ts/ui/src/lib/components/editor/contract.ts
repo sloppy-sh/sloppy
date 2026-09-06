@@ -16,6 +16,7 @@ import type {
 	UpdateBlockRequest
 } from '@sloppy/types';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
+import type { DraftStore } from './document.js';
 
 export interface SendingPicture {
 	/**
@@ -112,4 +113,6 @@ export interface BlockStackProps {
 	media: NoteMedia;
 	emoji: NoteEmoji;
 	references: NoteReferences;
+	/** Where this note's writing waits while the API does not have it. */
+	drafts: DraftStore;
 }

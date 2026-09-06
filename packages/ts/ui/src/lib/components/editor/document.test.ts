@@ -5,13 +5,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import {
 	docBlocks,
+	heldApart,
+	openDraft,
 	planSave,
 	runSave,
 	textSection,
 	type DocBlock,
+	type NoteDraft,
 	type SavedBlock
 } from './document.js';
 import { block, makeEditor, section, stubCanvas, text } from './editor.test-support.js';
+import { nextUid } from './section-node.js';
 
 let editor: Editor | undefined;
 /** What the API holds for the stack `open` was handed. */
@@ -42,26 +46,42 @@ const rows = (of: Editor): DocBlock[] => docBlocks(of.state.doc);
 const wording = (content: BlockDocument): string[] =>
 	content.content.map((element) => element.content?.map((run) => run.text ?? '').join('') ?? '');
 
-/** A stack of rows that answers the way the API does, so a whole round can run. */
+/** A stack of rows that answers the way the API does, so a whole round can run:
+ *  every write stamps the row, and one that names a stamp the row has moved past
+ *  is refused. */
 function stack(initial: BlockView[]) {
 	const held = initial;
+	let tick = 0;
+	const stamped = () => new Date(Date.UTC(2026, 1, 1, 0, 0, ++tick)).toISOString();
 	const at = (ref: OwnedRef) => held.findIndex((row) => row.ref === ref);
 	const put = (after: OwnedRef | null, row: BlockView) =>
 		held.splice((after ? at(after) : -1) + 1, 0, row);
 	return {
 		held,
 		read: () => held.map((row) => wording(row.content)),
+		/** A write from somewhere else, which moves the row on. */
+		elsewhere: (ref: OwnedRef, says: string) => {
+			held[at(ref)] = { ...held[at(ref)], content: one(says), updated_at: stamped() };
+		},
 		writer: {
 			create: async (request: { after: OwnedRef | null; content: BlockDocument }) => {
-				const made = block({ content: request.content });
+				const made = block({ content: request.content, updated_at: stamped() });
 				put(request.after, made);
-				return made.ref;
+				return { ref: made.ref, updated_at: made.updated_at };
 			},
-			update: async (ref: OwnedRef, content: BlockDocument) => {
-				held[at(ref)] = { ...held[at(ref)], content };
+			update: async (ref: OwnedRef, content: BlockDocument, expects: string | undefined) => {
+				const row = held[at(ref)];
+				if (expects !== undefined && expects !== row.updated_at) {
+					throw new Error('That section was written somewhere else.');
+				}
+				const now = stamped();
+				held[at(ref)] = { ...row, content, updated_at: now };
+				return now;
 			},
 			reorder: async (ref: OwnedRef, after: OwnedRef | null) => {
-				put(after, held.splice(at(ref), 1)[0]);
+				const row = held.splice(at(ref), 1)[0];
+				put(after, row);
+				return row.updated_at;
 			},
 			remove: async (ref: OwnedRef) => {
 				held.splice(at(ref), 1);
@@ -375,11 +395,12 @@ describe('what has to reach the API', () => {
 			const writer = {
 				create: async (request: { after: OwnedRef | null; content: BlockDocument }) => {
 					place(request.after, wording(request.content)[0]);
-					return `a/${wording(request.content)[0]}` as OwnedRef;
+					return { ref: `a/${wording(request.content)[0]}` as OwnedRef };
 				},
-				update: async () => {},
+				update: async () => undefined,
 				reorder: async (ref: OwnedRef, after: OwnedRef | null) => {
 					place(after, held.splice(at(ref), 1)[0]);
+					return undefined;
 				},
 				remove: async (ref: OwnedRef) => void held.splice(at(ref), 1),
 				placed: () => {}
@@ -417,6 +438,259 @@ describe('what has to reach the API', () => {
 	});
 });
 
+describe('a note this device is still holding writing for', () => {
+	/** The surface, opened from the draft against the stack the API answered
+	 *  with, and what would reach the API from there. */
+	function reopen(draft: NoteDraft, held: BlockView[]) {
+		const made = makeEditor();
+		const from = openDraft(draft, held, made.editor.schema);
+		made.editor.commands.setContent(from.doc, { emitUpdate: false });
+		const next = docBlocks(made.editor.state.doc);
+		const saved = from.baseline(next);
+		const plan = planSave(saved, next);
+		made.editor.destroy();
+		return { says: next.map((block) => wording(block.content)[0]), saved, plan };
+	}
+
+	/** What a surface would have kept: the rows it was measured against, and the
+	 *  document it planned. */
+	const draftOf = (rows: SavedBlock[], next: DocBlock[]): NoteDraft => ({ rows, next });
+
+	const stamped = (ref: string, words: string, at: string): BlockView =>
+		block({ ref: ref as OwnedRef, content: one(words), updated_at: at });
+	const measured = (uid: string, ref: string, words: string, at: string): SavedBlock => ({
+		...row(uid, ref, words),
+		updated_at: at
+	});
+	const FIRST = '2026-01-01T00:00:00.000Z';
+	const SINCE = '2026-01-02T00:00:00.000Z';
+
+	it('opens on the unsent writing, and sends what the API is missing', () => {
+		const reopened = reopen(
+			draftOf([measured('u1', 'a/A', 'as it was', FIRST)], [doc('u1', 'a/A', 'as it was written')]),
+			[stamped('a/A', 'as it was', FIRST)]
+		);
+		expect(reopened.says).toEqual(['as it was written']);
+		expect(reopened.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('as it was written') }
+		]);
+		expect(reopened.saved[0].updated_at).toBe(FIRST);
+	});
+
+	it('sends a section that was never written down at all', () => {
+		const reopened = reopen(
+			draftOf(
+				[measured('u1', 'a/A', 'the first', FIRST)],
+				[doc('u1', 'a/A', 'the first'), doc('u2', null, 'and one more')]
+			),
+			[stamped('a/A', 'the first', FIRST)]
+		);
+		expect(reopened.says).toEqual(['the first', 'and one more']);
+		expect(reopened.plan).toEqual([
+			expect.objectContaining({ kind: 'create', content: one('and one more') })
+		]);
+	});
+
+	it('does not bring back a section taken away somewhere else', () => {
+		const reopened = reopen(
+			draftOf(
+				[measured('u1', 'a/A', 'the first', FIRST), measured('u2', 'a/B', 'the second', FIRST)],
+				[doc('u1', 'a/A', 'the first, revised'), doc('u2', 'a/B', 'the second')]
+			),
+			[stamped('a/A', 'the first', FIRST)]
+		);
+		expect(reopened.says).toEqual(['the first, revised']);
+		expect(reopened.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('the first, revised') }
+		]);
+	});
+
+	it('keeps both versions of a section written in two places, and writes over neither', () => {
+		const reopened = reopen(
+			draftOf([measured('u1', 'a/A', 'as it was', FIRST)], [doc('u1', 'a/A', 'what I wrote here')]),
+			[stamped('a/A', 'what they wrote there', SINCE)]
+		);
+		expect(reopened.says).toEqual(['what they wrote there', 'what I wrote here']);
+		expect(reopened.plan).toEqual([
+			expect.objectContaining({ kind: 'create', content: one('what I wrote here') })
+		]);
+	});
+
+	it('brings in a section written elsewhere since, where it stands', () => {
+		const reopened = reopen(
+			draftOf(
+				[measured('u1', 'a/A', 'the first', FIRST)],
+				[doc('u1', 'a/A', 'the first, revised')]
+			),
+			[stamped('a/A', 'the first', FIRST), stamped('a/B', 'theirs, after mine', SINCE)]
+		);
+		expect(reopened.says).toEqual(['the first, revised', 'theirs, after mine']);
+		expect(reopened.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('the first, revised') }
+		]);
+	});
+
+	it('keeps a section this device took away that somebody has written into since', () => {
+		const reopened = reopen(
+			draftOf(
+				[measured('u1', 'a/A', 'the first', FIRST), measured('u2', 'a/B', 'the second', FIRST)],
+				[doc('u1', 'a/A', 'the first')]
+			),
+			[stamped('a/A', 'the first', FIRST), stamped('a/B', 'the second, theirs', SINCE)]
+		);
+		expect(reopened.says).toEqual(['the first', 'the second, theirs']);
+		expect(reopened.plan).toEqual([]);
+	});
+
+	it('takes away a section this device took away, which nobody has touched since', () => {
+		const reopened = reopen(
+			draftOf(
+				[measured('u1', 'a/A', 'the first', FIRST), measured('u2', 'a/B', 'the second', FIRST)],
+				[doc('u1', 'a/A', 'the first')]
+			),
+			[stamped('a/A', 'the first', FIRST), stamped('a/B', 'the second', FIRST)]
+		);
+		expect(reopened.says).toEqual(['the first']);
+		expect(reopened.plan).toEqual([{ kind: 'remove', ref: 'a/B' }]);
+	});
+
+	it('takes it away even where a new section is handed the uid it was written down under', () => {
+		// The uids the reopened document is about to be handed: one for the empty
+		// section the editor is built on, then one per section of the draft.
+		const at = Number(nextUid().slice(1));
+		const reopened = reopen(
+			draftOf(
+				[
+					measured(`b${at + 3}`, 'a/A', 'the first', FIRST),
+					measured('u2', 'a/B', 'the second', FIRST)
+				],
+				[doc('u2', 'a/B', 'the second'), doc('u3', null, 'and one more')]
+			),
+			[stamped('a/A', 'the first', FIRST), stamped('a/B', 'the second', FIRST)]
+		);
+		expect(reopened.says).toEqual(['the second', 'and one more']);
+		expect(reopened.plan).toEqual([
+			expect.objectContaining({ kind: 'create', content: one('and one more') }),
+			{ kind: 'remove', ref: 'a/A' }
+		]);
+	});
+
+	it('has nothing left to send once the writing landed after all', () => {
+		const reopened = reopen(
+			draftOf([measured('u1', 'a/A', 'as it was', FIRST)], [doc('u1', 'a/A', 'as it was written')]),
+			[stamped('a/A', 'as it was written', SINCE)]
+		);
+		expect(reopened.says).toEqual(['as it was written']);
+		expect(reopened.plan).toEqual([]);
+	});
+});
+
+describe('a held draft met by writing done since the note opened', () => {
+	/** The note on screen, written in since it opened, with what the draft puts
+	 *  in beside that; and what would reach the API from there. */
+	function beside(draft: NoteDraft, on: BlockView[], typing?: (of: Editor) => void) {
+		const made = makeEditor(on);
+		typing?.(made.editor);
+		for (const { at, sections } of heldApart(draft, made.editor.state.doc, made.editor.schema)) {
+			made.editor.commands.insertContentAt(at, sections);
+		}
+		const next = docBlocks(made.editor.state.doc);
+		const plan = planSave(made.saved, next);
+		made.editor.destroy();
+		return { says: next.map((block) => wording(block.content)[0]), plan };
+	}
+
+	const stored = () => block({ ref: 'a/A' as OwnedRef, content: one('as it was') });
+	const writtenSince = (of: Editor) => of.commands.insertContentAt(2, 'since, ');
+
+	it('puts a section that was never sent after the row it followed', () => {
+		const met = beside(
+			{
+				rows: [row('u1', 'a/A', 'as it was')],
+				next: [doc('u1', 'a/A', 'as it was'), doc('u2', null, 'and one more')]
+			},
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was', 'and one more']);
+		expect(met.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('since, as it was') },
+			expect.objectContaining({ kind: 'create', content: one('and one more') })
+		]);
+	});
+
+	it('leaves a row as it stands where the draft had nothing unsent for it', () => {
+		const met = beside(
+			{ rows: [row('u1', 'a/A', 'as it was')], next: [doc('u1', 'a/A', 'as it was')] },
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was']);
+		expect(met.plan).toEqual([{ kind: 'update', ref: 'a/A', content: one('since, as it was') }]);
+	});
+
+	it('keeps both readings of a row the draft and the writing since disagree on', () => {
+		const met = beside(
+			{ rows: [row('u1', 'a/A', 'as it was')], next: [doc('u1', 'a/A', 'as I had it')] },
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was', 'as I had it']);
+		expect(met.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('since, as it was') },
+			expect.objectContaining({ kind: 'create', content: one('as I had it') })
+		]);
+	});
+
+	it('does not bring back a section taken away somewhere else', () => {
+		const met = beside(
+			{
+				rows: [row('u1', 'a/A', 'as it was'), row('u2', 'a/B', 'the second')],
+				next: [doc('u1', 'a/A', 'as it was'), doc('u2', 'a/B', 'the second, revised')]
+			},
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was']);
+		expect(met.plan).toEqual([{ kind: 'update', ref: 'a/A', content: one('since, as it was') }]);
+	});
+});
+
+describe('a section written in two places at once', () => {
+	it('names the stamp it last saw, and is refused rather than writing over the other', async () => {
+		const of = stack([block({ content: one('as it was') })]);
+		const made = makeEditor(of.held);
+		const first = docBlocks(made.editor.state.doc);
+		made.editor.commands.insertContentAt(2, 'mine over ');
+		const next = docBlocks(made.editor.state.doc);
+		expect(first).not.toEqual(next);
+
+		of.elsewhere(of.held[0].ref, 'theirs, already there');
+
+		await expect(runSave(planSave(made.saved, next), made.saved, next, of.writer)).rejects.toThrow(
+			'written somewhere else'
+		);
+		expect(of.read()).toEqual([['theirs, already there']]);
+		made.editor.destroy();
+	});
+
+	it('lands, and keeps the stamp true, where nobody else has written', async () => {
+		const of = stack([block({ content: one('as it was') })]);
+		const made = makeEditor(of.held);
+		made.editor.commands.insertContentAt(2, 'mine over ');
+		const next = docBlocks(made.editor.state.doc);
+		await runSave(planSave(made.saved, next), made.saved, next, of.writer);
+		expect(of.read()).toEqual([['mine over as it was']]);
+		expect(made.saved[0].updated_at).toBe(of.held[0].updated_at);
+
+		made.editor.commands.insertContentAt(2, 'and again, ');
+		const after = docBlocks(made.editor.state.doc);
+		await runSave(planSave(made.saved, after), made.saved, after, of.writer);
+		expect(of.read()).toEqual([['and again, mine over as it was']]);
+		made.editor.destroy();
+	});
+});
+
 describe('carrying a plan out', () => {
 	function recorder(mints: string[], failAt = Infinity) {
 		const calls: string[] = [];
@@ -428,10 +702,16 @@ describe('carrying a plan out', () => {
 			calls,
 			create: async (request: { after: OwnedRef | null }) => {
 				step(`create after ${request.after ?? 'nothing'}`);
-				return mints.shift() as OwnedRef;
+				return { ref: mints.shift() as OwnedRef };
 			},
-			update: async (ref: OwnedRef) => step(`update ${ref}`),
-			reorder: async (ref: OwnedRef) => step(`reorder ${ref}`),
+			update: async (ref: OwnedRef) => {
+				step(`update ${ref}`);
+				return undefined;
+			},
+			reorder: async (ref: OwnedRef) => {
+				step(`reorder ${ref}`);
+				return undefined;
+			},
 			remove: async (ref: OwnedRef) => step(`remove ${ref}`),
 			placed: () => {}
 		};
