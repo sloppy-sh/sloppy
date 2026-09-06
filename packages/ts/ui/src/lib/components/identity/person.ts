@@ -22,6 +22,23 @@ export function nameOf(person: Person): string {
 	return person.displayName?.trim() || person.handle;
 }
 
+/**
+ * Somebody nobody could place, drawn as the identifier they travel by: two
+ * strangers read as two people, and what is on screen is what a reader cites
+ * back to reach them. The whole identifier belongs beside it, so a surface that
+ * shows one of these shows that too.
+ */
+export function unplacedPerson(identity: string): Person {
+	const key = identity.slice(identity.lastIndexOf(':') + 1);
+	return {
+		displayName: null,
+		handle: key.length > 14 ? `${key.slice(0, 8)}…${key.slice(-4)}` : key,
+		bio: null,
+		avatar: null,
+		banner: null
+	};
+}
+
 /** Up to two letters, for an avatar with no picture behind it. */
 export function initialsOf(person: Person): string {
 	const words = nameOf(person).split(/\s+/).filter(Boolean);
