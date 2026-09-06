@@ -31,7 +31,7 @@ export function saveFailure(error: unknown): SaveFailure {
 	return new SaveFailure(
 		'refused',
 		serverMessage(error) ??
-			'Sloppy cannot save this note. Your writing is kept on this device — try again in a moment.'
+			'Sloppy cannot save this section as it is. Your writing is kept on this device; change the section and Sloppy will try again.'
 	);
 }
 

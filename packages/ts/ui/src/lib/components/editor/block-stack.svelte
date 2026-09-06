@@ -31,6 +31,7 @@
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
+		heldApart,
 		openBlocks,
 		openDraft,
 		planSave,
@@ -128,7 +129,8 @@
 	/** The note this surface is writing into, captured with the surface itself. */
 	let writingTo: OwnedRef = untrack(() => node.ref);
 	/** Whether this surface has read what the device holds for the note. A draft
-	 *  it has never seen is a later surface's to open from, so it is not let go. */
+	 *  it has never seen is a later surface's to open from, so it is neither
+	 *  written over nor let go. */
 	let readHeld = false;
 	/** Whether anything has been written here since the note opened. */
 	let touched = false;
@@ -142,11 +144,10 @@
 		rows: SavedBlock[];
 		next: DocBlock[];
 		/** The draft this trip is the last one kept for, so a trip outliving its
-		 *  surface writes over its own and never what a later one is holding. */
+		 *  surface writes over its own and never what a later one is holding.
+		 *  Zero where this surface has kept none. */
 		kept: number;
-		/** Says this trip has settled. Until it does, a surface opening the note
-		 *  waits rather than opening from a draft naming sections this one is
-		 *  still asking for. */
+		/** `DraftStore.leaving`'s call, made once this trip has settled. */
 		arrived: () => void;
 	}
 
@@ -157,10 +158,11 @@
 		const current = editor;
 		if (!current || current.isDestroyed) return null;
 		const next = docBlocks(current.state.doc);
-		const outstanding = planSave(saved, next).length > 0;
-		const kept = outstanding
-			? drafts.keep(writingTo, { rows: saved, next })
-			: drafts.last(writingTo);
+		let kept = 0;
+		if (readHeld) {
+			const outstanding = planSave(saved, next).length > 0;
+			kept = outstanding ? drafts.keep(writingTo, { rows: saved, next }) : drafts.last(writingTo);
+		}
 		return {
 			note: writingTo,
 			from: current,
@@ -193,7 +195,13 @@
 					// it rather than asking for the section a second time.
 					const made = write.next.find((block) => block.uid === uid);
 					if (made) made.ref = ref;
-					write.kept = drafts.keep(write.note, { rows: write.rows, next: write.next }, write.kept);
+					if (write.kept > 0) {
+						write.kept = drafts.keep(
+							write.note,
+							{ rows: write.rows, next: write.next },
+							write.kept
+						);
+					}
 				}
 			});
 		});
@@ -213,6 +221,17 @@
 			default:
 				return { trouble: 'transient', says: 'Sloppy will keep trying to save this note.' };
 		}
+	}
+
+	/** A note left before this surface had read what the device holds: its last
+	 *  writing was never put there, so whatever of it the API did not take goes
+	 *  there once the trip settles — unless the device is holding a draft of its
+	 *  own that no surface has read. */
+	async function holdOnLeaving(write: Write): Promise<void> {
+		await drafts.settled(write.note);
+		if (planSave(write.rows, write.next).length === 0) return;
+		if (await drafts.read(write.note)) return;
+		write.kept = drafts.keep(write.note, { rows: write.rows, next: write.next });
 	}
 
 	function scheduleSave(delay: number): void {
@@ -614,16 +633,20 @@
 			readHeld = false;
 			touched = false;
 			void (async () => {
-				// A trip still in the air is the one naming the rows for sections the
-				// draft has none for yet, so nothing opens from it until that settles.
 				await drafts.settled(opening);
 				const held = await drafts.read(opening);
 				if (!opened || created.isDestroyed) return;
 				readHeld = true;
-				// Writing done here since the note opened is the newer of the two, so
-				// the draft stays on the device for a surface that can reconcile it.
-				if (!held || touched) return;
-				open(openDraft(held, stack, created.schema));
+				if (!held) return;
+				// Writing done here since the note opened is what stands, so the draft
+				// goes in beside it rather than opening over it.
+				if (touched) {
+					for (const { at, sections } of heldApart(held, created.state.doc, created.schema)) {
+						created.commands.insertContentAt(at, sections, { updateSelection: false });
+					}
+				} else {
+					open(openDraft(held, stack, created.schema));
+				}
 				refreshMarks();
 				saveSoon();
 			})();
@@ -663,6 +686,7 @@
 				// to be reported on, so the device holds the writing until it lands,
 				// and the note opens from there when it does not.
 				if (last) {
+					if (!knew) void holdOnLeaving(last);
 					void run(last)
 						.then(
 							() => {

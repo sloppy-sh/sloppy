@@ -644,6 +644,83 @@ describe('writing that has not reached the server', () => {
 		expect(target.querySelector('.sloppy-prose')?.textContent).toBe('unsent, as it was');
 	});
 
+	/** A device holding a section that was never sent, beside the note's one row. */
+	function heldWithUnsent(stored: BlockView) {
+		return deviceDrafts({
+			[NOTE.ref]: {
+				rows: [
+					{ uid: 'u1', ref: stored.ref, content: stored.content, updated_at: stored.updated_at }
+				],
+				next: [
+					{ uid: 'u1', ref: stored.ref, content: stored.content },
+					{ uid: 'u2', ref: null, content: section(...text('a section never sent')) }
+				]
+			}
+		});
+	}
+
+	it('stands beside writing done since the note opened, and is written once', async () => {
+		const stored = prose('as it was');
+		const device = heldWithUnsent(stored);
+		const answerRead = device.holdReads();
+
+		open([stored], { drafts: device.store });
+		writingIn().commands.insertContentAt(2, 'written since, ');
+		await vi.advanceTimersByTimeAsync(1000);
+		answerRead();
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(target.querySelector('.sloppy-prose')?.textContent).toBe(
+			'written since, as it wasa section never sent'
+		);
+		expect(written.created.map((row) => wording(row.content as BlockDocument)[0])).toEqual([
+			'a section never sent'
+		]);
+		expect(written.updated.map((row) => wording(row.content)[0])).toEqual([
+			'written since, as it was'
+		]);
+		expect(device.holds(NOTE.ref)).toBe(false);
+	});
+
+	it('is not written over by that writing while this device has not answered', async () => {
+		const stored = prose('as it was');
+		const device = heldWithUnsent(stored);
+		const answerRead = device.holdReads();
+
+		open([stored], { drafts: device.store, refuse: () => new SaveFailure('transient') });
+		writingIn().commands.insertContentAt(2, 'written since, ');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(device.kept).toEqual([]);
+
+		answerRead();
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(held(device.kept.at(-1) as NoteDraft)).toEqual([
+			'written since, as it was',
+			'a section never sent'
+		]);
+		expect(device.holds(NOTE.ref)).toBe(true);
+	});
+
+	it('stays where it is when the note is left before this device has answered', async () => {
+		const stored = prose('as it was');
+		const device = heldWithUnsent(stored);
+		const answerRead = device.holdReads();
+
+		open([stored], { drafts: device.store, refuse: () => new SaveFailure('transient') });
+		writingIn().commands.insertContentAt(2, 'written since, ');
+		close();
+		answerRead();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(device.kept).toEqual([]);
+
+		open([stored], { drafts: device.store });
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(target.querySelector('.sloppy-prose')?.textContent).toBe(
+			'as it wasa section never sent'
+		);
+	});
+
 	it('is still there when the note is left and the last write does not land', async () => {
 		const device = deviceDrafts();
 		open([prose('a thought')], {

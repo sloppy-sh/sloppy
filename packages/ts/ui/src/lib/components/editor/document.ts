@@ -303,6 +303,54 @@ export function openDraft(draft: NoteDraft, blocks: readonly BlockView[], schema
 	return { doc: { type: 'doc', content }, baseline: baselineOf(blocks, apart) };
 }
 
+/** Where the section carrying `ref` ends, or null where the document has none. */
+function sectionEnd(doc: ProseMirrorNode, ref: OwnedRef): number | null {
+	let end: number | null = null;
+	doc.forEach((section, offset) => {
+		if (section.type.name === SECTION_NODE && section.attrs.blockRef === ref) {
+			end = offset + section.nodeSize;
+		}
+	});
+	return end;
+}
+
+/**
+ * What a held draft says that the document on screen does not: a section it
+ * never sent, and its own reading of a row somebody has written into since.
+ * Each goes in as a section of its own, at the position it belongs beside, so
+ * neither version of a section is dropped for the other. Ordered last position
+ * first, so inserting them in turn leaves each position true when its turn
+ * comes.
+ */
+export function heldApart(
+	draft: NoteDraft,
+	doc: ProseMirrorNode,
+	schema: Schema
+): { at: number; sections: JSONContent[] }[] {
+	const shown = new Map(
+		docBlocks(doc).flatMap((block) => (block.ref ? [[block.ref, block] as const] : []))
+	);
+	const measured = new Map(draft.rows.map((row) => [row.ref, row]));
+	const groups: { at: number; sections: JSONContent[] }[] = [];
+	let at = 0;
+	for (const block of draft.next) {
+		if (block.ref) {
+			const row = shown.get(block.ref);
+			if (!row) continue;
+			at = sectionEnd(doc, block.ref) ?? at;
+			const was = measured.get(block.ref)?.content;
+			if (was && sameDocument(was, block.content)) continue;
+			if (sameDocument(row.content, block.content)) continue;
+		}
+		const section = sectionOf(block.content, null, schema);
+		if (!section) continue;
+		const last = groups.at(-1);
+		if (last?.at === at) last.sections.push(section);
+		else groups.push({ at, sections: [section] });
+	}
+	return groups.reverse().sort((first, second) => second.at - first.at);
+}
+
 /** One section holding a run of text somebody arrived with, a paragraph to a
  *  line. Empty where there is nothing to write. */
 export function textDocument(text: string): BlockDocument {

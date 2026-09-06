@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import {
 	docBlocks,
+	heldApart,
 	openDraft,
 	planSave,
 	runSave,
@@ -581,6 +582,77 @@ describe('a note this device is still holding writing for', () => {
 		);
 		expect(reopened.says).toEqual(['as it was written']);
 		expect(reopened.plan).toEqual([]);
+	});
+});
+
+describe('a held draft met by writing done since the note opened', () => {
+	/** The note on screen, written in since it opened, with what the draft puts
+	 *  in beside that; and what would reach the API from there. */
+	function beside(draft: NoteDraft, on: BlockView[], typing?: (of: Editor) => void) {
+		const made = makeEditor(on);
+		typing?.(made.editor);
+		for (const { at, sections } of heldApart(draft, made.editor.state.doc, made.editor.schema)) {
+			made.editor.commands.insertContentAt(at, sections);
+		}
+		const next = docBlocks(made.editor.state.doc);
+		const plan = planSave(made.saved, next);
+		made.editor.destroy();
+		return { says: next.map((block) => wording(block.content)[0]), plan };
+	}
+
+	const stored = () => block({ ref: 'a/A' as OwnedRef, content: one('as it was') });
+	const writtenSince = (of: Editor) => of.commands.insertContentAt(2, 'since, ');
+
+	it('puts a section that was never sent after the row it followed', () => {
+		const met = beside(
+			{
+				rows: [row('u1', 'a/A', 'as it was')],
+				next: [doc('u1', 'a/A', 'as it was'), doc('u2', null, 'and one more')]
+			},
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was', 'and one more']);
+		expect(met.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('since, as it was') },
+			expect.objectContaining({ kind: 'create', content: one('and one more') })
+		]);
+	});
+
+	it('leaves a row as it stands where the draft had nothing unsent for it', () => {
+		const met = beside(
+			{ rows: [row('u1', 'a/A', 'as it was')], next: [doc('u1', 'a/A', 'as it was')] },
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was']);
+		expect(met.plan).toEqual([{ kind: 'update', ref: 'a/A', content: one('since, as it was') }]);
+	});
+
+	it('keeps both readings of a row the draft and the writing since disagree on', () => {
+		const met = beside(
+			{ rows: [row('u1', 'a/A', 'as it was')], next: [doc('u1', 'a/A', 'as I had it')] },
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was', 'as I had it']);
+		expect(met.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('since, as it was') },
+			expect.objectContaining({ kind: 'create', content: one('as I had it') })
+		]);
+	});
+
+	it('does not bring back a section taken away somewhere else', () => {
+		const met = beside(
+			{
+				rows: [row('u1', 'a/A', 'as it was'), row('u2', 'a/B', 'the second')],
+				next: [doc('u1', 'a/A', 'as it was'), doc('u2', 'a/B', 'the second, revised')]
+			},
+			[stored()],
+			writtenSince
+		);
+		expect(met.says).toEqual(['since, as it was']);
+		expect(met.plan).toEqual([{ kind: 'update', ref: 'a/A', content: one('since, as it was') }]);
 	});
 });
 
