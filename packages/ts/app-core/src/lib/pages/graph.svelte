@@ -38,6 +38,7 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Network from '@lucide/svelte/icons/network';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Search from '@lucide/svelte/icons/search';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
@@ -67,6 +68,7 @@
 		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
+		FindSheet,
 		GraphsSheet,
 		GraphSurface,
 		GroundChoice,
@@ -82,6 +84,7 @@
 		WallpaperSheet,
 		type CanvasMenuItem,
 		type ConversationProps,
+		type FoundNote,
 		type HeldRegion,
 		type NoteTemplate,
 		type Peer,
@@ -101,6 +104,7 @@
 	import { noteEmoji, noteMedia } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
+	import { find } from '../stores/find.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
@@ -121,6 +125,8 @@
 	let loading = $state(true);
 	/** Whether the graphs this person keeps are being looked through. */
 	let switching = $state(false);
+	/** Whether a note is being looked for by number, title or a word in it. */
+	let finding = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
 	/** No note answered, and the canvas is drawing what this device kept. */
@@ -403,6 +409,7 @@
 		menuAt !== null ||
 			choosingWallpaper ||
 			deleting ||
+			finding ||
 			noteAsking ||
 			numbering ||
 			publishing ||
@@ -476,6 +483,29 @@
 	const graphName = $derived(graphs.titleOf(graphs.current) || 'Your graph');
 	/** How many other graphs are standing beside this one, where any are. */
 	const besideIt = $derived(onCanvas.length > 1 ? `+${onCanvas.length - 1}` : null);
+
+	/** An address is read inside one graph, so a row names its own only where
+	 *  there is a second one on the canvas to tell it from. */
+	const foundNotes = $derived.by<FoundNote[]>(() => {
+		const several = onCanvas.length > 1;
+		return find.found.map((hit) => ({
+			ref: hit.note,
+			address: hit.address,
+			title: hit.title,
+			graph: hit.held || !several ? null : graphs.titleOf(hit.graph) || 'Untitled',
+			snippet: hit.snippet,
+			held: hit.held
+		}));
+	});
+
+	function openFound(ref: OwnedRef): void {
+		finding = false;
+		show(ref);
+	}
+
+	$effect(() => {
+		if (!finding) untrack(() => find.clear());
+	});
 
 	/** What one graph's read left on the canvas. */
 	interface FieldRead {
@@ -1579,6 +1609,15 @@
 							{/if}
 							<span class="min-w-0 shrink truncate text-muted-foreground">· {summary}</span>
 						</button>
+						<button
+							type="button"
+							aria-label="Find a note"
+							onclick={() => (finding = true)}
+							class="flex h-9 w-full min-w-0 items-center gap-2 rounded-full border border-input px-3 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56"
+						>
+							<Search class="size-4 shrink-0" />
+							<span class="min-w-0 truncate">Find a note</span>
+						</button>
 						<Button
 							variant="outline"
 							class="ms-auto h-9 shrink-0 rounded-full"
@@ -1738,6 +1777,18 @@
 		shaping = false;
 		writeBranch(shape);
 	}}
+/>
+
+<FindSheet
+	bind:open={finding}
+	query={find.query}
+	found={foundNotes}
+	looking={find.looking}
+	settled={find.settled}
+	unreadable={find.unreadable}
+	exact={find.exact}
+	onquery={(words) => find.type(words)}
+	onopen={openFound}
 />
 
 <GraphsSheet

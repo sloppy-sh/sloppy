@@ -13,12 +13,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	AT,
 	DID,
+	finding,
+	hit,
 	node,
 	ref,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
+import { find } from '../stores/find.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
@@ -287,6 +290,7 @@ beforeEach(() => {
 	nodes.clear();
 	tags.clear();
 	publications.clear();
+	find.clear();
 	api = useFakeApi();
 	graph = installGraph();
 	held = [];
@@ -1661,5 +1665,93 @@ describe('the graph as this device last read it', () => {
 
 		expect(screen()).toContain('Sloppy could not reach your graph');
 		expect(screen()).not.toContain('This is your graph as you last read it.');
+	});
+});
+
+describe('finding a note again from the graph', () => {
+	/** Past the pause the writing inside notes is asked for after. */
+	async function pause(): Promise<void> {
+		await new Promise((done) => setTimeout(done, 260));
+		await settle();
+	}
+
+	function findField(): HTMLInputElement {
+		const input = document.body.querySelector<HTMLInputElement>('input[aria-label^="Find a note"]');
+		if (!input) throw new Error('No find field is on screen');
+		return input;
+	}
+
+	async function type(words: string): Promise<void> {
+		const field = findField();
+		field.value = words;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+	}
+
+	/** The rows the find sheet is offering, as a reader sees them. */
+	const offering = (): string[] =>
+		[...document.body.querySelectorAll<HTMLElement>('[role="dialog"] ul li button')].map((row) =>
+			(row.textContent ?? '').replace(/\s+/g, ' ').trim()
+		);
+
+	async function lookFor(words: string): Promise<void> {
+		await open();
+		labelled('Find a note').click();
+		await settle();
+		await type(words);
+	}
+
+	beforeEach(() => finding(api));
+
+	it('reaches a note by its number without waiting on anything', async () => {
+		await lookFor('1a');
+
+		expect(offering()).toEqual(['1a Cells']);
+		expect(api.countOf('GET /nodes/search')).toBe(0);
+	});
+
+	it('opens the note a whole number resolves to when Enter is pressed', async () => {
+		await lookFor('1a');
+
+		findField().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		await settle();
+
+		expect(at.note).toBe(SECOND);
+		expect(reading()).toBe(true);
+	});
+
+	it('opens the note whose row is tapped', async () => {
+		await lookFor('method');
+
+		const [row] = [
+			...document.body.querySelectorAll<HTMLButtonElement>('[role="dialog"] ul li button')
+		];
+		row.click();
+		await settle();
+
+		expect(at.note).toBe(THIRD);
+	});
+
+	it('brings in a note found by the words inside it once the typing stops', async () => {
+		finding(api, { hits: [hit(graph.get(THIRD)!, { snippet: 'the bench it grew under' })] });
+		await lookFor('bench');
+		expect(offering()).toEqual([]);
+
+		await pause();
+
+		expect(offering()).toEqual(['2 Method the bench it grew under']);
+	});
+
+	it('says plainly when nothing matched', async () => {
+		await lookFor('nothing like this');
+		await pause();
+
+		expect(inSheet()).toContain('Nothing here matches that.');
+	});
+
+	it('names no graph while one stands on the canvas', async () => {
+		await lookFor('1a');
+
+		expect(offering()[0]).not.toContain('·');
 	});
 });
