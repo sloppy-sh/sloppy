@@ -20,6 +20,7 @@ import {
   parsePulledNode,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
+import { wordsOf } from "../block/text";
 import { DbService } from "../db/db.service";
 
 /** A row as an answer states it. What the reader stamps on it — who holds the
@@ -182,6 +183,9 @@ export class PullRepository {
         id: createOwnedRecordId("pulled_block", reader),
         created_by: reader,
         ...block,
+        // Derived on arrival the way a section of one's own is, so a search
+        // reaches a note the reader is holding.
+        text: wordsOf(block.content),
         created_at: at,
         updated_at: at,
       })),

@@ -7,20 +7,25 @@ import type {
 	OwnedRef,
 	PublicationView
 } from '@sloppy/types';
-import { MARK_SCALE_MAX } from '@sloppy/types';
+import { homeGraphRef, MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	AT,
 	DID,
+	finding,
+	hit,
 	node,
 	ref,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
+import { find } from '../stores/find.svelte.js';
+import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { peers } from '../stores/peers.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
@@ -258,6 +263,46 @@ function typeTag(word: string): void {
 	field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 }
 
+/** The rail's own find field, which it offers only once it is crowded. */
+function findTag(word: string): void {
+	const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
+	if (!field) throw new Error('The rail is offering nowhere to type');
+	field.value = word;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** The tags the rail is drawing, in the order it draws them. */
+const railChips = (): string[] => {
+	const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
+	const root = field?.parentElement;
+	if (!root) throw new Error('The rail is offering nowhere to type');
+	return [...root.querySelectorAll('button[aria-pressed]')].map(
+		(chip) => chip.textContent?.trim().split(/\s+/)[0] ?? ''
+	);
+};
+
+function findField(): HTMLInputElement {
+	const input = document.body.querySelector<HTMLInputElement>('input[aria-label^="Find a note"]');
+	if (!input) throw new Error('No find field is on screen');
+	return input;
+}
+
+async function typeToFind(words: string): Promise<void> {
+	const field = findField();
+	field.value = words;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+	await settle();
+}
+
+/** What the note's leading control says, which is what it does. */
+function wayOut(): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find((b) =>
+		['Graph', 'Back'].includes(b.textContent?.trim() ?? '')
+	);
+	if (!found) throw new Error('The note on screen has no way out');
+	return found as HTMLButtonElement;
+}
+
 /** The words the tag field is showing. */
 const chips = (): string[] =>
 	[...document.body.querySelectorAll('button[aria-label^="Remove "]')].map((chip) =>
@@ -314,6 +359,7 @@ beforeEach(() => {
 	peers.clear();
 	tags.clear();
 	publications.clear();
+	find.clear();
 	api = useFakeApi();
 	graph = installGraph();
 	held = [];
@@ -1166,6 +1212,113 @@ describe('choosing several notes to act on', () => {
 	});
 });
 
+// The tag axis asks a question of the whole graph; this is what carries its
+// answer over to the acts, which is the only bulk path a phone has.
+describe('choosing the notes a selection lit', () => {
+	function light(of: OwnedRef, ...carried: string[]): void {
+		const note = graph.get(of);
+		if (!note) throw new Error('No such note');
+		graph.set(of, { ...note, tags: carried });
+	}
+
+	/** A graph of `many` root notes, every one of them carrying `seed`. */
+	function installLit(many: number): void {
+		const held = new Map<OwnedRef, NodeView>();
+		for (let n = 1; n <= many; n += 1) held.set(ref(n), node(n, `${n}`, { tags: ['seed'] }));
+		graph = held;
+		api.on('GET /nodes/tags', () => [{ tag: 'seed', notes: many }]);
+		api.on('GET /nodes', (url) => (url.searchParams.get('origin') ? [] : [...held.values()]));
+	}
+
+	it('offers the lit notes on the bare field, and hands the whole set to one act', async () => {
+		light(SECOND, 'seed');
+		light(THIRD, 'seed');
+		tags.select(['seed']);
+		await open();
+
+		menuOn('the canvas').click();
+		await settle();
+		expect(offered()).toEqual(['Choose the 2 notes lit up', 'Choose notes']);
+
+		item('Choose the 2 notes lit up').click();
+		await settle();
+		expect(screen()).toContain('2 notes chosen');
+		expect(onCanvas('1a').dataset.chosen).toBe('yes');
+		expect(onCanvas('1').dataset.chosen).toBeUndefined();
+
+		button('Tags').click();
+		await settle();
+		typeTag('seeds');
+		await settle();
+
+		expect(acts).toEqual([{ notes: [SECOND, THIRD], act: { act: 'tag', tags: ['seeds'] } }]);
+	});
+
+	it('offers nothing to choose while the selection lights no note', async () => {
+		tags.select(['seed']);
+		await open();
+
+		menuOn('the canvas').click();
+		await settle();
+
+		expect(offered()).toEqual(['Choose notes']);
+	});
+
+	it('counts one lit note as one', async () => {
+		light(THIRD, 'seed');
+		tags.select(['seed']);
+		await open();
+
+		menuOn('the canvas').click();
+		await settle();
+
+		expect(offered()).toEqual(['Choose the note lit up', 'Choose notes']);
+	});
+
+	// The bound is the reader's to see before the tap: a refusal landing after it
+	// would leave them in the mode with an act they cannot ask for.
+	it('says how many of the lit notes one act reaches, before it is asked for', async () => {
+		const many = MAX_NOTES_PER_BULK_ACT + 12;
+		installLit(many);
+		tags.select(['seed']);
+		await open();
+
+		const row = `Choose ${MAX_NOTES_PER_BULK_ACT.toLocaleString()} of the ${many.toLocaleString()} notes lit up`;
+		menuOn('the canvas').click();
+		await settle();
+		expect(offered()).toEqual([row, 'Choose notes']);
+
+		item(row).click();
+		await settle();
+
+		expect(screen()).toContain(`${MAX_NOTES_PER_BULK_ACT.toLocaleString()} notes chosen`);
+		expect(screen()).not.toContain('Choose fewer');
+	});
+
+	// The rail narrows what it draws, never what the canvas lit, so the row still
+	// reaches the notes the reader can see are lit.
+	it('still offers the lit notes while the rail is narrowed past the tag that lit them', async () => {
+		light(SECOND, 'seed');
+		light(THIRD, 'seed');
+		api.on('GET /nodes/tags', () => [
+			{ tag: 'seed', notes: 2 },
+			...Array.from({ length: 20 }, (_, n) => ({ tag: `other${n}`, notes: 1 }))
+		]);
+		tags.select(['seed']);
+		await open();
+
+		findTag('other1');
+		await settle();
+
+		expect(railChips()).not.toContain('other0');
+		expect(railChips()).toContain('seed');
+		menuOn('the canvas').click();
+		await settle();
+
+		expect(offered()).toEqual(['Choose the 2 notes lit up', 'Choose notes']);
+	});
+});
+
 describe('a branch started from a shape', () => {
 	const WRITTEN = ref(9);
 	/** The note's stack as the server holds it. */
@@ -1806,5 +1959,283 @@ describe('the graph as this device last read it', () => {
 
 		expect(screen()).toContain('Sloppy could not reach your graph');
 		expect(screen()).not.toContain('This is your graph as you last read it.');
+	});
+});
+
+describe('finding a note again from the graph', () => {
+	/** Past the pause the writing inside notes is asked for after. */
+	async function pause(): Promise<void> {
+		await new Promise((done) => setTimeout(done, 260));
+		await settle();
+	}
+
+	/** The rows the find sheet is offering, as a reader sees them. */
+	const offering = (): string[] =>
+		[...document.body.querySelectorAll<HTMLElement>('[role="dialog"] ul li button')].map((row) =>
+			(row.textContent ?? '').replace(/\s+/g, ' ').trim()
+		);
+
+	async function lookFor(words: string): Promise<void> {
+		await open();
+		labelled('Find a note').click();
+		await settle();
+		await typeToFind(words);
+	}
+
+	beforeEach(() => finding(api));
+
+	afterEach(() => {
+		prefs.set('alsoOnCanvas', []);
+		graphs.clear();
+	});
+
+	it('reaches a note by its number without waiting on anything', async () => {
+		await lookFor('1a');
+
+		expect(offering()).toEqual(['1a Cells']);
+		expect(api.countOf('GET /nodes/search')).toBe(0);
+	});
+
+	it('opens the note a whole number resolves to when Enter is pressed', async () => {
+		await lookFor('1a');
+
+		findField().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		await settle();
+
+		expect(at.note).toBe(SECOND);
+		expect(reading()).toBe(true);
+	});
+
+	it('opens the note whose row is tapped', async () => {
+		await lookFor('method');
+
+		const [row] = [
+			...document.body.querySelectorAll<HTMLButtonElement>('[role="dialog"] ul li button')
+		];
+		row.click();
+		await settle();
+
+		expect(at.note).toBe(THIRD);
+	});
+
+	it('brings in a note found by the words inside it once the typing stops', async () => {
+		finding(api, { hits: [hit(graph.get(THIRD)!, { snippet: 'the bench it grew under' })] });
+		await lookFor('bench');
+		expect(offering()).toEqual([]);
+
+		await pause();
+
+		expect(offering()).toEqual(['2 Method the bench it grew under']);
+	});
+
+	it('says plainly when nothing matched', async () => {
+		await lookFor('nothing like this');
+		await pause();
+
+		expect(inSheet()).toContain('Nothing on the canvas matches that.');
+	});
+
+	it('names no graph while one stands on the canvas', async () => {
+		await lookFor('1a');
+
+		expect(offering()[0]).not.toContain('·');
+	});
+
+	it('names the graph a note is in once a second one stands beside it', async () => {
+		const GARDEN = ref(50);
+		const COMPOST = node(51, '1', { title: 'Compost', graph: GARDEN });
+		graph.set(COMPOST.ref, COMPOST);
+		api.on('GET /graphs', () => [
+			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Notes' },
+			{ ref: GARDEN, created_by: DID, created_at: AT, updated_at: AT, title: 'Garden' }
+		]);
+
+		await open();
+		prefs.set('alsoOnCanvas', [GARDEN]);
+		await settle();
+		labelled('Find a note').click();
+		await settle();
+		await typeToFind('compost');
+
+		expect(offering()).toEqual(['1 Compost Garden']);
+	});
+});
+
+describe('the way back out of a trail', () => {
+	beforeEach(() => {
+		vi.spyOn(globalThis.history, 'back').mockImplementation(() => {
+			back();
+			flushSync();
+		});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('offers the graph at the head of the trail', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+
+	it('walks back to the note the reader came from, a jump at a time', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		labelled('The note this one grew out of, 1').click();
+		await settle();
+		expect(screen()).toContain('Origins');
+
+		expect(wayOut().textContent?.trim()).toBe('Back');
+		wayOut().click();
+		await settle();
+
+		expect(screen()).toContain('Cells');
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+
+		forward();
+		await settle();
+
+		expect(screen()).toContain('Origins');
+		expect(wayOut().textContent?.trim()).toBe('Back');
+	});
+
+	it('closes the surface where the way back is the graph', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+
+		wayOut().click();
+		await settle();
+
+		expect(reading()).toBe(false);
+	});
+
+	function light(of: OwnedRef): void {
+		graph.set(of, { ...graph.get(of)!, tags: ['seed'] });
+		api.on('GET /nodes/tags', () => [{ tag: 'seed', notes: 1 }]);
+		tags.select(['seed']);
+	}
+
+	// An act on the whole set a selection lit can take the note the reader is
+	// standing on, and the trail behind it has to survive that.
+	it('walks back to the note it came from after the one being read was deleted', async () => {
+		light(FIRST);
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		labelled('The note this one grew out of, 1').click();
+		await settle();
+
+		menuOn('the canvas').click();
+		await settle();
+		item('Choose the note lit up').click();
+		await settle();
+		button('Delete').click();
+		await settle();
+		button('Delete it').click();
+		await settle();
+		expect(reading()).toBe(false);
+
+		back();
+		await settle();
+
+		expect(screen()).toContain('Cells');
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+
+	// Nothing offers a walk back to a note that is no longer in the graph.
+	it('offers the graph where the note behind went with the lit set', async () => {
+		light(SECOND);
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		labelled('The note this one grew out of, 1').click();
+		await settle();
+		expect(wayOut().textContent?.trim()).toBe('Back');
+
+		menuOn('the canvas').click();
+		await settle();
+		item('Choose the note lit up').click();
+		await settle();
+		button('Delete').click();
+		await settle();
+		button('Delete it').click();
+		await settle();
+
+		expect(screen()).toContain('Origins');
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+
+	// The surface holds the only copy of what is typed into it, so it survives
+	// the entry it went up on being replaced — but not the reader walking off it.
+	it('takes the writing surface down with the entry it went up on', async () => {
+		api.on('POST /nodes', () => {
+			throw new Error('nothing is listening');
+		});
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		expect(screen()).toContain('Sloppy could not add that note');
+
+		back();
+		await settle();
+
+		expect(screen()).not.toContain('Sloppy could not add that note');
+		expect(reading()).toBe(false);
+	});
+});
+
+// A find is a jump across the graph, so the entry it goes up on is the only
+// thing that can carry the reader back to what they were reading.
+describe('walking back out of a note a find jumped to', () => {
+	beforeEach(() => {
+		finding(api);
+		vi.spyOn(globalThis.history, 'back').mockImplementation(() => {
+			back();
+			flushSync();
+		});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('comes back to the note the find was asked from', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		expect(screen()).toContain('Cells');
+
+		labelled('Find a note').click();
+		await settle();
+		await typeToFind('2');
+		findField().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		await settle();
+		expect(at.note).toBe(THIRD);
+
+		expect(wayOut().textContent?.trim()).toBe('Back');
+		wayOut().click();
+		await settle();
+
+		expect(screen()).toContain('Cells');
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+
+	it('offers the graph where the find was asked from the canvas alone', async () => {
+		await open();
+		labelled('Find a note').click();
+		await settle();
+		await typeToFind('2');
+		findField().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		await settle();
+
+		expect(at.note).toBe(THIRD);
+		expect(wayOut().textContent?.trim()).toBe('Graph');
 	});
 });
