@@ -38,6 +38,7 @@
 /* ══ Theme: Paper (light default) — a notebook page, faintly warm ══════════ */
 :root,
 :root[data-theme='paper'] {
+	color-scheme: light;
 	--background: oklch(0.972 0.006 85);
 	--foreground: oklch(0.26 0.015 70);
 	--card: oklch(0.987 0.005 85);
@@ -59,6 +60,7 @@
 /* ══ Theme: Graphite (dark default) — pencil on slate ══════════════════════ */
 :root[data-theme='graphite'],
 .dark:root[data-theme='graphite'] {
+	color-scheme: dark;
 	--background: oklch(0.215 0.008 260);
 	--foreground: oklch(0.905 0.006 250);
 	--card: oklch(0.23 0.008 260);
@@ -79,6 +81,7 @@
 
 /* ══ Theme: Light — clean and neutral ══════════════════════════════════════ */
 :root[data-theme='light'] {
+	color-scheme: light;
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.145 0 0);
 	--card: oklch(1 0 0);
@@ -100,6 +103,7 @@
 /* ══ Theme: Dark — neutral night ═══════════════════════════════════════════ */
 :root[data-theme='dark'],
 .dark:root[data-theme='dark'] {
+	color-scheme: dark;
 	--background: oklch(0.145 0 0);
 	--foreground: oklch(0.985 0 0);
 	--card: oklch(0.16 0 0);
@@ -122,6 +126,7 @@
    It keeps its promise everywhere, including on the edges and the scrollbar:
    a faint tint is coziness this theme explicitly trades away. */
 :root[data-theme='contrast'] {
+	color-scheme: light;
 	--background: oklch(0.99 0 0);
 	--foreground: oklch(0.13 0 0);
 	--card: oklch(1 0 0);
