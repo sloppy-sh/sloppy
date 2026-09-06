@@ -14,6 +14,7 @@
 		/** The one being offered; `null` closes the sheet. */
 		emoji: CustomEmoji | null;
 		onclose: () => void;
+		/** Rejects with words fit for a person; the message is shown as it is. */
 		onkeep: (ask: CopyEmojiRequest) => Promise<void>;
 	} = $props();
 
