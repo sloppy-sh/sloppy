@@ -2,7 +2,9 @@
 // one of their notes. The words are never here, and neither is the store that
 // holds them — docs/ARCHITECTURE.md § "Federating the graph".
 //
-// `created_by` is the note's AUTHOR, the person the pointer was left for.
+// `created_by` is the note's AUTHOR, the person the pointer was left for. The
+// one read owned by the READER instead is {@link PointerRepository.sourceOf},
+// which is where they leave one.
 
 import { Injectable } from "@nestjs/common";
 import {
@@ -22,6 +24,20 @@ interface Crowd {
   voice: DidSyr;
   held: number;
 }
+
+/** One note of the author's and the voices that answered it. */
+export interface Answered {
+  note: OwnedRef;
+  voices: DidSyr[];
+}
+
+/**
+ * How many pointers one read of {@link PointerRepository.answered} takes in.
+ * A note holds at most `POINTERS_PER_NOTE` of them, so this bounds the work
+ * rather than the list: past it, the notes answered earliest are the ones
+ * named.
+ */
+const ANSWERED_POINTERS = 2_000;
 
 /** What SurrealDB says when a UNIQUE index refuses a second row for one key. */
 function alreadyThere(err: unknown): boolean {
@@ -53,6 +69,52 @@ export class PointerRepository {
       { author, note, rows: POINTERS_PER_NOTE },
     );
     return [...new Set(rows)].slice(0, take);
+  }
+
+  /**
+   * Every note of this person's somebody has left a pointer on, and who left
+   * one, in the order the first answer to each arrived.
+   */
+  async answered(author: DidSyr): Promise<Answered[]> {
+    const [rows] = await this.query<{ note: OwnedRef; voice: DidSyr }>(
+      `SELECT note, voice, created_at FROM comment_pointer
+         WHERE created_by = $author
+         ORDER BY created_at ASC LIMIT $rows`,
+      { author, rows: ANSWERED_POINTERS },
+    );
+    const answered = new Map<OwnedRef, Answered>();
+    for (const row of rows) {
+      const held = answered.get(row.note);
+      if (held === undefined) {
+        answered.set(row.note, { note: row.note, voices: [row.voice] });
+      } else if (!held.voices.includes(row.voice)) {
+        held.voices.push(row.voice);
+      }
+    }
+    return [...answered.values()];
+  }
+
+  /**
+   * Where the region this reader holds a note in was read from — the instance
+   * an answer to it is deposited at — or `null` where they hold no copy of it.
+   * Two regions carrying one note were both read from its author's instance, so
+   * either answers.
+   */
+  async sourceOf(reader: DidSyr, note: OwnedRef): Promise<string | null> {
+    const [carriedBy] = await this.query<OwnedRef>(
+      "SELECT VALUE pull FROM pull_member WHERE created_by = $reader AND source = $note",
+      { reader, note },
+    );
+    const regions = this.recordIds("pull", carriedBy);
+    if (regions.length === 0) return null;
+    const [rows] = await this.query<{ source_url?: unknown }>(
+      "SELECT source_url FROM pull WHERE created_by = $reader AND id IN $regions",
+      { reader, regions },
+    );
+    const served = rows
+      .map((row) => row.source_url)
+      .find((url): url is string => typeof url === "string" && url !== "");
+    return served ?? null;
   }
 
   /**

@@ -1,15 +1,21 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import {
+  type AnsweredNote,
   splitOwnedRef,
   asTimestamp,
   type CommentSignedPayloadV1,
+  type Converses,
   CreateNoteCommentRequestSchema,
   CreateNoteReactionRequestSchema,
   type CustomEmoji,
   type DidSyr,
+  graphRef,
   type NoteComment,
   type NoteReaction,
   type OwnedRef,
+  ownedRefFrom,
+  type RefusedVoice,
+  type RefusedVoiceView,
   splitStoreRef,
   StoreRefSchema,
   storeRefFor,
@@ -23,9 +29,17 @@ import type { z } from "zod";
 import { AppConfigService } from "../config/app-config.service";
 import { AssetLinks } from "../media/asset-link";
 import type { HostPolicy } from "../media/remote-host";
-import { peerReach } from "../peer/peer-fetch";
+import { NodeRepository } from "../node/node.repository";
+import { peerReach, tellPeerJson } from "../peer/peer-fetch";
 import { type Delegation, SyrService } from "../syr/syr.service";
+import { commentRefutes } from "./comment-attribution";
 import { PointerRepository } from "./pointer.repository";
+import {
+  type Refusal,
+  RefusalRepository,
+  refusalRef,
+  refuses,
+} from "./refusal.repository";
 
 /** How many identity stores one read of a note has open at once. A note may
  *  reach `VOICES_PER_NOTE` of them plus everyone the reader follows. */
@@ -82,7 +96,18 @@ export class SocialService {
     private readonly links: AssetLinks,
     private readonly pointers: PointerRepository,
     private readonly config: AppConfigService,
+    private readonly refusals: RefusalRepository,
+    private readonly nodes: NodeRepository,
   ) {}
+
+  /** Whether this person's own store can hold a conversation, which a surface
+   *  asks before it offers one. */
+  async converses(delegation: Delegation): Promise<Converses> {
+    return this.syr.keepsConversation(
+      delegation.syr_instance_url,
+      delegation.did,
+    );
+  }
 
   /**
    * Somebody's claim that they said something about a note of the author's,
@@ -92,9 +117,9 @@ export class SocialService {
    * hold answers somebody can be shown rather than claims a read will drop.
    *
    * The answer says nothing about whether it was kept. A depositor learning
-   * that a bound refused them, that a note admits no answers, or that an
-   * identity is unknown here, learns something about somebody else's graph they
-   * did not already know.
+   * that a bound refused them, that the author will not be shown them, that a
+   * note admits no answers, or that an identity is unknown here, learns
+   * something about somebody else's graph they did not already know.
    */
   async leaveReply(
     note: OwnedRef,
@@ -103,6 +128,9 @@ export class SocialService {
     const author = splitOwnedRef(note).did;
     if (left.voice === author) return;
     if (splitStoreRef(left.comment_id).did !== left.voice) return;
+    if (refuses(await this.refusals.listRefusals(author), left.voice, note)) {
+      return;
+    }
     const asking = await this.pointers.answersFrom(author, note);
     if (asking === null) return;
     const store = await this.syr.providerFor(asking, left.voice);
@@ -157,6 +185,7 @@ export class SocialService {
     return written
       .map((held) => held.record)
       .filter((comment) => this.isAbout(comment, post))
+      .filter((comment) => !commentRefutes(comment, post))
       .map((comment) => this.commentView(comment, node))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
@@ -183,7 +212,94 @@ export class SocialService {
       status: "completed",
     });
     await this.sign(delegation, written, post);
-    return this.commentView(written, request.node);
+    const view = this.commentView(written, request.node);
+    this.tellTheAuthor(delegation, request.node, view.comment_id);
+    return view;
+  }
+
+  /**
+   * An answer on somebody else's note is deposited at the instance the region
+   * carrying it was read from, naming the person who wrote it and the comment,
+   * and nothing else — docs/ARCHITECTURE.md § "Federating the graph".
+   *
+   * Nothing waits on it and nothing reports it: the words are already in the
+   * writer's own store, and whether the author's instance keeps the pointer is
+   * theirs to decide.
+   */
+  private tellTheAuthor(
+    delegation: Delegation,
+    note: OwnedRef,
+    comment: string,
+  ): void {
+    if (splitOwnedRef(note).did === delegation.did) return;
+    void this.pointers
+      .sourceOf(delegation.did, note)
+      .then((source) =>
+        source === null
+          ? undefined
+          : tellPeerJson(
+              repliesUrl(source, note),
+              { voice: delegation.did, comment_id: comment },
+              peerReach(this.config),
+            ),
+      )
+      .catch((err: unknown) =>
+        this.logger.warn(`${note}'s author was not told: ${reason(err)}`),
+      );
+  }
+
+  /** The caller's own notes somebody left a pointer on, and who left one. A
+   *  note whose only voices the caller refuses is not one of them. */
+  async answeredNotes(delegation: Delegation): Promise<AnsweredNote[]> {
+    const answered = await this.pointers.answered(delegation.did);
+    if (answered.length === 0) return [];
+    const refusals = await this.refusals.listRefusals(delegation.did);
+    const notes = await this.nodes.many(
+      delegation.did,
+      answered.map((one) => one.note),
+    );
+    const named = new Map(notes.map((note) => [ownedRefFrom(note.id), note]));
+    const list: AnsweredNote[] = [];
+    for (const { note, voices } of answered) {
+      const held = named.get(note);
+      if (held === undefined) continue;
+      const heard = voices.filter((voice) => !refuses(refusals, voice, note));
+      if (heard.length === 0) continue;
+      list.push({
+        note,
+        address: held.address,
+        graph: graphRef(delegation.did, held.graph),
+        title: held.title,
+        voices: heard,
+      });
+    }
+    return list;
+  }
+
+  async refusedVoices(delegation: Delegation): Promise<RefusedVoiceView[]> {
+    const held = await this.refusals.listRefusals(delegation.did);
+    return held.map((row) => this.refusalView(row));
+  }
+
+  async refuseVoice(
+    delegation: Delegation,
+    refusal: Refusal,
+  ): Promise<RefusedVoiceView> {
+    if (refusal.voice === delegation.did) {
+      throw new BadRequestException("You cannot stop being shown yourself.");
+    }
+    return this.refusalView(
+      await this.refusals.refuse(delegation.did, refusal),
+    );
+  }
+
+  async allowVoice(delegation: Delegation, refusal: Refusal): Promise<void> {
+    await this.refusals.allow(delegation.did, refusal);
+  }
+
+  private refusalView(row: RefusedVoice): RefusedVoiceView {
+    const { id, ...held } = row;
+    return { ref: refusalRef(row), ...held };
   }
 
   async removeComment(
@@ -287,6 +403,9 @@ export class SocialService {
    * whose name it is — so a voice this instance cannot place is one whose words
    * nobody here can attribute, and it is left out. docs/ARCHITECTURE.md
    * § "Federating the graph" carries what that costs.
+   *
+   * A voice the reader has refused is dropped from the whole set rather than
+   * from the pointers alone, because one they also follow arrives by both.
    */
   private async voices(
     delegation: Delegation,
@@ -329,7 +448,11 @@ export class SocialService {
         if (where !== null) reachable.push(at(did, where));
       });
     }
-    return reachable;
+    const refusals = await this.refusals.listRefusals(delegation.did);
+    return reachable.filter(
+      (voice) =>
+        voice.did === delegation.did || !refuses(refusals, voice.did, about),
+    );
   }
 
   /** A store to read, held to `media/remote-host.ts` on every address but the
@@ -610,6 +733,16 @@ class Catalogs {
     const code = shortcode.toLowerCase();
     return (await catalog).find((one) => one.shortcode.toLowerCase() === code);
   }
+}
+
+/** Where a note's author is told that somebody answered it: their own
+ *  instance's deposit route, on the origin the region was read from. */
+function repliesUrl(origin: string, note: OwnedRef): string {
+  const { did, localId } = splitOwnedRef(note);
+  return (
+    `${origin}/api/nodes/${encodeURIComponent(did)}` +
+    `/${encodeURIComponent(localId)}/replies`
+  );
 }
 
 /** A record an identity store issued, as everything that threads on one cites

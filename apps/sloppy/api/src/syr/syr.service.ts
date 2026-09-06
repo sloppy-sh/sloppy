@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import {
+  type Converses,
   type CreateUploadRequest,
   type SyrComment,
   type SyrCommentCreateRequest,
@@ -551,6 +552,23 @@ export class SyrService {
   async keepsFollows(instanceUrl: string, did: string): Promise<boolean> {
     const { endpoints } = await this.identityManifest(instanceUrl, did);
     return endpoints.public_following !== undefined;
+  }
+
+  /**
+   * Whether this identity's store publishes what a conversation is read back
+   * from, each half on its own. A store that takes a comment and lists none
+   * hands the writer one that is gone on the next read, so the question is what
+   * it SERVES and never where the identity lives.
+   */
+  async keepsConversation(
+    instanceUrl: string,
+    did: string,
+  ): Promise<Converses> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did);
+    return {
+      comments: Boolean(endpoints.public_comments),
+      reactions: Boolean(endpoints.public_reactions),
+    };
   }
 
   /** Who this person follows, as their own store keeps it. */
