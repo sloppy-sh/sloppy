@@ -392,10 +392,11 @@ export class SloppyClient {
   }
 
   /**
-   * The notes last written into, most recent first — written INTO, so a note
-   * whose title changed this morning does not outrank the one somebody spent
-   * yesterday writing. `limit` is bounded by `MAX_RECENT_NOTES`, and
-   * absent asks for `RECENT_NOTES`.
+   * The notes last written into, most recent first. `limit` is bounded by
+   * `MAX_RECENT_NOTES`, and absent asks for `RECENT_NOTES`. A row's
+   * `updated_at` is not when its writing changed, so a surface reads the order
+   * this answers in and never dates a note from the row —
+   * docs/ARCHITECTURE.md § "Data model".
    */
   async recentNotes(
     query: { graph?: OwnedRef; limit?: number } = {},

@@ -4,7 +4,7 @@
 import type { RecordId } from "surrealdb";
 import { z } from "zod";
 import { AddressSchema } from "./address.js";
-import { BlockSchema } from "./block.js";
+import { type Block, BlockSchema } from "./block.js";
 import { ownedRefFrom, splitOwnedRef } from "./codecs.js";
 import {
   DidSyrSchema,
@@ -41,10 +41,7 @@ export const NodeViewSchema = NodeSchema.omit({ id: true }).extend({
 });
 export type NodeView = z.infer<typeof NodeViewSchema>;
 
-/**
- * `text` stays behind: it is the words the document beside it already carries,
- * and a reader of a stack has no use for them twice.
- */
+/** A block on the wire carries no `text` — docs/ARCHITECTURE.md § "Data model". */
 export const BlockViewSchema = BlockSchema.omit({
   id: true,
   text: true,
@@ -52,6 +49,21 @@ export const BlockViewSchema = BlockSchema.omit({
   ref: OwnedRefSchema,
 });
 export type BlockView = z.infer<typeof BlockViewSchema>;
+
+/** A stored block on the wire. Built field by field: `entityView`'s spread
+ *  would carry `text` out with it. */
+export function blockView(row: Block): BlockView {
+  return {
+    ref: ownedRefFrom(row.id),
+    created_by: row.created_by,
+    node: row.node,
+    ord: row.ord,
+    content: row.content,
+    deleted_at: row.deleted_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
 
 /**
  * A graph as a listing carries it. The home graph is listed like any other and
@@ -195,8 +207,7 @@ export type DeletedBranch = z.infer<typeof DeletedBranchSchema>;
  *
  * `snippet` is the writing around what matched, plain and already cut to
  * length. It is empty where nothing in the writing matched — a hit on the title
- * or the address alone — and a surface shows the title there rather than a
- * blank line.
+ * or the address alone.
  */
 export const SearchHitSchema = z.object({
   note: OwnedRefSchema,
@@ -210,11 +221,7 @@ export const SearchHitSchema = z.object({
 });
 export type SearchHit = z.infer<typeof SearchHitSchema>;
 
-/**
- * The most hits `GET /nodes/search` answers with. A person recognising the one
- * they meant stops long before it; the bound is what keeps a common word from
- * answering with somebody's whole graph.
- */
+/** The most hits `GET /nodes/search` answers with. */
 export const MAX_SEARCH_HITS = 50;
 
 /**

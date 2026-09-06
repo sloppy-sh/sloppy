@@ -948,10 +948,12 @@ still draws them as one dashed line, and that section names the gap.
 search reads and the lines drawn out of them can never disagree about what a section says.
 It is therefore absent from `PATCHABLE` and from every create and update request, for the
 reason `references` is: a client that could write it could be found by words its document
-does not carry. `BlockView` omits it too — a reader of a stack already holds the document
-those words come from. `pulled_block` carries the same column, derived when the copy
-arrives, because a search that reached only somebody's own writing would answer "nothing"
-about a note they are holding and reading.
+does not carry. `BlockView` has no field for it, and `blockView` in `@sloppy/types` is how
+a stored block becomes one — a reader of a stack already holds the document those words
+come from, and spreading the row would send them whatever the view type says.
+`pulled_block` carries the same column, derived when the copy arrives, because a search
+that reached only somebody's own writing would answer "nothing" about a note they are
+holding and reading.
 
 **The index is one column, so the owner is an equality beside the match.** `sloppy_text` is
 the analyzer — class tokens, lowercased, accent-folded, English-stemmed — and `block_text`
