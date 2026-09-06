@@ -11,11 +11,13 @@
  * and it is persisted, so it lives in the prefs store.
  */
 
-import type { OwnedRef, Tag, TagCount } from '@sloppy/types';
+import { type OwnedRef, type Tag, type TagCount, TagCountSchema } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
+import { type DeviceArea, deviceStore } from '../device-store.js';
 import { serverMessage } from './errors.js';
 import { prefs } from './prefs.svelte.js';
+import { session } from './session.svelte.js';
 
 export interface TagsState {
 	loading: boolean;
@@ -27,6 +29,11 @@ export interface TagsState {
 
 const IDLE: TagsState = { loading: false, loaded: false, failed: false };
 
+function kept(): DeviceArea | null {
+	const did = session.viewer?.did;
+	return did ? deviceStore.area(did, 'tags') : null;
+}
+
 class TagsStore {
 	#byGraph = new SvelteMap<OwnedRef, TagCount[]>();
 	#states = new SvelteMap<OwnedRef, TagsState>();
@@ -34,6 +41,7 @@ class TagsStore {
 	// A {@link clear} that lands mid-request must not be undone by the answer:
 	// nothing the previous person's graph returns belongs to the next one.
 	#epoch = 0;
+	#restored = new Map<OwnedRef, Promise<void>>();
 
 	/** Most-used first, which is the order the read answers in. */
 	of(graph: OwnedRef): TagCount[] {
@@ -68,8 +76,32 @@ class TagsStore {
 		prefs.set('tags', tags);
 	}
 
+	/** The counts as this device last held them, so the rail is a legend before —
+	 *  or without — an answer. Idempotent, and never over an answer. */
+	restore(graph: OwnedRef): Promise<void> {
+		const already = this.#restored.get(graph);
+		if (already) return already;
+		const area = kept();
+		if (!area) return Promise.resolve();
+		const epoch = this.#epoch;
+		const reading = (async () => {
+			const held = await area.get<unknown[]>(graph);
+			if (!held || epoch !== this.#epoch || this.#byGraph.has(graph)) return;
+			this.#byGraph.set(
+				graph,
+				held
+					.map((row) => TagCountSchema.safeParse(row))
+					.filter((read) => read.success)
+					.map((read) => read.data)
+			);
+		})().catch(() => {});
+		this.#restored.set(graph, reading);
+		return reading;
+	}
+
 	/** Deduped and idempotent: every surface may call it on mount. */
 	load(graph: OwnedRef): Promise<TagCount[]> {
+		void this.restore(graph);
 		const inflight = this.#inflight.get(graph);
 		if (inflight) return inflight;
 		if (this.status(graph).loaded) return Promise.resolve(this.of(graph));
@@ -89,6 +121,8 @@ class TagsStore {
 				if (!current()) return [];
 				this.#byGraph.set(graph, list);
 				this.#states.set(graph, { loading: false, loaded: true, failed: false });
+				const area = kept();
+				if (area) void area.set(graph, $state.snapshot(list)).catch(() => {});
 				return list;
 			})
 			.catch((err: unknown) => {
@@ -115,6 +149,7 @@ class TagsStore {
 		this.#byGraph.clear();
 		this.#states.clear();
 		this.#inflight.clear();
+		this.#restored.clear();
 		this.select([]);
 	}
 }

@@ -5,6 +5,9 @@
  * Reads are served from the cache and filtered the way the API filters — a
  * region with no `origin` is the roots, not everything — so a node created or
  * edited anywhere shows up in every view of it without a refetch.
+ *
+ * What this device kept of the graph fills it before any answer arrives, and
+ * an answer always wins over a kept row — DESIGN.md § Persistence.
  */
 
 import {
@@ -15,12 +18,15 @@ import {
 	type NodeBulkRequest,
 	type NodeBulkResult,
 	type NodeView,
+	NodeViewSchema,
 	type OwnedRef,
 	type UpdateNodeRequest
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
+import { type DeviceArea, deviceStore } from '../device-store.js';
 import { serverMessage } from './errors.js';
+import { session } from './session.svelte.js';
 
 /** A region of one of the caller's graphs, exactly as `listNodes` takes it. */
 export interface NodeRegion {
@@ -38,8 +44,6 @@ export interface NodeRegion {
 
 /** A note asked for, whose address the server has yet to assign. */
 export interface WritingNote {
-	/** What was asked for, so asking again asks for the same note. */
-	readonly asked: CreateNodeRequest;
 	/** The note as the server wrote it. Rejects where it would not be written. */
 	readonly note: Promise<NodeView>;
 	/** A fresh trip for the same note, for a first one that was refused. */
@@ -62,16 +66,42 @@ function regionKey(region: NodeRegion): string {
 	return `${region.origin ?? ''} ${region.maxDepth ?? ''} ${region.origin ? '' : (region.graph ?? '')}`;
 }
 
+function inRegion(node: NodeView, { origin, maxDepth, graph }: NodeRegion): boolean {
+	// A root is its own origin, so that equality IS the branches query.
+	if (origin === undefined ? node.ref !== node.origin : node.origin !== origin) return false;
+	if (origin === undefined && graph !== undefined && graphOf(node) !== graph) return false;
+	return maxDepth === undefined || node.depth <= maxDepth;
+}
+
 const byAddress = (a: NodeView, b: NodeView) => compareAddresses(a.address, b.address);
+
+/** Long enough for a field's branches to have landed, short enough that a tab
+ *  closed straight after reading one costs at most the next read. */
+const WRITE_AFTER = 200;
+
+/** Kept under the graph each note is in, so one field's notes are read and
+ *  written on their own. */
+function kept(): DeviceArea | null {
+	const did = session.viewer?.did;
+	return did ? deviceStore.area(did, 'notes') : null;
+}
 
 class NodesStore {
 	#byRef = new SvelteMap<OwnedRef, NodeView>();
 	#regions = new SvelteMap<string, RegionState>();
+	#asked = new Map<string, NodeRegion>();
 	#regionsInflight = new Map<string, Promise<NodeView[]>>();
 	#nodesInflight = new Map<OwnedRef, Promise<NodeView | null>>();
 	// A {@link clear} that lands mid-request must not be undone by the answer:
 	// nothing the previous person's graph returns belongs to the next one.
 	#epoch = 0;
+	#restored: Promise<void> | null = null;
+	/** Painted from what this device kept, and confirmed by no answer since. A
+	 *  region that comes back without one is how a note deleted on another device
+	 *  goes here too. */
+	#unconfirmed = new Set<OwnedRef>();
+	#behind = new Map<OwnedRef, DeviceArea>();
+	#writing: ReturnType<typeof setTimeout> | null = null;
 
 	#children = $derived.by(() => {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt whole by the derived, never mutated after; the derived IS the reactivity.
@@ -97,14 +127,9 @@ class NodesStore {
 
 	/** Cached nodes matching `region`, in address order. */
 	region(region: NodeRegion = {}): NodeView[] {
-		const { origin, maxDepth, graph } = region;
 		const out: NodeView[] = [];
 		for (const node of this.#byRef.values()) {
-			// A root is its own origin, so that equality IS the branches query.
-			if (origin === undefined ? node.ref !== node.origin : node.origin !== origin) continue;
-			if (origin === undefined && graph !== undefined && graphOf(node) !== graph) continue;
-			if (maxDepth !== undefined && node.depth > maxDepth) continue;
-			out.push(node);
+			if (inRegion(node, region)) out.push(node);
 		}
 		return out.sort(byAddress);
 	}
@@ -113,9 +138,35 @@ class NodesStore {
 		return this.#regions.get(regionKey(region)) ?? IDLE;
 	}
 
+	/**
+	 * Fill the cache with the graph as this device last held it, so a canvas can
+	 * draw before — or without — an answer. Idempotent, and a row already known
+	 * is never replaced by a kept one.
+	 */
+	restore(): Promise<void> {
+		if (this.#restored) return this.#restored;
+		const area = kept();
+		if (!area) return Promise.resolve();
+		const epoch = this.#epoch;
+		this.#restored = (async () => {
+			const fields = await area.keys();
+			const held = await Promise.all(fields.map((graph) => area.get<unknown[]>(graph)));
+			if (epoch !== this.#epoch) return;
+			for (const row of held.flatMap((rows) => rows ?? [])) {
+				const read = NodeViewSchema.safeParse(row);
+				if (!read.success || this.#byRef.has(read.data.ref)) continue;
+				if (this.#answeredFor(read.data)) continue;
+				this.#byRef.set(read.data.ref, read.data);
+				this.#unconfirmed.add(read.data.ref);
+			}
+		})().catch(() => {});
+		return this.#restored;
+	}
+
 	/** Deduped: two surfaces asking for the same region issue one request, and a
 	 *  region already loaded issues none. */
 	load(region: NodeRegion = {}): Promise<NodeView[]> {
+		void this.restore();
 		const key = regionKey(region);
 		const inflight = this.#regionsInflight.get(key);
 		if (inflight) return inflight;
@@ -131,12 +182,18 @@ class NodesStore {
 		const before = this.#regions.get(key) ?? IDLE;
 		const epoch = this.#epoch;
 		const current = () => epoch === this.#epoch;
+		this.#asked.set(key, region);
 		this.#regions.set(key, { ...before, loading: true, failed: false, error: undefined });
 		const request = api
 			.listNodes(region)
 			.then((list) => {
 				if (!current()) return [];
-				for (const node of list) this.#byRef.set(node.ref, node);
+				const answered = new Set(list.map((node) => node.ref));
+				for (const node of list) this.#learn(node);
+				for (const ref of [...this.#unconfirmed]) {
+					const held = this.#byRef.get(ref);
+					if (held && !answered.has(ref) && inRegion(held, region)) this.forget(ref);
+				}
 				this.#regions.set(key, { loading: false, loaded: true, failed: false });
 				return this.region(region);
 			})
@@ -169,7 +226,7 @@ class NodesStore {
 			.getNode(ref)
 			.then((node) => {
 				if (!current()) return node;
-				if (node) this.#byRef.set(node.ref, node);
+				if (node) this.#learn(node);
 				else this.forget(ref);
 				return node;
 			})
@@ -196,7 +253,6 @@ class NodesStore {
 	 */
 	write(request: CreateNodeRequest): WritingNote {
 		return {
-			asked: request,
 			note: this.create(request),
 			again: () => this.write(request)
 		};
@@ -206,14 +262,14 @@ class NodesStore {
 		const epoch = this.#epoch;
 		const node = await api.createNode(request);
 		if (epoch !== this.#epoch) return node;
-		this.#byRef.set(node.ref, node);
+		this.#learn(node);
 		return node;
 	}
 
 	async update(ref: OwnedRef, request: UpdateNodeRequest): Promise<NodeView> {
 		const epoch = this.#epoch;
 		const node = await api.updateNode(ref, request);
-		if (epoch === this.#epoch) this.#byRef.set(node.ref, node);
+		if (epoch === this.#epoch) this.#learn(node);
 		return node;
 	}
 
@@ -226,7 +282,7 @@ class NodesStore {
 			// The missed ones are gone too, whether they went just now or earlier.
 			for (const ref of request.notes) this.forget(ref);
 		} else {
-			for (const node of result.notes) this.#byRef.set(node.ref, node);
+			for (const node of result.notes) this.#learn(node);
 		}
 		return result;
 	}
@@ -244,22 +300,69 @@ class NodesStore {
 	 */
 	forget(ref: OwnedRef): void {
 		const node = this.#byRef.get(ref);
-		this.#byRef.delete(ref);
+		this.#drop(ref);
 		if (!node) return;
 		for (const other of [...this.#byRef.values()]) {
 			if (other.origin === node.origin && isAncestorAddress(node.address, other.address)) {
-				this.#byRef.delete(other.ref);
+				this.#drop(other.ref);
 			}
 		}
 	}
 
-	/** After a sign-out or an erase: nothing cached belongs to the next person. */
+	/** After a sign-out or an erase: nothing cached belongs to the next person.
+	 *  What the device kept is `session.signOut`'s to take, not this. */
 	clear(): void {
 		this.#epoch++;
 		this.#byRef.clear();
 		this.#regions.clear();
+		this.#asked.clear();
 		this.#regionsInflight.clear();
 		this.#nodesInflight.clear();
+		this.#unconfirmed.clear();
+		this.#behind.clear();
+		this.#restored = null;
+	}
+
+	/** A region that has answered already said which notes are in it, so a kept
+	 *  row it left out is one that is gone — whichever landed first. */
+	#answeredFor(node: NodeView): boolean {
+		for (const [key, region] of this.#asked) {
+			if (this.#regions.get(key)?.loaded && inRegion(node, region)) return true;
+		}
+		return false;
+	}
+
+	#learn(node: NodeView): void {
+		this.#byRef.set(node.ref, node);
+		this.#unconfirmed.delete(node.ref);
+		this.#keep(graphOf(node));
+	}
+
+	#drop(ref: OwnedRef): void {
+		const node = this.#byRef.get(ref);
+		this.#byRef.delete(ref);
+		this.#unconfirmed.delete(ref);
+		if (node) this.#keep(graphOf(node));
+	}
+
+	/** Written once the answers stop arriving, because reading one field is many
+	 *  regions landing on the same rows and each write is the whole field. */
+	#keep(graph: OwnedRef): void {
+		const area = kept();
+		if (!area) return;
+		this.#behind.set(graph, area);
+		if (this.#writing) return;
+		this.#writing = setTimeout(() => {
+			this.#writing = null;
+			const behind = [...this.#behind];
+			this.#behind.clear();
+			for (const [graph, area] of behind) {
+				const rows = $state.snapshot(
+					[...this.#byRef.values()].filter((node) => graphOf(node) === graph)
+				);
+				void (rows.length > 0 ? area.set(graph, rows) : area.delete(graph)).catch(() => {});
+			}
+		}, WRITE_AFTER);
 	}
 }
 

@@ -26,6 +26,15 @@ import { replacement } from "./patch";
 
 const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
 
+/**
+ * A note its author has not deleted, and its opposite. Every read but the two
+ * that assign an address is scoped by the first: a deleted note keeps its row so
+ * it can be put back, and nothing else may find it there — AI.md § "The Address
+ * Is the Protocol".
+ */
+const THERE = "deleted_at = NONE";
+const GONE = "deleted_at != NONE";
+
 /** How a graph holds an address: a note is at it, or one was and has gone. */
 export type AddressHold = "live" | "deleted";
 
@@ -71,7 +80,8 @@ export class NodeRepository {
   ): Promise<Node[]> {
     return this.read(
       `SELECT * FROM node
-         WHERE created_by = $did AND graph = $graph AND parent = NONE`,
+         WHERE created_by = $did AND graph = $graph AND parent = NONE
+           AND ${THERE}`,
       { did, graph },
     );
   }
@@ -87,18 +97,33 @@ export class NodeRepository {
   ): Promise<Node[]> {
     const bound = maxDepth == null ? "" : " AND depth <= $maxDepth";
     return this.read(
-      `SELECT * FROM node WHERE created_by = $did AND origin = $origin${bound}`,
+      `SELECT * FROM node
+         WHERE created_by = $did AND origin = $origin${bound} AND ${THERE}`,
       { did, origin, maxDepth },
     );
   }
 
   async find(did: string, ref: OwnedRef): Promise<Node | null> {
-    const [rows] = await this.query(
-      "SELECT * FROM node WHERE id = $id AND created_by = $did",
+    return this.one(
+      `SELECT * FROM node WHERE id = $id AND created_by = $did AND ${THERE}`,
       { id: recordIdFromOwnedRef("node", ref), did },
     );
-    const row = rows[0];
-    return row === undefined ? null : parseNode(row);
+  }
+
+  /** One note its author has deleted, whether or not they can still put it
+   *  back. */
+  async findDeleted(did: string, ref: OwnedRef): Promise<Node | null> {
+    return this.one(
+      `SELECT * FROM node WHERE id = $id AND created_by = $did AND ${GONE}`,
+      { id: recordIdFromOwnedRef("node", ref), did },
+    );
+  }
+
+  /** Every note of theirs that is deleted and still there to be put back. */
+  async deletedNotes(did: string): Promise<Node[]> {
+    return this.read(`SELECT * FROM node WHERE created_by = $did AND ${GONE}`, {
+      did,
+    });
   }
 
   /**
@@ -184,7 +209,7 @@ export class NodeRepository {
   async many(did: string, refs: readonly OwnedRef[]): Promise<Node[]> {
     if (refs.length === 0) return [];
     return this.read(
-      "SELECT * FROM node WHERE id IN $ids AND created_by = $did",
+      `SELECT * FROM node WHERE id IN $ids AND created_by = $did AND ${THERE}`,
       { ids: refs.map((ref) => recordIdFromOwnedRef("node", ref)), did },
     );
   }
@@ -251,7 +276,8 @@ export class NodeRepository {
    *  graph expensive, and none of one is read here. */
   async withoutReferences(limit: number): Promise<OwnedRef[]> {
     const [ids] = await this.query<RecordId>(
-      "SELECT VALUE id FROM node WHERE references = NONE LIMIT $limit",
+      `SELECT VALUE id FROM node WHERE references = NONE AND ${THERE}
+         LIMIT $limit`,
       { limit },
     );
     return ids.map(ownedRefFrom);
@@ -285,34 +311,92 @@ export class NodeRepository {
     // reference names its owner, so anybody could otherwise write a row by
     // asking for it by name.
     const [rows] = await this.query(
-      `UPDATE $id SET ${set.clause} WHERE created_by = $did RETURN AFTER`,
+      `UPDATE $id SET ${set.clause}
+         WHERE created_by = $did AND ${THERE} RETURN AFTER`,
       { id: recordIdFromOwnedRef("node", ref), did, ...set.vars },
     );
     const row = rows[0];
     return row === undefined ? null : parseNode(row);
   }
 
-  /** `root` and everything that sprang from it. */
+  /** `root` and everything that sprang from it, of the notes still there. */
   async subtree(did: string, root: Node): Promise<Node[]> {
-    const kin = await this.read(
-      "SELECT * FROM node WHERE created_by = $did AND origin = $origin AND depth >= $depth",
+    return this.kin(
+      root,
+      `SELECT * FROM node
+         WHERE created_by = $did AND origin = $origin AND depth >= $depth
+           AND ${THERE}`,
       { did, origin: root.origin, depth: root.depth },
-    );
-    return kin.filter(
-      (node) =>
-        node.address === root.address ||
-        isAncestorAddress(root.address, node.address),
     );
   }
 
   /**
-   * A node leaves with its interior and with what other people left pointing at
-   * it; either one outliving the note is unreachable. Its address stays behind:
-   * the graph has assigned it, and a `retired_address` row is what keeps it
-   * from being assigned again — AI.md § "The Address Is the Protocol".
+   * A node and everything that sprang from it, put away rather than removed: it
+   * keeps its row, its writing and its address, and no read but the ones that
+   * assign an address finds it. {@link restore} is the way back and
+   * {@link purgeExpired} is the end of the road.
    */
   async remove(did: string, nodes: readonly Node[]): Promise<void> {
     if (nodes.length === 0) return;
+    await this.db.handle.query(
+      `UPDATE block SET deleted_at = $at
+         WHERE created_by = $did AND node IN $refs;
+       UPDATE $ids SET deleted_at = $at WHERE created_by = $did;`,
+      {
+        did,
+        at: nowIso(),
+        refs: nodes.map((node) => ownedRefFrom(node.id)),
+        ids: nodes.map((node) => node.id),
+      },
+    );
+  }
+
+  /**
+   * `root` and what went with it, back where they were. Only what went in the
+   * same act comes back: a note deleted before its parent was stays deleted,
+   * and is its own branch to put back afterwards.
+   */
+  async restore(did: string, root: Node): Promise<void> {
+    const at = root.deleted_at;
+    if (at === undefined) return;
+    const back = await this.stamped(did, root, at);
+    await this.db.handle.query(
+      `UPDATE block SET deleted_at = NONE
+         WHERE created_by = $did AND node IN $refs AND deleted_at = $at;
+       UPDATE $ids SET deleted_at = NONE WHERE created_by = $did;`,
+      {
+        did,
+        at,
+        refs: back.map((node) => ownedRefFrom(node.id)),
+        ids: back.map((node) => node.id),
+      },
+    );
+  }
+
+  /** The notes of `root`'s subtree that went with it in one act. */
+  private stamped(did: string, root: Node, at: string): Promise<Node[]> {
+    return this.kin(
+      root,
+      `SELECT * FROM node
+         WHERE created_by = $did AND origin = $origin AND depth >= $depth
+           AND deleted_at = $at`,
+      { did, origin: root.origin, depth: root.depth, at },
+    );
+  }
+
+  /**
+   * Everything of theirs deleted before `before`, gone for real: the writing,
+   * what other people left pointing at it, and the note. Each address stays
+   * behind in a `retired_address` row, because the graph has assigned it and
+   * nothing may assign it again — AI.md § "The Address Is the Protocol".
+   */
+  async purgeExpired(did: string, before: string): Promise<void> {
+    const going = await this.read(
+      `SELECT * FROM node
+         WHERE created_by = $did AND ${GONE} AND deleted_at < $before`,
+      { did, before },
+    );
+    if (going.length === 0) return;
     await this.db.handle.query(
       `INSERT INTO retired_address $retired;
        DELETE block WHERE created_by = $did AND node IN $refs;
@@ -320,9 +404,9 @@ export class NodeRepository {
        DELETE node WHERE id IN $ids;`,
       {
         did,
-        retired: nodes.map(retire),
-        refs: nodes.map((node) => ownedRefFrom(node.id)),
-        ids: nodes.map((node) => node.id),
+        retired: going.map(retire),
+        refs: going.map((node) => ownedRefFrom(node.id)),
+        ids: going.map((node) => node.id),
       },
     );
   }
@@ -340,13 +424,36 @@ export class NodeRepository {
     const [rows] = await this.query<TagCount>(
       `SELECT tags AS tag, count() AS notes
          FROM (SELECT tags FROM node
-                 WHERE created_by = $did AND graph = $graph
+                 WHERE created_by = $did AND graph = $graph AND ${THERE}
                    AND array::len(tags ?? []) > 0
                  SPLIT tags)
          GROUP BY tag ORDER BY notes DESC, tag ASC`,
       { did, graph },
     );
     return rows.map((row) => TagCountSchema.parse(row));
+  }
+
+  /** A read of one tree, cut to `root` and what sprang from it. */
+  private async kin(
+    root: Node,
+    sql: string,
+    vars: Record<string, unknown>,
+  ): Promise<Node[]> {
+    const rows = await this.read(sql, vars);
+    return rows.filter(
+      (node) =>
+        node.address === root.address ||
+        isAncestorAddress(root.address, node.address),
+    );
+  }
+
+  private async one(
+    sql: string,
+    vars: Record<string, unknown>,
+  ): Promise<Node | null> {
+    const [rows] = await this.query(sql, vars);
+    const row = rows[0];
+    return row === undefined ? null : parseNode(row);
   }
 
   private async read(

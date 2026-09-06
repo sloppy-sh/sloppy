@@ -68,7 +68,8 @@ function tree(...addresses: string[]): Node[] {
  * The writes an act asked for, alongside the service that made them. `refuses`
  * names the roots the publish half turns down, which is what a set publishing
  * partway looks like from here; `chains` names the notes a publication is
- * already rooted at.
+ * already rooted at, and a take-down here is recorded against the note rather
+ * than against a publication row nothing in this file has.
  */
 function serviceOver(
   notes: Node[],
@@ -78,7 +79,9 @@ function serviceOver(
   const writes: NodeBulkPatch[] = [];
   const removed: Node[] = [];
   const published: OwnedRef[] = [];
+  const takenDown: OwnedRef[] = [];
   const repository = {
+    purgeExpired: () => Promise.resolve([]),
     many: (_did: string, refs: readonly OwnedRef[]) =>
       Promise.resolve(notes.filter((n) => refs.includes(ownedRefFrom(n.id)))),
     patchAll: (_did: string, changes: ReadonlyMap<OwnedRef, NodeBulkPatch>) => {
@@ -97,6 +100,12 @@ function serviceOver(
   const publications = {
     rootedAmong: (_did: string, asked: readonly OwnedRef[]) =>
       Promise.resolve(new Set(asked.filter((ref) => chains.includes(ref)))),
+    rootedIn: (_did: string, asked: ReadonlySet<OwnedRef>) =>
+      Promise.resolve(chains.filter((ref) => asked.has(ref))),
+    remove: (_delegation: Delegation, ref: OwnedRef) => {
+      takenDown.push(ref);
+      return Promise.resolve();
+    },
     publish: (_delegation: Delegation, request: { root: OwnedRef }) => {
       if (refuses.includes(request.root)) {
         return Promise.reject(
@@ -112,6 +121,7 @@ function serviceOver(
     writes,
     removed,
     published,
+    takenDown,
   };
 }
 
@@ -224,6 +234,29 @@ describe("one act over the notes somebody chose", () => {
 
     expect(removed).toHaveLength(2);
     expect(result).toEqual({ reached: 2, missed: 0, notes: [] });
+  });
+
+  it("takes down what a chosen branch was publishing before it goes", async () => {
+    const notes = tree("1", "1a");
+    const root = ownedRefFrom(notes[0].id);
+    const { service, removed, takenDown } = serviceOver(notes, [], [root]);
+
+    await service.bulk(DID, over([notes[0]], { act: "delete" }), ada);
+
+    expect(takenDown).toEqual([root]);
+    expect(removed).toHaveLength(2);
+  });
+
+  it("refuses to delete a published branch nobody is signed in for", async () => {
+    const notes = tree("1", "1a");
+    const root = ownedRefFrom(notes[0].id);
+    const { service, removed, takenDown } = serviceOver(notes, [], [root]);
+
+    await expect(
+      service.bulk(DID, over([notes[0]], { act: "delete" }), undefined),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(takenDown).toEqual([]);
+    expect(removed).toEqual([]);
   });
 });
 

@@ -1,7 +1,16 @@
-import type { ProfileView } from '@sloppy/types';
+import type { GraphExport, ProfileView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import {
+	AT,
+	DID,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from '../stores/fake-api.test-support.js';
+import { initRuntime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
@@ -48,6 +57,7 @@ beforeEach(() => {
 	identity.clear();
 	conversation.clear();
 	api = useFakeApi();
+	initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
 	api.on('GET /profile/me', () => STORED);
 	api.on('POST /auth/logout', () => ({}));
 	api.on('GET /auth/own-instance', () => ({ instance_url: null }));
@@ -62,6 +72,104 @@ afterEach(() => {
 	session.clear();
 	target.remove();
 	document.body.innerHTML = '';
+});
+
+const HELD: GraphExport = {
+	exported_at: AT,
+	did: DID,
+	graphs: [{ ref: ref(9), created_by: DID, title: 'My graph', created_at: AT, updated_at: AT }],
+	notes: [node(1, '1')],
+	blocks: [
+		{
+			ref: ref(2),
+			created_by: DID,
+			created_at: AT,
+			updated_at: AT,
+			node: ref(1),
+			ord: 'a0',
+			content: { type: 'doc', content: [] }
+		}
+	]
+};
+
+describe('a copy of everything somebody keeps', () => {
+	it('is offered, and handed to the shell that saves files', async () => {
+		const saved: { name: string; body: Blob }[] = [];
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			saveFile: (name, body) => {
+				saved.push({ name, body });
+				return Promise.resolve();
+			}
+		});
+		api.on('GET /export', () => HELD);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(target.textContent).toContain('every graph, every note');
+		button('Download a copy').click();
+		await settle();
+
+		expect(api.countOf('GET /export')).toBe(1);
+		expect(saved[0].name).toBe('sloppy-2026-01-01.json');
+		expect(JSON.parse(await saved[0].body.text())).toEqual(HELD);
+	});
+
+	// The web shell leaves the seam alone, and the browser saves it.
+	it('is saved by the browser where the shell has no saving of its own', async () => {
+		const asked: { href: string; name: string }[] = [];
+		const clicking = HTMLAnchorElement.prototype.click;
+		HTMLAnchorElement.prototype.click = function () {
+			asked.push({ href: this.href, name: this.download });
+		};
+		URL.createObjectURL = () => 'blob:a-copy';
+		URL.revokeObjectURL = () => {};
+		api.on('GET /export', () => HELD);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		button('Download a copy').click();
+		await settle();
+		HTMLAnchorElement.prototype.click = clicking;
+
+		expect(asked).toEqual([{ href: 'blob:a-copy', name: 'sloppy-2026-01-01.json' }]);
+	});
+
+	it('says so plainly where nothing can save a file', async () => {
+		initRuntime({ apiHost: () => 'http://api.test', saveFile: null });
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(button('Download a copy').disabled).toBe(true);
+		expect(target.textContent).toContain("isn't available here yet");
+	});
+
+	it('says what to do when the copy could not be put together', async () => {
+		api.on(
+			'GET /export',
+			() => new Response('{"message":"Sloppy could not reach your writing."}', { status: 503 })
+		);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		button('Download a copy').click();
+		await settle();
+
+		expect(target.textContent).toContain('Sloppy could not reach your writing.');
+	});
+
+	it('is not offered to somebody who is not signed in', async () => {
+		session.clear();
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(target.textContent).not.toContain('Download a copy');
+	});
 });
 
 describe('settings', () => {
