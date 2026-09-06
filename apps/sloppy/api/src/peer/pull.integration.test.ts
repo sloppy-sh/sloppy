@@ -87,6 +87,13 @@ const doc = (words: string) => ({
  *  admits: the author's instance mints real ones. */
 const ulid = (mark: string) => `01JQXR${"0".repeat(19)}${mark}`;
 
+/** A one-pixel PNG. Nothing here decodes it; it only has to be bytes with a
+ *  type. */
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 const ID = {
   root: ulid("1"),
   a: ulid("2"),
@@ -186,6 +193,8 @@ describe("holding a region of somebody else's graph", () => {
   /** What the fake peer answers with, replaced per scenario. */
   let pages: unknown[] = [];
   let asked: string[] = [];
+  /** What the author's own store keeps in the open, as their instance lists it. */
+  let openUploads: Record<string, unknown>[] = [];
 
   const scenario = (name: string, run: () => Promise<void>) =>
     it(name, async (ctx) => {
@@ -335,6 +344,43 @@ describe("holding a region of somebody else's graph", () => {
     peer = createHttp((req, res) => {
       const url = new URL(req.url ?? "/", peerOrigin);
       asked.push(url.pathname + url.search);
+
+      // The author's own identity store, which is where the pictures inside
+      // their published notes are read from.
+      const store = {
+        "/.well-known/syr": () => ({
+          name: "syr",
+          public_url: peerOrigin,
+          identity_manifest_template: `${peerOrigin}/.well-known/syr/{did}`,
+        }),
+        [`/.well-known/syr/${encodeURIComponent(AUTHOR)}`]: () => ({
+          version: 1,
+          did: AUTHOR,
+          provider: peerOrigin,
+          endpoints: {
+            profile: `${peerOrigin}/public/profile/${AUTHOR}`,
+            uploads: `${peerOrigin}/public/uploads/${encodeURIComponent(AUTHOR)}`,
+            did_document: `${peerOrigin}/identity/${AUTHOR}/document`,
+          },
+          web_profile: `${peerOrigin}/u/${AUTHOR}`,
+        }),
+        [`/public/uploads/${encodeURIComponent(AUTHOR)}`]: () => {
+          const from = Number(url.searchParams.get("offset") ?? "0");
+          const size = Number(url.searchParams.get("limit") ?? "100");
+          return { data: openUploads.slice(from, from + size) };
+        },
+      }[url.pathname];
+      if (store) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(store()));
+        return;
+      }
+      if (url.pathname.startsWith("/files/")) {
+        res.writeHead(200, { "content-type": "image/png" });
+        res.end(PIXEL);
+        return;
+      }
+
       const which = Number(url.searchParams.get("cursor") ?? "0");
       const answer = pages[which];
       if (answer === undefined) {
@@ -889,6 +935,91 @@ describe("holding a region of somebody else's graph", () => {
     expect(inHome.every((held) => held.graph === homeGraphRef(AUTHOR))).toBe(
       true,
     );
+  });
+
+  scenario("says what the author calls the notebook it came from", async () => {
+    serves({ ...page(WIDE, [note("1", "1")]), graph_title: "The garden" });
+    expect((await pulled(WIDE)).graph_title).toBe("The garden");
+
+    // An author who took the name off gets the region back without one, rather
+    // than the reader keeping a label nobody stands behind.
+    serves(page(WIDE, [note("1", "1")]));
+    expect((await pulled(WIDE)).graph_title).toBeUndefined();
+  });
+
+  scenario("draws a held mark the shape its author gave it", async () => {
+    serves(
+      page(WIDE, [
+        note("1", "1", {
+          look: { ring_weight: "heavy", ring_style: "dashed" },
+        }),
+        note("1", "1a"),
+      ]),
+    );
+
+    const held = await heldIn(await pulled(WIDE));
+
+    expect(held[0].appearance).toEqual({
+      ring_weight: "heavy",
+      ring_style: "dashed",
+    });
+    expect(held[1].appearance).toBeUndefined();
+  });
+
+  scenario("opens a citation to a note the reader already holds", async () => {
+    serves(page(WIDE, [note("1", "1"), note("1", "1a")]));
+    const region = await pulled(WIDE);
+
+    const hit = (await ok("GET", `/pulls/nodes/${at(ref(ID.a))}`)) as {
+      note: NodeView;
+      pull: PullView;
+    };
+
+    expect(hit.note.ref).toBe(ref(ID.a));
+    expect(hit.note.address).toBe("1a");
+    expect(hit.pull.ref).toBe(region.ref);
+
+    // A note nobody here has pulled is not a note that was taken down, and the
+    // route says so by holding nothing rather than by refusing.
+    expect(
+      (await call("GET", `/pulls/nodes/${at(ref(ID.other))}`)).body,
+    ).toBeNull();
+  });
+
+  scenario("draws a picture inside a held note", async () => {
+    openUploads = [
+      {
+        did: AUTHOR,
+        local_id: ID.s3,
+        filename: "figure.png",
+        mime_type: "image/png",
+        size: PIXEL.byteLength,
+        status: "completed",
+        is_public: true,
+        url: `${peerOrigin}/files/figure.png`,
+      },
+    ];
+    serves(page(WIDE, [note("1", "1")]));
+    await pulled(WIDE);
+
+    const drawn = await fetch(`${base}/api/media/published/${at(ref(ID.s3))}`, {
+      headers: { cookie: reader.cookie, accept: "image/*" },
+    });
+    const bytes = Buffer.from(await drawn.arrayBuffer());
+
+    expect(drawn.status).toBe(200);
+    expect(drawn.headers.get("content-type")).toBe("image/png");
+    expect(bytes.equals(PIXEL)).toBe(true);
+    // Nothing the author's store has not put in the open, and nothing at all
+    // for an author whose branch the reader does not hold.
+    expect(
+      (
+        await fetch(`${base}/api/media/published/${at(`${STRANGER}/ANY`)}`, {
+          headers: { cookie: reader.cookie, accept: "image/*" },
+        })
+      ).status,
+    ).toBe(404);
+    openUploads = [];
   });
 
   scenario("finds a held note by what its author wrote in it", async () => {
