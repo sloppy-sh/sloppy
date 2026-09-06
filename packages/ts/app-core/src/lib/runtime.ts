@@ -46,6 +46,11 @@ export interface AppRuntime {
 	 *  wherever nothing is stored locally, and the "erase this device" action
 	 *  hides. */
 	wipeLocal?(): Promise<void>;
+	/** Hand a person a file to keep. Absent → the browser saves it, which is
+	 *  what a tab does and a webview does not, so a shell inside one supplies
+	 *  this; `null` where it has no way to save one, and the offer of a copy
+	 *  says so rather than doing nothing. */
+	saveFile?: ((name: string, body: Blob) => Promise<void>) | null;
 }
 
 const TOKEN_KEY = 'sloppy_token';
@@ -122,5 +127,6 @@ export const runtime = {
 	authInvalid: () => current.onAuthInvalid?.(),
 	openExternal: (): AppRuntime['openExternal'] => current.openExternal,
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
-	wipeLocal: (): AppRuntime['wipeLocal'] => current.wipeLocal
+	wipeLocal: (): AppRuntime['wipeLocal'] => current.wipeLocal,
+	saveFile: (): AppRuntime['saveFile'] => current.saveFile
 };
