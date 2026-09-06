@@ -1245,6 +1245,8 @@ describe('a note written before the server has answered', () => {
 	const WRITTEN = ref(9);
 	let stalled: { answer: (value: NodeView | Response) => void };
 	let created: CreateBlockRequest[];
+	/** The title the note was given once it had an address, if it was given one. */
+	let titled: string | undefined;
 
 	function heldOpen(): {
 		answer: (value: NodeView | Response) => void;
@@ -1286,11 +1288,17 @@ describe('a note written before the server has answered', () => {
 
 	beforeEach(() => {
 		created = [];
+		titled = undefined;
 		const trip = heldOpen();
 		stalled = trip;
 		api.on('POST /nodes', () => trip.route());
 		api.on(`GET ${path(WRITTEN)}`, () => node(9, '3'));
 		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+		api.on(`PATCH ${path(WRITTEN)}`, (_url, init) => {
+			const change = JSON.parse(String(init?.body)) as Partial<NodeView>;
+			titled = change.title;
+			return { ...node(9, '3'), ...change };
+		});
 		api.on('POST /blocks', (_url, init) => {
 			const request = JSON.parse(String(init?.body)) as CreateBlockRequest;
 			created.push(request);
@@ -1332,6 +1340,7 @@ describe('a note written before the server has answered', () => {
 		expect(created).toHaveLength(1);
 		expect(created[0].node).toBe(WRITTEN);
 		expect(said(created[0])).toBe('two bars is still four seconds');
+		expect(titled).toBe('Membranes');
 	});
 
 	it('keeps the writing and offers another go when the note will not be written', async () => {
@@ -1437,5 +1446,91 @@ describe('a note written before the server has answered', () => {
 			'The objection',
 			'What survives if I am right'
 		]);
+	});
+
+	it('hands what was typed back to the note when its sections will not go', async () => {
+		api.on(
+			'POST /blocks',
+			() =>
+				new Response('{"message":"That section would not go."}', {
+					status: 400,
+					headers: { 'content-type': 'application/json' }
+				})
+		);
+		await open();
+		labelled('A new branch, from a shape').click();
+		await settle();
+		shape('Objection').click();
+		await settle();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(screen()).toContain('That section would not go.');
+		await until(() => screen().includes('two bars is still four seconds'));
+	});
+
+	/** Two notes on the strip, reading the second of them. */
+	async function openTwo(): Promise<void> {
+		stubViewport((query) => query.includes('900'));
+		await open();
+		onCanvas('1').click();
+		await settle();
+		menuOn('2').click();
+		await settle();
+		item('Open it as well').click();
+		await settle();
+	}
+
+	/** The strip's addresses, in order, and which of them is being read. */
+	function openTabs(): { addresses: string[]; reading: string | undefined } {
+		const marks = [...(document.body.querySelectorAll('[aria-label="Open notes"] .address') ?? [])];
+		return {
+			addresses: marks.map((mark) => mark.textContent ?? ''),
+			reading: marks.find((mark) => mark.closest('button')?.getAttribute('aria-current') === 'page')
+				?.textContent
+		};
+	}
+
+	function tab(address: string): HTMLButtonElement {
+		const found = [
+			...document.body.querySelectorAll<HTMLButtonElement>('[aria-label="Open notes"] button')
+		].find((one) => one.querySelector('.address')?.textContent === address);
+		if (!found) throw new Error(`No tab for ${address} is on the strip`);
+		return found;
+	}
+
+	it('writes it in the tab of the note it was asked under', async () => {
+		await openTwo();
+		menuOn('1').click();
+		await settle();
+		item('Write a note under this').click();
+		await settle();
+
+		expect(screen()).toContain('Giving it an address');
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '1' });
+	});
+
+	it('lets the reader move to another note while the address is still coming', async () => {
+		await openTwo();
+		tab('1').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '1' });
+
+		tab('2').click();
+		await settle();
+
+		expect(screen()).not.toContain('Giving it an address');
+		expect(field('Title').value).toBe('Method');
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '2' });
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['3', '2'], reading: '3' });
 	});
 });

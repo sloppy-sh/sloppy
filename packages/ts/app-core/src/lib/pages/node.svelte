@@ -706,17 +706,17 @@
 		// A shape writes this note's sections itself, so writing that arrived with
 		// the note goes down as the first of them rather than through the surface:
 		// two writers on one stack is what `stackSettled` exists to keep apart.
-		const opener = untrack(() => {
+		const arrived = untrack(() => {
 			caretTo = 'title';
 			carried = null;
-			if (typed?.ref !== opening) return '';
+			if (typed?.ref !== opening) return null;
 			const said = typed;
 			onTyped?.();
 			if (said.title) drafts.set(opening, said.title);
-			if (starting) return said.body;
+			if (starting) return said;
 			caretTo = said.where;
 			if (said.body || said.where === 'body') carried = { ref: opening, body: said.body };
-			return '';
+			return said;
 		});
 		let live = true;
 		const known = read.get(opening);
@@ -757,7 +757,11 @@
 					};
 				}
 			}
-			if (live && held && starting) await shapeThisNote(starting, opener);
+			if (!live || !held) return;
+			// A title typed on the surface this note was written from was never in
+			// the field here, so no blur here will ever save it.
+			if (arrived?.title) void saveTitle(opening);
+			if (starting) await shapeThisNote(starting, arrived?.body ?? '');
 		})();
 		// The note being left saves its title here rather than only on blur: a tab
 		// switched with a finger never blurs the field.
@@ -840,13 +844,17 @@
 		await stackSettled();
 
 		let refusal: string | null = null;
+		let unwritten = first;
 		try {
 			let after = read.get(into)?.at(-1)?.ref;
-			if (first) {
-				after = (await api.createBlock({ node: into, content: textDocument(first) })).ref;
+			if (unwritten) {
+				after = (await api.createBlock({ node: into, content: textDocument(unwritten) })).ref;
+				unwritten = '';
 			}
 			await writeTemplate(shape, { node: into, after }, api.createBlock);
 		} catch (error) {
+			// Back to the surface, which saves it on its own clock and keeps trying.
+			if (unwritten) carried = { ref: into, body: unwritten };
 			refusal =
 				serverMessage(error) ?? 'Sloppy could not add those sections. Try again in a moment.';
 		}

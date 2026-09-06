@@ -147,6 +147,9 @@
 		refused: string | null;
 	}
 	let writing = $state<NoteBeingWritten | null>(null);
+	/** Whether that note is what the reading surface is showing. A reader may step
+	 *  off it onto another tab while it is still being answered. */
+	let writingHere = $state(false);
 	/** A branch whose number the person picked, which is asked for from the sheet
 	 *  it was picked in: only there can a number the graph already carries be
 	 *  picked again. */
@@ -276,6 +279,8 @@
 	$effect(() => {
 		if (refusedAt !== null && tooMany === null) refusedAt = null;
 	});
+	/** The note being written, while it is the one the surface is showing. */
+	const writingNow = $derived(writingHere ? writing : null);
 	const openNode = $derived(open ? nodes.get(open) : undefined);
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	/** The region's notes, already in address order. */
@@ -597,6 +602,14 @@
 		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
 	}
 
+	/** Off the writing surface and onto a note. A note still being answered is on
+	 *  its way and opens where it lands; a refused one was never written at all,
+	 *  so it goes with the surface it was refused on. */
+	function leaveWriting(): void {
+		if (writing?.refused) writing = null;
+		writingHere = false;
+	}
+
 	/** `wrote` marks a note just written, whose title is still to be given: `from`
 	 *  is the note it was written from, or nothing where it began a branch, and
 	 *  `typed` is what was written into it before it had an address. */
@@ -612,6 +625,7 @@
 		seed = wrote?.shape ? { ref, shape: wrote.shape } : null;
 		typed =
 			wrote?.typed && (wrote.typed.title || wrote.typed.body) ? { ref, ...wrote.typed } : null;
+		leaveWriting();
 		refused = null;
 		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
 	}
@@ -629,6 +643,7 @@
 		naming = null;
 		seed = null;
 		typed = null;
+		leaveWriting();
 		goTo(ref, [...openNotes, ref]);
 	}
 
@@ -637,6 +652,7 @@
 		naming = null;
 		seed = null;
 		typed = null;
+		leaveWriting();
 		goTo(ref, openNotes);
 	}
 
@@ -653,6 +669,7 @@
 		naming = null;
 		seed = null;
 		typed = null;
+		leaveWriting();
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
@@ -676,6 +693,7 @@
 		naming = null;
 		seed = null;
 		typed = null;
+		leaveWriting();
 		replaceState(nodeHref(next), { note: next, notes: left });
 	}
 
@@ -694,8 +712,7 @@
 		naming = null;
 		seed = null;
 		typed = null;
-		// The note asked for is still on its way, and opens where it lands.
-		writing = null;
+		leaveWriting();
 		aside = held;
 		replaceState('/', {});
 	}
@@ -1014,7 +1031,8 @@
 	}
 
 	/** The surface opens on the asking, not on the answer: what is typed into it
-	 *  before the address lands goes to the note the moment there is one. */
+	 *  before the address lands goes to the note the moment there is one. It opens
+	 *  in the tab the note will land in, so the strip says where the reader is. */
 	function startWriting(
 		asked: CreateNodeRequest,
 		from: OwnedRef | null,
@@ -1022,6 +1040,7 @@
 	): void {
 		if (creating) return;
 		refused = null;
+		if (from !== null && from !== open && openNotes.includes(from)) activate(from);
 		writing = {
 			trip: nodes.write(asked),
 			from,
@@ -1031,24 +1050,24 @@
 			where: 'title',
 			refused: null
 		};
+		writingHere = true;
 		void whenWritten(writing);
 	}
 
 	async function whenWritten(job: NoteBeingWritten): Promise<void> {
 		try {
 			const written = await job.trip.note;
-			if (writing === job) writing = null;
+			writing = null;
 			show(written.ref, {
 				from: job.from,
 				shape: job.shape,
 				typed: { title: job.title, body: job.body, where: job.where }
 			});
 		} catch (error) {
-			const says = serverMessage(error) ?? 'Sloppy could not add that note.';
-			// Beside the graph where the surface it was asked on has been put away,
-			// since there is nowhere else left to say it.
-			if (writing === job) job.refused = says;
-			else refused = says;
+			job.refused = serverMessage(error) ?? 'Sloppy could not add that note.';
+			// Back in front of the reader wherever they went: it holds the only copy
+			// of what they wrote, and the way to ask again.
+			writingHere = true;
 		}
 	}
 
@@ -1778,24 +1797,24 @@
      somebody else's region — a history pop is the way in that nothing else
      closes. -->
 <ReadingPanel
-	open={writing !== null || (open !== null && !foreign)}
+	open={(writingNow !== null || open !== null) && !foreign}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}
-	title={writing ? 'Note' : openNode?.title || 'Note'}
+	title={writingNow ? 'Note' : openNode?.title || 'Note'}
 	{tabs}
-	active={writing ? null : open}
+	active={open}
 	says={tooMany}
 	width={prefs.current.readingWidth}
 	onWidthChange={(px) => prefs.set('readingWidth', px)}
 	onActivate={activate}
 	onCloseTab={closeTab}
 >
-	{#if writing}
+	{#if writingNow}
 		<Writing
-			title={writing.title}
-			body={writing.body}
-			refused={writing.refused}
+			title={writingNow.title}
+			body={writingNow.body}
+			refused={writingNow.refused}
 			onTitle={(said) => {
 				if (writing) writing.title = said;
 			}}
