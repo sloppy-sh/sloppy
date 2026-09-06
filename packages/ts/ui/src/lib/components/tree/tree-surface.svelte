@@ -314,7 +314,7 @@
 												event.stopPropagation();
 												writeUnder?.write(row.note.ref);
 											}}
-											class="-me-1 flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+											class="-me-1 flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
 											<CornerDownRight class="size-4" />
 										</button>
