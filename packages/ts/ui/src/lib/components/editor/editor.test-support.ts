@@ -7,7 +7,7 @@ import { TaskItem, TaskList } from '@tiptap/extension-list';
 import StarterKit from '@tiptap/starter-kit';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
 import type { NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
-import { docBlocks, openBlocks, type SavedBlock } from './document.js';
+import { docBlocks, openBlocks, type DraftStore, type SavedBlock } from './document.js';
 import { EmojiNode } from './emoji-node.js';
 import { InkNode } from './ink-node.js';
 import { PictureNode } from './picture-node.js';
@@ -85,6 +85,19 @@ export function noNotes(): NoteReferences {
 			throw new Error('That note could not be added. Try again in a moment.');
 		},
 		open: () => {}
+	};
+}
+
+/** A device that holds nothing and keeps nothing, for a test about something else. */
+export function noDrafts(): DraftStore {
+	return {
+		read: async () => null,
+		last: () => 0,
+		keep: () => 0,
+		forget: () => {},
+		landed: () => {},
+		leaving: () => () => {},
+		settled: async () => {}
 	};
 }
 

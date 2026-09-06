@@ -75,6 +75,13 @@ export interface DraftStore {
 	/** A write reached the server: whatever is still held for the note is on its
 	 *  way rather than waiting here. */
 	landed(note: OwnedRef): void;
+	/** Says a note's writing has left for the API; the returned call says that
+	 *  trip has settled, however it went. */
+	leaving(note: OwnedRef): () => void;
+	/** Resolves once no trip for the note is still in the air. A draft read
+	 *  before then can name a section the API is answering for right now, so a
+	 *  surface opening from it would ask for that section a second time. */
+	settled(note: OwnedRef): Promise<void>;
 }
 
 /** Why a write did not land, as far as it decides what the surface does next. */

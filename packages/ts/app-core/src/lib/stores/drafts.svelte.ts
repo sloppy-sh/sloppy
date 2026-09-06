@@ -16,6 +16,10 @@ class DraftsStore implements DraftStore {
 	readonly #waiting = new SvelteSet<OwnedRef>();
 	readonly #holding = new Map<OwnedRef, ReturnType<typeof setTimeout>>();
 	readonly #last = new Map<OwnedRef, number>();
+	readonly #air = new Map<
+		OwnedRef,
+		{ trips: number; arrived: Promise<void>; arrive: () => void }
+	>();
 	#count = 0;
 
 	/** Null with nobody signed in: every key here is one identity's, and there
@@ -60,6 +64,30 @@ class DraftsStore implements DraftStore {
 	landed(note: OwnedRef): void {
 		this.#rest(note);
 		if (this.#last.has(note)) this.#hold(note);
+	}
+
+	leaving(note: OwnedRef): () => void {
+		let air = this.#air.get(note);
+		if (!air) {
+			let arrive = () => {};
+			air = { trips: 0, arrived: new Promise<void>((resolve) => (arrive = resolve)), arrive };
+			this.#air.set(note, air);
+		}
+		const trip = air;
+		trip.trips += 1;
+		let counted = true;
+		return () => {
+			if (!counted) return;
+			counted = false;
+			trip.trips -= 1;
+			if (trip.trips > 0) return;
+			this.#air.delete(note);
+			trip.arrive();
+		};
+	}
+
+	settled(note: OwnedRef): Promise<void> {
+		return this.#air.get(note)?.arrived ?? Promise.resolve();
 	}
 
 	/** Whether this device is still holding writing for a note that the server

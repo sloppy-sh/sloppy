@@ -21,6 +21,7 @@ import {
 	NOTE,
 	OWNER,
 	block,
+	noDrafts,
 	noEmoji,
 	noMedia,
 	noNotes,
@@ -65,8 +66,16 @@ function deviceDrafts(held: Record<string, NoteDraft> = {}) {
 	const forgotten: OwnedRef[] = [];
 	let which = 0;
 	const last = new Map<OwnedRef, number>();
+	/** Set to keep every read of the device waiting until the test lets it answer. */
+	let answeringReads: Promise<void> | null = null;
+	let trips = 0;
+	let arrive = () => {};
+	let inAir: Promise<void> = Promise.resolve();
 	const store: DraftStore = {
-		read: async (note) => held[note] ?? null,
+		read: async (note) => {
+			if (answeringReads) await answeringReads;
+			return held[note] ?? null;
+		},
 		last: (note) => last.get(note) ?? 0,
 		keep: (note, draft, since) => {
 			if (since !== undefined && (last.get(note) ?? 0) > since) return since;
@@ -82,9 +91,35 @@ function deviceDrafts(held: Record<string, NoteDraft> = {}) {
 			forgotten.push(note);
 			delete held[note];
 		},
-		landed: () => undefined
+		landed: () => undefined,
+		leaving: () => {
+			if (trips === 0) inAir = new Promise<void>((resolve) => (arrive = resolve));
+			trips += 1;
+			let counted = true;
+			return () => {
+				if (!counted) return;
+				counted = false;
+				trips -= 1;
+				if (trips === 0) arrive();
+			};
+		},
+		settled: () => inAir
 	};
-	return { store, kept, forgotten, holds: (note: OwnedRef) => note in held };
+	return {
+		store,
+		kept,
+		forgotten,
+		holds: (note: OwnedRef) => note in held,
+		/** Holds every read of the device; the returned call lets them answer. */
+		holdReads: () => {
+			let answer = () => {};
+			answeringReads = new Promise<void>((resolve) => (answer = resolve));
+			return () => {
+				answeringReads = null;
+				answer();
+			};
+		}
+	};
 }
 
 function open(
@@ -108,7 +143,7 @@ function open(
 			media: able.media ?? noMedia(),
 			emoji: able.emoji ?? noEmoji(),
 			references: able.references ?? noNotes(),
-			drafts: able.drafts,
+			drafts: able.drafts ?? noDrafts(),
 			node: NOTE,
 			blocks,
 			onCreate: async (request: CreateBlockRequest) => {
@@ -531,6 +566,82 @@ describe('writing that has not reached the server', () => {
 			'and one more'
 		]);
 		expect(device.holds(NOTE.ref)).toBe(false);
+	});
+
+	it('is not written a second time when the note comes back while a section is on its way', async () => {
+		const device = deviceDrafts();
+		let answer = () => {};
+		answering = new Promise<void>((resolve) => (answer = resolve));
+
+		open([], { drafts: device.store });
+		writingIn().commands.insertContent('a thought on the way out');
+		close();
+		await vi.advanceTimersByTimeAsync(100);
+
+		// All the API can answer with is the stack it held before that create.
+		open([], { drafts: device.store });
+		answering = null;
+		answer();
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(written.created.map((row) => wording(row.content as BlockDocument)[0])).toEqual([
+			'a thought on the way out'
+		]);
+		expect(made).toHaveLength(1);
+	});
+
+	it('does not come back over writing done since the note was opened again', async () => {
+		const device = deviceDrafts();
+		let answer = () => {};
+		answering = new Promise<void>((resolve) => (answer = resolve));
+
+		open([], { drafts: device.store });
+		writingIn().commands.insertContent('the first');
+		close();
+		await vi.advanceTimersByTimeAsync(100);
+
+		open([], { drafts: device.store });
+		writingIn().commands.insertContent('written since');
+		await vi.advanceTimersByTimeAsync(1000);
+		answering = null;
+		answer();
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(target.querySelector('.sloppy-prose')?.textContent).toBe('written since');
+		expect(written.created.map((row) => wording(row.content as BlockDocument)[0])).toEqual([
+			'the first',
+			'written since'
+		]);
+	});
+
+	it('is still there when the note is left before this device has answered with it', async () => {
+		const stored = prose('as it was');
+		const device = deviceDrafts({
+			[NOTE.ref]: {
+				rows: [
+					{
+						uid: 'u1',
+						ref: stored.ref,
+						content: stored.content,
+						updated_at: stored.updated_at
+					}
+				],
+				next: [{ uid: 'u1', ref: stored.ref, content: section(...text('unsent, as it was')) }]
+			}
+		});
+		const answerRead = device.holdReads();
+
+		open([stored], { drafts: device.store });
+		close();
+		answerRead();
+		await vi.advanceTimersByTimeAsync(1000);
+
+		expect(device.forgotten).toEqual([]);
+		expect(device.holds(NOTE.ref)).toBe(true);
+
+		open([stored], { drafts: device.store });
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(target.querySelector('.sloppy-prose')?.textContent).toBe('unsent, as it was');
 	});
 
 	it('is still there when the note is left and the last write does not land', async () => {

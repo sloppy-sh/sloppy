@@ -105,6 +105,27 @@ describe('the writing a device is holding for a note', () => {
 		expect(drafts.waiting(NOTE)).toBe(true);
 	});
 
+	it('is not answered for as settled while a trip carrying it is in the air', async () => {
+		const first = drafts.leaving(NOTE);
+		const second = drafts.leaving(NOTE);
+		let arrived = false;
+		void drafts.settled(NOTE).then(() => (arrived = true));
+
+		first();
+		first();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(arrived).toBe(false);
+
+		second();
+		await drafts.settled(NOTE);
+		expect(arrived).toBe(true);
+	});
+
+	it('is settled for a note nothing has been sent for', async () => {
+		await expect(drafts.settled(NOTE)).resolves.toBeUndefined();
+	});
+
 	it('belongs to nobody while nobody is signed in', async () => {
 		session.clear();
 		drafts.keep(NOTE, draft('typed by nobody'));

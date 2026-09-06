@@ -18,6 +18,7 @@ import {
 	OWNER,
 	block,
 	makeEditor,
+	noDrafts,
 	noEmoji,
 	noMedia,
 	ref,
@@ -64,6 +65,7 @@ function open(references: NoteReferences, blocks = [block({ content: section() }
 		props: {
 			media: noMedia(),
 			emoji: noEmoji(),
+			drafts: noDrafts(),
 			references,
 			node: NOTE,
 			blocks,
