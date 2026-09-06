@@ -130,6 +130,15 @@ describe('finding a note from the graph', () => {
 		expect(addresses()).toEqual(['1a3']);
 	});
 
+	it('asks inside each graph on the canvas as well as across them all', async () => {
+		find.type('bench');
+		await pause();
+
+		const asked = api.calls.filter((one) => one.startsWith('GET /nodes/search'));
+		expect(asked.length).toBe(2);
+		expect(asked.some((one) => one.includes(`graph=${encodeURIComponent(GRAPH)}`))).toBe(true);
+	});
+
 	it('drops an answer for words nobody is typing any more', async () => {
 		hits = [hit(OTHER, { snippet: 'the bench' })];
 		find.type('bench');

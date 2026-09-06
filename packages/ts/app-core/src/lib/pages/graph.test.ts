@@ -7,7 +7,7 @@ import type {
 	OwnedRef,
 	PublicationView
 } from '@sloppy/types';
-import { MARK_SCALE_MAX } from '@sloppy/types';
+import { homeGraphRef, MARK_SCALE_MAX } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -22,7 +22,9 @@ import {
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
 import { find } from '../stores/find.svelte.js';
+import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
@@ -1703,6 +1705,11 @@ describe('finding a note again from the graph', () => {
 
 	beforeEach(() => finding(api));
 
+	afterEach(() => {
+		prefs.set('alsoOnCanvas', []);
+		graphs.clear();
+	});
+
 	it('reaches a note by its number without waiting on anything', async () => {
 		await lookFor('1a');
 
@@ -1746,12 +1753,31 @@ describe('finding a note again from the graph', () => {
 		await lookFor('nothing like this');
 		await pause();
 
-		expect(inSheet()).toContain('Nothing here matches that.');
+		expect(inSheet()).toContain('Nothing on the canvas matches that.');
 	});
 
 	it('names no graph while one stands on the canvas', async () => {
 		await lookFor('1a');
 
 		expect(offering()[0]).not.toContain('·');
+	});
+
+	it('names the graph a note is in once a second one stands beside it', async () => {
+		const GARDEN = ref(50);
+		const COMPOST = node(51, '1', { title: 'Compost', graph: GARDEN });
+		graph.set(COMPOST.ref, COMPOST);
+		api.on('GET /graphs', () => [
+			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Notes' },
+			{ ref: GARDEN, created_by: DID, created_at: AT, updated_at: AT, title: 'Garden' }
+		]);
+
+		await open();
+		prefs.set('alsoOnCanvas', [GARDEN]);
+		await settle();
+		labelled('Find a note').click();
+		await settle();
+		await type('compost');
+
+		expect(offering()).toEqual(['1 Compost Garden']);
 	});
 });

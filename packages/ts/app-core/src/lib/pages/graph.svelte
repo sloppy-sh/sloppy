@@ -1613,10 +1613,10 @@
 							type="button"
 							aria-label="Find a note"
 							onclick={() => (finding = true)}
-							class="flex h-9 w-full min-w-0 items-center gap-2 rounded-full border border-input px-3 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56"
+							class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
 						>
 							<Search class="size-4 shrink-0" />
-							<span class="min-w-0 truncate">Find a note</span>
+							<span class="hidden min-w-0 truncate sm:inline">Find a note</span>
 						</button>
 						<Button
 							variant="outline"
@@ -1785,6 +1785,7 @@
 	found={foundNotes}
 	looking={find.looking}
 	settled={find.settled}
+	elsewhere={graphs.all.length > onCanvas.length}
 	unreadable={find.unreadable}
 	exact={find.exact}
 	onquery={(words) => find.type(words)}

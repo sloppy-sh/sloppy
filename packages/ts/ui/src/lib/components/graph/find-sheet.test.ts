@@ -155,19 +155,35 @@ describe('the find sheet', () => {
 	it('waits for the answer before saying nothing matched', async () => {
 		await open({ query: 'mush', found: [], looking: true });
 
-		expect(screen()).not.toContain('Nothing here matches that.');
+		expect(screen()).not.toContain('Nothing on the canvas matches that.');
 	});
 
-	it('says plainly when nothing matched', async () => {
+	it('says plainly when nothing matched, and names what was looked through', async () => {
 		await open({ query: 'mush', found: [], settled: true });
 
-		expect(screen()).toContain('Nothing here matches that.');
+		expect(screen()).toContain('Nothing on the canvas matches that.');
+		expect(screen()).not.toContain('Show another graph');
+	});
+
+	it('offers the graph that is not up where the reader keeps one', async () => {
+		await open({ query: 'mush', found: [], settled: true, elsewhere: true });
+
+		expect(screen()).toContain(
+			'Nothing on the canvas matches that. Show another graph to look in it too.'
+		);
 	});
 
 	it('says what could not be read rather than claiming nothing matched', async () => {
 		await open({ query: 'mush', found: [], unreadable: 'Not right now.' });
 
 		expect(screen()).toContain('Not right now.');
-		expect(screen()).not.toContain('Nothing here matches that.');
+		expect(screen()).not.toContain('Nothing on the canvas matches that.');
+	});
+
+	it('says how many the words reached, for a reader who cannot see the list', async () => {
+		await open({ query: 'mush', found: [found(), found({ ref: CELLS, address: '2' })] });
+
+		const said = document.querySelector('[role="status"]');
+		expect(said?.textContent).toBe('2 notes matched.');
 	});
 });

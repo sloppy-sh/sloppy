@@ -4,7 +4,6 @@
 	/** One note the words reached, as the list offers it. */
 	export interface FoundNote {
 		ref: OwnedRef;
-		/** What the reader cites it by, and the fastest way back to it. */
 		address: string;
 		title: string;
 		/** What the graph this address is read in is called, or null where naming
@@ -24,6 +23,7 @@
 	// navigates by, so it is what they may type.
 	import Search from '@lucide/svelte/icons/search';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	let {
@@ -32,6 +32,7 @@
 		found,
 		looking = false,
 		settled = false,
+		elsewhere = false,
 		unreadable = null,
 		exact = null,
 		onquery,
@@ -45,6 +46,9 @@
 		looking?: boolean;
 		/** Nothing more is coming, so an empty list means there is no such note. */
 		settled?: boolean;
+		/** The reader keeps a graph that is not on the canvas, so there is
+		 *  somewhere else left to look. */
+		elsewhere?: boolean;
 		/** Why part of what was asked for could not be read, in words to show. */
 		unreadable?: string | null;
 		/** The one note the typed address resolves to; Enter goes straight there. */
@@ -71,6 +75,12 @@
 	});
 
 	const nothing = $derived(settled && !looking && found.length === 0);
+	const reached = $derived(found.length === 1 ? '1 note' : `${found.length} notes`);
+	const noMatch = $derived(
+		elsewhere
+			? 'Nothing on the canvas matches that. Show another graph to look in it too.'
+			: 'Nothing on the canvas matches that.'
+	);
 
 	function nameOf(note: FoundNote): string {
 		return note.title || 'Untitled';
@@ -113,6 +123,7 @@
 		{/if}
 
 		{#if found.length > 0}
+			<p class="sr-only" role="status">{reached} matched.</p>
 			<ul class="max-h-80 space-y-0.5 overflow-y-auto">
 				{#each found as note (note.ref)}
 					<li>
@@ -135,8 +146,13 @@
 					</li>
 				{/each}
 			</ul>
+		{:else if looking}
+			<div class="space-y-2 px-2 py-1" aria-hidden="true">
+				<Skeleton class="h-4 w-2/3" />
+				<Skeleton class="h-4 w-1/2" />
+			</div>
 		{:else if nothing}
-			<p class="px-2 text-sm text-muted-foreground" role="status">Nothing here matches that.</p>
+			<p class="px-2 text-sm text-muted-foreground" role="status">{noMatch}</p>
 		{/if}
 	</div>
 </ResponsiveModal>

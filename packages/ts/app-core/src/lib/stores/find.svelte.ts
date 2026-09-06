@@ -54,7 +54,6 @@ class FindStore {
 				walk(nodes.children(note.ref));
 			}
 		};
-		// A graph's region is its branch roots; everything under them is walked to.
 		for (const graph of graphs.onCanvas) walk(nodes.region({ graph }));
 		return out;
 	});
@@ -155,9 +154,18 @@ class FindStore {
 		const epoch = this.#epoch;
 		this.#timer = null;
 		try {
-			const hits = await api.searchNotes(asked);
+			// Each graph on the canvas is asked for on its own as well: one answer
+			// across them all is bounded, and a much-written word can spend that
+			// whole bound on graphs nobody has up.
+			const answers = await Promise.all([
+				api.searchNotes(asked),
+				...graphs.onCanvas.map((graph) => api.searchNotes(asked, graph))
+			]);
 			if (epoch !== this.#epoch) return;
-			this.#hits = hits;
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local to this call and thrown away with it.
+			const once = new Map<OwnedRef, SearchHit>();
+			for (const hit of answers.flat()) if (!once.has(hit.note)) once.set(hit.note, hit);
+			this.#hits = [...once.values()];
 			this.#answered = asked.toLowerCase();
 		} catch (error) {
 			if (epoch !== this.#epoch) return;
