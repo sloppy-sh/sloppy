@@ -1663,3 +1663,86 @@ describe('the graph as this device last read it', () => {
 		expect(screen()).not.toContain('This is your graph as you last read it.');
 	});
 });
+
+describe('the way back out of a trail', () => {
+	/** What the note's leading control says, which is what it does. */
+	function wayOut(): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll('button')].find((b) =>
+			['Graph', 'Back'].includes(b.textContent?.trim() ?? '')
+		);
+		if (!found) throw new Error('The note on screen has no way out');
+		return found as HTMLButtonElement;
+	}
+
+	beforeEach(() => {
+		vi.spyOn(globalThis.history, 'back').mockImplementation(() => {
+			back();
+			flushSync();
+		});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('offers the graph at the head of the trail', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+
+	it('walks back to the note the reader came from, a jump at a time', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		labelled('The note this one grew out of, 1').click();
+		await settle();
+		expect(screen()).toContain('Origins');
+
+		expect(wayOut().textContent?.trim()).toBe('Back');
+		wayOut().click();
+		await settle();
+
+		expect(screen()).toContain('Cells');
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+
+		forward();
+		await settle();
+
+		expect(screen()).toContain('Origins');
+		expect(wayOut().textContent?.trim()).toBe('Back');
+	});
+
+	it('closes the surface where the way back is the graph', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+
+		wayOut().click();
+		await settle();
+
+		expect(reading()).toBe(false);
+	});
+
+	// The surface holds the only copy of what is typed into it, so it survives
+	// the entry it went up on being replaced — but not the reader walking off it.
+	it('takes the writing surface down with the entry it went up on', async () => {
+		api.on('POST /nodes', () => {
+			throw new Error('nothing is listening');
+		});
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		expect(screen()).toContain('Sloppy could not add that note');
+
+		back();
+		await settle();
+
+		expect(screen()).not.toContain('Sloppy could not add that note');
+		expect(reading()).toBe(false);
+	});
+});

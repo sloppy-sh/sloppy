@@ -185,6 +185,16 @@
 	/** The strip held while the surface is out of the graph's way, so a question
 	 *  put to the graph does not cost the reader the notes they had open. */
 	let aside = $state<readonly OwnedRef[]>([]);
+	/** The trail: what each entry behind the one being read holds — a note, or
+	 *  `null` for the graph alone — oldest first, and what each entry ahead of it
+	 *  holds, nearest first. */
+	let behind = $state<readonly (OwnedRef | null)[]>([]);
+	let ahead: readonly (OwnedRef | null)[] = [];
+	/** What the entry being read holds. */
+	let standing: OwnedRef | null = null;
+	/** How long the trail was when the writing surface went up, so walking off
+	 *  that entry takes the surface down with it. */
+	let writingAt = 0;
 	/** Where the reader has got to while looking for the note they mean: the one
 	 *  they are pointing from, and then whichever mega-node they opened. */
 	let looking = $state<OwnedRef | null>(null);
@@ -293,6 +303,15 @@
 		return from !== null && openNotes.includes(from) ? from : null;
 	});
 	const openNode = $derived(open ? nodes.get(open) : undefined);
+	/** The note the reader came here from, where the entry behind this one holds
+	 *  one the canvas is still drawing. At the head of the trail there is none,
+	 *  and the way out of a note is the graph. */
+	const wayBack = $derived.by(() => {
+		const previous = behind.length > 0 ? behind[behind.length - 1] : null;
+		if (previous === null || previous === open) return null;
+		const note = nodes.get(previous);
+		return note !== undefined && onCanvas.includes(graphOf(note)) ? previous : null;
+	});
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
 	/** The region's notes, already in address order. */
 	const heldNotes = $derived(foreign ? peers.held(foreign.ref) : []);
@@ -568,7 +587,7 @@
 	function openCited(): void {
 		const cited = refFromPath(page.url.pathname);
 		if (!cited) return;
-		if (!page.state.note) replaceState('', { note: cited, notes: [cited] });
+		if (!page.state.note) stayAt('', { note: cited, notes: [cited] });
 		void reachCited(cited);
 	}
 
@@ -646,8 +665,45 @@
 	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
 	function goTo(ref: OwnedRef, strip: readonly OwnedRef[]): void {
 		aside = [];
+		behind = [...behind, standing];
+		ahead = [];
+		standing = ref;
 		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
 	}
+
+	/** The entry being read, made to say something else. Tidying up is not
+	 *  somewhere the reader went, so the trail does not grow by it. */
+	function stayAt(path: string, state: App.PageState): void {
+		standing = state.note ?? null;
+		replaceState(path, state);
+	}
+
+	function walkBack(): void {
+		if (wayBack !== null) history.back();
+	}
+
+	// `goTo` is the only thing that adds an entry and `stayAt` the only thing that
+	// changes the one being read, so `open` changing without either is the reader
+	// walking the trail, and the two above are squared up against it here.
+	$effect(() => {
+		const now = open;
+		untrack(() => {
+			if (now !== standing) {
+				if (behind.length > 0 && behind[behind.length - 1] === now) {
+					ahead = [standing, ...ahead];
+					behind = behind.slice(0, -1);
+				} else if (ahead.length > 0 && ahead[0] === now) {
+					behind = [...behind, standing];
+					ahead = ahead.slice(1);
+				}
+				standing = now;
+			}
+			// The writing surface holds the only copy of what is typed into it, so
+			// it survives the entry it went up on being replaced — but not the
+			// reader walking off that entry.
+			if (writingHere && behind.length !== writingAt) leaveWriting();
+		});
+	});
 
 	/** Off the writing surface and onto a note. A note still being answered is on
 	 *  its way and opens where it lands; a refused one was never written at all,
@@ -719,7 +775,7 @@
 		seed = null;
 		typed = null;
 		leaveWriting();
-		replaceState(nodeHref(next), { note: next, notes: left });
+		stayAt(nodeHref(next), { note: next, notes: left });
 	}
 
 	/** Notes that are no longer there leave the strip with them — the ones deleted,
@@ -743,7 +799,7 @@
 		seed = null;
 		typed = null;
 		leaveWriting();
-		replaceState(nodeHref(next), { note: next, notes: left });
+		stayAt(nodeHref(next), { note: next, notes: left });
 	}
 
 	/** The surface put away, and every note on it closed with it. */
@@ -763,7 +819,7 @@
 		typed = null;
 		leaveWriting();
 		aside = held;
-		replaceState('/', {});
+		stayAt('/', {});
 	}
 
 	/** The note steps aside so the graph it belongs to can answer the question. */
@@ -1090,6 +1146,7 @@
 		if (creating) return;
 		refused = null;
 		if (from !== null && from !== open && openNotes.includes(from)) activate(from);
+		writingAt = behind.length;
 		writing = {
 			trip: nodes.write(asked),
 			from,
@@ -1925,6 +1982,7 @@
 			onOpenAlso={showAlso}
 			onLinkOnGraph={() => pointFrom(open)}
 			onDeleted={(of, above) => closeGone([of], above)}
+			onBack={wayBack === null ? null : walkBack}
 			onClose={hide}
 		/>
 	{/if}

@@ -93,6 +93,7 @@
 		onOpenAlso,
 		onLinkOnGraph,
 		onDeleted,
+		onBack = null,
 		onClose
 	}: {
 		ref: OwnedRef;
@@ -136,6 +137,9 @@
 		/** This note is gone, and the branch under it with it. `above` is the note
 		 *  it grew out of, for the tab it stood in. */
 		onDeleted: (ref: OwnedRef, above: OwnedRef | null) => void;
+		/** Back to the note the reader came here from. Absent is the head of the
+		 *  trail, where the one way out is the graph. */
+		onBack?: (() => void) | null;
 		onClose: () => void;
 	} = $props();
 
@@ -1277,11 +1281,11 @@
 		<div class="flex items-center gap-2">
 			<button
 				type="button"
-				onclick={onClose}
+				onclick={onBack ?? onClose}
 				class="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 			>
 				<ArrowLeft class="size-4" />
-				Graph
+				{onBack ? 'Back' : 'Graph'}
 			</button>
 
 			{#if node}

@@ -327,7 +327,7 @@ async function loadGraph(): Promise<void> {
 
 async function openNote(
 	at: OwnedRef,
-	handlers: { onclose?: () => void; onlink?: () => void } = {}
+	handlers: { onclose?: () => void; onlink?: () => void; onback?: () => void } = {}
 ): Promise<void> {
 	stubViewport(WIDE);
 	mounted = mount(NoteOnSurface, { target, props: { opened: at, fresh: false, ...handlers } });
@@ -1724,5 +1724,44 @@ describe('writing the next note while the server is still assigning its address'
 
 		expect(document.body.querySelector('.address')?.textContent).toBe('1b');
 		expect(title()?.value).toBe('Membranes');
+	});
+});
+
+describe('the way out of a note', () => {
+	beforeEach(async () => {
+		installGraph();
+		await loadGraph();
+	});
+
+	function wayOut(): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll('button')].find((b) =>
+			['Graph', 'Back'].includes(b.textContent?.trim() ?? '')
+		);
+		if (!found) throw new Error('The note on screen has no way out');
+		return found;
+	}
+
+	it('is the graph at the head of the trail', async () => {
+		let closed = 0;
+		await openNote(SECOND, { onclose: () => (closed += 1) });
+
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+		wayOut().click();
+		await settle();
+
+		expect(closed).toBe(1);
+	});
+
+	it('is the way back where the reader came here from another note', async () => {
+		let walked = 0;
+		let closed = 0;
+		await openNote(SECOND, { onback: () => (walked += 1), onclose: () => (closed += 1) });
+
+		expect(wayOut().textContent?.trim()).toBe('Back');
+		wayOut().click();
+		await settle();
+
+		expect(walked).toBe(1);
+		expect(closed).toBe(0);
 	});
 });
