@@ -251,8 +251,9 @@ navigate or cite — and `<did>/<ulid>` is what a route binds.
 calls:
 
 - `GET /api/public/publications/{did}` lists what that identity publishes here — each
-  publication's ref, the address it is rooted at, the newest version's title, and that
-  version — and nothing that is not already public in it.
+  publication's ref, the address it is rooted at, the notebook that address is read in and
+  what the author calls it, the newest version's title, and that version — and nothing that
+  is not already public in it.
 - `GET /api/public/publications/{did}/{id}` answers a page of a version: `?version=`
   names one, and absent is the newest when the first page is asked for. Every page after
   that answers at the version its cursor was minted against, so publishing again moves
@@ -267,13 +268,27 @@ decision has to be true to it: from the moment a subtree is published, anyone ho
 author's DID can see that it exists and read all of it, with no publication address to
 withhold and no pull to grant. § "Pictures" says the same of the pictures in it.
 
+**The notebook's name travels with the branch.** An address resolves one way inside one
+graph, so an author who publishes `1a` from their thesis and `1a` from their garden hands a
+reader two labels that read alike — and the reader may hold both at once, `pulled_node`
+being unique per author's GRAPH and address. The graph's ref is what tells them apart and
+is no use in front of a person, so `graph_title` rides beside it on the listing and on
+every page of a version, optional and absent reading as a notebook with no name to send.
+It is a name a reader shows and never a key: what a region is found by is the publication's
+ref, and what its addresses are read in is `graph`. The name is one more thing publishing
+puts out, and the copy at the decision says so.
+
 The author's own need their session: `POST /api/publications` publishes a subtree —
 creating the chain if the note has none, and writing a version either way;
 `PATCH /api/publications/{ref}` changes who is invited to comment and publishes nothing;
 `DELETE /api/publications/{ref}` takes the whole chain down; and
 `GET /api/publications/{ref}/versions` is the author's own history. A published node
-travels **without its `depth` and without its look** — a reader recomputes depth, sector
-and which addresses lie under which from the address, and draws a pulled mark unstyled.
+travels **without its `depth`** — a reader recomputes depth, sector and which addresses lie
+under which from the address. **A look's shape travels and its pictures do not:** ring
+weight, ring style and size are plain shape and go in `PublishedNode.look`, absent reading
+as unstyled, so every version published before one could travel is unchanged; a picture is
+an upload in the author's own store and stays there (§ "Pictures"). DESIGN.md § "A note's
+look never uses colour" carries the ruling.
 
 **Publishing several notes at once is one act, and it puts each of them out once.** `POST
 /api/nodes/bulk` carries a `publish` act beside `tag`, `set_appearance` and `delete`, and
@@ -664,6 +679,18 @@ hang off:
   caller the way `/api/proxy` is — the two unauthenticated routes that can send this
   instance to fetch something.
 
+**An author can refuse one voice without withdrawing the invitation.** `CommentAccess` is
+the whole branch's terms, so the only lever it gives somebody being harassed on one note is
+to silence every good-faith reader at once. `refused_voice` is the proportionate one: a row
+the person doing the refusing owns, naming a voice and — optionally — the note it is
+refused on, absent refusing that voice wherever they read. It decides what this instance
+ASSEMBLES for its owner and nothing else. A comment lives in the store of whoever wrote it,
+so a refusal takes nothing away from anybody, tells the refused voice nothing, and reaches
+neither the author's publication nor another reader's copy. The filter goes where a note's
+voices are assembled as a whole rather than on the pointer branch alone: a refused voice the
+author also FOLLOWS would otherwise come back through the follow branch. It is purged with
+its owner, like every other row they own.
+
 **An identity's answer is held to that identity.** Each of those listings is one
 identity's own public endpoint asked about one note, so a record carrying anybody else's
 DID is dropped rather than drawn — `fromEveryVoice` in `api/src/social/social.service.ts`
@@ -683,17 +710,21 @@ same two conditions: the publication BEING READ invites answers, and the reader'
 identity is one that can hold a conversation. That is what PRODUCT.md § "The peer" costs —
 "they read, they comment, they branch" is one person on somebody else's writing.
 
-**Local-only mode has no conversation.** `@sloppy/idp` serves files, emoji, a profile and a
-follow list, and its identity manifest advertises no `public_comments` or `public_reactions`
-— so an instance running on the embedded provider can publish, be pulled from, pull and
-follow, and has no conversation at all. **A surface has to know that before it offers
-anybody a conversation**, or a whole deployment mode gets a control that refuses every time
-it is used. The axis is the IDENTITY's and not the deployment's — an instance that delegates
-elsewhere still serves its own provider, and somebody on a hosted instance may keep their
-identity on it — so `identity.svelte.ts` in `@sloppy/app-core` answers it per person, by
-asking whether the identity signed in is kept on this instance's own provider. `local`
-offers no conversation; `delegated` does. Until the answer is in, nothing is offered and
-nothing alarming is said, which are opposite defaults and deliberately so.
+**Whether somebody can hold a conversation is what their own store SERVES, never where
+their identity lives.** A comment lives in the store of whoever wrote it and is read back
+from that store's public listing, so a store that takes one and publishes no listing hands
+the writer a comment that is gone on the next read. The capability is therefore per
+identity and declared on its manifest, the way `keepsFollows` already reads a follow list:
+`Converses` in `@sloppy/types` is the answer, one boolean for comments and one for
+reactions, served for the SIGNED-IN identity by an authenticated route and read by
+`identity.svelte.ts` in `@sloppy/app-core`. Location cannot stand in for it in either
+direction — `@sloppy/idp` advertises no `public_comments` or `public_reactions`, so the
+fully-local deployment has no conversation and an identity kept on ANOTHER Sloppy's
+embedded provider has none either though it is delegated from here; and an embedded
+provider that gained the endpoints would be refused by a gate that asked where rather than
+what. **A surface has to know before it offers anybody a conversation**, or a control
+refuses every time it is used. Until the answer is in, nothing is offered and nothing
+alarming is said, which are opposite defaults and deliberately so.
 
 ## Pictures
 
@@ -770,8 +801,8 @@ answers "already copied?" for a whole branch.
 picture dropped into a note inside a published branch is in no version until its author
 publishes again, so nothing crosses that line while somebody is writing.
 
-A mark's pictures are not among them: a published node travels without its look, so nothing
-a peer holds ever cites one, and they stay private.
+A mark's pictures are not among them: a published node carries the shape of its look and
+never a picture of one, so nothing a peer holds ever cites one and they stay private.
 **A public copy is public to anybody, not only to somebody holding the address.** syr
 decides `is_public` from the folder a blob is in, and an identity's `uploads` endpoint
 serves every public one it has, paginated, with its filename and size — so from the moment
@@ -1028,6 +1059,7 @@ pull:{ created_by: <did>, id: <ulid> }
   version       object    which snapshot this copy is of
   root_address  string    the label the answer carried
   graph         ref?      the AUTHOR's graph the region is in; absent is their home one
+  graph_title   string?   what the author calls it; absent is a name that did not travel
   comments      string    who the author invites, as of the last refresh
   source_url    url       the instance that served it, and the one a refresh asks
   updated_at    iso       when the copy was last refreshed

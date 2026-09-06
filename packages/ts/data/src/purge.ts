@@ -27,6 +27,9 @@ export const STATEMENTS: readonly string[] = [
   // Left ON this person's notes by other people, and theirs for the same reason
   // the notes are: they are the one it was left for.
   `DELETE comment_pointer WHERE ${OWNED};`,
+  // Written by this person about somebody else's voice, so it goes with them
+  // and reaches nothing of the voice's own.
+  `DELETE refused_voice WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
   // The addresses those notes spent. They outlive the notes and nothing else:
   // there is no graph left for one to be read in.
@@ -63,6 +66,7 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "retired_address",
   "graph",
   "comment_pointer",
+  "refused_voice",
   "pull_member",
   "pulled_block",
   "pulled_node",

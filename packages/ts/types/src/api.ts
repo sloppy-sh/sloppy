@@ -12,10 +12,16 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
+import { RefusedVoiceSchema } from "./conversation.js";
 import { GraphSchema } from "./graph.js";
 import { requireNodeConsistent } from "./node.js";
 import { NodeSchema } from "./node.js";
-import { type PulledBlock, type PulledNode, PullSchema } from "./federation.js";
+import {
+  PeerOriginSchema,
+  type PulledBlock,
+  type PulledNode,
+  PullSchema,
+} from "./federation.js";
 import { PublicationSchema } from "./publication.js";
 import { PublishedVersionSchema } from "./published.js";
 import { TagSchema } from "./tag.js";
@@ -105,6 +111,23 @@ export const PullViewSchema = PullSchema.omit({ id: true }).extend({
 });
 export type PullView = z.infer<typeof PullViewSchema>;
 
+export const RefusedVoiceViewSchema = RefusedVoiceSchema.omit({
+  id: true,
+}).extend({ ref: OwnedRefSchema });
+export type RefusedVoiceView = z.infer<typeof RefusedVoiceViewSchema>;
+
+/**
+ * One note the reader holds a copy of, and the region that handed it over —
+ * what a citation to somebody else's note resolves to when the reader is
+ * already holding one. The note is addressed by its AUTHOR, as every held note
+ * is, and the region is where a surface opens it.
+ */
+export const PulledNoteHitSchema = z.object({
+  note: NodeViewSchema,
+  pull: PullViewSchema,
+});
+export type PulledNoteHit = z.infer<typeof PulledNoteHitSchema>;
+
 /**
  * A held node as the rest of Sloppy reads it, addressed by its AUTHOR — which
  * is what `provenanceOf` in `@sloppy/graph` reads to draw it as foreign, and it
@@ -112,8 +135,9 @@ export type PullView = z.infer<typeof PullViewSchema>;
  *
  * `published` is asserted, not read: no publication row on this instance covers
  * a foreign node, and whether the author still publishes it is not something a
- * reader can learn, so this says what was true when the copy arrived. There is
- * no look and no references, because a published node travels without either.
+ * reader can learn, so this says what was true when the copy arrived. There are
+ * no references, a published node travelling without them; the look is the
+ * shape its author gave the mark, which does travel.
  */
 export function pulledNodeView(row: PulledNode): NodeView {
   const { node } = row;
@@ -128,6 +152,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
     title: node.title,
     tags: node.tags,
     links: node.links,
+    appearance: node.look,
     published: true,
     created_at: node.created_at,
     updated_at: node.updated_at,
@@ -284,6 +309,22 @@ export const ExchangeSessionRequestSchema = z.object({
 export type ExchangeSessionRequest = z.input<
   typeof ExchangeSessionRequestSchema
 >;
+
+/**
+ * Where this Sloppy's own identities live, and where a peer reaches the graph
+ * it serves.
+ *
+ * `instance_url` is `null` where this instance only ever delegates elsewhere,
+ * which is a different answer from one that could not be had.
+ * `instance_origin` is what somebody types to pull a branch from here; absent
+ * where the instance named none, and where what it named cannot be spelled as
+ * an origin — the way in beside it is worth more than the whole answer.
+ */
+export const OwnInstanceSchema = z.object({
+  instance_url: z.string().min(1).nullable().catch(null),
+  instance_origin: PeerOriginSchema.optional().catch(undefined),
+});
+export type OwnInstance = z.infer<typeof OwnInstanceSchema>;
 
 export const SessionSchema = z.object({
   token: z.string().min(1),

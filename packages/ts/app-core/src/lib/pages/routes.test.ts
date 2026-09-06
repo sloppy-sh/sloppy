@@ -1,7 +1,15 @@
 import type { OwnedRef } from '@sloppy/types';
 import type { Person } from '@sloppy/ui';
-import { describe, expect, it } from 'vitest';
-import { activeRouteId, APP_ROUTES, navRoutes, nodeHref, refFromPath } from './routes.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { initRuntime } from '../runtime.js';
+import {
+	activeRouteId,
+	APP_ROUTES,
+	citationUrl,
+	navRoutes,
+	nodeHref,
+	refFromPath
+} from './routes.js';
 
 const REF = 'did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc/01JQ0R2S3T4U5V6W7X8Y9ZABC';
 
@@ -57,5 +65,35 @@ describe('navRoutes', () => {
 	it('leaves the destinations alone until somebody is signed in', () => {
 		expect(navRoutes(null)).toEqual(APP_ROUTES);
 		expect(APP_ROUTES.some((route) => route.person)).toBe(false);
+	});
+});
+
+describe('citationUrl', () => {
+	afterEach(() => {
+		initRuntime({ apiHost: () => '', webOrigin: () => undefined });
+		vi.unstubAllGlobals();
+	});
+
+	it('is absolute on the origin the shell names', () => {
+		initRuntime({ apiHost: () => '', webOrigin: () => 'https://sloppy.sh' });
+
+		expect(citationUrl(REF as OwnedRef)).toBe(`https://sloppy.sh${nodeHref(REF as OwnedRef)}`);
+	});
+
+	it("stands on the page's own origin where the shell names none", () => {
+		expect(citationUrl(REF as OwnedRef)).toBe(
+			`${globalThis.location.origin}${nodeHref(REF as OwnedRef)}`
+		);
+	});
+
+	// A shell inside a webview is served from a scheme nobody can open, so what
+	// it hands over is the link the app itself answers to.
+	it('falls back to the app own scheme where no origin a peer could open is known', () => {
+		vi.stubGlobal('location', { origin: 'tauri://localhost' });
+
+		const url = citationUrl(REF as OwnedRef);
+
+		expect(url.startsWith('sloppy://n/')).toBe(true);
+		expect(refFromPath(url.replace('sloppy://n', '/n'))).toBe(REF);
 	});
 });

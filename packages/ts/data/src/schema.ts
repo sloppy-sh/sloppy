@@ -58,6 +58,7 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS pulled_node SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS pulled_block SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS comment_pointer SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS refused_voice SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS retired_address SCHEMALESS;
 
 ${MIGRATIONS}
@@ -93,6 +94,16 @@ ${MIGRATIONS}
   -- are the one whose purge has to reach it. Whoever wrote the comment owns the
   -- comment, in their own store, and nothing here.
   DEFINE FIELD IF NOT EXISTS created_by ON comment_pointer TYPE string READONLY;
+  -- On a refusal the owner is the person who wrote it down: it decides what
+  -- this instance assembles for them and for nobody else.
+  DEFINE FIELD IF NOT EXISTS created_by ON refused_voice TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS voice ON refused_voice TYPE string READONLY;
+  -- Which note it is refused on; absent is every note the owner reads. Both
+  -- immutable, this row being the pairing: a changed half is a different
+  -- refusal and a new row.
+  DEFINE FIELD IF NOT EXISTS note ON refused_voice TYPE option<string> READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON refused_voice TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS updated_at ON refused_voice TYPE string;
   DEFINE FIELD IF NOT EXISTS note ON comment_pointer TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS voice ON comment_pointer TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS comment_id ON comment_pointer TYPE string READONLY;
@@ -279,6 +290,12 @@ ${MIGRATIONS}
   DEFINE INDEX IF NOT EXISTS comment_pointer_owner_voice_comment ON comment_pointer FIELDS created_by, voice, comment_id UNIQUE;
   -- What a note's author reads, and what the per-voice bound is counted over.
   DEFINE INDEX IF NOT EXISTS comment_pointer_owner_note_voice ON comment_pointer FIELDS created_by, note, voice;
+  -- Who one person refuses, read whole while a note's voices are assembled: the
+  -- blanket refusals and the per-note ones are one answer. NOT unique on the
+  -- note, because a UNIQUE index does not constrain a row whose indexed column
+  -- is absent — the blanket refusal is exactly that row — so refusing the same
+  -- voice twice is folded where the row is written.
+  DEFINE INDEX IF NOT EXISTS refused_voice_owner_voice ON refused_voice FIELDS created_by, voice;
   -- The address protocol on rows a peer handed us, at the scope it now has: one
   -- address per author's GRAPH. It is also how a held note is reached by the
   -- address a reader cites.

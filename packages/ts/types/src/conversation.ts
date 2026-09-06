@@ -14,6 +14,7 @@
 // product.
 
 import { z } from "zod";
+import { AddressSchema } from "./address.js";
 import {
   DidSyrSchema,
   OwnedEntitySchema,
@@ -176,3 +177,62 @@ export type LeaveCommentPointerRequest = z.input<
 export const POINTERS_PER_NOTE = 500;
 export const POINTERS_PER_VOICE = 20;
 export const VOICES_PER_NOTE = 50;
+
+/**
+ * Whether an identity's own store can hold a conversation — asked of the store,
+ * never of where the identity lives, because a store that takes a comment and
+ * publishes no listing of one gives the writer a comment that is gone on the
+ * next read. The two halves are separate because a store may serve either.
+ *
+ * A surface holds this UNKNOWN until the answer is in and offers nothing
+ * meanwhile: an offer that refuses every time it is used is worse than an
+ * absent one, and an alarming sentence about a store nobody has asked yet is
+ * worse than both. docs/ARCHITECTURE.md § "Federating the graph".
+ */
+export const ConversesSchema = z.object({
+  comments: z.boolean(),
+  reactions: z.boolean(),
+});
+export type Converses = z.infer<typeof ConversesSchema>;
+
+/**
+ * One voice a person will not be shown, and the note they refused it on —
+ * absent refuses it everywhere they read.
+ *
+ * `created_by` is the person doing the refusing. It removes a voice from their
+ * own reading and takes nothing from anybody else: a comment lives in the store
+ * of whoever wrote it, which asks no permission to hold one, so what this
+ * decides is what this instance assembles for the person who wrote it down.
+ */
+export const RefusedVoiceSchema = OwnedEntitySchema.extend({
+  voice: DidSyrSchema,
+  note: OwnedRefSchema.optional(),
+});
+export type RefusedVoice = z.infer<typeof RefusedVoiceSchema>;
+
+/** Refuse a voice, or — the same pair — take the refusal back. */
+export const RefuseVoiceRequestSchema = z.object({
+  voice: DidSyrSchema,
+  /** Absent is every note the caller reads rather than one of them. */
+  note: OwnedRefSchema.optional(),
+});
+export type RefuseVoiceRequest = z.input<typeof RefuseVoiceRequestSchema>;
+
+/**
+ * One of the caller's own notes somebody has answered, as the list of them
+ * carries it. `graph` is the notebook `address` is read in, because a list
+ * reaching more than one has to say which (AI.md § "The Address Is the
+ * Protocol").
+ *
+ * `voices` is who left a POINTER on it. Somebody the caller follows leaves
+ * none — their answer is reached by following them — so this is not every
+ * answer a note has, and no surface may present it as one.
+ */
+export const AnsweredNoteSchema = z.object({
+  note: OwnedRefSchema,
+  address: AddressSchema,
+  graph: OwnedRefSchema,
+  title: z.string(),
+  voices: z.array(DidSyrSchema),
+});
+export type AnsweredNote = z.infer<typeof AnsweredNoteSchema>;

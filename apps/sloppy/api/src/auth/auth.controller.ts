@@ -15,11 +15,15 @@ import {
 import {
   type ConsentRedirect,
   ExchangeSessionRequestSchema,
+  isPeerOrigin,
+  type OwnInstance,
   type Session,
   StartLoginRequestSchema,
   type Viewer,
 } from "@sloppy/types";
 import type { Response } from "express";
+import { AppConfigService } from "../config/app-config.service";
+import { ownOrigin } from "../media/remote-host";
 import { normalizeInstanceUrl } from "../syr/syr.service";
 import { AuthService, HOME } from "./auth.service";
 import { type AuthedRequest, SESSION_UNVERIFIED } from "./authed-request";
@@ -49,17 +53,26 @@ import {
  */
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: AppConfigService,
+  ) {}
 
   /**
    * Where somebody with no identity anywhere can make one, or `null` where this
-   * Sloppy only ever delegates. Asked through the API rather than read off the
+   * Sloppy only ever delegates — and where a peer reaches the graph this
+   * instance serves, which is the other half of what a person hands somebody
+   * they want to be read by. Asked through the API rather than read off the
    * origin, because the shells reach an instance that may share neither.
    */
   @Public()
   @Get("own-instance")
-  ownInstance(): { instance_url: string | null } {
-    return { instance_url: this.auth.ownInstanceUrl() };
+  ownInstance(): OwnInstance {
+    const origin = ownOrigin(this.config.publicUrl);
+    return {
+      instance_url: this.auth.ownInstanceUrl(),
+      ...(origin && isPeerOrigin(origin) ? { instance_origin: origin } : {}),
+    };
   }
 
   @Public()

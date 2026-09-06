@@ -9,6 +9,7 @@ import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 import UserRound from '@lucide/svelte/icons/user-round';
 import type { OwnedRef } from '@sloppy/types';
 import type { NavItem, Person } from '@sloppy/ui';
+import { runtime } from '../runtime.js';
 
 /** In the order they are shown. `id` is what {@link activeRouteId} answers. */
 export const APP_ROUTES: NavItem[] = [
@@ -50,6 +51,24 @@ export function newHref(seed: { under?: OwnedRef; text?: string } = {}): string 
 export function nodeHref(ref: OwnedRef): string {
 	const cut = ref.lastIndexOf('/');
 	return `/n/${encodeURIComponent(ref.slice(0, cut))}/${encodeURIComponent(ref.slice(cut + 1))}`;
+}
+
+/**
+ * A link to a note that can be handed to somebody, absolute — the origin the
+ * shell names, else the page's own. Where neither is one a peer could open, the
+ * app's own scheme is, and the native shell routes it back to {@link nodeHref}.
+ */
+export function citationUrl(ref: OwnedRef): string {
+	const path = nodeHref(ref);
+	const origin = runtime.webOrigin() ?? pageOrigin();
+	return origin ? `${origin}${path}` : `sloppy:/${path}`;
+}
+
+/** The page's own origin where it is one a link can be opened from. A shell
+ *  inside a webview is served from its own scheme, which is not. */
+function pageOrigin(): string | undefined {
+	const origin = globalThis.location?.origin;
+	return origin && /^https?:\/\//.test(origin) ? origin : undefined;
 }
 
 /** `null` for any path that does not name a note. */

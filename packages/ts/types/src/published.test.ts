@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MARK_RADIUS_SCALE, resolveAppearance } from "./appearance.js";
 import { emptyDocument } from "./document.js";
 import { homeGraphRef } from "./graph.js";
 import {
@@ -343,6 +344,66 @@ describe("a region a peer answered with", () => {
 });
 
 /** `count` children of the region root, the root itself first. */
+describe("what a look does on the way to a peer", () => {
+  it("carries the shape channels its author set", () => {
+    const root = node(0, "1a", {
+      look: {
+        ring_weight: "heavy",
+        ring_style: "dashed",
+        mark_radius: "large",
+      },
+    });
+
+    const page = takeWhole(subtree({ nodes: [root] }));
+
+    expect(resolveAppearance(page.nodes[0].look)).toMatchObject({
+      ringWeight: "heavy",
+      ringStyle: "dashed",
+      markScale: MARK_RADIUS_SCALE.large,
+    });
+  });
+
+  // The pictures stay behind: each is an upload in the author's own store, and
+  // a peer has no way to read one.
+  it("leaves a picture behind rather than naming one a peer cannot read", () => {
+    const root = node(0, "1a", {
+      look: {
+        ring_weight: "hairline",
+        preview: "upload-1",
+        preview_more: ["upload-2"],
+      } as PublishedNode["look"],
+    });
+
+    const page = takeWhole(subtree({ nodes: [root] }));
+
+    expect(page.nodes[0].look).toEqual({ ring_weight: "hairline" });
+    expect(resolveAppearance(page.nodes[0].look).preview.pictures).toEqual([]);
+  });
+
+  // Everything published before a look could travel, and everything published
+  // by a peer that sends none.
+  it("draws a note that carries none exactly as an unstyled one", () => {
+    const page = takeWhole(subtree());
+
+    expect(page.nodes[0].look).toBeUndefined();
+    expect(resolveAppearance(page.nodes[0].look)).toEqual(
+      resolveAppearance(undefined),
+    );
+  });
+});
+
+describe("the notebook a region's addresses are read in", () => {
+  it("carries the name its author gave it", () => {
+    const page = takeWhole(subtree({ graph_title: "The thesis" }));
+
+    expect(page.graph_title).toBe("The thesis");
+  });
+
+  it("reads a peer that names none as naming none", () => {
+    expect(takeWhole(subtree()).graph_title).toBeUndefined();
+  });
+});
+
 function branch(from: number, count: number): PublishedNode[] {
   const root = node(0, "1a");
   return Array.from({ length: count }, (_, i) =>

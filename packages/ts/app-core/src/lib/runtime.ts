@@ -42,6 +42,10 @@ export interface AppRuntime {
 	 *  client. A shell that defines it reports `mode() === 'local'` while it is
 	 *  in use, and calls {@link resetApi} when that changes. */
 	createApi?(): SloppyApi;
+	/** Where a note of this person's is opened on the web, as an origin. Absent →
+	 *  the page's own, which is the answer wherever the shell is served from one
+	 *  a peer could open; a shell that is not names this or nothing. */
+	webOrigin?(): string | undefined;
 	/** Erase the on-device graph and return the shell to a fresh start. Absent
 	 *  wherever nothing is stored locally, and the "erase this device" action
 	 *  hides. */
@@ -127,6 +131,7 @@ export const runtime = {
 	authInvalid: () => current.onAuthInvalid?.(),
 	openExternal: (): AppRuntime['openExternal'] => current.openExternal,
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
+	webOrigin: (): string | undefined => current.webOrigin?.(),
 	wipeLocal: (): AppRuntime['wipeLocal'] => current.wipeLocal,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile
 };

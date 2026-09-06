@@ -200,6 +200,59 @@ describe("taking a region", () => {
   });
 });
 
+describe("a note the reader already holds", () => {
+  const NOTE = `${AUTHOR}/01JHE0000000000000000000AA`;
+  const hit = {
+    note: {
+      ref: NOTE,
+      created_by: AUTHOR,
+      graph: `${AUTHOR}/00000000000000000000000000`,
+      address: "1a1",
+      depth: 3,
+      origin: `${AUTHOR}/01JHE0000000000000000000AB`,
+      parent: `${AUTHOR}/01JHE0000000000000000000AB`,
+      title: "A thought",
+      tags: [],
+      links: [],
+      published: true,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+    pull: {
+      ref: `${AUTHOR}/01JPEER0000000000000000000`,
+      created_by: AUTHOR,
+      publication: PUBLICATION,
+      version,
+      root_address: "1a",
+      comments: "anyone",
+      source_url: PEER,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+  };
+
+  it("is found by the ref its author addresses it by, with the region it came from", async () => {
+    const { asked, client } = serving(hit);
+
+    const found = await client.heldNoteBySource(NOTE);
+
+    expect(asked[0].url).toBe(
+      `/api/pulls/nodes/${encodeURIComponent(AUTHOR)}/01JHE0000000000000000000AA`,
+    );
+    expect(found?.note.address).toBe("1a1");
+    expect(found?.pull.source_url).toBe(PEER);
+  });
+
+  it("is nothing where the reader holds no copy", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("", { status: 200 }),
+    ) as unknown as typeof fetch;
+    const client = new SloppyClient({ token: "a-session", fetch: fetchImpl });
+
+    await expect(client.heldNoteBySource(NOTE)).resolves.toBeNull();
+  });
+});
+
 describe("a comment somebody wrote", () => {
   it("is dropped by the id its own store issued, as one segment", async () => {
     const { asked, client } = serving(null);
@@ -310,6 +363,52 @@ describe("what a peer answered with", () => {
     await client.readPublishedSubtree(PUBLICATION, VERSION);
 
     expect(asked[0].url).toContain(`version=${encodeURIComponent(VERSION)}`);
+  });
+
+  // The notebook an address is read in, and the name the author gave it, are
+  // what tell two regions rooted at `1a` apart once both are held.
+  it("keeps the notebook the addresses were read in", async () => {
+    const { client } = serving(
+      page({
+        nodes: [note(NOTE, "1a")],
+        graph: `${AUTHOR}/01JGRAPH2ND000000000000000`,
+        graph_title: "The thesis",
+      }),
+    );
+
+    const region = await client.readPublishedSubtree(PUBLICATION);
+
+    expect(region?.graph).toBe(`${AUTHOR}/01JGRAPH2ND000000000000000`);
+    expect(region?.graph_title).toBe("The thesis");
+  });
+
+  it("reads a peer that names no notebook as naming none", async () => {
+    const { client } = serving(page({ nodes: [note(NOTE, "1a")] }));
+
+    const region = await client.readPublishedSubtree(PUBLICATION);
+
+    expect(region?.graph).toBeUndefined();
+    expect(region?.graph_title).toBeUndefined();
+  });
+
+  it("carries the look its author gave a mark, and no picture of one", async () => {
+    const { client } = serving(
+      page({
+        nodes: [
+          {
+            ...note(NOTE, "1a"),
+            look: { ring_weight: "heavy", mark_radius: "large" },
+          },
+        ],
+      }),
+    );
+
+    const region = await client.readPublishedSubtree(PUBLICATION);
+
+    expect(region?.nodes[0].look).toEqual({
+      ring_weight: "heavy",
+      mark_radius: "large",
+    });
   });
 
   it("is nothing at all where nothing is published there", async () => {

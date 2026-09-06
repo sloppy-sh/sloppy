@@ -13,6 +13,7 @@ import {
   parentAddress,
 } from "./address.js";
 import { z } from "zod";
+import { NodeAppearanceSchema } from "./appearance.js";
 import { splitOwnedRef } from "./codecs.js";
 import { BlockDocumentSchema, citedUploads } from "./document.js";
 import {
@@ -106,6 +107,13 @@ export const PublishedPublicationSchema = z.object({
   ref: OwnedRefSchema,
   root_address: AddressSchema,
   graph: OwnedRefSchema.optional(),
+  /**
+   * What the author calls that notebook. A label a reader shows beside an
+   * address so two `1a`s from one author read apart, and never what the
+   * notebook is found by — `graph` is. Absent is a notebook whose name did not
+   * travel, which is everything served before one could.
+   */
+  graph_title: z.string().max(512).optional(),
   title: z.string().max(512),
   latest: PublishedVersionSchema,
 });
@@ -130,6 +138,25 @@ export const PublishedIndexSchema = z.object({
   next_cursor: PageCursorSchema.optional(),
 });
 export type PublishedIndex = z.infer<typeof PublishedIndexSchema>;
+
+/**
+ * A note's look as it TRAVELS: the shape channels of {@link NodeAppearance} and
+ * no others. A picture is an upload in the author's own store and what a peer
+ * may read of one is docs/ARCHITECTURE.md § "Pictures"' open question, so the
+ * channels that are plain shape go and the ones that name bytes stay behind.
+ * DESIGN.md § "A note's look never uses colour" carries the ruling.
+ *
+ * The channels are spelled as the author's own row spells them, so a reader
+ * resolves one through `resolveAppearance` exactly as it resolves a note of its
+ * own — and a look with no picture in it resolves to a mark wearing none.
+ */
+export const PublishedLookSchema = NodeAppearanceSchema.pick({
+  ring_weight: true,
+  ring_style: true,
+  mark_radius: true,
+  mark_scale: true,
+});
+export type PublishedLook = z.infer<typeof PublishedLookSchema>;
 
 /**
  * One node as a peer receives it, frozen as it stood when the version was
@@ -157,6 +184,9 @@ export const PublishedNodeSchema = z.object({
   origin: OwnedRefSchema,
   title: z.string().max(512),
   tags: TagsSchema,
+  /** How its author asked the mark to be drawn. Absent is a mark that draws
+   *  unstyled, which is every version published before a look could travel. */
+  look: PublishedLookSchema.optional(),
   /** Only targets the same author had published when this version was made. A
    *  link to a note nobody published is dropped rather than named. */
   links: z.array(OwnedRefSchema),
@@ -196,13 +226,14 @@ export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
  * answer it is a live term of the author's.
  *
  * `graph` is the notebook every address on the page is read in; absent is the
- * author's home graph.
+ * author's home graph, and `graph_title` is what the author calls it.
  */
 export const PublishedSubtreePageSchema = z.object({
   publication: OwnedRefSchema,
   version: PublishedVersionSchema,
   root_address: AddressSchema,
   graph: OwnedRefSchema.optional(),
+  graph_title: z.string().max(512).optional(),
   comments: ReceivedCommentAccessSchema,
   nodes: z.array(PublishedNodeSchema).max(MAX_PUBLISHED_NODES_PER_PAGE),
   blocks: z.array(PublishedBlockSchema).max(MAX_PUBLISHED_BLOCKS_PER_PAGE),
@@ -218,6 +249,7 @@ export interface PublishedSubtree {
   version: PublishedVersion;
   root_address: Address;
   graph?: OwnedRef;
+  graph_title?: string;
   comments: CommentAccess;
   nodes: PublishedNode[];
   blocks: PublishedBlock[];

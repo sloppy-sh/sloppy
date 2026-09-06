@@ -4,6 +4,7 @@ import {
 } from "@nestjs/common";
 import type { Response } from "express";
 import { describe, expect, it, vi } from "vitest";
+import type { AppConfigService } from "../config/app-config.service";
 import { AuthController } from "./auth.controller";
 import type { AuthService } from "./auth.service";
 import type { AuthedRequest } from "./authed-request";
@@ -12,13 +13,19 @@ import { SESSION_COOKIE } from "./session-cookie";
 const DEEP_LINK = "sloppy://auth/callback";
 const CALLBACK = "https://sloppy.sh/api/auth/callback";
 
-function controller(auth: Partial<AuthService>) {
-  return new AuthController({
-    callbackUrl: CALLBACK,
-    readConsentState: () => ({ inst: "https://syr.is", redirect: DEEP_LINK }),
-    issueHandOff: () => "hand-off-token",
-    ...auth,
-  } as unknown as AuthService);
+function controller(
+  auth: Partial<AuthService>,
+  publicUrl = "https://sloppy.sh",
+) {
+  return new AuthController(
+    {
+      callbackUrl: CALLBACK,
+      readConsentState: () => ({ inst: "https://syr.is", redirect: DEEP_LINK }),
+      issueHandOff: () => "hand-off-token",
+      ...auth,
+    } as unknown as AuthService,
+    { publicUrl } as AppConfigService,
+  );
 }
 
 /** Records what the callback did instead of doing it. */
@@ -199,5 +206,36 @@ describe("signing out", () => {
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
 
     expect(sent.cleared).toBe(SESSION_COOKIE);
+  });
+});
+
+describe("what a person hands somebody who wants to read them", () => {
+  it("names where identities are made here and where this graph is served", () => {
+    const auth = controller({ ownInstanceUrl: () => "https://sloppy.sh" });
+
+    expect(auth.ownInstance()).toEqual({
+      instance_url: "https://sloppy.sh",
+      instance_origin: "https://sloppy.sh",
+    });
+  });
+
+  // An instance that only delegates still serves a graph somebody can be
+  // pointed at, so the two answers are independent.
+  it("names the graph's instance where identities are made elsewhere", () => {
+    const auth = controller(
+      { ownInstanceUrl: () => null },
+      "https://notes.example/",
+    );
+
+    expect(auth.ownInstance()).toEqual({
+      instance_url: null,
+      instance_origin: "https://notes.example",
+    });
+  });
+
+  it("says nothing where the configured address is not one a peer could type", () => {
+    const auth = controller({ ownInstanceUrl: () => null }, "not-an-address");
+
+    expect(auth.ownInstance()).toEqual({ instance_url: null });
   });
 });

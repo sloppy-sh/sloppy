@@ -46,6 +46,30 @@ describe("where this Sloppy's own identities live", () => {
     });
   });
 
+  // The other half of what somebody hands a reader: their DID says who, this
+  // says where the branch is served.
+  it("names where a peer reaches the graph this instance serves", async () => {
+    const client = answering(() =>
+      json({ instance_url: null, instance_origin: "https://notes.example" }),
+    );
+
+    await expect(client.instanceHome()).resolves.toEqual({
+      instance_url: null,
+      instance_origin: "https://notes.example",
+    });
+  });
+
+  it("keeps the way in when the instance named an address nobody could type", async () => {
+    const client = answering(() =>
+      json({ instance_url: "https://sloppy.sh", instance_origin: "sloppy.sh" }),
+    );
+
+    await expect(client.instanceHome()).resolves.toEqual({
+      instance_url: "https://sloppy.sh",
+    });
+    await expect(client.ownInstance()).resolves.toBe("https://sloppy.sh");
+  });
+
   it("refuses an instance it could not reach at all", async () => {
     const client = answering(() => {
       throw new TypeError("Failed to fetch");

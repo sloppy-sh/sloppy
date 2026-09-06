@@ -4,11 +4,15 @@
 // embedded server. docs/ARCHITECTURE.md § "Deployment modes" states the three.
 
 import {
+  type AnsweredNote,
+  AnsweredNoteSchema,
   type BlockView,
   BlockViewSchema,
   type CompleteUploadRequest,
   type ConsentRedirect,
   ConsentRedirectSchema,
+  type Converses,
+  ConversesSchema,
   type CopyEmojiRequest,
   type CreateBlockRequest,
   type CreateEmojiRequest,
@@ -45,6 +49,8 @@ import {
   type OwnedMediaAsset,
   OwnedMediaAssetSchema,
   type OwnedRef,
+  type OwnInstance,
+  OwnInstanceSchema,
   PeerOriginSchema,
   type ProfileView,
   ProfileViewSchema,
@@ -59,8 +65,13 @@ import {
   type PublishedVersion,
   PublishedVersionSchema,
   type PublishedVersionsPage,
+  type PulledNoteHit,
+  PulledNoteHitSchema,
   type PullView,
   PullViewSchema,
+  type RefusedVoiceView,
+  RefusedVoiceViewSchema,
+  type RefuseVoiceRequest,
   type SearchHit,
   SearchHitSchema,
   type Session,
@@ -85,6 +96,7 @@ import {
   publishedChangesReader,
   publishedSubtreeReader,
   publishedVersionsReader,
+  requireNodeConsistent,
 } from "@sloppy/types";
 import { SloppyApiError } from "./errors.js";
 import { apiUrl, isSameOrigin } from "./host.js";
@@ -247,13 +259,18 @@ export class SloppyClient {
    * hides the only way in on an instance that has one.
    */
   async ownInstance(): Promise<string | undefined> {
-    const body = (await this.json("/auth/own-instance", {
-      method: "GET",
-    })) as {
-      instance_url?: unknown;
-    } | null;
-    const url = body?.instance_url;
-    return typeof url === "string" && url ? url : undefined;
+    return (await this.instanceHome()).instance_url ?? undefined;
+  }
+
+  /**
+   * The same answer whole, which also carries where a peer reaches the graph
+   * this instance serves — what somebody handing a branch to a reader needs
+   * beside their own DID.
+   */
+  async instanceHome(): Promise<OwnInstance> {
+    return OwnInstanceSchema.parse(
+      (await this.json("/auth/own-instance", { method: "GET" })) ?? {},
+    );
   }
 
   /**
@@ -549,6 +566,8 @@ export class SloppyClient {
       publication,
       version: page.version,
       root_address: page.root_address,
+      graph: page.graph,
+      graph_title: page.graph_title,
       comments: page.comments,
       nodes,
       blocks,
@@ -691,6 +710,22 @@ export class SloppyClient {
   }
 
   /**
+   * One note the caller holds a copy of, named the way its AUTHOR names it, and
+   * the region that served it — how a citation to somebody else's note is
+   * resolved against what the reader already has. `null` where they hold none,
+   * which is what a citation to a note nobody here has pulled expects.
+   */
+  async heldNoteBySource(node: OwnedRef): Promise<PulledNoteHit | null> {
+    const body = await this.json(`/pulls/nodes${refPath(node)}`, {
+      method: "GET",
+    });
+    if (body == null) return null;
+    const hit = PulledNoteHitSchema.parse(body);
+    requireNodeConsistent(hit.note);
+    return hit;
+  }
+
+  /**
    * A picture inside a published note, from its author's store. Publishing is
    * what makes one readable — docs/ARCHITECTURE.md § "Pictures" — and the fetch
    * is made here rather than by the browser, so the author's instance never
@@ -759,6 +794,47 @@ export class SloppyClient {
 
   async removeReaction(reactionId: NoteReaction["reaction_id"]): Promise<void> {
     await this.del(`/reactions/${encodeURIComponent(reactionId)}`);
+  }
+
+  /**
+   * Whether the caller's own identity store can hold a conversation — which a
+   * surface asks before it offers one, so a control that would refuse every
+   * time it is used is never drawn.
+   */
+  async converses(): Promise<Converses> {
+    return ConversesSchema.parse(
+      await this.json("/converses", { method: "GET" }),
+    );
+  }
+
+  /** The voices the caller has refused, blanket and per note together. */
+  async refusedVoices(): Promise<RefusedVoiceView[]> {
+    const body = await this.json("/refused-voices", { method: "GET" });
+    return (body as unknown[]).map((v) => RefusedVoiceViewSchema.parse(v));
+  }
+
+  /** Stop being shown one voice — on one note, or wherever the caller reads. */
+  async refuseVoice(request: RefuseVoiceRequest): Promise<RefusedVoiceView> {
+    return RefusedVoiceViewSchema.parse(
+      await this.send("POST", "/refused-voices", request),
+    );
+  }
+
+  /** Take that back, named by the same pair rather than by the row it wrote. */
+  async allowVoice(request: RefuseVoiceRequest): Promise<void> {
+    const query = new URLSearchParams({ voice: request.voice });
+    if (request.note !== undefined) query.set("note", request.note);
+    await this.del(`/refused-voices?${query.toString()}`);
+  }
+
+  /**
+   * The caller's own notes somebody has answered, oldest first. It reaches the
+   * voices that left a pointer, so a note answered only by somebody the caller
+   * follows is not in it, and nothing may present this as every answer.
+   */
+  async answeredNotes(): Promise<AnsweredNote[]> {
+    const body = await this.json("/answered-notes", { method: "GET" });
+    return (body as unknown[]).map((n) => AnsweredNoteSchema.parse(n));
   }
 
   // ── Media ────────────────────────────────────────────────────────────────

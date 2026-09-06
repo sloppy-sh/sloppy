@@ -499,12 +499,13 @@ way and falls back differently**: a size or a cover past the range this build dr
 stored untouched and drawn at the nearest end of that range, because the widest mark this
 build has is nearer what its author asked for than a mark with nothing set.
 
-**A look does not reach a peer yet, and a pulled region draws unstyled.** `PublishedNodeSchema`
-carries no appearance. Ring weight, ring style and radius are plain shape and could travel;
-the pictures cannot, because each is an upload in the author's own private store, which
-docs/ARCHITECTURE.md § "Pictures" already owns as an open gap. The publishing milestone owns
-both halves and settles their fate before the other three go, so that a peer either sees the
-look its author gave a note or sees none of it.
+**A look's shape travels to a peer and its pictures do not.** Ring weight, ring style and
+size are plain shape, so they ride on `PublishedNode.look` and a held region draws the marks
+the way their author shaped them. The pictures stay behind: each is an upload in the
+author's own private store, which docs/ARCHITECTURE.md § "Pictures" owns as an open gap, and
+a mark that could not load one draws exactly as a mark with none — so a peer reads a shaped
+field of discs wearing no pictures, never a gap where one was promised. A note published
+before a look could travel carries none, and draws unstyled.
 
 ### Edges
 

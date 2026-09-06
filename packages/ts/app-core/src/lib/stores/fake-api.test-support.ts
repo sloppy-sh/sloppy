@@ -5,9 +5,14 @@
 
 import {
 	addressDepth,
+	type AnsweredNote,
+	type Converses,
 	graphOf,
 	type NodeView,
 	type OwnedRef,
+	type PulledNoteHit,
+	type RefusedVoiceView,
+	type RefuseVoiceRequest,
 	type SearchHit,
 	type Viewer
 } from '@sloppy/types';
@@ -74,6 +79,47 @@ export function finding(
 ): void {
 	api.on('GET /nodes/search', () => held.hits ?? []);
 	api.on('GET /nodes/recent', () => held.recent ?? []);
+}
+
+/** Answer the routes the conversation surfaces ask about the signed-in person:
+ *  whether their own store can hold one, whose answers they refuse, and which of
+ *  their notes have been answered. */
+export function conversing(
+	api: FakeApi,
+	held: {
+		converses?: Converses;
+		refused?: readonly RefusedVoiceView[];
+		answered?: readonly AnsweredNote[];
+	} = {}
+): void {
+	let written = 0;
+	api.on('GET /converses', () => held.converses ?? { comments: true, reactions: true });
+	api.on('GET /refused-voices', () => held.refused ?? []);
+	api.on('GET /answered-notes', () => held.answered ?? []);
+	api.on('POST /refused-voices', (_url, init) => {
+		const asked = JSON.parse(String(init?.body ?? '{}')) as RefuseVoiceRequest;
+		written += 1;
+		return {
+			ref: ref(9_000 + written),
+			created_by: DID,
+			voice: asked.voice,
+			...(asked.note === undefined ? {} : { note: asked.note }),
+			created_at: AT,
+			updated_at: AT
+		} satisfies RefusedVoiceView;
+	});
+	api.on('DELETE /refused-voices', () => undefined);
+}
+
+/** Answer the citation route for each note the reader holds a copy of. */
+export function holding(api: FakeApi, hits: readonly PulledNoteHit[] = []): void {
+	for (const hit of hits) {
+		const cut = hit.note.ref.lastIndexOf('/');
+		const path = `/pulls/nodes/${encodeURIComponent(
+			hit.note.ref.slice(0, cut)
+		)}/${encodeURIComponent(hit.note.ref.slice(cut + 1))}`;
+		api.on(`GET ${path}`, () => hit);
+	}
 }
 
 export const VIEWER: Viewer = {

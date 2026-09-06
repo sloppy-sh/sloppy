@@ -931,6 +931,70 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     }
   });
 
+  it("reads who one person refuses, blanket and per note, from its index", async () => {
+    const NOTE = OwnedRefSchema.parse(`${AVA}/01JREFNTE00000000000000000`);
+    const refusals: [localId: string, voice: string, note?: string][] = [
+      ["01JRFSDA000000000000000000", BOB],
+      ["01JRFSDB000000000000000000", BOB, NOTE],
+      ["01JRFSDC000000000000000000", CAI],
+    ];
+    for (const [localId, voice, note] of refusals) {
+      await db.create(avaId("refused_voice", localId)).content({
+        id: avaId("refused_voice", localId),
+        created_by: AVA,
+        voice,
+        ...(note === undefined ? {} : { note }),
+        created_at: "2026-02-01T00:00:00.000Z",
+        updated_at: "2026-02-01T00:00:00.000Z",
+      });
+    }
+    // BOB refuses somebody too; a refusal is one person's own reading and
+    // reaches nobody else's.
+    await db
+      .create(
+        new RecordId("refused_voice", {
+          created_by: BOB,
+          id: "01JRFSDD000000000000000000",
+        }),
+      )
+      .content({
+        id: new RecordId("refused_voice", {
+          created_by: BOB,
+          id: "01JRFSDD000000000000000000",
+        }),
+        created_by: BOB,
+        voice: AVA,
+        created_at: "2026-02-01T00:00:00.000Z",
+        updated_at: "2026-02-01T00:00:00.000Z",
+      });
+
+    const REFUSED = `SELECT voice, note FROM refused_voice
+       WHERE created_by = $did ORDER BY voice, note`;
+
+    const [plan] = await db.query(`${REFUSED} EXPLAIN;`, { did: AVA });
+    expect(JSON.stringify(plan)).toContain(
+      '"index":"refused_voice_owner_voice"',
+    );
+
+    const [held] = await db.query<[{ voice: string; note?: string }[]]>(
+      `${REFUSED};`,
+      { did: AVA },
+    );
+    expect(held).toEqual([
+      { voice: BOB },
+      { voice: BOB, note: NOTE },
+      { voice: CAI },
+    ]);
+
+    // The blanket refusal and the per-note one are two rows, so the note is
+    // what tells them apart and neither may overwrite the other.
+    await expect(
+      db
+        .update(avaId("refused_voice", "01JRFSDA000000000000000000"))
+        .merge({ note: NOTE }),
+    ).rejects.toThrow();
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);
@@ -956,6 +1020,10 @@ describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }
+    const refusals = await db.select<{ created_by: string }>(
+      new Table("refused_voice"),
+    );
+    expect(refusals.map((row) => row.created_by)).toEqual([BOB]);
   });
 });
 
