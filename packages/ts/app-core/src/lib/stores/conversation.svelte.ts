@@ -14,7 +14,8 @@ import type {
 	CreateNoteReactionRequest,
 	NoteComment,
 	NoteReaction,
-	OwnedRef
+	OwnedRef,
+	RefusedVoiceView
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
@@ -56,15 +57,24 @@ class ConversationStore {
 	#reactions = new SvelteMap<OwnedRef, NoteReaction[]>();
 	#state = new SvelteMap<OwnedRef, ConversationState>();
 	#inflight = new Map<OwnedRef, Promise<void>>();
+	#refused = $state<RefusedVoiceView[]>([]);
+	#refusedRead = false;
 	// A sign-out that lands mid-request must not be undone by its answer.
 	#epoch = 0;
 
 	comments(node: OwnedRef): NoteComment[] {
-		return this.#comments.get(node) ?? [];
+		return (this.#comments.get(node) ?? []).filter((said) => !this.refuses(node, said.author));
 	}
 
 	reactions(node: OwnedRef): NoteReaction[] {
-		return this.#reactions.get(node) ?? [];
+		return (this.#reactions.get(node) ?? []).filter((made) => !this.refuses(node, made.author));
+	}
+
+	/** Whether this reader has said they will not be shown this voice here. */
+	refuses(node: OwnedRef, voice: string): boolean {
+		return this.#refused.some(
+			(one) => one.voice === voice && (one.note === undefined || one.note === node)
+		);
 	}
 
 	status(node: OwnedRef): ConversationState {
@@ -91,7 +101,11 @@ class ConversationStore {
 		const current = () => epoch === this.#epoch;
 		const before = this.#state.get(node) ?? IDLE;
 		this.#state.set(node, { ...before, loading: true, failed: false, error: undefined });
-		const request = Promise.all([api.listComments(node), api.listReactions(node)])
+		const request = Promise.all([
+			api.listComments(node),
+			api.listReactions(node),
+			this.#readRefused()
+		])
 			.then(([said, reacted]) => {
 				if (!current()) return;
 				this.#comments.set(node, [...said].sort(oldestFirst));
@@ -121,7 +135,10 @@ class ConversationStore {
 		const epoch = this.#epoch;
 		const written = await api.addComment(request);
 		if (epoch === this.#epoch) {
-			this.#comments.set(written.node, [...this.comments(written.node), written].sort(oldestFirst));
+			this.#comments.set(
+				written.node,
+				[...(this.#comments.get(written.node) ?? []), written].sort(oldestFirst)
+			);
 		}
 		return written;
 	}
@@ -132,7 +149,7 @@ class ConversationStore {
 		if (epoch !== this.#epoch) return;
 		this.#comments.set(
 			node,
-			this.comments(node).filter((said) => said.comment_id !== commentId)
+			(this.#comments.get(node) ?? []).filter((said) => said.comment_id !== commentId)
 		);
 	}
 
@@ -140,7 +157,7 @@ class ConversationStore {
 		const epoch = this.#epoch;
 		const made = drawable(await api.addReaction(request));
 		if (epoch !== this.#epoch) return made;
-		const held = this.reactions(made.node).filter((other) => !sameMark(other, made));
+		const held = (this.#reactions.get(made.node) ?? []).filter((other) => !sameMark(other, made));
 		this.#reactions.set(made.node, [...held, made]);
 		return made;
 	}
@@ -151,8 +168,41 @@ class ConversationStore {
 		if (epoch !== this.#epoch) return;
 		this.#reactions.set(
 			node,
-			this.reactions(node).filter((made) => made.reaction_id !== reactionId)
+			(this.#reactions.get(node) ?? []).filter((made) => made.reaction_id !== reactionId)
 		);
+	}
+
+	/**
+	 * Stop being shown one voice: on one note, or wherever this reader reads. It
+	 * takes nothing from anybody else — a comment lives in the store of whoever
+	 * wrote it, and this decides what is assembled for the person refusing.
+	 */
+	async refuse(voice: string, note?: OwnedRef): Promise<void> {
+		const epoch = this.#epoch;
+		const written = await api.refuseVoice(note === undefined ? { voice } : { voice, note });
+		if (epoch === this.#epoch) this.#refused = [...this.#refused, written];
+	}
+
+	/** Take that back, named by the same pair rather than by the row it wrote. */
+	async allow(voice: string, note?: OwnedRef): Promise<void> {
+		const epoch = this.#epoch;
+		await api.allowVoice(note === undefined ? { voice } : { voice, note });
+		if (epoch !== this.#epoch) return;
+		this.#refused = this.#refused.filter((one) => !(one.voice === voice && one.note === note));
+	}
+
+	/** Read once a session: a small list of this reader's own that decides what
+	 *  every note shows them. A read that did not land hides nothing. */
+	async #readRefused(): Promise<void> {
+		if (this.#refusedRead) return;
+		this.#refusedRead = true;
+		const epoch = this.#epoch;
+		try {
+			const held = await api.refusedVoices();
+			if (epoch === this.#epoch) this.#refused = held;
+		} catch {
+			this.#refusedRead = false;
+		}
 	}
 
 	/** After a sign-out or an erase: nothing read as one person is shown to the
@@ -163,6 +213,8 @@ class ConversationStore {
 		this.#reactions.clear();
 		this.#state.clear();
 		this.#inflight.clear();
+		this.#refused = [];
+		this.#refusedRead = false;
 	}
 }
 

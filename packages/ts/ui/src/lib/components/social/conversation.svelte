@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { NoteComment, NoteReaction, StoreRef } from '@sloppy/types';
+	import type { CopyEmojiRequest, NoteComment, NoteReaction, StoreRef } from '@sloppy/types';
 	import type { NoteEmoji } from '../editor/contract.js';
 	import type { Person } from '../identity/person.js';
 	import type { ReactionPick } from './reaction-picker.svelte';
@@ -8,6 +8,13 @@
 	export interface ConversationPeople {
 		of: (did: string) => Person | null;
 		resolve: (did: string) => void;
+	}
+
+	/** Refusing one voice, and taking that back. Only the note's own author is
+	 *  offered this, and it decides what THEY are shown and nothing else. */
+	export interface RefusingVoices {
+		refuse: (voice: string) => Promise<void>;
+		allow: (voice: string) => Promise<void>;
 	}
 
 	export interface ConversationProps {
@@ -26,6 +33,13 @@
 		onunsay: (commentId: StoreRef) => Promise<void>;
 		onreact: (pick: ReactionPick) => Promise<void>;
 		onunreact: (reactionId: StoreRef) => Promise<void>;
+		/** Meeting whoever spoke. Absent leaves a name as plain text. */
+		onperson?: (did: string) => void;
+		/** Absent leaves the item off, and it is never drawn on somebody else's
+		 *  note whatever the host passes. */
+		refusing?: RefusingVoices;
+		/** Take an emoji somebody reacted with into the reader's own set. */
+		onkeep?: (ask: CopyEmojiRequest) => Promise<void>;
 	}
 </script>
 
@@ -36,12 +50,13 @@
 	// docs/ARCHITECTURE.md § "Federating the graph".
 	import SmilePlus from '@lucide/svelte/icons/smile-plus';
 	import X from '@lucide/svelte/icons/x';
-	import { NOTE_COMMENT_MAX } from '@sloppy/types';
+	import { type CustomEmoji, NOTE_COMMENT_MAX, splitOwnedRef } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import Avatar from '../identity/avatar.svelte';
-	import { nameOf } from '../identity/person.js';
+	import { nameOf, unplacedPerson } from '../identity/person.js';
+	import KeepEmoji from './keep-emoji.svelte';
 	import ReactionPicker from './reaction-picker.svelte';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 	import { when } from './when.js';
@@ -57,7 +72,10 @@
 		onsay,
 		onunsay,
 		onreact,
-		onunreact
+		onunreact,
+		onperson,
+		refusing,
+		onkeep
 	}: ConversationProps = $props();
 
 	let draft = $state('');
@@ -65,6 +83,13 @@
 	let saying = $state(false);
 	let refused = $state<string | null>(null);
 	let picking = $state(false);
+	let keeping = $state<CustomEmoji | null>(null);
+	/** The voice just refused, so the act has a way back before it leaves the
+	 *  screen with the words it took away. */
+	let unwelcome = $state<string | null>(null);
+
+	const meetable = $derived(onperson !== undefined);
+	const keepable = $derived(onkeep !== undefined);
 
 	const ownEmoji = $derived(emojiCatalogs.of(mine, emoji.catalog));
 
@@ -105,9 +130,46 @@
 		for (const did of speakers) people.resolve(did);
 	});
 
+	/** Whoever nobody could place stands as their own identifier, so two
+	 *  strangers on a note are two people on screen. */
+	function personOf(did: string): Person {
+		return people.of(did) ?? unplacedPerson(did);
+	}
+
 	function named(did: string): string {
-		const person = people.of(did);
-		return person ? nameOf(person) : 'Somebody';
+		return nameOf(personOf(did));
+	}
+
+	/** Whether the note this was left on is the reader's own: a note belongs to
+	 *  whoever the ref it travels by names. */
+	function onMyNote(one: NoteComment): boolean {
+		return splitOwnedRef(one.node).did === mine;
+	}
+
+	async function refuse(voice: string): Promise<void> {
+		if (!refusing) return;
+		refused = null;
+		try {
+			await refusing.refuse(voice);
+			unwelcome = voice;
+		} catch (error) {
+			refused = says(error, 'That could not be done. Try again in a moment.');
+		}
+	}
+
+	async function allow(voice: string): Promise<void> {
+		if (!refusing) return;
+		refused = null;
+		unwelcome = null;
+		try {
+			await refusing.allow(voice);
+		} catch (error) {
+			refused = says(error, 'That could not be undone. Try again in a moment.');
+		}
+	}
+
+	async function keep(ask: CopyEmojiRequest): Promise<void> {
+		await onkeep?.(ask);
 	}
 
 	async function say(): Promise<void> {
@@ -172,20 +234,38 @@
 {/snippet}
 
 {#snippet comment(one: NoteComment)}
-	{@const person = people.of(one.author)}
+	{@const person = personOf(one.author)}
 	<article class="flex gap-3">
-		{#if person}
-			<Avatar {person} size={28} />
+		{#if meetable}
+			<button
+				type="button"
+				tabindex="-1"
+				aria-hidden="true"
+				class="shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+				onclick={() => onperson?.(one.author)}
+			>
+				<Avatar {person} size={28} />
+			</button>
 		{:else}
-			<Skeleton class="size-7 shrink-0 rounded-full" />
+			<Avatar {person} size={28} />
 		{/if}
 		<div class="min-w-0 flex-1 space-y-1">
 			<div class="flex items-baseline gap-2">
-				<span class="truncate text-sm font-medium">{named(one.author)}</span>
+				{#if meetable}
+					<button
+						type="button"
+						class="min-w-0 truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+						onclick={() => onperson?.(one.author)}
+					>
+						{named(one.author)}
+					</button>
+				{:else}
+					<span class="truncate text-sm font-medium select-text">{named(one.author)}</span>
+				{/if}
 				<span class="shrink-0 text-xs text-muted-foreground">{when(one.created_at)}</span>
 			</div>
 			<p class="text-sm whitespace-pre-wrap">{one.content}</p>
-			<div class="flex items-center gap-1">
+			<div class="flex flex-wrap items-center gap-1">
 				<Button
 					variant="ghost"
 					class="-ml-2 h-9 px-2 text-xs text-muted-foreground"
@@ -193,6 +273,15 @@
 				>
 					Reply
 				</Button>
+				{#if refusing && one.author !== mine && onMyNote(one)}
+					<Button
+						variant="ghost"
+						class="h-9 px-2 text-xs text-muted-foreground hover:text-destructive"
+						onclick={() => refuse(one.author)}
+					>
+						Do not show me their answers
+					</Button>
+				{/if}
 				{#if one.author === mine}
 					<Button
 						variant="ghost"
@@ -226,6 +315,15 @@
 					aria-label="Take back your {shownAs(reaction)}"
 					onclick={() => unreact(reaction)}
 					class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-primary/40 bg-primary/5 px-2.5 text-xs transition-colors duration-150 ease-out hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				>
+					{@render chip(reaction)}
+				</button>
+			{:else if reaction.kind === 'emoji' && keepable}
+				<button
+					type="button"
+					aria-label="Keep {reaction.emoji.shortcode} in your set"
+					onclick={() => (keeping = reaction.emoji)}
+					class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 				>
 					{@render chip(reaction)}
 				</button>
@@ -271,6 +369,14 @@
 		</ul>
 	{/if}
 
+	{#if unwelcome}
+		{@const voice = unwelcome}
+		<div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+			<span>You will not be shown their answers.</span>
+			<Button variant="ghost" class="h-9 px-2 text-xs" onclick={() => allow(voice)}>Undo</Button>
+		</div>
+	{/if}
+
 	<div class="space-y-2">
 		{#if replyingTo}
 			<div class="flex items-center gap-2 text-xs text-muted-foreground">
@@ -308,3 +414,4 @@
 </section>
 
 <ReactionPicker bind:open={picking} custom={ownEmoji} onpick={pick} />
+<KeepEmoji emoji={keeping} onclose={() => (keeping = null)} onkeep={keep} />
