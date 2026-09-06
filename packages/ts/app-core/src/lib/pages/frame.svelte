@@ -14,6 +14,7 @@
 	import { api } from '../api.js';
 	import { keyboard } from '../keyboard.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { deleted } from '../stores/deleted.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -130,6 +131,7 @@
 		const signedIn = session.signedIn;
 		if (wasSignedIn && !signedIn) {
 			conversation.clear();
+			deleted.clear();
 			graphs.clear();
 			identity.clear();
 			nodes.clear();

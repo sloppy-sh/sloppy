@@ -1,6 +1,14 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { node, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
+import { deleted } from '../stores/deleted.svelte.js';
+import {
+	AT,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import Frame from './frame.test-support.svelte';
@@ -84,6 +92,7 @@ function unavailable(): Response {
 beforeEach(() => {
 	session.clear();
 	nodes.clear();
+	deleted.clear();
 	where.url = new URL('http://app.test/');
 	where.gone.length = 0;
 	api = useFakeApi();
@@ -177,6 +186,26 @@ describe('the frame around every page', () => {
 		await settle();
 
 		expect(nodes.region()).toEqual([]);
+	});
+
+	it('takes what they deleted with it, which is a listing of their notes too', async () => {
+		api.on('GET /auth/me', () => VIEWER);
+		api.on('GET /nodes/deleted', () => [
+			{ ref: ref(31), address: '1a', graph: ref(1), title: 'A branch', deleted_at: AT, notes: 3 }
+		]);
+		await show();
+		await deleted.load();
+		expect(deleted.all).toHaveLength(1);
+
+		session.clear();
+		flushSync();
+		await settle();
+
+		session.adopt(VIEWER, 'token');
+		flushSync();
+		await settle();
+
+		expect(deleted.all).toEqual([]);
 	});
 
 	it('keeps the graph standing while it only cannot be reached', async () => {

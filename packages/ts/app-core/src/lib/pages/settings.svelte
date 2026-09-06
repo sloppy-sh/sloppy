@@ -10,6 +10,7 @@
 	import { runtime } from '../runtime.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { conversation } from '../stores/conversation.svelte.js';
+	import { deleted } from '../stores/deleted.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -79,6 +80,7 @@
 			await session.signOut();
 		} finally {
 			nodes.clear();
+			deleted.clear();
 			graphs.clear();
 			tags.clear();
 			peers.clear();
