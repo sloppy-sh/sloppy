@@ -15,6 +15,7 @@ import {
   CreatePullRequestSchema,
   type NodeView,
   type OwnedRef,
+  type PulledNoteHit,
   type PullView,
 } from "@sloppy/types";
 import type { AuthedRequest } from "../auth/authed-request";
@@ -62,6 +63,18 @@ export class PullController {
     @Param("localId") localId: string,
   ): Promise<BlockView[]> {
     return this.pulls.blocks(viewerDid(req), requireRef(did, localId));
+  }
+
+  /** The held copy of a note a citation names, and a region that serves it —
+   *  `null` where the reader holds none of it. Declared before the region
+   *  routes for the same reason the stack above is. */
+  @Get("nodes/:did/:localId")
+  heldNote(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+  ): Promise<PulledNoteHit | null> {
+    return this.pulls.heldBySource(viewerDid(req), requireRef(did, localId));
   }
 
   @Get(":did/:localId/nodes")

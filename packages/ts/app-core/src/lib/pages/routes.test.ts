@@ -6,8 +6,10 @@ import {
 	activeRouteId,
 	APP_ROUTES,
 	citationUrl,
+	isOpenRoute,
 	navRoutes,
 	nodeHref,
+	OPEN_ROUTES,
 	refFromPath
 } from './routes.js';
 
@@ -45,6 +47,20 @@ describe('activeRouteId', () => {
 			expect(activeRouteId(route.href)).toBe(route.id);
 		}
 	});
+});
+
+describe('isOpenRoute', () => {
+	it('stands every route that needs no account, the cited note among them', () => {
+		for (const route of OPEN_ROUTES) expect(isOpenRoute(route)).toBe(true);
+		expect(isOpenRoute(nodeHref(REF as OwnedRef))).toBe(true);
+	});
+
+	it.each(['/', '/profile', '/new', '/n', '/n/did', '/n/did/ulid/extra'])(
+		'keeps %s behind an account',
+		(path) => {
+			expect(isOpenRoute(path)).toBe(false);
+		}
+	);
 });
 
 describe('navRoutes', () => {

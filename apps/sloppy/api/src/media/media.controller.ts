@@ -9,7 +9,8 @@ import {
 import type { Response } from "express";
 import type { AuthedRequest } from "../auth/authed-request";
 import { AppConfigService } from "../config/app-config.service";
-import { parseBody, viewerDelegation } from "../node/request";
+import { parseBody, viewerDelegation, viewerDid } from "../node/request";
+import { HeldPictures } from "./held-pictures";
 import { IMAGE_MIME_TYPES, MediaService, roleLimits } from "./media.service";
 import { relayPicture } from "./picture-relay";
 import { ownOrigin } from "./remote-host";
@@ -22,6 +23,7 @@ import { ownOrigin } from "./remote-host";
 export class MediaController {
   constructor(
     private readonly media: MediaService,
+    private readonly held: HeldPictures,
     private readonly config: AppConfigService,
   ) {}
 
@@ -52,6 +54,35 @@ export class MediaController {
   @Get("uploads")
   pictures(@Req() req: AuthedRequest): Promise<OwnedMediaAsset[]> {
     return this.media.ownPictures(viewerDelegation(req), "block");
+  }
+
+  /**
+   * A picture inside a note the caller pulled, out of the author's own store.
+   * Fetched here rather than by the browser, so the author's instance learns
+   * this one and never the reader — AI.md § "Sloppy's Vocabulary Stays Out of
+   * the Identity Store".
+   */
+  @Get("published/:did/:localId")
+  async publishedPicture(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const picture = await this.held.address(viewerDid(req), {
+      did: decodeURIComponent(did),
+      localId: decodeURIComponent(localId),
+    });
+
+    await relayPicture(res, picture, {
+      policy: {
+        allowPrivate: !this.config.isProduction,
+        ownOrigin: ownOrigin(this.config.publicUrl),
+      },
+      maxBytes: roleLimits("block").maxBytes,
+      mimeTypes: IMAGE_MIME_TYPES,
+      cacheControl: "private, max-age=300",
+    });
   }
 
   /**

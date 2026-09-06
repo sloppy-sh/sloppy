@@ -24,7 +24,7 @@
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
-	import { activeRouteId, navRoutes, OPEN_ROUTES } from './routes.js';
+	import { activeRouteId, isOpenRoute, navRoutes, OPEN_ROUTES, refFromPath } from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -38,7 +38,7 @@
 	const activeId = $derived(activeRouteId(path));
 	/** A page mounted a tick before the redirect below would spend a request on a
 	 *  credential we already know is missing. */
-	const admitted = $derived(session.ready && (session.signedIn || OPEN_ROUTES.includes(path)));
+	const admitted = $derived(session.ready && (session.signedIn || isOpenRoute(path)));
 	/** Sending somebody to sign in because Sloppy could not ask who they are puts
 	 *  them on a page that cannot help them either. */
 	const held = $derived(session.ready && !admitted && session.unavailable);
@@ -104,7 +104,10 @@
 	$effect(() => {
 		if (!session.ready) return;
 		if (!session.signedIn) {
-			if (OPEN_ROUTES.includes(path)) return;
+			// A cited note is read where the reader stands, and signing in from it
+			// brings them back to it rather than to the graph.
+			if (refFromPath(path)) holdReturn(path + page.url.search);
+			if (isOpenRoute(path)) return;
 			if (session.unavailable) return;
 			if (path !== '/') holdReturn(path + page.url.search);
 			const trouble = page.url.searchParams.get('sloppy_error');

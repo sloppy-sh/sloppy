@@ -647,6 +647,35 @@ export class SyrService {
     return held;
   }
 
+  /**
+   * One page of what an identity keeps in the open, as their own instance
+   * publishes it. syr serves no public read of a single upload, so finding one
+   * is a walk of these pages rather than a lookup — docs/ARCHITECTURE.md
+   * § "Pictures", and `media/held-pictures.ts` is the walk.
+   */
+  async listPublicUploads(
+    instanceUrl: string,
+    did: string,
+    page: { limit: number; offset: number },
+    reach?: HostPolicy,
+  ): Promise<SyrOwnedUpload[]> {
+    const { endpoints } = await this.identityManifest(instanceUrl, did, reach);
+    const url = `${endpoints.uploads}?limit=${page.limit}&offset=${page.offset}`;
+    const failure = "That picture could not be loaded.";
+    const body = await this.readJson(
+      url,
+      { headers: { accept: "application/json" } },
+      failure,
+      reach,
+    );
+    return this.readShape(
+      syrEnvelope(z.array(SyrOwnedUploadSchema)),
+      body,
+      url,
+      failure,
+    ).data;
+  }
+
   /** Anyone's catalog, as that identity's own instance publishes it. An empty
    *  answer where the manifest names no such endpoint: nothing to show is the
    *  same outcome as an instance that does not host emoji. */

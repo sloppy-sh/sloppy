@@ -669,3 +669,111 @@ describe("who somebody follows, in their own identity store", () => {
     ).resolves.toBeNull();
   });
 });
+
+describe("what an identity keeps in the open", () => {
+  const MANIFEST_PATH = `/.well-known/syr/${encodeURIComponent(DID)}`;
+  const UPLOADS = `/api/public/uploads/${DID}`;
+
+  const manifest = {
+    version: 1,
+    did: DID,
+    provider: INSTANCE,
+    endpoints: {
+      profile: `${INSTANCE}/api/public/profile/${DID}`,
+      uploads: `${INSTANCE}${UPLOADS}`,
+      did_document: `${INSTANCE}/api/identity/${DID}/document`,
+    },
+    web_profile: `${INSTANCE}/u/${DID}`,
+  };
+
+  const rows = (total: number) =>
+    Array.from({ length: total }, (_, at) => ({
+      did: DID,
+      local_id: `01UPL${String(at).padStart(3, "0")}`,
+      filename: `picture-${at}.png`,
+      mime_type: "image/png",
+      size: 128,
+      status: "completed",
+      is_public: true,
+      url: `${INSTANCE}/files/${at}.png`,
+    }));
+
+  /** An instance holding `total` pictures, serving the page it is asked for. */
+  const holding = (total: number) => {
+    const held = rows(total);
+    return instance({
+      [MANIFEST_PATH]: { body: manifest },
+      [UPLOADS]: (asked) => {
+        const from = Number(asked.searchParams.get("offset"));
+        return {
+          body: {
+            data: held.slice(
+              from,
+              from + Number(asked.searchParams.get("limit")),
+            ),
+          },
+        };
+      },
+    });
+  };
+
+  it("asks the listing the identity's own manifest names, at the page it was given", async () => {
+    const { calls } = holding(60);
+
+    const page = await new SyrService().listPublicUploads(INSTANCE, DID, {
+      limit: 20,
+      offset: 40,
+    });
+
+    expect(page.map((row) => row.local_id)).toEqual(
+      rows(60)
+        .slice(40)
+        .map((row) => row.local_id),
+    );
+    const asked = new URL(
+      String(calls.find((call) => call.url.includes(UPLOADS))?.url),
+    );
+    expect(asked.searchParams.get("limit")).toBe("20");
+    expect(asked.searchParams.get("offset")).toBe("40");
+  });
+
+  it("carries where the bytes read back from, and what a store says is private", async () => {
+    instance({
+      [MANIFEST_PATH]: { body: manifest },
+      [UPLOADS]: {
+        body: {
+          data: [
+            {
+              ...rows(1)[0],
+              is_public: false,
+              downloadUrl: `${INSTANCE}/download/0.png`,
+            },
+          ],
+        },
+      },
+    });
+
+    const [row] = await new SyrService().listPublicUploads(INSTANCE, DID, {
+      limit: 100,
+      offset: 0,
+    });
+
+    expect(row.downloadUrl).toBe(`${INSTANCE}/download/0.png`);
+    expect(row.is_public).toBe(false);
+  });
+
+  it("refuses a listing it cannot read rather than reading half of one", async () => {
+    vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+    instance({
+      [MANIFEST_PATH]: { body: manifest },
+      [UPLOADS]: { body: { data: "everything" } },
+    });
+
+    await expect(
+      new SyrService().listPublicUploads(INSTANCE, DID, {
+        limit: 100,
+        offset: 0,
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});
