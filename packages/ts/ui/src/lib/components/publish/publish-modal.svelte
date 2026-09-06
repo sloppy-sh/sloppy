@@ -24,8 +24,7 @@
 	}
 
 	/** What somebody has to be given before they can read a published branch,
-	 *  beside the address: who wrote it, and where the graph is answered. Either
-	 *  may be absent, and what is missing is left out rather than guessed at. */
+	 *  beside the address: who wrote it, and where the graph is answered. */
 	export interface ReaderNeeds {
 		identity?: string;
 		where?: string;
@@ -35,7 +34,6 @@
 		open?: boolean;
 		/** The branch's root, as a person cites it. */
 		address: Address;
-		/** What to hand a reader so they can find this branch. */
 		reader?: ReaderNeeds;
 		/** Absent where nothing here is published yet. */
 		published?: PublishedBranch | null;

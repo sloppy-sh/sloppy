@@ -98,8 +98,6 @@ describe('where the signed-in person keeps their identity', () => {
 		expect(identity.kind).toBe('local');
 	});
 
-	// The other half of what somebody hands a reader: their identity says who,
-	// this says where the branch is answered.
 	it('carries where a reader reaches the graph kept here', async () => {
 		api.on('GET /auth/own-instance', () => ({
 			instance_url: null,
@@ -111,7 +109,7 @@ describe('where the signed-in person keeps their identity', () => {
 		expect(identity.servedAt).toBe('https://notes.example');
 	});
 
-	it('says nothing about where the graph is until the ask has landed', async () => {
+	it('says nothing about where the graph is until the ask lands, or where none was named', async () => {
 		api.on('GET /auth/own-instance', () => ({ instance_url: null }));
 		session.adopt(VIEWER, 'a-session');
 		expect(identity.servedAt).toBeUndefined();

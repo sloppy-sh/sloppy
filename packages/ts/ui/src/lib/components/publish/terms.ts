@@ -33,9 +33,7 @@ export function publishingSays(of: PublishSubject, answersReach: boolean): strin
 	const otherwise = 'address' in of ? 'until you say otherwise here' : 'until you say otherwise';
 	return [
 		`Everything under ${name} goes out: every note in ${it}, finished or not, and every picture in them.`,
-		several
-			? 'The names you gave the graphs they sit in go out too.'
-			: `The name you gave the graph ${it} sits in goes out too.`,
+		`The name you gave the graph ${several ? 'each of them sits' : `${it} sits`} in goes out too.`,
 		`How ${several ? 'they look' : 'it looks'} on the graph goes out as well — the ring and the size, though not a picture you set there.`,
 		`Anyone who can find your profile can read ${it}. There is no link to keep back and nobody to let in.`,
 		`If you take ${it} down, whoever has already read ${it} keeps their copy.`,

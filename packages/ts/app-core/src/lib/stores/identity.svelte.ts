@@ -26,7 +26,6 @@ class IdentityStore {
 	/** Where this instance's own identities live: `null` where it keeps none,
 	 *  `undefined` until it has been asked. */
 	#here = $state<string | null | undefined>(undefined);
-	/** Where a peer reaches the graph this instance serves. */
 	#origin = $state<string | undefined>(undefined);
 	#inflight: Promise<void> | null = null;
 	// A sign-out that lands mid-request must not be undone by its answer.
@@ -45,11 +44,8 @@ class IdentityStore {
 			: 'delegated';
 	}
 
-	/**
-	 * Where somebody else reaches the graph kept here, which a reader needs
-	 * beside the author's own identity. `undefined` until the ask has landed,
-	 * and where the instance is reached by an address nobody could be handed.
-	 */
+	/** Where a peer reaches the graph kept here. `undefined` until the ask has
+	 *  landed, and where the instance named no origin. */
 	get servedAt(): string | undefined {
 		return this.#origin;
 	}

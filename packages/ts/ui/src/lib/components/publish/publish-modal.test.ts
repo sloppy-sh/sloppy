@@ -363,8 +363,6 @@ describe('what a reader has to be given', () => {
 		flushSync();
 	};
 
-	/** Everything a person can select and send on, which is the whole point of
-	 *  the section: text they can copy, never a label. */
 	const selectable = () =>
 		[...document.body.querySelectorAll('.select-text')].map((one) => one.textContent?.trim());
 
