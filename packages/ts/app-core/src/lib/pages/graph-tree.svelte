@@ -3,8 +3,9 @@
 	// at a time. A run belongs to the graph it was written in — AI.md § "The
 	// Address Is the Protocol" — so each graph on the canvas is its own tree.
 	import { graphOf, type NodeView, type OwnedRef, type Tag } from '@sloppy/types';
-	import { TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
+	import { nameOf, TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
 	import { api } from '../api.js';
+	import { people } from '../stores/people.svelte.js';
 
 	let {
 		notes,
@@ -58,8 +59,21 @@
 		};
 	});
 
+	/** Whoever wrote a held region, which is one author's alone. */
+	const heldBy = $derived(fields ? undefined : notes[0]?.created_by);
+
+	$effect(() => {
+		if (heldBy) people.resolve(heldBy);
+	});
+
+	const heldAuthor = $derived.by((): string | undefined => {
+		if (!heldBy) return undefined;
+		const person = people.of(heldBy);
+		return person ? nameOf(person) : heldBy;
+	});
+
 	const groups = $derived.by((): TreeGroup[] => {
-		if (!fields) return [{ key: 'held', title: '', notes }];
+		if (!fields) return [{ key: 'held', title: '', notes, author: heldAuthor }];
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- rebuilt whole by the derived, never mutated after; the derived IS the reactivity.
 		const held = new Map<OwnedRef, NodeView[]>();
 		for (const note of notes) {
