@@ -805,6 +805,40 @@ describe("the domain routes", () => {
       });
       expect(answer.status).toBe(400);
     });
+
+    scenario("keeps a section written on two devices at once", async () => {
+      const note = await newNode(ada, { title: "Open in two places" });
+      const opened = (await ok("POST", "/blocks", ada, {
+        node: note.ref,
+        content: prose("What both of them opened."),
+      })) as BlockView;
+      const held = async () =>
+        (
+          (await ok("GET", `/nodes/${at(note.ref)}/blocks`, ada)) as BlockView[]
+        )[0];
+
+      const phone = (await ok("PATCH", `/blocks/${at(opened.ref)}`, ada, {
+        content: prose("What the phone wrote."),
+        expects: opened.updated_at,
+      })) as BlockView;
+
+      const tablet = await call("PATCH", `/blocks/${at(opened.ref)}`, ada, {
+        content: prose("What the tablet would have put over it."),
+        expects: opened.updated_at,
+      });
+      expect(tablet.status).toBe(409);
+      expect((tablet.body as { message: string }).message).toMatch(
+        /written somewhere else/,
+      );
+      expect((await held()).content).toEqual(prose("What the phone wrote."));
+
+      const reread = prose("What the tablet wrote after reading again.");
+      await ok("PATCH", `/blocks/${at(opened.ref)}`, ada, {
+        content: reread,
+        expects: phone.updated_at,
+      });
+      expect((await held()).content).toEqual(reread);
+    });
   });
 
   describe("the tag axis", () => {

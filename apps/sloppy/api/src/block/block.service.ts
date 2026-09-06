@@ -2,6 +2,7 @@
 
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -93,11 +94,20 @@ export class BlockService {
     }
 
     const { written, moved } = await this.perNote.run(node, async () => {
-      // Read inside the queue: what this write replaced is what says whether the
-      // note's citations moved, and a writer ahead in the queue has already
-      // replaced anything read before it.
+      // Read inside the queue: what this write replaced is what says whether
+      // the note's citations moved and whether the section is still the one the
+      // writer read, and a writer ahead in the queue has already replaced
+      // anything read before it.
       const before = await this.blocks.find(did, ref);
       if (!before) throw new NotFoundException("That block is not here.");
+      if (
+        request.expects !== undefined &&
+        request.expects !== before.updated_at
+      ) {
+        throw new ConflictException(
+          "This section was written somewhere else. Open the note again to see what it says now.",
+        );
+      }
 
       const changes: BlockPatch = {};
       if (request.content !== undefined) changes.content = request.content;
