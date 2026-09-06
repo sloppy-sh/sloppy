@@ -1,5 +1,5 @@
-// A copy of everything one person keeps, written out as it is read.
-// `GraphExportSchema` in `@sloppy/types` is the document this composes.
+// A copy of everything one person keeps. `GraphExportSchema` in `@sloppy/types`
+// is the document this composes.
 
 import { Injectable } from "@nestjs/common";
 import {
@@ -15,9 +15,8 @@ import {
 import { GraphService } from "../node/graph.service";
 import { type BlockCursor, ExportRepository } from "./export.repository";
 
-/** How many rows one read brings back. A page is held for as long as it takes
- *  to write it out and no longer, so this bounds what the copy costs in memory
- *  however much somebody has written. */
+/** A page is let go of once it is written out, so these bound what a copy costs
+ *  in memory however much somebody has written. */
 const NOTES_PER_READ = 200;
 const BLOCKS_PER_READ = 100;
 

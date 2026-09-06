@@ -26,6 +26,8 @@ export function initNativeRuntime(): void {
 		// The return leg is `deep-link.ts`.
 		openExternal: (url) => openUrl(url),
 		// Only a build carrying the on-device engine has anything on disk to erase.
-		wipeLocal: LOCAL_MODE_AVAILABLE ? () => invoke<void>('db_wipe') : undefined
+		wipeLocal: LOCAL_MODE_AVAILABLE ? () => invoke<void>('db_wipe') : undefined,
+		// Nothing in this shell writes a file yet.
+		saveFile: null
 	});
 }

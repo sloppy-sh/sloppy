@@ -65,8 +65,12 @@
 		const link = document.createElement('a');
 		link.href = at;
 		link.download = name;
+		document.body.append(link);
 		link.click();
-		URL.revokeObjectURL(at);
+		link.remove();
+		// WebKit reads the blob after the click returns; revoking in this task
+		// loses the file.
+		setTimeout(() => URL.revokeObjectURL(at));
 	}
 
 	async function signOut() {
@@ -166,7 +170,7 @@
 					</p>
 				{/if}
 				{#if copyProblem}
-					<p class="text-sm text-muted-foreground" role="status">{copyProblem}</p>
+					<p class="text-sm text-destructive" role="alert">{copyProblem}</p>
 				{/if}
 			</div>
 		{/if}

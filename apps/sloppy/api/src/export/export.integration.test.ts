@@ -10,11 +10,13 @@ import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import {
   type BlockView,
+  type DidSyr,
   type GraphExport,
   GraphExportSchema,
   type GraphView,
   type NodeView,
   type OwnedRef,
+  ownedRefFrom,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -326,6 +328,72 @@ describe("a copy of everything somebody keeps", () => {
 
       const anonymous = await fetch(`${base}/api/export`);
       expect(anonymous.status).toBe(401);
+    },
+    30_000,
+  );
+
+  // The page keys are SurrealQL, and only a walk that actually turns a page
+  // says whether the server orders and compares them the way the walk assumes.
+  scenario(
+    "reaches the same rows a page at a time as it does in one read",
+    async () => {
+      const shelf = (await ok("POST", "/graphs", ada, {
+        title: "The long shelf",
+      })) as GraphView;
+      const written: NodeView[] = [];
+      for (let n = 0; n < 5; n += 1) {
+        written.push(
+          await newNode(ada, {
+            from: { relation: "branch", graph: shelf.ref },
+            title: `Shelf ${n}`,
+          }),
+        );
+      }
+      let after: OwnedRef | undefined;
+      for (let s = 0; s < 5; s += 1) {
+        after = (await newBlock(ada, written[0].ref, `section ${s}`, after))
+          .ref;
+      }
+
+      const { ExportRepository } = await import("./export.repository");
+      const rows = app.get(ExportRepository);
+      const did = ada.did as DidSyr;
+
+      const notesAtOnce = await rows.notesIn(did, shelf.ref, undefined, 100);
+      const notesByPage: typeof notesAtOnce = [];
+      for (;;) {
+        const page = await rows.notesIn(
+          did,
+          shelf.ref,
+          notesByPage.at(-1)?.address,
+          2,
+        );
+        notesByPage.push(...page);
+        if (page.length < 2) break;
+      }
+      expect(notesAtOnce.length).toBe(5);
+      expect(notesByPage.map((note) => note.address)).toEqual(
+        notesAtOnce.map((note) => note.address),
+      );
+
+      const notes = notesAtOnce.map((note) => ownedRefFrom(note.id));
+      const stacksAtOnce = await rows.blocksOf(did, notes, undefined, 100);
+      const stacksByPage: typeof stacksAtOnce = [];
+      for (;;) {
+        const last = stacksByPage.at(-1);
+        const page = await rows.blocksOf(
+          did,
+          notes,
+          last && { node: last.node, ord: last.ord },
+          2,
+        );
+        stacksByPage.push(...page);
+        if (page.length < 2) break;
+      }
+      expect(stacksAtOnce.length).toBe(5);
+      expect(stacksByPage.map((block) => ownedRefFrom(block.id))).toEqual(
+        stacksAtOnce.map((block) => ownedRefFrom(block.id)),
+      );
     },
     30_000,
   );

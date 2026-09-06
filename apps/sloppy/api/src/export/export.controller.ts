@@ -12,8 +12,7 @@ export class ExportController {
 
   /**
    * A copy of everything the caller keeps — `GraphExportSchema` in
-   * `@sloppy/types`. Written out as it is read, so the answer starts before the
-   * whole of it has been gathered and neither end holds all of it at once.
+   * `@sloppy/types`, written out as it is read.
    */
   @Get()
   async everything(

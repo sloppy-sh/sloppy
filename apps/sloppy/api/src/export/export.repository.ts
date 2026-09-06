@@ -1,6 +1,4 @@
-// The reads a copy of somebody's own writing is walked by: one graph's notes at
-// a time, then the sections of those notes, each page keyed off the last row of
-// the one before it so nothing holds the whole graph.
+// The reads a copy of somebody's own writing is walked by.
 
 import { Injectable } from "@nestjs/common";
 import {
@@ -48,11 +46,7 @@ export class ExportRepository {
     return rows.map((row) => parseNode(row));
   }
 
-  /**
-   * The same run, as the reference and the key of the next page alone. The
-   * sections of a graph are read a page of notes at a time, and by then the
-   * notes have been written out and let go of.
-   */
+  /** The same run, as the reference and the key of the next page alone. */
   async noteRefsIn(
     did: DidSyr,
     graph: OwnedRef,
