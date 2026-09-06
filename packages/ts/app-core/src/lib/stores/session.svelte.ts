@@ -102,17 +102,21 @@ class SessionStore {
 	}
 
 	async signOut(): Promise<void> {
+		const leaving = this.#viewer?.did;
 		try {
 			await api.signOut();
 		} finally {
 			this.clear();
+			// Signing out is done the moment it is asked for; a device that cannot
+			// answer about its own store does not hold somebody in a session.
+			if (leaving) void deviceStore.forget(leaving).catch(() => {});
 		}
 	}
 
-	/** Drop the session locally, and everything this device kept for whoever was
-	 *  signed in. The shell calls this from `onAuthInvalid`. */
+	/** Drop the session locally: nobody is signed in here any more. What this
+	 *  device kept for them stays, because a session that lapsed is not a
+	 *  sign-out — DESIGN.md § "Persistence". */
 	clear(): void {
-		const leaving = this.#viewer?.did;
 		this.#epoch++;
 		runtime.token.clear();
 		this.#viewer = null;
@@ -120,9 +124,6 @@ class SessionStore {
 		this.#ready = true;
 		this.#loading = false;
 		this.#inflight = null;
-		// Signing out is done the moment it is asked for; a device that cannot
-		// answer about its own store does not hold somebody in a session.
-		if (leaving) void deviceStore.forget(leaving).catch(() => {});
 	}
 }
 

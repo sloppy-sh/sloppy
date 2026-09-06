@@ -1108,10 +1108,14 @@ yet, and whatever else a surface has to put in front of somebody before an answe
 `deviceStore` in `@sloppy/app-core` is the one door to it, scoped by identity and by area
 so two surfaces cannot write over each other. Three rules hold it:
 
-- **It is a copy, never where something lives.** What a person wrote lives in their graph;
-  this is what makes the graph open on a train. A surface that can only read a thing from
-  here has lost it.
-- **It is one identity's, and it goes when they sign out.** `session.clear()` forgets
-  everything of whoever was signed in, whether they left on purpose or their session did.
+- **It is a copy, never where something lives** — with one exception, writing that has not
+  reached Sloppy yet, which lives here until it does. Everything else a surface reads from
+  here it can read again from the graph, and that is what makes the graph open on a train.
+  A surface that can only read a thing from here has lost it.
+- **It is one identity's, and their sign-out takes it.** `session.signOut()` forgets
+  everything this device kept for them. A session that merely lapses is not a sign-out:
+  the person is expected back, and the writing still waiting to be saved has to be there
+  when they are. Nothing of theirs is put in front of whoever signs in next either — every
+  key here is scoped to the identity that wrote it.
 - **None of it reaches a note or a peer.** It is this device's, like the ground and the
   theme, and nobody else can tell it exists.

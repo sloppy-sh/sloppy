@@ -378,8 +378,9 @@ describe("the angular sector", () => {
 // implementation replayed twice would prove only that the code is a function,
 // so the two replicas assign addresses from DIFFERENT state:
 //
-//   - `AppendOrderPeer` remembers which node it wrote under which parent, and
-//     takes the last one it wrote. A note going never moves that mark.
+//   - `AppendOrderPeer` keeps no row for a note that has gone, the way a store
+//     that deletes outright does. What it takes the next address from is the
+//     mark it made when it wrote, and a note going never moves that mark.
 //   - `AddressOrderPeer` remembers nothing but addresses, in the three states a
 //     graph holds them in: at a note, at a deleted one, and retired. It recovers
 //     the tree from the addresses themselves and takes the greatest by
@@ -402,24 +403,53 @@ interface Peer {
 class AppendOrderPeer implements Peer {
   readonly assigned: Address[] = [];
   private readonly parentOf: (number | null)[] = [];
-  private readonly childrenOf = new Map<number | null, number[]>();
+  /** The notes it still holds. A delete takes them, address and all. */
+  private readonly rows = new Map<number, Address>();
+  /** The last address written under a parent, which no delete takes back. */
+  private readonly lastUnder = new Map<number | null, Address>();
 
   apply(op: Op): void {
-    if (op.kind === "delete" || op.kind === "purge") return;
+    if (op.kind === "purge") return;
+    if (op.kind === "delete") {
+      for (const node of [...this.rows.keys()]) {
+        if (this.isUnder(op.target, node)) this.rows.delete(node);
+      }
+      return;
+    }
     const parent =
       op.kind === "root"
         ? null
         : op.kind === "child"
           ? op.target
           : this.parentOf[op.target];
-    const siblings = this.childrenOf.get(parent) ?? [];
+    const spent = this.lastUnder.get(parent);
     const address =
-      siblings.length === 0
-        ? childAddress(parent === null ? null : this.assigned[parent])
-        : siblingAddress(this.assigned[siblings[siblings.length - 1]]);
-    this.childrenOf.set(parent, [...siblings, this.assigned.length]);
+      spent === undefined
+        ? childAddress(parent === null ? null : this.rowAt(parent))
+        : siblingAddress(spent);
+    this.lastUnder.set(parent, address);
+    this.rows.set(this.assigned.length, address);
     this.parentOf.push(parent);
     this.assigned.push(address);
+  }
+
+  private rowAt(node: number): Address {
+    const address = this.rows.get(node);
+    if (address === undefined) {
+      throw new Error(`wrote under a note that has gone: ${node}`);
+    }
+    return address;
+  }
+
+  private isUnder(root: number, node: number): boolean {
+    for (
+      let walk: number | null = node;
+      walk !== null;
+      walk = this.parentOf[walk]
+    ) {
+      if (walk === root) return true;
+    }
+    return false;
   }
 }
 

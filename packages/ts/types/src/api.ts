@@ -181,14 +181,8 @@ export const DeletedBranchSchema = z.object({
 export type DeletedBranch = z.infer<typeof DeletedBranchSchema>;
 
 /**
- * Everything one person keeps, as JSON they can hold: the graphs they have, the
- * notes still in them — a deleted note is not part of what somebody has — and
- * every section of those notes with its document exactly as it is stored. A
- * section names the note it belongs to rather than sitting inside it, which is
- * the shape the rows are already in.
- *
- * `did` is whose data this is, and it is the answer to which addresses are read
- * in which graphs: every graph, note and section here is theirs.
+ * Everything `did` keeps, as JSON they can hold. A deleted note is not part of
+ * it, and a section carries its document exactly as it is stored.
  */
 export const GraphExportSchema = z.object({
   exported_at: TimestampSchema,

@@ -139,4 +139,16 @@ describe('the session', () => {
 		await session.signOut();
 		await vi.waitFor(async () => expect(await notes.keys()).toEqual([]));
 	});
+
+	it('keeps what the device holds when a session lapses rather than ends', async () => {
+		await session.refresh();
+		const notes = deviceStore.area(VIEWER.did, 'notes');
+		await notes.set('1a', 'a paragraph that never reached Sloppy');
+
+		session.clear();
+		expect(session.signedIn).toBe(false);
+		expect(await notes.keys()).toEqual(['1a']);
+
+		await deviceStore.forget(VIEWER.did);
+	});
 });

@@ -896,7 +896,9 @@ retired_address:{ created_by: <did>, id: <ulid> }
 is a note that is there, which is every row written before this column existed, so nothing
 has to be filled in. A stamped note and its sections are still stored, still the author's,
 and still at their addresses — what a person can put back is exactly what is still there to
-find. The reads that decide a NEW address are the ones that deliberately do not filter it:
+find. **Nothing stamps the column yet**: removal takes the rows, and the milestone that
+lands putting a note back is what makes it stamp instead. The reads that decide a NEW
+address are the ones that deliberately do not filter it:
 `childAddresses` and `addressTaken` count a deleted note among what a graph has assigned,
 because an address is spent whether or not the note comes back.
 
