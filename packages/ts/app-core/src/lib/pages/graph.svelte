@@ -122,8 +122,7 @@
 	let switching = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
 	let unreachable = $state<string | null>(null);
-	/** Nothing could be reached, but the canvas has what this device kept. The
-	 *  graph draws; this is the one line that says how old it may be. */
+	/** No note answered, and the canvas is drawing what this device kept. */
 	let asLastRead = $state(false);
 	/** A field that would not read while the others drew. Beside the graph, never
 	 *  instead of it: one graph short must not cost the reader the rest. */
@@ -477,12 +476,39 @@
 	/** How many other graphs are standing beside this one, where any are. */
 	const besideIt = $derived(onCanvas.length > 1 ? `+${onCanvas.length - 1}` : null);
 
-	/** Everything one graph puts on the canvas: its tags for the rail, and every
-	 *  note of it — one branch missing would leave the counts under every
-	 *  mega-node wrong with nothing to say so. */
-	async function loadField(graph: OwnedRef): Promise<void> {
-		const [, branches] = await Promise.all([tags.load(graph), nodes.load({ graph })]);
-		await Promise.all(branches.map((root) => nodes.load({ origin: root.ref })));
+	/** What one graph's read left on the canvas. */
+	interface FieldRead {
+		/** Every note of the field arrived. One branch missing would leave the
+		 *  counts under every mega-node wrong with nothing to say so. */
+		whole: boolean;
+		/** Any of its notes arrived: a field drawn from answers rather than from
+		 *  what this device kept. */
+		answered: boolean;
+		error?: unknown;
+	}
+
+	async function loadField(graph: OwnedRef): Promise<FieldRead> {
+		// The rail is the graph's legend, not the graph: a field whose tag counts
+		// will not read still draws.
+		void tags.load(graph).catch(() => {});
+		let error: unknown;
+		const branches = await nodes.load({ graph }).catch((err: unknown) => {
+			error = err;
+			return null;
+		});
+		if (!branches) return { whole: false, answered: false, error };
+		const trees = await Promise.all(
+			branches.map((root) =>
+				nodes.load({ origin: root.ref }).then(
+					() => true,
+					(err: unknown) => {
+						error ??= err;
+						return false;
+					}
+				)
+			)
+		);
+		return { whole: trees.every(Boolean), answered: true, error };
 	}
 
 	async function loadGraph(): Promise<void> {
@@ -507,34 +533,32 @@
 		);
 		// Each on its own, because one field that will not read must not cost the
 		// others theirs — `node.svelte`'s `reachEveryGraph` reads them the same way.
-		const missed = (
-			await Promise.all(
-				fields.map((graph) =>
-					loadField(graph).then(
-						() => null,
-						(error: unknown) => ({ graph, error })
-					)
-				)
-			)
-		).filter((miss) => miss !== null);
+		const reads = await Promise.all(
+			fields.map((graph) => loadField(graph).then((read) => ({ graph, ...read })))
+		);
 		loading = false;
-		if (missed.length === 0) return;
-		if (missed.length === fields.length) {
+		const short = reads.filter((read) => !read.whole);
+		if (short.length === 0) return;
+		if (!reads.some((read) => read.answered)) {
 			if (fields.some((graph) => nodes.region({ graph }).length > 0)) {
 				asLastRead = true;
 				return;
 			}
 			unreachable =
-				serverMessage(missed[0].error) ??
+				serverMessage(short[0].error) ??
 				`Sloppy could not reach ${fields.length > 1 ? 'those graphs' : 'your graph'}. Try again in a moment.`;
+			return;
+		}
+		if (short.some((read) => read.answered)) {
+			shortField = 'Some notes could not be read. Everything else on the canvas is here.';
 			return;
 		}
 		// What the graphs are called may not have arrived either, so one with no
 		// name yet is still said — just not by name.
-		const named = missed.length === 1 ? graphs.titleOf(missed[0].graph) : '';
+		const named = short.length === 1 ? graphs.titleOf(short[0].graph) : '';
 		shortField = named
 			? `${named} could not be read. Everything else on the canvas is here.`
-			: `${missed.length === 1 ? 'A graph' : 'Some graphs'} on the canvas could not be read. Everything else is here.`;
+			: `${short.length === 1 ? 'A graph' : 'Some graphs'} on the canvas could not be read. Everything else is here.`;
 	}
 
 	// A note reached by its address arrives in the URL and nowhere else, at either

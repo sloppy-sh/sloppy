@@ -80,7 +80,7 @@ const byAddress = (a: NodeView, b: NodeView) => compareAddresses(a.address, b.ad
 const WRITE_AFTER = 200;
 
 /** Kept under the graph each note is in, so one field's notes are read and
- *  written on their own. `null` where nobody is signed in to keep them for. */
+ *  written on their own. */
 function kept(): DeviceArea | null {
 	const did = session.viewer?.did;
 	return did ? deviceStore.area(did, 'notes') : null;

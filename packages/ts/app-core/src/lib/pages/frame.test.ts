@@ -153,6 +153,16 @@ describe('the frame around every page', () => {
 		expect(target.textContent).toContain('Try again, or come back to it in a moment.');
 	});
 
+	// A page about the reader has nobody to be about while Sloppy cannot say who
+	// they are, so offering it is a tab that lands back where it was tapped.
+	it('offers nothing that leads back to the same screen while it cannot be reached', async () => {
+		api.on('GET /auth/me', () => unavailable());
+
+		await show();
+
+		expect(reachable()).toEqual(['/', '/settings']);
+	});
+
 	// A session can end without anybody asking it to, and the next person to sign
 	// in on this device must not be shown the last one's graph.
 	it('drops the graph when a session ends on its own', async () => {

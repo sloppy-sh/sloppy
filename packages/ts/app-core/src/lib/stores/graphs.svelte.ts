@@ -147,7 +147,10 @@ class GraphsStore {
 				this.#keep();
 				return list;
 			})
-			.catch((err: unknown) => {
+			.catch(async (err: unknown) => {
+				// Offline an ask can fail before the device has answered, and a
+				// listing this device kept is not something to report a failure over.
+				await this.restore();
 				if (current()) {
 					this.#state = this.#asLastRead
 						? { loading: false, loaded: before.loaded, failed: false }

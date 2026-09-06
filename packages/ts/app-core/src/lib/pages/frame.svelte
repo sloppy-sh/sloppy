@@ -42,6 +42,13 @@
 	 *  them on a page that cannot help them either. */
 	const held = $derived(session.ready && !admitted && session.unavailable);
 	const me = $derived(people.me && personFrom(people.me));
+	/** With nobody signed in and Sloppy out of reach, a page about the reader has
+	 *  nobody to be about, so only what stands without an account is offered. */
+	const destinations = $derived(
+		session.unavailable && !session.signedIn
+			? navRoutes(me).filter(({ href }) => href === '/' || OPEN_ROUTES.includes(href))
+			: navRoutes(me)
+	);
 
 	/**
 	 * A shell that caught the consent callback itself is handed a code to spend
@@ -136,7 +143,7 @@
 </script>
 
 <AppShell
-	items={navRoutes(me)}
+	items={destinations}
 	{activeId}
 	showNav={session.ready && (session.signedIn || session.unavailable)}
 	keyboardOpen={keyboard.open}

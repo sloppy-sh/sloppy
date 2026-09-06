@@ -1626,6 +1626,33 @@ describe('the graph as this device last read it', () => {
 		expect(screen()).not.toContain('This is your graph as you last read it.');
 	});
 
+	// The rail is the legend beside the graph, so its counts going missing is not
+	// the graph going missing.
+	it('draws what the server answered even where the tag counts would not read', async () => {
+		api.on('GET /nodes/tags', () => {
+			throw new Error('nothing is listening');
+		});
+
+		await open();
+
+		expect(() => onCanvas('1')).not.toThrow();
+		expect(screen()).not.toContain('This is your graph as you last read it.');
+		expect(screen()).not.toContain('could not be read');
+	});
+
+	it('says notes are missing rather than calling the graph old, where some of it answered', async () => {
+		api.on('GET /nodes', (url) => {
+			if (url.searchParams.get('origin')) throw new Error('nothing is listening');
+			return [...graph.values()].filter((one) => one.ref === one.origin);
+		});
+
+		await open();
+
+		expect(() => onCanvas('1')).not.toThrow();
+		expect(screen()).toContain('Some notes could not be read.');
+		expect(screen()).not.toContain('This is your graph as you last read it.');
+	});
+
 	it('says the graph could not be reached where this device kept none of it', async () => {
 		nodes.clear();
 		nothingListening();

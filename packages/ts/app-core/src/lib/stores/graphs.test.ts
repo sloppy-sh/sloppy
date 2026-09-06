@@ -216,8 +216,25 @@ describe('the graphs this device kept', () => {
 		expect(graphs.state.error).toBeUndefined();
 	});
 
+	// Offline an ask fails fast and a cold store is slower, so which of the two
+	// lands first must not decide whether the sheet reports a failure.
+	it('says nothing went wrong where the ask fails before the device answers', async () => {
+		await graphs.load();
+		await keptGraphs();
+		graphs.clear();
+
+		api.on('GET /graphs', () => {
+			throw new Error('nothing is listening');
+		});
+		await graphs.load().catch(() => {});
+
+		expect(graphs.all.map((one) => one.title)).toContain('Garden');
+		expect(graphs.state.failed).toBe(false);
+	});
+
 	it('says so where it kept no listing to stand', async () => {
 		graphs.clear();
+		await deviceStore.area(DID, 'graphs').clear();
 		api.on('GET /graphs', () => {
 			throw new Error('nothing is listening');
 		});
