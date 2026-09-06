@@ -23,10 +23,20 @@
 		comments: CommentAccess;
 	}
 
+	/** What somebody has to be given before they can read a published branch,
+	 *  beside the address: who wrote it, and where the graph is answered. Either
+	 *  may be absent, and what is missing is left out rather than guessed at. */
+	export interface ReaderNeeds {
+		identity?: string;
+		where?: string;
+	}
+
 	export interface PublishModalProps {
 		open?: boolean;
 		/** The branch's root, as a person cites it. */
 		address: Address;
+		/** What to hand a reader so they can find this branch. */
+		reader?: ReaderNeeds;
 		/** Absent where nothing here is published yet. */
 		published?: PublishedBranch | null;
 		/** A branch above this one that already carries it, if there is one. */
@@ -75,6 +85,7 @@
 	let {
 		open = $bindable(false),
 		address,
+		reader = {},
 		published = null,
 		carriedBy = null,
 		narrower = [],
@@ -317,6 +328,31 @@
 				</ul>
 			</section>
 
+			{#if reader.identity || reader.where}
+				<section class="space-y-2">
+					<h3 class="text-sm font-medium">What a reader needs</h3>
+					<p class="text-sm text-muted-foreground">Send somebody this and they can read it.</p>
+					<dl class="space-y-2">
+						<div>
+							<dt class="text-xs text-muted-foreground">This branch</dt>
+							<dd class="address text-sm break-all select-text">{address}</dd>
+						</div>
+						{#if reader.identity}
+							<div>
+								<dt class="text-xs text-muted-foreground">Your identity</dt>
+								<dd class="address text-sm break-all select-text">{reader.identity}</dd>
+							</div>
+						{/if}
+						{#if reader.where}
+							<div>
+								<dt class="text-xs text-muted-foreground">Where your graph is</dt>
+								<dd class="address text-sm break-all select-text">{reader.where}</dd>
+							</div>
+						{/if}
+					</dl>
+				</section>
+			{/if}
+
 			<section class="space-y-2">
 				{#if pending}
 					{#if pending.total > 0}
@@ -416,7 +452,7 @@
 <ConfirmModal
 	bind:open={takingDown}
 	title="Take {address} down?"
-	description="Sloppy stops serving it, and the pictures in it stop being readable. Whoever has already read it keeps their copy of the writing."
+	description="Nobody new can read it, and the pictures in it stop opening. Whoever has already read it keeps their copy of the writing."
 	confirmLabel="Take it down"
 	refused={downRefused ? refused : null}
 	onconfirm={takeDown}

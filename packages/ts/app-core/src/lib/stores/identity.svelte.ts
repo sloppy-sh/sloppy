@@ -26,6 +26,8 @@ class IdentityStore {
 	/** Where this instance's own identities live: `null` where it keeps none,
 	 *  `undefined` until it has been asked. */
 	#here = $state<string | null | undefined>(undefined);
+	/** Where a peer reaches the graph this instance serves. */
+	#origin = $state<string | undefined>(undefined);
 	#inflight: Promise<void> | null = null;
 	// A sign-out that lands mid-request must not be undone by its answer.
 	#epoch = 0;
@@ -43,6 +45,15 @@ class IdentityStore {
 			: 'delegated';
 	}
 
+	/**
+	 * Where somebody else reaches the graph kept here, which a reader needs
+	 * beside the author's own identity. `undefined` until the ask has landed,
+	 * and where the instance is reached by an address nobody could be handed.
+	 */
+	get servedAt(): string | undefined {
+		return this.#origin;
+	}
+
 	/** Whether this person can hold a conversation at all — false while
 	 *  {@link IdentityStore.kind} is unknown, so nothing is offered on a guess.
 	 *  Copy that would alarm somebody waits the other way, on `kind === 'local'`. */
@@ -58,9 +69,11 @@ class IdentityStore {
 		const epoch = this.#epoch;
 		const current = () => epoch === this.#epoch;
 		const request = api
-			.ownInstance()
-			.then((here) => {
-				if (current()) this.#here = here ?? null;
+			.instanceHome()
+			.then((home) => {
+				if (!current()) return;
+				this.#here = home.instance_url;
+				this.#origin = home.instance_origin;
 			})
 			.catch(() => {})
 			.finally(() => {
@@ -75,6 +88,7 @@ class IdentityStore {
 	clear(): void {
 		this.#epoch++;
 		this.#here = undefined;
+		this.#origin = undefined;
 		this.#inflight = null;
 	}
 }
