@@ -13,7 +13,8 @@
 		opened,
 		inset,
 		onToggle,
-		onOpen
+		onOpen,
+		onWrite
 	}: {
 		/** Every note on the canvas, in any order — the tree finds its own shape. */
 		notes: readonly NodeView[];
@@ -27,6 +28,9 @@
 		inset: { top: string; bottom: string };
 		onToggle: (ref: OwnedRef, open: boolean) => void;
 		onOpen: (ref: OwnedRef) => void;
+		/** Write a note under the row. Absent where these notes are not the
+		 *  reader's to write under. */
+		onWrite?: (ref: OwnedRef) => void;
 	} = $props();
 
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
@@ -62,4 +66,4 @@
 	});
 </script>
 
-<TreeSurface {groups} {opened} {selection} {reading} {inset} {onToggle} {onOpen} />
+<TreeSurface {groups} {opened} {selection} {reading} {inset} {onToggle} {onOpen} {onWrite} />

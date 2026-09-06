@@ -26,6 +26,7 @@
 	// opens beside it. DESIGN.md § Layout — the graph is the page.
 	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
+	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
@@ -112,6 +113,7 @@
 	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
+	import { acceleratorFor, NEW_BRANCH } from './shortcuts.js';
 
 	let loading = $state(true);
 	/** Whether the graphs this person keeps are being looked through. */
@@ -346,6 +348,22 @@
 				: null)
 	);
 	const overGraph = $derived(overlay.open || menuAt !== null);
+
+	/** A question this page has put to the reader. Not `overGraph`: where the
+	 *  reading panel cannot dock the note is a surface too, and reading one is
+	 *  not being asked anything. */
+	const asked = $derived(
+		menuAt !== null ||
+			choosingWallpaper ||
+			deleting ||
+			numbering ||
+			publishing ||
+			shaping ||
+			styling ||
+			switching ||
+			tagging ||
+			visiting
+	);
 
 	/** Pointing a link at a note is a question put to the canvas, so the canvas
 	 *  comes back for as long as it is being asked. */
@@ -871,7 +889,8 @@
 		return items;
 	});
 
-	/** Kept short: the menu has a phone to fit on, beside the note it is about. */
+	/** Kept short: the menu has a phone to fit on, beside the note it is about,
+	 *  so a row added here costs a row that is here. */
 	function actsOnOne(on: OwnedRef, foldable: boolean): CanvasMenuItem[] {
 		const items: CanvasMenuItem[] = [
 			{ label: 'Open it', icon: FileText, onSelect: () => show(on) }
@@ -882,6 +901,11 @@
 			items.push({ label: 'Open it as well', icon: Files, onSelect: () => showAlso(on) });
 		}
 		items.push(
+			{
+				label: 'Write a note under this',
+				icon: CornerDownRight,
+				onSelect: () => void writeUnder(on)
+			},
 			{ label: 'Tags', icon: Tag, onSelect: () => openTags(on) },
 			{ label: 'Give it a look', icon: CircleDashed, onSelect: () => openLook(on) }
 		);
@@ -932,8 +956,8 @@
 		deleting = true;
 	}
 
-	/** A branch of its own, in the graph the reader is in. A note that continues
-	 *  one is written from inside it. */
+	/** A branch of its own, in the graph the reader is in — against
+	 *  {@link writeUnder}, which continues the note it is given. */
 	async function writeBranch(shape: NoteTemplate | null): Promise<void> {
 		if (creating) return;
 		creating = true;
@@ -943,6 +967,22 @@
 				from: { relation: 'branch', graph: graphs.current }
 			});
 			show(written.ref, { from: null, shape });
+		} catch (error) {
+			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
+		} finally {
+			creating = false;
+		}
+	}
+
+	/** The note that springs from one already on the canvas, without opening it
+	 *  first. */
+	async function writeUnder(on: OwnedRef): Promise<void> {
+		if (creating) return;
+		creating = true;
+		refused = null;
+		try {
+			const written = await nodes.create({ from: { relation: 'under', note: on } });
+			show(written.ref, { from: on, shape: null });
 		} catch (error) {
 			refused = serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.';
 		} finally {
@@ -1168,6 +1208,19 @@
 		// puts the question away and ends what it was asked about.
 		else if (choosing && !overGraph) stopChoosing();
 	}}
+	onkeydown={(event) => {
+		// Last resort: a row of the walk answers these keys for the note it is on,
+		// and has refused the default by the time they reach here.
+		if (event.defaultPrevented || asked || pointing || foreign) return;
+		const act = acceleratorFor(event);
+		if (act === 'branch') {
+			event.preventDefault();
+			void writeBranch(null);
+		} else if (act === 'under' && open) {
+			event.preventDefault();
+			void writeUnder(open);
+		}
+	}}
 />
 
 {#snippet walk()}
@@ -1250,6 +1303,7 @@
 					opened={unfolded}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
 					onOpen={foreign ? (ref) => void readHeld(ref) : show}
+					onWrite={foreign ? undefined : (ref) => void writeUnder(ref)}
 				/>
 			{/if}
 		</div>
@@ -1384,6 +1438,8 @@
 							variant="outline"
 							class="ms-auto h-9 shrink-0 rounded-full"
 							disabled={creating}
+							aria-label="New branch ({NEW_BRANCH.says})"
+							aria-keyshortcuts={NEW_BRANCH.keys}
 							onclick={() => writeBranch(null)}
 						>
 							<Plus class="size-4" />

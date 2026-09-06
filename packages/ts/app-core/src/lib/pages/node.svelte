@@ -71,6 +71,7 @@
 	import { people } from '../stores/people.svelte.js';
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { WRITE_UNDER } from './shortcuts.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
 
@@ -200,6 +201,7 @@
 
 	let titleField = $state<HTMLTextAreaElement | null>(null);
 	let noteBody = $state<HTMLElement | null>(null);
+	let stack = $state<{ focusBody: () => void } | null>(null);
 	let tagsSheet = $state<HTMLElement | null>(null);
 
 	/** Which act the shapes are being offered for: a note under this one, the one
@@ -496,10 +498,16 @@
 		resolve: (did: string) => people.resolve(did)
 	};
 
-	/** Everything a reader occasionally DOES to a note, as against what they read
-	 *  off it. Delete comes last and apart — DESIGN.md § Layout. */
+	/** What a reader DOES to a note, as against what they read off it. The
+	 *  writing leads and Delete comes last and apart — DESIGN.md § Layout. */
 	let actsFrom = $state<HTMLElement | null>(null);
 	const acts = $derived<NoteMenuItem[]>([
+		{
+			label: 'Write a note under this',
+			icon: CornerDownRight,
+			onSelect: () => void write('under', null)
+		},
+		{ label: 'Write the next note', icon: ArrowRight, onSelect: () => void write('after', null) },
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
 		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
@@ -1226,10 +1234,13 @@
 					fitTitle(e.currentTarget);
 				}}
 				onkeydown={(e) => {
-					if (e.key === 'Enter') {
-						e.preventDefault();
-						e.currentTarget.blur();
-					}
+					const out = e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey);
+					if (!out || e.metaKey || e.ctrlKey || e.altKey) return;
+					e.preventDefault();
+					// A title is done with when the writing starts, and on a phone the
+					// keyboard has to stay up between the two.
+					if (stack) stack.focusBody();
+					else e.currentTarget.blur();
 				}}
 				onblur={() => saveTitle(ref)}
 				placeholder="Untitled"
@@ -1292,6 +1303,7 @@
 				{:else}
 					{#key rebuilt}
 						<BlockStack
+							bind:this={stack}
 							{node}
 							{blocks}
 							{emoji}
@@ -1344,6 +1356,8 @@
 								variant="outline"
 								class="h-11 flex-1"
 								disabled={adding.has(ref)}
+								aria-label="Write a note under this ({WRITE_UNDER.says})"
+								aria-keyshortcuts={WRITE_UNDER.keys}
 								onclick={() => write('under', null)}
 							>
 								<CornerDownRight class="size-4" />

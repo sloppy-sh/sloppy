@@ -250,6 +250,9 @@ function inSheet(): string {
 }
 
 async function open(): Promise<void> {
+	// A page listens on the window for as long as it is mounted, so a test that
+	// opens the graph twice would be answered by both of them.
+	if (mounted) unmount(mounted, { outro: false });
 	session.adopt(VIEWER, 'a-session');
 	mounted = mount(Graph, { target });
 	flushSync();
@@ -419,12 +422,33 @@ describe('acting on one note from the canvas', () => {
 
 		expect(offered()).toEqual([
 			'Open it',
+			'Write a note under this',
 			'Tags',
 			'Give it a look',
 			'Fold what is under this',
 			'Choose this and others',
 			'Delete it'
 		]);
+	});
+
+	// PRODUCT.md § "Capture is one gesture": the thought that springs from a note
+	// is put down from where the reader is looking at it.
+	it('writes the note under the one held, and opens that instead', async () => {
+		const WRITTEN = ref(9);
+		let placed: unknown;
+		api.on('POST /nodes', (_url, init) => {
+			placed = (JSON.parse(String(init?.body)) as { from?: unknown }).from;
+			return node(9, '1a1', { origin: FIRST, parent: SECOND });
+		});
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '1a1', { origin: FIRST, parent: SECOND }));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+
+		await askAbout('1a');
+		item('Write a note under this').click();
+		await settle();
+
+		expect(placed).toEqual({ relation: 'under', note: SECOND });
+		expect(reading()).toBe(true);
 	});
 
 	it('opens the note', async () => {
@@ -1060,5 +1084,84 @@ describe('a branch started from a shape', () => {
 		await settle();
 
 		expect(stack).toHaveLength(2);
+	});
+});
+
+// PRODUCT.md § Accessibility: a keyboard is a way of preferring the non-visual
+// path, not a way of doing less on it.
+describe('writing a note from the keyboard', () => {
+	const WRITTEN = ref(9);
+	let placed: unknown;
+
+	function strike(shiftKey: boolean): void {
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Enter',
+				metaKey: true,
+				shiftKey,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+	}
+
+	beforeEach(() => {
+		placed = undefined;
+		api.on('POST /nodes', (_url, init) => {
+			placed = (JSON.parse(String(init?.body)) as { from?: unknown }).from;
+			return node(9, '3');
+		});
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+	});
+
+	it('starts a branch of its own', async () => {
+		await open();
+		strike(false);
+		await settle();
+
+		expect(placed).toEqual({ relation: 'branch', graph: expect.any(String) });
+		expect(reading()).toBe(true);
+	});
+
+	it('continues the note being read', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+
+		strike(true);
+		await settle();
+
+		expect(placed).toEqual({ relation: 'under', note: SECOND });
+	});
+
+	it('leaves the keys alone while the graph is asking something', async () => {
+		await open();
+		menuOn('1a').click();
+		await settle();
+		item('Tags').click();
+		await settle();
+		expect(inSheet()).toContain('Tag this note');
+
+		strike(false);
+		await settle();
+
+		expect(placed).toBeUndefined();
+	});
+
+	it('writes nothing where there is no note to continue', async () => {
+		await open();
+		strike(true);
+		await settle();
+
+		expect(placed).toBeUndefined();
+	});
+
+	it('names the keys on the control that writes the same note', async () => {
+		await open();
+
+		const branch = button('New branch');
+		expect(branch.getAttribute('aria-keyshortcuts')).toContain('Enter');
+		expect(branch.getAttribute('aria-label')).toMatch(/^New branch \(.+\)$/);
 	});
 });

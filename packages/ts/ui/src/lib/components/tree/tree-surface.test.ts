@@ -38,6 +38,7 @@ let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let openedNotes: OwnedRef[];
 let toggled: [OwnedRef, boolean][];
+let written: OwnedRef[];
 let scrolledTo: HTMLElement[];
 
 function render(
@@ -46,6 +47,8 @@ function render(
 		opened?: Set<OwnedRef>;
 		selection?: Tag[];
 		reading?: OwnedRef | null;
+		/** Absent stands for a walk through notes that are not the reader's. */
+		writable?: boolean;
 	} = {}
 ) {
 	mounted = mount(TreeSurface, {
@@ -56,7 +59,8 @@ function render(
 			selection: props.selection,
 			reading: props.reading ?? null,
 			onOpen: (ref: OwnedRef) => openedNotes.push(ref),
-			onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open])
+			onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open]),
+			onWrite: props.writable ? (ref: OwnedRef) => written.push(ref) : undefined
 		}
 	});
 	flushSync();
@@ -76,6 +80,7 @@ const press = (row: HTMLElement, key: string) => {
 beforeEach(() => {
 	openedNotes = [];
 	toggled = [];
+	written = [];
 	scrolledTo = [];
 	stubResizeObserver();
 	Object.defineProperty(Element.prototype, 'scrollIntoView', {
@@ -331,5 +336,63 @@ describe('a graph of a few thousand notes', () => {
 		expect(notes.length).toBeGreaterThan(3_000);
 		render({ groups: [{ key: 'one', title: '', notes }] });
 		expect(rows()).toHaveLength(40);
+	});
+});
+
+// PRODUCT.md holds the walk a first-class equal of the canvas, so a thought that
+// springs from a row is put down without leaving the walk.
+describe('writing from a row', () => {
+	const writeOn = (address: string) =>
+		labelled(`About ${address}`).querySelector<HTMLButtonElement>(
+			'[aria-label^="Write a note under"]'
+		);
+
+	it('asks for a note under the row, and does not open the row', () => {
+		render({ writable: true });
+		writeOn('1')?.click();
+		flushSync();
+
+		expect(written).toEqual([held('1')]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('asks for the same note from the keyboard, on the row the reader is on', () => {
+		render({ writable: true });
+		const row = labelled('About 2');
+		row.focus();
+		row.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Enter',
+				metaKey: true,
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		flushSync();
+
+		expect(written).toEqual([held('2')]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('offers nothing to write with where the notes are not the reader’s', () => {
+		render();
+		expect(target.querySelector('[aria-label^="Write a note under"]')).toBeNull();
+
+		const row = labelled('About 1');
+		row.focus();
+		row.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Enter',
+				metaKey: true,
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		flushSync();
+
+		expect(written).toEqual([]);
+		expect(openedNotes).toEqual([]);
 	});
 });

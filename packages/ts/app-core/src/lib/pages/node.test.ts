@@ -87,6 +87,19 @@ async function until(ready: () => boolean): Promise<void> {
 const focused = () => document.activeElement as HTMLElement | null;
 const title = () => document.body.querySelector<HTMLTextAreaElement>('[aria-label="Title"]');
 
+/** Where the caret sits in the note's writing, as the element TipTap hangs its
+ *  editor off answers for it. */
+function caret(): { into: string; at: number } {
+	const surface = document.body.querySelector('.sloppy-prose') as unknown as {
+		editor?: {
+			state: { selection: { $from: { parentOffset: number; parent: { type: { name: string } } } } };
+		};
+	} | null;
+	const where = surface?.editor?.state.selection.$from;
+	if (!where) throw new Error('The note has no writing surface');
+	return { into: where.parent.type.name, at: where.parentOffset };
+}
+
 function button(labelled: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find((b) =>
 		b.textContent?.includes(labelled)
@@ -138,6 +151,23 @@ describe.each([
 		await openWritten(at);
 		expect(focused()).toBe(title());
 	});
+
+	// The obvious key out of the title used to hand focus to nothing, which on a
+	// phone drops the keyboard between the name and the thought.
+	it.each([['Enter'], ['Tab']])(
+		'carries the caret from the title into the writing on %s',
+		async (key) => {
+			await openWritten(at);
+			const field = title();
+			if (!field) throw new Error('The note has no title');
+
+			field.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+			await settle();
+
+			expect(focused()?.classList.contains('sloppy-prose')).toBe(true);
+			expect(caret()).toEqual({ into: 'paragraph', at: 0 });
+		}
+	);
 
 	it('hands the caret on to the next note written from inside it', async () => {
 		await openWritten(at);
@@ -466,6 +496,44 @@ describe('writing the note that comes next', () => {
 		await settle();
 
 		expect(placed).toEqual({ relation: 'after', note: SECOND });
+	});
+
+	/** The one control at the head of the note, which a reader reaches however
+	 *  far down the note they have got. */
+	async function fromTheHead(named: string): Promise<void> {
+		labelled('What to do with this note').click();
+		await settle();
+		const menu = [...document.body.querySelectorAll<HTMLElement>('[role="dialog"]')].find(
+			(up) => up.dataset.state !== 'closed'
+		);
+		if (!menu) throw new Error('The note raised no menu');
+		const row = [...menu.querySelectorAll('button')].find((b) => b.textContent?.trim() === named);
+		if (!row) throw new Error(`The note's menu does not offer "${named}"`);
+		row.click();
+		await settle();
+	}
+
+	// A long note used to put its writing controls an unbounded scroll away.
+	it('springs a note out of the one being read, from the head of the note', async () => {
+		await openNote(SECOND);
+		await fromTheHead('Write a note under this');
+
+		expect(placed).toEqual({ relation: 'under', note: SECOND });
+	});
+
+	it('continues the run from the head of the note', async () => {
+		await openNote(SECOND);
+		await fromTheHead('Write the next note');
+
+		expect(placed).toEqual({ relation: 'after', note: SECOND });
+	});
+
+	it('names the keys that write the same note on the control that writes it', async () => {
+		await openNote(SECOND);
+
+		const write = button('Write a note under this');
+		expect(write.getAttribute('aria-keyshortcuts')).toContain('Shift+Enter');
+		expect(write.getAttribute('aria-label')).toMatch(/^Write a note under this \(.+\)$/);
 	});
 });
 

@@ -474,6 +474,12 @@
 		});
 	}
 
+	/** Puts the caret at the start of the writing, for a field above the note to
+	 *  hand the keyboard on to. */
+	export function focusBody(): void {
+		editor?.commands.focus('start');
+	}
+
 	// ── The surface, rebuilt only when it is a different note ────────────────
 	$effect(() => {
 		const opening = node.ref;
