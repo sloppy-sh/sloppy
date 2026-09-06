@@ -35,13 +35,14 @@
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListTree from '@lucide/svelte/icons/list-tree';
+	import Maximize from '@lucide/svelte/icons/maximize';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Network from '@lucide/svelte/icons/network';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
-	import type { GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
+	import type { GraphHandle, GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
 	import {
 		NodeBulkRequestSchema,
 		pictureTurn,
@@ -119,6 +120,11 @@
 	import { acceleratorFor, NEW_BRANCH, typedIntoWriting, WRITE_UNDER } from './shortcuts.js';
 
 	let loading = $state(true);
+	let canvas = $state<GraphHandle>();
+	/** The note a deliberate act opened, for the canvas to come to. Held rather
+	 *  than called straight through, because a note cited in the URL is asked for
+	 *  before the surface that answers exists. */
+	let bringingTo = $state<OwnedRef | null>(null);
 	/** Whether the graphs this person keeps are being looked through. */
 	let switching = $state(false);
 	/** The graph itself is not here; it replaces the surface. */
@@ -569,6 +575,7 @@
 		const cited = refFromPath(page.url.pathname);
 		if (!cited) return;
 		if (!page.state.note) replaceState('', { note: cited, notes: [cited] });
+		bringingTo = cited;
 		void reachCited(cited);
 	}
 
@@ -626,6 +633,14 @@
 		}
 	});
 
+	$effect(() => {
+		const ref = bringingTo;
+		const surface = canvas;
+		if (ref === null || surface === undefined) return;
+		surface.bringTo(ref);
+		untrack(() => (bringingTo = null));
+	});
+
 	/** The strip once `ref` has taken `standing`'s place — or unchanged where it is
 	 *  already open, which is a switch rather than an open. `standing` defaults to
 	 *  the tab being read; a note written from another one takes THAT tab, which is
@@ -646,6 +661,7 @@
 	/** Shallow, so the graph behind the notes is never torn down and rebuilt. */
 	function goTo(ref: OwnedRef, strip: readonly OwnedRef[]): void {
 		aside = [];
+		bringingTo = ref;
 		pushState(nodeHref(ref), { note: ref, notes: [...strip] });
 	}
 
@@ -1372,6 +1388,17 @@
 	<!-- Out of the chrome while a set is being chosen: the bar over that set acts
 	     on notes the tree does not mark. -->
 	{#if !choosing}
+		{#if !walking}
+			<Button
+				variant="ghost"
+				size="icon"
+				class="size-9 shrink-0 rounded-full"
+				aria-label="See the whole graph"
+				onclick={() => canvas?.fit()}
+			>
+				<Maximize class="size-4" />
+			</Button>
+		{/if}
 		<Button
 			variant="ghost"
 			size="icon"
@@ -1401,6 +1428,7 @@
 			     same graph they come back to. -->
 			<div class="absolute inset-0" class:invisible={walkingNow} inert={walkingNow}>
 				<GraphSurface
+					bind:handle={canvas}
 					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
 					nodes={visible}
 					{collapsed}

@@ -182,6 +182,17 @@ function fold(address: string): HTMLButtonElement {
 const looking = () =>
 	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.focus;
 
+/** The notes the canvas has been asked to come to, in the order it was asked. */
+const brought = () =>
+	document.body
+		.querySelector<HTMLElement>('[aria-label="The graph"]')
+		?.dataset.brought?.split(' ')
+		.filter(Boolean) ?? [];
+
+/** How often the canvas has been asked for the whole field. */
+const fitted = () =>
+	Number(document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.fitted ?? 0);
+
 /** Whether the canvas has been handed a set to choose into. */
 const choosingOnCanvas = () =>
 	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.choosing;
@@ -318,6 +329,52 @@ afterEach(() => {
 	session.clear();
 	target.remove();
 	document.body.innerHTML = '';
+});
+
+// PRODUCT.md: the graph is where the answer is read, so a note opened anywhere
+// else has to be findable on it.
+describe('finding your way back on the canvas', () => {
+	it('comes to a note opened from the graph', async () => {
+		await open();
+
+		onCanvas('1a').click();
+		await settle();
+
+		expect(brought()).toEqual([SECOND]);
+	});
+
+	it('comes to the note a citation opened', async () => {
+		const cut = SECOND.lastIndexOf('/');
+		startAt(
+			`/n/${encodeURIComponent(SECOND.slice(0, cut))}/${encodeURIComponent(SECOND.slice(cut + 1))}`
+		);
+		await open();
+
+		expect(brought()).toEqual([SECOND]);
+	});
+
+	it('comes again when the same note is opened twice', async () => {
+		await open();
+
+		onCanvas('1a').click();
+		await settle();
+		onCanvas('1').click();
+		await settle();
+		onCanvas('1a').click();
+		await settle();
+
+		expect(brought()).toEqual([SECOND, FIRST, SECOND]);
+	});
+
+	it('fits the whole field when the reader asks where they are', async () => {
+		await open();
+		expect(fitted()).toBe(0);
+
+		labelled('See the whole graph').click();
+		await settle();
+
+		expect(fitted()).toBe(1);
+	});
 });
 
 describe('linking by pointing at the graph', () => {

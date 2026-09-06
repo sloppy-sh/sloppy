@@ -626,6 +626,21 @@ export class GraphScene {
     this.positionsDirty = true;
   }
 
+  /** Whether a mark is drawn, and drawn whole inside the box on screen. */
+  inView(ref: string): boolean {
+    const index = this.indexOf(ref);
+    if (index === undefined) return false;
+    const at = this.positionOf(index);
+    const on = this.viewport.toScreen(at.x, at.y);
+    const reach = (this.attributesOf(ref)?.radius ?? 0) * this.viewport.scale;
+    return (
+      on.x - reach >= 0 &&
+      on.y - reach >= 0 &&
+      on.x + reach <= this.width &&
+      on.y + reach <= this.height
+    );
+  }
+
   centreOn(ref: string): void {
     const index = this.indexOf(ref);
     if (index === undefined) return;

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mounts: { host: HTMLElement; options: GraphMountOptions }[] = [];
 const updates: GraphMountOptions[] = [];
+const brought: OwnedRef[] = [];
 let destroys = 0;
 
 vi.mock('@sloppy/graph/layout-worker?worker', () => ({ default: class {} }));
@@ -15,6 +16,7 @@ vi.mock('@sloppy/graph', () => ({
 		mounts.push({ host, options });
 		return {
 			update: (next: GraphMountOptions) => updates.push(next),
+			bringTo: (ref: OwnedRef) => brought.push(ref),
 			destroy: () => {
 				destroys += 1;
 			}
@@ -32,6 +34,7 @@ type Drive = (next: { nodes?: NodeView[] }) => void;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let drive: Drive;
+let held: GraphHandle | undefined;
 
 function render(nodes: NodeView[] = [node('1')]) {
 	mounted = mount(Harness, {
@@ -40,6 +43,9 @@ function render(nodes: NodeView[] = [node('1')]) {
 			nodes,
 			drive: (set: Drive) => {
 				drive = set;
+			},
+			held: (handle: GraphHandle | undefined) => {
+				held = handle;
 			}
 		}
 	});
@@ -49,6 +55,8 @@ function render(nodes: NodeView[] = [node('1')]) {
 beforeEach(() => {
 	mounts.length = 0;
 	updates.length = 0;
+	brought.length = 0;
+	held = undefined;
 	destroys = 0;
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -80,6 +88,18 @@ describe('the graph surface', () => {
 	it('gives the renderer a way to run the layout off the main thread', () => {
 		render();
 		expect(mounts[0].options.createLayoutWorker).toBeTypeOf('function');
+	});
+
+	// Moving the viewport is what a host cannot say in a prop: opening the same
+	// note twice has to bring the canvas to it twice.
+	it('hands the host the renderer it mounted', () => {
+		render();
+		const ref = 'did:syr:z6Mk/01' as OwnedRef;
+
+		held?.bringTo(ref);
+		held?.bringTo(ref);
+
+		expect(brought).toEqual([ref, ref]);
 	});
 
 	it('destroys the scene when it goes away', () => {

@@ -71,7 +71,12 @@ export interface GraphHandle {
   readonly ink: HTMLElement;
   /** World coordinates for a client point, so a stroke sticks to the graph. */
   toWorld(clientX: number, clientY: number): Point;
-  focusOn(ref: OwnedRef): void;
+  /**
+   * Bring the canvas to a mark the reader opened, holding the ask until the
+   * mark is drawn and until the layout has settled under it. A mark already on
+   * screen is left where it is.
+   */
+  bringTo(ref: OwnedRef): void;
   fit(): void;
   stats(): GraphStats | null;
   /** Start a fresh timing window, so `stats` describes one thing at a time. */
@@ -170,6 +175,18 @@ export function mountGraph(
    */
   let framing = true;
   let dragged: { index: number; world: Point } | null = null;
+  let bringing: OwnedRef | null = null;
+
+  /** A note is often asked for before its mark exists — a citation arrives while
+   *  the graph is still being read — so the ask waits rather than being spent on
+   *  a canvas that has not drawn it. */
+  const arrive = (): void => {
+    if (bringing === null || scene === null) return;
+    if (scene.indexOf(bringing) === undefined) return;
+    framing = false;
+    if (!scene.inView(bringing)) scene.centreOn(bringing);
+    if (settled) bringing = null;
+  };
 
   const layout = new LayoutClient({
     createWorker: options.createLayoutWorker,
@@ -178,6 +195,7 @@ export function mountGraph(
       settled = event.settled;
       scene?.setPositions(event.positions);
       if (dragged) scene?.movePosition(dragged.index, dragged.world);
+      arrive();
       if (framing) scene?.fit();
     },
   });
@@ -437,12 +455,12 @@ export function mountGraph(
       if (!view) return { x: clientX - box.left, y: clientY - box.top };
       return view.toWorld(clientX - box.left, clientY - box.top);
     },
-    focusOn(ref) {
-      focus = ref;
-      scene?.centreOn(ref);
-      rebuild();
+    bringTo(ref) {
+      bringing = ref;
+      arrive();
     },
     fit() {
+      bringing = null;
       scene?.fit();
     },
     resetStats() {
