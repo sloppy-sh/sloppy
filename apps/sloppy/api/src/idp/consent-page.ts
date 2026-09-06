@@ -61,6 +61,7 @@ export function consentPage(apiBase: string): string {
   var WORDS = ${JSON.stringify(SCOPE_WORDS)};
   var DEFAULTS = ${JSON.stringify(DEFAULT_SCOPES)};
   var MALFORMED = "That app's sign-in link is malformed. Ask its author to fix it.";
+  var SEEN_HERE = 'sloppy.idp.signed-in-here';
 
   var main = document.getElementById('app');
   var params = new URLSearchParams(location.search);
@@ -77,6 +78,14 @@ export function consentPage(apiBase: string): string {
 
   function hostOf(url) {
     try { return new URL(url).hostname; } catch (e) { return ''; }
+  }
+
+  function signedInHere() {
+    try { return localStorage.getItem(SEEN_HERE) === 'yes'; } catch (e) { return false; }
+  }
+
+  function rememberThisDevice() {
+    try { localStorage.setItem(SEEN_HERE, 'yes'); } catch (e) {}
   }
 
   function sameSite(a, b) {
@@ -99,6 +108,7 @@ export function consentPage(apiBase: string): string {
   function problemLine(message) {
     var p = el('p', message);
     p.className = 'problem';
+    p.setAttribute('role', 'alert');
     return p;
   }
 
@@ -111,6 +121,7 @@ export function consentPage(apiBase: string): string {
     input.required = !options.optional;
     if (options.placeholder) input.placeholder = options.placeholder;
     if (options.minlength) input.minLength = options.minlength;
+    if (options.value) input.value = options.value;
     if (options.optional) wrap.appendChild(el('span', ' (optional)'));
     wrap.appendChild(input);
     if (options.hint) wrap.appendChild(el('small', options.hint));
@@ -139,6 +150,7 @@ export function consentPage(apiBase: string): string {
 
   /** Both doors lead here: a grant, then the app's request, then the review. */
   function entered(session) {
+    rememberThisDevice();
     token = session.access_token;
     return post('/consent', {
       platform_origin: platformOrigin,
@@ -157,26 +169,30 @@ export function consentPage(apiBase: string): string {
     return link;
   }
 
-  function door(mode, problem) {
+  function door(mode, problem, kept) {
     var making = mode === 'make';
+    var typed = kept || {};
     var form = document.createElement('form');
 
-    var name = making
-      ? field('Username', 'text', 'username', {
-          placeholder: 'alice',
-          hint: '3\u201332 characters: lowercase letters, numbers, dashes and underscores. This is the handle a peer resolves.'
-        })
-      : field('Username', 'text', 'username', { placeholder: 'alice' });
+    var name = field('Username', 'text', 'username', {
+      placeholder: 'alice',
+      value: typed.username,
+      hint: making
+        ? '3\u201332 characters: lowercase letters, numbers, dashes and underscores. This is the handle a peer resolves.'
+        : undefined
+    });
     var shown = making
       ? field('Display name', 'text', 'name', {
           placeholder: 'Alice',
           optional: true,
+          value: typed.displayName,
           hint: 'What people see. You can change it later.'
         })
       : null;
     var secret = field('Password', 'password', making ? 'new-password' : 'current-password', {
       placeholder: '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022',
       minlength: making ? 12 : undefined,
+      value: typed.password,
       hint: making ? 'At least 12 characters.' : undefined
     });
     var again = making
@@ -191,7 +207,7 @@ export function consentPage(apiBase: string): string {
     var nodes = [
       el('h1', making ? 'Create an identity' : 'Sign in to continue'),
       el('p', making
-        ? 'It lives on this instance, and the DID it mints is yours to take elsewhere.'
+        ? appName + ' is waiting to connect. Make an identity here and it stays yours to take elsewhere.'
         : appName + ' is waiting to connect to your account.'),
       scopeList(scopes),
       name.wrap
@@ -205,9 +221,11 @@ export function consentPage(apiBase: string): string {
 
     form.addEventListener('submit', function (event) {
       event.preventDefault();
+      var sofar = { username: name.input.value };
+      if (shown) sofar.displayName = shown.input.value;
       if (again && secret.input.value !== again.input.value) {
-        again.input.value = '';
-        door(mode, 'Those passwords are different. Type the second one again.');
+        sofar.password = secret.input.value;
+        door(mode, 'Those passwords are different. Type the second one again.', sofar);
         return;
       }
       go.disabled = true;
@@ -218,18 +236,20 @@ export function consentPage(apiBase: string): string {
       if (shown && shown.input.value.trim()) body.display_name = shown.input.value.trim();
       post(making ? '/register' : '/login', body)
         .then(entered)
-        .catch(function (error) { door(mode, error.message); });
+        .catch(function (error) { door(mode, error.message, sofar); });
     });
 
     show([form, elsewhere(
       making ? 'I already have an identity' : 'Create an identity here',
-      function () { door(making ? 'have' : 'make'); }
+      function () { door(making ? 'have' : 'make', undefined, { username: name.input.value }); }
     )]);
-    name.input.focus();
-  }
 
-  function signIn(problem) {
-    door('have', problem);
+    var inputs = [name.input];
+    if (shown) inputs.push(shown.input);
+    inputs.push(secret.input);
+    if (again) inputs.push(again.input);
+    var waiting = inputs.filter(function (input) { return input.required && !input.value; })[0];
+    (waiting || inputs[0]).focus();
   }
 
   function review(problem) {
@@ -264,7 +284,7 @@ export function consentPage(apiBase: string): string {
     show([el('h1', 'This link will not work'), el('p', MALFORMED)]);
     return;
   }
-  signIn();
+  door(signedInHere() ? 'have' : 'make');
 })();
 </script>
 </body>
