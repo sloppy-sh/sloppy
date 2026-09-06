@@ -1,10 +1,7 @@
 /**
- * DESIGN.md § Theme: a person picks a theme independently of the OS, so what
- * the platform draws for us — the on-screen keyboard, form controls, scrollbars,
- * the rubber-band ground — has to be told which way the chosen ground runs.
- *
- * Read out of `app.css` itself, so the declaration is checked against the theme's
- * real ground rather than against a table beside it.
+ * DESIGN.md § Theme: a person picks a theme independently of the OS, so what the
+ * platform draws for us — the keyboard, form controls, scrollbars, the rubber-band
+ * ground — has to be told which way the chosen ground runs.
  */
 
 import { readFileSync } from 'node:fs';

@@ -1,7 +1,23 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DID, ref } from './fake-api.test-support.js';
-import { prefs } from './prefs.svelte.js';
+import { THEMES, prefs } from './prefs.svelte.js';
+
+const UI_CSS = readFileSync(resolve(process.cwd(), '../ui/src/lib/app.css'), 'utf8').replace(
+	/\/\*[\s\S]*?\*\//g,
+	''
+);
+
+function stylesheetCallsDark(theme: string): boolean {
+	for (const [, selector, declarations] of UI_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+		const claims = selector.split(',').some((s) => s.trim().endsWith(`[data-theme='${theme}']`));
+		if (claims && declarations.includes('--background:'))
+			return /color-scheme:\s*dark\s*;/.test(declarations);
+	}
+	throw new Error(`no ground declared for ${theme}`);
+}
 
 function osPrefersDark(dark: boolean) {
 	vi.stubGlobal('matchMedia', (query: string) => ({
@@ -69,6 +85,14 @@ describe('the saved look', () => {
 			prefs.set('theme', theme);
 			expect(prefs.isDark).toBe(dark);
 			expect(document.documentElement.classList.contains('dark')).toBe(dark);
+		}
+	});
+
+	// app.css declares `color-scheme`; `isDark` draws the `dark` class. One fact.
+	it('calls a theme dark the way the stylesheet does', () => {
+		for (const theme of THEMES) {
+			prefs.set('theme', theme);
+			expect(prefs.isDark).toBe(stylesheetCallsDark(theme));
 		}
 	});
 

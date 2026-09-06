@@ -13,8 +13,8 @@
 		onAuthInvalid: () => session.clear()
 	});
 
-	// Publishes `--kb-inset-bottom` — DESIGN.md § "The four inset vars". A browser
-	// tells us nothing about the system bars, so the shell writes no inset here.
+	// Only the native shell can publish `--safe-area-inset-bottom`; in a browser
+	// surfaces fall back to `env()`.
 	onMount(() => trackKeyboard());
 </script>
 

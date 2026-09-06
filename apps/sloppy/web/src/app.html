@@ -35,9 +35,11 @@
 			themeColor.name = 'theme-color';
 			document.head.appendChild(themeColor);
 			var paintThemeColor = function () {
-				themeColor.content = getComputedStyle(root).getPropertyValue('--background').trim();
+				var ground = getComputedStyle(root).getPropertyValue('--background').trim();
+				if (ground) themeColor.content = ground;
 			};
 			addEventListener('DOMContentLoaded', paintThemeColor);
+			addEventListener('load', paintThemeColor);
 			new MutationObserver(paintThemeColor).observe(root, { attributeFilter: ['data-theme'] });
 		</script>
 		%sveltekit.head%

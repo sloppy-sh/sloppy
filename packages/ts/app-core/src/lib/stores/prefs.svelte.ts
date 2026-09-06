@@ -211,7 +211,6 @@ class PrefsStore {
 		if (p.style === 'default') root.removeAttribute('data-style');
 		else root.setAttribute('data-style', p.style);
 		root.classList.toggle('dark', this.isDark);
-		root.style.colorScheme = this.isDark ? 'dark' : 'light';
 	}
 }
 
