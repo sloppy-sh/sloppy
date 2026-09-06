@@ -5,7 +5,7 @@ import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import TreeSurface, { type TreeGroup } from './tree-surface.svelte';
-import { RUN_PAGE, type TreeNote } from './walk.js';
+import { LIT_PAGE, RUN_PAGE, type TreeNote } from './walk.js';
 
 const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
@@ -44,6 +44,7 @@ let scrolledTo: HTMLElement[];
 function render(
 	props: {
 		groups?: TreeGroup[];
+		lead?: { group: string; title: string; notes: TreeNote[] }[];
 		opened?: Set<OwnedRef>;
 		selection?: Tag[];
 		reading?: OwnedRef | null;
@@ -55,6 +56,7 @@ function render(
 		target,
 		props: {
 			groups: props.groups ?? [{ key: 'one', title: 'Field notes', notes: BRANCH }],
+			lead: props.lead,
 			opened: props.opened ?? new Set<OwnedRef>(),
 			selection: props.selection,
 			reading: props.reading ?? null,
@@ -290,6 +292,83 @@ describe('the tags a reader selected', () => {
 		render({ groups: [{ key: 'one', title: '', notes: tagged }] });
 		expect(rows().every((row) => !row.className.includes('opacity-45'))).toBe(true);
 	});
+
+	it('reaches the notes that carry one inside a branch the reader left folded', () => {
+		render({
+			groups: [{ key: 'one', title: '', notes: BRANCH }],
+			selection: ['question'] as Tag[]
+		});
+		expect(rows().map((row) => row.querySelector('.address')?.textContent?.trim())).toEqual([
+			'1',
+			'2'
+		]);
+
+		unmount(mounted!, { outro: false });
+		render({
+			groups: [
+				{
+					key: 'one',
+					title: '',
+					notes: [
+						note('1'),
+						note('1a', '1'),
+						note('1a1', '1a', { tags: ['question'] as Tag[] }),
+						note('1b', '1'),
+						note('2')
+					]
+				}
+			],
+			selection: ['question'] as Tag[]
+		});
+		expect(rows().map((row) => row.querySelector('.address')?.textContent?.trim())).toEqual([
+			'1',
+			'1a',
+			'1a1',
+			'1b',
+			'2'
+		]);
+		expect(labelled('About 1a').getAttribute('aria-expanded')).toBe('true');
+	});
+
+	it('folds a branch back up when the reader asks, tag or no tag', () => {
+		render({
+			groups: [
+				{
+					key: 'one',
+					title: '',
+					notes: [note('1'), note('1a', '1'), note('1a1', '1a', { tags: ['question'] as Tag[] })]
+				}
+			],
+			selection: ['question'] as Tag[]
+		});
+		expect(rows()).toHaveLength(3);
+
+		labelled('About 1a').querySelector<HTMLButtonElement>('[aria-label="Fold 1a"]')?.click();
+		flushSync();
+		expect(rows().map((row) => row.querySelector('.address')?.textContent?.trim())).toEqual([
+			'1',
+			'1a'
+		]);
+		expect(labelled('About 1a').getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('walks left out of a branch once the reader has folded it', () => {
+		render({
+			groups: [
+				{
+					key: 'one',
+					title: '',
+					notes: [note('1'), note('1a', '1'), note('1a1', '1a', { tags: ['question'] as Tag[] })]
+				}
+			],
+			selection: ['question'] as Tag[]
+		});
+		press(labelled('About 1a'), 'ArrowLeft');
+		expect(rows()).toHaveLength(2);
+
+		press(labelled('About 1a'), 'ArrowLeft');
+		expect(document.activeElement).toBe(labelled('About 1'));
+	});
 });
 
 describe('several graphs on the canvas', () => {
@@ -336,6 +415,115 @@ describe('a run longer than a page', () => {
 		flushSync();
 		expect(rows()).toHaveLength(1 + RUN_PAGE + 30);
 	});
+
+	it('says how many of the waiting notes a selected tag lights up', () => {
+		const asked = [
+			note('1'),
+			...Array.from({ length: RUN_PAGE + 30 }, (_, at) =>
+				note(`1${letters(at + 1)}`, '1', { tags: at >= RUN_PAGE ? (['question'] as Tag[]) : [] })
+			)
+		];
+		render({
+			groups: [{ key: 'one', title: '', notes: asked }],
+			opened: new Set([held('1')]),
+			selection: ['question'] as Tag[]
+		});
+		expect(rows().at(-1)?.textContent).toContain('30 more under 1, 30 lit up');
+	});
+
+	it('says nothing about lighting up while no tag is selected', () => {
+		render({ groups: [{ key: 'one', title: '', notes: many }], opened: new Set([held('1')]) });
+		expect(rows().at(-1)?.textContent).not.toContain('lit up');
+	});
+});
+
+// PRODUCT.md § Purpose: capture demands nothing, so yesterday's note is often
+// untitled and untagged, and the only thing anybody remembers of it is when.
+describe('the notes last written into', () => {
+	const last = [{ group: 'one', title: 'Last written', notes: [note('2'), note('1a', '1')] }];
+
+	it('heads the walk, in the order it was given rather than in address order', () => {
+		render({ lead: last });
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(trees).toHaveLength(2);
+		expect(
+			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
+		).toEqual(['2', '1a']);
+		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
+			'Last written'
+		]);
+	});
+
+	it('opens the note whose row was tapped', () => {
+		render({ lead: last });
+		rows()[0].click();
+		expect(openedNotes).toEqual([held('2')]);
+	});
+
+	it('counts nothing and branches nowhere', () => {
+		render({ lead: [{ group: 'one', title: 'Last written', notes: [note('1')] }] });
+		const first = rows()[0];
+		expect(first.querySelector('[aria-label^="Unfold"]')).toBeNull();
+		expect(first.getAttribute('aria-expanded')).toBeNull();
+		expect(first.querySelector('.tabular-nums')).toBeNull();
+	});
+
+	it('draws nothing where nothing has been written into', () => {
+		render({ lead: [{ group: 'one', title: 'Last written', notes: [] }] });
+		expect(target.querySelector('h2')).toBeNull();
+		expect(target.querySelectorAll('[role="tree"]')).toHaveLength(1);
+	});
+
+	it('draws nothing for a graph it was given no run for', () => {
+		render({
+			groups: [
+				{ key: 'a', title: 'Thesis', notes: [note('1')] },
+				{ key: 'b', title: 'Garden', notes: [note('2')] }
+			],
+			lead: [{ group: 'b', title: 'Last written in Garden', notes: [note('2')] }]
+		});
+		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
+			'Thesis',
+			'Last written in Garden',
+			'Garden'
+		]);
+	});
+
+	it('stands each run over the tree of the graph it was written in', () => {
+		render({
+			groups: [
+				{ key: 'a', title: 'Thesis', notes: [note('1')] },
+				{ key: 'b', title: 'Garden', notes: [note('2')] }
+			],
+			lead: [
+				{ group: 'a', title: 'Last written in Thesis', notes: [note('1')] },
+				{ group: 'b', title: 'Last written in Garden', notes: [note('2')] }
+			]
+		});
+		expect([...target.querySelectorAll('h2')].map((one) => one.textContent?.trim())).toEqual([
+			'Last written in Thesis',
+			'Thesis',
+			'Last written in Garden',
+			'Garden'
+		]);
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(trees).toHaveLength(4);
+		expect(trees.map((tree) => tree.querySelector('.address')?.textContent?.trim())).toEqual([
+			'1',
+			'1',
+			'2',
+			'2'
+		]);
+	});
+
+	it('leaves the walk landing on the tree’s row rather than on its own', () => {
+		render({
+			lead: [{ group: 'one', title: 'Last written', notes: [note('2')] }],
+			reading: held('2')
+		});
+		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		expect(scrolledTo).toEqual([trees[1].querySelector(`[data-row="${held('2')}"]`)]);
+	});
 });
 
 describe('a graph of a few thousand notes', () => {
@@ -348,6 +536,15 @@ describe('a graph of a few thousand notes', () => {
 		expect(notes.length).toBeGreaterThan(3_000);
 		render({ groups: [{ key: 'one', title: '', notes }] });
 		expect(rows()).toHaveLength(40);
+	});
+
+	it('draws a bounded walk when a tag most of them carry is selected', () => {
+		const asked = notes.map((one, at) =>
+			at % 3 === 0 ? { ...one, tags: ['question'] as Tag[] } : one
+		);
+		render({ groups: [{ key: 'one', title: '', notes: asked }], selection: ['question'] as Tag[] });
+		expect(rows().length).toBeGreaterThan(40);
+		expect(rows().length).toBeLessThanOrEqual(40 + LIT_PAGE + RUN_PAGE);
 	});
 });
 

@@ -1,6 +1,6 @@
 import type { Address, OwnedRef, Tag } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
-import { RUN_PAGE, TOP, type TreeNote, type TreeRow, walkTree } from './walk.js';
+import { LIT_PAGE, RUN_PAGE, TOP, type TreeNote, type TreeRow, walkTree } from './walk.js';
 
 const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
@@ -121,6 +121,202 @@ describe('the shape a tree walks', () => {
 			opened: opened()
 		});
 		expect(rows[0].kind === 'note' && rows[0].note.tags).toEqual(['seed']);
+	});
+});
+
+describe('a tag the reader selected', () => {
+	const question = ['question'] as Tag[];
+	const deep = [
+		note('1'),
+		note('1a', '1'),
+		note('1a1', '1a', { tags: question }),
+		note('1b', '1'),
+		note('2')
+	];
+
+	it('walks into the branches holding a note that carries it, and no others', () => {
+		expect(addresses(walkTree({ notes: deep, opened: opened(), selection: question }))).toEqual([
+			'1',
+			'1a',
+			'1a1',
+			'1b',
+			'2'
+		]);
+	});
+
+	it('leaves every branch where the reader left it while nothing is selected', () => {
+		expect(addresses(walkTree({ notes: deep, opened: opened() }))).toEqual(['1', '2']);
+	});
+
+	it('leaves the branches folded again once the tag is let go', () => {
+		expect(addresses(walkTree({ notes: deep, opened: opened(), selection: [] }))).toEqual([
+			'1',
+			'2'
+		]);
+	});
+
+	it('says a branch is open, so the row it is drawn on can say so too', () => {
+		const rows = walkTree({ notes: deep, opened: opened(), selection: question });
+		expect(rows.find((row) => row.kind === 'note' && row.note.address === '1a')).toMatchObject({
+			open: true
+		});
+		expect(rows.find((row) => row.kind === 'note' && row.note.address === '1b')).toMatchObject({
+			open: false
+		});
+	});
+
+	it('walks into nothing for a tag no note carries', () => {
+		expect(
+			addresses(walkTree({ notes: deep, opened: opened(), selection: ['seed'] as Tag[] }))
+		).toEqual(['1', '2']);
+	});
+
+	it('opens a branch for any one of the selected tags', () => {
+		const notes = [note('1'), note('1a', '1', { tags: ['seed'] as Tag[] })];
+		expect(
+			addresses(walkTree({ notes, opened: opened(), selection: ['question', 'seed'] as Tag[] }))
+		).toEqual(['1', '1a']);
+	});
+
+	it('walks up a chain of parents outside the run it was given', () => {
+		const notes = [note('1a', '1'), note('1a1', '1a'), note('1a1a', '1a1', { tags: question })];
+		expect(addresses(walkTree({ notes, opened: opened(), selection: question }))).toEqual([
+			'1a',
+			'1a1',
+			'1a1a'
+		]);
+	});
+
+	it('says how many of the waiting notes carry it', () => {
+		const notes = [
+			note('1'),
+			...Array.from({ length: 150 }, (_, at) =>
+				note(`1${letters(at + 1)}`, '1', { tags: at >= 120 ? question : [] })
+			)
+		];
+		const rows = walkTree({ notes, opened: opened('1'), selection: question });
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 30 });
+	});
+
+	it('counts a waiting note that only holds one deeper down', () => {
+		const notes = [
+			note('1'),
+			...Array.from({ length: 150 }, (_, at) => note(`1${letters(at + 1)}`, '1')),
+			note(`1${letters(150)}a`, `1${letters(150)}`, { tags: question })
+		];
+		const rows = walkTree({ notes, opened: opened('1'), selection: question });
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 1 });
+	});
+
+	it('counts nothing waiting while no tag is selected', () => {
+		const rows = walkTree({ notes: wide(150), opened: opened('1') });
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 0 });
+	});
+
+	it('leaves a branch the reader folded back up folded', () => {
+		const rows = walkTree({
+			notes: deep,
+			opened: opened(),
+			selection: question,
+			shut: opened('1a')
+		});
+		expect(addresses(rows)).toEqual(['1', '1a', '1b', '2']);
+		expect(rows.find((row) => row.kind === 'note' && row.note.address === '1a')).toMatchObject({
+			open: false
+		});
+	});
+
+	it('opens a branch the reader asked for even where they had folded it', () => {
+		expect(
+			addresses(
+				walkTree({ notes: deep, opened: opened('1a'), selection: question, shut: opened('1a') })
+			)
+		).toEqual(['1', '1a', '1a1', '1b', '2']);
+	});
+
+	it('draws another page of a branch it opened, once the reader asks for one', () => {
+		// A short branch ahead of the long one, so the long one stops on what is
+		// left of the page rather than on a whole one.
+		const notes = [
+			note('1'),
+			...Array.from({ length: 30 }, (_, at) =>
+				note(`1${letters(at + 1)}`, '1', { tags: question })
+			),
+			note('2'),
+			...Array.from({ length: 250 }, (_, at) =>
+				note(`2${letters(at + 1)}`, '2', { tags: question })
+			)
+		];
+		const left = LIT_PAGE - 30;
+		const restUnderTwo = (shown?: ReadonlyMap<string, number>) =>
+			walkTree({ notes, opened: opened(), selection: question, shown }).find(
+				(row) => row.kind === 'rest' && row.key === held('2')
+			);
+		expect(restUnderTwo()).toMatchObject({ kind: 'rest', drawn: left });
+		expect(restUnderTwo(new Map([[held('2'), left + RUN_PAGE]]))).toMatchObject({
+			kind: 'rest',
+			drawn: left + RUN_PAGE
+		});
+	});
+
+	it('keeps drawing as much of a run as the reader had asked for before it', () => {
+		const notes = [
+			note('1'),
+			...Array.from({ length: 250 }, (_, at) =>
+				note(`1${letters(at + 1)}`, '1', { tags: at === 0 ? question : [] })
+			)
+		];
+		const rows = walkTree({
+			notes,
+			opened: opened(),
+			selection: question,
+			shown: new Map([[held('1'), 200]])
+		});
+		expect(rows.filter((row) => row.kind === 'note' && row.depth === 1)).toHaveLength(200);
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', key: held('1'), rest: 50, drawn: 200 });
+	});
+
+	/** A chain as deep as a Folgezettel branch gets, every level a full run and
+	 *  the tag on the note at the bottom of it. */
+	function chain(depth: number, run: number): TreeNote[] {
+		const notes: TreeNote[] = [];
+		let parent: string | undefined;
+		let head = '';
+		for (let level = 0; level < depth; level += 1) {
+			const step = (at: number) => (level % 2 === 0 ? `${at}` : letters(at));
+			for (let at = 1; at <= run; at += 1) {
+				notes.push(
+					note(`${head}${step(at)}`, parent, {
+						tags: level === depth - 1 && at === 1 ? question : []
+					})
+				);
+			}
+			head = `${head}${step(1)}`;
+			parent = head;
+		}
+		return notes;
+	}
+
+	it('stops drawing down a deep chain once a page of rows has been drawn', () => {
+		const notes = chain(20, RUN_PAGE);
+		expect(notes).toHaveLength(20 * RUN_PAGE);
+		const rows = walkTree({ notes, opened: opened(), selection: question });
+		expect(rows.length).toBeLessThanOrEqual(RUN_PAGE + LIT_PAGE * 2);
+		expect(addresses(rows)).toContain(notes.at(-RUN_PAGE)?.address);
+		expect(rows.some((row) => row.kind === 'rest')).toBe(true);
+	});
+
+	it('stops opening branches once a page of rows has been opened', () => {
+		const roots = Array.from({ length: 40 }, (_, at) => `${at + 1}`);
+		const notes = roots.flatMap((root) => [
+			note(root),
+			...Array.from({ length: 80 }, (_, at) =>
+				note(`${root}${letters(at + 1)}`, root, { tags: at % 3 === 0 ? question : [] })
+			)
+		]);
+		const rows = walkTree({ notes, opened: opened(), selection: question });
+		expect(rows.length).toBeGreaterThan(roots.length);
+		expect(rows.length).toBeLessThanOrEqual(roots.length + LIT_PAGE + RUN_PAGE);
 	});
 });
 

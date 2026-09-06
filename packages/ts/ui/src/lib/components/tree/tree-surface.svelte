@@ -14,9 +14,15 @@
 
 	export interface TreeSurfaceProps {
 		groups: readonly TreeGroup[];
+		/** A short run drawn at the head of one group's tree, in the order it is
+		 *  given rather than in address order and with nothing under it. It names
+		 *  the group it belongs to: an address is read inside the graph it was
+		 *  written in, so a run never stands over the trees as one list. */
+		lead?: readonly { group: string; title: string; notes: readonly TreeNote[] }[];
 		/** The notes whose children are drawn. */
 		opened: ReadonlySet<OwnedRef>;
-		/** The reader's tags, in selection order — the order the hues go out in. */
+		/** The reader's tags, in selection order — the order the hues go out in,
+		 *  and which branches the walk opens of its own accord. */
 		selection?: readonly Tag[];
 		/** The note in front of the reader, which the tree marks and keeps in view. */
 		reading?: OwnedRef | null;
@@ -44,12 +50,13 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import { assignTagHueSlots } from '@sloppy/types';
-	import { SvelteMap } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { RUN_PAGE, type TreeRow, walkTree } from './walk.js';
 
 	let {
 		groups,
+		lead,
 		opened,
 		selection = [],
 		reading = null,
@@ -73,31 +80,82 @@
 	 *  one Tab reaches the tree and the arrows walk it. */
 	const tabbed = new SvelteMap<string, string>();
 
+	/** The branches the reader folded back up, so a selected tag stops opening
+	 *  them. */
+	const shut = new SvelteSet<OwnedRef>();
+	let shutFor = '';
+	$effect(() => {
+		const now = selection.join('\n');
+		if (now === shutFor) return;
+		shutFor = now;
+		shut.clear();
+	});
+
+	function toggle(ref: OwnedRef, open: boolean): void {
+		if (open) shut.delete(ref);
+		else shut.add(ref);
+		onToggle(ref, open);
+	}
+
 	const slots = $derived(assignTagHueSlots(selection));
 
 	const drawn = $derived(
-		groups.map((group) => ({
-			group,
-			rows: walkTree({
-				notes: group.notes,
-				opened,
-				shown: paged.get(group.key) ?? EMPTY,
-				reading
-			})
-		}))
+		groups.flatMap((group) => {
+			const head = lead?.find((one) => one.group === group.key);
+			return [
+				...(head && head.notes.length > 0
+					? [
+							{
+								key: `lead:${group.key}`,
+								title: head.title,
+								lead: true,
+								rows: leadRows(head.notes)
+							}
+						]
+					: []),
+				{
+					key: group.key,
+					title: group.title,
+					lead: false,
+					rows: walkTree({
+						notes: group.notes,
+						opened,
+						shown: paged.get(group.key) ?? EMPTY,
+						reading,
+						selection,
+						shut
+					})
+				}
+			];
+		})
 	);
 
-	const rowKey = (row: TreeRow): string => (row.kind === 'note' ? row.note.ref : `rest:${row.key}`);
+	function leadRows(notes: readonly TreeNote[]): TreeRow[] {
+		return notes.map((note, at) => ({
+			kind: 'note',
+			note,
+			depth: 0,
+			children: 0,
+			under: 0,
+			open: false,
+			at: at + 1,
+			of: notes.length
+		}));
+	}
+
+	/** The lead's rows key apart from the trees', so a note in both is one row in
+	 *  each and the walk lands on the tree's rather than on the lead's. */
+	const rowKey = (heads: boolean, row: TreeRow): string =>
+		`${heads ? 'lead:' : ''}${row.kind === 'note' ? row.note.ref : `rest:${row.key}`}`;
 
 	/** The tab stop: wherever focus was left, else the note being read, else the
 	 *  first row — so arriving on the tree lands where the reader is. */
-	function stop(key: string, rows: readonly TreeRow[]): string {
+	function stop(key: string, heads: boolean, rows: readonly TreeRow[]): string {
 		const held = tabbed.get(key);
-		if (held !== undefined && rows.some((row) => rowKey(row) === held)) return held;
-		if (reading && rows.some((row) => row.kind === 'note' && row.note.ref === reading)) {
-			return reading;
-		}
-		return rows.length > 0 ? rowKey(rows[0]) : '';
+		if (held !== undefined && rows.some((row) => rowKey(heads, row) === held)) return held;
+		const here = rows.find((row) => row.kind === 'note' && row.note.ref === reading);
+		if (reading && here) return rowKey(heads, here);
+		return rows.length > 0 ? rowKey(heads, rows[0]) : '';
 	}
 
 	/** The selected tags a note carries, earliest-selected first: DESIGN.md § Hue
@@ -158,11 +216,11 @@
 				move(items.length - 1);
 				break;
 			case 'ArrowRight':
-				if (row.kind === 'note' && row.children > 0 && !row.open) onToggle(row.note.ref, true);
+				if (row.kind === 'note' && row.children > 0 && !row.open) toggle(row.note.ref, true);
 				else move(here + 1);
 				break;
 			case 'ArrowLeft':
-				if (row.kind === 'note' && row.open) onToggle(row.note.ref, false);
+				if (row.kind === 'note' && row.open) toggle(row.note.ref, false);
 				else move(above(rows, here));
 				break;
 			case 'Enter':
@@ -190,7 +248,10 @@
 	 *  unfold after the note itself arrives, so the walk has to wait for them. */
 	const landing = $derived(
 		reading !== null &&
-			drawn.some(({ rows }) => rows.some((row) => row.kind === 'note' && row.note.ref === reading))
+			drawn.some(
+				(one) =>
+					!one.lead && one.rows.some((row) => row.kind === 'note' && row.note.ref === reading)
+			)
 			? reading
 			: null
 	);
@@ -214,23 +275,23 @@
 	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
-		{#each drawn as { group, rows } (group.key)}
+		{#each drawn as { key: group, title, lead: heads, rows } (group)}
 			{#if rows.length > 0}
-				{@const held = stop(group.key, rows)}
+				{@const held = stop(group, heads, rows)}
 				<section class="pt-2">
-					{#if groups.length > 1}
+					{#if heads || groups.length > 1}
 						<!-- Stuck below the chrome the tree is inset off, not under it. -->
 						<h2
 							class="sticky z-10 truncate bg-background/95 py-2 text-xs font-medium text-muted-foreground backdrop-blur"
 							style="top: {inset.top}"
 						>
-							{group.title || 'Untitled'}
+							{title || 'Untitled'}
 						</h2>
 					{/if}
 
-					<div role="tree" aria-label={group.title || 'Notes'}>
-						{#each rows as row (rowKey(row))}
-							{@const key = rowKey(row)}
+					<div role="tree" aria-label={title || 'Notes'}>
+						{#each rows as row (rowKey(heads, row))}
+							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
 							{#if row.kind === 'note'}
 								{@const asked = askedOf(row.note)}
@@ -245,8 +306,8 @@
 									aria-expanded={row.children > 0 ? row.open : undefined}
 									aria-selected={row.note.ref === reading}
 									onclick={() => onOpen(row.note.ref)}
-									onkeydown={(event) => keys(event, group.key, rows)}
-									onfocusin={() => tabbed.set(group.key, key)}
+									onkeydown={(event) => keys(event, group, rows)}
+									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
 										0 && asked.length === 0
 										? 'opacity-45'
@@ -262,7 +323,7 @@
 												: `Unfold ${row.note.address}`}
 											onclick={(event) => {
 												event.stopPropagation();
-												onToggle(row.note.ref, !row.open);
+												toggle(row.note.ref, !row.open);
 											}}
 											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
@@ -327,15 +388,17 @@
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
 									aria-selected={false}
-									onclick={() => reveal(group.key, row)}
-									onkeydown={(event) => keys(event, group.key, rows)}
-									onfocusin={() => tabbed.set(group.key, key)}
+									onclick={() => reveal(group, row)}
+									onkeydown={(event) => keys(event, group, rows)}
+									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 									style="padding-inline-start: {step}"
 								>
 									<span class="size-11 shrink-0" aria-hidden="true"></span>
 									<span class="min-w-0 truncate">
-										{row.rest.toLocaleString()} more{row.parent ? ` under ${row.parent}` : ''}
+										{row.rest.toLocaleString()} more{row.parent
+											? ` under ${row.parent}`
+											: ''}{row.lit > 0 ? `, ${row.lit.toLocaleString()} lit up` : ''}
 									</span>
 								</div>
 							{/if}

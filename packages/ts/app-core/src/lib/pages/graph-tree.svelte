@@ -4,6 +4,7 @@
 	// Address Is the Protocol" — so each graph on the canvas is its own tree.
 	import { graphOf, type NodeView, type OwnedRef, type Tag } from '@sloppy/types';
 	import { TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
+	import { api } from '../api.js';
 
 	let {
 		notes,
@@ -33,7 +34,29 @@
 		writeUnder?: TreeSurfaceProps['writeUnder'];
 	} = $props();
 
+	const LAST_WRITTEN = 8;
+
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
+
+	let written = $state<readonly { graph: OwnedRef; notes: readonly OwnedRef[] }[]>([]);
+
+	$effect(() => {
+		if (!fields) return;
+		let live = true;
+		void Promise.all(
+			fields.map(async (field) => {
+				const recent = await api
+					.recentNotes({ graph: field.ref, limit: LAST_WRITTEN })
+					.catch(() => []);
+				return { graph: field.ref, notes: recent.map((note) => note.ref) };
+			})
+		).then((runs) => {
+			if (live) written = runs;
+		});
+		return () => {
+			live = false;
+		};
+	});
 
 	const groups = $derived.by((): TreeGroup[] => {
 		if (!fields) return [{ key: 'held', title: '', notes }];
@@ -55,6 +78,20 @@
 			.filter((group) => group.notes.length > 0);
 	});
 
+	const lead = $derived.by((): TreeSurfaceProps['lead'] => {
+		const runs = groups.flatMap((group) => {
+			const last = (written.find((run) => run.graph === group.key)?.notes ?? [])
+				.map((ref) => byRef.get(ref))
+				.filter((note): note is NodeView => note !== undefined)
+				.slice(0, LAST_WRITTEN);
+			if (last.length === 0) return [];
+			const title =
+				groups.length > 1 ? `Last written in ${group.title || 'Untitled'}` : 'Last written';
+			return [{ group: group.key, title, notes: last }];
+		});
+		return runs.length > 0 ? runs : undefined;
+	});
+
 	// A note reached from anywhere else — the canvas, a link inside another note,
 	// an address in the URL — is one the tree has to be able to show.
 	$effect(() => {
@@ -66,4 +103,14 @@
 	});
 </script>
 
-<TreeSurface {groups} {opened} {selection} {reading} {inset} {onToggle} {onOpen} {writeUnder} />
+<TreeSurface
+	{groups}
+	{lead}
+	{opened}
+	{selection}
+	{reading}
+	{inset}
+	{onToggle}
+	{onOpen}
+	{writeUnder}
+/>
