@@ -705,6 +705,7 @@ describe("bringing the canvas to a note", () => {
 
   it("comes to a note that is off screen", async () => {
     const graph = await mount();
+    graph.answer();
     const ref = drawn(graph);
 
     graph.handle.bringTo(ref);
@@ -714,6 +715,7 @@ describe("bringing the canvas to a note", () => {
 
   it("leaves a note already on screen where it is, and goes on framing", async () => {
     const graph = await mount();
+    graph.answer();
     const ref = drawn(graph);
     graph.scene.onScreen.add(ref);
 
@@ -721,22 +723,38 @@ describe("bringing the canvas to a note", () => {
     graph.answer();
 
     expect(graph.scene.centred).toEqual([]);
+    expect(graph.scene.fits).toBe(2);
+  });
+
+  // A note cited by its address opens the canvas that has never been framed:
+  // answering the ask there would leave the reader at 1:1 on one mark with no
+  // graph around it, when the frame on its way shows them both.
+  it("lets the first frame answer an ask that arrives before it", async () => {
+    const graph = await mount();
+
+    graph.handle.bringTo(drawn(graph));
+    graph.answer(true);
+
+    expect(graph.scene.centred).toEqual([]);
     expect(graph.scene.fits).toBe(1);
   });
 
   it("stops framing the whole field once it has come to the note", async () => {
     const graph = await mount();
+    graph.answer();
+    expect(graph.scene.fits).toBe(1);
 
     graph.handle.bringTo(drawn(graph));
     graph.answer();
 
-    expect(graph.scene.fits).toBe(0);
+    expect(graph.scene.fits).toBe(1);
   });
 
   // A note is asked for while its branch is still folded: the ask waits for the
   // mark rather than being spent on a canvas that has not drawn it.
   it("waits for a note whose branch is still folded", async () => {
     const graph = await mount();
+    graph.answer();
     const mega = firstMegaNode(graph.model());
     const child = childrenOf(mega)[0];
     expect(graph.model().graph.hasNode(child)).toBe(false);
@@ -752,6 +770,7 @@ describe("bringing the canvas to a note", () => {
 
   it("holds the note while the field settles, and lets it go once it has", async () => {
     const graph = await mount();
+    graph.answer();
     const ref = drawn(graph);
 
     graph.handle.bringTo(ref);

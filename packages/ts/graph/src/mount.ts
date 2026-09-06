@@ -174,8 +174,17 @@ export function mountGraph(
    * finger is worse than one that starts off-centre.
    */
   let framing = true;
+  /** Until the field has been framed once the viewport is still the default
+   *  1:1, so what is on screen says nothing about where a mark sits. */
+  let framed = false;
   let dragged: { index: number; world: Point } | null = null;
   let bringing: OwnedRef | null = null;
+
+  const frameAll = (): void => {
+    if (!scene) return;
+    framed = true;
+    scene.fit();
+  };
 
   /** A note is often asked for before its mark exists — a citation arrives while
    *  the graph is still being read — so the ask waits rather than being spent on
@@ -183,6 +192,9 @@ export function mountGraph(
   const arrive = (): boolean => {
     if (bringing === null || scene === null) return false;
     if (scene.indexOf(bringing) === undefined) return false;
+    // A frame still on its way puts the mark on screen with the rest of the
+    // field, so the ask is answered by it rather than taking the viewport off it.
+    if (framing && !framed) return true;
     if (!scene.inView(bringing)) {
       framing = false;
       scene.centreOn(bringing);
@@ -206,7 +218,7 @@ export function mountGraph(
       // was already in: opening a note is itself a relayout, which would then
       // carry the note back off screen with nothing holding it.
       if (arrive() && settled) bringing = null;
-      if (framing) scene?.fit();
+      if (framing) frameAll();
     },
   });
 
@@ -444,8 +456,9 @@ export function mountGraph(
       if (remounting) {
         mountedKey = next.remountKey;
         focus = next.focus;
+        framing = true;
+        framed = false;
       }
-      if (remounting) framing = true;
       rebuild(relayout);
       // An act that starts no settle has nothing that could carry the mark off
       // screen, so the ask ends with the act rather than waiting for whatever
@@ -476,7 +489,7 @@ export function mountGraph(
     },
     fit() {
       bringing = null;
-      scene?.fit();
+      frameAll();
     },
     resetStats() {
       scene?.resetStats();
