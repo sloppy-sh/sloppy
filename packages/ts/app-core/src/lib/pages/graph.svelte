@@ -43,6 +43,7 @@
 	import Users from '@lucide/svelte/icons/users';
 	import type { GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
 	import {
+		MAX_NOTES_PER_BULK_ACT,
 		NodeBulkRequestSchema,
 		pictureTurn,
 		RootAddressSchema,
@@ -453,11 +454,12 @@
 	});
 
 	/** Notes carrying ANY of the selected tags, which is what the canvas lights. */
-	const lit = $derived(
+	const litNotes = $derived(
 		selection.length === 0
-			? 0
-			: visible.filter((note) => note.tags.some((tag) => selection.includes(tag))).length
+			? []
+			: visible.filter((note) => note.tags.some((tag) => selection.includes(tag)))
 	);
+	const lit = $derived(litNotes.length);
 
 	const summary = $derived(
 		selection.length > 0
@@ -962,12 +964,31 @@
 			: `${missed.toLocaleString()} of the notes you chose were already gone.`;
 	}
 
+	/** The notes the selection lit, as one act can take them. The row counts what
+	 *  it reaches, so a set over the bound is answered before the tap. */
+	const chooseLit = $derived.by((): CanvasMenuItem | null => {
+		if (lit === 0) return null;
+		const reach = litNotes.slice(0, MAX_NOTES_PER_BULK_ACT).map((note) => note.ref);
+		const label =
+			reach.length < lit
+				? `Choose ${reach.length.toLocaleString()} of the ${count(lit, 'note', 'notes')} lit up`
+				: lit === 1
+					? 'Choose the note lit up'
+					: `Choose the ${count(lit, 'note', 'notes')} lit up`;
+		return { label, icon: Hash, onSelect: () => chooseWithin(reach) };
+	});
+
 	const menuItems = $derived.by((): CanvasMenuItem[] => {
 		const at = menuAt;
 		if (!at) return [];
 		const on = at.ref;
 		if (!choosing) {
-			if (!on) return [{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }];
+			if (!on) {
+				const bare: CanvasMenuItem[] = [
+					{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }
+				];
+				return chooseLit ? [chooseLit, ...bare] : bare;
+			}
 			return actsOnOne(on, at.foldable);
 		}
 
