@@ -234,6 +234,48 @@ describe('a tag the reader selected', () => {
 		).toEqual(['1', '1a', '1a1', '1b', '2']);
 	});
 
+	it('draws another page of a branch it opened, once the reader asks for one', () => {
+		// A short branch ahead of the long one, so the long one stops on what is
+		// left of the page rather than on a whole one.
+		const notes = [
+			note('1'),
+			...Array.from({ length: 30 }, (_, at) =>
+				note(`1${letters(at + 1)}`, '1', { tags: question })
+			),
+			note('2'),
+			...Array.from({ length: 250 }, (_, at) =>
+				note(`2${letters(at + 1)}`, '2', { tags: question })
+			)
+		];
+		const left = LIT_PAGE - 30;
+		const restUnderTwo = (shown?: ReadonlyMap<string, number>) =>
+			walkTree({ notes, opened: opened(), selection: question, shown }).find(
+				(row) => row.kind === 'rest' && row.key === held('2')
+			);
+		expect(restUnderTwo()).toMatchObject({ kind: 'rest', drawn: left });
+		expect(restUnderTwo(new Map([[held('2'), left + RUN_PAGE]]))).toMatchObject({
+			kind: 'rest',
+			drawn: left + RUN_PAGE
+		});
+	});
+
+	it('keeps drawing as much of a run as the reader had asked for before it', () => {
+		const notes = [
+			note('1'),
+			...Array.from({ length: 250 }, (_, at) =>
+				note(`1${letters(at + 1)}`, '1', { tags: at === 0 ? question : [] })
+			)
+		];
+		const rows = walkTree({
+			notes,
+			opened: opened(),
+			selection: question,
+			shown: new Map([[held('1'), 200]])
+		});
+		expect(rows.filter((row) => row.kind === 'note' && row.depth === 1)).toHaveLength(200);
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', key: held('1'), rest: 50, drawn: 200 });
+	});
+
 	/** A chain as deep as a Folgezettel branch gets, every level a full run and
 	 *  the tag on the note at the bottom of it. */
 	function chain(depth: number, run: number): TreeNote[] {

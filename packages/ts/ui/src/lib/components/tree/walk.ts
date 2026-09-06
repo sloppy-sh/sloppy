@@ -123,12 +123,15 @@ export function walkTree({
 
 	while (stack.length > 0) {
 		const frame = stack[stack.length - 1];
-		const asked = shown.get(frame.key) ?? page;
+		const ask = shown.get(frame.key);
+		// A run the reader asked for is none of the tag's doing, so it neither
+		// stops at the budget nor spends any of it.
+		const budgeted = frame.underLit && ask === undefined;
 		// A page that stops short of the note being read would leave the reader
 		// looking for themselves behind "show more".
 		const held = reading === null ? -1 : frame.run.findIndex((one) => one.ref === reading);
-		const litRoom = frame.underLit ? Math.max(frame.at, held + 1, budget) : frame.run.length;
-		const drawn = Math.min(frame.run.length, Math.max(asked, held + 1), litRoom);
+		const litRoom = budgeted ? Math.max(frame.at + budget, held + 1) : frame.run.length;
+		const drawn = Math.min(frame.run.length, Math.max(ask ?? page, held + 1), litRoom);
 		const at = frame.at;
 		if (at >= drawn) {
 			stack.pop();
@@ -146,7 +149,7 @@ export function walkTree({
 			continue;
 		}
 		frame.at = at + 1;
-		if (frame.underLit) budget -= 1;
+		if (budgeted) budget -= 1;
 		const note = frame.run[at];
 		const children = runs.get(note.ref) ?? [];
 		const chose = opened.has(note.ref);
