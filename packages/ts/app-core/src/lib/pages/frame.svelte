@@ -16,13 +16,13 @@
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { session } from '../stores/session.svelte.js';
-	import { activeRouteId, navRoutes, OPEN_ROUTES, refFromPath } from './routes.js';
+	import { activeRouteId, navRoutes, OPEN_ROUTES } from './routes.js';
 
 	let { children }: { children: Snippet } = $props();
 
 	/** Signing in leaves the app entirely, so the note somebody came for has to
 	 *  outlive this document. */
-	const CITED = 'sloppy.cited';
+	const RETURN_TO = 'sloppy.return';
 
 	// Annotated because SvelteKit types `pathname` against THIS package's route
 	// tree, and the real one is the shells'.
@@ -50,19 +50,19 @@
 		}
 	}
 
-	function holdCited(note: string): void {
+	function holdReturn(destination: string): void {
 		try {
-			sessionStorage.setItem(CITED, note);
+			sessionStorage.setItem(RETURN_TO, destination);
 		} catch {
-			// Storage turned off costs the citation, not the sign-in.
+			// Storage turned off costs the return, not the sign-in.
 		}
 	}
 
-	function claimCited(): string | null {
+	function claimReturn(): string | null {
 		try {
-			const note = sessionStorage.getItem(CITED);
-			sessionStorage.removeItem(CITED);
-			return note;
+			const destination = sessionStorage.getItem(RETURN_TO);
+			sessionStorage.removeItem(RETURN_TO);
+			return destination;
 		} catch {
 			return null;
 		}
@@ -91,13 +91,13 @@
 		if (!session.signedIn) {
 			if (OPEN_ROUTES.includes(path)) return;
 			if (session.unavailable) return;
-			if (refFromPath(path)) holdCited(path);
+			if (path !== '/') holdReturn(path + page.url.search);
 			const trouble = page.url.searchParams.get('sloppy_error');
 			void goto(trouble ? `/sign-in?sloppy_error=${encodeURIComponent(trouble)}` : '/sign-in');
 			return;
 		}
-		const cited = claimCited();
-		if (cited && cited !== path) void goto(cited);
+		const returnTo = claimReturn();
+		if (returnTo && returnTo !== path) void goto(returnTo);
 		else if (path === '/sign-in') void goto('/');
 	});
 

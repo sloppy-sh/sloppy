@@ -109,6 +109,20 @@ describe('the frame around every page', () => {
 		expect(where.gone).toEqual(['/sign-in']);
 	});
 
+	it('brings somebody back to the thought they arrived with once they have signed in', async () => {
+		api.on('GET /auth/me', () => undefined);
+		where.url = new URL('http://app.test/new?text=a%20thought');
+
+		await show();
+		expect(where.gone).toEqual(['/sign-in']);
+
+		session.adopt(VIEWER, 'token');
+		flushSync();
+		await settle();
+
+		expect(where.gone.at(-1)).toBe('/new?text=a%20thought');
+	});
+
 	// A sign-in page reached because Sloppy could not ask who somebody is cannot
 	// help them either: they have a session, and nothing on it to do.
 	it('says so and holds, rather than signing out a session it could not check', async () => {
