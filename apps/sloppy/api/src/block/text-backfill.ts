@@ -18,9 +18,6 @@ const PER_PASS = 200;
  * before there was anything to derive them into is writing a search cannot
  * reach. This derives what is already stored.
  *
- * **What it writes is its own guard.** A section it reaches gains `text`, the
- * empty string included, so no later pass reads it again.
- *
  * A copy the reader holds of somebody else's note gains its words when the
  * region is next refreshed, which rewrites the sections whole.
  */

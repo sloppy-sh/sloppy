@@ -123,13 +123,14 @@ export class NodeService {
   ): Promise<SearchHit[]> {
     const words = searchWords(asked);
     if (words === "") return [];
+    const [ownNotes, heldNotes] = await this.notesWithin(did, graph);
     const [own, held] = await Promise.all([
-      this.find.writingMatches(did, words),
-      this.find.heldWritingMatches(did, words),
+      this.find.writingMatches(did, words, ownNotes),
+      this.find.heldWritingMatches(did, words, heldNotes),
     ]);
     const found = [
-      ...(await this.ownHits(did, own, graph)),
-      ...(await this.heldHits(did, held, graph)),
+      ...(await this.ownHits(did, own)),
+      ...(await this.heldHits(did, held)),
     ];
     return found
       .sort(bestFirst)
@@ -137,27 +138,36 @@ export class NodeService {
       .map((one) => one.hit);
   }
 
-  /** The notes they last wrote INTO, newest first — never `node.updated_at`,
-   *  which a title or a tag moves and an afternoon of writing does not. */
   async recent(
     did: string,
     query: { graph?: OwnedRef; limit: number },
   ): Promise<NodeView[]> {
-    if (query.graph === undefined) {
-      return this.notesAt(did, await this.find.lastWritten(did, query.limit));
-    }
-    const within = new Set(await this.nodes.notesIn(did, query.graph));
-    if (within.size === 0) return [];
-    const written = (await this.find.lastWritten(did)).filter((ref) =>
-      within.has(ref),
+    const within =
+      query.graph === undefined
+        ? undefined
+        : await this.nodes.notesIn(did, query.graph);
+    return this.notesAt(
+      did,
+      await this.find.lastWritten(did, query.limit, within),
     );
-    return this.notesAt(did, written.slice(0, query.limit));
+  }
+
+  /** Which of their own notes and which of the copies they hold a search may
+   *  answer with, or neither bound where no graph is named. */
+  private notesWithin(
+    did: string,
+    graph?: OwnedRef,
+  ): Promise<[OwnedRef[] | undefined, OwnedRef[] | undefined]> {
+    if (graph === undefined) return Promise.resolve([undefined, undefined]);
+    return Promise.all([
+      this.nodes.notesIn(did, graph),
+      this.find.heldNotesIn(did, graph),
+    ]);
   }
 
   private async ownHits(
     did: string,
     sections: readonly SectionMatch[],
-    graph?: OwnedRef,
   ): Promise<Ranked[]> {
     const found = notesAmong(sections);
     if (found.size === 0) return [];
@@ -165,9 +175,7 @@ export class NodeService {
     return notes.flatMap((note) => {
       const ref = ownedRefFrom(note.id);
       const carried = found.get(ref);
-      if (!carried || (graph !== undefined && graphOf(note) !== graph)) {
-        return [];
-      }
+      if (!carried) return [];
       return [
         {
           matches: carried.matches,
@@ -187,14 +195,13 @@ export class NodeService {
   private async heldHits(
     did: string,
     sections: readonly SectionMatch[],
-    graph?: OwnedRef,
   ): Promise<Ranked[]> {
     const found = notesAmong(sections);
     if (found.size === 0) return [];
     const notes = await this.find.heldNotes(did, [...found.keys()]);
     return notes.flatMap((note) => {
       const carried = found.get(note.source);
-      if (!carried || (graph !== undefined && note.graph !== graph)) return [];
+      if (!carried) return [];
       return [
         {
           matches: carried.matches,

@@ -10,6 +10,7 @@ import {
   graphRef,
   type OwnedRef,
   OwnedRefSchema,
+  splitOwnedRef,
 } from "@sloppy/types";
 import { z } from "zod";
 import { DbService } from "../db/db.service";
@@ -57,26 +58,50 @@ const HeldNoteSchema = z.object({
 export class FindRepository {
   constructor(private readonly db: DbService) {}
 
-  /** The caller's own sections whose writing carries `words`. A section that
-   *  went with a deleted note is not among them. */
-  writingMatches(did: string, words: string): Promise<SectionMatch[]> {
+  /** The caller's own sections whose writing carries `words`, among `notes`
+   *  where they are named. A section that went with a deleted note is not among
+   *  them. */
+  writingMatches(
+    did: string,
+    words: string,
+    notes?: readonly OwnedRef[],
+  ): Promise<SectionMatch[]> {
     return this.matching(
       `SELECT node, text, search::offsets(1) AS at FROM block
          WHERE text @1@ $words AND created_by = $did AND deleted_at = NONE
+           ${among(notes)}
          LIMIT $read`,
-      { did, words },
+      { did, words, notes: notes && [...notes] },
     );
   }
 
   /** The same over what a peer handed them, so a search reaches a note they are
    *  holding and reading. */
-  heldWritingMatches(did: string, words: string): Promise<SectionMatch[]> {
+  heldWritingMatches(
+    did: string,
+    words: string,
+    notes?: readonly OwnedRef[],
+  ): Promise<SectionMatch[]> {
     return this.matching(
       `SELECT node, text, search::offsets(1) AS at FROM pulled_block
          WHERE text @1@ $words AND created_by = $did
+           ${among(notes)}
          LIMIT $read`,
-      { did, words },
+      { did, words, notes: notes && [...notes] },
     );
+  }
+
+  /** The copies they hold that are read in `graph`. A held note's graph is its
+   *  author's, which is where its address is read. */
+  async heldNotesIn(did: string, graph: OwnedRef): Promise<OwnedRef[]> {
+    const { did: author } = splitOwnedRef(graph);
+    const [rows] = await this.db.handle.query<[unknown[]]>(
+      `SELECT VALUE source FROM pulled_node
+         WHERE created_by = $did AND source_did = $author
+           AND source_graph = $graph`,
+      { did, author, graph },
+    );
+    return rows.map((row) => OwnedRefSchema.parse(row));
   }
 
   /** How a hit names the held notes those sections belong to. */
@@ -104,20 +129,24 @@ export class FindRepository {
 
   /**
    * The notes of theirs that have been written into, the most recently written
-   * first — at most `limit` where one is named, and all of them where none is,
-   * one entry per note either way.
+   * first — at most `limit` where one is named, and among `notes` where they
+   * are named, one entry per note either way.
    *
    * The order is the SECTIONS', not the note rows': `node.updated_at` moves for
    * a title, a tag or a look, so a note somebody spent an afternoon writing into
    * would read as untouched since the day they made it.
    */
-  async lastWritten(did: string, limit?: number): Promise<OwnedRef[]> {
+  async lastWritten(
+    did: string,
+    limit?: number,
+    notes?: readonly OwnedRef[],
+  ): Promise<OwnedRef[]> {
     const bound = limit === undefined ? "" : " LIMIT $limit";
     const [rows] = await this.db.handle.query<[{ node: unknown }[]]>(
       `SELECT node, array::max(array::group(updated_at)) AS at FROM block
-         WHERE created_by = $did AND deleted_at = NONE
+         WHERE created_by = $did AND deleted_at = NONE ${among(notes)}
          GROUP BY node ORDER BY at DESC${bound}`,
-      { did, limit },
+      { did, limit, notes: notes && [...notes] },
     );
     return rows.map((row) => OwnedRefSchema.parse(row.node));
   }
@@ -142,4 +171,9 @@ export class FindRepository {
       };
     });
   }
+}
+
+/** Absent narrows nothing; an empty run narrows to nothing. */
+function among(notes?: readonly OwnedRef[]): string {
+  return notes === undefined ? "" : "AND node IN $notes";
 }

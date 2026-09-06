@@ -68,8 +68,9 @@ export interface Ranked {
   matches: number;
 }
 
-/** Best first: the note whose writing carries the words most often, then the
- *  one lower down the graph. */
+/** Best first: the note whose writing carries the words most often, ties
+ *  settled by address and then by ref, so one search answers the same way
+ *  twice. */
 export function bestFirst(a: Ranked, b: Ranked): number {
   return (
     b.matches - a.matches ||

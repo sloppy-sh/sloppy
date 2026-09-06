@@ -14,6 +14,7 @@ import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type {
   BlockView,
+  DidSyr,
   FollowedIdentity,
   NodeView,
   PublishedBlock,
@@ -915,5 +916,15 @@ describe("holding a region of somebody else's graph", () => {
     expect(hits[0].title).toBe("Note 1");
     expect(hits[0].held).toBe(true);
     expect(hits[0].snippet).toContain("quokka");
+
+    const narrowed = async (graph: string) =>
+      (
+        (await ok(
+          "GET",
+          `/nodes/search?q=quokka&graph=${encodeURIComponent(graph)}`,
+        )) as SearchHit[]
+      ).map((one) => one.note);
+    expect(await narrowed(homeGraphRef(AUTHOR))).toEqual([ref(ID.root)]);
+    expect(await narrowed(homeGraphRef(reader.did as DidSyr))).toEqual([]);
   });
 });
