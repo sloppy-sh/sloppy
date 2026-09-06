@@ -393,6 +393,11 @@
 	const backlinks = $derived(
 		everyNote.filter((note) => note.ref !== ref && note.links.includes(ref))
 	);
+	/** The notes whose own writing names this one; DESIGN.md § "Edges" is why
+	 *  they are never the list above. A note with none derived names nothing. */
+	const namedIn = $derived(
+		everyNote.filter((note) => note.ref !== ref && (note.references ?? []).includes(ref))
+	);
 
 	/** Enough to recognise the one meant, never a list to browse. */
 	const MATCHES = 6;
@@ -1509,7 +1514,7 @@
 					</div>
 				</div>
 
-				{#if linked.length > 0 || backlinks.length > 0}
+				{#if linked.length > 0 || backlinks.length > 0 || namedIn.length > 0}
 					<div class="space-y-3 border-t border-border pt-6">
 						{#if linked.length > 0}
 							<h2 class="text-sm font-medium text-muted-foreground">Links to</h2>
@@ -1554,6 +1559,20 @@
 								{@attach scrollFade('y')}
 							>
 								{#each backlinks as from (from.ref)}
+									<li class="flex items-center">
+										{@render row(from, () => onOpen(from.ref), true)}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+
+						{#if namedIn.length > 0}
+							<h2 class="text-sm font-medium text-muted-foreground">Named in</h2>
+							<ul
+								class="scroll-fade-y max-h-64 space-y-0.5 overflow-y-auto"
+								{@attach scrollFade('y')}
+							>
+								{#each namedIn as from (from.ref)}
 									<li class="flex items-center">
 										{@render row(from, () => onOpen(from.ref), true)}
 									</li>

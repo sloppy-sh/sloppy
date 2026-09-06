@@ -1727,6 +1727,65 @@ describe('writing the next note while the server is still assigning its address'
 	});
 });
 
+describe('what points back at a note', () => {
+	let graph: Map<OwnedRef, NodeView>;
+
+	/** The list one of the note's headings stands over. */
+	function listUnder(heading: string): HTMLElement {
+		const head = [...document.body.querySelectorAll('h2')].find(
+			(one) => one.textContent?.trim() === heading
+		);
+		const list = head?.nextElementSibling;
+		if (!(list instanceof HTMLElement)) throw new Error(`Nothing is listed under "${heading}"`);
+		return list;
+	}
+
+	beforeEach(() => {
+		graph = installGraph();
+	});
+
+	// DESIGN.md § "Edges": a hand draws a link and a hand takes it away; a
+	// reference is the note's own words and goes when they do. Two lists.
+	it('keeps the notes whose writing names this one apart from the ones a hand linked', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, references: [FOURTH] });
+		graph.set(THIRD, { ...graph.get(THIRD)!, links: [FOURTH] });
+		await loadGraph();
+		await openNote(FOURTH);
+
+		expect(listUnder('Named in').textContent).toContain('Cells');
+		expect(listUnder('Named in').textContent).not.toContain('Membranes');
+		expect(listUnder('Linked from').textContent).toContain('Membranes');
+		expect(listUnder('Linked from').textContent).not.toContain('Cells');
+	});
+
+	it('opens the note that named this one', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, references: [FOURTH] });
+		await loadGraph();
+		await openNote(FOURTH);
+
+		noteRow('Cells').click();
+		await settle();
+
+		expect(document.body.querySelector('.address')?.textContent).toBe('1a');
+	});
+
+	// The words made the line, so this is not the side it can be taken off.
+	it('offers no way to take a reference off from here', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, references: [FOURTH] });
+		await loadGraph();
+		await openNote(FOURTH);
+
+		expect(listUnder('Named in').querySelector('[aria-label^="Unlink"]')).toBeNull();
+	});
+
+	it('names nothing where no note names this one', async () => {
+		await loadGraph();
+		await openNote(FOURTH);
+
+		expect(screen()).not.toContain('Named in');
+	});
+});
+
 describe('the way out of a note', () => {
 	beforeEach(async () => {
 		installGraph();
