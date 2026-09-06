@@ -3,6 +3,7 @@ import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
+import { reactive } from '../props.test-support.svelte.js';
 import TagRail from './tag-rail.svelte';
 
 const TAGS: TagCount[] = [
@@ -16,11 +17,10 @@ let mounted: ReturnType<typeof mount> | undefined;
 let asked: Tag[][];
 
 function render(selected: Tag[] = [], tags: TagCount[] = TAGS) {
-	mounted = mount(TagRail, {
-		target,
-		props: { tags, selected, onselect: (next: Tag[]) => asked.push(next) }
-	});
+	const props = reactive({ tags, selected, onselect: (next: Tag[]) => asked.push(next) });
+	mounted = mount(TagRail, { target, props });
 	flushSync();
+	return props;
 }
 
 const chips = () => [...target.querySelectorAll('button[aria-pressed]')] as HTMLButtonElement[];
@@ -29,6 +29,37 @@ const named = (tag: string) =>
 	chips().find((chip) => chip.textContent?.includes(tag)) as HTMLButtonElement;
 
 const heading = () => target.querySelector('h2')?.textContent?.trim();
+
+const filter = () => target.querySelector('input') as HTMLInputElement | null;
+
+const names = () => chips().map((chip) => chip.textContent?.trim().split(/\s+/)[0]);
+
+function type(text: string): void {
+	const field = filter() as HTMLInputElement;
+	field.value = text;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+}
+
+/** More tags than the rail draws without offering to narrow them, most-used first. */
+const MANY: TagCount[] = [
+	'biology',
+	'seed',
+	'question',
+	'chemistry',
+	'physics',
+	'geology',
+	'ecology',
+	'ethics',
+	'method',
+	'sources',
+	'draft',
+	'reading',
+	'garden',
+	'soil',
+	'ink',
+	'thesis'
+].map((tag, at) => ({ tag: tag as Tag, notes: 100 - at }));
 
 const painted = (element: HTMLElement): Record<string, string> =>
 	Object.fromEntries(
@@ -134,6 +165,70 @@ describe('the legend', () => {
 	it('shows how many notes carry a tag nobody has selected yet', () => {
 		render();
 		expect(named('biology').textContent).toContain('431');
+	});
+});
+
+describe('typing for a tag', () => {
+	it('offers nowhere to type until the rail holds more than a screen of chips', () => {
+		render();
+		expect(filter()).toBeNull();
+		unmount(mounted!, { outro: false });
+		render([], MANY);
+		expect(filter()).not.toBeNull();
+	});
+
+	it('draws only the tags holding what was typed, still most-used first', () => {
+		render([], MANY);
+		type('ology');
+		expect(names()).toEqual(['biology', 'geology', 'ecology']);
+	});
+
+	it('matches whatever case it was typed in, and past the space around it', () => {
+		render([], MANY);
+		type('  ECOL  ');
+		expect(names()).toEqual(['ecology']);
+	});
+
+	// DESIGN.md § Hue: the canvas is drawing the selection's colours, so a legend
+	// that dropped a selected tag would leave a hue on screen with nothing naming it.
+	it('keeps the selection drawn whatever is typed', () => {
+		render(['seed', 'question'] as Tag[], MANY);
+		type('ology');
+		expect(names()).toEqual(['seed', 'question', 'biology', 'geology', 'ecology']);
+	});
+
+	it('says when nothing has that in it, and not while something does', () => {
+		render([], MANY);
+		type('ology');
+		expect(target.textContent).not.toContain('No tag has that in it.');
+		type('zzz');
+		expect(names()).toEqual([]);
+		expect(target.textContent).toContain('No tag has that in it.');
+	});
+
+	it('does not say nothing has it while the tag holding it is a selected one', () => {
+		render(['ecology'] as Tag[], MANY);
+		type('ecolo');
+		expect(names()).toEqual(['ecology']);
+		expect(target.textContent).not.toContain('No tag has that in it.');
+	});
+
+	// A filter stands until the reader clears it: the word is still in the field
+	// above the chips, and emptying it out from under them would be the surprise.
+	it("holds what was typed when the rail is handed another read's tags", () => {
+		const props = render([], MANY);
+		type('ology');
+		props.tags = MANY.filter((entry) => entry.tag !== 'geology');
+		flushSync();
+		expect(filter()?.value).toBe('ology');
+		expect(names()).toEqual(['biology', 'ecology']);
+	});
+
+	it('still selects the tag that was tapped out of a narrowed rail', () => {
+		render([], MANY);
+		type('ology');
+		named('geology').click();
+		expect(asked).toEqual([['geology']]);
 	});
 });
 

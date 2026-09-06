@@ -7,7 +7,7 @@ import type {
 	OwnedRef,
 	PublicationView
 } from '@sloppy/types';
-import { MARK_SCALE_MAX } from '@sloppy/types';
+import { MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -231,6 +231,24 @@ function typeTag(word: string): void {
 	field.dispatchEvent(new Event('input', { bubbles: true }));
 	field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 }
+
+/** The rail's own find field, which it offers only once it is crowded. */
+function findTag(word: string): void {
+	const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
+	if (!field) throw new Error('The rail is offering nowhere to type');
+	field.value = word;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** The tags the rail is drawing, in the order it draws them. */
+const railChips = (): string[] => {
+	const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
+	const root = field?.parentElement;
+	if (!root) throw new Error('The rail is offering nowhere to type');
+	return [...root.querySelectorAll('button[aria-pressed]')].map(
+		(chip) => chip.textContent?.trim().split(/\s+/)[0] ?? ''
+	);
+};
 
 /** The words the tag field is showing. */
 const chips = (): string[] =>
@@ -1018,6 +1036,113 @@ describe('choosing several notes to act on', () => {
 
 		expect(screen()).toContain('Cells');
 		expect(acts).toEqual([]);
+	});
+});
+
+// The tag axis asks a question of the whole graph; this is what carries its
+// answer over to the acts, which is the only bulk path a phone has.
+describe('choosing the notes a selection lit', () => {
+	function light(of: OwnedRef, ...carried: string[]): void {
+		const note = graph.get(of);
+		if (!note) throw new Error('No such note');
+		graph.set(of, { ...note, tags: carried });
+	}
+
+	/** A graph of `many` root notes, every one of them carrying `seed`. */
+	function installLit(many: number): void {
+		const held = new Map<OwnedRef, NodeView>();
+		for (let n = 1; n <= many; n += 1) held.set(ref(n), node(n, `${n}`, { tags: ['seed'] }));
+		graph = held;
+		api.on('GET /nodes/tags', () => [{ tag: 'seed', notes: many }]);
+		api.on('GET /nodes', (url) => (url.searchParams.get('origin') ? [] : [...held.values()]));
+	}
+
+	it('offers the lit notes on the bare field, and hands the whole set to one act', async () => {
+		light(SECOND, 'seed');
+		light(THIRD, 'seed');
+		tags.select(['seed']);
+		await open();
+
+		menuOn('the canvas').click();
+		await settle();
+		expect(offered()).toEqual(['Choose the 2 notes lit up', 'Choose notes']);
+
+		item('Choose the 2 notes lit up').click();
+		await settle();
+		expect(screen()).toContain('2 notes chosen');
+		expect(onCanvas('1a').dataset.chosen).toBe('yes');
+		expect(onCanvas('1').dataset.chosen).toBeUndefined();
+
+		button('Tags').click();
+		await settle();
+		typeTag('seeds');
+		await settle();
+
+		expect(acts).toEqual([{ notes: [SECOND, THIRD], act: { act: 'tag', tags: ['seeds'] } }]);
+	});
+
+	it('offers nothing to choose while the selection lights no note', async () => {
+		tags.select(['seed']);
+		await open();
+
+		menuOn('the canvas').click();
+		await settle();
+
+		expect(offered()).toEqual(['Choose notes']);
+	});
+
+	it('counts one lit note as one', async () => {
+		light(THIRD, 'seed');
+		tags.select(['seed']);
+		await open();
+
+		menuOn('the canvas').click();
+		await settle();
+
+		expect(offered()).toEqual(['Choose the note lit up', 'Choose notes']);
+	});
+
+	// The bound is the reader's to see before the tap: a refusal landing after it
+	// would leave them in the mode with an act they cannot ask for.
+	it('says how many of the lit notes one act reaches, before it is asked for', async () => {
+		const many = MAX_NOTES_PER_BULK_ACT + 12;
+		installLit(many);
+		tags.select(['seed']);
+		await open();
+
+		const row = `Choose ${MAX_NOTES_PER_BULK_ACT.toLocaleString()} of the ${many.toLocaleString()} notes lit up`;
+		menuOn('the canvas').click();
+		await settle();
+		expect(offered()).toEqual([row, 'Choose notes']);
+
+		item(row).click();
+		await settle();
+
+		expect(screen()).toContain(`${MAX_NOTES_PER_BULK_ACT.toLocaleString()} notes chosen`);
+		expect(screen()).not.toContain('Choose fewer');
+	});
+
+	// The rail narrows what it draws, never what the canvas lit, so the row still
+	// reaches the notes the reader can see are lit.
+	it('still offers the lit notes while the rail is narrowed past the tag that lit them', async () => {
+		light(SECOND, 'seed');
+		light(THIRD, 'seed');
+		api.on('GET /nodes/tags', () => [
+			{ tag: 'seed', notes: 2 },
+			...Array.from({ length: 20 }, (_, n) => ({ tag: `other${n}`, notes: 1 }))
+		]);
+		tags.select(['seed']);
+		await open();
+
+		findTag('other1');
+		await settle();
+
+		expect(railChips()).not.toContain('other0');
+		expect(railChips()).toContain('seed');
+		menuOn('the canvas').click();
+		await settle();
+
+		expect(offered()).toEqual(['Choose the 2 notes lit up', 'Choose notes']);
 	});
 });
 
