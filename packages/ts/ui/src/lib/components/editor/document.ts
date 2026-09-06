@@ -154,6 +154,17 @@ export function openBlocks(blocks: readonly BlockView[], schema: Schema): Opened
 	};
 }
 
+/** One section holding a run of text somebody arrived with, a paragraph to a
+ *  line. Empty where there is nothing to write. */
+export function textDocument(text: string): BlockDocument {
+	const content: DocumentNode[] = text
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0)
+		.map((line) => ({ type: 'paragraph', content: [{ type: 'text', text: line }] }));
+	return { type: 'doc', content };
+}
+
 /**
  * The rows the document currently describes. A section holding nothing is not
  * one until it is one: the empty section a note opens on never becomes a row on

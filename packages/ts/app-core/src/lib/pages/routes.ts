@@ -34,6 +34,19 @@ export function activeRouteId(path: string): string {
 	return match?.id ?? 'graph';
 }
 
+/**
+ * Where a thought arriving from outside Sloppy is put down. `under` continues
+ * the note it names, and absent opens a branch; `text` is what the person
+ * arrived with, seeded into the note's first section.
+ */
+export function newHref(seed: { under?: OwnedRef; text?: string } = {}): string {
+	const asked = new URLSearchParams();
+	if (seed.under) asked.set('under', seed.under);
+	if (seed.text) asked.set('text', seed.text);
+	const query = asked.toString();
+	return query ? `/new?${query}` : '/new';
+}
+
 export function nodeHref(ref: OwnedRef): string {
 	const cut = ref.lastIndexOf('/');
 	return `/n/${encodeURIComponent(ref.slice(0, cut))}/${encodeURIComponent(ref.slice(cut + 1))}`;
