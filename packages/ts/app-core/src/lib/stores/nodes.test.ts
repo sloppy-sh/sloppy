@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { nodes } from './nodes.svelte.js';
-import type { OwnedRef } from '@sloppy/types';
+import type { NodeView, OwnedRef } from '@sloppy/types';
 import { node, ref, useFakeApi, type FakeApi } from './fake-api.test-support.js';
 
 const ROOT = ref(1);
@@ -170,5 +170,42 @@ describe('the node cache', () => {
 		await nodes.load({ origin: ROOT });
 		nodes.forget(ref(2));
 		expect(nodes.get(ref(5))).toBeDefined();
+	});
+});
+
+describe('a note asked for', () => {
+	const WRITTEN = ref(9);
+
+	it('answers with the trip, and caches the note once the address is assigned', async () => {
+		let give: (value: NodeView) => void = () => {};
+		api.on('POST /nodes', () => new Promise<NodeView>((settle) => (give = settle)));
+
+		const writing = nodes.write({});
+		expect(nodes.get(WRITTEN)).toBeUndefined();
+
+		give(node(9, '3'));
+		expect((await writing.note).ref).toBe(WRITTEN);
+		expect(nodes.get(WRITTEN)?.address).toBe('3');
+	});
+
+	it('asks for the same note again, and only once more', async () => {
+		const asked: unknown[] = [];
+		api.on('POST /nodes', (_url, init) => {
+			asked.push(JSON.parse(String(init?.body)));
+			if (asked.length === 1) {
+				return new Response('{"message":"That note would not go."}', {
+					status: 400,
+					headers: { 'content-type': 'application/json' }
+				});
+			}
+			return node(9, '3');
+		});
+
+		const writing = nodes.write({ title: 'Membranes' });
+		await expect(writing.note).rejects.toThrow();
+
+		const again = writing.again();
+		expect((await again.note).address).toBe('3');
+		expect(asked).toEqual([{ title: 'Membranes' }, { title: 'Membranes' }]);
 	});
 });

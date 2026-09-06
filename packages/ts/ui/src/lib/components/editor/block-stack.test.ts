@@ -773,3 +773,33 @@ describe('the caret handed down from above the note', () => {
 		expect(editor.state.selection.from).toBe(Selection.atStart(editor.state.doc).from);
 	});
 });
+
+describe('a note that arrived holding writing', () => {
+	const holding = (blocks: BlockView[]) =>
+		open(blocks) as unknown as { carry: (text: string) => void };
+
+	it('opens on what was written before it had somewhere to put it, and saves it', async () => {
+		const stack = holding([]);
+		stack.carry('two bars\n\nstill four seconds');
+		flushSync();
+
+		expect(writingIn().state.doc.textContent).toBe('two barsstill four seconds');
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(written.created).toHaveLength(1);
+		expect(wording(written.created[0].content as BlockDocument)).toEqual([
+			'two bars',
+			'still four seconds'
+		]);
+	});
+
+	it('leaves a note that already says something exactly as it is', async () => {
+		const stack = holding([prose('already here')]);
+		stack.carry('never mind');
+		flushSync();
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(document.querySelector('.sloppy-prose')?.textContent).toBe('already here');
+		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
+	});
+});

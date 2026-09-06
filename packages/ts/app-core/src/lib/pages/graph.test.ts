@@ -1237,3 +1237,345 @@ describe('writing a note from the keyboard', () => {
 		expect(branch.getAttribute('aria-label')).toMatch(/^New branch \(.+\)$/);
 	});
 });
+
+// PRODUCT.md § "Capture is one gesture": the four seconds belong to the product,
+// not to the network, so the surface opens on the tap and the writing waits for
+// the address rather than the other way round.
+describe('a note written before the server has answered', () => {
+	const WRITTEN = ref(9);
+	let stalled: { answer: (value: NodeView | Response) => void };
+	let created: CreateBlockRequest[];
+	/** The title the note was given once it had an address, if it was given one. */
+	let titled: string | undefined;
+
+	function heldOpen(): {
+		answer: (value: NodeView | Response) => void;
+		route: () => Promise<NodeView | Response>;
+	} {
+		let give: (value: NodeView | Response) => void = () => {};
+		const waiting = new Promise<NodeView | Response>((settle) => (give = settle));
+		return { answer: (value) => give(value), route: () => waiting };
+	}
+
+	function field(label: string): HTMLTextAreaElement {
+		const found = document.body.querySelector<HTMLTextAreaElement>(
+			`textarea[aria-label="${label}"]`
+		);
+		if (!found) throw new Error(`No "${label}" field on screen`);
+		return found;
+	}
+
+	function type(into: HTMLTextAreaElement, said: string): void {
+		into.value = said;
+		into.dispatchEvent(new Event('input', { bubbles: true }));
+	}
+
+	/** Real timers: what is waited for is the writing settling, on its own clock,
+	 *  which is longer than a frame and shorter than this. */
+	async function until(ready: () => boolean): Promise<void> {
+		const stop = Date.now() + 4000;
+		while (!ready() && Date.now() < stop) {
+			await new Promise((wake) => setTimeout(wake, 10));
+			flushSync();
+		}
+		if (!ready()) throw new Error('The writing never reached the note');
+	}
+
+	const said = (of: CreateBlockRequest): string =>
+		((of.content?.content ?? []) as { content?: { text?: string }[] }[])
+			.flatMap((paragraph) => (paragraph.content ?? []).map((run) => run.text ?? ''))
+			.join('');
+
+	beforeEach(() => {
+		created = [];
+		titled = undefined;
+		const trip = heldOpen();
+		stalled = trip;
+		api.on('POST /nodes', () => trip.route());
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+		api.on(`PATCH ${path(WRITTEN)}`, (_url, init) => {
+			const change = JSON.parse(String(init?.body)) as Partial<NodeView>;
+			titled = change.title;
+			return { ...node(9, '3'), ...change };
+		});
+		api.on('POST /blocks', (_url, init) => {
+			const request = JSON.parse(String(init?.body)) as CreateBlockRequest;
+			created.push(request);
+			return {
+				ref: ref(20 + created.length),
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				node: request.node,
+				ord: '0001',
+				content: request.content
+			};
+		});
+	});
+
+	it('opens somewhere to write on the tap, with the address still being given', async () => {
+		await open();
+		button('New branch').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+		expect(screen()).toContain('Giving it an address');
+		expect(document.body.querySelector('.address')).toBeNull();
+	});
+
+	it('puts what was typed into the note the moment there is one', async () => {
+		await open();
+		button('New branch').click();
+		await settle();
+		type(field('Title'), 'Membranes');
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(field('Title').value).toBe('Membranes');
+		await until(() => created.length > 0);
+		expect(created).toHaveLength(1);
+		expect(created[0].node).toBe(WRITTEN);
+		expect(said(created[0])).toBe('two bars is still four seconds');
+		expect(titled).toBe('Membranes');
+	});
+
+	it('keeps the writing and offers another go when the note will not be written', async () => {
+		await open();
+		button('New branch').click();
+		await settle();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(
+			new Response('{"message":"That note would not go."}', {
+				status: 400,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+		await settle();
+
+		expect(screen()).toContain('That note would not go.');
+		expect(field('Note body').value).toBe('two bars is still four seconds');
+
+		api.on('POST /nodes', () => node(9, '3'));
+		button('Try again').click();
+		await settle();
+
+		await until(() => created.length > 0);
+		expect(said(created[0])).toBe('two bars is still four seconds');
+	});
+
+	function shape(named: string): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll<HTMLButtonElement>('li button')].find(
+			(row) => row.querySelector('span')?.textContent?.trim() === named
+		);
+		if (!found) throw new Error(`No shape on screen is called "${named}"`);
+		return found;
+	}
+
+	async function writeFromTheCanvas(): Promise<void> {
+		await open();
+		menuOn('1a').click();
+		await settle();
+		item('Write a note under this').click();
+		await settle();
+	}
+
+	it('opens somewhere to write for a note asked for on the canvas, with nothing open', async () => {
+		await writeFromTheCanvas();
+
+		expect(reading()).toBe(true);
+		expect(screen()).toContain('Giving it an address');
+		expect(document.body.querySelector('.address')).toBeNull();
+	});
+
+	it('opens somewhere to write for a note asked for from a row of the outline', async () => {
+		await open();
+		labelled('Walk the notes one at a time').click();
+		await settle();
+		labelled('Unfold 1').click();
+		await settle();
+		labelled('Write a note under 1a').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+		expect(screen()).toContain('Giving it an address');
+	});
+
+	it('says a note asked for on the canvas would not go, and lets the writing be left', async () => {
+		await writeFromTheCanvas();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(
+			new Response('{"message":"That note would not go."}', {
+				status: 400,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+		await settle();
+
+		expect(screen()).toContain('That note would not go.');
+		expect(field('Note body').value).toBe('two bars is still four seconds');
+
+		button('Graph').click();
+		await settle();
+
+		expect(reading()).toBe(false);
+		expect(button('New branch').disabled).toBe(false);
+	});
+
+	it('keeps what was typed into a branch started from a shape, above its sections', async () => {
+		await open();
+		labelled('A new branch, from a shape').click();
+		await settle();
+		shape('Objection').click();
+		await settle();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(node(9, '3'));
+		await until(() => created.length === 3);
+
+		expect(created.map(said)).toEqual([
+			'two bars is still four seconds',
+			'The objection',
+			'What survives if I am right'
+		]);
+	});
+
+	it('hands what was typed back to the note when its sections will not go', async () => {
+		api.on(
+			'POST /blocks',
+			() =>
+				new Response('{"message":"That section would not go."}', {
+					status: 400,
+					headers: { 'content-type': 'application/json' }
+				})
+		);
+		await open();
+		labelled('A new branch, from a shape').click();
+		await settle();
+		shape('Objection').click();
+		await settle();
+		type(field('Note body'), 'two bars is still four seconds');
+		await settle();
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(screen()).toContain('That section would not go.');
+		await until(() => screen().includes('two bars is still four seconds'));
+	});
+
+	/** Two notes on the strip, reading the second of them. */
+	async function openTwo(): Promise<void> {
+		stubViewport((query) => query.includes('900'));
+		await open();
+		onCanvas('1').click();
+		await settle();
+		menuOn('2').click();
+		await settle();
+		item('Open it as well').click();
+		await settle();
+	}
+
+	/** The strip's addresses, in order, and which of them is being read. */
+	function openTabs(): { addresses: string[]; reading: string | undefined } {
+		const marks = [...(document.body.querySelectorAll('[aria-label="Open notes"] .address') ?? [])];
+		return {
+			addresses: marks.map((mark) => mark.textContent ?? ''),
+			reading: marks.find((mark) => mark.closest('button')?.getAttribute('aria-current') === 'page')
+				?.textContent
+		};
+	}
+
+	function tab(address: string): HTMLButtonElement {
+		const found = [
+			...document.body.querySelectorAll<HTMLButtonElement>('[aria-label="Open notes"] button')
+		].find((one) => one.querySelector('.address')?.textContent === address);
+		if (!found) throw new Error(`No tab for ${address} is on the strip`);
+		return found;
+	}
+
+	it('writes it in the tab of the note it was asked under', async () => {
+		await openTwo();
+		menuOn('1').click();
+		await settle();
+		item('Write a note under this').click();
+		await settle();
+
+		expect(screen()).toContain('Giving it an address');
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '1' });
+	});
+
+	it('lets the reader move to another note while the address is still coming', async () => {
+		await openTwo();
+		tab('1').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '1' });
+
+		tab('2').click();
+		await settle();
+
+		expect(screen()).not.toContain('Giving it an address');
+		expect(field('Title').value).toBe('Method');
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '2' });
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(openTabs()).toEqual({ addresses: ['3', '2'], reading: '3' });
+	});
+
+	it('says the write controls are waiting in the note the reader steps onto', async () => {
+		await openTwo();
+		tab('1').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		tab('2').click();
+		await settle();
+
+		expect(screen()).not.toContain('Giving it an address');
+		expect(button('Write a note under this').disabled).toBe(true);
+		expect(button('Write the next note').disabled).toBe(true);
+
+		stalled.answer(node(9, '3'));
+		await settle();
+
+		expect(button('Write a note under this').disabled).toBe(false);
+	});
+
+	it('steps back onto the note when the tab it is being written in is tapped', async () => {
+		await openTwo();
+		tab('1').click();
+		await settle();
+		button('Write a note under this').click();
+		await settle();
+		expect(screen()).toContain('Giving it an address');
+
+		tab('1').click();
+		await settle();
+
+		expect(screen()).not.toContain('Giving it an address');
+		expect(field('Title').value).toBe('Origins');
+		expect(openTabs()).toEqual({ addresses: ['1', '2'], reading: '1' });
+	});
+
+	it('marks no note as the one being read while a branch is being written', async () => {
+		await openTwo();
+		button('New branch').click();
+		await settle();
+
+		expect(screen()).toContain('Giving it an address');
+		expect(openTabs().reading).toBeUndefined();
+		expect(openTabs().addresses).toEqual(['1', '2']);
+	});
+});
