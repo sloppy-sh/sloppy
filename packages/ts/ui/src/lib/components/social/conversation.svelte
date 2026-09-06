@@ -41,7 +41,8 @@
 		onunsay: (commentId: StoreRef) => Promise<void>;
 		onreact: (pick: ReactionPick) => Promise<void>;
 		onunreact: (reactionId: StoreRef) => Promise<void>;
-		/** Meeting whoever spoke. Absent leaves a name as plain text. */
+		/** Meeting whoever spoke, {@link ConversationProps.mine} aside. Absent
+		 *  leaves every name as plain text. */
 		onperson?: (did: string) => void;
 		/** Absent leaves the item off, and it is never drawn on somebody else's
 		 *  note whatever the host passes. */
@@ -247,8 +248,9 @@
 
 {#snippet comment(one: NoteComment)}
 	{@const person = personOf(one.author)}
+	{@const meet = person !== null && meetable && one.author !== mine}
 	<article class="flex gap-3">
-		{#if person && meetable}
+		{#if meet}
 			<button
 				type="button"
 				tabindex="-1"
@@ -265,7 +267,7 @@
 		{/if}
 		<div class="min-w-0 flex-1 space-y-1">
 			<div class="flex items-baseline gap-2">
-				{#if person && meetable}
+				{#if meet}
 					<button
 						type="button"
 						class="min-w-0 truncate rounded-sm text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"

@@ -151,8 +151,9 @@ class PeersStore {
 	/**
 	 * Whoever was typed, as the identifier everything else here holds: an
 	 * identifier is itself, and a name is looked up on the instance it carries
-	 * after the `@`, or on this one where it names none. `null` where the lookup
-	 * did not land, with {@link says} carrying what to try instead.
+	 * after the `@`, or on the instance the reader's own name is kept on where it
+	 * names none. `null` where the lookup did not land, with {@link says}
+	 * carrying what to try instead.
 	 */
 	async identify(typed: string): Promise<string | null> {
 		const named = typed.trim();

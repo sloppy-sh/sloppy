@@ -56,7 +56,7 @@ const NO_SUCH_NAME =
 /** Said where nothing at that address looks names up at all, so no name would
  *  have been found there whatever it was. */
 const NO_NAMES_THERE =
-  "Sloppy could not look a name up there. Name the instance it is kept on, or use the identifier they gave you.";
+  "Sloppy could not look a name up there. Check the instance it is kept on, or use the identifier they gave you.";
 
 /** The one thing a peer's instance manifest is read for here: where its public
  *  profiles answer. syr serves that route a name as readily as an identifier. */

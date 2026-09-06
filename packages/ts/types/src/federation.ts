@@ -135,7 +135,8 @@ export type PeerChangesQuery = z.input<typeof PeerChangesQuerySchema>;
 const PEER_NAME_MAX = 128;
 
 /** What `GET /peers/identity` binds: the name somebody was given out loud, and
- *  the instance it is kept on. An absent `source_url` is this one. */
+ *  the instance it is kept on. An absent `source_url` asks the instance the
+ *  reader's own name is kept on. */
 export const PeerIdentityQuerySchema = z.object({
   name: z.string().trim().min(1).max(PEER_NAME_MAX),
   source_url: PeerOriginSchema.optional(),
