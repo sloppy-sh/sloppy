@@ -408,6 +408,22 @@ describe('finding your way back on the canvas', () => {
 		expect(brought()).toEqual([SECOND]);
 	});
 
+	it('comes to a note opened from the list of what was last written', async () => {
+		finding(api, { recent: [node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST })] });
+		await open();
+
+		labelled('Walk the notes one at a time').click();
+		await settle();
+		expect(brought()).toEqual([]);
+
+		const head = document.body.querySelector<HTMLElement>(`[data-row="lead:${SECOND}"]`);
+		if (!head) throw new Error('The walk is not headed by what was last written');
+		head.click();
+		await settle();
+
+		expect(brought()).toEqual([SECOND]);
+	});
+
 	it('comes to the note a citation opened', async () => {
 		const cut = SECOND.lastIndexOf('/');
 		startAt(
