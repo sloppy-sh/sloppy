@@ -141,6 +141,9 @@
 		from: Editor;
 		rows: SavedBlock[];
 		next: DocBlock[];
+		/** The surface it left from, so a trip outliving that surface stops
+		 *  writing down what a later one is now holding. */
+		era: number;
 	}
 
 	/** The trip still in the air, so the next one queues behind it rather than racing it. */
@@ -156,7 +159,7 @@
 		if (planSave(saved, next).length > 0) {
 			kept = drafts?.keep(writingTo, { rows: saved, next }) ?? kept;
 		}
-		return { note: writingTo, from: current, rows: saved, next };
+		return { note: writingTo, from: current, rows: saved, next, era };
 	}
 
 	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
@@ -175,7 +178,16 @@
 					onUpdate(ref, { content, ...(expects ? { expects } : {}) }).then((row) => row.updated_at),
 				reorder: (ref, after) => onReorder(ref, after).then((row) => row.updated_at),
 				remove: (ref) => onRemove(ref),
-				placed: (uid, ref) => stamp(write.from, uid, ref)
+				placed: (uid, ref) => {
+					stamp(write.from, uid, ref);
+					// The row is there from this moment, so what the device holds names
+					// it rather than asking for the section a second time.
+					const made = write.next.find((block) => block.uid === uid);
+					if (made) made.ref = ref;
+					if (write.era === era) {
+						kept = drafts?.keep(write.note, { rows: write.rows, next: write.next }) ?? kept;
+					}
+				}
 			});
 		});
 		inFlight = trip.catch(() => undefined);
@@ -800,10 +812,7 @@
 			class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm"
 			role="alert"
 		>
-			<span>
-				{failed.says}
-				{#if drafts}Your writing is kept on this device.{/if}
-			</span>
+			<span>{failed.says}</span>
 			{#if failed.trouble === 'transient'}
 				<Button variant="outline" size="sm" onclick={() => scheduleSave(0)}>Try now</Button>
 			{/if}

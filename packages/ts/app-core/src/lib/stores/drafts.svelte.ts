@@ -1,4 +1,4 @@
-// Writing a note has that the server does not, kept on this device until it
+// The writing a note has that the server does not, kept on this device until it
 // lands — DESIGN.md § "Persistence" is the doc of record for what belongs here.
 
 import type { OwnedRef } from '@sloppy/types';

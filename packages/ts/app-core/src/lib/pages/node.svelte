@@ -187,6 +187,7 @@
 	interface Refusals {
 		title?: string;
 		shape?: string;
+		writing?: string;
 		link?: string;
 		unlink?: string;
 		tag?: string;
@@ -215,6 +216,11 @@
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
 		});
+		// Cleared on the way out rather than the way in: this one is about what the
+		// note now holds, not about an act the reader asked for.
+		return () => {
+			if (refusals.get(of)?.writing !== undefined) refuse(of, 'writing', null);
+		};
 	});
 
 	/** Acts in the air, by the note they were asked in, so a wait in one tab does
@@ -569,7 +575,8 @@
 	 *  reader reaches from anywhere in a long note — so its answers have to reach
 	 *  them from there too. Gravest first. */
 	const saysHere = $derived(
-		(!removing && refused.remove) ||
+		refused.writing ||
+			(!removing && refused.remove) ||
 			(!publishing && refused.publish) ||
 			(!linking && refused.link) ||
 			(side !== 'look' && refused.look) ||
@@ -936,6 +943,7 @@
 		try {
 			const stack = (await api.listBlocks(of)).sort(byOrd);
 			remember(of, stack);
+			refuse(of, 'writing', 'This note was also written somewhere else. Both versions are here.');
 			if (of !== ref) return;
 			shown = { of, stack };
 			rebuilt += 1;

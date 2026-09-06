@@ -184,7 +184,7 @@ export interface Opened {
  */
 function baselineOf(
 	blocks: readonly BlockView[],
-	apart?: ReadonlyMap<OwnedRef, SavedBlock>
+	apart?: ReadonlyMap<OwnedRef, BlockDocument>
 ): (opened: readonly DocBlock[]) => SavedBlock[] {
 	return (opened) => {
 		const read = new Map(opened.flatMap((row) => (row.ref ? [[row.ref, row] as const] : [])));
@@ -194,9 +194,9 @@ function baselineOf(
 			if (!row && !held) return [];
 			return [
 				{
-					uid: row?.uid ?? (held as SavedBlock).uid,
+					uid: row?.uid ?? nextUid(),
 					ref: block.ref,
-					content: held?.content ?? (row as DocBlock).content,
+					content: held ?? (row as DocBlock).content,
 					updated_at: block.updated_at
 				}
 			];
@@ -240,7 +240,7 @@ export function openDraft(draft: NoteDraft, blocks: readonly BlockView[], schema
 
 	const entries: { content: BlockDocument; ref: OwnedRef | null }[] = [];
 	/** What the API holds for a row the document on screen does not say. */
-	const apart = new Map<OwnedRef, SavedBlock>();
+	const apart = new Map<OwnedRef, BlockDocument>();
 	for (const block of draft.next) {
 		if (!block.ref) {
 			entries.push({ content: block.content, ref: null });
@@ -256,10 +256,7 @@ export function openDraft(draft: NoteDraft, blocks: readonly BlockView[], schema
 			continue;
 		}
 		entries.push({ content: block.content, ref: block.ref });
-		apart.set(
-			block.ref,
-			measured.get(block.ref) ?? { uid: block.uid, ref: block.ref, content: row.content }
-		);
+		apart.set(block.ref, measured.get(block.ref)?.content ?? row.content);
 	}
 
 	let at = -1;
@@ -280,7 +277,7 @@ export function openDraft(draft: NoteDraft, blocks: readonly BlockView[], schema
 	// measured against this baseline is what takes it away there too.
 	for (const was of draft.rows) {
 		if (elsewhere(was.ref) || entries.some((entry) => entry.ref === was.ref)) continue;
-		apart.set(was.ref, was);
+		apart.set(was.ref, was.content);
 	}
 
 	const content: JSONContent[] = [];

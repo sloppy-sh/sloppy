@@ -14,6 +14,7 @@ import {
 	type SavedBlock
 } from './document.js';
 import { block, makeEditor, section, stubCanvas, text } from './editor.test-support.js';
+import { nextUid } from './section-node.js';
 
 let editor: Editor | undefined;
 /** What the API holds for the stack `open` was handed. */
@@ -550,6 +551,27 @@ describe('a note this device is still holding writing for', () => {
 		);
 		expect(reopened.says).toEqual(['the first']);
 		expect(reopened.plan).toEqual([{ kind: 'remove', ref: 'a/B' }]);
+	});
+
+	it('takes it away even where a new section is handed the uid it was written down under', () => {
+		// The uids the reopened document is about to be handed: one for the empty
+		// section the editor is built on, then one per section of the draft.
+		const at = Number(nextUid().slice(1));
+		const reopened = reopen(
+			draftOf(
+				[
+					measured(`b${at + 3}`, 'a/A', 'the first', FIRST),
+					measured('u2', 'a/B', 'the second', FIRST)
+				],
+				[doc('u2', 'a/B', 'the second'), doc('u3', null, 'and one more')]
+			),
+			[stamped('a/A', 'the first', FIRST), stamped('a/B', 'the second', FIRST)]
+		);
+		expect(reopened.says).toEqual(['the second', 'and one more']);
+		expect(reopened.plan).toEqual([
+			expect.objectContaining({ kind: 'create', content: one('and one more') }),
+			{ kind: 'remove', ref: 'a/A' }
+		]);
 	});
 
 	it('has nothing left to send once the writing landed after all', () => {

@@ -406,8 +406,10 @@ describe('what a note keeps when it is left', () => {
 });
 
 describe('writing that has not reached the server', () => {
-	/** The note's one section, as this device is holding it. */
-	const holding = (draft: NoteDraft) => draft.next.map((section) => wording(section.content)[0]);
+	/** What a section says, as this device is holding it. */
+	const holding = (section: { content: BlockDocument }) => wording(section.content)[0];
+	/** The note's sections, in order. */
+	const held = (draft: NoteDraft) => draft.next.map(holding);
 
 	it('is on the device while it is on its way, and let go once it lands', async () => {
 		const device = deviceDrafts();
@@ -415,12 +417,12 @@ describe('writing that has not reached the server', () => {
 		writingIn().commands.insertContentAt(2, 'more of ');
 		await vi.advanceTimersByTimeAsync(5000);
 
-		expect(device.kept.map(holding)).toEqual([['more of a thought']]);
+		expect(device.kept.map(held)).toEqual([['more of a thought']]);
 		expect(device.forgotten).toEqual([NOTE.ref]);
 		expect(device.holds(NOTE.ref)).toBe(false);
 	});
 
-	it('stays on the device while Sloppy cannot save it, and says so', async () => {
+	it('stays on the device while Sloppy cannot save it', async () => {
 		const device = deviceDrafts();
 		open([prose('a thought')], {
 			drafts: device.store,
@@ -433,8 +435,27 @@ describe('writing that has not reached the server', () => {
 		expect(device.holds(NOTE.ref)).toBe(true);
 		expect(device.forgotten).toEqual([]);
 		const said = target.querySelector('[role="alert"]')?.textContent ?? '';
-		expect(said).toContain('Your writing is kept on this device.');
+		expect(said).toContain('Sloppy will keep trying to save this note.');
 		expect(said).not.toContain('Keep this note open');
+	});
+
+	it('names the row a new section became the moment it lands', async () => {
+		const device = deviceDrafts();
+		let landed = 0;
+		open([], {
+			drafts: device.store,
+			refuse: () => (++landed > 1 ? new SaveFailure('transient') : undefined)
+		});
+		const of = writingIn();
+		of.commands.insertContent('the first');
+		of.commands.addSection();
+		of.commands.insertContent('and one more');
+		await vi.advanceTimersByTimeAsync(1000);
+
+		const last = device.kept.at(-1) as NoteDraft;
+		expect(last.next.map(holding)).toEqual(['the first', 'and one more']);
+		expect(last.next.map((section) => section.ref !== null)).toEqual([true, false]);
+		expect(last.rows.map(holding)).toEqual(['the first']);
 	});
 
 	it('is what the note opens on when it comes back, and is saved from there', async () => {

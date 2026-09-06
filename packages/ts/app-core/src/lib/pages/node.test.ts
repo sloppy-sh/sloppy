@@ -1130,7 +1130,7 @@ describe('the sections of a note walked away from', () => {
 	});
 });
 
-describe('a note written in two places at once', () => {
+describe('writing the server will not take', () => {
 	let held: BlockView;
 
 	/** TipTap hangs the editor off the element it writes into. */
@@ -1181,6 +1181,26 @@ describe('a note written in two places at once', () => {
 
 		expect(screen()).toContain('Mitochondria');
 		expect(screen()).toContain('Free Ribosomes');
+		expect(screen()).toContain('This note was also written somewhere else.');
+	});
+
+	it('stops asking, in the server’s own words, where asking again cannot land it', async () => {
+		api.on(
+			patch,
+			() => new Response('{"message":"That section is too long to save."}', { status: 422 })
+		);
+		await openNote(SECOND);
+
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		writingIn().commands.insertContentAt(2, 'Free ');
+		background();
+		await vi.advanceTimersByTimeAsync(1000);
+		const tried = api.countOf(patch);
+		await vi.advanceTimersByTimeAsync(30000);
+
+		expect(tried).toBe(1);
+		expect(api.countOf(patch)).toBe(1);
+		expect(screen()).toContain('That section is too long to save.');
 	});
 
 	it('says on the note when the last writing has not been saved yet', async () => {
@@ -1195,8 +1215,12 @@ describe('a note written in two places at once', () => {
 		await vi.advanceTimersByTimeAsync(4000);
 		flushSync();
 
-		expect(api.countOf(patch)).toBeGreaterThan(0);
+		const tried = api.countOf(patch);
+		expect(tried).toBeGreaterThan(0);
 		expect(screen()).toContain('Not saved yet. Your writing is kept on this device.');
+
+		await vi.advanceTimersByTimeAsync(10000);
+		expect(api.countOf(patch)).toBeGreaterThan(tried);
 	});
 });
 
