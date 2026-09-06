@@ -1851,6 +1851,62 @@ describe('the way back out of a trail', () => {
 		expect(reading()).toBe(false);
 	});
 
+	function light(of: OwnedRef): void {
+		graph.set(of, { ...graph.get(of)!, tags: ['seed'] });
+		api.on('GET /nodes/tags', () => [{ tag: 'seed', notes: 1 }]);
+		tags.select(['seed']);
+	}
+
+	// An act on the whole set a selection lit can take the note the reader is
+	// standing on, and the trail behind it has to survive that.
+	it('walks back to the note it came from after the one being read was deleted', async () => {
+		light(FIRST);
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		labelled('The note this one grew out of, 1').click();
+		await settle();
+
+		menuOn('the canvas').click();
+		await settle();
+		item('Choose the note lit up').click();
+		await settle();
+		button('Delete').click();
+		await settle();
+		button('Delete it').click();
+		await settle();
+		expect(reading()).toBe(false);
+
+		back();
+		await settle();
+
+		expect(screen()).toContain('Cells');
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+
+	// Nothing offers a walk back to a note that is no longer in the graph.
+	it('offers the graph where the note behind went with the lit set', async () => {
+		light(SECOND);
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		labelled('The note this one grew out of, 1').click();
+		await settle();
+		expect(wayOut().textContent?.trim()).toBe('Back');
+
+		menuOn('the canvas').click();
+		await settle();
+		item('Choose the note lit up').click();
+		await settle();
+		button('Delete').click();
+		await settle();
+		button('Delete it').click();
+		await settle();
+
+		expect(screen()).toContain('Origins');
+		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+
 	// The surface holds the only copy of what is typed into it, so it survives
 	// the entry it went up on being replaced — but not the reader walking off it.
 	it('takes the writing surface down with the entry it went up on', async () => {
