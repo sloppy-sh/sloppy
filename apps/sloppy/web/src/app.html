@@ -4,6 +4,14 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<title>Sloppy</title>
+		<link rel="icon" href="/favicon.png" sizes="32x32" type="image/png" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<!-- iOS reads the manifest's `display` only from 16.4; the Apple pair is what
+		     an older phone launches full-bleed from its home screen. -->
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="Sloppy" />
 		<script>
 			// The saved look, applied before the first paint — DESIGN.md § Theme.
 			var root = document.documentElement;
@@ -20,6 +28,17 @@
 			root.setAttribute('data-accent', saved.accent || 'indigo');
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
 			root.classList.toggle('dark', dark);
+
+			// The browser's own chrome, taking the ground from app.css rather than
+			// from a second copy of the palette here, and following a change of theme.
+			var themeColor = document.createElement('meta');
+			themeColor.name = 'theme-color';
+			document.head.appendChild(themeColor);
+			var paintThemeColor = function () {
+				themeColor.content = getComputedStyle(root).getPropertyValue('--background').trim();
+			};
+			addEventListener('DOMContentLoaded', paintThemeColor);
+			new MutationObserver(paintThemeColor).observe(root, { attributeFilter: ['data-theme'] });
 		</script>
 		%sveltekit.head%
 	</head>
