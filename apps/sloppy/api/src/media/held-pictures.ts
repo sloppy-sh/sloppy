@@ -15,12 +15,13 @@ const PER_READ = 100;
 /** Where the walk stops asking an instance that answers the same page whatever
  *  offset it is given. */
 const READ_LIMIT = 10_000;
-/** How long a walk's answers stand. One walk answers for every picture in the
- *  branch rather than only the one that was asked for, which is what puts a
- *  listing searched page by page behind an `<img>`. */
+/** How long a walk's answers stand. */
 const REMEMBERED_MS = 5 * 60 * 1000;
 /** How many authors are remembered at once, least recently walked first. */
 const AUTHORS_REMEMBERED = 64;
+/** And how many addresses across all of them, since how long one author's
+ *  listing runs is their choice rather than this instance's. */
+const ADDRESSES_REMEMBERED = 20_000;
 
 /** Said for a picture the reader holds no branch of, and for one the author's
  *  store no longer keeps in the open. Which of the two it was is not something
@@ -31,6 +32,8 @@ interface Walked {
   at: number;
   /** Every public picture the walk saw, by its local id. */
   addresses: Map<string, string>;
+  /** The offset the walk stopped at, which is where the next one resumes. */
+  next: number;
   /** Whether the walk reached the end of the listing, so a picture absent from
    *  {@link Walked.addresses} is one the store does not serve. */
   whole: boolean;
@@ -39,12 +42,13 @@ interface Walked {
 /**
  * A publication's pictures live in its author's own store, readable by
  * anybody — publishing is what put them there. This finds one and hands back
- * the address it reads from; the fetch itself is the relay's, so the author's
- * instance learns this one and never the reader.
+ * the address it reads from.
  */
 @Injectable()
 export class HeldPictures {
   private readonly walked = new Map<string, Walked>();
+  private readonly walking = new Map<string, Promise<Walked>>();
+  private remembered = 0;
 
   constructor(
     private readonly config: AppConfigService,
@@ -54,9 +58,8 @@ export class HeldPictures {
 
   /**
    * Where one picture inside a held note reads back from. The reader must hold
-   * a region of that author's graph: the author is named by the picture and the
-   * instance to ask comes off the region, so nothing a caller sends can aim
-   * this instance anywhere it was not already reading.
+   * a region of that author's graph, and the instance to ask comes off that
+   * region rather than off the request.
    */
   async address(
     reader: DidSyr,
@@ -73,29 +76,65 @@ export class HeldPictures {
     if (held !== undefined) return held;
     if (known?.whole) throw new NotFoundException(NOT_THERE);
 
-    const walked = await this.walk(
+    const walked = await this.queued(
+      at,
       region.source_url,
       author.data,
       picture.localId,
-      peerReach(this.config),
     );
-    this.remember(at, walked);
     const found = walked.addresses.get(picture.localId);
     if (found === undefined) throw new NotFoundException(NOT_THERE);
     return found;
   }
 
-  /** The listing page by page, stopping at the picture that was asked for —
-   *  everything seen on the way is remembered, so the rest of the note's
-   *  pictures cost nothing. */
+  /**
+   * One walk of an author's listing at a time: a note of twelve figures asks
+   * for twelve pictures at once, and each of those waits for what the walk
+   * ahead of it remembered before reading anything itself.
+   */
+  private async queued(
+    at: string,
+    instanceUrl: string,
+    did: DidSyr,
+    localId: string,
+  ): Promise<Walked> {
+    const ahead = this.walking.get(at);
+    const mine = (async () => {
+      if (ahead !== undefined) await ahead.catch(() => undefined);
+      const known = this.fresh(at);
+      if (known !== undefined && (known.whole || known.addresses.has(localId)))
+        return known;
+      const walked = await this.walk(
+        instanceUrl,
+        did,
+        localId,
+        known,
+        peerReach(this.config),
+      );
+      this.remember(at, walked);
+      return walked;
+    })();
+
+    this.walking.set(at, mine);
+    try {
+      return await mine;
+    } finally {
+      if (this.walking.get(at) === mine) this.walking.delete(at);
+    }
+  }
+
+  /** The listing page by page from where the last walk of it stopped. A page
+   *  shorter than the one asked for is not the end: how a peer's instance pages
+   *  is its own business, so only an empty page says the listing is exhausted. */
   private async walk(
     instanceUrl: string,
     did: DidSyr,
     localId: string,
+    from: Walked | undefined,
     reach: HostPolicy,
   ): Promise<Walked> {
-    const addresses = new Map<string, string>();
-    let offset = 0;
+    const addresses = new Map(from?.addresses);
+    let offset = from?.next ?? 0;
     while (offset < READ_LIMIT) {
       const page = await this.syr.listPublicUploads(
         instanceUrl,
@@ -104,34 +143,44 @@ export class HeldPictures {
         reach,
       );
       for (const row of page) {
-        const from = readableAddress(row);
-        if (from !== undefined) addresses.set(row.local_id, from);
+        const readable = readableAddress(row);
+        if (readable !== undefined) addresses.set(row.local_id, readable);
       }
-      if (addresses.has(localId))
-        return { at: Date.now(), addresses, whole: false };
-      if (page.length < PER_READ) {
-        return { at: Date.now(), addresses, whole: true };
-      }
+      if (page.length === 0)
+        return { at: Date.now(), addresses, next: offset, whole: true };
       offset += page.length;
+      if (addresses.has(localId))
+        return { at: Date.now(), addresses, next: offset, whole: false };
     }
-    return { at: Date.now(), addresses, whole: false };
+    return { at: Date.now(), addresses, next: offset, whole: false };
   }
 
   private fresh(at: string): Walked | undefined {
     const held = this.walked.get(at);
     if (held === undefined) return undefined;
     if (Date.now() - held.at < REMEMBERED_MS) return held;
-    this.walked.delete(at);
+    this.forget(at, held);
     return undefined;
   }
 
   private remember(at: string, walked: Walked): void {
-    this.walked.delete(at);
+    const had = this.walked.get(at);
+    if (had !== undefined) this.forget(at, had);
     this.walked.set(at, walked);
-    for (const key of this.walked.keys()) {
-      if (this.walked.size <= AUTHORS_REMEMBERED) break;
-      this.walked.delete(key);
+    this.remembered += walked.addresses.size;
+    for (const [key, held] of this.walked) {
+      if (
+        this.walked.size <= AUTHORS_REMEMBERED &&
+        this.remembered <= ADDRESSES_REMEMBERED
+      )
+        break;
+      this.forget(key, held);
     }
+  }
+
+  private forget(at: string, held: Walked): void {
+    this.walked.delete(at);
+    this.remembered -= held.addresses.size;
   }
 }
 

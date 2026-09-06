@@ -263,6 +263,7 @@ describe("holding a region of somebody else's graph", () => {
   const serves = (...answers: unknown[]) => {
     pages = answers;
     asked = [];
+    openUploads = [];
   };
 
   /** One page of one version, with `next_cursor` where more follows. */
@@ -987,6 +988,21 @@ describe("holding a region of somebody else's graph", () => {
   });
 
   scenario("draws a picture inside a held note", async () => {
+    serves(
+      page(
+        WIDE,
+        [note("1", "1")],
+        [
+          {
+            ...section(ID.s1, ID.root, "a0"),
+            content: {
+              type: "doc",
+              content: [{ type: "picture", attrs: { upload_id: ref(ID.s3) } }],
+            },
+          },
+        ],
+      ),
+    );
     openUploads = [
       {
         did: AUTHOR,
@@ -999,10 +1015,15 @@ describe("holding a region of somebody else's graph", () => {
         url: `${peerOrigin}/files/figure.png`,
       },
     ];
-    serves(page(WIDE, [note("1", "1")]));
     await pulled(WIDE);
 
-    const drawn = await fetch(`${base}/api/media/published/${at(ref(ID.s3))}`, {
+    // What the held block cites is what the route is asked for: the reader
+    // draws the picture the note holds, not one this test named.
+    const held = (await stackOf(ID.root))[0].content.content?.[0];
+    const cited = String(held?.attrs?.upload_id);
+    expect(cited).toBe(ref(ID.s3));
+
+    const drawn = await fetch(`${base}/api/media/published/${at(cited)}`, {
       headers: { cookie: reader.cookie, accept: "image/*" },
     });
     const bytes = Buffer.from(await drawn.arrayBuffer());
@@ -1010,8 +1031,7 @@ describe("holding a region of somebody else's graph", () => {
     expect(drawn.status).toBe(200);
     expect(drawn.headers.get("content-type")).toBe("image/png");
     expect(bytes.equals(PIXEL)).toBe(true);
-    // Nothing the author's store has not put in the open, and nothing at all
-    // for an author whose branch the reader does not hold.
+    // Nothing at all for an author whose branch the reader does not hold.
     expect(
       (
         await fetch(`${base}/api/media/published/${at(`${STRANGER}/ANY`)}`, {
@@ -1019,7 +1039,6 @@ describe("holding a region of somebody else's graph", () => {
         })
       ).status,
     ).toBe(404);
-    openUploads = [];
   });
 
   scenario("finds a held note by what its author wrote in it", async () => {

@@ -384,13 +384,21 @@ describe("publishing a branch, and what a peer reads back", () => {
   }
 
   /** What anybody holding the author's identity can enumerate. */
-  async function publicFilenames(): Promise<string[]> {
+  /** What anybody can read out of the author's store, as their instance lists
+   *  it — which is where a peer's instance finds a published picture. */
+  async function publicUploads(): Promise<
+    { filename: string; local_id: string }[]
+  > {
     const listed = (await (
       await fetch(
         `${base}/api/idp/public/uploads/${encodeURIComponent(ada.did)}?limit=100`,
       )
-    ).json()) as { data: { filename: string }[] };
-    return listed.data.map((one) => one.filename);
+    ).json()) as { data: { filename: string; local_id: string }[] };
+    return listed.data;
+  }
+
+  async function publicFilenames(): Promise<string[]> {
+    return (await publicUploads()).map((one) => one.filename);
   }
 
   async function signIn(username: string): Promise<Person> {
@@ -818,12 +826,20 @@ describe("publishing a branch, and what a peer reads back", () => {
       expect(drawn.upload_id).not.toBe(uploadId);
 
       // The one a peer reads is readable by anybody; the one in the note is not.
-      const open = await publicFilenames();
+      const listed = await publicUploads();
+      const open = listed.map((one) => one.filename);
       expect(open).toContain("in-a-note.png");
       expect(
         open.filter((filename) => filename === "in-a-note.png"),
       ).toHaveLength(1);
       expect(await picture(uploadId)).toBe(200);
+
+      // And the copy the block cites is the one that listing answers to, which
+      // is the only way a peer's instance can find it.
+      const copy = String(drawn.upload_id);
+      expect(listed.map((one) => one.local_id)).toContain(
+        copy.slice(copy.lastIndexOf("/") + 1),
+      );
 
       // Publishing again reuses the copy rather than sending the bytes twice.
       await publish(branch.ref);

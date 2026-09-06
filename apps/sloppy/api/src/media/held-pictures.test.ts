@@ -43,8 +43,9 @@ function upload(at: number, of: Partial<SyrOwnedUpload> = {}): SyrOwnedUpload {
   };
 }
 
-/** The author's listing, served a page at a time, counting what it was asked. */
-function author(held: SyrOwnedUpload[]) {
+/** The author's listing, served a page at a time, counting what it was asked.
+ *  `serves` is the far end's own ceiling on a page, which is theirs to pick. */
+function author(held: SyrOwnedUpload[], serves = 100) {
   const asked: { instanceUrl: string; offset: number }[] = [];
   const syr = {
     async listPublicUploads(
@@ -53,7 +54,10 @@ function author(held: SyrOwnedUpload[]) {
       page: { limit: number; offset: number },
     ) {
       asked.push({ instanceUrl, offset: page.offset });
-      return held.slice(page.offset, page.offset + page.limit);
+      return held.slice(
+        page.offset,
+        page.offset + Math.min(page.limit, serves),
+      );
     },
   } as unknown as SyrService;
   return { syr, asked };
@@ -96,6 +100,52 @@ describe("a picture inside a note the reader holds", () => {
     ).resolves.toBe(`${THERE}/files/7.png`);
 
     expect(asked).toHaveLength(reads);
+  });
+
+  // Which is how the browser actually asks: every picture in the note at once.
+  it("walks once for pictures asked for all at the same time", async () => {
+    const listing = Array.from({ length: 260 }, (_, at) => upload(at));
+    const { syr, asked } = author(listing);
+    const pictures = new HeldPictures(config, holding(region), syr);
+
+    await expect(
+      Promise.all(
+        ["PICTURE250", "PICTURE007", "PICTURE130"].map((localId) =>
+          pictures.address(BRAM, { did: AVA, localId }),
+        ),
+      ),
+    ).resolves.toEqual([
+      `${THERE}/files/250.png`,
+      `${THERE}/files/7.png`,
+      `${THERE}/files/130.png`,
+    ]);
+    expect(asked.map((one) => one.offset)).toEqual([0, 100, 200]);
+  });
+
+  it("takes up a listing where the last walk of it stopped", async () => {
+    const listing = Array.from({ length: 260 }, (_, at) => upload(at));
+    const { syr, asked } = author(listing);
+    const pictures = new HeldPictures(config, holding(region), syr);
+
+    await pictures.address(BRAM, { did: AVA, localId: "PICTURE050" });
+    await expect(
+      pictures.address(BRAM, { did: AVA, localId: "PICTURE250" }),
+    ).resolves.toBe(`${THERE}/files/250.png`);
+
+    expect(asked.map((one) => one.offset)).toEqual([0, 100, 200]);
+  });
+
+  // The far end is a stranger's instance, and how much of a listing it hands
+  // back at a time is its own business, not this one's.
+  it("keeps walking past a page shorter than the one it asked for", async () => {
+    const listing = Array.from({ length: 60 }, (_, at) => upload(at));
+    const { syr, asked } = author(listing, 24);
+    const pictures = new HeldPictures(config, holding(region), syr);
+
+    await expect(
+      pictures.address(BRAM, { did: AVA, localId: "PICTURE050" }),
+    ).resolves.toBe(`${THERE}/files/50.png`);
+    expect(asked.map((one) => one.offset)).toEqual([0, 24, 48]);
   });
 
   it("reads back from where the store says the bytes read back from", async () => {
