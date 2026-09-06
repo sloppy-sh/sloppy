@@ -11,6 +11,7 @@
 
 import { setHost } from '@sloppy/client';
 import type { SloppyApi } from './api.js';
+import { storedOrigin } from './stores/prefs.svelte.js';
 
 /**
  * Which of the three deployments this app is running as
@@ -20,7 +21,9 @@ import type { SloppyApi } from './api.js';
 export type DeploymentMode = 'hosted' | 'self_hosted' | 'local';
 
 export interface AppRuntime {
-	/** The API's origin, or `''` for same-origin. `initRuntime` publishes it to
+	/** The origin this build shipped with, or `''` for same-origin. A device
+	 *  pointed at another Sloppy is served by that one instead, and returning to
+	 *  the default returns to this. `initRuntime` publishes the answer to
 	 *  `@sloppy/client`'s host module, so nothing else spells a URL. */
 	apiHost(): string;
 	mode(): DeploymentMode;
@@ -104,23 +107,35 @@ let current: AppRuntime = {
 	fetchImpl: () => globalThis.fetch.bind(globalThis)
 };
 
+function host(): string {
+	return storedOrigin() ?? current.apiHost();
+}
+
 /**
  * Call from the shell's root layout, before any page mounts. Unset fields keep
- * their defaults.
- *
- * Idempotent: a shell re-runs it when the person points the app at another
- * server. That alone re-points a live client, because the client reads the host
- * per request — swapping remote ↔ local is what additionally needs
- * {@link resetApi}.
+ * their defaults, and it is idempotent.
  */
 export function initRuntime(rt: Partial<AppRuntime> & Pick<AppRuntime, 'apiHost'>): void {
 	current = { ...current, ...rt };
-	setHost(current.apiHost());
+	setHost(host());
+}
+
+/**
+ * Point a running app at the Sloppy this device now names. That alone re-points
+ * a live client, because the client reads the host per request — swapping
+ * remote ↔ local is what additionally needs {@link resetApi}.
+ *
+ * A session belongs to the Sloppy that opened it, so the caller ends it and
+ * lets go of what was read as well.
+ */
+export function repointRuntime(): void {
+	setHost(host());
 }
 
 /** Late-binding facade — modules hold this, never the config object itself. */
 export const runtime = {
-	apiHost: () => current.apiHost(),
+	/** The origin in use — the one this device names, else {@link AppRuntime.apiHost}. */
+	apiHost: () => host(),
 	mode: () => current.mode(),
 	token: {
 		get: () => current.token.get(),

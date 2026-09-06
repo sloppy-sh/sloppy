@@ -15,7 +15,9 @@ backend-agnostic; the same app serves all three.
 - **Hosted** — the default. A Sloppy API and an external syr instance we run.
 - **Self-hosted** — a person or a group runs their own Sloppy API and points it at their
   own syr instance. The client must let a user point at an arbitrary endpoint and
-  interoperate with it exactly as it would with the default.
+  interoperate with it exactly as it would with the default. Settings holds that origin
+  per device, so an installed app is re-pointed rather than rebuilt; `AppRuntime.apiHost`
+  is the origin the build shipped with, and returning to the default returns to it.
 - **Local-only** — no network at all. The Tauri app embeds SurrealDB and an IdP that
   reimplements syr's wire contracts, so registration, sign-in, capture, and publishing all
   work on-device. Gated (see "Local-only mode" below) because SurrealDB alone is ~60 MB.
