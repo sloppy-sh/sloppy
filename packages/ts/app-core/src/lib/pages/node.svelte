@@ -7,12 +7,14 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
+	import Copy from '@lucide/svelte/icons/copy';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Files from '@lucide/svelte/icons/files';
 	import Globe from '@lucide/svelte/icons/globe';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
+	import Share2 from '@lucide/svelte/icons/share-2';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
@@ -31,6 +33,7 @@
 		type NodeAppearance,
 		type NodeView,
 		type OwnedRef,
+		type PullView,
 		type StoreRef,
 		type Tag as TagName,
 		type UnpublishedChanges,
@@ -41,6 +44,7 @@
 		ConfirmModal,
 		Conversation,
 		LookControls,
+		nameOf,
 		NoteMenu,
 		PublishModal,
 		ResponsiveModal,
@@ -73,9 +77,11 @@
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { citationUrl } from './routes.js';
 	import { WRITE_UNDER } from './shortcuts.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -201,6 +207,7 @@
 		look?: string;
 		publish?: string;
 		remove?: string;
+		copy?: string;
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
 	const refused = $derived<Refusals>(refusals.get(ref) ?? {});
@@ -219,7 +226,7 @@
 	$effect(() => {
 		const of = ref;
 		untrack(() => {
-			for (const act of ['remove', 'tag', 'look', 'link', 'publish'] as const) {
+			for (const act of ['remove', 'tag', 'look', 'link', 'publish', 'copy'] as const) {
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
 		});
@@ -426,22 +433,54 @@
 		return out;
 	});
 
+	/**
+	 * Every note the reader holds a copy of, by the ref its AUTHOR cites it by.
+	 * PRODUCT.md § "The peer": what somebody pulled is what they answer, so a
+	 * citation may point at one and a picker has to offer them.
+	 */
+	const heldNotes = $derived.by(() => {
+		const out = new SvelteMap<OwnedRef, { note: NodeView; region: PullView }>();
+		for (const region of peers.regions) {
+			for (const note of peers.held(region.ref)) {
+				if (!out.has(note.ref)) out.set(note.ref, { note, region });
+			}
+		}
+		return out;
+	});
+
+	/** Everything an address here can point at: the reader's own notes and the
+	 *  ones they are holding. */
+	const anyNote = $derived([...everyNote, ...[...heldNotes.values()].map(({ note }) => note)]);
+
+	$effect(() => {
+		for (const { note } of heldNotes.values()) untrack(() => people.resolve(note.created_by));
+	});
+
 	/** The graph this note is read in, which is the one `[[` writes into. */
 	const inGraph = $derived(node ? graphOf(node) : null);
 	/** The words that graph already uses, which is where a tag put here is read. */
 	const suggestions = $derived(inGraph === null ? [] : tags.of(inGraph).map((one) => one.tag));
 	const here = $derived(everyNote.filter((note) => graphOf(note) === inGraph));
-	/** What the author calls a note's graph, where that is not this one. */
+	/** What a note's graph is called, where that is not this one. A held note is
+	 *  read in its author's graph, so their name is what tells the two apart. */
 	function graphAway(note: NodeView): string | null {
+		const held = heldNotes.get(note.ref);
+		if (held) {
+			const author = people.of(note.created_by);
+			return author ? nameOf(author) : held.region.graph_title || 'A graph you hold';
+		}
 		const of = graphOf(note);
 		return of === inGraph ? null : graphs.titleOf(of) || 'Another graph';
 	}
 
 	const linked = $derived(
-		(node?.links ?? []).map((target) => ({ target, note: nodes.get(target) }))
+		(node?.links ?? []).map((target) => ({
+			target,
+			note: nodes.get(target) ?? heldNotes.get(target)?.note
+		}))
 	);
 	const backlinks = $derived(
-		everyNote.filter((note) => note.ref !== ref && note.links.includes(ref))
+		anyNote.filter((note) => note.ref !== ref && note.links.includes(ref))
 	);
 	/** The notes whose own writing names this one; DESIGN.md § "Edges" is why
 	 *  they are never the list above. A note with none derived names nothing. */
@@ -462,7 +501,7 @@
 			note.ref !== ref && !already.has(note.ref) && carries(note, needle);
 		return [
 			...here.filter(wanted),
-			...everyNote.filter((note) => graphAway(note) !== null && wanted(note))
+			...anyNote.filter((note) => graphAway(note) !== null && wanted(note))
 		].slice(0, MATCHES);
 	});
 
@@ -473,13 +512,14 @@
 		},
 		elsewhere: (query: string) => {
 			const needle = query.toLowerCase();
-			return everyNote.flatMap((note) => {
+			return anyNote.flatMap((note) => {
 				const graph = graphAway(note);
 				if (graph === null || (needle && !carries(note, needle))) return [];
 				return [{ note, graph }];
 			});
 		},
-		read: async (target: OwnedRef) => nodes.get(target) ?? (await nodes.fetch(target)),
+		read: async (target: OwnedRef) =>
+			nodes.get(target) ?? heldNotes.get(target)?.note ?? (await nodes.fetch(target)),
 		write: async (name: string, relation: 'under' | 'after') => {
 			try {
 				return await nodes.create({ from: { relation, note: ref }, title: name });
@@ -507,8 +547,18 @@
 		reach = await reachEveryGraph();
 	}
 
+	/** The regions the reader holds, opened so their notes can be pointed at. A
+	 *  region already read costs nothing to ask for again. */
+	async function lookAtWhatIsHeld(): Promise<void> {
+		await peers.load();
+		await Promise.all(peers.regions.map((region) => peers.enter(region.ref)));
+	}
+
 	$effect(() => {
-		untrack(() => void lookEverywhere());
+		untrack(() => {
+			void lookEverywhere();
+			void lookAtWhatIsHeld();
+		});
 	});
 
 	const consequence = $derived(deletionCost([ref]));
@@ -578,6 +628,50 @@
 		resolve: (did: string) => people.resolve(did)
 	};
 
+	/** What a person says to cite this note: the address, under the name of the
+	 *  notebook it is read in, since an address means one thing inside one. */
+	const citation = $derived.by(() => {
+		if (!node) return '';
+		const notebook = inGraph ? graphs.titleOf(inGraph) : '';
+		return notebook ? `${node.address} · ${notebook}` : node.address;
+	});
+
+	/** A word that an act landed, gone again on its own. */
+	let said = $state<string | null>(null);
+	let saying: ReturnType<typeof setTimeout> | undefined;
+	onDestroy(() => clearTimeout(saying));
+
+	function acknowledge(words: string): void {
+		said = words;
+		clearTimeout(saying);
+		saying = setTimeout(() => (said = null), 2000);
+	}
+
+	async function handOver(text: string, landed: string): Promise<void> {
+		const of = ref;
+		try {
+			await navigator.clipboard.writeText(text);
+			refuse(of, 'copy', null);
+			acknowledge(landed);
+		} catch {
+			refuse(of, 'copy', 'Sloppy could not copy that.');
+		}
+	}
+
+	/** Whether this platform can hand a link to another app. */
+	const shareable = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+	async function share(): Promise<void> {
+		const url = citationUrl(ref);
+		try {
+			await navigator.share({ url, ...(node?.title ? { title: node.title } : {}) });
+		} catch (error) {
+			// Backing out of the sheet is not a failure, and leaves nothing to say.
+			if (error instanceof DOMException && error.name === 'AbortError') return;
+			await handOver(url, 'Link copied.');
+		}
+	}
+
 	/** What a reader DOES to a note, as against what they read off it. Delete
 	 *  comes last and apart — DESIGN.md § Layout. */
 	let actsFrom = $state<HTMLElement | null>(null);
@@ -596,6 +690,12 @@
 				]),
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
+		{
+			label: 'Copy link',
+			icon: Copy,
+			onSelect: () => void handOver(citationUrl(ref), 'Link copied.')
+		},
+		...(shareable ? [{ label: 'Share', icon: Share2, onSelect: () => void share() }] : []),
 		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
 		{
 			label: 'Delete this note',
@@ -618,6 +718,7 @@
 			(!linking && refused.link) ||
 			(side !== 'look' && refused.look) ||
 			(!tagging && refused.tag) ||
+			refused.copy ||
 			null
 	);
 
@@ -1359,9 +1460,14 @@
 			</button>
 
 			{#if node}
-				<span class="address ml-auto truncate text-sm text-foreground/70 select-text">
+				<button
+					type="button"
+					aria-label="Copy this note's address"
+					onclick={() => void handOver(citation, 'Address copied.')}
+					class="address ml-auto min-h-11 truncate rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				>
 					{node.address}
-				</span>
+				</button>
 				<Button
 					bind:ref={actsFrom}
 					variant="ghost"
@@ -1384,6 +1490,8 @@
 			<p class="pb-1 text-sm text-muted-foreground">
 				Not saved yet. Your writing is kept on this device.
 			</p>
+		{:else if said}
+			<p class="pb-1 text-sm text-muted-foreground" role="status">{said}</p>
 		{/if}
 	</header>
 
