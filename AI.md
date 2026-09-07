@@ -302,9 +302,9 @@ UI change. In short:
   colour). A style that names a colour is a bug; see DESIGN.md.
 - **Mobile and tablet first.** Every surface is designed at phone width and then given
   room. A desktop-only affordance is a bug report against the phone layout.
-- **`ResponsiveModal` is the only modal** — native sheet on iOS, drag-to-dismiss bottom
-  sheet on phone, centered dialog at ≥640px, from one bound `open`, with the branch
-  latched for the component's life. Don't add a second modal component; extend this one.
+- **`ResponsiveModal` is the only modal** — a drag-to-dismiss bottom sheet on phone, a
+  centered dialog at ≥640px, from one bound `open`, with the branch latched for the
+  component's life. Don't add a second modal component; extend this one.
 - **Mobile bottom-edge chrome must clear the system nav bar.** Android's WebView reports
   `env(safe-area-inset-bottom)` as **0** for the 3-button nav bar, so the native shell
   publishes the real inset as `--safe-area-inset-bottom`. Pad bottom-pinned surfaces with
