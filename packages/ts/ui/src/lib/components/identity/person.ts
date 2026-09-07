@@ -22,6 +22,12 @@ export function nameOf(person: Person): string {
 	return person.displayName?.trim() || person.handle;
 }
 
+/** What to call somebody a surface has no profile for yet. The identifier they
+ *  travel by belongs beside this, never in place of it. */
+export function nameOr(person: Person | null | undefined): string {
+	return person ? nameOf(person) : 'Somebody';
+}
+
 /** Somebody nobody could place, drawn as the identifier they travel by. */
 export function unplacedPerson(identity: string): Person {
 	const key = identity.slice(identity.lastIndexOf(':') + 1);

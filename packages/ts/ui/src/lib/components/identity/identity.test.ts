@@ -6,7 +6,7 @@ import { stubMediaQuery } from '../dom.test-support.js';
 import Avatar from './avatar.svelte';
 import PersonEditor from './person-editor.svelte';
 import PersonHeader from './person-header.svelte';
-import type { Person, PictureRole } from './person.js';
+import { nameOr, type Person, type PictureRole } from './person.js';
 
 const SOMEBODY: Person = {
 	displayName: 'Ada Lovelace',
@@ -259,5 +259,16 @@ describe('changing how you appear', () => {
 		const buttons = [...target.querySelectorAll('button')];
 		expect(buttons.filter((b) => b.disabled).length).toBe(2);
 		expect(target.textContent).toContain('Adding…');
+	});
+});
+
+describe('what to call somebody', () => {
+	it('is the name they chose, then the handle behind it', () => {
+		expect(nameOr(SOMEBODY)).toBe('Ada Lovelace');
+		expect(nameOr({ ...SOMEBODY, displayName: '  ' })).toBe('ada');
+	});
+
+	it('is Somebody where nobody has been resolved yet', () => {
+		expect(nameOr(null)).toBe('Somebody');
 	});
 });

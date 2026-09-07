@@ -317,7 +317,7 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 
 	it('says whose branch it is, and how to get back', async () => {
 		await enterHeldRegion();
-		expect(screen()).toContain(AUTHOR);
+		expect(screen()).toContain('Somebody');
 		button('Your graph').click();
 		await settle();
 		expect(drawn()).toEqual(['1']);
@@ -464,7 +464,7 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 	it('says a name or an identifier is what the field takes', async () => {
 		await openPeersSheet();
 
-		expect(screen()).toContain('The name or the identifier they gave you');
+		expect(screen()).toContain('Paste what they gave you');
 	});
 
 	it('counts the region’s own tags on the rail, not the reader’s', async () => {
@@ -660,7 +660,7 @@ describe('what the reader is holding', () => {
 		await openPeersSheet();
 		await settle();
 
-		labelledControl('Read this region again').click();
+		labelledControl(`Read ${held.root_address} again`).click();
 		await until(() => asked !== undefined);
 		await settle();
 

@@ -151,17 +151,18 @@ class PeersStore {
 	/**
 	 * Whoever was typed, as the identifier everything else here holds: an
 	 * identifier is itself, and a name is looked up on the instance it carries
-	 * after the `@`, or on the instance the reader's own name is kept on where it
-	 * names none. `null` where the lookup did not land, with {@link says}
-	 * carrying what to try instead.
+	 * after the `@`, or on `where`, or on the instance the reader's own name is
+	 * kept on where neither names one. `null` where the lookup did not land, with
+	 * {@link says} carrying what to try instead.
 	 */
-	async identify(typed: string): Promise<string | null> {
+	async identify(typed: string, where?: string): Promise<string | null> {
 		const named = typed.trim();
 		if (DidSyrSchema.safeParse(named).success) return named;
 		const cut = named.lastIndexOf('@');
 		const who = cut > 0 ? named.slice(0, cut) : named;
 		if (DidSyrSchema.safeParse(who).success) return who;
-		const at = cut > 0 ? peerOrigin(named.slice(cut + 1)) : undefined;
+		const asked = cut > 0 ? named.slice(cut + 1) : where;
+		const at = asked === undefined ? undefined : peerOrigin(asked);
 		if (at === null) {
 			this.#says = 'Enter an instance address, like https://sloppy.example';
 			return null;

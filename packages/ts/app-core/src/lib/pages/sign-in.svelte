@@ -115,7 +115,7 @@
 					inputmode="url"
 					autocomplete="url"
 					required
-					placeholder="https://syr.example"
+					placeholder="https://sloppy.example"
 					bind:value={instance}
 				/>
 			</div>
