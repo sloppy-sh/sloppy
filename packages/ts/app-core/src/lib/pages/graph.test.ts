@@ -1228,7 +1228,7 @@ describe('choosing several notes to act on', () => {
 		item('Choose notes').click();
 		await settle();
 
-		expect(screen()).toContain('Tap the notes you mean');
+		expect(screen()).toContain('Pick the notes you mean');
 		expect(() => button('Delete')).toThrow();
 
 		onCanvas('1').click();
@@ -2419,5 +2419,111 @@ describe('the drawing over the canvas', () => {
 
 		expect(canvasInk.strokes(HOME)).toEqual([]);
 		expect(() => labelled('Your drawing')).toThrow();
+	});
+});
+
+// PRODUCT.md § "Accessibility & Inclusion": the outline is an equal of the
+// canvas, so what the canvas can do it can do, and preferring it is a choice
+// the app keeps.
+describe('reading the graph as an outline', () => {
+	async function walk(): Promise<void> {
+		await open();
+		labelled('Walk the notes one at a time').click();
+		await settle();
+	}
+
+	/** What the outline holds its rows clear of at the bottom edge. */
+	const foot = () =>
+		document.body
+			.querySelector('[role="tree"]')
+			?.closest<HTMLElement>('[style*="padding-bottom"]')
+			?.getAttribute('style') ?? '';
+
+	/** What the bar of chosen notes has told the page it stands on. */
+	const barTakes = () =>
+		document.documentElement.style.getPropertyValue('--chosen-bar-inset-bottom');
+
+	it('opens on the outline for a reader who was last there', async () => {
+		prefs.set('walking', true);
+		await open();
+
+		expect(inOutline('1')).toBeTruthy();
+		expect(labelled('Back to the graph')).toBeTruthy();
+	});
+
+	it('chooses notes from a row, and offers the same acts over them', async () => {
+		await walk();
+		button('Choose notes').click();
+		await settle();
+
+		inOutline('1').click();
+		await settle();
+
+		expect(inOutline('1').getAttribute('aria-checked')).toBe('true');
+		expect(inOutline('1').textContent).toContain('Chosen');
+		expect(screen()).toContain('1 note chosen');
+		expect(button('Publish')).toBeTruthy();
+
+		button('Done choosing').click();
+		await settle();
+		expect(inOutline('1').hasAttribute('aria-checked')).toBe(false);
+	});
+
+	it('keeps the last rows out from under the bar while somebody is choosing', async () => {
+		await walk();
+		expect(foot()).toContain('--chosen-bar-inset-bottom');
+		expect(barTakes()).toBe('');
+
+		button('Choose notes').click();
+		await settle();
+		expect(barTakes()).not.toBe('');
+
+		button('Done choosing').click();
+		await settle();
+		expect(barTakes()).toBe('');
+	});
+
+	it('says which notes anyone with the address can read', async () => {
+		graph.set(FIRST, { ...(graph.get(FIRST) as NodeView), published: true });
+		await walk();
+
+		expect(inOutline('1').textContent).toContain('Published');
+		expect(inOutline('2').textContent).not.toContain('Published');
+	});
+
+	const WRITTEN = ref(9);
+
+	/** Write a note under 1a from its row, and answer where it landed. */
+	async function writeFromRow(): Promise<void> {
+		const fresh = node(9, '1a1', { title: 'Mitosis', origin: FIRST, parent: SECOND });
+		const found: { recent: NodeView[] } = { recent: [] };
+		finding(api, found);
+		api.on('POST /nodes', () => {
+			graph.set(WRITTEN, fresh);
+			found.recent = [fresh];
+			return fresh;
+		});
+		api.on(`GET ${path(WRITTEN)}`, () => fresh);
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+
+		await walk();
+		expect(document.body.querySelector(`[data-row="lead:${WRITTEN}"]`)).toBeNull();
+
+		labelled('Unfold 1').click();
+		await settle();
+		labelled('Write a note under 1a').click();
+		await settle();
+	}
+
+	it('takes a note written from a row into what was last written', async () => {
+		await writeFromRow();
+
+		expect(document.body.querySelector(`[data-row="lead:${WRITTEN}"]`)).not.toBeNull();
+	});
+
+	it('says the address it gave a note written from a row', async () => {
+		await writeFromRow();
+
+		expect(said()).toContain('Your new note is 1a1.');
 	});
 });

@@ -29,7 +29,7 @@
 
 	const tally = $derived(
 		count === 0
-			? 'Tap the notes you mean'
+			? 'Pick the notes you mean'
 			: `${count.toLocaleString()} ${count === 1 ? 'note chosen' : 'notes chosen'}`
 	);
 
@@ -39,11 +39,37 @@
 		{ label: 'Publish', icon: Globe, onSelect: onPublish },
 		{ label: 'Delete', icon: Trash2, onSelect: onDelete, destructive: true }
 	]);
+
+	let bar = $state<HTMLElement | null>(null);
+
+	// The bar stands over surfaces that also scroll, so it owes the space it takes
+	// as `--chosen-bar-inset-bottom` — DESIGN.md § "The four inset vars", which
+	// also says the var is UNSET wherever the bar is down. Measured off the whole
+	// box, so the acts row and a refusal line are both in it.
+	$effect(() => {
+		const root = document.documentElement;
+		const drop = () => root.style.removeProperty('--chosen-bar-inset-bottom');
+		const el = bar;
+		if (!el) {
+			drop();
+			return;
+		}
+		const publish = () =>
+			root.style.setProperty('--chosen-bar-inset-bottom', `${el.offsetHeight}px`);
+		publish();
+		const observer = new ResizeObserver(publish);
+		observer.observe(el);
+		return () => {
+			observer.disconnect();
+			drop();
+		};
+	});
 </script>
 
 <div
-	class="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3"
-	style="right: var(--reading-dock-inset-right, 0px); padding-bottom: calc(var(--sysnav-clearance) + 0.5rem)"
+	bind:this={bar}
+	class="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-3 pb-2"
+	style="right: var(--reading-dock-inset-right, 0px); bottom: var(--sysnav-clearance)"
 >
 	<div
 		class="pointer-events-auto w-full max-w-md rounded-2xl border bg-card/95 p-2 shadow-lg backdrop-blur"
