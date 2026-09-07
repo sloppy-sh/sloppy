@@ -13,7 +13,7 @@ import {
 import { APP_FILTER, NestFactory } from "@nestjs/core";
 import { CallTerminatedError, ConnectionUnavailableError } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { StoreUnavailableFilter, TRY_AGAIN } from "./store-unavailable.filter";
+import { SloppyWordsFilter, TRY_AGAIN } from "./sloppy-words.filter";
 
 @Controller("kept")
 class KeptController {
@@ -48,11 +48,11 @@ class KeptController {
 
 @Module({
   controllers: [KeptController],
-  providers: [{ provide: APP_FILTER, useClass: StoreUnavailableFilter }],
+  providers: [{ provide: APP_FILTER, useClass: SloppyWordsFilter }],
 })
 class KeptModule {}
 
-describe("a request the store was not there to serve", () => {
+describe("a failure on its way out of the API", () => {
   let app: INestApplication | undefined;
   let origin = "";
 

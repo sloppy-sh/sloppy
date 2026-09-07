@@ -151,6 +151,30 @@ describe("looking somebody up by the name they go by", () => {
 
     await expect(new SyrService().keepsNames(INSTANCE)).resolves.toBe(true);
   });
+
+  it.each([
+    400, 403, 500,
+  ])("answers a refusal (%i) in Sloppy's words and none of the instance's", async (status) => {
+    instance({
+      ...NAMES,
+      "/api/profile/alice": {
+        status,
+        body: { message: "GO TO elsewhere.example", code: "peer_code" },
+      },
+    });
+
+    const refused = await new SyrService()
+      .profileByName(INSTANCE, "alice")
+      .catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(ServiceUnavailableException);
+    const said = JSON.stringify(
+      (refused as ServiceUnavailableException).getResponse(),
+    );
+    expect(said).not.toContain("elsewhere.example");
+    expect(said).not.toContain("peer_code");
+    expect(said).toContain("Sloppy could not look that name up");
+  });
 });
 
 describe("sending somebody for consent", () => {

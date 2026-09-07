@@ -14,15 +14,12 @@ import { CallTerminatedError, ConnectionUnavailableError } from "surrealdb";
 export const TRY_AGAIN =
   "Sloppy could not do that just now. Try again in a moment.";
 
-/**
- * Every failure leaves here in Sloppy's words. It catches everything because
- * what it does not catch is answered "Internal server error" — a framework's
- * phrase, which reaches a surface as the server's own words and leaves the line
- * that surface wrote unreachable behind it.
- */
+/** Broad because what it does not catch is answered "Internal server error" —
+ *  a framework's phrase, which a surface reads as the server's own words and
+ *  shows in place of its own line. */
 @Catch()
-export class StoreUnavailableFilter extends BaseExceptionFilter {
-  private readonly logger = new Logger(StoreUnavailableFilter.name);
+export class SloppyWordsFilter extends BaseExceptionFilter {
+  private readonly logger = new Logger(SloppyWordsFilter.name);
 
   catch(error: unknown, host: ArgumentsHost): void {
     if (

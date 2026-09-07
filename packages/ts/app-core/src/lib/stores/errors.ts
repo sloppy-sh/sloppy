@@ -1,7 +1,6 @@
 import { SloppyApiError } from '@sloppy/client';
 
-/** A framework's phrase rather than words for a person, and the one thing a
- *  server still old enough to send it has not said. */
+/** A framework's phrase, never words a person can act on. */
 const UNWRITTEN = 'Internal server error';
 
 /**

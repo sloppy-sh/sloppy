@@ -371,29 +371,37 @@ export class SyrService {
    * An instance that answers about nobody by name answers `null` for every
    * name, so a caller whose words for those two differ asks
    * {@link keepsNames} first.
+   *
+   * The address was typed by the reader, so a refusal leaves here in Sloppy's
+   * own words: neither the far end's sentence nor its error code travels out.
    */
   async profileByName(
     instanceUrl: string,
     name: string,
     reach?: HostPolicy,
   ): Promise<SyrProfile | null> {
-    const { api } = await this.manifest(instanceUrl, reach);
-    if (api?.public_profile === undefined) return null;
-    const url = `${api.public_profile}/${encodeURIComponent(name)}`;
     const failure =
-      "Sloppy could not read that profile. Try again in a moment.";
-    const body = await this.readJson(
-      url,
-      { headers: { accept: "application/json" } },
-      failure,
-      reach,
-    ).catch((error: unknown) => {
+      "Sloppy could not look that name up just now. Try again in a moment.";
+    try {
+      const { api } = await this.manifest(instanceUrl, reach);
+      if (api?.public_profile === undefined) return null;
+      const url = `${api.public_profile}/${encodeURIComponent(name)}`;
+      const body = await this.readJson(
+        url,
+        { headers: { accept: "application/json" } },
+        failure,
+        reach,
+      );
+      if (body === null) return null;
+      return this.readShape(syrEnvelope(SyrProfileSchema), body, url, failure)
+        .data;
+    } catch (error) {
       if (missing(error)) return null;
+      if (error instanceof HttpException) {
+        throw new ServiceUnavailableException(failure);
+      }
       throw error;
-    });
-    if (body === null) return null;
-    return this.readShape(syrEnvelope(SyrProfileSchema), body, url, failure)
-      .data;
+    }
   }
 
   async updateProfile(
