@@ -9,7 +9,13 @@
 
 import { TAG_HUE_SLOTS } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { apart, contrastRatio, parseCssColor, over } from "./color.js";
+import {
+  apart,
+  contrastRatio,
+  parseCssColor,
+  over,
+  type Oklch,
+} from "./color.js";
 import {
   buildPalette,
   DIM_FLOOR,
