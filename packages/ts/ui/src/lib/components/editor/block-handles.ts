@@ -1,6 +1,7 @@
-// Putting a section somewhere else in the note's stack. `./document.ts` owns
-// the correspondence this rests on — a section IS a block row — so a move here
-// becomes one `reorder` in the next save plan and one `ord` on the wire.
+// Putting a section somewhere else in the note's stack, and taking one out of
+// it. `./document.ts` owns the correspondence this rests on — a section IS a
+// block row — so a move here becomes one `reorder` in the next save plan and a
+// removal one `remove`.
 //
 // Pointer events rather than HTML5 drag-and-drop, which never starts from a
 // touch: a phone is the primary surface here, not the fallback.
@@ -9,6 +10,27 @@ import { Extension } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { sectionIsBare } from './section-node.js';
+
+/** What can be done to one section, raised out of the plugin because the handle
+ *  is plain DOM inside a ProseMirror widget and the menu is a Svelte surface. */
+export interface SectionActs {
+	/** The handle it was asked for, so the menu opens against it. */
+	anchor: HTMLElement;
+	/** Which section this is, for a surface that names what it acts on. */
+	title: string;
+	/** Null at the top of the note, and at the bottom of it. */
+	moveUp: (() => void) | null;
+	moveDown: (() => void) | null;
+	remove: () => void;
+	/** Whether anything would be lost with the section. */
+	holdsWriting: boolean;
+}
+
+export interface BlockHandleOptions {
+	/** Where a tap on the handle is answered; null leaves the handle a drag. */
+	onSection: ((acts: SectionActs) => void) | null;
+}
 
 /** lucide's `grip-vertical`, written out: nothing here renders through Svelte. */
 const GRIP =
@@ -68,6 +90,21 @@ function move(view: EditorView, uid: string, to: number): boolean {
 	return true;
 }
 
+/** The section goes, and the caret lands where it stood. The last section stays:
+ *  a note always has somewhere to write. */
+function removeSection(view: EditorView, uid: string): void {
+	if (view.isDestroyed) return;
+	const rows = rowsOf(view);
+	const at = indexOf(rows, uid);
+	if (at < 0 || rows.length < 2) return;
+	const { pos, node } = rows[at];
+	const tr = view.state.tr.delete(pos, pos + node.nodeSize);
+	const caret = pos === 0 ? 0 : pos - 1;
+	tr.setSelection(TextSelection.near(tr.doc.resolve(caret), pos === 0 ? 1 : -1));
+	view.dispatch(tr.scrollIntoView());
+	view.focus();
+}
+
 /** What a drag near the edge should scroll, or null where the page itself does. */
 function scrollerOf(from: HTMLElement): HTMLElement | null {
 	for (let element = from.parentElement; element; element = element.parentElement) {
@@ -87,7 +124,13 @@ function slotAt(rows: readonly Row[], y: number): number {
 	return rows.length;
 }
 
-function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: PointerEvent): void {
+function drag(
+	view: EditorView,
+	button: HTMLButtonElement,
+	uid: string,
+	start: PointerEvent,
+	lifted: () => void
+): void {
 	if (start.button > 0) return;
 	// A finger is left to the browser until the press has been held: the gutter
 	// is where a thumb starts a scroll, and a swipe from here must still scroll.
@@ -135,6 +178,7 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 
 	function lift(): void {
 		dragging = true;
+		lifted();
 		button.classList.add('is-dragging');
 		document.body.append(line);
 		window.addEventListener('touchmove', refuse, { passive: false });
@@ -178,10 +222,7 @@ function drag(view: EditorView, button: HTMLButtonElement, uid: string, start: P
 	window.addEventListener('pointercancel', done);
 }
 
-function byKey(view: EditorView, uid: string, event: KeyboardEvent): void {
-	const step = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
-	if (step === 0) return;
-	event.preventDefault();
+function moveBy(view: EditorView, uid: string, step: number): void {
 	const at = indexOf(rowsOf(view), uid);
 	if (at < 0 || !move(view, uid, at + step)) return;
 	// The widget is rebuilt at its new place, so the handle that was under the
@@ -189,7 +230,20 @@ function byKey(view: EditorView, uid: string, event: KeyboardEvent): void {
 	view.dom.querySelector<HTMLElement>(`[data-block-handle="${uid}"]`)?.focus();
 }
 
-function handleFor(view: EditorView, uid: string, index: number, total: number): HTMLElement {
+function byKey(view: EditorView, uid: string, event: KeyboardEvent): void {
+	const step = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+	if (step === 0) return;
+	event.preventDefault();
+	moveBy(view, uid, step);
+}
+
+function handleFor(
+	view: EditorView,
+	uid: string,
+	index: number,
+	total: number,
+	options: BlockHandleOptions
+): HTMLElement {
 	const row = document.createElement('div');
 	row.className = 'sloppy-row';
 	row.contentEditable = 'false';
@@ -198,17 +252,37 @@ function handleFor(view: EditorView, uid: string, index: number, total: number):
 	button.type = 'button';
 	button.className = 'sloppy-row-handle';
 	button.dataset.blockHandle = uid;
-	button.setAttribute('aria-label', `Move section ${index + 1} of ${total}`);
-	button.title = 'Drag to move, or use the arrow keys';
+	button.setAttribute('aria-label', `Section ${index + 1} of ${total}`);
+	button.setAttribute('aria-haspopup', 'menu');
+	button.title = 'Drag to move, or open it for more';
 	button.innerHTML = GRIP;
-	button.addEventListener('pointerdown', (event) => drag(view, button, uid, event));
+
+	let dragged = false;
+	button.addEventListener('pointerdown', (event) => {
+		dragged = false;
+		drag(view, button, uid, event, () => (dragged = true));
+	});
+	button.addEventListener('click', (event) => {
+		event.preventDefault();
+		const rows = rowsOf(view);
+		const at = indexOf(rows, uid);
+		if (dragged || at < 0 || !options.onSection) return;
+		options.onSection({
+			anchor: button,
+			title: `Section ${at + 1} of ${rows.length}`,
+			moveUp: at > 0 ? () => moveBy(view, uid, -1) : null,
+			moveDown: at < rows.length - 1 ? () => moveBy(view, uid, 1) : null,
+			remove: () => removeSection(view, uid),
+			holdsWriting: !sectionIsBare(rows[at].node)
+		});
+	});
 	button.addEventListener('keydown', (event) => byKey(view, uid, event));
 
 	row.append(button);
 	return row;
 }
 
-function handles(state: EditorState): DecorationSet {
+function handles(state: EditorState, options: BlockHandleOptions): DecorationSet {
 	const total = state.doc.childCount;
 	if (total < 2) return DecorationSet.empty;
 	const widgets: Decoration[] = [];
@@ -218,7 +292,7 @@ function handles(state: EditorState): DecorationSet {
 		const at = index++;
 		if (!uid) return;
 		widgets.push(
-			Decoration.widget(pos, (view) => handleFor(view, uid, at, total), {
+			Decoration.widget(pos, (view) => handleFor(view, uid, at, total, options), {
 				side: -1,
 				// Held across every edit that leaves this section where it is, so the
 				// handle under the pointer is not rebuilt on every keystroke.
@@ -231,10 +305,20 @@ function handles(state: EditorState): DecorationSet {
 	return DecorationSet.create(state.doc, widgets);
 }
 
-export const BlockHandles = Extension.create({
+export const BlockHandles = Extension.create<BlockHandleOptions>({
 	name: 'blockHandles',
 
+	addOptions() {
+		return { onSection: null };
+	},
+
 	addProseMirrorPlugins() {
-		return [new Plugin({ key: new PluginKey('blockHandles'), props: { decorations: handles } })];
+		const options = this.options;
+		return [
+			new Plugin({
+				key: new PluginKey('blockHandles'),
+				props: { decorations: (state) => handles(state, options) }
+			})
+		];
 	}
 });

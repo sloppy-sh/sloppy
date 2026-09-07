@@ -6,7 +6,7 @@
 // owns that correspondence.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import type { ResolvedPos } from '@tiptap/pm/model';
+import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state';
 
 export const SECTION_NODE = 'section';
@@ -40,6 +40,11 @@ declare module '@tiptap/core' {
 	}
 }
 
+/** Whether the section has nothing in it but the empty line it was made with. */
+export function sectionIsBare(section: ProseMirrorNode): boolean {
+	return section.childCount <= 1 && (section.firstChild?.content.size ?? 0) === 0;
+}
+
 /** A section holding nothing, backspaced into from its first line, goes — which
  *  is how one added by mistake is taken back. The last one stays: a note always
  *  has somewhere to write. */
@@ -48,8 +53,7 @@ function removeEmptySection(state: EditorState): { from: number; to: number } | 
 	if (!empty || $from.parentOffset !== 0 || state.doc.childCount < 2) return null;
 	const depth = sectionDepth($from);
 	if (depth === null) return null;
-	const section = $from.node(depth);
-	if (section.childCount > 1 || (section.firstChild?.content.size ?? 0) > 0) return null;
+	if (!sectionIsBare($from.node(depth))) return null;
 	return { from: $from.before(depth), to: $from.after(depth) };
 }
 
