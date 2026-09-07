@@ -297,9 +297,10 @@ UI change. In short:
   hand-roll what shadcn covers. Components live in `@sloppy/ui`; the design system
   (Tailwind v4 tokens, the three theme axes, the graph's colour language) is
   `@sloppy/ui`'s `app.css`, imported by the apps via `@sloppy/ui/styles`.
-- **Three orthogonal axes on `<html>`:** `data-theme` (surfaces), `data-accent`
+- **Four orthogonal axes on `<html>`:** `data-theme` (surfaces), `data-accent`
   (`--primary`), `data-style` (how surfaces are drawn — edges and elevation, never
-  colour). A style that names a colour is a bug; see DESIGN.md.
+  colour), `data-app-font` (the face, for legibility, never colour). A style that names a
+  colour is a bug; see DESIGN.md.
 - **Mobile and tablet first.** Every surface is designed at phone width and then given
   room. A desktop-only affordance is a bug report against the phone layout.
 - **`ResponsiveModal` is the only modal** — a drag-to-dismiss bottom sheet on phone, a

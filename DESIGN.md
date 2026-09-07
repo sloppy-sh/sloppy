@@ -609,7 +609,8 @@ the 3:1 mark floor and the 0.03 separation floor — on `--background`, `--card`
 `app.css` itself; a table of them beside the stylesheet would be a copy that drifts.
 
 One accent needs a correction today, and only one: Ochre on the light family reads 2.90:1
-as a solid mark on Paper, so `--primary-mark` moves it in lightness alone. Every other
+as a solid mark on Paper, so `--primary-mark` moves it in lightness alone, and `--ring`
+reads from `--primary-mark` so the focus ring inherits the same correction. Every other
 pairing is handed back its own colour untouched.
 
 **A floor this file does not name is a floor nothing measures.** Small accent TEXT owes
