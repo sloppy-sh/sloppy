@@ -35,6 +35,8 @@ declare module '@tiptap/core' {
 }
 
 const GROWTH_MARGIN = 24;
+/** What a drawing nobody has described is announced as. */
+const UNDESCRIBED = 'Drawing';
 
 function readJson<T>(raw: string | null, fallback: T): T {
 	if (!raw) return fallback;
@@ -77,7 +79,12 @@ export const InkNode = Node.create({
 				parseHTML: (el) => Number(el.getAttribute('data-height')) || 200,
 				renderHTML: (attrs) => ({ 'data-height': String(attrs.height) })
 			},
-			raster_upload_id: { default: null, rendered: false }
+			raster_upload_id: { default: null, rendered: false },
+			description: {
+				default: null,
+				parseHTML: (el) => el.getAttribute('data-description'),
+				renderHTML: (attrs) => (attrs.description ? { 'data-description': attrs.description } : {})
+			}
 		};
 	},
 
@@ -89,8 +96,8 @@ export const InkNode = Node.create({
 		return ['div', mergeAttributes(HTMLAttributes, { 'data-ink': 'true' })];
 	},
 
-	renderText() {
-		return '';
+	renderText({ node }) {
+		return (node.attrs.description as string | null) ?? '';
 	},
 
 	addNodeView() {
@@ -105,16 +112,26 @@ export const InkNode = Node.create({
 
 			const canvas = document.createElement('canvas');
 			canvas.className = 'sloppy-ink-canvas';
+			canvas.setAttribute('role', 'img');
 			dom.append(canvas);
 
 			let undoStroke: HTMLButtonElement | null = null;
+			let description: HTMLInputElement | null = null;
 			if (editor.isEditable) {
 				const bar = document.createElement('div');
 				bar.className = 'sloppy-ink-bar';
+				description = document.createElement('input');
+				description.type = 'text';
+				description.className = 'sloppy-ink-description';
+				description.placeholder = 'Describe this drawing';
+				description.setAttribute('aria-label', 'Describe this drawing');
 				undoStroke = quietButton('Undo stroke');
 				const removeDrawing = quietButton('Remove drawing');
-				bar.append(undoStroke, removeDrawing);
+				bar.append(description, undoStroke, removeDrawing);
 				dom.append(bar);
+
+				const field = description;
+				field.addEventListener('input', () => apply({ description: field.value || null }));
 
 				undoStroke.addEventListener('click', (event) => {
 					event.preventDefault();
@@ -146,6 +163,9 @@ export const InkNode = Node.create({
 
 			function redraw(): void {
 				canvas.style.aspectRatio = `${current.attrs.width} / ${current.attrs.height}`;
+				const said = (current.attrs.description as string | null) ?? '';
+				canvas.setAttribute('aria-label', said || UNDESCRIBED);
+				if (description && description.value !== said) description.value = said;
 				const prepared = context();
 				if (!prepared) return;
 				const rect = box();
