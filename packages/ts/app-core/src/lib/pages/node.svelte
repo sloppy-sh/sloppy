@@ -1445,7 +1445,9 @@
 	</div>
 {/snippet}
 
-<svelte:head><title>{node?.title || 'Note'} · Sloppy</title></svelte:head>
+<svelte:head>
+	<title>{node ? `${node.address} · ${node.title || 'Untitled'}` : 'Note'} · Sloppy</title>
+</svelte:head>
 
 <div
 	bind:this={noteBody}

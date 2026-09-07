@@ -30,7 +30,9 @@
 <!-- The page renders HERE and only here. Chrome that varies by width flips by
      class; a per-chrome branch around this would destroy and remount the page
      on every crossing, losing the viewport and re-fetching the region. -->
-{@render children()}
+<!-- `contents`: the canvas inside is positioned against the page, so the
+     landmark must lay nothing out. -->
+<main class="contents">{@render children()}</main>
 
 {#if showPill}
 	<NavPill {items} {activeId} {action} suppressed={overlay.open} {keyboardOpen} />

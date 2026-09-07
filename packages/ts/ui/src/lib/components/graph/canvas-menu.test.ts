@@ -27,6 +27,24 @@ function open(props: Record<string, unknown> = {}) {
 
 const menu = () => document.body.querySelector<HTMLElement>('[role="menu"]');
 
+const acts = (): HTMLButtonElement[] => [
+	...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
+];
+
+const three = () =>
+	['Open it', 'Fold it', 'Delete it'].map((label) => ({
+		label,
+		icon: Check,
+		onSelect: () => {}
+	}));
+
+function press(key: string, over: KeyboardEventInit = {}): void {
+	document.activeElement?.dispatchEvent(
+		new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...over })
+	);
+	flushSync();
+}
+
 beforeEach(() => {
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -63,6 +81,50 @@ describe('the canvas menu', () => {
 		const away = document.body.querySelector<HTMLElement>('[data-menu-scrim]');
 		away?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 		expect(closed).toBe(2);
+	});
+
+	// WCAG 2.4.7: a background tint is neither visible enough nor different from
+	// hover, and every other menu in the app draws focus as a ring.
+	it('draws focus as a ring rather than as the tint hover already uses', () => {
+		open();
+		const act = acts()[0];
+		expect(act.className).toContain('focus-visible:ring-2');
+		expect(act.className).toContain('focus-visible:ring-ring');
+		expect(act.className).not.toContain('focus-visible:bg-muted');
+	});
+
+	it('walks the acts with the arrows, and wraps at either end', () => {
+		open({ items: three() });
+		expect(document.activeElement).toBe(acts()[0]);
+
+		press('ArrowDown');
+		expect(document.activeElement).toBe(acts()[1]);
+		press('ArrowUp');
+		expect(document.activeElement).toBe(acts()[0]);
+		press('ArrowUp');
+		expect(document.activeElement).toBe(acts()[2]);
+		press('ArrowDown');
+		expect(document.activeElement).toBe(acts()[0]);
+	});
+
+	it('goes to the first and the last act on Home and End', () => {
+		open({ items: three() });
+
+		press('End');
+		expect(document.activeElement).toBe(acts()[2]);
+		press('Home');
+		expect(document.activeElement).toBe(acts()[0]);
+	});
+
+	// An open menu behind focus that has moved into the page is a menu nobody
+	// can put away and nothing says is there.
+	it('keeps Tab inside the menu, in both directions', () => {
+		open({ items: three() });
+
+		press('Tab', { shiftKey: true });
+		expect(document.activeElement).toBe(acts()[2]);
+		press('Tab');
+		expect(document.activeElement).toBe(acts()[0]);
 	});
 
 	it('draws nothing where there is nothing to offer', () => {

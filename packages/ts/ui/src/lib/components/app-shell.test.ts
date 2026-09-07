@@ -42,6 +42,16 @@ describe('the app shell', () => {
 		expect(mounts).toBe(1);
 	});
 
+	// PRODUCT.md § "Accessibility & Inclusion": semantic landmarks. `contents`
+	// keeps the landmark out of the layout the canvas is positioned against.
+	it('gives every page a main region that lays nothing out', () => {
+		render();
+		const main = target.querySelector('main');
+		expect(main?.className).toBe('contents');
+		expect(main?.querySelector('[data-testid="page"]')).not.toBeNull();
+		expect(main?.querySelector('nav')).toBeNull();
+	});
+
 	it('does not remount the page when a modal suppresses the nav', () => {
 		render();
 		const release = overlay.push(() => {});

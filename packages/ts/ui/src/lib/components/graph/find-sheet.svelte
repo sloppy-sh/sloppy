@@ -60,21 +60,6 @@
 
 	let field = $state<HTMLInputElement | null>(null);
 
-	// The caret belongs in the field, and the surface moves the focus itself on
-	// the frame it opens — so this claims it back on the task after that frame.
-	$effect(() => {
-		if (!open || !field) return;
-		const here = field;
-		let soon: ReturnType<typeof setTimeout>;
-		const frame = requestAnimationFrame(() => {
-			soon = setTimeout(() => here.focus());
-		});
-		return () => {
-			cancelAnimationFrame(frame);
-			clearTimeout(soon);
-		};
-	});
-
 	const nothing = $derived(settled && !looking && found.length === 0);
 	const showing = $derived(
 		found.length === 1 ? 'Showing 1 note.' : `Showing ${found.length} notes.`
@@ -98,6 +83,10 @@
 	bind:open
 	title="Find a note"
 	description="By its number, its title, or a word in it."
+	onOpenAutoFocus={(event) => {
+		event.preventDefault();
+		field?.focus();
+	}}
 >
 	<div class="space-y-3 px-2 pt-4 pb-2">
 		<div class="relative">

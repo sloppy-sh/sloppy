@@ -197,6 +197,38 @@ describe('typing for a tag', () => {
 		expect(names()).toEqual(['seed', 'question', 'biology', 'geology', 'ecology']);
 	});
 
+	// The page over the rail reads Escape to end a multi-select, so a field that
+	// let the key past would answer with something the reader did not ask for.
+	it('empties the field on Escape, and keeps that key to itself', () => {
+		render([], MANY);
+		type('ology');
+
+		const away = vi.fn();
+		window.addEventListener('keydown', away);
+		filter()?.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		flushSync();
+		window.removeEventListener('keydown', away);
+
+		expect(filter()?.value).toBe('');
+		expect(names()).toEqual(MANY.map((entry) => entry.tag));
+		expect(away).not.toHaveBeenCalled();
+	});
+
+	it('leaves Escape alone once there is nothing typed to clear', () => {
+		render([], MANY);
+
+		const away = vi.fn();
+		window.addEventListener('keydown', away);
+		filter()?.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		window.removeEventListener('keydown', away);
+
+		expect(away).toHaveBeenCalledTimes(1);
+	});
+
 	it('says when nothing has that in it, and not while something does', () => {
 		render([], MANY);
 		type('ology');
