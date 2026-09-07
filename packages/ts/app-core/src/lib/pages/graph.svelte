@@ -1740,7 +1740,10 @@
 
 			{#if walkingNow}
 				<GraphTree
-					inset={{ top: `${railHeight}px`, bottom: 'var(--sysnav-clearance)' }}
+					inset={{
+						top: `${railHeight}px`,
+						bottom: 'calc(var(--sysnav-clearance) + var(--chosen-bar-inset-bottom, 0px))'
+					}}
 					notes={visible}
 					fields={foreign ? undefined : graphs.fields}
 					{selection}

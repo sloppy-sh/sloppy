@@ -38,7 +38,7 @@ export interface Prefs {
 	 *  A graph with no entry has none. */
 	wallpapers: Record<OwnedRef, WallpaperPrefs>;
 	/** Whether the graph is read as a walk through the notes rather than drawn on
-	 *  the canvas — DESIGN.md § Layout. */
+	 *  the canvas — DESIGN.md § Persistence. */
 	walking: boolean;
 	/** How much room the reader has taken for a note docked beside the graph, in
 	 *  px. Null is the width it opens at, and a number from a wider window is

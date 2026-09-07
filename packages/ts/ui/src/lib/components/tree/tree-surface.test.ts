@@ -710,15 +710,19 @@ describe('choosing notes on the walk', () => {
 		expect(labelled('About 2').textContent).not.toContain('Chosen');
 	});
 
-	it('says the tree is one several rows can be chosen from', () => {
-		render({ chosen: new Set() });
-		expect(target.querySelector('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe(
-			'true'
-		);
+	it('keeps the note being read apart from the notes chosen', () => {
+		render({ chosen: new Set([held('2')]), reading: held('1') });
 
-		unmount(mounted!, { outro: false });
+		expect(labelled('About 1').getAttribute('aria-selected')).toBe('true');
+		expect(labelled('About 1').getAttribute('aria-checked')).toBe('false');
+		expect(labelled('About 2').getAttribute('aria-selected')).toBe('false');
+		expect(labelled('About 2').getAttribute('aria-checked')).toBe('true');
+	});
+
+	it('says nothing about choosing on a walk nobody is choosing on', () => {
 		render();
-		expect(target.querySelector('[role="tree"]')?.hasAttribute('aria-multiselectable')).toBe(false);
+		expect(labelled('About 1').hasAttribute('aria-checked')).toBe(false);
+		expect(labelled('About 1').hasAttribute('aria-keyshortcuts')).toBe(false);
 	});
 
 	it('adds and removes on a tap while somebody is choosing, rather than opening', () => {

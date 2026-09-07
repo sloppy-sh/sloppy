@@ -1161,7 +1161,7 @@ describe('choosing several notes to act on', () => {
 		item('Choose notes').click();
 		await settle();
 
-		expect(screen()).toContain('Tap the notes you mean');
+		expect(screen()).toContain('Pick the notes you mean');
 		expect(() => button('Delete')).toThrow();
 
 		onCanvas('1').click();
@@ -2329,6 +2329,17 @@ describe('reading the graph as an outline', () => {
 		await settle();
 	}
 
+	/** What the outline holds its rows clear of at the bottom edge. */
+	const foot = () =>
+		document.body
+			.querySelector('[role="tree"]')
+			?.closest<HTMLElement>('[style*="padding-bottom"]')
+			?.getAttribute('style') ?? '';
+
+	/** What the bar of chosen notes has told the page it stands on. */
+	const barTakes = () =>
+		document.documentElement.style.getPropertyValue('--chosen-bar-inset-bottom');
+
 	it('opens on the outline for a reader who was last there', async () => {
 		prefs.set('walking', true);
 		await open();
@@ -2353,6 +2364,20 @@ describe('reading the graph as an outline', () => {
 		button('Done choosing').click();
 		await settle();
 		expect(inOutline('1').hasAttribute('aria-checked')).toBe(false);
+	});
+
+	it('keeps the last rows out from under the bar while somebody is choosing', async () => {
+		await walk();
+		expect(foot()).toContain('--chosen-bar-inset-bottom');
+		expect(barTakes()).toBe('');
+
+		button('Choose notes').click();
+		await settle();
+		expect(barTakes()).not.toBe('');
+
+		button('Done choosing').click();
+		await settle();
+		expect(barTakes()).toBe('');
 	});
 
 	it('says which notes anyone with the address can read', async () => {

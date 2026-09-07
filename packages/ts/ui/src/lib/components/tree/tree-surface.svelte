@@ -33,12 +33,9 @@
 		reading?: OwnedRef | null;
 		/** What the chrome over the surface covers at either edge. */
 		inset?: { top: string; bottom: string };
-		/** The notes picked out to act on — DESIGN.md § "The mark" calls this the
-		 *  chosen set, and never a selection, because `selection` above is already
-		 *  the reader's tags.
-		 *
-		 *  PRESENT is a tree somebody is choosing on, an empty set included: a row
-		 *  then adds or removes rather than opening. Absent is the ordinary walk. */
+		/** The notes picked out to act on — DESIGN.md § "The mark". PRESENT is a
+		 *  tree somebody is choosing on, an empty set included: a row then adds or
+		 *  removes rather than opening. Absent is the ordinary walk. */
 		chosen?: ReadonlySet<OwnedRef>;
 		/** Add or remove one note. Absent is a walk nothing can be chosen on. */
 		onChoose?: (ref: OwnedRef) => void;
@@ -91,6 +88,10 @@
 	}: TreeSurfaceProps = $props();
 
 	const choosing = $derived(chosen !== undefined);
+
+	/** How tall the control band over the run stands, so the group headings stick
+	 *  below it rather than under it. */
+	let band = $state(0);
 
 	/** The deepest a row is set in. Past it every generation sits at the same
 	 *  offset: a phone has run out of room, and the address already says how far
@@ -307,12 +308,18 @@
 <div
 	bind:this={scroller}
 	class="size-full overflow-y-auto overscroll-contain scroll-fade-y [--scroll-fade:1rem] [--tree-step:0.625rem] sm:[--tree-step:1rem]"
-	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}; scroll-padding-top: {inset.top}; scroll-padding-bottom: {inset.bottom}"
+	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}; scroll-padding-top: calc({inset.top} + {band}px); scroll-padding-bottom: {inset.bottom}"
 	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
 		{#if onChoosing}
-			<div class="flex justify-end pt-2">
+			<!-- Stuck below the chrome, so choosing starts from wherever the reader
+			     has got to and not from the top of the run. -->
+			<div
+				bind:clientHeight={band}
+				class="sticky z-20 flex justify-end bg-background/95 py-2 backdrop-blur"
+				style="top: {inset.top}"
+			>
 				<Button
 					variant="ghost"
 					class="h-9 gap-1.5 rounded-full text-xs"
@@ -338,17 +345,13 @@
 						<!-- Stuck below the chrome the tree is inset off, not under it. -->
 						<h2
 							class="sticky z-10 truncate bg-background/95 py-2 text-xs font-medium text-muted-foreground backdrop-blur"
-							style="top: {inset.top}"
+							style="top: calc({inset.top} + {band}px)"
 						>
 							{by ?? (title || 'Untitled')}
 						</h2>
 					{/if}
 
-					<div
-						role="tree"
-						aria-label={by ?? (title || 'Notes')}
-						aria-multiselectable={choosing ? true : undefined}
-					>
+					<div role="tree" aria-label={by ?? (title || 'Notes')}>
 						{#each rows as row (rowKey(heads, row))}
 							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
@@ -365,7 +368,7 @@
 									aria-expanded={row.children > 0 ? row.open : undefined}
 									aria-selected={row.note.ref === reading}
 									aria-checked={chosen ? chosen.has(row.note.ref) : undefined}
-									aria-keyshortcuts={onChoose ? 'Control+Space Meta+Space' : undefined}
+									aria-keyshortcuts={onChoose ? 'Control+Space' : undefined}
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows)}
 									onfocusin={() => tabbed.set(group, key)}

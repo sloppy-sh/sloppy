@@ -522,12 +522,12 @@ describe('the graph beside an open note', () => {
 		await settle();
 		item('Choose notes').click();
 		await settle();
-		expect(screen()).toContain('Tap the notes you mean');
+		expect(screen()).toContain('Pick the notes you mean');
 
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 		await settle();
 
-		expect(screen()).not.toContain('Tap the notes you mean');
+		expect(screen()).not.toContain('Pick the notes you mean');
 		expect(titled()).toBe('Cells');
 	});
 

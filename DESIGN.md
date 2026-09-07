@@ -813,6 +813,14 @@ docked beside — a drawn ground, a bar pinned across the foot, a card raised be
 is placed against that box, or it runs on under the panel while the page it belongs to stops
 at the edge.
 
+`--chosen-bar-inset-bottom` is the bar of chosen notes owing what it stands on, published BY
+the bar and unset wherever it is down. It is measured off the bar's whole box, so the row of
+acts and a refusal drawn under the tally are both counted, and it sits ON TOP of
+`--sysnav-clearance` rather than replacing it. A pannable field ignores it — the reader moves
+what is under the bar. A surface that SCROLLS while somebody chooses on it insets by
+`calc(var(--sysnav-clearance) + var(--chosen-bar-inset-bottom, 0px))`, or its last rows are
+the ones being chosen on and the ones the bar covers.
+
 A composer riding above the keyboard uses
 `max(var(--kb-inset-bottom,0px), calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 0.5rem))`
 — the breath belongs INSIDE the bar term, since that term goes to 0 while the keyboard is
