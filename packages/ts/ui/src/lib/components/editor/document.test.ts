@@ -140,8 +140,6 @@ describe('a stack of sections opened as one document', () => {
 		expect(rows(open())).toEqual([]);
 	});
 
-	// A note holding drawings is expensive to write down, and every pause in the
-	// typing asks for the whole note.
 	it('writes a section down once, and again only where somebody wrote into it', () => {
 		const of = open([
 			block({ content: written }),

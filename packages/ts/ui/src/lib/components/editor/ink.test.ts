@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { InkStroke } from '@sloppy/types';
+import type { InkPoint, InkStroke } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
@@ -183,6 +183,63 @@ describe('the stroke a lifted pen leaves behind', () => {
 		]);
 		expect(stroke.finish().points[0]).toEqual({ x: 0.12, y: 0.99, pressure: 0.33, t: 0 });
 		expect(stroke.finish().points[1].t).toBe(16);
+	});
+
+	/** How far the polyline that was kept strays from any sample the pen reported. */
+	function strays(from: PointerEvent[], kept: readonly InkPoint[]): number {
+		const off = (point: { x: number; y: number }, a: InkPoint, b: InkPoint) => {
+			const dx = b.x - a.x;
+			const dy = b.y - a.y;
+			const span = dx * dx + dy * dy;
+			const at = span === 0 ? 0 : ((point.x - a.x) * dx + (point.y - a.y) * dy) / span;
+			const held = Math.max(0, Math.min(1, at));
+			return Math.hypot(point.x - (a.x + held * dx), point.y - (a.y + held * dy));
+		};
+		return Math.max(
+			...from.map((sample) => {
+				const point = { x: sample.clientX - 100, y: sample.clientY - 50 };
+				return Math.min(...kept.slice(1).map((to, i) => off(point, kept[i], to)));
+			})
+		);
+	}
+
+	/** A half circle, sampled the way a pencil reporting many times a frame does. */
+	function curving(radius: number, step: number): PointerEvent[] {
+		const count = Math.round((Math.PI * radius) / step);
+		return Array.from({ length: count + 1 }, (_, i) => {
+			const turn = (Math.PI * i) / count;
+			return pen({
+				x: 100 + radius * Math.cos(turn),
+				y: 50 + radius * Math.sin(turn),
+				at: i * 4,
+				type: i === 0 ? 'pointerdown' : 'pointermove'
+			});
+		});
+	}
+
+	it('holds a curve to the line it was drawn on, however fast the device sampled', () => {
+		for (const [radius, step] of [
+			[100, 1.6],
+			[100, 0.8],
+			[200, 0.8]
+		]) {
+			const samples = curving(radius, step);
+			const kept = drawn(samples).finish().points;
+			expect(kept.length).toBeLessThan(samples.length / 4);
+			expect(strays(samples, kept)).toBeLessThan(0.4);
+		}
+	});
+
+	it('keeps the far end of a run the pen retraced', () => {
+		const down = Array.from({ length: 51 }, (_, i) =>
+			pen({ x: 100, y: 50 + i * 2, at: i, type: i === 0 ? 'pointerdown' : 'pointermove' })
+		);
+		const back = Array.from({ length: 50 }, (_, i) => pen({ x: 100, y: 148 - i * 2, at: 51 + i }));
+		expect(
+			drawn([...down, ...back])
+				.finish()
+				.points.map((point) => point.y)
+		).toEqual([0, 100, 0]);
 	});
 
 	it('is still a dot where the pen was put down and lifted without moving', () => {

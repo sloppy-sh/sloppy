@@ -513,6 +513,24 @@ describe('a section too big to save', () => {
 		expect(said).toContain('That section is too big to save.');
 		expect(said).toContain('2 MB');
 	});
+
+	it('leaves the section under it where the person put it', async () => {
+		const first = prose('already saved');
+		open([first]);
+		const of = writingIn();
+		of.commands.setTextSelection(Selection.atEnd(of.state.doc).from);
+		of.commands.addSection();
+		of.commands.insertContent({ type: 'text', text: 'x'.repeat(2 * 1024 * 1024 + 64) });
+		of.commands.addSection();
+		of.commands.insertContent({ type: 'text', text: 'a third thought' });
+		await vi.advanceTimersByTimeAsync(5000);
+		flushSync();
+
+		expect(written.created.map((made) => wording(made.content as BlockDocument)[0])).toEqual([
+			'a third thought'
+		]);
+		expect(written.created[0].after).toBe(first.ref);
+	});
 });
 
 describe('what a note keeps when it is left', () => {

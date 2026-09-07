@@ -185,14 +185,38 @@
 		return new TextEncoder().encode(JSON.stringify(op.content)).byteLength > SECTION_LIMIT_BYTES;
 	}
 
+	/** The plan without the sections too big to save. A section past what one can
+	 *  hold is left out rather than taking the rest of the note down with it, and
+	 *  whatever followed it is re-anchored to the section it will really follow,
+	 *  so nothing lands in an order the person did not write. */
+	function withinBudget(planned: readonly SaveOp[]): SaveOp[] {
+		const left: Record<string, string | null> = {};
+		const behind = (after: string | null): string | null => {
+			let at = after;
+			while (at !== null && Object.hasOwn(left, at)) at = left[at];
+			return at;
+		};
+		const ops: SaveOp[] = [];
+		for (const op of planned) {
+			if (op.kind === 'create') {
+				const after = behind(op.after);
+				if (tooBig(op)) left[op.uid] = after;
+				else ops.push({ ...op, after });
+			} else if (op.kind === 'reorder') {
+				ops.push({ ...op, after: behind(op.after) });
+			} else if (!tooBig(op)) {
+				ops.push(op);
+			}
+		}
+		return ops;
+	}
+
 	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
 	function run(write: Write): Promise<void> {
 		const trip = inFlight.then(async () => {
 			const planned = planSave(write.rows, write.next);
 			if (planned.length === 0) return;
-			// A section past what one can hold is left out of the trip rather than
-			// taking the rest of the note down with it.
-			const ops = planned.filter((op) => !tooBig(op));
+			const ops = withinBudget(planned);
 			await runSave(ops, write.rows, write.next, {
 				create: (request) =>
 					onCreate({
@@ -222,7 +246,7 @@
 			if (ops.length < planned.length) {
 				throw new SaveFailure(
 					'refused',
-					`That section is too big to save. The limit here is ${SECTION_LIMIT_BYTES / (1024 * 1024)} MB, so try splitting it in two.`
+					`That section is too big to save. The limit here is ${SECTION_LIMIT_BYTES / (1024 * 1024)} MB — take something out of it, or start a new section for the rest.`
 				);
 			}
 		});

@@ -89,26 +89,44 @@ function rounded(point: InkPoint): InkPoint {
 }
 
 /**
- * The stroke as it will be drawn back: a sample the line between its neighbours
- * already describes is dropped, and what is left is kept to the precision the
- * canvas draws at, so a note carries the drawing rather than how fast the device
- * that made it sampled.
+ * Whether the segment from `from` to `to` already says what `run` says: every
+ * sample of it lies along that segment, close enough to it, at a pressure the
+ * nib would show no step in.
+ */
+function describedBy(from: InkPoint, to: InkPoint, run: readonly InkPoint[]): boolean {
+	const dx = to.x - from.x;
+	const dy = to.y - from.y;
+	const span = dx * dx + dy * dy;
+	return run.every((point) => {
+		const along = (point.x - from.x) * dx + (point.y - from.y) * dy;
+		return (
+			along >= 0 &&
+			along <= span &&
+			offTheLine(point, from, to) <= OFF_THE_LINE &&
+			Math.abs(point.pressure - from.pressure) <= PRESSURE_STEP
+		);
+	});
+}
+
+/**
+ * The stroke as it will be drawn back: a whole run of samples is dropped only
+ * while the segment across it describes every one of them, and what is left is
+ * kept to the precision the canvas draws at, so a note carries the drawing
+ * rather than how fast the device that made it sampled.
  */
 function thinned(points: readonly InkPoint[]): InkPoint[] {
 	const kept: InkPoint[] = [];
+	let skipped: InkPoint[] = [];
 	for (let i = 0; i < points.length; i++) {
 		const point = points[i];
 		const last = kept.at(-1);
 		const next = points[i + 1];
-		if (
-			last &&
-			next &&
-			offTheLine(point, last, next) <= OFF_THE_LINE &&
-			Math.abs(point.pressure - last.pressure) <= PRESSURE_STEP
-		) {
+		if (last && next && describedBy(last, next, [...skipped, point])) {
+			skipped.push(point);
 			continue;
 		}
 		kept.push(rounded(point));
+		skipped = [];
 	}
 	return kept;
 }
