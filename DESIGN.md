@@ -778,7 +778,8 @@ so.
   any control does. Beside it, _published_ and _chosen_ fold back to their marks, and how
   many notes are under a row is a wide-screen affordance — on a phone the chevron is what
   says there is anything under it. Anything reading the page aloud is told all three either
-  way. A row that scrolls sideways is a bug report against this.
+  way. The address is the one part that never gives — it is what a person cites — so
+  everything else on the row is drawn to fit around it.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** A drag-to-dismiss bottom sheet on a phone, a

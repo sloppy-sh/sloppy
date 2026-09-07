@@ -1382,12 +1382,7 @@ describe('a note’s sections under its row in the walk', () => {
 // measured.
 describe('a note row on the narrowest phone', () => {
 	const PHONE = 360;
-	/** What the surface holds back either side of the run, and a row after it. */
-	const SCROLLER = 16;
-	const ROW_END = 8;
-	/** `--tree-step` below `sm`, and the gap between a row's parts there. */
-	const STEP = 6;
-	const GAP = 4;
+	const REM = 16;
 	/** One character of a row's small text, allowed for at the widest face
 	 *  `data-app-font` puts behind the address. */
 	const CHAR = 9;
@@ -1411,25 +1406,32 @@ describe('a note row on the narrowest phone', () => {
 
 	const classesOf = (part: Element): string[] => (part.getAttribute('class') ?? '').split(/\s+/);
 
-	const gapOf = (classes: string[]): number => {
-		const gap = classes.find((one) => /^gap-\d+(\.5)?$/.test(one));
-		return gap ? Number(gap.slice(4)) * 4 : 0;
-	};
+	/** A spacing class in px, off the part's own classes, or 0 where it has none. */
+	function spaceOf(classes: string[], name: string): number {
+		const set = classes.find((one) => new RegExp(`^${name}-\\d+(\\.5)?$`).test(one));
+		return set ? Number(set.slice(name.length + 1)) * 4 : 0;
+	}
+
+	const gapOf = (classes: string[]): number => spaceOf(classes, 'gap');
+
+	/** What a part carries with nothing to spare: words that truncate carry
+	 *  nothing, and anything else carries its own parts or its own text. */
+	function carriedBy(part: Element, classes: string[]): number {
+		if (classes.includes('truncate')) return 0;
+		const parts = [...part.children];
+		if (parts.length > 0) return acrossOf(parts, gapOf(classes));
+		return (part.textContent ?? '').trim().length * CHAR;
+	}
 
 	/** The narrowest a part can be drawn, or null where it is not drawn at all:
-	 *  a control is its touch target, an icon its size, words that truncate or
-	 *  fold are nothing, and anything else is its own parts or its own text. */
+	 *  a control is its touch target, an icon its size, and anything else is the
+	 *  wider of what it carries and the floor it is set. */
 	function floorOf(part: Element): number | null {
 		const classes = classesOf(part);
 		if (classes.includes('sr-only') || classes.includes('hidden')) return null;
 		const sized = classes.find((one) => /^size-\d+$/.test(one));
 		if (sized) return Number(sized.slice(5)) * 4;
-		if (classes.includes('truncate')) return 0;
-		const parts = [...part.children];
-		if (parts.length > 0) return acrossOf(parts, gapOf(classes));
-		const floor = classes.find((one) => /^min-w-\d+$/.test(one));
-		if (floor) return Number(floor.slice(6)) * 4;
-		return (part.textContent ?? '').trim().length * CHAR;
+		return Math.max(spaceOf(classes, 'min-w'), carriedBy(part, classes));
 	}
 
 	function acrossOf(parts: Element[], gap: number): number {
@@ -1437,10 +1439,22 @@ describe('a note row on the narrowest phone', () => {
 		return drawn.reduce((sum, one) => sum + one, 0) + gap * Math.max(0, drawn.length - 1);
 	}
 
+	/** Every width the row is drawn against, read off the surface that sets it:
+	 *  what the run is held back either side, the stair below `sm` and how many
+	 *  of them this row stands on, the gap between its parts, and its own end. */
 	function acrossRow(row: HTMLElement): number {
-		const step = /calc\((\d+) \*/.exec(row.style.paddingInlineStart);
-		const indent = Number(step?.[1] ?? 0) * STEP;
-		return SCROLLER + indent + acrossOf([...row.children], GAP) + ROW_END;
+		const run = row.closest('.max-w-4xl') as HTMLElement;
+		const step = classesOf(run.parentElement as HTMLElement)
+			.map((one) => /^\[--tree-step:([\d.]+)rem\]$/.exec(one))
+			.find((one) => one !== null);
+		const stairs = /calc\((\d+) \*/.exec(row.style.paddingInlineStart);
+		const classes = classesOf(row);
+		return (
+			spaceOf(classesOf(run), 'px') * 2 +
+			Number(stairs?.[1] ?? 0) * Number(step?.[1] ?? 0) * REM +
+			acrossOf([...row.children], gapOf(classes)) +
+			spaceOf(classes, 'pe')
+		);
 	}
 
 	const bare: TreeSurfaceProps['sections'] = {
