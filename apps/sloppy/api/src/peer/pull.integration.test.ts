@@ -529,6 +529,22 @@ describe("holding a region of somebody else's graph", () => {
     ]);
   });
 
+  scenario(
+    "keeps the addresses the author moved a note away from",
+    async () => {
+      serves(
+        page(NARROW, [
+          note("1a", "1a"),
+          { ...note("1a", "1a1"), aliases: ["1b2"] },
+        ]),
+      );
+      const region = await pulled(NARROW);
+
+      const held = await heldIn(region);
+      expect(held.map((node) => node.aliases)).toEqual([undefined, ["1b2"]]);
+    },
+  );
+
   scenario("refuses an answer that is not the one asked for", async () => {
     const region = await regionOf(NARROW);
     expect(region).toBeDefined();

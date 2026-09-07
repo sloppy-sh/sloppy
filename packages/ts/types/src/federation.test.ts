@@ -106,6 +106,34 @@ describe("a held node", () => {
     );
   });
 
+  it("keeps the addresses its author moved it away from", () => {
+    const moved = heldNode("2c");
+    const held = parsePulledNode({
+      ...moved,
+      aliases: ["1a"],
+      node: { ...moved.node, aliases: ["1a"] },
+    });
+    expect(held.aliases).toEqual(["1a"]);
+    expect(pulledNodeView(held).aliases).toEqual(["1a"]);
+  });
+
+  it("is refused when it is filed under other addresses than it carries", () => {
+    const moved = heldNode("2c");
+    expect(() =>
+      parsePulledNode({ ...moved, node: { ...moved.node, aliases: ["1a"] } }),
+    ).toThrow(/other addresses/);
+    expect(() => parsePulledNode({ ...moved, aliases: ["1a"] })).toThrow(
+      /other addresses/,
+    );
+    expect(() =>
+      parsePulledNode({
+        ...moved,
+        aliases: ["1b"],
+        node: { ...moved.node, aliases: ["1a"] },
+      }),
+    ).toThrow(/other addresses/);
+  });
+
   it("is held once, and the regions that served it are rows of their own", () => {
     // Two regions of one author's graph, the second an ancestor of the first.
     // Both COVER the note; which of them handed it over is what the rows say,

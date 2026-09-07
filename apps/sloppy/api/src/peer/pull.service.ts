@@ -241,6 +241,7 @@ function held(
       source_did: author,
       source_graph: graph,
       address: node.address,
+      ...(node.aliases ? { aliases: node.aliases } : {}),
       depth: addressDepth(node.address),
       node: { ...node },
     })),

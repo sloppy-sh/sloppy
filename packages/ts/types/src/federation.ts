@@ -228,11 +228,8 @@ export const PulledNodeSchema = OwnedEntitySchema.extend({
    *  and unique per author's graph: an address a peer handed us resolves one
    *  way inside it, the way our own do. */
   address: AddressSchema,
-  /**
-   * `node.aliases`, beside the node for the reason `address` is: an address a
-   * reader cites is answered from a column, and SurrealDB will not index a
-   * nested path. Absent is a note its author has never moved.
-   */
+  /** `node.aliases`, beside the node the way `address` is, so a row and the
+   *  note it copies cannot come apart. Absent is a note never moved. */
   aliases: z.array(AddressSchema).optional(),
   /**
    * `addressDepth(node.address)`, minted here because a published node carries

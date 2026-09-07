@@ -132,7 +132,8 @@ function sameNote(a: PublishedNode, b: PublishedNode): boolean {
     a.signed_payload_json === b.signed_payload_json &&
     a.signing_device_public_key === b.signing_device_public_key &&
     sameList(a.tags, b.tags) &&
-    sameList(a.links, b.links)
+    sameList(a.links, b.links) &&
+    sameList(a.aliases ?? [], b.aliases ?? [])
   );
 }
 
