@@ -21,6 +21,12 @@ const NOTHING = 'Nothing is written in this note yet';
 const UNREAD = 'These sections could not be read. Tap to try again.';
 const UNMOVED = 'That section could not be moved. Tap to read this note again.';
 
+/** Moves asked for and answered on one note's stack. */
+interface Moves {
+	asked: number;
+	answered: number;
+}
+
 function heldOf(stack: readonly BlockView[]): TreeSection[] {
 	return [...stack]
 		.sort((a, b) => compareOrd(a.ord, b.ord))
@@ -32,6 +38,7 @@ class OutlineSectionsStore {
 	#held = new SvelteMap<OwnedRef, TreeSection[]>();
 	#trouble = new SvelteMap<OwnedRef, string>();
 	#inflight = new Map<OwnedRef, Promise<void>>();
+	#moves = new Map<OwnedRef, Moves>();
 	// A {@link clear} that lands mid-request must not be undone by the answer.
 	#epoch = 0;
 	#forWhom: string | null = null;
@@ -64,7 +71,7 @@ class OutlineSectionsStore {
 	}
 
 	/** `after` is the section this one is to follow; null puts it first. The
-	 *  stack moves at once and goes back where it was if the write is refused. */
+	 *  stack moves at once; a refused write reads the note again. */
 	move(note: OwnedRef, section: OwnedRef, after: OwnedRef | null): void {
 		const held = this.#held.get(note);
 		const at = held?.findIndex((one) => one.ref === section) ?? -1;
@@ -72,16 +79,21 @@ class OutlineSectionsStore {
 		const rest = held.filter((one) => one.ref !== section);
 		const to = after === null ? 0 : rest.findIndex((one) => one.ref === after) + 1;
 		if (to === 0 && after !== null) return;
-		const was = held;
 		this.#held.set(note, [...rest.slice(0, to), held[at], ...rest.slice(to)]);
 		this.#trouble.delete(note);
 
+		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
+		this.#moves.set(note, { ...moves, asked: moves.asked + 1 });
+
 		const epoch = this.#epoch;
-		void api.updateBlock(section, { after }).catch((err: unknown) => {
-			if (epoch !== this.#epoch) return;
-			this.#held.set(note, was);
-			this.#trouble.set(note, serverMessage(err) ?? UNMOVED);
-		});
+		void api.updateBlock(section, { after }).then(
+			() => this.#answered(note, epoch),
+			(err: unknown) => {
+				if (!this.#answered(note, epoch)) return;
+				void this.#read(note);
+				this.#trouble.set(note, serverMessage(err) ?? UNMOVED);
+			}
+		);
 	}
 
 	/** Nothing one person's outline holds belongs to the next. */
@@ -97,17 +109,35 @@ class OutlineSectionsStore {
 		this.#held.clear();
 		this.#trouble.clear();
 		this.#inflight.clear();
+		this.#moves.clear();
+	}
+
+	#answered(note: OwnedRef, epoch: number): boolean {
+		if (epoch !== this.#epoch) return false;
+		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
+		this.#moves.set(note, { ...moves, answered: moves.answered + 1 });
+		return true;
+	}
+
+	/** Whether a listing begun when the note stood at `since` still describes it:
+	 *  nothing was moving then, and nothing has moved since. */
+	#stands(note: OwnedRef, since: Moves): boolean {
+		const now = this.#moves.get(note) ?? { asked: 0, answered: 0 };
+		return (
+			since.asked === since.answered && now.asked === since.asked && now.answered === since.answered
+		);
 	}
 
 	#read(note: OwnedRef): Promise<void> {
 		const already = this.#inflight.get(note);
 		if (already) return already;
 		const epoch = this.#epoch;
+		const since = this.#moves.get(note) ?? { asked: 0, answered: 0 };
 		this.#trouble.delete(note);
 		const reading = api
 			.listBlocks(note)
 			.then((stack) => {
-				if (epoch !== this.#epoch) return;
+				if (epoch !== this.#epoch || !this.#stands(note, since)) return;
 				this.#held.set(note, heldOf(stack));
 			})
 			.catch((err: unknown) => {

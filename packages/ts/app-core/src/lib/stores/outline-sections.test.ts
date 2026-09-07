@@ -167,6 +167,34 @@ describe('arranging a note’s sections', () => {
 		]);
 	});
 
+	// The reader moved it while the note was being read again behind the rows, so
+	// the listing that lands is older than what they have just done.
+	it('keeps a move made while the note is being read again', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+
+		outlineSections.show(NOTE, false);
+		outlineSections.show(NOTE, true);
+		outlineSections.move(NOTE, S3, null);
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+
+		await settle();
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+		expect(asked).toEqual([{ ref: S3, body: { after: null } }]);
+	});
+
+	it('keeps a move the note is still being asked to make when a listing lands', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+
+		outlineSections.move(NOTE, S3, null);
+		outlineSections.show(NOTE, false);
+		outlineSections.show(NOTE, true);
+		await settle();
+
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+	});
+
 	it('names the section a moved one follows', async () => {
 		outlineSections.show(NOTE, true);
 		await settle();
@@ -192,6 +220,32 @@ describe('arranging a note’s sections', () => {
 
 		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2, S3]);
 		expect(outlineSections.says(NOTE).says).toBe('This section was written somewhere else.');
+	});
+
+	// The second move landed, so what stands here after the first is refused is
+	// the stack the note now holds rather than the one before either move.
+	it('shows what the note holds when the first of two moves is refused', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+
+		let tries = 0;
+		api.on(`PATCH ${blockPath(S3)}`, () => {
+			tries += 1;
+			return tries === 1
+				? new Response('{"message":"This section was written somewhere else."}', { status: 409 })
+				: { ...STACK[2], ord: '0' };
+		});
+		api.on(`GET ${PATH}`, () => [{ ...STACK[2], ord: '0' }, STACK[0], STACK[1]]);
+
+		outlineSections.move(NOTE, S3, S1);
+		outlineSections.move(NOTE, S3, null);
+		await settle();
+
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+		expect(outlineSections.says(NOTE)).toEqual({
+			says: 'This section was written somewhere else.',
+			again: true
+		});
 	});
 
 	it('moves nothing for a note whose stack is not in hand', () => {

@@ -418,8 +418,14 @@
 			const items = [...tree.querySelectorAll<HTMLElement>('[role="treeitem"]')];
 			for (const [at, item] of items.entries()) {
 				const row = group.rows[at];
-				if (row?.kind !== 'note') continue;
+				if (!row) continue;
 				const box = item.getBoundingClientRect();
+				if (row.kind === 'section' || row.kind === 'says') {
+					const above = out[out.length - 1];
+					if (above?.on === row.note) above.bottom = box.bottom;
+					continue;
+				}
+				if (row.kind !== 'note') continue;
 				const words = item.querySelector('.address')?.getBoundingClientRect();
 				out.push({
 					on: row.note.ref,
@@ -724,8 +730,6 @@
 									data-row={key}
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
-									aria-posinset={row.at}
-									aria-setsize={row.of}
 									aria-selected={false}
 									aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
 									onpointerdown={() => (dragged = false)}

@@ -741,6 +741,36 @@ describe('dragging a row’s write control to where the note goes', () => {
 		expect(said()).toBe('');
 	});
 
+	// A note's open sections stand between its row and the next note's, and they
+	// are part of the note they were written in.
+	it('writes under the note whose sections are open, not the note after them', () => {
+		const stack: TreeSection[] = [
+			{ ref: held('1a/s1'), says: 'The first thing' },
+			{ ref: held('1a/s2'), says: 'The last thing' }
+		];
+		render({
+			...OPEN,
+			sections: {
+				shown: new SvelteSet([held('1a')]),
+				of: (note) => (note === held('1a') ? stack : undefined),
+				says: () => ({ says: '', again: false }),
+				onShow: () => {},
+				onMove: () => {}
+			}
+		});
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 60, 110));
+		flushSync();
+		expect(said()).toBe('Write under 1a About 1a');
+		expect(marked()).toEqual(['1a']);
+
+		window.dispatchEvent(pull('pointerup', 60, 110));
+		flushSync();
+		expect(written).toEqual([held('1a')]);
+	});
+
 	it('writes beside the row a mouse drags level with, and lights that run', () => {
 		render(OPEN);
 		lay();
@@ -1029,11 +1059,14 @@ describe('a note’s sections under its row in the walk', () => {
 		]);
 	});
 
-	it('sets the sections one level under the note and says where each one sits', () => {
+	// The notes at this level are counted as their own set, so the stack is
+	// counted on its handles rather than a second time on the rows.
+	it('sets the sections one level under the note and counts them on their handles', () => {
 		render({ sections: sections() });
 		expect(sectionRow(S2).getAttribute('aria-level')).toBe('2');
-		expect(sectionRow(S2).getAttribute('aria-posinset')).toBe('2');
-		expect(sectionRow(S2).getAttribute('aria-setsize')).toBe('3');
+		expect(sectionRow(S2).getAttribute('aria-posinset')).toBeNull();
+		expect(sectionRow(S2).getAttribute('aria-setsize')).toBeNull();
+		expect(gripIn(S2).getAttribute('aria-label')).toBe('Move section 2 of 3 in 1');
 	});
 
 	it('leaves the walk the notes alone where it was given no sections', () => {
