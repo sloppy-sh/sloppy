@@ -594,6 +594,19 @@ describe('a branch somebody else published', () => {
 		expect(brought()).toEqual([UNDER]);
 	});
 
+	// DESIGN.md § "The mark": the lift is the only thing that says which note is
+	// being read, and a peer in somebody else's branch has the least to go on.
+	it('lifts the held note being read', async () => {
+		await enterRegion();
+		expect(onCanvas('1a').dataset.lifted).toBeUndefined();
+
+		onCanvas('1a').click();
+		await settle();
+
+		expect(onCanvas('1a').dataset.lifted).toBe('reading');
+		expect(onCanvas('1').dataset.lifted).toBeUndefined();
+	});
+
 	it('comes to a held note opened from a row of the outline', async () => {
 		await enterRegion();
 

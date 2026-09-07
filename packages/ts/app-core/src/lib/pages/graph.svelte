@@ -412,6 +412,9 @@
 		openNotes.length > 0 ? { open: new Set(openNotes), active: open } : undefined
 	);
 
+	/** The same, in a held region, where a peer reads one note at a time. */
+	const heldReading = $derived(reached ? { open: new Set([reached]), active: reached } : undefined);
+
 	/** The canvas a pen is drawing over: the reader's own graph, or the region
 	 *  they went to read. */
 	const inkedOn = $derived(foreign ? foreign.ref : graphs.current);
@@ -1746,7 +1749,7 @@
 							}
 						: undefined}
 					pictures={ownPictures}
-					reading={foreign ? undefined : reading}
+					reading={foreign ? heldReading : reading}
 					ground={prefs.current.ground}
 					wallpaper={{
 						picture: showing,

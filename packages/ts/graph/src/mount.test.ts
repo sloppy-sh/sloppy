@@ -411,6 +411,27 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
       field.send("pointermove", at(to, false));
       field.send("pointerup", at(to, false));
     },
+    /** One finger drawing the same box, with no modifier to hold. */
+    sweepByFinger(
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+    ): void {
+      scene.under = null;
+      const at = (point: { x: number; y: number }) =>
+        ({
+          pointerId: 7,
+          pointerType: "touch",
+          button: 0,
+          clientX: point.x,
+          clientY: point.y,
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
+        }) as Partial<PointerEvent>;
+      field.send("pointerdown", at(from));
+      field.send("pointermove", at(to));
+      field.send("pointerup", at(to));
+    },
     pen(type: string, x: number, y: number): void {
       field.send(type, {
         pointerId: 2,
@@ -1063,6 +1084,20 @@ describe("choosing notes to act on", () => {
     graph.sweep({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
 
     expect(swept).toEqual([graph.model().order]);
+  });
+
+  it("offers the finger sweep only while a set is being chosen", async () => {
+    const { graph, swept } = await choosing();
+
+    graph.sweepByFinger({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
+    expect(swept).toEqual([graph.model().order]);
+
+    graph.handle.update({
+      ...graph.props,
+      onChooseWithin: (refs) => swept.push([...refs]),
+    });
+    graph.sweepByFinger({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
+    expect(swept).toHaveLength(1);
   });
 
   it("keeps picking ahead of choosing, because a canvas is in one mode", async () => {

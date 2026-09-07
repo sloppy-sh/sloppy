@@ -112,4 +112,5 @@ Target WCAG 2.2 AA as a floor.
   draws a rougher line, not a disabled block. Nothing in the product requires a pencil.
 - Respect `prefers-reduced-motion` and `prefers-color-scheme` (first visit only, until a
   preference is saved). Reduced motion means the layout settles to its final positions
-  without animating — never that positions are left unsettled.
+  without animating — never that positions are left unsettled. A mark being dragged is the
+  one thing the graph follows as it moves, and it settles the moment the mark is let go.

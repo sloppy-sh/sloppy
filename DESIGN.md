@@ -851,6 +851,22 @@ up and the lift can be 0 in the panned case.
   model falls out of the platform instead of fighting it. There is no mode toggle to find.
   Pencil Pro gestures (squeeze, barrel-roll, double-tap) live in `UIPencilInteraction` and
   are not exposed to the web layer — do not design an affordance around them.
+- **Once a set is being chosen, one finger sweeps.** Choosing a region is the only way to
+  act on many notes at once, and it cannot be a thing only a mouse can do. While a set is
+  being chosen — where a tap is already adding and removing — a one-finger drag over bare
+  canvas draws the sweep box instead of panning. Two fingers still pan and pinch, a finger
+  that lands on a mark still pans, and the press that opens the menu is untouched. This is
+  not a mode to find: nothing changes until the reader has said they are choosing, and a
+  finger pans again the moment they are done. A second finger arriving mid-sweep is a pan,
+  and what was swept by then stands — a sweep adds to the chosen set, it never replaces it.
+- **Proposed, not built: moving a mark with a finger.** Taking hold of a mark is a mouse
+  gesture, so the reader most likely to meet a crowded region — the annotator, on a tablet —
+  cannot untangle one. The likely shape is **Move** on the press menu rather than a longer
+  hold, because the press pointer is spent on the menu on purpose (above), and re-reading
+  it as a drag is what this section is written to prevent. Whatever it becomes, it moves the
+  mark **for this reader, in this session**: where a mark stands is not stored and not
+  published, so nothing a peer pulls changes. Not decided — it moves the touch contract
+  above, which is a decision to take on its own rather than inside a feature.
 - **Ink degrades, it never gates.** `getCoalescedEvents()`/`getPredictedEvents()` are
   feature-detected; without them a stroke is rougher, not unavailable.
 - **What the pen leaves over the canvas is a drawing on the FIELD, and it stays.** It goes
@@ -1149,7 +1165,9 @@ states. Empty states invite; they don't apologize. Icons: lucide, one weight.
   platform gives us. Easing applied to ink is lag with a nicer name.
 - Honour `prefers-reduced-motion`: chrome transitions degrade to static, and the layout
   **jumps to its converged positions** rather than animating there. Reduced motion must
-  never mean an unsettled graph.
+  never mean an unsettled graph. A mark the reader is holding is the one thing the field
+  follows as it goes, rather than jumping to a converged field under a moving hand, and it
+  converges the moment the mark is let go.
 
 ## Persistence
 

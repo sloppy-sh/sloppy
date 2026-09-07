@@ -352,49 +352,110 @@ describe("the layout service", () => {
 
   // DESIGN.md § Motion: reduced motion jumps to the converged positions. It
   // gets there in one answer rather than in frames, and it is still a drag.
-  it("holds the far field through a reduced-motion drag too", () => {
-    const events: LayoutEvent[] = [];
-    const field: LayoutStart = {
-      ...startFor(400),
-      epoch: 3,
-      settleAtOnce: true,
-    };
-    const accept = serveLayout((event) => events.push(event), { sliceMs: 1 });
-    accept(field);
-    const settled = [...events[0].positions];
+  it("holds the far field through a reduced-motion drag too", async () => {
+    vi.useFakeTimers();
+    try {
+      const events: LayoutEvent[] = [];
+      const field: LayoutStart = {
+        ...startFor(400),
+        epoch: 3,
+        settleAtOnce: true,
+      };
+      const accept = serveLayout((event) => events.push(event), { sliceMs: 1 });
+      accept(field);
+      const settled = [...events[0].positions];
 
-    const held = busiest(field);
-    const joined = within(field, held, 2);
-    accept({
-      kind: "pin",
-      epoch: 3,
-      index: held,
-      x: settled[held * 2] + 400,
-      y: settled[held * 2 + 1],
-      held: true,
-    });
+      const held = busiest(field);
+      const joined = within(field, held, 2);
+      accept({
+        kind: "pin",
+        epoch: 3,
+        index: held,
+        x: settled[held * 2] + 400,
+        y: settled[held * 2 + 1],
+        held: true,
+      });
+      await vi.advanceTimersByTimeAsync(200);
 
-    const after = [...events[1].positions];
-    for (let at = 0; at < field.nodes.length; at++) {
-      if (joined.has(at)) continue;
-      expect([after[at * 2], after[at * 2 + 1]]).toEqual([
-        settled[at * 2],
-        settled[at * 2 + 1],
-      ]);
+      const after = [...(events.at(-1)?.positions ?? [])];
+      for (let at = 0; at < field.nodes.length; at++) {
+        if (joined.has(at)) continue;
+        expect([after[at * 2], after[at * 2 + 1]]).toEqual([
+          settled[at * 2],
+          settled[at * 2 + 1],
+        ]);
+      }
+      expect(after[held * 2]).toBeCloseTo(settled[held * 2] + 400, 6);
+    } finally {
+      vi.useRealTimers();
     }
-    expect(after[held * 2]).toBeCloseTo(settled[held * 2] + 400, 6);
   });
 
-  it("ignores a pin aimed at a region it has already replaced", () => {
-    const events: LayoutEvent[] = [];
-    const accept = serveLayout((event) => events.push(event), { sliceMs: 1 });
-    accept({ ...startFor(80), epoch: 2, settleAtOnce: true });
-    const settled = [...events[0].positions];
-    accept({ kind: "pin", epoch: 1, index: 0, x: 999, y: 999, held: true });
-    expect(events).toHaveLength(1);
-    accept({ kind: "pin", epoch: 2, index: 0, x: 999, y: 999, held: true });
-    expect(events).toHaveLength(2);
-    expect([...events[1].positions]).not.toEqual(settled);
+  // The other half of the same rule: what reduced motion asks for is the field
+  // never travelling to where a CHANGE put it, and a drag is not that change.
+  // Converging on every pointer move leaves the field behind the reader's hand.
+  it("answers a reduced-motion drag as it goes, and converges on the release", async () => {
+    vi.useFakeTimers();
+    try {
+      const events: LayoutEvent[] = [];
+      const field: LayoutStart = {
+        ...startFor(400),
+        epoch: 4,
+        settleAtOnce: true,
+      };
+      const accept = serveLayout((event) => events.push(event), { sliceMs: 1 });
+      accept(field);
+      const settled = [...events[0].positions];
+      const held = busiest(field);
+      const drag = (at: number, still: boolean): void =>
+        accept({
+          kind: "pin",
+          epoch: 4,
+          index: held,
+          x: settled[held * 2] + at,
+          y: settled[held * 2 + 1],
+          held: still,
+        });
+
+      drag(100, true);
+      expect(events).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(events.length).toBeGreaterThan(1);
+      expect(events.at(-1)?.positions[held * 2]).toBeCloseTo(
+        settled[held * 2] + 100,
+        6,
+      );
+
+      const answered = events.length;
+      drag(200, true);
+      drag(300, true);
+      expect(events).toHaveLength(answered);
+
+      drag(300, false);
+      expect(events.at(-1)?.settled).toBe(true);
+      expect(events.at(-1)?.alpha).toBeLessThan(0.01);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores a pin aimed at a region it has already replaced", async () => {
+    vi.useFakeTimers();
+    try {
+      const events: LayoutEvent[] = [];
+      const accept = serveLayout((event) => events.push(event), { sliceMs: 1 });
+      accept({ ...startFor(80), epoch: 2, settleAtOnce: true });
+      const settled = [...events[0].positions];
+      accept({ kind: "pin", epoch: 1, index: 0, x: 999, y: 999, held: true });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(events).toHaveLength(1);
+      accept({ kind: "pin", epoch: 2, index: 0, x: 999, y: 999, held: true });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(events.length).toBeGreaterThan(1);
+      expect([...events[1].positions]).not.toEqual(settled);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
