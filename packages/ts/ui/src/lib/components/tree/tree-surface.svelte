@@ -71,6 +71,7 @@
 	// note's own to show, so neither a reference nor a hand-drawn link branches
 	// here; DESIGN.md § Layout is why a plain tap replaces the note being read.
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
@@ -255,15 +256,19 @@
 			dragged = false;
 			return;
 		}
-		if (row.kind === 'rest') reveal(group, row);
-		else if (row.kind === 'says') sections?.onShow(row.note, true);
-		else if (row.kind === 'section') onOpen(row.note);
-		else if (choosing && onChoose) onChoose(row.note.ref);
-		else onOpen(row.note.ref);
+		if (row.kind === 'rest') {
+			reveal(group, row);
+			return;
+		}
+		if (row.kind === 'says') {
+			if (row.again) sections?.onShow(row.note, true);
+			return;
+		}
+		const note = row.kind === 'section' ? row.note : row.note.ref;
+		if (choosing && onChoose) onChoose(note);
+		else onOpen(note);
 	}
 
-	/** Whether this note's sections are drawn, which is asked of every note row
-	 *  and only ever true where the walk was given sections at all. */
 	const showing = (ref: OwnedRef): boolean => sections?.shown.has(ref) ?? false;
 
 	/** What a note row advertises for `aria-keyshortcuts`. */
@@ -280,7 +285,12 @@
 		if (landing) sections?.onMove(row.note, row.section.ref, landing.after);
 	}
 
-	function keys(event: KeyboardEvent, group: string, rows: readonly OutlineRow[]): void {
+	function keys(
+		event: KeyboardEvent,
+		group: string,
+		rows: readonly OutlineRow[],
+		heads: boolean
+	): void {
 		const item = event.currentTarget as HTMLElement;
 		const tree = item.closest('[role="tree"]');
 		if (!tree) return;
@@ -310,7 +320,11 @@
 				event.preventDefault();
 				return;
 			}
-			if (row.kind === 'note' && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+			if (
+				row.kind === 'note' &&
+				!heads &&
+				(event.key === 'ArrowRight' || event.key === 'ArrowLeft')
+			) {
 				sections.onShow(row.note.ref, event.key === 'ArrowRight');
 				event.preventDefault();
 				return;
@@ -458,6 +472,10 @@
 		return { top: head?.getBoundingClientRect().top ?? 0, rows };
 	}
 
+	/** The section whose handle was tapped, which then offers the move a drag
+	 *  makes: a finger has neither a hover to read nor a key to hold. */
+	let nudging = $state<OwnedRef | null>(null);
+
 	function carrySection(event: PointerEvent, row: Extract<OutlineRow, { kind: 'section' }>): void {
 		dragged = false;
 		if (!sections) return;
@@ -568,15 +586,13 @@
 									aria-level={row.depth + 1}
 									aria-posinset={row.at}
 									aria-setsize={row.of}
-									aria-expanded={row.children > 0 || (sections && !heads)
-										? row.open || showing(row.note.ref)
-										: undefined}
+									aria-expanded={row.children > 0 ? row.open : undefined}
 									aria-selected={row.note.ref === reading}
 									aria-checked={chosen ? chosen.has(row.note.ref) : undefined}
 									aria-keyshortcuts={chords(!heads) || undefined}
 									onpointerdown={() => (dragged = false)}
 									onclick={() => act(group, row)}
-									onkeydown={(event) => keys(event, group, rows)}
+									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
 										0 && asked.length === 0
@@ -612,7 +628,7 @@
 									<span class="shrink-0 address text-xs text-muted-foreground">
 										{row.note.address}
 									</span>
-									<span class="min-w-0 flex-1 truncate text-sm">
+									<span class="min-w-16 flex-1 truncate text-sm">
 										{row.note.title || 'Untitled'}
 									</span>
 
@@ -714,7 +730,7 @@
 									aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
 									onpointerdown={() => (dragged = false)}
 									onclick={() => act(group, row)}
-									onkeydown={(event) => keys(event, group, rows)}
+									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {moving?.note ===
 									row.note
@@ -725,10 +741,17 @@
 									<button
 										type="button"
 										tabindex="-1"
+										aria-expanded={nudging === row.section.ref}
 										aria-label="Move section {row.at} of {row.of} in {row.address}"
-										title="Drag it to move it in this note"
 										onpointerdown={(event) => carrySection(event, row)}
-										onclick={(event) => event.stopPropagation()}
+										onclick={(event) => {
+											event.stopPropagation();
+											if (dragged) {
+												dragged = false;
+												return;
+											}
+											nudging = nudging === row.section.ref ? null : row.section.ref;
+										}}
 										class="flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 									>
 										<GripVertical class="size-4" />
@@ -736,6 +759,35 @@
 									<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
 										{row.section.says}
 									</span>
+
+									{#if nudging === row.section.ref}
+										<button
+											type="button"
+											tabindex="-1"
+											disabled={row.at === 1}
+											aria-label="Move it up in {row.address}"
+											onclick={(event) => {
+												event.stopPropagation();
+												arrange(row, -1);
+											}}
+											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+										>
+											<ArrowUp class="size-4" />
+										</button>
+										<button
+											type="button"
+											tabindex="-1"
+											disabled={row.at === row.of}
+											aria-label="Move it down in {row.address}"
+											onclick={(event) => {
+												event.stopPropagation();
+												arrange(row, 1);
+											}}
+											class="-me-1 flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+										>
+											<ArrowDown class="size-4" />
+										</button>
+									{/if}
 								</div>
 							{:else if row.kind === 'says'}
 								<div
@@ -746,9 +798,11 @@
 									aria-selected={false}
 									onpointerdown={() => (dragged = false)}
 									onclick={() => act(group, row)}
-									onkeydown={(event) => keys(event, group, rows)}
+									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									class="flex min-h-11 items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {row.again
+										? 'cursor-pointer hover:bg-muted/60'
+										: ''}"
 									style="padding-inline-start: {step}"
 								>
 									<span class="size-11 shrink-0" aria-hidden="true"></span>
@@ -763,7 +817,7 @@
 									aria-selected={false}
 									onpointerdown={() => (dragged = false)}
 									onclick={() => reveal(group, row)}
-									onkeydown={(event) => keys(event, group, rows)}
+									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 									style="padding-inline-start: {step}"

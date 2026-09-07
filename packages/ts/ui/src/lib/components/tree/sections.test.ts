@@ -60,14 +60,18 @@ describe('a note’s sections under its row', () => {
 		const rows = withSections([row('1', 0), row('2', 0)], {
 			shown,
 			of: () => SECTIONS,
-			says: () => ''
+			says: () => ({ says: '', again: false })
 		});
 		expect(rows.map((one) => one.kind)).toEqual(['note', 'section', 'section', 'section', 'note']);
 		expect(rows.filter((one) => one.kind === 'section').map((one) => one.depth)).toEqual([1, 1, 1]);
 	});
 
 	it('counts each section’s place in the stack it is in', () => {
-		const rows = withSections([row('1', 0)], { shown, of: () => SECTIONS, says: () => '' });
+		const rows = withSections([row('1', 0)], {
+			shown,
+			of: () => SECTIONS,
+			says: () => ({ says: '', again: false })
+		});
 		expect(
 			rows.filter((one) => one.kind === 'section').map((one) => `${one.at}/${one.of}`)
 		).toEqual(['1/3', '2/3', '3/3']);
@@ -77,7 +81,7 @@ describe('a note’s sections under its row', () => {
 		const rows = withSections([row('1', 0)], {
 			shown: new Set<OwnedRef>(),
 			of: () => SECTIONS,
-			says: () => ''
+			says: () => ({ says: '', again: false })
 		});
 		expect(rows).toHaveLength(1);
 	});
@@ -86,11 +90,12 @@ describe('a note’s sections under its row', () => {
 		const rows = withSections([row('1', 0)], {
 			shown,
 			of: () => SECTIONS,
-			says: () => 'That section could not be moved.'
+			says: () => ({ says: 'That section could not be moved.', again: true })
 		});
 		expect(rows.at(-1)).toMatchObject({
 			kind: 'says',
 			says: 'That section could not be moved.',
+			again: true,
 			depth: 1
 		});
 	});

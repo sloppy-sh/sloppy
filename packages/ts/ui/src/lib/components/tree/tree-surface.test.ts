@@ -971,12 +971,13 @@ describe('a note’s sections under its row in the walk', () => {
 	let shows: [OwnedRef, boolean][];
 	let moves: [OwnedRef, OwnedRef, OwnedRef | null][];
 	let word: string;
+	let again: boolean;
 
 	function sections(shown: OwnedRef[] = [held('1')]): TreeSurfaceProps['sections'] {
 		return {
 			shown: new SvelteSet(shown),
 			of: (note) => (note === held('1') ? stack : undefined),
-			says: () => word,
+			says: () => ({ says: word, again }),
 			onShow: (note, show) => shows.push([note, show]),
 			onMove: (note, section, after) => moves.push([note, section, after])
 		};
@@ -1014,6 +1015,7 @@ describe('a note’s sections under its row in the walk', () => {
 		shows = [];
 		moves = [];
 		word = '';
+		again = false;
 	});
 
 	it('draws each section under the note, by its first line', () => {
@@ -1083,7 +1085,7 @@ describe('a note’s sections under its row in the walk', () => {
 		expect(shows).toEqual([[held('1'), false]]);
 	});
 
-	it('says what stands under a note that has no sections to draw', () => {
+	it('says what stands under a note that has no sections to draw, and answers no tap', () => {
 		stack = [];
 		word = 'Nothing is written in this note yet';
 		render({ sections: sections() });
@@ -1095,7 +1097,43 @@ describe('a note’s sections under its row in the walk', () => {
 
 		rows()[1].click();
 		flushSync();
+		expect(shows).toEqual([]);
+		expect(rows()[1].className).not.toContain('cursor-pointer');
+	});
+
+	it('asks for the note again from the one word that offers it', () => {
+		stack = [];
+		word = 'These sections could not be read. Tap to try again.';
+		again = true;
+		render({ sections: sections() });
+		expect(rows()[1].className).toContain('cursor-pointer');
+
+		rows()[1].click();
+		flushSync();
 		expect(shows).toEqual([[held('1'), true]]);
+	});
+
+	it('keeps the row’s own fold what aria-expanded stands for', () => {
+		render({ sections: sections() });
+		expect(labelled('About 1').getAttribute('aria-expanded')).toBe('false');
+		expect(labelled('About 2').getAttribute('aria-expanded')).toBeNull();
+		expect(
+			labelled('About 1')
+				.querySelector('[aria-label^="Hide the sections"]')
+				?.getAttribute('aria-expanded')
+		).toBe('true');
+	});
+
+	it('leaves the sections chord to the tree, not to the run at its head', () => {
+		render({
+			lead: [{ group: 'one', title: 'Last written', notes: [note('1')] }],
+			sections: sections([])
+		});
+		const head = rows()[0];
+		expect(head.getAttribute('aria-keyshortcuts')).toBeNull();
+
+		press(head, 'ArrowRight', { altKey: true });
+		expect(shows).toEqual([]);
 	});
 
 	it('moves a section with the arrow keys, within its own note', () => {
@@ -1189,5 +1227,69 @@ describe('a note’s sections under its row in the walk', () => {
 		sectionRow(S2).click();
 		flushSync();
 		expect(openedNotes).toEqual([held('1')]);
+	});
+
+	// A tap while notes are being chosen adds the note it belongs to, as every
+	// other row of the walk does, rather than leaving the choosing for it.
+	it('chooses the note a section belongs to while the walk is being chosen on', () => {
+		render({ sections: sections(), chosen: new Set<OwnedRef>() });
+		sectionRow(S2).click();
+		flushSync();
+		expect(openedNotes).toEqual([]);
+		expect(chose).toEqual([held('1')]);
+	});
+
+	// A finger has no hover and no held key, so the handle answers a tap with
+	// the same move a drag makes.
+	it('offers a place up and a place down from the handle it is dragged by', () => {
+		render({ sections: sections() });
+		gripIn(S2).click();
+		flushSync();
+
+		const up = sectionRow(S2).querySelector<HTMLButtonElement>('[aria-label^="Move it up"]');
+		const down = sectionRow(S2).querySelector<HTMLButtonElement>('[aria-label^="Move it down"]');
+		up?.click();
+		down?.click();
+		flushSync();
+		expect(moves).toEqual([
+			[held('1'), S2, null],
+			[held('1'), S2, S3]
+		]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('offers neither at the end of the stack it is already at', () => {
+		render({ sections: sections() });
+		gripIn(S1).click();
+		flushSync();
+		expect(
+			sectionRow(S1).querySelector<HTMLButtonElement>('[aria-label^="Move it up"]')?.disabled
+		).toBe(true);
+		expect(
+			sectionRow(S1).querySelector<HTMLButtonElement>('[aria-label^="Move it down"]')?.disabled
+		).toBe(false);
+	});
+
+	it('draws them on the one handle that was tapped, and folds them back', () => {
+		render({ sections: sections() });
+		gripIn(S1).click();
+		flushSync();
+		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).toBeNull();
+
+		gripIn(S1).click();
+		flushSync();
+		expect(sectionRow(S1).querySelector('[aria-label^="Move it up"]')).toBeNull();
+	});
+
+	it('leaves them out of a drag that ended on the handle', () => {
+		render({ sections: sections() });
+		lay();
+
+		gripIn(S3).dispatchEvent(pull('pointerdown', 30, 150));
+		window.dispatchEvent(pull('pointermove', 30, 50));
+		window.dispatchEvent(pull('pointerup', 30, 50));
+		gripIn(S3).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		flushSync();
+		expect(sectionRow(S3).querySelector('[aria-label^="Move it up"]')).toBeNull();
 	});
 });

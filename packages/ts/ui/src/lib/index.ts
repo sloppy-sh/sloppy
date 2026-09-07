@@ -50,7 +50,7 @@ export {
 	type TreeGroup,
 	type TreeSurfaceProps
 } from './components/tree/tree-surface.svelte';
-export type { OutlineSections, TreeSection } from './components/tree/sections.js';
+export type { OutlineSections, SectionSays, TreeSection } from './components/tree/sections.js';
 export type { TreeNote, TreeRow } from './components/tree/walk.js';
 export { sectionLines } from './components/publish/section-text.js';
 export { default as TagField } from './components/tags/tag-field.svelte';

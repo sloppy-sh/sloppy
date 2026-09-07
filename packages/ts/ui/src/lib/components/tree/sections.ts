@@ -1,7 +1,5 @@
 // A note's sections drawn under its row in the outline, and the arranging of
-// them there. AI.md § "A Block Is a Section": moving one within its note is the
-// only act here — nothing in the outline adds a section, splits one or takes
-// one away, and a section never leaves the note it was written in.
+// them there.
 
 import type { Address, OwnedRef } from '@sloppy/types';
 import type { TreeRow } from './walk.js';
@@ -26,12 +24,21 @@ export interface SectionItem {
 	of: number;
 }
 
+/** What stands under a note besides its sections — that they are being read,
+ *  that nothing is written in it, or why an act on it did not land. Empty says
+ *  nothing. */
+export interface SectionSays {
+	says: string;
+	/** True where reading the note again is what to do about it, which is the
+	 *  only state the row answers a tap in. */
+	again: boolean;
+}
+
 /** One line under a note that has no section rows to draw, or something to say
  *  beside the ones it has. */
-export interface SectionWord {
+export interface SectionWord extends SectionSays {
 	kind: 'says';
 	note: OwnedRef;
-	says: string;
 	depth: number;
 }
 
@@ -43,10 +50,7 @@ export interface OutlineSections {
 	shown: ReadonlySet<OwnedRef>;
 	/** A note's sections in stack order, or nothing where none are in hand yet. */
 	of: (note: OwnedRef) => readonly TreeSection[] | undefined;
-	/** What stands under the note besides its sections — that they are being
-	 *  read, that nothing is written in it, or why an act on it did not land.
-	 *  Empty says nothing. */
-	says: (note: OwnedRef) => string;
+	says: (note: OwnedRef) => SectionSays;
 	onShow: (note: OwnedRef, show: boolean) => void;
 	/** `after` is the section this one is to follow; null puts it first. */
 	onMove: (note: OwnedRef, section: OwnedRef, after: OwnedRef | null) => void;
@@ -74,8 +78,8 @@ export function withSections(
 				of: stack.length
 			});
 		});
-		const says = held.says(row.note.ref);
-		if (says !== '') out.push({ kind: 'says', note: row.note.ref, says, depth });
+		const word = held.says(row.note.ref);
+		if (word.says !== '') out.push({ kind: 'says', note: row.note.ref, ...word, depth });
 	}
 	return out;
 }

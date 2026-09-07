@@ -68,16 +68,16 @@ describe('a note’s sections in the outline', () => {
 			'A drawing',
 			'The last thing'
 		]);
-		expect(outlineSections.says(NOTE)).toBe('');
+		expect(outlineSections.says(NOTE).says).toBe('');
 	});
 
 	it('says it is reading before the stack is in hand', () => {
 		outlineSections.show(NOTE, true);
 		expect(outlineSections.of(NOTE)).toBeUndefined();
-		expect(outlineSections.says(NOTE)).toBe('Reading this note…');
+		expect(outlineSections.says(NOTE).says).toBe('Reading this note…');
 	});
 
-	it('remembers which notes are showing, and what they hold, across a fold', async () => {
+	it('draws what it holds at once and reads the note again behind it', async () => {
 		outlineSections.show(NOTE, true);
 		await settle();
 		expect(outlineSections.shown.has(NOTE)).toBe(true);
@@ -85,16 +85,27 @@ describe('a note’s sections in the outline', () => {
 		outlineSections.show(NOTE, false);
 		expect(outlineSections.shown.has(NOTE)).toBe(false);
 
+		api.on(`GET ${PATH}`, () => [STACK[0], STACK[2]]);
 		outlineSections.show(NOTE, true);
+		expect(outlineSections.of(NOTE)).toHaveLength(3);
+		expect(outlineSections.says(NOTE).says).toBe('');
+
 		await settle();
-		expect(api.countOf(`GET ${PATH}`)).toBe(1);
+		expect(api.countOf(`GET ${PATH}`)).toBe(2);
+		expect(outlineSections.of(NOTE)?.map((one) => one.says)).toEqual([
+			'The first thing',
+			'The last thing'
+		]);
 	});
 
 	it('says a note with nothing written in it', async () => {
 		api.on(`GET ${PATH}`, () => []);
 		outlineSections.show(NOTE, true);
 		await settle();
-		expect(outlineSections.says(NOTE)).toBe('Nothing is written in this note yet');
+		expect(outlineSections.says(NOTE)).toEqual({
+			says: 'Nothing is written in this note yet',
+			again: false
+		});
 	});
 
 	it('says what to do next when the stack will not read, and asks again on the next look', async () => {
@@ -104,13 +115,16 @@ describe('a note’s sections in the outline', () => {
 		);
 		outlineSections.show(NOTE, true);
 		await settle();
-		expect(outlineSections.says(NOTE)).toBe('These sections could not be read. Tap to try again.');
+		expect(outlineSections.says(NOTE)).toEqual({
+			says: 'These sections could not be read. Tap to try again.',
+			again: true
+		});
 
 		api.on(`GET ${PATH}`, () => STACK);
 		outlineSections.show(NOTE, true);
 		await settle();
 		expect(outlineSections.of(NOTE)).toHaveLength(3);
-		expect(outlineSections.says(NOTE)).toBe('');
+		expect(outlineSections.says(NOTE).says).toBe('');
 	});
 
 	it('passes the server’s own words through where it gave any', async () => {
@@ -120,20 +134,36 @@ describe('a note’s sections in the outline', () => {
 		);
 		outlineSections.show(NOTE, true);
 		await settle();
-		expect(outlineSections.says(NOTE)).toBe('This note is not yours.');
+		expect(outlineSections.says(NOTE).says).toBe('This note is not yours.');
 	});
 });
 
 describe('arranging a note’s sections', () => {
-	it('moves one within the note and asks for it against the stamp it was read at', async () => {
+	it('moves one within the note and asks the server to keep it there', async () => {
 		outlineSections.show(NOTE, true);
 		await settle();
 
 		outlineSections.move(NOTE, S3, null);
 		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
 		await settle();
+		expect(asked).toEqual([{ ref: S3, body: { after: null } }]);
+	});
+
+	// Nothing about a move is conditioned on what the section last said, so a
+	// second nudge before the first has landed is a second move, not a refusal.
+	it('lands both of two nudges in a row', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+
+		outlineSections.move(NOTE, S3, S1);
+		outlineSections.move(NOTE, S3, null);
+		await settle();
+
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+		expect(outlineSections.says(NOTE).says).toBe('');
 		expect(asked).toEqual([
-			{ ref: S3, body: { after: null, expects: '2026-01-03T00:00:00.000Z' } }
+			{ ref: S3, body: { after: S1 } },
+			{ ref: S3, body: { after: null } }
 		]);
 	});
 
@@ -161,7 +191,7 @@ describe('arranging a note’s sections', () => {
 		await settle();
 
 		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2, S3]);
-		expect(outlineSections.says(NOTE)).toBe('This section was written somewhere else.');
+		expect(outlineSections.says(NOTE).says).toBe('This section was written somewhere else.');
 	});
 
 	it('moves nothing for a note whose stack is not in hand', () => {
