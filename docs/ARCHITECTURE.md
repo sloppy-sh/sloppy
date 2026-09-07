@@ -1484,7 +1484,10 @@ Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/c
   navigate to, so the native shell answers `AppRuntime.signInRedirect` with
   `sloppy://auth/callback` — one of the four shapes `isAllowedRedirect` accepts. The link
   comes back through `src/lib/deep-link.ts`, which re-enters the document at `/` with the
-  query intact, because the session is opened as the app boots and only then.
+  query intact, because the session is opened as the app boots and only then. The link that
+  launched the app is read once and remembered as spent: the deep-link plugin keeps answering
+  with it for the life of the process, and re-entering the document brings the read round
+  again.
 - **A link to a note opens the app.** `tauri.conf.json` declares `sloppy.sh`'s `/n` paths as
   app links beside the custom scheme, which puts `autoVerify` on the Android intent filter
   and the associated-domains entitlement in the iOS project. Both halves of the claim are
@@ -1495,7 +1498,9 @@ Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/c
 - **Android's back gesture belongs to the app.** `MainActivity.kt` offers the press to the
   webview as a cancelable `sloppy:back` event and lets the system have it only where nothing
   was cancelled; `src/routes/+layout.svelte` closes the sheet on top (`overlay.closeTop()`),
-  then walks back off a note, then leaves.
+  then walks back off a note, then leaves. It walks only for somebody signed in: the frame
+  decides where a signed-out person stands, so walking back off sign-in would land on a page
+  the frame sends them straight back from.
 
 **Apple Pencil, precisely.** Tauri v2 on iOS renders through `WKWebView`, so Pencil arrives
 as Pointer Events: `pointerType === 'pen'`, `pressure`, `tiltX`/`tiltY`,

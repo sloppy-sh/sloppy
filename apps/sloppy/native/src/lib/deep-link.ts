@@ -18,7 +18,7 @@ const CALLBACK_ROUTE = '/auth/callback';
 /** `sloppy://n/<did>/<ulid>` and `https://<host>/n/<did>/<ulid>` both →
  *  `/n/<did>/<ulid>`: a custom scheme has no host, so its first path segment is
  *  parsed as one and has to be put back. */
-function routeOf(raw: string): string | undefined {
+export function routeOf(raw: string): string | undefined {
 	let url: URL;
 	try {
 		url = new URL(raw);
@@ -52,11 +52,26 @@ function enter(urls: string[]): void {
 	}
 }
 
+const LAUNCH_LINK = 'sloppy.launch-link';
+
+/**
+ * What the app was launched with, the once. The OS goes on answering with the
+ * same link for as long as the app runs, and the callback above re-enters the
+ * document — so reading it a second time would spend a code already spent.
+ */
+export async function launchLinks(): Promise<string[]> {
+	const urls = (await getCurrent()) ?? [];
+	const key = urls.join('\n');
+	if (!key || sessionStorage.getItem(LAUNCH_LINK) === key) return [];
+	sessionStorage.setItem(LAUNCH_LINK, key);
+	return urls;
+}
+
 export async function forwardDeepLinks(): Promise<void> {
 	await onOpenUrl(enter);
 	try {
 		// A link that launched the app was delivered before anything was listening.
-		enter((await getCurrent()) ?? []);
+		enter(await launchLinks());
 	} catch {
 		// A platform with nothing to report costs the cold launch, not the app.
 	}

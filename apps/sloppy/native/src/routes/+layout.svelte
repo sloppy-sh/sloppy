@@ -6,6 +6,7 @@
 	import { trackKeyboardInset } from '$lib/keyboard';
 	import { IS_MOBILE, TAURI_PLATFORM } from '$lib/platform';
 	import { initNativeRuntime } from '$lib/runtime';
+	import { session } from '@sloppy/app-core';
 	import Frame from '@sloppy/app-core/pages/frame';
 	import { overlay } from '@sloppy/ui';
 
@@ -16,10 +17,12 @@
 
 	/** Android's back gesture, offered to the app before the system takes it:
 	 *  the sheet on top, then the way back to the graph, then out. MainActivity.kt
-	 *  leaves only where this refuses. */
+	 *  leaves only where this refuses. With nobody signed in the frame decides
+	 *  where a person stands and would put them straight back, so the press
+	 *  leaves rather than going nowhere. */
 	function answerBack(event: Event): void {
 		if (overlay.closeTop()) event.preventDefault();
-		else if (page.url.pathname !== '/') {
+		else if (session.signedIn && page.url.pathname !== '/') {
 			event.preventDefault();
 			history.back();
 		}

@@ -26,22 +26,28 @@ the manifest the deep-link plugin generates; **iOS takes it from `CFBundleURLTyp
 nothing generates**. Without it the browser has nowhere to hand the URL, and sign-in on the
 one platform this app is built for ends on a dead page.
 
-The script reads the scheme from `tauri.conf.json`, so the two cannot drift, and writes it
-into `project.yml` rather than into the plist — the plist is an _output_ of `project.yml`,
-and the next `xcodegen generate` eats anything written straight into it.
+The script reads the scheme from `tauri.conf.json` and writes it into `project.yml` rather
+than into the plist — the plist is an _output_ of `project.yml`, and the next
+`xcodegen generate` eats anything written straight into it. It writes only where the key is
+absent, so changing the scheme means deleting the `CFBundleURLTypes` block and running the
+script again.
 
 ## 3. A link to a note has to reach the app
 
 iOS opens an `https://` link in an app only where the app claims the domain and the domain
 claims the app back. Our half is the `com.apple.developer.associated-domains` entitlement.
 It is written into `project.yml` as the target's `entitlements.properties`, read out of the
-app-link entries in `tauri.conf.json` so the two cannot drift — and it has to live there
-rather than in the plist, because `xcodegen` writes that file from these properties and
-empties it when they are missing.
+app-link entries in `tauri.conf.json` — and it has to live there rather than in the plist,
+because `xcodegen` writes that file from these properties and empties it when they are
+missing. As with the scheme above, the script writes only where the key is absent, so a
+changed host means deleting the `com.apple.developer.associated-domains` block first.
 
 The domain's half is `apps/sloppy/web/static/.well-known/apple-app-site-association`, which
-names an App ID that only exists once there is a signing team. `$APPLE_TEAM_ID` stands in
-until then, and until it is filled a tapped link opens in Safari as it did before.
+names an App ID that only exists once there is a signing team. Two things are outstanding on
+it: `$APPLE_TEAM_ID` stands in for the real one, and the file is deliberately extensionless,
+so whatever host serves the web shell's `build/` has to be told to send it as
+`application/json` — Apple rejects it otherwise. Until both are done a tapped link opens in
+Safari as it did before.
 
 ## Running it by hand
 
