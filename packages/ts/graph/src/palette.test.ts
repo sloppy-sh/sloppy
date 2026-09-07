@@ -10,15 +10,7 @@
 
 import { TAG_HUE_SLOTS } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import {
-  contrastRatio,
-  fromSrgb8,
-  type Oklch,
-  parseCssColor,
-  toOklab,
-  toSrgb8,
-  over,
-} from "./color.js";
+import { contrastRatio, parseCssColor, toOklab, over } from "./color.js";
 import {
   buildPalette,
   DEPTH_SEPARATION,
