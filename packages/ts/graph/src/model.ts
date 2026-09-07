@@ -221,6 +221,10 @@ export function buildModel(
     // looks it folded — DESIGN.md § "The mark".
     const look =
       node.appearance == null ? UNSTYLED : resolveAppearance(node.appearance);
+    const fill =
+      slot === undefined
+        ? options.palette.depth(node.depth)
+        : options.palette.tag(slot);
 
     graph.addNode(node.ref, {
       index,
@@ -239,13 +243,10 @@ export function buildModel(
       ringStyle: look.ringStyle,
       preview: look.preview,
       previewCover: look.previewCover,
-      fill:
-        slot === undefined
-          ? options.palette.depth(node.depth)
-          : options.palette.tag(slot),
+      fill,
       alpha:
         slot === undefined && options.selection.length > 0
-          ? options.palette.unselectedAlpha
+          ? options.palette.unselectedAlpha(fill)
           : 1,
       x: start.x,
       y: start.y,

@@ -244,7 +244,7 @@ describe("with tags selected", () => {
     for (const ref of dark) {
       const node = model.graph.getNodeAttributes(ref);
       expect(node.fill).toBe(palette.depth(node.depth));
-      expect(node.alpha).toBe(palette.unselectedAlpha);
+      expect(node.alpha).toBe(palette.unselectedAlpha(node.fill));
       expect(node.alpha).toBeLessThan(1);
       const entry = drawn.find((entry) => entry.node.ref === ref)!;
       expect(entry.tags.some((tag) => selection.includes(tag))).toBe(false);

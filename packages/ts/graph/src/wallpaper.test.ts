@@ -19,7 +19,7 @@ import {
 } from "./color.js";
 import {
   buildPalette,
-  DEPTH_STEPS,
+  DIM_FLOOR,
   groundBand,
   LABEL_FLOOR,
   MARK_FLOOR,
@@ -151,14 +151,8 @@ describe("a mark drawn over a picture", () => {
     it(`keeps its floor on any pixel, at any strength, on ${theme.name}`, () => {
       for (const presence of strengths(paperCeiling(tokens))) {
         const palette = buildPalette(tokens, presence);
-        const marks = [
-          ...Array.from({ length: DEPTH_STEPS + 1 }, (_, at) =>
-            palette.depth(at + 1),
-          ),
-          ...TAG_HUE_SLOTS.map((slot) => palette.tag(slot)),
-        ];
         for (const ground of groundBand(paper, presence)) {
-          for (const mark of marks) {
+          for (const mark of marks(palette)) {
             expect(
               contrastRatio(rgb(mark), ground),
               `${theme.name} at ${presence.toFixed(3)}`,
@@ -176,7 +170,7 @@ describe("a mark drawn over a picture", () => {
         const palette = buildPalette(tokens, presence);
         const ground = groundBand(paper, presence);
         let previous = Number.POSITIVE_INFINITY;
-        for (let depth = 1; depth <= DEPTH_STEPS + 1; depth++) {
+        for (let depth = 1; depth <= palette.generations; depth++) {
           const ratio = Math.min(
             ...ground.map((g) => contrastRatio(rgb(palette.depth(depth)), g)),
           );
@@ -226,20 +220,42 @@ describe("the reader's tags over a picture", () => {
   }
 });
 
-// DESIGN.md § Hue dims a note carrying none of the selected tags. Over a picture
-// that alpha lets the ground through, so what has to stay true is the ORDER: a
-// dimmed mark never reads as loudly as one the reader's tags lit.
-//
-// The shipped ends and not the generated sweep: `unselectedAlpha` is one number
-// this change does not touch, and on ends no theme declares — ink and paper at
-// opposite corners — a dimmed mark is already loud with no picture under it.
+// DESIGN.md § Hue dims a note carrying none of the selected tags, and holds it
+// at DIM_FLOOR against the ground it lands on. Over a picture that ground is the
+// band, so the recession is found against the band — which is what stops a
+// wallpaper taking the unselected graph off the page.
 describe("a dimmed note over a picture", () => {
+  for (const theme of themes) {
+    const tokens = tokensOf(theme);
+    const paper = parseCssColor(tokens.paper) as Oklch;
+
+    it(`stays on the page on any pixel, at any strength, on ${theme.name}`, () => {
+      for (const presence of strengths(paperCeiling(tokens))) {
+        const palette = buildPalette(tokens, presence);
+        for (const ground of groundBand(paper, presence)) {
+          for (const mark of marks(palette)) {
+            expect(
+              contrastRatio(
+                over(rgb(mark), ground, palette.unselectedAlpha(mark)),
+                ground,
+              ),
+              `${theme.name} at ${presence.toFixed(3)}`,
+            ).toBeGreaterThanOrEqual(DIM_FLOOR - 1e-6);
+          }
+        }
+      }
+    });
+  }
+
   // The loudest generation dimmed and a slot sitting exactly on the mark floor
   // are two ways of arriving at 3:1, so on the dark ends of one theme they meet
   // — 1.004 at the closest, over a narrow stretch of the travel. What is held is
   // the order a reader can see; half a percent of a contrast ratio is not it.
   const TOUCHING = 1.01;
 
+  // The shipped ends and not the generated sweep: on ends no theme declares —
+  // ink and paper at opposite corners — a dimmed mark is already loud with no
+  // picture under it.
   for (const theme of shipped) {
     it(`never out-reads a note the tags lit on ${theme.name}`, () => {
       const tokens = tokensOf(theme);
@@ -252,11 +268,12 @@ describe("a dimmed note over a picture", () => {
               contrastRatio(rgb(palette.tag(slot)), ground),
             ),
           );
-          for (let depth = 1; depth <= DEPTH_STEPS + 1; depth++) {
+          for (let depth = 1; depth <= palette.generations; depth++) {
+            const fill = palette.depth(depth);
             const dimmed = over(
-              rgb(palette.depth(depth)),
+              rgb(fill),
               ground,
-              palette.unselectedAlpha,
+              palette.unselectedAlpha(fill),
             );
             expect(
               contrastRatio(dimmed, ground),
@@ -283,6 +300,17 @@ function over(mark: Oklch, ground: Oklch, alpha: number): Oklch {
 
 function rgb(packed: number): Oklch {
   return parseCssColor(`#${packed.toString(16).padStart(6, "0")}`) as Oklch;
+}
+
+/** Every fill the canvas puts on a mark: the ramp this ground carries and the
+ *  eight hues a selection borrows. */
+function marks(palette: ReturnType<typeof buildPalette>): number[] {
+  return [
+    ...Array.from({ length: palette.generations }, (_, at) =>
+      palette.depth(at + 1),
+    ),
+    ...TAG_HUE_SLOTS.map((slot) => palette.tag(slot)),
+  ];
 }
 
 /** The closest two slots this palette draws — what says the eight are eight. */
