@@ -1399,6 +1399,15 @@ rendered to canvas, with a rasterized PNG pushed to syr blob storage so peers wh
 re-render strokes still see the drawing. It is an element inside a block's document, so a
 section can hold several drawings and prose between them.
 
+**Ink over the CANVAS is not this, and has no row.** A pen over the graph leaves a
+drawing on the field rather than an element inside a note, so it is neither a block nor a
+table: it is kept on the device for the person signed in, under the graph it was drawn
+over, and nothing of it reaches a note, a publication or a peer. There is no `graph_ink`
+table and no route to write one — DESIGN.md § "The canvas" is the ruling. What the two
+share is the stroke code in `@sloppy/ui`'s `ink.ts`, because pressure, tilt, coalesced
+samples and the rough-line fallback are the same wherever a pen is read; what differs is
+the coordinates the points are kept in, which over the canvas are the field's.
+
 **TipTap's editor instance must not be `$state`** — Svelte's deep proxy corrupts its
 internals. Use a separate `ready` flag for post-mount UI.
 

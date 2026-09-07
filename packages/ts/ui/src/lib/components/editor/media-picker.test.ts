@@ -58,15 +58,37 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-async function open(media: NoteMedia): Promise<void> {
-	mounted = mount(MediaPicker, { target, props: { open: true, media, onpick: () => {} } });
+async function open(
+	media: NoteMedia,
+	onremove?: (picture: HeldPicture) => Promise<void>
+): Promise<void> {
+	mounted = mount(MediaPicker, {
+		target,
+		props: { open: true, media, onpick: () => {}, onremove }
+	});
 	flushSync();
 	await settle();
 }
 
+/** Every picture in the grid, however the tile is labelled — the label says
+ *  what a click does, and while the grid is being edited that is removing it. */
 const tiles = (): HTMLElement[] => [
-	...document.body.querySelectorAll<HTMLElement>('button[aria-label^="kite-"]')
+	...document.body.querySelectorAll<HTMLElement>('button[aria-label$=".png"]')
 ];
+
+/** The one button reading exactly this, wherever the picker or its question put
+ *  it. */
+function labelled(text: string): HTMLElement | undefined {
+	return [...document.body.querySelectorAll<HTMLElement>('button')].find(
+		(one) => one.textContent?.trim() === text
+	);
+}
+
+async function click(node: HTMLElement | undefined): Promise<void> {
+	node?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	await settle();
+}
 
 beforeEach(() => {
 	read = [];
@@ -104,7 +126,7 @@ function cutsDown(): void {
 	URL.revokeObjectURL = () => {};
 }
 
-describe('the pictures already in a note', () => {
+describe('the pictures a person has already added', () => {
 	it('reads only what somebody can see, and the rest as they scroll to it', async () => {
 		laidOut(1000, 400);
 		await open(shelf(library(6)));
@@ -144,6 +166,46 @@ describe('the pictures already in a note', () => {
 
 		expect(document.body.querySelector('img')?.getAttribute('src')).toBe('blob:tile');
 		expect(released).toEqual([upload(0)]);
+	});
+
+	it('offers no way to remove one where the caller cannot', async () => {
+		laidOut(0, 0);
+		await open(shelf(library(2)));
+
+		expect(labelled('Edit')).toBeUndefined();
+	});
+
+	it('takes one out of the store once the person has said so, and stops offering it', async () => {
+		const removed: string[] = [];
+		laidOut(0, 0);
+		await open(shelf(library(2)), async (picture) => {
+			removed.push(picture.upload_id);
+		});
+
+		await click(labelled('Edit'));
+		await click(tiles()[0]);
+		expect(removed).toEqual([]);
+
+		await click(labelled('Remove'));
+
+		expect(removed).toEqual([upload(0)]);
+		expect(tiles().map((one) => one.getAttribute('aria-label'))).toEqual(['Remove kite-1.png']);
+	});
+
+	it('keeps the picture and says why when the store will not let it go', async () => {
+		laidOut(0, 0);
+		await open(shelf(library(1)), async () => {
+			throw new Error('That picture is in use just now.');
+		});
+
+		await click(labelled('Edit'));
+		await click(tiles()[0]);
+		await click(labelled('Remove'));
+
+		expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+			'That picture is in use just now.'
+		);
+		expect(tiles()).toHaveLength(1);
 	});
 
 	it('lets go of what it held once the picker is shut', async () => {

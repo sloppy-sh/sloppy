@@ -290,6 +290,37 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     ).toBe(401);
   });
 
+  // The store is the only place one lives, so nothing else in the product can
+  // end it: deleting the note that showed it leaves the bytes where they were.
+  scenario("takes a picture back out of the person's own store", async () => {
+    const asset = await upload("block", "regretted.png");
+
+    expect(
+      (
+        await fetch(`${base}/api/media/uploads/${asset.upload_id}`, {
+          method: "DELETE",
+        })
+      ).status,
+    ).toBe(401);
+
+    const { status } = await read(
+      "DELETE",
+      `/api/media/uploads/${asset.upload_id}`,
+    );
+    expect(status).toBe(200);
+
+    const listed = await read("GET", "/api/media/uploads");
+    expect(
+      OwnedMediaAssetSchema.array()
+        .parse(listed.body)
+        .map((one) => one.filename),
+    ).not.toContain("regretted.png");
+
+    expect(
+      (await call("GET", `/api/media/uploads/${asset.upload_id}`)).status,
+    ).toBe(404);
+  });
+
   scenario("fetches nothing an address alone asked for", async () => {
     // The open web, and this network, through a route that has to be public.
     for (const target of [

@@ -106,7 +106,8 @@ const INK = {
 		strokes: [{ points: [{ x: 1, y: 2, pressure: 0.4, t: 0 }], width: 2 }],
 		width: 400,
 		height: 120,
-		raster_upload_id: null
+		raster_upload_id: null,
+		description: null
 	}
 };
 
@@ -138,6 +139,20 @@ describe('a stack of sections opened as one document', () => {
 
 	it('makes no row out of the empty section a new note opens on', () => {
 		expect(rows(open())).toEqual([]);
+	});
+
+	it('writes a section down once, and again only where somebody wrote into it', () => {
+		const of = open([
+			block({ content: written }),
+			block({ content: section(...text('A second thought.'), INK) })
+		]);
+		const first = rows(of);
+		expect(rows(of)[0].content).toBe(first[0].content);
+
+		of.commands.insertContentAt(2, 'Not ');
+		const after = rows(of);
+		expect(after[0].content).not.toBe(first[0].content);
+		expect(after[1].content).toBe(first[1].content);
 	});
 
 	// The store hands an element's attributes back in its own key order, so a

@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Req, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Req,
+  Res,
+} from "@nestjs/common";
 import {
   CompleteUploadRequestSchema,
   CreateUploadRequestSchema,
@@ -57,6 +66,23 @@ export class MediaController {
   }
 
   /**
+   * One of the caller's own pictures, gone. A section still citing it has
+   * nothing left to draw; a publication cites its own copy, which only taking
+   * that branch down releases.
+   */
+  @Delete("uploads/:did/:localId")
+  async remove(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+  ): Promise<void> {
+    await this.media.removeOwnPicture(
+      viewerDelegation(req),
+      `${decodeURIComponent(did)}/${decodeURIComponent(localId)}`,
+    );
+  }
+
+  /**
    * A picture inside a note the caller pulled, out of the author's own store.
    * Fetched here rather than by the browser, so the author's instance learns
    * this one and never the reader — AI.md § "Sloppy's Vocabulary Stays Out of
@@ -86,10 +112,9 @@ export class MediaController {
   }
 
   /**
-   * A picture from one of the caller's own notes. It is not readable by anyone
-   * else, so it is fetched from their store as them and only ever for a request
-   * carrying their session — unlike `/proxy`, which serves what a stranger may
-   * read too.
+   * One of the caller's own pictures. It is not readable by anyone else, so it
+   * is fetched from their store as them and only ever for a request carrying
+   * their session — unlike `/proxy`, which serves what a stranger may read too.
    */
   @Get("uploads/:did/:localId")
   async picture(

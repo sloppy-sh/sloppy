@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import type { CreateUploadRequest } from "@sloppy/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfigService } from "../config/app-config.service";
@@ -52,6 +52,56 @@ describe("where a role's blobs land", () => {
     for (const role of ["avatar", "banner", "emoji"] as const) {
       expect(folderPathFor(role)[0]).toBe("public");
     }
+  });
+});
+
+describe("taking one of the caller's own pictures out", () => {
+  it("asks the store to erase it", async () => {
+    const deleteUpload = vi.fn().mockResolvedValue(undefined);
+    await serviceOver({ deleteUpload }).removeOwnPicture(
+      DELEGATION,
+      `${DID}/01ABC`,
+    );
+    expect(deleteUpload).toHaveBeenCalledWith(DELEGATION, {
+      did: DID,
+      localId: "01ABC",
+    });
+  });
+
+  it("never asks about somebody else's", async () => {
+    const deleteUpload = vi.fn();
+    await expect(
+      serviceOver({ deleteUpload }).removeOwnPicture(
+        DELEGATION,
+        "did:syr:z6MkOther/01ABC",
+      ),
+    ).rejects.toThrow(NotFoundException);
+    expect(deleteUpload).not.toHaveBeenCalled();
+  });
+
+  // What the person asked for is what a store that never held it already says.
+  it("counts one the store no longer holds as gone", async () => {
+    const deleteUpload = vi
+      .fn()
+      .mockRejectedValue(new NotFoundException("That picture is not there."));
+    await expect(
+      serviceOver({ deleteUpload }).removeOwnPicture(
+        DELEGATION,
+        `${DID}/01ABC`,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("passes on any other refusal from the store", async () => {
+    const deleteUpload = vi
+      .fn()
+      .mockRejectedValue(new BadRequestException("Not just now."));
+    await expect(
+      serviceOver({ deleteUpload }).removeOwnPicture(
+        DELEGATION,
+        `${DID}/01ABC`,
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 });
 

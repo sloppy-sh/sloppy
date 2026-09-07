@@ -3,6 +3,8 @@
 	// person's own store. `./contract.ts` says what either half is handed; the
 	// caller says what it is being chosen for.
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
+	import X from '@lucide/svelte/icons/x';
+	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import type { HeldPicture, NoteMedia, ShownPicture } from './contract.js';
 	import { tileSized } from './thumbnail.js';
@@ -20,7 +22,8 @@
 		onpick,
 		title = 'Picture',
 		description = 'Add one to this note.',
-		offersHeld = true
+		offersHeld = true,
+		onremove
 	}: {
 		open?: boolean;
 		media: NoteMedia;
@@ -31,6 +34,9 @@
 		/** Whether to offer the pictures already in their notes. False is a caller
 		 *  drawing them itself, which is asked for one from the device alone. */
 		offersHeld?: boolean;
+		/** Taking one out of the person's own store. Absent is a picker that can
+		 *  only offer them back. */
+		onremove?: (picture: HeldPicture) => Promise<void>;
 	} = $props();
 
 	let chooser = $state<HTMLInputElement | null>(null);
@@ -39,6 +45,10 @@
 	let reading = $state(false);
 	let unreadable = $state(false);
 	let thumbnails = $state<Record<string, string>>({});
+	let editing = $state(false);
+	let dropping = $state<HeldPicture | null>(null);
+	let confirming = $state(false);
+	let refused = $state<string | null>(null);
 
 	/** What each thumbnail holds, by the upload it is of. */
 	let shown: Record<string, ShownPicture> = {};
@@ -58,6 +68,7 @@
 		thumbnails = {};
 		asked = [];
 		waiting = [];
+		editing = false;
 	}
 
 	$effect(() => {
@@ -144,6 +155,31 @@
 		};
 	}
 
+	async function drop(): Promise<void> {
+		const picture = dropping;
+		if (!picture || !onremove) return;
+		refused = null;
+		try {
+			await onremove(picture);
+		} catch (error) {
+			refused =
+				error instanceof Error && error.message
+					? error.message
+					: 'That picture could not be removed. Try again in a moment.';
+			throw error;
+		}
+		held = held.filter((one) => one.upload_id !== picture.upload_id);
+		shown[picture.upload_id]?.release();
+		delete shown[picture.upload_id];
+		thumbnails = Object.fromEntries(
+			Object.entries(thumbnails).filter(([id]) => id !== picture.upload_id)
+		);
+		asked = asked.filter((id) => id !== picture.upload_id);
+		waiting = waiting.filter((one) => one.upload_id !== picture.upload_id);
+		dropping = null;
+		if (held.length === 0) editing = false;
+	}
+
 	function take(file: File | null | undefined): void {
 		if (!file) return;
 		onpick({ file });
@@ -197,7 +233,20 @@
 
 		{#if offersHeld}
 			<div class="space-y-2">
-				<p class="text-xs tracking-wide text-muted-foreground uppercase">Already in your notes</p>
+				<div class="flex items-baseline justify-between gap-3">
+					<p class="text-xs tracking-wide text-muted-foreground uppercase">
+						Pictures you have added
+					</p>
+					{#if onremove && held.length > 0}
+						<button
+							type="button"
+							class="text-xs text-muted-foreground hover:text-foreground"
+							onclick={() => (editing = !editing)}
+						>
+							{editing ? 'Done' : 'Edit'}
+						</button>
+					{/if}
+				</div>
 				{#if reading}
 					<p class="py-6 text-center text-sm text-muted-foreground">Looking…</p>
 				{:else if unreadable}
@@ -206,7 +255,7 @@
 					</p>
 				{:else if held.length === 0}
 					<p class="py-6 text-center text-sm text-muted-foreground">
-						Pictures you add to a note show up here.
+						A picture you add shows up here next time.
 					</p>
 				{:else}
 					<div
@@ -217,21 +266,36 @@
 						{#each held as picture (picture.upload_id)}
 							<button
 								type="button"
-								title={picture.filename}
-								aria-label={picture.filename}
+								title={editing ? `Remove ${picture.filename}` : picture.filename}
+								aria-label={editing ? `Remove ${picture.filename}` : picture.filename}
 								onclick={() => {
+									if (editing) {
+										dropping = picture;
+										refused = null;
+										confirming = true;
+										return;
+									}
 									onpick({ held: picture });
 									open = false;
 								}}
-								class="aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out hover:border-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+								class="relative aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {editing
+									? 'hover:border-destructive'
+									: 'hover:border-primary'}"
 								{@attach tile(picture)}
 							>
 								{#if thumbnails[picture.upload_id]}
 									<img
 										src={thumbnails[picture.upload_id]}
 										alt={picture.filename}
-										class="size-full object-cover"
+										class="size-full object-cover {editing ? 'opacity-60' : ''}"
 									/>
+								{/if}
+								{#if editing}
+									<span
+										class="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+									>
+										<X class="size-3" />
+									</span>
 								{/if}
 							</button>
 						{/each}
@@ -241,3 +305,12 @@
 		{/if}
 	</div>
 </ResponsiveModal>
+
+<ConfirmModal
+	bind:open={confirming}
+	title="Remove this picture?"
+	description="Any note still showing it stops showing it. If you published a note with it, that copy stays until you take the branch down."
+	confirmLabel="Remove"
+	{refused}
+	onconfirm={drop}
+/>

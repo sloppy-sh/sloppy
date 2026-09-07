@@ -326,8 +326,31 @@ export class MediaService {
     delegation: Delegation,
     uploadId: string,
   ): Promise<void> {
+    await this.forget(delegation, splitUploadId(uploadId));
+  }
+
+  /**
+   * One of the caller's own pictures, gone from their store. A section still
+   * citing it has nothing left to draw; a publication cites its own copy, which
+   * only taking that branch down releases.
+   */
+  async removeOwnPicture(
+    delegation: Delegation,
+    uploadId: string,
+  ): Promise<void> {
+    const upload = splitUploadId(uploadId);
+    if (upload.did !== delegation.did) {
+      throw new NotFoundException("That picture is not there.");
+    }
+    await this.forget(delegation, upload);
+  }
+
+  private async forget(
+    delegation: Delegation,
+    upload: { did: string; localId: string },
+  ): Promise<void> {
     try {
-      await this.syr.deleteUpload(delegation, splitUploadId(uploadId));
+      await this.syr.deleteUpload(delegation, upload);
     } catch (err) {
       const gone =
         err instanceof HttpException &&

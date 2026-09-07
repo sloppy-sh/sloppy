@@ -13,6 +13,7 @@ import {
   type GraphFieldInset,
   type GraphHoverAt,
   type GraphSurfaceProps,
+  type GraphTransform,
 } from "./contract.js";
 import { attachGestures, type ScreenBox } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
@@ -180,10 +181,25 @@ export function mountGraph(
   let dragged: { index: number; world: Point } | null = null;
   let bringing: OwnedRef | null = null;
 
+  let told: GraphTransform | null = null;
+
+  /** The ink layer is not in the scene, so nothing carries it along with a pan,
+   *  a zoom or a frame: every place that moves the viewport says so here. */
+  const tellTransform = (): void => {
+    const view = scene?.viewport;
+    if (!view || !props.onTransform) return;
+    if (told?.x === view.x && told.y === view.y && told.scale === view.scale) {
+      return;
+    }
+    told = { x: view.x, y: view.y, scale: view.scale };
+    props.onTransform(told);
+  };
+
   const frameAll = (): void => {
     if (!scene) return;
     framed = true;
     scene.fit();
+    tellTransform();
   };
 
   /** A note is often asked for before its mark exists — a citation arrives while
@@ -198,6 +214,7 @@ export function mountGraph(
     if (!scene.inView(bringing)) {
       framing = false;
       scene.centreOn(bringing);
+      tellTransform();
     }
     return true;
   };
@@ -365,10 +382,12 @@ export function mountGraph(
       onViewportChange: () => {
         takeViewport();
         built.invalidate();
+        tellTransform();
       },
       inkTarget: () => props.onInkPointer,
     });
     rebuild();
+    tellTransform();
   };
 
   const showSweep = (box: ScreenBox | null): void => {
@@ -441,7 +460,12 @@ export function mountGraph(
       const reframed =
         next.inset?.top !== props.inset?.top ||
         next.inset?.bottom !== props.inset?.bottom;
+      // A host that wires the ink layer up after the canvas is running is owed
+      // where the field is looking now, not where it goes next.
+      const listening =
+        next.onTransform !== undefined && props.onTransform === undefined;
       props = next;
+      if (listening) told = null;
       if (reframed) frame(next.inset);
       if (grounded) scene?.setGround(next.ground ?? "none");
       if (papered) repaint();
@@ -464,6 +488,7 @@ export function mountGraph(
       // screen, so the ask ends with the act rather than waiting for whatever
       // the reader does next.
       if (!relayout && arrive()) bringing = null;
+      tellTransform();
     },
     destroy() {
       destroyed = true;

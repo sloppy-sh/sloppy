@@ -13,6 +13,7 @@ import type {
   GraphPickMarks,
   GraphReadingMarks,
   GraphPictures,
+  GraphTransform,
 } from "./contract.js";
 import type { SceneOptions } from "./scene.js";
 import { makeCorpus } from "./corpus.test-support.js";
@@ -532,6 +533,45 @@ describe("mountGraph", () => {
 
     expect(inked).toHaveLength(2);
     expect(graph.scene.viewport.x).toBe(30);
+  });
+
+  // Nothing in the scene carries the ink layer, so a stroke drawn over the
+  // canvas stays on its marks only if the mount says where they went.
+  it("says where the field is looking, and again when it moves", async () => {
+    const seen: GraphTransform[] = [];
+    const graph = await mount({ onTransform: (at) => seen.push(at) });
+    expect(seen).toEqual([{ x: 0, y: 0, scale: 1 }]);
+
+    graph.pen("pointerdown", 10, 10);
+    graph.pen("pointermove", 40, 10);
+    graph.pen("pointerup", 40, 10);
+
+    expect(seen.at(-1)).toEqual({ x: 30, y: 0, scale: 1 });
+  });
+
+  it("says nothing twice for a viewport that has not moved", async () => {
+    const seen: GraphTransform[] = [];
+    const graph = await mount({ onTransform: (at) => seen.push(at) });
+
+    graph.handle.update({ ...graph.props, selection: ["seed" as Tag] });
+    graph.handle.fit();
+
+    expect(seen).toHaveLength(1);
+  });
+
+  it("tells a layer wired up after the canvas where the field already is", async () => {
+    const graph = await mount();
+    graph.pen("pointerdown", 10, 10);
+    graph.pen("pointermove", 40, 10);
+    graph.pen("pointerup", 40, 10);
+
+    const seen: GraphTransform[] = [];
+    graph.handle.update({
+      ...graph.props,
+      onTransform: (at) => seen.push(at),
+    });
+
+    expect(seen).toEqual([{ x: 30, y: 0, scale: 1 }]);
   });
 
   it("holds the bound an update moves it to", async () => {
