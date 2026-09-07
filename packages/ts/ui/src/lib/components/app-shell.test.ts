@@ -44,7 +44,7 @@ describe('the app shell', () => {
 
 	it('does not remount the page when a modal suppresses the nav', () => {
 		render();
-		const release = overlay.push();
+		const release = overlay.push(() => {});
 		flushSync();
 		expect(target.querySelector('nav')?.inert).toBe(true);
 		expect(mounts).toBe(1);

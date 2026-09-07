@@ -1,0 +1,10 @@
+{
+	"applinks": {
+		"details": [
+			{
+				"appIDs": ["$APPLE_TEAM_ID.sh.sloppy.app"],
+				"components": [{ "/": "/n/*" }]
+			}
+		]
+	}
+}

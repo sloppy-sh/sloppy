@@ -10,9 +10,10 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, runtime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { people } from '../stores/people.svelte.js';
@@ -52,6 +53,8 @@ beforeEach(() => {
 		writable: true,
 		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
 	});
+	localStorage.clear();
+	prefs.init();
 	people.hold(null);
 	publications.clear();
 	identity.clear();
@@ -162,6 +165,18 @@ describe('a copy of everything somebody keeps', () => {
 		expect(target.textContent).toContain('Sloppy could not reach your writing.');
 	});
 
+	// A draft still on the device is not in it, and somebody keeping the file
+	// has no other way to know that.
+	it('says what a copy taken now does not hold', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(target.textContent?.replace(/\s+/g, ' ')).toContain(
+			"writing still waiting on this device isn't in it yet"
+		);
+	});
+
 	it('is not offered to somebody who is not signed in', async () => {
 		session.clear();
 		mounted = mount(Settings, { target });
@@ -242,5 +257,138 @@ describe('settings', () => {
 		// Where the last person's identity was kept is asked again, never assumed.
 		await identity.load();
 		expect(api.countOf('GET /auth/own-instance')).toBe(2);
+	});
+});
+
+function typeAddress(typed: string): void {
+	const field = target.querySelector<HTMLInputElement>('#sloppy-origin');
+	if (!field) throw new Error('No address field on screen');
+	field.value = typed;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	const form = field.closest('form');
+	form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+	flushSync();
+}
+
+describe('where your Sloppy is', () => {
+	// The look axes stand without an account, and so does this: somebody whose
+	// own Sloppy holds their account has to reach it before signing in.
+	it('is offered with nobody signed in', async () => {
+		session.clear();
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(target.textContent).toContain('Where your Sloppy is');
+		expect(target.querySelector('#sloppy-origin')).not.toBeNull();
+	});
+
+	it('points the app at one somebody runs themselves, and says what changed', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('mine.example');
+		await settle();
+
+		expect(prefs.current.origin).toBe('https://mine.example');
+		expect(runtime.apiHost()).toBe('https://mine.example');
+		expect(target.textContent).toContain('Sloppy is at mine.example now');
+	});
+
+	// A session belongs to the Sloppy that opened it, and so does everything
+	// read through it.
+	it('ends the session and lets go of what the last one said', async () => {
+		api.on('GET /publications', () => []);
+		await publications.load();
+		expect(publications.state.loaded).toBe(true);
+
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('https://mine.example');
+		await settle();
+
+		expect(session.signedIn).toBe(false);
+		expect(people.me).toBeNull();
+		expect(publications.state.loaded).toBe(false);
+		expect(target.textContent).not.toContain('Ada Lovelace');
+	});
+
+	it('says what to try when that is not an address, and stays where it was', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('over there somewhere');
+		await settle();
+
+		expect(target.textContent).toContain("doesn't look like a web address");
+		expect(prefs.current.origin).toBeNull();
+		expect(session.signedIn).toBe(true);
+	});
+
+	it('asks for an address rather than moving when nothing was typed', async () => {
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('');
+		await settle();
+
+		expect(target.textContent).toContain('Type the web address of your Sloppy');
+		expect(target.textContent).not.toContain('back where it came from');
+		expect(prefs.current.origin).toBeNull();
+		expect(runtime.apiHost()).toBe('http://api.test');
+		expect(session.signedIn).toBe(true);
+	});
+
+	it('leaves a session alone when the address given is the one it is already on', async () => {
+		prefs.set('origin', 'https://mine.example');
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('mine.example');
+		await settle();
+
+		expect(target.textContent).toContain('Sloppy is already at mine.example');
+		expect(prefs.current.origin).toBe('https://mine.example');
+		expect(session.signedIn).toBe(true);
+	});
+
+	// A canvas is built from graphs the Sloppy being left minted, so it is not
+	// carried to another one.
+	it('leaves the canvas behind when the app is pointed elsewhere', async () => {
+		prefs.set('graph', ref(1));
+		prefs.set('alsoOnCanvas', [ref(2)]);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		typeAddress('mine.example');
+		await settle();
+
+		expect(prefs.current.graph).toBeNull();
+		expect(prefs.current.alsoOnCanvas).toEqual([]);
+	});
+
+	it('comes back to the one the app came with', async () => {
+		prefs.set('origin', 'https://mine.example');
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(target.querySelector<HTMLInputElement>('#sloppy-origin')?.value).toBe(
+			'https://mine.example'
+		);
+		button('Use the one Sloppy came with').click();
+		await settle();
+
+		expect(prefs.current.origin).toBeNull();
+		expect(runtime.apiHost()).toBe('http://api.test');
+		expect(target.textContent).toContain('Sloppy is back where it came from');
 	});
 });

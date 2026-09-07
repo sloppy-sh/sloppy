@@ -11,6 +11,7 @@
 
 import { setHost } from '@sloppy/client';
 import type { SloppyApi } from './api.js';
+import { storedOrigin } from './stores/prefs.svelte.js';
 
 /**
  * Which of the three deployments this app is running as
@@ -20,7 +21,9 @@ import type { SloppyApi } from './api.js';
 export type DeploymentMode = 'hosted' | 'self_hosted' | 'local';
 
 export interface AppRuntime {
-	/** The API's origin, or `''` for same-origin. `initRuntime` publishes it to
+	/** The origin this build shipped with, or `''` for same-origin. A device
+	 *  pointed at another Sloppy is served by that one instead, and returning to
+	 *  the default returns to this. `initRuntime` publishes the answer to
 	 *  `@sloppy/client`'s host module, so nothing else spells a URL. */
 	apiHost(): string;
 	mode(): DeploymentMode;
@@ -37,6 +40,12 @@ export interface AppRuntime {
 	 *  Present on native, which opens the system browser so consent returns via
 	 *  a deep link — a WebView cannot host somebody else's sign-in. */
 	openExternal?(url: string): Promise<void> | void;
+	/** Where consent puts somebody down when it is done, as an absolute URL.
+	 *  Absent → `${location.origin}/`, which is where a tab already stands. A
+	 *  shell the system browser cannot navigate back into names a URL that
+	 *  reaches it instead, and the API only hands a session to a target it
+	 *  recognises. */
+	signInRedirect?(): string;
 	/** PRESENT means this platform can serve the graph with no network at all:
 	 *  the embedded engine and the local IdP are built in. Absent → the remote
 	 *  client. A shell that defines it reports `mode() === 'local'` while it is
@@ -46,10 +55,6 @@ export interface AppRuntime {
 	 *  the page's own, which is the answer wherever the shell is served from one
 	 *  a peer could open; a shell that is not names this or nothing. */
 	webOrigin?(): string | undefined;
-	/** Erase the on-device graph and return the shell to a fresh start. Absent
-	 *  wherever nothing is stored locally, and the "erase this device" action
-	 *  hides. */
-	wipeLocal?(): Promise<void>;
 	/** Hand a person a file to keep. Absent → the browser saves it, which is
 	 *  what a tab does and a webview does not, so a shell inside one supplies
 	 *  this; `null` where it has no way to save one, and the offer of a copy
@@ -104,23 +109,35 @@ let current: AppRuntime = {
 	fetchImpl: () => globalThis.fetch.bind(globalThis)
 };
 
+function host(): string {
+	return storedOrigin() ?? current.apiHost();
+}
+
 /**
  * Call from the shell's root layout, before any page mounts. Unset fields keep
- * their defaults.
- *
- * Idempotent: a shell re-runs it when the person points the app at another
- * server. That alone re-points a live client, because the client reads the host
- * per request — swapping remote ↔ local is what additionally needs
- * {@link resetApi}.
+ * their defaults, and it is idempotent.
  */
 export function initRuntime(rt: Partial<AppRuntime> & Pick<AppRuntime, 'apiHost'>): void {
 	current = { ...current, ...rt };
-	setHost(current.apiHost());
+	setHost(host());
+}
+
+/**
+ * Point a running app at the Sloppy this device now names. That alone re-points
+ * a live client, because the client reads the host per request — swapping
+ * remote ↔ local is what additionally needs {@link resetApi}.
+ *
+ * A session belongs to the Sloppy that opened it, so the caller ends it and
+ * lets go of what was read as well.
+ */
+export function repointRuntime(): void {
+	setHost(host());
 }
 
 /** Late-binding facade — modules hold this, never the config object itself. */
 export const runtime = {
-	apiHost: () => current.apiHost(),
+	/** The origin in use — the one this device names, else {@link AppRuntime.apiHost}. */
+	apiHost: () => host(),
 	mode: () => current.mode(),
 	token: {
 		get: () => current.token.get(),
@@ -130,8 +147,8 @@ export const runtime = {
 	fetchImpl: () => current.fetchImpl(),
 	authInvalid: () => current.onAuthInvalid?.(),
 	openExternal: (): AppRuntime['openExternal'] => current.openExternal,
+	signInRedirect: (): string | undefined => current.signInRedirect?.(),
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
 	webOrigin: (): string | undefined => current.webOrigin?.(),
-	wipeLocal: (): AppRuntime['wipeLocal'] => current.wipeLocal,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile
 };

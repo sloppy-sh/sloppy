@@ -15,7 +15,9 @@ backend-agnostic; the same app serves all three.
 - **Hosted** — the default. A Sloppy API and an external syr instance we run.
 - **Self-hosted** — a person or a group runs their own Sloppy API and points it at their
   own syr instance. The client must let a user point at an arbitrary endpoint and
-  interoperate with it exactly as it would with the default.
+  interoperate with it exactly as it would with the default. Settings holds that origin
+  per device, so an installed app is re-pointed rather than rebuilt; `AppRuntime.apiHost`
+  is the origin the build shipped with, and returning to the default returns to it.
 - **Local-only** — no network at all. The Tauri app embeds SurrealDB and an IdP that
   reimplements syr's wire contracts, so registration, sign-in, capture, and publishing all
   work on-device. Gated (see "Local-only mode" below) because SurrealDB alone is ~60 MB.
@@ -1459,11 +1461,11 @@ is already reconciling a fixed-position editor toolbar in the same region.
 
 Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/cli ^2.5.0`).
 
-- **Platform-split capabilities** — `default.json`, `mobile.json`
-  (`platforms: ["android","iOS"]`), `apple.json` (`["iOS","macOS"]`), `android.json`, each
-  with a `description` explaining _why_.
-- **Plugins grouped by `cfg`** in `Cargo.toml`. Inherit `tauri-plugin-safe-area-insets-css`
-  (mobile) and `tauri-plugin-system-components` (Apple/Android).
+- **Platform-split capabilities** — `default.json` and `mobile.json`
+  (`platforms: ["android","iOS"]`), each with a `description` explaining _why_. A
+  capability is granted where something calls it and withdrawn where nothing does.
+- **Plugins grouped by `cfg`** in `Cargo.toml`. `tauri-plugin-safe-area-insets-css` is
+  mobile-only; deep-link and opener are everywhere; single-instance is desktop.
 - **`iOS.minimumSystemVersion` is `16.0`**, and the newer pointer-event APIs are
   feature-detected. Requiring 18.2 app-wide to get smooth ink is the wrong trade.
 - **The iPad-first patch.** `tauri ios init` generates `gen/apple/project.yml` with
@@ -1479,6 +1481,28 @@ Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/c
   instance the device can already reach. `vite.config.ts` reads `TAURI_DEV_HOST` and binds
   to the LAN address with a separate HMR port during mobile dev; `svelte.config.js` uses
   `adapter-static` with `fallback: 'index.html'`.
+- **Sign-in returns over the scheme, not the origin.** A webview's own origin
+  (`tauri://localhost`, `http://tauri.localhost`) is not an address the system browser can
+  navigate to, so the native shell answers `AppRuntime.signInRedirect` with
+  `sloppy://auth/callback` — one of the four shapes `isAllowedRedirect` accepts. The link
+  comes back through `src/lib/deep-link.ts`, which re-enters the document at `/` with the
+  query intact, because the session is opened as the app boots and only then. A link is
+  remembered the moment it is entered, and the boot read skips what this session has already
+  been through: the deep-link plugin keeps answering with the same link for the life of the
+  process, and re-entering the document brings that read round again.
+- **A link to a note opens the app.** `tauri.conf.json` declares `sloppy.sh`'s `/n` paths as
+  app links beside the custom scheme, which puts `autoVerify` on the Android intent filter
+  and the associated-domains entitlement in the iOS project. Both halves of the claim are
+  the domain's to answer: `apps/sloppy/web/static/.well-known/` carries the two association
+  files, and each names an identifier that only exists once the app is signed —
+  `$APPLE_TEAM_ID` and `$ANDROID_SIGNING_SHA256` stand in until then, and until they are
+  filled a tapped link opens in the browser as it did before.
+- **Android's back gesture belongs to the app.** `MainActivity.kt` offers the press to the
+  webview as a cancelable `sloppy:back` event and lets the system have it only where nothing
+  was cancelled; `src/routes/+layout.svelte` closes the sheet on top (`overlay.closeTop()`),
+  then walks back off a note, then leaves. It walks only for somebody signed in: the frame
+  decides where a signed-out person stands, so walking back off sign-in would land on a page
+  the frame sends them straight back from.
 
 **Apple Pencil, precisely.** Tauri v2 on iOS renders through `WKWebView`, so Pencil arrives
 as Pointer Events: `pointerType === 'pen'`, `pressure`, `tiltX`/`tiltY`,

@@ -21,9 +21,6 @@ pub fn run() {
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_safe_area_insets_css::init());
 
-    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
-    let builder = builder.plugin(tauri_plugin_system_components::init());
-
     #[cfg(feature = "local-mode")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         db::db_open,

@@ -1,7 +1,23 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DID, ref } from './fake-api.test-support.js';
-import { prefs } from './prefs.svelte.js';
+import { THEMES, asOrigin, prefs, storedOrigin } from './prefs.svelte.js';
+
+const UI_CSS = readFileSync(resolve(process.cwd(), '../ui/src/lib/app.css'), 'utf8').replace(
+	/\/\*[\s\S]*?\*\//g,
+	''
+);
+
+function stylesheetCallsDark(theme: string): boolean {
+	for (const [, selector, declarations] of UI_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+		const claims = selector.split(',').some((s) => s.trim().endsWith(`[data-theme='${theme}']`));
+		if (claims && declarations.includes('--background:'))
+			return /color-scheme:\s*dark\s*;/.test(declarations);
+	}
+	throw new Error(`no ground declared for ${theme}`);
+}
 
 function osPrefersDark(dark: boolean) {
 	vi.stubGlobal('matchMedia', (query: string) => ({
@@ -72,6 +88,14 @@ describe('the saved look', () => {
 		}
 	});
 
+	// app.css declares `color-scheme`; `isDark` draws the `dark` class. One fact.
+	it('calls a theme dark the way the stylesheet does', () => {
+		for (const theme of THEMES) {
+			prefs.set('theme', theme);
+			expect(prefs.isDark).toBe(stylesheetCallsDark(theme));
+		}
+	});
+
 	it('falls back to a default rather than trusting a value it does not know', () => {
 		localStorage.setItem(
 			'sloppy_prefs',
@@ -84,7 +108,8 @@ describe('the saved look', () => {
 				graph: 'not a ref',
 				alsoOnCanvas: ['neither is this'],
 				wallpapers: 'a picture',
-				readingWidth: 'wide'
+				readingWidth: 'wide',
+				origin: 'nowhere at all/ /'
 			})
 		);
 		prefs.init();
@@ -97,7 +122,8 @@ describe('the saved look', () => {
 			graph: null,
 			alsoOnCanvas: [],
 			wallpapers: {},
-			readingWidth: null
+			readingWidth: null,
+			origin: null
 		});
 	});
 
@@ -152,5 +178,45 @@ describe('the saved look', () => {
 		}).not.toThrow();
 		expect(prefs.current.accent).toBe('sea');
 		vi.restoreAllMocks();
+	});
+});
+
+describe('where this device says its Sloppy is', () => {
+	it('is nowhere of its own until somebody names one', () => {
+		prefs.init();
+		expect(prefs.current.origin).toBeNull();
+		expect(storedOrigin()).toBeNull();
+	});
+
+	it('keeps only what an app could be reached at, however it was typed', () => {
+		expect(asOrigin('https://sloppy.example.com')).toBe('https://sloppy.example.com');
+		expect(asOrigin('  sloppy.example.com  ')).toBe('https://sloppy.example.com');
+		expect(asOrigin('http://localhost:8020/')).toBe('http://localhost:8020');
+		// A path typed after the address cannot re-root the app.
+		expect(asOrigin('https://sloppy.example.com/somebody/else')).toBe('https://sloppy.example.com');
+		expect(asOrigin('javascript:alert(1)')).toBeNull();
+		expect(asOrigin('file:///etc/hosts')).toBeNull();
+		expect(asOrigin('')).toBeNull();
+		expect(asOrigin(7)).toBeNull();
+	});
+
+	// The app is pointed at it before any page mounts, which is before init().
+	it('is readable before the saved look has been read', () => {
+		localStorage.setItem('sloppy_prefs', JSON.stringify({ origin: 'https://mine.example' }));
+		expect(storedOrigin()).toBe('https://mine.example');
+	});
+
+	it('survives the look being read back', () => {
+		prefs.init();
+		prefs.set('origin', 'https://mine.example');
+		prefs.init();
+		expect(prefs.current.origin).toBe('https://mine.example');
+	});
+
+	it('goes back to the one the app came with', () => {
+		prefs.init();
+		prefs.set('origin', 'https://mine.example');
+		prefs.set('origin', null);
+		expect(storedOrigin()).toBeNull();
 	});
 });

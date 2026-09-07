@@ -1,5 +1,6 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { initRuntime } from '../runtime.js';
 import { useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
 import SignIn from './sign-in.svelte';
 
@@ -77,6 +78,49 @@ describe('the sign-in page', () => {
 
 		expect(target.textContent).toContain('Sloppy could not offer you an identity here just now.');
 		expect(target.textContent).toContain('Try again');
+	});
+
+	// A webview's own origin is not an address the system browser can navigate
+	// back to, so the shell says where consent should put somebody down.
+	describe('and where it says to come back to', () => {
+		let asked: { redirect?: string } = {};
+
+		beforeEach(() => {
+			asked = {};
+			api.on('GET /auth/own-instance', () => ({ instance_url: HERE }));
+			api.on('POST /auth/login', (_url, init) => {
+				asked = JSON.parse(String(init?.body));
+				return { consent_url: 'https://syr.test/consent' };
+			});
+		});
+
+		it('is the page it is on where the shell names nothing', async () => {
+			initRuntime({
+				apiHost: () => 'http://api.test',
+				openExternal: () => {},
+				signInRedirect: undefined
+			});
+			await show();
+
+			press('Start here');
+			await settle();
+
+			expect(asked.redirect).toBe(`${location.origin}/`);
+		});
+
+		it('is what the shell names where it names one', async () => {
+			initRuntime({
+				apiHost: () => 'http://api.test',
+				openExternal: () => {},
+				signInRedirect: () => 'sloppy://auth/callback'
+			});
+			await show();
+
+			press('Start here');
+			await settle();
+
+			expect(asked.redirect).toBe('sloppy://auth/callback');
+		});
 	});
 
 	it('offers the identity once the answer can be had', async () => {

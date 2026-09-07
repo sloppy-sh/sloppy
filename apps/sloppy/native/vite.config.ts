@@ -1,6 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 // TAURI_DEV_HOST is set by the Tauri CLI during mobile dev: the iPad, phone or
 // emulator loads the frontend off this machine, so vite has to listen on the LAN
@@ -20,5 +20,6 @@ export default defineConfig({
 		strictPort: true,
 		host: host || false,
 		hmr: host ? { protocol: 'ws', host, port: 8041 } : undefined
-	}
+	},
+	test: { environment: 'jsdom', include: ['src/**/*.test.ts'] }
 });

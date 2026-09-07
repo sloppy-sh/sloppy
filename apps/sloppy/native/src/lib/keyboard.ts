@@ -1,8 +1,7 @@
 /**
- * The webview's viewport truth, and the single writer of `--kb-inset-bottom`
- * and `--safe-area-inset-bottom`. It also drives `@sloppy/app-core`'s `keyboard`
- * store, which is what answers "is the keyboard up". DESIGN.md § "The four inset
- * vars" is the contract for all three.
+ * The single writer of `--safe-area-inset-bottom`, over `@sloppy/app-core`'s
+ * `trackKeyboard`, which owns `--kb-inset-bottom` and the `keyboard` store.
+ * DESIGN.md § "The four inset vars" is the contract for both.
  *
  * Two platform facts it exists to absorb.
  * `tauri-plugin-safe-area-insets-css` restores `--safe-area-inset-bottom` on
@@ -15,13 +14,11 @@
  * knows Android's nav-bar height.
  */
 
-import { keyboard } from '@sloppy/app-core';
+import { trackKeyboard } from '@sloppy/app-core';
 
 /** iOS home indicator 34pt, Android 3-button nav 48pt. Larger than this is
  *  keyboard contamination, not a bar. */
 const MAX_SYSTEM_BAR = 64;
-/** Occlusion in CSS px below which this is an input accessory bar, not a keyboard. */
-const KEYBOARD_FLOOR = 120;
 /** Fights per keyboard session before WebKit's pan is allowed to win — a page
  *  that legitimately wants the offset must not loop forever. */
 const MAX_PAN_CORRECTIONS = 3;
@@ -79,14 +76,7 @@ export function trackKeyboardInset(): () => void {
 		if (active instanceof HTMLElement) active.scrollIntoView({ block: 'nearest' });
 	};
 
-	const update = () => {
-		const occlusion = Math.max(0, window.innerHeight - vv.height);
-		const lift = Math.max(0, occlusion - vv.offsetTop);
-		const open = occlusion > KEYBOARD_FLOOR;
-
-		root.style.setProperty('--kb-inset-bottom', `${Math.round(lift)}px`);
-		keyboard.set(open, open ? Math.round(occlusion) : 0);
-
+	const stop = trackKeyboard(({ open }) => {
 		if (!open) {
 			const published = publishedSafeBottom();
 			if (published > 0) stableSafeBottom = published;
@@ -110,17 +100,10 @@ export function trackKeyboardInset(): () => void {
 		// meaningless, so let it settle.
 		cancelAnimationFrame(settle);
 		settle = requestAnimationFrame(() => requestAnimationFrame(cancelPan));
-	};
-
-	vv.addEventListener('resize', update);
-	vv.addEventListener('scroll', update);
-	update();
+	});
 
 	return () => {
 		cancelAnimationFrame(settle);
-		vv.removeEventListener('resize', update);
-		vv.removeEventListener('scroll', update);
-		root.style.removeProperty('--kb-inset-bottom');
-		keyboard.set(false, 0);
+		stop();
 	};
 }

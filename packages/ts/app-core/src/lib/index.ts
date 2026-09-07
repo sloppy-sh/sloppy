@@ -5,7 +5,8 @@ export { api, createRemoteApi, resetApi, ServerRequiredError, serverOnly } from 
 export type { SloppyApi } from './api.js';
 export { initRuntime, runtime } from './runtime.js';
 export type { AppRuntime, DeploymentMode } from './runtime.js';
-export { keyboard } from './keyboard.svelte.js';
+export { keyboard, trackKeyboard } from './keyboard.svelte.js';
+export type { KeyboardChange } from './keyboard.svelte.js';
 export { deviceStore } from './device-store.js';
 export type { DeviceArea } from './device-store.js';
 export {

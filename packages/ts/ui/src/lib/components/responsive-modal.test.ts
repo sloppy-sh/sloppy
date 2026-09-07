@@ -86,6 +86,28 @@ describe('the one modal', () => {
 		expect(overlay.open).toBe(false);
 	});
 
+	// Android's back gesture reaches a sheet through the overlay stack alone.
+	it('goes down when the overlay is asked to close the top one', () => {
+		let closed: boolean | undefined;
+		media = stubMediaQuery(PHONE);
+		mounted = mount(ResponsiveModal, {
+			target,
+			props: {
+				open: true,
+				title: 'Add a node',
+				onOpenChange: (v: boolean) => (closed = v),
+				children: body
+			}
+		});
+		flushSync();
+
+		expect(overlay.closeTop()).toBe(true);
+		flushSync();
+
+		expect(closed).toBe(false);
+		expect(overlay.open).toBe(false);
+	});
+
 	it('names itself for a screen reader even with the visible header off', () => {
 		media = stubMediaQuery(WIDE);
 		mounted = mount(ResponsiveModal, {

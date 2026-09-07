@@ -1,7 +1,8 @@
 /**
- * The look of the app, and the tags it opens on — DESIGN.md § Persistence.
- * One writer for `sloppy_prefs`, and the only code that sets the three axis
- * attributes on `<html>` after first paint.
+ * The look of the app and the tags it opens on — DESIGN.md § Persistence — and
+ * which Sloppy this device talks to — docs/ARCHITECTURE.md § "Deployment
+ * modes". One writer for `sloppy_prefs`, and the only code that sets the three
+ * axis attributes on `<html>` after first paint.
  *
  * The shells' `app.html` boot scripts read the SAME key to theme the first
  * paint, so the key, the field names, the first-visit defaults and the dark
@@ -41,6 +42,10 @@ export interface Prefs {
 	 *  still safe to hand over: the surface bounds it against the window it is
 	 *  actually in. */
 	readingWidth: number | null;
+	/** The Sloppy this device talks to, as an origin — docs/ARCHITECTURE.md
+	 *  § "Deployment modes". Null is the one the app came with, which is what
+	 *  the shell names. */
+	origin: string | null;
 }
 
 const KEY = 'sloppy_prefs';
@@ -91,7 +96,8 @@ function defaults(): Prefs {
 		graph: null,
 		alsoOnCanvas: [],
 		wallpapers: {},
-		readingWidth: null
+		readingWidth: null,
+		origin: null
 	};
 }
 
@@ -144,6 +150,32 @@ function refsIn(value: unknown): OwnedRef[] {
 	return out;
 }
 
+/**
+ * What somebody typed, as the origin Sloppy can be reached at, or null where it
+ * is nothing Sloppy could talk to. A bare host is read as `https://`, since that
+ * is how an address is written down; anything that survives keeps only the
+ * scheme, host and port, so a path typed after it cannot re-root the app.
+ */
+export function asOrigin(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	const typed = value.trim();
+	if (typed === '') return null;
+	const address = /^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `https://${typed}`;
+	if (!/^https?:\/\//i.test(address)) return null;
+	try {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- read once and thrown away with this call.
+		return new URL(address).origin;
+	} catch {
+		return null;
+	}
+}
+
+/** Where this device's Sloppy is, read before {@link PrefsStore.init} has run —
+ *  the app is pointed at it at boot, which is before any page mounts. */
+export function storedOrigin(): string | null {
+	return asOrigin(stored().origin);
+}
+
 class PrefsStore {
 	#current = $state<Prefs>(defaults());
 
@@ -169,7 +201,8 @@ class PrefsStore {
 			graph: refIn(saved.graph),
 			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
-			readingWidth: widthIn(saved.readingWidth)
+			readingWidth: widthIn(saved.readingWidth),
+			origin: asOrigin(saved.origin)
 		};
 		this.apply();
 	}
@@ -211,7 +244,6 @@ class PrefsStore {
 		if (p.style === 'default') root.removeAttribute('data-style');
 		else root.setAttribute('data-style', p.style);
 		root.classList.toggle('dark', this.isDark);
-		root.style.colorScheme = this.isDark ? 'dark' : 'light';
 	}
 }
 
