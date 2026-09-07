@@ -183,9 +183,18 @@ export function parseNode(row: unknown): Node {
  * to read it off: a note placed against another is in that note's graph.
  * Absent, as everywhere, is the author's home graph.
  */
+const UNDER = z.strictObject({
+  relation: z.literal("under"),
+  note: OwnedRefSchema,
+});
+const AFTER = z.strictObject({
+  relation: z.literal("after"),
+  note: OwnedRefSchema,
+});
+
 export const NodePlacementSchema = z.discriminatedUnion("relation", [
-  z.strictObject({ relation: z.literal("under"), note: OwnedRefSchema }),
-  z.strictObject({ relation: z.literal("after"), note: OwnedRefSchema }),
+  UNDER,
+  AFTER,
   z.strictObject({
     relation: z.literal("root"),
     address: RootAddressSchema,
@@ -229,10 +238,31 @@ export const CreateNodeRequestSchema = z.strictObject(
 export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
 /**
- * `graph`, `address`, `depth` and `origin` are absent because they are
- * immutable, and `parent` because moving a note is unbuilt —
- * docs/ARCHITECTURE.md § "The addressing protocol" carries what the ruling
- * has to answer before any of it is written.
+ * Where a note is carried to: `under` another note, so it springs out of that
+ * one, or `after` it, so it continues the run that one is in. It names no
+ * graph — a note stays in the one it was written in — and no address, because
+ * the address it takes is the next in the run it joins.
+ *
+ * Dropping it between two siblings is `after` the one before it, and puts it at
+ * the end of their run: neither of them is renumbered, and the address it leaves
+ * keeps leading to it. AI.md § "The Address Is the Protocol".
+ */
+export const NoteDestinationSchema = z.discriminatedUnion("relation", [
+  UNDER,
+  AFTER,
+]);
+export type NoteDestination = z.infer<typeof NoteDestinationSchema>;
+
+export const MoveNoteRequestSchema = z.strictObject(
+  { to: NoteDestinationSchema },
+  { error: "Sloppy is out of date. Update it and try again." },
+);
+export type MoveNoteRequest = z.input<typeof MoveNoteRequestSchema>;
+
+/**
+ * `graph` is absent because it is immutable, and `address`, `depth`, `origin`
+ * and `parent` because a move is what rewrites them —
+ * {@link MoveNoteRequestSchema}.
  */
 export const UpdateNodeRequestSchema = z.object({
   title: z.string().max(512).optional(),

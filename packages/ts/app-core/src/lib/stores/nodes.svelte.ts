@@ -19,6 +19,7 @@ import {
 	type NodeBulkResult,
 	type NodeView,
 	NodeViewSchema,
+	type NoteDestination,
 	type OwnedRef,
 	type UpdateNodeRequest
 } from '@sloppy/types';
@@ -271,6 +272,20 @@ class NodesStore {
 		const node = await api.updateNode(ref, request);
 		if (epoch === this.#epoch) this.#learn(node);
 		return node;
+	}
+
+	/**
+	 * Carry a note somewhere else, with everything that sprang from it. The
+	 * answer is the whole subtree as it now stands, so the canvas and the outline
+	 * re-derive from addresses that have already changed rather than from the
+	 * ones they were drawn at.
+	 */
+	async move(ref: OwnedRef, to: NoteDestination): Promise<NodeView[]> {
+		const epoch = this.#epoch;
+		const moved = await api.moveNote(ref, to);
+		if (epoch !== this.#epoch) return moved;
+		for (const node of moved) this.#learn(node);
+		return moved;
 	}
 
 	/** One act over however many notes somebody chose. */

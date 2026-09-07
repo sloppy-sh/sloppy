@@ -8,7 +8,9 @@ import {
 	type AnsweredNote,
 	type Converses,
 	graphOf,
+	type MoveNoteRequest,
 	type NodeView,
+	type NoteDestination,
 	type OwnedRef,
 	type PulledNoteHit,
 	type RefusedVoiceView,
@@ -111,15 +113,32 @@ export function conversing(
 	api.on('DELETE /refused-voices', () => undefined);
 }
 
+/** A note's `<did>/<ulid>` as a route's two path segments. */
+function refPath(ref: OwnedRef): string {
+	const cut = ref.lastIndexOf('/');
+	return `/${encodeURIComponent(ref.slice(0, cut))}/${encodeURIComponent(ref.slice(cut + 1))}`;
+}
+
 /** Answer the citation route for each note the reader holds a copy of. */
 export function holding(api: FakeApi, hits: readonly PulledNoteHit[] = []): void {
 	for (const hit of hits) {
-		const cut = hit.note.ref.lastIndexOf('/');
-		const path = `/pulls/nodes/${encodeURIComponent(
-			hit.note.ref.slice(0, cut)
-		)}/${encodeURIComponent(hit.note.ref.slice(cut + 1))}`;
-		api.on(`GET ${path}`, () => hit);
+		api.on(`GET /pulls/nodes${refPath(hit.note.ref)}`, () => hit);
 	}
+}
+
+/**
+ * Answer a move of `note` with the subtree as it stands afterwards — the note
+ * and everything under it, at the addresses the move gave them.
+ */
+export function moving(
+	api: FakeApi,
+	note: OwnedRef,
+	subtree: (to: NoteDestination) => readonly NodeView[]
+): void {
+	api.on(`POST /nodes${refPath(note)}/move`, (_url, init) => {
+		const asked = JSON.parse(String(init?.body ?? '{}')) as MoveNoteRequest;
+		return subtree(asked.to);
+	});
 }
 
 export const VIEWER: Viewer = {

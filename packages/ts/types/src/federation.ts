@@ -229,6 +229,12 @@ export const PulledNodeSchema = OwnedEntitySchema.extend({
    *  way inside it, the way our own do. */
   address: AddressSchema,
   /**
+   * `node.aliases`, beside the node for the reason `address` is: an address a
+   * reader cites is answered from a column, and SurrealDB will not index a
+   * nested path. Absent is a note its author has never moved.
+   */
+  aliases: z.array(AddressSchema).optional(),
+  /**
    * `addressDepth(node.address)`, minted here because a published node carries
    * none. It is the same ratified exception `node.depth` is, bought by the same
    * level-of-detail read; `parsePulledNode` is the boundary it is held at.
@@ -249,6 +255,13 @@ export function parsePulledNode(row: unknown): PulledNode {
   if (pulled.address !== pulled.node.address) {
     throw new Error(
       `Held node ${pulled.source} is filed at ${pulled.address} and addressed ${pulled.node.address}`,
+    );
+  }
+  if (
+    (pulled.aliases ?? []).join(" ") !== (pulled.node.aliases ?? []).join(" ")
+  ) {
+    throw new Error(
+      `Held node ${pulled.source} is filed under other addresses than the ones it carries`,
     );
   }
   const actual = addressDepth(pulled.node.address);

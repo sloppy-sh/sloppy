@@ -45,6 +45,7 @@ import {
   type NodeView,
   type NoteComment,
   NoteCommentSchema,
+  type NoteDestination,
   type NoteReaction,
   NoteReactionSchema,
   type OwnedMediaAsset,
@@ -372,6 +373,16 @@ export class SloppyClient {
     return parseNodeView(
       await this.send("PATCH", `/nodes${refPath(ref)}`, request),
     );
+  }
+
+  /**
+   * Carry a note somewhere else, with everything that sprang from it. Answers
+   * the note and every note under it as they now stand — the whole subtree,
+   * because a move re-addresses all of them.
+   */
+  async moveNote(ref: OwnedRef, to: NoteDestination): Promise<NodeView[]> {
+    const body = await this.send("POST", `/nodes${refPath(ref)}/move`, { to });
+    return (body as unknown[]).map(parseNodeView);
   }
 
   async deleteNode(ref: OwnedRef): Promise<void> {

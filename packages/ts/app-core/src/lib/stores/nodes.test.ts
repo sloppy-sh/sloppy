@@ -4,7 +4,15 @@ import { nodes } from './nodes.svelte.js';
 import { homeGraphRef, type NodeView, type OwnedRef } from '@sloppy/types';
 import { deviceStore } from '../device-store.js';
 import { session } from './session.svelte.js';
-import { DID, node, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
+import {
+	DID,
+	moving,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from './fake-api.test-support.js';
 
 const ROOT = ref(1);
 const OTHER_ROOT = ref(4);
@@ -314,5 +322,64 @@ describe('the graph this device kept', () => {
 
 		expect(nodes.region().map((n) => n.address)).toEqual(['1']);
 		expect(nodes.get(OTHER_ROOT)).toBeUndefined();
+	});
+});
+
+describe('a note carried somewhere else', () => {
+	it('reads the subtree at the addresses the move gave it, out of the tree it left', async () => {
+		await nodes.load({ origin: ROOT });
+		moving(api, ref(2), () => [
+			node(2, '2a', { origin: OTHER_ROOT, parent: OTHER_ROOT, aliases: ['1a'] }),
+			node(3, '2a1', { origin: OTHER_ROOT, parent: ref(2), aliases: ['1a1'] })
+		]);
+
+		const moved = await nodes.move(ref(2), { relation: 'under', note: OTHER_ROOT });
+
+		expect(moved.map((n) => n.address)).toEqual(['2a', '2a1']);
+		expect(nodes.get(ref(2))?.address).toBe('2a');
+		expect(nodes.get(ref(3))?.address).toBe('2a1');
+		// The run it left is the two notes still under ROOT's tree, and neither of
+		// them is where the moved one was.
+		expect(nodes.region({ origin: ROOT }).map((n) => n.address)).toEqual(['1']);
+		expect(nodes.children(OTHER_ROOT).map((n) => n.address)).toEqual(['2a']);
+	});
+
+	it('says the addresses the note is still answered by', async () => {
+		await nodes.load({ origin: ROOT });
+		moving(api, ref(2), () => [
+			node(2, '2a', { origin: OTHER_ROOT, parent: OTHER_ROOT, aliases: ['1a'] })
+		]);
+
+		await nodes.move(ref(2), { relation: 'after', note: ref(4) });
+
+		expect(nodes.get(ref(2))?.aliases).toEqual(['1a']);
+		expect(nodes.get(ROOT)?.aliases).toBeUndefined();
+	});
+
+	it('carries what the move was asked for to the route', async () => {
+		let asked: unknown;
+		moving(api, ref(2), (to) => {
+			asked = to;
+			return [node(2, '2a', { origin: OTHER_ROOT, parent: OTHER_ROOT })];
+		});
+
+		await nodes.move(ref(2), { relation: 'after', note: ref(4) });
+
+		expect(asked).toEqual({ relation: 'after', note: ref(4) });
+	});
+
+	it('is not taken into a cache the next person is already using', async () => {
+		await nodes.load({ origin: ROOT });
+		let answer!: () => void;
+		const held = new Promise<void>((resolve) => (answer = resolve));
+		api.on(`POST ${path(ref(2))}/move`, async () => {
+			await held;
+			return [node(2, '2a', { origin: OTHER_ROOT, parent: OTHER_ROOT })];
+		});
+		const carrying = nodes.move(ref(2), { relation: 'under', note: OTHER_ROOT });
+		nodes.clear();
+		answer();
+		await carrying;
+		expect(nodes.get(ref(2))).toBeUndefined();
 	});
 });

@@ -44,6 +44,9 @@ export function entityView<T extends { id: RecordId }>(
 
 export const NodeViewSchema = NodeSchema.omit({ id: true }).extend({
   ref: OwnedRefSchema,
+  /** The addresses this note was at before it was moved, each of which still
+   *  leads to it. Absent is a note that has never been moved. */
+  aliases: z.array(AddressSchema).optional(),
 });
 export type NodeView = z.infer<typeof NodeViewSchema>;
 
@@ -146,6 +149,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
     created_by: splitOwnedRef(row.source).did,
     graph: row.source_graph,
     address: node.address,
+    ...(node.aliases ? { aliases: node.aliases } : {}),
     depth: row.depth,
     parent: node.parent,
     origin: node.origin,

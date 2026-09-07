@@ -167,6 +167,11 @@ export type PublishedLook = z.infer<typeof PublishedLookSchema>;
 export const PublishedNodeSchema = z.object({
   ref: OwnedRefSchema,
   address: AddressSchema,
+  /** The addresses this note was at before its author moved it, so a citation
+   *  a reader wrote down before the move still resolves. Absent is a note that
+   *  has never been moved, which is every version published before one could
+   *  be. */
+  aliases: z.array(AddressSchema).optional(),
   /** Absent on the region's own root, whose parent is outside the publication
    *  and is not named. */
   parent: OwnedRefSchema.optional(),
