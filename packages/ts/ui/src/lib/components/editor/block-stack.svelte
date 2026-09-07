@@ -760,6 +760,15 @@
 		actsOpen = true;
 	}
 
+	// The handle is plain DOM inside the writing surface; only here is it known
+	// whether the menu it asked for is up.
+	$effect(() => {
+		const anchor = acts?.anchor;
+		if (!anchor) return;
+		anchor.setAttribute('aria-expanded', String(actsOpen));
+		return () => anchor.removeAttribute('aria-expanded');
+	});
+
 	function removeSection(section: SectionActs): void {
 		if (!section.holdsWriting) {
 			section.remove();

@@ -40,9 +40,12 @@ declare module '@tiptap/core' {
 	}
 }
 
-/** Whether the section has nothing in it but the empty line it was made with. */
+/** Whether the section has nothing in it but the empty line it was made with.
+ *  A drawing and a picture measure empty too, so the one line left has to be a
+ *  line somebody could have typed on. */
 export function sectionIsBare(section: ProseMirrorNode): boolean {
-	return section.childCount <= 1 && (section.firstChild?.content.size ?? 0) === 0;
+	const only = section.firstChild;
+	return section.childCount <= 1 && (!only || (only.isTextblock && only.content.size === 0));
 }
 
 /** A section holding nothing, backspaced into from its first line, goes — which

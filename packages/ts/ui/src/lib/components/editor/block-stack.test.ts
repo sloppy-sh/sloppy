@@ -1248,6 +1248,66 @@ describe('taking a section out of the note', () => {
 		expect(written.removed).toEqual([blocks[1].ref]);
 	});
 
+	// A drawing is the least recoverable thing a section can hold, and it holds
+	// no words, so it is exactly what an unasked removal would take silently.
+	it('asks first when all the section holds is a drawing', async () => {
+		const drawn = {
+			type: 'ink',
+			attrs: {
+				strokes: [{ points: [{ x: 10, y: 10, pressure: 0.5, t: 0 }], width: 2 }],
+				width: 320,
+				height: 120
+			}
+		};
+		open([prose('one'), block({ content: section(drawn) })]);
+
+		tap(1);
+		choose('Remove section');
+
+		expect(document.body.textContent).toContain('Remove this section?');
+		expect(stack()).toHaveLength(2);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.removed).toEqual([]);
+	});
+
+	// The click that closes a drag is the drag ending, not a tap on the handle.
+	it('stays shut on the click a drag ends with, and opens on the one after it', async () => {
+		open([prose('one'), prose('two')]);
+		const pull = (type: string, y: number): PointerEvent => {
+			const event = new Event(type, { bubbles: true, cancelable: true });
+			Object.assign(event, {
+				pointerId: 3,
+				pointerType: 'mouse',
+				button: 0,
+				clientX: 10,
+				clientY: y
+			});
+			return event as PointerEvent;
+		};
+
+		grips()[0].dispatchEvent(pull('pointerdown', 20));
+		window.dispatchEvent(pull('pointermove', 100));
+		window.dispatchEvent(pull('pointerup', 20));
+		tap(0);
+
+		expect(named('Remove section')).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(0);
+		tap(0);
+
+		expect(named('Remove section')).toBeDefined();
+	});
+
+	it('says on the handle itself whether its menu is up', () => {
+		open([prose('one'), prose('two')]);
+
+		tap(0);
+		expect(grips()[0].getAttribute('aria-expanded')).toBe('true');
+
+		choose('Remove section');
+		expect(grips()[0].getAttribute('aria-expanded')).toBe('false');
+	});
+
 	it('moves the section from the same menu, for anyone who never found the drag', async () => {
 		const blocks = [prose('one'), prose('two'), prose('three')];
 		open(blocks);

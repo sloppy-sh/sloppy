@@ -129,7 +129,7 @@ function drag(
 	button: HTMLButtonElement,
 	uid: string,
 	start: PointerEvent,
-	lifted: () => void
+	dragged: () => void
 ): void {
 	if (start.button > 0) return;
 	// A finger is left to the browser until the press has been held: the gutter
@@ -178,7 +178,6 @@ function drag(
 
 	function lift(): void {
 		dragging = true;
-		lifted();
 		button.classList.add('is-dragging');
 		document.body.append(line);
 		window.addEventListener('touchmove', refuse, { passive: false });
@@ -209,7 +208,9 @@ function drag(
 		if (frame) cancelAnimationFrame(frame);
 		line.remove();
 		button.classList.remove('is-dragging');
-		if (!dragging || slot < 0) return;
+		if (!dragging) return;
+		dragged();
+		if (slot < 0) return;
 		const from = indexOf(rowsOf(view), uid);
 		// A section dropped into either gap it already touches has not moved.
 		if (from < 0 || slot === from || slot === from + 1) return;
@@ -259,8 +260,12 @@ function handleFor(
 
 	let dragged = false;
 	button.addEventListener('pointerdown', (event) => {
-		dragged = false;
-		drag(view, button, uid, event, () => (dragged = true));
+		drag(view, button, uid, event, () => {
+			// The click that closes a drag arrives after this, and is not a tap. A
+			// keyboard sends one with no drag before it at all, and that one is.
+			dragged = true;
+			setTimeout(() => (dragged = false));
+		});
 	});
 	button.addEventListener('click', (event) => {
 		event.preventDefault();
