@@ -827,6 +827,19 @@ up and the lift can be 0 in the panned case.
   are not exposed to the web layer — do not design an affordance around them.
 - **Ink degrades, it never gates.** `getCoalescedEvents()`/`getPredictedEvents()` are
   feature-detected; without them a stroke is rougher, not unavailable.
+- **What the pen leaves over the canvas is a drawing on the FIELD, and it stays.** It goes
+  into the layer above the canvas — the one the renderer positions and hands to the host —
+  in the field's own coordinates, so a circle round three marks and an arrow between two
+  branches pan and zoom with the marks rather than sliding off them. The renderer says
+  where the field is looking beside handing over the pen; nothing else keeps that layer in
+  step.
+- **That drawing is a per-device view choice kept against the graph**, like the ground and
+  the picture behind it: nothing of it is on a note, it never publishes, and a peer pulling
+  a subtree receives nothing of it. It is kept on the device for the person signed in
+  (§ Persistence) and it LIVES there — it is not a copy of anything Sloppy holds, which is
+  the one thing writing that has not been saved yet also is. **The way back is one quiet
+  control**, and it is there only once something has been drawn: the last stroke, or the
+  whole drawing. A pen is how a drawing starts, so nothing has to be found first.
 - **The ownership line.** Svelte owns _which_ nodes exist and their initial geometry; pixi
   owns runtime pan/zoom/drag and reports back; the scene re-initialises only on an explicit
   `remountKey`. A plain drag never remounts, which is the difference between a graph that

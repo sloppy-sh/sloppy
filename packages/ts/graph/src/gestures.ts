@@ -137,6 +137,20 @@ export function attachGestures(
     y: event.clientY - rect.top,
   });
 
+  /** Throws for a pointer the element never saw go down, which a synthetic event
+   *  and a pointer the platform has already cancelled both are. */
+  const hold = (pointerId: number): void => {
+    try {
+      element.setPointerCapture(pointerId);
+    } catch {}
+  };
+
+  const letGo = (pointerId: number): void => {
+    if (element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+  };
+
   const cancelPress = (): void => {
     if (pressTimer !== null) clearTimeout(pressTimer);
     pressTimer = null;
@@ -151,6 +165,9 @@ export function attachGestures(
     const at = local(event);
     const ink = event.pointerType === "pen" ? handlers.inkTarget() : undefined;
     if (ink) {
+      // A stroke that wanders off the field finishes where it was drawn rather
+      // than stopping at the edge and never being lifted.
+      hold(event.pointerId);
       strokes.set(event.pointerId, ink);
       ink(event, viewport.toWorld(at.x, at.y));
       return;
@@ -159,11 +176,7 @@ export function attachGestures(
     // it through here would take hold of the note under it as well.
     if (event.pointerType === "mouse" && event.button !== 0) return;
 
-    // Throws for a pointer the element never saw go down, which a synthetic
-    // event and a pointer the platform has already cancelled both are.
-    try {
-      element.setPointerCapture(event.pointerId);
-    } catch {}
+    hold(event.pointerId);
     const target = handlers.hitTest(viewport.toWorld(at.x, at.y));
     active.set(event.pointerId, {
       type: event.pointerType,
@@ -307,15 +320,14 @@ export function attachGestures(
     const stroke = strokes.get(event.pointerId);
     if (stroke) {
       strokes.delete(event.pointerId);
+      letGo(event.pointerId);
       const at = local(event);
       stroke(event, viewport.toWorld(at.x, at.y));
       return;
     }
     const entry = active.get(event.pointerId);
     active.delete(event.pointerId);
-    if (element.hasPointerCapture(event.pointerId)) {
-      element.releasePointerCapture(event.pointerId);
-    }
+    letGo(event.pointerId);
     cancelPress();
     pinchSpan = touches().length === 2 ? span(touches()) : 0;
     if (!entry) return;

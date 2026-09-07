@@ -57,6 +57,7 @@ function fakeElement() {
       box.top = top;
       watching.get(element)?.();
     },
+    holds: (id: number) => captured.has(id),
   };
 }
 
@@ -127,6 +128,7 @@ function surface() {
     asked,
     viewport,
     movesTo: (top: number) => element.movesTo(top),
+    holds: (id: number) => element.holds(id),
     inkInto(handler: InkPointer | undefined): void {
       onInk = handler;
     },
@@ -217,6 +219,17 @@ describe("attachGestures", () => {
     graph.pen("pointerup", 60, 30);
     expect(strokes).toHaveLength(2);
     expect(graph.viewport.x).toBe(30);
+  });
+
+  // A pen that leaves the field mid-stroke must still be lifted somewhere the
+  // surface hears, or the stroke is never finished.
+  it("holds the pen until the stroke is lifted", () => {
+    const graph = surface();
+    graph.pen("pointerdown", 10, 10);
+    expect(graph.holds(1)).toBe(true);
+
+    graph.pen("pointerup", 40, 10);
+    expect(graph.holds(1)).toBe(false);
   });
 
   it("finishes a stroke through the handler that began it", () => {

@@ -101,6 +101,17 @@ export interface GraphFieldInset {
   bottom?: string;
 }
 
+/**
+ * Where the field is looking, in the coordinates of the ink layer the mount
+ * hands back: a world point `(wx, wy)` is drawn there at
+ * `(wx * scale + x, wy * scale + y)`.
+ */
+export interface GraphTransform {
+  x: number;
+  y: number;
+  scale: number;
+}
+
 /** Where a menu was asked for, and what it was asked on. */
 export interface GraphMenuAt {
   /** Viewport coordinates, so the menu can be placed against the screen. */
@@ -227,6 +238,12 @@ export interface GraphSurfaceProps {
    * Absent means this surface has nothing to ink into, and a stylus pans.
    */
   onInkPointer?: (event: PointerEvent, world: { x: number; y: number }) => void;
+  /**
+   * Where the field is looking, raised once the canvas is up and again whenever
+   * it moves — a pan, a zoom, a frame, a mark the canvas came to. What is drawn
+   * into the ink layer reads this to stay on the marks under it.
+   */
+  onTransform?: (transform: GraphTransform) => void;
 }
 
 export interface DrawnNode {

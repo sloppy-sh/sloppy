@@ -21,6 +21,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
+import { canvasInk } from '../stores/canvas-ink.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
@@ -56,6 +57,8 @@ vi.mock('@sloppy/ui', async (original) => ({
 }));
 
 const Graph = (await import('./graph.svelte')).default;
+
+const HOME = homeGraphRef(DID);
 
 const FIRST = ref(1);
 const SECOND = ref(2);
@@ -381,6 +384,7 @@ beforeEach(() => {
 		});
 		return { reached: notes.length, missed: 0, notes };
 	});
+	canvasInk.clear(HOME);
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -2259,5 +2263,44 @@ describe('walking back out of a note a find jumped to', () => {
 
 		expect(at.note).toBe(THIRD);
 		expect(wayOut().textContent?.trim()).toBe('Graph');
+	});
+});
+
+describe('the drawing over the canvas', () => {
+	const stroke = (x: number) => ({ points: [{ x, y: 0, pressure: 0.5, t: 0 }], width: 2 });
+
+	function act(says: string): HTMLElement {
+		const found = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+			(item) => item.textContent?.includes(says)
+		);
+		if (!found) throw new Error(`Nothing on the drawing's menu says "${says}"`);
+		return found;
+	}
+
+	it('says nothing while there is nothing drawn', async () => {
+		await open();
+
+		expect(() => labelled('Your drawing')).toThrow();
+	});
+
+	it('gives back the last stroke, and then the whole drawing', async () => {
+		await open();
+		canvasInk.add(HOME, stroke(1));
+		canvasInk.add(HOME, stroke(2));
+		flushSync();
+
+		labelled('Your drawing').click();
+		await settle();
+		act('Undo the last stroke').click();
+		await settle();
+		expect(canvasInk.strokes(HOME)).toHaveLength(1);
+
+		labelled('Your drawing').click();
+		await settle();
+		act('Rub the drawing out').click();
+		await settle();
+
+		expect(canvasInk.strokes(HOME)).toEqual([]);
+		expect(() => labelled('Your drawing')).toThrow();
 	});
 });

@@ -38,12 +38,19 @@
 	import Maximize from '@lucide/svelte/icons/maximize';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Network from '@lucide/svelte/icons/network';
+	import PenLine from '@lucide/svelte/icons/pen-line';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Search from '@lucide/svelte/icons/search';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
-	import type { GraphHandle, GraphHoverAt, GraphMenuAt, GraphPictures } from '@sloppy/graph';
+	import type {
+		GraphHandle,
+		GraphHoverAt,
+		GraphMenuAt,
+		GraphPictures,
+		GraphTransform
+	} from '@sloppy/graph';
 	import {
 		MAX_NOTES_PER_BULK_ACT,
 		NodeBulkRequestSchema,
@@ -64,6 +71,7 @@
 	} from '@sloppy/types';
 	import {
 		AppearanceModal,
+		CanvasInk,
 		CanvasMenu,
 		ChosenBar,
 		ChosenLook,
@@ -85,6 +93,7 @@
 		TemplatePicker,
 		WallpaperSheet,
 		type CanvasMenuItem,
+		type CanvasPen,
 		type ConversationProps,
 		type FoundNote,
 		type HeldRegion,
@@ -96,6 +105,7 @@
 		type ReferenceReader
 	} from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
+	import * as DropdownMenu from '@sloppy/ui/dropdown-menu';
 	import { Input } from '@sloppy/ui/input';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount, untrack } from 'svelte';
@@ -105,6 +115,7 @@
 	import { api } from '../api.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia } from '../note-surface.js';
+	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
@@ -380,6 +391,17 @@
 	const reading = $derived(
 		openNotes.length > 0 ? { open: new Set(openNotes), active: open } : undefined
 	);
+
+	/** The canvas a pen is drawing over: the reader's own graph, or the region
+	 *  they went to read. */
+	const inkedOn = $derived(foreign ? foreign.ref : graphs.current);
+	const drawing = $derived(canvasInk.strokes(inkedOn));
+	let fieldAt = $state<GraphTransform>();
+	let inkPen = $state<CanvasPen>();
+
+	$effect(() => {
+		void canvasInk.restore(inkedOn);
+	});
 
 	/** What a surface over the graph acts on: the note a menu named, or every
 	 *  note chosen — one note is a set of one, and takes the same acts. */
@@ -1622,6 +1644,37 @@
 	{/if}
 {/snippet}
 
+<!-- Only where there is something to take back: a pen is how a drawing starts,
+     so nothing here has to be found first. -->
+{#snippet inkActs()}
+	{#if drawing.length > 0}
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon"
+						class="size-9 shrink-0 rounded-full"
+						aria-label="Your drawing"
+					>
+						<PenLine class="size-4" />
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+
+			<DropdownMenu.Content align="end" class="w-52">
+				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.undo(inkedOn)}>
+					Undo the last stroke
+				</DropdownMenu.Item>
+				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.clear(inkedOn)}>
+					Rub the drawing out
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+	{/if}
+{/snippet}
+
 <div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
 	<h1 class="sr-only">Your graph</h1>
 
@@ -1670,6 +1723,15 @@
 						if (pointing) looking = ref;
 					}}
 					onCollapse={(ref) => folded.add(ref)}
+					onInkPointer={inkPen}
+					onTransform={(at) => (fieldAt = at)}
+				/>
+				<CanvasInk
+					layer={canvas?.ink}
+					transform={fieldAt}
+					strokes={drawing}
+					ondrawn={(stroke) => canvasInk.add(inkedOn, stroke)}
+					bind:pen={inkPen}
 				/>
 			</div>
 
@@ -1793,6 +1855,7 @@
 						</Button>
 						{@render walk()}
 						{#if !walkingNow}
+							{@render inkActs()}
 							<GroundChoice
 								value={prefs.current.ground}
 								pictured={wallpaper !== null}
@@ -1868,6 +1931,7 @@
 						</Button>
 						{@render walk()}
 						{#if !walkingNow}
+							{@render inkActs()}
 							<GroundChoice
 								value={prefs.current.ground}
 								pictured={wallpaper !== null}
