@@ -1558,10 +1558,12 @@ an element inside a block and an annotation layer here, not the product itself.
 ## Verification
 
 - `pnpm check`, `pnpm lint`, `pnpm test` from the root via turbo; `cargo fmt --check` and
-  `cargo clippy -D warnings` against `src-tauri`.
+  `cargo clippy -D warnings` against `src-tauri`. `.github/workflows/verify.yml` runs all
+  of it on push and pull request, with the datastores up and `SLOPPY_INTEGRATION` set.
 - **The schema against a running server.** Immutability, the unique index and the timestamp
   type are claims about an engine, not about a string, so `@sloppy/data` asserts them over
-  the dev stack. The suite skips when nothing is listening and fails when something is: it
+  the dev stack. The suite runs where `SLOPPY_INTEGRATION` asks for it, and asked with
+  nothing listening it fails rather than skips, so a green run cannot be a silent one: it
   is also what catches a `surrealdb` client and a server image that no longer pair.
 - **Address determinism as a property test** — two simulated peers, identical creation
   sequences, byte-identical addresses. This is the protocol claim; prove it, never assert it.

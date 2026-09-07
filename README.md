@@ -36,9 +36,8 @@ read there, with profiles, comments, reactions and emoji coming from the identit
 Everything you have written comes back out as one file whenever you ask for it.
 
 `pnpm test` is about 3,600 tests across roughly two hundred files. A dozen of those files
-are integration suites that want a database listening, and they skip when there is none, so
-a clone with nothing else running still gets a green suite; Common tasks below is how to
-turn them on.
+are integration suites that want a database listening, and a run has to ask for them, so a
+clone with nothing else running still gets a green suite; Common tasks below is how to ask.
 
 What is still ahead is narrower than what is behind it. The native shell's on-device store
 is off by default, so an installed app still talks to an API rather than working with no
