@@ -45,7 +45,7 @@
     "@sloppy/types": "workspace:*",
     "d3-force": "^3.0.0",
     "graphology": "^0.26.0",
-    "pixi.js": "^8.20.1"
+    "pixi.js": "8.20.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
