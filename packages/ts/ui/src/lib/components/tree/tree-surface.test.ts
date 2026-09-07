@@ -1385,21 +1385,22 @@ describe('a note row on the narrowest phone', () => {
 	/** What the surface holds back either side of the run, and a row after it. */
 	const SCROLLER = 16;
 	const ROW_END = 8;
-	/** `--tree-step` below `sm`, and the gap between a row's parts. */
-	const STEP = 10;
-	const GAP = 8;
-	const TARGET = 44;
-	/** An upper bound on one character of a row's small text. */
-	const CHAR = 7;
+	/** `--tree-step` below `sm`, and the gap between a row's parts there. */
+	const STEP = 6;
+	const GAP = 4;
+	/** One character of a row's small text, allowed for at the widest face
+	 *  `data-app-font` puts behind the address. */
+	const CHAR = 9;
 
-	/** A run as deep as the outline sets a row in, published all the way down,
-	 *  with one more note under the last so its row carries a count too. */
+	/** A run as deep as the outline sets a row in, published and tagged all the
+	 *  way down, with one more note under the last so its row carries a count. */
 	const DEEP = (() => {
-		const out = [note('1', undefined, { published: true })];
+		const marks = { published: true, tags: ['field' as Tag] };
+		const out = [note('1', undefined, marks)];
 		let address = '1';
 		for (let step = 1; step <= 8; step += 1) {
 			const child = `${address}${step % 2 === 1 ? 'a' : '1'}`;
-			out.push(note(child, address, { published: true }));
+			out.push(note(child, address, marks));
 			address = child;
 		}
 		out.push(note(`${address}a`, address));
@@ -1411,25 +1412,24 @@ describe('a note row on the narrowest phone', () => {
 	const classesOf = (part: Element): string[] => (part.getAttribute('class') ?? '').split(/\s+/);
 
 	const gapOf = (classes: string[]): number => {
-		const gap = classes.find((one) => /^gap-\d+$/.test(one));
+		const gap = classes.find((one) => /^gap-\d+(\.5)?$/.test(one));
 		return gap ? Number(gap.slice(4)) * 4 : 0;
 	};
 
 	/** The narrowest a part can be drawn, or null where it is not drawn at all:
 	 *  a control is its touch target, an icon its size, words that truncate or
-	 *  fold are nothing, and anything else is as wide as its own text. */
+	 *  fold are nothing, and anything else is its own parts or its own text. */
 	function floorOf(part: Element): number | null {
 		const classes = classesOf(part);
 		if (classes.includes('sr-only') || classes.includes('hidden')) return null;
-		if (classes.includes('size-11')) return TARGET;
 		const sized = classes.find((one) => /^size-\d+$/.test(one));
 		if (sized) return Number(sized.slice(5)) * 4;
-		const floor = classes.find((one) => /^min-w-\d+$/.test(one));
-		if (floor) return Number(floor.slice(6)) * 4;
 		if (classes.includes('truncate')) return 0;
 		const parts = [...part.children];
-		if (parts.length === 0) return (part.textContent ?? '').trim().length * CHAR;
-		return acrossOf(parts, gapOf(classes));
+		if (parts.length > 0) return acrossOf(parts, gapOf(classes));
+		const floor = classes.find((one) => /^min-w-\d+$/.test(one));
+		if (floor) return Number(floor.slice(6)) * 4;
+		return (part.textContent ?? '').trim().length * CHAR;
 	}
 
 	function acrossOf(parts: Element[], gap: number): number {
@@ -1451,19 +1451,25 @@ describe('a note row on the narrowest phone', () => {
 		onMove: () => {}
 	};
 
+	/** The widest row a reader can reach: set in as far as the outline sets one,
+	 *  published, chosen, and carrying a tag the walk is lit by. */
 	function deep(): HTMLElement {
 		render({
 			groups: [{ key: 'one', title: 'Field notes', notes: DEEP }],
 			opened: new Set(DEEP.slice(0, 8).map((one) => one.ref)),
+			selection: ['field' as Tag],
+			chosen: new Set(DEEP.map((one) => one.ref)),
 			writable: true,
 			sections: bare
 		});
 		return labelled(`About ${DEEPEST}`);
 	}
 
-	it('fits a published row set in as far as the outline sets one', () => {
+	it('fits the widest row the outline can draw', () => {
 		const row = deep();
 		expect(row.getAttribute('aria-level')).toBe('9');
+		expect(row.getAttribute('aria-checked')).toBe('true');
+		expect(row.textContent).toContain('Published');
 		expect(row.textContent).toContain('1 note under this');
 
 		expect(acrossRow(row)).toBeLessThanOrEqual(PHONE);

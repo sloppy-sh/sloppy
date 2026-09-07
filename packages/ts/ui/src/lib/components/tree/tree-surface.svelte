@@ -542,7 +542,7 @@
 
 <div
 	bind:this={scroller}
-	class="size-full overflow-y-auto overscroll-contain scroll-fade-y [--scroll-fade:1rem] [--tree-step:0.625rem] sm:[--tree-step:1rem]"
+	class="size-full overflow-y-auto overscroll-contain scroll-fade-y [--scroll-fade:1rem] [--tree-step:0.375rem] sm:[--tree-step:1rem]"
 	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}; scroll-padding-top: calc({inset.top} + {band}px); scroll-padding-bottom: {inset.bottom}"
 	{@attach scrollFade('y')}
 >
@@ -608,7 +608,7 @@
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
+									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted sm:gap-2 {selection.length >
 										0 && asked.length === 0
 										? 'opacity-45'
 										: ''} {!heads && lit.has(row.note.ref)
@@ -744,7 +744,7 @@
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {moving?.note ===
+									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {moving?.note ===
 									row.note
 										? 'border-s-2 border-dashed border-foreground/50 bg-muted/60'
 										: ''}"
@@ -812,7 +812,7 @@
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {row.again
+									class="flex min-h-11 items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {row.again
 										? 'cursor-pointer hover:bg-muted/60'
 										: ''}"
 									style="padding-inline-start: {step}"
@@ -831,7 +831,7 @@
 									onclick={() => reveal(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2"
 									style="padding-inline-start: {step}"
 								>
 									<span class="size-11 shrink-0" aria-hidden="true"></span>

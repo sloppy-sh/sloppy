@@ -773,11 +773,12 @@ so.
   note** — it never crosses to another row, no note moves with it, and the run the outline
   draws is still the addresses'.
 - **A note's row fits the narrowest phone, and the title is what gives.** The chevron, the
-  sections control and the write control are touch targets and hold their size; the title
-  truncates before any of them does, and the words beside it — that a note is published,
-  that it is chosen, how many notes are under it — fold back to their marks where there is
-  no room, saying the same thing to anything reading the page aloud. A row that scrolls
-  sideways is a bug report against this.
+  sections control and the write control are touch targets and hold their size, and the
+  stair a row is set in is shallower where the width is scarcer; the title truncates before
+  any control does. Beside it, _published_ and _chosen_ fold back to their marks, and how
+  many notes are under a row is a wide-screen affordance — on a phone the chevron is what
+  says there is anything under it. Anything reading the page aloud is told all three either
+  way. A row that scrolls sideways is a bug report against this.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** A drag-to-dismiss bottom sheet on a phone, a
