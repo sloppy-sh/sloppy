@@ -8,7 +8,7 @@ import { session } from './session.svelte.js';
 const ROOT = node(1, '1', { title: 'Origins' });
 const UNDER = node(2, '1a', { title: 'Cells divide', origin: ROOT.ref, parent: ROOT.ref });
 const DEEPER = node(3, '1a3', { title: 'Mushrooms', origin: ROOT.ref, parent: UNDER.ref });
-const OTHER = node(4, '2', { title: 'Method' });
+const OTHER = node(4, '2', { title: 'Method', aliases: ['1b'] });
 
 const GRAPH = graphOf(ROOT);
 const ELSEWHERE = ref(90);
@@ -108,6 +108,25 @@ describe('finding a note from the graph', () => {
 		find.type('1a3');
 
 		expect(find.exact).toBe(DEEPER.ref);
+	});
+
+	it('reaches a note by a number it has been carried away from, and says which', () => {
+		find.type('1b');
+
+		expect(addresses()).toEqual(['2']);
+		expect(find.found[0].wasAt).toBe('1b');
+	});
+
+	it('resolves a whole old number straight to the note that was at it', () => {
+		find.type('1b');
+
+		expect(find.exact).toBe(OTHER.ref);
+	});
+
+	it('says nothing about an old number where the one typed still leads there', () => {
+		find.type('2');
+
+		expect(find.found[0].wasAt).toBeUndefined();
 	});
 
 	it('resolves nothing from words that are not an address', () => {

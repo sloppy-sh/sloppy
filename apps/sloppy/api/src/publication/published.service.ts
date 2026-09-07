@@ -453,11 +453,8 @@ export class PublishedService {
   /**
    * The earlier run, with the notes their author has since moved beside the
    * later ones: a move leaves the two rows at two addresses, so a window of the
-   * address order can hold one of them and not the other.
-   *
-   * Such a pair is read where the LATER row is, and that is what has it read
-   * once: the row a window is missing is fetched, and the row whose counterpart
-   * a window has already gone past is dropped rather than read as a note gone.
+   * address order can hold one of them and not the other. Such a pair is read
+   * where the LATER row is, which is what has it read once.
    */
   private async paired(
     did: DidSyr,

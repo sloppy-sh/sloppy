@@ -581,6 +581,7 @@
 			address: hit.address,
 			title: hit.title,
 			graph: hit.held || !several ? null : graphs.titleOf(hit.graph) || 'Untitled',
+			wasAt: hit.wasAt,
 			snippet: hit.snippet,
 			held: hit.held
 		}));

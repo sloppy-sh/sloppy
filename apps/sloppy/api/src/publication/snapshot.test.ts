@@ -182,7 +182,6 @@ function note(of: Partial<Node> & { address: string; depth: number }): Node {
 
 describe("a note as a version froze it", () => {
   const region = { root: at(AVA, "RGNRT"), address: "1a" };
-  /** A note nothing points at that has never been carried anywhere. */
   const NOTHING = { links: [], aliases: [] };
 
   it("carries no depth, and roots at the region", () => {

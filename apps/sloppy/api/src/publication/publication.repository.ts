@@ -245,20 +245,20 @@ export class PublicationRepository {
 
   /**
    * The addresses each of these notes has been moved away from, in address
-   * order. Every one of them, including any left outside the branch being
-   * published: what somebody wrote down is whichever address the note answered
-   * to when they read it.
+   * order — every one of them, including any left outside the branch being
+   * published.
    */
   async aliasesOf(
     did: string,
+    graph: OwnedRef,
     notes: readonly OwnedRef[],
   ): Promise<Map<OwnedRef, Address[]>> {
     const left = new Map<OwnedRef, Address[]>();
     for (const some of chunks(notes)) {
       const [rows] = await this.query<{ note: OwnedRef; address: Address }>(
         `SELECT note, address FROM node_alias
-           WHERE created_by = $did AND note IN $notes`,
-        { did, notes: some },
+           WHERE created_by = $did AND graph = $graph AND note IN $notes`,
+        { did, graph, notes: some },
       );
       for (const row of rows) {
         const held = left.get(row.note);
