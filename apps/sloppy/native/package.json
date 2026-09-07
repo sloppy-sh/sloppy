@@ -11,7 +11,7 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"test": "cargo test --manifest-path src-tauri/Cargo.toml --features local-mode",
+		"test": "vitest run && cargo test --manifest-path src-tauri/Cargo.toml --features local-mode",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
@@ -44,6 +44,7 @@
 		"eslint-config-prettier": "catalog:",
 		"eslint-plugin-svelte": "catalog:",
 		"globals": "catalog:",
+		"jsdom": "^30.0.1",
 		"prettier": "catalog:",
 		"prettier-plugin-svelte": "catalog:",
 		"prettier-plugin-tailwindcss": "catalog:",
@@ -52,6 +53,7 @@
 		"tailwindcss": "catalog:",
 		"typescript": "catalog:",
 		"typescript-eslint": "catalog:",
-		"vite": "catalog:"
+		"vite": "catalog:",
+		"vitest": "^4.1.11"
 	}
 }

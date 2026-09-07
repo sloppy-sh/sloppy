@@ -197,7 +197,6 @@ pub async fn db_query(sql: String, vars: JsonValue) -> Result<JsonValue, String>
 }
 
 /// Erase the on-device graph: drop the connection, then remove the bytes.
-/// `runtime.wipeLocal` is the seam this answers.
 #[tauri::command]
 pub async fn db_wipe(app: AppHandle) -> Result<(), String> {
     let path = store_path(&app)?;

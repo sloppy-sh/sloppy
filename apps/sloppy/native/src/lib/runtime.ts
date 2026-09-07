@@ -5,9 +5,8 @@
  */
 
 import { initRuntime, session } from '@sloppy/app-core';
-import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { LOCAL_MODE_AVAILABLE } from './local-mode';
+import { SIGN_IN_CALLBACK } from './deep-link';
 import { TAURI_PLATFORM } from './platform';
 
 /** An Android emulator's loopback is the emulated device itself; 10.0.2.2 is
@@ -26,8 +25,9 @@ export function initNativeRuntime(): void {
 		onAuthInvalid: () => session.clear(),
 		// The return leg is `deep-link.ts`.
 		openExternal: (url) => openUrl(url),
-		// Only a build carrying the on-device engine has anything on disk to erase.
-		wipeLocal: LOCAL_MODE_AVAILABLE ? () => invoke<void>('db_wipe') : undefined,
+		// A webview origin is not an address the system browser can navigate to,
+		// so consent comes back over the scheme this app is registered for.
+		signInRedirect: () => SIGN_IN_CALLBACK,
 		// Nothing in this shell writes a file yet.
 		saveFile: null
 	});

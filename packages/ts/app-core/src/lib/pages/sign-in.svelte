@@ -49,7 +49,7 @@
 		try {
 			const { consent_url } = await api.startLogin({
 				instance_url: instanceUrl,
-				redirect: `${location.origin}/`
+				redirect: runtime.signInRedirect() ?? `${location.origin}/`
 			});
 			const open = runtime.openExternal();
 			if (open) await open(consent_url);

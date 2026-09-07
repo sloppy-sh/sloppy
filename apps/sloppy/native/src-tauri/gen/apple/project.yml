@@ -59,6 +59,9 @@ targets:
         CFBundleVersion: "0.0.1"
     entitlements:
       path: sloppy-native_iOS/sloppy-native_iOS.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:sloppy.sh
     scheme:
       environmentVariables:
         RUST_BACKTRACE: full

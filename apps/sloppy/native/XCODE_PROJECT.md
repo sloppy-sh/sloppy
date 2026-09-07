@@ -1,8 +1,8 @@
 # The Xcode project is patched, and the patch has to survive regeneration
 
 `tauri ios init` writes `src-tauri/gen/apple/project.yml` **from scratch**, every time
-anyone runs it. Two things it cannot know about Sloppy therefore cannot be edits somebody
-makes once — they are [`scripts/patch-xcode-project.mjs`](scripts/patch-xcode-project.mjs),
+anyone runs it. What it cannot know about Sloppy therefore cannot be edits somebody makes
+once — they are [`scripts/patch-xcode-project.mjs`](scripts/patch-xcode-project.mjs),
 which `scripts/tauri.sh` runs for every `ios` command and immediately after `ios init`.
 
 The script is idempotent, and it fails loudly if the generator's shape changes rather than
@@ -26,9 +26,28 @@ the manifest the deep-link plugin generates; **iOS takes it from `CFBundleURLTyp
 nothing generates**. Without it the browser has nowhere to hand the URL, and sign-in on the
 one platform this app is built for ends on a dead page.
 
-The script reads the scheme from `tauri.conf.json`, so the two cannot drift, and writes it
-into `project.yml` rather than into the plist — the plist is an _output_ of `project.yml`,
-and the next `xcodegen generate` eats anything written straight into it.
+The script reads the scheme from `tauri.conf.json` and writes it into `project.yml` rather
+than into the plist — the plist is an _output_ of `project.yml`, and the next
+`xcodegen generate` eats anything written straight into it. It writes only where the key is
+absent, so changing the scheme means deleting the `CFBundleURLTypes` block and running the
+script again.
+
+## 3. A link to a note has to reach the app
+
+iOS opens an `https://` link in an app only where the app claims the domain and the domain
+claims the app back. Our half is the `com.apple.developer.associated-domains` entitlement.
+It is written into `project.yml` as the target's `entitlements.properties`, read out of the
+app-link entries in `tauri.conf.json` — and it has to live there rather than in the plist,
+because `xcodegen` writes that file from these properties and empties it when they are
+missing. As with the scheme above, the script writes only where the key is absent, so a
+changed host means deleting the `com.apple.developer.associated-domains` block first.
+
+The domain's half is `apps/sloppy/web/static/.well-known/apple-app-site-association`, which
+names an App ID that only exists once there is a signing team. Two things are outstanding on
+it: `$APPLE_TEAM_ID` stands in for the real one, and the file is deliberately extensionless,
+so whatever host serves the web shell's `build/` has to be told to send it as
+`application/json` — Apple rejects it otherwise. Until both are done a tapped link opens in
+Safari as it did before.
 
 ## Running it by hand
 
@@ -47,6 +66,7 @@ APP=src-tauri/gen/apple
 plutil -extract LSRequiresIPhoneOS raw $APP/sloppy-native_iOS/Info.plist   # → false
 plutil -p $APP/sloppy-native_iOS/Info.plist | grep -A4 CFBundleURLTypes    # → sloppy
 grep -c 'TARGETED_DEVICE_FAMILY = "1,2"' $APP/sloppy-native.xcodeproj/project.pbxproj  # → 2
+plutil -p $APP/sloppy-native_iOS/sloppy-native_iOS.entitlements | grep applinks  # → sloppy.sh
 ```
 
 ## What is NOT patched: the deployment target

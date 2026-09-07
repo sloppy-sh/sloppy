@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Re-applies the two corrections `tauri ios init` cannot know about — the iPad
- * target and the `sloppy://` scheme — to `gen/apple/project.yml`, then
- * regenerates the project from it. Idempotent, and loud rather than silent: a
- * missing anchor means the generator changed shape. XCODE_PROJECT.md is the doc
- * of record.
+ * Re-applies the corrections `tauri ios init` cannot know about — the iPad
+ * target, the `sloppy://` scheme and the domains a shared link comes in on — to
+ * `gen/apple/project.yml`, then regenerates the project from it. Idempotent,
+ * and loud rather than silent: a missing anchor means the generator changed
+ * shape. XCODE_PROJECT.md is the doc of record.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -29,8 +29,11 @@ const fail = (message) => {
 if (!existsSync(projectYml)) fail(`${projectYml} is missing — run \`pnpm tauri ios init\` first`);
 
 const tauriConf = JSON.parse(readFileSync(join(nativeDir, 'src-tauri', 'tauri.conf.json'), 'utf8'));
-const schemes = tauriConf.plugins?.['deep-link']?.desktop?.schemes ?? [];
+const deepLink = tauriConf.plugins?.['deep-link'] ?? {};
+const schemes = deepLink.desktop?.schemes ?? [];
 if (schemes.length === 0) fail('tauri.conf.json declares no deep-link scheme');
+
+const appLinkHosts = (deepLink.mobile ?? []).filter((d) => d.appLink && d.host).map((d) => d.host);
 
 const before = readFileSync(projectYml, 'utf8');
 let yaml = before;
@@ -56,6 +59,23 @@ if (!/^\s*CFBundleURLTypes:/m.test(yaml)) {
 		.map((s) => `${pad}  - CFBundleURLName: ${s}\n${pad}    CFBundleURLSchemes: [${s}]`)
 		.join('\n');
 	yaml = yaml.replace(anchor, `${pad}CFBundleURLTypes:\n${entries}\n$1$2`);
+}
+
+// iOS opens an `https://` link in the app only for a domain the app claims, and
+// it claims one through this entitlement. The entitlements plist is written by
+// `xcodegen` from these properties, so it has to be named here or the next
+// generate empties it.
+if (appLinkHosts.length > 0 && !/^\s*com\.apple\.developer\.associated-domains:/m.test(yaml)) {
+	const anchor = /^(\s*)entitlements:\s*\n(\s*)(path:.*)$/m;
+	const found = yaml.match(anchor);
+	if (!found) fail('project.yml has no entitlements block to anchor to');
+	const [, , pad, path] = found;
+	const domains = appLinkHosts.map((host) => `${pad}    - applinks:${host}`).join('\n');
+	yaml = yaml.replace(
+		anchor,
+		`$1entitlements:\n${pad}${path}\n${pad}properties:\n` +
+			`${pad}  com.apple.developer.associated-domains:\n${domains}`
+	);
 }
 
 if (yaml !== before) writeFileSync(projectYml, yaml);
