@@ -130,6 +130,16 @@ describe("what became of a note between two versions", () => {
     ).toEqual(["removed", "added"]);
   });
 
+  // The address a move left behind leads to the same note, so telling a reader
+  // the note went and another arrived would be telling them twice about one.
+  it("reports a note its author moved as one note, at both addresses", () => {
+    const before = note({ address: "1c", ref: at("CARRD") });
+    const after = note({ address: "2c", ref: at("CARRD"), aliases: ["1c"] });
+    expect(noteChanges([side(before)], [side(after)])).toEqual([
+      { change: "changed", note: after, before, sections: [] },
+    ]);
+  });
+
   it("walks both sides in address order", () => {
     const changes = noteChanges(
       [side(note({ address: "1a", ref: at("A") }))],

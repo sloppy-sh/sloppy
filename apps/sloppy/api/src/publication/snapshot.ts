@@ -88,18 +88,19 @@ export function publishedDocument(
 export function publishedNodeOf(
   node: Node,
   region: { root: OwnedRef; address: Address },
-  links: readonly OwnedRef[],
+  carried: { links: readonly OwnedRef[]; aliases: readonly Address[] },
 ): Omit<PublishedNode, "ref"> {
   const root = node.address === region.address;
   const look = travellingLook(node.appearance);
   return {
     address: node.address,
+    ...(carried.aliases.length === 0 ? {} : { aliases: [...carried.aliases] }),
     ...(root || node.parent === undefined ? {} : { parent: node.parent }),
     origin: region.root,
     title: node.title,
     tags: node.tags,
     ...(look === undefined ? {} : { look }),
-    links: [...links],
+    links: [...carried.links],
     created_at: node.created_at,
     updated_at: node.updated_at,
     ...(node.content_signature === undefined

@@ -373,6 +373,82 @@ export class NodeRepository {
   }
 
   /**
+   * The same, with the notes their author has deleted among them — what a move
+   * carries. A deleted one left where it was would sit under an address no note
+   * is at; docs/ARCHITECTURE.md § "The addressing protocol".
+   */
+  async carried(did: string, root: Node): Promise<Node[]> {
+    return this.kin(
+      root,
+      `SELECT * FROM node
+         WHERE created_by = $did AND origin = $origin AND depth >= $depth`,
+      { did, origin: root.origin, depth: root.depth },
+    );
+  }
+
+  /**
+   * A note carried somewhere else with everything under it: every row at the
+   * address the move gives it, and a `node_alias` for each address left behind.
+   *
+   * One transaction, because the two halves are one fact: a row re-addressed
+   * without its alias written is a citation that has stopped resolving, and an
+   * alias written without the row is an address leading to a note that is
+   * still at it.
+   */
+  async move(
+    did: string,
+    landed: readonly Node[],
+    aliases: readonly NodeAlias[],
+  ): Promise<void> {
+    const statements = [
+      "BEGIN TRANSACTION;",
+      "INSERT INTO node_alias $aliases;",
+    ];
+    const vars: Record<string, unknown> = {
+      did,
+      aliases: [...aliases],
+      at: nowIso(),
+    };
+    for (const [slot, node] of landed.entries()) {
+      statements.push(
+        `UPDATE $id${slot} SET address = $address${slot}, depth = $depth${slot},
+           origin = $origin${slot},
+           parent = ${node.parent ? `$parent${slot}` : "NONE"},
+           updated_at = $at
+           WHERE created_by = $did RETURN NONE;`,
+      );
+      vars[`id${slot}`] = node.id;
+      vars[`address${slot}`] = node.address;
+      vars[`depth${slot}`] = node.depth;
+      vars[`origin${slot}`] = node.origin;
+      if (node.parent) vars[`parent${slot}`] = node.parent;
+    }
+    statements.push("COMMIT TRANSACTION;");
+    await this.db.handle.query(statements.join("\n"), vars);
+  }
+
+  /** The addresses each of these notes was at before it was moved, in address
+   *  order; a note that has never been moved is absent. */
+  async aliasesOf(
+    did: string,
+    graph: OwnedRef,
+    notes: readonly OwnedRef[],
+  ): Promise<Map<OwnedRef, Address[]>> {
+    if (notes.length === 0) return new Map();
+    const [rows] = await this.query<{ note: OwnedRef; address: Address }>(
+      `SELECT note, address FROM node_alias
+         WHERE created_by = $did AND graph = $graph AND note IN $notes`,
+      { did, graph, notes: [...notes] },
+    );
+    const by = new Map<OwnedRef, Address[]>();
+    for (const row of rows) {
+      by.set(row.note, [...(by.get(row.note) ?? []), row.address]);
+    }
+    for (const held of by.values()) held.sort(compareAddresses);
+    return by;
+  }
+
+  /**
    * A node and everything that sprang from it, put away rather than removed: it
    * keeps its row, its writing and its address, and no read but the ones that
    * assign an address finds it. {@link restore} is the way back and

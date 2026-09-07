@@ -425,13 +425,19 @@ export class PublishedService {
       width = Math.max(1, Math.floor(width / 4))
     ) {
       const limit = addresses[width - 1];
-      const from = fromRun.filter((row) => row.address <= limit);
       const to = toRun.filter((row) => row.address <= limit);
-      const shared = new Set(to.map((row) => row.address));
+      const from = await this.paired(
+        did,
+        earlier.version,
+        later.version,
+        fromRun.filter((row) => row.address <= limit),
+        to,
+      );
+      const pairs = new Set(to.map((row) => row.source));
       const before = await this.stacks(
         did,
         earlier.version,
-        from.filter((row) => shared.has(row.address)),
+        from.filter((row) => pairs.has(row.source)),
       );
       const after = await this.stacks(did, later.version, to);
       if (!(before.whole && after.whole) && width > 1) continue;
@@ -442,6 +448,37 @@ export class PublishedService {
         ...(boundary === undefined ? {} : { boundary }),
       };
     }
+  }
+
+  /**
+   * The earlier run, with the notes their author has since moved beside the
+   * later ones: a move leaves the two rows at two addresses, so a window of the
+   * address order can hold one of them and not the other. Such a pair is read
+   * where the LATER row is, which is what has it read once.
+   */
+  private async paired(
+    did: DidSyr,
+    earlier: OwnedRef,
+    later: OwnedRef,
+    from: readonly SnapshotNode[],
+    to: readonly SnapshotNode[],
+  ): Promise<SnapshotNode[]> {
+    const here = new Set(from.map((row) => row.source));
+    const there = new Set(to.map((row) => row.source));
+    const [carriedIn, carriedOut] = await Promise.all([
+      this.publications.nodesBySource(
+        did,
+        earlier,
+        to.filter((row) => !here.has(row.source)).map((row) => row.source),
+      ),
+      this.publications.nodesBySource(
+        did,
+        later,
+        from.filter((row) => !there.has(row.source)).map((row) => row.source),
+      ),
+    ]);
+    const elsewhere = new Set(carriedOut.map((row) => row.source));
+    return [...from.filter((row) => !elsewhere.has(row.source)), ...carriedIn];
   }
 
   private async stacks(

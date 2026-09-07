@@ -5,6 +5,7 @@
 import { Injectable } from "@nestjs/common";
 import {
   type Address,
+  compareAddresses,
   type OwnedRef,
   ownedRefFrom,
   type Publication,
@@ -242,6 +243,30 @@ export class PublicationRepository {
     return (rows[0] ?? 0) + 1;
   }
 
+  /** The addresses each of these notes has been moved away from, in address
+   *  order. */
+  async aliasesOf(
+    did: string,
+    graph: OwnedRef,
+    notes: readonly OwnedRef[],
+  ): Promise<Map<OwnedRef, Address[]>> {
+    const left = new Map<OwnedRef, Address[]>();
+    for (const some of chunks(notes)) {
+      const [rows] = await this.query<{ note: OwnedRef; address: Address }>(
+        `SELECT note, address FROM node_alias
+           WHERE created_by = $did AND graph = $graph AND note IN $notes`,
+        { did, graph, notes: some },
+      );
+      for (const row of rows) {
+        const held = left.get(row.note);
+        if (held) held.push(row.address);
+        else left.set(row.note, [row.address]);
+      }
+    }
+    for (const addresses of left.values()) addresses.sort(compareAddresses);
+    return left;
+  }
+
   async addNodes(rows: readonly SnapshotNode[]): Promise<void> {
     if (rows.length === 0) return;
     await this.db.handle.query("INSERT INTO snapshot_node $rows", {
@@ -295,6 +320,26 @@ export class PublicationRepository {
       { did, version, after, limit },
     );
     return rows;
+  }
+
+  /** The rows one version holds for these notes, wherever it addresses them —
+   *  what a comparison asks about a note the other version does not have where
+   *  it is looking. */
+  async nodesBySource(
+    did: string,
+    version: OwnedRef,
+    sources: readonly OwnedRef[],
+  ): Promise<SnapshotNode[]> {
+    const found: SnapshotNode[] = [];
+    for (const some of chunks(sources)) {
+      const [rows] = await this.query(
+        `SELECT * FROM snapshot_node
+           WHERE created_by = $did AND version = $version AND source IN $sources`,
+        { did, version, sources: some },
+      );
+      found.push(...rows.map(parseSnapshotNode));
+    }
+    return found;
   }
 
   async nodeAt(

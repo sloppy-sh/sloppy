@@ -7,9 +7,9 @@
  * keystroke; the writing inside notes is asked for once the typing stops.
  */
 
-import { graphOf, type NodeView, type OwnedRef, type SearchHit } from '@sloppy/types';
+import { type Address, graphOf, type NodeView, type OwnedRef, type SearchHit } from '@sloppy/types';
 import { api } from '../api.js';
-import { carries } from '../note-find.js';
+import { carries, movedFrom } from '../note-find.js';
 import { serverMessage } from './errors.js';
 import { graphs } from './graphs.svelte.js';
 import { nodes } from './nodes.svelte.js';
@@ -20,14 +20,21 @@ const PAUSE = 200;
 /** Enough to find the one meant, never a list to read through. */
 const MOST = 25;
 
-function asHit(note: NodeView): SearchHit {
+/** A hit, and the address it was reached by where that is one the note has
+ *  since been carried away from. */
+export interface Reached extends SearchHit {
+	wasAt?: Address;
+}
+
+function asHit(note: NodeView, needle: string): Reached {
 	return {
 		note: note.ref,
 		address: note.address,
 		graph: graphOf(note),
 		title: note.title,
 		snippet: '',
-		held: false
+		held: false,
+		wasAt: movedFrom(note, needle)
 	};
 }
 
@@ -46,11 +53,11 @@ class FindStore {
 
 	#reached = $derived.by(() => {
 		const needle = this.#needle;
-		if (!needle) return [] as SearchHit[];
-		const out: SearchHit[] = [];
+		if (!needle) return [] as Reached[];
+		const out: Reached[] = [];
 		const walk = (list: NodeView[]): void => {
 			for (const note of list) {
-				if (carries(note, needle)) out.push(asHit(note));
+				if (carries(note, needle)) out.push(asHit(note, needle));
 				walk(nodes.children(note.ref));
 			}
 		};
@@ -66,8 +73,8 @@ class FindStore {
 		return this.#hits.filter((hit) => hit.held || canvas.has(hit.graph));
 	});
 
-	#merged = $derived.by(() => {
-		if (!this.#needle) return [] as SearchHit[];
+	#merged = $derived.by((): Reached[] => {
+		if (!this.#needle) return [];
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local to this computation and thrown away with it; the derived IS the reactivity.
 		const inside = new Map(this.#kept.map((hit) => [hit.note, hit]));
 		const rows = this.#reached.map((row) => {
@@ -84,7 +91,7 @@ class FindStore {
 	}
 
 	/** What the words reach, the numbers and titles already in hand first. */
-	get found(): readonly SearchHit[] {
+	get found(): readonly Reached[] {
 		return this.#merged.slice(0, MOST);
 	}
 
@@ -105,15 +112,16 @@ class FindStore {
 	}
 
 	/**
-	 * The note an address typed resolves to, read inside the graph the reader is
-	 * in — one address means one note there, which is what makes Enter safe.
-	 * Where that graph has none, an address held by exactly one graph on the
-	 * canvas is still unambiguous; anything else answers nothing.
+	 * The note an address typed resolves to, whether it is still at that address
+	 * or has been carried away from it, read inside the graph the reader is in —
+	 * one address means one note there, which is what makes Enter safe. Where
+	 * that graph has none, an address held by exactly one graph on the canvas is
+	 * still unambiguous; anything else answers nothing.
 	 */
 	get exact(): OwnedRef | null {
 		const needle = this.#needle;
 		if (!needle) return null;
-		const at = this.#merged.filter((row) => row.address === needle);
+		const at = this.#merged.filter((row) => row.address === needle || row.wasAt === needle);
 		const here = at.filter((row) => row.graph === graphs.current);
 		if (here.length === 1) return here[0].note;
 		return at.length === 1 ? at[0].note : null;

@@ -297,6 +297,41 @@ describe("publishing a branch, and what a peer reads back", () => {
     );
   }
 
+  /** A move, as much of one as publishing can see: moving a note is
+   *  `POST /nodes/:did/:localId/move`'s, and what publishing has to carry out
+   *  is the note's new place and the row a move leaves at its old address. */
+  async function carry(
+    note: OwnedRef,
+    from: { address: Address; parent: OwnedRef },
+    to: { address: Address; parent: OwnedRef; origin: OwnedRef },
+  ): Promise<void> {
+    const { DbService: Db } = await import("../db/db.service");
+    const when = new Date().toISOString();
+    await app.get<DbService>(Db).handle.query(
+      `UPDATE $note SET address = $address, depth = $depth, parent = $parent,
+                        origin = $origin, updated_at = $when;
+       INSERT INTO node_alias $left;`,
+      {
+        note: recordIdFromOwnedRef("node", note),
+        address: to.address,
+        depth: addressDepth(to.address),
+        parent: to.parent,
+        origin: to.origin,
+        when,
+        left: {
+          id: createOwnedRecordId("node_alias", ada.did),
+          created_by: ada.did,
+          graph: homeGraphRef(ada.did),
+          parent: from.parent,
+          address: from.address,
+          note,
+          created_at: when,
+          updated_at: when,
+        },
+      },
+    );
+  }
+
   /** What somebody with no relationship to the author has left pointing at one
    *  of their notes. Straight off the store: the read that draws one asks an
    *  identity store, and the embedded IdP serves no conversation. */
@@ -693,6 +728,90 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(byRef.get(kept.ref)?.change).toBe("removed");
     expect(byRef.get(arrived.ref)?.change).toBe("added");
   });
+
+  scenario(
+    "sends the addresses a note was carried away from, and says one moved",
+    async () => {
+      const branch = await newNode({ title: "A branch that shifts" });
+      const carried = await newNode({
+        from: { relation: "under", note: branch.ref },
+        title: "Spores",
+      });
+      const publication = await publish(branch.ref);
+      const first = publication.latest.ref;
+      const before = await read(publication.ref);
+      expect(
+        before?.nodes.find((node) => node.ref === carried.ref),
+      ).not.toHaveProperty("aliases");
+
+      const was = carried.address as Address;
+      const now = siblingAddress(was);
+      await carry(
+        carried.ref,
+        { address: was, parent: branch.ref },
+        { address: now, parent: branch.ref, origin: branch.ref },
+      );
+      const second = (await publish(branch.ref)).latest.ref;
+
+      const page = await read(publication.ref);
+      const sent = page?.nodes.find((node) => node.ref === carried.ref);
+      expect(sent?.address).toBe(now);
+      expect(sent?.aliases).toEqual([was]);
+
+      const difference = publishedChangesReader({
+        publication: publication.ref,
+        from: first,
+        to: second,
+      }).take(
+        await ok(
+          "GET",
+          `/public/publications/${at(publication.ref)}/changes?from=${encodeURIComponent(first)}&to=${encodeURIComponent(second)}`,
+          null,
+        ),
+      );
+      const entry = difference.changes.find(
+        (one) => one.note.ref === carried.ref,
+      );
+      if (entry?.change !== "changed") throw new Error("expected a change");
+      expect(entry.before.address).toBe(was);
+      expect(entry.note.address).toBe(now);
+    },
+  );
+
+  // An address the note held in a branch nobody published is a number in a part
+  // of the author's graph the publication does not cover — docs/ARCHITECTURE.md
+  // § "A published node carries only refs a peer may follow".
+  scenario(
+    "sends no address from outside the branch it published",
+    async () => {
+      const branch = await newNode({ title: "A branch that goes out" });
+      const elsewhere = await newNode({ title: "A branch that stays home" });
+      const carried = await newNode({
+        from: { relation: "under", note: elsewhere.ref },
+        title: "Spores",
+      });
+
+      const away = carried.address as Address;
+      const arriving = childAddress(branch.address as Address);
+      await carry(
+        carried.ref,
+        { address: away, parent: elsewhere.ref },
+        { address: arriving, parent: branch.ref, origin: branch.ref },
+      );
+      const settled = siblingAddress(arriving);
+      await carry(
+        carried.ref,
+        { address: arriving, parent: branch.ref },
+        { address: settled, parent: branch.ref, origin: branch.ref },
+      );
+
+      const publication = await publish(branch.ref);
+      const page = await read(publication.ref);
+      const sent = page?.nodes.find((node) => node.ref === carried.ref);
+      expect(sent?.address).toBe(settled);
+      expect(sent?.aliases).toEqual([arriving]);
+    },
+  );
 
   // The decision to publish again is made on this, so it answers about the
   // draft — where a comparison of two versions cannot, every picture in a draft

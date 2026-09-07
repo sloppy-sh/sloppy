@@ -13,6 +13,8 @@ import {
   type Publication,
   type PublicationVersion,
   parseSnapshotNode,
+  publishedChangesReader,
+  type PublishedNoteChange,
   publishedSubtreeReader,
   recordIdFromOwnedRef,
   siblingAddress,
@@ -110,6 +112,23 @@ function version(of: { notes: number; sections: number }): Snapshot {
   return { nodes, blocks };
 }
 
+/** The same version with one note carried to another address, which is what a
+ *  move leaves for a comparison to read. */
+function carried(held: Snapshot, from: Address, to: Address): Snapshot {
+  return {
+    ...held,
+    nodes: held.nodes.map((row) =>
+      row.address !== from
+        ? row
+        : parseSnapshotNode({
+            ...row,
+            address: to,
+            node: { ...row.node, address: to, aliases: [from] },
+          }),
+    ),
+  };
+}
+
 /** One version's rows in the orders the repository reads them back in. */
 interface Held {
   ordered: SnapshotNode[];
@@ -193,6 +212,15 @@ function repositoryOf(first: Snapshot): {
     async nodeAt(_did: string, version: OwnedRef, address: Address) {
       return (
         rows(version).ordered.find((row) => row.address === address) ?? null
+      );
+    },
+    async nodesBySource(
+      _did: string,
+      version: OwnedRef,
+      sources: readonly OwnedRef[],
+    ) {
+      return rows(version).ordered.filter((row) =>
+        sources.includes(row.source),
       );
     },
     async blocksOf(
@@ -317,6 +345,55 @@ describe("serving one version a page at a time", () => {
       await service.subtree(AVA, ref("ZZ"), undefined, undefined),
     ).toBeNull();
   });
+});
+
+describe("comparing two versions a note moved between", () => {
+  // A comparison reads one window of the address order at a time, and a note
+  // its author moved is at two addresses that can be windows apart. A reader
+  // refuses a run naming one note twice, so the pair has to be reported once
+  // however far the move carried it.
+  it("reports one note moved, however far apart the two addresses fall", async () => {
+    const first = version({ notes: 150, sections: 1 });
+    const order = first.nodes.map((row) => row.address).sort();
+    const early = order[1];
+    const late = order[order.length - 1];
+    const store = repositoryOf(first);
+    const service = new PublishedService(store.repository);
+    const second = store.publish(
+      carried(carried(first, early, "1zz" as Address), late, "1a1" as Address),
+    );
+
+    const reader = publishedChangesReader({
+      publication: PUBLICATION,
+      from: VERSION,
+      to: second,
+    });
+    const changes: PublishedNoteChange[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const page = reader.take(
+        await service.changes(AVA, PUBLICATION, VERSION, second, cursor),
+      );
+      pages += 1;
+      changes.push(...page.changes);
+      cursor = page.next_cursor;
+    } while (cursor !== undefined);
+
+    expect(pages).toBeGreaterThan(1);
+    expect(changes.map((one) => [one.change, one.note.address]).sort()).toEqual(
+      [
+        ["changed", "1a1"],
+        ["changed", "1zz"],
+      ],
+    );
+    for (const one of changes) {
+      if (one.change !== "changed") throw new Error("expected a moved note");
+      expect(one.before.address).toBe(
+        one.note.address === "1zz" ? early : late,
+      );
+    }
+  }, 30_000);
 });
 
 describe("a read the author publishes over", () => {

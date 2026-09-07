@@ -9,6 +9,9 @@
 		/** What the graph this address is read in is called, or null where naming
 		 *  it would tell the reader nothing. */
 		graph: string | null;
+		/** An address this note has been carried away from that the typed number
+		 *  reached, absent where its own address or its title is what matched. */
+		wasAt?: string;
 		/** The writing around what matched, already cut to length. Empty where the
 		 *  number or the title matched on its own. */
 		snippet: string;
@@ -131,6 +134,11 @@
 								<span class="shrink-0 address text-xs">{note.address}</span>
 								<span class="min-w-0 flex-1 truncate">{nameOf(note)}</span>
 							</span>
+							{#if note.wasAt}
+								<span class="text-xs text-muted-foreground"
+									>Was at <span class="address">{note.wasAt}</span></span
+								>
+							{/if}
 							{#if note.snippet}
 								<span class="line-clamp-2 text-xs text-muted-foreground">{note.snippet}</span>
 							{/if}

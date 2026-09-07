@@ -1,12 +1,13 @@
-import type { NodeView, OwnedRef, Tag } from '@sloppy/types';
+import type { NodeView, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	AT,
 	DID,
 	type FakeApi,
 	finding,
+	moving,
 	node,
 	ref,
 	useFakeApi
@@ -67,6 +68,9 @@ const shown = () =>
 	rows().map(
 		(row) => row.querySelector('.address')?.textContent?.trim() ?? row.textContent?.trim()
 	);
+
+/** What the outline says about the last act, as anyone listening hears it. */
+const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
 
 const labelled = (address: string) =>
 	rows().find(
@@ -485,5 +489,122 @@ describe('a note’s sections in the walk', () => {
 		});
 		await settle();
 		expect(showControl()).toBeNull();
+	});
+});
+
+// AI.md § "The Address Is the Protocol": a note carried to another run takes
+// the next address there, and the one it leaves keeps leading to it.
+describe('carrying a note to another run', () => {
+	const branch = [
+		node(1, '1', { graph: THESIS }),
+		node(2, '1a', { graph: THESIS, parent: ref(1), origin: ref(1) }),
+		node(3, '2', { graph: THESIS })
+	];
+
+	const gripOf = (address: string) => labelled(address).querySelector('.address') as HTMLElement;
+
+	it('asks the server to carry the focused note under the note above it', async () => {
+		let asked: NoteDestination | null = null;
+		moving(fake, ref(3), (to) => {
+			asked = to;
+			return [{ ...node(3, '1b', { graph: THESIS, parent: ref(1), origin: ref(1) }) }];
+		});
+
+		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+		const row = labelled('2');
+		row.focus();
+		row.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowRight',
+				altKey: true,
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		flushSync();
+		await settle();
+
+		expect(asked).toEqual({ relation: 'under', note: ref(1) });
+	});
+
+	it('says why a note did not go, in the server’s own words', async () => {
+		moving(
+			fake,
+			ref(3),
+			() => new Response('{"message":"That note is not there any more."}', { status: 409 }) as never
+		);
+
+		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+		const row = labelled('2');
+		row.focus();
+		row.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowRight',
+				altKey: true,
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		flushSync();
+		await settle();
+
+		expect(said()).toBe('That note is not there any more.');
+	});
+
+	// A refusal that outlived the act it described would teach the reader to read
+	// past the next one.
+	it('takes the refusal down again on its own', async () => {
+		moving(
+			fake,
+			ref(3),
+			() => new Response('{"message":"That note is not there any more."}', { status: 409 }) as never
+		);
+
+		vi.useFakeTimers();
+		try {
+			render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+			const row = labelled('2');
+			row.focus();
+			row.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: 'ArrowRight',
+					altKey: true,
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true
+				})
+			);
+			for (let turn = 0; turn < 4; turn += 1) {
+				await vi.advanceTimersByTimeAsync(0);
+				flushSync();
+			}
+			expect(said()).toBe('That note is not there any more.');
+
+			await vi.advanceTimersByTimeAsync(6000);
+			flushSync();
+			expect(said()).toBe('');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// A held region is one author's alone: nothing in it is the reader's to carry.
+	it('offers no grip on a branch pulled from somebody else', async () => {
+		const root = ref(20, OTHER);
+		render({
+			notes: [{ ...node(20, '3'), ref: root, created_by: OTHER, origin: root }],
+			fields: undefined
+		});
+		await settle();
+
+		expect(gripOf('3').className).not.toContain('cursor-grab');
+	});
+
+	it('offers it on the reader’s own', () => {
+		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+
+		expect(gripOf('2').className).toContain('cursor-grab');
 	});
 });

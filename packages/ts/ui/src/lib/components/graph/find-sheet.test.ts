@@ -119,6 +119,19 @@ describe('the find sheet', () => {
 		expect(rows()[0].textContent).toContain("Somebody else's");
 	});
 
+	it('says which old number a row was reached by', async () => {
+		await open({ query: '1c', found: [found({ address: '2c', wasAt: '1c' })] });
+
+		expect(rows()[0].textContent?.replace(/\s+/g, ' ')).toContain('Was at 1c');
+		expect(rows()[0].textContent).toContain('2c');
+	});
+
+	it('says nothing about an old number where the one typed still leads there', async () => {
+		await open({ query: '1a3', found: [found()] });
+
+		expect(screen()).not.toContain('Was at');
+	});
+
 	it('shows the writing around what matched', async () => {
 		await open({ query: 'bench', found: [found({ snippet: 'the mushrooms under the bench' })] });
 

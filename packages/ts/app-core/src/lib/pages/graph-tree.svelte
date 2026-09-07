@@ -2,9 +2,18 @@
 	// The graph walked instead of drawn, for a reader going through the notes one
 	// at a time. A run belongs to the graph it was written in — AI.md § "The
 	// Address Is the Protocol" — so each graph on the canvas is its own tree.
-	import { graphOf, type NodeView, type OwnedRef, type Tag } from '@sloppy/types';
+	import {
+		graphOf,
+		type NodeView,
+		type NoteDestination,
+		type OwnedRef,
+		type Tag
+	} from '@sloppy/types';
 	import { nameOf, TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
+	import { onDestroy } from 'svelte';
 	import { api } from '../api.js';
+	import { serverMessage } from '../stores/errors.js';
+	import { nodes } from '../stores/nodes.svelte.js';
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { session } from '../stores/session.svelte.js';
@@ -45,6 +54,8 @@
 	} = $props();
 
 	const LAST_WRITTEN = 8;
+	/** How long a refusal is left up before the outline is quiet again. */
+	const REFUSAL_MS = 6000;
 
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
 
@@ -136,6 +147,26 @@
 		outlineSections.mine(session.viewer?.did ?? null);
 	});
 
+	/** Why the note somebody carried did not go, gone again on its own. */
+	let refused = $state('');
+	let refusing: ReturnType<typeof setTimeout> | undefined;
+	onDestroy(() => clearTimeout(refusing));
+
+	// A held region is somebody else's graph, and nothing in it is the reader's
+	// to carry.
+	const moveNote = $derived<TreeSurfaceProps['moveNote']>(
+		fields ? { move: carry, refused } : undefined
+	);
+
+	function carry(ref: OwnedRef, to: NoteDestination): void {
+		refused = '';
+		clearTimeout(refusing);
+		void nodes.move(ref, to).catch((error: unknown) => {
+			refused = serverMessage(error) ?? 'Sloppy could not move that note. Try again.';
+			refusing = setTimeout(() => (refused = ''), REFUSAL_MS);
+		});
+	}
+
 	// A note reached from anywhere else — the canvas, a link inside another note,
 	// an address in the URL — is one the tree has to be able to show.
 	$effect(() => {
@@ -161,4 +192,5 @@
 	{onOpen}
 	{writeUnder}
 	{sections}
+	{moveNote}
 />

@@ -14,6 +14,7 @@ import {
   parseNode,
   recordIdFromOwnedRef,
   type SnapshotAsset,
+  type SnapshotNode,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import type { BlockRepository } from "../block/block.repository";
@@ -89,6 +90,8 @@ interface Ledger {
   assetsRemoved: number;
   copying: number;
   atOnce: number;
+  /** The old addresses the version filed for the note it published. */
+  aliasesSent?: readonly Address[];
 }
 
 /**
@@ -102,6 +105,8 @@ function publishing(of: {
   refusing: boolean;
   raced?: boolean;
   holding?: Promise<void>;
+  /** Addresses the root has been carried away from. */
+  left?: Address[];
 }): {
   service: PublicationService;
   ledger: Ledger;
@@ -136,7 +141,12 @@ function publishing(of: {
     async addAsset() {
       if (of.refusing) throw new Error("that pairing is already taken");
     },
-    async addNodes() {},
+    async aliasesOf() {
+      return new Map(of.left === undefined ? [] : [[ROOT, of.left]]);
+    },
+    async addNodes(rows: readonly SnapshotNode[]) {
+      ledger.aliasesSent = rows[0]?.node.aliases;
+    },
     async addBlocks() {},
     async nextSequence() {
       asked += 1;
@@ -278,5 +288,27 @@ describe("a publish that does not finish", () => {
     expect(view.latest.sequence).toBe(1);
     expect(ledger.released).toEqual([]);
     expect(ledger.chainsRemoved).toEqual([]);
+  });
+});
+
+// A publication covers one branch, and an address the note held elsewhere in
+// the author's graph is a number in a part of it nobody published —
+// docs/ARCHITECTURE.md § "A published node carries only refs a peer may follow".
+describe("the old addresses a version files", () => {
+  it("sends the ones inside the branch, and none from outside it", async () => {
+    const { service, ledger } = publishing({
+      refusing: false,
+      left: ["1c" as Address, "3a" as Address],
+    });
+
+    await service.publish(delegation, { root: ROOT });
+    expect(ledger.aliasesSent).toEqual(["1c"]);
+  });
+
+  it("says nothing of old addresses for a note that has never moved", async () => {
+    const { service, ledger } = publishing({ refusing: false });
+
+    await service.publish(delegation, { root: ROOT });
+    expect(ledger.aliasesSent).toBeUndefined();
   });
 });

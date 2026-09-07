@@ -17,6 +17,8 @@ import {
   createOwnedRecordId,
   DEFAULT_COMMENT_ACCESS,
   entityView,
+  graphOf,
+  isInSubtree,
   type Node,
   nowIso,
   type OwnedRef,
@@ -390,6 +392,7 @@ export class PublicationService {
     const region = {
       root: ownedRefFrom(into.root.id),
       address: into.root.address,
+      graph: graphOf(into.root),
     };
     const carried = new Set(branch.map((node) => ownedRefFrom(node.id)));
     const reach = new Reach(carried, this.nodes, did);
@@ -416,13 +419,18 @@ export class PublicationService {
   private async write(
     did: string,
     into: { version: OwnedRef; copies: Copies },
-    region: { root: OwnedRef; address: Address },
+    region: { root: OwnedRef; address: Address; graph: OwnedRef },
     reach: Reach,
     emoji: ReadonlyMap<string, string>,
     batch: readonly Node[],
     stacks: ReadonlyMap<OwnedRef, Block[]>,
   ): Promise<void> {
     const held = snapshotted(into.copies, emoji, reach);
+    const left = await this.publications.aliasesOf(
+      did,
+      region.graph,
+      batch.map((node) => ownedRefFrom(node.id)),
+    );
     const now = nowIso();
     const nodes: SnapshotNode[] = [];
     const blocks: SnapshotBlock[] = [];
@@ -435,11 +443,12 @@ export class PublicationService {
           version: into.version,
           source,
           address: node.address,
-          node: publishedNodeOf(
-            node,
-            region,
-            node.links.filter((target) => reach.holds(target)),
-          ),
+          node: publishedNodeOf(node, region, {
+            links: node.links.filter((target) => reach.holds(target)),
+            aliases: (left.get(source) ?? []).filter((was) =>
+              isInSubtree(region.address, was),
+            ),
+          }),
           created_at: now,
           updated_at: now,
         }),

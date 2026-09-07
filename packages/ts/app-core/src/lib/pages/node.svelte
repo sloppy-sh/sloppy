@@ -14,6 +14,7 @@
 	import Globe from '@lucide/svelte/icons/globe';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
+	import Move from '@lucide/svelte/icons/move';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -21,11 +22,16 @@
 	import {
 		alongRun,
 		BlockViewSchema,
+		childAddress,
 		citedNotes,
+		compareAddresses,
 		compareOrd,
 		graphOf,
 		isInSubtree,
+		parentAddress,
 		runKeyOf,
+		siblingAddress,
+		type Address,
 		type BlockDocument,
 		type BlockView,
 		type CommentAccess,
@@ -44,6 +50,7 @@
 		ConfirmModal,
 		Conversation,
 		LookControls,
+		MoveSheet,
 		nameOf,
 		NoteMenu,
 		PublishModal,
@@ -54,6 +61,7 @@
 		TemplatePicker,
 		textDocument,
 		writeTemplate,
+		type MoveTarget,
 		type NoteMenuItem,
 		type NoteReferences,
 		type NoteTemplate,
@@ -71,7 +79,7 @@
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
 	import { deviceStore, type DeviceArea } from '../device-store.js';
-	import { carries, reachEveryGraph, type Reach } from '../note-find.js';
+	import { carries, movedFrom, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { drafts } from '../stores/drafts.svelte.js';
@@ -206,6 +214,7 @@
 		unlink?: string;
 		tag?: string;
 		look?: string;
+		move?: string;
 		publish?: string;
 		remove?: string;
 		copy?: string;
@@ -227,7 +236,7 @@
 	$effect(() => {
 		const of = ref;
 		untrack(() => {
-			for (const act of ['remove', 'tag', 'look', 'link', 'publish', 'copy'] as const) {
+			for (const act of ['remove', 'tag', 'look', 'link', 'move', 'publish', 'copy'] as const) {
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
 		});
@@ -235,12 +244,14 @@
 		// note now holds, not about an act the reader asked for.
 		return () => {
 			if (refusals.get(of)?.writing !== undefined) refuse(of, 'writing', null);
+			if (untrack(() => moved)?.of === of) moved = null;
 		};
 	});
 
 	/** Acts in the air, by the note they were asked in, so a wait in one tab does
 	 *  not disable the same act in the next. */
 	const relinking = new SvelteSet<OwnedRef>();
+	const relocating = new SvelteSet<OwnedRef>();
 	const seeding = new SvelteSet<OwnedRef>();
 
 	let titleField = $state<HTMLTextAreaElement | null>(null);
@@ -282,13 +293,16 @@
 	let acting = $state(false);
 	let tagging = $state(false);
 	let linking = $state(false);
+	let carrying = $state(false);
 	let publishing = $state(false);
 	/** Whoever the reader tapped in the conversation, until they close them. */
 	let meeting = $state<string | null>(null);
 	let removing = $state(false);
 
 	$effect(() => {
-		onAsking?.(acting || tagging || linking || publishing || removing || shaping !== null);
+		onAsking?.(
+			acting || tagging || linking || carrying || publishing || removing || shaping !== null
+		);
 		return () => onAsking?.(false);
 	});
 
@@ -298,6 +312,11 @@
 
 	/** Typed into the field that reaches a note by the address a person cites. */
 	let cited = $state('');
+	/** Typed into the field that names where this note is carried to. */
+	let sought = $state('');
+	/** The address this note was at before the reader moved it, until they open
+	 *  another: it is what a citation written before the move still leads by. */
+	let moved = $state<{ of: OwnedRef; was: Address } | null>(null);
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
 
@@ -523,6 +542,57 @@
 		].slice(0, MATCHES);
 	});
 
+	/** The address a note joining this run takes: the greatest it has ever used,
+	 *  and one on. A run may have spent addresses this device has not read, which
+	 *  is why the sheet offers this one as the earliest rather than the answer. */
+	function nextIn(under: Address | null, run: readonly Address[]): Address {
+		const spent = run.filter((address) => parentAddress(address) === under);
+		if (spent.length === 0) return childAddress(under);
+		return siblingAddress(spent.reduce((a, b) => (compareAddresses(a, b) >= 0 ? a : b)));
+	}
+
+	/** Every address a run has spent that this device holds: what the notes in it
+	 *  are at, and what they were at before they were moved. */
+	function spentIn(run: readonly NodeView[]): Address[] {
+		return run.flatMap((note) => [note.address, ...(note.aliases ?? [])]);
+	}
+
+	/** Where this note lands if it is carried against `target`. */
+	function landsAt(target: NodeView): { under: Address; after: Address } {
+		const above = target.parent ? nodes.get(target.parent) : undefined;
+		const alongTarget = target.parent
+			? nodes.children(target.parent)
+			: here.filter((note) => !note.parent);
+		return {
+			under: nextIn(target.address, spentIn(nodes.children(target.ref))),
+			after: nextIn(above?.address ?? parentAddress(target.address), spentIn(alongTarget))
+		};
+	}
+
+	/** Where this note may be carried: the notes of the graph it was written in,
+	 *  since a note never changes graph. What it roots is offered and refused
+	 *  rather than hidden, so somebody who types its number is told why. */
+	const carriers = $derived.by(() => {
+		const needle = sought.trim().toLowerCase();
+		if (!node || !needle) return [];
+		const moving = node;
+		return here
+			.filter((note) => carries(note, needle))
+			.slice(0, MATCHES)
+			.map<MoveTarget>((note) => ({
+				ref: note.ref,
+				address: note.address,
+				title: note.title,
+				wasAt: movedFrom(note, needle),
+				lands:
+					note.ref === ref
+						? { refused: 'The note you are moving.' }
+						: isInSubtree(moving.address, note.address)
+							? { refused: 'Inside the note you are moving.' }
+							: landsAt(note)
+			}));
+	});
+
 	const references: NoteReferences = {
 		find: (query: string) => {
 			const needle = query.toLowerCase();
@@ -712,6 +782,7 @@
 					},
 					{ label: 'Write the next note', icon: ArrowRight, onSelect: () => write('after', null) }
 				]),
+		...(own ? [{ label: 'Move this note', icon: Move, onSelect: () => (carrying = true) }] : []),
 		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
 		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
 		{
@@ -740,6 +811,7 @@
 		(!removing && refused.remove) ||
 			(!publishing && refused.publish) ||
 			(!linking && refused.link) ||
+			(!carrying && refused.move) ||
 			(side !== 'look' && refused.look) ||
 			(!tagging && refused.tag) ||
 			refused.copy ||
@@ -1264,6 +1336,28 @@
 		cited = '';
 	}
 
+	async function carryTo(to: { relation: 'under' | 'after'; note: OwnedRef }): Promise<void> {
+		const of = ref;
+		const was = node?.address;
+		if (!was || relocating.has(of)) return;
+		relocating.add(of);
+		refuse(of, 'move', null);
+		try {
+			await nodes.move(of, to);
+			moved = { of, was };
+			carrying = false;
+			sought = '';
+		} catch (error) {
+			refuse(
+				of,
+				'move',
+				serverMessage(error) ?? 'Sloppy could not move that note. Try again in a moment.'
+			);
+		} finally {
+			relocating.delete(of);
+		}
+	}
+
 	async function unlink(target: OwnedRef): Promise<void> {
 		const before = node?.links;
 		if (!before) return;
@@ -1499,6 +1593,11 @@
 						<span class="max-w-28 truncate text-xs text-muted-foreground">{graphHere}</span>
 					{/if}
 				</button>
+				{#if moved?.of === ref}
+					<span class="shrink-0 text-xs text-muted-foreground">
+						was <span class="address">{moved.was}</span>
+					</span>
+				{/if}
 				<Button
 					bind:ref={actsFrom}
 					variant="ghost"
@@ -1923,6 +2022,16 @@
 					{/if}
 				</div>
 			</ResponsiveModal>
+			<MoveSheet
+				bind:open={carrying}
+				query={sought}
+				found={carriers}
+				settled={reach === 'whole'}
+				refused={refused.move ?? null}
+				busy={relocating.has(ref)}
+				onquery={(words) => (sought = words)}
+				onmove={(to) => void carryTo(to)}
+			/>
 		{/key}
 
 		<TemplatePicker
