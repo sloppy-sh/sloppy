@@ -12,6 +12,8 @@ export interface TreeNote {
 	parent?: OwnedRef;
 	title: string;
 	tags: readonly Tag[];
+	/** Whether anyone with the address can read it. */
+	published: boolean;
 }
 
 /** The run a note with nothing above it belongs to, as {@link walkTree} keys it. */
@@ -61,8 +63,8 @@ export interface TreeRest {
 	rest: number;
 	/** How many of the run are drawn now, which asking for more counts up from. */
 	drawn: number;
-	/** How many of the waiting ones carry a selected tag or hold a note that
-	 *  does; 0 while nothing is selected. */
+	/** How many of the waiting ones carry a selected tag themselves, which is
+	 *  how many draw lit once they are asked for; 0 while nothing is selected. */
 	lit: number;
 }
 
@@ -108,7 +110,7 @@ export function walkTree({
 	const runs = runsOf(notes);
 	const roots = runs.get(TOP) ?? [];
 	const under = countUnder(runs, roots);
-	const lit = litBy(notes, selection);
+	const { asked, toward } = litBy(notes, selection);
 	const rows: TreeRow[] = [];
 	let budget = LIT_PAGE;
 	const stack: {
@@ -130,7 +132,10 @@ export function walkTree({
 		// A page that stops short of the note being read would leave the reader
 		// looking for themselves behind "show more".
 		const held = reading === null ? -1 : frame.run.findIndex((one) => one.ref === reading);
-		const litRoom = budgeted ? Math.max(frame.at + budget, held + 1) : frame.run.length;
+		// The escape can spend past the budget, so the allowance never falls below
+		// what this frame has already drawn: a rest row counting a row above it
+		// would say more is waiting than the run holds.
+		const litRoom = budgeted ? Math.max(frame.at, frame.at + budget, held + 1) : frame.run.length;
 		const drawn = Math.min(frame.run.length, Math.max(ask ?? page, held + 1), litRoom);
 		const at = frame.at;
 		if (at >= drawn) {
@@ -143,7 +148,7 @@ export function walkTree({
 					depth: frame.depth,
 					rest: frame.run.length - drawn,
 					drawn,
-					lit: frame.run.slice(drawn).filter((one) => lit.has(one.ref)).length
+					lit: frame.run.slice(drawn).filter((one) => asked.has(one.ref)).length
 				});
 			}
 			continue;
@@ -154,7 +159,7 @@ export function walkTree({
 		const children = runs.get(note.ref) ?? [];
 		const chose = opened.has(note.ref);
 		const lights =
-			!chose && budget > 0 && !shut.has(note.ref) && children.some((one) => lit.has(one.ref));
+			!chose && budget > 0 && !shut.has(note.ref) && children.some((one) => toward.has(one.ref));
 		const open = children.length > 0 && (chose || lights);
 		rows.push({
 			kind: 'note',
@@ -194,21 +199,26 @@ function runsOf(notes: readonly TreeNote[]): Map<string, TreeNote[]> {
 	return runs;
 }
 
-/** Every note that carries one of `selection`, and every note above it, so a
- *  branch can be asked whether the answer is somewhere beneath it. */
-function litBy(notes: readonly TreeNote[], selection: readonly Tag[]): ReadonlySet<OwnedRef> {
-	const lit = new Set<OwnedRef>();
-	if (selection.length === 0) return lit;
+/** The notes that carry one of `selection` themselves, and those plus every note
+ *  above them, so a branch can be asked whether the answer is beneath it. */
+function litBy(
+	notes: readonly TreeNote[],
+	selection: readonly Tag[]
+): { asked: ReadonlySet<OwnedRef>; toward: ReadonlySet<OwnedRef> } {
+	const asked = new Set<OwnedRef>();
+	const toward = new Set<OwnedRef>();
+	if (selection.length === 0) return { asked, toward };
 	const byRef = new Map(notes.map((note) => [note.ref, note]));
 	for (const note of notes) {
 		if (!note.tags.some((tag) => selection.includes(tag))) continue;
+		asked.add(note.ref);
 		let up: TreeNote | undefined = note;
-		while (up !== undefined && !lit.has(up.ref)) {
-			lit.add(up.ref);
+		while (up !== undefined && !toward.has(up.ref)) {
+			toward.add(up.ref);
 			up = up.parent === undefined ? undefined : byRef.get(up.parent);
 		}
 	}
-	return lit;
+	return { asked, toward };
 }
 
 function countUnder(

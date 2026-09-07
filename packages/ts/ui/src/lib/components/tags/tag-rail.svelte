@@ -99,6 +99,11 @@
 			spellcheck="false"
 			aria-label="Find a tag"
 			placeholder="Find a tag"
+			onkeydown={(event) => {
+				if (event.key !== 'Escape' || typed === '') return;
+				event.stopPropagation();
+				typed = '';
+			}}
 		/>
 	{/if}
 

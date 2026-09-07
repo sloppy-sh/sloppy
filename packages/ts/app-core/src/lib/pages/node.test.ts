@@ -204,6 +204,27 @@ describe('a note opened to read', () => {
 		expect(focused()).not.toBe(title());
 	});
 
+	// PRODUCT.md § Design Principles 3: the address is what a person cites, so it
+	// leads wherever the note is named — a tab among twenty of them included.
+	it('names its window by its address, whether or not it has a title yet', async () => {
+		api.on(`PATCH ${path(FIRST)}`, (_url, init) => ({
+			...node(1, '1'),
+			...(JSON.parse(String(init?.body)) as Partial<NodeView>)
+		}));
+		stubViewport(WIDE);
+		const written = await nodes.create({});
+		mounted = mount(NoteOnSurface, { target, props: { opened: written.ref, fresh: false } });
+		flushSync();
+		await settle();
+
+		expect(document.title).toBe('1 · Untitled · Sloppy');
+
+		await nodes.update(written.ref, { title: 'Origins' });
+		await settle();
+
+		expect(document.title).toBe('1 · Origins · Sloppy');
+	});
+
 	it('does not call writing it could not read nothing at all', async () => {
 		stubViewport(WIDE);
 		await nodes.create({});

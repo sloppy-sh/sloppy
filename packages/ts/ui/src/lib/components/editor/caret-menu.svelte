@@ -1,3 +1,12 @@
+<script module lang="ts">
+	/** The id each menu's listbox carries, which the writing that keeps the focus
+	 *  points its `aria-controls` at. */
+	export const CARET_MENU = { notes: 'caret-menu-notes', emoji: 'caret-menu-emoji' } as const;
+
+	/** The row `aria-activedescendant` names, by its place in the menu. */
+	export const caretOptionId = (menu: string, index: number): string => `${menu}-option-${index}`;
+</script>
+
 <script lang="ts">
 	// A menu the caret carries: `:` for emoji, `[[` for notes.
 	//
@@ -8,6 +17,7 @@
 	import type { Snippet } from 'svelte';
 
 	let {
+		id,
 		open,
 		rect,
 		width,
@@ -17,6 +27,7 @@
 		label,
 		children
 	}: {
+		id: string;
 		open: boolean;
 		/** Where the caret is, in viewport coordinates. */
 		rect: DOMRect | null;
@@ -55,6 +66,7 @@
 		<div
 			class="pointer-events-auto absolute overflow-y-auto overscroll-contain rounded-lg border bg-popover scroll-fade-y p-1 text-popover-foreground shadow-md [--scroll-fade:0.75rem]"
 			style="top: {at.top}px; left: {at.left}px; width: {width}px; max-height: {maxHeight}px"
+			{id}
 			role="listbox"
 			aria-label={label}
 		>

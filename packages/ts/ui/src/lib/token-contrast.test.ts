@@ -124,6 +124,9 @@ function onSurfaces(resolved: Map<string, string>, name: string): number {
 	return Math.min(...SURFACES.map((s) => contrastRatio(mark, color(resolved, s))));
 }
 
+/** What a line carrying meaning on its own owes — WCAG 1.4.11. */
+const NON_TEXT_FLOOR = 3;
+
 describe('token contrast', () => {
 	it('reads the tokens out of app.css', () => {
 		expect(ALL_RULES.length).toBeGreaterThan(8);
@@ -149,6 +152,13 @@ describe('token contrast', () => {
 		expect(color(resolved, '--muted').l).toBeCloseTo(surface + toward, 3);
 	});
 
+	// `input.svelte` draws a text field as `border-input bg-background`, so the
+	// boundary is the whole of what identifies the control. Naming the floor it
+	// stands under makes raising it a decision taken here — flip this row then.
+	it.each(THEMES)('%s: the control boundary stands under the floor', (theme) => {
+		expect(onSurfaces(tokens(theme, 'indigo'), '--input')).toBeLessThan(NON_TEXT_FLOOR);
+	});
+
 	it.each(THEMES)('%s: secondary text clears AA on the page and on muted', (theme) => {
 		const resolved = tokens(theme, 'indigo');
 		const dim = color(resolved, '--muted-foreground');
@@ -161,7 +171,7 @@ describe('token contrast', () => {
 		const resolved = tokens(theme, 'indigo');
 
 		it.each(FACET_SLOTS)('slot %i clears 3:1 on every surface', (slot) => {
-			expect(onSurfaces(resolved, `--facet-${slot}`)).toBeGreaterThanOrEqual(3);
+			expect(onSurfaces(resolved, `--facet-${slot}`)).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
 		});
 
 		it('keeps every pair of slots at least 0.03 apart in OKLab', () => {
@@ -181,7 +191,14 @@ describe('token contrast', () => {
 
 	describe.each(THEMES)('%s accents', (theme) => {
 		it.each(ACCENTS)('%s draws a mark that clears 3:1 on every surface', (accent) => {
-			expect(onSurfaces(tokens(theme, accent), '--primary-mark')).toBeGreaterThanOrEqual(3);
+			expect(onSurfaces(tokens(theme, accent), '--primary-mark')).toBeGreaterThanOrEqual(
+				NON_TEXT_FLOOR
+			);
+		});
+
+		// The focus ring is the only thing saying where a keyboard reader stands.
+		it.each(ACCENTS)('%s draws a focus ring that clears 3:1 on every surface', (accent) => {
+			expect(onSurfaces(tokens(theme, accent), '--ring')).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
 		});
 
 		it.each(ACCENTS)('%s carries readable text on its own fill', (accent) => {

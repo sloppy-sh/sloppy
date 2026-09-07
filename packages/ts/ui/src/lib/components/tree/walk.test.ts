@@ -25,6 +25,7 @@ function note(address: string, parent?: string, over: Partial<TreeNote> = {}): T
 		parent: parent === undefined ? undefined : held(parent),
 		title: address,
 		tags: [],
+		published: false,
 		...over
 	};
 }
@@ -198,14 +199,36 @@ describe('a tag the reader selected', () => {
 		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 30 });
 	});
 
-	it('counts a waiting note that only holds one deeper down', () => {
+	// A waiting note that only HOLDS a lit one draws dimmed when it is asked for,
+	// so counting it would promise a light the reader does not get.
+	it('leaves out a waiting note that only holds one deeper down', () => {
 		const notes = [
 			note('1'),
 			...Array.from({ length: 150 }, (_, at) => note(`1${letters(at + 1)}`, '1')),
 			note(`1${letters(150)}a`, `1${letters(150)}`, { tags: question })
 		];
 		const rows = walkTree({ notes, opened: opened('1'), selection: question });
-		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 1 });
+		expect(rows.at(-1)).toMatchObject({ kind: 'rest', rest: 50, lit: 0 });
+	});
+
+	// Reading a note far down a lit run draws past the page it opened, and the
+	// run above it must still say only what is left of itself.
+	it('never says more is waiting under a branch than the branch holds', () => {
+		const notes = [
+			note('1'),
+			...Array.from({ length: 5 }, (_, at) => note(`1${letters(at + 1)}`, '1')),
+			...Array.from({ length: 300 }, (_, at) => note(`1a${at + 1}`, '1a', { tags: question }))
+		];
+		const rows = walkTree({
+			notes,
+			opened: opened(),
+			selection: question,
+			reading: held('1a250')
+		});
+
+		const under1 = rows.find((row) => row.kind === 'rest' && row.key === held('1'));
+		expect(under1).toMatchObject({ kind: 'rest', rest: 4, drawn: 1 });
+		expect(addresses(rows)).toContain('1a');
 	});
 
 	it('counts nothing waiting while no tag is selected', () => {

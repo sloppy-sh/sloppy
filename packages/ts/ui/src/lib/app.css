@@ -1,10 +1,11 @@
 /* Sloppy's design system. Consumers import it as `@sloppy/ui/styles`.
    DESIGN.md is the spec; this file is its implementation and adds no rule of
-   its own. Three orthogonal axes on <html>:
+   its own. Four orthogonal axes on <html>:
 
-     data-theme  → neutral/surface tokens   (paper | graphite | light | dark | contrast)
-     data-accent → --primary and its family (indigo | moss | rust | sea | iris | ochre | slate)
-     data-style  → how surfaces are DRAWN   (default | hardline); structural, never colour
+     data-theme    → neutral/surface tokens   (paper | graphite | light | dark | contrast)
+     data-accent   → --primary and its family (indigo | moss | rust | sea | iris | ochre | slate)
+     data-style    → how surfaces are DRAWN   (default | hardline); structural, never colour
+     data-app-font → both faces               (atkinson | opendyslexic | apple); absent is Inter
 
    Bare :root carries the Paper + Indigo defaults, so first paint is right
    before the prefs store has set an attribute. */
@@ -25,7 +26,7 @@
 	/* DESIGN.md § Typography is the contract for both faces. The webfonts are
 	   self-hosted by the shells, so these stacks stand alone until they load;
 	   reach the address face through the `.address` utility, which carries the
-	   tabular figures with it. */
+	   tabular figures wherever the chosen family has them. */
 	--font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--font-address: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -258,10 +259,12 @@
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 
-/* The mark is the accent itself wherever the accent already clears its floor. */
+/* The mark is the accent itself wherever the accent already clears its floor.
+   A focus ring is one of those marks, so it reads from the mark family and
+   inherits every correction the mark is given. */
 :root {
 	--primary-mark: var(--primary);
-	--ring: var(--primary);
+	--ring: var(--primary-mark);
 }
 
 /* The one that does not: Ochre on the light family, moved in lightness alone.
@@ -379,6 +382,33 @@
 }
 :root[data-style='hardline'] .shadow-2xl {
 	--tw-shadow: 8px 8px 0 0 var(--tw-shadow-color, var(--border));
+}
+
+/* ══ Font axis ═════════════════════════════════════════════════════════════
+   DESIGN.md § Typography is the contract: the chosen family takes the address
+   face too, and where it cannot hold its figures to one width the guarantee
+   goes rather than the family. Absent is the pair at :root above. The two
+   accessibility faces are self-hosted by the shells; the platform's own needs
+   nothing shipped. */
+:root[data-app-font='atkinson'] {
+	--font-sans: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-address: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-address-figures: normal;
+	--font-address-features: normal;
+}
+
+:root[data-app-font='opendyslexic'] {
+	--font-sans: 'OpenDyslexic', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-address: 'OpenDyslexic', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-address-figures: normal;
+	--font-address-features: normal;
+}
+
+/* SF Pro on Apple hardware, the platform face anywhere else. Its monospace
+   companion keeps figures to one width, so the address keeps its column. */
+:root[data-app-font='apple'] {
+	--font-sans: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
+	--font-address: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @theme inline {
@@ -506,8 +536,8 @@
 /* Every address in the product, at every size — DESIGN.md § Typography. */
 @utility address {
 	font-family: var(--font-address);
-	font-variant-numeric: tabular-nums;
-	font-feature-settings: 'tnum' 1;
+	font-variant-numeric: var(--font-address-figures, tabular-nums);
+	font-feature-settings: var(--font-address-features, 'tnum' 1);
 }
 
 /* ══ The four inset vars ═══════════════════════════════════════════════════

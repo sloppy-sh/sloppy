@@ -6,6 +6,7 @@ import type {
 	DocumentNode,
 	InkStroke,
 	MediaAsset,
+	NodeView,
 	OwnedRef
 } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
@@ -15,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import BlockStack from './block-stack.svelte';
+import { CARET_MENU } from './caret-menu.svelte';
 import type { NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
 import { SaveFailure, type DraftStore, type NoteDraft } from './document.js';
 import {
@@ -1662,5 +1664,118 @@ describe('a note that arrived holding writing', () => {
 
 		expect(document.querySelector('.sloppy-prose')?.textContent).toBe('already here');
 		expect(written).toEqual({ created: [], updated: [], removed: [], moved: [] });
+	});
+});
+
+describe('the list the caret opens', () => {
+	const named = (address: string, title: string): NodeView => ({
+		...NOTE,
+		ref: ref(),
+		address,
+		depth: address.length,
+		title
+	});
+
+	const graph = (held: NodeView[], writing?: NoteReferences['write']): NoteReferences => ({
+		...noNotes(),
+		find: () => held,
+		...(writing ? { write: writing } : {})
+	});
+
+	async function type(words: string): Promise<void> {
+		writingIn().commands.insertContent(words);
+		flushSync();
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+	}
+
+	function press(key: string): void {
+		writingIn().view.dom.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+		flushSync();
+	}
+
+	/** The list the writing points at, which is all a reader is handed of it. */
+	const list = (): HTMLElement | null => {
+		const id = surface().getAttribute('aria-controls');
+		return id ? document.getElementById(id) : null;
+	};
+
+	/** The row the writing says Enter would take. */
+	const announced = (): HTMLElement | null => {
+		const id = surface().getAttribute('aria-activedescendant');
+		return id ? document.getElementById(id) : null;
+	};
+
+	it('is said to be shut while the note is only being written in', () => {
+		open([prose('a thought')]);
+
+		expect(surface().getAttribute('aria-expanded')).toBe('false');
+		expect(surface().getAttribute('aria-controls')).toBeNull();
+		expect(surface().getAttribute('aria-activedescendant')).toBeNull();
+	});
+
+	it('names the notes it found and the row Enter would take', async () => {
+		open([prose('a thought')], {
+			references: graph([named('1a1', 'Seeds of the argument'), named('1a2', 'What it answers')])
+		});
+		await type('[[see');
+
+		expect(surface().getAttribute('aria-expanded')).toBe('true');
+		expect(list()?.id).toBe(CARET_MENU.notes);
+		expect(list()?.getAttribute('role')).toBe('listbox');
+		expect(announced()?.textContent).toContain('Seeds of the argument');
+		expect(announced()?.getAttribute('aria-selected')).toBe('true');
+	});
+
+	it('follows the arrow keys down the rows and back up', async () => {
+		open([prose('a thought')], {
+			references: graph([named('1a1', 'Seeds of the argument'), named('1a2', 'What it answers')])
+		});
+		await type('[[see');
+		press('ArrowDown');
+
+		expect(announced()?.textContent).toContain('What it answers');
+		expect(announced()?.getAttribute('aria-selected')).toBe('true');
+
+		press('ArrowUp');
+
+		expect(announced()?.textContent).toContain('Seeds of the argument');
+	});
+
+	it('lets go of the list when the writing goes back to being writing', async () => {
+		open([prose('a thought')], { references: graph([named('1a1', 'Seeds of the argument')]) });
+		await type('[[see');
+		expect(list()).not.toBeNull();
+
+		press('Escape');
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+
+		expect(surface().getAttribute('aria-expanded')).toBe('false');
+		expect(surface().getAttribute('aria-controls')).toBeNull();
+		expect(surface().getAttribute('aria-activedescendant')).toBeNull();
+	});
+
+	it('points at no row while there is none to point at', async () => {
+		open([prose('a thought')], {
+			references: graph([], () => new Promise<NodeView>(() => {}))
+		});
+		await type('[[Seeds');
+		const write = document.querySelector<HTMLElement>('[role="option"]');
+		write?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+		flushSync();
+
+		expect(document.querySelectorAll('[role="option"]')).toHaveLength(0);
+		expect(surface().getAttribute('aria-expanded')).toBe('true');
+		expect(surface().getAttribute('aria-activedescendant')).toBeNull();
+	});
+
+	it('names the emoji list under its own id', async () => {
+		open([prose('a thought')]);
+		await type(' :seedl');
+
+		expect(surface().getAttribute('aria-expanded')).toBe('true');
+		expect(list()?.id).toBe(CARET_MENU.emoji);
+		expect(announced()?.textContent).toContain('seedling');
 	});
 });

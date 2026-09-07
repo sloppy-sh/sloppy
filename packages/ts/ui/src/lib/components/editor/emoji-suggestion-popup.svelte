@@ -2,7 +2,7 @@
 	// The list `:` opens. Its state is EmojiCompletions; `./caret-menu.svelte`
 	// puts it where the caret is.
 	import { isCustomEmoji } from '../../emoji/catalog.js';
-	import CaretMenu from './caret-menu.svelte';
+	import CaretMenu, { CARET_MENU, caretOptionId } from './caret-menu.svelte';
 	import type { EmojiCompletions } from './emoji-suggestion.svelte.js';
 
 	let { completions }: { completions: EmojiCompletions } = $props();
@@ -13,6 +13,7 @@
 </script>
 
 <CaretMenu
+	id={CARET_MENU.emoji}
 	open={completions.open}
 	rect={completions.rect}
 	width={WIDTH}
@@ -24,6 +25,7 @@
 	{#each completions.items as emoji, i (emoji.shortcode)}
 		<button
 			type="button"
+			id={caretOptionId(CARET_MENU.emoji, i)}
 			role="option"
 			aria-selected={i === completions.index}
 			class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"

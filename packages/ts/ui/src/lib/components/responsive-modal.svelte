@@ -24,6 +24,7 @@
 		headed = true,
 		fill = false,
 		class: className,
+		onOpenAutoFocus,
 		children
 	}: {
 		open?: boolean;
@@ -39,6 +40,9 @@
 		fill?: boolean;
 		/** Extra classes for the sheet / dialog surface. */
 		class?: string;
+		/** Where the caret goes as the surface arrives. Refuse the event's default
+		 *  to put it somewhere other than the surface itself. */
+		onOpenAutoFocus?: (event: Event) => void;
 		children: Snippet;
 	} = $props();
 
@@ -106,6 +110,7 @@
 			side="bottom"
 			showCloseButton={false}
 			style={dragStyle}
+			{onOpenAutoFocus}
 			class={cn(
 				// No `clear-sysnav`: the pill is hidden while this is up, so there is
 				// nothing of it to clear.
@@ -158,6 +163,7 @@
 {:else}
 	<Dialog.Root {open} onOpenChange={handle}>
 		<Dialog.Content
+			{onOpenAutoFocus}
 			class={cn(
 				'flex max-h-[85vh] flex-col gap-4 overflow-x-hidden overflow-y-auto sm:max-w-lg',
 				className

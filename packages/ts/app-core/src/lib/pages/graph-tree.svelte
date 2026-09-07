@@ -14,6 +14,9 @@
 		reading = null,
 		opened,
 		inset,
+		chosen,
+		onChoose,
+		onChoosing,
 		onToggle,
 		onOpen,
 		writeUnder
@@ -28,6 +31,10 @@
 		/** The branches the reader has opened; the tree draws no others. */
 		opened: ReadonlySet<OwnedRef>;
 		inset: { top: string; bottom: string };
+		/** The notes chosen to act on; absent is a walk nobody is choosing on. */
+		chosen?: ReadonlySet<OwnedRef>;
+		onChoose?: (ref: OwnedRef) => void;
+		onChoosing?: (on: boolean) => void;
 		onToggle: (ref: OwnedRef, open: boolean) => void;
 		onOpen: (ref: OwnedRef) => void;
 		/** Writing a note under a row, from the row. Absent where these notes are
@@ -42,6 +49,9 @@
 	let written = $state<readonly { graph: OwnedRef; notes: readonly OwnedRef[] }[]>([]);
 
 	$effect(() => {
+		// A note written while the walk is open is the most recently written of
+		// all, so the run is read again as the graph gains one.
+		void notes.length;
 		if (!fields) return;
 		let live = true;
 		void Promise.all(
@@ -124,6 +134,9 @@
 	{selection}
 	{reading}
 	{inset}
+	{chosen}
+	{onChoose}
+	{onChoosing}
 	{onToggle}
 	{onOpen}
 	{writeUnder}

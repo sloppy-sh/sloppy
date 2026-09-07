@@ -108,6 +108,48 @@ describe('the one modal', () => {
 		expect(overlay.open).toBe(false);
 	});
 
+	// DESIGN.md § Motion: chrome transitions degrade to static. The utility is
+	// important because the `data-[state]` variant it cancels outweighs it.
+	it.each([
+		['sheet', PHONE],
+		['dialog', WIDE]
+	])('stops the %s flying in for somebody who asked the OS for no motion', (slot, at) => {
+		open(at);
+		const surface = document.body.querySelector(`[data-slot="${slot}-content"]`);
+		const behind = document.body.querySelector(`[data-slot="${slot}-overlay"]`);
+		expect(surface?.className).toContain('motion-reduce:animate-none!');
+		expect(behind?.className).toContain('motion-reduce:animate-none!');
+	});
+
+	// The drag-to-dismiss snap-back rides the surface's `transition`, which the
+	// guard above deliberately leaves alone.
+	it('keeps the transition the sheet is dragged back by', () => {
+		open(PHONE);
+		const surface = document.body.querySelector('[data-slot="sheet-content"]');
+		expect(surface?.className).not.toContain('motion-reduce:transition-none');
+		expect(surface?.className).toContain('transition');
+	});
+
+	it('puts the caret where the body asks for it', () => {
+		media = stubMediaQuery(PHONE);
+		const claimed: Event[] = [];
+		mounted = mount(ResponsiveModal, {
+			target,
+			props: {
+				open: true,
+				title: 'Find a note',
+				children: body,
+				onOpenAutoFocus: (event: Event) => {
+					event.preventDefault();
+					claimed.push(event);
+				}
+			}
+		});
+		flushSync();
+
+		expect(claimed).toHaveLength(1);
+	});
+
 	it('names itself for a screen reader even with the visible header off', () => {
 		media = stubMediaQuery(WIDE);
 		mounted = mount(ResponsiveModal, {

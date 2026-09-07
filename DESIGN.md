@@ -813,6 +813,14 @@ docked beside — a drawn ground, a bar pinned across the foot, a card raised be
 is placed against that box, or it runs on under the panel while the page it belongs to stops
 at the edge.
 
+`--chosen-bar-inset-bottom` is the bar of chosen notes owing what it stands on, published BY
+the bar and unset wherever it is down. It is measured off the bar's whole box, so the row of
+acts and a refusal drawn under the tally are both counted, and it sits ON TOP of
+`--sysnav-clearance` rather than replacing it. A pannable field ignores it — the reader moves
+what is under the bar. A surface that SCROLLS while somebody chooses on it insets by
+`calc(var(--sysnav-clearance) + var(--chosen-bar-inset-bottom, 0px))`, or its last rows are
+the ones being chosen on and the ones the bar covers.
+
 A composer riding above the keyboard uses
 `max(var(--kb-inset-bottom,0px), calc(var(--safe-area-inset-bottom,env(safe-area-inset-bottom)) + 0.5rem))`
 — the breath belongs INSIDE the bar term, since that term goes to 0 while the keyboard is
@@ -1130,11 +1138,11 @@ choices carry over if someone signs in.
 The same store holds the view choices that are nobody's business but this device's — the
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
 it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
-(§ "Several graphs on one canvas"), and how much room a docked note was last given. None of
-them is an attribute on `<html>`, so none is a thing the boot script has to know: the canvas
-reads them once it is up, and a first paint with the right theme is all that
-flash-of-the-wrong anything is about. None of them reaches a note either — a peer pulling a
-subtree receives nothing of how it was read.
+(§ "Several graphs on one canvas"), whether it is read as an outline rather than drawn, and
+how much room a docked note was last given. None of them is an attribute on `<html>`, so
+none is a thing the boot script has to know: the canvas reads them once it is up, and a
+first paint with the right theme is all that flash-of-the-wrong anything is about. None of
+them reaches a note either — a peer pulling a subtree receives nothing of how it was read.
 
 Beside those choices, and answering to a different rule, is **what this device keeps for
 the person signed in**: the graph as it was last read, writing that has not reached Sloppy
