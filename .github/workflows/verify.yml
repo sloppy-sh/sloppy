@@ -5,12 +5,12 @@ on:
   pull_request:
 
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}
+  group: verify-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   typescript:
-    name: check, lint, test
+    name: format, check, lint, test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,11 +30,12 @@ jobs:
 
       - run: pnpm check
 
+      - run: pnpm format:check
+
       - run: pnpm lint
 
       # The integration suites answer to this as well as to the socket, so a
-      # green here cannot mean they were skipped — and turbo hashes it, so this
-      # run is never replayed from the cache of one without a stack.
+      # green here cannot mean they were skipped.
       - run: pnpm test:ts
         env:
           SLOPPY_INTEGRATION: "1"

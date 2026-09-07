@@ -1,9 +1,7 @@
 // The gate every integration suite in this package opens on. Both halves are
 // required: `SLOPPY_INTEGRATION` says the run is meant to exercise a real
 // server, and the socket says one is there. Asking for the suites and finding
-// nothing is a failed run rather than a skipped one, so a pass can never mean
-// that none of them executed — and the variable is hashed by turbo, so a run
-// with the stack up cannot be answered from the cache of one without it.
+// nothing is a failed run rather than a skipped one.
 
 import { createConnection } from "node:net";
 
