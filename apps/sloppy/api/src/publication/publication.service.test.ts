@@ -136,6 +136,9 @@ function publishing(of: {
     async addAsset() {
       if (of.refusing) throw new Error("that pairing is already taken");
     },
+    async aliasesOf() {
+      return new Map();
+    },
     async addNodes() {},
     async addBlocks() {},
     async nextSequence() {

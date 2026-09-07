@@ -15,9 +15,11 @@ export interface SnapshotSide {
 }
 
 /**
- * Both sides of one run of the address order, in that order. Each side is
- * sorted by address and covers the same range, so a note missing from one of
- * them is a note that version does not carry rather than one further on.
+ * What became of each note between two runs of one publication, in address
+ * order. Each side covers the same range of that order, so a note missing from
+ * one of them is a note that version does not carry rather than one further on
+ * — except for a note its author has moved, whose two rows can be a page apart
+ * and which the caller hands to this side by side.
  *
  * A note whose address holds a different note in each version is one note gone
  * and another arrived, and the reader is told both.
@@ -26,31 +28,32 @@ export function noteChanges(
   from: readonly SnapshotSide[],
   to: readonly SnapshotSide[],
 ): PublishedNoteChange[] {
+  const earlier = new Map(from.map((side) => [side.note.ref, side]));
+  const later = new Map(to.map((side) => [side.note.ref, side]));
   const changes: PublishedNoteChange[] = [];
-  let before = 0;
-  let after = 0;
-  while (before < from.length || after < to.length) {
-    const earlier = from[before];
-    const later = to[after];
-    const side =
-      earlier === undefined
-        ? 1
-        : later === undefined
-          ? -1
-          : compare(earlier.note.address, later.note.address);
-    if (side < 0) {
-      changes.push({ change: "removed", note: earlier.note });
-      before += 1;
-    } else if (side > 0) {
-      changes.push(arrived(later));
-      after += 1;
-    } else {
-      changes.push(...atOneAddress(earlier, later));
-      before += 1;
-      after += 1;
+  for (const side of from) {
+    if (!later.has(side.note.ref)) {
+      changes.push({ change: "removed", note: side.note });
     }
   }
-  return changes;
+  for (const side of to) {
+    const before = earlier.get(side.note.ref);
+    if (before === undefined) {
+      changes.push(arrived(side));
+      continue;
+    }
+    const sections = sectionChanges(before.sections, side.sections);
+    if (sections.length === 0 && sameNote(before.note, side.note)) continue;
+    changes.push({
+      change: "changed",
+      note: side.note,
+      before: before.note,
+      sections,
+    });
+  }
+  // Stable, so the note gone from an address the other version reuses stays
+  // ahead of the one that arrived there.
+  return changes.sort((a, b) => compare(a.note.address, b.note.address));
 }
 
 /** Where the address order stops being decidable: past the lower of two windows
@@ -65,25 +68,6 @@ export function comparableTo(
   if (!to.more) return from.last;
   if (from.last === undefined || to.last === undefined) return undefined;
   return compare(from.last, to.last) <= 0 ? from.last : to.last;
-}
-
-function atOneAddress(
-  earlier: SnapshotSide,
-  later: SnapshotSide,
-): PublishedNoteChange[] {
-  if (earlier.note.ref !== later.note.ref) {
-    return [{ change: "removed", note: earlier.note }, arrived(later)];
-  }
-  const sections = sectionChanges(earlier.sections, later.sections);
-  if (sections.length === 0 && sameNote(earlier.note, later.note)) return [];
-  return [
-    {
-      change: "changed",
-      note: later.note,
-      before: earlier.note,
-      sections,
-    },
-  ];
 }
 
 /** A note that arrived carries its whole stack, every section of it added, so

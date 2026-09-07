@@ -423,6 +423,10 @@ export class PublicationService {
     stacks: ReadonlyMap<OwnedRef, Block[]>,
   ): Promise<void> {
     const held = snapshotted(into.copies, emoji, reach);
+    const left = await this.publications.aliasesOf(
+      did,
+      batch.map((node) => ownedRefFrom(node.id)),
+    );
     const now = nowIso();
     const nodes: SnapshotNode[] = [];
     const blocks: SnapshotBlock[] = [];
@@ -435,11 +439,10 @@ export class PublicationService {
           version: into.version,
           source,
           address: node.address,
-          node: publishedNodeOf(
-            node,
-            region,
-            node.links.filter((target) => reach.holds(target)),
-          ),
+          node: publishedNodeOf(node, region, {
+            links: node.links.filter((target) => reach.holds(target)),
+            aliases: left.get(source) ?? [],
+          }),
           created_at: now,
           updated_at: now,
         }),

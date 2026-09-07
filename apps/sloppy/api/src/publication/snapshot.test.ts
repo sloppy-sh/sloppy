@@ -182,12 +182,14 @@ function note(of: Partial<Node> & { address: string; depth: number }): Node {
 
 describe("a note as a version froze it", () => {
   const region = { root: at(AVA, "RGNRT"), address: "1a" };
+  /** A note nothing points at that has never been carried anywhere. */
+  const NOTHING = { links: [], aliases: [] };
 
   it("carries no depth, and roots at the region", () => {
     const written = publishedNodeOf(
       note({ address: "1a1", depth: 3, parent: at(AVA, "PARENT") }),
       region,
-      [],
+      NOTHING,
     );
     expect(written).not.toHaveProperty("depth");
     expect(written.origin).toBe(region.root);
@@ -207,7 +209,7 @@ describe("a note as a version froze it", () => {
         },
       }),
       region,
-      [],
+      NOTHING,
     );
     expect(written.look).toEqual({
       ring_weight: "heavy",
@@ -234,7 +236,7 @@ describe("a note as a version froze it", () => {
         },
       }),
       region,
-      [],
+      NOTHING,
     );
     expect(written).not.toHaveProperty("look");
     expect(JSON.stringify(written)).not.toContain("PICTURE");
@@ -242,7 +244,7 @@ describe("a note as a version froze it", () => {
 
   it("sends no look for a mark nobody shaped", () => {
     expect(
-      publishedNodeOf(note({ address: "1a1", depth: 3 }), region, []),
+      publishedNodeOf(note({ address: "1a1", depth: 3 }), region, NOTHING),
     ).not.toHaveProperty("look");
   });
 
@@ -256,10 +258,31 @@ describe("a note as a version froze it", () => {
         parent: at(AVA, "AWAY"),
       }),
       region,
-      [],
+      NOTHING,
     );
     expect(written.parent).toBeUndefined();
     expect(written.origin).toBe(region.root);
+  });
+
+  // A reader cites the number they were shown, and the author may since have
+  // carried the note somewhere else — including out of another branch, which is
+  // an address a reader of an earlier version was given.
+  it("carries every address the note has been moved away from", () => {
+    const written = publishedNodeOf(
+      note({ address: "1a1", depth: 3 }),
+      region,
+      {
+        links: [],
+        aliases: ["1a2", "2c"],
+      },
+    );
+    expect(written.aliases).toEqual(["1a2", "2c"]);
+  });
+
+  it("says nothing of old addresses for a note that has never moved", () => {
+    expect(
+      publishedNodeOf(note({ address: "1a1", depth: 3 }), region, NOTHING),
+    ).not.toHaveProperty("aliases");
   });
 
   // Every ref a peer receives names a note they may go and read, and a
@@ -275,7 +298,7 @@ describe("a note as a version froze it", () => {
         references: [PUBLISHED_NOTE, PRIVATE_NOTE],
       }),
       region,
-      [PUBLISHED_NOTE],
+      { links: [PUBLISHED_NOTE], aliases: [] },
     );
     expect(written).not.toHaveProperty("references");
     expect(written.links).toEqual([PUBLISHED_NOTE]);

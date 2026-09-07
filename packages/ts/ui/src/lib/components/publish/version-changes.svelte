@@ -48,6 +48,11 @@
 		return entry.before.tags.filter((tag) => !entry.note.tags.includes(tag));
 	}
 
+	function moved(entry: PublishedNoteChange): string | null {
+		if (entry.change !== 'changed' || entry.before.address === entry.note.address) return null;
+		return entry.before.address;
+	}
+
 	function renamed(entry: PublishedNoteChange): string | null {
 		if (entry.change !== 'changed' || entry.before.title === entry.note.title) return null;
 		return entry.before.title || 'Untitled';
@@ -102,6 +107,7 @@
 	<ul class="space-y-6">
 		{#each changes as entry (entry.note.ref)}
 			{@const was = renamed(entry)}
+			{@const from = moved(entry)}
 			{@const more = gained(entry)}
 			{@const fewer = lost(entry)}
 			<li class="space-y-2">
@@ -111,6 +117,9 @@
 					<span class="shrink-0 text-xs text-muted-foreground">{BECAME[entry.change]}</span>
 				</div>
 
+				{#if from !== null}
+					<p class="text-xs text-muted-foreground">Was at <span class="address">{from}</span></p>
+				{/if}
 				{#if was !== null}
 					<p class="text-xs text-muted-foreground">Was “{was}”</p>
 				{/if}

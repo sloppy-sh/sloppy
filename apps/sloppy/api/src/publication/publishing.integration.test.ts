@@ -694,6 +694,76 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(byRef.get(arrived.ref)?.change).toBe("added");
   });
 
+  scenario(
+    "sends the addresses a note was carried away from, and says one moved",
+    async () => {
+      const branch = await newNode({ title: "A branch that shifts" });
+      const carried = await newNode({
+        from: { relation: "under", note: branch.ref },
+        title: "Spores",
+      });
+      const publication = await publish(branch.ref);
+      const first = publication.latest.ref;
+      const before = await read(publication.ref);
+      expect(
+        before?.nodes.find((node) => node.ref === carried.ref),
+      ).not.toHaveProperty("aliases");
+
+      // Moving the note is `POST /nodes/:did/:localId/move`'s; what publishing
+      // has to carry out is the row a move leaves behind.
+      const db = app.get<DbService>(
+        (await import("../db/db.service")).DbService,
+      );
+      const was = carried.address as Address;
+      const now = siblingAddress(was);
+      const when = new Date().toISOString();
+      await db.handle.query(
+        `UPDATE $note SET address = $now, depth = $depth, updated_at = $when;
+         INSERT INTO node_alias $left;`,
+        {
+          note: recordIdFromOwnedRef("node", carried.ref),
+          now,
+          depth: addressDepth(now),
+          when,
+          left: {
+            id: createOwnedRecordId("node_alias", ada.did),
+            created_by: ada.did,
+            graph: homeGraphRef(ada.did),
+            parent: branch.ref,
+            address: was,
+            note: carried.ref,
+            created_at: when,
+            updated_at: when,
+          },
+        },
+      );
+      const second = (await publish(branch.ref)).latest.ref;
+
+      const page = await read(publication.ref);
+      const sent = page?.nodes.find((node) => node.ref === carried.ref);
+      expect(sent?.address).toBe(now);
+      expect(sent?.aliases).toEqual([was]);
+
+      const difference = publishedChangesReader({
+        publication: publication.ref,
+        from: first,
+        to: second,
+      }).take(
+        await ok(
+          "GET",
+          `/public/publications/${at(publication.ref)}/changes?from=${encodeURIComponent(first)}&to=${encodeURIComponent(second)}`,
+          null,
+        ),
+      );
+      const entry = difference.changes.find(
+        (one) => one.note.ref === carried.ref,
+      );
+      if (entry?.change !== "changed") throw new Error("expected a change");
+      expect(entry.before.address).toBe(was);
+      expect(entry.note.address).toBe(now);
+    },
+  );
+
   // The decision to publish again is made on this, so it answers about the
   // draft — where a comparison of two versions cannot, every picture in a draft
   // citing the author's own upload rather than a published copy.
