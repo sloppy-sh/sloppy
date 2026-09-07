@@ -19,10 +19,12 @@ import {
   entityView,
   graphAsked,
   graphOf,
+  isAddress,
   isAncestorAddress,
   isInSubtree,
   isRootAddress,
   isUnstyled,
+  nextChildAddress,
   resolveAppearance,
   seriesIsWhole,
   MAX_SEARCH_HITS,
@@ -50,7 +52,7 @@ import type { z } from "zod";
 import { MediaService } from "../media/media.service";
 import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
-import { movedSubtree, nextChildAddress } from "./address-assignment";
+import { movedSubtree } from "./address-assignment";
 import { FindRepository } from "./find.repository";
 import { GraphService } from "./graph.service";
 import type { AddressHold, NodeBulkPatch } from "./node.repository";
@@ -136,17 +138,19 @@ export class NodeService {
   }
 
   /**
-   * The notes whose writing carries `asked`, best match first: their own and the
-   * copies they hold, inside one graph where they name one and across every
-   * graph they keep where they name none. At most {@link MAX_SEARCH_HITS}.
+   * The notes `asked` reaches, best match first: the one it addresses ahead of
+   * the ones whose writing carries it, their own and the copies they hold,
+   * inside one graph where they name one and across every graph they keep where
+   * they name none. At most {@link MAX_SEARCH_HITS}.
    */
   async search(
     did: string,
     asked: string,
     graph?: OwnedRef,
   ): Promise<SearchHit[]> {
+    const cited = await this.addressed(did, asked, graph);
     const words = searchWords(asked);
-    if (words === "") return [];
+    if (words === "") return cited;
     const [ownNotes, heldNotes] = await this.notesWithin(did, graph);
     const [own, held] = await Promise.all([
       this.find.writingMatches(did, words, ownNotes),
@@ -156,10 +160,46 @@ export class NodeService {
       ...(await this.ownHits(did, own)),
       ...(await this.heldHits(did, held)),
     ];
-    return found
-      .sort(bestFirst)
-      .slice(0, MAX_SEARCH_HITS)
-      .map((one) => one.hit);
+    const already = new Set(cited.map((hit) => hit.note));
+    return [
+      ...cited,
+      ...found
+        .sort(bestFirst)
+        .map((one) => one.hit)
+        .filter((hit) => !already.has(hit.note)),
+    ].slice(0, MAX_SEARCH_HITS);
+  }
+
+  /** The notes `asked` reaches as an address, or none where it is not one. A
+   *  citation written down before a move still leads to the note it named, so
+   *  an address carried away from answers alongside the one a note is at. */
+  private async addressed(
+    did: string,
+    asked: string,
+    graph?: OwnedRef,
+  ): Promise<SearchHit[]> {
+    const address = asked.trim().toLowerCase();
+    if (!isAddress(address)) return [];
+    const reach = await this.find.notesAddressed(did, address, graph);
+    const at = new Set(reach.at);
+    const notes = await this.nodes.many(did, [
+      ...new Set([...reach.at, ...reach.carriedAway]),
+    ]);
+    return notes
+      .sort(
+        (a, b) =>
+          compareAddresses(a.address, b.address) ||
+          ownedRefFrom(a.id).localeCompare(ownedRefFrom(b.id)),
+      )
+      .map((note) => ({
+        note: ownedRefFrom(note.id),
+        address: note.address,
+        graph: graphOf(note),
+        title: note.title,
+        snippet: "",
+        ...(at.has(ownedRefFrom(note.id)) ? {} : { wasAt: address }),
+        held: false,
+      }));
   }
 
   async recent(

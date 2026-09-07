@@ -11,6 +11,7 @@ import {
   type OwnedRef,
   ownedRefFrom,
   type Publication,
+  type PublicationVersion,
   parseNode,
   recordIdFromOwnedRef,
   type SnapshotAsset,
@@ -21,7 +22,10 @@ import type { BlockRepository } from "../block/block.repository";
 import type { MediaService } from "../media/media.service";
 import type { NodeRepository } from "../node/node.repository";
 import type { Delegation, SyrService } from "../syr/syr.service";
-import type { PublicationRepository } from "./publication.repository";
+import type {
+  FiledNote,
+  PublicationRepository,
+} from "./publication.repository";
 import { PublicationService } from "./publication.service";
 
 const AVA =
@@ -310,5 +314,123 @@ describe("the old addresses a version files", () => {
 
     await service.publish(delegation, { root: ROOT });
     expect(ledger.aliasesSent).toBeUndefined();
+  });
+});
+
+const VERSION = ref("VR");
+
+const version: PublicationVersion = {
+  id: recordIdFromOwnedRef("publication_version", VERSION),
+  created_by: AVA,
+  publication: CHAIN,
+  sequence: 1,
+  created_at: NOW,
+  updated_at: NOW,
+};
+
+/** A note the branch holds now, as the store hands it over. */
+function noteAt(name: string, address: string, title: string): Node {
+  return parseNode({
+    id: recordIdFromOwnedRef("node", ref(name)),
+    created_by: AVA,
+    address: address as Address,
+    depth: address.length,
+    origin: ROOT,
+    title,
+    tags: [],
+    links: [],
+    published: true,
+    created_at: NOW,
+    updated_at: NOW,
+  });
+}
+
+/** What the newest version says about the branch, against what it holds now. */
+function comparing(of: {
+  filed: readonly FiledNote[];
+  branch: readonly Node[];
+}): PublicationService {
+  const publications = {
+    async find() {
+      return HELD;
+    },
+    async latestOf() {
+      return new Map([[CHAIN, version]]);
+    },
+    async notesIn(): Promise<FiledNote[]> {
+      return [...of.filed];
+    },
+  } as unknown as PublicationRepository;
+
+  const nodes = {
+    async find() {
+      return of.branch[0];
+    },
+    async subtree() {
+      return [...of.branch];
+    },
+  } as unknown as NodeRepository;
+
+  const blocks = {
+    async writtenSince() {
+      return new Set<OwnedRef>();
+    },
+  } as unknown as BlockRepository;
+
+  return new PublicationService(
+    publications,
+    nodes,
+    blocks,
+    {} as unknown as MediaService,
+    {} as unknown as SyrService,
+  );
+}
+
+describe("what a branch has done since it was last published", () => {
+  const filed = (name: string, address: string, title: string): FiledNote => ({
+    source: ref(name),
+    address: address as Address,
+    title,
+    tags: [],
+  });
+
+  it("names a note carried somewhere else inside the branch", async () => {
+    const service = comparing({
+      filed: [filed("RT", "1", "Root"), filed("NA", "1a", "Spores")],
+      branch: [noteAt("RT", "1", "Root"), noteAt("NA", "1c", "Spores")],
+    });
+
+    const { changes, total } = await service.unpublished(AVA, CHAIN);
+
+    expect(total).toBe(1);
+    expect(changes[0]).toMatchObject({
+      note: ref("NA"),
+      address: "1c",
+      was_at: "1a",
+      title: "Spores",
+      change: "changed",
+      written: false,
+    });
+  });
+
+  it("says nothing of where a note was when it has not been carried", async () => {
+    const service = comparing({
+      filed: [filed("RT", "1", "Root"), filed("NA", "1a", "Seeds")],
+      branch: [noteAt("RT", "1", "Root"), noteAt("NA", "1a", "Spores")],
+    });
+
+    const { changes } = await service.unpublished(AVA, CHAIN);
+
+    expect(changes[0]).toMatchObject({ was_titled: "Seeds" });
+    expect(changes[0].was_at).toBeUndefined();
+  });
+
+  it("says nothing of a branch nothing has happened to", async () => {
+    const service = comparing({
+      filed: [filed("RT", "1", "Root"), filed("NA", "1a", "Spores")],
+      branch: [noteAt("RT", "1", "Root"), noteAt("NA", "1a", "Spores")],
+    });
+
+    expect((await service.unpublished(AVA, CHAIN)).changes).toEqual([]);
   });
 });

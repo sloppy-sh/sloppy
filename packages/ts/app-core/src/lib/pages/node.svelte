@@ -22,15 +22,13 @@
 	import {
 		alongRun,
 		BlockViewSchema,
-		childAddress,
 		citedNotes,
-		compareAddresses,
 		compareOrd,
 		graphOf,
 		isInSubtree,
+		nextChildAddress,
 		parentAddress,
 		runKeyOf,
-		siblingAddress,
 		type Address,
 		type BlockDocument,
 		type BlockView,
@@ -542,30 +540,22 @@
 		].slice(0, MATCHES);
 	});
 
-	/** The address a note joining this run takes: the greatest it has ever used,
-	 *  and one on. A run may have spent addresses this device has not read, which
-	 *  is why the sheet offers this one as the earliest rather than the answer. */
-	function nextIn(under: Address | null, run: readonly Address[]): Address {
-		const spent = run.filter((address) => parentAddress(address) === under);
-		if (spent.length === 0) return childAddress(under);
-		return siblingAddress(spent.reduce((a, b) => (compareAddresses(a, b) >= 0 ? a : b)));
-	}
-
 	/** Every address a run has spent that this device holds: what the notes in it
 	 *  are at, and what they were at before they were moved. */
 	function spentIn(run: readonly NodeView[]): Address[] {
 		return run.flatMap((note) => [note.address, ...(note.aliases ?? [])]);
 	}
 
-	/** Where this note lands if it is carried against `target`. */
+	/** The earliest address this note could take carried against `target`: a run
+	 *  may have spent addresses this device has not read. */
 	function landsAt(target: NodeView): { under: Address; after: Address } {
 		const above = target.parent ? nodes.get(target.parent) : undefined;
 		const alongTarget = target.parent
 			? nodes.children(target.parent)
 			: here.filter((note) => !note.parent);
 		return {
-			under: nextIn(target.address, spentIn(nodes.children(target.ref))),
-			after: nextIn(above?.address ?? parentAddress(target.address), spentIn(alongTarget))
+			under: nextChildAddress(target.address, spentIn(nodes.children(target.ref))),
+			after: nextChildAddress(above?.address ?? parentAddress(target.address), spentIn(alongTarget))
 		};
 	}
 

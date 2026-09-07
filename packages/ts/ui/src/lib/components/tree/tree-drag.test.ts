@@ -206,6 +206,18 @@ describe('where a note carried over the outline would land', () => {
 		expect(stays.to).toBeUndefined();
 	});
 
+	it('sends one from the middle of that run to the end of it', () => {
+		const beside = {
+			on: held('1b'),
+			address: '1b' as Address,
+			title: 'About 1b',
+			relation: 'after' as const
+		};
+		expect(movesTo(ROWS, carried('1a'), beside)?.says).toBe(
+			'Goes beside 1b About 1b, as 1c or later'
+		);
+	});
+
 	it('refuses a note carried into its own branch', () => {
 		const under = movesTo(ROWS, carried('1'), { ...OUTLINE[2], relation: 'under' });
 		expect(under).toEqual({ says: 'A note cannot go inside itself' });

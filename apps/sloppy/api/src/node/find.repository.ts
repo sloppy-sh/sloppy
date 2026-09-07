@@ -1,6 +1,7 @@
 // The reads a person finds a note again by: the sections whose writing carries
-// what they remember, of their own and of the copies they hold, and the notes
-// they wrote into last. docs/ARCHITECTURE.md § "Data model".
+// what they remember, of their own and of the copies they hold, the address
+// they cite, and the notes they wrote into last.
+// docs/ARCHITECTURE.md § "Data model".
 
 import { Injectable } from "@nestjs/common";
 import {
@@ -9,7 +10,9 @@ import {
   DidSyrSchema,
   graphRef,
   type OwnedRef,
+  ownedRefFrom,
   OwnedRefSchema,
+  RecordIdSchema,
   splitOwnedRef,
 } from "@sloppy/types";
 import { z } from "zod";
@@ -35,6 +38,14 @@ const MatchSchema = z.object({
     .record(z.string(), z.array(z.object({ s: z.int().nonnegative() })))
     .nullish(),
 });
+
+/** What one address reaches: the note at it, and the notes it led to before
+ *  they were carried away from it. A note can be in both, having been carried
+ *  back to where it started. */
+export interface AddressReach {
+  at: OwnedRef[];
+  carriedAway: OwnedRef[];
+}
 
 /** One note somebody holds a copy of, as a hit names it. */
 export interface HeldNote {
@@ -73,6 +84,31 @@ export class FindRepository {
          LIMIT $read`,
       { did, words, notes: notes && [...notes] },
     );
+  }
+
+  /**
+   * The caller's own notes one address reaches: the note at it, and the note it
+   * was moved away from, which it leads to for as long as that note is there.
+   * Narrowed to `graph` where one is named, since an address is read inside one
+   * graph and each of a person's graphs has its own.
+   */
+  async notesAddressed(
+    did: string,
+    address: Address,
+    graph?: OwnedRef,
+  ): Promise<AddressReach> {
+    const inGraph = graph === undefined ? "" : "AND graph = $graph";
+    const [at, left] = await this.db.handle.query<[unknown[], unknown[]]>(
+      `SELECT VALUE id FROM node
+         WHERE created_by = $did AND address = $address ${inGraph};
+       SELECT VALUE note FROM node_alias
+         WHERE created_by = $did AND address = $address ${inGraph};`,
+      { did, address, graph },
+    );
+    return {
+      at: at.map((row) => ownedRefFrom(RecordIdSchema.parse(row))),
+      carriedAway: left.map((row) => OwnedRefSchema.parse(row)),
+    };
   }
 
   /** The same over what a peer handed them, so a search reaches a note they are

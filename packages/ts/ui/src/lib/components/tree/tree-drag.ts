@@ -10,9 +10,8 @@
 
 import {
 	type Address,
-	childAddress,
-	compareAddresses,
 	isAncestorAddress,
+	nextChildAddress,
 	type OwnedRef,
 	parentAddress,
 	siblingAddress
@@ -118,15 +117,10 @@ export function movesTo(
 	if (folded || waiting) {
 		return { says: `Goes ${how} ${named(on)}, at the end of its run`, to: aim };
 	}
-	const along = notes
-		.map((row) => row.note.address)
-		.filter((address) => parentAddress(address) === under);
-	const last = along.reduce<Address | null>(
-		(most, one) => (most === null || compareAddresses(most, one) < 0 ? one : most),
-		null
-	);
-	if (last === moved.address) return { says: 'Stays where it is' };
-	const takes = last === null ? childAddress(under) : siblingAddress(last);
+	const along = notes.map((row) => row.note.address);
+	const takes = nextChildAddress(under, along);
+	const alreadyLast = takes === siblingAddress(moved.address);
+	if (alreadyLast) return { says: 'Stays where it is' };
 	return { says: `Goes ${how} ${named(on)}, as ${takes} or later`, to: aim };
 }
 

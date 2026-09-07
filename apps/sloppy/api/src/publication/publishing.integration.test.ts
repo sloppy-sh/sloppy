@@ -908,6 +908,89 @@ describe("publishing a branch, and what a peer reads back", () => {
   });
 
   scenario(
+    "names a note carried somewhere else inside a branch that is already out",
+    async () => {
+      const branch = await newNode({ title: "A branch already out" });
+      const first = await newNode({
+        from: { relation: "under", note: branch.ref },
+        title: "Spores",
+      });
+      const second = await newNode({
+        from: { relation: "under", note: branch.ref },
+        title: "Seeds",
+      });
+      const publication = await publish(branch.ref);
+      const was = first.address as Address;
+
+      const landed = (await ok("POST", `/nodes/${at(first.ref)}/move`, ada, {
+        to: { relation: "under", note: second.ref },
+      })) as NodeView[];
+      const now = landed.find((note) => note.ref === first.ref)?.address;
+      expect(now).not.toBe(was);
+
+      const since = (await ok(
+        "GET",
+        `/publications/${at(publication.ref)}/unpublished`,
+        ada,
+      )) as {
+        total: number;
+        changes: {
+          note: OwnedRef;
+          address: Address;
+          was_at?: Address;
+          change: string;
+        }[];
+      };
+
+      expect(since.changes.find((one) => one.note === first.ref)).toMatchObject(
+        { address: now, was_at: was, change: "changed" },
+      );
+    },
+  );
+
+  // `published` says a version carries the note — docs/ARCHITECTURE.md § "Data
+  // model" — and a move rewrites no version, so the copy that went out is
+  // still out and a mark that stopped saying so would claim it had come back.
+  scenario(
+    "keeps the mark on a note carried out of a branch that is already out",
+    async () => {
+      const out = await newNode({ title: "A branch that goes out" });
+      const leaving = await newNode({
+        from: { relation: "under", note: out.ref },
+        title: "Spores",
+      });
+      const home = await newNode({ title: "A branch that stays home" });
+      const arriving = await newNode({
+        from: { relation: "under", note: home.ref },
+        title: "Seeds",
+      });
+      await publish(out.ref);
+
+      await ok("POST", `/nodes/${at(leaving.ref)}/move`, ada, {
+        to: { relation: "under", note: home.ref },
+      });
+      await ok("POST", `/nodes/${at(arriving.ref)}/move`, ada, {
+        to: { relation: "under", note: out.ref },
+      });
+
+      const carriedOut = (await ok(
+        "GET",
+        `/nodes/${at(leaving.ref)}`,
+        ada,
+      )) as NodeView;
+      const carriedIn = (await ok(
+        "GET",
+        `/nodes/${at(arriving.ref)}`,
+        ada,
+      )) as NodeView;
+
+      expect(carriedOut.published).toBe(true);
+      // And a note carried into it is out only once the branch goes again.
+      expect(carriedIn.published).toBe(false);
+    },
+  );
+
+  scenario(
     "carries a picture as the publication's own copy, and leaves the original where it was",
     async () => {
       const uploadId = await upload("in-a-note.png");

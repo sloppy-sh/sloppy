@@ -244,6 +244,9 @@ export const SearchHitSchema = z.object({
   graph: OwnedRefSchema,
   title: z.string(),
   snippet: z.string().default(""),
+  /** The address the note was reached by, where it has since been carried away
+   *  from that one. Absent is a note reached by where it is now. */
+  wasAt: AddressSchema.optional(),
   /** Whether this is a copy of somebody else's note rather than one of the
    *  reader's own. Absent is their own. */
   held: z.boolean().default(false),

@@ -139,6 +139,30 @@ export function siblingAddress(address: Address): Address {
   return formatAddress(segments);
 }
 
+/**
+ * The address a new child of `parent` takes, given every address its siblings
+ * already hold. `null` names a new root.
+ *
+ * The next sibling follows the GREATEST address in the run rather than the
+ * first gap in it, so a note taken out of the middle does not hand its address
+ * to a later one.
+ *
+ * `siblings` may carry addresses from another run — a move gives a parent a
+ * different address, and the rows an address was spent on are read by the
+ * parent they hung under. Those are dropped rather than followed: they are
+ * spent under an address no note is at, and nothing will be written there
+ * again.
+ */
+export function nextChildAddress(
+  parent: Address | null,
+  siblings: readonly Address[],
+): Address {
+  const run = siblings.filter((address) => parentAddress(address) === parent);
+  if (run.length === 0) return childAddress(parent);
+  const greatest = run.reduce((a, b) => (compareAddresses(a, b) >= 0 ? a : b));
+  return siblingAddress(greatest);
+}
+
 /** The address this one sprang from, or `null` for a root. */
 export function parentAddress(address: Address): Address | null {
   const segments = parseAddress(address);

@@ -767,7 +767,14 @@ function whatMoved(
   const gained = node.tags.filter((tag) => !before.tags.includes(tag));
   const lost = before.tags.filter((tag) => !node.tags.includes(tag));
   const renamed = before.title !== node.title;
-  if (!written && !renamed && gained.length === 0 && lost.length === 0) {
+  const carried = before.address !== node.address;
+  if (
+    !written &&
+    !renamed &&
+    !carried &&
+    gained.length === 0 &&
+    lost.length === 0
+  ) {
     return null;
   }
   return {
@@ -775,6 +782,7 @@ function whatMoved(
     address: node.address,
     title: node.title,
     change: "changed",
+    ...(carried ? { was_at: before.address } : {}),
     ...(renamed ? { was_titled: before.title } : {}),
     tags_gained: gained,
     tags_lost: lost,

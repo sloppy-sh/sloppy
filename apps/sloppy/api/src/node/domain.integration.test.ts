@@ -1126,6 +1126,44 @@ describe("the domain routes", () => {
         note.ref,
       ]);
     });
+
+    scenario("answers with the note an address leads to", async () => {
+      const note = await newNode(ada, { title: "Cited by its number" });
+
+      const hit = (await searching(ada, note.address)).find(
+        (one) => one.note === note.ref,
+      );
+
+      expect(hit?.address).toBe(note.address);
+      expect(hit?.title).toBe("Cited by its number");
+    });
+
+    scenario(
+      "answers with the note an address it was carried away from leads to",
+      async () => {
+        const root = await newNode(ada, { title: "A run to leave" });
+        const other = await newNode(ada, { title: "A run to join" });
+        const carried = await newNode(ada, {
+          title: "Spores",
+          from: { relation: "under", note: root.ref },
+        });
+        const was = carried.address;
+
+        const [landed] = (await ok(
+          "POST",
+          `/nodes/${at(carried.ref)}/move`,
+          ada,
+          { to: { relation: "under", note: other.ref } },
+        )) as NodeView[];
+        expect(landed.address).not.toBe(was);
+
+        const hit = (await searching(ada, was)).find(
+          (one) => one.note === carried.ref,
+        );
+
+        expect(hit?.address).toBe(landed.address);
+      },
+    );
   });
 
   describe("the run a note continues", () => {

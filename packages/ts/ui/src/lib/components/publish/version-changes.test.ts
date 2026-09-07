@@ -55,6 +55,8 @@ describe('what a publish did', () => {
 
 		expect(screen()).toContain('2c');
 		expect(screen()).toContain('Was at 1c');
+		expect(screen()).toContain('Moved');
+		expect(screen()).not.toContain('Edited');
 	});
 
 	it('says nothing about where a note was when it has not been carried anywhere', () => {
@@ -68,6 +70,7 @@ describe('what a publish did', () => {
 		]);
 
 		expect(screen()).toContain('Was “Seeds”');
+		expect(screen()).toContain('Edited');
 		expect(screen()).not.toContain('Was at');
 	});
 });
