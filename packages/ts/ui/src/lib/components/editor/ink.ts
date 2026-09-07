@@ -6,6 +6,15 @@ import type { InkPoint, InkStroke } from '@sloppy/types';
 /** The nib a stroke is laid down with, before pressure and tilt scale it. */
 export const NIB_WIDTH = 2.2;
 
+/** How far off the line between its neighbours a sample has to sit to be worth
+ *  keeping, in capture-surface units. */
+const OFF_THE_LINE = 0.35;
+/** A pressure step the nib would show, so the sample that carries it is kept. */
+const PRESSURE_STEP = 0.08;
+/** Decimal places a coordinate is kept to: finer than a pixel on the densest
+ *  screen the canvas is drawn at. */
+const PLACES = 2;
+
 /** Capture-surface units per CSS pixel of the surface the pen is on. */
 export interface InkSurface {
 	left: number;
@@ -53,6 +62,57 @@ export function capturePointer(target: Element, pointerId: number): void {
 	}
 }
 
+/** How far `point` sits off the line through `from` and `to`. */
+function offTheLine(point: InkPoint, from: InkPoint, to: InkPoint): number {
+	const dx = to.x - from.x;
+	const dy = to.y - from.y;
+	const span = Math.hypot(dx, dy);
+	if (span === 0) return Math.hypot(point.x - from.x, point.y - from.y);
+	return Math.abs(dx * (from.y - point.y) - dy * (from.x - point.x)) / span;
+}
+
+function toPlaces(places: number, value: number): number {
+	const step = 10 ** places;
+	return Math.round(value * step) / step;
+}
+
+function rounded(point: InkPoint): InkPoint {
+	const kept: InkPoint = {
+		x: toPlaces(PLACES, point.x),
+		y: toPlaces(PLACES, point.y),
+		pressure: toPlaces(PLACES, point.pressure),
+		t: Math.round(point.t)
+	};
+	if (point.tilt_x !== undefined) kept.tilt_x = Math.round(point.tilt_x);
+	if (point.tilt_y !== undefined) kept.tilt_y = Math.round(point.tilt_y);
+	return kept;
+}
+
+/**
+ * The stroke as it will be drawn back: a sample the line between its neighbours
+ * already describes is dropped, and what is left is kept to the precision the
+ * canvas draws at, so a note carries the drawing rather than how fast the device
+ * that made it sampled.
+ */
+function thinned(points: readonly InkPoint[]): InkPoint[] {
+	const kept: InkPoint[] = [];
+	for (let i = 0; i < points.length; i++) {
+		const point = points[i];
+		const last = kept.at(-1);
+		const next = points[i + 1];
+		if (
+			last &&
+			next &&
+			offTheLine(point, last, next) <= OFF_THE_LINE &&
+			Math.abs(point.pressure - last.pressure) <= PRESSURE_STEP
+		) {
+			continue;
+		}
+		kept.push(rounded(point));
+	}
+	return kept;
+}
+
 /** One stroke as it is being laid down, in the capture surface's own units. */
 export class StrokeInProgress {
 	readonly points: InkPoint[] = [];
@@ -65,28 +125,40 @@ export class StrokeInProgress {
 		this.extend(event, surface);
 	}
 
+	#at(sample: PointerEvent, surface: InkSurface): InkPoint {
+		const point: InkPoint = {
+			x: (sample.clientX - surface.left) * surface.scale,
+			y: (sample.clientY - surface.top) * surface.scale,
+			pressure: pressureOf(sample),
+			t: Math.max(0, sample.timeStamp - this.#origin)
+		};
+		const tiltX = tiltOf(sample, 'tiltX');
+		const tiltY = tiltOf(sample, 'tiltY');
+		if (tiltX !== undefined) point.tilt_x = tiltX;
+		if (tiltY !== undefined) point.tilt_y = tiltY;
+		return point;
+	}
+
 	/** The points this event added, so a caller can draw only the new segment. */
 	extend(event: PointerEvent, surface: InkSurface): InkPoint[] {
-		const added = samplesOf(event).map((sample) => {
-			const point: InkPoint = {
-				x: (sample.clientX - surface.left) * surface.scale,
-				y: (sample.clientY - surface.top) * surface.scale,
-				pressure: pressureOf(sample),
-				t: Math.max(0, sample.timeStamp - this.#origin)
-			};
-			const tiltX = tiltOf(sample, 'tiltX');
-			const tiltY = tiltOf(sample, 'tiltY');
-			if (tiltX !== undefined) point.tilt_x = tiltX;
-			if (tiltY !== undefined) point.tilt_y = tiltY;
-			return point;
-		});
+		const added = samplesOf(event).map((sample) => this.#at(sample, surface));
 		this.points.push(...added);
 		return added;
 	}
 
+	/**
+	 * Where the platform expects the pen to go next, empty where it does not say
+	 * (DESIGN.md § The canvas). These are drawn ahead of the nib and lifted again;
+	 * the stroke records only where the pen has been.
+	 */
+	predict(event: PointerEvent, surface: InkSurface): InkPoint[] {
+		const ahead = event.getPredictedEvents?.();
+		return ahead ? ahead.map((sample) => this.#at(sample, surface)) : [];
+	}
+
 	/** A pen put down and lifted without moving is a dot, and a dot is a mark. */
 	finish(): InkStroke {
-		return { points: [...this.points], width: this.width };
+		return { points: thinned(this.points), width: this.width };
 	}
 }
 
@@ -134,6 +206,27 @@ export function drawStrokes(
 	for (const stroke of strokes) drawStroke(ctx, stroke, scale);
 }
 
+function dot(ctx: CanvasRenderingContext2D, width: number, only: InkPoint, scale: number): void {
+	ctx.beginPath();
+	ctx.arc(only.x * scale, only.y * scale, (nibWidth(width, only) * scale) / 2, 0, Math.PI * 2);
+	ctx.fillStyle = ctx.strokeStyle;
+	ctx.fill();
+}
+
+function segment(
+	ctx: CanvasRenderingContext2D,
+	width: number,
+	a: InkPoint,
+	b: InkPoint,
+	scale: number
+): void {
+	ctx.beginPath();
+	ctx.lineWidth = ((nibWidth(width, a) + nibWidth(width, b)) / 2) * scale;
+	ctx.moveTo(a.x * scale, a.y * scale);
+	ctx.lineTo(b.x * scale, b.y * scale);
+	ctx.stroke();
+}
+
 export function drawStroke(
 	ctx: CanvasRenderingContext2D,
 	stroke: InkStroke,
@@ -144,39 +237,90 @@ export function drawStroke(
 	ctx.lineJoin = 'round';
 	const points = stroke.points;
 	if (points.length === 1 && from === 0) {
-		const only = points[0];
-		ctx.beginPath();
-		ctx.arc(
-			only.x * scale,
-			only.y * scale,
-			(nibWidth(stroke.width, only) * scale) / 2,
-			0,
-			Math.PI * 2
-		);
-		ctx.fillStyle = ctx.strokeStyle;
-		ctx.fill();
+		dot(ctx, stroke.width, points[0], scale);
 		return;
 	}
 	for (let i = Math.max(1, from); i < points.length; i++) {
-		const a = points[i - 1];
-		const b = points[i];
-		ctx.beginPath();
-		ctx.lineWidth = ((nibWidth(stroke.width, a) + nibWidth(stroke.width, b)) / 2) * scale;
-		ctx.moveTo(a.x * scale, a.y * scale);
-		ctx.lineTo(b.x * scale, b.y * scale);
-		ctx.stroke();
+		segment(ctx, stroke.width, points[i - 1], points[i], scale);
 	}
 }
 
+function reaches(stroke: InkStroke, a: InkPoint, b: InkPoint, region: InkBounds): boolean {
+	const reach = Math.max(nibWidth(stroke.width, a), nibWidth(stroke.width, b)) / 2;
+	return (
+		Math.min(a.x, b.x) - reach <= region.right &&
+		Math.max(a.x, b.x) + reach >= region.left &&
+		Math.min(a.y, b.y) - reach <= region.bottom &&
+		Math.max(a.y, b.y) + reach >= region.top
+	);
+}
+
 /**
- * A context whose units are CSS pixels on a backing store sized for the device's.
- * Resizing the backing store is itself a clear, so a caller redrawing everything
- * clears; one appending to a live stroke must not.
+ * Lifts everything inside `region` and lays the strokes back down there, so a
+ * mark drawn over them can be taken away without repainting the whole surface.
+ * `region` is in the strokes' own units.
+ */
+export function redrawWithin(
+	ctx: CanvasRenderingContext2D,
+	strokes: readonly InkStroke[],
+	scale: number,
+	region: InkBounds
+): void {
+	const left = region.left * scale;
+	const top = region.top * scale;
+	const width = (region.right - region.left) * scale;
+	const height = (region.bottom - region.top) * scale;
+	ctx.save();
+	ctx.beginPath();
+	ctx.rect(left, top, width, height);
+	ctx.clip();
+	ctx.clearRect(left, top, width, height);
+	ctx.lineCap = 'round';
+	ctx.lineJoin = 'round';
+	for (const stroke of strokes) {
+		const points = stroke.points;
+		if (points.length === 1) {
+			if (reaches(stroke, points[0], points[0], region)) dot(ctx, stroke.width, points[0], scale);
+			continue;
+		}
+		for (let i = 1; i < points.length; i++) {
+			const a = points[i - 1];
+			const b = points[i];
+			if (reaches(stroke, a, b, region)) segment(ctx, stroke.width, a, b, scale);
+		}
+	}
+	ctx.restore();
+}
+
+/**
+ * Draws where the platform expects the stroke to go next, and answers with the
+ * region that mark covers so the next real sample can lift it. Null where there
+ * is nothing to draw ahead.
+ */
+export function drawAhead(
+	ctx: CanvasRenderingContext2D,
+	live: { points: readonly InkPoint[]; width: number },
+	ahead: readonly InkPoint[],
+	scale: number
+): InkBounds | null {
+	const last = live.points.at(-1);
+	if (!last || ahead.length === 0) return null;
+	const provisional: InkStroke = { points: [last, ...ahead], width: live.width };
+	drawStroke(ctx, provisional, scale);
+	return strokeBounds([provisional]);
+}
+
+/**
+ * A context whose units are CSS pixels on a backing store sized for the device's,
+ * with the canvas's top-left corner at `origin`. Resizing the backing store is
+ * itself a clear, so a caller redrawing everything clears; one appending to a
+ * live stroke must not.
  */
 export function prepareCanvas(
 	canvas: HTMLCanvasElement,
 	cssWidth: number,
-	cssHeight: number
+	cssHeight: number,
+	origin: { left: number; top: number } = { left: 0, top: 0 }
 ): CanvasRenderingContext2D | null {
 	const ratio = Math.min(3, Math.max(1, globalThis.devicePixelRatio || 1));
 	const width = Math.max(1, Math.round(cssWidth * ratio));
@@ -185,6 +329,6 @@ export function prepareCanvas(
 	if (canvas.height !== height) canvas.height = height;
 	const ctx = canvas.getContext('2d');
 	if (!ctx) return null;
-	ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+	ctx.setTransform(ratio, 0, 0, ratio, -origin.left * ratio, -origin.top * ratio);
 	return ctx;
 }

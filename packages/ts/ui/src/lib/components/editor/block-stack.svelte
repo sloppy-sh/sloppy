@@ -41,6 +41,7 @@
 		type DocBlock,
 		type Opened,
 		type SavedBlock,
+		type SaveOp,
 		type SaveTrouble
 	} from './document.js';
 	import EmojiPicker from './emoji-picker.svelte';
@@ -53,10 +54,14 @@
 		NIB_WIDTH,
 		StrokeInProgress,
 		capturePointer,
+		drawAhead,
 		drawStroke,
 		prepareCanvas,
+		redrawWithin,
 		strokeBounds,
-		translateStrokes
+		translateStrokes,
+		type InkBounds,
+		type InkSurface
 	} from './ink.js';
 	import MediaPicker from './media-picker.svelte';
 	import { afterElement, endOfNote } from './placement.js';
@@ -87,6 +92,8 @@
 	/** How long the pen may rest before the strokes so far settle into a drawing. */
 	const SETTLE_AFTER_MS = 900;
 	const INK_PADDING = 12;
+	/** How much one section may hold and still be saved. */
+	const SECTION_LIMIT_BYTES = 2 * 1024 * 1024;
 	/** How much of the writing surface the controls stand over. */
 	const BAR_CLEARANCE = 64;
 	const NEW_INK_HEIGHT = 200;
@@ -173,11 +180,19 @@
 		};
 	}
 
+	function tooBig(op: SaveOp): boolean {
+		if (op.kind !== 'create' && op.kind !== 'update') return false;
+		return new TextEncoder().encode(JSON.stringify(op.content)).byteLength > SECTION_LIMIT_BYTES;
+	}
+
 	/** What reaches the API is worked out when the trip leaves, not when it was asked for. */
 	function run(write: Write): Promise<void> {
 		const trip = inFlight.then(async () => {
-			const ops = planSave(write.rows, write.next);
-			if (ops.length === 0) return;
+			const planned = planSave(write.rows, write.next);
+			if (planned.length === 0) return;
+			// A section past what one can hold is left out of the trip rather than
+			// taking the rest of the note down with it.
+			const ops = planned.filter((op) => !tooBig(op));
 			await runSave(ops, write.rows, write.next, {
 				create: (request) =>
 					onCreate({
@@ -204,6 +219,12 @@
 					}
 				}
 			});
+			if (ops.length < planned.length) {
+				throw new SaveFailure(
+					'refused',
+					`That section is too big to save. The limit here is ${SECTION_LIMIT_BYTES / (1024 * 1024)} MB, so try splitting it in two.`
+				);
+			}
 		});
 		inFlight = trip.catch(() => undefined);
 		return trip;
@@ -467,28 +488,65 @@
 	let stroke: StrokeInProgress | null = null;
 	let settling: ReturnType<typeof setTimeout> | undefined;
 	let pending: InkStroke[] = [];
+	/** Where the samples drawn ahead of the nib were left, so the next real one
+	 *  lifts them; null where none are on the surface. */
+	let ahead: InkBounds | null = null;
+	/** The box the note is read in, resolved with the surface it belongs to. */
+	let reading: HTMLElement | null = null;
 
-	function penSurface() {
-		const rect = wet!.getBoundingClientRect();
+	function scrollerOf(from: HTMLElement): HTMLElement | null {
+		for (let parent = from.parentElement; parent; parent = parent.parentElement) {
+			const flow = getComputedStyle(parent).overflowY;
+			if (flow === 'auto' || flow === 'scroll') return parent;
+		}
+		return null;
+	}
+
+	/** A stroke is held where it was drawn in the note, so the view can scroll
+	 *  under it between the pen lifting and the drawing settling. */
+	function penSurface(): InkSurface {
+		const rect = surface!.getBoundingClientRect();
 		return { left: rect.left, top: rect.top, scale: 1 };
 	}
 
-	function penContext(): { ctx: CanvasRenderingContext2D; width: number; height: number } | null {
-		if (!wet) return null;
-		const rect = wet.getBoundingClientRect();
-		const ctx = prepareCanvas(wet, rect.width, rect.height);
+	/**
+	 * The canvas laid over as much of the note as is on screen, so what it costs
+	 * is the size of the screen rather than the length of the note. `box` is where
+	 * it sits in the note, which is the space the pen's points are in.
+	 */
+	function penContext(): { ctx: CanvasRenderingContext2D; box: InkBounds } | null {
+		if (!wet || !surface) return null;
+		const rect = surface.getBoundingClientRect();
+		const view = reading?.getBoundingClientRect();
+		const seen = {
+			top: Math.max(0, view?.top ?? 0),
+			bottom: Math.min(window.innerHeight, view?.bottom ?? window.innerHeight)
+		};
+		const top = Math.max(0, Math.min(seen.top, rect.bottom) - rect.top);
+		const bottom = Math.max(top, Math.min(seen.bottom, rect.bottom) - rect.top);
+		if (wet.style.top !== `${top}px`) wet.style.top = `${top}px`;
+		if (wet.style.height !== `${bottom - top}px`) wet.style.height = `${bottom - top}px`;
+		const ctx = prepareCanvas(wet, rect.width, bottom - top, { left: 0, top });
 		if (!ctx) return null;
 		ctx.strokeStyle = getComputedStyle(wet).color;
 		ctx.fillStyle = ctx.strokeStyle;
-		return { ctx, width: rect.width, height: rect.height };
+		return { ctx, box: { left: 0, top, right: rect.width, bottom } };
 	}
 
 	function repaintPen(): void {
 		const prepared = penContext();
 		if (!prepared) return;
-		prepared.ctx.clearRect(0, 0, prepared.width, prepared.height);
-		for (const done of pending) drawStroke(prepared.ctx, done, 1);
-		if (stroke) drawStroke(prepared.ctx, { points: stroke.points, width: stroke.width }, 1);
+		const { ctx, box } = prepared;
+		ctx.clearRect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+		ahead = null;
+		for (const done of pending) drawStroke(ctx, done, 1);
+		if (stroke) drawStroke(ctx, { points: stroke.points, width: stroke.width }, 1);
+	}
+
+	/** The note moved under the canvas. Nothing is on it until a pen touches the
+	 *  surface, and pen-down lays it over what is on screen by then. */
+	function viewMoved(): void {
+		if (stroke || pending.length > 0) repaintPen();
 	}
 
 	function onPenDown(event: PointerEvent): void {
@@ -503,19 +561,20 @@
 	}
 
 	function onPenMove(event: PointerEvent): void {
-		if (!stroke) return;
+		if (!stroke || !surface) return;
 		event.preventDefault();
-		const before = stroke.points.length;
-		stroke.extend(event, penSurface());
 		const prepared = penContext();
-		if (prepared) {
-			drawStroke(
-				prepared.ctx,
-				{ points: stroke.points, width: stroke.width },
-				1,
-				Math.max(1, before)
-			);
+		const live = { points: stroke.points, width: stroke.width };
+		if (prepared && ahead) {
+			redrawWithin(prepared.ctx, [...pending, live], 1, ahead);
+			ahead = null;
 		}
+		const on = penSurface();
+		const before = stroke.points.length;
+		stroke.extend(event, on);
+		if (!prepared) return;
+		drawStroke(prepared.ctx, live, 1, Math.max(1, before));
+		ahead = drawAhead(prepared.ctx, live, stroke.predict(event, on), 1);
 	}
 
 	function onPenUp(): void {
@@ -523,6 +582,9 @@
 		stroke = null;
 		if (!done) return;
 		pending = [...pending, done];
+		// The mark left standing is the stroke as it was kept, with nothing drawn
+		// ahead of the nib still on it.
+		repaintPen();
 		clearTimeout(settling);
 		settling = setTimeout(settle, SETTLE_AFTER_MS);
 	}
@@ -532,7 +594,7 @@
 	function positionFor(y: number): number {
 		const current = editor!;
 		try {
-			const rect = wet!.getBoundingClientRect();
+			const rect = surface!.getBoundingClientRect();
 			const found = current.view.posAtCoords({ left: rect.left + 8, top: rect.top + y });
 			if (!found) return endOfNote(current.state);
 			return afterElement(current.state.doc.resolve(found.pos)) ?? endOfNote(current.state);
@@ -549,7 +611,7 @@
 		const bounds = strokeBounds(strokes);
 		if (!bounds) return;
 		const top = Math.max(0, bounds.top - INK_PADDING);
-		const width = Math.max(1, Math.round(wet!.getBoundingClientRect().width));
+		const width = Math.max(1, Math.round(surface!.getBoundingClientRect().width));
 		const height = Math.max(80, Math.ceil(bounds.bottom + INK_PADDING - top));
 		editor.commands.insertContentAt(positionFor(bounds.top), {
 			type: 'ink',
@@ -658,6 +720,10 @@
 			frame.addEventListener('pointermove', onPenMove);
 			frame.addEventListener('pointerup', onPenUp);
 			frame.addEventListener('pointercancel', onPenUp);
+			reading = scrollerOf(frame);
+			// Caught on the way down: the box the note is read in scrolls, and a
+			// scroll does not carry up to the window.
+			window.addEventListener('scroll', viewMoved, { capture: true, passive: true });
 
 			return () => {
 				opened = false;
@@ -667,6 +733,7 @@
 				frame.removeEventListener('pointermove', onPenMove);
 				frame.removeEventListener('pointerup', onPenUp);
 				frame.removeEventListener('pointercancel', onPenUp);
+				window.removeEventListener('scroll', viewMoved, { capture: true });
 				clearTimeout(settling);
 				settle();
 				const last = plan();
@@ -678,6 +745,8 @@
 				clearTimeout(saveTimer);
 				pending = [];
 				stroke = null;
+				ahead = null;
+				reading = null;
 				ready = false;
 				editing = false;
 				editor = null;
@@ -814,7 +883,7 @@
 	]);
 </script>
 
-<svelte:window onresize={repaintPen} onpagehide={flush} />
+<svelte:window onresize={viewMoved} onpagehide={flush} />
 <svelte:document onvisibilitychange={whenHidden} />
 
 <div class="note-body space-y-2">
@@ -823,7 +892,8 @@
 			<div bind:this={host}></div>
 			<canvas
 				bind:this={wet}
-				class="pointer-events-none absolute inset-0 size-full text-foreground"
+				class="pointer-events-none absolute left-0 w-full text-foreground"
+				style="top: 0px; height: 0px"
 				aria-hidden="true"
 			></canvas>
 			{#if empty && ready}

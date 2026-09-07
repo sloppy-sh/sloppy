@@ -126,10 +126,21 @@ function keepAll(nodes: readonly DocumentNode[]): DocumentNode[] {
 	return kept;
 }
 
-/** One section, written down. */
+/** A section is written down once: ProseMirror hands back the same node until
+ *  somebody edits it, and a note holding drawings is expensive to write down. */
+const writtenDown = new WeakMap<ProseMirrorNode, BlockDocument>();
+
+/** One section, written down. The document it answers with is shared and never
+ *  written into. */
 function storedContent(section: ProseMirrorNode): BlockDocument {
-	const json = section.toJSON() as DocumentNode;
-	return { type: 'doc', content: keepAll(json.content ?? []) };
+	const already = writtenDown.get(section);
+	if (already) return already;
+	const content: BlockDocument = {
+		type: 'doc',
+		content: keepAll((section.toJSON() as DocumentNode).content ?? [])
+	};
+	writtenDown.set(section, content);
+	return content;
 }
 
 /** Whether anything in a section survives being written down. */
@@ -146,7 +157,7 @@ function written(node: ProseMirrorNode): boolean {
 }
 
 function sameDocument(a: BlockDocument, b: BlockDocument): boolean {
-	return JSON.stringify(a) === JSON.stringify(b);
+	return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** False for an element this build cannot draw: a kind or a mark it has no
@@ -321,6 +332,11 @@ function sectionEnd(doc: ProseMirrorNode, ref: OwnedRef): number | null {
  * neither version of a section is dropped for the other. Ordered last position
  * first, so inserting them in turn leaves each position true when its turn
  * comes.
+ *
+ * A section the draft took away is NOT taken away here, though {@link openDraft}
+ * does take it away: this path runs over writing done since the note opened, and
+ * nothing a person is looking at goes on the word of a draft they have written
+ * past.
  */
 export function heldApart(
 	draft: NoteDraft,
