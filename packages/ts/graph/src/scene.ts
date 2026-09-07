@@ -457,6 +457,40 @@ export class GraphScene {
   }
 
   /**
+   * Re-colour the marks already up: `fill` and `alpha` are all a tag question
+   * moves — DESIGN.md § Hue. The caller must have established that this model's
+   * drawn set and order are the standing one's, because everything else a mark
+   * is drawn from stays on the particles this leaves in place.
+   */
+  setTints(model: BuiltModel, selecting: boolean): void {
+    this.model = model;
+    this.selecting = selecting;
+    for (const mark of this.marks) {
+      const attributes = model.graph.getNodeAttributes(mark.ref);
+      mark.attributes = attributes;
+      const { provenance, fill, alpha } = attributes;
+      if (mark.fill) {
+        mark.fill.tint = fill;
+        mark.fill.alpha = alpha;
+      }
+      if (mark.ring) {
+        mark.ring.tint =
+          provenance === "pulled" ? fill : this.options.palette.ink;
+        mark.ring.alpha = alpha;
+      }
+      if (mark.look) {
+        mark.look.tint = this.options.palette.lookRing(
+          provenance === "pulled" ? this.options.palette.paper : fill,
+        );
+      }
+    }
+    this.fills.update();
+    this.rings.update();
+    this.looks.update();
+    this.positionsDirty = true;
+  }
+
+  /**
    * Replace what is drawn. Positions of nodes the previous model also held are
    * kept by the caller, so a selection change or an expand re-uses them rather
    * than throwing every node back to its seed.

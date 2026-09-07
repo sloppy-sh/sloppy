@@ -8,6 +8,7 @@ import type {
 	PublicationView
 } from '@sloppy/types';
 import { homeGraphRef, MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
+import { DEFAULT_BUDGET } from '@sloppy/graph';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -2008,6 +2009,42 @@ describe('a note written before the server has answered', () => {
 		expect(screen()).toContain('Giving it an address');
 		expect(openTabs().reading).toBeUndefined();
 		expect(openTabs().addresses).toEqual(['1', '2']);
+	});
+});
+
+// PRODUCT.md principle 7: ten thousand notes that stay readable. The canvas
+// bounds what it draws; what the page asks for is bounded to match, so the field
+// is on screen after one read whatever is under it.
+describe('how much of a field is read before it draws', () => {
+	const asksForBranches = () => api.calls.filter((call) => call.startsWith('GET /nodes?origin='));
+
+	it('reads to the depth the canvas draws first, and the rest of the branch after', async () => {
+		await open();
+
+		const asked = asksForBranches();
+		const bounded = asked.filter((call) => call.includes(`max_depth=${DEFAULT_BUDGET.depth + 1}`));
+		const whole = asked.filter((call) => !call.includes('max_depth='));
+
+		expect(bounded.length).toBeGreaterThan(0);
+		expect(whole).toHaveLength(bounded.length);
+		expect(asked.indexOf(bounded[0])).toBeLessThan(asked.indexOf(whole[0]));
+	});
+
+	it('draws the field before the whole of it has arrived', async () => {
+		let arrive: (() => void) | undefined;
+		const rest = new Promise<void>((done) => (arrive = done));
+		api.on('GET /nodes', async (url) => {
+			const origin = url.searchParams.get('origin');
+			if (origin && !url.searchParams.get('max_depth')) await rest;
+			return [...graph.values()].filter((n) => (origin ? n.origin === origin : n.ref === n.origin));
+		});
+
+		await open();
+		expect(() => onCanvas('1')).not.toThrow();
+		expect(screen()).not.toContain('could not be read');
+
+		arrive?.();
+		await settle();
 	});
 });
 

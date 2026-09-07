@@ -128,6 +128,19 @@ export class FakeParticleContainer extends FakeContainer {
   update(): void {}
 }
 
+export class FakeParticle {
+  texture: FakeTexture | undefined;
+  tint = 0;
+  alpha = 1;
+  x = 0;
+  y = 0;
+  scaleX = 1;
+  scaleY = 1;
+  constructor(options: Record<string, unknown>) {
+    Object.assign(this, options);
+  }
+}
+
 export class FakeSprite extends FakeContainer {
   width = 0;
   height = 0;
@@ -199,7 +212,7 @@ export function fakePixi() {
     Container: FakeContainer,
     Graphics: FakeGraphics,
     ParticleContainer: FakeParticleContainer,
-    Particle: class {},
+    Particle: FakeParticle,
     Sprite: FakeSprite,
     TilingSprite: FakeTilingSprite,
     Text: FakeText,

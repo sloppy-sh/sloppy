@@ -30,28 +30,49 @@ export interface LodResult {
   folded: ReadonlySet<OwnedRef>;
 }
 
+export type LodFold = (
+  nodes: readonly NodeView[],
+  hostCollapsed: ReadonlySet<OwnedRef>,
+  focus: OwnedRef | undefined,
+  budget?: LodBudget,
+) => LodResult;
+
 /**
  * Fold `nodes` down to the budget, measured in tree hops from `focus` — or from
  * each node's own root when there is no focus, which is the whole-graph view.
  */
-export function applyLod(
+export const applyLod: LodFold = (
+  nodes,
+  hostCollapsed,
+  focus,
+  budget = DEFAULT_BUDGET,
+) => foldTo(walkFrom(nodes, focus), nodes, hostCollapsed, focus, budget);
+
+/**
+ * A fold that keeps its last walk of the tree, which is a function of the nodes
+ * and the focus alone: a tag question, a choice and a note opened all ask
+ * against the same tree, and those are the asks a reader spends the day making.
+ * One belongs to one canvas, and what it holds lives no longer than that.
+ */
+export function makeFold(): LodFold {
+  let last:
+    | { nodes: readonly NodeView[]; focus: OwnedRef | undefined; walk: LodWalk }
+    | undefined;
+  return (nodes, hostCollapsed, focus, budget = DEFAULT_BUDGET) => {
+    if (last?.nodes !== nodes || last.focus !== focus) {
+      last = { nodes, focus, walk: walkFrom(nodes, focus) };
+    }
+    return foldTo(last.walk, nodes, hostCollapsed, focus, budget);
+  };
+}
+
+function foldTo(
+  { children, byRef, distance }: LodWalk,
   nodes: readonly NodeView[],
   hostCollapsed: ReadonlySet<OwnedRef>,
   focus: OwnedRef | undefined,
-  budget: LodBudget = DEFAULT_BUDGET,
+  budget: LodBudget,
 ): LodResult {
-  const children = new Map<OwnedRef, OwnedRef[]>();
-  const byRef = new Map<OwnedRef, NodeView>();
-  for (const node of nodes) {
-    byRef.set(node.ref, node);
-    if (node.parent !== undefined) {
-      const list = children.get(node.parent);
-      if (list) list.push(node.ref);
-      else children.set(node.parent, [node.ref]);
-    }
-  }
-
-  const distance = hopsFrom(nodes, children, byRef, focus);
   const collapsed = new Set(hostCollapsed);
   const folded = new Set<OwnedRef>();
   const hidden = new Set<OwnedRef>();
@@ -142,6 +163,35 @@ export function spineFloor(
     if (parent === undefined || spine.has(parent)) kept += 1;
   }
   return kept;
+}
+
+/** What a fold reads off the tree before it folds anything. */
+interface LodWalk {
+  children: ReadonlyMap<OwnedRef, OwnedRef[]>;
+  byRef: ReadonlyMap<OwnedRef, NodeView>;
+  distance: ReadonlyMap<OwnedRef, number>;
+}
+
+function walkFrom(
+  nodes: readonly NodeView[],
+  focus: OwnedRef | undefined,
+): LodWalk {
+  const children = new Map<OwnedRef, OwnedRef[]>();
+  const byRef = new Map<OwnedRef, NodeView>();
+  for (const node of nodes) {
+    byRef.set(node.ref, node);
+    if (node.parent !== undefined) {
+      const list = children.get(node.parent);
+      if (list) list.push(node.ref);
+      else children.set(node.parent, [node.ref]);
+    }
+  }
+
+  return {
+    children,
+    byRef,
+    distance: hopsFrom(nodes, children, byRef, focus),
+  };
 }
 
 /**
