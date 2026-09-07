@@ -36,6 +36,9 @@
 		ref: OwnedRef;
 		address: string;
 		title: string;
+		/** The graph the address is read in. Null where every open note is in one
+		 *  graph, which the strip does not repeat. */
+		graph?: string | null;
 	}
 </script>
 
@@ -277,18 +280,27 @@
 					<button
 						type="button"
 						aria-current={showing ? 'page' : undefined}
+						aria-label={tab.graph
+							? `${tab.address} ${tab.title || 'Untitled'}, in ${tab.graph}`
+							: undefined}
 						onclick={() => onActivate?.(tab.ref)}
 						class={cn(
-							'flex max-w-44 items-center gap-1.5 rounded-l-md pr-1 pl-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+							'flex items-center gap-1.5 rounded-l-md pr-1 pl-2.5 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+							tab.graph ? 'max-w-60' : 'max-w-44',
 							showing ? 'text-foreground' : 'text-muted-foreground'
 						)}
 					>
 						<span class="shrink-0 address text-xs">{tab.address}</span>
 						<span class="truncate">{tab.title || 'Untitled'}</span>
+						{#if tab.graph}
+							<span class="max-w-24 shrink-0 truncate text-xs text-muted-foreground"
+								>{tab.graph}</span
+							>
+						{/if}
 					</button>
 					<button
 						type="button"
-						aria-label="Close {tab.address}"
+						aria-label={tab.graph ? `Close ${tab.address} in ${tab.graph}` : `Close ${tab.address}`}
 						onclick={() => onCloseTab?.(tab.ref)}
 						class="flex w-11 shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
