@@ -123,10 +123,9 @@ not in this file.
 
 **Stack at a glance:** pnpm + Turborepo monorepo. `apps/sloppy/{api,web,native}` —
 NestJS API, SvelteKit web, Tauri native. `packages/ts/{types,client,app-core,ui,data,graph,idp}`
-— shared TypeScript packages (`@sloppy/*`). Rust crates live under `packages/rust/` and
-in the Tauri app's `src-tauri/`, managed by Cargo. Shared versions are pinned in the
-pnpm catalog (`pnpm-workspace.yaml`). Run `pnpm dev` / `pnpm build` / `pnpm check` from
-the root.
+— shared TypeScript packages (`@sloppy/*`). Rust lives in the Tauri app's `src-tauri/`,
+managed by Cargo. Shared versions are pinned in the pnpm catalog
+(`pnpm-workspace.yaml`). Run `pnpm dev` / `pnpm build` / `pnpm check` from the root.
 
 **The shells are shells.** `apps/sloppy/{web,native}` stay ~200-line boots. Every page,
 component, store and API call lives in `@sloppy/app-core`. This is what makes one

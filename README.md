@@ -23,35 +23,43 @@ Mobile and tablet are the primary surface. Desktop is the same product with more
 
 ## Status
 
-**The contracts exist; the product does not yet.** What is in the tree today is the build
-foundation and the seams every later branch reads: `@sloppy/types` (the address protocol,
-the node/block/tag/publication schemas, and the API's wire shapes), `@sloppy/data` (the
-table definitions and the per-user purge), `@sloppy/client` (the whole method surface, over
-`fetch`), `@sloppy/app-core` (the platform seam and the api proxy), `@sloppy/ui` (the design
-tokens), `@sloppy/idp` (syr's wire contracts and crypto, served by the API when it is asked
-to be the identity provider itself) and `@sloppy/api` (a NestJS API that signs people in
-through syr; its node and block modules are still empty).
+**The product is built and runs end to end.** From a clone, `pnpm dev` brings up something
+you can use: sign in — against a syr instance, or against the API's own identity provider
+with nothing else running anywhere — keep as many graphs as you want a notebook for, and
+write notes that are handed a Folgezettel address by rules every peer applies the same way.
+A note's interior is a stack of blocks, each holding paragraphs, headings, lists, code,
+pictures and Apple-Pencil ink. Tags cut across the genealogy and highlight rather than
+filter. The graph itself is a pixi canvas: a subtree collapses into a mega-node, detail
+drops away as you pull back, and a reader may put a picture behind the field. A subtree can
+be published by address and a peer's published region pulled into a graph of your own and
+read there, with profiles, comments, reactions and emoji coming from the identity side.
+Everything you have written comes back out as one file whenever you ask for it.
 
-So `pnpm dev` brings up the web shell over an API that can start a session and little
-else, and there is no graph to put in it yet. `pnpm test` is real: it holds the address
-protocol, the schema against a live SurrealDB, and the design system's contrast floors.
+`pnpm test` is about 3,600 tests across 200 files. Twelve of those files are integration
+suites that want a database listening, and they skip when there is none, so a clone with
+nothing else running still gets a green suite; Common tasks below is how to turn them on.
+
+What is still ahead is narrower than what is behind it. The native shell's on-device store
+is off by default, so an installed app still talks to an API rather than working with no
+network at all; and the page a browser lands on when it resolves somebody's identity has
+nothing answering it yet.
 
 ## Stack
 
-pnpm + Turborepo monorepo. The rows marked ✓ are in the tree; the rest are ahead.
+pnpm + Turborepo monorepo. Every row below is in the tree.
 
-| Path                   | Package            | Tech                                              |     |
-| ---------------------- | ------------------ | ------------------------------------------------- | --- |
-| `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                        | ✓   |
-| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                             | ✓   |
-| `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop) |     |
-| `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                | ✓   |
-| `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                       | ✓   |
-| `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call         | ✓   |
-| `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens          | ✓   |
-| `packages/ts/data`     | `@sloppy/data`     | SurrealDB repositories, schema, purge             | ✓   |
-| `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                |     |
-| `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode        | ✓   |
+| Path                   | Package            | Tech                                               |
+| ---------------------- | ------------------ | -------------------------------------------------- |
+| `apps/sloppy/api`      | `@sloppy/api`      | NestJS API                                         |
+| `apps/sloppy/web`      | `@sloppy/web`      | SvelteKit (SPA shell)                              |
+| `apps/sloppy/native`   | `@sloppy/native`   | Tauri + SvelteKit (iOS, iPadOS, Android, desktop)  |
+| `packages/ts/types`    | `@sloppy/types`    | Shared Zod schemas                                 |
+| `packages/ts/client`   | `@sloppy/client`   | Backend-agnostic API client                        |
+| `packages/ts/app-core` | `@sloppy/app-core` | Every page, component, store and API call          |
+| `packages/ts/ui`       | `@sloppy/ui`       | shadcn-svelte components + design tokens           |
+| `packages/ts/data`     | `@sloppy/data`     | SurrealDB table definitions and the per-user purge |
+| `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                 |
+| `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode         |
 
 Identity, profiles, media blobs, emoji and reactions come from **syr**; nodes, addresses,
 tags, blocks and ink are Sloppy's own. That split is not a preference — see
@@ -128,6 +136,23 @@ an edit under `packages/ts`.
 before any of this was containerised; `pnpm dev:api` and `pnpm dev:web` run one each.
 Sign-in on that path needs `PUBLIC_URL` naming the web shell's origin —
 [`apps/sloppy/web/README.md`](apps/sloppy/web/README.md) says why.
+
+## Something to look at
+
+A new graph is empty, and most of what Sloppy does only shows at scale: a subtree
+collapsing into a mega-node, detail dropping away as you pull back, a tag lighting up a set
+that runs right across the tree. Against a running stack, this fills one identity's graph
+with about 2,400 notes — deep chains, wide sibling runs, tags that cut across the genealogy,
+and interiors divided into sections with real prose in them:
+
+```bash
+pnpm --filter @sloppy/api seed
+```
+
+It fills the only identity on the stack; `--did <did:syr:…>` says which one when there is
+more than one, and `--nodes <n>` sizes the graph. An identity that already has notes is left
+alone — **`--fresh` is what overrides that, and it erases that identity's whole graph**
+before writing the new one.
 
 ## Common tasks
 

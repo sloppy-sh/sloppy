@@ -35,16 +35,15 @@ sloppy/
 │       ├── web/     @sloppy/web     — SvelteKit SPA shell
 │       └── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
 ├── packages/
-│   ├── ts/
-│   │   ├── types/     @sloppy/types     — Zod schemas: node, block, document, tag, ink stroke,
-│   │   │                                  publication, syr wire contracts
-│   │   ├── client/    @sloppy/client    — backend-agnostic SloppyClient over fetch
-│   │   ├── app-core/  @sloppy/app-core  — ALL pages, components, stores, the api layer, the runtime seam
-│   │   ├── ui/        @sloppy/ui        — shadcn-svelte vocabulary + app.css design tokens
-│   │   ├── data/      @sloppy/data      — SurrealDB repositories, schema.ts, purge.ts
-│   │   ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
-│   │   └── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
-│   └── rust/                            — shared crates (Cargo)
+│   └── ts/
+│       ├── types/     @sloppy/types     — Zod schemas: node, block, document, tag, ink stroke,
+│       │                                  publication, syr wire contracts
+│       ├── client/    @sloppy/client    — backend-agnostic SloppyClient over fetch
+│       ├── app-core/  @sloppy/app-core  — ALL pages, components, stores, the api layer, the runtime seam
+│       ├── ui/        @sloppy/ui        — shadcn-svelte vocabulary + app.css design tokens
+│       ├── data/      @sloppy/data      — SurrealDB table definitions and the per-user purge
+│       ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
+│       └── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
 ├── docs/
 ├── scripts/
 ├── docker/dev/          (the one image api, web and the package builder share)
@@ -60,6 +59,11 @@ load-bearing rather than tidy. `pnpm-workspace.yaml` carries the measurements.
 
 **The shells are ~200-line boots.** Everything product-shaped lives in `@sloppy/app-core`.
 One codebase serves web and native only for as long as that holds.
+
+**`@sloppy/data` is the shape of the store; a repository is the API's.** The table and index
+definitions and the per-user purge are what every surface must agree on, so they are shared.
+The SurrealQL that reads and writes one entity lives in `apps/sloppy/api/src/<module>/`,
+beside the service that owns the concern.
 
 **`apps/sloppy/api/src/app.module.ts` is a foundation file.** A shared import list is the
 one file every branch edits and then every branch conflicts on, so a milestone fills one of
