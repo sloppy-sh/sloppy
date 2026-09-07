@@ -5,7 +5,9 @@
 	import { graphOf, type NodeView, type OwnedRef, type Tag } from '@sloppy/types';
 	import { nameOf, TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
 	import { api } from '../api.js';
+	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { people } from '../stores/people.svelte.js';
+	import { session } from '../stores/session.svelte.js';
 
 	let {
 		notes,
@@ -116,6 +118,24 @@
 		return runs.length > 0 ? runs : undefined;
 	});
 
+	// A held region is one author's alone, so nothing in it is the reader's to
+	// arrange — and the walk of it is the notes and no sections.
+	const sections = $derived<TreeSurfaceProps['sections'] | undefined>(
+		fields
+			? {
+					shown: outlineSections.shown,
+					of: (note) => outlineSections.of(note),
+					says: (note) => outlineSections.says(note),
+					onShow: (note, show) => outlineSections.show(note, show),
+					onMove: (note, section, after) => outlineSections.move(note, section, after)
+				}
+			: undefined
+	);
+
+	$effect(() => {
+		outlineSections.mine(session.viewer?.did ?? null);
+	});
+
 	// A note reached from anywhere else — the canvas, a link inside another note,
 	// an address in the URL — is one the tree has to be able to show.
 	$effect(() => {
@@ -140,4 +160,5 @@
 	{onToggle}
 	{onOpen}
 	{writeUnder}
+	{sections}
 />

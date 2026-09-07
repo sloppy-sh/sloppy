@@ -50,7 +50,9 @@ export {
 	type TreeGroup,
 	type TreeSurfaceProps
 } from './components/tree/tree-surface.svelte';
+export type { OutlineSections, TreeSection } from './components/tree/sections.js';
 export type { TreeNote, TreeRow } from './components/tree/walk.js';
+export { sectionLines } from './components/publish/section-text.js';
 export { default as TagField } from './components/tags/tag-field.svelte';
 export { default as TagRail } from './components/tags/tag-rail.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';

@@ -4,7 +4,8 @@ import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
-import TreeSurface, { type TreeGroup } from './tree-surface.svelte';
+import type { TreeSection } from './sections.js';
+import TreeSurface, { type TreeGroup, type TreeSurfaceProps } from './tree-surface.svelte';
 import { LIT_PAGE, RUN_PAGE, type TreeNote } from './walk.js';
 
 const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
@@ -61,6 +62,9 @@ function render(
 		chosen?: Set<OwnedRef>;
 		/** Absent stands for a walk that cannot be chosen on at all. */
 		choosable?: boolean;
+		/** Absent stands for a walk with no sections in it, which is what a region
+		 *  pulled from somebody else is. */
+		sections?: TreeSurfaceProps['sections'];
 	} = {}
 ) {
 	mounted = mount(TreeSurface, {
@@ -87,7 +91,8 @@ function render(
 						write: (ref: OwnedRef) => written.push(ref),
 						beside: props.draggable === false ? undefined : (ref: OwnedRef) => besides.push(ref)
 					}
-				: undefined
+				: undefined,
+			sections: props.sections
 		}
 	});
 	flushSync();
@@ -952,5 +957,237 @@ describe('choosing notes on the walk', () => {
 
 		press(labelled('About 2'), ' ', { ctrlKey: true });
 		expect(chose).toEqual([]);
+	});
+});
+
+// AI.md § "A Block Is a Section": a section has a handle that reorders it, and
+// reordering is the only act on one here.
+describe('a note’s sections under its row in the walk', () => {
+	const S1 = held('1/s1');
+	const S2 = held('1/s2');
+	const S3 = held('1/s3');
+
+	let stack: TreeSection[];
+	let shows: [OwnedRef, boolean][];
+	let moves: [OwnedRef, OwnedRef, OwnedRef | null][];
+	let word: string;
+
+	function sections(shown: OwnedRef[] = [held('1')]): TreeSurfaceProps['sections'] {
+		return {
+			shown: new SvelteSet(shown),
+			of: (note) => (note === held('1') ? stack : undefined),
+			says: () => word,
+			onShow: (note, show) => shows.push([note, show]),
+			onMove: (note, section, after) => moves.push([note, section, after])
+		};
+	}
+
+	const sectionRow = (of: OwnedRef) =>
+		target.querySelector<HTMLElement>(`[data-row="section:${of}"]`) as HTMLElement;
+
+	const gripIn = (of: OwnedRef) => sectionRow(of).querySelector('button') as HTMLButtonElement;
+
+	/** Every row 44 tall, in the order they are drawn. */
+	function lay(): void {
+		for (const [at, row] of rows().entries()) {
+			Object.defineProperty(row, 'getBoundingClientRect', {
+				configurable: true,
+				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 0, right: 400 })
+			});
+		}
+	}
+
+	const pull = (type: string, x: number, y: number): PointerEvent => {
+		const event = new Event(type, { bubbles: true, cancelable: true });
+		Object.assign(event, { pointerId: 7, pointerType: 'mouse', button: 0, clientX: x, clientY: y });
+		return event as PointerEvent;
+	};
+
+	const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
+
+	beforeEach(() => {
+		stack = [
+			{ ref: S1, says: 'The first thing' },
+			{ ref: S2, says: 'A drawing' },
+			{ ref: S3, says: 'The last thing' }
+		];
+		shows = [];
+		moves = [];
+		word = '';
+	});
+
+	it('draws each section under the note, by its first line', () => {
+		render({ sections: sections() });
+		expect(rows().map((row) => row.textContent?.trim())).toEqual([
+			expect.stringContaining('About 1'),
+			'The first thing',
+			'A drawing',
+			'The last thing',
+			expect.stringContaining('About 2')
+		]);
+	});
+
+	it('sets the sections one level under the note and says where each one sits', () => {
+		render({ sections: sections() });
+		expect(sectionRow(S2).getAttribute('aria-level')).toBe('2');
+		expect(sectionRow(S2).getAttribute('aria-posinset')).toBe('2');
+		expect(sectionRow(S2).getAttribute('aria-setsize')).toBe('3');
+	});
+
+	it('leaves the walk the notes alone where it was given no sections', () => {
+		render();
+		expect(rows()).toHaveLength(2);
+		expect(target.querySelector('[aria-label^="Show the sections"]')).toBeNull();
+	});
+
+	it('asks for a note’s sections from its own control, apart from the branch', () => {
+		render({ sections: sections([]) });
+		const control = labelled('About 1').querySelector<HTMLButtonElement>(
+			'[aria-label^="Show the sections"]'
+		) as HTMLButtonElement;
+		control.click();
+		flushSync();
+		expect(shows).toEqual([[held('1'), true]]);
+		expect(toggled).toEqual([]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('asks for them and folds them back from the keyboard, apart from the branch', () => {
+		render({ sections: sections([]), opened: new Set([held('1')]) });
+		const note = labelled('About 1');
+		expect(note.getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowRight Alt+ArrowLeft');
+
+		press(note, 'ArrowRight', { altKey: true });
+		press(note, 'ArrowLeft', { altKey: true });
+		expect(shows).toEqual([
+			[held('1'), true],
+			[held('1'), false]
+		]);
+		expect(toggled).toEqual([]);
+	});
+
+	it('leaves the plain arrows folding the branch', () => {
+		render({ sections: sections([]) });
+		press(labelled('About 1'), 'ArrowRight');
+		expect(toggled).toEqual([[held('1'), true]]);
+		expect(shows).toEqual([]);
+	});
+
+	it('folds them back up from the same control', () => {
+		render({ sections: sections() });
+		const control = labelled('About 1').querySelector<HTMLButtonElement>(
+			'[aria-label^="Hide the sections"]'
+		) as HTMLButtonElement;
+		control.click();
+		flushSync();
+		expect(shows).toEqual([[held('1'), false]]);
+	});
+
+	it('says what stands under a note that has no sections to draw', () => {
+		stack = [];
+		word = 'Nothing is written in this note yet';
+		render({ sections: sections() });
+		expect(rows().map((row) => row.textContent?.trim())).toEqual([
+			expect.stringContaining('About 1'),
+			'Nothing is written in this note yet',
+			expect.stringContaining('About 2')
+		]);
+
+		rows()[1].click();
+		flushSync();
+		expect(shows).toEqual([[held('1'), true]]);
+	});
+
+	it('moves a section with the arrow keys, within its own note', () => {
+		render({ sections: sections() });
+		press(sectionRow(S3), 'ArrowUp', { altKey: true });
+		expect(moves).toEqual([[held('1'), S3, S1]]);
+
+		press(sectionRow(S1), 'ArrowDown', { altKey: true });
+		expect(moves).toEqual([
+			[held('1'), S3, S1],
+			[held('1'), S1, S2]
+		]);
+	});
+
+	it('leaves the plain arrows walking the rows', () => {
+		render({ sections: sections() });
+		press(sectionRow(S2), 'ArrowDown');
+		expect(moves).toEqual([]);
+		expect(document.activeElement).toBe(sectionRow(S3));
+	});
+
+	it('moves nothing at either end of the stack', () => {
+		render({ sections: sections() });
+		press(sectionRow(S1), 'ArrowUp', { altKey: true });
+		press(sectionRow(S3), 'ArrowDown', { altKey: true });
+		expect(moves).toEqual([]);
+	});
+
+	it('puts a dragged section where it is let go, and says so first', () => {
+		render({ sections: sections() });
+		lay();
+
+		gripIn(S3).dispatchEvent(pull('pointerdown', 30, 150));
+		window.dispatchEvent(pull('pointermove', 30, 50));
+		flushSync();
+		expect(said()).toBe('Put it first in 1');
+
+		window.dispatchEvent(pull('pointerup', 30, 50));
+		flushSync();
+		expect(moves).toEqual([[held('1'), S3, null]]);
+		expect(said()).toBe('');
+	});
+
+	it('names the section a drop would follow', () => {
+		render({ sections: sections() });
+		lay();
+
+		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
+		window.dispatchEvent(pull('pointermove', 30, 140));
+		flushSync();
+		expect(said()).toBe('Put it after A drawing');
+
+		window.dispatchEvent(pull('pointerup', 30, 140));
+		flushSync();
+		expect(moves).toEqual([[held('1'), S1, S2]]);
+	});
+
+	// A section belongs to the note it was written in, and the walk says so
+	// rather than letting go of it somewhere it cannot land.
+	it('refuses a drop outside the note, in words, and moves nothing', () => {
+		render({ sections: sections() });
+		lay();
+
+		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
+		window.dispatchEvent(pull('pointermove', 30, 200));
+		flushSync();
+		expect(said()).toBe('A section stays in the note it was written in');
+
+		window.dispatchEvent(pull('pointerup', 30, 200));
+		flushSync();
+		expect(moves).toEqual([]);
+	});
+
+	it('neither moves nor opens the note when Escape calls the drag off', () => {
+		render({ sections: sections() });
+		lay();
+
+		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
+		window.dispatchEvent(pull('pointermove', 30, 140));
+		flushSync();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		window.dispatchEvent(pull('pointerup', 30, 140));
+		flushSync();
+
+		expect(moves).toEqual([]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('opens the note a section belongs to when its row is tapped', () => {
+		render({ sections: sections() });
+		sectionRow(S2).click();
+		flushSync();
+		expect(openedNotes).toEqual([held('1')]);
 	});
 });
