@@ -28,11 +28,13 @@ import {
   MAX_SEARCH_HITS,
   MAX_TAGS_PER_NODE,
   type Node,
+  type NodeAlias,
   type NodeAppearance,
   type NodeBulkActSchema,
   type NodeBulkRequestSchema,
   type NodeBulkResult,
   type NodeView,
+  type NoteDestination,
   nowIso,
   type OwnedRef,
   ownedRefFrom,
@@ -48,7 +50,7 @@ import type { z } from "zod";
 import { MediaService } from "../media/media.service";
 import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
-import { nextChildAddress } from "./address-assignment";
+import { movedSubtree, nextChildAddress } from "./address-assignment";
 import { FindRepository } from "./find.repository";
 import { GraphService } from "./graph.service";
 import type { AddressHold, NodeBulkPatch } from "./node.repository";
@@ -275,6 +277,123 @@ export class NodeService {
     );
     if (!updated) throw new NotFoundException("That note is not here.");
     return entityView(updated);
+  }
+
+  /**
+   * A note carried somewhere else, with everything that sprang from it. The
+   * answer is that subtree as it now stands, because a move re-addresses all of
+   * it — AI.md § "The Address Is the Protocol".
+   *
+   * It queues behind the creations into the run it joins, so a note written
+   * there while this one is landing does not take the address it is about to.
+   */
+  async move(
+    did: string,
+    ref: OwnedRef,
+    to: NoteDestination,
+  ): Promise<NodeView[]> {
+    const note = await this.nodes.find(did, ref);
+    if (!note) throw new NotFoundException("That note is not here.");
+    const graph = graphOf(note);
+    const parent = await this.landingFor(did, note, to);
+    return this.creations.run(`${graph}|${parent?.address ?? ""}`, () =>
+      this.carry(did, note, graph, parent),
+    );
+  }
+
+  /**
+   * The note a move hangs the carried one under, `null` where it becomes a
+   * branch of its own. Every refusal a move has is a destination it cannot
+   * take, so they are all here.
+   */
+  private async landingFor(
+    did: string,
+    note: Node,
+    to: NoteDestination,
+  ): Promise<Node | null> {
+    if (to.note === ownedRefFrom(note.id)) {
+      throw new BadRequestException("Carry this note to a different one.");
+    }
+    const anchor = await this.nodes.find(did, to.note);
+    if (!anchor) throw new BadRequestException(missing(to.relation));
+    if (graphOf(anchor) !== graphOf(note)) {
+      throw new BadRequestException(
+        "That note is in another graph. A note stays in the graph it was written in.",
+      );
+    }
+    if (to.relation === "under") return this.outside(note, anchor);
+    if (!anchor.parent) return null;
+    const parent = await this.nodes.find(did, anchor.parent);
+    if (!parent) throw new BadRequestException(missing(to.relation));
+    return this.outside(note, parent);
+  }
+
+  /** A landing that is not inside the subtree about to move, which would leave
+   *  the note hanging under itself. */
+  private outside(note: Node, parent: Node): Node {
+    if (
+      parent.origin === note.origin &&
+      isInSubtree(note.address, parent.address)
+    ) {
+      throw new BadRequestException(
+        "A note cannot be carried into what sprang from it.",
+      );
+    }
+    return parent;
+  }
+
+  /**
+   * The subtree at its new addresses, with the address each note leaves behind
+   * still leading to it. Deleted notes under it are carried too; only the ones
+   * that are there come back in the answer.
+   */
+  private async carry(
+    did: string,
+    note: Node,
+    graph: OwnedRef,
+    parent: Node | null,
+  ): Promise<NodeView[]> {
+    const ref = ownedRefFrom(note.id);
+    const carried = await this.nodes.carried(did, note);
+    const beneath = carried.filter((one) => ownedRefFrom(one.id) !== ref);
+    const landing = movedSubtree(
+      parent?.address ?? null,
+      await this.nodes.childAddresses(did, parent, graph),
+      note.address,
+      beneath.map((one) => one.address),
+    );
+    const lands = (was: Address) => landing.get(was) as Address;
+    if (parent === null && !isRootAddress(lands(note.address))) {
+      throw new BadRequestException(
+        "There is no number left after your highest branch. Number a lower one.",
+      );
+    }
+
+    const origin = parent ? parent.origin : ref;
+    const landedAt = (one: Node, over: Partial<Node> = {}) =>
+      parseNode({
+        ...one,
+        address: lands(one.address),
+        depth: addressDepth(lands(one.address)),
+        origin,
+        ...over,
+      });
+    const root = landedAt(note, {
+      parent: parent ? ownedRefFrom(parent.id) : undefined,
+    });
+    const landed = [root, ...beneath.map((one) => landedAt(one))];
+    await this.nodes.move(did, landed, carried.map(leftBehind));
+
+    const after = await this.nodes.subtree(did, root);
+    const aliases = await this.nodes.aliasesOf(
+      did,
+      graph,
+      after.map((one) => ownedRefFrom(one.id)),
+    );
+    return after.map((one) => {
+      const was = aliases.get(ownedRefFrom(one.id));
+      return { ...entityView(one), ...(was ? { aliases: was } : {}) };
+    });
   }
 
   /**
@@ -626,6 +745,29 @@ export class NodeService {
       }
     }
   }
+}
+
+/** What a destination that cannot be read is refused with, said as the person
+ *  asked for it. */
+function missing(relation: NoteDestination["relation"]): string {
+  return relation === "under"
+    ? "The note this springs from is not here."
+    : "The note this follows is not here.";
+}
+
+/** The address a note is leaving, still leading to it. */
+function leftBehind(was: Node): NodeAlias {
+  const at = nowIso();
+  return {
+    id: createOwnedRecordId("node_alias", was.created_by),
+    created_by: was.created_by,
+    graph: graphOf(was),
+    ...(was.parent ? { parent: was.parent } : {}),
+    address: was.address,
+    note: ownedRefFrom(was.id),
+    created_at: at,
+    updated_at: at,
+  };
 }
 
 /** The moment before which a deleted branch can no longer be put back. */
