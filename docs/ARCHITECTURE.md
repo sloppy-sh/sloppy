@@ -3,9 +3,9 @@
 The detail [`AI.md`](../AI.md) defers to. AI.md states the rules; this file states the
 shape they apply to.
 
-> **Status.** Sloppy is early. This document describes the target architecture the
-> milestones build toward, and marks what exists today. Where it says "will", nothing has
-> been written yet. See the [README](../README.md) for what is actually in the tree.
+> **Status.** Sloppy is built and runs end to end. This document describes the
+> architecture as it stands and marks, where it says so, what is still ahead. See the
+> [README](../README.md) for what a person can do in the tree today.
 
 ## Deployment modes
 
