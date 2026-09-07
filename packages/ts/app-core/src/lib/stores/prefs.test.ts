@@ -108,6 +108,7 @@ describe('the saved look', () => {
 				graph: 'not a ref',
 				alsoOnCanvas: ['neither is this'],
 				wallpapers: 'a picture',
+				walking: 'yes',
 				readingWidth: 'wide',
 				origin: 'nowhere at all/ /'
 			})
@@ -122,9 +123,20 @@ describe('the saved look', () => {
 			graph: null,
 			alsoOnCanvas: [],
 			wallpapers: {},
+			walking: false,
 			readingWidth: null,
 			origin: null
 		});
+	});
+
+	// PRODUCT.md § "Accessibility & Inclusion": reading the graph as an outline
+	// is a preference, so it is waiting the next time the app opens.
+	it('opens on the outline again for a reader who left it there', () => {
+		prefs.init();
+		expect(prefs.current.walking).toBe(false);
+		prefs.set('walking', true);
+		prefs.init();
+		expect(prefs.current.walking).toBe(true);
 	});
 
 	// Which graph somebody is in, and which they have stood up beside it, are

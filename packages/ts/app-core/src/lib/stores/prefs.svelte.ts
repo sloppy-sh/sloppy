@@ -37,6 +37,9 @@ export interface Prefs {
 	/** The picture behind that paper, per graph — DESIGN.md § "The wallpaper".
 	 *  A graph with no entry has none. */
 	wallpapers: Record<OwnedRef, WallpaperPrefs>;
+	/** Whether the graph is read as a walk through the notes rather than drawn on
+	 *  the canvas — DESIGN.md § Layout. */
+	walking: boolean;
 	/** How much room the reader has taken for a note docked beside the graph, in
 	 *  px. Null is the width it opens at, and a number from a wider window is
 	 *  still safe to hand over: the surface bounds it against the window it is
@@ -96,6 +99,7 @@ function defaults(): Prefs {
 		graph: null,
 		alsoOnCanvas: [],
 		wallpapers: {},
+		walking: false,
 		readingWidth: null,
 		origin: null
 	};
@@ -201,6 +205,7 @@ class PrefsStore {
 			graph: refIn(saved.graph),
 			alsoOnCanvas: refsIn(saved.alsoOnCanvas),
 			wallpapers: sanitizeWallpapers(saved.wallpapers),
+			walking: saved.walking === true,
 			readingWidth: widthIn(saved.readingWidth),
 			origin: asOrigin(saved.origin)
 		};

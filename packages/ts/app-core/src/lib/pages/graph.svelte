@@ -7,10 +7,9 @@
 	// and which branches the reader folded is their place in it.
 	const folded = new SvelteSet<OwnedRef>();
 
-	// Kept for the same reason, and separately: the canvas draws every note and
-	// folds what the reader folds, while the tree draws none and opens what they
-	// open, so one place cannot answer for the other.
-	let walking = $state(false);
+	// Kept for the same reason, and separately from `folded`: the canvas draws
+	// every note and folds what the reader folds, while the tree draws none and
+	// opens what they open, so one place cannot answer for the other.
 	const unfolded = new SvelteSet<OwnedRef>();
 
 	/** How many notes may be open at once — DESIGN.md § Layout. */
@@ -478,6 +477,10 @@
 			tagging ||
 			visiting
 	);
+
+	/** Reading the graph as a walk rather than a canvas, which this device
+	 *  remembers — DESIGN.md § Persistence. */
+	const walking = $derived(prefs.current.walking);
 
 	/** Pointing a link at a note is a question put to the canvas, so the canvas
 	 *  comes back for as long as it is being asked. */
@@ -1633,7 +1636,7 @@
 			size="icon"
 			class="size-9 shrink-0 rounded-full"
 			aria-label={walking ? 'Back to the graph' : 'Walk the notes one at a time'}
-			onclick={() => (walking = !walking)}
+			onclick={() => prefs.set('walking', !walking)}
 		>
 			{#if walking}
 				<Network class="size-4" />
@@ -1743,6 +1746,9 @@
 					{selection}
 					reading={foreign ? reached : open}
 					opened={unfolded}
+					chosen={foreign ? undefined : chosen}
+					onChoose={foreign ? undefined : chooseAlso}
+					onChoosing={foreign ? undefined : (on) => (on ? startChoosing() : stopChoosing())}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
 					onOpen={foreign ? (ref) => void readHeld(ref) : show}
 					writeUnder={foreign ? undefined : writeFromRow}

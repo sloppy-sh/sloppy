@@ -33,6 +33,18 @@
 		reading?: OwnedRef | null;
 		/** What the chrome over the surface covers at either edge. */
 		inset?: { top: string; bottom: string };
+		/** The notes picked out to act on — DESIGN.md § "The mark" calls this the
+		 *  chosen set, and never a selection, because `selection` above is already
+		 *  the reader's tags.
+		 *
+		 *  PRESENT is a tree somebody is choosing on, an empty set included: a row
+		 *  then adds or removes rather than opening. Absent is the ordinary walk. */
+		chosen?: ReadonlySet<OwnedRef>;
+		/** Add or remove one note. Absent is a walk nothing can be chosen on. */
+		onChoose?: (ref: OwnedRef) => void;
+		/** Enter and leave choosing, from the tree's own control. Absent leaves the
+		 *  mode to whatever else enters it. */
+		onChoosing?: (on: boolean) => void;
 		onToggle: (ref: OwnedRef, open: boolean) => void;
 		onOpen: (ref: OwnedRef) => void;
 		/** Writing a note under a row, from the row: `keys` spells the chord for
@@ -52,10 +64,14 @@
 	// run to the note after it, and back up. The notes a note names are the
 	// note's own to show, so neither a reference nor a hand-drawn link branches
 	// here; DESIGN.md § Layout is why a plain tap replaces the note being read.
+	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import Globe from '@lucide/svelte/icons/globe';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import { assignTagHueSlots } from '@sloppy/types';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import { RUN_PAGE, type TreeRow, walkTree } from './walk.js';
 
@@ -66,10 +82,15 @@
 		selection = [],
 		reading = null,
 		inset = { top: '0px', bottom: '0px' },
+		chosen,
+		onChoose,
+		onChoosing,
 		onToggle,
 		onOpen,
 		writeUnder
 	}: TreeSurfaceProps = $props();
+
+	const choosing = $derived(chosen !== undefined);
 
 	/** The deepest a row is set in. Past it every generation sits at the same
 	 *  offset: a phone has run out of room, and the address already says how far
@@ -185,6 +206,7 @@
 
 	function act(group: string, row: TreeRow): void {
 		if (row.kind === 'rest') reveal(group, row);
+		else if (choosing && onChoose) onChoose(row.note.ref);
 		else onOpen(row.note.ref);
 	}
 
@@ -200,6 +222,13 @@
 		if (event.key === 'Enter' && (event.metaKey || event.ctrlKey || event.altKey)) {
 			if (!writeUnder?.typed(event) || row.kind !== 'note') return;
 			writeUnder.write(row.note.ref);
+			event.preventDefault();
+			return;
+		}
+		// The way in from a keyboard, as a tap is the way in from a phone: the
+		// chord ARIA gives a tree several rows can be picked from.
+		if (onChoose && event.key === ' ' && (event.metaKey || event.ctrlKey) && row.kind === 'note') {
+			onChoose(row.note.ref);
 			event.preventDefault();
 			return;
 		}
@@ -282,6 +311,24 @@
 	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
+		{#if onChoosing}
+			<div class="flex justify-end pt-2">
+				<Button
+					variant="ghost"
+					class="h-9 gap-1.5 rounded-full text-xs"
+					onclick={() => onChoosing?.(!choosing)}
+				>
+					{#if choosing}
+						<Check class="size-4" />
+						Done choosing
+					{:else}
+						<ListChecks class="size-4" />
+						Choose notes
+					{/if}
+				</Button>
+			</div>
+		{/if}
+
 		{#each drawn as { key: group, title, author, lead: heads, rows } (group)}
 			{#if rows.length > 0}
 				{@const held = stop(group, heads, rows)}
@@ -297,7 +344,11 @@
 						</h2>
 					{/if}
 
-					<div role="tree" aria-label={by ?? (title || 'Notes')}>
+					<div
+						role="tree"
+						aria-label={by ?? (title || 'Notes')}
+						aria-multiselectable={choosing ? true : undefined}
+					>
 						{#each rows as row (rowKey(heads, row))}
 							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
@@ -313,7 +364,9 @@
 									aria-setsize={row.of}
 									aria-expanded={row.children > 0 ? row.open : undefined}
 									aria-selected={row.note.ref === reading}
-									onclick={() => onOpen(row.note.ref)}
+									aria-checked={chosen ? chosen.has(row.note.ref) : undefined}
+									aria-keyshortcuts={onChoose ? 'Control+Space Meta+Space' : undefined}
+									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows)}
 									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
@@ -367,9 +420,32 @@
 										</span>
 									{/if}
 
+									{#if row.note.published}
+										<span class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+											<Globe class="size-3" aria-hidden="true" />
+											Published
+										</span>
+									{/if}
+
+									{#if chosen?.has(row.note.ref)}
+										<span
+											class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+											aria-hidden="true"
+										>
+											<Check class="size-3" />
+											Chosen
+										</span>
+									{/if}
+
 									{#if row.under > 0}
-										<span class="shrink-0 text-xs text-muted-foreground tabular-nums">
+										<span
+											class="shrink-0 text-xs text-muted-foreground tabular-nums"
+											aria-hidden="true"
+										>
 											{row.under.toLocaleString()}
+										</span>
+										<span class="sr-only">
+											{`${row.under.toLocaleString()} ${row.under === 1 ? 'note' : 'notes'} under this`}
 										</span>
 									{/if}
 

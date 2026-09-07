@@ -1130,8 +1130,9 @@ choices carry over if someone signs in.
 The same store holds the view choices that are nobody's business but this device's — the
 tags the graph opens lit by, the ground it is drawn on (§ "The ground"), the picture behind
 it (§ "The wallpaper"), which graph the reader is in and which they have stood up beside it
-(§ "Several graphs on one canvas"), and how much room a docked note was last given. None of
-them is an attribute on `<html>`, so none is a thing the boot script has to know: the canvas
+(§ "Several graphs on one canvas"), whether it is read as an outline rather than drawn, and
+how much room a docked note was last given. None of them is an attribute on `<html>`, so
+none is a thing the boot script has to know: the canvas
 reads them once it is up, and a first paint with the right theme is all that
 flash-of-the-wrong anything is about. None of them reaches a note either — a peer pulling a
 subtree receives nothing of how it was read.

@@ -28,6 +28,7 @@ function note(address: string, parent?: string, over: Partial<TreeNote> = {}): T
 		parent: parent === undefined ? undefined : held(parent),
 		title: `About ${address}`,
 		tags: [],
+		published: false,
 		...over
 	};
 }
@@ -39,6 +40,8 @@ let mounted: ReturnType<typeof mount> | undefined;
 let openedNotes: OwnedRef[];
 let toggled: [OwnedRef, boolean][];
 let written: OwnedRef[];
+let chose: OwnedRef[];
+let choosing: boolean[];
 let scrolledTo: HTMLElement[];
 
 function render(
@@ -50,6 +53,10 @@ function render(
 		reading?: OwnedRef | null;
 		/** Absent stands for a walk through notes that are not the reader's. */
 		writable?: boolean;
+		/** Absent stands for a walk nobody is choosing on. */
+		chosen?: Set<OwnedRef>;
+		/** Absent stands for a walk that cannot be chosen on at all. */
+		choosable?: boolean;
 	} = {}
 ) {
 	mounted = mount(TreeSurface, {
@@ -60,6 +67,9 @@ function render(
 			opened: props.opened ?? new Set<OwnedRef>(),
 			selection: props.selection,
 			reading: props.reading ?? null,
+			chosen: props.chosen,
+			onChoose: props.choosable || props.chosen ? (ref: OwnedRef) => chose.push(ref) : undefined,
+			onChoosing: props.choosable || props.chosen ? (on: boolean) => choosing.push(on) : undefined,
 			onOpen: (ref: OwnedRef) => openedNotes.push(ref),
 			onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open]),
 			writeUnder: props.writable
@@ -95,6 +105,8 @@ beforeEach(() => {
 	openedNotes = [];
 	toggled = [];
 	written = [];
+	chose = [];
+	choosing = [];
 	scrolledTo = [];
 	stubResizeObserver();
 	Object.defineProperty(Element.prototype, 'scrollIntoView', {
@@ -645,5 +657,100 @@ describe('writing from a row', () => {
 
 		expect(written).toEqual([]);
 		expect(openedNotes).toEqual([]);
+	});
+});
+
+// PRODUCT.md: what anyone with the address can read is never carried by a drawn
+// mark alone, and the walk is where there is no drawing to read.
+describe('what a row says about a note', () => {
+	const OUT = [note('1', undefined, { published: true }), note('1a', '1'), note('2')];
+
+	it('says a note is published, in the row’s own words', () => {
+		render({ groups: [{ key: 'one', title: '', notes: OUT }] });
+		expect(labelled('About 1').textContent).toContain('Published');
+		expect(labelled('About 2').textContent).not.toContain('Published');
+	});
+
+	it('says what the number beside a branch counts', () => {
+		render({ groups: [{ key: 'one', title: '', notes: OUT }] });
+		expect(labelled('About 1').textContent).toContain('1 note under this');
+		expect(labelled('About 2').textContent).not.toContain('under this');
+	});
+
+	it('counts several notes as several', () => {
+		render();
+		expect(labelled('About 1').textContent).toContain('3 notes under this');
+	});
+});
+
+describe('choosing notes on the walk', () => {
+	const choice = () =>
+		[...target.querySelectorAll<HTMLButtonElement>('button')].find((button) =>
+			/Choose notes|Done choosing/.test(button.textContent ?? '')
+		);
+
+	it('offers the way in, and the way back out once somebody is choosing', () => {
+		render({ choosable: true });
+		expect(choice()?.textContent).toContain('Choose notes');
+		choice()?.click();
+		expect(choosing).toEqual([true]);
+
+		unmount(mounted!, { outro: false });
+		render({ chosen: new Set([held('1')]) });
+		expect(choice()?.textContent).toContain('Done choosing');
+		choice()?.click();
+		expect(choosing).toEqual([true, false]);
+	});
+
+	it('says which rows are chosen, in words as well as a mark', () => {
+		render({ chosen: new Set([held('1')]) });
+		expect(labelled('About 1').getAttribute('aria-checked')).toBe('true');
+		expect(labelled('About 1').textContent).toContain('Chosen');
+		expect(labelled('About 2').getAttribute('aria-checked')).toBe('false');
+		expect(labelled('About 2').textContent).not.toContain('Chosen');
+	});
+
+	it('says the tree is one several rows can be chosen from', () => {
+		render({ chosen: new Set() });
+		expect(target.querySelector('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe(
+			'true'
+		);
+
+		unmount(mounted!, { outro: false });
+		render();
+		expect(target.querySelector('[role="tree"]')?.hasAttribute('aria-multiselectable')).toBe(false);
+	});
+
+	it('adds and removes on a tap while somebody is choosing, rather than opening', () => {
+		render({ chosen: new Set([held('1')]) });
+		labelled('About 2').click();
+		labelled('About 1').click();
+
+		expect(chose).toEqual([held('2'), held('1')]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('opens a row again once the choosing is done', () => {
+		render({ choosable: true });
+		labelled('About 2').click();
+
+		expect(chose).toEqual([]);
+		expect(openedNotes).toEqual([held('2')]);
+	});
+
+	it('chooses the row the reader is on from the keyboard, choosing or not', () => {
+		render({ choosable: true });
+		press(labelled('About 2'), ' ', { ctrlKey: true });
+
+		expect(chose).toEqual([held('2')]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('leaves the walk with nothing to choose with where nothing can be chosen', () => {
+		render();
+		expect(choice()).toBeUndefined();
+
+		press(labelled('About 2'), ' ', { ctrlKey: true });
+		expect(chose).toEqual([]);
 	});
 });
