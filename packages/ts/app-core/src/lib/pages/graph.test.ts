@@ -2664,6 +2664,35 @@ describe('closing a graph the reader is standing in', () => {
 		graphs.clear();
 	});
 
+	// Somebody who published nothing out of it has nothing to weigh, so the
+	// sentence about what a peer keeps is not put in front of them.
+	it('asks about closing it without naming a copy nobody has', async () => {
+		await inTheGarden();
+
+		labelled('Your graphs').click();
+		await settle();
+		labelled('Close The garden').click();
+		await settle();
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('they cannot be put back');
+		expect(text).not.toContain('keeps their copy');
+	});
+
+	it('says what a peer keeps where a branch of that graph went out', async () => {
+		held = [{ ...publication(10, SEEDLING, '1'), graph: GARDEN }];
+		await inTheGarden();
+
+		labelled('Your graphs').click();
+		await settle();
+		labelled('Close The garden').click();
+		await settle();
+
+		expect(document.body.textContent).toContain(
+			'Whoever already has a branch you published from it keeps their copy'
+		);
+	});
+
 	it('puts the reader back in the graph they started with, with nothing open', async () => {
 		await inTheGarden();
 		expect(graphs.current).toBe(GARDEN);

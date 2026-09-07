@@ -59,6 +59,13 @@ export const SyrInstanceManifestSchema = z.object({
       revoke: urlTemplate,
     })
     .optional(),
+  /**
+   * `public_profile` is where the instance answers about a person by the name
+   * they go by there, a name appended to it. Absent — the block, the field, or
+   * both — means it answers about nobody that way, and a reader is told to use
+   * the identifier instead.
+   */
+  api: z.object({ public_profile: z.url().optional() }).optional(),
 });
 export type SyrInstanceManifest = z.infer<typeof SyrInstanceManifestSchema>;
 

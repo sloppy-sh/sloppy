@@ -221,6 +221,26 @@ describe('whoever was typed into the peer field', () => {
 		expect(query.get('source_url')).toBe('https://peer.example');
 	});
 
+	// The surface asks for who and where on two lines, so it hands over two.
+	it('asks where it was told to, where the name carries nowhere', async () => {
+		api.on('GET /peers/identity', () => ({ did: AUTHOR }));
+
+		expect(await peers.identify('alice', 'https://peer.example')).toBe(AUTHOR);
+		const asked = api.calls.find((call) => call.startsWith('GET /peers/identity'));
+		const query = new URL(asked!, 'http://api.test').searchParams;
+		expect(query.get('name')).toBe('alice');
+		expect(query.get('source_url')).toBe('https://peer.example');
+	});
+
+	it('takes the instance written into the name over the one it was told', async () => {
+		api.on('GET /peers/identity', () => ({ did: AUTHOR }));
+
+		expect(await peers.identify('alice@peer.example', 'https://elsewhere.example')).toBe(AUTHOR);
+		const asked = api.calls.find((call) => call.startsWith('GET /peers/identity'));
+		const query = new URL(asked!, 'http://api.test').searchParams;
+		expect(query.get('source_url')).toBe('https://peer.example');
+	});
+
 	it('takes an identifier written beside an instance as itself', async () => {
 		expect(await peers.identify(`${AUTHOR}@peer.example`)).toBe(AUTHOR);
 		expect(api.calls).toHaveLength(0);

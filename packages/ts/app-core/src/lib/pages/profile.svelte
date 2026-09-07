@@ -211,6 +211,9 @@
 			<section class="space-y-2 border-t border-border pt-6">
 				<h2 class="text-sm font-medium">Your identity</h2>
 				<IdentityLine identity={shown.profile.did} label="Copy your identity" />
+				<p class="text-sm text-muted-foreground">
+					Hand this to somebody who wants to read what you publish.
+				</p>
 			</section>
 		{/if}
 	</div>

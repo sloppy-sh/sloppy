@@ -2,14 +2,18 @@
 // filter has to name the errors the driver actually throws, and a client has to
 // read words out of what comes back.
 
-import { Controller, Get, type INestApplication, Module } from "@nestjs/common";
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpException,
+  type INestApplication,
+  Module,
+} from "@nestjs/common";
 import { APP_FILTER, NestFactory } from "@nestjs/core";
 import { CallTerminatedError, ConnectionUnavailableError } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  STORE_UNAVAILABLE,
-  StoreUnavailableFilter,
-} from "./store-unavailable.filter";
+import { SloppyWordsFilter, TRY_AGAIN } from "./sloppy-words.filter";
 
 @Controller("kept")
 class KeptController {
@@ -27,15 +31,28 @@ class KeptController {
   broken(): never {
     throw new Error("something else entirely");
   }
+
+  @Get("refused")
+  refused(): never {
+    throw new ForbiddenException("Ask the person who keeps this graph.");
+  }
+
+  @Get("coded")
+  coded(): never {
+    throw new HttpException(
+      { statusCode: 409, message: "That address is taken.", code: "TAKEN" },
+      409,
+    );
+  }
 }
 
 @Module({
   controllers: [KeptController],
-  providers: [{ provide: APP_FILTER, useClass: StoreUnavailableFilter }],
+  providers: [{ provide: APP_FILTER, useClass: SloppyWordsFilter }],
 })
 class KeptModule {}
 
-describe("a request the store was not there to serve", () => {
+describe("a failure on its way out of the API", () => {
   let app: INestApplication | undefined;
   let origin = "";
 
@@ -54,7 +71,7 @@ describe("a request the store was not there to serve", () => {
 
     expect(answer.status).toBe(503);
     expect(((await answer.json()) as { message: string }).message).toBe(
-      STORE_UNAVAILABLE,
+      TRY_AGAIN,
     );
   });
 
@@ -63,13 +80,35 @@ describe("a request the store was not there to serve", () => {
 
     expect(answer.status).toBe(503);
     expect(((await answer.json()) as { message: string }).message).toBe(
-      STORE_UNAVAILABLE,
+      TRY_AGAIN,
     );
   });
 
-  it("leaves everything else to be reported as what it is", async () => {
+  it("answers a failure nobody expected in Sloppy's own words", async () => {
     const answer = await fetch(`${origin}/kept/broken`);
 
     expect(answer.status).toBe(500);
+    const said = (await answer.json()) as { message: string };
+    expect(said.message).toBe(TRY_AGAIN);
+    expect(said.message).not.toMatch(/internal server error/i);
+  });
+
+  it("leaves a refusal somebody already wrote words for alone", async () => {
+    const answer = await fetch(`${origin}/kept/refused`);
+
+    expect(answer.status).toBe(403);
+    expect(((await answer.json()) as { message: string }).message).toBe(
+      "Ask the person who keeps this graph.",
+    );
+  });
+
+  it("keeps the code a caller branches on", async () => {
+    const answer = await fetch(`${origin}/kept/coded`);
+
+    expect(answer.status).toBe(409);
+    expect(await answer.json()).toMatchObject({
+      message: "That address is taken.",
+      code: "TAKEN",
+    });
   });
 });

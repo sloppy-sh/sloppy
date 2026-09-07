@@ -23,16 +23,14 @@ import {
   type PublishedChangesPage,
   type PublishedIndex,
   type PublishedVersionsPage,
-  SyrProfileSchema,
   UnaskedAnswerError,
   parsePublishedIndex,
   peerOrigin,
   publishedChangesReader,
   publishedVersionsReader,
-  syrEnvelope,
 } from "@sloppy/types";
-import { z } from "zod";
 import { AppConfigService } from "../config/app-config.service";
+import type { HostPolicy } from "../media/remote-host";
 import type { Delegation } from "../syr/syr.service";
 import { SyrService } from "../syr/syr.service";
 import {
@@ -57,12 +55,6 @@ const NO_SUCH_NAME =
  *  have been found there whatever it was. */
 const NO_NAMES_THERE =
   "Sloppy could not look a name up there. Check the instance it is kept on, or use the identifier they gave you.";
-
-/** The one thing a peer's instance manifest is read for here: where its public
- *  profiles answer. syr serves that route a name as readily as an identifier. */
-const ProfileRouteSchema = z.object({
-  api: z.object({ public_profile: z.url() }),
-});
 
 @Injectable()
 export class PeerService {
@@ -182,19 +174,31 @@ export class PeerService {
   ): Promise<PeerIdentity> {
     const origin = query.source_url ?? nameHome(delegation);
     const reach = peerReach(this.config);
-    const route = ProfileRouteSchema.safeParse(
-      await readPeerJson(`${origin}/.well-known/syr`, reach),
+    if (!(await this.looksNamesUp(origin, reach))) {
+      throw new NotFoundException(NO_NAMES_THERE);
+    }
+    const found = await this.syr.profileByName(
+      origin,
+      query.name.trim(),
+      reach,
     );
-    if (!route.success) throw new NotFoundException(NO_NAMES_THERE);
-    const answer = syrEnvelope(SyrProfileSchema).safeParse(
-      await readPeerJson(
-        `${route.data.api.public_profile}/${encodeURIComponent(query.name.trim())}`,
-        reach,
-      ),
-    );
-    const did = answer.success ? answer.data.data.did : null;
-    if (!did) throw new NotFoundException(NO_SUCH_NAME);
-    return { did };
+    if (!found?.did) throw new NotFoundException(NO_SUCH_NAME);
+    return { did: found.did };
+  }
+
+  /** Whether that address looks names up at all. Nothing there, and nothing
+   *  there Sloppy can read, are both a no; an instance having a bad day is not,
+   *  because coming back later is worth saying. */
+  private async looksNamesUp(
+    origin: PeerOrigin,
+    reach: HostPolicy,
+  ): Promise<boolean> {
+    try {
+      return await this.syr.keepsNames(origin, reach);
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error;
+      return false;
+    }
   }
 
   private async keepsFollows(delegation: Delegation): Promise<boolean> {

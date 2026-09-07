@@ -106,6 +106,77 @@ describe("reading an instance's manifest", () => {
   });
 });
 
+describe("looking somebody up by the name they go by", () => {
+  const NAMES = {
+    "/.well-known/syr": {
+      body: { ...MANIFEST, api: { public_profile: `${INSTANCE}/api/profile` } },
+    },
+  };
+
+  it("asks the route the manifest declares, name and all", async () => {
+    const { calls } = instance({
+      ...NAMES,
+      "/api/profile/a%20person": {
+        body: { data: { did: DID, username: "a" } },
+      },
+    });
+
+    const found = await new SyrService().profileByName(INSTANCE, "a person");
+
+    expect(found?.did).toBe(DID);
+    expect(calls.map((c) => c.url)).toContain(
+      `${INSTANCE}/api/profile/a%20person`,
+    );
+  });
+
+  it("is nobody where the instance answered about nobody", async () => {
+    instance(NAMES);
+
+    await expect(
+      new SyrService().profileByName(INSTANCE, "ghost"),
+    ).resolves.toBeNull();
+  });
+
+  it("is nobody, and says so first, where the instance looks no names up", async () => {
+    const { calls } = instance();
+    const syr = new SyrService();
+
+    await expect(syr.keepsNames(INSTANCE)).resolves.toBe(false);
+    await expect(syr.profileByName(INSTANCE, "alice")).resolves.toBeNull();
+    expect(calls.every((c) => c.url.endsWith("/.well-known/syr"))).toBe(true);
+  });
+
+  it("says so where the instance does look names up", async () => {
+    instance(NAMES);
+
+    await expect(new SyrService().keepsNames(INSTANCE)).resolves.toBe(true);
+  });
+
+  it.each([
+    400, 403, 500,
+  ])("answers a refusal (%i) in Sloppy's words and none of the instance's", async (status) => {
+    instance({
+      ...NAMES,
+      "/api/profile/alice": {
+        status,
+        body: { message: "GO TO elsewhere.example", code: "peer_code" },
+      },
+    });
+
+    const refused = await new SyrService()
+      .profileByName(INSTANCE, "alice")
+      .catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(ServiceUnavailableException);
+    const said = JSON.stringify(
+      (refused as ServiceUnavailableException).getResponse(),
+    );
+    expect(said).not.toContain("elsewhere.example");
+    expect(said).not.toContain("peer_code");
+    expect(said).toContain("Sloppy could not look that name up");
+  });
+});
+
 describe("sending somebody for consent", () => {
   it("carries every parameter syr reads, scopes comma-joined", async () => {
     instance();

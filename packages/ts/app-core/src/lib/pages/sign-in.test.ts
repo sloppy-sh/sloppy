@@ -60,6 +60,15 @@ describe('the sign-in page', () => {
 		expect(target.textContent).toContain('Start here');
 	});
 
+	it('shows what an address looks like without naming what runs at one', async () => {
+		api.on('GET /auth/own-instance', () => ({ instance_url: HERE }));
+
+		await show();
+
+		const box = target.querySelector<HTMLInputElement>('#instance');
+		expect(box?.placeholder).toBe('https://sloppy.example');
+	});
+
 	it('says nothing where this Sloppy hosts none', async () => {
 		api.on('GET /auth/own-instance', () => ({ instance_url: null }));
 
