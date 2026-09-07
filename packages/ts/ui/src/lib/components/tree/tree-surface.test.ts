@@ -1325,4 +1325,36 @@ describe('a note’s sections under its row in the walk', () => {
 		flushSync();
 		expect(sectionRow(S3).querySelector('[aria-label^="Move it up"]')).toBeNull();
 	});
+
+	// The two drags a row offers stand on one surface and say their words in one
+	// place, so a section moved leaves nothing behind for the note written next.
+	it('keeps a section drag and a write drag to their own words and their own act', () => {
+		render({ writable: true, sections: sections() });
+		lay();
+
+		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
+		window.dispatchEvent(pull('pointermove', 30, 140));
+		flushSync();
+		expect(said()).toBe('Put it after A drawing');
+
+		window.dispatchEvent(pull('pointerup', 30, 140));
+		flushSync();
+		expect(moves).toEqual([[held('1'), S1, S2]]);
+		expect(said()).toBe('');
+		expect(written).toEqual([]);
+
+		const write = rows()[0].querySelector<HTMLButtonElement>(
+			'[aria-label^="Write a note under"]'
+		) as HTMLButtonElement;
+		write.dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 60, 100));
+		flushSync();
+		expect(said()).toBe('Write under 1 About 1');
+
+		window.dispatchEvent(pull('pointerup', 60, 100));
+		flushSync();
+		expect(written).toEqual([held('1')]);
+		expect(moves).toHaveLength(1);
+		expect(openedNotes).toEqual([]);
+	});
 });
