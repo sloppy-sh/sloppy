@@ -1,28 +1,42 @@
 import {
   type ArgumentsHost,
   Catch,
-  type ExceptionFilter,
+  HttpException,
+  InternalServerErrorException,
+  Logger,
+  ServiceUnavailableException,
 } from "@nestjs/common";
-import type { Response } from "express";
+import { BaseExceptionFilter } from "@nestjs/core";
 import { CallTerminatedError, ConnectionUnavailableError } from "surrealdb";
 
-/** What a caller is told when the store was not there to serve them. */
-export const STORE_UNAVAILABLE =
+/** What a caller is told for a failure that is not theirs to fix and that
+ *  nobody wrote a sentence for. */
+export const TRY_AGAIN =
   "Sloppy could not do that just now. Try again in a moment.";
 
 /**
- * The store being away is not this request's fault and not a bug in it, so it
- * is answered as unavailable in words a person can act on — rather than as the
- * server error every repository would otherwise raise, whose only wording is
- * "Internal server error".
+ * Every failure leaves here in Sloppy's words. It catches everything because
+ * what it does not catch is answered "Internal server error" — a framework's
+ * phrase, which reaches a surface as the server's own words and leaves the line
+ * that surface wrote unreachable behind it.
  */
-@Catch(ConnectionUnavailableError, CallTerminatedError)
-export class StoreUnavailableFilter implements ExceptionFilter {
-  catch(_error: unknown, host: ArgumentsHost): void {
-    host.switchToHttp().getResponse<Response>().status(503).json({
-      statusCode: 503,
-      message: STORE_UNAVAILABLE,
-      error: "Service Unavailable",
-    });
+@Catch()
+export class StoreUnavailableFilter extends BaseExceptionFilter {
+  private readonly logger = new Logger(StoreUnavailableFilter.name);
+
+  catch(error: unknown, host: ArgumentsHost): void {
+    if (
+      error instanceof ConnectionUnavailableError ||
+      error instanceof CallTerminatedError
+    ) {
+      super.catch(new ServiceUnavailableException(TRY_AGAIN), host);
+      return;
+    }
+    if (error instanceof HttpException) {
+      super.catch(error, host);
+      return;
+    }
+    this.logger.error(error);
+    super.catch(new InternalServerErrorException(TRY_AGAIN), host);
   }
 }

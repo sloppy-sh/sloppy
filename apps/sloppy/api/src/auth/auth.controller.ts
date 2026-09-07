@@ -90,7 +90,7 @@ export class AuthController {
     });
     if (!request.success) {
       throw new BadRequestException(
-        "Enter the address of the instance your identity lives on.",
+        "Enter the address where your identity lives.",
       );
     }
     try {

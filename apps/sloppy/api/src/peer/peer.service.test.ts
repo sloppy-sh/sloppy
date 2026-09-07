@@ -3,8 +3,7 @@ import { createServer as createSocket } from "node:net";
 import { ConfigService } from "@nestjs/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppConfigService } from "../config/app-config.service";
-import type { Delegation } from "../syr/syr.service";
-import type { SyrService } from "../syr/syr.service";
+import { type Delegation, SyrService } from "../syr/syr.service";
 import { PeerService } from "./peer.service";
 
 const ALICE = "did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ";
@@ -38,6 +37,9 @@ async function store(): Promise<{
     asked.push(path);
     const answer = {
       "/.well-known/syr": {
+        name: "syr",
+        public_url: origin,
+        identity_manifest_template: `${origin}/.well-known/syr/{did}`,
         api: { public_profile: `${origin}/public/profile` },
       },
       "/public/profile/alice": { data: { did: ALICE, username: "alice" } },
@@ -88,7 +90,7 @@ describe("finding somebody by name", () => {
     here = await silent();
     peers = new PeerService(
       new AppConfigService(new ConfigService({ PUBLIC_URL: here.origin })),
-      {} as SyrService,
+      new SyrService(),
     );
     reader = {
       did: ALICE,

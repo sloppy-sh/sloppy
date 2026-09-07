@@ -152,13 +152,13 @@ export class SyrService {
     const body = await this.readJson(
       `${instanceUrl}/.well-known/syr`,
       { headers: { accept: "application/json" } },
-      "We could not reach that instance. Check the address and try again.",
+      "Sloppy could not reach that address. Check it and try again.",
       reach,
     );
     const parsed = SyrInstanceManifestSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(
-        "That address is not a syr instance. Check it and try again.",
+        "No identity lives at that address. Check it and try again.",
       );
     }
     const now = Date.now();
@@ -175,7 +175,7 @@ export class SyrService {
     const { platform } = await this.manifest(instanceUrl);
     if (!platform) {
       throw new BadRequestException(
-        "That instance cannot be used to sign in to Sloppy.",
+        "You cannot sign in to Sloppy with an identity kept there.",
       );
     }
     return platform;
@@ -317,7 +317,8 @@ export class SyrService {
     const template = (await this.manifest(instanceUrl, reach))
       .identity_manifest_template;
     const url = template.replace("{did}", encodeURIComponent(did));
-    const failure = "We could not read that identity. Try again in a moment.";
+    const failure =
+      "Sloppy could not read that identity. Try again in a moment.";
     const body = await this.readJson(
       url,
       { headers: { accept: "application/json" } },
@@ -344,7 +345,8 @@ export class SyrService {
    */
   async readProfile(instanceUrl: string, did: string): Promise<SyrProfile> {
     const { endpoints } = await this.identityManifest(instanceUrl, did);
-    const failure = "We could not read that profile. Try again in a moment.";
+    const failure =
+      "Sloppy could not read that profile. Try again in a moment.";
     const body = await this.readJson(
       endpoints.profile,
       { headers: { accept: "application/json" } },
@@ -356,6 +358,42 @@ export class SyrService {
       endpoints.profile,
       failure,
     ).data;
+  }
+
+  /** Whether an instance answers about a person by the name they go by there. */
+  async keepsNames(instanceUrl: string, reach?: HostPolicy): Promise<boolean> {
+    const { api } = await this.manifest(instanceUrl, reach);
+    return api?.public_profile !== undefined;
+  }
+
+  /**
+   * Whoever goes by `name` at one instance, or `null` where nobody there does.
+   * An instance that answers about nobody by name answers `null` for every
+   * name, so a caller whose words for those two differ asks
+   * {@link keepsNames} first.
+   */
+  async profileByName(
+    instanceUrl: string,
+    name: string,
+    reach?: HostPolicy,
+  ): Promise<SyrProfile | null> {
+    const { api } = await this.manifest(instanceUrl, reach);
+    if (api?.public_profile === undefined) return null;
+    const url = `${api.public_profile}/${encodeURIComponent(name)}`;
+    const failure =
+      "Sloppy could not read that profile. Try again in a moment.";
+    const body = await this.readJson(
+      url,
+      { headers: { accept: "application/json" } },
+      failure,
+      reach,
+    ).catch((error: unknown) => {
+      if (missing(error)) return null;
+      throw error;
+    });
+    if (body === null) return null;
+    return this.readShape(syrEnvelope(SyrProfileSchema), body, url, failure)
+      .data;
   }
 
   async updateProfile(
@@ -463,7 +501,8 @@ export class SyrService {
     const url =
       `${base}/uploads?folder_id=${encodeURIComponent(folder)}` +
       `&limit=${limit}&sort_field=created_at&sort_order=desc`;
-    const failure = "We could not read your pictures. Try again in a moment.";
+    const failure =
+      "Sloppy could not read your pictures. Try again in a moment.";
     const body = await this.asPerson(
       delegation,
       url,
@@ -486,7 +525,7 @@ export class SyrService {
   ): Promise<SyrUpload> {
     const base = await this.ownerApiBase(delegation.syr_instance_url);
     const url = `${base}/uploads/${encodeURIComponent(upload.did)}/${encodeURIComponent(upload.localId)}`;
-    const failure = "We could not find that file. Try adding it again.";
+    const failure = "Sloppy could not find that file. Try adding it again.";
     const body = await this.asPerson(
       delegation,
       url,
@@ -574,7 +613,8 @@ export class SyrService {
   /** Who this person follows, as their own store keeps it. */
   async listFollowing(delegation: Delegation): Promise<SyrFollow[]> {
     const url = `${await this.ownerApiBase(delegation.syr_instance_url)}/follows`;
-    const failure = "We could not read who you follow. Try again in a moment.";
+    const failure =
+      "Sloppy could not read who you follow. Try again in a moment.";
     const body = await this.asPerson(
       delegation,
       url,
@@ -625,7 +665,7 @@ export class SyrService {
    *  author does not have, which is what publishing takes it to mean. */
   async listOwnEmoji(delegation: Delegation): Promise<SyrEmoji[]> {
     const base = await this.ownerApiBase(delegation.syr_instance_url);
-    const failure = "We could not read your emoji. Try again in a moment.";
+    const failure = "Sloppy could not read your emoji. Try again in a moment.";
     const held: SyrEmoji[] = [];
     while (held.length < EMOJI_READ_LIMIT) {
       const url = `${base}/emojis?limit=${EMOJI_PER_READ}&offset=${held.length}`;
@@ -687,7 +727,8 @@ export class SyrService {
     const { endpoints } = await this.identityManifest(instanceUrl, did, reach);
     if (!endpoints.public_emojis) return [];
     const url = `${endpoints.public_emojis}?limit=100`;
-    const failure = "We could not read that emoji set. Try again in a moment.";
+    const failure =
+      "Sloppy could not read that emoji set. Try again in a moment.";
     const body = await this.readJson(
       url,
       { headers: { accept: "application/json" } },
@@ -753,7 +794,7 @@ export class SyrService {
       `${endpoints.public_comments}?post_did=${encodeURIComponent(post.post_did)}` +
       `&post_id=${encodeURIComponent(post.post_id)}&limit=${CONVERSATION_LIMIT}`;
     const failure =
-      "We could not read what people said. Try again in a moment.";
+      "Sloppy could not read what people said. Try again in a moment.";
     const body = await this.readJson(
       url,
       { headers: { accept: "application/json" } },
@@ -827,7 +868,7 @@ export class SyrService {
       `&parent_did=${encodeURIComponent(post.post_did)}` +
       `&parent_id=${encodeURIComponent(post.post_id)}&limit=${CONVERSATION_LIMIT}`;
     const failure =
-      "We could not read what people said. Try again in a moment.";
+      "Sloppy could not read what people said. Try again in a moment.";
     const body = await this.readJson(
       url,
       { headers: { accept: "application/json" } },
@@ -1069,6 +1110,14 @@ function said(body: string): { message?: string; code?: string } {
     })
     .safeParse(parseJson(body));
   return parsed.success ? parsed.data : {};
+}
+
+/** Whether a store said there is nothing at that address. `refusal` builds a
+ *  plain `HttpException`, so the status is the only tell. */
+function missing(error: unknown): boolean {
+  return (
+    error instanceof HttpException && error.getStatus() === HttpStatus.NOT_FOUND
+  );
 }
 
 function parseJson(body: string): unknown {
