@@ -35,9 +35,10 @@ be published by address and a peer's published region pulled into a graph of you
 read there, with profiles, comments, reactions and emoji coming from the identity side.
 Everything you have written comes back out as one file whenever you ask for it.
 
-`pnpm test` is about 3,600 tests across 200 files. Twelve of those files are integration
-suites that want a database listening, and they skip when there is none, so a clone with
-nothing else running still gets a green suite; Common tasks below is how to turn them on.
+`pnpm test` is about 3,600 tests across roughly two hundred files. A dozen of those files
+are integration suites that want a database listening, and they skip when there is none, so
+a clone with nothing else running still gets a green suite; Common tasks below is how to
+turn them on.
 
 What is still ahead is narrower than what is behind it. The native shell's on-device store
 is off by default, so an installed app still talks to an API rather than working with no
@@ -149,10 +150,12 @@ and interiors divided into sections with real prose in them:
 pnpm --filter @sloppy/api seed
 ```
 
-It fills the only identity on the stack; `--did <did:syr:…>` says which one when there is
-more than one, and `--nodes <n>` sizes the graph. An identity that already has notes is left
-alone — **`--fresh` is what overrides that, and it erases that identity's whole graph**
-before writing the new one.
+With one identity on the stack it fills that one; `--did <did:syr:…>` names which to fill
+when there is more than one, and whenever identity comes from a syr instance rather than
+this API's own. `--nodes <n>` sizes the graph. An identity that already has notes is left
+alone — **`--fresh` is what overrides that, and it erases everything that identity has here:
+every graph, everything they published, and every region they pulled from a peer** — before
+writing the new one.
 
 ## Common tasks
 
