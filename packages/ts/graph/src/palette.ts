@@ -20,6 +20,7 @@ import {
   shadeToFloor,
   toRgb24,
   toSrgb8,
+  over,
 } from "./color.js";
 
 /** The most generations the ramp draws, however much range a theme has —
@@ -228,15 +229,6 @@ function recession(fill: Oklch, ground: readonly Oklch[]): number {
     alpha = hi;
   }
   return alpha;
-}
-
-/** `mark` at `alpha` over `ground`, mixed on the bytes — which is where a
- *  screen lays one layer over another. */
-function over(mark: Oklch, ground: Oklch, alpha: number): Oklch {
-  const under = toSrgb8(ground);
-  return fromSrgb8(
-    toSrgb8(mark).map((c, at) => c * alpha + under[at] * (1 - alpha)),
-  );
 }
 
 const unpack = (fill: number): Oklch =>

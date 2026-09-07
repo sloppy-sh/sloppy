@@ -17,6 +17,7 @@ import {
   parseCssColor,
   toOklab,
   toSrgb8,
+  over,
 } from "./color.js";
 import {
   buildPalette,
@@ -302,13 +303,6 @@ function marks(palette: ReturnType<typeof buildPalette>): number[] {
     ),
     ...TAG_HUE_SLOTS.map((slot) => palette.tag(slot)),
   ];
-}
-
-function over(mark: Oklch, ground: Oklch, alpha: number): Oklch {
-  const under = toSrgb8(ground);
-  return fromSrgb8(
-    toSrgb8(mark).map((c, at) => c * alpha + under[at] * (1 - alpha)),
-  );
 }
 
 function oklabDistance(a: Oklch, b: Oklch): number {

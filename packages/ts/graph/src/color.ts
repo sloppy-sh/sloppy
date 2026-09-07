@@ -287,3 +287,12 @@ function finite(color: Oklch): Oklch | null {
 export function clamp(value: number, low: number, high: number): number {
   return value < low ? low : value > high ? high : value;
 }
+
+/** `mark` at `alpha` over `ground`, mixed on the bytes, which is where a
+ *  screen lays one layer over another. */
+export function over(mark: Oklch, ground: Oklch, alpha: number): Oklch {
+  const under = toSrgb8(ground);
+  return fromSrgb8(
+    toSrgb8(mark).map((c, at) => c * alpha + under[at] * (1 - alpha)),
+  );
+}

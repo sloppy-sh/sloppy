@@ -16,6 +16,7 @@ import {
   type Oklch,
   parseCssColor,
   toSrgb8,
+  over,
 } from "./color.js";
 import {
   buildPalette,
@@ -290,12 +291,6 @@ describe("a dimmed note over a picture", () => {
  *  carries — plus the middle, which is where a reader leaves the control. */
 function strengths(ceiling: number): number[] {
   return [0, ceiling * 0.25, ceiling * 0.5, ceiling];
-}
-
-function over(mark: Oklch, ground: Oklch, alpha: number): Oklch {
-  const a = toSrgb8(mark);
-  const b = toSrgb8(ground);
-  return fromSrgb8(a.map((c, at) => c * alpha + b[at] * (1 - alpha)));
 }
 
 function rgb(packed: number): Oklch {
