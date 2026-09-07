@@ -42,12 +42,12 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-async function read(person: Person | null): Promise<void> {
+async function read(person: Person | null, unplaced = false): Promise<void> {
 	mounted = mount(HeldNote, {
 		target,
 		props: {
 			note: NOTE_VIEW,
-			author: { identity: ADA, person },
+			author: { identity: ADA, person, unplaced },
 			blocks: [],
 			pictures: { picture: () => Promise.reject(new Error('no pictures here')) },
 			references: { read: () => Promise.resolve(null), open: () => {} },
@@ -77,13 +77,19 @@ describe('the byline on a note somebody else wrote', () => {
 		expect(document.body.textContent).toContain('Ada Lovelace wrote this');
 	});
 
-	// An identifier is not a name, and a reader waiting on a profile is told the
-	// same thing here as in the answers below it.
-	it('says Somebody where the author has not been placed', async () => {
+	it('says Somebody while their name is still on its way', async () => {
 		await read(null);
 
 		const text = document.body.textContent ?? '';
 		expect(text).toContain('Somebody wrote this');
+		expect(text).not.toContain(ADA);
+	});
+
+	it('draws the letters they travel by once nobody could be placed there', async () => {
+		await read(null, true);
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('z6MkAdaA…aAda wrote this');
 		expect(text).not.toContain(ADA);
 	});
 });

@@ -22,10 +22,19 @@ export function nameOf(person: Person): string {
 	return person.displayName?.trim() || person.handle;
 }
 
-/** What to call somebody a surface has no profile for yet. The identifier they
- *  travel by belongs beside this, never in place of it. */
+/** What to call somebody a surface has no profile for yet. */
 export function nameOr(person: Person | null | undefined): string {
 	return person ? nameOf(person) : 'Somebody';
+}
+
+/** Somebody drawn from what a surface knows of them. Null only while their
+ *  profile is still on its way. */
+export function personOr(who: {
+	identity: string;
+	person: Person | null;
+	unplaced?: boolean;
+}): Person | null {
+	return who.person ?? (who.unplaced ? unplacedPerson(who.identity) : null);
 }
 
 /** Somebody nobody could place, drawn as the identifier they travel by. */

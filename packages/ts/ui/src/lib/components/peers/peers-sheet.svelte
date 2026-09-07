@@ -13,7 +13,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import { nameOf, nameOr } from '../identity/person.js';
+	import { nameOf, nameOr, personOr } from '../identity/person.js';
 	import VersionChanges, { type VersionComparison } from '../publish/version-changes.svelte';
 	import { when } from '../social/when.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
@@ -315,7 +315,7 @@
 										>
 											<span class="shrink-0 address">{region.address}</span>
 											<span class="min-w-0 flex-1">
-												<span class="block truncate text-sm">{nameOr(region.person)}</span>
+												<span class="block truncate text-sm">{nameOr(personOr(region))}</span>
 												{#if !region.person}
 													<span
 														class="block truncate font-mono text-xs text-muted-foreground select-text"
@@ -447,7 +447,7 @@
 								variant="ghost"
 								size="icon"
 								class="size-9 shrink-0 rounded-full"
-								aria-label={`Stop following ${nameOr(one.person)}`}
+								aria-label={`Stop following ${nameOr(personOr(one))}`}
 								disabled={busy}
 								onclick={() => onUnfollow(one.identity)}
 							>

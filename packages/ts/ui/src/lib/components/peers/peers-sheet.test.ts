@@ -9,6 +9,7 @@ import PeersSheet from './peers-sheet.svelte';
 
 const ADA = 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaAda';
 const BRAM = 'did:syr:z6MkBramBramBramBramBramBramBramBra';
+const CARL = 'did:syr:z6MkCarlCarlCarlCarlCarlCarlCarlCar';
 const REGION = `${ADA}/01ARZ3NDEKTSV4RRFFQ69G5FAV` as OwnedRef;
 const OTHER = `${BRAM}/01ARZ3NDEKTSV4RRFFQ69G5FAW` as OwnedRef;
 
@@ -118,12 +119,21 @@ describe('a branch somebody else published', () => {
 	});
 
 	// Two strangers nobody could place are still two, so the identifier stays
-	// readable under the word that stands in for their name.
-	it('calls somebody unplaced Somebody, and keeps their identifier beside it', async () => {
+	// readable under whatever stands in for their name.
+	it('says Somebody while their name is still on its way, with the identifier beside it', async () => {
 		await open({ regions: [region({ person: null })] });
 
 		const text = document.body.textContent ?? '';
 		expect(text).toContain('Somebody');
+		expect(text).toContain(ADA);
+	});
+
+	it('draws the letters they travel by once nobody could be placed there', async () => {
+		await open({ regions: [region({ person: null, unplaced: true })] });
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('z6MkAdaA…aAda');
+		expect(text).not.toContain('Somebody');
 		expect(text).toContain(ADA);
 	});
 
@@ -147,11 +157,13 @@ describe('who the reader follows', () => {
 		await open({
 			following: [
 				{ identity: ADA, person: ADA_PERSON },
-				{ identity: BRAM, person: null, unplaced: true }
+				{ identity: BRAM, person: null, unplaced: true },
+				{ identity: CARL, person: null }
 			]
 		});
 
 		expect(find('Stop following Ada Lovelace')).not.toBeNull();
+		expect(find('Stop following z6MkBram…mBra')).not.toBeNull();
 		expect(find('Stop following Somebody')).not.toBeNull();
 
 		find('Stop following Ada Lovelace')?.click();

@@ -317,11 +317,21 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 
 	it('says whose branch it is, and how to get back', async () => {
 		await enterHeldRegion();
-		expect(screen()).toContain('Somebody');
+		await until(() => people.unplaced(AUTHOR));
+		await settle();
+		expect(screen()).toContain('z6MkpTHR…MxYZ');
 		button('Your graph').click();
 		await settle();
 		expect(drawn()).toEqual(['1']);
 		expect(button('New branch')).toBeTruthy();
+	});
+
+	it('calls the author the same thing on the note it opens', async () => {
+		await enterHeldRegion();
+		await until(() => people.unplaced(AUTHOR));
+		onCanvas('1a').click();
+		await settle();
+		expect(screen()).toContain('z6MkpTHR…MxYZ wrote this');
 	});
 
 	it('offers nothing that would change somebody else’s note', async () => {
