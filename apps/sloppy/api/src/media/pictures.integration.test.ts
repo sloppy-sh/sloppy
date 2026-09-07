@@ -22,6 +22,7 @@ import {
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
+import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
 import { RATE_CAPACITY } from "./proxy.controller";
 
@@ -208,9 +209,7 @@ describe("a picture through Sloppy's routes and its own provider", () => {
   afterAll(async () => {
     if (!app) return;
     const { DbService: Db } = await import("../db/db.service");
-    await app
-      .get<DbService>(Db)
-      .handle.query(`REMOVE DATABASE IF EXISTS ${DATABASE};`);
+    await dropDatabase(app.get<DbService>(Db).handle, DATABASE);
     await app.close();
   });
 

@@ -26,6 +26,7 @@ import {
 import { Surreal } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AppConfigService } from "../config/app-config.service";
+import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
 import { DbService } from "./db.service";
 
@@ -131,7 +132,7 @@ async function wipe(database: string): Promise<void> {
   const admin = new Surreal();
   await admin.connect(ENDPOINT.toString(), { authentication: ROOT });
   await admin.use({ namespace: NAMESPACE });
-  await admin.query(`REMOVE DATABASE IF EXISTS ${database};`);
+  await dropDatabase(admin, database);
   await admin.close();
 }
 
@@ -167,7 +168,7 @@ describe("a connection older than its access token", () => {
     if (admin) {
       await admin.query(`REMOVE USER IF EXISTS ${USERNAME} ON ROOT;`);
       await admin.use({ namespace: NAMESPACE });
-      await admin.query(`REMOVE DATABASE IF EXISTS ${DATABASE};`);
+      await dropDatabase(admin, DATABASE);
       await admin.close();
     }
   }, 30_000);

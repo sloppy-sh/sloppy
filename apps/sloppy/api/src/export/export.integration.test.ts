@@ -20,6 +20,7 @@ import {
   recordIdFromOwnedRef,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
 
 const ENDPOINT = new URL(
@@ -214,7 +215,7 @@ describe("a copy of everything somebody keeps", () => {
   afterAll(async () => {
     if (!app) return;
     const { DbService } = await import("../db/db.service");
-    await app.get(DbService).handle.query(`REMOVE DATABASE ${DATABASE}`);
+    await dropDatabase(app.get(DbService).handle, DATABASE);
     await app.close();
   });
 

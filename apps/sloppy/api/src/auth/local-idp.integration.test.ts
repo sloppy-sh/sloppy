@@ -21,6 +21,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
 import type { SyrService } from "../syr/syr.service";
+import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
 
 const ENDPOINT = new URL(
@@ -179,9 +180,7 @@ describe("Sloppy signing in against its own provider", () => {
   afterAll(async () => {
     if (!app) return;
     const { DbService: Db } = await import("../db/db.service");
-    await app
-      .get<DbService>(Db)
-      .handle.query(`REMOVE DATABASE IF EXISTS ${DATABASE};`);
+    await dropDatabase(app.get<DbService>(Db).handle, DATABASE);
     await app.close();
   });
 

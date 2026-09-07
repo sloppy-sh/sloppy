@@ -39,6 +39,7 @@ import {
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
+import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
 
 const DB_ENDPOINT = new URL(
@@ -498,9 +499,7 @@ describe("publishing a branch, and what a peer reads back", () => {
   afterAll(async () => {
     if (!app) return;
     const { DbService: Db } = await import("../db/db.service");
-    await app
-      .get<DbService>(Db)
-      .handle.query(`REMOVE DATABASE IF EXISTS ${DATABASE};`);
+    await dropDatabase(app.get<DbService>(Db).handle, DATABASE);
     await app.close();
   });
 
