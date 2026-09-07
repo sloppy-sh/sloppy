@@ -82,7 +82,9 @@ export function serveLayout(
     if (command.kind === "pin") {
       if (!engine || command.epoch !== epoch) return;
       engine.pin(command.index, command.x, command.y, command.held);
-      if (atOnce) {
+      // Reduced motion is about not watching the field travel to where a change
+      // put it. A drag is not that change, so the release is what converges.
+      if (atOnce && !command.held) {
         engine.settle();
         publish(true);
         return;

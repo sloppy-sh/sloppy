@@ -80,6 +80,7 @@ function surface() {
   let onInk: InkPointer | undefined = (_event, world) => inked.push(world);
   let under: string | null = null;
   let sweepable = true;
+  let choosing = false;
   const handlers: GestureHandlers = {
     hitTest: (world) => {
       asked.push(world);
@@ -90,6 +91,7 @@ function surface() {
     onPress: (target, at) => pressed.push({ target, ...at }),
     onHover: (target) => rested.push(target),
     canSweep: () => sweepable,
+    canSweepByFinger: () => choosing,
     onSweep: (box, done) => swept.push({ box, done }),
     onDragStart: () => {},
     onDragMove: () => {},
@@ -137,6 +139,10 @@ function surface() {
     },
     sweepsInto(allowed: boolean): void {
       sweepable = allowed;
+    },
+    /** Whether a set is already being chosen on the canvas. */
+    choosesAlready(yes: boolean): void {
+      choosing = yes;
     },
     pen: (type: string, x: number, y: number) => send(type, "pen", 1, x, y),
     finger: (type: string, id: number, x: number, y: number) =>
@@ -422,6 +428,100 @@ describe("choosing several", () => {
 
     expect(graph.swept).toEqual([]);
     expect(graph.tapped).toEqual([{ target: null, withModifier: true }]);
+  });
+
+  // DESIGN.md § "The canvas": choosing a region is how somebody acts on many
+  // notes at once, and the phone is the primary surface. A set already being
+  // chosen is what makes the one-finger drag unambiguous.
+  describe("with a finger", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      return () => vi.useRealTimers();
+    });
+
+    it("sweeps a box over bare canvas while a set is being chosen", () => {
+      const graph = surface();
+      graph.choosesAlready(true);
+      graph.finger("pointerdown", 1, 20, 20);
+      graph.finger("pointermove", 1, 80, 100);
+      graph.finger("pointerup", 1, 80, 100);
+
+      expect(graph.swept).toEqual([
+        { box: { x: 20, y: 20, width: 60, height: 80 }, done: false },
+        { box: { x: 20, y: 20, width: 60, height: 80 }, done: true },
+      ]);
+      expect(graph.viewport.x).toBe(0);
+    });
+
+    it("pans until a set is being chosen, and on a mark either way", () => {
+      const graph = surface();
+      graph.finger("pointerdown", 1, 20, 20);
+      graph.finger("pointermove", 1, 80, 20);
+      graph.finger("pointerup", 1, 80, 20);
+
+      expect(graph.swept).toEqual([]);
+      expect(graph.viewport.x).toBe(60);
+
+      graph.choosesAlready(true);
+      graph.over("1a");
+      graph.finger("pointerdown", 2, 20, 20);
+      graph.finger("pointermove", 2, 80, 20);
+      graph.finger("pointerup", 2, 80, 20);
+
+      expect(graph.swept).toEqual([]);
+      expect(graph.viewport.x).toBe(120);
+    });
+
+    it("still pans and pinches on two fingers", () => {
+      const graph = surface();
+      graph.choosesAlready(true);
+      graph.finger("pointerdown", 1, 20, 20);
+      graph.finger("pointerdown", 2, 120, 20);
+      graph.finger("pointermove", 1, 60, 40);
+
+      expect(graph.swept).toEqual([]);
+      expect(graph.viewport.y).not.toBe(0);
+    });
+
+    // A second finger arriving mid-sweep is asking to pan. What was already
+    // swept is a choice the reader made, so it stands rather than vanishing.
+    it("finishes a sweep a second finger interrupts", () => {
+      const graph = surface();
+      graph.choosesAlready(true);
+      graph.finger("pointerdown", 1, 20, 20);
+      graph.finger("pointermove", 1, 80, 100);
+      graph.finger("pointerdown", 2, 200, 200);
+
+      expect(graph.swept).toEqual([
+        { box: { x: 20, y: 20, width: 60, height: 80 }, done: false },
+        { box: { x: 20, y: 20, width: 60, height: 80 }, done: true },
+      ]);
+    });
+
+    it("leaves the press on bare canvas alone", () => {
+      const graph = surface();
+      graph.choosesAlready(true);
+      graph.finger("pointerdown", 1, 20, 20);
+      vi.advanceTimersByTime(600);
+      graph.finger("pointermove", 1, 80, 100);
+      graph.finger("pointerup", 1, 80, 100);
+
+      expect(graph.pressed).toEqual([
+        { target: null, clientX: 20, clientY: 20 },
+      ]);
+      expect(graph.swept).toEqual([]);
+      expect(graph.viewport.x).toBe(0);
+    });
+
+    it("stays a tap where the sweep never left it", () => {
+      const graph = surface();
+      graph.choosesAlready(true);
+      graph.finger("pointerdown", 1, 20, 20);
+      graph.finger("pointerup", 1, 22, 21);
+
+      expect(graph.swept).toEqual([]);
+      expect(graph.tapped).toEqual([{ target: null, withModifier: false }]);
+    });
   });
 });
 

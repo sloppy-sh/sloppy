@@ -49,6 +49,13 @@ export interface GestureHandlers {
   onHover(target: string | null): void;
   /** Whether a modifier-held drag over bare canvas sweeps instead of panning. */
   canSweep(): boolean;
+  /**
+   * Whether one finger over bare canvas sweeps instead of panning, which reads
+   * as a sweep only once a set is being chosen and a tap is already adding to
+   * it. Absent, and on a surface that answers `false`, a finger pans; two
+   * fingers pan either way.
+   */
+  canSweepByFinger?(): boolean;
   /** The box such a drag has swept so far, and whether it has let go. */
   onSweep(box: ScreenBox, done: boolean): void;
   /** A mouse carrying a node, sent once the pointer has moved off the tap. */
@@ -156,6 +163,22 @@ export function attachGestures(
     pressTimer = null;
   };
 
+  /** Ends a sweep for anything other than the pointer that drew it lifting.
+   *  What it had drawn stands: a sweep adds to a choice, it never replaces it. */
+  const endSweep = (): void => {
+    const drawn = swept;
+    swept = null;
+    if (!drawn?.sweeping) return;
+    const at = active.get(drawn.id);
+    handlers.onSweep(
+      boxBetween(
+        drawn.from,
+        at ? { x: at.screenX, y: at.screenY } : drawn.from,
+      ),
+      true,
+    );
+  };
+
   const touches = (): Tracked[] =>
     [...active.values()].filter((entry) => entry.type !== "pen");
 
@@ -195,6 +218,7 @@ export function attachGestures(
     const held = touches();
     if (held.length === 2) {
       cancelPress();
+      endSweep();
       pinchSpan = span(held);
       return;
     }
@@ -207,6 +231,13 @@ export function attachGestures(
       }
       return;
     }
+    if (
+      event.pointerType === "touch" &&
+      target === null &&
+      handlers.canSweepByFinger?.() === true
+    ) {
+      swept = { id: event.pointerId, from: at, sweeping: false };
+    }
     pressTimer = setTimeout(() => {
       pressTimer = null;
       const entry = active.get(event.pointerId);
@@ -214,6 +245,7 @@ export function attachGestures(
       // Spent: the pointer leaves `active`, so the rest of this gesture neither
       // pans nor lands as a tap on the menu that has just opened over it.
       active.delete(event.pointerId);
+      endSweep();
       handlers.onPress(target, {
         clientX: entry.clientX,
         clientY: entry.clientY,
