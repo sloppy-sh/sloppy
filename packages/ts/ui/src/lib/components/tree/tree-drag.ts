@@ -92,11 +92,10 @@ export interface MoveLanding {
 }
 
 /**
- * Where a note carried over `rows` would land — the rows of its own graph, as
- * far as the reader has them open. The address is the greatest in the run it
- * joins and one more, which is the rule the server assigns by; read off what is
- * drawn, so a run drawn short of its end, or one holding an address a note has
- * been carried away from, lands past the address named here.
+ * Where a note carried over `rows` would land, read off the rows the reader has
+ * drawn. The run appends, so the note takes the address after its greatest —
+ * and an address the run has already spent is drawn nowhere, so the one named
+ * here is the earliest the server can give it and never a promise.
  */
 export function movesTo(
 	rows: readonly TreeRow[],
@@ -105,13 +104,20 @@ export function movesTo(
 ): MoveLanding {
 	if (!aim) return { says: 'Move over a note to put it there' };
 	const notes = rows.filter((row): row is TreeItem => row.kind === 'note');
-	const on = notes.find((row) => row.note.ref === aim.on)?.note;
-	if (!on) return { says: 'A note stays in the graph it was written in' };
-	const itself = on.ref === moved.ref && aim.relation === 'under';
-	if (itself || isAncestorAddress(moved.address, on.address)) {
+	const item = notes.find((row) => row.note.ref === aim.on);
+	if (!item) return { says: 'A note stays in the graph it was written in' };
+	const on = item.note;
+	if (on.ref === moved.ref) return { says: 'Stays where it is' };
+	if (isAncestorAddress(moved.address, on.address)) {
 		return { says: 'A note cannot go inside itself' };
 	}
 	const under = aim.relation === 'under' ? on.address : parentAddress(on.address);
+	const how = aim.relation === 'under' ? 'under' : 'beside';
+	const folded = aim.relation === 'under' && item.children > 0 && !item.open;
+	const waiting = rows.some((row) => row.kind === 'rest' && row.parent === under);
+	if (folded || waiting) {
+		return { says: `Goes ${how} ${named(on)}, at the end of its run`, to: aim };
+	}
 	const along = notes
 		.map((row) => row.note.address)
 		.filter((address) => parentAddress(address) === under);
@@ -121,8 +127,7 @@ export function movesTo(
 	);
 	if (last === moved.address) return { says: 'Stays where it is' };
 	const takes = last === null ? childAddress(under) : siblingAddress(last);
-	const how = aim.relation === 'under' ? 'under' : 'beside';
-	return { says: `Becomes ${takes} ${how} ${named(on)}`, to: aim };
+	return { says: `Goes ${how} ${named(on)}, as ${takes} or later`, to: aim };
 }
 
 /**

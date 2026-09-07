@@ -1,7 +1,7 @@
 import type { NodeView, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	AT,
 	DID,
@@ -68,6 +68,9 @@ const shown = () =>
 	rows().map(
 		(row) => row.querySelector('.address')?.textContent?.trim() ?? row.textContent?.trim()
 	);
+
+/** What the outline says about the last act, as anyone listening hears it. */
+const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
 
 const labelled = (address: string) =>
 	rows().find(
@@ -547,9 +550,44 @@ describe('carrying a note to another run', () => {
 		flushSync();
 		await settle();
 
-		expect(target.querySelector('[role="status"]')?.textContent?.trim()).toBe(
-			'That note is not there any more.'
+		expect(said()).toBe('That note is not there any more.');
+	});
+
+	// A refusal that outlived the act it described would teach the reader to read
+	// past the next one.
+	it('takes the refusal down again on its own', async () => {
+		moving(
+			fake,
+			ref(3),
+			() => new Response('{"message":"That note is not there any more."}', { status: 409 }) as never
 		);
+
+		vi.useFakeTimers();
+		try {
+			render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+			const row = labelled('2');
+			row.focus();
+			row.dispatchEvent(
+				new KeyboardEvent('keydown', {
+					key: 'ArrowRight',
+					altKey: true,
+					shiftKey: true,
+					bubbles: true,
+					cancelable: true
+				})
+			);
+			for (let turn = 0; turn < 4; turn += 1) {
+				await vi.advanceTimersByTimeAsync(0);
+				flushSync();
+			}
+			expect(said()).toBe('That note is not there any more.');
+
+			await vi.advanceTimersByTimeAsync(6000);
+			flushSync();
+			expect(said()).toBe('');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	// A held region is one author's alone: nothing in it is the reader's to carry.

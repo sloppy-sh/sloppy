@@ -932,7 +932,7 @@ describe('carrying a note to another run', () => {
 		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
 		window.dispatchEvent(pull('pointermove', 60, 60));
 		flushSync();
-		expect(said()).toBe('Becomes 1a2 under 1a About 1a');
+		expect(said()).toBe('Goes under 1a About 1a, as 1a2 or later');
 		expect(marked()).toEqual(['1a', '1a1']);
 
 		window.dispatchEvent(pull('pointerup', 60, 60));
@@ -949,7 +949,7 @@ describe('carrying a note to another run', () => {
 		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
 		window.dispatchEvent(pull('pointermove', 35, 60));
 		flushSync();
-		expect(said()).toBe('Becomes 1c beside 1a About 1a');
+		expect(said()).toBe('Goes beside 1a About 1a, as 1c or later');
 
 		window.dispatchEvent(pull('pointerup', 35, 60));
 		flushSync();
@@ -970,7 +970,7 @@ describe('carrying a note to another run', () => {
 		await vi.advanceTimersByTimeAsync(400);
 		window.dispatchEvent(pull('pointermove', 60, 60, 'touch'));
 		flushSync();
-		expect(said()).toBe('Becomes 1a2 under 1a About 1a');
+		expect(said()).toBe('Goes under 1a About 1a, as 1a2 or later');
 
 		window.dispatchEvent(pull('pointerup', 60, 60, 'touch'));
 		flushSync();
@@ -1022,6 +1022,22 @@ describe('carrying a note to another run', () => {
 		expect(said()).toBe('Stays where it is');
 
 		window.dispatchEvent(pull('pointerup', 35, 60));
+		flushSync();
+		expect(moves).toEqual([]);
+	});
+
+	// A thumb resting on a row is a hold, and a hold that never travels has aimed
+	// at the row it started on: an address is not rewritten by an accident.
+	it('moves nothing where a finger is held on an address and lifted again', async () => {
+		render(OPEN);
+		lay();
+
+		addressOf('1a').dispatchEvent(pull('pointerdown', 32, 60, 'touch'));
+		await vi.advanceTimersByTimeAsync(400);
+		flushSync();
+		expect(said()).toBe('Stays where it is');
+
+		window.dispatchEvent(pull('pointerup', 32, 60, 'touch'));
 		flushSync();
 		expect(moves).toEqual([]);
 	});
@@ -1101,6 +1117,17 @@ describe('carrying a note to another run', () => {
 		expect(moves).toEqual([[held('2'), { relation: 'after', note: held('1b') }]]);
 	});
 
+	// Nothing previews the chord, so it never spends an address on a note that is
+	// already in the run it would be carried to.
+	it('leaves a row already under the note above it where it is', () => {
+		render(OPEN);
+
+		press(labelled('About 1a'), 'ArrowRight', { altKey: true, shiftKey: true });
+
+		expect(moves).toEqual([]);
+		expect(said()).toBe('Stays where it is');
+	});
+
 	it('says so where there is nothing above the focused row', () => {
 		render(OPEN);
 
@@ -1155,7 +1182,7 @@ describe('carrying a note to another run', () => {
 		];
 		flushSync();
 
-		expect(said()).toBe('2 is now 1a2');
+		expect(said()).toBe('2 is now 1a2, and 2 still leads to it');
 	});
 
 	it('says why a note did not go, where the app has words for it', () => {

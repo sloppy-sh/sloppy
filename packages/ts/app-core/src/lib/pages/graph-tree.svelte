@@ -10,6 +10,7 @@
 		type Tag
 	} from '@sloppy/types';
 	import { nameOf, TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
+	import { onDestroy } from 'svelte';
 	import { api } from '../api.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -53,6 +54,8 @@
 	} = $props();
 
 	const LAST_WRITTEN = 8;
+	/** How long a refusal is left up before the outline is quiet again. */
+	const REFUSAL_MS = 6000;
 
 	const byRef = $derived(new Map(notes.map((note) => [note.ref, note])));
 
@@ -144,8 +147,10 @@
 		outlineSections.mine(session.viewer?.did ?? null);
 	});
 
-	/** Why the note somebody carried did not go, until the next one does. */
+	/** Why the note somebody carried did not go, gone again on its own. */
 	let refused = $state('');
+	let refusing: ReturnType<typeof setTimeout> | undefined;
+	onDestroy(() => clearTimeout(refusing));
 
 	// A held region is somebody else's graph, and nothing in it is the reader's
 	// to carry.
@@ -155,8 +160,10 @@
 
 	function carry(ref: OwnedRef, to: NoteDestination): void {
 		refused = '';
+		clearTimeout(refusing);
 		void nodes.move(ref, to).catch((error: unknown) => {
 			refused = serverMessage(error) ?? 'Sloppy could not move that note. Try again.';
+			refusing = setTimeout(() => (refused = ''), REFUSAL_MS);
 		});
 	}
 

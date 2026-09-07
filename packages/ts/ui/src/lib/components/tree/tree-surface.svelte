@@ -350,7 +350,7 @@
 		}
 		// The sections chord: held, the arrows act on a note's sections instead of
 		// walking the rows, so the plain ones stay the walk they already were.
-		if (event.altKey && sections) {
+		if (event.altKey && !event.shiftKey && sections) {
 			if (row.kind === 'section' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
 				arrange(row, event.key === 'ArrowUp' ? -1 : 1);
 				event.preventDefault();
@@ -564,6 +564,12 @@
 			told = 'There is no note above this one';
 			return;
 		}
+		// Nothing on the page previews this one, so a chord that would only send
+		// the note to the end of the run it is already in does nothing at all.
+		if (note.parent === (relation === 'under' ? above.ref : above.parent)) {
+			told = 'Stays where it is';
+			return;
+		}
 		const landing = movesTo(treeRows(group), note, {
 			on: above.ref,
 			address: above.address,
@@ -584,7 +590,7 @@
 				if (row.kind !== 'note' || row.note.ref !== settling.note) continue;
 				return row.note.address === settling.was
 					? ''
-					: `${settling.was} is now ${row.note.address}`;
+					: `${settling.was} is now ${row.note.address}, and ${settling.was} still leads to it`;
 			}
 		}
 		return '';
@@ -781,10 +787,12 @@
 
 									<!-- The address is the row's grip: it is what a move rewrites,
 									     and DESIGN.md § "A note's row fits the narrowest phone"
-									     leaves no room for a fourth control. -->
+									     leaves no room for a fourth control. The padding is pulled
+									     back by as much, so a thumb has more than the glyphs to
+									     press and the row is no wider for it. -->
 									<span
 										class="shrink-0 address text-xs text-muted-foreground {moveNote && !heads
-											? 'cursor-grab touch-pan-y'
+											? '-mx-2 cursor-grab touch-pan-y px-2'
 											: ''}"
 										title={moveNote && !heads ? 'Drag it to move this note' : undefined}
 									>
