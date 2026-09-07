@@ -297,6 +297,41 @@ describe("publishing a branch, and what a peer reads back", () => {
     );
   }
 
+  /** A move, as much of one as publishing can see: moving a note is
+   *  `POST /nodes/:did/:localId/move`'s, and what publishing has to carry out
+   *  is the note's new place and the row a move leaves at its old address. */
+  async function carry(
+    note: OwnedRef,
+    from: { address: Address; parent: OwnedRef },
+    to: { address: Address; parent: OwnedRef; origin: OwnedRef },
+  ): Promise<void> {
+    const { DbService: Db } = await import("../db/db.service");
+    const when = new Date().toISOString();
+    await app.get<DbService>(Db).handle.query(
+      `UPDATE $note SET address = $address, depth = $depth, parent = $parent,
+                        origin = $origin, updated_at = $when;
+       INSERT INTO node_alias $left;`,
+      {
+        note: recordIdFromOwnedRef("node", note),
+        address: to.address,
+        depth: addressDepth(to.address),
+        parent: to.parent,
+        origin: to.origin,
+        when,
+        left: {
+          id: createOwnedRecordId("node_alias", ada.did),
+          created_by: ada.did,
+          graph: homeGraphRef(ada.did),
+          parent: from.parent,
+          address: from.address,
+          note,
+          created_at: when,
+          updated_at: when,
+        },
+      },
+    );
+  }
+
   /** What somebody with no relationship to the author has left pointing at one
    *  of their notes. Straight off the store: the read that draws one asks an
    *  identity store, and the embedded IdP serves no conversation. */
@@ -709,33 +744,12 @@ describe("publishing a branch, and what a peer reads back", () => {
         before?.nodes.find((node) => node.ref === carried.ref),
       ).not.toHaveProperty("aliases");
 
-      // Moving the note is `POST /nodes/:did/:localId/move`'s; what publishing
-      // has to carry out is the row a move leaves behind.
-      const db = app.get<DbService>(
-        (await import("../db/db.service")).DbService,
-      );
       const was = carried.address as Address;
       const now = siblingAddress(was);
-      const when = new Date().toISOString();
-      await db.handle.query(
-        `UPDATE $note SET address = $now, depth = $depth, updated_at = $when;
-         INSERT INTO node_alias $left;`,
-        {
-          note: recordIdFromOwnedRef("node", carried.ref),
-          now,
-          depth: addressDepth(now),
-          when,
-          left: {
-            id: createOwnedRecordId("node_alias", ada.did),
-            created_by: ada.did,
-            graph: homeGraphRef(ada.did),
-            parent: branch.ref,
-            address: was,
-            note: carried.ref,
-            created_at: when,
-            updated_at: when,
-          },
-        },
+      await carry(
+        carried.ref,
+        { address: was, parent: branch.ref },
+        { address: now, parent: branch.ref, origin: branch.ref },
       );
       const second = (await publish(branch.ref)).latest.ref;
 
@@ -761,6 +775,41 @@ describe("publishing a branch, and what a peer reads back", () => {
       if (entry?.change !== "changed") throw new Error("expected a change");
       expect(entry.before.address).toBe(was);
       expect(entry.note.address).toBe(now);
+    },
+  );
+
+  // An address the note held in a branch nobody published is a number in a part
+  // of the author's graph the publication does not cover — docs/ARCHITECTURE.md
+  // § "A published node carries only refs a peer may follow".
+  scenario(
+    "sends no address from outside the branch it published",
+    async () => {
+      const branch = await newNode({ title: "A branch that goes out" });
+      const elsewhere = await newNode({ title: "A branch that stays home" });
+      const carried = await newNode({
+        from: { relation: "under", note: elsewhere.ref },
+        title: "Spores",
+      });
+
+      const away = carried.address as Address;
+      const arriving = childAddress(branch.address as Address);
+      await carry(
+        carried.ref,
+        { address: away, parent: elsewhere.ref },
+        { address: arriving, parent: branch.ref, origin: branch.ref },
+      );
+      const settled = siblingAddress(arriving);
+      await carry(
+        carried.ref,
+        { address: arriving, parent: branch.ref },
+        { address: settled, parent: branch.ref, origin: branch.ref },
+      );
+
+      const publication = await publish(branch.ref);
+      const page = await read(publication.ref);
+      const sent = page?.nodes.find((node) => node.ref === carried.ref);
+      expect(sent?.address).toBe(settled);
+      expect(sent?.aliases).toEqual([arriving]);
     },
   );
 

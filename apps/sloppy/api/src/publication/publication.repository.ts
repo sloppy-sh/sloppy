@@ -243,11 +243,8 @@ export class PublicationRepository {
     return (rows[0] ?? 0) + 1;
   }
 
-  /**
-   * The addresses each of these notes has been moved away from, in address
-   * order — every one of them, including any left outside the branch being
-   * published.
-   */
+  /** The addresses each of these notes has been moved away from, in address
+   *  order. */
   async aliasesOf(
     did: string,
     graph: OwnedRef,

@@ -18,6 +18,7 @@ import {
   DEFAULT_COMMENT_ACCESS,
   entityView,
   graphOf,
+  isInSubtree,
   type Node,
   nowIso,
   type OwnedRef,
@@ -444,7 +445,9 @@ export class PublicationService {
           address: node.address,
           node: publishedNodeOf(node, region, {
             links: node.links.filter((target) => reach.holds(target)),
-            aliases: left.get(source) ?? [],
+            aliases: (left.get(source) ?? []).filter((was) =>
+              isInSubtree(region.address, was),
+            ),
           }),
           created_at: now,
           updated_at: now,
