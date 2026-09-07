@@ -13,6 +13,7 @@ import {
 import { initRuntime, runtime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
+import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
@@ -59,6 +60,7 @@ beforeEach(() => {
 	publications.clear();
 	identity.clear();
 	conversation.clear();
+	outlineSections.clear();
 	api = useFakeApi();
 	initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
 	api.on('GET /profile/me', () => STORED);
@@ -265,9 +267,16 @@ describe('settings', () => {
 			`GET /nodes/${encodeURIComponent(DID)}/${encodeURIComponent(NOTE.split('/')[1])}/reactions`,
 			() => []
 		);
+		api.on(
+			`GET /nodes/${encodeURIComponent(DID)}/${encodeURIComponent(NOTE.split('/')[1])}/blocks`,
+			() => []
+		);
 		await publications.load();
 		await identity.load();
 		await conversation.load(NOTE);
+		outlineSections.show(NOTE, true);
+		await settle();
+		expect(outlineSections.of(NOTE)).toEqual([]);
 
 		mounted = mount(Settings, { target });
 		flushSync();
@@ -278,6 +287,8 @@ describe('settings', () => {
 		expect(publications.all).toEqual([]);
 		expect(publications.state.loaded).toBe(false);
 		expect(conversation.status(NOTE).loaded).toBe(false);
+		expect(outlineSections.shown.size).toBe(0);
+		expect(outlineSections.of(NOTE)).toBeUndefined();
 		// Where the last person's identity was kept is asked again, never assumed.
 		await identity.load();
 		expect(api.countOf('GET /auth/own-instance')).toBe(2);

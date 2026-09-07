@@ -482,6 +482,14 @@
 	 *  makes: a finger has neither a hover to read nor a key to hold. */
 	let nudging = $state<OwnedRef | null>(null);
 
+	$effect(() => {
+		if (nudging === null) return;
+		const drawnStill = drawn.some((group) =>
+			group.rows.some((row) => row.kind === 'section' && row.section.ref === nudging)
+		);
+		if (!drawnStill) nudging = null;
+	});
+
 	function carrySection(event: PointerEvent, row: Extract<OutlineRow, { kind: 'section' }>): void {
 		dragged = false;
 		if (!sections) return;
@@ -534,7 +542,7 @@
 
 <div
 	bind:this={scroller}
-	class="size-full overflow-y-auto overscroll-contain scroll-fade-y [--scroll-fade:1rem] [--tree-step:0.625rem] sm:[--tree-step:1rem]"
+	class="size-full overflow-y-auto overscroll-contain scroll-fade-y [--scroll-fade:1rem] [--tree-step:0.375rem] sm:[--tree-step:1rem]"
 	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}; scroll-padding-top: calc({inset.top} + {band}px); scroll-padding-bottom: {inset.bottom}"
 	{@attach scrollFade('y')}
 >
@@ -600,7 +608,7 @@
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
+									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted sm:gap-2 {selection.length >
 										0 && asked.length === 0
 										? 'opacity-45'
 										: ''} {!heads && lit.has(row.note.ref)
@@ -634,7 +642,7 @@
 									<span class="shrink-0 address text-xs text-muted-foreground">
 										{row.note.address}
 									</span>
-									<span class="min-w-16 flex-1 truncate text-sm">
+									<span class="min-w-0 flex-1 truncate text-sm">
 										{row.note.title || 'Untitled'}
 									</span>
 
@@ -656,7 +664,7 @@
 									{#if row.note.published}
 										<span class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
 											<Globe class="size-3" aria-hidden="true" />
-											Published
+											<span class="sr-only sm:not-sr-only">Published</span>
 										</span>
 									{/if}
 
@@ -666,13 +674,13 @@
 											aria-hidden="true"
 										>
 											<Check class="size-3" />
-											Chosen
+											<span class="hidden sm:inline">Chosen</span>
 										</span>
 									{/if}
 
 									{#if row.under > 0}
 										<span
-											class="shrink-0 text-xs text-muted-foreground tabular-nums"
+											class="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline"
 											aria-hidden="true"
 										>
 											{row.under.toLocaleString()}
@@ -718,7 +726,7 @@
 												}
 												writeUnder?.write(row.note.ref);
 											}}
-											class="-me-1 flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+											class="flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
 											<CornerDownRight class="size-4" />
 										</button>
@@ -736,7 +744,7 @@
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {moving?.note ===
+									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {moving?.note ===
 									row.note
 										? 'border-s-2 border-dashed border-foreground/50 bg-muted/60'
 										: ''}"
@@ -787,7 +795,7 @@
 												event.stopPropagation();
 												arrange(row, 1);
 											}}
-											class="-me-1 flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
 										>
 											<ArrowDown class="size-4" />
 										</button>
@@ -804,7 +812,7 @@
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {row.again
+									class="flex min-h-11 items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {row.again
 										? 'cursor-pointer hover:bg-muted/60'
 										: ''}"
 									style="padding-inline-start: {step}"
@@ -823,7 +831,7 @@
 									onclick={() => reveal(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2"
 									style="padding-inline-start: {step}"
 								>
 									<span class="size-11 shrink-0" aria-hidden="true"></span>

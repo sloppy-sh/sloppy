@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deleted } from '../stores/deleted.svelte.js';
 import {
 	AT,
+	DID,
 	node,
 	ref,
 	useFakeApi,
@@ -10,6 +11,7 @@ import {
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import Frame from './frame.test-support.svelte';
 import { nodeHref } from './routes.js';
@@ -204,17 +206,28 @@ describe('the frame around every page', () => {
 	// A session can end without anybody asking it to, and the next person to sign
 	// in on this device must not be shown the last one's graph.
 	it('drops the graph when a session ends on its own', async () => {
+		const NOTE = ref(1);
 		api.on('GET /auth/me', () => VIEWER);
 		api.on('GET /nodes', () => [node(1, '1')]);
+		api.on(
+			`GET /nodes/${encodeURIComponent(DID)}/${encodeURIComponent(NOTE.split('/')[1])}/blocks`,
+			() => []
+		);
 		await show();
 		await nodes.load();
+		outlineSections.show(NOTE, true);
+		await settle();
 		expect(nodes.region()).toHaveLength(1);
+		expect(outlineSections.of(NOTE)).toEqual([]);
 
 		session.clear();
 		flushSync();
 		await settle();
 
 		expect(nodes.region()).toEqual([]);
+		// The outline's own sections go with it, not on whoever mounts a tree next.
+		expect(outlineSections.shown.size).toBe(0);
+		expect(outlineSections.of(NOTE)).toBeUndefined();
 	});
 
 	it('takes what they deleted with it, which is a listing of their notes too', async () => {

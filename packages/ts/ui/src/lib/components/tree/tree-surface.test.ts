@@ -4,7 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
-import type { TreeSection } from './sections.js';
+import type { OutlineSections, TreeSection } from './sections.js';
 import TreeSurface, { type TreeGroup, type TreeSurfaceProps } from './tree-surface.svelte';
 import { LIT_PAGE, RUN_PAGE, type TreeNote } from './walk.js';
 
@@ -1003,7 +1003,9 @@ describe('a note’s sections under its row in the walk', () => {
 	let word: string;
 	let again: boolean;
 
-	function sections(shown: OwnedRef[] = [held('1')]): TreeSurfaceProps['sections'] {
+	function sections(
+		shown: OwnedRef[] = [held('1')]
+	): OutlineSections & { shown: SvelteSet<OwnedRef> } {
 		return {
 			shown: new SvelteSet(shown),
 			of: (note) => (note === held('1') ? stack : undefined),
@@ -1314,6 +1316,22 @@ describe('a note’s sections under its row in the walk', () => {
 		expect(sectionRow(S1).querySelector('[aria-label^="Move it up"]')).toBeNull();
 	});
 
+	it('lets go of the handle it was offering when the note is folded back up', () => {
+		const surface = sections();
+		render({ sections: surface });
+		gripIn(S2).click();
+		flushSync();
+		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).not.toBeNull();
+
+		surface.shown.delete(held('1'));
+		flushSync();
+		surface.shown.add(held('1'));
+		flushSync();
+
+		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).toBeNull();
+		expect(gripIn(S2).getAttribute('aria-expanded')).toBe('false');
+	});
+
 	it('leaves them out of a drag that ended on the handle', () => {
 		render({ sections: sections() });
 		lay();
@@ -1356,5 +1374,142 @@ describe('a note’s sections under its row in the walk', () => {
 		expect(written).toEqual([held('1')]);
 		expect(moves).toHaveLength(1);
 		expect(openedNotes).toEqual([]);
+	});
+});
+
+// PRODUCT.md principle 6: the outline is drawn at phone width first. jsdom lays
+// nothing out, so a row's narrowest is added up from its parts rather than
+// measured.
+describe('a note row on the narrowest phone', () => {
+	const PHONE = 360;
+	const REM = 16;
+	/** One character of a row's small text, allowed for at the widest face
+	 *  `data-app-font` puts behind the address. */
+	const CHAR = 9;
+
+	/** A run as deep as the outline sets a row in, published and tagged all the
+	 *  way down, with one more note under the last so its row carries a count. */
+	const DEEP = (() => {
+		const marks = { published: true, tags: ['field' as Tag] };
+		const out = [note('1', undefined, marks)];
+		let address = '1';
+		for (let step = 1; step <= 8; step += 1) {
+			const child = `${address}${step % 2 === 1 ? 'a' : '1'}`;
+			out.push(note(child, address, marks));
+			address = child;
+		}
+		out.push(note(`${address}a`, address));
+		return out;
+	})();
+
+	const DEEPEST = '1a1a1a1a1';
+
+	const classesOf = (part: Element): string[] => (part.getAttribute('class') ?? '').split(/\s+/);
+
+	/** A spacing class in px, off the part's own classes, or 0 where it has none. */
+	function spaceOf(classes: string[], name: string): number {
+		const set = classes.find((one) => new RegExp(`^${name}-\\d+(\\.5)?$`).test(one));
+		return set ? Number(set.slice(name.length + 1)) * 4 : 0;
+	}
+
+	const gapOf = (classes: string[]): number => spaceOf(classes, 'gap');
+
+	/** What a part carries with nothing to spare: words that truncate carry
+	 *  nothing, and anything else carries its own parts or its own text. */
+	function carriedBy(part: Element, classes: string[]): number {
+		if (classes.includes('truncate')) return 0;
+		const parts = [...part.children];
+		if (parts.length > 0) return acrossOf(parts, gapOf(classes));
+		return (part.textContent ?? '').trim().length * CHAR;
+	}
+
+	/** The narrowest a part can be drawn, or null where it is not drawn at all:
+	 *  a control is its touch target, an icon its size, and anything else is the
+	 *  wider of what it carries and the floor it is set. */
+	function floorOf(part: Element): number | null {
+		const classes = classesOf(part);
+		if (classes.includes('sr-only') || classes.includes('hidden')) return null;
+		const sized = classes.find((one) => /^size-\d+$/.test(one));
+		if (sized) return Number(sized.slice(5)) * 4;
+		return Math.max(spaceOf(classes, 'min-w'), carriedBy(part, classes));
+	}
+
+	function acrossOf(parts: Element[], gap: number): number {
+		const drawn = parts.map(floorOf).filter((one): one is number => one !== null);
+		return drawn.reduce((sum, one) => sum + one, 0) + gap * Math.max(0, drawn.length - 1);
+	}
+
+	/** Every width the row is drawn against, read off the surface that sets it:
+	 *  what the run is held back either side, the stair below `sm` and how many
+	 *  of them this row stands on, the gap between its parts, and its own end. */
+	function acrossRow(row: HTMLElement): number {
+		const run = row.closest('.max-w-4xl') as HTMLElement;
+		const step = classesOf(run.parentElement as HTMLElement)
+			.map((one) => /^\[--tree-step:([\d.]+)rem\]$/.exec(one))
+			.find((one) => one !== null);
+		const stairs = /calc\((\d+) \*/.exec(row.style.paddingInlineStart);
+		const classes = classesOf(row);
+		return (
+			spaceOf(classesOf(run), 'px') * 2 +
+			Number(stairs?.[1] ?? 0) * Number(step?.[1] ?? 0) * REM +
+			acrossOf([...row.children], gapOf(classes)) +
+			spaceOf(classes, 'pe')
+		);
+	}
+
+	const bare: TreeSurfaceProps['sections'] = {
+		shown: new SvelteSet<OwnedRef>(),
+		of: () => undefined,
+		says: () => ({ says: '', again: false }),
+		onShow: () => {},
+		onMove: () => {}
+	};
+
+	/** The widest row a reader can reach: set in as far as the outline sets one,
+	 *  published, chosen, and carrying a tag the walk is lit by. */
+	function deep(): HTMLElement {
+		render({
+			groups: [{ key: 'one', title: 'Field notes', notes: DEEP }],
+			opened: new Set(DEEP.slice(0, 8).map((one) => one.ref)),
+			selection: ['field' as Tag],
+			chosen: new Set(DEEP.map((one) => one.ref)),
+			writable: true,
+			sections: bare
+		});
+		return labelled(`About ${DEEPEST}`);
+	}
+
+	it('fits the widest row the outline can draw', () => {
+		const row = deep();
+		expect(row.getAttribute('aria-level')).toBe('9');
+		expect(row.getAttribute('aria-checked')).toBe('true');
+		expect(row.textContent).toContain('Published');
+		expect(row.textContent).toContain('1 note under this');
+
+		expect(acrossRow(row)).toBeLessThanOrEqual(PHONE);
+	});
+
+	it('gives the row’s room to the title, which is what truncates', () => {
+		const row = deep();
+		const title = [...row.children].find((one) => classesOf(one).includes('flex-1')) as HTMLElement;
+
+		expect(title.textContent?.trim()).toBe(`About ${DEEPEST}`);
+		expect(classesOf(title)).toContain('truncate');
+		expect(classesOf(title).filter((one) => /^min-w-/.test(one))).toEqual(['min-w-0']);
+	});
+
+	it('keeps every control at the touch target, with nothing set around it', () => {
+		const row = deep();
+		const controls = [...row.querySelectorAll('button')];
+
+		expect(controls.map((one) => one.getAttribute('aria-label'))).toEqual([
+			`Unfold ${DEEPEST}`,
+			`Show the sections of ${DEEPEST}`,
+			`Write a note under ${DEEPEST}`
+		]);
+		for (const one of controls) {
+			expect(classesOf(one)).toContain('size-11');
+			expect(classesOf(one).filter((cls) => /^-?m[a-z]?-/.test(cls))).toEqual([]);
+		}
 	});
 });
