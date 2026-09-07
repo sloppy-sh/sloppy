@@ -357,6 +357,8 @@ export function mountGraph(
         );
       },
       canSweep: () => props.onChooseWithin !== undefined,
+      canSweepByFinger: () =>
+        props.chosen !== undefined && props.onChooseWithin !== undefined,
       onSweep: (box, done) => {
         takeViewport();
         if (!done) {

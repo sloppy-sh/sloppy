@@ -498,6 +498,20 @@ describe("choosing several", () => {
       ]);
     });
 
+    // A thumb settling mid-pan must not draw a band the reader never asked for.
+    it("pans on a third finger arriving during a two-finger pan", () => {
+      const graph = surface();
+      graph.choosesAlready(true);
+      graph.finger("pointerdown", 1, 20, 20);
+      graph.finger("pointerdown", 2, 120, 20);
+      graph.finger("pointermove", 1, 60, 40);
+      graph.finger("pointerdown", 3, 300, 300);
+      graph.finger("pointermove", 3, 400, 400);
+      graph.finger("pointerup", 3, 400, 400);
+
+      expect(graph.swept).toEqual([]);
+    });
+
     it("leaves the press on bare canvas alone", () => {
       const graph = surface();
       graph.choosesAlready(true);

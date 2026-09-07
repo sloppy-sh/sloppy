@@ -49,12 +49,8 @@ export interface GestureHandlers {
   onHover(target: string | null): void;
   /** Whether a modifier-held drag over bare canvas sweeps instead of panning. */
   canSweep(): boolean;
-  /**
-   * Whether one finger over bare canvas sweeps instead of panning, which reads
-   * as a sweep only once a set is being chosen and a tap is already adding to
-   * it. Absent, and on a surface that answers `false`, a finger pans; two
-   * fingers pan either way.
-   */
+  /** Whether one finger over bare canvas sweeps instead of panning. Absent
+   *  means a finger pans. */
   canSweepByFinger?(): boolean;
   /** The box such a drag has swept so far, and whether it has let go. */
   onSweep(box: ScreenBox, done: boolean): void;
@@ -163,8 +159,7 @@ export function attachGestures(
     pressTimer = null;
   };
 
-  /** Ends a sweep for anything other than the pointer that drew it lifting.
-   *  What it had drawn stands: a sweep adds to a choice, it never replaces it. */
+  /** What was drawn stands: a sweep adds to a choice, it never replaces it. */
   const endSweep = (): void => {
     const drawn = swept;
     swept = null;
@@ -233,6 +228,7 @@ export function attachGestures(
     }
     if (
       event.pointerType === "touch" &&
+      held.length === 1 &&
       target === null &&
       handlers.canSweepByFinger?.() === true
     ) {

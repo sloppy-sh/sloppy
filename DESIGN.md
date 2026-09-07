@@ -1143,7 +1143,9 @@ states. Empty states invite; they don't apologize. Icons: lucide, one weight.
   platform gives us. Easing applied to ink is lag with a nicer name.
 - Honour `prefers-reduced-motion`: chrome transitions degrade to static, and the layout
   **jumps to its converged positions** rather than animating there. Reduced motion must
-  never mean an unsettled graph.
+  never mean an unsettled graph. A mark the reader is holding is the one thing the field
+  follows as it goes, rather than jumping to a converged field under a moving hand, and it
+  converges the moment the mark is let go.
 
 ## Persistence
 
