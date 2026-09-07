@@ -216,8 +216,9 @@ export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 
 /**
  * `graph`, `address`, `depth` and `origin` are absent because they are
- * immutable, and `parent` because a move writes an alias rather than a new
- * address, and that mechanism does not exist yet.
+ * immutable, and `parent` because moving a note is unbuilt —
+ * docs/ARCHITECTURE.md § "The addressing protocol" carries what the ruling
+ * has to answer before any of it is written.
  */
 export const UpdateNodeRequestSchema = z.object({
   title: z.string().max(512).optional(),

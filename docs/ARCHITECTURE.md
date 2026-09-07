@@ -141,6 +141,21 @@ otherwise tell that author's two `1a`s apart. A region lies in one graph — the
 rooted at does — so `publishedSubtreeReader` holds every page of a run to the same one, the
 way it holds them to one version.
 
+**Moving a note is unbuilt, and what a move does is not yet settled.** The rule above says
+what a move may not do — it writes an alias and never renumbers — and `address` and `depth` are
+`READONLY` on the row so that it cannot. What it does instead is undecided: there is no alias
+table, no move on the node routes, and no move among a note's acts, so somebody who wrote a
+thought in the place it seemed to spring from and later sees it sprang from somewhere else can
+only write it again elsewhere, losing the note's address, its sections and everything citing
+it. Settling this is a change to the addressing rules, so it lands on its own and never inside
+a feature. Two facts it has to face, both of them already true:
+
+- A mark's seed is a function of its address alone (`layout/geometry.ts`), while a genealogy
+  edge is drawn from `parent` (`@sloppy/graph`'s `model.ts`). A note that keeps its address and
+  changes parent is drawn in its old sector, with an edge reaching across the field.
+- `origin` and `depth` are the columns `node_owner_origin_depth` slices a tree by, so a move
+  between trees rewrites `origin` for every note beneath the one that moved.
+
 ## syr integration
 
 ### The constraint that shapes everything

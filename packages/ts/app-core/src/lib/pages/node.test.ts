@@ -28,6 +28,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
+import Note from './node.svelte';
 import NoteOnSurface from './note-in-panel.test-support.svelte';
 import { nodeHref } from './routes.js';
 
@@ -2011,6 +2012,61 @@ describe('citing a note held from somebody else', () => {
 
 		expect(screen()).toContain('Linked from');
 		expect(labelled('1a Ash keys, in Ada Lovelace · Their notebook')).toBeTruthy();
+	});
+});
+
+// PRODUCT.md principle 3: an address is read inside one graph, so the note that
+// carries it says which the moment a note from another one is open beside it.
+describe('which graph the note at the head is read in', () => {
+	const GARDEN = ref(50);
+	const COMPOST = node(51, '1', { title: 'Compost', graph: GARDEN });
+
+	async function openBeside(...alsoOpen: OwnedRef[]): Promise<void> {
+		stubViewport(WIDE);
+		mounted = mount(Note, {
+			target,
+			props: {
+				ref: SECOND,
+				openNotes: [SECOND, ...alsoOpen],
+				onWrite: () => {},
+				onOpen: () => {},
+				onLinkOnGraph: () => {},
+				onDeleted: () => {},
+				onClose: () => {}
+			}
+		});
+		flushSync();
+		await settle();
+	}
+
+	beforeEach(async () => {
+		graphs.clear();
+		installGraph();
+		api.on('GET /graphs', () => [
+			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Biology' },
+			{ ref: GARDEN, created_by: DID, created_at: AT, updated_at: AT, title: 'Garden' }
+		]);
+		api.on(`GET ${path(COMPOST.ref)}`, () => COMPOST);
+		api.on(`GET ${path(COMPOST.ref)}/blocks`, () => []);
+		await graphs.load();
+		await loadGraph();
+		await nodes.fetch(COMPOST.ref);
+	});
+
+	afterEach(() => graphs.clear());
+
+	it('names no graph while every open note is in this one', async () => {
+		await openBeside(FIRST);
+
+		expect(noteHead()).not.toContain('Biology');
+		expect(labelled('Copy the address 1a')).toBeTruthy();
+	});
+
+	it('names this one once a note from another graph is open beside it', async () => {
+		await openBeside(COMPOST.ref);
+
+		expect(noteHead()).toContain('Biology');
+		expect(labelled('Copy the address 1a, in Biology')).toBeTruthy();
 	});
 });
 

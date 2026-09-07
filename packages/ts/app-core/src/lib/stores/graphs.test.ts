@@ -102,6 +102,52 @@ describe('moving between them', () => {
 		expect(graphs.titleOf(GARDEN.ref)).toBe('Allotment');
 	});
 
+	it('closes one, and takes it off the canvas the reader had it on', async () => {
+		await graphs.load();
+		graphs.enter(GARDEN.ref);
+		graphs.toggleOnCanvas(COMPANY.ref);
+		api.on(
+			`DELETE /graphs/${encodeURIComponent(DID)}/${GARDEN.ref.split('/')[1]}`,
+			() => undefined
+		);
+
+		await graphs.close(GARDEN.ref);
+
+		expect(graphs.all).not.toContainEqual(GARDEN);
+		expect(graphs.current).toBe(HOME);
+		expect(graphs.onCanvas).toEqual([HOME, COMPANY.ref]);
+		expect(await keptGraphs()).not.toContainEqual(GARDEN);
+	});
+
+	it('takes one it was standing beside off the canvas too', async () => {
+		await graphs.load();
+		graphs.toggleOnCanvas(GARDEN.ref);
+		api.on(
+			`DELETE /graphs/${encodeURIComponent(DID)}/${GARDEN.ref.split('/')[1]}`,
+			() => undefined
+		);
+
+		await graphs.close(GARDEN.ref);
+
+		expect(graphs.onCanvas).toEqual([HOME]);
+		expect(prefs.current.alsoOnCanvas).not.toContain(GARDEN.ref);
+	});
+
+	it('keeps it where the server refuses to close it', async () => {
+		await graphs.load();
+		api.on(
+			`DELETE /graphs/${encodeURIComponent(DID)}/${GARDEN.ref.split('/')[1]}`,
+			() =>
+				new Response(JSON.stringify({ message: 'That graph is not here.' }), {
+					status: 400,
+					headers: { 'content-type': 'application/json' }
+				})
+		);
+
+		await expect(graphs.close(GARDEN.ref)).rejects.toThrow();
+		expect(graphs.all).toContainEqual(GARDEN);
+	});
+
 	// A choice saved on this device outlives the person who made it, and a graph
 	// belongs to one identity.
 	it('falls back to the one they started with for a graph they do not keep', () => {

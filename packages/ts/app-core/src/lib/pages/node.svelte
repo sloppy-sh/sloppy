@@ -480,6 +480,17 @@
 		return of === inGraph ? null : graphs.titleOf(of) || 'Another graph';
 	}
 
+	/** This note's own graph, named at its head only where a note from another one
+	 *  is open beside it: an address is read inside one graph. */
+	const graphHere = $derived.by(() => {
+		if (!node || inGraph === null) return null;
+		const across = openNotes.some((of) => {
+			const other = nodes.get(of) ?? heldNotes.get(of)?.note;
+			return other !== undefined && graphOf(other) !== inGraph;
+		});
+		return across ? graphs.titleOf(inGraph) || 'Untitled' : null;
+	});
+
 	const linked = $derived(
 		(node?.links ?? []).map((target) => ({
 			target,
@@ -1477,11 +1488,16 @@
 			{#if node}
 				<button
 					type="button"
-					aria-label={`Copy the address ${node.address}`}
+					aria-label={graphHere
+						? `Copy the address ${node.address}, in ${graphHere}`
+						: `Copy the address ${node.address}`}
 					onclick={() => void handOver(citation, 'Address copied.')}
-					class="address ml-auto min-h-11 truncate rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					class="ml-auto flex min-h-11 min-w-0 items-baseline gap-2 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 				>
-					{node.address}
+					<span class="address truncate">{node.address}</span>
+					{#if graphHere}
+						<span class="max-w-28 truncate text-xs text-muted-foreground">{graphHere}</span>
+					{/if}
 				</button>
 				<Button
 					bind:ref={actsFrom}
