@@ -43,12 +43,13 @@
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
-	import type {
-		GraphHandle,
-		GraphHoverAt,
-		GraphMenuAt,
-		GraphPictures,
-		GraphTransform
+	import {
+		DEFAULT_BUDGET,
+		type GraphHandle,
+		type GraphHoverAt,
+		type GraphMenuAt,
+		type GraphPictures,
+		type GraphTransform
 	} from '@sloppy/graph';
 	import {
 		MAX_NOTES_PER_BULK_ACT,
@@ -591,6 +592,10 @@
 		if (!finding) untrack(() => find.clear());
 	});
 
+	/** The deepest generation the canvas draws before the reader has looked
+	 *  anywhere, which is one past where level of detail starts folding. */
+	const FIRST_DRAWN_DEPTH = DEFAULT_BUDGET.depth + 1;
+
 	/** What one graph's read left on the canvas. */
 	interface FieldRead {
 		/** Every note of the field arrived. One branch missing would leave the
@@ -602,7 +607,7 @@
 		error?: unknown;
 	}
 
-	async function loadField(graph: OwnedRef): Promise<FieldRead> {
+	async function loadField(graph: OwnedRef, enoughToDraw: () => void): Promise<FieldRead> {
 		// The rail is the graph's legend, not the graph: a field whose tag counts
 		// will not read still draws.
 		void tags.load(graph).catch(() => {});
@@ -613,15 +618,21 @@
 		});
 		if (!branches) return { whole: false, answered: false, error };
 		const trees = await Promise.all(
-			branches.map((root) =>
-				nodes.load({ origin: root.ref }).then(
+			branches.map(async (root) => {
+				// A bounded read first, so a graph of any size is on the canvas after
+				// one: nothing deeper than this is drawn until the reader looks
+				// somewhere. The rest of the branch follows, because what a mega-node
+				// stands for is counted from the notes this device holds.
+				await nodes.load({ origin: root.ref, maxDepth: FIRST_DRAWN_DEPTH }).catch(() => {});
+				enoughToDraw();
+				return nodes.load({ origin: root.ref }).then(
 					() => true,
 					(err: unknown) => {
 						error ??= err;
 						return false;
 					}
-				)
-			)
+				);
+			})
 		);
 		return { whole: trees.every(Boolean), answered: true, error };
 	}
@@ -649,7 +660,9 @@
 		// Each on its own, because one field that will not read must not cost the
 		// others theirs — `node.svelte`'s `reachEveryGraph` reads them the same way.
 		const reads = await Promise.all(
-			fields.map((graph) => loadField(graph).then((read) => ({ graph, ...read })))
+			fields.map((graph) =>
+				loadField(graph, () => (loading = false)).then((read) => ({ graph, ...read }))
+			)
 		);
 		loading = false;
 		const short = reads.filter((read) => !read.whole);
