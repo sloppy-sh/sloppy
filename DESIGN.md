@@ -756,6 +756,15 @@ so.
 - **The handle is the promise a section makes.** It drags a whole thought, so it rides
   the section's edge and stays at rest until a pointer or focus reaches it. A handle per
   line would say the wrong thing about what moves.
+- **In the outline, a row's write control is also where a new note is aimed.** Carrying it
+  over the outline — a press and hold on a finger, a plain drag with a mouse — says in
+  words what letting go will do: write under the row it is indented past, or beside the
+  row it is level with. The run that would gain the note is marked by an edge rather than
+  a colour, and the same words are said to anything reading the page aloud. The gesture
+  only ever adds. The new note lands at the end of the run it named, because that is
+  where the next address in a run is, and nothing already written is moved or renumbered
+  by a drag. A tap on that control still writes under its own row and the keyboard keeps
+  its chord, so this is a third way in and never the only one.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** A drag-to-dismiss bottom sheet on a phone, a

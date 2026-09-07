@@ -2,7 +2,16 @@ import type { NodeView, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type FakeApi, finding, node, ref, useFakeApi } from '../stores/fake-api.test-support.js';
+import {
+	AT,
+	DID,
+	type FakeApi,
+	finding,
+	node,
+	ref,
+	useFakeApi
+} from '../stores/fake-api.test-support.js';
+import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { people } from '../stores/people.svelte.js';
 import GraphTree from './graph-tree.svelte';
 
@@ -153,7 +162,7 @@ describe('the graph walked as a tree', () => {
 		};
 		render({ notes: [citing, cited], fields: [{ ref: THESIS, title: 'Thesis' }] });
 		expect(shown()).toEqual(['8', '9']);
-		expect(rows().every((row) => row.querySelector('button') === null)).toBe(true);
+		expect(rows().every((row) => row.querySelector('[aria-label^="Unfold"]') === null)).toBe(true);
 	});
 });
 
@@ -381,5 +390,100 @@ describe('the notes last written into', () => {
 
 		expect(target.querySelector('h2')).toBeNull();
 		expect(shown()).toEqual(['1', '2']);
+	});
+});
+
+// AI.md § "A Block Is a Section": the walk shows a note's sections and reorders
+// them, and does nothing else to one.
+describe('a note’s sections in the walk', () => {
+	const NOTE = ref(1);
+	const S1 = ref(41);
+	const S2 = ref(42);
+	const branch = [node(1, '1', { graph: THESIS })];
+
+	const blocksPath = `/nodes/${encodeURIComponent(DID)}/${encodeURIComponent(
+		NOTE.split('/')[1]
+	)}/blocks`;
+
+	function section(of: OwnedRef, ord: string, line: string) {
+		return {
+			ref: of,
+			created_by: DID,
+			created_at: AT,
+			updated_at: AT,
+			node: NOTE,
+			ord,
+			content: {
+				type: 'doc',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: line }] }]
+			}
+		};
+	}
+
+	const showControl = () =>
+		target.querySelector<HTMLButtonElement>('[aria-label^="Show the sections"]');
+
+	beforeEach(() => {
+		outlineSections.clear();
+		fake.on(`GET ${blocksPath}`, () => [
+			section(S1, '1', 'The first thing'),
+			section(S2, '2', 'The last thing')
+		]);
+	});
+
+	it('draws them under the note once the reader asks, by their first line', async () => {
+		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+		showControl()?.click();
+		await settle();
+		expect(rows().map((row) => row.textContent?.trim())).toEqual([
+			expect.stringContaining('1'),
+			'The first thing',
+			'The last thing'
+		]);
+	});
+
+	it('reorders one through the same note, and asks the server to keep it there', async () => {
+		let asked: unknown = null;
+		const path = `/blocks/${encodeURIComponent(DID)}/${encodeURIComponent(S2.split('/')[1])}`;
+		fake.on(`PATCH ${path}`, (_url, init) => {
+			asked = JSON.parse(String(init?.body ?? '{}'));
+			return section(S2, '0', 'The last thing');
+		});
+
+		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+		showControl()?.click();
+		await settle();
+
+		const row = rows()[2];
+		row.focus();
+		row.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'ArrowUp',
+				altKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+		flushSync();
+		expect(rows().map((one) => one.textContent?.trim())).toEqual([
+			expect.stringContaining('1'),
+			'The last thing',
+			'The first thing'
+		]);
+
+		await settle();
+		expect(asked).toMatchObject({ after: null });
+	});
+
+	// A held region is one author's alone: nothing in it is the reader's to
+	// arrange, so the walk of it is the notes and nothing else.
+	it('offers nothing to arrange on a branch pulled from somebody else', async () => {
+		const root = ref(20, OTHER);
+		render({
+			notes: [{ ...node(20, '3'), ref: root, created_by: OTHER, origin: root }],
+			fields: undefined
+		});
+		await settle();
+		expect(showControl()).toBeNull();
 	});
 });

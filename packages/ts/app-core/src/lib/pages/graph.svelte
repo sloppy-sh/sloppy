@@ -1352,7 +1352,8 @@
 	const writeFromRow = {
 		keys: WRITE_UNDER.keys,
 		typed: (event: KeyboardEvent) => acceleratorFor(event) === 'under',
-		write: (on: OwnedRef) => writeUnder(on)
+		write: (on: OwnedRef) => writeUnder(on),
+		beside: (on: OwnedRef) => startWriting({ from: { relation: 'after', note: on } }, on, null)
 	};
 
 	/**
