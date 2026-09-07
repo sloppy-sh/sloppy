@@ -2107,6 +2107,7 @@
 	bind:open={switching}
 	graphs={graphs.all}
 	current={graphs.current}
+	home={graphs.home}
 	alsoUp={new Set(onCanvas.slice(1))}
 	full={graphs.canvasFull}
 	busy={graphs.state.loading}
@@ -2143,6 +2144,12 @@
 	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
 	onRename={(ref, title) =>
 		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
+	onRemove={(ref) =>
+		inTheirWords(async () => {
+			await graphs.close(ref);
+			closeUndrawn();
+			void deleted.reload().catch(() => {});
+		}, 'That graph could not be closed.')}
 />
 
 <WallpaperSheet

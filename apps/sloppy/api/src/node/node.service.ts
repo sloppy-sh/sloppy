@@ -295,17 +295,55 @@ export class NodeService {
     await this.nodes.remove(did, going);
   }
 
+  /**
+   * A graph closed, and every note in it sent the way {@link remove} sends a
+   * branch: what they published comes down first, and their addresses retire
+   * with them rather than coming free. The name goes last, so a refusal partway
+   * leaves the graph standing.
+   */
+  async closeGraph(
+    did: string,
+    ref: OwnedRef,
+    delegation: Delegation | undefined,
+  ): Promise<void> {
+    await this.graphs.requireClosable(did, ref);
+    await this.sweep(did);
+    const roots = await this.nodes.roots(did, ref);
+    const going = (
+      await Promise.all(roots.map((root) => this.nodes.subtree(did, root)))
+    ).flat();
+    await this.takeDownWithin(did, going, delegation);
+    await this.nodes.remove(did, going);
+    await this.graphs.close(did, ref);
+  }
+
   /** The branches this person deleted and can still put back, newest first. */
   async deleted(did: string): Promise<DeletedBranch[]> {
     await this.sweep(did);
-    return branchesAmong(await this.nodes.deletedNotes(did));
+    const branches = branchesAmong(await this.nodes.deletedNotes(did));
+    const standing = await this.graphsStanding(
+      did,
+      branches.map((branch) => branch.graph),
+    );
+    return branches.filter((branch) => standing.has(branch.graph));
+  }
+
+  private async graphsStanding(
+    did: string,
+    named: readonly OwnedRef[],
+  ): Promise<Set<OwnedRef>> {
+    const standing = new Set<OwnedRef>();
+    for (const ref of new Set(named)) {
+      if (await this.graphs.holds(did, ref)) standing.add(ref);
+    }
+    return standing;
   }
 
   /** One of them back where it was, with its addresses and its writing. */
   async restore(did: string, ref: OwnedRef): Promise<NodeView> {
     await this.sweep(did);
     const gone = await this.nodes.findDeleted(did, ref);
-    if (!gone) {
+    if (!gone || !(await this.graphs.holds(did, graphOf(gone)))) {
       throw new NotFoundException("That branch is not here to put back.");
     }
     if (gone.parent && (await this.nodes.findDeleted(did, gone.parent))) {

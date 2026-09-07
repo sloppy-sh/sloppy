@@ -327,6 +327,12 @@ export class SloppyClient {
     );
   }
 
+  /** Close one. The notes in it go with it and are not offered back; the graph
+   *  somebody started with is refused in words. */
+  async closeGraph(ref: OwnedRef): Promise<void> {
+    await this.del(`/graphs${refPath(ref)}`);
+  }
+
   // ── Nodes ────────────────────────────────────────────────────────────────
 
   /**

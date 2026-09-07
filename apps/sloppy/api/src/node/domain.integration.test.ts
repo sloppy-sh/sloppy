@@ -1201,6 +1201,76 @@ describe("the domain routes", () => {
       expect(listed[0].title).toBe("Everything so far");
     });
 
+    scenario("closes one, and the notes it held go with it", async () => {
+      const closing = await newGraph(ada, "An experiment");
+      const root = await newNode(ada, {
+        from: { relation: "branch", graph: closing.ref },
+        title: "The premise",
+      });
+      const kept = await newNode(ada, { title: "In the graph she started in" });
+      await newNode(ada, { from: springsFrom(root), title: "What followed" });
+      await ok("DELETE", `/nodes/${at(kept.ref)}`, ada);
+
+      expect(
+        (await call("DELETE", `/graphs/${at(closing.ref)}`, ada)).status,
+      ).toBe(204);
+
+      expect(
+        ((await ok("GET", "/graphs", ada)) as GraphView[]).map(
+          (one) => one.ref,
+        ),
+      ).not.toContain(closing.ref);
+      expect(await branchesOf(ada, closing.ref)).toEqual([]);
+      const under = (await ok(
+        "GET",
+        `/nodes?origin=${encodeURIComponent(root.ref)}`,
+        ada,
+      )) as NodeView[];
+      expect(under).toEqual([]);
+
+      const listed = (await ok(
+        "GET",
+        "/nodes/deleted",
+        ada,
+      )) as DeletedBranch[];
+      expect(listed.map((one) => one.ref)).toContain(kept.ref);
+      expect(listed.map((one) => one.ref)).not.toContain(root.ref);
+
+      expect(
+        (await call("POST", `/nodes/${at(root.ref)}/restore`, ada)).status,
+      ).toBe(404);
+    });
+
+    scenario("refuses to close the graph somebody started with", async () => {
+      const { homeGraphRef } = await import("@sloppy/types");
+      const written = await newNode(ada, { title: "Stays put" });
+
+      const answer = await call(
+        "DELETE",
+        `/graphs/${at(homeGraphRef(ada.did))}`,
+        ada,
+      );
+
+      expect(answer.status).toBe(400);
+      expect((answer.body as { message: string }).message).toMatch(/stays/);
+      expect(
+        ((await ok("GET", `/nodes/${at(written.ref)}`, ada)) as NodeView).ref,
+      ).toBe(written.ref);
+    });
+
+    scenario("refuses to close somebody else's graph", async () => {
+      const his = await newGraph(bram, "Not hers to close");
+
+      expect((await call("DELETE", `/graphs/${at(his.ref)}`, ada)).status).toBe(
+        400,
+      );
+      expect(
+        ((await ok("GET", "/graphs", bram)) as GraphView[]).map(
+          (one) => one.ref,
+        ),
+      ).toContain(his.ref);
+    });
+
     scenario("refuses to name one, or to rename somebody else's", async () => {
       expect((await call("POST", "/graphs", ada, { title: "" })).status).toBe(
         400,

@@ -121,6 +121,27 @@ describe("the words derived from a section", () => {
     ).toBe("the mycelium spreading");
   });
 
+  // Nor does a picture, so what somebody said it is is the only thing a search
+  // of it can read.
+  it("reads what somebody said a picture is", () => {
+    expect(
+      wordsOf({
+        type: "doc",
+        content: [
+          {
+            type: "picture",
+            attrs: {
+              upload_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+              width: 40,
+              height: 20,
+              alt: "a kite over the allotment",
+            },
+          },
+        ],
+      }),
+    ).toBe("a kite over the allotment");
+  });
+
   it("takes writing kept as a bare string as its own words", () => {
     expect(wordsOf("what somebody wrote before documents")).toBe(
       "what somebody wrote before documents",

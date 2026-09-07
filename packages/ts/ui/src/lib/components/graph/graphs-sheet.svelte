@@ -29,16 +29,19 @@
 	import Check from '@lucide/svelte/icons/check';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
 	let {
 		open = $bindable(false),
 		graphs,
 		current,
+		home,
 		alsoUp,
 		full = false,
 		busy = false,
@@ -48,6 +51,7 @@
 		onToggle,
 		onOpen,
 		onRename,
+		onRemove,
 		onRestore,
 		onShow
 	}: {
@@ -55,6 +59,9 @@
 		graphs: readonly GraphChoice[];
 		/** The one the reader is in, which is always on the canvas. */
 		current: OwnedRef;
+		/** The one they started with. It is where a note that names no graph
+		 *  goes, so it is the one graph that cannot be closed. */
+		home: OwnedRef;
 		/** The others standing on the canvas beside it. */
 		alsoUp: ReadonlySet<OwnedRef>;
 		/** No more will fit on the canvas, so putting one up means taking one down. */
@@ -69,6 +76,7 @@
 		/** Rejects with an `Error` whose `message` is already fit to show. */
 		onOpen: (title: string) => Promise<void>;
 		onRename: (ref: OwnedRef, title: string) => Promise<void>;
+		onRemove?: (ref: OwnedRef) => Promise<void>;
 		onRestore?: (ref: OwnedRef) => Promise<void>;
 		/** The sheet has just opened, and what it lists is worth asking for again. */
 		onShow?: () => void;
@@ -79,6 +87,9 @@
 	let refused = $state<string | null>(null);
 	let working = $state(false);
 	let putting = $state<OwnedRef | null>(null);
+	let closing = $state<GraphChoice | null>(null);
+	let confirming = $state(false);
+	let closeRefused = $state<string | null>(null);
 
 	$effect(() => {
 		if (open) untrack(() => onShow?.());
@@ -125,6 +136,19 @@
 			opening = '';
 			open = false;
 		}
+	}
+
+	async function closeGraph(): Promise<void> {
+		const graph = closing;
+		if (!graph || !onRemove) return;
+		closeRefused = null;
+		try {
+			await onRemove(graph.ref);
+		} catch (error) {
+			closeRefused = error instanceof Error && error.message ? error.message : 'That did not work.';
+			throw error;
+		}
+		closing = null;
 	}
 
 	async function renameGraph(): Promise<void> {
@@ -203,6 +227,21 @@
 						>
 							<Pencil class="size-4" />
 						</Button>
+						{#if onRemove && graph.ref !== home}
+							<Button
+								variant="ghost"
+								size="icon"
+								class="size-9 shrink-0 text-muted-foreground"
+								aria-label={`Close ${nameOf(graph)}`}
+								onclick={() => {
+									closeRefused = null;
+									closing = graph;
+									confirming = true;
+								}}
+							>
+								<Trash2 class="size-4" />
+							</Button>
+						{/if}
 					{/if}
 				</li>
 			{/each}
@@ -278,3 +317,12 @@
 		{/if}
 	</div>
 </ResponsiveModal>
+
+<ConfirmModal
+	bind:open={confirming}
+	title={closing ? `Close ${nameOf(closing)}?` : 'Close this graph?'}
+	description="The notes in it go with it, and they cannot be put back. If you published a branch from it, whoever already has it keeps their copy."
+	confirmLabel="Close it"
+	refused={closeRefused}
+	onconfirm={closeGraph}
+/>

@@ -40,6 +40,28 @@ export class GraphService {
     return entityView(await this.graphs.name(did, ref, title));
   }
 
+  /**
+   * A graph they opened, closed. Only its name goes here; the notes it held go
+   * through the node service, which is what calls this.
+   *
+   * The ref is never issued again — `ulid()` writes the moment it is drawn into
+   * the first ten characters — so the addresses assigned in this graph cannot
+   * come back under a new name.
+   */
+  async close(did: DidSyr, ref: OwnedRef): Promise<void> {
+    await this.requireClosable(did, ref);
+    await this.graphs.remove(did, ref);
+  }
+
+  /** The graph somebody started with is where a note that names none goes, so
+   *  it is not one they can close. */
+  async requireClosable(did: DidSyr, ref: OwnedRef): Promise<void> {
+    if (isHomeGraphRef(ref)) {
+      throw new BadRequestException("The graph you started with stays.");
+    }
+    await this.requireHeld(did, ref);
+  }
+
   /** Whether somebody may file a note in this graph. The home graph is theirs
    *  before it has a row, so it is answered without a read. */
   async holds(did: DidSyr, ref: OwnedRef): Promise<boolean> {
