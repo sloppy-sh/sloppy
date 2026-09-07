@@ -1,15 +1,23 @@
 /**
- * The return leg of `runtime.openExternal`. The system browser hands back a
- * `sloppy://` URL (the scheme is registered in `tauri.conf.json`), and what
- * follows the scheme is a route in the very same SvelteKit app the browser
- * runs — so the shell re-enters it and knows nothing about where it leads.
+ * The return leg of `runtime.openExternal`, and the way a link somebody was
+ * sent opens here. Both arrive as a URL whose path is a route in the very same
+ * SvelteKit app a browser would have run — so the shell re-enters it and knows
+ * nothing about where it leads. `tauri.conf.json` declares what the OS hands
+ * over: the `sloppy` scheme, and the notes on Sloppy's own domain.
  */
 
 import { goto } from '$app/navigation';
-import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
+import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
-/** `sloppy://auth/callback?x=1` → `/auth/callback?x=1`. The authority is the
- *  first path segment: a custom scheme has no host to strip. */
+/** Where sign-in is told to put somebody down; the API hands a session back
+ *  only to a target it recognises. */
+export const SIGN_IN_CALLBACK = 'sloppy://auth/callback';
+
+const CALLBACK_ROUTE = '/auth/callback';
+
+/** `sloppy://n/<did>/<ulid>` and `https://<host>/n/<did>/<ulid>` both →
+ *  `/n/<did>/<ulid>`: a custom scheme has no host, so its first path segment is
+ *  parsed as one and has to be put back. */
 function routeOf(raw: string): string | undefined {
 	let url: URL;
 	try {
@@ -17,22 +25,39 @@ function routeOf(raw: string): string | undefined {
 	} catch {
 		return undefined;
 	}
-	const path = `/${url.host}${url.pathname}`.replace(/\/{2,}/g, '/');
-	return `${path}${url.search}${url.hash}`;
+	const web = url.protocol === 'https:' || url.protocol === 'http:';
+	const path = (web ? url.pathname : `/${url.host}${url.pathname}`)
+		.replace(/\/{2,}/g, '/')
+		.replace(/(.)\/+$/, '$1');
+	const route = path === CALLBACK_ROUTE ? '/' : path;
+	return `${route}${url.search}${url.hash}`;
+}
+
+function enter(urls: string[]): void {
+	for (const raw of urls) {
+		const route = routeOf(raw);
+		if (!route) continue;
+		// A session is opened as the app boots and only then, so consent re-enters
+		// the document rather than the router.
+		if (raw.startsWith(SIGN_IN_CALLBACK)) {
+			location.assign(route);
+		} else {
+			// `resolve()` takes a route id known at build time; this one arrives from
+			// the OS. The shell is served from the bundle root, so there is no base
+			// path for it to prepend either.
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			void goto(route);
+		}
+		return;
+	}
 }
 
 export async function forwardDeepLinks(): Promise<void> {
-	await onOpenUrl((urls) => {
-		for (const raw of urls) {
-			const route = routeOf(raw);
-			if (route) {
-				// `resolve()` takes a route id known at build time; this one arrives
-				// from the OS. The shell is served from the bundle root, so there is
-				// no base path for it to prepend either.
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				void goto(route);
-				return;
-			}
-		}
-	});
+	await onOpenUrl(enter);
+	try {
+		// A link that launched the app was delivered before anything was listening.
+		enter((await getCurrent()) ?? []);
+	} catch {
+		// A platform with nothing to report costs the cold launch, not the app.
+	}
 }

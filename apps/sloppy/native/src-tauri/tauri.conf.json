@@ -35,6 +35,12 @@
 				{
 					"scheme": ["sloppy"],
 					"appLink": false
+				},
+				{
+					"scheme": ["https"],
+					"host": "sloppy.sh",
+					"pathPrefix": ["/n"],
+					"appLink": true
 				}
 			]
 		}

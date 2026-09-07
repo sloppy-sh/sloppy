@@ -55,8 +55,8 @@
 
 	$effect(() => {
 		if (!open) return;
-		// untrack: push() reads the count it also writes, and would re-run forever.
-		return untrack(() => overlay.push());
+		// untrack: push() reads the stack it also writes, and would re-run forever.
+		return untrack(() => overlay.push(() => handle(false)));
 	});
 
 	// Drag-to-dismiss, on the grabber alone so the body still scrolls.

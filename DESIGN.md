@@ -740,10 +740,11 @@ so.
   line would say the wrong thing about what moves.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
-- **`ResponsiveModal` is the only modal.** Native sheet on iOS, bottom sheet on phone,
+- **`ResponsiveModal` is the only modal.** A drag-to-dismiss bottom sheet on a phone, a
   centred dialog at ≥640px, from one bound `open`; `fill` is the full-height sheet a reading
-  surface stands in below its dock width. Reserve bare `Dialog` for passive confirm/detail
-  popups, never input surfaces.
+  surface stands in below its dock width. It is drawn by Sloppy on every platform: a sheet
+  hosts a note's own editing surfaces, and no OS offers one that can. Reserve bare `Dialog`
+  for passive confirm/detail popups, never input surfaces.
 - **Remove-empty chrome (hard rule).** A component renders only when it has something to
   do. An empty graph shows one line and one action, never a bare toolbar or "0 nodes".
   Loading uses skeletons shaped like the thing, not spinners.
