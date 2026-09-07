@@ -46,6 +46,7 @@
 	let sheet = $state<HTMLCanvasElement>();
 	let box = $state({ width: 0, height: 0 });
 	let wet: StrokeInProgress | null = null;
+	let onSheet = false;
 
 	/**
 	 * The surface `StrokeInProgress` measures against, worked out from the point
@@ -85,9 +86,13 @@
 		const canvas = sheet;
 		const at = transform;
 		if (!canvas || !at || box.width === 0 || box.height === 0) return;
+		const marks = strokes.length > 0 || wet !== null;
+		if (!marks && !onSheet) return;
 		const ctx = prepareCanvas(canvas, box.width, box.height);
 		if (!ctx) return;
 		ctx.clearRect(0, 0, box.width, box.height);
+		onSheet = marks;
+		if (!marks) return;
 		ctx.strokeStyle = getComputedStyle(canvas).color;
 		ctx.fillStyle = ctx.strokeStyle;
 		ctx.translate(at.x, at.y);

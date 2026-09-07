@@ -1667,7 +1667,7 @@
 				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.undo(inkedOn)}>
 					Undo the last stroke
 				</DropdownMenu.Item>
-				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.clear(inkedOn)}>
+				<DropdownMenu.Item class="min-h-11" onSelect={() => canvasInk.rubOut(inkedOn)}>
 					Rub the drawing out
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
@@ -1723,7 +1723,7 @@
 						if (pointing) looking = ref;
 					}}
 					onCollapse={(ref) => folded.add(ref)}
-					onInkPointer={inkPen}
+					onInkPointer={pointing ? undefined : inkPen}
 					onTransform={(at) => (fieldAt = at)}
 				/>
 				<CanvasInk

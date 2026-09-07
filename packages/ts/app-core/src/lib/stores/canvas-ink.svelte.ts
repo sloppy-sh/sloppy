@@ -62,7 +62,9 @@ class CanvasInkStore {
 		this.#keep(graph);
 	}
 
-	clear(graph: OwnedRef): void {
+	/** Takes the drawing off this device for good; nothing here is a copy of
+	 *  anything held elsewhere. */
+	rubOut(graph: OwnedRef): void {
 		this.#theirsAlone();
 		if (!this.#byGraph.has(graph)) return;
 		this.#byGraph.delete(graph);

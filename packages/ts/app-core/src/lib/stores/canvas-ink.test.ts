@@ -24,7 +24,7 @@ const area = () => deviceStore.area(VIEWER.did, 'canvas-ink');
 beforeEach(async () => {
 	// Nobody is signed in between cases, and an act while nobody is empties what
 	// the case before left in memory.
-	canvasInk.clear(GRAPH);
+	canvasInk.rubOut(GRAPH);
 	const api = useFakeApi();
 	api.on('GET /auth/me', () => VIEWER);
 	await session.refresh();
@@ -52,7 +52,7 @@ describe('the drawing over a graph', () => {
 		canvasInk.undo(GRAPH);
 		expect(at(canvasInk.strokes(GRAPH))).toEqual([0]);
 
-		canvasInk.clear(GRAPH);
+		canvasInk.rubOut(GRAPH);
 		expect(canvasInk.strokes(GRAPH)).toEqual([]);
 	});
 
@@ -60,7 +60,7 @@ describe('the drawing over a graph', () => {
 		canvasInk.add(GRAPH, stroke(7));
 		await expect(area().get(GRAPH)).resolves.toHaveLength(1);
 
-		canvasInk.clear(GRAPH);
+		canvasInk.rubOut(GRAPH);
 		await expect(area().get(GRAPH)).resolves.toBeUndefined();
 	});
 

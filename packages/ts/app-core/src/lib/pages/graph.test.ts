@@ -216,6 +216,10 @@ const brought = () =>
 const fitted = () =>
 	Number(document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.fitted ?? 0);
 
+/** Whether the canvas has been handed a pen to ink with. */
+const inkingOnCanvas = () =>
+	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.inking;
+
 /** Whether the canvas has been handed a set to choose into. */
 const choosingOnCanvas = () =>
 	document.body.querySelector<HTMLElement>('[aria-label="The graph"]')?.dataset.choosing;
@@ -384,7 +388,7 @@ beforeEach(() => {
 		});
 		return { reached: notes.length, missed: 0, notes };
 	});
-	canvasInk.clear(HOME);
+	canvasInk.rubOut(HOME);
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -2276,6 +2280,16 @@ describe('the drawing over the canvas', () => {
 		if (!found) throw new Error(`Nothing on the drawing's menu says "${says}"`);
 		return found;
 	}
+
+	it('gives the pen back once the canvas has stopped asking for a note', async () => {
+		await startLinking();
+		expect(inkingOnCanvas()).toBeUndefined();
+
+		button('Never mind').click();
+		await settle();
+
+		expect(inkingOnCanvas()).toBe('yes');
+	});
 
 	it('says nothing while there is nothing drawn', async () => {
 		await open();
