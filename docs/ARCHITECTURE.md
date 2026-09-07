@@ -1484,10 +1484,10 @@ Mirrors Pendi's `src-tauri` (`tauri 2.11.2`, `tauri-build 2.6.2`, `@tauri-apps/c
   navigate to, so the native shell answers `AppRuntime.signInRedirect` with
   `sloppy://auth/callback` — one of the four shapes `isAllowedRedirect` accepts. The link
   comes back through `src/lib/deep-link.ts`, which re-enters the document at `/` with the
-  query intact, because the session is opened as the app boots and only then. The link that
-  launched the app is read once and remembered as spent: the deep-link plugin keeps answering
-  with it for the life of the process, and re-entering the document brings the read round
-  again.
+  query intact, because the session is opened as the app boots and only then. A link is
+  remembered the moment it is entered, and the boot read skips what this session has already
+  been through: the deep-link plugin keeps answering with the same link for the life of the
+  process, and re-entering the document brings that read round again.
 - **A link to a note opens the app.** `tauri.conf.json` declares `sloppy.sh`'s `/n` paths as
   app links beside the custom scheme, which puts `autoVerify` on the Android intent filter
   and the associated-domains entitlement in the iOS project. Both halves of the claim are

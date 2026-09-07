@@ -33,13 +33,26 @@ export function routeOf(raw: string): string | undefined {
 	return `${route}${url.search}${url.hash}`;
 }
 
+const ENTERED_LINKS = 'sloppy.entered-links';
+
+function entered(): Set<string> {
+	return new Set(sessionStorage.getItem(ENTERED_LINKS)?.split('\n'));
+}
+
+function markEntered(raw: string): void {
+	const all = entered();
+	all.add(raw);
+	sessionStorage.setItem(ENTERED_LINKS, [...all].join('\n'));
+}
+
 function enter(urls: string[]): void {
 	for (const raw of urls) {
 		const route = routeOf(raw);
 		if (!route) continue;
-		// A session is opened as the app boots and only then, so consent re-enters
-		// the document rather than the router.
+		markEntered(raw);
 		if (raw.startsWith(SIGN_IN_CALLBACK)) {
+			// A session is opened as the app boots and only then, so consent re-enters
+			// the document rather than the router.
 			location.assign(route);
 		} else {
 			// `resolve()` takes a route id known at build time; this one arrives from
@@ -52,26 +65,23 @@ function enter(urls: string[]): void {
 	}
 }
 
-const LAUNCH_LINK = 'sloppy.launch-link';
-
 /**
- * What the app was launched with, the once. The OS goes on answering with the
- * same link for as long as the app runs, and the callback above re-enters the
- * document — so reading it a second time would spend a code already spent.
+ * What the app was launched with, less what this session has already entered.
+ * The OS goes on answering with the same link for the life of the process, and
+ * the callback above re-enters the document — so a second read would spend a
+ * code that is already spent.
  */
-export async function launchLinks(): Promise<string[]> {
+async function unenteredLaunchLinks(): Promise<string[]> {
 	const urls = (await getCurrent()) ?? [];
-	const key = urls.join('\n');
-	if (!key || sessionStorage.getItem(LAUNCH_LINK) === key) return [];
-	sessionStorage.setItem(LAUNCH_LINK, key);
-	return urls;
+	const already = entered();
+	return urls.filter((url) => !already.has(url));
 }
 
 export async function forwardDeepLinks(): Promise<void> {
 	await onOpenUrl(enter);
 	try {
 		// A link that launched the app was delivered before anything was listening.
-		enter(await launchLinks());
+		enter(await unenteredLaunchLinks());
 	} catch {
 		// A platform with nothing to report costs the cold launch, not the app.
 	}

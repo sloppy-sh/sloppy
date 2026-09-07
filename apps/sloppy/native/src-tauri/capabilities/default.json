@@ -1,7 +1,7 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
-	"description": "Every platform. Signing in leaves for the system browser, because a webview cannot host somebody else's sign-in page, and returns as a sloppy:// link — as does a link to a note that somebody was sent.",
+	"description": "Every platform. Signing in leaves for the system browser, because a webview cannot host somebody else's sign-in page, and comes back here to finish. A link to a note somebody was sent opens here too.",
 	"windows": ["main"],
 	"permissions": [
 		"core:default",

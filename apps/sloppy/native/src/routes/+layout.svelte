@@ -15,11 +15,10 @@
 	// The AppRuntime contract: before any page mounts.
 	initNativeRuntime();
 
-	/** Android's back gesture, offered to the app before the system takes it:
-	 *  the sheet on top, then the way back to the graph, then out. MainActivity.kt
-	 *  leaves only where this refuses. With nobody signed in the frame decides
-	 *  where a person stands and would put them straight back, so the press
-	 *  leaves rather than going nowhere. */
+	/** MainActivity.kt offers Android's back press here first and leaves only
+	 *  where this refuses it. With nobody signed in the frame decides where a
+	 *  person stands and would put them straight back, so the press leaves
+	 *  rather than going nowhere. */
 	function answerBack(event: Event): void {
 		if (overlay.closeTop()) event.preventDefault();
 		else if (session.signedIn && page.url.pathname !== '/') {
