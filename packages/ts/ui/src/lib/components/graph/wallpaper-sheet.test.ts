@@ -13,6 +13,9 @@ let mounted: ReturnType<typeof mount> | undefined;
 let changed: Choice[];
 let held: HeldPicture[];
 let sent: File[];
+let removed: string[];
+/** What the store says when it will not let a picture go; null where it does. */
+let refuseRemoval: string | null;
 
 const picture = (id: string): HeldPicture => ({
 	upload_id: id,
@@ -31,7 +34,12 @@ const media: NoteMedia = {
 		return { asset: Promise.resolve(asset), cancel: () => {} };
 	},
 	picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} }),
-	library: async () => held
+	library: async () => held,
+	remove: async (uploadId) => {
+		if (refuseRemoval) throw new Error(refuseRemoval);
+		removed.push(uploadId);
+		held = held.filter((one) => one.upload_id !== uploadId);
+	}
 };
 
 /** A ground nobody has said anything about beyond which pictures are on it. */
@@ -88,6 +96,8 @@ beforeEach(() => {
 	stubMediaQuery(() => false);
 	held = [picture('a'), picture('b')];
 	sent = [];
+	removed = [];
+	refuseRemoval = null;
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -247,5 +257,53 @@ describe('getting a picture in from here', () => {
 
 		expect(says()).toContain('It goes behind the graph.');
 		expect(says()).not.toContain('Add one to this note.');
+	});
+});
+
+describe('taking a picture out of the store from here', () => {
+	async function dropFirst(): Promise<void> {
+		named('Edit').click();
+		await settle();
+		const tile = document.body.querySelector<HTMLButtonElement>(
+			'button[aria-label="Remove a.webp"]'
+		);
+		if (!tile) throw new Error('the sheet offers no removal');
+		tile.click();
+		await settle();
+		named('Remove').click();
+		await settle();
+	}
+
+	it('offers no removal until the reader asks to edit', async () => {
+		await open(ground([]));
+		expect(document.body.querySelector('button[aria-label="Remove a.webp"]')).toBeNull();
+	});
+
+	it('takes it out of the store and stops offering it', async () => {
+		await open(ground([]));
+
+		await dropFirst();
+
+		expect(removed).toEqual(['a']);
+		expect(document.body.querySelector('button[aria-label="Remove a.webp"]')).toBeNull();
+	});
+
+	// A ground still naming a picture nobody holds any more has nothing to draw.
+	it('takes it off the graph it was under', async () => {
+		await open(ground(['a', 'b']));
+
+		await dropFirst();
+
+		expect(changed.at(-1)?.pictures).toEqual(['b']);
+	});
+
+	it('keeps the picture and says why when the store will not let it go', async () => {
+		await open(ground(['a']));
+		refuseRemoval = 'That picture is in use just now.';
+
+		await dropFirst();
+
+		expect(says()).toContain('That picture is in use just now.');
+		expect(changed).toEqual([]);
 	});
 });

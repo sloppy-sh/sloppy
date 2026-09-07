@@ -734,17 +734,24 @@ Who may read a picture is decided once, by the folder its bytes land in, and eve
 else follows from that. `folderPathFor` in `api/src/media/media.service.ts` is the whole
 policy:
 
-| Role                       | Folder            | Who can read it                                          |
-| -------------------------- | ----------------- | -------------------------------------------------------- |
-| `avatar`, `banner`         | `public/sloppy/…` | anyone — a peer resolving the DID has to see them        |
-| `emoji`                    | `public/sloppy/…` | anyone — a federated `:shortcode:` renders for everybody |
-| `block` (a note's picture) | `sloppy/notes`    | its owner alone                                          |
+| Role                         | Folder             | Who can read it                                          |
+| ---------------------------- | ------------------ | -------------------------------------------------------- |
+| `avatar`, `banner`           | `public/sloppy/…`  | anyone — a peer resolving the DID has to see them        |
+| `emoji`                      | `public/sloppy/…`  | anyone — a federated `:shortcode:` renders for everybody |
+| `block` (a note's picture)   | `sloppy/notes`     | its owner alone                                          |
+| `wallpaper` (behind a graph) | `sloppy/wallpaper` | its owner alone                                          |
 
 A mark's pictures are deliberately that same role rather than a new one: the folder is the
 access rule, a mark's picture wants exactly the note picture's rule, and one library means a
 picture already in a note can go on its mark without being sent twice.
 
-Publishing adds a fifth placement and no fifth role: the copies below land in
+The ground is the one that gets its own, and a role is what carries that: it wants the note
+picture's access rule and a DIFFERENT library. `GET /api/media/uploads?role=` names which —
+`wallpaper` for what somebody added as a ground, absent or `block` for what is in their
+notes, and nothing else. The ground's picker offers both libraries and the note picker
+offers the note one alone; DESIGN.md § "The wallpaper" is the ruling.
+
+Publishing adds a placement and no further role: the copies below land in
 `public/sloppy/notes` and anyone may read them. It is deliberately **not** a value of
 `MediaRole`, because a role is what a caller asks for — one that placed bytes straight into
 a public folder would let anybody have this instance mint a durable public address for
@@ -762,6 +769,13 @@ that session is a token and not a cookie — sign-in there finishes through the 
 `auth.controller.ts`, so an address alone would reach this route as a stranger. It is the
 only way one of these draws, which is why a `MediaAsset` carries an `upload_id` and no
 address at all: who may read a picture is the store's answer, not the row's.
+
+**A picture is the person's to take back.** `DELETE /api/media/uploads/{did}/{localId}`
+takes one out of their own store, and only one of their own: the `did` in the address has
+to be the caller's. A section, a mark or a ground still citing it then has nothing left to
+draw, which is what the surfaces ask about before they call it. A publication's own copy is
+a different upload in a different folder and is untouched — taking that branch down is what
+releases it.
 
 **A publication carries its own copy of every asset its sections cite.** Publishing
 duplicates the bytes into `public/sloppy/notes` in the author's own store and writes the
@@ -788,7 +802,7 @@ stranger's blob.
 
 The duplicate storage is the accepted cost, and it is accepted for a reason the product
 requires: one library backs every note, so a picture is legitimately in several of them
-(`ownPictures` lists the note folder, and the picker exists so a picture is used again
+(`ownPictures` lists that folder, and the picker exists so a picture is used again
 rather than sent again). A picture that MOVED would take an unpublished note's picture
 public along with it, decided by a publish somewhere else in the graph. `snapshot_asset`
 pairs the original with its copy, one row per publication, so a second version citing the

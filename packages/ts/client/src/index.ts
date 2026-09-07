@@ -39,6 +39,7 @@ import {
   HealthReportSchema,
   type MediaAsset,
   MediaAssetSchema,
+  type MediaLibraryRole,
   type NodeBulkRequest,
   type NodeBulkResult,
   type NodeView,
@@ -873,10 +874,26 @@ export class SloppyClient {
     );
   }
 
-  /** The pictures the caller has already put in a note, newest first. */
-  async ownPictures(): Promise<OwnedMediaAsset[]> {
-    const body = await this.json("/media/uploads", { method: "GET" });
+  /**
+   * One of the caller's own picture libraries, newest first: the ones they put
+   * in a note, or the ones they added as a ground.
+   */
+  async ownPictures(
+    role: MediaLibraryRole = "block",
+  ): Promise<OwnedMediaAsset[]> {
+    const body = await this.json(`/media/uploads?role=${role}`, {
+      method: "GET",
+    });
     return (body as unknown[]).map((a) => OwnedMediaAssetSchema.parse(a));
+  }
+
+  /**
+   * One of the caller's own pictures, gone from their store. A note still
+   * showing it has nothing left to draw, and a published branch keeps its own
+   * copy until that branch is taken down.
+   */
+  async removePicture(uploadId: MediaAsset["upload_id"]): Promise<void> {
+    await this.del(`/media/uploads${refPath(uploadId)}`);
   }
 
   /**

@@ -23,6 +23,7 @@ let saved: (NodeAppearance | null)[];
 let refuse: string | null;
 let sent: File[];
 let held: HeldPicture[];
+let removed: string[];
 
 const UPLOAD = 'did:syr:ham/01UP';
 
@@ -53,7 +54,11 @@ const media: NoteMedia = {
 		return { asset: Promise.resolve(asset), cancel: () => {} };
 	},
 	picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} }),
-	library: async () => held
+	library: async () => held,
+	remove: async (uploadId) => {
+		removed.push(uploadId);
+		held = held.filter((one) => one.upload_id !== uploadId);
+	}
 };
 
 function open(appearance: NodeAppearance | null = null) {
@@ -146,6 +151,7 @@ beforeEach(() => {
 	saved = [];
 	sent = [];
 	held = [];
+	removed = [];
 	refuse = null;
 	stubMediaQuery(() => true);
 	stubResizeObserver();
@@ -529,5 +535,43 @@ describe('a mark that wears more than one picture', () => {
 				preview_every: PICTURE_TURN_MAX
 			}
 		]);
+	});
+});
+
+describe('taking a picture out of the store from here', () => {
+	/** Through the picker, the way somebody would: open it, turn its grid into
+	 *  removals, tap the one picture, and answer the question. */
+	async function dropTheHeldOne(): Promise<void> {
+		await tap('Add a picture');
+		await tap('Edit');
+		const tile = document.body.querySelector<HTMLButtonElement>(
+			'button[aria-label="Remove kite.webp"]'
+		);
+		if (!tile) throw new Error('the picker offers no removal');
+		tile.click();
+		await settle();
+		await tap('Remove');
+	}
+
+	it('takes it out of the store, and off the mark that was wearing it', async () => {
+		held = [picture(UPLOAD)];
+		open({ preview: UPLOAD });
+
+		await dropTheHeldOne();
+
+		expect(removed).toEqual([UPLOAD]);
+		expect(saved).toEqual([null]);
+	});
+
+	// A mark wearing a cut of its own is wearing a different picture, and the
+	// one in the library going is no reason to take it off.
+	it('leaves a mark alone when it is not the picture that went', async () => {
+		held = [picture('another')];
+		open({ preview: UPLOAD });
+
+		await dropTheHeldOne();
+
+		expect(removed).toEqual(['another']);
+		expect(saved).toEqual([]);
 	});
 });

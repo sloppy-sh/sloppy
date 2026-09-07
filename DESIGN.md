@@ -1001,8 +1001,14 @@ over whatever is behind it.
   written once so the two cannot drift into two spellings of the same choice. The ground has
   not been moved onto it yet and carries no transition at all; that section names what is
   still to be retired.
-- **The pictures are the reader's own**, from what they have already put in a note, resolved
-  the way a mark's pictures are (§ "The mark") and never as a remote URL.
+- **The pictures are the reader's own**, resolved the way a mark's are (§ "The mark") and
+  never as a remote URL. **The ground has its own library**, and reads the note one beside
+  it: choosing here offers both what somebody added as a ground and what is already in their
+  notes, so a picture goes behind a graph without first going into a note. The note picker
+  offers the note ones alone — a ground is a screenful and a note's picture is a paragraph's,
+  and a writer's picker that filled with wallpapers would be spending its page on pictures
+  they never put in a note. A mark's imagery is the note library and not this one
+  (docs/ARCHITECTURE.md § "Pictures" carries that ruling).
 - **It is a per-device view preference, kept against the graph it is under**, and never
   anything about the notes. What one graph is drawn over says nothing about another, and a
   peer pulling a subtree receives nothing of it.

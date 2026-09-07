@@ -34,6 +34,7 @@ const ROLE_LIMITS: Record<
   { maxBytes: number; mimeTypes: readonly string[] }
 > = {
   block: { maxBytes: 25 * 1024 * 1024, mimeTypes: IMAGE_MIME_TYPES },
+  wallpaper: { maxBytes: 25 * 1024 * 1024, mimeTypes: IMAGE_MIME_TYPES },
   avatar: { maxBytes: 8 * 1024 * 1024, mimeTypes: IMAGE_MIME_TYPES },
   banner: { maxBytes: 12 * 1024 * 1024, mimeTypes: IMAGE_MIME_TYPES },
   emoji: { maxBytes: 2 * 1024 * 1024, mimeTypes: IMAGE_MIME_TYPES },
@@ -58,6 +59,7 @@ export function roleLimits(role: MediaRole): {
  */
 const ROLE_FOLDERS: Record<MediaRole, readonly string[]> = {
   block: ["sloppy", "notes"],
+  wallpaper: ["sloppy", "wallpaper"],
   avatar: ["public", "sloppy", "avatar"],
   banner: ["public", "sloppy", "banner"],
   emoji: ["public", "sloppy", "emoji"],

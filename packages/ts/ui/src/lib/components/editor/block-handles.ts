@@ -10,7 +10,13 @@ import { Extension } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { INK_NODE } from './ink-node.js';
+import { PICTURE_NODE } from './picture-node.js';
 import { sectionIsBare } from './section-node.js';
+
+/** What a section would take with it, for the surface that asks before it goes.
+ *  `empty` is the line it was made with and nothing else. */
+export type SectionHolds = 'empty' | 'writing' | 'drawing' | 'picture' | 'several';
 
 /** What can be done to one section, raised out of the plugin because the handle
  *  is plain DOM inside a ProseMirror widget and the menu is a Svelte surface. */
@@ -23,8 +29,7 @@ export interface SectionActs {
 	moveUp: (() => void) | null;
 	moveDown: (() => void) | null;
 	remove: () => void;
-	/** Whether anything would be lost with the section. */
-	holdsWriting: boolean;
+	holds: SectionHolds;
 }
 
 export interface BlockHandleOptions {
@@ -61,6 +66,20 @@ function rowsOf(view: EditorView): Row[] {
 		rows.push({ pos, node, dom: view.nodeDOM(pos) as HTMLElement | null });
 	});
 	return rows;
+}
+
+/** An element kind this build has no renderer for still counts as writing: it
+ *  is something somebody put there, and the confirm has to say so. */
+function holdsOf(section: ProseMirrorNode): SectionHolds {
+	if (sectionIsBare(section)) return 'empty';
+	const kinds = new Set<SectionHolds>();
+	section.descendants((node) => {
+		if (node.type.name === INK_NODE) kinds.add('drawing');
+		else if (node.type.name === PICTURE_NODE) kinds.add('picture');
+		else if (node.isTextblock && node.content.size > 0) kinds.add('writing');
+	});
+	if (kinds.size > 1) return 'several';
+	return [...kinds][0] ?? 'writing';
 }
 
 function indexOf(rows: readonly Row[], uid: string): number {
@@ -258,27 +277,30 @@ function handleFor(
 	button.title = 'Drag to move, or open it for more';
 	button.innerHTML = GRIP;
 
+	// The click that closes a drag arrives after it, and is not a tap; a keyboard
+	// sends one with no drag before it at all, and that one is. A finger's drag
+	// need not send one at all, so the next press clears the latch too.
 	let dragged = false;
 	button.addEventListener('pointerdown', (event) => {
+		dragged = false;
 		drag(view, button, uid, event, () => {
-			// The click that closes a drag arrives after this, and is not a tap. A
-			// keyboard sends one with no drag before it at all, and that one is.
 			dragged = true;
-			setTimeout(() => (dragged = false));
 		});
 	});
 	button.addEventListener('click', (event) => {
 		event.preventDefault();
+		const closingADrag = dragged;
+		dragged = false;
 		const rows = rowsOf(view);
 		const at = indexOf(rows, uid);
-		if (dragged || at < 0 || !options.onSection) return;
+		if (closingADrag || at < 0 || !options.onSection) return;
 		options.onSection({
 			anchor: button,
 			title: `Section ${at + 1} of ${rows.length}`,
 			moveUp: at > 0 ? () => moveBy(view, uid, -1) : null,
 			moveDown: at < rows.length - 1 ? () => moveBy(view, uid, 1) : null,
 			remove: () => removeSection(view, uid),
-			holdsWriting: !sectionIsBare(rows[at].node)
+			holds: holdsOf(rows[at].node)
 		});
 	});
 	button.addEventListener('keydown', (event) => byKey(view, uid, event));

@@ -102,6 +102,25 @@ describe("the words derived from a section", () => {
     ).toBe("");
   });
 
+  // A drawing holds no words of its own, so what somebody said it is is the
+  // only thing a search of it can read.
+  it("reads what somebody said a drawing is", () => {
+    expect(
+      wordsOf({
+        type: "doc",
+        content: [
+          {
+            type: "ink",
+            attrs: {
+              strokes: [{ points: [1, 2, 3] }],
+              description: "the mycelium spreading",
+            },
+          },
+        ],
+      }),
+    ).toBe("the mycelium spreading");
+  });
+
   it("takes writing kept as a bare string as its own words", () => {
     expect(wordsOf("what somebody wrote before documents")).toBe(
       "what somebody wrote before documents",
