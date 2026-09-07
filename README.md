@@ -60,7 +60,8 @@ tags, blocks and ink are Sloppy's own. That split is not a preference — see
 ## Run it
 
 Requires Docker. `corepack enable` too, for the native shell and the workspace scripts —
-the pnpm version is pinned in `package.json`, so corepack fetches that one.
+the pnpm version is pinned in `package.json`, so corepack fetches that one. Node is
+pinned in `.node-version`, which `fnm`, `nvm`, `asdf` and Volta all read on `cd`.
 
 ```bash
 pnpm dev           # the whole stack, in Docker, watching your source
@@ -112,7 +113,11 @@ empties them.
 ### The native shell, and running on the host
 
 Tauri builds an OS app, so `@sloppy/native` cannot run in a container. It runs here and
-talks to the API in Docker, which is where it looks by default:
+talks to the API in Docker, which is where it looks by default. This is the one part of
+the workspace that needs Rust — 1.77.2 or newer, from [rustup](https://rustup.rs) — and
+so does `pnpm test`, which runs the shell's own tests along with everything else. The
+first of those builds an embedded database and takes a few minutes; `pnpm test:ts` runs
+the TypeScript suite alone and needs no Rust at all.
 
 ```bash
 pnpm install

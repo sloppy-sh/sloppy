@@ -20,6 +20,7 @@
     "lint": "turbo lint",
     "check": "turbo check",
     "test": "turbo test",
+    "test:ts": "turbo test --filter='!@sloppy/native' && turbo test:ts --filter=@sloppy/native",
     "stack:up": "docker compose up -d --build",
     "stack:down": "docker compose down",
     "stack:logs": "docker compose logs -f",
@@ -37,6 +38,6 @@
     "turbo": "^2.9.16"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

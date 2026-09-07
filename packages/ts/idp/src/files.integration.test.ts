@@ -2,11 +2,8 @@
 //
 // These are the rules a peer's reader and an app's uploader both depend on:
 // which uploads a stranger may read, what a ticket is good for, and what an
-// emoji is allowed to point at. Same gate as `delegation.integration.test.ts` —
-// skipped when nothing is listening, so a clone without the dev stack still
-// runs `pnpm test`.
+// emoji is allowed to point at. Same gate as `delegation.integration.test.ts`.
 
-import { createConnection } from "node:net";
 import { Surreal } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { IdpContext } from "./context.js";
@@ -28,6 +25,7 @@ import {
   resolveSession,
   updateProfile,
 } from "./identity.js";
+import { integrationTarget } from "./integration-target.js";
 import { deriveIdpSecrets } from "./secrets.js";
 import {
   defineIdentitySchema,
@@ -46,25 +44,12 @@ const DATABASE = `files_${Date.now()}`;
 const PASSWORD = "a-long-enough-passphrase";
 const BASE = "https://sloppy.example";
 
-const listening = await new Promise<boolean>((resolve) => {
-  const socket = createConnection({
-    host: ENDPOINT.hostname,
-    port: Number(ENDPOINT.port) || (ENDPOINT.protocol === "wss:" ? 443 : 80),
-  });
-  const settle = (answer: boolean) => {
-    socket.destroy();
-    resolve(answer);
-  };
-  socket.setTimeout(1000);
-  socket.once("connect", () => settle(true));
-  socket.once("timeout", () => settle(false));
-  socket.once("error", () => settle(false));
-});
+const runs = await integrationTarget(ENDPOINT);
 
 /** As the bytes of a one-pixel picture would be checked. */
 const BYTES = { size: 70, sha256: "a".repeat(64) };
 
-describe.skipIf(!listening)(`the file store against ${ENDPOINT.href}`, () => {
+describe.skipIf(!runs)(`the file store against ${ENDPOINT.href}`, () => {
   let ctx: IdpContext;
   let names = 0;
 

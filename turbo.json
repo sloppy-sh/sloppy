@@ -17,6 +17,7 @@
     "SLOPPY_API_ORIGIN",
     "SLOPPY_API_PORT",
     "SLOPPY_IDP_SECRET",
+    "SLOPPY_INTEGRATION",
     "SLOPPY_LOCAL_IDP",
     "SLOPPY_SESSION_SECRET",
     "SLOPPY_SURREALDB_URL",
@@ -63,6 +64,10 @@
       "dependsOn": ["^build"]
     },
     "test": {
+      "dependsOn": ["^build", "build"],
+      "outputs": []
+    },
+    "test:ts": {
       "dependsOn": ["^build", "build"],
       "outputs": []
     }
