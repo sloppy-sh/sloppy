@@ -16,11 +16,24 @@ import { z } from "zod";
 export const MediaRoleSchema = z.enum([
   /** An image or an ink raster inside a note. */
   "block",
+  /** A picture a reader put behind a graph. */
+  "wallpaper",
   "avatar",
   "banner",
   "emoji",
 ]);
 export type MediaRole = z.infer<typeof MediaRoleSchema>;
+
+/**
+ * The roles a person's own picture library is offered under. The ground keeps
+ * its own — DESIGN.md § "The wallpaper" — so a picture put behind a graph does
+ * not spend the note picker's page.
+ */
+export const MediaLibraryRoleSchema = MediaRoleSchema.extract([
+  "block",
+  "wallpaper",
+]);
+export type MediaLibraryRole = z.infer<typeof MediaLibraryRoleSchema>;
 
 /** Lowercase hex, as `crypto.subtle.digest('SHA-256', …)` is rendered. */
 export const Sha256HexSchema = z

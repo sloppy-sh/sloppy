@@ -277,6 +277,54 @@ describe("a picture through Sloppy's routes and its own provider", () => {
     },
   );
 
+  // The ground keeps its own library — DESIGN.md § "The wallpaper" — and the
+  // folder a role lands in is what keeps the two apart, so a wallpaper never
+  // spends the note picker's page.
+  scenario(
+    "keeps the ground's pictures in a library of their own",
+    async () => {
+      const behindTheGraph = await upload("wallpaper", "ground.png");
+      await upload("block", "in-a-note-too.png");
+
+      const grounds = await read("GET", "/api/media/uploads?role=wallpaper");
+      expect(grounds.status).toBe(200);
+      const listed = OwnedMediaAssetSchema.array().parse(grounds.body);
+      expect(listed.map((one) => one.filename)).toContain("ground.png");
+      expect(listed.map((one) => one.filename)).not.toContain(
+        "in-a-note-too.png",
+      );
+
+      const notes = await read("GET", "/api/media/uploads");
+      expect(
+        OwnedMediaAssetSchema.array()
+          .parse(notes.body)
+          .map((one) => one.filename),
+      ).not.toContain("ground.png");
+
+      // Private like a note's, and it draws for the reader who owns it.
+      const open = await fetch(
+        `${base}/api/idp/public/uploads/${encodeURIComponent(did)}`,
+      );
+      const public_ = (await open.json()) as { data: { filename: string }[] };
+      expect(public_.data.map((one) => one.filename)).not.toContain(
+        "ground.png",
+      );
+
+      const drawn = await call(
+        "GET",
+        `/api/media/uploads/${behindTheGraph.upload_id}`,
+      );
+      expect(drawn.status).toBe(200);
+      expect(Buffer.from(await drawn.arrayBuffer()).equals(PIXEL)).toBe(true);
+    },
+  );
+
+  scenario("offers no library for what a picker never lists", async () => {
+    expect((await call("GET", "/api/media/uploads?role=avatar")).status).toBe(
+      400,
+    );
+  });
+
   scenario("serves that picture back to the person who owns it", async () => {
     const asset = await upload("block", "mine.png");
 

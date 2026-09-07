@@ -53,6 +53,61 @@ describe("where a role's blobs land", () => {
       expect(folderPathFor(role)[0]).toBe("public");
     }
   });
+
+  // The ground is nobody else's to read either, and it is its own library:
+  // same rule, different folder — DESIGN.md § "The wallpaper".
+  it("gives the ground its own folder, as private as a note's", () => {
+    expect(folderPathFor("wallpaper")[0]).not.toBe("public");
+    expect(folderPathFor("wallpaper")).not.toEqual(folderPathFor("block"));
+  });
+});
+
+describe("listing one of the caller's libraries", () => {
+  it("asks the store for the folder the named role lands in", async () => {
+    const listUploads = vi.fn().mockResolvedValue([]);
+    const media = serviceOver({ listUploads } as Partial<SyrService>);
+
+    await media.ownPictures(DELEGATION, "wallpaper");
+
+    expect(listUploads.mock.calls[0][1]).toEqual(folderPathFor("wallpaper"));
+  });
+
+  // A row still on its way has nothing to draw, and one this app cannot render
+  // is not worth offering.
+  it("offers only what is there and can be drawn", async () => {
+    const listUploads = vi.fn().mockResolvedValue([
+      {
+        did: DID,
+        local_id: "1",
+        filename: "a.png",
+        mime_type: "image/png",
+        size: 1,
+        url: "http://store/a",
+      },
+      {
+        did: DID,
+        local_id: "2",
+        filename: "b.png",
+        mime_type: "image/png",
+        size: 1,
+        url: "http://store/b",
+        status: "pending",
+      },
+      {
+        did: DID,
+        local_id: "3",
+        filename: "c.txt",
+        mime_type: "text/plain",
+        size: 1,
+        url: "http://store/c",
+      },
+    ]);
+    const media = serviceOver({ listUploads } as Partial<SyrService>);
+
+    const listed = await media.ownPictures(DELEGATION, "wallpaper");
+
+    expect(listed.map((one) => one.filename)).toEqual(["a.png"]);
+  });
 });
 
 describe("taking one of the caller's own pictures out", () => {

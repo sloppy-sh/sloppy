@@ -1103,6 +1103,49 @@ describe('a picture in a note', () => {
 		).toEqual({ type: 'picture', attrs: { upload_id: `${OWNER}/01OLD` } });
 	});
 
+	// The picker offers a person's own library, so it is where one of them is
+	// taken back out of the store as well.
+	it('takes one out of the store from the picker that offered it', async () => {
+		const removed: string[] = [];
+		open([], {
+			media: {
+				...noMedia(),
+				library: async () => [
+					{ upload_id: `${OWNER}/01OLD`, filename: 'kite.png', mime_type: 'image/png', size: 9 }
+				],
+				remove: async (uploadId) => {
+					removed.push(uploadId);
+				}
+			}
+		});
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+		[...target.querySelectorAll('button')]
+			.find((button) => button.getAttribute('aria-label') === 'Picture')
+			?.click();
+		flushSync();
+		await vi.advanceTimersByTimeAsync(0);
+		flushSync();
+
+		const tap = (label: string) => {
+			const found = [...document.body.querySelectorAll('button')].find(
+				(one) => one.textContent?.trim() === label
+			);
+			if (!found) throw new Error(`no control named ${label}`);
+			found.click();
+			flushSync();
+		};
+		tap('Edit');
+		(
+			document.body.querySelector('button[aria-label="Remove kite.png"]') as HTMLButtonElement
+		).click();
+		flushSync();
+		tap('Remove');
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(removed).toEqual([`${OWNER}/01OLD`]);
+	});
+
 	it('sends the picture at the size a note draws it, not the whole original', async () => {
 		const { media, files, land } = sender();
 		vi.stubGlobal('createImageBitmap', async () => ({
@@ -1398,18 +1441,19 @@ describe('taking a section out of the note', () => {
 		expect(written.removed).toEqual([blocks[1].ref]);
 	});
 
+	const drawing = {
+		type: 'ink',
+		attrs: {
+			strokes: [{ points: [{ x: 10, y: 10, pressure: 0.5, t: 0 }], width: 2 }],
+			width: 320,
+			height: 120
+		}
+	};
+
 	// A drawing is the least recoverable thing a section can hold, and it holds
 	// no words, so it is exactly what an unasked removal would take silently.
 	it('asks first when all the section holds is a drawing', async () => {
-		const drawn = {
-			type: 'ink',
-			attrs: {
-				strokes: [{ points: [{ x: 10, y: 10, pressure: 0.5, t: 0 }], width: 2 }],
-				width: 320,
-				height: 120
-			}
-		};
-		open([prose('one'), block({ content: section(drawn) })]);
+		open([prose('one'), block({ content: section(drawing) })]);
 
 		tap(1);
 		choose('Remove section');
@@ -1420,20 +1464,49 @@ describe('taking a section out of the note', () => {
 		expect(written.removed).toEqual([]);
 	});
 
+	/** What the question says goes with the section. */
+	function asked(content: BlockDocument): string {
+		open([prose('one'), block({ content })]);
+		tap(1);
+		choose('Remove section');
+		return document.body.textContent ?? '';
+	}
+
+	// Somebody deciding whether to lose a section is owed what is in it, and a
+	// section holding one drawing has nothing written in it at all.
+	it('names a drawing as a drawing', () => {
+		expect(asked(section(drawing))).toContain('the drawing in it');
+	});
+
+	it('names a picture as a picture', () => {
+		expect(asked(section({ type: 'picture', attrs: { upload_id: `${OWNER}/01UP` } }))).toContain(
+			'the picture in it'
+		);
+	});
+
+	it('says everything where the section holds more than one thing', () => {
+		expect(asked(section(...text('a note beside it'), drawing))).toContain('everything in it');
+	});
+
+	it('says everything written where writing is all there is', () => {
+		expect(asked(section(...text('two')))).toContain('everything written in it');
+	});
+
+	const pull = (type: string, y: number, by = 'mouse'): PointerEvent => {
+		const event = new Event(type, { bubbles: true, cancelable: true });
+		Object.assign(event, {
+			pointerId: 3,
+			pointerType: by,
+			button: 0,
+			clientX: 10,
+			clientY: y
+		});
+		return event as PointerEvent;
+	};
+
 	// The click that closes a drag is the drag ending, not a tap on the handle.
-	it('stays shut on the click a drag ends with, and opens on the one after it', async () => {
+	it('stays shut on the click a drag ends with, and opens on the one after it', () => {
 		open([prose('one'), prose('two')]);
-		const pull = (type: string, y: number): PointerEvent => {
-			const event = new Event(type, { bubbles: true, cancelable: true });
-			Object.assign(event, {
-				pointerId: 3,
-				pointerType: 'mouse',
-				button: 0,
-				clientX: 10,
-				clientY: y
-			});
-			return event as PointerEvent;
-		};
 
 		grips()[0].dispatchEvent(pull('pointerdown', 20));
 		window.dispatchEvent(pull('pointermove', 100));
@@ -1442,7 +1515,23 @@ describe('taking a section out of the note', () => {
 
 		expect(named('Remove section')).toBeUndefined();
 
-		await vi.advanceTimersByTimeAsync(0);
+		tap(0);
+
+		expect(named('Remove section')).toBeDefined();
+	});
+
+	// A finger's drag need not end in a click at all, so the next press is what
+	// says the handle is being tapped rather than let go.
+	it('opens on the next press after a drag that sent no click', async () => {
+		open([prose('one'), prose('two')]);
+
+		grips()[0].dispatchEvent(pull('pointerdown', 20, 'touch'));
+		await vi.advanceTimersByTimeAsync(400);
+		window.dispatchEvent(pull('pointermove', 100, 'touch'));
+		window.dispatchEvent(pull('pointerup', 100, 'touch'));
+
+		grips()[0].dispatchEvent(pull('pointerdown', 20, 'touch'));
+		window.dispatchEvent(pull('pointerup', 20, 'touch'));
 		tap(0);
 
 		expect(named('Remove section')).toBeDefined();

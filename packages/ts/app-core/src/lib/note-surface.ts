@@ -3,7 +3,7 @@
 // package states what each one promises.
 
 import { proxied, SloppyApiError, uploadFile } from '@sloppy/client';
-import type { CustomEmoji } from '@sloppy/types';
+import type { CustomEmoji, MediaRole } from '@sloppy/types';
 import { SaveFailure, type CustomEmojiEntry, type NoteEmoji, type NoteMedia } from '@sloppy/ui';
 import { api } from './api.js';
 import { serverMessage } from './stores/errors.js';
@@ -35,18 +35,44 @@ export function saveFailure(error: unknown): SaveFailure {
 	);
 }
 
+function sending(file: File, role: MediaRole, progress: (fraction: number) => void) {
+	const handle = uploadFile(api, file, { role, onProgress: progress });
+	return {
+		asset: handle.asset.catch((error: unknown) => {
+			throw refusal(error, 'That picture could not be added. Remove it and try again.');
+		}),
+		cancel: handle.cancel
+	};
+}
+
+async function dropPicture(uploadId: string): Promise<void> {
+	try {
+		await api.removePicture(uploadId);
+	} catch (error) {
+		throw refusal(error, 'That picture could not be removed. Try again in a moment.');
+	}
+}
+
 export const noteMedia: NoteMedia = {
-	send(file, progress) {
-		const handle = uploadFile(api, file, { role: 'block', onProgress: progress });
-		return {
-			asset: handle.asset.catch((error: unknown) => {
-				throw refusal(error, 'That picture could not be added. Remove it and try again.');
-			}),
-			cancel: handle.cancel
-		};
-	},
+	send: (file, progress) => sending(file, 'block', progress),
 	picture: (uploadId) => api.ownPicture(uploadId),
-	library: () => api.ownPictures()
+	library: () => api.ownPictures(),
+	remove: dropPicture
+};
+
+/** The ground keeps its own library and reads the note one beside it —
+ *  DESIGN.md § "The wallpaper". */
+export const wallpaperMedia: NoteMedia = {
+	send: (file, progress) => sending(file, 'wallpaper', progress),
+	picture: (uploadId) => api.ownPicture(uploadId),
+	async library() {
+		const [grounds, notes] = await Promise.all([
+			api.ownPictures('wallpaper'),
+			api.ownPictures('block')
+		]);
+		return [...grounds, ...notes];
+	},
+	remove: dropPicture
 };
 
 function entryOf(emoji: CustomEmoji): CustomEmojiEntry {

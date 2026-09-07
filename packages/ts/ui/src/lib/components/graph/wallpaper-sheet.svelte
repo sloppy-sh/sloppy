@@ -3,8 +3,10 @@
 	// § "A picture that takes turns" for everything it shares with a mark's.
 	import Check from '@lucide/svelte/icons/check';
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
+	import X from '@lucide/svelte/icons/x';
 	import type { PictureSeries, PictureTransition } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import type { HeldPicture, NoteMedia, ShownPicture } from '../editor/contract.js';
 	import { fitted, NOTE_PX } from '../editor/fit.js';
 	import MediaPicker from '../editor/media-picker.svelte';
@@ -37,6 +39,10 @@
 	let choosing = $state(false);
 	let sending = $state(false);
 	let trouble = $state<string | null>(null);
+	let editing = $state(false);
+	let dropping = $state<HeldPicture | null>(null);
+	let confirming = $state(false);
+	let refused = $state<string | null>(null);
 
 	let shown: Record<string, ShownPicture> = {};
 	let tiles: { node: HTMLElement; picture: HeldPicture }[] = [];
@@ -53,6 +59,7 @@
 		thumbnails = {};
 		asked = [];
 		waiting = [];
+		editing = false;
 	}
 
 	$effect(() => {
@@ -167,6 +174,37 @@
 			sending = false;
 		}
 	}
+
+	/** Out of the person's own store, so a ground still on it goes too. */
+	async function drop(): Promise<void> {
+		const picture = dropping;
+		if (!picture) return;
+		refused = null;
+		try {
+			await media.remove(picture.upload_id);
+		} catch (error) {
+			refused =
+				(error instanceof Error && error.message) ||
+				'That picture could not be removed. Try again in a moment.';
+			throw error;
+		}
+		held = held.filter((one) => one.upload_id !== picture.upload_id);
+		shown[picture.upload_id]?.release();
+		delete shown[picture.upload_id];
+		thumbnails = Object.fromEntries(
+			Object.entries(thumbnails).filter(([id]) => id !== picture.upload_id)
+		);
+		asked = asked.filter((id) => id !== picture.upload_id);
+		waiting = waiting.filter((one) => one.upload_id !== picture.upload_id);
+		if (choice.pictures.includes(picture.upload_id)) {
+			onchange({
+				...choice,
+				pictures: choice.pictures.filter((one) => one !== picture.upload_id)
+			});
+		}
+		dropping = null;
+		if (held.length === 0) editing = false;
+	}
 </script>
 
 <ResponsiveModal bind:open title="Picture" description="What the graph is drawn over.">
@@ -174,6 +212,18 @@
 		class="space-y-5 px-4 pb-[max(1rem,var(--safe-area-inset-bottom,env(safe-area-inset-bottom)))]"
 	>
 		<div class="space-y-2">
+			{#if held.length > 0 && !reading && !unreadable}
+				<div class="flex items-baseline justify-between gap-3">
+					<p class="text-xs tracking-wide text-muted-foreground uppercase">Your pictures</p>
+					<button
+						type="button"
+						class="text-xs text-muted-foreground hover:text-foreground"
+						onclick={() => (editing = !editing)}
+					>
+						{editing ? 'Done' : 'Edit'}
+					</button>
+				</div>
+			{/if}
 			{#if reading}
 				<p class="py-6 text-center text-sm text-muted-foreground">Looking…</p>
 			{:else if unreadable}
@@ -194,23 +244,38 @@
 						{@const turn = choice.pictures.indexOf(picture.upload_id)}
 						<button
 							type="button"
-							aria-label={picture.filename}
-							aria-pressed={turn >= 0}
-							onclick={() => toggle(picture.upload_id)}
-							class="relative aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {turn >=
-							0
-								? 'border-primary'
-								: 'hover:border-primary/50'}"
+							aria-label={editing ? `Remove ${picture.filename}` : picture.filename}
+							aria-pressed={editing ? undefined : turn >= 0}
+							onclick={() => {
+								if (editing) {
+									dropping = picture;
+									refused = null;
+									confirming = true;
+									return;
+								}
+								toggle(picture.upload_id);
+							}}
+							class="relative aspect-square overflow-hidden rounded-md border bg-muted transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none {editing
+								? 'hover:border-destructive'
+								: turn >= 0
+									? 'border-primary'
+									: 'hover:border-primary/50'}"
 							{@attach tile(picture)}
 						>
 							{#if thumbnails[picture.upload_id]}
 								<img
 									src={thumbnails[picture.upload_id]}
 									alt={picture.filename}
-									class="size-full object-cover"
+									class="size-full object-cover {editing ? 'opacity-60' : ''}"
 								/>
 							{/if}
-							{#if turn >= 0}
+							{#if editing}
+								<span
+									class="absolute end-1 top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+								>
+									<X class="size-3" />
+								</span>
+							{:else if turn >= 0}
 								<span
 									class="absolute end-1 bottom-1 flex size-5 items-center justify-center rounded-full bg-primary text-[0.625rem] font-medium text-primary-foreground"
 								>
@@ -283,4 +348,13 @@
 	description="It goes behind the graph."
 	offersHeld={false}
 	onpick={(picked) => void take(picked)}
+/>
+
+<ConfirmModal
+	bind:open={confirming}
+	title="Remove this picture?"
+	description="It goes from behind your graphs, and any note showing it stops showing it. If you published a note with it, that copy stays until you take the branch down."
+	confirmLabel="Remove"
+	{refused}
+	onconfirm={drop}
 />

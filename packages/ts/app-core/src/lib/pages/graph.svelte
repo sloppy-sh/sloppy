@@ -114,7 +114,7 @@
 	import PersonSurface from '../components/person-surface.svelte';
 	import { api } from '../api.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
-	import { noteEmoji, noteMedia } from '../note-surface.js';
+	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
@@ -2108,7 +2108,7 @@
 
 <WallpaperSheet
 	bind:open={choosingWallpaper}
-	media={noteMedia}
+	media={wallpaperMedia}
 	choice={wallpaper ?? openingWallpaper()}
 	onchange={(next) => prefs.setWallpaper(graph, next.pictures.length === 0 ? null : next)}
 />

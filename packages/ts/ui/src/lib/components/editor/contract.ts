@@ -45,9 +45,13 @@ export interface NoteMedia {
 	send(file: File, progress: (fraction: number) => void): SendingPicture;
 	/** A note's picture is private, so only its owner can be answered. */
 	picture(uploadId: MediaAsset['upload_id']): Promise<ShownPicture>;
-	/** What the person has already put in a note, newest first — so a picture can
-	 *  be used twice without being sent twice. */
+	/** What this surface offers the person to choose from, newest first — so a
+	 *  picture can be used twice without being sent twice. Which of their
+	 *  libraries that is is the caller's to decide. */
 	library(): Promise<HeldPicture[]>;
+	/** Out of the person's own store. Whatever still cites it — a section, a
+	 *  mark, the ground — has nothing left to draw, so a surface asks first. */
+	remove(uploadId: MediaAsset['upload_id']): Promise<void>;
 }
 
 export interface NoteEmoji {

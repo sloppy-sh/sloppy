@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   Param,
   Post,
+  Query,
   Req,
   Res,
 } from "@nestjs/common";
@@ -12,6 +14,8 @@ import {
   CompleteUploadRequestSchema,
   CreateUploadRequestSchema,
   type MediaAsset,
+  type MediaLibraryRole,
+  MediaLibraryRoleSchema,
   type OwnedMediaAsset,
   type UploadTicket,
 } from "@sloppy/types";
@@ -23,6 +27,14 @@ import { HeldPictures } from "./held-pictures";
 import { IMAGE_MIME_TYPES, MediaService, roleLimits } from "./media.service";
 import { relayPicture } from "./picture-relay";
 import { ownOrigin } from "./remote-host";
+
+function libraryRole(role: string | undefined): MediaLibraryRole {
+  const asked = MediaLibraryRoleSchema.safeParse(role ?? "block");
+  if (!asked.success) {
+    throw new BadRequestException("There is no picture library of that kind.");
+  }
+  return asked.data;
+}
 
 /**
  * The two ends of an upload. The middle — the bytes — goes from the device
@@ -58,11 +70,14 @@ export class MediaController {
     );
   }
 
-  /** What the caller has already put in a note, so a picture can be used twice
-   *  without being sent twice. */
+  /** One of the caller's libraries, so a picture can be used twice without
+   *  being sent twice. Absent names the pictures in their notes. */
   @Get("uploads")
-  pictures(@Req() req: AuthedRequest): Promise<OwnedMediaAsset[]> {
-    return this.media.ownPictures(viewerDelegation(req), "block");
+  pictures(
+    @Req() req: AuthedRequest,
+    @Query("role") role?: string,
+  ): Promise<OwnedMediaAsset[]> {
+    return this.media.ownPictures(viewerDelegation(req), libraryRole(role));
   }
 
   /**

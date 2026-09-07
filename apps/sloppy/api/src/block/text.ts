@@ -6,10 +6,12 @@
  * with runs of whitespace collapsed — what a search of somebody's writing
  * reads.
  *
- * A run is found by the key `text` wherever it sits, the way `citedNotes` finds
- * a citation: an element kind this build has no renderer for still gives up its
- * words. Writing kept before a block held the editor's own document is a bare
- * string, which is already its own words.
+ * A run is found by the key `text` wherever it sits, and what somebody said a
+ * drawing is by the key `description` — both conventions across elements rather
+ * than lists of them, the way `citedNotes` finds a citation, so an element kind
+ * this build has no renderer for still gives up its words. Writing kept before
+ * a block held the editor's own document is a bare string, which is already its
+ * own words.
  */
 export function wordsOf(content: unknown): string {
   if (typeof content === "string") return collapse(content);
@@ -17,7 +19,8 @@ export function wordsOf(content: unknown): string {
   const walk = (value: unknown): void => {
     if (value === null || typeof value !== "object") return;
     for (const [key, held] of Object.entries(value)) {
-      if (key === "text" && typeof held === "string") written.push(held);
+      if ((key === "text" || key === "description") && typeof held === "string")
+        written.push(held);
       else walk(held);
     }
   };

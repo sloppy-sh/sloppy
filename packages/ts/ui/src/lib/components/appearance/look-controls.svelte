@@ -257,6 +257,14 @@
 			sending = false;
 		}
 	}
+
+	/** A mark cannot go on wearing one that is gone, so the look lets it go too. */
+	async function drop(picture: HeldPicture): Promise<void> {
+		await media.remove(picture.upload_id);
+		if (series.includes(picture.upload_id)) {
+			await keeps(series.filter((one) => one !== picture.upload_id));
+		}
+	}
 </script>
 
 {#snippet choices(row: Row)}
@@ -381,4 +389,4 @@
 	{/if}
 </div>
 
-<MediaPicker bind:open={choosing} {media} onpick={take} />
+<MediaPicker bind:open={choosing} {media} onpick={take} onremove={drop} />

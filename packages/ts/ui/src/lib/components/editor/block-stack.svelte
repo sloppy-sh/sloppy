@@ -33,7 +33,7 @@
 	import { tokenizeContent } from '../../emoji/tokenize.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import NoteMenu, { type NoteMenuItem } from '../note-menu.svelte';
-	import { BlockHandles, type SectionActs } from './block-handles.js';
+	import { BlockHandles, type SectionActs, type SectionHolds } from './block-handles.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
@@ -121,6 +121,8 @@
 	let pickerOpen = $state(false);
 	let mediaOpen = $state(false);
 	let removingSection = $state(false);
+	/** What the section the question stands over is holding. */
+	let losing = $state<Lost>('writing');
 	/** What takes out the section the question stands over. */
 	let takeSection: (() => void) | null = null;
 	/** The section a handle was tapped on, while its menu is up. */
@@ -862,11 +864,21 @@
 		return () => anchor.removeAttribute('aria-expanded');
 	});
 
+	type Lost = Exclude<SectionHolds, 'empty'>;
+
+	const SECTION_GOES: Record<Lost, string> = {
+		writing: 'This section and everything written in it goes from the note.',
+		drawing: 'This section and the drawing in it goes from the note.',
+		picture: 'This section and the picture in it goes from the note.',
+		several: 'This section and everything in it goes from the note.'
+	};
+
 	function removeSection(section: SectionActs): void {
-		if (!section.holdsWriting) {
+		if (section.holds === 'empty') {
 			section.remove();
 			return;
 		}
+		losing = section.holds;
 		takeSection = section.remove;
 		removingSection = true;
 	}
@@ -1040,6 +1052,7 @@
 	bind:open={mediaOpen}
 	{media}
 	onpick={(choice) => ('file' in choice ? sendPicture(choice.file) : usePicture(choice.held))}
+	onremove={(picture) => media.remove(picture.upload_id)}
 />
 <NoteMenu
 	bind:open={actsOpen}
@@ -1050,7 +1063,7 @@
 <ConfirmModal
 	bind:open={removingSection}
 	title="Remove this section?"
-	description="This section and everything written in it goes from the note."
+	description={SECTION_GOES[losing]}
 	confirmLabel="Remove"
 	onconfirm={() => {
 		takeSection?.();

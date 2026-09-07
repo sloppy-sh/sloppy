@@ -62,7 +62,8 @@ export function noMedia(): NoteMedia {
 	return {
 		send: () => ({ asset: new Promise<never>(() => {}), cancel: () => {} }),
 		picture: async (uploadId) => ({ src: `blob:${uploadId}`, release: () => {} }),
-		library: async () => []
+		library: async () => [],
+		remove: async () => {}
 	};
 }
 
