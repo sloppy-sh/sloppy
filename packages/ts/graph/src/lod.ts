@@ -40,18 +40,7 @@ export function applyLod(
   focus: OwnedRef | undefined,
   budget: LodBudget = DEFAULT_BUDGET,
 ): LodResult {
-  const children = new Map<OwnedRef, OwnedRef[]>();
-  const byRef = new Map<OwnedRef, NodeView>();
-  for (const node of nodes) {
-    byRef.set(node.ref, node);
-    if (node.parent !== undefined) {
-      const list = children.get(node.parent);
-      if (list) list.push(node.ref);
-      else children.set(node.parent, [node.ref]);
-    }
-  }
-
-  const distance = hopsFrom(nodes, children, byRef, focus);
+  const { children, byRef, distance } = walkFrom(nodes, focus);
   const collapsed = new Set(hostCollapsed);
   const folded = new Set<OwnedRef>();
   const hidden = new Set<OwnedRef>();
@@ -142,6 +131,49 @@ export function spineFloor(
     if (parent === undefined || spine.has(parent)) kept += 1;
   }
   return kept;
+}
+
+/** What a fold reads off the tree before it folds anything. */
+interface LodWalk {
+  children: ReadonlyMap<OwnedRef, OwnedRef[]>;
+  byRef: ReadonlyMap<OwnedRef, NodeView>;
+  distance: ReadonlyMap<OwnedRef, number>;
+}
+
+/**
+ * The last walk, kept because the walk is a function of the nodes and the focus
+ * alone: a tag question, a choice and a note opened all rebuild against the
+ * same tree, and those are the rebuilds a reader spends the day making.
+ */
+let lastWalk:
+  | { nodes: readonly NodeView[]; focus: OwnedRef | undefined; walk: LodWalk }
+  | undefined;
+
+function walkFrom(
+  nodes: readonly NodeView[],
+  focus: OwnedRef | undefined,
+): LodWalk {
+  if (lastWalk?.nodes === nodes && lastWalk.focus === focus)
+    return lastWalk.walk;
+
+  const children = new Map<OwnedRef, OwnedRef[]>();
+  const byRef = new Map<OwnedRef, NodeView>();
+  for (const node of nodes) {
+    byRef.set(node.ref, node);
+    if (node.parent !== undefined) {
+      const list = children.get(node.parent);
+      if (list) list.push(node.ref);
+      else children.set(node.parent, [node.ref]);
+    }
+  }
+
+  const walk: LodWalk = {
+    children,
+    byRef,
+    distance: hopsFrom(nodes, children, byRef, focus),
+  };
+  lastWalk = { nodes, focus, walk };
+  return walk;
 }
 
 /**

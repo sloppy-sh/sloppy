@@ -135,6 +135,69 @@ describe("applyLod", () => {
     expect([...twice.collapsed].sort()).toEqual([...once.collapsed].sort());
   });
 
+  // The fold that answers a tag question walks the same tree the one before it
+  // did, and that walk is the whole O(every note) cost of a rebuild.
+  describe("re-using its walk of the tree", () => {
+    /** The nodes, with every read of `parent` counted — which is what building
+     *  the children index costs and what folding, given one, does not. */
+    const counted = (
+      from: readonly NodeView[],
+    ): { nodes: NodeView[]; reads: () => number } => {
+      let reads = 0;
+      return {
+        nodes: from.map((node) => {
+          const { parent, ...rest } = node;
+          return Object.defineProperty(rest as NodeView, "parent", {
+            enumerable: true,
+            get: () => {
+              reads += 1;
+              return parent;
+            },
+          });
+        }),
+        reads: () => reads,
+      };
+    };
+
+    it("does not walk it again for the same nodes and focus", () => {
+      const { nodes: watched, reads } = counted(nodes);
+      applyLod(watched, nothing, undefined);
+      const walked = reads();
+      expect(walked).toBeGreaterThanOrEqual(watched.length);
+
+      applyLod(watched, new Set([watched[0].ref]), undefined);
+      expect(reads() - walked).toBeLessThan(watched.length / 10);
+    });
+
+    it("walks it again when the focus moves", () => {
+      const { nodes: watched, reads } = counted(nodes);
+      const focus = watched.find((node) => node.depth === 6)!;
+      applyLod(watched, nothing, undefined);
+      const walked = reads();
+      applyLod(watched, nothing, focus.ref);
+      expect(reads() - walked).toBeGreaterThanOrEqual(watched.length);
+    });
+
+    it("folds the same whether or not the walk is re-used", () => {
+      const focus = nodes.find((node) => node.depth === 6)!;
+      const asks: [ReadonlySet<OwnedRef>, OwnedRef | undefined][] = [
+        [nothing, undefined],
+        [new Set([nodes[0].ref]), undefined],
+        [nothing, focus.ref],
+        [nothing, undefined],
+      ];
+      for (const [collapsed, focusRef] of asks) {
+        const shared = applyLod(nodes, collapsed, focusRef);
+        // A copy the cache has never seen, so this fold walks the tree itself.
+        const fresh = applyLod([...nodes], collapsed, focusRef);
+        expect([...shared.collapsed].sort()).toEqual(
+          [...fresh.collapsed].sort(),
+        );
+        expect([...shared.folded].sort()).toEqual([...fresh.folded].sort());
+      }
+    });
+  });
+
   it("leaves a region already under the bound alone", () => {
     const small = nodes.slice(0, 30);
     const result = applyLod(small, nothing, undefined, {
