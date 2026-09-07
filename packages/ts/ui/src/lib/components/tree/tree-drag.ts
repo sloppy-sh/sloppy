@@ -1,14 +1,23 @@
 // Dragging in the outline: {@link dragFrom} is the press every control here
 // becomes a drag through, and the rest of this file is what a drop on a row
-// writes. AI.md § "The Address Is the Protocol": no note already written is
-// moved by this, so a drop asks for one more note at the end of a run and the
-// server assigns its address.
+// does — a note written at the end of a run, or a note already written carried
+// to the end of another. AI.md § "The Address Is the Protocol": either way the
+// run appends, nobody else is renumbered, and the address is the server's to
+// assign.
 //
 // Pointer events rather than HTML5 drag-and-drop, which never starts from a
 // touch, and the hold `editor/block-handles.ts` presses for on a finger.
 
-import type { Address, OwnedRef } from '@sloppy/types';
-import type { TreeRow } from './walk.js';
+import {
+	type Address,
+	childAddress,
+	compareAddresses,
+	isAncestorAddress,
+	type OwnedRef,
+	parentAddress,
+	siblingAddress
+} from '@sloppy/types';
+import type { TreeItem, TreeNote, TreeRow } from './walk.js';
 
 /** Where a drop would put the new note, said against a row already drawn. */
 export interface TreeAim {
@@ -67,10 +76,53 @@ export function aimAt(
 	};
 }
 
+const named = (row: { address: Address; title: string }): string =>
+	`${row.address} ${row.title || 'Untitled'}`;
+
 /** What the drop is about to do, for the reader and for anyone listening. */
 export function aimSays(aim: TreeAim): string {
-	const named = `${aim.address} ${aim.title || 'Untitled'}`;
-	return aim.relation === 'under' ? `Write under ${named}` : `Write beside ${named}`;
+	return aim.relation === 'under' ? `Write under ${named(aim)}` : `Write beside ${named(aim)}`;
+}
+
+/** What letting a carried note go would do, in the reader's words. */
+export interface MoveLanding {
+	says: string;
+	/** Where it goes; absent where letting go there would move nothing. */
+	to?: TreeAim;
+}
+
+/**
+ * Where a note carried over `rows` would land — the rows of its own graph, as
+ * far as the reader has them open. The address is the greatest in the run it
+ * joins and one more, which is the rule the server assigns by; read off what is
+ * drawn, so a run drawn short of its end, or one holding an address a note has
+ * been carried away from, lands past the address named here.
+ */
+export function movesTo(
+	rows: readonly TreeRow[],
+	moved: Pick<TreeNote, 'ref' | 'address'>,
+	aim: TreeAim | null
+): MoveLanding {
+	if (!aim) return { says: 'Move over a note to put it there' };
+	const notes = rows.filter((row): row is TreeItem => row.kind === 'note');
+	const on = notes.find((row) => row.note.ref === aim.on)?.note;
+	if (!on) return { says: 'A note stays in the graph it was written in' };
+	const itself = on.ref === moved.ref && aim.relation === 'under';
+	if (itself || isAncestorAddress(moved.address, on.address)) {
+		return { says: 'A note cannot go inside itself' };
+	}
+	const under = aim.relation === 'under' ? on.address : parentAddress(on.address);
+	const along = notes
+		.map((row) => row.note.address)
+		.filter((address) => parentAddress(address) === under);
+	const last = along.reduce<Address | null>(
+		(most, one) => (most === null || compareAddresses(most, one) < 0 ? one : most),
+		null
+	);
+	if (last === moved.address) return { says: 'Stays where it is' };
+	const takes = last === null ? childAddress(under) : siblingAddress(last);
+	const how = aim.relation === 'under' ? 'under' : 'beside';
+	return { says: `Becomes ${takes} ${how} ${named(on)}`, to: aim };
 }
 
 /**

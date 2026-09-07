@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import type { Address, OwnedRef, Tag } from '@sloppy/types';
+import type { Address, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
+import { reactive } from '../props.test-support.svelte.js';
 import type { OutlineSections, TreeSection } from './sections.js';
 import TreeSurface, { type TreeGroup, type TreeSurfaceProps } from './tree-surface.svelte';
 import { LIT_PAGE, RUN_PAGE, type TreeNote } from './walk.js';
@@ -42,6 +43,7 @@ let openedNotes: OwnedRef[];
 let toggled: [OwnedRef, boolean][];
 let written: OwnedRef[];
 let besides: OwnedRef[];
+let moves: [OwnedRef, NoteDestination][];
 let chose: OwnedRef[];
 let choosing: boolean[];
 let scrolledTo: HTMLElement[];
@@ -65,43 +67,89 @@ function render(
 		/** Absent stands for a walk with no sections in it, which is what a region
 		 *  pulled from somebody else is. */
 		sections?: TreeSurfaceProps['sections'];
+		/** Absent stands for a walk where no note is the reader's to carry. */
+		movable?: boolean;
+		/** What the app says about a note that did not go. */
+		moveRefused?: string;
 	} = {}
 ) {
-	mounted = mount(TreeSurface, {
-		target,
-		props: {
-			groups: props.groups ?? [{ key: 'one', title: 'Field notes', notes: BRANCH }],
-			lead: props.lead,
-			opened: props.opened ?? new Set<OwnedRef>(),
-			selection: props.selection,
-			reading: props.reading ?? null,
-			chosen: props.chosen,
-			onChoose: props.choosable || props.chosen ? (ref: OwnedRef) => chose.push(ref) : undefined,
-			onChoosing: props.choosable || props.chosen ? (on: boolean) => choosing.push(on) : undefined,
-			onOpen: (ref: OwnedRef) => openedNotes.push(ref),
-			onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open]),
-			writeUnder: props.writable
-				? {
-						keys: 'Meta+Shift+Enter Control+Shift+Enter',
-						typed: (event: KeyboardEvent) =>
-							event.key === 'Enter' &&
-							event.shiftKey &&
-							!event.altKey &&
-							(event.metaKey || event.ctrlKey),
-						write: (ref: OwnedRef) => written.push(ref),
-						beside: props.draggable === false ? undefined : (ref: OwnedRef) => besides.push(ref)
-					}
-				: undefined,
-			sections: props.sections
-		}
+	const bound: TreeSurfaceProps = reactive({
+		groups: props.groups ?? [{ key: 'one', title: 'Field notes', notes: BRANCH }],
+		lead: props.lead,
+		opened: props.opened ?? new Set<OwnedRef>(),
+		selection: props.selection,
+		reading: props.reading ?? null,
+		chosen: props.chosen,
+		onChoose: props.choosable || props.chosen ? (ref: OwnedRef) => chose.push(ref) : undefined,
+		onChoosing: props.choosable || props.chosen ? (on: boolean) => choosing.push(on) : undefined,
+		onOpen: (ref: OwnedRef) => openedNotes.push(ref),
+		onToggle: (ref: OwnedRef, open: boolean) => toggled.push([ref, open]),
+		writeUnder: props.writable
+			? {
+					keys: 'Meta+Shift+Enter Control+Shift+Enter',
+					typed: (event: KeyboardEvent) =>
+						event.key === 'Enter' &&
+						event.shiftKey &&
+						!event.altKey &&
+						(event.metaKey || event.ctrlKey),
+					write: (ref: OwnedRef) => written.push(ref),
+					beside: props.draggable === false ? undefined : (ref: OwnedRef) => besides.push(ref)
+				}
+			: undefined,
+		sections: props.sections,
+		moveNote: props.movable
+			? {
+					move: (ref: OwnedRef, to: NoteDestination) => moves.push([ref, to]),
+					refused: props.moveRefused
+				}
+			: undefined
 	});
+	mounted = mount(TreeSurface, { target, props: bound });
 	flushSync();
+	return bound;
 }
 
 const rows = () => [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')];
 
 const labelled = (address: string) =>
 	rows().find((row) => row.textContent?.includes(address)) as HTMLElement;
+
+/** The outline laid out: rows 44 tall, each row's words set in by its depth. */
+function lay(): void {
+	for (const [at, row] of rows().entries()) {
+		const level = Number(row.getAttribute('aria-level') ?? 1);
+		Object.defineProperty(row, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 0, right: 400 })
+		});
+		const words = row.querySelector('.address');
+		if (!words) continue;
+		Object.defineProperty(words, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 10 + (level - 1) * 20 })
+		});
+	}
+}
+
+const pull = (type: string, x: number, y: number, by = 'mouse'): PointerEvent => {
+	const event = new Event(type, { bubbles: true, cancelable: true });
+	Object.assign(event, { pointerId: 5, pointerType: by, button: 0, clientX: x, clientY: y });
+	return event as PointerEvent;
+};
+
+/** What the surface says a drop will do, as anyone listening hears it. */
+const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
+
+const marked = () =>
+	rows()
+		.filter((row) => row.className.includes('border-dashed'))
+		.map((row) => row.querySelector('.address')?.textContent?.trim());
+
+/** The row's write control, which is the drag that adds a note. */
+const gripOn = (address: string) =>
+	labelled(`About ${address}`).querySelector<HTMLButtonElement>(
+		'[aria-label^="Write a note under"]'
+	) as HTMLButtonElement;
 
 const press = (row: HTMLElement, key: string, held: KeyboardEventInit = {}) => {
 	row.focus();
@@ -116,6 +164,7 @@ beforeEach(() => {
 	toggled = [];
 	written = [];
 	besides = [];
+	moves = [];
 	chose = [];
 	choosing = [];
 	scrolledTo = [];
@@ -676,42 +725,6 @@ describe('writing from a row', () => {
 describe('dragging a row’s write control to where the note goes', () => {
 	const OPEN = { writable: true, opened: new Set([held('1')]) };
 
-	/** The outline laid out: rows 44 tall, each row's words set in by its depth. */
-	function lay(): void {
-		for (const [at, row] of rows().entries()) {
-			const level = Number(row.getAttribute('aria-level') ?? 1);
-			Object.defineProperty(row, 'getBoundingClientRect', {
-				configurable: true,
-				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 0, right: 400 })
-			});
-			const words = row.querySelector('.address');
-			if (!words) continue;
-			Object.defineProperty(words, 'getBoundingClientRect', {
-				configurable: true,
-				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 10 + (level - 1) * 20 })
-			});
-		}
-	}
-
-	const gripOn = (address: string) =>
-		labelled(`About ${address}`).querySelector<HTMLButtonElement>(
-			'[aria-label^="Write a note under"]'
-		) as HTMLButtonElement;
-
-	const pull = (type: string, x: number, y: number, by = 'mouse'): PointerEvent => {
-		const event = new Event(type, { bubbles: true, cancelable: true });
-		Object.assign(event, { pointerId: 5, pointerType: by, button: 0, clientX: x, clientY: y });
-		return event as PointerEvent;
-	};
-
-	/** What the surface says the drop will do, as anyone listening hears it. */
-	const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
-
-	const marked = () =>
-		rows()
-			.filter((row) => row.className.includes('border-dashed'))
-			.map((row) => row.querySelector('.address')?.textContent?.trim());
-
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
@@ -888,6 +901,270 @@ describe('dragging a row’s write control to where the note goes', () => {
 
 		expect(written).toEqual([held('1')]);
 		expect(besides).toEqual([]);
+	});
+});
+
+// AI.md § "The Address Is the Protocol": a note carried to another run takes
+// the next address there, nobody else is renumbered, and the address it leaves
+// keeps leading to it.
+describe('carrying a note to another run', () => {
+	const OPEN = { movable: true, writable: true, opened: new Set([held('1'), held('1a')]) };
+
+	/** The row's grip, which is the address it is read by. */
+	const addressOf = (address: string) =>
+		labelled(`About ${address}`).querySelector('.address') as HTMLElement;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// The rows lie 1, 1a, 1a1, 1b, 2 at 44 apiece, and a row's own indent is
+	// what "level with it" is read against: 1a's words start 20 in, so x=35 is
+	// level with 1a and x=60 is past it.
+	it('takes the next address in the run a mouse drags it into', () => {
+		render(OPEN);
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		flushSync();
+		expect(said()).toBe('Becomes 1a2 under 1a About 1a');
+		expect(marked()).toEqual(['1a', '1a1']);
+
+		window.dispatchEvent(pull('pointerup', 60, 60));
+		flushSync();
+
+		expect(moves).toEqual([[held('2'), { relation: 'under', note: held('1a') }]]);
+		expect(openedNotes).toEqual([]);
+	});
+
+	it('continues the run of the row it is dragged level with', () => {
+		render(OPEN);
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
+		window.dispatchEvent(pull('pointermove', 35, 60));
+		flushSync();
+		expect(said()).toBe('Becomes 1c beside 1a About 1a');
+
+		window.dispatchEvent(pull('pointerup', 35, 60));
+		flushSync();
+
+		expect(moves).toEqual([[held('2'), { relation: 'after', note: held('1a') }]]);
+	});
+
+	it('carries the note once a finger has been held on its address', async () => {
+		render(OPEN);
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190, 'touch'));
+		window.dispatchEvent(pull('pointermove', 60, 60, 'touch'));
+		flushSync();
+		expect(said()).toBe('');
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190, 'touch'));
+		await vi.advanceTimersByTimeAsync(400);
+		window.dispatchEvent(pull('pointermove', 60, 60, 'touch'));
+		flushSync();
+		expect(said()).toBe('Becomes 1a2 under 1a About 1a');
+
+		window.dispatchEvent(pull('pointerup', 60, 60, 'touch'));
+		flushSync();
+		expect(moves).toEqual([[held('2'), { relation: 'under', note: held('1a') }]]);
+	});
+
+	it('refuses a note carried into its own branch, in words', () => {
+		render(OPEN);
+		lay();
+
+		addressOf('1').dispatchEvent(pull('pointerdown', 12, 10));
+		window.dispatchEvent(pull('pointermove', 80, 100));
+		flushSync();
+		expect(said()).toBe('A note cannot go inside itself');
+		expect(marked()).toEqual([]);
+
+		window.dispatchEvent(pull('pointerup', 80, 100));
+		flushSync();
+		expect(moves).toEqual([]);
+	});
+
+	it('refuses a note carried into another graph, in words', () => {
+		render({
+			...OPEN,
+			groups: [
+				{ key: 'one', title: 'Thesis', notes: BRANCH },
+				{ key: 'two', title: 'Garden', notes: [note('7')] }
+			]
+		});
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
+		window.dispatchEvent(pull('pointermove', 60, 230));
+		flushSync();
+		expect(said()).toBe('A note stays in the graph it was written in');
+
+		window.dispatchEvent(pull('pointerup', 60, 230));
+		flushSync();
+		expect(moves).toEqual([]);
+	});
+
+	it('says a note dropped at the end of its own run stays where it is', () => {
+		render(OPEN);
+		lay();
+
+		addressOf('1b').dispatchEvent(pull('pointerdown', 12, 145));
+		window.dispatchEvent(pull('pointermove', 35, 60));
+		flushSync();
+		expect(said()).toBe('Stays where it is');
+
+		window.dispatchEvent(pull('pointerup', 35, 60));
+		flushSync();
+		expect(moves).toEqual([]);
+	});
+
+	it('moves nothing when Escape calls the drag off', () => {
+		render(OPEN);
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		flushSync();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		flushSync();
+		expect(said()).toBe('');
+
+		window.dispatchEvent(pull('pointerup', 60, 60));
+		flushSync();
+		expect(moves).toEqual([]);
+	});
+
+	it('leaves the address a tap on the row, which opens the note', () => {
+		render(OPEN);
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
+		window.dispatchEvent(pull('pointerup', 12, 190));
+		labelled('About 2').click();
+		flushSync();
+
+		expect(moves).toEqual([]);
+		expect(openedNotes).toEqual([held('2')]);
+	});
+
+	it('leaves every note where it is on a walk that is not the reader’s', () => {
+		render({ opened: new Set([held('1'), held('1a')]) });
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		flushSync();
+
+		expect(said()).toBe('');
+		expect(moves).toEqual([]);
+	});
+
+	// Both drags start on the same row and mean different things: the write
+	// control still only ever adds a note.
+	it('leaves the write control writing', () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		flushSync();
+		expect(said()).toBe('Write under 1a About 1a');
+
+		window.dispatchEvent(pull('pointerup', 60, 60));
+		flushSync();
+		expect(written).toEqual([held('1a')]);
+		expect(moves).toEqual([]);
+	});
+
+	it('carries the focused row under the note above it, from the keyboard', () => {
+		render(OPEN);
+
+		press(labelled('About 2'), 'ArrowRight', { altKey: true, shiftKey: true });
+
+		expect(moves).toEqual([[held('2'), { relation: 'under', note: held('1b') }]]);
+		expect(toggled).toContainEqual([held('1b'), true]);
+	});
+
+	it('carries the focused row into that note’s run instead, from the keyboard', () => {
+		render(OPEN);
+
+		press(labelled('About 2'), 'ArrowUp', { altKey: true, shiftKey: true });
+
+		expect(moves).toEqual([[held('2'), { relation: 'after', note: held('1b') }]]);
+	});
+
+	it('says so where there is nothing above the focused row', () => {
+		render(OPEN);
+
+		press(labelled('About 1'), 'ArrowUp', { altKey: true, shiftKey: true });
+
+		expect(moves).toEqual([]);
+		expect(said()).toBe('There is no note above this one');
+	});
+
+	it('leaves the sections chord to the sections', () => {
+		const stack: TreeSection[] = [{ ref: held('1a/s1'), says: 'The first thing' }];
+		const shown = new SvelteSet<OwnedRef>();
+		render({
+			...OPEN,
+			sections: {
+				shown,
+				of: (note) => (note === held('1a') ? stack : undefined),
+				says: () => ({ says: '', again: false }),
+				onShow: (note, show) => (show ? shown.add(note) : shown.delete(note)),
+				onMove: () => {}
+			}
+		});
+
+		press(labelled('About 1a'), 'ArrowRight', { altKey: true });
+
+		expect([...shown]).toEqual([held('1a')]);
+		expect(moves).toEqual([]);
+	});
+
+	it('says where the note landed once the walk has it there', () => {
+		const bound = render(OPEN);
+		lay();
+
+		addressOf('2').dispatchEvent(pull('pointerdown', 12, 190));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		window.dispatchEvent(pull('pointerup', 60, 60));
+		flushSync();
+		expect(said()).toBe('');
+
+		bound.groups = [
+			{
+				key: 'one',
+				title: 'Field notes',
+				notes: [
+					note('1'),
+					note('1a', '1'),
+					note('1a1', '1a'),
+					note('1b', '1'),
+					{ ...note('1a2', '1a'), ref: held('2') }
+				]
+			}
+		];
+		flushSync();
+
+		expect(said()).toBe('2 is now 1a2');
+	});
+
+	it('says why a note did not go, where the app has words for it', () => {
+		render({ ...OPEN, moveRefused: 'That note is not here any more.' });
+
+		expect(said()).toBe('That note is not here any more.');
+		expect(target.querySelector('.text-destructive')?.textContent?.trim()).toBe(
+			'That note is not here any more.'
+		);
 	});
 });
 

@@ -2,9 +2,17 @@
 	// The graph walked instead of drawn, for a reader going through the notes one
 	// at a time. A run belongs to the graph it was written in — AI.md § "The
 	// Address Is the Protocol" — so each graph on the canvas is its own tree.
-	import { graphOf, type NodeView, type OwnedRef, type Tag } from '@sloppy/types';
+	import {
+		graphOf,
+		type NodeView,
+		type NoteDestination,
+		type OwnedRef,
+		type Tag
+	} from '@sloppy/types';
 	import { nameOf, TreeSurface, type TreeGroup, type TreeSurfaceProps } from '@sloppy/ui';
 	import { api } from '../api.js';
+	import { serverMessage } from '../stores/errors.js';
+	import { nodes } from '../stores/nodes.svelte.js';
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { session } from '../stores/session.svelte.js';
@@ -136,6 +144,22 @@
 		outlineSections.mine(session.viewer?.did ?? null);
 	});
 
+	/** Why the note somebody carried did not go, until the next one does. */
+	let refused = $state('');
+
+	// A held region is somebody else's graph, and nothing in it is the reader's
+	// to carry.
+	const moveNote = $derived<TreeSurfaceProps['moveNote']>(
+		fields ? { move: carry, refused } : undefined
+	);
+
+	function carry(ref: OwnedRef, to: NoteDestination): void {
+		refused = '';
+		void nodes.move(ref, to).catch((error: unknown) => {
+			refused = serverMessage(error) ?? 'Sloppy could not move that note. Try again.';
+		});
+	}
+
 	// A note reached from anywhere else — the canvas, a link inside another note,
 	// an address in the URL — is one the tree has to be able to show.
 	$effect(() => {
@@ -161,4 +185,5 @@
 	{onOpen}
 	{writeUnder}
 	{sections}
+	{moveNote}
 />
