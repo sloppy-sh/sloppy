@@ -198,7 +198,7 @@ export const MAX_UNPUBLISHED_CHANGES = 200;
  * a published one would report a difference for every picture in it and call
  * writing changed that nobody touched. What is answered is what can be told
  * without opening a section: which notes the branch gained and lost, which were
- * renamed or retagged, and which have been written in since.
+ * carried elsewhere, renamed or retagged, and which have been written in since.
  *
  * `title` is the note's title now, or the published one where the note is gone.
  */
@@ -207,6 +207,9 @@ export const UnpublishedChangeSchema = z.object({
   address: AddressSchema,
   title: z.string().max(512),
   change: z.enum(["added", "removed", "changed"]),
+  /** Where it was in the version, where that is not where it is now. Absent is
+   *  a note that has not been carried anywhere since. */
+  was_at: AddressSchema.optional(),
   /** What it was called in the version, where that is not what it is called
    *  now. */
   was_titled: z.string().max(512).optional(),

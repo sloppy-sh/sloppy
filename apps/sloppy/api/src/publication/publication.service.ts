@@ -782,6 +782,7 @@ function whatMoved(
     address: node.address,
     title: node.title,
     change: "changed",
+    ...(carried ? { was_at: before.address } : {}),
     ...(renamed ? { was_titled: before.title } : {}),
     tags_gained: gained,
     tags_lost: lost,

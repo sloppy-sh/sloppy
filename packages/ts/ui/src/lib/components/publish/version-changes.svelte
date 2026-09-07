@@ -58,6 +58,16 @@
 		return entry.before.title || 'Untitled';
 	}
 
+	function became(entry: PublishedNoteChange): string {
+		const carried =
+			moved(entry) !== null &&
+			renamed(entry) === null &&
+			gained(entry).length === 0 &&
+			lost(entry).length === 0 &&
+			sectionsOf(entry).length === 0;
+		return carried ? 'Moved' : BECAME[entry.change];
+	}
+
 	/**
 	 * One section as it can be drawn. Both sides only where they read
 	 * differently: a section that was reordered, or one whose difference is a
@@ -114,7 +124,7 @@
 				<div class="flex items-baseline gap-2">
 					<span class="shrink-0 address text-sm">{entry.note.address}</span>
 					<span class="min-w-0 flex-1 truncate text-sm">{entry.note.title || 'Untitled'}</span>
-					<span class="shrink-0 text-xs text-muted-foreground">{BECAME[entry.change]}</span>
+					<span class="shrink-0 text-xs text-muted-foreground">{became(entry)}</span>
 				</div>
 
 				{#if from !== null}

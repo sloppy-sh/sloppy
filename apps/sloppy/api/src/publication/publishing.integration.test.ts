@@ -934,11 +934,16 @@ describe("publishing a branch, and what a peer reads back", () => {
         ada,
       )) as {
         total: number;
-        changes: { note: OwnedRef; address: Address; change: string }[];
+        changes: {
+          note: OwnedRef;
+          address: Address;
+          was_at?: Address;
+          change: string;
+        }[];
       };
 
       expect(since.changes.find((one) => one.note === first.ref)).toMatchObject(
-        { address: now, change: "changed" },
+        { address: now, was_at: was, change: "changed" },
       );
     },
   );

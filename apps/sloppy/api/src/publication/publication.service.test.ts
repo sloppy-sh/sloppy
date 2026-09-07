@@ -406,10 +406,23 @@ describe("what a branch has done since it was last published", () => {
     expect(changes[0]).toMatchObject({
       note: ref("NA"),
       address: "1c",
+      was_at: "1a",
       title: "Spores",
       change: "changed",
       written: false,
     });
+  });
+
+  it("says nothing of where a note was when it has not been carried", async () => {
+    const service = comparing({
+      filed: [filed("RT", "1", "Root"), filed("NA", "1a", "Seeds")],
+      branch: [noteAt("RT", "1", "Root"), noteAt("NA", "1a", "Spores")],
+    });
+
+    const { changes } = await service.unpublished(AVA, CHAIN);
+
+    expect(changes[0]).toMatchObject({ was_titled: "Seeds" });
+    expect(changes[0].was_at).toBeUndefined();
   });
 
   it("says nothing of a branch nothing has happened to", async () => {

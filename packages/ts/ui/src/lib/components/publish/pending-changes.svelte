@@ -18,8 +18,19 @@
 		changed: 'Edited'
 	};
 
+	function onlyCarried(entry: UnpublishedChange): boolean {
+		return (
+			entry.was_at !== undefined &&
+			entry.was_titled === undefined &&
+			entry.tags_gained.length === 0 &&
+			entry.tags_lost.length === 0
+		);
+	}
+
 	function became(entry: UnpublishedChange): string {
-		return entry.change === 'changed' && entry.written ? 'Written in' : BECAME[entry.change];
+		if (entry.change !== 'changed') return BECAME[entry.change];
+		if (entry.written) return 'Written in';
+		return onlyCarried(entry) ? 'Moved' : BECAME.changed;
 	}
 </script>
 
@@ -31,6 +42,11 @@
 				<span class="min-w-0 flex-1 truncate text-sm">{entry.title || 'Untitled'}</span>
 				<span class="shrink-0 text-xs text-muted-foreground">{became(entry)}</span>
 			</div>
+			{#if entry.was_at !== undefined}
+				<p class="text-xs text-muted-foreground">
+					Was at <span class="address">{entry.was_at}</span>
+				</p>
+			{/if}
 			{#if entry.was_titled !== undefined}
 				<p class="text-xs text-muted-foreground">Was “{entry.was_titled || 'Untitled'}”</p>
 			{/if}
