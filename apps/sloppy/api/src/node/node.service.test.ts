@@ -204,13 +204,21 @@ function live(
   } as Node & { ref: OwnedRef };
 }
 
-/** The reads a move makes over one person's notes, and the write it asks for. */
-function notebook(notes: readonly (Node & { ref: OwnedRef })[]) {
+/**
+ * The reads a move and a creation make over one person's notes, and the writes
+ * they ask for, applied so a later read sees them. `landing` holds a move
+ * between the addresses it read and the row it writes.
+ */
+function notebook(
+  notes: readonly (Node & { ref: OwnedRef })[],
+  landing: Promise<void> = Promise.resolve(),
+) {
   const asked: { landed: Node[]; aliases: NodeAlias[] } = {
     landed: [],
     aliases: [],
   };
-  const there = notes.filter((one) => one.deleted_at === undefined);
+  const held: Node[] = notes.map((one) => ({ ...one }));
+  const there = () => held.filter((one) => one.deleted_at === undefined);
   const under = (root: Node, from: readonly Node[]) =>
     from.filter(
       (one) =>
@@ -218,11 +226,13 @@ function notebook(notes: readonly (Node & { ref: OwnedRef })[]) {
     );
   const repository = {
     find: (_did: string, ref: OwnedRef) =>
-      Promise.resolve(there.find((one) => one.ref === ref) ?? null),
-    carried: (_did: string, root: Node) => Promise.resolve(under(root, notes)),
+      Promise.resolve(
+        there().find((one) => ownedRefFrom(one.id) === ref) ?? null,
+      ),
+    carried: (_did: string, root: Node) => Promise.resolve(under(root, held)),
     childAddresses: (_did: string, parent: Node | null) =>
       Promise.resolve(
-        notes
+        held
           .filter((one) =>
             parent
               ? one.parent === ownedRefFrom(parent.id)
@@ -230,15 +240,23 @@ function notebook(notes: readonly (Node & { ref: OwnedRef })[]) {
           )
           .map((one) => one.address),
       ),
-    move: (_did: string, landed: Node[], aliases: NodeAlias[]) => {
+    move: async (_did: string, landed: Node[], aliases: NodeAlias[]) => {
+      await landing;
       asked.landed = [...landed];
       asked.aliases = [...aliases];
-      return Promise.resolve();
+      for (const one of landed) {
+        const at = held.findIndex(
+          (was) => ownedRefFrom(was.id) === ownedRefFrom(one.id),
+        );
+        held[at] = one;
+      }
+    },
+    insert: (one: Node) => {
+      held.push(one);
+      return Promise.resolve(one);
     },
     subtree: (_did: string, root: Node) =>
-      Promise.resolve(
-        under(root, asked.landed).filter((one) => one.deleted_at === undefined),
-      ),
+      Promise.resolve(under(root, there())),
     aliasesOf: () => Promise.resolve(new Map<OwnedRef, Address[]>()),
   } as unknown as NodeRepository;
   return {
@@ -357,6 +375,33 @@ describe("carrying a note somewhere else", () => {
     expect(asked.landed[0].parent).toBeUndefined();
   });
 
+  it("numbers a note written under it from where it landed, not where it was", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const other = live("2");
+    let land = () => {};
+    const { service } = notebook(
+      [root, moving, other],
+      new Promise<void>((resolve) => {
+        land = resolve;
+      }),
+    );
+
+    const carried = service.move(DID, moving.ref, {
+      relation: "under",
+      note: other.ref,
+    });
+    const written = service.create(DID, {
+      title: "",
+      tags: [],
+      from: { relation: "under", note: moving.ref },
+    });
+    land();
+
+    expect((await carried).map((one) => one.address)).toEqual(["2a"]);
+    expect((await written).address).toBe("2a1");
+  });
+
   /** The message, once the refusal has been checked to have written nothing. */
   const refused = async (
     notes: readonly (Node & { ref: OwnedRef })[],
@@ -437,5 +482,21 @@ describe("carrying a note somewhere else", () => {
     await expect(
       service.move(DID, away.ref, { relation: "under", note: root.ref }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("refuses a branch of its own when nothing could follow the highest one", async () => {
+    const highest = String(Number.MAX_SAFE_INTEGER - 1);
+    const root = live(highest);
+    const moving = live(`${highest}a`, {
+      origin: root.ref,
+      parent: root.ref,
+    });
+
+    await expect(
+      refused([root, moving], moving.ref, {
+        relation: "after",
+        note: root.ref,
+      }),
+    ).resolves.toMatch(/under a note instead/);
   });
 });

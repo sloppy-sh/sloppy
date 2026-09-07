@@ -173,8 +173,7 @@ export class NodeController {
     );
   }
 
-  /** One note carried somewhere else, with everything that sprang from it. The
-   *  answer is that subtree as it now stands, all of it re-addressed. */
+  /** One note carried somewhere else, with everything that sprang from it. */
   @Post(":did/:localId/move")
   move(
     @Req() req: AuthedRequest,

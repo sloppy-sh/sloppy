@@ -82,7 +82,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class NodeService {
-  private readonly creations = new SerialQueue();
+  /** Both writing a note and carrying one read where they are landing and then
+   *  write there. They do the reading inside this queue, so neither works from
+   *  a place the other has already left. */
+  private readonly addressing = new SerialQueue();
 
   constructor(
     private readonly nodes: NodeRepository,
@@ -101,12 +104,31 @@ export class NodeService {
     const rows = query.origin
       ? await this.nodes.region(did, query.origin, query.maxDepth)
       : await this.nodes.roots(did, query.graph);
-    return rows.map(entityView);
+    return this.asRead(did, rows);
   }
 
   async get(did: string, ref: OwnedRef): Promise<NodeView | null> {
     const node = await this.nodes.find(did, ref);
-    return node === null ? null : entityView(node);
+    return node === null ? null : (await this.asRead(did, [node]))[0];
+  }
+
+  /** Notes of one graph as they answer, each carrying the addresses it was
+   *  moved from — absent aliases is a note that has never been moved, so a read
+   *  that left them off would say that of every note it found. */
+  private async asRead(
+    did: string,
+    rows: readonly Node[],
+  ): Promise<NodeView[]> {
+    if (rows.length === 0) return [];
+    const aliases = await this.nodes.aliasesOf(
+      did,
+      graphOf(rows[0]),
+      rows.map((one) => ownedRefFrom(one.id)),
+    );
+    return rows.map((one) => {
+      const was = aliases.get(ownedRefFrom(one.id));
+      return { ...entityView(one), ...(was ? { aliases: was } : {}) };
+    });
   }
 
   tags(did: string, graph?: OwnedRef): Promise<TagCount[]> {
@@ -237,13 +259,16 @@ export class NodeService {
   }
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
-    const { graph, parent } = await this.placeFor(did, request.from);
-    const named =
-      request.from?.relation === "root" ? request.from.address : null;
-    return this.creations.run(`${graph}|${parent?.address ?? ""}`, () =>
-      named === null
-        ? this.write(did, graph, parent, request)
-        : this.writeAt(did, graph, named, request),
+    const from = request.from;
+    return this.addressing.run(did, async () =>
+      from?.relation === "root"
+        ? this.writeAt(
+            did,
+            await this.graphFor(did, from),
+            from.address,
+            request,
+          )
+        : this.write(did, request),
     );
   }
 
@@ -283,22 +308,18 @@ export class NodeService {
    * A note carried somewhere else, with everything that sprang from it. The
    * answer is that subtree as it now stands, because a move re-addresses all of
    * it — AI.md § "The Address Is the Protocol".
-   *
-   * It queues behind the creations into the run it joins, so a note written
-   * there while this one is landing does not take the address it is about to.
    */
   async move(
     did: string,
     ref: OwnedRef,
     to: NoteDestination,
   ): Promise<NodeView[]> {
-    const note = await this.nodes.find(did, ref);
-    if (!note) throw new NotFoundException("That note is not here.");
-    const graph = graphOf(note);
-    const parent = await this.landingFor(did, note, to);
-    return this.creations.run(`${graph}|${parent?.address ?? ""}`, () =>
-      this.carry(did, note, graph, parent),
-    );
+    return this.addressing.run(did, async () => {
+      const note = await this.nodes.find(did, ref);
+      if (!note) throw new NotFoundException("That note is not here.");
+      const graph = graphOf(note);
+      return this.carry(did, note, graph, await this.landingFor(did, note, to));
+    });
   }
 
   /**
@@ -365,7 +386,7 @@ export class NodeService {
     const lands = (was: Address) => landing.get(was) as Address;
     if (parent === null && !isRootAddress(lands(note.address))) {
       throw new BadRequestException(
-        "There is no number left after your highest branch. Number a lower one.",
+        "There is no number left after your highest branch. Carry this note under a note instead.",
       );
     }
 
@@ -383,17 +404,7 @@ export class NodeService {
     });
     const landed = [root, ...beneath.map((one) => landedAt(one))];
     await this.nodes.move(did, landed, carried.map(leftBehind));
-
-    const after = await this.nodes.subtree(did, root);
-    const aliases = await this.nodes.aliasesOf(
-      did,
-      graph,
-      after.map((one) => ownedRefFrom(one.id)),
-    );
-    return after.map((one) => {
-      const was = aliases.get(ownedRefFrom(one.id));
-      return { ...entityView(one), ...(was ? { aliases: was } : {}) };
-    });
+    return this.asRead(did, await this.nodes.subtree(did, root));
   }
 
   /**
@@ -713,13 +724,9 @@ export class NodeService {
     }
   }
 
-  private async write(
-    did: string,
-    graph: OwnedRef,
-    parent: Node | null,
-    request: CreateRequest,
-  ): Promise<NodeView> {
+  private async write(did: string, request: CreateRequest): Promise<NodeView> {
     for (let attempt = 1; ; attempt++) {
+      const { graph, parent } = await this.placeFor(did, request.from);
       const address = nextChildAddress(
         parent?.address ?? null,
         await this.nodes.childAddresses(did, parent, graph),
@@ -747,8 +754,6 @@ export class NodeService {
   }
 }
 
-/** What a destination that cannot be read is refused with, said as the person
- *  asked for it. */
 function missing(relation: NoteDestination["relation"]): string {
   return relation === "under"
     ? "The note this springs from is not here."

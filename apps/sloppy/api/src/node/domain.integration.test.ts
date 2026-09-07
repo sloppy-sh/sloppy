@@ -1656,6 +1656,7 @@ describe("the domain routes", () => {
           note: other.ref,
         });
         expect(moved.aliases).toEqual([under.address]);
+        expect((await readNote(under.ref)).aliases).toEqual([under.address]);
 
         // The run it left keeps the number: the note after it in that run is
         // the next one, never the one it gave up.
