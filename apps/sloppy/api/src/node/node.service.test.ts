@@ -1,16 +1,22 @@
-// The one refusal the number line itself forces, and which of the notes
-// somebody deleted a listing offers back. Everything else about writing a note
-// is exercised against a running server in `domain.integration.test.ts`; the
+// The one refusal the number line itself forces, which of the notes somebody
+// deleted a listing offers back, and what carrying a note somewhere else
+// re-addresses and refuses. Everything else about writing a note is exercised
+// against a running server in `domain.integration.test.ts`; the number-line
 // refusal cannot live there, because reaching the top means owning a branch
 // numbered near it and every automatic branch that graph opened afterwards
 // would follow that number rather than its own.
 
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import {
   type Address,
+  addressDepth,
   createOwnedRecordId,
   DELETED_KEPT_FOR_DAYS,
+  isInSubtree,
   type Node,
+  type NodeAlias,
+  type NoteDestination,
+  type OwnedRef,
   ownedRefFrom,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
@@ -169,5 +175,328 @@ describe("the window closing on everybody at once", () => {
     expect(new Set(purged.map((one) => one.before)).size).toBe(1);
     const kept = Date.now() - Date.parse(purged[0].before);
     expect(kept / (24 * 60 * 60 * 1000)).toBeCloseTo(DELETED_KEPT_FOR_DAYS, 3);
+  });
+});
+
+const HOME = `${DID}/00000000000000000000000000`;
+
+/** One note that is there, of a tree rooted at `origin` or at itself. */
+function live(
+  address: string,
+  over: Partial<Node> = {},
+): Node & { ref: OwnedRef } {
+  const id = createOwnedRecordId("node", DID);
+  const ref = ownedRefFrom(id);
+  return {
+    id,
+    ref,
+    created_by: DID,
+    address,
+    depth: addressDepth(address as Address),
+    origin: ref,
+    title: address,
+    tags: [],
+    links: [],
+    published: false,
+    created_at: AT,
+    updated_at: AT,
+    ...over,
+  } as Node & { ref: OwnedRef };
+}
+
+/**
+ * The reads a move and a creation make over one person's notes, and the writes
+ * they ask for, applied so a later read sees them. `landing` holds a move
+ * between the addresses it read and the row it writes.
+ */
+function notebook(
+  notes: readonly (Node & { ref: OwnedRef })[],
+  landing: Promise<void> = Promise.resolve(),
+) {
+  const asked: { landed: Node[]; aliases: NodeAlias[] } = {
+    landed: [],
+    aliases: [],
+  };
+  const held: Node[] = notes.map((one) => ({ ...one }));
+  const there = () => held.filter((one) => one.deleted_at === undefined);
+  const under = (root: Node, from: readonly Node[]) =>
+    from.filter(
+      (one) =>
+        one.origin === root.origin && isInSubtree(root.address, one.address),
+    );
+  const repository = {
+    find: (_did: string, ref: OwnedRef) =>
+      Promise.resolve(
+        there().find((one) => ownedRefFrom(one.id) === ref) ?? null,
+      ),
+    carried: (_did: string, root: Node) => Promise.resolve(under(root, held)),
+    childAddresses: (_did: string, parent: Node | null) =>
+      Promise.resolve(
+        held
+          .filter((one) =>
+            parent
+              ? one.parent === ownedRefFrom(parent.id)
+              : one.parent === undefined,
+          )
+          .map((one) => one.address),
+      ),
+    move: async (_did: string, landed: Node[], aliases: NodeAlias[]) => {
+      await landing;
+      asked.landed = [...landed];
+      asked.aliases = [...aliases];
+      for (const one of landed) {
+        const at = held.findIndex(
+          (was) => ownedRefFrom(was.id) === ownedRefFrom(one.id),
+        );
+        held[at] = one;
+      }
+    },
+    insert: (one: Node) => {
+      held.push(one);
+      return Promise.resolve(one);
+    },
+    subtree: (_did: string, root: Node) =>
+      Promise.resolve(under(root, there())),
+    aliasesOf: () => Promise.resolve(new Map<OwnedRef, Address[]>()),
+  } as unknown as NodeRepository;
+  return {
+    asked,
+    service: new NodeService(repository, finds, graphs, media, publications),
+  };
+}
+
+describe("carrying a note somewhere else", () => {
+  /** `1a` with `1a1` under it, alongside a branch `2` that already holds two. */
+  const tree = () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const beneath = live("1a1", { origin: root.ref, parent: moving.ref });
+    const other = live("2");
+    const first = live("2a", { origin: other.ref, parent: other.ref });
+    const second = live("2b", { origin: other.ref, parent: other.ref });
+    return {
+      root,
+      moving,
+      beneath,
+      other,
+      first,
+      second,
+      all: [root, moving, beneath, other, first, second],
+    };
+  };
+
+  it("keeps every note under it at the same place relative to it", async () => {
+    const { moving, beneath, other, all } = tree();
+    const { asked, service } = notebook(all);
+
+    const after = await service.move(DID, moving.ref, {
+      relation: "under",
+      note: other.ref,
+    });
+
+    expect(after.map((one) => [one.ref, one.address])).toEqual([
+      [moving.ref, "2c"],
+      [beneath.ref, "2c1"],
+    ]);
+    expect(
+      asked.landed.map((one) => [one.depth, one.origin, one.parent]),
+    ).toEqual([
+      [2, other.ref, other.ref],
+      [3, other.ref, moving.ref],
+    ]);
+  });
+
+  it("leaves every address it was at leading to the note that was there", async () => {
+    const { root, moving, beneath, other, all } = tree();
+    const { asked, service } = notebook(all);
+
+    await service.move(DID, moving.ref, { relation: "under", note: other.ref });
+
+    expect(
+      asked.aliases.map((one) => [one.address, one.note, one.parent]),
+    ).toEqual([
+      ["1a", moving.ref, root.ref],
+      ["1a1", beneath.ref, moving.ref],
+    ]);
+    expect(new Set(asked.aliases.map((one) => one.graph))).toEqual(
+      new Set([HOME]),
+    );
+  });
+
+  it("appends to a run it is already in, renumbering neither sibling", async () => {
+    const { other, first, second } = tree();
+    const { service } = notebook([other, first, second]);
+
+    const after = await service.move(DID, first.ref, {
+      relation: "after",
+      note: second.ref,
+    });
+
+    expect(after.map((one) => one.address)).toEqual(["2c"]);
+  });
+
+  it("carries a deleted note under it, and answers without it", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const away = live("1a1", {
+      origin: root.ref,
+      parent: moving.ref,
+      deleted_at: AT,
+    });
+    const other = live("2");
+    const { asked, service } = notebook([root, moving, away, other]);
+
+    const after = await service.move(DID, moving.ref, {
+      relation: "under",
+      note: other.ref,
+    });
+
+    expect(asked.landed.map((one) => one.address)).toEqual(["2a", "2a1"]);
+    expect(asked.aliases.map((one) => one.address)).toEqual(["1a", "1a1"]);
+    expect(after.map((one) => one.address)).toEqual(["2a"]);
+  });
+
+  it("becomes a branch of its own where it follows one", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const beneath = live("1a1", { origin: root.ref, parent: moving.ref });
+    const { asked, service } = notebook([root, moving, beneath]);
+
+    const after = await service.move(DID, moving.ref, {
+      relation: "after",
+      note: root.ref,
+    });
+
+    expect(after.map((one) => one.address)).toEqual(["2", "2a"]);
+    expect(asked.landed.map((one) => one.origin)).toEqual([
+      moving.ref,
+      moving.ref,
+    ]);
+    expect(asked.landed[0].parent).toBeUndefined();
+  });
+
+  it("numbers a note written under it from where it landed, not where it was", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const other = live("2");
+    let land = () => {};
+    const { service } = notebook(
+      [root, moving, other],
+      new Promise<void>((resolve) => {
+        land = resolve;
+      }),
+    );
+
+    const carried = service.move(DID, moving.ref, {
+      relation: "under",
+      note: other.ref,
+    });
+    const written = service.create(DID, {
+      title: "",
+      tags: [],
+      from: { relation: "under", note: moving.ref },
+    });
+    land();
+
+    expect((await carried).map((one) => one.address)).toEqual(["2a"]);
+    expect((await written).address).toBe("2a1");
+  });
+
+  /** The message, once the refusal has been checked to have written nothing. */
+  const refused = async (
+    notes: readonly (Node & { ref: OwnedRef })[],
+    ref: OwnedRef,
+    to: NoteDestination,
+  ) => {
+    const { asked, service } = notebook(notes);
+    const move = service.move(DID, ref, to);
+    await expect(move).rejects.toBeInstanceOf(BadRequestException);
+    expect(asked.landed).toEqual([]);
+    return move.catch((err: Error) => err.message);
+  };
+
+  it("refuses to carry a note onto itself", async () => {
+    const { moving, all } = tree();
+    await expect(
+      refused(all, moving.ref, { relation: "under", note: moving.ref }),
+    ).resolves.toMatch(/different one/);
+    await expect(
+      refused(all, moving.ref, { relation: "after", note: moving.ref }),
+    ).resolves.toMatch(/different one/);
+  });
+
+  it("refuses to carry a note into what sprang from it", async () => {
+    const { moving, beneath, all } = tree();
+
+    await expect(
+      refused(all, moving.ref, { relation: "under", note: beneath.ref }),
+    ).resolves.toMatch(/sprang from it/);
+    await expect(
+      refused(all, moving.ref, { relation: "after", note: beneath.ref }),
+    ).resolves.toMatch(/sprang from it/);
+  });
+
+  it("refuses a note in another graph, and says a note stays in its own", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const elsewhere = live("1", {
+      graph: `${DID}/00000000000000000000000001`,
+    });
+
+    await expect(
+      refused([root, moving, elsewhere], moving.ref, {
+        relation: "under",
+        note: elsewhere.ref,
+      }),
+    ).resolves.toMatch(/another graph/);
+  });
+
+  it("refuses a note that is not there to be carried to", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const away = live("2", { deleted_at: AT });
+
+    await expect(
+      refused([root, moving, away], moving.ref, {
+        relation: "under",
+        note: away.ref,
+      }),
+    ).resolves.toMatch(/springs from is not here/);
+    await expect(
+      refused([root, moving, away], moving.ref, {
+        relation: "after",
+        note: away.ref,
+      }),
+    ).resolves.toMatch(/follows is not here/);
+  });
+
+  it("refuses to carry a note that is not there", async () => {
+    const root = live("1");
+    const away = live("1a", {
+      origin: root.ref,
+      parent: root.ref,
+      deleted_at: AT,
+    });
+    const { service } = notebook([root, away]);
+
+    await expect(
+      service.move(DID, away.ref, { relation: "under", note: root.ref }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("refuses a branch of its own when nothing could follow the highest one", async () => {
+    const highest = String(Number.MAX_SAFE_INTEGER - 1);
+    const root = live(highest);
+    const moving = live(`${highest}a`, {
+      origin: root.ref,
+      parent: root.ref,
+    });
+
+    await expect(
+      refused([root, moving], moving.ref, {
+        relation: "after",
+        note: root.ref,
+      }),
+    ).resolves.toMatch(/under a note instead/);
   });
 });

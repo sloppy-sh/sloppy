@@ -1591,6 +1591,224 @@ describe("the domain routes", () => {
       expect(next.address).toBe(`${root.address}aa`);
     });
   });
+
+  describe("carrying a note somewhere else", () => {
+    const carry = (
+      note: NodeView,
+      to: { relation: "under" | "after"; note: OwnedRef },
+    ): Promise<NodeView[]> =>
+      ok("POST", `/nodes/${at(note.ref)}/move`, ada, { to }) as Promise<
+        NodeView[]
+      >;
+
+    const readNote = (ref: OwnedRef): Promise<NodeView> =>
+      ok("GET", `/nodes/${at(ref)}`, ada) as Promise<NodeView>;
+
+    scenario(
+      "springs a branch out of another note, keeping what is under it in place",
+      async () => {
+        const root = await newNode(ada, { title: "Where it began" });
+        const under = await newNode(ada, { from: springsFrom(root) });
+        const deeper = await newNode(ada, { from: springsFrom(under) });
+        const other = await newNode(ada, { title: "Where it belongs" });
+        await newNode(ada, { from: springsFrom(other) });
+
+        const moved = await carry(under, {
+          relation: "under",
+          note: other.ref,
+        });
+
+        expect(moved.map((one) => [one.ref, one.address])).toEqual([
+          [under.ref, `${other.address}b`],
+          [deeper.ref, `${other.address}b1`],
+        ]);
+        expect(moved.map((one) => one.origin)).toEqual([other.ref, other.ref]);
+        expect(moved[0].parent).toBe(other.ref);
+        expect(moved[1].parent).toBe(under.ref);
+        expect(moved.map((one) => one.depth)).toEqual([2, 3]);
+        expect((await readNote(deeper.ref)).address).toBe(`${other.address}b1`);
+        // The note it sprang from is where it was: a move renumbers nothing
+        // around it.
+        expect((await readNote(root.ref)).address).toBe(root.address);
+      },
+    );
+
+    scenario("goes to the end of a run it is already in", async () => {
+      const root = await newNode(ada, { title: "One run of thought" });
+      const first = await newNode(ada, { from: springsFrom(root) });
+      const second = await newNode(ada, { from: springsFrom(root) });
+
+      const moved = await carry(first, { relation: "after", note: second.ref });
+
+      expect(moved.map((one) => one.address)).toEqual([`${root.address}c`]);
+      expect((await readNote(second.ref)).address).toBe(`${root.address}b`);
+    });
+
+    scenario(
+      "leaves the address it was at leading to it, and spends it forever",
+      async () => {
+        const root = await newNode(ada, { title: "Cited before the move" });
+        const under = await newNode(ada, { from: springsFrom(root) });
+        const other = await newNode(ada, { title: "Its new home" });
+
+        const [moved] = await carry(under, {
+          relation: "under",
+          note: other.ref,
+        });
+        expect(moved.aliases).toEqual([under.address]);
+        expect((await readNote(under.ref)).aliases).toEqual([under.address]);
+
+        // The run it left keeps the number: the note after it in that run is
+        // the next one, never the one it gave up.
+        const next = await newNode(ada, { from: springsFrom(root) });
+        expect(next.address).toBe(`${root.address}b`);
+      },
+    );
+
+    scenario("never hands a branch number back after a move", async () => {
+      const first = await newNode(ada, {
+        from: { relation: "root", address: "65536" },
+      });
+      const other = await newNode(ada, { title: "A branch to hang it under" });
+
+      const [moved] = await carry(first, {
+        relation: "under",
+        note: other.ref,
+      });
+      expect(moved.address).toBe(`${other.address}a`);
+
+      const again = await call("POST", "/nodes", ada, {
+        from: { relation: "root", address: "65536" },
+      });
+      expect(again.status).toBe(400);
+      expect(JSON.stringify(again.body)).toContain("65536");
+      expect(JSON.stringify(again.body)).toContain("moved");
+    });
+
+    scenario(
+      "carries a note its author deleted, so putting it back puts it back under the branch",
+      async () => {
+        const root = await newNode(ada, { title: "Deleted, then carried" });
+        const under = await newNode(ada, { from: springsFrom(root) });
+        const deeper = await newNode(ada, { from: springsFrom(under) });
+        const other = await newNode(ada, { title: "Its new home" });
+
+        await ok("DELETE", `/nodes/${at(deeper.ref)}`, ada);
+        const [moved] = await carry(under, {
+          relation: "under",
+          note: other.ref,
+        });
+        expect(moved.address).toBe(`${other.address}a`);
+
+        const back = (await ok(
+          "POST",
+          `/nodes/${at(deeper.ref)}/restore`,
+          ada,
+        )) as NodeView;
+        expect(back.address).toBe(`${other.address}a1`);
+        expect(back.origin).toBe(other.ref);
+        expect(back.parent).toBe(under.ref);
+      },
+    );
+
+    scenario(
+      "refuses what would leave a note hanging under itself",
+      async () => {
+        const root = await newNode(ada, { title: "Nowhere to go" });
+        const under = await newNode(ada, { from: springsFrom(root) });
+        const deeper = await newNode(ada, { from: springsFrom(under) });
+        const elsewhere = await newGraph(ada, "Another notebook");
+        const abroad = await newNode(ada, {
+          from: { relation: "branch", graph: elsewhere.ref },
+        });
+
+        for (const to of [
+          { relation: "under" as const, note: under.ref },
+          { relation: "after" as const, note: under.ref },
+          { relation: "under" as const, note: deeper.ref },
+          { relation: "under" as const, note: abroad.ref },
+        ]) {
+          const refused = await call(
+            "POST",
+            `/nodes/${at(under.ref)}/move`,
+            ada,
+            { to },
+          );
+          expect(refused.status).toBe(400);
+        }
+        // Nothing moved, and nothing was renumbered on the way to refusing.
+        expect((await readNote(under.ref)).address).toBe(under.address);
+        expect((await readNote(deeper.ref)).address).toBe(deeper.address);
+      },
+    );
+
+    scenario("reaches nobody else's note", async () => {
+      const mine = await newNode(ada, { title: "Ada's" });
+      const under = await newNode(ada, { from: springsFrom(mine) });
+      const theirs = await newNode(bram, { title: "Bram's" });
+
+      expect(
+        (
+          await call("POST", `/nodes/${at(under.ref)}/move`, bram, {
+            to: { relation: "under", note: theirs.ref },
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await call("POST", `/nodes/${at(under.ref)}/move`, ada, {
+            to: { relation: "under", note: theirs.ref },
+          })
+        ).status,
+      ).toBe(400);
+      expect((await readNote(under.ref)).address).toBe(under.address);
+    });
+
+    scenario(
+      "gives two graphs told the same story the same addresses",
+      async () => {
+        /** One sequence of writes and moves, and everything the addressing rule
+         *  decided along the way: where each move landed a note, the addresses
+         *  it left leading to one, and where every note ended up. */
+        const told = async (graph: OwnedRef): Promise<string[]> => {
+          const branch = () =>
+            newNode(ada, { from: { relation: "branch", graph } });
+          const first = await branch();
+          const under = await newNode(ada, { from: springsFrom(first) });
+          const alongside = await newNode(ada, { from: springsFrom(first) });
+          const deeper = await newNode(ada, { from: springsFrom(under) });
+          const second = await branch();
+
+          const written = [first, under, alongside, deeper, second];
+          const place = new Map(written.map((one, index) => [one.ref, index]));
+          const said = (one: NodeView) =>
+            `${place.get(one.ref)} -> ${one.address} [${(one.aliases ?? []).join(",")}]`;
+
+          const moves = [
+            await carry(under, { relation: "under", note: second.ref }),
+            await carry(alongside, { relation: "after", note: under.ref }),
+            await carry(second, { relation: "after", note: first.ref }),
+          ];
+          const ended = await Promise.all(
+            written.map((one) => readNote(one.ref)),
+          );
+          return [
+            ...moves.flatMap((subtree) => subtree.map(said)),
+            ...ended.map((one, index) => `${index} @ ${one.address}`),
+          ];
+        };
+
+        const one = await newGraph(ada, "Told once");
+        const other = await newGraph(ada, "Told again");
+
+        expect((await told(other.ref)).join("\n")).toBe(
+          (await told(one.ref)).join("\n"),
+        );
+      },
+      30_000,
+    );
+  });
+
   describe("a note's look", () => {
     scenario(
       "is stored as its author set it, and taken back off whole",
