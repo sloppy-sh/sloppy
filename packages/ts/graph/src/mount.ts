@@ -175,8 +175,6 @@ export function mountGraph(
    * finger is worse than one that starts off-centre.
    */
   let framing = true;
-  /** Until the field has been framed once the viewport is still the default
-   *  1:1, so what is on screen says nothing about where a mark sits. */
   let framed = false;
   let dragged: { index: number; world: Point } | null = null;
   let bringing: OwnedRef | null = null;
@@ -242,6 +240,21 @@ export function mountGraph(
   const lodBudget = (): LodBudget => ({ ...DEFAULT_BUDGET, ...props.lod });
 
   /**
+   * Everything the marks now on the canvas were drawn from EXCEPT the reader's
+   * tags. While all of it stands still a rebuild has only colours to write, and
+   * takes {@link GraphScene.setTints} instead of replacing what is drawn.
+   */
+  let drawnFrom: {
+    nodes: GraphMountOptions["nodes"];
+    collapsed: GraphMountOptions["collapsed"];
+    viewer: GraphMountOptions["viewer"];
+    fields: GraphMountOptions["fields"];
+    focus: OwnedRef | undefined;
+    palette: GraphPalette;
+    budget: LodBudget;
+  } | null = null;
+
+  /**
    * `relayout` false re-reads the model without disturbing the simulation: the
    * drawn set and its order are a function of the props, so when only the
    * colours have moved the worker's positions still belong to these nodes. A
@@ -250,7 +263,21 @@ export function mountGraph(
    */
   const rebuild = (relayout = true): void => {
     if (!scene) return;
-    const lod = applyLod(props.nodes, props.collapsed, focus, lodBudget());
+    const budget = lodBudget();
+    const standing = drawnFrom;
+    const recolour =
+      !relayout &&
+      standing !== null &&
+      standing.nodes === props.nodes &&
+      standing.collapsed === props.collapsed &&
+      standing.viewer === props.viewer &&
+      standing.fields === props.fields &&
+      standing.focus === focus &&
+      standing.palette === palette &&
+      standing.budget.depth === budget.depth &&
+      standing.budget.maxDrawn === budget.maxDrawn;
+
+    const lod = applyLod(props.nodes, props.collapsed, focus, budget);
     budgetFolded = lod.folded;
 
     const model = buildModel(drawnNodes(props.nodes, lod.collapsed), {
@@ -261,7 +288,17 @@ export function mountGraph(
       fields: props.fields,
     });
 
-    scene.setModel(model, props.selection.length > 0);
+    if (recolour) scene.setTints(model, props.selection.length > 0);
+    else scene.setModel(model, props.selection.length > 0);
+    drawnFrom = {
+      nodes: props.nodes,
+      collapsed: props.collapsed,
+      viewer: props.viewer,
+      fields: props.fields,
+      focus,
+      palette,
+      budget,
+    };
     scene.setPicking(props.picking ?? null);
     scene.setChosen(props.chosen ?? null);
     scene.setReading(

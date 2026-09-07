@@ -62,10 +62,22 @@ class StandInScene {
     return StandInScene.latest;
   }
 
+  /** How often what is drawn was replaced, against how often it was only
+   *  re-coloured — which is the whole difference a tag question makes. */
+  models = 0;
+  tints = 0;
+
   setModel(model: BuiltModel, selecting: boolean): void {
+    this.models += 1;
     this.model = model;
     this.selecting = selecting;
     this.positions = new Float32Array(model.order.length * 2);
+  }
+
+  setTints(model: BuiltModel, selecting: boolean): void {
+    this.tints += 1;
+    this.model = model;
+    this.selecting = selecting;
   }
 
   setPicking(picking: GraphPickMarks | null): void {
@@ -729,6 +741,78 @@ describe("selecting tags", () => {
     });
 
     expect(graph.starts()).toBe(before + 1);
+  });
+
+  // DESIGN.md § Hue: the answer is colour on the marks that are up. Replacing
+  // them would re-lay every picture and blank every address and title to write
+  // two numbers per mark.
+  it("re-colours the marks already up instead of replacing them", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({ ...graph.props, selection });
+
+    expect(graph.scene.tints).toBe(1);
+    expect(graph.scene.models).toBe(drew);
+    expect(graph.scene.selecting).toBe(true);
+    expect(
+      graph
+        .model()
+        .order.some((ref) => graph.model().graph.getNodeAttributes(ref).tag),
+    ).toBe(true);
+  });
+
+  it("re-colours for a note chosen and a note opened too", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+    const [first] = graph.model().order;
+
+    graph.handle.update({ ...graph.props, chosen: new Set([first]) });
+    graph.handle.update({
+      ...graph.props,
+      reading: { open: new Set([first]), active: first },
+    });
+
+    expect(graph.scene.tints).toBe(2);
+    expect(graph.scene.models).toBe(drew);
+  });
+
+  it("replaces what is drawn when the notes themselves move", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({ ...graph.props, nodes: [...graph.props.nodes] });
+
+    expect(graph.scene.models).toBe(drew + 1);
+    expect(graph.scene.tints).toBe(0);
+  });
+
+  it("replaces what is drawn when the fold the host asked for moves", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({
+      ...graph.props,
+      collapsed: new Set<OwnedRef>([graph.model().order[0]]),
+    });
+
+    expect(graph.scene.models).toBe(drew + 1);
+    expect(graph.scene.tints).toBe(0);
+  });
+
+  // Every mark's fill is the palette's, so a picture behind the field moves the
+  // colours a re-tint would be writing.
+  it("replaces what is drawn when the palette moves under it", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({
+      ...graph.props,
+      wallpaper: { picture: "one", strength: 1 },
+    });
+
+    expect(graph.scene.models).toBe(drew + 1);
+    expect(graph.scene.tints).toBe(0);
   });
 });
 
