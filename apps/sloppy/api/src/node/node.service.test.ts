@@ -1,6 +1,6 @@
 // The one refusal the number line itself forces, which of the notes somebody
-// deleted a listing offers back, and what carrying a note somewhere else
-// re-addresses and refuses. Everything else about writing a note is exercised
+// deleted a listing offers back, what an address typed into a search reaches,
+// and what carrying a note somewhere else re-addresses and refuses. Everything else about writing a note is exercised
 // against a running server in `domain.integration.test.ts`; the number-line
 // refusal cannot live there, because reaching the top means owning a branch
 // numbered near it and every automatic branch that graph opened afterwards
@@ -18,6 +18,7 @@ import {
   type NoteDestination,
   type OwnedRef,
   ownedRefFrom,
+  homeGraphRef,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import type { MediaService } from "../media/media.service";
@@ -498,5 +499,73 @@ describe("carrying a note somewhere else", () => {
         note: root.ref,
       }),
     ).resolves.toMatch(/under a note instead/);
+  });
+});
+
+describe("an address typed into a search", () => {
+  /** A graph where `1c` is where `1a` was carried to, and `1a` is the address
+   *  it left behind. */
+  function searching(): {
+    asked: { address?: string };
+    service: NodeService;
+    note: Node & { ref: OwnedRef };
+  } {
+    const note = live("1c");
+    const asked: { address?: string } = {};
+    const finding = {
+      notesAddressed: (_did: string, address: string) => {
+        asked.address = address;
+        return Promise.resolve(
+          address === "1a" || address === "1c" ? [note.ref] : [],
+        );
+      },
+      writingMatches: () => Promise.resolve([]),
+      heldWritingMatches: () => Promise.resolve([]),
+    } as unknown as FindRepository;
+    const repository = {
+      many: () => Promise.resolve([note as Node]),
+      notesIn: () => Promise.resolve([]),
+    } as unknown as NodeRepository;
+    return {
+      asked,
+      service: new NodeService(
+        repository,
+        finding,
+        graphs,
+        media,
+        publications,
+      ),
+      note,
+    };
+  }
+
+  it("reaches the note at it", async () => {
+    const { service, note } = searching();
+
+    expect(await service.search(DID, "1c")).toEqual([
+      {
+        note: note.ref,
+        address: "1c",
+        graph: homeGraphRef(DID),
+        title: "1c",
+        snippet: "",
+        held: false,
+      },
+    ]);
+  });
+
+  it("reaches the note it has been carried away from", async () => {
+    const { service, note } = searching();
+
+    expect((await service.search(DID, "1a")).map((hit) => hit.note)).toEqual([
+      note.ref,
+    ]);
+  });
+
+  it("asks for no address where the words are not one", async () => {
+    const { asked, service } = searching();
+
+    expect(await service.search(DID, "spores")).toEqual([]);
+    expect(asked.address).toBeUndefined();
   });
 });
