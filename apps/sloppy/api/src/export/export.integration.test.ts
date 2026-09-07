@@ -2,10 +2,10 @@
 // actually return, which rows they reach, and that the answer is written out
 // rather than gathered first.
 //
-// Skipped when nothing is listening, so a clone without the dev stack still
-// runs `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `src/testing/integration-target.ts` is the gate.
 
-import { createConnection, createServer } from "node:net";
+import { createServer } from "node:net";
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import {
@@ -20,29 +20,13 @@ import {
   recordIdFromOwnedRef,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { integrationTarget } from "../testing/integration-target";
 
 const ENDPOINT = new URL(
   process.env.SLOPPY_SURREALDB_URL ?? "ws://127.0.0.1:8010/rpc",
 );
 const DATABASE = `export_${Date.now()}`;
 const PASSWORD = "a-long-enough-passphrase";
-
-function probe(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({
-      host: ENDPOINT.hostname,
-      port: Number(ENDPOINT.port) || (ENDPOINT.protocol === "wss:" ? 443 : 80),
-    });
-    const settle = (answer: boolean) => {
-      socket.destroy();
-      resolve(answer);
-    };
-    socket.setTimeout(1000);
-    socket.once("connect", () => settle(true));
-    socket.once("timeout", () => settle(false));
-    socket.once("error", () => settle(false));
-  });
-}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -65,7 +49,7 @@ interface Person {
 }
 
 describe("a copy of everything somebody keeps", () => {
-  let listening = false;
+  let runs = false;
   let app: INestApplication;
   let base: string;
   let ada: Person;
@@ -75,7 +59,7 @@ describe("a copy of everything somebody keeps", () => {
     it(
       name,
       async (ctx) => {
-        ctx.skip(!listening, `nothing is listening at ${ENDPOINT.href}`);
+        ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
         await run();
       },
       timeout,
@@ -199,8 +183,8 @@ describe("a copy of everything somebody keeps", () => {
   }
 
   beforeAll(async () => {
-    listening = await probe();
-    if (!listening) return;
+    runs = await integrationTarget(ENDPOINT);
+    if (!runs) return;
 
     const port = await freePort();
     base = `http://127.0.0.1:${port}`;

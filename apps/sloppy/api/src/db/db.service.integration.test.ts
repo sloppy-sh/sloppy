@@ -12,8 +12,8 @@
 // told to. What it does not measure is length: recovery does not depend on it,
 // and `db.service.test.ts` is where that is pinned.
 //
-// Skipped when nothing is listening, so a clone without the dev stack still runs
-// `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `src/testing/integration-target.ts` is the gate.
 
 import { randomBytes } from "node:crypto";
 import {
@@ -26,6 +26,7 @@ import {
 import { Surreal } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AppConfigService } from "../config/app-config.service";
+import { integrationTarget } from "../testing/integration-target";
 import { DbService } from "./db.service";
 
 const ENDPOINT = new URL(
@@ -47,23 +48,6 @@ const PASSWORD = randomBytes(24).toString("base64url");
 
 function port(endpoint: URL): number {
   return Number(endpoint.port) || 8000;
-}
-
-function reachable(endpoint: URL): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({
-      host: endpoint.hostname,
-      port: port(endpoint),
-    });
-    const settle = (answer: boolean) => {
-      socket.destroy();
-      resolve(answer);
-    };
-    socket.setTimeout(1000);
-    socket.once("connect", () => settle(true));
-    socket.once("timeout", () => settle(false));
-    socket.once("error", () => settle(false));
-  });
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -161,13 +145,13 @@ function serving(url: string, database: string): DbService {
 }
 
 describe("a connection older than its access token", () => {
-  let listening = false;
+  let runs = false;
   let admin: Surreal | undefined;
   let service: DbService | undefined;
 
   beforeAll(async () => {
-    listening = await reachable(ENDPOINT);
-    if (!listening) return;
+    runs = await integrationTarget(ENDPOINT);
+    if (!runs) return;
 
     admin = new Surreal();
     await admin.connect(ENDPOINT.toString(), { authentication: ROOT });
@@ -189,7 +173,7 @@ describe("a connection older than its access token", () => {
   }, 30_000);
 
   it("is still authorized after the token it opened with has expired", async (ctx) => {
-    ctx.skip(!listening, "the dev stack is not up");
+    ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
 
     service = new DbService(
       {
@@ -215,22 +199,22 @@ describe("a connection older than its access token", () => {
 });
 
 describe("a connection whose server goes away", () => {
-  let listening = false;
+  let runs = false;
   let gate: Gate | undefined;
   let service: DbService | undefined;
 
   beforeAll(async () => {
-    listening = await reachable(ENDPOINT);
+    runs = await integrationTarget(ENDPOINT);
   }, 30_000);
 
   afterAll(async () => {
     await service?.onModuleDestroy();
     await gate?.shut();
-    if (listening) await wipe(OUTAGE_DATABASE);
+    if (runs) await wipe(OUTAGE_DATABASE);
   }, 30_000);
 
   it("serves again once the server is back, with nothing restarted", async (ctx) => {
-    ctx.skip(!listening, "the dev stack is not up");
+    ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
 
     gate = new Gate(await freePort(), ENDPOINT);
     await gate.open();
@@ -259,18 +243,18 @@ describe("a connection whose server goes away", () => {
 });
 
 describe("a store rebuilt while the connection was away", () => {
-  let listening = false;
+  let runs = false;
   let gate: Gate | undefined;
   let service: DbService | undefined;
 
   beforeAll(async () => {
-    listening = await reachable(ENDPOINT);
+    runs = await integrationTarget(ENDPOINT);
   }, 30_000);
 
   afterAll(async () => {
     await service?.onModuleDestroy();
     await gate?.shut();
-    if (listening) await wipe(REBUILT_DATABASE);
+    if (runs) await wipe(REBUILT_DATABASE);
   }, 30_000);
 
   // Every table a module registers is defined by whoever opens the connection,
@@ -278,7 +262,7 @@ describe("a store rebuilt while the connection was away", () => {
   // API reports itself healthy and answers every route with a table that does
   // not exist, until somebody restarts it by hand.
   it("has the schema put back on it, with nothing restarted", async (ctx) => {
-    ctx.skip(!listening, "the dev stack is not up");
+    ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
 
     gate = new Gate(await freePort(), ENDPOINT);
     await gate.open();

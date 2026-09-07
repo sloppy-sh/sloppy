@@ -7,10 +7,9 @@
 // (the `surrealdb` client) and `docker-compose.yml` (the server image). Bump
 // either half against the other and this file is where it shows.
 //
-// Skipped when nothing is listening, so a clone without the dev stack still
-// runs `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `integration-target.ts` is the gate.
 
-import { createConnection } from "node:net";
 import {
   DidSyrSchema,
   homeGraphRef,
@@ -19,6 +18,7 @@ import {
 } from "@sloppy/types";
 import { RecordId, Surreal, Table } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { integrationTarget } from "./integration-target.js";
 import { STATEMENTS } from "./purge.js";
 import { defineCoreSchema, SLOPPY_TABLES } from "./schema.js";
 
@@ -130,29 +130,11 @@ function heldNodeRow(localId: string, address: string, depth: number) {
   };
 }
 
-/**
- * Whether anything is listening — a TCP probe and nothing more, so the only
- * thing that can skip this suite is an absent server. Everything past the
- * socket, the client's own version gate included, is the pairing under test and
- * has to fail the run rather than quietly excuse it. The client cannot answer
- * this itself: `connect()` to a refused port never settles.
- */
-const listening = await new Promise<boolean>((resolve) => {
-  const socket = createConnection({
-    host: ENDPOINT.hostname,
-    port: Number(ENDPOINT.port) || (ENDPOINT.protocol === "wss:" ? 443 : 80),
-  });
-  const settle = (answer: boolean) => {
-    socket.destroy();
-    resolve(answer);
-  };
-  socket.setTimeout(1000);
-  socket.once("connect", () => settle(true));
-  socket.once("timeout", () => settle(false));
-  socket.once("error", () => settle(false));
-});
+// Everything past the socket, the client's own version gate included, is the
+// pairing under test and has to fail the run rather than quietly excuse it.
+const runs = await integrationTarget(ENDPOINT);
 
-describe.skipIf(!listening)(`the schema against ${ENDPOINT.href}`, () => {
+describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
   let db: Surreal;
 
   async function read(id: RecordId): Promise<NodeRow> {
@@ -1049,7 +1031,7 @@ const BEFORE_GRAPHS = `
   DEFINE INDEX IF NOT EXISTS pulled_node_owner_author_address ON pulled_node FIELDS created_by, source_did, address UNIQUE;
 `;
 
-describe.skipIf(!listening)("a store written before graphs existed", () => {
+describe.skipIf(!runs)("a store written before graphs existed", () => {
   const DATABASE_BEFORE = `before_graphs_${Date.now()}`;
   let db: Surreal;
 

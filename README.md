@@ -69,7 +69,8 @@ tags, blocks and ink are Sloppy's own. That split is not a preference — see
 ## Run it
 
 Requires Docker. `corepack enable` too, for the native shell and the workspace scripts —
-the pnpm version is pinned in `package.json`, so corepack fetches that one.
+the pnpm version is pinned in `package.json`, so corepack fetches that one. Node is
+pinned in `.node-version`, which most version managers read.
 
 ```bash
 pnpm dev           # the whole stack, in Docker, watching your source
@@ -121,7 +122,11 @@ empties them.
 ### The native shell, and running on the host
 
 Tauri builds an OS app, so `@sloppy/native` cannot run in a container. It runs here and
-talks to the API in Docker, which is where it looks by default:
+talks to the API in Docker, which is where it looks by default. It needs Rust — 1.77.2 or
+newer, from [rustup](https://rustup.rs) — and so does `pnpm test`, which runs the shell's
+own tests along with everything else. The first Rust build compiles an embedded database
+and takes a few minutes; `pnpm test:ts` runs the TypeScript suite alone and needs no Rust
+at all.
 
 ```bash
 pnpm install
@@ -165,16 +170,19 @@ pnpm check         # type-check the workspace
 pnpm lint          # biome + eslint, per package
 pnpm format        # write formatting
 pnpm test          # run tests
+pnpm test:ts       # the TypeScript ones alone, with no Rust build
 ```
 
 Run the heavy ones — a forced rebuild, the whole suite — against a detached stack rather
 than an attached `pnpm dev`. They write thousands of files at once, and under that much
 churn the watcher can miss an edit or recreate the containers under you.
 
-The integration suites run against the dev SurrealDB and skip when nothing is listening, so
-`pnpm stack:up` before `pnpm test` is what exercises the table definitions, the indexes and
-the purge, the delegation round trip, and Sloppy signing in against its own provider for
-real. `SLOPPY_SURREALDB_URL` points them elsewhere.
+The integration suites run against the dev SurrealDB, and only when a run asks for them:
+`pnpm stack:up`, then `SLOPPY_INTEGRATION=1 pnpm test`, is what exercises the table
+definitions, the indexes and the purge, the delegation round trip, and Sloppy signing in
+against its own provider for real. Asked for and finding nothing listening, they fail
+rather than skip; unasked, they skip, so a run that never wanted them cannot be read as
+one that had them. `SLOPPY_SURREALDB_URL` points them elsewhere.
 
 ## Formatting: who owns what
 

@@ -2,14 +2,15 @@
 // somebody refuses, the notes of theirs that have been answered, and where an
 // answer of their own is deposited.
 //
-// Skipped when nothing is listening, so a clone without the dev stack still
-// runs `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `src/testing/integration-target.ts` is the gate.
 
-import { createConnection, createServer } from "node:net";
+import { createServer } from "node:net";
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { AnsweredNote, NodeView, RefusedVoiceView } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { integrationTarget } from "../testing/integration-target";
 
 const ENDPOINT = new URL(
   process.env.SLOPPY_SURREALDB_URL ?? "ws://127.0.0.1:8010/rpc",
@@ -20,23 +21,6 @@ const PASSWORD = "a-long-enough-passphrase";
 const THEM = "did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ";
 const STRANGER = "did:syr:z6MkjchhfUsD6mmvni8mCdXHw216Xrm9bQe2mBH1P5RDjVJG";
 const PEER = "https://author.example";
-
-function probe(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({
-      host: ENDPOINT.hostname,
-      port: Number(ENDPOINT.port) || (ENDPOINT.protocol === "wss:" ? 443 : 80),
-    });
-    const settle = (answer: boolean) => {
-      socket.destroy();
-      resolve(answer);
-    };
-    socket.setTimeout(1000);
-    socket.once("connect", () => settle(true));
-    socket.once("timeout", () => settle(false));
-    socket.once("error", () => settle(false));
-  });
-}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -54,14 +38,14 @@ function freePort(): Promise<number> {
 }
 
 describe("what one person's instance assembles for them", () => {
-  let listening = false;
+  let runs = false;
   let app: INestApplication;
   let base: string;
   let reader: { did: string; cookie: string };
 
   const scenario = (name: string, run: () => Promise<void>) =>
     it(name, async (ctx) => {
-      ctx.skip(!listening, `nothing is listening at ${ENDPOINT.href}`);
+      ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
       await run();
     });
 
@@ -183,8 +167,8 @@ describe("what one person's instance assembles for them", () => {
   }
 
   beforeAll(async () => {
-    listening = await probe();
-    if (!listening) return;
+    runs = await integrationTarget(ENDPOINT);
+    if (!runs) return;
 
     const port = await freePort();
     base = `http://127.0.0.1:${port}`;

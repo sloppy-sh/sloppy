@@ -8,11 +8,11 @@
 // reads from an answer against what the provider writes into one, and a status
 // that never travelled a socket is not the status a route gives.
 //
-// Skipped when nothing is listening, so a clone without the dev stack still runs
-// `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `src/testing/integration-target.ts` is the gate.
 
 import { createServer as createHttpServer } from "node:http";
-import { type AddressInfo, createConnection, createServer } from "node:net";
+import { type AddressInfo, createServer } from "node:net";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
+import { integrationTarget } from "../testing/integration-target";
 import { RATE_CAPACITY } from "./proxy.controller";
 
 const DB_ENDPOINT = new URL(
@@ -43,24 +44,6 @@ const PIXEL = Buffer.from(
   "base64",
 );
 
-function reachable(endpoint: URL): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({
-      host: endpoint.hostname,
-      port:
-        Number(endpoint.port) || (endpoint.protocol === "https:" ? 443 : 80),
-    });
-    const settle = (answer: boolean) => {
-      socket.destroy();
-      resolve(answer);
-    };
-    socket.setTimeout(1000);
-    socket.once("connect", () => settle(true));
-    socket.once("timeout", () => settle(false));
-    socket.once("error", () => settle(false));
-  });
-}
-
 /** `PUBLIC_URL` is what every address the provider mints is built from, so the
  *  port has to be known before the app starts. */
 function freePort(): Promise<number> {
@@ -79,7 +62,7 @@ function freePort(): Promise<number> {
 }
 
 describe("a picture through Sloppy's routes and its own provider", () => {
-  let listening = false;
+  let runs = false;
   let app: NestExpressApplication;
   let base: string;
   let cookie: string;
@@ -87,7 +70,7 @@ describe("a picture through Sloppy's routes and its own provider", () => {
 
   const scenario = (name: string, run: () => Promise<void>) =>
     it(name, async (ctx) => {
-      ctx.skip(!listening, "the dev stack is not up");
+      ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
       await run();
     });
 
@@ -148,9 +131,8 @@ describe("a picture through Sloppy's routes and its own provider", () => {
   }
 
   beforeAll(async () => {
-    listening =
-      (await reachable(DB_ENDPOINT)) && (await reachable(STORE_ENDPOINT));
-    if (!listening) return;
+    runs = await integrationTarget(DB_ENDPOINT, STORE_ENDPOINT);
+    if (!runs) return;
 
     const port = await freePort();
     base = `http://127.0.0.1:${port}`;

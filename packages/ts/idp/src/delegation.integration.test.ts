@@ -6,10 +6,9 @@
 // what the shell adds is routing and nothing else — and the same functions are
 // what the native app calls when it runs the provider in-process.
 //
-// Skipped when nothing is listening, so a clone without the dev stack still
-// runs `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `integration-target.ts` is the gate.
 
-import { createConnection } from "node:net";
 import {
   nowIso,
   SyrPlatformChallengeResponseSchema,
@@ -31,6 +30,7 @@ import {
   signPayload,
 } from "./delegation.js";
 import { login, register, resolveSession } from "./identity.js";
+import { integrationTarget } from "./integration-target.js";
 import { deriveIdpSecrets } from "./secrets.js";
 import {
   defineIdentitySchema,
@@ -53,22 +53,9 @@ const PASSWORD = "a-long-enough-passphrase";
 const PLATFORM_ORIGIN = "https://sloppy.example";
 const CALLBACK = "https://sloppy.example/auth/callback";
 
-const listening = await new Promise<boolean>((resolve) => {
-  const socket = createConnection({
-    host: ENDPOINT.hostname,
-    port: Number(ENDPOINT.port) || (ENDPOINT.protocol === "wss:" ? 443 : 80),
-  });
-  const settle = (answer: boolean) => {
-    socket.destroy();
-    resolve(answer);
-  };
-  socket.setTimeout(1000);
-  socket.once("connect", () => settle(true));
-  socket.once("timeout", () => settle(false));
-  socket.once("error", () => settle(false));
-});
+const runs = await integrationTarget(ENDPOINT);
 
-describe.skipIf(!listening)(`the provider against ${ENDPOINT.href}`, () => {
+describe.skipIf(!runs)(`the provider against ${ENDPOINT.href}`, () => {
   let ctx: IdpContext;
   let names = 0;
 
