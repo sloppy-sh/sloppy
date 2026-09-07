@@ -313,12 +313,18 @@
 	const open = $derived(page.state.note ?? null);
 	/** Every note open on the reading surface, in the order they were opened. */
 	const openNotes = $derived<readonly OwnedRef[]>(page.state.notes ?? (open ? [open] : []));
-	const tabs = $derived(
-		openNotes.map((ref) => {
-			const note = nodes.get(ref);
-			return { ref, address: note?.address ?? '', title: note?.title ?? '' };
-		})
-	);
+	/** An address is read inside one graph, so a tab names its own only where a
+	 *  note from a second one is open beside it. */
+	const tabs = $derived.by(() => {
+		const opened = openNotes.map((ref) => ({ ref, note: nodes.get(ref) }));
+		const across = new Set(opened.flatMap(({ note }) => (note ? [graphOf(note)] : [])));
+		return opened.map(({ ref, note }) => ({
+			ref,
+			address: note?.address ?? '',
+			title: note?.title ?? '',
+			graph: note && across.size > 1 ? graphs.titleOf(graphOf(note)) || 'Untitled' : null
+		}));
+	});
 	/** Why another note could not be opened beside the ones already open. */
 	const tooMany = $derived(
 		refusedAt !== null &&

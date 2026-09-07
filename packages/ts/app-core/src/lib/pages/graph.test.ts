@@ -2194,6 +2194,92 @@ describe('finding a note again from the graph', () => {
 	});
 });
 
+// PRODUCT.md principle 3: an address is read inside one graph, so a strip that
+// holds notes from two says which each one is in.
+describe('which graph a tab is read in', () => {
+	const GARDEN = ref(50);
+	const COMPOST = node(51, '1', { title: 'Compost', graph: GARDEN });
+
+	/** A note's own control on the stand-in canvas, by its title: two graphs on
+	 *  one canvas can each hold a note at the same address. */
+	function markTitled(title: string): HTMLButtonElement {
+		const found = [...document.body.querySelectorAll('[aria-label="The graph"] button')].find(
+			(mark) => mark.textContent?.includes(title)
+		);
+		if (!found) throw new Error(`No note titled ${title} is drawn`);
+		return found as HTMLButtonElement;
+	}
+
+	function menuOnTitled(title: string): HTMLButtonElement {
+		const row = markTitled(title).closest('li');
+		const found = row?.querySelector<HTMLButtonElement>('[data-menu]');
+		if (!found) throw new Error(`No menu answers on the note titled ${title}`);
+		return found;
+	}
+
+	/** What each tab on the strip says, in the order the notes were opened. */
+	const tabsSay = (): string[] =>
+		[...document.body.querySelectorAll<HTMLElement>('[aria-label="Open notes"] button')]
+			.filter((one) => one.querySelector('.address'))
+			.map((one) => (one.textContent ?? '').replace(/\s+/g, ' ').trim());
+
+	async function alsoShowGarden(): Promise<void> {
+		graph.set(COMPOST.ref, COMPOST);
+		api.on('GET /graphs', () => [
+			{ ref: HOME, created_by: DID, created_at: AT, updated_at: AT, title: 'Notes' },
+			{ ref: GARDEN, created_by: DID, created_at: AT, updated_at: AT, title: 'Garden' }
+		]);
+		await open();
+		prefs.set('alsoOnCanvas', [GARDEN]);
+		await settle();
+	}
+
+	afterEach(() => {
+		prefs.set('alsoOnCanvas', []);
+		graphs.clear();
+	});
+
+	it('names no graph while the open notes are all in one', async () => {
+		await open();
+		onCanvas('1a').click();
+		await settle();
+		menuOn('2').click();
+		await settle();
+		item('Open it as well').click();
+		await settle();
+
+		expect(tabsSay()).toEqual(['1a Cells', '2 Method']);
+	});
+
+	it('names each graph once the open notes span two of them', async () => {
+		await alsoShowGarden();
+		markTitled('Origins').click();
+		await settle();
+		menuOnTitled('Compost').click();
+		await settle();
+		item('Open it as well').click();
+		await settle();
+
+		expect(tabsSay()).toEqual(['1 Origins Notes', '1 Compost Garden']);
+	});
+
+	// Two tabs both reading `1` are told apart by nothing else a screen reader
+	// reaches.
+	it('says which graph in the labels that close and choose a tab', async () => {
+		await alsoShowGarden();
+		markTitled('Origins').click();
+		await settle();
+		menuOnTitled('Compost').click();
+		await settle();
+		item('Open it as well').click();
+		await settle();
+
+		expect(labelled('1 Compost, in Garden')).toBeTruthy();
+		expect(labelled('Close 1 in Notes')).toBeTruthy();
+		expect(labelled('Close 1 in Garden')).toBeTruthy();
+	});
+});
+
 describe('the way back out of a trail', () => {
 	beforeEach(() => {
 		vi.spyOn(globalThis.history, 'back').mockImplementation(() => {
