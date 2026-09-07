@@ -2,7 +2,7 @@ import type { NodeView, OwnedRef } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
-import { applyLod, DEFAULT_BUDGET, spineFloor } from "./lod.js";
+import { applyLod, DEFAULT_BUDGET, makeFold, spineFloor } from "./lod.js";
 
 const corpus = makeCorpus();
 const nodes = corpus.nodes;
@@ -133,6 +133,86 @@ describe("applyLod", () => {
     const once = applyLod(nodes, nothing, undefined);
     const twice = applyLod(nodes, nothing, undefined);
     expect([...twice.collapsed].sort()).toEqual([...once.collapsed].sort());
+  });
+
+  // The fold that answers a tag question walks the same tree the one before it
+  // did, and that walk is the whole O(every note) cost of a rebuild.
+  describe("re-using its walk of the tree", () => {
+    /** The nodes, with every read of `parent` counted — which is what building
+     *  the children index costs and what folding, given one, does not. */
+    const counted = (
+      from: readonly NodeView[],
+    ): { nodes: NodeView[]; reads: () => number } => {
+      let reads = 0;
+      return {
+        nodes: from.map((node) => {
+          const { parent, ...rest } = node;
+          return Object.defineProperty(rest as NodeView, "parent", {
+            enumerable: true,
+            get: () => {
+              reads += 1;
+              return parent;
+            },
+          });
+        }),
+        reads: () => reads,
+      };
+    };
+
+    it("does not walk it again for the same nodes and focus", () => {
+      const { nodes: watched, reads } = counted(nodes);
+      const fold = makeFold();
+      fold(watched, nothing, undefined);
+      const walked = reads();
+      expect(walked).toBeGreaterThanOrEqual(watched.length);
+
+      fold(watched, new Set([watched[0].ref]), undefined);
+      expect(reads() - walked).toBeLessThan(watched.length / 10);
+    });
+
+    it("walks it again when the focus moves", () => {
+      const { nodes: watched, reads } = counted(nodes);
+      const focus = watched.find((node) => node.depth === 6)!;
+      const fold = makeFold();
+      fold(watched, nothing, undefined);
+      const walked = reads();
+      fold(watched, nothing, focus.ref);
+      expect(reads() - walked).toBeGreaterThanOrEqual(watched.length);
+    });
+
+    // One canvas is one fold, so a second one on the same tree is not somebody
+    // else's walk being thrown away and read again.
+    it("gives every canvas its own walk to re-use", () => {
+      const { nodes: watched, reads } = counted(nodes);
+      const one = makeFold();
+      const two = makeFold();
+      one(watched, nothing, undefined);
+      two(watched, nothing, undefined);
+      const walked = reads();
+
+      one(watched, nothing, undefined);
+      two(watched, nothing, undefined);
+      expect(reads() - walked).toBeLessThan(watched.length / 10);
+    });
+
+    it("folds the same whether or not the walk is re-used", () => {
+      const focus = nodes.find((node) => node.depth === 6)!;
+      const asks: [ReadonlySet<OwnedRef>, OwnedRef | undefined][] = [
+        [nothing, undefined],
+        [new Set([nodes[0].ref]), undefined],
+        [nothing, focus.ref],
+        [nothing, undefined],
+      ];
+      const fold = makeFold();
+      for (const [collapsed, focusRef] of asks) {
+        const kept = fold(nodes, collapsed, focusRef);
+        // The free fold walks the tree for every ask, so this is the answer with
+        // nothing re-used.
+        const fresh = applyLod(nodes, collapsed, focusRef);
+        expect([...kept.collapsed].sort()).toEqual([...fresh.collapsed].sort());
+        expect([...kept.folded].sort()).toEqual([...fresh.folded].sort());
+      }
+    });
   });
 
   it("leaves a region already under the bound alone", () => {

@@ -22,11 +22,24 @@ import {
   toSrgb8,
 } from "./color.js";
 
-/** DESIGN.md § Lightness bounds the ramp here; deeper collapses anyway. */
+/** The most generations the ramp draws, however much range a theme has —
+ *  DESIGN.md § Lightness. A deeper node draws the last one it does. */
 export const DEPTH_STEPS = 6;
+
+/** The least two adjacent generations may look alike, as an OKLab distance —
+ *  DESIGN.md § Lightness, where it is the same number the tag slots owe. */
+export const DEPTH_SEPARATION = 0.03;
 
 /** DESIGN.md § "Contrast is measured": a node fill carries meaning alone. */
 export const MARK_FLOOR = 3;
+
+/** What a note carrying none of the selected tags keeps of its own fill —
+ *  DESIGN.md § Hue. */
+export const DIM_RECESSION = 0.34;
+
+/** How far down that recession goes and no further, against the ground the
+ *  mark lands on — DESIGN.md § Hue, where the number is argued. */
+export const DIM_FLOOR = 1.6;
 
 /** The floor small text owes, which on this canvas is the address and title
  *  beside a mark — DESIGN.md § "Contrast is measured". */
@@ -42,8 +55,13 @@ const UNTHEMED_PAPER: Oklch = { l: 1, c: 0, h: 0 };
 export interface GraphPalette {
   ink: number;
   paper: number;
-  /** Genealogical fill for a node `depth` deep, a root being 1. */
+  /** Genealogical fill for a node `depth` deep, a root being 1. Past
+   *  {@link generations} it answers the last one, which is a stop and not a
+   *  fade — DESIGN.md § Lightness. */
   depth(depth: number): number;
+  /** How many generations this theme's range keeps apart, at most
+   *  {@link DEPTH_STEPS} + 1. */
+  generations: number;
   /**
    * The hue a selected tag borrows, straight off the token a chip draws in —
    * so the rail's legend and the canvas cannot disagree. `token-contrast.test.ts`
@@ -64,8 +82,13 @@ export interface GraphPalette {
    */
   edgeAlpha: number;
   edgeAlphaWhileSelecting: number;
-  /** A note carrying none of the selected tags: its own fill, receded. */
-  unselectedAlpha: number;
+  /**
+   * A note carrying none of the selected tags: how much of `fill` is left
+   * showing. {@link DIM_RECESSION} wherever the mark can afford it, and short
+   * of it where that would take the mark under {@link DIM_FLOOR} against the
+   * ground — DESIGN.md § Hue, which is why a dimmed note never leaves.
+   */
+  unselectedAlpha(fill: number): number;
   /**
    * The run of consecutive addresses — DESIGN.md § Edges makes it the heaviest
    * line on the canvas, and dims it with the tree while tags are selected.
@@ -126,7 +149,9 @@ const CEILING_STEPS = 50;
  * the canvas letters in falling under {@link LABEL_FLOOR} over the worst pixel a
  * picture may hold, and the tag slots closing to {@link SLOTS_KEPT} of what
  * tells them apart on the plain theme — and this is whichever comes first.
- * `wallpaper.test.ts` holds both, and every mark above {@link MARK_FLOOR}.
+ * `wallpaper.test.ts` holds both, every mark above {@link MARK_FLOOR}, and every
+ * dimmed mark above {@link DIM_FLOOR} — which the recession holds on its own,
+ * so the ground is never what gives for it.
  *
  * DESIGN.md § "The wallpaper" is the doc of record.
  */
@@ -183,6 +208,40 @@ function shadedSlots(
   });
 }
 
+/**
+ * How much of `fill` a dimmed mark keeps: {@link DIM_RECESSION}, or as much
+ * more as {@link DIM_FLOOR} takes over the faintest ground it can land on.
+ * 1 where the mark is under that floor before it is dimmed at all.
+ */
+function recession(fill: Oklch, ground: readonly Oklch[]): number {
+  let alpha = DIM_RECESSION;
+  for (const on of ground) {
+    if (contrastRatio(fill, on) < DIM_FLOOR) return 1;
+    if (contrastRatio(over(fill, on, alpha), on) >= DIM_FLOOR) continue;
+    let lo = alpha;
+    let hi = 1;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      if (contrastRatio(over(fill, on, mid), on) >= DIM_FLOOR) hi = mid;
+      else lo = mid;
+    }
+    alpha = hi;
+  }
+  return alpha;
+}
+
+/** `mark` at `alpha` over `ground`, mixed on the bytes — which is where a
+ *  screen lays one layer over another. */
+function over(mark: Oklch, ground: Oklch, alpha: number): Oklch {
+  const under = toSrgb8(ground);
+  return fromSrgb8(
+    toSrgb8(mark).map((c, at) => c * alpha + under[at] * (1 - alpha)),
+  );
+}
+
+const unpack = (fill: number): Oklch =>
+  fromSrgb8([(fill >> 16) & 255, (fill >> 8) & 255, fill & 255]);
+
 /** The closest two slots, which is what says the eight are still eight.
  *  Infinite where fewer than two of them resolve. */
 function separation(slots: readonly (Oklch | null)[]): number {
@@ -223,17 +282,26 @@ export function buildPalette(
   // so a light theme's marks darken and a dark theme's lighten.
   const away = ink.l < paper.l ? 0 : 1;
 
-  const generations = Array.from({ length: DEPTH_STEPS + 1 }, (_, step) =>
+  // The ramp runs from the ink to the faintest mark that still clears the
+  // floor, rather than to the paper and back off it: the range a theme has is
+  // then divided into steps instead of being spent before the last of them.
+  const faintest = raiseToFloor(paper, ground, ink, MARK_FLOOR);
+  const steps = clamp(
+    Math.floor(apart(ink, faintest) / DEPTH_SEPARATION),
+    1,
+    DEPTH_STEPS,
+  );
+  const ramp = Array.from({ length: steps + 1 }, (_, step) =>
     raiseToFloor(
-      mixOklab(ink, paper, step / (DEPTH_STEPS + 1)),
+      mixOklab(ink, faintest, step / steps),
       ground,
       ink,
       MARK_FLOOR,
     ),
   );
-  const depthRamp = generations.map(toRgb24);
+  const depthRamp = ramp.map(toRgb24);
   const depth = (at: number): number =>
-    depthRamp[clamp(Math.round(at) - 1, 0, DEPTH_STEPS)];
+    depthRamp[clamp(Math.round(at) - 1, 0, steps)];
 
   // A slot moves in lightness alone: the hue IS the reader's question, and eight
   // of them pulled toward one anchor converge into one answer.
@@ -245,7 +313,8 @@ export function buildPalette(
   const inkRgb = toRgb24(ink);
   const paperRgb = toRgb24(paper);
   const rings = new Map<number, number>();
-  for (const fill of [...generations, ...slotColours, paper]) {
+  const receded = new Map<number, number>();
+  for (const fill of [...ramp, ...slotColours, paper]) {
     if (fill === null) continue;
     rings.set(
       toRgb24(fill),
@@ -253,17 +322,25 @@ export function buildPalette(
         ? inkRgb
         : paperRgb,
     );
+    receded.set(toRgb24(fill), recession(fill, ground));
   }
 
   return {
     ink: inkRgb,
     paper: paperRgb,
     depth,
+    generations: steps + 1,
     tag: (slot) => hues[clamp(slot - 1, 0, hues.length - 1)] ?? depth(1),
     lookRing: (fill) => rings.get(fill) ?? inkRgb,
     edgeAlpha: 0.24,
     edgeAlphaWhileSelecting: 0.08,
-    unselectedAlpha: 0.34,
+    unselectedAlpha: (fill) => {
+      const known = receded.get(fill);
+      if (known !== undefined) return known;
+      const found = recession(unpack(fill), ground);
+      receded.set(fill, found);
+      return found;
+    },
     run: inkRgb,
     runAlpha: 0.55,
     runAlphaWhileSelecting: 0.18,

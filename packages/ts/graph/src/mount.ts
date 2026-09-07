@@ -10,6 +10,7 @@ import type { OwnedRef } from "@sloppy/types";
 import {
   drawnNodes,
   drawnReading,
+  type GraphField,
   type GraphFieldInset,
   type GraphHoverAt,
   type GraphSurfaceProps,
@@ -18,7 +19,7 @@ import {
 import { attachGestures, type ScreenBox } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
-import { applyLod, DEFAULT_BUDGET, type LodBudget } from "./lod.js";
+import { DEFAULT_BUDGET, type LodBudget, makeFold } from "./lod.js";
 import { buildModel, type GraphEdgeAttributes } from "./model.js";
 import {
   buildPalette,
@@ -175,8 +176,6 @@ export function mountGraph(
    * finger is worse than one that starts off-centre.
    */
   let framing = true;
-  /** Until the field has been framed once the viewport is still the default
-   *  1:1, so what is on screen says nothing about where a mark sits. */
   let framed = false;
   let dragged: { index: number; world: Point } | null = null;
   let bringing: OwnedRef | null = null;
@@ -239,7 +238,23 @@ export function mountGraph(
     },
   });
 
+  const fold = makeFold();
   const lodBudget = (): LodBudget => ({ ...DEFAULT_BUDGET, ...props.lod });
+
+  /**
+   * Everything the marks now on the canvas were drawn from EXCEPT the reader's
+   * tags. While all of it stands still a rebuild has only colours to write, and
+   * takes {@link GraphScene.setTints} instead of replacing what is drawn.
+   */
+  let drawnFrom: {
+    nodes: GraphMountOptions["nodes"];
+    collapsed: GraphMountOptions["collapsed"];
+    viewer: GraphMountOptions["viewer"];
+    fields: GraphMountOptions["fields"];
+    focus: OwnedRef | undefined;
+    palette: GraphPalette;
+    budget: LodBudget;
+  } | null = null;
 
   /**
    * `relayout` false re-reads the model without disturbing the simulation: the
@@ -250,7 +265,21 @@ export function mountGraph(
    */
   const rebuild = (relayout = true): void => {
     if (!scene) return;
-    const lod = applyLod(props.nodes, props.collapsed, focus, lodBudget());
+    const budget = lodBudget();
+    const standing = drawnFrom;
+    const recolour =
+      !relayout &&
+      standing !== null &&
+      standing.nodes === props.nodes &&
+      standing.collapsed === props.collapsed &&
+      standing.viewer === props.viewer &&
+      sameFields(standing.fields, props.fields) &&
+      standing.focus === focus &&
+      standing.palette === palette &&
+      standing.budget.depth === budget.depth &&
+      standing.budget.maxDrawn === budget.maxDrawn;
+
+    const lod = fold(props.nodes, props.collapsed, focus, budget);
     budgetFolded = lod.folded;
 
     const model = buildModel(drawnNodes(props.nodes, lod.collapsed), {
@@ -261,7 +290,17 @@ export function mountGraph(
       fields: props.fields,
     });
 
-    scene.setModel(model, props.selection.length > 0);
+    if (recolour) scene.setTints(model, props.selection.length > 0);
+    else scene.setModel(model, props.selection.length > 0);
+    drawnFrom = {
+      nodes: props.nodes,
+      collapsed: props.collapsed,
+      viewer: props.viewer,
+      fields: props.fields,
+      focus,
+      palette,
+      budget,
+    };
     scene.setPicking(props.picking ?? null);
     scene.setChosen(props.chosen ?? null);
     scene.setReading(
@@ -357,6 +396,8 @@ export function mountGraph(
         );
       },
       canSweep: () => props.onChooseWithin !== undefined,
+      canSweepByFinger: () =>
+        props.chosen !== undefined && props.onChooseWithin !== undefined,
       onSweep: (box, done) => {
         takeViewport();
         if (!done) {
@@ -562,6 +603,22 @@ function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
     a.focus !== b.focus ||
     a.lod?.depth !== b.lod?.depth ||
     a.lod?.maxDrawn !== b.lod?.maxDrawn
+  );
+}
+
+/**
+ * Whether the same graphs stand on the canvas, in the same order and under the
+ * same names. Read rather than compared by identity: a host names its fields
+ * off its own listing, so the same canvas arrives as a fresh list every update.
+ */
+function sameFields(
+  a: readonly GraphField[] | undefined,
+  b: readonly GraphField[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (field, at) => field.ref === b[at].ref && field.title === b[at].title,
   );
 }
 

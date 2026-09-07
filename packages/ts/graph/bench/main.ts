@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 
 // The benchmark this package's performance numbers come from. It mounts the
-// real renderer on a corpus the size of the API's seed and drives it with real
+// real renderer on a corpus the size of the API's seed, then again at the ten
+// thousand notes PRODUCT.md principle 7 names, and drives both with real
 // pointer events, because frame time is a GPU-and-browser fact and nothing
 // measured in Node would be one.
 //
@@ -9,7 +10,11 @@
 
 import { PICTURE_TURN_MIN, type NodeView, type Tag } from "@sloppy/types";
 import LayoutWorker from "../src/layout-worker.ts?worker";
-import { makeCorpus } from "../src/corpus.test-support.js";
+import {
+  type Corpus,
+  DEFAULT_CORPUS,
+  makeCorpus,
+} from "../src/corpus.test-support.js";
 import type { GraphPictures, GraphWallpaper } from "../src/contract.js";
 import type { GraphGround } from "../src/ground.js";
 import {
@@ -51,10 +56,22 @@ function timed<T>(name: string, work: () => T): T {
   return value;
 }
 
-const corpus = timed("build corpus (2,400 notes)", () => makeCorpus());
 const asked = new URLSearchParams(location.search);
 /** `?inline` measures what a surface that cannot start a worker settles like. */
 const withWorker = !asked.has("inline");
+/** The size the passes below are run at. `?notes=N` moves it; the default is
+ *  the API seed's, which is what the published numbers are quoted against. */
+const notes = Number(asked.get("notes")) || DEFAULT_CORPUS.total;
+/** PRODUCT.md principle 7 names ten thousand notes, so the run ends by
+ *  measuring that rather than arguing from the size above. */
+const PRINCIPLE_NOTES = 10_000;
+
+const built = (total: number): Corpus =>
+  timed(`build corpus (${total.toLocaleString("en")} notes)`, () =>
+    makeCorpus({ total }),
+  );
+
+let corpus = built(notes);
 /**
  * `?drawn=N` lifts the level-of-detail bound, which otherwise decides the mark
  * count before any of this does — the way to measure a pass at a size the
@@ -107,14 +124,18 @@ const pictures: GraphPictures = {
  * Two ids for one file: what a turn costs is the swap and the second sprite, and
  * a second file would price the decode twice over instead.
  */
-const withPictures: NodeView[] = corpus.nodes.map((node, at) => ({
-  ...node,
-  appearance: {
-    preview: `painted-${at % 2}`,
-    preview_more: [`painted-${(at + 1) % 2}`],
-    preview_every: PICTURE_TURN_MIN,
-  },
-}));
+let withPictures: NodeView[] = picturing(corpus);
+
+function picturing(of: Corpus): NodeView[] {
+  return of.nodes.map((node, at) => ({
+    ...node,
+    appearance: {
+      preview: `painted-${at % 2}`,
+      preview_more: [`painted-${(at + 1) % 2}`],
+      preview_every: PICTURE_TURN_MIN,
+    },
+  }));
+}
 
 /** A turn comes off the clock, so standing somewhere else on it is the only way
  *  to ask a whole field to change. */
@@ -382,9 +403,62 @@ async function run(): Promise<void> {
     return [performance.now() - started];
   });
 
+  if (notes < PRINCIPLE_NOTES) await atTenThousand();
+
   say("");
   say("BENCH DONE");
   (window as unknown as { __bench: unknown }).__bench = { samples, lines };
+}
+
+/**
+ * The size PRODUCT.md principle 7 promises, drawn by the same renderer. Level
+ * of detail bounds the marks either way, so what this asks is whether the work
+ * IN FRONT of the renderer — the fold, the drawn set and the model — still lets
+ * a tag question answer in a frame when the graph is four times the seed.
+ */
+async function atTenThousand(): Promise<void> {
+  say("");
+  handle.destroy();
+  collapsed.clear();
+  selection = [];
+  pictured = false;
+  corpus = built(PRINCIPLE_NOTES);
+  withPictures = picturing(corpus);
+
+  const mountedAt = performance.now();
+  handle = timed("mount", () => mountGraph(host, props()));
+  await settle();
+  const stats = handle.stats();
+  say(
+    `settled ${(performance.now() - mountedAt).toFixed(0)} ms after mount · ` +
+      `${stats?.drawn}/${stats?.maxDrawn} marks · ` +
+      `${stats?.autoFolded} subtrees folded to fit`,
+  );
+
+  await measure("idle, ten thousand", async () => {
+    await frames(120);
+  });
+  await measure("pan, ten thousand", () => panRun(120));
+  await measure("select a tag, ten thousand", async () => {
+    const started = performance.now();
+    selection = corpus.tags.slice(0, 1);
+    handle.update(props());
+    await frame();
+    const took = performance.now() - started;
+    say(
+      "select a tag, ten thousand".padEnd(32) +
+        `${took.toFixed(1)} ms to first frame · ` +
+        `field ${handle.stats()?.settled ? "held" : "RE-SETTLING"}`,
+    );
+    return [took];
+  });
+  await measure("clear it, ten thousand", async () => {
+    const started = performance.now();
+    selection = [];
+    handle.update(props());
+    await frame();
+    return [performance.now() - started];
+  });
 }
 
 function fit(): void {

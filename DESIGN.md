@@ -209,7 +209,15 @@ until a tag is selected.
   says which sets a note is in.
 - **Notes carrying none of the selected tags dim; they never leave.** The reader asked
   which notes are in a set, not to be shown a different graph, and the shape they are
-  reading the answer against is the graph itself.
+  reading the answer against is the graph itself. So the dim is measured rather than
+  chosen: every unselected mark gives up the same share of its own fill, and one that
+  cannot afford the whole share gives up as much of it as leaves **1.6:1 against the
+  ground it lands on** and stops there. That floor is not the 3:1 a mark owes. A dimmed
+  mark is the negative half of an answer rather than a graphical object carrying meaning
+  alone, so what it owes is the least that keeps it on the page — and a graph whose deep
+  generations fade out under the question has answered by drawing a different graph. It is
+  measured against the band a picture can put under a mark as well as against the paper
+  (§ "The wallpaper"), so a wallpaper cannot take the unselected graph off the page either.
 - Past eight selected tags the slots repeat. Eight questions at once is already more than
   the channel can carry, and the rail carries the written tag regardless.
 - Every slot owes **3:1 against the surface** on every theme, because a node fill carrying
@@ -220,9 +228,18 @@ until a tag is selected.
 ### Lightness — depth
 
 Depth ramps between two ends the theme already owns: `--graph-ink` (the mark) and
-`--graph-paper` (the ground). Root nodes sit at the ink end; each generation mixes one
-step toward paper, bounded at six steps because level of detail has collapsed anything
-deeper anyway.
+`--graph-paper` (the ground). Root nodes sit at the ink end, and the far end is not the
+paper but the faintest mark that still clears the mark floor on it — **the ramp divides
+the range the theme actually has, in even steps, and carries as many of them as that range
+holds 0.03 OKLab apart**, the same distance the tag slots owe each other and for the same
+reason. Six steps is the most it will draw; where a theme holds fewer it draws fewer, and
+a note deeper than the last of them draws in the last of them.
+
+**That end is a stop, not a fade, and the drawn set does reach it.** Level of detail folds
+by hops from the note the reader is standing on rather than by absolute depth (`lod.ts`),
+so a reader working at the bottom of a branch routinely has generations past the sixth on
+screen. A ramp that spent its range before its last steps would hand them all one colour
+there — which passes every contrast check and has quietly stopped being ordered.
 
 Deriving the ramp from the theme's own ends rather than declaring six values per theme is
 what makes it invert correctly on Graphite with no second table.
@@ -834,6 +851,22 @@ up and the lift can be 0 in the panned case.
   model falls out of the platform instead of fighting it. There is no mode toggle to find.
   Pencil Pro gestures (squeeze, barrel-roll, double-tap) live in `UIPencilInteraction` and
   are not exposed to the web layer — do not design an affordance around them.
+- **Once a set is being chosen, one finger sweeps.** Choosing a region is the only way to
+  act on many notes at once, and it cannot be a thing only a mouse can do. While a set is
+  being chosen — where a tap is already adding and removing — a one-finger drag over bare
+  canvas draws the sweep box instead of panning. Two fingers still pan and pinch, a finger
+  that lands on a mark still pans, and the press that opens the menu is untouched. This is
+  not a mode to find: nothing changes until the reader has said they are choosing, and a
+  finger pans again the moment they are done. A second finger arriving mid-sweep is a pan,
+  and what was swept by then stands — a sweep adds to the chosen set, it never replaces it.
+- **Proposed, not built: moving a mark with a finger.** Taking hold of a mark is a mouse
+  gesture, so the reader most likely to meet a crowded region — the annotator, on a tablet —
+  cannot untangle one. The likely shape is **Move** on the press menu rather than a longer
+  hold, because the press pointer is spent on the menu on purpose (above), and re-reading
+  it as a drag is what this section is written to prevent. Whatever it becomes, it moves the
+  mark **for this reader, in this session**: where a mark stands is not stored and not
+  published, so nothing a peer pulls changes. Not decided — it moves the touch contract
+  above, which is a decision to take on its own rather than inside a feature.
 - **Ink degrades, it never gates.** `getCoalescedEvents()`/`getPredictedEvents()` are
   feature-detected; without them a stroke is rougher, not unavailable.
 - **What the pen leaves over the canvas is a drawing on the FIELD, and it stays.** It goes
@@ -984,13 +1017,18 @@ over whatever is behind it.
   re-reads it. It opens at a quarter of the way up, which is quiet enough to read as paper
   with a picture in it.
 - **A picture moves the palette, because the palette is derived from the ground.** The depth
-  ramp already mixes between the theme's ends and is pulled back until it clears the mark
-  floor; with a picture under it, it is pulled back against that band instead. The cost is
-  the ramp's far end, which compresses as the picture strengthens: the six generations a
-  level of detail budget draws still recede one behind the next, but the deepest of them
-  share a fill — at the top of the travel a dark theme's last four are one — so beyond a
-  point depth is being read off the tree and not off the fill. That is the trade the control
-  is for, and it is the reader's to make.
+  ramp runs from the theme's ink to the faintest mark that clears the mark floor; with a
+  picture under it, that far end is found against the band instead. The cost is the range
+  between them, which closes as the picture strengthens, and the ramp answers by carrying
+  fewer generations rather than by handing two of them one colour (§ Lightness) — at the
+  top of the travel Graphite carries five where it carries seven on the plain theme. Past
+  the last step depth is being read off the tree and not off the fill. That is the trade
+  the control is for, and it is the reader's to make.
+- **A dimmed note is measured against that band too**, so the answer to a tag question
+  keeps the whole graph on the page at every strength the ground carries (§ Hue). It costs
+  the picture nothing: an unselected mark gives up less of its own fill where the ground
+  demands it, so the floor is held by the dim rather than by the ceiling, and the two
+  things that end a ground are still the two above.
 - **A tag slot moves in LIGHTNESS and in nothing else.** It has to clear the mark floor on
   the same band, and the correction `--primary-mark` already ships for Ochre is the one that
   applies: pulling eight hues toward one anchor converges them, and a palette whose slots
@@ -1127,7 +1165,9 @@ states. Empty states invite; they don't apologize. Icons: lucide, one weight.
   platform gives us. Easing applied to ink is lag with a nicer name.
 - Honour `prefers-reduced-motion`: chrome transitions degrade to static, and the layout
   **jumps to its converged positions** rather than animating there. Reduced motion must
-  never mean an unsettled graph.
+  never mean an unsettled graph. A mark the reader is holding is the one thing the field
+  follows as it goes, rather than jumping to a converged field under a moving hand, and it
+  converges the moment the mark is let go.
 
 ## Persistence
 

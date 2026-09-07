@@ -1,4 +1,4 @@
-import type { OwnedRef, Tag } from "@sloppy/types";
+import { graphOf, type OwnedRef, type Tag } from "@sloppy/types";
 import {
   afterAll,
   beforeAll,
@@ -9,6 +9,7 @@ import {
   vi,
 } from "vitest";
 import type {
+  GraphField,
   GraphHoverAt,
   GraphPickMarks,
   GraphReadingMarks,
@@ -62,10 +63,22 @@ class StandInScene {
     return StandInScene.latest;
   }
 
+  /** How often what is drawn was replaced, against how often it was only
+   *  re-coloured — which is the whole difference a tag question makes. */
+  models = 0;
+  tints = 0;
+
   setModel(model: BuiltModel, selecting: boolean): void {
+    this.models += 1;
     this.model = model;
     this.selecting = selecting;
     this.positions = new Float32Array(model.order.length * 2);
+  }
+
+  setTints(model: BuiltModel, selecting: boolean): void {
+    this.tints += 1;
+    this.model = model;
+    this.selecting = selecting;
   }
 
   setPicking(picking: GraphPickMarks | null): void {
@@ -411,6 +424,27 @@ async function mount(overrides: Partial<GraphMountOptions> = {}) {
       field.send("pointermove", at(to, false));
       field.send("pointerup", at(to, false));
     },
+    /** One finger drawing the same box, with no modifier to hold. */
+    sweepByFinger(
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+    ): void {
+      scene.under = null;
+      const at = (point: { x: number; y: number }) =>
+        ({
+          pointerId: 7,
+          pointerType: "touch",
+          button: 0,
+          clientX: point.x,
+          clientY: point.y,
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
+        }) as Partial<PointerEvent>;
+      field.send("pointerdown", at(from));
+      field.send("pointermove", at(to));
+      field.send("pointerup", at(to));
+    },
     pen(type: string, x: number, y: number): void {
       field.send(type, {
         pointerId: 2,
@@ -729,6 +763,120 @@ describe("selecting tags", () => {
     });
 
     expect(graph.starts()).toBe(before + 1);
+  });
+
+  // DESIGN.md § Hue: the answer is colour on the marks that are up. Replacing
+  // them would re-lay every picture and blank every address and title to write
+  // two numbers per mark.
+  it("re-colours the marks already up instead of replacing them", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({ ...graph.props, selection });
+
+    expect(graph.scene.tints).toBe(1);
+    expect(graph.scene.models).toBe(drew);
+    expect(graph.scene.selecting).toBe(true);
+    expect(
+      graph
+        .model()
+        .order.some((ref) => graph.model().graph.getNodeAttributes(ref).tag),
+    ).toBe(true);
+  });
+
+  // The host names its fields off its own listing of the canvas, so the same
+  // graphs under the same names reach an update as a new list every time.
+  describe("the graphs on the canvas", () => {
+    const canvas = (garden: string): GraphField[] => [
+      { ref: graphOf(corpus.nodes[0]), title: "Thesis" },
+      {
+        ref: `${corpus.nodes[0].created_by}/garden` as OwnedRef,
+        title: garden,
+      },
+    ];
+
+    it("re-colours when the same canvas is named again", async () => {
+      const graph = await mount({ fields: canvas("Garden") });
+      const drew = graph.scene.models;
+
+      graph.handle.update({
+        ...graph.props,
+        fields: canvas("Garden"),
+        selection,
+      });
+
+      expect(graph.scene.tints).toBe(1);
+      expect(graph.scene.models).toBe(drew);
+    });
+
+    // The names are drawn beside the fields, so one arriving late is a mark the
+    // canvas has to write rather than a colour.
+    it("replaces what is drawn when a graph is named differently", async () => {
+      const graph = await mount({ fields: canvas("Garden") });
+      const drew = graph.scene.models;
+
+      graph.handle.update({
+        ...graph.props,
+        fields: canvas("The garden"),
+        selection,
+      });
+
+      expect(graph.scene.models).toBe(drew + 1);
+      expect(graph.scene.tints).toBe(0);
+    });
+  });
+
+  it("re-colours for a note chosen and a note opened too", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+    const [first] = graph.model().order;
+
+    graph.handle.update({ ...graph.props, chosen: new Set([first]) });
+    graph.handle.update({
+      ...graph.props,
+      reading: { open: new Set([first]), active: first },
+    });
+
+    expect(graph.scene.tints).toBe(2);
+    expect(graph.scene.models).toBe(drew);
+  });
+
+  it("replaces what is drawn when the notes themselves move", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({ ...graph.props, nodes: [...graph.props.nodes] });
+
+    expect(graph.scene.models).toBe(drew + 1);
+    expect(graph.scene.tints).toBe(0);
+  });
+
+  it("replaces what is drawn when the fold the host asked for moves", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({
+      ...graph.props,
+      collapsed: new Set<OwnedRef>([graph.model().order[0]]),
+    });
+
+    expect(graph.scene.models).toBe(drew + 1);
+    expect(graph.scene.tints).toBe(0);
+  });
+
+  // Every mark's fill is the palette's, so a picture behind the field moves the
+  // colours a re-tint would be writing.
+  it("replaces what is drawn when the palette moves under it", async () => {
+    const graph = await mount();
+    const drew = graph.scene.models;
+
+    graph.handle.update({
+      ...graph.props,
+      wallpaper: { picture: "one", strength: 1 },
+    });
+
+    expect(graph.scene.models).toBe(drew + 1);
+    expect(graph.scene.tints).toBe(0);
   });
 });
 
@@ -1063,6 +1211,20 @@ describe("choosing notes to act on", () => {
     graph.sweep({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
 
     expect(swept).toEqual([graph.model().order]);
+  });
+
+  it("offers the finger sweep only while a set is being chosen", async () => {
+    const { graph, swept } = await choosing();
+
+    graph.sweepByFinger({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
+    expect(swept).toEqual([graph.model().order]);
+
+    graph.handle.update({
+      ...graph.props,
+      onChooseWithin: (refs) => swept.push([...refs]),
+    });
+    graph.sweepByFinger({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
+    expect(swept).toHaveLength(1);
   });
 
   it("keeps picking ahead of choosing, because a canvas is in one mode", async () => {

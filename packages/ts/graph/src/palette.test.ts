@@ -10,8 +10,22 @@
 
 import { TAG_HUE_SLOTS } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { contrastRatio, type Oklch, parseCssColor, toOklab } from "./color.js";
-import { buildPalette, DEPTH_STEPS, MARK_FLOOR } from "./palette.js";
+import {
+  contrastRatio,
+  fromSrgb8,
+  type Oklch,
+  parseCssColor,
+  toOklab,
+  toSrgb8,
+} from "./color.js";
+import {
+  buildPalette,
+  DEPTH_SEPARATION,
+  DEPTH_STEPS,
+  DIM_FLOOR,
+  DIM_RECESSION,
+  MARK_FLOOR,
+} from "./palette.js";
 
 const themes: { name: string; ink: string; paper: string }[] = [
   { name: "paper", ink: "oklch(0.21 0.01 60)", paper: "oklch(0.98 0.006 85)" },
@@ -50,7 +64,7 @@ describe("the depth ramp", () => {
     it(`keeps every generation legible on ${theme.name}`, () => {
       const palette = buildPalette({ ...theme, hues });
       const paper = parseCssColor(theme.paper)!;
-      for (let depth = 1; depth <= DEPTH_STEPS + 1; depth++) {
+      for (let depth = 1; depth <= palette.generations; depth++) {
         expect(
           contrastRatio(rgb(palette.depth(depth)), paper),
           `depth ${depth}`,
@@ -58,21 +72,126 @@ describe("the depth ramp", () => {
       }
     });
 
-    it(`recedes with every generation on ${theme.name}`, () => {
+    // Ordered AND apart. A ramp that has run out of range still passes a
+    // "never louder than the one before it" reading with three identical greys
+    // at the bottom, and the channel has stopped answering there — DESIGN.md
+    // § Lightness, where the distance is the one the tag slots owe.
+    it(`recedes a visible step every generation on ${theme.name}`, () => {
       const palette = buildPalette({ ...theme, hues });
       const paper = parseCssColor(theme.paper)!;
       let previous = Number.POSITIVE_INFINITY;
-      for (let depth = 1; depth <= DEPTH_STEPS + 1; depth++) {
-        const ratio = contrastRatio(rgb(palette.depth(depth)), paper);
+      for (let depth = 1; depth <= palette.generations; depth++) {
+        const fill = rgb(palette.depth(depth));
+        const ratio = contrastRatio(fill, paper);
         expect(ratio, `depth ${depth}`).toBeLessThanOrEqual(previous + 1e-9);
         previous = ratio;
+        if (depth === 1) continue;
+        expect(
+          oklabDistance(rgb(palette.depth(depth - 1)), fill),
+          `depth ${depth - 1} against ${depth}`,
+        ).toBeGreaterThanOrEqual(DEPTH_SEPARATION - 1e-3);
+      }
+    });
+
+    // As many as the range holds and not fewer: a theme that stops short of the
+    // bound has to be one where the next step would not have been visible.
+    it(`carries as many generations as ${theme.name} holds apart`, () => {
+      const palette = buildPalette({ ...theme, hues });
+      expect(palette.generations).toBeLessThanOrEqual(DEPTH_STEPS + 1);
+      if (palette.generations === DEPTH_STEPS + 1) return;
+      const range = oklabDistance(
+        rgb(palette.depth(1)),
+        rgb(palette.depth(palette.generations)),
+      );
+      expect(range / palette.generations).toBeLessThan(DEPTH_SEPARATION);
+    });
+  }
+
+  it("carries the whole ramp on every theme that ships", () => {
+    for (const theme of themes) {
+      const palette = buildPalette({ ...theme, hues });
+      expect(palette.generations, theme.name).toBe(DEPTH_STEPS + 1);
+    }
+  });
+
+  it("stops ramping past the bound rather than fading away", () => {
+    const palette = buildPalette({ ...themes[0], hues });
+    expect(palette.depth(palette.generations)).toBe(palette.depth(40));
+  });
+});
+
+// DESIGN.md § Hue: a note carrying none of the selected tags recedes, and does
+// not leave. What holds the second half is the floor: the recession stops at
+// DIM_FLOOR against the ground, so the deep end of the ramp — which is already
+// at the mark floor — is still on the page while a question is up.
+describe("a note the selected tags leave out", () => {
+  for (const theme of [...themes, ...generatedThemes()]) {
+    it(`stays on the page at every generation on ${theme.name}`, () => {
+      const palette = buildPalette({ ...theme, hues });
+      const paper = parseCssColor(theme.paper)!;
+      for (const fill of marks(palette)) {
+        expect(
+          contrastRatio(
+            over(rgb(fill), paper, palette.unselectedAlpha(fill)),
+            paper,
+          ),
+          `fill ${fill.toString(16)}`,
+        ).toBeGreaterThanOrEqual(DIM_FLOOR - 1e-6);
+      }
+    });
+
+    // The same share for every mark that can afford it, and more only where the
+    // floor took it: a mark keeps extra exactly when the plain share would have
+    // dropped it under DIM_FLOOR, so nothing recedes less than it had to.
+    it(`recedes by the same share wherever it can on ${theme.name}`, () => {
+      const palette = buildPalette({ ...theme, hues });
+      const paper = parseCssColor(theme.paper)!;
+      for (const fill of marks(palette)) {
+        const where = `fill ${fill.toString(16)}`;
+        const share = palette.unselectedAlpha(fill);
+        const plain = contrastRatio(
+          over(rgb(fill), paper, DIM_RECESSION),
+          paper,
+        );
+        expect(share, where).toBeGreaterThanOrEqual(DIM_RECESSION);
+        expect(share, where).toBeLessThan(1);
+        if (plain >= DIM_FLOOR + 1e-6) expect(share, where).toBe(DIM_RECESSION);
       }
     });
   }
 
-  it("stops ramping past the bound rather than fading away", () => {
-    const palette = buildPalette({ ...themes[0], hues });
-    expect(palette.depth(DEPTH_STEPS + 1)).toBe(palette.depth(40));
+  // The share is the amount a dim is worth, and a theme with room takes exactly
+  // it — a floor that had lifted every mark would have replaced the recession
+  // rather than bounded it.
+  it("gives up the whole share on every theme that ships", () => {
+    for (const theme of themes) {
+      const palette = buildPalette({ ...theme, hues });
+      const shares = marks(palette).map((fill) =>
+        palette.unselectedAlpha(fill),
+      );
+      expect(Math.min(...shares), theme.name).toBe(DIM_RECESSION);
+    }
+  });
+
+  // The mark a reader's question lit is the loudest thing on the canvas, and a
+  // dim that reads as loudly as one has answered nothing.
+  it("never reads as loudly as a note the tags lit", () => {
+    for (const theme of themes) {
+      const palette = buildPalette({ ...theme, hues });
+      const paper = parseCssColor(theme.paper)!;
+      const lit = Math.min(
+        ...marks(palette).map((fill) => contrastRatio(rgb(fill), paper)),
+      );
+      for (const fill of marks(palette)) {
+        expect(
+          contrastRatio(
+            over(rgb(fill), paper, palette.unselectedAlpha(fill)),
+            paper,
+          ),
+          `${theme.name} fill ${fill.toString(16)}`,
+        ).toBeLessThan(lit);
+      }
+    }
   });
 });
 
@@ -133,18 +252,12 @@ describe("the ring a look draws", () => {
     it(`stays legible on every fill a mark carries on ${theme.name}`, () => {
       const palette = buildPalette({ ...theme, hues });
       const paper = rgb(palette.paper);
-      const fills = [
-        ...Array.from({ length: DEPTH_STEPS + 1 }, (_, at) =>
-          palette.depth(at + 1),
-        ),
-        ...TAG_HUE_SLOTS.map((slot) => palette.tag(slot)),
-        palette.paper,
-      ].filter(
+      const fills = [...marks(palette), palette.paper].filter(
         (fill) =>
           fill === palette.paper ||
           contrastRatio(rgb(fill), paper) >= MARK_FLOOR - 1e-9,
       );
-      expect(fills.length).toBeGreaterThan(DEPTH_STEPS);
+      expect(fills.length).toBeGreaterThan(palette.generations);
       for (const fill of fills) {
         expect(
           contrastRatio(rgb(palette.lookRing(fill)), rgb(fill)),
@@ -178,6 +291,24 @@ describe("a theme whose tokens have not resolved", () => {
 function rgb(packed: number): Oklch {
   const hex = packed.toString(16).padStart(6, "0");
   return parseCssColor(`#${hex}`)!;
+}
+
+/** Every fill the canvas puts on a mark: the ramp this theme carries and the
+ *  eight hues a selection borrows. */
+function marks(palette: ReturnType<typeof buildPalette>): number[] {
+  return [
+    ...Array.from({ length: palette.generations }, (_, at) =>
+      palette.depth(at + 1),
+    ),
+    ...TAG_HUE_SLOTS.map((slot) => palette.tag(slot)),
+  ];
+}
+
+function over(mark: Oklch, ground: Oklch, alpha: number): Oklch {
+  const under = toSrgb8(ground);
+  return fromSrgb8(
+    toSrgb8(mark).map((c, at) => c * alpha + under[at] * (1 - alpha)),
+  );
 }
 
 function oklabDistance(a: Oklch, b: Oklch): number {
