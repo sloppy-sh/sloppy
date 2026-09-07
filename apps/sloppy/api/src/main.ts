@@ -9,6 +9,13 @@ import { AppModule } from "./app.module";
 import { AppConfigService } from "./config/app-config.service";
 import { corsOrigin } from "./cors";
 
+/**
+ * How large a request may be. A section carries the editor's whole document and
+ * a page of ink is tens of thousands of samples, so the framework's own 100 KB
+ * would refuse a drawing somebody spent a minute on.
+ */
+const BODY_LIMIT = "8mb";
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new Logger("Bootstrap");
@@ -18,6 +25,8 @@ async function bootstrap(): Promise<void> {
   // caller, so an instance that reads the last hop as the reader hands every
   // anonymous reader one shared ration — `AppConfigService.trustedProxies`.
   app.set("trust proxy", config.trustedProxies);
+
+  app.useBodyParser("json", { limit: BODY_LIMIT });
 
   // One prefix, so the API can share a domain with the web app; clients point
   // at `<origin>/api` and `@sloppy/client`'s `apiUrl` adds the rest.
