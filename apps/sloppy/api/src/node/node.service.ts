@@ -28,11 +28,13 @@ import {
   MAX_SEARCH_HITS,
   MAX_TAGS_PER_NODE,
   type Node,
+  type NodeAlias,
   type NodeAppearance,
   type NodeBulkActSchema,
   type NodeBulkRequestSchema,
   type NodeBulkResult,
   type NodeView,
+  type NoteDestination,
   nowIso,
   type OwnedRef,
   ownedRefFrom,
@@ -48,7 +50,7 @@ import type { z } from "zod";
 import { MediaService } from "../media/media.service";
 import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
-import { nextChildAddress } from "./address-assignment";
+import { movedSubtree, nextChildAddress } from "./address-assignment";
 import { FindRepository } from "./find.repository";
 import { GraphService } from "./graph.service";
 import type { AddressHold, NodeBulkPatch } from "./node.repository";
@@ -80,7 +82,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class NodeService {
-  private readonly creations = new SerialQueue();
+  /** Both writing a note and carrying one read where they are landing and then
+   *  write there. They do the reading inside this queue, so neither works from
+   *  a place the other has already left. */
+  private readonly addressing = new SerialQueue();
 
   constructor(
     private readonly nodes: NodeRepository,
@@ -99,12 +104,31 @@ export class NodeService {
     const rows = query.origin
       ? await this.nodes.region(did, query.origin, query.maxDepth)
       : await this.nodes.roots(did, query.graph);
-    return rows.map(entityView);
+    return this.asRead(did, rows);
   }
 
   async get(did: string, ref: OwnedRef): Promise<NodeView | null> {
     const node = await this.nodes.find(did, ref);
-    return node === null ? null : entityView(node);
+    return node === null ? null : (await this.asRead(did, [node]))[0];
+  }
+
+  /** Notes of one graph as they answer, each carrying the addresses it was
+   *  moved from — absent aliases is a note that has never been moved, so a read
+   *  that left them off would say that of every note it found. */
+  private async asRead(
+    did: string,
+    rows: readonly Node[],
+  ): Promise<NodeView[]> {
+    if (rows.length === 0) return [];
+    const aliases = await this.nodes.aliasesOf(
+      did,
+      graphOf(rows[0]),
+      rows.map((one) => ownedRefFrom(one.id)),
+    );
+    return rows.map((one) => {
+      const was = aliases.get(ownedRefFrom(one.id));
+      return { ...entityView(one), ...(was ? { aliases: was } : {}) };
+    });
   }
 
   tags(did: string, graph?: OwnedRef): Promise<TagCount[]> {
@@ -235,13 +259,16 @@ export class NodeService {
   }
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
-    const { graph, parent } = await this.placeFor(did, request.from);
-    const named =
-      request.from?.relation === "root" ? request.from.address : null;
-    return this.creations.run(`${graph}|${parent?.address ?? ""}`, () =>
-      named === null
-        ? this.write(did, graph, parent, request)
-        : this.writeAt(did, graph, named, request),
+    const from = request.from;
+    return this.addressing.run(did, async () =>
+      from?.relation === "root"
+        ? this.writeAt(
+            did,
+            await this.graphFor(did, from),
+            from.address,
+            request,
+          )
+        : this.write(did, request),
     );
   }
 
@@ -275,6 +302,109 @@ export class NodeService {
     );
     if (!updated) throw new NotFoundException("That note is not here.");
     return entityView(updated);
+  }
+
+  /**
+   * A note carried somewhere else, with everything that sprang from it. The
+   * answer is that subtree as it now stands, because a move re-addresses all of
+   * it — AI.md § "The Address Is the Protocol".
+   */
+  async move(
+    did: string,
+    ref: OwnedRef,
+    to: NoteDestination,
+  ): Promise<NodeView[]> {
+    return this.addressing.run(did, async () => {
+      const note = await this.nodes.find(did, ref);
+      if (!note) throw new NotFoundException("That note is not here.");
+      const graph = graphOf(note);
+      return this.carry(did, note, graph, await this.landingFor(did, note, to));
+    });
+  }
+
+  /**
+   * The note a move hangs the carried one under, `null` where it becomes a
+   * branch of its own. Every refusal a move has is a destination it cannot
+   * take, so they are all here.
+   */
+  private async landingFor(
+    did: string,
+    note: Node,
+    to: NoteDestination,
+  ): Promise<Node | null> {
+    if (to.note === ownedRefFrom(note.id)) {
+      throw new BadRequestException("Carry this note to a different one.");
+    }
+    const anchor = await this.nodes.find(did, to.note);
+    if (!anchor) throw new BadRequestException(missing(to.relation));
+    if (graphOf(anchor) !== graphOf(note)) {
+      throw new BadRequestException(
+        "That note is in another graph. A note stays in the graph it was written in.",
+      );
+    }
+    if (to.relation === "under") return this.outside(note, anchor);
+    if (!anchor.parent) return null;
+    const parent = await this.nodes.find(did, anchor.parent);
+    if (!parent) throw new BadRequestException(missing(to.relation));
+    return this.outside(note, parent);
+  }
+
+  /** A landing that is not inside the subtree about to move, which would leave
+   *  the note hanging under itself. */
+  private outside(note: Node, parent: Node): Node {
+    if (
+      parent.origin === note.origin &&
+      isInSubtree(note.address, parent.address)
+    ) {
+      throw new BadRequestException(
+        "A note cannot be carried into what sprang from it.",
+      );
+    }
+    return parent;
+  }
+
+  /**
+   * The subtree at its new addresses, with the address each note leaves behind
+   * still leading to it. Deleted notes under it are carried too; only the ones
+   * that are there come back in the answer.
+   */
+  private async carry(
+    did: string,
+    note: Node,
+    graph: OwnedRef,
+    parent: Node | null,
+  ): Promise<NodeView[]> {
+    const ref = ownedRefFrom(note.id);
+    const carried = await this.nodes.carried(did, note);
+    const beneath = carried.filter((one) => ownedRefFrom(one.id) !== ref);
+    const landing = movedSubtree(
+      parent?.address ?? null,
+      await this.nodes.childAddresses(did, parent, graph),
+      note.address,
+      beneath.map((one) => one.address),
+    );
+    const lands = (was: Address) => landing.get(was) as Address;
+    if (parent === null && !isRootAddress(lands(note.address))) {
+      throw new BadRequestException(
+        "There is no number left after your highest branch. Carry this note under a note instead.",
+      );
+    }
+
+    const origin = parent ? parent.origin : ref;
+    const landedAt = (one: Node, over: Partial<Node> = {}) =>
+      parseNode({
+        ...one,
+        address: lands(one.address),
+        depth: addressDepth(lands(one.address)),
+        origin,
+        ...over,
+      });
+    const root = landedAt(note, {
+      parent: parent ? ownedRefFrom(parent.id) : undefined,
+    });
+    const landed = [root, ...beneath.map((one) => landedAt(one))];
+    await this.nodes.move(did, landed, carried.map(leftBehind));
+    return this.asRead(did, await this.nodes.subtree(did, root));
   }
 
   /**
@@ -594,13 +724,9 @@ export class NodeService {
     }
   }
 
-  private async write(
-    did: string,
-    graph: OwnedRef,
-    parent: Node | null,
-    request: CreateRequest,
-  ): Promise<NodeView> {
+  private async write(did: string, request: CreateRequest): Promise<NodeView> {
     for (let attempt = 1; ; attempt++) {
+      const { graph, parent } = await this.placeFor(did, request.from);
       const address = nextChildAddress(
         parent?.address ?? null,
         await this.nodes.childAddresses(did, parent, graph),
@@ -626,6 +752,27 @@ export class NodeService {
       }
     }
   }
+}
+
+function missing(relation: NoteDestination["relation"]): string {
+  return relation === "under"
+    ? "The note this springs from is not here."
+    : "The note this follows is not here.";
+}
+
+/** The address a note is leaving, still leading to it. */
+function leftBehind(was: Node): NodeAlias {
+  const at = nowIso();
+  return {
+    id: createOwnedRecordId("node_alias", was.created_by),
+    created_by: was.created_by,
+    graph: graphOf(was),
+    ...(was.parent ? { parent: was.parent } : {}),
+    address: was.address,
+    note: ownedRefFrom(was.id),
+    created_at: at,
+    updated_at: at,
+  };
 }
 
 /** The moment before which a deleted branch can no longer be put back. */

@@ -16,6 +16,7 @@ import {
   CreateNodeRequestSchema,
   type DeletedBranch,
   MAX_RECENT_NOTES,
+  MoveNoteRequestSchema,
   type NodeBulkResult,
   NodeBulkRequestSchema,
   type NodeView,
@@ -169,6 +170,21 @@ export class NodeController {
       requireRef(did, localId),
       parsePatch(UpdateNodeRequestSchema, body),
       req.delegation,
+    );
+  }
+
+  /** One note carried somewhere else, with everything that sprang from it. */
+  @Post(":did/:localId/move")
+  move(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+    @Body() body: unknown,
+  ): Promise<NodeView[]> {
+    return this.nodes.move(
+      viewerDid(req),
+      requireRef(did, localId),
+      parseBody(MoveNoteRequestSchema, body).to,
     );
   }
 
