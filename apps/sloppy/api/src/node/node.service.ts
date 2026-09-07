@@ -180,10 +180,11 @@ export class NodeService {
   ): Promise<SearchHit[]> {
     const address = asked.trim().toLowerCase();
     if (!isAddress(address)) return [];
-    const notes = await this.nodes.many(
-      did,
-      await this.find.notesAddressed(did, address, graph),
-    );
+    const reach = await this.find.notesAddressed(did, address, graph);
+    const at = new Set(reach.at);
+    const notes = await this.nodes.many(did, [
+      ...new Set([...reach.at, ...reach.carriedAway]),
+    ]);
     return notes
       .sort(
         (a, b) =>
@@ -196,6 +197,7 @@ export class NodeService {
         graph: graphOf(note),
         title: note.title,
         snippet: "",
+        ...(at.has(ownedRefFrom(note.id)) ? {} : { wasAt: address }),
         held: false,
       }));
   }

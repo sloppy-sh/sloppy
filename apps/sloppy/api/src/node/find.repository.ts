@@ -39,6 +39,14 @@ const MatchSchema = z.object({
     .nullish(),
 });
 
+/** What one address reaches: the note at it, and the notes it led to before
+ *  they were carried away from it. A note can be in both, having been carried
+ *  back to where it started. */
+export interface AddressReach {
+  at: OwnedRef[];
+  carriedAway: OwnedRef[];
+}
+
 /** One note somebody holds a copy of, as a hit names it. */
 export interface HeldNote {
   /** The note as its AUTHOR addresses it, which is what opens it. */
@@ -88,7 +96,7 @@ export class FindRepository {
     did: string,
     address: Address,
     graph?: OwnedRef,
-  ): Promise<OwnedRef[]> {
+  ): Promise<AddressReach> {
     const inGraph = graph === undefined ? "" : "AND graph = $graph";
     const [at, left] = await this.db.handle.query<[unknown[], unknown[]]>(
       `SELECT VALUE id FROM node
@@ -97,11 +105,10 @@ export class FindRepository {
          WHERE created_by = $did AND address = $address ${inGraph};`,
       { did, address, graph },
     );
-    const found = new Set<OwnedRef>(
-      at.map((row) => ownedRefFrom(RecordIdSchema.parse(row))),
-    );
-    for (const row of left) found.add(OwnedRefSchema.parse(row));
-    return [...found];
+    return {
+      at: at.map((row) => ownedRefFrom(RecordIdSchema.parse(row))),
+      carriedAway: left.map((row) => OwnedRefSchema.parse(row)),
+    };
   }
 
   /** The same over what a peer handed them, so a search reaches a note they are

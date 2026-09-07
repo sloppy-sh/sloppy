@@ -1,10 +1,11 @@
 // The one refusal the number line itself forces, which of the notes somebody
 // deleted a listing offers back, what an address typed into a search reaches,
-// and what carrying a note somewhere else re-addresses and refuses. Everything else about writing a note is exercised
-// against a running server in `domain.integration.test.ts`; the number-line
-// refusal cannot live there, because reaching the top means owning a branch
-// numbered near it and every automatic branch that graph opened afterwards
-// would follow that number rather than its own.
+// and what carrying a note somewhere else re-addresses and refuses. Everything
+// else about writing a note is exercised against a running server in
+// `domain.integration.test.ts`; the number-line refusal cannot live there,
+// because reaching the top means owning a branch numbered near it and every
+// automatic branch that graph opened afterwards would follow that number rather
+// than its own.
 
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import {
@@ -515,9 +516,10 @@ describe("an address typed into a search", () => {
     const finding = {
       notesAddressed: (_did: string, address: string) => {
         asked.address = address;
-        return Promise.resolve(
-          address === "1a" || address === "1c" ? [note.ref] : [],
-        );
+        return Promise.resolve({
+          at: address === "1c" ? [note.ref] : [],
+          carriedAway: address === "1a" ? [note.ref] : [],
+        });
       },
       writingMatches: () => Promise.resolve([]),
       heldWritingMatches: () => Promise.resolve([]),
@@ -554,11 +556,19 @@ describe("an address typed into a search", () => {
     ]);
   });
 
-  it("reaches the note it has been carried away from", async () => {
+  it("reaches the note it has been carried away from, saying so", async () => {
     const { service, note } = searching();
 
-    expect((await service.search(DID, "1a")).map((hit) => hit.note)).toEqual([
-      note.ref,
+    expect(await service.search(DID, "1a")).toEqual([
+      {
+        note: note.ref,
+        address: "1c",
+        graph: homeGraphRef(DID),
+        title: "1c",
+        snippet: "",
+        wasAt: "1a",
+        held: false,
+      },
     ]);
   });
 

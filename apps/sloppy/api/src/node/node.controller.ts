@@ -103,8 +103,8 @@ export class NodeController {
     return this.nodes.deleted(viewerDid(req));
   }
 
-  /** The notes whose writing carries `q`, best match first — their own and the
-   *  copies they hold. */
+  /** The notes `q` reaches, best match first: the one it addresses, then the
+   *  ones whose writing carries it — their own and the copies they hold. */
   @Get("search")
   search(
     @Req() req: AuthedRequest,
