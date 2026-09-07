@@ -765,6 +765,19 @@ so.
   where the next address in a run is, and nothing already written is moved or renumbered
   by a drag. A tap on that control still writes under its own row and the keyboard keeps
   its chord, so this is a third way in and never the only one.
+- **A row opens its note's sections in place, and a handle arranges them there.** The
+  control beside a row says what the note is made of without leaving the outline, and each
+  section carries the same handle it has inside the note. Carrying that handle says in
+  words where letting go will put the section; tapping it offers the same two moves as
+  steps, for a finger that has no hover to read. **A section only ever moves within its own
+  note** — it never crosses to another row, no note moves with it, and the run the outline
+  draws is still the addresses'.
+- **A note's row fits the narrowest phone, and the title is what gives.** The chevron, the
+  sections control and the write control are touch targets and hold their size; the title
+  truncates before any of them does, and the words beside it — that a note is published,
+  that it is chosen, how many notes are under it — fold back to their marks where there is
+  no room, saying the same thing to anything reading the page aloud. A row that scrolls
+  sideways is a bug report against this.
 - **A tablet is a phone with room, never a third layout.** If a tablet arrangement needs a
   component the phone does not have, the phone layout is what is wrong.
 - **`ResponsiveModal` is the only modal.** A drag-to-dismiss bottom sheet on a phone, a
