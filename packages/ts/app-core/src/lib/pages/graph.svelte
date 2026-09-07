@@ -623,8 +623,9 @@
 				// one: nothing deeper than this is drawn until the reader looks
 				// somewhere. The rest of the branch follows, because what a mega-node
 				// stands for is counted from the notes this device holds.
-				await nodes.load({ origin: root.ref, maxDepth: FIRST_DRAWN_DEPTH }).catch(() => {});
-				enoughToDraw();
+				await nodes
+					.load({ origin: root.ref, maxDepth: FIRST_DRAWN_DEPTH })
+					.then(enoughToDraw, () => {});
 				return nodes.load({ origin: root.ref }).then(
 					() => true,
 					(err: unknown) => {

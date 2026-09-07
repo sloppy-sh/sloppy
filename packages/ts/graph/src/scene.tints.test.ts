@@ -123,7 +123,11 @@ describe("answering a tag question on the marks already up", () => {
     scene.setTints(model(["seed"] as Tag[]), true);
     app.tick();
 
-    expect(particles(app)).toEqual(before);
+    const after = particles(app);
+    expect(after).toHaveLength(before.length);
+    for (const [at, particle] of after.entries()) {
+      expect(particle).toBe(before[at]);
+    }
     expect(words(app)).toEqual(said);
   });
 

@@ -1,4 +1,4 @@
-import type { OwnedRef, Tag } from "@sloppy/types";
+import { graphOf, type OwnedRef, type Tag } from "@sloppy/types";
 import {
   afterAll,
   beforeAll,
@@ -9,6 +9,7 @@ import {
   vi,
 } from "vitest";
 import type {
+  GraphField,
   GraphHoverAt,
   GraphPickMarks,
   GraphReadingMarks,
@@ -760,6 +761,48 @@ describe("selecting tags", () => {
         .model()
         .order.some((ref) => graph.model().graph.getNodeAttributes(ref).tag),
     ).toBe(true);
+  });
+
+  // The host names its fields off its own listing of the canvas, so the same
+  // graphs under the same names reach an update as a new list every time.
+  describe("the graphs on the canvas", () => {
+    const canvas = (garden: string): GraphField[] => [
+      { ref: graphOf(corpus.nodes[0]), title: "Thesis" },
+      {
+        ref: `${corpus.nodes[0].created_by}/garden` as OwnedRef,
+        title: garden,
+      },
+    ];
+
+    it("re-colours when the same canvas is named again", async () => {
+      const graph = await mount({ fields: canvas("Garden") });
+      const drew = graph.scene.models;
+
+      graph.handle.update({
+        ...graph.props,
+        fields: canvas("Garden"),
+        selection,
+      });
+
+      expect(graph.scene.tints).toBe(1);
+      expect(graph.scene.models).toBe(drew);
+    });
+
+    // The names are drawn beside the fields, so one arriving late is a mark the
+    // canvas has to write rather than a colour.
+    it("replaces what is drawn when a graph is named differently", async () => {
+      const graph = await mount({ fields: canvas("Garden") });
+      const drew = graph.scene.models;
+
+      graph.handle.update({
+        ...graph.props,
+        fields: canvas("The garden"),
+        selection,
+      });
+
+      expect(graph.scene.models).toBe(drew + 1);
+      expect(graph.scene.tints).toBe(0);
+    });
   });
 
   it("re-colours for a note chosen and a note opened too", async () => {

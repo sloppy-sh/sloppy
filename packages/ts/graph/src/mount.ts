@@ -10,6 +10,7 @@ import type { OwnedRef } from "@sloppy/types";
 import {
   drawnNodes,
   drawnReading,
+  type GraphField,
   type GraphFieldInset,
   type GraphHoverAt,
   type GraphSurfaceProps,
@@ -18,7 +19,7 @@ import {
 import { attachGestures, type ScreenBox } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
-import { applyLod, DEFAULT_BUDGET, type LodBudget } from "./lod.js";
+import { DEFAULT_BUDGET, type LodBudget, makeFold } from "./lod.js";
 import { buildModel, type GraphEdgeAttributes } from "./model.js";
 import {
   buildPalette,
@@ -237,6 +238,7 @@ export function mountGraph(
     },
   });
 
+  const fold = makeFold();
   const lodBudget = (): LodBudget => ({ ...DEFAULT_BUDGET, ...props.lod });
 
   /**
@@ -271,13 +273,13 @@ export function mountGraph(
       standing.nodes === props.nodes &&
       standing.collapsed === props.collapsed &&
       standing.viewer === props.viewer &&
-      standing.fields === props.fields &&
+      sameFields(standing.fields, props.fields) &&
       standing.focus === focus &&
       standing.palette === palette &&
       standing.budget.depth === budget.depth &&
       standing.budget.maxDrawn === budget.maxDrawn;
 
-    const lod = applyLod(props.nodes, props.collapsed, focus, budget);
+    const lod = fold(props.nodes, props.collapsed, focus, budget);
     budgetFolded = lod.folded;
 
     const model = buildModel(drawnNodes(props.nodes, lod.collapsed), {
@@ -599,6 +601,22 @@ function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
     a.focus !== b.focus ||
     a.lod?.depth !== b.lod?.depth ||
     a.lod?.maxDrawn !== b.lod?.maxDrawn
+  );
+}
+
+/**
+ * Whether the same graphs stand on the canvas, in the same order and under the
+ * same names. Read rather than compared by identity: a host names its fields
+ * off its own listing, so the same canvas arrives as a fresh list every update.
+ */
+function sameFields(
+  a: readonly GraphField[] | undefined,
+  b: readonly GraphField[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (field, at) => field.ref === b[at].ref && field.title === b[at].title,
   );
 }
 
