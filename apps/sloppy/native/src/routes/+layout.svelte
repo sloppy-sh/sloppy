@@ -1,31 +1,17 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { page } from '$app/state';
+	import { answerBack } from '$lib/back';
 	import { forwardDeepLinks } from '$lib/deep-link';
 	import { trackKeyboardInset } from '$lib/keyboard';
 	import { IS_MOBILE, TAURI_PLATFORM } from '$lib/platform';
 	import { initNativeRuntime } from '$lib/runtime';
-	import { session } from '@sloppy/app-core';
 	import Frame from '@sloppy/app-core/pages/frame';
-	import { overlay } from '@sloppy/ui';
 
 	let { children } = $props();
 
 	// The AppRuntime contract: before any page mounts.
 	initNativeRuntime();
-
-	/** MainActivity.kt offers Android's back press here first and leaves only
-	 *  where this refuses it. With nobody signed in the frame decides where a
-	 *  person stands and would put them straight back, so the press leaves
-	 *  rather than going nowhere. */
-	function answerBack(event: Event): void {
-		if (overlay.closeTop()) event.preventDefault();
-		else if (session.signedIn && page.url.pathname !== '/') {
-			event.preventDefault();
-			history.back();
-		}
-	}
 
 	onMount(() => {
 		void forwardDeepLinks();
