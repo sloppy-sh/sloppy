@@ -2,14 +2,26 @@
 // offers a note to type at matches by the one rule here, so a note reachable
 // from the link sheet is reachable from anywhere else that asks.
 
-import type { NodeView } from '@sloppy/types';
+import type { Address, NodeView } from '@sloppy/types';
 import { graphs } from './stores/graphs.svelte.js';
 import { nodes } from './stores/nodes.svelte.js';
 
-/** How a note is reached by what a person cites: the address, or words in the
- *  title. `needle` is already lowercased. */
+/** How a note is reached by what a person cites: an address it is at or has
+ *  been moved from, or words in the title. `needle` is already lowercased. */
 export function carries(note: NodeView, needle: string): boolean {
-	return note.address.startsWith(needle) || note.title.toLowerCase().includes(needle);
+	return (
+		note.address.startsWith(needle) ||
+		movedFrom(note, needle) !== undefined ||
+		note.title.toLowerCase().includes(needle)
+	);
+}
+
+/** The address a note has been moved away from that `needle` reaches, for a
+ *  surface saying where an old number now leads. Absent where the note's own
+ *  address is what the needle reaches, and where nothing does. */
+export function movedFrom(note: NodeView, needle: string): Address | undefined {
+	if (note.address.startsWith(needle)) return undefined;
+	return note.aliases?.find((was) => was.startsWith(needle));
 }
 
 /** How much of what a person keeps a match was made against. Only at `whole`

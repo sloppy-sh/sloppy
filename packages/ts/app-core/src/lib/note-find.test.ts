@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import type { GraphView, NodeView, OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from './api.js';
-import { carries, reachEveryGraph } from './note-find.js';
+import { carries, movedFrom, reachEveryGraph } from './note-find.js';
 import {
 	AT,
 	DID,
@@ -36,6 +36,12 @@ const UNDER = node(2, '1a', {
 	parent: SEED.ref
 });
 const ELSEWHERE = node(3, '1', { graph: COMPANY, title: 'A quarter' });
+const CARRIED = node(4, '2c', {
+	graph: GARDEN,
+	title: 'Spores',
+	aliases: ['1c'],
+	origin: SEED.ref
+});
 
 /** The graph a listing of branches is being asked for. */
 function asked(url: URL): string | null {
@@ -75,6 +81,19 @@ describe('what a person types to reach a note', () => {
 
 	it('is not fooled by how the title was capitalised', () => {
 		expect(carries(UNDER, 'mushroom')).toBe(true);
+	});
+
+	it('reaches it by an address it has been carried away from', () => {
+		expect(carries(CARRIED, '1c')).toBe(true);
+		expect(carries(CARRIED, '2c')).toBe(true);
+		expect(carries(CARRIED, '1d')).toBe(false);
+	});
+
+	it('says which old address was cited, and stays quiet about the one it is at', () => {
+		expect(movedFrom(CARRIED, '1c')).toBe('1c');
+		expect(movedFrom(CARRIED, '2c')).toBeUndefined();
+		expect(movedFrom(CARRIED, 'spores')).toBeUndefined();
+		expect(movedFrom(UNDER, '1a')).toBeUndefined();
 	});
 });
 
