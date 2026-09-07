@@ -34,6 +34,7 @@
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import NoteMenu, { type NoteMenuItem } from '../note-menu.svelte';
 	import { BlockHandles, type SectionActs, type SectionHolds } from './block-handles.js';
+	import { CARET_MENU, caretOptionId } from './caret-menu.svelte';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
@@ -807,6 +808,31 @@
 				}
 			};
 		});
+	});
+
+	// The caret menu never takes the focus — the keys it answers are spent inside
+	// the editor — so the writing is what says a list is open and which row Enter
+	// would take.
+	$effect(() => {
+		const writing = ready ? editor?.view.dom : null;
+		if (!writing) return;
+		const shown = noteCompletions.open
+			? {
+					menu: CARET_MENU.notes,
+					index: noteCompletions.index,
+					rows: noteCompletions.making === null ? noteCompletions.items.length : 0
+				}
+			: completions.open
+				? { menu: CARET_MENU.emoji, index: completions.index, rows: completions.items.length }
+				: null;
+		writing.setAttribute('aria-expanded', String(shown !== null));
+		if (shown) writing.setAttribute('aria-controls', shown.menu);
+		else writing.removeAttribute('aria-controls');
+		if (shown && shown.rows > 0) {
+			writing.setAttribute('aria-activedescendant', caretOptionId(shown.menu, shown.index));
+		} else {
+			writing.removeAttribute('aria-activedescendant');
+		}
 	});
 
 	// A catalog fetched after the note opened turns its shortcodes into pictures

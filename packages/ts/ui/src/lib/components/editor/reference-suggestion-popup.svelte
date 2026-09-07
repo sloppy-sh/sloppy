@@ -3,7 +3,7 @@
 	// puts it where the caret is.
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
-	import CaretMenu from './caret-menu.svelte';
+	import CaretMenu, { CARET_MENU, caretOptionId } from './caret-menu.svelte';
 	import type { NoteChoice, NoteCompletions } from './reference-suggestion.svelte.js';
 
 	let { completions }: { completions: NoteCompletions } = $props();
@@ -22,6 +22,7 @@
 </script>
 
 <CaretMenu
+	id={CARET_MENU.notes}
 	open={completions.open}
 	rect={completions.rect}
 	width={WIDTH}
@@ -41,6 +42,7 @@
 		{#each completions.items as choice, i (key(choice))}
 			<button
 				type="button"
+				id={caretOptionId(CARET_MENU.notes, i)}
 				role="option"
 				aria-label={label(choice)}
 				aria-selected={i === completions.index}
