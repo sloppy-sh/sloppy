@@ -1,6 +1,8 @@
-// Putting a new note where a person drops it in the outline. AI.md § "The
-// Address Is the Protocol": no note already written is moved by this, so a drop
-// asks for one more note at the end of a run and the server assigns its address.
+// Dragging in the outline: {@link dragFrom} is the press every control here
+// becomes a drag through, and the rest of this file is what a drop on a row
+// writes. AI.md § "The Address Is the Protocol": no note already written is
+// moved by this, so a drop asks for one more note at the end of a run and the
+// server assigns its address.
 //
 // Pointer events rather than HTML5 drag-and-drop, which never starts from a
 // touch, and the hold `editor/block-handles.ts` presses for on a finger.
@@ -98,23 +100,24 @@ export function runFor(rows: readonly TreeRow[], aim: TreeAim): ReadonlySet<Owne
 	return lit;
 }
 
-export interface TreeDragHooks {
-	/** Read afresh on every aim: the outline scrolls under the pointer. */
-	boxes: () => readonly TreeBox[];
+export interface TreeDragHooks<Aim> {
+	/** Where the pointer is aiming, read afresh every time: the outline scrolls
+	 *  under it. Null is a place nothing can be dropped. */
+	aim: (x: number, y: number) => Aim | null;
 	/** What a drag near the edge carries along, or null where nothing scrolls. */
 	scroller: () => HTMLElement | null;
-	moved: (at: { x: number; y: number }, aim: TreeAim | null) => void;
+	moved: (at: { x: number; y: number }, aim: Aim | null) => void;
 	/** The aim it was let go on, or null where the drag was called off. Never
 	 *  called for a press that stayed a tap. */
-	dropped: (aim: TreeAim | null) => void;
+	dropped: (aim: Aim | null) => void;
 }
 
 /**
- * A press on a row's write control, which becomes a drag once a mouse has moved
- * or a finger has been held. A press that stays a tap is left alone, so the
- * control still writes under its own row.
+ * A press on a row's control, which becomes a drag once a mouse has moved or a
+ * finger has been held. A press that stays a tap is left alone, so the control
+ * still answers its own row.
  */
-export function dragFrom(start: PointerEvent, hooks: TreeDragHooks): void {
+export function dragFrom<Aim>(start: PointerEvent, hooks: TreeDragHooks<Aim>): void {
 	if (start.button > 0) return;
 	// A finger is left to the browser until the press has been held: the outline
 	// is where a thumb starts a scroll, and a swipe from here must still scroll.
@@ -122,14 +125,14 @@ export function dragFrom(start: PointerEvent, hooks: TreeDragHooks): void {
 	if (!byFinger) start.preventDefault();
 
 	let dragging = false;
-	let aim: TreeAim | null = null;
+	let aim: Aim | null = null;
 	let x = start.clientX;
 	let y = start.clientY;
 	let frame = 0;
 	let holding: ReturnType<typeof setTimeout> | undefined;
 
 	function look(): void {
-		aim = aimAt(hooks.boxes(), x, y);
+		aim = hooks.aim(x, y);
 		hooks.moved({ x, y }, aim);
 	}
 
