@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { OwnedRef, Tag } from '@sloppy/types';
+	import type { NoteDestination, OwnedRef, Tag } from '@sloppy/types';
 	import type { OutlineSections } from './sections.js';
 	import type { TreeNote } from './walk.js';
 
@@ -62,6 +62,14 @@
 		 *  them and arranged there by their handles. Absent leaves the walk the
 		 *  notes alone, which is what a region pulled from somebody else is. */
 		sections?: OutlineSections;
+		/** Carrying a note itself to another run, from its address. Absent leaves
+		 *  every note where it is, which is what a region pulled from somebody
+		 *  else is. */
+		moveNote?: {
+			move: (ref: OwnedRef, to: NoteDestination) => void;
+			/** Why the last note asked for did not go; empty says nothing. */
+			refused?: string;
+		};
 	}
 </script>
 
@@ -93,7 +101,16 @@
 		sectionSays,
 		withSections
 	} from './sections.js';
-	import { aimAt, aimSays, dragFrom, runFor, type TreeAim, type TreeBox } from './tree-drag.js';
+	import {
+		aimAt,
+		aimSays,
+		dragFrom,
+		type MoveLanding,
+		movesTo,
+		runFor,
+		type TreeAim,
+		type TreeBox
+	} from './tree-drag.js';
 	import { RUN_PAGE, type TreeRow, walkTree } from './walk.js';
 
 	let {
@@ -109,7 +126,8 @@
 		onToggle,
 		onOpen,
 		writeUnder,
-		sections
+		sections,
+		moveNote
 	}: TreeSurfaceProps = $props();
 
 	const choosing = $derived(chosen !== undefined);
@@ -273,7 +291,11 @@
 
 	/** What a note row advertises for `aria-keyshortcuts`. */
 	const chords = (tree: boolean): string =>
-		[onChoose ? 'Control+Space' : '', sections && tree ? 'Alt+ArrowRight Alt+ArrowLeft' : '']
+		[
+			onChoose ? 'Control+Space' : '',
+			sections && tree ? 'Alt+ArrowRight Alt+ArrowLeft' : '',
+			moveNote && tree ? 'Alt+Shift+ArrowRight Alt+Shift+ArrowUp' : ''
+		]
 			.filter((one) => one !== '')
 			.join(' ');
 
@@ -312,9 +334,23 @@
 			event.preventDefault();
 			return;
 		}
+		// The same modifier with Shift carries the row itself, which is the drag a
+		// keyboard makes: under the note above it, or into that note's own run.
+		if (
+			moveNote &&
+			!heads &&
+			row.kind === 'note' &&
+			event.altKey &&
+			event.shiftKey &&
+			(event.key === 'ArrowRight' || event.key === 'ArrowUp')
+		) {
+			nudgeNote(group, rows, here, row.note, event.key === 'ArrowRight' ? 'under' : 'after');
+			event.preventDefault();
+			return;
+		}
 		// The sections chord: held, the arrows act on a note's sections instead of
 		// walking the rows, so the plain ones stay the walk they already were.
-		if (event.altKey && sections) {
+		if (event.altKey && !event.shiftKey && sections) {
 			if (row.kind === 'section' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
 				arrange(row, event.key === 'ArrowUp' ? -1 : 1);
 				event.preventDefault();
@@ -457,6 +493,109 @@
 		});
 	}
 
+	/** A note being carried to the run it will join — `tree-drag.ts`. */
+	let lifting = $state<{
+		at: { x: number; y: number };
+		note: TreeNote;
+		landing: MoveLanding;
+	} | null>(null);
+
+	/** A note let go of, and the address it was at, until the walk draws it at
+	 *  the one the server gave it. */
+	let settling = $state<{ note: OwnedRef; was: Address } | null>(null);
+
+	/** What the last act on a row did, where no drag is saying anything. */
+	let told = $state('');
+
+	/** One group's rows as a move reads them, its notes' sections left out: a
+	 *  section belongs to the note above it. */
+	function treeRows(group: string): TreeRow[] {
+		const rows = drawn.find((one) => one.key === group)?.rows ?? [];
+		return rows.filter((row): row is TreeRow => row.kind === 'note' || row.kind === 'rest');
+	}
+
+	/** Whether the press landed on the row's address, which is its grip. */
+	const onAddress = (event: PointerEvent): boolean =>
+		event.target instanceof Element && event.target.closest('.address') !== null;
+
+	function liftNote(event: PointerEvent, group: string, note: TreeNote): void {
+		dragged = false;
+		if (!moveNote) return;
+		settling = null;
+		told = '';
+		const reading = (aim: TreeAim | null): MoveLanding => movesTo(treeRows(group), note, aim);
+		dragFrom<TreeAim>(event, {
+			aim: (x, y) => aimAt(boxes(), x, y),
+			scroller: () => scroller ?? null,
+			moved: (at, aim) => (lifting = { at, note, landing: reading(aim) }),
+			dropped: (aim) => {
+				const landing = reading(aim);
+				lifting = null;
+				dragged = true;
+				carryTo(note, landing);
+			}
+		});
+	}
+
+	/** A note let go where it can land. The run it joins is opened with it, so
+	 *  the walk still draws the row that moved. */
+	function carryTo(note: TreeNote, landing: MoveLanding): void {
+		if (!landing.to) return;
+		settling = { note: note.ref, was: note.address };
+		if (landing.to.relation === 'under') toggle(landing.to.on, true);
+		moveNote?.move(note.ref, { relation: landing.to.relation, note: landing.to.on });
+	}
+
+	/** The focused row carried to the note above it, which is the move a
+	 *  keyboard makes. */
+	function nudgeNote(
+		group: string,
+		rows: readonly OutlineRow[],
+		here: number,
+		note: TreeNote,
+		relation: 'under' | 'after'
+	): void {
+		let above: TreeNote | null = null;
+		for (let at = here - 1; at >= 0 && above === null; at--) {
+			const row = rows[at];
+			if (row.kind === 'note') above = row.note;
+		}
+		if (!above) {
+			told = 'There is no note above this one';
+			return;
+		}
+		// Nothing on the page previews this one, so a chord that would only send
+		// the note to the end of the run it is already in does nothing at all.
+		if (note.parent === (relation === 'under' ? above.ref : above.parent)) {
+			told = 'Stays where it is';
+			return;
+		}
+		const landing = movesTo(treeRows(group), note, {
+			on: above.ref,
+			address: above.address,
+			title: above.title,
+			relation
+		});
+		told = landing.to ? '' : landing.says;
+		carryTo(note, landing);
+	}
+
+	/** Where a note let go of landed, once the walk has it at the address the
+	 *  server gave it. */
+	const settled = $derived.by((): string => {
+		if (!settling) return '';
+		for (const group of drawn) {
+			if (group.lead) continue;
+			for (const row of group.rows) {
+				if (row.kind !== 'note' || row.note.ref !== settling.note) continue;
+				return row.note.address === settling.was
+					? ''
+					: `${settling.was} is now ${row.note.address}, and ${settling.was} still leads to it`;
+			}
+		}
+		return '';
+	});
+
 	/** A section being carried up or down its own note — `sections.ts`. */
 	let moving = $state<{
 		at: { x: number; y: number };
@@ -513,7 +652,7 @@
 	}
 
 	const lit = $derived.by((): ReadonlySet<OwnedRef> => {
-		const aim = carrying?.aim;
+		const aim = carrying?.aim ?? lifting?.landing.to;
 		if (!aim) return NO_REFS;
 		for (const group of drawn) {
 			if (group.lead) continue;
@@ -531,13 +670,15 @@
 			? carrying.aim
 				? aimSays(carrying.aim)
 				: 'Move over a note to write there'
-			: moving
-				? sectionSays(moving.band, moving.address, moving.aim)
-				: ''
+			: lifting
+				? lifting.landing.says
+				: moving
+					? sectionSays(moving.band, moving.address, moving.aim)
+					: (moveNote?.refused ?? '') || settled || told
 	);
 
 	/** Whichever drag is under the pointer, for the pill that follows it. */
-	const carried = $derived(carrying ?? moving);
+	const carried = $derived(carrying ?? moving ?? lifting);
 </script>
 
 <div
@@ -604,7 +745,12 @@
 									aria-selected={row.note.ref === reading}
 									aria-checked={chosen ? chosen.has(row.note.ref) : undefined}
 									aria-keyshortcuts={chords(!heads) || undefined}
-									onpointerdown={() => (dragged = false)}
+									onpointerdown={(event) => {
+										dragged = false;
+										if (moveNote && !heads && onAddress(event)) {
+											liftNote(event, group, row.note);
+										}
+									}}
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
@@ -639,7 +785,17 @@
 										<span class="size-11 shrink-0" aria-hidden="true"></span>
 									{/if}
 
-									<span class="shrink-0 address text-xs text-muted-foreground">
+									<!-- The address is the row's grip: it is what a move rewrites,
+									     and DESIGN.md § "A note's row fits the narrowest phone"
+									     leaves no room for a fourth control. The padding is pulled
+									     back by as much, so a thumb has more than the glyphs to
+									     press and the row is no wider for it. -->
+									<span
+										class="shrink-0 address text-xs text-muted-foreground {moveNote && !heads
+											? '-mx-2 cursor-grab touch-pan-y px-2'
+											: ''}"
+										title={moveNote && !heads ? 'Drag it to move this note' : undefined}
+									>
 										{row.note.address}
 									</span>
 									<span class="min-w-0 flex-1 truncate text-sm">
@@ -859,14 +1015,31 @@
 		<span
 			class="flex max-w-full items-center gap-2 rounded-lg border border-dashed border-foreground/50 bg-background/95 px-3 py-2 text-sm shadow-sm backdrop-blur"
 		>
-			{#if moving}
+			{#if moving || lifting}
 				<GripVertical class="size-4 shrink-0" />
 			{:else if carrying?.aim?.relation === 'after'}
 				<ArrowDown class="size-4 shrink-0" />
 			{:else}
 				<CornerDownRight class="size-4 shrink-0" />
 			{/if}
-			<span class="truncate">{says}</span>
+			{#if lifting}
+				<span class="shrink-0 text-xs text-muted-foreground">{lifting.note.address}</span>
+				<span class="max-w-32 min-w-0 truncate">{lifting.note.title || 'Untitled'}</span>
+			{/if}
+			<span class="min-w-0 truncate">{says}</span>
+		</span>
+	</div>
+{/if}
+{#if !carried && moveNote?.refused}
+	<div
+		class="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4"
+		style="bottom: calc({inset.bottom} + 0.5rem)"
+		aria-hidden="true"
+	>
+		<span
+			class="max-w-full truncate rounded-lg border border-destructive/50 bg-background/95 px-3 py-2 text-sm text-destructive shadow-sm backdrop-blur"
+		>
+			{moveNote.refused}
 		</span>
 	</div>
 {/if}

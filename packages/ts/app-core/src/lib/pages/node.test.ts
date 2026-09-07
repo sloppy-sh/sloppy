@@ -3,6 +3,7 @@ import type {
 	CreateBlockRequest,
 	DocumentNode,
 	NodeView,
+	NoteDestination,
 	OwnedRef,
 	ProfileView,
 	PullView,
@@ -21,6 +22,7 @@ import { session } from '../stores/session.svelte.js';
 import {
 	AT,
 	DID,
+	moving,
 	node,
 	ref,
 	ulid,
@@ -421,6 +423,8 @@ const offered = () =>
 		.map((row) => row.textContent ?? '')
 		.join(' ');
 
+const FIND_TO_MOVE = '[aria-label="Move it to a note, by title or address"]';
+
 async function findToLink(typed: string): Promise<void> {
 	if (!document.body.querySelector('[aria-label="Link by title or address"]')) {
 		await act('Link to another note');
@@ -756,6 +760,133 @@ describe('linking a note to another', () => {
 		await settle();
 
 		expect(screen()).toContain('A note that is no longer here.');
+	});
+});
+
+describe('moving a note from its own page', () => {
+	beforeEach(async () => {
+		session.adopt(VIEWER, 'a-session');
+		installGraph();
+		await loadGraph();
+	});
+
+	async function findToMove(typed: string): Promise<void> {
+		if (!document.body.querySelector(FIND_TO_MOVE)) await act('Move this note');
+		const field = document.body.querySelector<HTMLInputElement>(FIND_TO_MOVE);
+		if (!field) throw new Error('The note has no field to name where it goes');
+		field.value = typed;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+	}
+
+	it('finds where it goes by the address a person would cite', async () => {
+		await openNote(THIRD);
+		await findToMove('2');
+
+		expect(noteRow('Method')).toBeTruthy();
+	});
+
+	// The address it takes is the next in the run it joins, which is what somebody
+	// deciding between the two placements is choosing between.
+	it('says what address each placement gives it', async () => {
+		await openNote(THIRD);
+		await findToMove('2');
+		noteRow('Method').click();
+		await settle();
+
+		expect(screen()).toContain('Put it under 2');
+		expect(screen()).toContain('It becomes 2a, or the next one free.');
+		expect(screen()).toContain('Put it beside 2');
+		expect(screen()).toContain('It becomes 3, or the next one free.');
+	});
+
+	// AI.md § "The Address Is the Protocol": a note is never moved under itself or
+	// a note beneath it.
+	it('refuses itself and everything under it, in words', async () => {
+		await openNote(FIRST);
+		await findToMove('1');
+		const rows = [
+			...document.body.querySelectorAll<HTMLButtonElement>(
+				'[aria-label="Notes to move it to"] li button'
+			)
+		];
+
+		expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+			expect.stringContaining('The note you are moving.'),
+			expect.stringContaining('Inside the note you are moving.'),
+			expect.stringContaining('Inside the note you are moving.')
+		]);
+		expect(rows.every((row) => row.disabled)).toBe(true);
+	});
+
+	it('carries the note, and says the address that still leads to it', async () => {
+		const asked: NoteDestination[] = [];
+		moving(api, THIRD, (to) => {
+			asked.push(to);
+			return [
+				{
+					...node(3, '2a', { title: 'Membranes', origin: FOURTH, parent: FOURTH }),
+					aliases: ['1a1']
+				}
+			];
+		});
+		await openNote(THIRD);
+		await findToMove('2');
+		noteRow('Method').click();
+		await settle();
+
+		button('Put it under 2').click();
+		await settle();
+		await settle();
+
+		expect(asked).toEqual([{ relation: 'under', note: FOURTH }]);
+		expect(noteHead()).toContain('2a');
+		expect(noteHead()).toContain('was 1a1');
+		expect(document.body.querySelector(FIND_TO_MOVE)).toBeNull();
+	});
+
+	it('keeps the address it left over the note that is open, not over the next one', async () => {
+		moving(api, THIRD, () => [
+			{ ...node(3, '2a', { title: 'Membranes', origin: FOURTH, parent: FOURTH }), aliases: ['1a1'] }
+		]);
+		await openNote(THIRD);
+		await findToMove('2');
+		noteRow('Method').click();
+		await settle();
+		button('Put it under 2').click();
+		await settle();
+		await settle();
+
+		labelled('The note this one grew out of, 2').click();
+		await settle();
+
+		expect(noteHead()).not.toContain('was');
+	});
+
+	it('says a refusal against the note it was asked of, and keeps the sheet up', async () => {
+		api.on(`POST ${path(THIRD)}/move`, () => {
+			throw new Error('unreachable');
+		});
+		await openNote(THIRD);
+		await findToMove('2');
+		noteRow('Method').click();
+		await settle();
+
+		button('Put it under 2').click();
+		await settle();
+		await settle();
+
+		expect(screen()).toContain('could not move that note');
+		expect(screen()).toContain('Put it under 2');
+	});
+
+	it('is not offered for a note the reader did not write', async () => {
+		session.clear();
+		await openNote(THIRD);
+		labelled('What to do with this note').click();
+		await settle();
+
+		expect(screen()).not.toContain('Move this note');
 	});
 });
 
