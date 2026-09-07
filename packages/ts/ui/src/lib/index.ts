@@ -35,6 +35,7 @@ export { default as HeldNote } from './components/peers/held-note.svelte';
 export { default as HeldStack } from './components/peers/held-stack.svelte';
 export type { HeldRegion, Peer, PublishedThere } from './components/peers/peer.js';
 
+export { default as CanvasInk, type CanvasPen } from './components/graph/canvas-ink.svelte';
 export { default as FindSheet, type FoundNote } from './components/graph/find-sheet.svelte';
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export * from './components/graph/view.js';

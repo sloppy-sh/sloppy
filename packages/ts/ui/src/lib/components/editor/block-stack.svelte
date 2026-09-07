@@ -4,7 +4,10 @@
 	//
 	// A pen drawing anywhere on this surface settles into a drawing where it was
 	// made; there is no drawing mode to find (DESIGN.md § The canvas).
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Bold from '@lucide/svelte/icons/bold';
+	import Brackets from '@lucide/svelte/icons/brackets';
 	import Code from '@lucide/svelte/icons/code';
 	import Heading1 from '@lucide/svelte/icons/heading-1';
 	import Heading2 from '@lucide/svelte/icons/heading-2';
@@ -17,6 +20,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Quote from '@lucide/svelte/icons/quote';
 	import Smile from '@lucide/svelte/icons/smile';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { InkStroke, OwnedRef } from '@sloppy/types';
 	import { Editor } from '@tiptap/core';
 	import { TaskItem, TaskList } from '@tiptap/extension-list';
@@ -27,7 +31,9 @@
 	import type { EmojiEntry } from '../../emoji/catalog.js';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 	import { tokenizeContent } from '../../emoji/tokenize.js';
-	import { BlockHandles } from './block-handles.js';
+	import ConfirmModal from '../confirm/confirm-modal.svelte';
+	import NoteMenu, { type NoteMenuItem } from '../note-menu.svelte';
+	import { BlockHandles, type SectionActs } from './block-handles.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
@@ -114,6 +120,12 @@
 	let failed = $state<{ trouble: SaveTrouble; says: string } | null>(null);
 	let pickerOpen = $state(false);
 	let mediaOpen = $state(false);
+	let removingSection = $state(false);
+	/** What takes out the section the question stands over. */
+	let takeSection: (() => void) | null = null;
+	/** The section a handle was tapped on, while its menu is up. */
+	let acts = $state.raw<SectionActs | null>(null);
+	let actsOpen = $state(false);
 
 	const completions = new EmojiCompletions();
 	const noteCompletions = new NoteCompletions();
@@ -672,12 +684,14 @@
 			const created = new Editor({
 				element,
 				extensions: [
-					StarterKit.configure({ document: false }),
+					// A link in one's own writing is text to put the caret in, not
+					// somewhere to be sent from mid-sentence.
+					StarterKit.configure({ document: false, link: { openOnClick: false } }),
 					NoteDocument,
 					SectionNode,
 					TaskList,
 					TaskItem.configure({ nested: true }),
-					BlockHandles,
+					BlockHandles.configure({ onSection: openSectionMenu }),
 					EmojiNode(() => catalog),
 					EmojiSuggestion(completions, () => ownCatalog),
 					ReferenceNode(() => references),
@@ -834,6 +848,49 @@
 		editor?.chain().focus().addSection().run();
 	}
 
+	function openSectionMenu(section: SectionActs): void {
+		acts = section;
+		actsOpen = true;
+	}
+
+	// The handle is plain DOM inside the writing surface; only here is it known
+	// whether the menu it asked for is up.
+	$effect(() => {
+		const anchor = acts?.anchor;
+		if (!anchor) return;
+		anchor.setAttribute('aria-expanded', String(actsOpen));
+		return () => anchor.removeAttribute('aria-expanded');
+	});
+
+	function removeSection(section: SectionActs): void {
+		if (!section.holdsWriting) {
+			section.remove();
+			return;
+		}
+		takeSection = section.remove;
+		removingSection = true;
+	}
+
+	const sectionMenu = $derived.by<NoteMenuItem[]>(() => {
+		const on = acts;
+		if (!on) return [];
+		return [
+			...(on.moveUp ? [{ label: 'Move up', icon: ArrowUp, onSelect: on.moveUp }] : []),
+			...(on.moveDown ? [{ label: 'Move down', icon: ArrowDown, onSelect: on.moveDown }] : []),
+			{
+				label: 'Remove section',
+				icon: Trash2,
+				destructive: true,
+				onSelect: () => removeSection(on)
+			}
+		];
+	});
+
+	/** Everything after this is the menu `[[` already opens. */
+	function citeNote(): void {
+		editor?.chain().focus().insertContent('[[').run();
+	}
+
 	const formatting = $derived<EditorAction[]>([
 		{
 			id: 'bold',
@@ -901,6 +958,7 @@
 	]);
 
 	const inserts = $derived<EditorAction[]>([
+		{ id: 'cite', label: 'Cite a note', icon: Brackets, run: citeNote },
 		{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) },
 		{ id: 'emoji', label: 'Emoji', icon: Smile, run: () => (pickerOpen = true) },
 		{ id: 'draw', label: 'Draw', icon: PenLine, run: startDrawing }
@@ -982,6 +1040,22 @@
 	bind:open={mediaOpen}
 	{media}
 	onpick={(choice) => ('file' in choice ? sendPicture(choice.file) : usePicture(choice.held))}
+/>
+<NoteMenu
+	bind:open={actsOpen}
+	title={acts?.title ?? ''}
+	anchor={acts?.anchor ?? null}
+	items={sectionMenu}
+/>
+<ConfirmModal
+	bind:open={removingSection}
+	title="Remove this section?"
+	description="This section and everything written in it goes from the note."
+	confirmLabel="Remove"
+	onconfirm={() => {
+		takeSection?.();
+		takeSection = null;
+	}}
 />
 
 <style>
@@ -1294,10 +1368,23 @@
 	}
 	:global(.sloppy-ink-bar) {
 		display: flex;
+		align-items: center;
 		gap: 0.25rem;
-		justify-content: flex-end;
 		border-top: 1px solid var(--border);
 		padding: 0.25rem;
+	}
+	:global(.sloppy-ink-description) {
+		flex: 1 1 auto;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		padding: 0.25rem 0.55rem;
+		font-size: 0.75rem;
+		color: var(--foreground);
+		outline: none;
+	}
+	:global(.sloppy-ink-description::placeholder) {
+		color: var(--muted-foreground);
 	}
 	:global(.sloppy-ink-action) {
 		border-radius: calc(var(--radius) - 2px);

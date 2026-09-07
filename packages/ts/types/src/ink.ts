@@ -49,6 +49,11 @@ export const InkElementDataSchema = z.object({
    * lands, which it may never do: the strokes are the record.
    */
   raster_upload_id: z.string().min(1).nullish(),
+  /**
+   * What the drawing shows, in the words its author gave it — the only text a
+   * drawing leaves behind. Absent, or `null`, on one nobody has described.
+   */
+  description: z.string().nullish(),
 });
 export type InkElementData = z.infer<typeof InkElementDataSchema>;
 

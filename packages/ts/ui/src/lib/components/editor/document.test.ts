@@ -106,7 +106,8 @@ const INK = {
 		strokes: [{ points: [{ x: 1, y: 2, pressure: 0.4, t: 0 }], width: 2 }],
 		width: 400,
 		height: 120,
-		raster_upload_id: null
+		raster_upload_id: null,
+		description: null
 	}
 };
 

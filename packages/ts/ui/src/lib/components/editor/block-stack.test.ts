@@ -971,7 +971,7 @@ describe('the writing controls', () => {
 		const rail = bar.querySelector('.overflow-x-auto') as HTMLElement;
 		const control = (label: string) => bar.querySelector(`button[aria-label="${label}"]`);
 
-		for (const label of ['Picture', 'Emoji', 'Draw']) {
+		for (const label of ['Cite a note', 'Picture', 'Emoji', 'Draw']) {
 			expect(control(label), label).not.toBeNull();
 			expect(rail.contains(control(label)), label).toBe(false);
 		}
@@ -1325,12 +1325,209 @@ describe('putting a section somewhere else in the stack', () => {
 
 		const held = document.activeElement as HTMLElement;
 		expect(held.dataset.blockHandle).toBeDefined();
-		expect(held.getAttribute('aria-label')).toBe('Move section 2 of 3');
+		expect(held.getAttribute('aria-label')).toBe('Section 2 of 3');
 	});
 
 	it('offers no handle on a note with nothing to put in order', () => {
 		open([prose('only this')]);
 		expect(grips()).toEqual([]);
+	});
+});
+
+describe('taking a section out of the note', () => {
+	const grips = (): HTMLButtonElement[] => [
+		...target.querySelectorAll<HTMLButtonElement>('[data-block-handle]')
+	];
+
+	const stack = (): (string | null)[] =>
+		[...target.querySelectorAll('.sloppy-prose > section')].map((row) => row.textContent);
+
+	const named = (label: string) =>
+		[...document.body.querySelectorAll('button')].find((one) => one.textContent?.trim() === label);
+
+	/** A tap on the handle, which is what opens its menu. */
+	function tap(at: number): void {
+		grips()[at].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		flushSync();
+	}
+
+	function choose(label: string): void {
+		named(label)?.click();
+		flushSync();
+	}
+
+	it('asks first when the section holds writing, and takes it out when told to', async () => {
+		const blocks = [prose('one'), prose('two')];
+		open(blocks);
+
+		tap(1);
+		choose('Remove section');
+		expect(document.body.textContent).toContain('Remove this section?');
+		expect(stack()).toEqual(['one', 'two']);
+
+		choose('Remove');
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(stack()).toEqual(['one']);
+		expect(written.removed).toEqual([blocks[1].ref]);
+	});
+
+	it('leaves it exactly as it was when the answer is no', async () => {
+		open([prose('one'), prose('two')]);
+
+		tap(0);
+		choose('Remove section');
+		choose('Cancel');
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(stack()).toEqual(['one', 'two']);
+		expect(written.removed).toEqual([]);
+	});
+
+	// Nothing is lost, so there is nothing to ask about.
+	it('takes an empty section back without asking', async () => {
+		const blocks = [prose('one'), block({ content: section() })];
+		open(blocks);
+
+		tap(1);
+		choose('Remove section');
+
+		expect(document.body.textContent).not.toContain('Remove this section?');
+		expect(stack()).toEqual(['one']);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.removed).toEqual([blocks[1].ref]);
+	});
+
+	// A drawing is the least recoverable thing a section can hold, and it holds
+	// no words, so it is exactly what an unasked removal would take silently.
+	it('asks first when all the section holds is a drawing', async () => {
+		const drawn = {
+			type: 'ink',
+			attrs: {
+				strokes: [{ points: [{ x: 10, y: 10, pressure: 0.5, t: 0 }], width: 2 }],
+				width: 320,
+				height: 120
+			}
+		};
+		open([prose('one'), block({ content: section(drawn) })]);
+
+		tap(1);
+		choose('Remove section');
+
+		expect(document.body.textContent).toContain('Remove this section?');
+		expect(stack()).toHaveLength(2);
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.removed).toEqual([]);
+	});
+
+	// The click that closes a drag is the drag ending, not a tap on the handle.
+	it('stays shut on the click a drag ends with, and opens on the one after it', async () => {
+		open([prose('one'), prose('two')]);
+		const pull = (type: string, y: number): PointerEvent => {
+			const event = new Event(type, { bubbles: true, cancelable: true });
+			Object.assign(event, {
+				pointerId: 3,
+				pointerType: 'mouse',
+				button: 0,
+				clientX: 10,
+				clientY: y
+			});
+			return event as PointerEvent;
+		};
+
+		grips()[0].dispatchEvent(pull('pointerdown', 20));
+		window.dispatchEvent(pull('pointermove', 100));
+		window.dispatchEvent(pull('pointerup', 20));
+		tap(0);
+
+		expect(named('Remove section')).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(0);
+		tap(0);
+
+		expect(named('Remove section')).toBeDefined();
+	});
+
+	it('says on the handle itself whether its menu is up', () => {
+		open([prose('one'), prose('two')]);
+
+		tap(0);
+		expect(grips()[0].getAttribute('aria-expanded')).toBe('true');
+
+		choose('Remove section');
+		expect(grips()[0].getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('moves the section from the same menu, for anyone who never found the drag', async () => {
+		const blocks = [prose('one'), prose('two'), prose('three')];
+		open(blocks);
+
+		tap(2);
+		choose('Move up');
+		await vi.advanceTimersByTimeAsync(5000);
+
+		expect(stack()).toEqual(['one', 'three', 'two']);
+		expect(written.moved).toEqual([{ ref: blocks[2].ref, after: blocks[0].ref }]);
+	});
+
+	it('offers no way up from the top of the note', () => {
+		open([prose('one'), prose('two')]);
+
+		tap(0);
+
+		expect(named('Move up')).toBeUndefined();
+		expect(named('Move down')).toBeDefined();
+		expect(named('Remove section')).toBeDefined();
+	});
+});
+
+describe('citing another note', () => {
+	it('is one tap from the writing bar, and the note menu takes over from there', () => {
+		open([prose('a thought')], { references: { ...noNotes(), find: () => [NOTE] } });
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+
+		const cite = target.querySelector('button[aria-label="Cite a note"]') as HTMLButtonElement;
+		cite.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		flushSync();
+
+		expect(writingIn().getText()).toContain('[[');
+		// The span the note menu matched on, which is the menu having taken over.
+		expect(surface().querySelector('[data-decoration-id]')?.textContent).toBe('[[');
+	});
+});
+
+describe('a link in the writing', () => {
+	const linked = () =>
+		block({
+			content: section({
+				type: 'paragraph',
+				content: [
+					{
+						type: 'text',
+						marks: [{ type: 'link', attrs: { href: 'https://example.com/' } }],
+						text: 'example.com'
+					}
+				]
+			})
+		});
+
+	it('takes the caret rather than sending the writer out of the note', () => {
+		const left = vi.fn();
+		vi.stubGlobal('open', left);
+		open([linked()]);
+		const anchor = target.querySelector('a') as HTMLAnchorElement;
+		const view = writingIn().view;
+
+		view.someProp('handleClick', (handled) =>
+			handled(view, view.posAtDOM(anchor, 0), {
+				button: 0,
+				target: anchor
+			} as unknown as MouseEvent)
+		);
+
+		expect(left).not.toHaveBeenCalled();
+		expect(target.querySelector('a')?.textContent).toBe('example.com');
 	});
 });
 

@@ -28,7 +28,8 @@
 		onExpand,
 		onChoose,
 		onChooseWithin,
-		onMenu
+		onMenu,
+		onInkPointer
 	}: GraphSurfaceProps & { handle?: GraphHandle } = $props();
 
 	handle = canvas;
@@ -41,6 +42,7 @@
 	data-wallpaper={wallpaper?.picture ?? ''}
 	data-brought={brought.join(' ')}
 	data-fitted={fitted}
+	data-inking={onInkPointer ? 'yes' : undefined}
 >
 	{#each nodes as note (note.ref)}
 		{@const marked =
