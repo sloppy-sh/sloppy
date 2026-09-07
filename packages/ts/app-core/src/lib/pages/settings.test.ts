@@ -188,13 +188,37 @@ describe('a copy of everything somebody keeps', () => {
 });
 
 describe('settings', () => {
-	it('keeps the three axes it already had', () => {
+	it('keeps the four axes of the look together', () => {
 		mounted = mount(Settings, { target });
 		flushSync();
-		for (const legend of ['Theme', 'Accent', 'Style']) {
+		for (const legend of ['Theme', 'Accent', 'Style', 'Font']) {
 			expect(target.textContent).toContain(legend);
 		}
-		expect(target.querySelectorAll('input[type="radio"]').length).toBe(14);
+		expect(target.querySelectorAll('input[type="radio"]').length).toBe(18);
+	});
+
+	// The face is the one look choice somebody may not be able to read the page
+	// without, so it is offered with nobody signed in, like the three beside it.
+	it('reads the whole app in the face somebody picks, before they sign in', () => {
+		session.clear();
+		mounted = mount(Settings, { target });
+		flushSync();
+
+		const face = [...target.querySelectorAll<HTMLInputElement>('input[name="font"]')];
+		expect(face.map((option) => option.value)).toEqual([
+			'system',
+			'atkinson',
+			'opendyslexic',
+			'apple'
+		]);
+		expect(target.textContent).toContain('OpenDyslexic');
+
+		const dyslexic = face.find((option) => option.value === 'opendyslexic');
+		dyslexic?.click();
+		flushSync();
+
+		expect(prefs.current.font).toBe('opendyslexic');
+		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
 	});
 
 	it('shows who is signed in, on the way to their page', async () => {

@@ -23,6 +23,8 @@
 		ACCENT_LABELS,
 		ACCENTS,
 		asOrigin,
+		FONT_LABELS,
+		FONTS,
 		prefs,
 		STYLE_LABELS,
 		STYLES,
@@ -115,9 +117,6 @@
 			return;
 		}
 		prefs.set('origin', origin);
-		prefs.set('graph', null);
-		prefs.set('alsoOnCanvas', []);
-		prefs.set('wallpapers', {});
 		repointRuntime();
 		session.clear();
 		letGoOfWhatWasRead();
@@ -203,6 +202,17 @@
 				{#each STYLES as style (style)}
 					{@render choice('style', style, STYLE_LABELS[style], prefs.current.style === style, () =>
 						prefs.set('style', style)
+					)}
+				{/each}
+			</div>
+		</fieldset>
+
+		<fieldset class="space-y-3">
+			<legend class="text-sm font-medium">Font</legend>
+			<div class="flex flex-wrap gap-2">
+				{#each FONTS as font (font)}
+					{@render choice('font', font, FONT_LABELS[font], prefs.current.font === font, () =>
+						prefs.set('font', font)
 					)}
 				{/each}
 			</div>

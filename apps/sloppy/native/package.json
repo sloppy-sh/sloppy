@@ -24,6 +24,8 @@
 	"dependencies": {
 		"@fontsource-variable/inter": "catalog:",
 		"@fontsource-variable/jetbrains-mono": "catalog:",
+		"@fontsource/atkinson-hyperlegible": "catalog:",
+		"@fontsource/opendyslexic": "catalog:",
 		"@saurl/tauri-plugin-safe-area-insets-css-api": "^0.1.0",
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/ui": "workspace:*",
