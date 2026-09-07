@@ -55,6 +55,15 @@ export class GraphRepository {
     return this.upsert(did, ref, title, "title = $title, updated_at = $now");
   }
 
+  /** The name of a graph its owner has closed, gone. A note carries the ref
+   *  rather than the row, so nothing here reaches what the graph held. */
+  async remove(did: string, ref: OwnedRef): Promise<void> {
+    await this.query("DELETE $id WHERE created_by = $did", {
+      id: recordIdFromOwnedRef("graph", ref),
+      did,
+    });
+  }
+
   /** The row for a graph its owner already has, written the first time
    *  something asks for it so a later rename has a row to rename. */
   async ensure(did: string, ref: OwnedRef, title: string): Promise<Graph> {

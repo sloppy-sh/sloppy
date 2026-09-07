@@ -191,6 +191,21 @@ class GraphsStore {
 		return named;
 	}
 
+	/** Close a graph and everything filed in it. A reader who was in it is back
+	 *  in the one they started with, and it comes off the canvas. */
+	async close(ref: OwnedRef): Promise<void> {
+		const epoch = this.#epoch;
+		await api.closeGraph(ref);
+		if (epoch !== this.#epoch) return;
+		this.#all = this.#all.filter((graph) => graph.ref !== ref);
+		this.#keep();
+		if (prefs.current.graph === ref) prefs.set('graph', null);
+		prefs.set(
+			'alsoOnCanvas',
+			prefs.current.alsoOnCanvas.filter((also) => also !== ref)
+		);
+	}
+
 	/** Move into a graph. One that was standing beside the graph being read
 	 *  trades places with it: it becomes the one you are in, and the one you
 	 *  were in comes down off the canvas. */

@@ -2527,3 +2527,47 @@ describe('reading the graph as an outline', () => {
 		expect(said()).toContain('Your new note is 1a1.');
 	});
 });
+
+// The sheet asks and the store forgets the graph; what only the page does is
+// put the reader back where they started with nothing open onto a graph that
+// is no longer drawn.
+describe('closing a graph the reader is standing in', () => {
+	const GARDEN = ref(40);
+	const SEEDLING = ref(41);
+
+	async function inTheGarden(): Promise<void> {
+		graphs.clear();
+		const seedling = node(41, '1', { title: 'Seedlings', graph: GARDEN });
+		api.on('GET /graphs', () => [
+			{ ref: HOME, created_by: DID, title: 'My graph', created_at: AT, updated_at: AT },
+			{ ref: GARDEN, created_by: DID, title: 'The garden', created_at: AT, updated_at: AT }
+		]);
+		api.on('GET /nodes/deleted', () => []);
+		api.on(`DELETE /graphs/${segments(GARDEN)}`, () => undefined);
+		api.on(`GET ${path(SEEDLING)}`, () => seedling);
+		api.on(`GET ${path(SEEDLING)}/blocks`, () => []);
+		startAt(`/n/${segments(SEEDLING)}`);
+		await open();
+	}
+
+	afterEach(() => {
+		prefs.set('alsoOnCanvas', []);
+		graphs.clear();
+	});
+
+	it('puts the reader back in the graph they started with, with nothing open', async () => {
+		await inTheGarden();
+		expect(graphs.current).toBe(GARDEN);
+		expect(reading()).toBe(true);
+
+		labelled('Your graphs').click();
+		await settle();
+		labelled('Close The garden').click();
+		await settle();
+		button('Close it').click();
+		await settle();
+
+		expect(graphs.current).toBe(HOME);
+		expect(reading()).toBe(false);
+	});
+});

@@ -13,6 +13,7 @@ const OTHER = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAX' as OwnedRef;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let putBack: OwnedRef[];
+let closed: OwnedRef[];
 let shown: number;
 
 const branch = (over: Partial<DeletedChoice> = {}): DeletedChoice => ({
@@ -38,13 +39,15 @@ async function open(
 	onRestore: (ref: OwnedRef) => Promise<void> = (ref) => {
 		putBack.push(ref);
 		return Promise.resolve();
-	}
+	},
+	onRemove: (ref: OwnedRef) => Promise<void> = () => Promise.resolve()
 ): Promise<void> {
 	if (mounted) unmount(mounted, { outro: false });
 	document.body.innerHTML = '';
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	putBack = [];
+	closed = [];
 	shown = 0;
 	mounted = mount(GraphsSheet, {
 		target,
@@ -55,12 +58,17 @@ async function open(
 				{ ref: GARDEN, title: 'Garden' }
 			],
 			current: HOME,
+			home: HOME,
 			alsoUp: new Set<OwnedRef>(),
 			deleted,
 			onEnter: () => {},
 			onToggle: () => {},
 			onOpen: () => Promise.resolve(),
 			onRename: () => Promise.resolve(),
+			onRemove: (ref: OwnedRef) => {
+				closed.push(ref);
+				return onRemove(ref);
+			},
 			onShow: () => {
 				shown += 1;
 			},
@@ -72,6 +80,12 @@ async function open(
 
 const find = (label: string): HTMLElement | null =>
 	document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+
+/** The button in the question a destructive act is asked through. */
+const confirm = (words: string): HTMLElement | null =>
+	[...document.querySelectorAll<HTMLElement>('button')].find(
+		(button) => button.textContent?.trim() === words
+	) ?? null;
 
 beforeEach(() => {
 	// The sheet at the width a desktop reader has, which is a centred dialog.
@@ -132,6 +146,52 @@ describe('the graphs sheet', () => {
 		await settle();
 
 		expect(putBack).toEqual([BRANCH]);
+	});
+
+	it('offers no way to close the graph somebody started with', async () => {
+		await open([]);
+		expect(find('Close My graph')).toBeNull();
+		expect(find('Close Garden')).not.toBeNull();
+	});
+
+	it('asks before closing a graph, naming what goes and what stays out', async () => {
+		await open([]);
+
+		find('Close Garden')?.click();
+		await settle();
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('Close Garden?');
+		expect(text).toContain('they cannot be put back');
+		expect(text).toContain('whoever already has it keeps their copy');
+		expect(closed).toEqual([]);
+	});
+
+	it('closes it once the question is answered', async () => {
+		await open([]);
+
+		find('Close Garden')?.click();
+		await settle();
+		confirm('Close it')?.click();
+		await settle();
+
+		expect(closed).toEqual([GARDEN]);
+	});
+
+	it('says why one did not close, in the words it was refused in', async () => {
+		await open([], undefined, () => Promise.reject(new Error('That graph is not here.')));
+
+		find('Close Garden')?.click();
+		await settle();
+		confirm('Close it')?.click();
+		await settle();
+
+		const said = [...document.querySelectorAll('[role="alert"]')].map((one) => one.textContent);
+		expect(said).toEqual(['That graph is not here.']);
+
+		confirm('Cancel')?.click();
+		await settle();
+		expect(document.querySelector('[role="alert"]')).toBeNull();
 	});
 
 	it('says why one did not come back, in the words it was refused in', async () => {

@@ -17,16 +17,18 @@ import { describe, expect, it } from "vitest";
 import type { MediaService } from "../media/media.service";
 import type { PublicationService } from "../publication/publication.service";
 import type { FindRepository } from "./find.repository";
-import type { GraphService } from "./graph.service";
+import type { GraphRepository } from "./graph.repository";
+import { GraphService } from "./graph.service";
 import type { NodeRepository } from "./node.repository";
 import { NodeService } from "./node.service";
 
 /** Nothing here reaches a picture, so the store is never asked for one. */
 const media = {} as MediaService;
-/** Nor publishes anything, nor names a graph: a branch with none named opens in
- *  the home graph, which nothing has to look up. */
+/** Nor publishes anything. */
 const publications = {} as PublicationService;
-const graphs = {} as GraphService;
+/** Nothing here names a graph, so every note is in the home graph — the one
+ *  graph {@link GraphService} answers for without a read. */
+const graphs = new GraphService({} as GraphRepository);
 /** Nor finds a note by what it says. */
 const finds = {} as FindRepository;
 
