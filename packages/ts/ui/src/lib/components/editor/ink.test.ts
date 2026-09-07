@@ -1,13 +1,47 @@
 // @vitest-environment jsdom
-import type { InkStroke } from '@sloppy/types';
+import type { InkPoint, InkStroke } from '@sloppy/types';
 import type { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import { docBlocks } from './document.js';
 import { block, makeEditor, section, stubCanvas } from './editor.test-support.js';
-import { StrokeInProgress, nibWidth, strokeBounds, translateStrokes } from './ink.js';
+import {
+	StrokeInProgress,
+	drawAhead,
+	nibWidth,
+	redrawWithin,
+	strokeBounds,
+	translateStrokes
+} from './ink.js';
 
 const SURFACE = { left: 100, top: 50, scale: 1 };
+
+/** A canvas that says what was drawn on it: where every line ended, and every
+ *  patch that was cleared. */
+function recording(): { ctx: CanvasRenderingContext2D; lines: number[][]; cleared: number[][] } {
+	const lines: number[][] = [];
+	const cleared: number[][] = [];
+	const ctx = {
+		setTransform() {},
+		save() {},
+		restore() {},
+		beginPath() {},
+		rect() {},
+		clip() {},
+		clearRect: (...box: number[]) => cleared.push(box),
+		moveTo() {},
+		lineTo: (x: number, y: number) => lines.push([x, y]),
+		stroke() {},
+		arc() {},
+		fill() {},
+		lineCap: '',
+		lineJoin: '',
+		lineWidth: 0,
+		strokeStyle: '',
+		fillStyle: ''
+	};
+	return { ctx: ctx as unknown as CanvasRenderingContext2D, lines, cleared };
+}
 
 interface PenSample {
 	x: number;
@@ -95,6 +129,186 @@ describe('a stroke as the pen reports it', () => {
 			2
 		);
 		expect(stroke.points[0]).toMatchObject({ x: 200, y: 200 });
+	});
+});
+
+describe('the stroke a lifted pen leaves behind', () => {
+	/** A run of samples along one line, as a device sampling fast reports it. */
+	function along(count: number): PointerEvent[] {
+		return Array.from({ length: count }, (_, i) =>
+			pen({ x: 100 + i, y: 50, at: i, type: i === 0 ? 'pointerdown' : 'pointermove' })
+		);
+	}
+
+	function drawn(samples: PointerEvent[]): StrokeInProgress {
+		const stroke = new StrokeInProgress(samples[0], SURFACE, 2);
+		for (const sample of samples.slice(1)) stroke.extend(sample, SURFACE);
+		return stroke;
+	}
+
+	it('keeps the ends of a straight run and drops what the line already says', () => {
+		const stroke = drawn(along(40));
+		expect(stroke.points).toHaveLength(40);
+		expect(stroke.finish().points.map((point) => point.x)).toEqual([0, 39]);
+	});
+
+	it('keeps every bend of a stroke that turns', () => {
+		const stroke = drawn([
+			pen({ x: 100, y: 50, type: 'pointerdown' }),
+			pen({ x: 120, y: 50, at: 8 }),
+			pen({ x: 120, y: 90, at: 16 }),
+			pen({ x: 160, y: 90, at: 24 })
+		]);
+		expect(stroke.finish().points.map((point) => [point.x, point.y])).toEqual([
+			[0, 0],
+			[20, 0],
+			[20, 40],
+			[60, 40]
+		]);
+	});
+
+	it('keeps a sample the nib would show, however straight the line is', () => {
+		const stroke = drawn([
+			pen({ x: 100, y: 50, pressure: 0.2, type: 'pointerdown' }),
+			pen({ x: 110, y: 50, pressure: 0.9, at: 8 }),
+			pen({ x: 120, y: 50, pressure: 0.9, at: 16 })
+		]);
+		expect(stroke.finish().points.map((point) => point.pressure)).toEqual([0.2, 0.9, 0.9]);
+	});
+
+	it('keeps what it kept to what the canvas can draw', () => {
+		const stroke = drawn([
+			pen({ x: 100.123456789, y: 50.987654321, pressure: 0.333333, at: 0.5, type: 'pointerdown' }),
+			pen({ x: 140.123456789, y: 90.987654321, at: 16.6666 })
+		]);
+		expect(stroke.finish().points[0]).toEqual({ x: 0.12, y: 0.99, pressure: 0.33, t: 0 });
+		expect(stroke.finish().points[1].t).toBe(16);
+	});
+
+	/** How far the polyline that was kept strays from any sample the pen reported. */
+	function strays(from: PointerEvent[], kept: readonly InkPoint[]): number {
+		const off = (point: { x: number; y: number }, a: InkPoint, b: InkPoint) => {
+			const dx = b.x - a.x;
+			const dy = b.y - a.y;
+			const span = dx * dx + dy * dy;
+			const at = span === 0 ? 0 : ((point.x - a.x) * dx + (point.y - a.y) * dy) / span;
+			const held = Math.max(0, Math.min(1, at));
+			return Math.hypot(point.x - (a.x + held * dx), point.y - (a.y + held * dy));
+		};
+		return Math.max(
+			...from.map((sample) => {
+				const point = { x: sample.clientX - 100, y: sample.clientY - 50 };
+				return Math.min(...kept.slice(1).map((to, i) => off(point, kept[i], to)));
+			})
+		);
+	}
+
+	/** A half circle, sampled the way a pencil reporting many times a frame does. */
+	function curving(radius: number, step: number): PointerEvent[] {
+		const count = Math.round((Math.PI * radius) / step);
+		return Array.from({ length: count + 1 }, (_, i) => {
+			const turn = (Math.PI * i) / count;
+			return pen({
+				x: 100 + radius * Math.cos(turn),
+				y: 50 + radius * Math.sin(turn),
+				at: i * 4,
+				type: i === 0 ? 'pointerdown' : 'pointermove'
+			});
+		});
+	}
+
+	it('holds a curve to the line it was drawn on, however fast the device sampled', () => {
+		for (const [radius, step] of [
+			[100, 1.6],
+			[100, 0.8],
+			[200, 0.8]
+		]) {
+			const samples = curving(radius, step);
+			const kept = drawn(samples).finish().points;
+			expect(kept.length).toBeLessThan(samples.length / 4);
+			expect(strays(samples, kept)).toBeLessThan(0.4);
+		}
+	});
+
+	it('keeps the far end of a run the pen retraced', () => {
+		const down = Array.from({ length: 51 }, (_, i) =>
+			pen({ x: 100, y: 50 + i * 2, at: i, type: i === 0 ? 'pointerdown' : 'pointermove' })
+		);
+		const back = Array.from({ length: 50 }, (_, i) => pen({ x: 100, y: 148 - i * 2, at: 51 + i }));
+		expect(
+			drawn([...down, ...back])
+				.finish()
+				.points.map((point) => point.y)
+		).toEqual([0, 100, 0]);
+	});
+
+	it('is still a dot where the pen was put down and lifted without moving', () => {
+		const stroke = drawn([pen({ x: 110, y: 60, type: 'pointerdown' })]);
+		expect(stroke.finish().points).toHaveLength(1);
+	});
+});
+
+describe('drawing ahead of the nib', () => {
+	it('reads the samples the platform expects next without recording them', () => {
+		const stroke = new StrokeInProgress(pen({ x: 100, y: 50, type: 'pointerdown' }), SURFACE, 2);
+		const move = pen({ x: 120, y: 50, at: 8 });
+		Object.assign(move, { getPredictedEvents: () => [pen({ x: 140, y: 50, at: 16 })] });
+		stroke.extend(move, SURFACE);
+
+		expect(stroke.predict(move, SURFACE).map((point) => point.x)).toEqual([40]);
+		expect(stroke.points.map((point) => point.x)).toEqual([0, 20]);
+	});
+
+	it('has nothing to draw ahead where the platform does not say', () => {
+		const stroke = new StrokeInProgress(pen({ x: 100, y: 50, type: 'pointerdown' }), SURFACE, 2);
+		expect(stroke.predict(pen({ x: 120, y: 50, at: 8 }), SURFACE)).toEqual([]);
+	});
+
+	it('draws the tail and answers with the ground it covered', () => {
+		const drawn = recording();
+		const region = drawAhead(
+			drawn.ctx,
+			{ points: [{ x: 0, y: 0, pressure: 0.5, t: 0 }], width: 2 },
+			[{ x: 20, y: 0, pressure: 0.5, t: 8 }],
+			1
+		)!;
+		expect(drawn.lines).toEqual([[20, 0]]);
+		expect(region.left).toBeLessThan(0);
+		expect(region.right).toBeGreaterThan(20);
+	});
+
+	it('answers with nothing where there is nothing ahead', () => {
+		const drawn = recording();
+		const live = { points: [{ x: 0, y: 0, pressure: 0.5, t: 0 }], width: 2 };
+		expect(drawAhead(drawn.ctx, live, [], 1)).toBeNull();
+		expect(drawn.lines).toEqual([]);
+	});
+});
+
+describe('lifting a mark off a patch of the surface', () => {
+	const across: InkStroke = {
+		points: [
+			{ x: 0, y: 0, pressure: 0.5, t: 0 },
+			{ x: 10, y: 0, pressure: 0.5, t: 8 },
+			{ x: 400, y: 0, pressure: 0.5, t: 16 }
+		],
+		width: 2
+	};
+
+	it('clears the patch and lays back only what runs through it', () => {
+		const drawn = recording();
+		redrawWithin(drawn.ctx, [across], 1, { left: 0, top: -5, right: 20, bottom: 5 });
+		expect(drawn.cleared).toEqual([[0, -5, 20, 10]]);
+		expect(drawn.lines).toEqual([
+			[10, 0],
+			[400, 0]
+		]);
+	});
+
+	it('leaves a stroke nowhere near the patch alone', () => {
+		const drawn = recording();
+		redrawWithin(drawn.ctx, [across], 1, { left: 0, top: 500, right: 20, bottom: 520 });
+		expect(drawn.lines).toEqual([]);
 	});
 });
 
@@ -199,6 +413,23 @@ describe('drawing into a drawing that is already there', () => {
 		touch('pointerup', 180);
 
 		expect(drawn(editor).strokes).toHaveLength(0);
+	});
+
+	it('draws ahead of the nib without adding it to the drawing', () => {
+		const painted = recording();
+		HTMLCanvasElement.prototype.getContext = (() =>
+			painted.ctx) as unknown as HTMLCanvasElement['getContext'];
+		editor = drawing();
+		const canvas = canvasOf(editor);
+
+		canvas.dispatchEvent(pen({ x: 110, y: 60, type: 'pointerdown' }));
+		const move = pen({ x: 150, y: 90, at: 16 });
+		Object.assign(move, { getPredictedEvents: () => [pen({ x: 200, y: 120, at: 24 })] });
+		canvas.dispatchEvent(move);
+		expect(painted.lines).toContainEqual([100, 70]);
+
+		canvas.dispatchEvent(pen({ x: 150, y: 90, at: 16, type: 'pointerup' }));
+		expect(drawn(editor).strokes[0].points.map((point) => point.x)).toEqual([10, 50]);
 	});
 
 	it('grows the drawing when the pen runs past the bottom of it', () => {

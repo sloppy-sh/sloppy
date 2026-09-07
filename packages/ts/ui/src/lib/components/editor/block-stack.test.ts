@@ -383,6 +383,156 @@ describe('a pen on the writing surface', () => {
 	});
 });
 
+describe('a pen on a note longer than the screen', () => {
+	/** What one element is measured at, whatever the rest of the page says. */
+	function measuring(element: Element, box: { top: number; height: number }): void {
+		element.getBoundingClientRect = () =>
+			({
+				left: 0,
+				top: box.top,
+				width: 320,
+				height: box.height,
+				right: 320,
+				bottom: box.top + box.height
+			}) as DOMRect;
+	}
+
+	/** The note, in a box 600 tall that it is read a screen at a time in. */
+	function readingBox(): { frame: HTMLElement; canvas: HTMLCanvasElement } {
+		const frame = target.querySelector('div.relative') as HTMLElement;
+		measuring(frame, { top: 0, height: 4000 });
+		return { frame, canvas: frame.querySelector('canvas') as HTMLCanvasElement };
+	}
+
+	beforeEach(() => {
+		target.style.overflowY = 'auto';
+		measuring(target, { top: 0, height: 600 });
+	});
+
+	it('lays the wet surface over what is on screen, not over the whole note', () => {
+		open([prose('a thought')]);
+		const { frame, canvas } = readingBox();
+		measuring(frame, { top: -1000, height: 4000 });
+
+		frame.dispatchEvent(penEvent('pointerdown', 40, 60));
+		frame.dispatchEvent(penEvent('pointerup', 40, 60));
+
+		expect(canvas.style.top).toBe('1000px');
+		expect(canvas.style.height).toBe('600px');
+		expect(canvas.height).toBe(600);
+	});
+
+	it('holds a stroke where it was drawn in the note, however the note scrolls after', async () => {
+		open([]);
+		const { frame } = readingBox();
+		const draw = () => {
+			frame.dispatchEvent(penEvent('pointerdown', 40, 100));
+			frame.dispatchEvent(penEvent('pointermove', 80, 140));
+			frame.dispatchEvent(penEvent('pointerup', 80, 140));
+		};
+
+		draw();
+		measuring(frame, { top: -200, height: 4000 });
+		window.dispatchEvent(new Event('scroll'));
+		draw();
+
+		await vi.advanceTimersByTimeAsync(5000);
+		const drawing = inked(written.created[0].content as BlockDocument);
+		const [first, second] = drawing?.strokes ?? [];
+		expect(second.points[0].y - first.points[0].y).toBe(200);
+	});
+});
+
+describe('the samples a pen is expected to reach next', () => {
+	/** A canvas that says what was drawn on it and what was lifted off it. */
+	function recording(): { lines: number[][]; cleared: number[][] } {
+		const lines: number[][] = [];
+		const cleared: number[][] = [];
+		HTMLCanvasElement.prototype.getContext = (() => ({
+			setTransform() {},
+			save() {},
+			restore() {},
+			beginPath() {},
+			rect() {},
+			clip() {},
+			clearRect: (...box: number[]) => cleared.push(box),
+			moveTo() {},
+			drawImage() {},
+			lineTo: (x: number, y: number) => lines.push([x, y]),
+			stroke() {},
+			arc() {},
+			fill() {},
+			lineCap: '',
+			lineJoin: '',
+			lineWidth: 0,
+			strokeStyle: '',
+			fillStyle: ''
+		})) as unknown as HTMLCanvasElement['getContext'];
+		return { lines, cleared };
+	}
+
+	function expecting(x: number, y: number): PointerEvent {
+		const move = penEvent('pointermove', x, y);
+		Object.assign(move, { getPredictedEvents: () => [penEvent('pointermove', x + 40, y + 40)] });
+		return move;
+	}
+
+	it('is drawn ahead of the nib, lifted again, and never written down', async () => {
+		const drawn = recording();
+		open([]);
+		const frame = target.querySelector('div.relative') as HTMLElement;
+
+		frame.dispatchEvent(penEvent('pointerdown', 40, 60));
+		frame.dispatchEvent(expecting(80, 100));
+		expect(drawn.lines).toContainEqual([120, 140]);
+
+		frame.dispatchEvent(expecting(60, 160));
+		expect(drawn.cleared.some((box) => box[2] < 320)).toBe(true);
+
+		frame.dispatchEvent(penEvent('pointerup', 60, 160));
+		await vi.advanceTimersByTimeAsync(5000);
+		const drawing = inked(written.created[0].content as BlockDocument);
+		expect(drawing?.strokes[0].points.map((point) => point.x)).toEqual([40, 80, 60]);
+	});
+});
+
+describe('a section too big to save', () => {
+	it('is left with the person, and the rest of the note still saves', async () => {
+		open([]);
+		const of = writingIn();
+		of.commands.insertContent({ type: 'text', text: 'a thought' });
+		of.commands.addSection();
+		of.commands.insertContent({ type: 'text', text: 'x'.repeat(2 * 1024 * 1024 + 64) });
+		await vi.advanceTimersByTimeAsync(5000);
+		flushSync();
+
+		expect(written.created.map((made) => wording(made.content as BlockDocument)[0])).toEqual([
+			'a thought'
+		]);
+		const said = target.querySelector('[role="alert"]')?.textContent ?? '';
+		expect(said).toContain('That section is too big to save.');
+		expect(said).toContain('2 MB');
+	});
+
+	it('leaves the section under it where the person put it', async () => {
+		const first = prose('already saved');
+		open([first]);
+		const of = writingIn();
+		of.commands.setTextSelection(Selection.atEnd(of.state.doc).from);
+		of.commands.addSection();
+		of.commands.insertContent({ type: 'text', text: 'x'.repeat(2 * 1024 * 1024 + 64) });
+		of.commands.addSection();
+		of.commands.insertContent({ type: 'text', text: 'a third thought' });
+		await vi.advanceTimersByTimeAsync(5000);
+		flushSync();
+
+		expect(written.created.map((made) => wording(made.content as BlockDocument)[0])).toEqual([
+			'a third thought'
+		]);
+		expect(written.created[0].after).toBe(first.ref);
+	});
+});
+
 describe('what a note keeps when it is left', () => {
 	it('writes what was typed when the note is closed before the writing pauses', async () => {
 		open([prose('a thought')]);

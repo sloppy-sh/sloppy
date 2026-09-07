@@ -140,6 +140,20 @@ describe('a stack of sections opened as one document', () => {
 		expect(rows(open())).toEqual([]);
 	});
 
+	it('writes a section down once, and again only where somebody wrote into it', () => {
+		const of = open([
+			block({ content: written }),
+			block({ content: section(...text('A second thought.'), INK) })
+		]);
+		const first = rows(of);
+		expect(rows(of)[0].content).toBe(first[0].content);
+
+		of.commands.insertContentAt(2, 'Not ');
+		const after = rows(of);
+		expect(after[0].content).not.toBe(first[0].content);
+		expect(after[1].content).toBe(first[1].content);
+	});
+
 	// The store hands an element's attributes back in its own key order, so a
 	// note opens with attributes ordered differently from the way the editor
 	// writes them. Comparing the two as text would rewrite every note on sight.

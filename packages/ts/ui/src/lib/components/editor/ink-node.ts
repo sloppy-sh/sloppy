@@ -11,10 +11,13 @@ import {
 	NIB_WIDTH,
 	StrokeInProgress,
 	capturePointer,
+	drawAhead,
 	drawStroke,
 	drawStrokes,
 	prepareCanvas,
-	strokeBounds
+	redrawWithin,
+	strokeBounds,
+	type InkBounds
 } from './ink.js';
 import { placeBlock } from './placement.js';
 
@@ -97,6 +100,9 @@ export const InkNode = Node.create({
 		return ({ node, editor, getPos }) => {
 			let current = node;
 			let wet: StrokeInProgress | null = null;
+			/** Where the samples drawn ahead of the nib were left, so the next real
+			 *  one lifts them; null where none are on the canvas. */
+			let ahead: InkBounds | null = null;
 
 			const dom = document.createElement('div');
 			dom.className = 'sloppy-ink';
@@ -191,22 +197,24 @@ export const InkNode = Node.create({
 			canvas.addEventListener('pointermove', (event) => {
 				if (!wet) return;
 				event.preventDefault();
-				const before = wet.points.length;
-				wet.extend(event, surface());
 				const prepared = context();
-				if (prepared) {
-					drawStroke(
-						prepared.ctx,
-						{ points: wet.points, width: wet.width },
-						prepared.scale,
-						Math.max(1, before)
-					);
+				const live = { points: wet.points, width: wet.width };
+				if (prepared && ahead) {
+					redrawWithin(prepared.ctx, [...strokes(), live], prepared.scale, ahead);
+					ahead = null;
 				}
+				const on = surface();
+				const before = wet.points.length;
+				wet.extend(event, on);
+				if (!prepared) return;
+				drawStroke(prepared.ctx, live, prepared.scale, Math.max(1, before));
+				ahead = drawAhead(prepared.ctx, live, wet.predict(event, on), prepared.scale);
 			});
 
 			function settle(): void {
 				const stroke = wet?.finish();
 				wet = null;
+				ahead = null;
 				if (!stroke) {
 					redraw();
 					return;
