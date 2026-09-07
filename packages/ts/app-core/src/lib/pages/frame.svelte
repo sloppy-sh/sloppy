@@ -19,6 +19,7 @@
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
@@ -140,6 +141,7 @@
 			graphs.clear();
 			identity.clear();
 			nodes.clear();
+			outlineSections.clear();
 			peers.clear();
 			people.hold(null);
 			publications.clear();
