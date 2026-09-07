@@ -53,13 +53,9 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * means the server alone writes it: docs/ARCHITECTURE.md § "Data model".
    */
   references: z.array(OwnedRefSchema).optional(),
-  /**
-   * Whether a publication row roots at this note or at one of its ancestors,
-   * denormalized so a mark can be drawn without the publication list beside it.
-   * What makes a subtree readable is still the row; docs/ARCHITECTURE.md
-   * § "Data model" carries the ruling and what maintaining this must never
-   * leave behind.
-   */
+  /** Whether a published version carries this note, maintained from the
+   *  snapshot rows and never from a publication rooted above it; docs/ARCHITECTURE.md
+   *  § "Data model" carries the ruling. Absent is false. */
   published: z.boolean().default(false),
   /**
    * How its author asked the mark to be drawn. Absent is a note nobody styled,
