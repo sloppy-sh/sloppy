@@ -482,6 +482,14 @@
 	 *  makes: a finger has neither a hover to read nor a key to hold. */
 	let nudging = $state<OwnedRef | null>(null);
 
+	$effect(() => {
+		if (nudging === null) return;
+		const drawnStill = drawn.some((group) =>
+			group.rows.some((row) => row.kind === 'section' && row.section.ref === nudging)
+		);
+		if (!drawnStill) nudging = null;
+	});
+
 	function carrySection(event: PointerEvent, row: Extract<OutlineRow, { kind: 'section' }>): void {
 		dragged = false;
 		if (!sections) return;
@@ -634,7 +642,7 @@
 									<span class="shrink-0 address text-xs text-muted-foreground">
 										{row.note.address}
 									</span>
-									<span class="min-w-16 flex-1 truncate text-sm">
+									<span class="min-w-0 flex-1 truncate text-sm">
 										{row.note.title || 'Untitled'}
 									</span>
 
@@ -656,7 +664,7 @@
 									{#if row.note.published}
 										<span class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
 											<Globe class="size-3" aria-hidden="true" />
-											Published
+											<span class="sr-only sm:not-sr-only">Published</span>
 										</span>
 									{/if}
 
@@ -666,13 +674,13 @@
 											aria-hidden="true"
 										>
 											<Check class="size-3" />
-											Chosen
+											<span class="hidden sm:inline">Chosen</span>
 										</span>
 									{/if}
 
 									{#if row.under > 0}
 										<span
-											class="shrink-0 text-xs text-muted-foreground tabular-nums"
+											class="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline"
 											aria-hidden="true"
 										>
 											{row.under.toLocaleString()}
@@ -718,7 +726,7 @@
 												}
 												writeUnder?.write(row.note.ref);
 											}}
-											class="-me-1 flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+											class="flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
 											<CornerDownRight class="size-4" />
 										</button>
@@ -787,7 +795,7 @@
 												event.stopPropagation();
 												arrange(row, 1);
 											}}
-											class="-me-1 flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
 										>
 											<ArrowDown class="size-4" />
 										</button>

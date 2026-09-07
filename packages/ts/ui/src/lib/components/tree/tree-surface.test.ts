@@ -4,7 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
-import type { TreeSection } from './sections.js';
+import type { OutlineSections, TreeSection } from './sections.js';
 import TreeSurface, { type TreeGroup, type TreeSurfaceProps } from './tree-surface.svelte';
 import { LIT_PAGE, RUN_PAGE, type TreeNote } from './walk.js';
 
@@ -1003,7 +1003,9 @@ describe('a note’s sections under its row in the walk', () => {
 	let word: string;
 	let again: boolean;
 
-	function sections(shown: OwnedRef[] = [held('1')]): TreeSurfaceProps['sections'] {
+	function sections(
+		shown: OwnedRef[] = [held('1')]
+	): OutlineSections & { shown: SvelteSet<OwnedRef> } {
 		return {
 			shown: new SvelteSet(shown),
 			of: (note) => (note === held('1') ? stack : undefined),
@@ -1314,6 +1316,22 @@ describe('a note’s sections under its row in the walk', () => {
 		expect(sectionRow(S1).querySelector('[aria-label^="Move it up"]')).toBeNull();
 	});
 
+	it('lets go of the handle it was offering when the note is folded back up', () => {
+		const surface = sections();
+		render({ sections: surface });
+		gripIn(S2).click();
+		flushSync();
+		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).not.toBeNull();
+
+		surface.shown.delete(held('1'));
+		flushSync();
+		surface.shown.add(held('1'));
+		flushSync();
+
+		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).toBeNull();
+		expect(gripIn(S2).getAttribute('aria-expanded')).toBe('false');
+	});
+
 	it('leaves them out of a drag that ended on the handle', () => {
 		render({ sections: sections() });
 		lay();
@@ -1356,5 +1374,122 @@ describe('a note’s sections under its row in the walk', () => {
 		expect(written).toEqual([held('1')]);
 		expect(moves).toHaveLength(1);
 		expect(openedNotes).toEqual([]);
+	});
+});
+
+// PRODUCT.md principle 6: the outline is drawn at phone width first. jsdom lays
+// nothing out, so a row's narrowest is added up from its parts rather than
+// measured.
+describe('a note row on the narrowest phone', () => {
+	const PHONE = 360;
+	/** What the surface holds back either side of the run, and a row after it. */
+	const SCROLLER = 16;
+	const ROW_END = 8;
+	/** `--tree-step` below `sm`, and the gap between a row's parts. */
+	const STEP = 10;
+	const GAP = 8;
+	const TARGET = 44;
+	/** An upper bound on one character of a row's small text. */
+	const CHAR = 7;
+
+	/** A run as deep as the outline sets a row in, published all the way down,
+	 *  with one more note under the last so its row carries a count too. */
+	const DEEP = (() => {
+		const out = [note('1', undefined, { published: true })];
+		let address = '1';
+		for (let step = 1; step <= 8; step += 1) {
+			const child = `${address}${step % 2 === 1 ? 'a' : '1'}`;
+			out.push(note(child, address, { published: true }));
+			address = child;
+		}
+		out.push(note(`${address}a`, address));
+		return out;
+	})();
+
+	const DEEPEST = '1a1a1a1a1';
+
+	const classesOf = (part: Element): string[] => (part.getAttribute('class') ?? '').split(/\s+/);
+
+	const gapOf = (classes: string[]): number => {
+		const gap = classes.find((one) => /^gap-\d+$/.test(one));
+		return gap ? Number(gap.slice(4)) * 4 : 0;
+	};
+
+	/** The narrowest a part can be drawn, or null where it is not drawn at all:
+	 *  a control is its touch target, an icon its size, words that truncate or
+	 *  fold are nothing, and anything else is as wide as its own text. */
+	function floorOf(part: Element): number | null {
+		const classes = classesOf(part);
+		if (classes.includes('sr-only') || classes.includes('hidden')) return null;
+		if (classes.includes('size-11')) return TARGET;
+		const sized = classes.find((one) => /^size-\d+$/.test(one));
+		if (sized) return Number(sized.slice(5)) * 4;
+		const floor = classes.find((one) => /^min-w-\d+$/.test(one));
+		if (floor) return Number(floor.slice(6)) * 4;
+		if (classes.includes('truncate')) return 0;
+		const parts = [...part.children];
+		if (parts.length === 0) return (part.textContent ?? '').trim().length * CHAR;
+		return acrossOf(parts, gapOf(classes));
+	}
+
+	function acrossOf(parts: Element[], gap: number): number {
+		const drawn = parts.map(floorOf).filter((one): one is number => one !== null);
+		return drawn.reduce((sum, one) => sum + one, 0) + gap * Math.max(0, drawn.length - 1);
+	}
+
+	function acrossRow(row: HTMLElement): number {
+		const step = /calc\((\d+) \*/.exec(row.style.paddingInlineStart);
+		const indent = Number(step?.[1] ?? 0) * STEP;
+		return SCROLLER + indent + acrossOf([...row.children], GAP) + ROW_END;
+	}
+
+	const bare: TreeSurfaceProps['sections'] = {
+		shown: new SvelteSet<OwnedRef>(),
+		of: () => undefined,
+		says: () => ({ says: '', again: false }),
+		onShow: () => {},
+		onMove: () => {}
+	};
+
+	function deep(): HTMLElement {
+		render({
+			groups: [{ key: 'one', title: 'Field notes', notes: DEEP }],
+			opened: new Set(DEEP.slice(0, 8).map((one) => one.ref)),
+			writable: true,
+			sections: bare
+		});
+		return labelled(`About ${DEEPEST}`);
+	}
+
+	it('fits a published row set in as far as the outline sets one', () => {
+		const row = deep();
+		expect(row.getAttribute('aria-level')).toBe('9');
+		expect(row.textContent).toContain('1 note under this');
+
+		expect(acrossRow(row)).toBeLessThanOrEqual(PHONE);
+	});
+
+	it('gives the row’s room to the title, which is what truncates', () => {
+		const row = deep();
+		const title = [...row.children].find((one) => classesOf(one).includes('flex-1')) as HTMLElement;
+
+		expect(title.textContent?.trim()).toBe(`About ${DEEPEST}`);
+		expect(classesOf(title)).toContain('truncate');
+		expect(classesOf(title).filter((one) => /^min-w-/.test(one))).toEqual(['min-w-0']);
+	});
+
+	it('keeps every control at the touch target, with nothing set around it', () => {
+		const row = deep();
+		const controls = [...row.querySelectorAll('button')];
+
+		expect(controls.map((one) => one.getAttribute('aria-label'))).toEqual([
+			`Unfold ${DEEPEST}`,
+			`Show the sections of ${DEEPEST}`,
+			`Write a note under ${DEEPEST}`
+		]);
+		for (const one of controls) {
+			expect(classesOf(one)).toContain('size-11');
+			expect(classesOf(one).filter((cls) => /^-?m[a-z]?-/.test(cls))).toEqual([]);
+		}
 	});
 });
