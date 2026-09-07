@@ -786,6 +786,18 @@ describe('moving a note from its own page', () => {
 		expect(noteRow('Method')).toBeTruthy();
 	});
 
+	// A number written down before that note was itself carried still reaches it,
+	// so the row says which one it was reached by.
+	it('finds where it goes by an address that note has been carried away from', async () => {
+		nodes.clear();
+		installGraph().set(FOURTH, { ...node(4, '2', { title: 'Method' }), aliases: ['1b'] });
+		await loadGraph();
+		await openNote(THIRD);
+		await findToMove('1b');
+
+		expect(noteRow('Method').textContent).toContain('Was at 1b');
+	});
+
 	// The address it takes is the next in the run it joins, which is what somebody
 	// deciding between the two placements is choosing between.
 	it('says what address each placement gives it', async () => {

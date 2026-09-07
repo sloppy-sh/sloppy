@@ -79,7 +79,7 @@
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
 	import { deviceStore, type DeviceArea } from '../device-store.js';
-	import { carries, reachEveryGraph, type Reach } from '../note-find.js';
+	import { carries, movedFrom, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { drafts } from '../stores/drafts.svelte.js';
@@ -583,6 +583,7 @@
 				ref: note.ref,
 				address: note.address,
 				title: note.title,
+				wasAt: movedFrom(note, needle),
 				lands:
 					note.ref === ref
 						? { refused: 'The note you are moving.' }

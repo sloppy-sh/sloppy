@@ -160,6 +160,18 @@ describe('the move sheet', () => {
 		expect(rows()).toHaveLength(1);
 	});
 
+	// A number somebody wrote down before a move still reaches the note, so the
+	// row it matched says which one it was reached by.
+	it('names the address a target was reached by where the target has left it', async () => {
+		await open({ query: '1c', found: [{ ...method, wasAt: '1c' }] });
+
+		expect(rows()[0].textContent).toContain('Was at 1c');
+
+		await open({ query: '2', found: [method] });
+
+		expect(rows()[0].textContent).not.toContain('Was at');
+	});
+
 	it('says a refusal against the placements that earned it', async () => {
 		await open({ query: '2', found: [method], refused: 'That note is gone.' });
 		rows()[0].click();

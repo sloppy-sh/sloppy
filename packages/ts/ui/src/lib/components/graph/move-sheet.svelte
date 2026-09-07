@@ -6,6 +6,9 @@
 		ref: OwnedRef;
 		address: string;
 		title: string;
+		/** An address this note has been carried away from that the typed number
+		 *  reached, absent where its own address or its title is what matched. */
+		wasAt?: string;
 		/** The address the note takes under this one and alongside it, or the
 		 *  words for why it cannot go here at all. */
 		lands: { under: string; after: string } | { refused: string };
@@ -150,6 +153,11 @@
 									<span class="shrink-0 address text-muted-foreground">{target.address}</span>
 									<span class="min-w-0 flex-1 truncate">{nameOf(target)}</span>
 								</span>
+								{#if target.wasAt}
+									<span class="text-xs text-muted-foreground">
+										Was at <span class="address">{target.wasAt}</span>
+									</span>
+								{/if}
 								{#if why}
 									<span class="text-xs text-muted-foreground">{why}</span>
 								{/if}
