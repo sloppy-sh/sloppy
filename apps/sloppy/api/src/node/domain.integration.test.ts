@@ -1541,6 +1541,55 @@ describe("the domain routes", () => {
         expect(JSON.stringify(again.body)).toContain("since deleted");
       },
     );
+
+    scenario("keeps an address a purged note was moved away from", async () => {
+      // A note that has moved is reached by two addresses, and the row that
+      // carries the older one goes when the note is finally taken. Both numbers
+      // stay spent: a citation of either must never open a later thought.
+      const { createOwnedRecordId, homeGraphRef, nowIso } = await import(
+        "@sloppy/types"
+      );
+      const { DbService } = await import("../db/db.service");
+      const { NodeRepository } = await import("./node.repository");
+
+      const root = await newNode(ada, { title: "Moved, then purged" });
+      const going = await newNode(ada, { from: springsFrom(root) });
+      const left = `${root.address}z` as Address;
+      const stamp = nowIso();
+      const db = app.get(DbService).handle;
+      await db.query("INSERT INTO node_alias $row;", {
+        row: {
+          id: createOwnedRecordId("node_alias", ada.did),
+          created_by: ada.did,
+          graph: homeGraphRef(ada.did),
+          parent: root.ref,
+          address: left,
+          note: going.ref,
+          created_at: stamp,
+          updated_at: stamp,
+        },
+      });
+
+      await call("DELETE", `/nodes/${at(going.ref)}`, ada);
+      await app.get(NodeRepository).purgeExpired(ada.did, nowIso());
+
+      const [aliases] = await db.query<[unknown[]]>(
+        "SELECT * FROM node_alias WHERE created_by = $did AND note = $note;",
+        { did: ada.did, note: going.ref },
+      );
+      expect(aliases).toEqual([]);
+
+      const [retired] = await db.query<[{ address: string; parent: string }[]]>(
+        "SELECT address, parent FROM retired_address WHERE created_by = $did AND parent = $parent;",
+        { did: ada.did, parent: root.ref },
+      );
+      expect(retired.map((row) => row.address).sort()).toEqual(
+        [going.address, left].sort(),
+      );
+
+      const next = await newNode(ada, { from: springsFrom(root) });
+      expect(next.address).toBe(`${root.address}aa`);
+    });
   });
   describe("a note's look", () => {
     scenario(

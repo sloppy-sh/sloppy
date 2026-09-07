@@ -69,7 +69,7 @@
 						{/if}
 					</span>
 					<!-- Which of the two this is decides the address the note is minted
-					     at, and an address never changes, so the name is what gives way. -->
+					     at, so the name is what gives way. -->
 					<span class="flex min-w-0 flex-1 items-baseline gap-1 text-muted-foreground">
 						<span class="min-w-0 truncate">Write “{choice.name}”</span>
 						<span class="shrink-0">{choice.relation === 'under' ? 'under' : 'after'} this note</span

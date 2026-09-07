@@ -28,6 +28,16 @@ describe("the next address under a parent", () => {
     expect(nextChildAddress("1", ["1a", "1c"])).toBe("1d");
   });
 
+  it("passes over an address spent under a parent that has since moved", () => {
+    // The rows an address is spent on are read by the parent it hung under, so
+    // a move hands this run addresses from the run that parent used to be in.
+    // Following one would put the new note beside a note in another run.
+    expect(nextChildAddress("2c", ["2c1", "1a1"])).toBe("2c2");
+    expect(nextChildAddress("2c", ["1a1", "1a2"])).toBe("2c1");
+    expect(nextChildAddress(null, ["1", "1a"])).toBe("2");
+    expect(nextChildAddress("1", ["1a", "2"])).toBe("1b");
+  });
+
   it("gives the same answer whatever order the siblings arrive in", () => {
     const siblings = ["1c", "1a", "1b", "1e", "1d"];
     expect(nextChildAddress("1", siblings)).toBe("1f");
@@ -117,6 +127,21 @@ describe("where a moved note and everything under it land", () => {
     // ones retired, and the addresses a move left behind.
     expect(movedSubtree("1", ["1a", "1b", "1c", "1d"], "2", [])).toEqual(
       new Map([["2", "1e"]]),
+    );
+  });
+
+  it("lands past the run's own addresses and no others", () => {
+    expect(movedSubtree("2c", ["2c1", "1a1"], "1b", ["1b1"])).toEqual(
+      new Map([
+        ["1b", "2c2"],
+        ["1b1", "2c2a"],
+      ]),
+    );
+    expect(movedSubtree("2c", ["1a1", "1a2"], "1b", ["1b1"])).toEqual(
+      new Map([
+        ["1b", "2c1"],
+        ["1b1", "2c1a"],
+      ]),
     );
   });
 });

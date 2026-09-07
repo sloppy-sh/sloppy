@@ -151,11 +151,14 @@ takes the next address in the run it joins, by exactly the rule creation uses:
 `childAddresses` reads that run and `nextChildAddress` steps past the greatest address ever
 assigned in it, so a note dropped between two siblings lands at the end of their run and
 neither sibling is renumbered. Every note beneath the moved one keeps its place relative to
-it. `rebaseAddress` in `@sloppy/types` is that rule: it carries the segments past the moved
-note's own, keeping each ordinal and taking the kind from the alternation its new depth puts
-it at, so `1a1` under `1a` becomes `2c1` under `2c` and `3a` under `3`. The address the
-subtree lands on is greater than every address its new run has ever spent, so nothing was
-ever written beneath it and none of the addresses the subtree takes can be held.
+it, the deleted ones among them included — one left where it was would sit under an address
+no note is at, and come back into a run nothing reads. A note cannot be moved under a
+deleted one for the same reason. `rebaseAddress` in `@sloppy/types` is that rule: it carries
+the segments past the moved note's own, keeping each ordinal and taking the kind from the
+alternation its new depth puts it at, so `1a1` under `1a` becomes `2c1` under `2c` and `3a`
+under `3`. The address the subtree lands on is greater than every address its new run has
+ever spent, so nothing was ever written beneath it and none of the addresses the subtree
+takes can be held.
 
 `node_alias` is a row per address the subtree leaves — the moved note's own and one for
 every note under it — and every address lookup reads them, so a citation written before the
@@ -955,8 +958,8 @@ graph:{ created_by: <did>, id: <ulid> }
 node:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
   graph       ref       the graph its address is read in, immutable
-  address     string    Folgezettel, immutable
-  depth       int       the address's segment count; a root is 1, immutable
+  address     string    Folgezettel; rewritten by a move and by nothing else
+  depth       int       the address's segment count; a root is 1, rewritten with it
   parent      ref?      absent on a root
   origin      ref       the root of this node's tree; a root is its own origin
   title       string
@@ -1333,28 +1336,28 @@ The rules AI.md's foundation-wave section states, applied here:
 
 Tables are `SCHEMALESS`, and `DEFINE FIELD` is spent only where the database has to enforce
 something the application cannot be trusted to. What qualifies is all of it stated above:
-`node.address`, `node.graph`, `pulled_node.source_graph` and `publication.graph`, each
-immutable because a row that changed one would move a note into a graph where its address
-may already be taken, or answer for a region it is not a copy of; every table's
-`created_by`, made immutable with `READONLY`; `created_at`
-/ `updated_at` as `TYPE string`, which is what makes a write in the wrong encoding fail at
-the write; `node.depth` and `pulled_node.depth`, immutable like the addresses they mirror
-and `TYPE int ASSERT $value > 0`, because a depth is read as a range and a range is where a
-string or a zero would go wrong quietly; a held row's `source`, `source_did` and `address`,
-a `pull`'s publication and a `pull_member`'s two halves, immutable for the reason
-`created_by` is — a row that changed one would quietly become a copy of a different node,
-of the same node by somebody else, or the record of a region that never served it; what a
-publication is rooted at, which chain a version belongs to and its number in it, and which
-version each copied note and section sits in, because a peer is reading those and a row
-that moved would answer for something it is not a snapshot of; every column of a
-`retired_address`, the row being nothing but the fact that one graph has spent one number,
-so a row that moved either would free a number a peer holds a citation to; and a copied
-asset's two halves, because a copy pointing at a different original takes the wrong bytes
-public, and one whose public half changed strands the address a published section already
-cites.
-`created_at` is immutable
-too, being a field of the signed payload. Everything else is a plain column, which is what
-keeps a later track from having to edit the shared literal to add a field.
+`node.graph`, `pulled_node.source_graph` and `publication.graph`, each immutable because a row
+that changed one would move a note into a graph where its address may already be taken, or
+answer for a region it is not a copy of; every table's `created_by`, made immutable with
+`READONLY`; `created_at` / `updated_at` as `TYPE string`, which is what makes a write in the
+wrong encoding fail at the write; `node.address` as `TYPE string`, and `node.depth` and
+`pulled_node.depth` as `TYPE int ASSERT $value > 0`, because a depth is read as a range and a
+range is where a string or a zero would go wrong quietly — `pulled_node.depth` immutable like
+the address it mirrors, `node`'s two left writable because a move rewrites them; a held row's
+`source`, `source_did` and `address`, a `pull`'s publication and a `pull_member`'s two halves,
+immutable for the reason `created_by` is — a row that changed one would quietly become a copy
+of a different node, of the same node by somebody else, or the record of a region that never
+served it; what a publication is rooted at, which chain a version belongs to and its number in
+it, and which version each copied note and section sits in, because a peer is reading those and
+a row that moved would answer for something it is not a snapshot of; every column of a
+`retired_address` and of a `node_alias`, each row being nothing but the fact that one graph has
+spent one number and, for an alias, the note it still leads to, so a row that moved either
+would free a number a peer holds a citation to or answer that citation with a different note;
+and a copied asset's two halves, because a copy pointing at a different original takes the
+wrong bytes public, and one whose public half changed strands the address a published section
+already cites. `created_at` is immutable too, being a field of the signed payload. Everything
+else is a plain column, which is what keeps a later track from having to edit the shared
+literal to add a field.
 
 **`READONLY` and not the `VALUE $before OR $value` idiom**, measured on 3.1.3: that idiom
 keeps the old value only while the old value is truthy, so a row first written with `""` in

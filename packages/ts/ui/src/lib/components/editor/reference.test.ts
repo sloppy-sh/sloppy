@@ -212,7 +212,7 @@ describe('finding a note from inside the writing', () => {
 		expect(writingIn().state.doc.textContent.trimEnd()).toBe('[[seed');
 	});
 
-	it('holds a note with no title by its address, which never changes either', async () => {
+	it('holds a note with no title by its address', async () => {
 		const found = note('1b', '');
 		open(graph([found]));
 		await type('[[1b');

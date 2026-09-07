@@ -23,12 +23,14 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * at boot rather than left to be read that way forever.
    */
   graph: OwnedRefSchema.optional(),
-  /** Assigned at creation and never rewritten. `schema.ts` enforces this. */
+  /** Assigned at creation, and rewritten only when this note is moved. Every
+   *  address it has been at keeps leading to it, as a `node_alias` row. */
   address: AddressSchema,
   /**
-   * `addressDepth(address)`. A value derived from an address is otherwise never
-   * stored; docs/ARCHITECTURE.md § "Data model" carries the ruling that makes
-   * this one an exception, and `parseNode` is the boundary it is held at.
+   * `addressDepth(address)`, and so rewritten with it. A value derived from an
+   * address is otherwise never stored; docs/ARCHITECTURE.md § "Data model"
+   * carries the ruling that makes this one an exception, and `parseNode` is the
+   * boundary it is held at.
    */
   depth: z.int().positive(),
   /** Absent on a root. */
@@ -145,9 +147,8 @@ export class NodeDepthMismatchError extends Error {
 }
 
 /**
- * What `NodeSchema` cannot refuse and immutable columns make permanent: a
- * `depth` disagreeing with the address, and a `graph` belonging to somebody
- * else.
+ * What `NodeSchema` cannot refuse: a `depth` disagreeing with the address it is
+ * derived from, and a `graph` belonging to somebody else.
  */
 export function requireNodeConsistent(
   node: Pick<Node, "created_by" | "graph" | "address" | "depth">,
@@ -223,9 +224,10 @@ export function graphAsked(
  *
  * An absent `from` opens a branch at the next number in the home graph, which
  * is what `branch` says with a graph beside it. An unknown field, in the body
- * or in the placement, is refused rather than dropped: a place is assigned once
- * and never rewritten, so a caller that placed a note through a field this
- * route no longer reads would be handed a permanent place it did not ask for.
+ * or in the placement, is refused rather than dropped: a caller that placed a
+ * note through a field this route no longer reads would be handed a place it
+ * did not ask for, and the address that place gives it keeps leading to it
+ * however far it is moved afterwards.
  */
 export const CreateNodeRequestSchema = z.strictObject(
   {
