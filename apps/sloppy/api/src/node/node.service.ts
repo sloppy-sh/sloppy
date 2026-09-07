@@ -701,12 +701,17 @@ function retag(note: Node, adding: boolean, named: Tags): Tags {
   return parsed.data;
 }
 
+const TAKEN: Record<AddressHold, (address: Address) => string> = {
+  live: (address) =>
+    `You already have a branch numbered ${address}. Pick another number.`,
+  deleted: (address) =>
+    `You used the number ${address} for a branch you have since deleted. Pick another number.`,
+  moved: (address) =>
+    `The number ${address} still leads to a note you moved. Pick another number.`,
+};
+
 function taken(address: Address, held: AddressHold): BadRequestException {
-  return new BadRequestException(
-    held === "live"
-      ? `You already have a branch numbered ${address}. Pick another number.`
-      : `You used the number ${address} for a branch you have since deleted. Pick another number.`,
-  );
+  return new BadRequestException(TAKEN[held](address));
 }
 
 function newNode(

@@ -71,11 +71,12 @@ precise rather than clever. A good notebook does not have opinions about your ha
 2. **Sloppy in, structured out.** Capture is one gesture and demands nothing: no title, no
    folder, no tag. The address is assigned for you, from where you were when you wrote.
    Structure is something the protocol supplies, never a tax charged at the door.
-3. **The address is permanent, and the interface says so.** An address is shown wherever
-   it helps somebody navigate or cite, and moving a node never changes it. It is read
+3. **An address keeps resolving, and the interface says so.** An address is shown wherever
+   it helps somebody navigate or cite. It changes only when its note is moved, and the one
+   it had keeps leading to it, so an address anybody wrote down still lands. It is read
    inside a graph, so a surface showing notes from more than one says which — and one
-   showing a single graph does not repeat it. A UI that implies notes can be re-filed, or
-   that `1a` means one thing everywhere, is lying about the protocol.
+   showing a single graph does not repeat it. A UI that implies `1a` means one thing
+   everywhere, or that a move renumbers the notes around it, is lying about the protocol.
 4. **Pulled is never mistaken for yours.** A foreign region reads as foreign at a glance
    and at every zoom level, by more than colour. Whose thought this is, is never a
    question the reader has to work out.

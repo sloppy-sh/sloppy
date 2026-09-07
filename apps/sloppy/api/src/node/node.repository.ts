@@ -10,6 +10,7 @@ import {
   homeGraphRef,
   isAncestorAddress,
   type Node,
+  type NodeAlias,
   type NodeAppearance,
   nowIso,
   ownedRefFrom,
@@ -35,8 +36,9 @@ const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
 const THERE = "deleted_at = NONE";
 const GONE = "deleted_at != NONE";
 
-/** How a graph holds an address: a note is at it, or one was and has gone. */
-export type AddressHold = "live" | "deleted";
+/** How a graph holds an address: a note is at it, one was and has gone, or one
+ *  was and has been moved, in which case the address still leads to it. */
+export type AddressHold = "live" | "deleted" | "moved";
 
 /** The row that outlives a note, so its address is never assigned twice. */
 function retire(node: Node): RetiredAddress {
@@ -47,6 +49,24 @@ function retire(node: Node): RetiredAddress {
     graph: graphOf(node),
     ...(node.parent ? { parent: node.parent } : {}),
     address: node.address,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+/**
+ * The same row for an address a move left behind, once the note it led to is
+ * purged: there is nothing left for it to resolve to, and the number stays
+ * spent.
+ */
+function retireAlias(alias: NodeAlias): RetiredAddress {
+  const now = nowIso();
+  return {
+    id: createOwnedRecordId("retired_address", alias.created_by),
+    created_by: alias.created_by,
+    graph: alias.graph,
+    ...(alias.parent ? { parent: alias.parent } : {}),
+    address: alias.address,
     created_at: now,
     updated_at: now,
   };
@@ -131,9 +151,11 @@ export class NodeRepository {
    * `graph` where there is no parent — which is why a graph is asked for beside
    * the parent that would otherwise name one.
    *
-   * The run includes the addresses of notes that are gone: an address is
-   * assigned once in a graph and never again, so a retired one still stands
-   * between the run and the address after it.
+   * The run includes the addresses of notes that are gone and the ones a move
+   * left behind: an address is assigned once in a graph and never again, so a
+   * retired or aliased one still stands between the run and the address after
+   * it. Both are read by the parent they hung under, which a move gives a
+   * different address — `nextChildAddress` drops what that leaves in the run.
    *
    * Children are read through the tree-and-level index rather than through
    * `parent`: measured on 3.1.3, an equality on `parent` bound as a parameter
@@ -153,9 +175,13 @@ export class NodeRepository {
         : `SELECT VALUE address FROM node
              WHERE created_by = $did AND origin = $origin AND depth = $depth
                AND ${under}`;
-    const [taken, retired] = await this.db.handle.query<[string[], string[]]>(
+    const [taken, retired, aliased] = await this.db.handle.query<
+      [string[], string[], string[]]
+    >(
       `${held};
        SELECT VALUE address FROM retired_address
+         WHERE created_by = $did AND graph = $graph AND ${under};
+       SELECT VALUE address FROM node_alias
          WHERE created_by = $did AND graph = $graph AND ${under};`,
       {
         did,
@@ -165,12 +191,12 @@ export class NodeRepository {
         parent: parent === null ? undefined : ownedRefFrom(parent.id),
       },
     );
-    return [...taken, ...retired];
+    return [...taken, ...retired, ...aliased];
   }
 
   /**
-   * Whether one graph has ever assigned this address, and whether the note that
-   * took it is still there — `null` where the graph has never assigned it. A
+   * Whether one graph has ever assigned this address, and what has become of
+   * the note that took it — `null` where the graph has never assigned it. A
    * note its author has deleted reads as `deleted` whether the row is still
    * there to be put back or has been retired. Another graph of the same person
    * holding the address is not this question.
@@ -182,18 +208,22 @@ export class NodeRepository {
   ): Promise<AddressHold | null> {
     const at = `FROM node
          WHERE created_by = $did AND graph = $graph AND address = $address`;
-    const [held, deleted, retired] = await this.db.handle.query<
-      [string[], string[], string[]]
+    const [held, deleted, retired, aliased] = await this.db.handle.query<
+      [string[], string[], string[], string[]]
     >(
       `SELECT VALUE address ${at} AND deleted_at = NONE LIMIT 1;
        SELECT VALUE address ${at} AND deleted_at != NONE LIMIT 1;
        SELECT VALUE address FROM retired_address
          WHERE created_by = $did AND graph = $graph AND address = $address
+         LIMIT 1;
+       SELECT VALUE address FROM node_alias
+         WHERE created_by = $did AND graph = $graph AND address = $address
          LIMIT 1;`,
       { did, graph, address },
     );
     if (held.length > 0) return "live";
-    return deleted.length + retired.length > 0 ? "deleted" : null;
+    if (deleted.length + retired.length > 0) return "deleted";
+    return aliased.length > 0 ? "moved" : null;
   }
 
   async insert(node: Node): Promise<Node> {
@@ -409,15 +439,21 @@ export class NodeRepository {
       { did, before },
     );
     if (going.length === 0) return;
+    const refs = going.map((node) => ownedRefFrom(node.id));
+    const [aliases] = await this.db.handle.query<[NodeAlias[]]>(
+      "SELECT * FROM node_alias WHERE created_by = $did AND note IN $refs;",
+      { did, refs },
+    );
     await this.db.handle.query(
       `INSERT INTO retired_address $retired;
+       DELETE node_alias WHERE created_by = $did AND note IN $refs;
        DELETE block WHERE created_by = $did AND node IN $refs;
        DELETE comment_pointer WHERE created_by = $did AND note IN $refs;
        DELETE node WHERE id IN $ids;`,
       {
         did,
-        retired: going.map(retire),
-        refs: going.map((node) => ownedRefFrom(node.id)),
+        retired: [...going.map(retire), ...aliases.map(retireAlias)],
+        refs,
         ids: going.map((node) => node.id),
       },
     );

@@ -179,15 +179,14 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
   });
 
-  it("holds address, depth, created_by and created_at through every write shape", async () => {
+  it("holds created_by, created_at and the graph through every write shape", async () => {
     const row = nodeRow(BOB, "2a", "01JNEVERCHANGES00000000000", 2);
     await db.create(row.id).content(row);
 
     for (const reassignment of [
-      { address: "9" },
-      { depth: 7 },
       { created_by: AVA },
       { created_at: "2030-01-01T00:00:00.000Z" },
+      { graph: `${BOB}/01JGRAPHXX0000000000000000` },
     ]) {
       await expect(db.update(row.id).merge(reassignment)).rejects.toThrow();
     }
@@ -195,22 +194,31 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     // CONTENT replaces the whole document, so it has two shapes MERGE does not:
     // a changed value, and an absent column.
     await expect(
-      db
-        .update(row.id)
-        .content({ ...row, address: "9", depth: 7, created_by: AVA }),
+      db.update(row.id).content({ ...row, created_by: AVA }),
     ).rejects.toThrow();
-    await db.update(row.id).content({
-      title: "written without them",
-      updated_at: "2026-06-01T00:00:00.000Z",
-    });
+    await expect(
+      db.update(row.id).content({
+        title: "written without them",
+        updated_at: "2026-06-01T00:00:00.000Z",
+      }),
+    ).rejects.toThrow();
 
     const stored = await read(row.id);
-    expect(stored.title).toBe("written without them");
-    expect(stored.origin).toBeUndefined();
     expect(stored.address).toBe("2a");
-    expect(stored.depth).toBe(2);
     expect(stored.created_by).toBe(BOB);
     expect(stored.created_at).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("lets a move re-address a note, and refuses a depth its address could not have", async () => {
+    const row = nodeRow(BOB, "2c", "01JMVEDNTE0000000000000000", 2);
+    await db.create(row.id).content(row);
+
+    await db.update(row.id).merge({ address: "5a1", depth: 3 });
+    const stored = await read(row.id);
+    expect(stored.address).toBe("5a1");
+    expect(stored.depth).toBe(3);
+
+    await expect(db.update(row.id).merge({ depth: 0 })).rejects.toThrow();
   });
 
   it("takes a whole-row rewrite that leaves the immutable columns alone", async () => {
@@ -232,11 +240,20 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
   });
 
   it("holds a column immutable whatever it already holds, empty included", async () => {
-    const row = nodeRow(BOB, "", "01JEMPTYADDRESS00000000000", 1);
+    const row = nodeRow(
+      BOB,
+      "8",
+      "01JEMPTYGRAPH0000000000000",
+      1,
+      `${BOB}/01JEMPTYGRAPH0000000000000`,
+      "",
+    );
     await db.create(row.id).content(row);
 
-    await expect(db.update(row.id).merge({ address: "8" })).rejects.toThrow();
-    expect((await read(row.id)).address).toBe("");
+    await expect(
+      db.update(row.id).merge({ graph: homeGraphRef(BOB) }),
+    ).rejects.toThrow();
+    expect((await read(row.id)).graph).toBe("");
   });
 
   it("refuses a depth no address could produce", async () => {
@@ -853,6 +870,88 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     expect(spent).toEqual(["9"]);
   });
 
+  it("keeps an address a note was moved from leading to that note", async () => {
+    const HOME = homeGraphRef(AVA);
+    const NOTE = OwnedRefSchema.parse(`${AVA}/01JMVEDAWAY000000000000000`);
+    const PARENT = OwnedRefSchema.parse(`${AVA}/01JREADBACK000000000000000`);
+    const under = {
+      id: avaId("node_alias", "01JPXMVA000000000000000000"),
+      created_by: AVA,
+      graph: HOME,
+      parent: PARENT,
+      address: "1c",
+      note: NOTE,
+      created_at: "2026-03-01T00:00:00.000Z",
+      updated_at: "2026-03-01T00:00:00.000Z",
+    };
+    const { parent: _hung, ...withoutParent } = under;
+    const branch = {
+      ...withoutParent,
+      id: avaId("node_alias", "01JPXMVB000000000000000000"),
+      address: "8",
+    };
+    await db.create(under.id).content(under);
+    await db.create(branch.id).content(branch);
+
+    for (const reassignment of [
+      { graph: SECOND_GRAPH },
+      { parent: `${AVA}/01JREADBACK000000000000001` },
+      { address: "1d" },
+      { note: `${AVA}/01JMVEDAWAY000000000000001` },
+      { created_by: BOB },
+    ]) {
+      await expect(db.update(under.id).merge(reassignment)).rejects.toThrow();
+    }
+
+    // One alias per address inside a graph, for the reason there is one note
+    // per address: a citation that resolved two ways is not a citation.
+    const twice = {
+      ...under,
+      id: avaId("node_alias", "01JPXMVC000000000000000000"),
+      note: OwnedRefSchema.parse(`${AVA}/01JMVEDAWAY000000000000002`),
+    };
+    await expect(db.create(twice.id).content(twice)).rejects.toThrow();
+
+    // The same address in another of AVA's graphs is another label, exactly as
+    // it is on a note.
+    const beside = {
+      ...under,
+      id: avaId("node_alias", "01JPXMVD000000000000000000"),
+      graph: SECOND_GRAPH,
+    };
+    await expect(db.create(beside.id).content(beside)).resolves.toBeDefined();
+
+    const RUN = `SELECT VALUE address FROM node_alias
+       WHERE created_by = $did AND graph = $graph AND parent = $parent`;
+    const bound = { did: AVA, graph: HOME, parent: PARENT };
+    const [plan] = await db.query(`${RUN} EXPLAIN;`, bound);
+    expect(JSON.stringify(plan)).toContain(
+      '"index":"node_alias_owner_graph_parent"',
+    );
+    const [run] = await db.query<[string[]]>(`${RUN};`, bound);
+    expect(run).toEqual(["1c"]);
+
+    // A branch's number is aliased with no parent above it, the way the note it
+    // names had none — which is how one index answers both shapes.
+    const [branches] = await db.query<[string[]]>(
+      `SELECT VALUE address FROM node_alias
+         WHERE created_by = $did AND graph = $graph AND parent = NONE;`,
+      { did: AVA, graph: HOME },
+    );
+    expect(branches).toEqual(["8"]);
+
+    const NOTES = `SELECT VALUE address FROM node_alias
+       WHERE created_by = $did AND graph = $graph AND note = $note`;
+    const [notePlan] = await db.query(`${NOTES} EXPLAIN;`, {
+      did: AVA,
+      graph: HOME,
+      note: NOTE,
+    });
+    expect(JSON.stringify(notePlan)).toContain(
+      '"index":"node_alias_owner_graph_note"',
+    );
+  });
+
   it("finds a phrase somebody wrote, in their own writing and in what they hold", async () => {
     const OWN = OwnedRefSchema.parse(`${AVA}/01JWRDSN000000000000000000`);
     const THEIRS = OwnedRefSchema.parse(`${BOB}/01JWRDSD000000000000000000`);
@@ -999,6 +1098,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       "snapshot_node",
       "snapshot_asset",
       "retired_address",
+      "node_alias",
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }

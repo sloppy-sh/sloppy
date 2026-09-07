@@ -15,6 +15,7 @@ import {
   isRootAddress,
   parentAddress,
   parseAddress,
+  rebaseAddress,
   runPairs,
   siblingAddress,
 } from "./address.js";
@@ -369,22 +370,67 @@ describe("the angular sector", () => {
   });
 });
 
+describe("where a moved subtree lands", () => {
+  it("re-addresses the note that moved and nothing else about it", () => {
+    expect(rebaseAddress("1a", "2c", "1a")).toBe("2c");
+    expect(rebaseAddress("1", "4", "1")).toBe("4");
+  });
+
+  it("keeps every note under it where it was, relative to it", () => {
+    expect(rebaseAddress("1a", "2c", "1a1")).toBe("2c1");
+    expect(rebaseAddress("1a", "2c", "1a2b")).toBe("2c2b");
+    expect(rebaseAddress("1a", "2c", "1a26")).toBe("2c26");
+  });
+
+  it("takes each segment's kind from the depth it now sits at", () => {
+    // Going up a level turns what was a number into a letter and back, so the
+    // grammar holds and the run each note is in keeps its order.
+    expect(rebaseAddress("1a", "3", "1a1")).toBe("3a");
+    expect(rebaseAddress("1a", "3", "1a1a")).toBe("3a1");
+    expect(rebaseAddress("1", "2a", "1b")).toBe("2a2");
+    expect(rebaseAddress("1a", "3", "1a27")).toBe("3aa");
+    expect(rebaseAddress("1", "2a", "1aa")).toBe("2a27");
+  });
+
+  it("keeps the order a run was in", () => {
+    const run = ["1a1", "1a2", "1a10"] as const;
+    const landed = run.map((address) => rebaseAddress("1a", "3", address));
+    expect(landed).toEqual(["3a", "3b", "3j"]);
+    for (let at = 1; at < landed.length; at++) {
+      expect(compareAddresses(landed[at - 1], landed[at])).toBe(-1);
+    }
+  });
+
+  it("refuses an address that is not in the subtree that moved", () => {
+    // `1ab` starts with `1a` and is its sibling, so a prefix test would carry
+    // a note that never moved.
+    for (const address of ["1b", "1ab", "2", "1"]) {
+      expect(() => rebaseAddress("1a", "2c", address)).toThrow(
+        InvalidAddressError,
+      );
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // The protocol claim.
 //
-// Two peers applying the same operations must produce byte-identical addresses,
-// and neither may ever assign one twice — deleting and purging a note included,
-// which is why the sequences below hold both. Proving that against one
-// implementation replayed twice would prove only that the code is a function,
-// so the two replicas assign addresses from DIFFERENT state:
+// Two peers applying the same operations must produce byte-identical addresses
+// and byte-identical aliases, and neither may ever assign one twice — deleting,
+// purging and moving a note included, which is why the sequences below hold all
+// three. Proving that against one implementation replayed twice would prove only
+// that the code is a function, so the two replicas assign addresses from
+// DIFFERENT state:
 //
 //   - `AppendOrderPeer` keeps no row for a note that has gone, the way a store
 //     that deletes outright does. What it takes the next address from is the
-//     mark it made when it wrote, and a note going never moves that mark.
-//   - `AddressOrderPeer` remembers nothing but addresses, in the three states a
-//     graph holds them in: at a note, at a deleted one, and retired. It recovers
-//     the tree from the addresses themselves and takes the greatest by
-//     `compareAddresses`.
+//     mark it made when it wrote, and a note going never moves that mark. A move
+//     is the one act that makes it read: a note carried somewhere else takes its
+//     run with it, and the mark under it is what its children are at now.
+//   - `AddressOrderPeer` remembers nothing but addresses, in the four states a
+//     graph holds them in: at a note, at a deleted one, retired, and left behind
+//     by a move. It recovers the tree from the addresses themselves and takes
+//     the greatest by `compareAddresses`.
 //
 // So the test also pins the property the graph rests on: an address says where
 // it sits, and a peer holding only addresses reconstructs the same tree.
@@ -392,28 +438,72 @@ describe("the angular sector", () => {
 
 type Op =
   | { kind: "root" }
-  | { kind: "child" | "sibling" | "delete" | "purge"; target: number };
+  | { kind: "child" | "sibling" | "delete" | "purge"; target: number }
+  | { kind: "move"; target: number; relation: "under" | "after"; to: number };
 
 interface Peer {
-  /** The address assigned to each node, in creation order. */
+  /** Every address it assigned, in the order it assigned them: one per note
+   *  written, and one more each time a note is moved. */
   readonly assigned: readonly Address[];
+  /** Where the notes are now, deleted ones among them, in address order. */
+  readonly current: readonly Address[];
+  /** Each address a move left behind and where it resolves to now, as
+   *  `<alias> -> <address>`, in one order whatever the peer holds. */
+  readonly aliases: readonly string[];
   apply(op: Op): void;
 }
+
+const greatestOf = (addresses: readonly Address[]): Address =>
+  addresses.reduce((best, address) =>
+    compareAddresses(address, best) > 0 ? address : best,
+  );
 
 class AppendOrderPeer implements Peer {
   readonly assigned: Address[] = [];
   private readonly parentOf: (number | null)[] = [];
-  /** The notes it still holds. A delete takes them, address and all. */
-  private readonly rows = new Map<number, Address>();
+  /** Where each note it has written is now, the deleted ones among them. */
+  private readonly addressOf = new Map<number, Address>();
+  /** The notes still there. Nothing is written against one that has gone. */
+  private readonly there = new Set<number>();
+  /** The notes whose rows a purge took; their addresses stay where they were. */
+  private readonly purged = new Set<number>();
   /** The last address written under a parent, which no delete takes back. */
   private readonly lastUnder = new Map<number | null, Address>();
+  /** Each address a move left behind, and the note it still names. */
+  private readonly left = new Map<Address, number>();
+
+  get current(): Address[] {
+    return [...this.addressOf]
+      .filter(([node]) => !this.purged.has(node))
+      .map(([, address]) => address)
+      .sort(compareAddresses);
+  }
+
+  get aliases(): string[] {
+    return [...this.left]
+      .map(([alias, node]) => `${alias} -> ${this.addressOf.get(node)}`)
+      .sort();
+  }
 
   apply(op: Op): void {
-    if (op.kind === "purge") return;
-    if (op.kind === "delete") {
-      for (const node of [...this.rows.keys()]) {
-        if (this.isUnder(op.target, node)) this.rows.delete(node);
+    if (op.kind === "purge") {
+      this.purged.add(op.target);
+      // The aliases go with the row: there is nothing left for one to resolve
+      // to. The addresses stay spent — no note is at the one they hung under.
+      for (const [alias, node] of [...this.left]) {
+        if (node === op.target) this.left.delete(alias);
       }
+      return;
+    }
+    if (op.kind === "delete") {
+      for (const node of this.carried(op.target)) this.there.delete(node);
+      return;
+    }
+    if (op.kind === "move") {
+      this.move(
+        op.target,
+        op.relation === "under" ? op.to : this.parentOf[op.to],
+      );
       return;
     }
     const parent =
@@ -422,23 +512,65 @@ class AppendOrderPeer implements Peer {
         : op.kind === "child"
           ? op.target
           : this.parentOf[op.target];
+    const node = this.parentOf.length;
+    const address = this.next(parent);
+    this.parentOf.push(parent);
+    this.addressOf.set(node, address);
+    this.there.add(node);
+    this.assigned.push(address);
+  }
+
+  private move(moved: number, parent: number | null): void {
+    const was = this.rowAt(moved);
+    const now = this.next(parent);
+    const carried = this.carried(moved);
+    for (const node of carried) {
+      const old = this.addressOf.get(node) as Address;
+      this.left.set(old, node);
+      this.addressOf.set(node, rebaseAddress(was, now, old));
+    }
+    this.parentOf[moved] = parent;
+    // The run under a note it has just carried elsewhere starts from what its
+    // children are at now: the marks it made where they were belong to a run
+    // nothing will be written into again.
+    for (const node of carried) this.remark(node);
+    this.assigned.push(now);
+  }
+
+  private next(parent: number | null): Address {
     const spent = this.lastUnder.get(parent);
     const address =
       spent === undefined
         ? childAddress(parent === null ? null : this.rowAt(parent))
         : siblingAddress(spent);
     this.lastUnder.set(parent, address);
-    this.rows.set(this.assigned.length, address);
-    this.parentOf.push(parent);
-    this.assigned.push(address);
+    return address;
+  }
+
+  private remark(node: number): void {
+    const children = this.parentOf.flatMap((parent, child) =>
+      parent === node && !this.purged.has(child)
+        ? [this.addressOf.get(child) as Address]
+        : [],
+    );
+    if (children.length === 0) this.lastUnder.delete(node);
+    else this.lastUnder.set(node, greatestOf(children));
   }
 
   private rowAt(node: number): Address {
-    const address = this.rows.get(node);
-    if (address === undefined) {
-      throw new Error(`wrote under a note that has gone: ${node}`);
+    const address = this.addressOf.get(node);
+    if (address === undefined || !this.there.has(node)) {
+      throw new Error(`wrote against a note that has gone: ${node}`);
     }
     return address;
+  }
+
+  /** The notes a move takes with this one. A purged note is not one of them:
+   *  its row has gone, and the address it spent stays where it was. */
+  private carried(root: number): number[] {
+    return this.parentOf.flatMap((_, node) =>
+      this.isUnder(root, node) && !this.purged.has(node) ? [node] : [],
+    );
   }
 
   private isUnder(root: number, node: number): boolean {
@@ -455,13 +587,25 @@ class AppendOrderPeer implements Peer {
 
 class AddressOrderPeer implements Peer {
   readonly assigned: Address[] = [];
+  /** Where each note it has been told about is, in creation order. */
+  private readonly at: Address[] = [];
   private readonly live = new Set<Address>();
   private readonly deleted = new Set<Address>();
   private readonly retired = new Set<Address>();
+  /** Each address a move left behind, and where it resolves to now. */
+  private readonly left = new Map<Address, Address>();
+
+  get current(): Address[] {
+    return [...this.live, ...this.deleted].sort(compareAddresses);
+  }
+
+  get aliases(): string[] {
+    return [...this.left].map(([alias, now]) => `${alias} -> ${now}`).sort();
+  }
 
   apply(op: Op): void {
     if (op.kind === "delete") {
-      const going = this.assigned[op.target];
+      const going = this.at[op.target];
       for (const address of [...this.live]) {
         if (!isInSubtree(going, address)) continue;
         this.live.delete(address);
@@ -470,32 +614,75 @@ class AddressOrderPeer implements Peer {
       return;
     }
     if (op.kind === "purge") {
-      const address = this.assigned[op.target];
+      const address = this.at[op.target];
       this.deleted.delete(address);
       this.retired.add(address);
+      for (const [alias, resolves] of [...this.left]) {
+        if (resolves !== address) continue;
+        this.left.delete(alias);
+        this.retired.add(alias);
+      }
+      return;
+    }
+    if (op.kind === "move") {
+      this.move(
+        this.at[op.target],
+        op.relation === "under"
+          ? this.at[op.to]
+          : parentAddress(this.at[op.to]),
+      );
       return;
     }
     const parent =
       op.kind === "root"
         ? null
         : op.kind === "child"
-          ? this.assigned[op.target]
-          : parentAddress(this.assigned[op.target]);
+          ? this.at[op.target]
+          : parentAddress(this.at[op.target]);
+    const address = this.nextUnder(parent);
+    this.live.add(address);
+    this.at.push(address);
+    this.assigned.push(address);
+  }
+
+  private move(was: Address, parent: Address | null): void {
+    const now = this.nextUnder(parent);
+    for (const [alias, resolves] of [...this.left]) {
+      if (isInSubtree(was, resolves)) {
+        this.left.set(alias, rebaseAddress(was, now, resolves));
+      }
+    }
+    // A retired address stays where it was spent: there is no row left to carry.
+    for (const held of [this.live, this.deleted]) {
+      for (const address of [...held]) {
+        if (!isInSubtree(was, address)) continue;
+        const landed = rebaseAddress(was, now, address);
+        held.delete(address);
+        held.add(landed);
+        this.left.set(address, landed);
+      }
+    }
+    for (const [node, address] of this.at.entries()) {
+      if (this.retired.has(address) || !isInSubtree(was, address)) continue;
+      this.at[node] = rebaseAddress(was, now, address);
+    }
+    this.assigned.push(now);
+  }
+
+  private nextUnder(parent: Address | null): Address {
     // Reversed, so a bug that depended on scan order would show up here.
-    const spent = [...this.live, ...this.deleted, ...this.retired];
+    const spent = [
+      ...this.live,
+      ...this.deleted,
+      ...this.retired,
+      ...this.left.keys(),
+    ];
     const siblings = spent
       .reverse()
       .filter((address) => parentAddress(address) === parent);
-    const address =
-      siblings.length === 0
-        ? childAddress(parent)
-        : siblingAddress(
-            siblings.reduce((best, sibling) =>
-              compareAddresses(sibling, best) > 0 ? sibling : best,
-            ),
-          );
-    this.live.add(address);
-    this.assigned.push(address);
+    return siblings.length === 0
+      ? childAddress(parent)
+      : siblingAddress(greatestOf(siblings));
   }
 }
 
@@ -512,9 +699,12 @@ function seededRandom(seed: number): () => number {
 
 /**
  * `count` operations, of which some write a note, some delete one with
- * everything under it, and some purge a note already deleted. A note that has
- * gone is never written under or alongside again, which is the one thing the
- * product will not let anybody ask for either.
+ * everything under it, some purge a note already deleted, and some carry one
+ * somewhere else — under another note or after one, into a run it is already in
+ * as readily as into another. A note that has gone is never written under,
+ * alongside or into again, and a note is never carried under itself or under
+ * anything it holds, which are the sequences the product will not let anybody
+ * ask for either.
  */
 function generateOps(seed: number, count: number): Op[] {
   const random = seededRandom(seed);
@@ -559,8 +749,23 @@ function generateOps(seed: number, count: number): Op[] {
       ops.push({ kind: "purge", target });
       continue;
     }
+    if (roll < 0.34) {
+      const target = pick(live);
+      const relation = random() < 0.5 ? "under" : "after";
+      const allowed = [...live].filter((to) =>
+        relation === "under"
+          ? !under(target, to)
+          : parentOf[to] === null || !under(target, parentOf[to]),
+      );
+      if (allowed.length > 0) {
+        const to = allowed[Math.floor(random() * allowed.length)];
+        parentOf[target] = relation === "under" ? to : parentOf[to];
+        ops.push({ kind: "move", target, relation, to });
+        continue;
+      }
+    }
     const target = pick(live);
-    const kind = roll < 0.62 ? "child" : "sibling";
+    const kind = roll < 0.66 ? "child" : "sibling";
     parentOf.push(kind === "child" ? target : parentOf[target]);
     live.add(parentOf.length - 1);
     ops.push({ kind, target });
@@ -568,9 +773,9 @@ function generateOps(seed: number, count: number): Op[] {
   return ops;
 }
 
-function replay(peer: Peer, ops: readonly Op[]): readonly Address[] {
+function replay(peer: Peer, ops: readonly Op[]): Peer {
   for (const op of ops) peer.apply(op);
-  return peer.assigned;
+  return peer;
 }
 
 describe("determinism across peers", () => {
@@ -582,11 +787,34 @@ describe("determinism across peers", () => {
       const ops = generateOps(seed, OPS_PER_SEED);
       const a = replay(new AppendOrderPeer(), ops);
       const b = replay(new AddressOrderPeer(), ops);
-      expect(b.join("\n")).toBe(a.join("\n"));
+      expect(b.assigned.join("\n")).toBe(a.assigned.join("\n"));
+      expect(b.current.join("\n")).toBe(a.current.join("\n"));
     }
   });
 
-  it("never assigns one address twice, however many notes have gone", () => {
+  it("leaves byte-identical aliases behind, each one resolving to a note", () => {
+    let moves = 0;
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const ops = generateOps(seed, OPS_PER_SEED);
+      moves += ops.filter((op) => op.kind === "move").length;
+      const a = replay(new AppendOrderPeer(), ops);
+      const b = replay(new AddressOrderPeer(), ops);
+      expect(b.aliases.join("\n")).toBe(a.aliases.join("\n"));
+
+      const notes = new Set(a.current);
+      for (const alias of a.aliases) {
+        const [address, resolves] = alias.split(" -> ");
+        expect(notes.has(resolves as Address)).toBe(true);
+        // An address a note left is never a note's address again, or the two
+        // would resolve two ways inside one graph.
+        expect(notes.has(address as Address)).toBe(false);
+      }
+    }
+    // The claim above is empty over sequences that never move anything.
+    expect(moves).toBeGreaterThan(SEEDS);
+  });
+
+  it("never assigns one address twice, however many notes have gone or moved", () => {
     let gone = 0;
     for (let seed = 1; seed <= SEEDS; seed++) {
       const ops = generateOps(seed, OPS_PER_SEED);
@@ -594,7 +822,7 @@ describe("determinism across peers", () => {
         (op) => op.kind === "delete" || op.kind === "purge",
       ).length;
       for (const peer of [new AppendOrderPeer(), new AddressOrderPeer()]) {
-        const assigned = replay(peer, ops);
+        const { assigned } = replay(peer, ops);
         expect(new Set(assigned).size).toBe(assigned.length);
       }
     }
@@ -607,7 +835,7 @@ describe("determinism across peers", () => {
       const ops = generateOps(seed, OPS_PER_SEED);
       let previous: readonly Address[] = [];
       for (let step = 1; step <= ops.length; step++) {
-        const assigned = replay(new AppendOrderPeer(), ops.slice(0, step));
+        const { assigned } = replay(new AppendOrderPeer(), ops.slice(0, step));
         expect(assigned.slice(0, previous.length)).toEqual([...previous]);
         previous = assigned;
       }
@@ -616,10 +844,11 @@ describe("determinism across peers", () => {
 
   it("keeps every assignment inside the grammar and under its parent", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
-      for (const address of replay(
+      const peer = replay(
         new AppendOrderPeer(),
         generateOps(seed, OPS_PER_SEED),
-      )) {
+      );
+      for (const address of [...peer.assigned, ...peer.current]) {
         expect(isAddress(address)).toBe(true);
         const parent = parentAddress(address);
         if (parent !== null) {
@@ -633,8 +862,12 @@ describe("determinism across peers", () => {
   it("orders addresses the same way on both peers", () => {
     for (let seed = 1; seed <= 40; seed++) {
       const ops = generateOps(seed, OPS_PER_SEED);
-      const a = [...replay(new AppendOrderPeer(), ops)].sort(compareAddresses);
-      const b = [...replay(new AddressOrderPeer(), ops)].sort(compareAddresses);
+      const a = [...replay(new AppendOrderPeer(), ops).assigned].sort(
+        compareAddresses,
+      );
+      const b = [...replay(new AddressOrderPeer(), ops).assigned].sort(
+        compareAddresses,
+      );
       expect(b.join("\n")).toBe(a.join("\n"));
     }
   });

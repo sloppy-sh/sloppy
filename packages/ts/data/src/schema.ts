@@ -60,10 +60,16 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS comment_pointer SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS refused_voice SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS retired_address SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS node_alias SCHEMALESS;
 
 ${MIGRATIONS}
-  DEFINE FIELD IF NOT EXISTS address ON node TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS depth ON node TYPE int ASSERT $value > 0 READONLY;
+  -- Writable, alone among the columns the address protocol rests on, because a
+  -- move re-addresses a note and everything under it; docs/ARCHITECTURE.md
+  -- § "The addressing protocol" carries the rule. OVERWRITE rather than
+  -- IF NOT EXISTS: a store already holding these two has them READONLY, and a
+  -- definition guarded on absence would leave that store unable to move a note.
+  DEFINE FIELD OVERWRITE address ON node TYPE string;
+  DEFINE FIELD OVERWRITE depth ON node TYPE int ASSERT $value > 0;
   -- Which of its author's graphs a note is in, and so the context its address
   -- is read in. Immutable for the reason the address is: a note that moved
   -- graph would land in one where its address may already be taken, and a
@@ -110,6 +116,15 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON retired_address TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_by ON node_alias TYPE string READONLY;
+
+  -- An address a note was at before a move, and the note it still resolves to.
+  -- Every column immutable, this row being the whole of that fact: one that
+  -- changed its address or its note would send a citation somewhere else.
+  DEFINE FIELD IF NOT EXISTS graph ON node_alias TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS parent ON node_alias TYPE option<string> READONLY;
+  DEFINE FIELD IF NOT EXISTS address ON node_alias TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS note ON node_alias TYPE string READONLY;
 
   -- An address its graph has assigned and will never assign again. Every column
   -- immutable, this row being the whole of that fact: one that moved graph or
@@ -171,6 +186,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON retired_address TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON node_alias TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON graph TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
@@ -185,6 +201,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_node TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_block TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON retired_address TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON node_alias TYPE string;
 
   -- When a note, and the sections that go with it, were deleted. TYPE string
   -- for the reason the two timestamps above are; option, because absent is a
@@ -213,6 +230,18 @@ ${MIGRATIONS}
   -- numbered by hand asks. Not UNIQUE: a retirement that landed while the
   -- deletion beside it did not must be able to run again.
   DEFINE INDEX IF NOT EXISTS retired_address_owner_graph_address ON retired_address FIELDS created_by, graph, address;
+  -- The address rule over the addresses a move left behind: one alias per
+  -- address inside a graph, so a second row claiming one fails at write rather
+  -- than becoming a citation that resolves two ways. It is also how an address
+  -- lookup finds the note somebody cited before the move.
+  DEFINE INDEX IF NOT EXISTS node_alias_owner_graph_address ON node_alias FIELDS created_by, graph, address UNIQUE;
+  -- The aliases one note carries, which is what a reader of it is shown.
+  DEFINE INDEX IF NOT EXISTS node_alias_owner_graph_note ON node_alias FIELDS created_by, graph, note;
+  -- The addresses a move spent in one run — bound to NONE, the branch numbers
+  -- it spent. Read alongside the two above it for the same reason
+  -- retired_address_owner_graph_parent is: the run a new address follows is all
+  -- of them together.
+  DEFINE INDEX IF NOT EXISTS node_alias_owner_graph_parent ON node_alias FIELDS created_by, graph, parent;
   -- Somebody's graphs, which is also the purge's reach.
   DEFINE INDEX IF NOT EXISTS graph_owner ON graph FIELDS created_by;
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing

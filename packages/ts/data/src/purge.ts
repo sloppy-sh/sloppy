@@ -31,9 +31,11 @@ export const STATEMENTS: readonly string[] = [
   // and reaches nothing of the voice's own.
   `DELETE refused_voice WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
-  // The addresses those notes spent. They outlive the notes and nothing else:
-  // there is no graph left for one to be read in.
+  // The addresses those notes spent, and the ones a move left resolving to
+  // them. They outlive the notes and nothing else: there is no graph left for
+  // one to be read in.
   `DELETE retired_address WHERE ${OWNED};`,
+  `DELETE node_alias WHERE ${OWNED};`,
   // After the notes, because a graph is what they name.
   `DELETE graph WHERE ${OWNED};`,
   // A held copy of somebody else's region is the reader's row, so it goes with
@@ -64,6 +66,7 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "publication",
   "node",
   "retired_address",
+  "node_alias",
   "graph",
   "comment_pointer",
   "refused_voice",

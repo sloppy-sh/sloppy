@@ -182,6 +182,34 @@ export function isInSubtree(root: Address, address: Address): boolean {
 }
 
 /**
+ * Where a note of the subtree rooted at `was` lands once that root has been
+ * re-addressed to `now`: the segments past the root's are kept by ordinal and
+ * take the kind the alternation puts them at from `now`'s depth. `1a1` under
+ * `1a` is `2c1` under `2c`, and `3a` under `3`.
+ *
+ * `address` must be `was` or lie under it; anything else is a caller that has
+ * mistaken which subtree is moving, and throws rather than returning a place.
+ */
+export function rebaseAddress(
+  was: Address,
+  now: Address,
+  address: Address,
+): Address {
+  if (address !== was && !isAncestorAddress(was, address)) {
+    throw new InvalidAddressError(address, `does not lie under ${was}`);
+  }
+  const root = parseAddress(now);
+  const beneath = parseAddress(address).slice(parseAddress(was).length);
+  return formatAddress([
+    ...root,
+    ...beneath.map(({ ordinal }, at) => ({
+      kind: ((root.length + at) % 2 === 0 ? "number" : "letter") as SegmentKind,
+      ordinal,
+    })),
+  ]);
+}
+
+/**
  * Total order over addresses: depth-first tree order. A node sorts before its
  * descendants, and `1a` before `1b` before `2`. Returns -1, 0 or 1.
  */

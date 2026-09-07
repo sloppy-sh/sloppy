@@ -62,21 +62,32 @@ page number is read inside a book.
   two across a person's graphs are two labels, the way two people's `1a`s always were.
   So an address travels with the graph it is read in, and one shown with no graph beside
   it means the graph in front of you.
-- **An address is assigned at creation and never changes.** Moving a node writes an
-  alias; it never renumbers. Renumbering is not a refactor here, it is a broken link in
-  somebody else's graph. Which graph a note is in is fixed at creation for the same
-  reason: a note that changed graph would land where its address may already be taken.
+- **An address is assigned at creation, and changes only when its note is moved.** A move
+  gives the note the next address in the run it joins, by exactly the rule creation uses,
+  and every note beneath it keeps its place relative to it — `1a1` under `1a` is `2c1`
+  once `1a` is `2c`. No other note's address changes: a note dropped between two siblings
+  goes to the end of their run rather than renumbering them. Which graph a note is in is
+  fixed at creation, because a note that changed graph would land where its address may
+  already be taken.
+- **The addresses a move leaves behind become aliases.** They resolve to the same notes
+  for as long as those notes exist, are read by every address lookup, and are never
+  assigned again — so a citation somebody wrote down before the move still lands on the
+  note they cited. Purging a note takes its aliases with it, because there is nothing left
+  for one to resolve to, and retires every one of those addresses instead. Renumbering the
+  notes around a move, or handing an old address to a second thought, is a broken link in
+  somebody else's graph.
 - **An address is assigned once inside a graph, and nothing frees it.** Deleting a note
   does not hand its address back: the row keeps it while the note can still be put back,
-  and purging that row retires the address instead of releasing it. A number reissued to
-  a second thought is the same broken citation as a renumbering, arrived at from the
-  other side — and people cite their own addresses out loud long before a peer pulls one.
+  and purging that row retires the address instead of releasing it. Moving a note away
+  does not free the one it left either. A number reissued to a second thought is the same
+  broken citation as a renumbering, arrived at from the other side — and people cite
+  their own addresses out loud long before a peer pulls one.
 - **Assignment is deterministic, and determinism is proved, never asserted.** Two peers
-  applying the same operations — deleting and purging among them — must produce
-  byte-identical addresses, and neither may assign one twice. That is the protocol claim,
-  so it ships as a property test over generated operation sequences, not as a handful of
-  hand-picked cases. The rules do not mention a graph: what a graph decides is which run
-  of siblings a new address is assigned against.
+  applying the same operations — deleting, purging and moving among them — must produce
+  byte-identical addresses and byte-identical aliases, and neither may assign one twice.
+  That is the protocol claim, so it ships as a property test over generated operation
+  sequences, not as a handful of hand-picked cases. The rules do not mention a graph:
+  what a graph decides is which run of siblings a new address is assigned against.
 - **Anything derived from an address is derived, never stored.** The angular sector a
   subtree radiates into, its collapse key — both are functions of the address. Persisting
   one creates a second copy of a truth that no longer has a single author, and it will

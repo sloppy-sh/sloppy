@@ -97,6 +97,20 @@ export const RetiredAddressSchema = OwnedEntitySchema.extend({
 });
 export type RetiredAddress = z.infer<typeof RetiredAddressSchema>;
 
+/**
+ * An address a note was at before it was moved, and the note it still resolves
+ * to — AI.md § "The Address Is the Protocol". `parent` is the note it hung
+ * under when it was left, absent for a branch, and it is what puts the address
+ * back in the run it was spent in.
+ */
+export const NodeAliasSchema = OwnedEntitySchema.extend({
+  graph: OwnedRefSchema,
+  parent: OwnedRefSchema.optional(),
+  address: AddressSchema,
+  note: OwnedRefSchema,
+});
+export type NodeAlias = z.infer<typeof NodeAliasSchema>;
+
 export function nodeDepthMatchesAddress(
   node: Pick<Node, "address" | "depth">,
 ): boolean {

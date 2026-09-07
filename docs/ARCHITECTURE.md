@@ -98,8 +98,9 @@ Address Is the Protocol" states the rules; this is the mechanism.
 - Root nodes take integers: `1`, `2`, `3`.
 - A child alternates segment type: `1` → `1a` → `1a1` → `1a1a`.
 - A sibling increments the last segment: `1a` → `1b`.
-- Addresses are assigned at creation and **never change**. Moving a node writes an alias;
-  it never renumbers. `graph` is immutable for the same reason.
+- An address is assigned at creation and changes **only when its note is moved**, and a
+  move renumbers nothing around it. `graph` is immutable: a note that changed graph would
+  land where its address may already be taken.
 - An address is assigned **once** in a graph and never assigned again. Deleting a note
   does not free it, and neither does purging the row: `NodeRepository.remove` stamps `deleted_at`, and
   `purgeExpired` writes a `retired_address` row for every note it finally takes. `childAddresses` and `addressTaken`
@@ -145,20 +146,33 @@ otherwise tell that author's two `1a`s apart. A region lies in one graph — the
 rooted at does — so `publishedSubtreeReader` holds every page of a run to the same one, the
 way it holds them to one version.
 
-**Moving a note is unbuilt, and what a move does is not yet settled.** The rule above says
-what a move may not do — it writes an alias and never renumbers — and `address` and `depth` are
-`READONLY` on the row so that it cannot. What it does instead is undecided: there is no alias
-table, no move on the node routes, and no move among a note's acts, so somebody who wrote a
-thought in the place it seemed to spring from and later sees it sprang from somewhere else can
-only write it again elsewhere, losing the note's address, its sections and everything citing
-it. Settling this is a change to the addressing rules, so it lands on its own and never inside
-a feature. Two facts it has to face, both of them already true:
+**Moving a note re-addresses it, and leaves the address it had resolving.** The moved note
+takes the next address in the run it joins, by exactly the rule creation uses:
+`childAddresses` reads that run and `nextChildAddress` steps past the greatest address ever
+assigned in it, so a note dropped between two siblings lands at the end of their run and
+neither sibling is renumbered. Every note beneath the moved one keeps its place relative to
+it. `rebaseAddress` in `@sloppy/types` is that rule: it carries the segments past the moved
+note's own, keeping each ordinal and taking the kind from the alternation its new depth puts
+it at, so `1a1` under `1a` becomes `2c1` under `2c` and `3a` under `3`. The address the
+subtree lands on is greater than every address its new run has ever spent, so nothing was
+ever written beneath it and none of the addresses the subtree takes can be held.
 
-- A mark's seed is a function of its address alone (`layout/geometry.ts`), while a genealogy
-  edge is drawn from `parent` (`@sloppy/graph`'s `model.ts`). A note that keeps its address and
-  changes parent is drawn in its old sector, with an edge reaching across the field.
-- `origin` and `depth` are the columns `node_owner_origin_depth` slices a tree by, so a move
-  between trees rewrites `origin` for every note beneath the one that moved.
+`node_alias` is a row per address the subtree leaves — the moved note's own and one for
+every note under it — and every address lookup reads them, so a citation written before the
+move still opens the note it named. They are never assigned again, which `childAddresses`
+and `addressTaken` hold by counting them alongside the live notes, the deleted ones and
+`retired_address`. `address` and `depth` are therefore no longer `READONLY` on `node`, while
+`graph` and `created_by` still are and the `ASSERT` on `depth` still stands.
+
+`purgeExpired` takes a note's aliases with the row and writes a `retired_address` for each
+of them: an alias whose note has gone resolves to nothing, and the number it held has still
+been spent.
+
+Two things follow the subtree rather than staying where they were. A mark's seed is a
+function of its address alone (`layout/geometry.ts`), so a moved subtree radiates from where
+it now is, which is what a genealogy edge drawn from `parent` (`@sloppy/graph`'s `model.ts`)
+already says. And `origin` and `depth` are the columns `node_owner_origin_depth` slices a
+tree by, so a move between trees rewrites both for every note beneath the one that moved.
 
 ## syr integration
 
@@ -970,6 +984,13 @@ retired_address:{ created_by: <did>, id: <ulid> }
   parent      ref?      the note it hung under, immutable; absent for a branch
   address     string    the address, immutable
 
+node_alias:{ created_by: <did>, id: <ulid> }
+  created_by  did       the owner, flat and immutable
+  graph       ref       the graph the address is read in, immutable
+  parent      ref?      the note it hung under, immutable; absent for a branch
+  address     string    an address the note was at before a move, immutable
+  note        ref       the note it still resolves to, immutable
+
 **A deleted note keeps its row, and `deleted_at` is the whole of the difference.** Absent
 is a note that is there, which is every row written before this column existed, so nothing
 has to be filled in. A stamped note and its sections are still stored, still the author's,
@@ -989,6 +1010,25 @@ twice inside one graph. It carries the graph and the parent rather than the note
 the note is what has gone — the parent is how one index answers both the children of a note
 and the branches of a graph, `parent = NONE` standing for a branch as it does on `node`.
 Nothing reads it but address assignment, and the per-DID purge takes it with the graph.
+
+**A moved note leaves its old address resolving.** `node_alias` is a row per address a move
+leaves behind, and it carries the note `retired_address` cannot, because the note is still
+there: the row exists to resolve a citation as well as to say that a number is spent. It
+carries the parent too, and for the reason `retired_address` does — the run an address was
+spent in is what `childAddresses` has to read it back into. So it has three indexes:
+`node_alias_owner_graph_address UNIQUE` is the address rule over aliases, one per address
+inside a graph, and is how a citation made before the move is resolved;
+`node_alias_owner_graph_parent` is the run; `node_alias_owner_graph_note` is a note's own
+aliases, which is what a reader of it is shown. Every column is immutable, this row being
+the whole of that fact, and the per-DID purge takes it with the notes.
+
+**A run is read by the parent it was spent under, and filtered by the address it is under
+now.** `parent` on `retired_address` and on `node_alias` is the note the address hung under
+when it was spent, and a note's address changes when it is moved — so a row read through
+either index can name an address from a run its parent has since left. `nextChildAddress`
+keeps only the addresses that are children of the parent's address now, which is what stops
+a move from carrying a spent number into the run it lands in. The addresses it drops stay
+spent where they were: nothing will ever be written under an address no note is at.
 
 **A deleted note leaves its inbound links behind.** `links` is an array of refs on the
 *linking* node, so removing a note cannot reach the notes that pointed at it — deletion takes
