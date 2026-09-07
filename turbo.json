@@ -3,8 +3,8 @@
   "ui": "tui",
   // Strict env mode: a variable missing from this list never reaches a task,
   // however the shell set it — so every variable the workspace reads belongs
-  // here, and hashing them is what stops a cached pass from being replayed
-  // against a different database.
+  // here, or on the task that reads it, and hashing them is what stops a cached
+  // pass from being replayed against a different database.
   "globalEnv": [
     "NODE_ENV",
     "PUBLIC_URL",
@@ -64,6 +64,12 @@
     },
     "test": {
       "dependsOn": ["^build", "build"],
+      "env": ["SLOPPY_INTEGRATION"],
+      "outputs": []
+    },
+    "test:ts": {
+      "dependsOn": ["^build", "build"],
+      "env": ["SLOPPY_INTEGRATION"],
       "outputs": []
     }
   }

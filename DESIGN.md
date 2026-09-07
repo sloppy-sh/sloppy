@@ -1045,9 +1045,7 @@ over whatever is behind it.
   ends where the eight are still eight.
 - **A series changes while nobody is watching it, and how it changes is the reader's.**
   § "A picture that takes turns" is the model — the ground and a mark's imagery are both it,
-  written once so the two cannot drift into two spellings of the same choice. The ground has
-  not been moved onto it yet and carries no transition at all; that section names what is
-  still to be retired.
+  written once so the two cannot drift into two spellings of the same choice.
 - **The pictures are the reader's own**, resolved the way a mark's are (§ "The mark") and
   never as a remote URL. **The ground has its own library**, and reads the note one beside
   it: choosing here offers both what somebody added as a ground and what is already in their
@@ -1064,15 +1062,10 @@ over whatever is behind it.
 
 A reader may put more than one picture behind their graph, and an author more than one on
 their mark. Both are the same thing — a series, a cadence, and a transition — so both read
-one model, `picture.ts` in `@sloppy/types`. A surface that grew its own spelling of it would
-let the two disagree about a choice somebody made once.
-
-**The mark is on that model; the ground is not yet.** `wallpaper.ts` in `@sloppy/app-core`
-keeps `WALLPAPER_TURNS`, `wallpaperTurn` and its own bounds — a cadence list missing the
-five-minute step, and the numbers `1` and `10080` written out again where `PICTURE_TURN_MIN`
-and `PICTURE_TURN_MAX` now say them. Those are the second spelling this section exists to
-prevent, and the work that gives the ground its transitions deletes them rather than
-importing beside them. Until it does, the rulings below describe the mark alone.
+one model, `picture.ts` in `@sloppy/types`: a ground and a look take their cadence and their
+transition from it and hold no bounds of their own, `turn.ts` in `@sloppy/graph` steps both
+through a change, and one `SeriesControls` is what either is chosen with. A surface that grew
+its own spelling of it would let the two disagree about a choice somebody made once.
 
 - **Whose turn it is comes off the clock** — `floor(now / every) % count` — and is read when
   the graph opens and when the app comes back from the background, never on a timer. So
@@ -1093,9 +1086,11 @@ importing beside them. Until it does, the rulings below describe the mark alone.
   the cadence: **eight pictures is what a look is written with** — past that somebody is
   keeping an album rather than choosing what a note is known by — and a series a later Sloppy
   widened is read, kept whole and drawn to the first eight. `PICTURES_PER_SERIES` bounds a
-  look on the way in; **what the ground is written with is the ground's own**, and it is
-  unbounded today. A picture that costs somebody the note it is on is the one thing none of
-  this may do.
+  look on the way in, because a look is what a note is known by and it travels to whoever
+  pulls that note. **The ground's series is deliberately not bounded**: it is a per-device
+  view choice that reaches nobody, and one picture of it is on screen at a time, so a long
+  one is spent by the reader who chose it and by no one else. A picture that costs somebody
+  the note it is on is the one thing none of this may do.
 - **What each surface carries beside the series is its own.** The ground has a strength,
   because a picture under a whole field is held to what the reader must still be able to read
   on it (§ "The wallpaper"); a mark has the share of the disc its imagery covers (§ "The

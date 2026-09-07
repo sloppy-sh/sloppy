@@ -1,0 +1,64 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: format, check, lint, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      # Through compose, so the images, ports and dev credentials stay written
+      # down once. `--wait` holds until both report healthy.
+      - name: Bring up the datastores
+        run: docker compose up -d --wait surrealdb minio
+
+      - run: pnpm check
+
+      - run: pnpm format:check
+
+      - run: pnpm lint
+
+      # The integration suites answer to this as well as to the socket, so a
+      # green here cannot mean they were skipped.
+      - run: pnpm test:ts
+        env:
+          SLOPPY_INTEGRATION: "1"
+
+  tauri-crate:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install what a Linux window is drawn with
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libgtk-3-dev librsvg2-dev patchelf
+
+      - run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - run: cargo fmt --check --manifest-path apps/sloppy/native/src-tauri/Cargo.toml
+
+      - run: cargo clippy --manifest-path apps/sloppy/native/src-tauri/Cargo.toml --features local-mode --all-targets -- -D warnings
+
+      - run: cargo test --manifest-path apps/sloppy/native/src-tauri/Cargo.toml --features local-mode

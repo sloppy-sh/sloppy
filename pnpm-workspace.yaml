@@ -12,8 +12,8 @@ packages:
   # one rather than after the first slow build.
   - "apps/*/*"
   - "packages/ts/*"
-# Rust crates live under packages/rust/ and in apps/sloppy/native/src-tauri.
-# Cargo manages both; pnpm never sees them.
+# Rust lives in apps/sloppy/native/src-tauri. Cargo manages it; pnpm never
+# sees it.
 
 # A version earns a catalog entry by having more than one consumer. Anything a
 # single package owns stays in that package's manifest.

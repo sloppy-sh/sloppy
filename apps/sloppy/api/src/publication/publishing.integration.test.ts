@@ -7,11 +7,11 @@
 // than the author's live rows is the whole of the milestone, and the only place
 // it can be seen is a running instance with a store behind it.
 //
-// Skipped when the dev stack is not up, so a clone without it still runs
-// `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `src/testing/integration-target.ts` is the gate.
 
 import { createServer as createHttpServer, type Server } from "node:http";
-import { type AddressInfo, createConnection, createServer } from "node:net";
+import { type AddressInfo, createServer } from "node:net";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import {
@@ -39,6 +39,7 @@ import {
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
+import { integrationTarget } from "../testing/integration-target";
 
 const DB_ENDPOINT = new URL(
   process.env.SLOPPY_SURREALDB_URL ?? "ws://127.0.0.1:8010/rpc",
@@ -144,24 +145,6 @@ function strangerStore(said: {
   });
 }
 
-function reachable(endpoint: URL): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({
-      host: endpoint.hostname,
-      port:
-        Number(endpoint.port) || (endpoint.protocol === "https:" ? 443 : 80),
-    });
-    const settle = (answer: boolean) => {
-      socket.destroy();
-      resolve(answer);
-    };
-    socket.setTimeout(1000);
-    socket.once("connect", () => settle(true));
-    socket.once("timeout", () => settle(false));
-    socket.once("error", () => settle(false));
-  });
-}
-
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -181,7 +164,7 @@ interface Person {
 }
 
 describe("publishing a branch, and what a peer reads back", () => {
-  let listening = false;
+  let runs = false;
   let app: NestExpressApplication;
   let base: string;
   let ada: Person;
@@ -190,7 +173,7 @@ describe("publishing a branch, and what a peer reads back", () => {
     it(
       name,
       async (ctx) => {
-        ctx.skip(!listening, "the dev stack is not up");
+        ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
         await run();
       },
       timeout,
@@ -447,9 +430,8 @@ describe("publishing a branch, and what a peer reads back", () => {
   }
 
   beforeAll(async () => {
-    listening =
-      (await reachable(DB_ENDPOINT)) && (await reachable(STORE_ENDPOINT));
-    if (!listening) return;
+    runs = await integrationTarget(DB_ENDPOINT, STORE_ENDPOINT);
+    if (!runs) return;
 
     const port = await freePort();
     base = `http://127.0.0.1:${port}`;

@@ -35,16 +35,15 @@ sloppy/
 │       ├── web/     @sloppy/web     — SvelteKit SPA shell
 │       └── native/  @sloppy/native  — Tauri + SvelteKit shell (iOS, iPadOS, Android, desktop)
 ├── packages/
-│   ├── ts/
-│   │   ├── types/     @sloppy/types     — Zod schemas: node, block, document, tag, ink stroke,
-│   │   │                                  publication, syr wire contracts
-│   │   ├── client/    @sloppy/client    — backend-agnostic SloppyClient over fetch
-│   │   ├── app-core/  @sloppy/app-core  — ALL pages, components, stores, the api layer, the runtime seam
-│   │   ├── ui/        @sloppy/ui        — shadcn-svelte vocabulary + app.css design tokens
-│   │   ├── data/      @sloppy/data      — SurrealDB repositories, schema.ts, purge.ts
-│   │   ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
-│   │   └── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
-│   └── rust/                            — shared crates (Cargo)
+│   └── ts/
+│       ├── types/     @sloppy/types     — Zod schemas: node, block, document, tag, ink stroke,
+│       │                                  publication, syr wire contracts
+│       ├── client/    @sloppy/client    — backend-agnostic SloppyClient over fetch
+│       ├── app-core/  @sloppy/app-core  — ALL pages, components, stores, the api layer, the runtime seam
+│       ├── ui/        @sloppy/ui        — shadcn-svelte vocabulary + app.css design tokens
+│       ├── data/      @sloppy/data      — SurrealDB table definitions and the per-user purge
+│       ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
+│       └── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
 ├── docs/
 ├── scripts/
 ├── docker/dev/          (the one image api, web and the package builder share)
@@ -60,6 +59,11 @@ load-bearing rather than tidy. `pnpm-workspace.yaml` carries the measurements.
 
 **The shells are ~200-line boots.** Everything product-shaped lives in `@sloppy/app-core`.
 One codebase serves web and native only for as long as that holds.
+
+**`@sloppy/data` is the shape of the store; a repository is the API's.** The table and index
+definitions and the per-user purge are what every surface must agree on, so they are shared.
+The SurrealQL that reads and writes one entity lives in `apps/sloppy/api/src/<module>/`,
+beside the service that owns the concern.
 
 **`apps/sloppy/api/src/app.module.ts` is a foundation file.** A shared import list is the
 one file every branch edits and then every branch conflicts on, so a milestone fills one of
@@ -1554,10 +1558,12 @@ an element inside a block and an annotation layer here, not the product itself.
 ## Verification
 
 - `pnpm check`, `pnpm lint`, `pnpm test` from the root via turbo; `cargo fmt --check` and
-  `cargo clippy -D warnings` against `src-tauri`.
+  `cargo clippy -D warnings` against `src-tauri`. `.github/workflows/verify.yml` runs all
+  of it on push and pull request, with the datastores up and `SLOPPY_INTEGRATION` set.
 - **The schema against a running server.** Immutability, the unique index and the timestamp
   type are claims about an engine, not about a string, so `@sloppy/data` asserts them over
-  the dev stack. The suite skips when nothing is listening and fails when something is: it
+  the dev stack. The suite runs where `SLOPPY_INTEGRATION` asks for it, and asked with
+  nothing listening it fails rather than skips, so a green run cannot be a silent one: it
   is also what catches a `surrealdb` client and a server image that no longer pair.
 - **Address determinism as a property test** — two simulated peers, identical creation
   sequences, byte-identical addresses. This is the protocol claim; prove it, never assert it.

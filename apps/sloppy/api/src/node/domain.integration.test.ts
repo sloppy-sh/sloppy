@@ -7,10 +7,10 @@
 // graph, that a session cannot reach somebody else's notes. None of it is
 // observable from the source.
 //
-// Skipped when nothing is listening, so a clone without the dev stack still
-// runs `pnpm test`. `docker compose up -d` is what turns it on.
+// Runs where `SLOPPY_INTEGRATION` asks for it and the dev stack answers —
+// `src/testing/integration-target.ts` is the gate.
 
-import { createConnection, createServer } from "node:net";
+import { createServer } from "node:net";
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import {
@@ -30,6 +30,7 @@ import {
   type TagCount,
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { integrationTarget } from "../testing/integration-target";
 
 const ENDPOINT = new URL(
   process.env.SLOPPY_SURREALDB_URL ?? "ws://127.0.0.1:8010/rpc",
@@ -39,23 +40,6 @@ const PASSWORD = "a-long-enough-passphrase";
 
 /** A graph big enough that reading all of it is visibly the wrong thing to do. */
 const CROWD = 5000;
-
-function probe(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = createConnection({
-      host: ENDPOINT.hostname,
-      port: Number(ENDPOINT.port) || (ENDPOINT.protocol === "wss:" ? 443 : 80),
-    });
-    const settle = (answer: boolean) => {
-      socket.destroy();
-      resolve(answer);
-    };
-    socket.setTimeout(1000);
-    socket.once("connect", () => settle(true));
-    socket.once("timeout", () => settle(false));
-    socket.once("error", () => settle(false));
-  });
-}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -78,7 +62,7 @@ interface Person {
 }
 
 describe("the domain routes", () => {
-  let listening = false;
+  let runs = false;
   let app: INestApplication;
   let base: string;
   let ada: Person;
@@ -88,7 +72,7 @@ describe("the domain routes", () => {
     it(
       name,
       async (ctx) => {
-        ctx.skip(!listening, `nothing is listening at ${ENDPOINT.href}`);
+        ctx.skip(!runs, "SLOPPY_INTEGRATION is unset");
         await run();
       },
       timeout,
@@ -213,8 +197,8 @@ describe("the domain routes", () => {
   }
 
   beforeAll(async () => {
-    listening = await probe();
-    if (!listening) return;
+    runs = await integrationTarget(ENDPOINT);
+    if (!runs) return;
 
     const port = await freePort();
     base = `http://127.0.0.1:${port}`;
