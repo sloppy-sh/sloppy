@@ -288,6 +288,15 @@ const railChips = (): string[] => {
 	);
 };
 
+/** The rail's find control, whose label carries the key that does the same. */
+function findControl(): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find((b) =>
+		(b.getAttribute('aria-label') ?? '').startsWith('Find a note')
+	);
+	if (!found) throw new Error('The rail is offering no way to find a note');
+	return found as HTMLButtonElement;
+}
+
 function findField(): HTMLInputElement {
 	const input = document.body.querySelector<HTMLInputElement>('input[aria-label^="Find a note"]');
 	if (!input) throw new Error('No find field is on screen');
@@ -339,6 +348,26 @@ async function open(): Promise<void> {
 
 /** Whether a note is open on the reading surface at all. */
 const reading = () => document.body.querySelector('[aria-label="Title"]') !== null;
+
+/** What the surface holding the note is called, as a screen reader reads it. */
+function readingName(): string {
+	const up = [...document.body.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(
+		(surface) => surface.dataset.state !== 'closed'
+	);
+	const surface = up[up.length - 1];
+	if (!surface) throw new Error('No note is open on the reading surface');
+	const by = surface.getAttribute('aria-labelledby');
+	return (
+		(by ? document.getElementById(by)?.textContent : surface.getAttribute('aria-label'))?.trim() ??
+		''
+	);
+}
+
+/** Whatever the page has said out loud since it was mounted. */
+const said = (): string[] =>
+	[...document.body.querySelectorAll('[role="status"]')].map(
+		(one) => one.textContent?.trim() ?? ''
+	);
 
 /** Ask, from the note on screen, for what it links to to be picked on the graph.
  *  Everything that is not writing waits behind one control at its head. */
@@ -472,6 +501,44 @@ describe('finding your way back on the canvas', () => {
 
 // A held region is drawn on the same canvas, so opening a note in somebody
 // else's branch is the same act as opening one of your own.
+// PRODUCT.md § Design Principles 2 and 3: the address is assigned for you, and
+// the interface says so. A reader who cannot see the header is owed it too.
+describe('what the graph says out loud', () => {
+	const WRITTEN = ref(9);
+
+	it('names an open note by its address before its title', async () => {
+		await open();
+
+		onCanvas('1a').click();
+		await settle();
+
+		expect(readingName()).toBe('1a · Cells');
+	});
+
+	it('calls a note nobody has titled yet by its address', async () => {
+		graph.set(SECOND, { ...graph.get(SECOND)!, title: '' });
+		await open();
+
+		onCanvas('1a').click();
+		await settle();
+
+		expect(readingName()).toBe('1a · Untitled');
+	});
+
+	it('says the address a note was just given', async () => {
+		api.on('POST /nodes', () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}`, () => node(9, '3'));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+		await open();
+		expect(said()).not.toContain('Your new note is 3.');
+
+		button('New branch').click();
+		await settle();
+
+		expect(said()).toContain('Your new note is 3.');
+	});
+});
+
 describe('a branch somebody else published', () => {
 	const AUTHOR = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
 	const REGION = ref(20);
@@ -1193,6 +1260,29 @@ describe('choosing several notes to act on', () => {
 		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await settle();
 
+		expect(screen()).toContain('3 notes chosen');
+	});
+
+	// The page reads Escape in the capture phase, which runs before the field the
+	// reader typed into ever sees the key.
+	it('leaves the set alone when Escape is emptying a field', async () => {
+		api.on('GET /nodes/tags', () =>
+			Array.from({ length: 20 }, (_, n) => ({ tag: `other${n}`, notes: 1 }))
+		);
+		await chooseThree();
+
+		findTag('other1');
+		await settle();
+		expect(railChips()).not.toContain('other0');
+
+		const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
+		field?.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		await settle();
+
+		expect(field?.value).toBe('');
+		expect(railChips()).toContain('other0');
 		expect(screen()).toContain('3 notes chosen');
 	});
 
@@ -2007,7 +2097,7 @@ describe('finding a note again from the graph', () => {
 
 	async function lookFor(words: string): Promise<void> {
 		await open();
-		labelled('Find a note').click();
+		findControl().click();
 		await settle();
 		await typeToFind(words);
 	}
@@ -2017,6 +2107,19 @@ describe('finding a note again from the graph', () => {
 	afterEach(() => {
 		prefs.set('alsoOnCanvas', []);
 		graphs.clear();
+	});
+
+	it('opens from the key its control names, wherever the reader is', async () => {
+		await open();
+		expect(() => findField()).toThrow();
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true })
+		);
+		await settle();
+
+		expect(findControl().getAttribute('aria-keyshortcuts')).toBe('Meta+K Control+K');
+		expect(document.activeElement).toBe(findField());
 	});
 
 	it('reaches a note by its number without waiting on anything', async () => {
@@ -2083,7 +2186,7 @@ describe('finding a note again from the graph', () => {
 		await open();
 		prefs.set('alsoOnCanvas', [GARDEN]);
 		await settle();
-		labelled('Find a note').click();
+		findControl().click();
 		await settle();
 		await typeToFind('compost');
 
@@ -2242,7 +2345,7 @@ describe('walking back out of a note a find jumped to', () => {
 		await settle();
 		expect(screen()).toContain('Cells');
 
-		labelled('Find a note').click();
+		findControl().click();
 		await settle();
 		await typeToFind('2');
 		findField().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -2259,7 +2362,7 @@ describe('walking back out of a note a find jumped to', () => {
 
 	it('offers the graph where the find was asked from the canvas alone', async () => {
 		await open();
-		labelled('Find a note').click();
+		findControl().click();
 		await settle();
 		await typeToFind('2');
 		findField().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));

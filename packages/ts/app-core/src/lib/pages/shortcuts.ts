@@ -1,6 +1,6 @@
 /**
- * The keystrokes that write a note, and how a control that writes the same note
- * names them. Naming them on the control is what makes them findable at all.
+ * The keystrokes the graph answers, and how the control that does the same
+ * thing names them. Naming them on the control is what makes them findable.
  */
 
 const onMac = (): boolean =>
@@ -26,6 +26,20 @@ export const WRITE_UNDER: Accelerator = {
 		return onMac() ? '⇧ ⌘ Return' : 'Ctrl+Shift+Enter';
 	}
 };
+
+export const FIND_NOTE: Accelerator = {
+	keys: 'Meta+K Control+K',
+	get says() {
+		return onMac() ? '⌘ K' : 'Ctrl+K';
+	}
+};
+
+/** Whether the keystroke asks for the field that goes back to a note. */
+export function opensFind(event: KeyboardEvent): boolean {
+	if (event.key !== 'k' && event.key !== 'K') return false;
+	if (event.altKey || event.shiftKey) return false;
+	return event.metaKey || event.ctrlKey;
+}
 
 /** Which of the two a keystroke is, if either. */
 export function acceleratorFor(event: KeyboardEvent): 'branch' | 'under' | null {

@@ -134,7 +134,14 @@
 	import Note from './node.svelte';
 	import Writing from './writing.svelte';
 	import { nodeHref, refFromPath } from './routes.js';
-	import { acceleratorFor, NEW_BRANCH, typedIntoWriting, WRITE_UNDER } from './shortcuts.js';
+	import {
+		acceleratorFor,
+		FIND_NOTE,
+		NEW_BRANCH,
+		opensFind,
+		typedIntoWriting,
+		WRITE_UNDER
+	} from './shortcuts.js';
 
 	let loading = $state(true);
 	let canvas = $state<GraphHandle>();
@@ -338,6 +345,13 @@
 		return from !== null && openNotes.includes(from) ? from : null;
 	});
 	const openNode = $derived(open ? nodes.get(open) : undefined);
+	/** What the reading surface is called. The address leads, because that is what
+	 *  a person cites and hands to a peer — PRODUCT.md § Design Principles 3. */
+	const readingName = $derived(
+		writingNow || !openNode ? 'Note' : `${openNode.address} · ${openNode.title || 'Untitled'}`
+	);
+	/** The address the graph has just handed the reader, said once. */
+	const justNamed = $derived(naming ? (nodes.get(naming)?.address ?? '') : '');
 	/** The note the reader came here from, where the entry behind this one holds
 	 *  one the canvas is still drawing. At the head of the trail there is none,
 	 *  and the way out of a note is the graph. */
@@ -1591,6 +1605,9 @@
 <svelte:window
 	onkeydowncapture={(event) => {
 		if (event.key !== 'Escape') return;
+		// A field answers its own Escape by emptying itself, and the reader who
+		// typed into it did not ask the graph anything.
+		if (typedIntoWriting(event)) return;
 		if (pointing) stopPointing();
 		// Capture, so this reads whether a surface is over the graph BEFORE that
 		// surface closes itself on the same keystroke — otherwise one Escape both
@@ -1601,6 +1618,11 @@
 		// Last resort: a row of the walk answers these keys for the note it is on,
 		// and has refused the default by the time they reach here.
 		if (event.defaultPrevented || asked || pointing || foreign) return;
+		if (opensFind(event)) {
+			event.preventDefault();
+			finding = true;
+			return;
+		}
 		if (typedIntoWriting(event)) return;
 		const act = acceleratorFor(event);
 		if (act === 'branch') {
@@ -1677,6 +1699,7 @@
 
 <div class="viewport-fit relative mr-[var(--reading-dock-inset-right,0px)]">
 	<h1 class="sr-only">Your graph</h1>
+	<p class="sr-only" role="status">{justNamed ? `Your new note is ${justNamed}.` : ''}</p>
 
 	{#if populated}
 		<!-- DESIGN.md § "The canvas": never a scroller, and the ground is the
@@ -1882,7 +1905,8 @@
 						</button>
 						<button
 							type="button"
-							aria-label="Find a note"
+							aria-label="Find a note ({FIND_NOTE.says})"
+							aria-keyshortcuts={FIND_NOTE.keys}
 							onclick={() => (finding = true)}
 							class="flex h-9 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full border border-input px-2.5 text-left text-sm text-muted-foreground hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-56 sm:justify-start sm:px-3"
 						>
@@ -2230,7 +2254,7 @@
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}
-	title={writingNow ? 'Note' : openNode?.title || 'Note'}
+	title={readingName}
 	{tabs}
 	active={markedTab}
 	says={tooMany}

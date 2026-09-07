@@ -33,3 +33,15 @@ it('mounts every primitive the vocabulary offers', () => {
 	expect(document.body.textContent).toContain('Third in the sequence');
 	expect(document.body.textContent).toContain('Show addresses');
 });
+
+// DESIGN.md § Motion: chrome transitions degrade to static. `tw-animate-css`
+// ships no guard of its own, so every vendored surface that flies in carries one.
+it.each(['popover-content', 'dropdown-menu-content'])(
+	'stops %s animating for somebody who asked the OS for no motion',
+	(slot) => {
+		mounted = mount(Primitives, { target });
+		flushSync();
+		const surface = document.body.querySelector(`[data-slot="${slot}"]`);
+		expect(surface?.className).toContain('motion-reduce:animate-none!');
+	}
+);

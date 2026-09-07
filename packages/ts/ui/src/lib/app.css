@@ -259,10 +259,12 @@
 	--primary-foreground: oklch(0.16 0.01 80);
 }
 
-/* The mark is the accent itself wherever the accent already clears its floor. */
+/* The mark is the accent itself wherever the accent already clears its floor.
+   A focus ring is one of those marks, so it reads from the mark family and
+   inherits every correction the mark is given. */
 :root {
 	--primary-mark: var(--primary);
-	--ring: var(--primary);
+	--ring: var(--primary-mark);
 }
 
 /* The one that does not: Ochre on the light family, moved in lightness alone.

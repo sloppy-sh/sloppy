@@ -72,6 +72,36 @@
 		if (place) menu?.querySelector('button')?.focus();
 	});
 
+	/** Focus stays inside an open menu, so Tab wraps rather than stranding it
+	 *  behind a reader who has moved on. */
+	function rove(event: KeyboardEvent): void {
+		const acts = [...(menu?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
+		if (acts.length === 0) return;
+		const here = acts.indexOf(document.activeElement as HTMLButtonElement);
+		let to: number;
+		switch (event.key) {
+			case 'ArrowDown':
+				to = here + 1;
+				break;
+			case 'ArrowUp':
+				to = here - 1;
+				break;
+			case 'Tab':
+				to = here + (event.shiftKey ? -1 : 1);
+				break;
+			case 'Home':
+				to = 0;
+				break;
+			case 'End':
+				to = acts.length - 1;
+				break;
+			default:
+				return;
+		}
+		event.preventDefault();
+		acts[((to % acts.length) + acts.length) % acts.length].focus();
+	}
+
 	/** The bar the platform draws over the bottom of the screen, which the menu
 	 *  has to sit clear of — DESIGN.md § "The four inset vars". */
 	const CLEAR_BOTTOM = 'var(--sysnav-clearance)';
@@ -111,12 +141,13 @@
 			<button
 				type="button"
 				role="menuitem"
+				onkeydown={rove}
 				onclick={() => {
 					onclose();
 					item.onSelect();
 				}}
 				class={cn(
-					'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none motion-reduce:transition-none',
+					'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors duration-150 ease-out hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none',
 					item.destructive && 'text-destructive'
 				)}
 			>
