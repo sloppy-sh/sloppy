@@ -138,6 +138,16 @@ describe('the page a person is on', () => {
 		expect(target.textContent).toContain(DID);
 	});
 
+	// It is asked for on another surface entirely, so the page it is shown on is
+	// where somebody learns what it is for.
+	it('says what to do with it', async () => {
+		open();
+		await settle();
+		expect(target.textContent).toContain(
+			'Hand this to somebody who wants to read what you publish'
+		);
+	});
+
 	it('shows the branches a peer can read, and who may answer each', async () => {
 		open();
 		await settle();

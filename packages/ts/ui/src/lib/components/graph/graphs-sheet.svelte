@@ -47,6 +47,7 @@
 		busy = false,
 		says = null,
 		deleted = [],
+		publishedFrom = undefined,
 		onEnter,
 		onToggle,
 		onOpen,
@@ -71,6 +72,10 @@
 		says?: string | null;
 		/** Newest first. Empty leaves the section off the sheet entirely. */
 		deleted?: readonly DeletedChoice[];
+		/** The graphs somebody has published a branch out of. Absent is not
+		 *  knowing, and closing then says the consequence rather than withhold
+		 *  it. */
+		publishedFrom?: ReadonlySet<OwnedRef>;
 		onEnter: (ref: OwnedRef) => void;
 		onToggle: (ref: OwnedRef) => void;
 		/** Rejects with an `Error` whose `message` is already fit to show. */
@@ -94,6 +99,12 @@
 	$effect(() => {
 		if (open) untrack(() => onShow?.());
 	});
+
+	const closeSays = $derived(
+		closing && publishedFrom && !publishedFrom.has(closing.ref)
+			? 'The notes in it go with it, and they cannot be put back.'
+			: 'The notes in it go with it, and they cannot be put back. Whoever already has a branch you published from it keeps their copy.'
+	);
 
 	function nameOf(graph: GraphChoice | DeletedChoice): string {
 		return graph.title || 'Untitled';
@@ -174,6 +185,7 @@
 							bind:value={naming.title}
 							class="h-11 flex-1"
 							autocomplete="off"
+							maxlength={512}
 							aria-label="Name"
 							onkeydown={(e) => {
 								if (e.key !== 'Enter') return;
@@ -260,6 +272,7 @@
 					bind:value={opening}
 					class="h-11 flex-1"
 					autocomplete="off"
+					maxlength={512}
 					placeholder="The garden"
 					aria-label="Name the new graph"
 					onkeydown={(e) => {
@@ -321,7 +334,7 @@
 <ConfirmModal
 	bind:open={confirming}
 	title={closing ? `Close ${nameOf(closing)}?` : 'Close this graph?'}
-	description="The notes in it go with it, and they cannot be put back. If you published a branch from it, whoever already has it keeps their copy."
+	description={closeSays}
 	confirmLabel="Close it"
 	refused={closeRefused}
 	onconfirm={closeGraph}

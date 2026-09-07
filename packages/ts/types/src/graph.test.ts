@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import { childAddress, siblingAddress } from "./address.js";
 import { splitOwnedRef, ulid } from "./codecs.js";
 import {
+  CreateGraphRequestSchema,
   graphRef,
   HOME_GRAPH_ULID,
   homeGraphRef,
   InvalidGraphRefError,
   isHomeGraphRef,
   requireOwnGraph,
+  UpdateGraphRequestSchema,
 } from "./graph.js";
 import { graphOf, parseNode, runKeyOf } from "./node.js";
 import { UlidSchema } from "./common.js";
@@ -97,5 +99,22 @@ describe("an address inside one graph", () => {
     expect(childAddress(null)).toBe("1");
     expect(childAddress("1")).toBe("1a");
     expect(siblingAddress("1a")).toBe("1b");
+  });
+});
+
+describe("naming a graph", () => {
+  it("refuses a name longer than one can be kept, in Sloppy's own words", () => {
+    for (const schema of [CreateGraphRequestSchema, UpdateGraphRequestSchema]) {
+      const said = schema.safeParse({ title: "n".repeat(513) });
+      expect(said.success).toBe(false);
+      expect(said.error?.issues[0]?.message).toBe(
+        "That name is longer than a graph name can be. Trim it.",
+      );
+    }
+  });
+
+  it("still asks for a name where none was given", () => {
+    const said = CreateGraphRequestSchema.safeParse({ title: "" });
+    expect(said.error?.issues[0]?.message).toBe("Name this graph.");
   });
 });

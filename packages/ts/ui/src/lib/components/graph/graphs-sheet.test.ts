@@ -40,7 +40,8 @@ async function open(
 		putBack.push(ref);
 		return Promise.resolve();
 	},
-	onRemove: (ref: OwnedRef) => Promise<void> = () => Promise.resolve()
+	onRemove: (ref: OwnedRef) => Promise<void> = () => Promise.resolve(),
+	publishedFrom: ReadonlySet<OwnedRef> | undefined = undefined
 ): Promise<void> {
 	if (mounted) unmount(mounted, { outro: false });
 	document.body.innerHTML = '';
@@ -61,6 +62,7 @@ async function open(
 			home: HOME,
 			alsoUp: new Set<OwnedRef>(),
 			deleted,
+			publishedFrom,
 			onEnter: () => {},
 			onToggle: () => {},
 			onOpen: () => Promise.resolve(),
@@ -163,8 +165,48 @@ describe('the graphs sheet', () => {
 		const text = document.body.textContent ?? '';
 		expect(text).toContain('Close Garden?');
 		expect(text).toContain('they cannot be put back');
-		expect(text).toContain('whoever already has it keeps their copy');
+		expect(text).toContain('Whoever already has a branch you published from it keeps their copy');
 		expect(closed).toEqual([]);
+	});
+
+	it('leaves out what a peer keeps where nothing went out of that graph', async () => {
+		await open([], undefined, undefined, new Set([HOME]));
+
+		find('Close Garden')?.click();
+		await settle();
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('they cannot be put back');
+		expect(text).not.toContain('keeps their copy');
+	});
+
+	it('says what a peer keeps where a branch went out of that graph', async () => {
+		await open([], undefined, undefined, new Set([GARDEN]));
+
+		find('Close Garden')?.click();
+		await settle();
+
+		expect(document.body.textContent).toContain(
+			'Whoever already has a branch you published from it keeps their copy'
+		);
+	});
+
+	it('holds a graph name to the length one can be saved at', async () => {
+		await open([]);
+
+		const naming = [...document.querySelectorAll<HTMLInputElement>('input')].filter(
+			(input) => input.maxLength === 512
+		);
+		expect(naming.length).toBe(1);
+
+		find('Rename Garden')?.click();
+		await settle();
+
+		expect(
+			[...document.querySelectorAll<HTMLInputElement>('input')].filter(
+				(input) => input.maxLength === 512
+			).length
+		).toBe(2);
 	});
 
 	it('closes it once the question is answered', async () => {

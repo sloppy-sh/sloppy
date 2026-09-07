@@ -13,7 +13,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import { nameOf } from '../identity/person.js';
+	import { nameOf, nameOr, personOr } from '../identity/person.js';
 	import VersionChanges, { type VersionComparison } from '../publish/version-changes.svelte';
 	import { when } from '../social/when.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
@@ -60,12 +60,11 @@
 		onEnter: (ref: HeldRegion['ref']) => void;
 		onDrop: (ref: HeldRegion['ref']) => void;
 		/** What somebody publishes, on the instance named or on this one. A page at
-		 *  a time; `cursor` asks for the one after. The first argument is what was
-		 *  typed — an identifier, or a name carrying the instance it is kept on
-		 *  after an `@` — and `identity` on the answer is who that turned out to
-		 *  be. */
+		 *  a time; `cursor` asks for the one after. The first argument is who was
+		 *  asked after — an identifier, or the name they are known by there — and
+		 *  `identity` on the answer is who that turned out to be. */
 		onLook: (
-			typed: string,
+			who: string,
 			where: string | undefined,
 			cursor?: string
 		) => Promise<PublishedThere | null>;
@@ -181,12 +180,6 @@
 		return peerOrigin(named);
 	}
 
-	/** The two lines back as the one thing the host looks up, which is the form
-	 *  {@link split} takes apart. */
-	function joined(who: string, at: string | undefined): string {
-		return at === undefined ? who : `${who}@${at}`;
-	}
-
 	/** What somebody was handed, as the two lines this asks for: a name carries
 	 *  the instance it is kept on, so one paste fills both. An identifier carries
 	 *  no `@`. */
@@ -210,14 +203,14 @@
 		if (named.at) where = named.at;
 		const at = instance(named.at ?? where);
 		if (at === null) {
-			refused = 'Enter an instance address, like https://sloppy.example';
+			refused = 'That does not look like a web address. Theirs looks like https://sloppy.example';
 			return;
 		}
 		refused = null;
 		identity = named.who;
 		found = null;
 		looking = null;
-		const page = await onLook(joined(named.who, at), at);
+		const page = await onLook(named.who, at);
 		if (!page) return;
 		looking = { identity: page.identity, where: at };
 		found = page;
@@ -321,11 +314,13 @@
 											}}
 										>
 											<span class="shrink-0 address">{region.address}</span>
-											<span class="min-w-0 flex-1 truncate text-sm">
-												{#if region.person}
-													{nameOf(region.person)}
-												{:else}
-													<span class="font-mono text-xs select-text">{region.identity}</span>
+											<span class="min-w-0 flex-1">
+												<span class="block truncate text-sm">{nameOr(personOr(region))}</span>
+												{#if !region.person}
+													<span
+														class="block truncate font-mono text-xs text-muted-foreground select-text"
+														>{region.identity}</span
+													>
 												{/if}
 											</span>
 										</button>
@@ -333,7 +328,7 @@
 											variant="ghost"
 											size="icon"
 											class="size-9 shrink-0 rounded-full"
-											aria-label="Read this region again"
+											aria-label={`Read ${region.address} again`}
 											disabled={busy}
 											onclick={() => onRefresh(region)}
 										>
@@ -343,7 +338,7 @@
 											variant="ghost"
 											size="icon"
 											class="size-9 shrink-0 rounded-full"
-											aria-label="Let this region go"
+											aria-label={`Stop holding ${region.address}`}
 											disabled={busy}
 											onclick={() => onDrop(region.ref)}
 										>
@@ -452,7 +447,7 @@
 								variant="ghost"
 								size="icon"
 								class="size-9 shrink-0 rounded-full"
-								aria-label="Stop following them"
+								aria-label={`Stop following ${nameOr(personOr(one))}`}
 								disabled={busy}
 								onclick={() => onUnfollow(one.identity)}
 							>
@@ -484,8 +479,8 @@
 				aria-label="Where their graph is"
 			/>
 			<p class="text-xs text-muted-foreground">
-				The name or the identifier they gave you. Leave the second line empty for somebody on the
-				same instance as you.
+				Paste what they gave you — the name they go by, or their identifier. Leave the second line
+				empty if their graph is kept here.
 			</p>
 			<Button
 				variant="outline"

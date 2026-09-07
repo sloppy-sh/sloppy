@@ -75,7 +75,10 @@ export function requireOwnGraph(
  */
 export const CreateGraphRequestSchema = z.strictObject(
   {
-    title: z.string().min(1, "Name this graph.").max(512),
+    title: z
+      .string()
+      .min(1, "Name this graph.")
+      .max(512, "That name is longer than a graph name can be. Trim it."),
   },
   { error: "Sloppy is out of date. Update it and try again." },
 );
@@ -83,6 +86,9 @@ export type CreateGraphRequest = z.input<typeof CreateGraphRequestSchema>;
 
 /** Rename one. Renaming the home graph is what first writes a row for it. */
 export const UpdateGraphRequestSchema = z.object({
-  title: z.string().min(1, "Name this graph.").max(512),
+  title: z
+    .string()
+    .min(1, "Name this graph.")
+    .max(512, "That name is longer than a graph name can be. Trim it."),
 });
 export type UpdateGraphRequest = z.input<typeof UpdateGraphRequestSchema>;

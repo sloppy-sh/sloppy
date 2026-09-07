@@ -27,7 +27,13 @@ export { default as PersonEditor } from './components/identity/person-editor.sve
 export { default as IdentityLine } from './components/identity/identity-line.svelte';
 export { default as PersonSheet } from './components/identity/person-sheet.svelte';
 export type { PersonSheetProps } from './components/identity/person-sheet.svelte';
-export { initialsOf, nameOf, unplacedPerson } from './components/identity/person.js';
+export {
+	initialsOf,
+	nameOf,
+	nameOr,
+	personOr,
+	unplacedPerson
+} from './components/identity/person.js';
 export type { Person, PictureRole } from './components/identity/person.js';
 
 export { default as PeersSheet } from './components/peers/peers-sheet.svelte';

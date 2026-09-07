@@ -82,10 +82,11 @@
 		GraphSurface,
 		GroundChoice,
 		HeldNote,
-		nameOf,
+		nameOr,
 		NotePreview,
 		overlay,
 		PeersSheet,
+		personOr,
 		ReadingPanel,
 		ResponsiveModal,
 		TagRail,
@@ -1573,7 +1574,15 @@
 		if (answerable && reached) void conversation.load(reached);
 	});
 
-	const regionAuthor = $derived(foreign ? people.of(authorOf(foreign)) : null);
+	const regionAuthor = $derived(
+		foreign
+			? personOr({
+					identity: authorOf(foreign),
+					person: people.of(authorOf(foreign)),
+					unplaced: people.unplaced(authorOf(foreign))
+				})
+			: null
+	);
 	/** A note's shortcodes are read against its own author's catalog, which this
 	 *  instance resolves. */
 	const heldEmoji = $derived(readerEmoji.catalog);
@@ -1878,7 +1887,7 @@
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
 							<span class="address">{foreign.root_address}</span>
-							<span>{regionAuthor ? nameOf(regionAuthor) : authorOf(foreign)}</span>
+							<span>{nameOr(regionAuthor)}</span>
 							{#if foreign.graph_title}
 								<span class="text-muted-foreground">· {foreign.graph_title}</span>
 							{/if}
@@ -2124,6 +2133,9 @@
 		notes: branch.notes,
 		within: timeToPutBack(branch.deleted_at)
 	}))}
+	publishedFrom={publications.state.loaded
+		? new Set(publications.all.map((one) => one.graph ?? graphs.home))
+		: undefined}
 	onShow={() => void deleted.reload().catch(() => {})}
 	onRestore={(ref) =>
 		inTheirWords(async () => {
@@ -2173,7 +2185,7 @@
 		void peers.drop(ref);
 	}}
 	onLook={async (typed, where, cursor) => {
-		const who = await peers.identify(typed);
+		const who = await peers.identify(typed, where);
 		if (who === null) return null;
 		const page = await peers.publishedBy(who, { sourceUrl: where, cursor });
 		return page && { identity: who, publications: page.publications, nextCursor: page.next_cursor };

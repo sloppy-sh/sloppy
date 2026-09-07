@@ -12,7 +12,7 @@
 	import type { NoteEmoji } from '../editor/contract.js';
 	import type { PictureSource } from '../editor/picture-node.js';
 	import type { ReferenceReader } from '../editor/reference-node.js';
-	import { nameOf } from '../identity/person.js';
+	import { nameOr, personOr } from '../identity/person.js';
 	import ReadingPanel from '../reading-panel.svelte';
 	import Conversation, { type ConversationProps } from '../social/conversation.svelte';
 	import HeldStack from './held-stack.svelte';
@@ -117,11 +117,7 @@
 				{note.title || 'Untitled'}
 			</h2>
 			<p class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-sm text-muted-foreground">
-				{#if author.person}
-					<span class="min-w-0 truncate">{nameOf(author.person)}</span>
-				{:else}
-					<span class="min-w-0 truncate font-mono text-xs select-text">{author.identity}</span>
-				{/if}
+				<span class="min-w-0 truncate">{nameOr(personOr(author))}</span>
 				<span>wrote this{notebook ? ` in ${notebook}` : ''}</span>
 			</p>
 
