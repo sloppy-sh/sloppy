@@ -19,6 +19,8 @@
 	"dependencies": {
 		"@fontsource-variable/inter": "catalog:",
 		"@fontsource-variable/jetbrains-mono": "catalog:",
+		"@fontsource/atkinson-hyperlegible": "catalog:",
+		"@fontsource/opendyslexic": "catalog:",
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/client": "workspace:*",
 		"@sloppy/ui": "workspace:*"

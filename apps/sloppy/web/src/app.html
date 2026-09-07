@@ -27,6 +27,7 @@
 			root.setAttribute('data-theme', theme);
 			root.setAttribute('data-accent', saved.accent || 'indigo');
 			if (saved.style && saved.style !== 'default') root.setAttribute('data-style', saved.style);
+			if (saved.font && saved.font !== 'system') root.setAttribute('data-app-font', saved.font);
 			root.classList.toggle('dark', dark);
 
 			// The browser's own chrome, taking the ground from app.css rather than

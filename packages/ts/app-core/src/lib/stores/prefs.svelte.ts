@@ -1,7 +1,7 @@
 /**
  * The look of the app and the tags it opens on — DESIGN.md § Persistence — and
  * which Sloppy this device talks to — docs/ARCHITECTURE.md § "Deployment
- * modes". One writer for `sloppy_prefs`, and the only code that sets the three
+ * modes". One writer for `sloppy_prefs`, and the only code that sets the four
  * axis attributes on `<html>` after first paint.
  *
  * The shells' `app.html` boot scripts read the SAME key to theme the first
@@ -17,11 +17,14 @@ import { sanitizeWallpapers, type WallpaperPrefs } from '../wallpaper.js';
 export type Theme = 'paper' | 'graphite' | 'light' | 'dark' | 'contrast';
 export type Accent = 'indigo' | 'moss' | 'rust' | 'sea' | 'iris' | 'ochre' | 'slate';
 export type Style = 'default' | 'hardline';
+export type Font = 'system' | 'atkinson' | 'opendyslexic' | 'apple';
 
 export interface Prefs {
 	theme: Theme;
 	accent: Accent;
 	style: Style;
+	/** The face the whole app is read in — DESIGN.md § Typography. */
+	font: Font;
 	/** The tags the graph is lit by, in SELECTION order — that order hands out
 	 *  the hues, so sorting it would repaint the reader's question. Empty is the
 	 *  monochrome graph DESIGN.md § Hue calls for when nothing has been asked. */
@@ -71,10 +74,17 @@ export const STYLE_LABELS: Record<Style, string> = {
 	default: 'Default',
 	hardline: 'Hardline'
 };
+export const FONT_LABELS: Record<Font, string> = {
+	system: 'Default',
+	atkinson: 'Atkinson Hyperlegible',
+	opendyslexic: 'OpenDyslexic',
+	apple: "Your device's face"
+};
 
 export const THEMES = Object.keys(THEME_LABELS) as Theme[];
 export const ACCENTS = Object.keys(ACCENT_LABELS) as Accent[];
 export const STYLES = Object.keys(STYLE_LABELS) as Style[];
+export const FONTS = Object.keys(FONT_LABELS) as Font[];
 
 function systemPrefersDark(): boolean {
 	try {
@@ -91,6 +101,7 @@ function defaults(): Prefs {
 		theme: systemPrefersDark() ? 'graphite' : 'paper',
 		accent: 'indigo',
 		style: 'default',
+		font: 'system',
 		tags: [],
 		ground: 'dots',
 		graph: null,
@@ -196,6 +207,7 @@ class PrefsStore {
 			theme: oneOf(saved.theme, THEMES, base.theme),
 			accent: oneOf(saved.accent, ACCENTS, base.accent),
 			style: oneOf(saved.style, STYLES, base.style),
+			font: oneOf(saved.font, FONTS, base.font),
 			tags: tagsIn(saved.tags),
 			ground: oneOf(saved.ground, GRAPH_GROUNDS, base.ground),
 			graph: refIn(saved.graph),
@@ -220,7 +232,15 @@ class PrefsStore {
 	}
 
 	set<K extends keyof Prefs>(key: K, value: Prefs[K]): void {
-		this.#current = { ...this.#current, [key]: value };
+		const next: Prefs = { ...this.#current, [key]: value };
+		// A graph, the canvas beside it and the pictures under them are refs the
+		// Sloppy being left minted; they mean nothing on the next one.
+		if (key === 'origin' && value !== this.#current.origin) {
+			next.graph = null;
+			next.alsoOnCanvas = [];
+			next.wallpapers = {};
+		}
+		this.#current = next;
 		this.#persist();
 		this.apply();
 	}
@@ -243,6 +263,8 @@ class PrefsStore {
 		// Absent IS the default style: app.css only ever keys off the opt-in value.
 		if (p.style === 'default') root.removeAttribute('data-style');
 		else root.setAttribute('data-style', p.style);
+		if (p.font === 'system') root.removeAttribute('data-app-font');
+		else root.setAttribute('data-app-font', p.font);
 		root.classList.toggle('dark', this.isDark);
 	}
 }

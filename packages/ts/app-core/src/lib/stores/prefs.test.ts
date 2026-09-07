@@ -19,6 +19,35 @@ function stylesheetCallsDark(theme: string): boolean {
 	throw new Error(`no ground declared for ${theme}`);
 }
 
+/** The look the boot script or the store has left on `<html>`. */
+function stamped(): Record<string, string | null> {
+	const root = document.documentElement;
+	return {
+		theme: root.getAttribute('data-theme'),
+		accent: root.getAttribute('data-accent'),
+		style: root.getAttribute('data-style'),
+		font: root.getAttribute('data-app-font'),
+		dark: String(root.classList.contains('dark'))
+	};
+}
+
+function unstamp(): void {
+	const root = document.documentElement;
+	for (const axis of ['data-theme', 'data-accent', 'data-style', 'data-app-font'])
+		root.removeAttribute(axis);
+	root.classList.remove('dark');
+}
+
+function bootScript(shell: string): () => void {
+	const html = readFileSync(
+		resolve(process.cwd(), `../../../apps/sloppy/${shell}/src/app.html`),
+		'utf8'
+	);
+	const found = /<script>([\s\S]*?)<\/script>/.exec(html);
+	if (!found) throw new Error(`the ${shell} shell has no boot script`);
+	return new Function(found[1]) as () => void;
+}
+
 function osPrefersDark(dark: boolean) {
 	vi.stubGlobal('matchMedia', (query: string) => ({
 		matches: dark && query.includes('dark'),
@@ -74,6 +103,32 @@ describe('the saved look', () => {
 		expect(document.documentElement.hasAttribute('data-style')).toBe(false);
 	});
 
+	it('leaves data-app-font absent for the default face, because absent IS default', () => {
+		prefs.init();
+		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
+		prefs.set('font', 'opendyslexic');
+		expect(document.documentElement.getAttribute('data-app-font')).toBe('opendyslexic');
+		prefs.set('font', 'system');
+		expect(document.documentElement.hasAttribute('data-app-font')).toBe(false);
+	});
+
+	// Both shells paint the first paint from the same saved object, so what they
+	// stamp is held against the store rather than against a copy of the rules.
+	it.each(['web', 'native'])('paints the %s shell the way the store would', (shell) => {
+		for (const saved of [
+			{},
+			{ theme: 'dark', accent: 'moss', style: 'hardline', font: 'opendyslexic' },
+			{ theme: 'contrast', accent: 'sea', style: 'default', font: 'system' }
+		]) {
+			localStorage.setItem('sloppy_prefs', JSON.stringify(saved));
+			prefs.init();
+			const byTheStore = stamped();
+			unstamp();
+			bootScript(shell)();
+			expect(stamped()).toEqual(byTheStore);
+		}
+	});
+
 	it('agrees with the boot script about which themes are dark', () => {
 		for (const [theme, dark] of [
 			['paper', false],
@@ -103,6 +158,7 @@ describe('the saved look', () => {
 				theme: 'neon',
 				accent: 42,
 				style: 'sketch',
+				font: 'comic',
 				tags: 'seed',
 				ground: 'graph paper',
 				graph: 'not a ref',
@@ -117,6 +173,7 @@ describe('the saved look', () => {
 			theme: 'paper',
 			accent: 'indigo',
 			style: 'default',
+			font: 'system',
 			tags: [],
 			ground: 'dots',
 			graph: null,
@@ -211,6 +268,34 @@ describe('where this device says its Sloppy is', () => {
 		prefs.set('origin', 'https://mine.example');
 		prefs.init();
 		expect(prefs.current.origin).toBe('https://mine.example');
+	});
+
+	// A graph, the canvas beside it and the pictures under them were minted by
+	// the Sloppy being left, so none of them follows the device to another one.
+	it('leaves the canvas behind wherever the device is pointed', () => {
+		const home = `${DID}/00000000000000000000000000` as OwnedRef;
+		prefs.init();
+		prefs.set('graph', home);
+		prefs.set('alsoOnCanvas', [ref(20)]);
+		prefs.setWallpaper(home, { pictures: ['a'], strength: 0.3, every: 60, transition: 'fade' });
+
+		prefs.set('origin', 'https://mine.example');
+
+		expect(prefs.current.graph).toBeNull();
+		expect(prefs.current.alsoOnCanvas).toEqual([]);
+		expect(prefs.current.wallpapers).toEqual({});
+		expect(prefs.current.origin).toBe('https://mine.example');
+	});
+
+	it('keeps the canvas where the address given is the one it is already on', () => {
+		const home = `${DID}/00000000000000000000000000` as OwnedRef;
+		prefs.init();
+		prefs.set('origin', 'https://mine.example');
+		prefs.set('graph', home);
+
+		prefs.set('origin', 'https://mine.example');
+
+		expect(prefs.current.graph).toBe(home);
 	});
 
 	it('goes back to the one the app came with', () => {
