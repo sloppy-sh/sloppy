@@ -133,12 +133,12 @@ describe('inking over the canvas', () => {
 	// marks are rather than where the screen was.
 	it('keeps a stroke in the field coordinates the canvas resolved', () => {
 		render();
-		stroke([300, 250], [400, 250], [500, 250]);
+		stroke([300, 250], [400, 150], [500, 250]);
 
 		expect(kept).toHaveLength(1);
 		expect(kept[0].points.map((point) => [point.x, point.y])).toEqual([
 			[100, 100],
-			[150, 100],
+			[150, 50],
 			[200, 100]
 		]);
 	});
