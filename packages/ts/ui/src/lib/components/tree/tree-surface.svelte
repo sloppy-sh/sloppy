@@ -52,6 +52,10 @@
 			keys: string;
 			typed: (event: KeyboardEvent) => boolean;
 			write: (ref: OwnedRef) => void;
+			/** Writing a note after a row instead, which the same control offers
+			 *  when it is dragged level with a row rather than past it. Absent
+			 *  leaves the control a tap and the accelerator. */
+			beside?: (ref: OwnedRef) => void;
 		};
 	}
 </script>
@@ -61,6 +65,7 @@
 	// run to the note after it, and back up. The notes a note names are the
 	// note's own to show, so neither a reference nor a hand-drawn link branches
 	// here; DESIGN.md § Layout is why a plain tap replaces the note being read.
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
@@ -70,6 +75,7 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
+	import { aimSays, dragFrom, runFor, type TreeAim, type TreeBox } from './tree-drag.js';
 	import { RUN_PAGE, type TreeRow, walkTree } from './walk.js';
 
 	let {
@@ -205,7 +211,15 @@
 		paged.set(group, held);
 	}
 
+	/** The click a drag ends with is the drag ending, not a tap. A finger's drag
+	 *  may send none at all, so the next press in the tree clears it too. */
+	let dragged = false;
+
 	function act(group: string, row: TreeRow): void {
+		if (dragged) {
+			dragged = false;
+			return;
+		}
 		if (row.kind === 'rest') reveal(group, row);
 		else if (choosing && onChoose) onChoose(row.note.ref);
 		else onOpen(row.note.ref);
@@ -303,6 +317,75 @@
 			.querySelector<HTMLElement>(`[data-row="${CSS.escape(landing)}"]`)
 			?.scrollIntoView?.({ block: 'nearest' });
 	});
+
+	/** A note being carried to where it will be written — `tree-drag.ts`. */
+	let carrying = $state<{ at: { x: number; y: number }; aim: TreeAim | null } | null>(null);
+
+	const NO_REFS: ReadonlySet<OwnedRef> = new Set();
+
+	/** The rows a drop can land on: the trees, never the lead, whose order is
+	 *  what was last written rather than the run a new note would join. */
+	function boxes(): TreeBox[] {
+		if (!scroller) return [];
+		const out: TreeBox[] = [];
+		for (const group of drawn) {
+			if (group.lead) continue;
+			const tree = scroller.querySelector(`[data-tree="${CSS.escape(group.key)}"]`);
+			if (!tree) continue;
+			const items = [...tree.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+			for (const [at, item] of items.entries()) {
+				const row = group.rows[at];
+				if (row?.kind !== 'note') continue;
+				const box = item.getBoundingClientRect();
+				const words = item.querySelector('.address')?.getBoundingClientRect();
+				out.push({
+					on: row.note.ref,
+					address: row.note.address,
+					title: row.note.title,
+					top: box.top,
+					bottom: box.bottom,
+					left: words?.left ?? box.left
+				});
+			}
+		}
+		return out;
+	}
+
+	function carry(event: PointerEvent): void {
+		dragged = false;
+		if (!writeUnder?.beside) return;
+		dragFrom(event, {
+			boxes,
+			scroller: () => scroller ?? null,
+			moved: (at, aim) => (carrying = { at, aim }),
+			dropped: (aim) => {
+				carrying = null;
+				dragged = true;
+				if (!aim) return;
+				if (aim.relation === 'under') writeUnder?.write(aim.on);
+				else writeUnder?.beside?.(aim.on);
+			}
+		});
+	}
+
+	const lit = $derived.by((): ReadonlySet<OwnedRef> => {
+		const aim = carrying?.aim;
+		if (!aim) return NO_REFS;
+		for (const group of drawn) {
+			if (group.lead) continue;
+			const run = runFor(group.rows, aim);
+			if (run.size > 0) return run;
+		}
+		return NO_REFS;
+	});
+
+	const says = $derived(
+		carrying === null
+			? ''
+			: carrying.aim
+				? aimSays(carrying.aim)
+				: 'Move over a note to write there'
+	);
 </script>
 
 <div
@@ -351,7 +434,7 @@
 						</h2>
 					{/if}
 
-					<div role="tree" aria-label={by ?? (title || 'Notes')}>
+					<div role="tree" data-tree={group} aria-label={by ?? (title || 'Notes')}>
 						{#each rows as row (rowKey(heads, row))}
 							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
@@ -369,12 +452,15 @@
 									aria-selected={row.note.ref === reading}
 									aria-checked={chosen ? chosen.has(row.note.ref) : undefined}
 									aria-keyshortcuts={onChoose ? 'Control+Space' : undefined}
+									onpointerdown={() => (dragged = false)}
 									onclick={() => act(group, row)}
 									onkeydown={(event) => keys(event, group, rows)}
 									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted {selection.length >
 										0 && asked.length === 0
 										? 'opacity-45'
+										: ''} {!heads && lit.has(row.note.ref)
+										? 'border-s-2 border-dashed border-foreground/50 bg-muted/60'
 										: ''}"
 									style="padding-inline-start: {step}"
 								>
@@ -458,11 +544,19 @@
 											tabindex="-1"
 											aria-label="Write a note under {row.note.address}"
 											aria-keyshortcuts={writeUnder.keys}
+											title={writeUnder.beside
+												? 'Tap to write under this note, or drag it to where the new note goes'
+												: undefined}
+											onpointerdown={carry}
 											onclick={(event) => {
 												event.stopPropagation();
+												if (dragged) {
+													dragged = false;
+													return;
+												}
 												writeUnder?.write(row.note.ref);
 											}}
-											class="-me-1 flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+											class="-me-1 flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
 											<CornerDownRight class="size-4" />
 										</button>
@@ -475,6 +569,7 @@
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
 									aria-selected={false}
+									onpointerdown={() => (dragged = false)}
 									onclick={() => reveal(group, row)}
 									onkeydown={(event) => keys(event, group, rows)}
 									onfocusin={() => tabbed.set(group, key)}
@@ -496,3 +591,23 @@
 		{/each}
 	</div>
 </div>
+
+{#if carrying}
+	<div
+		class="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4"
+		style="top: {carrying.at.y}px; transform: translateY(-50%)"
+		aria-hidden="true"
+	>
+		<span
+			class="flex max-w-full items-center gap-2 rounded-lg border border-dashed border-foreground/50 bg-background/95 px-3 py-2 text-sm shadow-sm backdrop-blur"
+		>
+			{#if carrying.aim?.relation === 'after'}
+				<ArrowDown class="size-4 shrink-0" />
+			{:else}
+				<CornerDownRight class="size-4 shrink-0" />
+			{/if}
+			<span class="truncate">{says}</span>
+		</span>
+	</div>
+{/if}
+<span class="sr-only" role="status" aria-live="polite">{says}</span>

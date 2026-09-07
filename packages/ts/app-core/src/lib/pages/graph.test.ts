@@ -2685,6 +2685,80 @@ describe('reading the graph as an outline', () => {
 
 		expect(said()).toContain('Your new note is 1a1.');
 	});
+
+	const pull = (type: string, x: number, y: number): PointerEvent => {
+		const event = new Event(type, { bubbles: true, cancelable: true });
+		Object.assign(event, { pointerId: 7, pointerType: 'mouse', button: 0, clientX: x, clientY: y });
+		return event as PointerEvent;
+	};
+
+	/** The outline laid out — rows 44 tall, each row's words set in by how far
+	 *  down it sits — so a drag over it can be aimed at one of them. */
+	function lay(): HTMLElement[] {
+		const items = [...document.body.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+		for (const [at, row] of items.entries()) {
+			const level = Number(row.getAttribute('aria-level') ?? 1);
+			Object.defineProperty(row, 'getBoundingClientRect', {
+				configurable: true,
+				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 0, right: 400 })
+			});
+			const words = row.querySelector('.address');
+			if (!words) continue;
+			Object.defineProperty(words, 'getBoundingClientRect', {
+				configurable: true,
+				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 10 + (level - 1) * 20 })
+			});
+		}
+		return items;
+	}
+
+	/** Carry `from`'s write control onto `onto`, level with that row or past it. */
+	function carry(from: string, onto: string, how: 'under' | 'beside'): void {
+		const items = lay();
+		const grip = inOutline(from).querySelector<HTMLElement>('[aria-label^="Write a note under"]');
+		const target = inOutline(onto);
+		const level = Number(target.getAttribute('aria-level') ?? 1);
+		const left = 10 + (level - 1) * 20;
+		const x = how === 'under' ? left + 40 : left + 2;
+		const y = items.indexOf(target) * 44 + 20;
+		grip?.dispatchEvent(pull('pointerdown', 300, 5));
+		window.dispatchEvent(pull('pointermove', x, y));
+		window.dispatchEvent(pull('pointerup', x, y));
+	}
+
+	/** Where the outline asked for the note to go, and what came back. */
+	async function dragged(onto: string, how: 'under' | 'beside'): Promise<unknown> {
+		const fresh = node(9, '1b', { title: 'Mitosis', origin: FIRST, parent: FIRST });
+		let placed: unknown;
+		finding(api, { recent: [] });
+		api.on('POST /nodes', (_url, init) => {
+			placed = (JSON.parse(String(init?.body)) as { from?: unknown }).from;
+			return fresh;
+		});
+		api.on(`GET ${path(WRITTEN)}`, () => fresh);
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+
+		await walk();
+		labelled('Unfold 1').click();
+		await settle();
+		carry('1a', onto, how);
+		await settle();
+		return placed;
+	}
+
+	it('writes the note beside the row its control was dragged level with', async () => {
+		expect(await dragged('1a', 'beside')).toEqual({ relation: 'after', note: SECOND });
+	});
+
+	it('writes the note under the row its control was dragged past', async () => {
+		expect(await dragged('1', 'under')).toEqual({ relation: 'under', note: FIRST });
+	});
+
+	it('opens the note the drag wrote, so the reader can type at once', async () => {
+		await dragged('1a', 'beside');
+
+		expect(reading()).toBe(true);
+	});
 });
 
 // The sheet asks and the store forgets the graph; what only the page does is

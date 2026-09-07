@@ -2,7 +2,7 @@
 import type { Address, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
 import TreeSurface, { type TreeGroup } from './tree-surface.svelte';
 import { LIT_PAGE, RUN_PAGE, type TreeNote } from './walk.js';
@@ -40,6 +40,7 @@ let mounted: ReturnType<typeof mount> | undefined;
 let openedNotes: OwnedRef[];
 let toggled: [OwnedRef, boolean][];
 let written: OwnedRef[];
+let besides: OwnedRef[];
 let chose: OwnedRef[];
 let choosing: boolean[];
 let scrolledTo: HTMLElement[];
@@ -53,6 +54,9 @@ function render(
 		reading?: OwnedRef | null;
 		/** Absent stands for a walk through notes that are not the reader's. */
 		writable?: boolean;
+		/** False stands for a surface that was given no way to write beside a row,
+		 *  which is the one the control cannot be dragged on. */
+		draggable?: boolean;
 		/** Absent stands for a walk nobody is choosing on. */
 		chosen?: Set<OwnedRef>;
 		/** Absent stands for a walk that cannot be chosen on at all. */
@@ -80,7 +84,8 @@ function render(
 							event.shiftKey &&
 							!event.altKey &&
 							(event.metaKey || event.ctrlKey),
-						write: (ref: OwnedRef) => written.push(ref)
+						write: (ref: OwnedRef) => written.push(ref),
+						beside: props.draggable === false ? undefined : (ref: OwnedRef) => besides.push(ref)
 					}
 				: undefined
 		}
@@ -105,6 +110,7 @@ beforeEach(() => {
 	openedNotes = [];
 	toggled = [];
 	written = [];
+	besides = [];
 	chose = [];
 	choosing = [];
 	scrolledTo = [];
@@ -657,6 +663,196 @@ describe('writing from a row', () => {
 
 		expect(written).toEqual([]);
 		expect(openedNotes).toEqual([]);
+	});
+});
+
+// AI.md § "The Address Is the Protocol": a drag writes one more note at the end
+// of a run, and no note already written moves.
+describe('dragging a row’s write control to where the note goes', () => {
+	const OPEN = { writable: true, opened: new Set([held('1')]) };
+
+	/** The outline laid out: rows 44 tall, each row's words set in by its depth. */
+	function lay(): void {
+		for (const [at, row] of rows().entries()) {
+			const level = Number(row.getAttribute('aria-level') ?? 1);
+			Object.defineProperty(row, 'getBoundingClientRect', {
+				configurable: true,
+				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 0, right: 400 })
+			});
+			const words = row.querySelector('.address');
+			if (!words) continue;
+			Object.defineProperty(words, 'getBoundingClientRect', {
+				configurable: true,
+				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 10 + (level - 1) * 20 })
+			});
+		}
+	}
+
+	const gripOn = (address: string) =>
+		labelled(`About ${address}`).querySelector<HTMLButtonElement>(
+			'[aria-label^="Write a note under"]'
+		) as HTMLButtonElement;
+
+	const pull = (type: string, x: number, y: number, by = 'mouse'): PointerEvent => {
+		const event = new Event(type, { bubbles: true, cancelable: true });
+		Object.assign(event, { pointerId: 5, pointerType: by, button: 0, clientX: x, clientY: y });
+		return event as PointerEvent;
+	};
+
+	/** What the surface says the drop will do, as anyone listening hears it. */
+	const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
+
+	const marked = () =>
+		rows()
+			.filter((row) => row.className.includes('border-dashed'))
+			.map((row) => row.querySelector('.address')?.textContent?.trim());
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// The row's own indent is what "level with it" is read against: 1a's words
+	// start 20 in, so x=35 is level with 1a and x=60 is past it.
+	it('writes under the row a mouse drags past, and does not open it', () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		flushSync();
+		expect(said()).toBe('Write under 1a About 1a');
+		expect(marked()).toEqual(['1a']);
+
+		window.dispatchEvent(pull('pointerup', 60, 60));
+		flushSync();
+
+		expect(written).toEqual([held('1a')]);
+		expect(besides).toEqual([]);
+		expect(openedNotes).toEqual([]);
+		expect(said()).toBe('');
+	});
+
+	it('writes beside the row a mouse drags level with, and lights that run', () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 35, 60));
+		flushSync();
+		expect(said()).toBe('Write beside 1a About 1a');
+		expect(marked()).toEqual(['1a', '1b']);
+
+		window.dispatchEvent(pull('pointerup', 35, 60));
+		flushSync();
+
+		expect(besides).toEqual([held('1a')]);
+		expect(written).toEqual([]);
+	});
+
+	it('waits for a finger to be held before it carries anything', () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10, 'touch'));
+		window.dispatchEvent(pull('pointermove', 60, 60, 'touch'));
+		flushSync();
+		expect(said()).toBe('');
+
+		window.dispatchEvent(pull('pointerup', 60, 60, 'touch'));
+		flushSync();
+		expect(written).toEqual([]);
+		expect(besides).toEqual([]);
+	});
+
+	it('carries the note once a finger has been held on the control', async () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10, 'touch'));
+		await vi.advanceTimersByTimeAsync(400);
+		window.dispatchEvent(pull('pointermove', 60, 60, 'touch'));
+		flushSync();
+		expect(said()).toBe('Write under 1a About 1a');
+
+		window.dispatchEvent(pull('pointerup', 60, 60, 'touch'));
+		flushSync();
+
+		expect(written).toEqual([held('1a')]);
+	});
+
+	it('writes nothing when Escape calls the drag off', () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		flushSync();
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		flushSync();
+		expect(said()).toBe('');
+
+		window.dispatchEvent(pull('pointerup', 60, 60));
+		flushSync();
+
+		expect(written).toEqual([]);
+		expect(besides).toEqual([]);
+	});
+
+	it('writes nothing when the note is let go off the outline', () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 60, -80));
+		flushSync();
+		expect(said()).toBe('Move over a note to write there');
+		expect(marked()).toEqual([]);
+
+		window.dispatchEvent(pull('pointerup', 60, -80));
+		flushSync();
+
+		expect(written).toEqual([]);
+		expect(besides).toEqual([]);
+	});
+
+	// The click a drag ends with is the drag ending, not a tap on the row under it.
+	it('neither writes twice nor opens the row a drag ends on', () => {
+		render(OPEN);
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 60, 20));
+		window.dispatchEvent(pull('pointerup', 60, 20));
+		labelled('About 1').click();
+		flushSync();
+
+		expect(written).toEqual([held('1')]);
+		expect(openedNotes).toEqual([]);
+
+		labelled('About 1').click();
+		flushSync();
+		expect(openedNotes).toEqual([held('1')]);
+	});
+
+	it('leaves the control a tap where there is no way to write beside a row', () => {
+		render({ ...OPEN, draggable: false });
+		lay();
+
+		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
+		window.dispatchEvent(pull('pointermove', 35, 60));
+		flushSync();
+		expect(said()).toBe('');
+
+		window.dispatchEvent(pull('pointerup', 35, 60));
+		gripOn('1').click();
+		flushSync();
+
+		expect(written).toEqual([held('1')]);
+		expect(besides).toEqual([]);
 	});
 });
 
