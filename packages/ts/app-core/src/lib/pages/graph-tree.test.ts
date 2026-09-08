@@ -1,8 +1,9 @@
-import type { NodeView, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
+import type { BlockView, NodeView, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+	arranging,
 	AT,
 	DID,
 	type FakeApi,
@@ -10,7 +11,8 @@ import {
 	moving,
 	node,
 	ref,
-	useFakeApi
+	useFakeApi,
+	writing
 } from '../stores/fake-api.test-support.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { people } from '../stores/people.svelte.js';
@@ -69,8 +71,10 @@ const shown = () =>
 		(row) => row.querySelector('.address')?.textContent?.trim() ?? row.textContent?.trim()
 	);
 
-/** What the outline says about the last act, as anyone listening hears it. */
-const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
+/** What the outline says about the last act, as anyone listening hears it —
+ *  its own line, apart from anything an open note says about itself. */
+const said = () =>
+	target.querySelector('[role="status"][aria-live="polite"]')?.textContent?.trim() ?? '';
 
 const labelled = (address: string) =>
 	rows().find(
@@ -88,9 +92,17 @@ beforeEach(() => {
 	fake = useFakeApi();
 	finding(fake);
 	people.hold(null);
+	// Which notes are open in the outline outlives a mount, so a suite has to
+	// put it back itself.
+	outlineSections.clear();
 	read = [];
 	unfolded = new SvelteSet<OwnedRef>();
 	scrolledTo = [];
+	Object.defineProperty(globalThis, 'matchMedia', {
+		configurable: true,
+		writable: true,
+		value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })
+	});
 	Object.defineProperty(globalThis, 'ResizeObserver', {
 		configurable: true,
 		writable: true,
@@ -140,9 +152,19 @@ describe('the graph walked as a tree', () => {
 		expect(shown()).toEqual(['1', '2']);
 	});
 
-	it('opens the note whose row was tapped', () => {
+	it('opens the note whose row was tapped where it stands', () => {
 		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
 		rows()[1].click();
+		flushSync();
+		expect(read).toEqual([]);
+		expect(target.querySelector(`[data-interior="${ref(4)}"]`)).not.toBeNull();
+	});
+
+	it('takes the reader to a note’s own page from the row’s own act', () => {
+		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+		const act = rows()[1].querySelector<HTMLButtonElement>('[aria-label^="Open the page of"]');
+		act?.click();
+		flushSync();
 		expect(read).toEqual([ref(4)]);
 	});
 
@@ -424,26 +446,31 @@ describe('a note’s sections in the walk', () => {
 		};
 	}
 
-	const showControl = () =>
-		target.querySelector<HTMLButtonElement>('[aria-label^="Show the sections"]');
+	const handles = () =>
+		[...target.querySelectorAll<HTMLButtonElement>('[data-handle]')].map(
+			(one) => one.dataset.handle
+		);
+
+	/** Opens the note where it stands, which is what a tap on its row does. */
+	async function openInPlace(): Promise<void> {
+		rows()[0].click();
+		await settle();
+	}
 
 	beforeEach(() => {
-		outlineSections.clear();
 		fake.on(`GET ${blocksPath}`, () => [
 			section(S1, '1', 'The first thing'),
 			section(S2, '2', 'The last thing')
 		]);
 	});
 
-	it('draws them under the note once the reader asks, by their first line', async () => {
+	it('draws what is written in the note under its row once the reader asks', async () => {
 		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
-		showControl()?.click();
-		await settle();
-		expect(rows().map((row) => row.textContent?.trim())).toEqual([
-			expect.stringContaining('1'),
-			'The first thing',
-			'The last thing'
-		]);
+		await openInPlace();
+
+		expect(target.querySelector(`[data-interior="${NOTE}"]`)).not.toBeNull();
+		expect(handles()).toEqual([S1, S2]);
+		expect(read).toEqual([]);
 	});
 
 	it('reorders one through the same note, and asks the server to keep it there', async () => {
@@ -455,12 +482,13 @@ describe('a note’s sections in the walk', () => {
 		});
 
 		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
-		showControl()?.click();
-		await settle();
+		await openInPlace();
 
-		const row = rows()[2];
-		row.focus();
-		row.dispatchEvent(
+		const handle = target.querySelector<HTMLButtonElement>(
+			`[data-handle="${S2}"]`
+		) as HTMLButtonElement;
+		handle.focus();
+		handle.dispatchEvent(
 			new KeyboardEvent('keydown', {
 				key: 'ArrowUp',
 				altKey: true,
@@ -469,18 +497,14 @@ describe('a note’s sections in the walk', () => {
 			})
 		);
 		flushSync();
-		expect(rows().map((one) => one.textContent?.trim())).toEqual([
-			expect.stringContaining('1'),
-			'The last thing',
-			'The first thing'
-		]);
+		expect(handles()).toEqual([S2, S1]);
 
 		await settle();
 		expect(asked).toMatchObject({ after: null });
 	});
 
-	// A held region is one author's alone: nothing in it is the reader's to
-	// arrange, so the walk of it is the notes and nothing else.
+	// A held region is one author's alone: nothing in it is the reader's to read
+	// here or to arrange, so the walk of it is the notes and nothing else.
 	it('offers nothing to arrange on a branch pulled from somebody else', async () => {
 		const root = ref(20, OTHER);
 		render({
@@ -488,7 +512,154 @@ describe('a note’s sections in the walk', () => {
 			fields: undefined
 		});
 		await settle();
-		expect(showControl()).toBeNull();
+		rows()[0].click();
+		await settle();
+		expect(target.querySelector('[data-interior]')).toBeNull();
+		expect(read).toEqual([ref(20, OTHER)]);
+	});
+});
+
+// AI.md § "A Block Is a Section": a section is carried by its handle, and where
+// it lands is another note's stack, a note, or a note of its own in the run it
+// was let go in.
+describe('carrying a section out of the note it was written in', () => {
+	const ONE = ref(1);
+	const TWO = ref(2);
+	const S1 = ref(41);
+	const S2 = ref(42);
+	const T1 = ref(43);
+	const MADE = ref(50);
+	const branch = [node(1, '1', { graph: THESIS }), node(2, '2', { graph: THESIS })];
+
+	function section(of: OwnedRef, note: OwnedRef, ord: string, line: string): BlockView {
+		return {
+			ref: of,
+			created_by: DID,
+			created_at: AT,
+			updated_at: AT,
+			node: note,
+			ord,
+			content: {
+				type: 'doc',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: line }] }]
+			}
+		};
+	}
+
+	let stacks: Map<OwnedRef, BlockView[]>;
+
+	function box(part: Element, top: number, bottom: number): void {
+		Object.defineProperty(part, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top, bottom, left: 0, right: 400 })
+		});
+	}
+
+	/** Note rows 44 tall, each open note's interior 60 under its own row. */
+	function lay(): void {
+		let y = 0;
+		for (const tree of target.querySelectorAll('[role="tree"]')) {
+			for (const part of [...tree.children] as HTMLElement[]) {
+				const tall = part.hasAttribute('data-interior') ? 60 : 44;
+				box(part, y, y + tall);
+				for (const one of part.querySelectorAll<HTMLElement>('[data-handle]')) {
+					box(one, y, y + 44);
+				}
+				y += tall;
+			}
+		}
+	}
+
+	const pull = (type: string, x: number, y: number): PointerEvent => {
+		const event = new Event(type, { bubbles: true, cancelable: true });
+		Object.assign(event, { pointerId: 9, pointerType: 'mouse', button: 0, clientX: x, clientY: y });
+		return event as PointerEvent;
+	};
+
+	/** The handles measure nothing in jsdom, so the sections a drop reads are the
+	 *  handles standing beside them. */
+	function carry(section: OwnedRef, to: { x?: number; y: number }): void {
+		const handle = target.querySelector<HTMLButtonElement>(
+			`[data-handle="${section}"]`
+		) as HTMLButtonElement;
+		handle.dispatchEvent(pull('pointerdown', 10, 10));
+		window.dispatchEvent(pull('pointermove', to.x ?? 0, to.y));
+		flushSync();
+		window.dispatchEvent(pull('pointerup', to.x ?? 0, to.y));
+		flushSync();
+	}
+
+	beforeEach(() => {
+		stacks = arranging(fake, {
+			[ONE]: [section(S1, ONE, '1', 'The first thing'), section(S2, ONE, '2', 'The last thing')],
+			[TWO]: [section(T1, TWO, '1', 'Something else')],
+			[MADE]: []
+		});
+	});
+
+	/** Opens each named note where it stands, and lays the outline out. */
+	async function walk(open: OwnedRef[]): Promise<void> {
+		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
+		await settle();
+		for (const note of open) {
+			labelled(note === ONE ? '1' : '2').click();
+			await settle();
+		}
+		lay();
+	}
+
+	it('lands it in another open note’s stack, where it was let go', async () => {
+		await walk([ONE, TWO]);
+		// 1 is 0–44, its interior 44–104 with both handles at 44–88; 2 is 104–148
+		// and its interior 148–208, its one handle at 148–192.
+		carry(S1, { y: 190 });
+		await settle();
+
+		expect(stacks.get(TWO)?.map((one) => one.ref)).toEqual([T1, S1]);
+		expect(stacks.get(ONE)?.map((one) => one.ref)).toEqual([S2]);
+	});
+
+	it('lands it at the end of a note that is not open, having read that note', async () => {
+		await walk([ONE]);
+		// 1 is 0–44, its interior 44–104, and 2 is 104–148 with nothing open.
+		carry(S1, { y: 126 });
+		await settle();
+
+		expect(stacks.get(TWO)?.map((one) => one.ref)).toEqual([T1, S1]);
+		expect(stacks.get(ONE)?.map((one) => one.ref)).toEqual([S2]);
+	});
+
+	it('writes a note in the run it is let go between, with the section in it', async () => {
+		let placed: unknown;
+		writing(fake, (request) => {
+			placed = request.from;
+			return { ...node(50, '2a', { graph: THESIS }), parent: TWO, origin: TWO };
+		});
+		await walk([ONE]);
+		// Past the words of 2, at the edge of its row, which is the run under it.
+		carry(S1, { x: 60, y: 144 });
+		await settle();
+
+		expect(placed).toEqual({ relation: 'under', note: TWO });
+		expect(stacks.get(MADE)?.map((one) => one.ref)).toEqual([S1]);
+		expect(stacks.get(ONE)?.map((one) => one.ref)).toEqual([S2]);
+	});
+
+	it('says what a drop would do before the section is let go', async () => {
+		await walk([ONE]);
+		const handle = target.querySelector<HTMLButtonElement>(
+			`[data-handle="${S1}"]`
+		) as HTMLButtonElement;
+		handle.dispatchEvent(pull('pointerdown', 10, 10));
+		window.dispatchEvent(pull('pointermove', 0, 126));
+		flushSync();
+
+		expect(said()).toBe('Onto 2, at the end');
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		window.dispatchEvent(pull('pointerup', 0, 126));
+		flushSync();
+		await settle();
+		expect(stacks.get(ONE)?.map((one) => one.ref)).toEqual([S1, S2]);
 	});
 });
 

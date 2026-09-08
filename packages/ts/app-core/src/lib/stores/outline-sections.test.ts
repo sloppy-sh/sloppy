@@ -371,3 +371,61 @@ describe('carrying a section into another note', () => {
 		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2]);
 	});
 });
+
+// The outline draws a note's sections with the writing surface itself, so it
+// asks for what each one holds and not only for the line it says.
+describe('what the outline hands the writing surface', () => {
+	beforeEach(() => {
+		arranging(api, { [NOTE]: STACK, [OTHER]: OTHER_STACK });
+	});
+
+	it('holds nothing for a note nobody has opened', () => {
+		expect(outlineSections.stack(NOTE)).toBeUndefined();
+	});
+
+	it('hands over the whole of every section, in stack order', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		expect(outlineSections.stack(NOTE)).toEqual(STACK);
+	});
+
+	it('hands them over in the order an arrangement left them', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		outlineSections.move(NOTE, S3, null);
+		expect(outlineSections.stack(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+	});
+
+	it('carries a section into the stack it was carried to', async () => {
+		outlineSections.show(NOTE, true);
+		outlineSections.show(OTHER, true);
+		await settle();
+		outlineSections.moveTo(S1, OTHER, O1);
+		expect(outlineSections.stack(OTHER)?.map((one) => one.ref)).toEqual([O1, S1, O2]);
+		expect(outlineSections.stack(NOTE)?.map((one) => one.ref)).toEqual([S2, S3]);
+	});
+
+	it('counts the arrangements a note has been asked for', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		expect(outlineSections.arranged(NOTE)).toBe(0);
+
+		outlineSections.move(NOTE, S3, null);
+		expect(outlineSections.arranged(NOTE)).toBe(1);
+		await settle();
+		expect(outlineSections.arranged(NOTE)).toBe(1);
+	});
+
+	it('reads a note nobody is showing, for a carry that has to know its end', async () => {
+		await outlineSections.read(OTHER);
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([O1, O2]);
+		expect(outlineSections.shown.has(OTHER)).toBe(false);
+	});
+
+	it('keeps nothing of one person’s reading for the next', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		outlineSections.mine('did:syr:somebody-else');
+		expect(outlineSections.stack(NOTE)).toBeUndefined();
+	});
+});

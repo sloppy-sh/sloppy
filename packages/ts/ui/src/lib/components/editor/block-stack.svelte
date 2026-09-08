@@ -89,8 +89,14 @@
 		media,
 		emoji,
 		references,
-		drafts
-	}: BlockStackProps = $props();
+		drafts,
+		arranging = true
+	}: BlockStackProps & {
+		/** Whether this surface carries the handles that arrange its own sections.
+		 *  False where it is hosted in a row that arranges them itself, so one
+		 *  section has one handle and one place its order is decided. */
+		arranging?: boolean;
+	} = $props();
 
 	const SAVE_AFTER_MS = 700;
 	/** However long the writing runs on, no change waits longer than this to be written. */
@@ -694,7 +700,7 @@
 					SectionNode,
 					TaskList,
 					TaskItem.configure({ nested: true }),
-					BlockHandles.configure({ onSection: openSectionMenu }),
+					...(arranging ? [BlockHandles.configure({ onSection: openSectionMenu })] : []),
 					EmojiNode(() => catalog),
 					EmojiSuggestion(completions, () => ownCatalog),
 					ReferenceNode(() => references),
@@ -1006,7 +1012,7 @@
 <svelte:window onresize={viewMoved} onpagehide={flush} />
 <svelte:document onvisibilitychange={whenHidden} />
 
-<div class="note-body space-y-2">
+<div class="note-body space-y-2" class:no-gutter={!arranging}>
 	<div class="block-gutter">
 		<div bind:this={surface} class="relative">
 			<div bind:this={host}></div>
@@ -1101,6 +1107,11 @@
 	.note-body {
 		--block-gutter: 1.75rem;
 		--block-line: 1.75rem;
+	}
+	/* Whoever hosts this surface without its handles owns the gutter they stood
+	   in, and stands its own there instead. */
+	.note-body.no-gutter {
+		--block-gutter: 0rem;
 	}
 	.block-gutter {
 		padding-left: var(--block-gutter);

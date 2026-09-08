@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { Address, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubResizeObserver } from '../dom.test-support.js';
@@ -73,6 +73,9 @@ function render(
 		/** Absent stands for a walk with no sections in it, which is what a region
 		 *  pulled from somebody else is. */
 		sections?: TreeSurfaceProps['sections'];
+		/** What an open note draws under its row; absent stands for a walk given
+		 *  no surface to draw one with. */
+		interior?: TreeSurfaceProps['interior'];
 		/** Absent stands for a walk where no note is the reader's to carry. */
 		movable?: boolean;
 		/** Absent stands for a walk with no way to start a note of its own. */
@@ -106,6 +109,7 @@ function render(
 			: undefined,
 		writeAlone: props.writeAlone ? () => alone.push(true) : undefined,
 		sections: props.sections,
+		interior: props.interior,
 		moveNote: props.movable
 			? {
 					move: (ref: OwnedRef, to: NoteDestination) => moves.push([ref, to]),
@@ -779,17 +783,27 @@ describe('dragging a row’s write control to where the note goes', () => {
 				says: () => ({ says: '', again: false }),
 				onShow: () => {},
 				onMove: () => {}
-			}
+			},
+			interior: createRawSnippet<[TreeNote]>(() => ({
+				render: () => '<div>What 1a says</div>'
+			}))
 		});
 		lay();
+		// The row of 1a is 44 tall from 44; the interior it opened stands under
+		// it, 60 more, and the note after it starts below that.
+		const opened = target.querySelector('[data-interior]') as HTMLElement;
+		Object.defineProperty(opened, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top: 88, bottom: 148, left: 0, right: 400 })
+		});
 
 		gripOn('1').dispatchEvent(pull('pointerdown', 200, 10));
-		window.dispatchEvent(pull('pointermove', 60, 110));
+		window.dispatchEvent(pull('pointermove', 60, 120));
 		flushSync();
 		expect(said()).toBe('Write under 1a About 1a');
 		expect(marked()).toEqual(['1a']);
 
-		window.dispatchEvent(pull('pointerup', 60, 110));
+		window.dispatchEvent(pull('pointerup', 60, 120));
 		flushSync();
 		expect(written).toEqual([held('1a')]);
 	});
@@ -1351,41 +1365,79 @@ describe('choosing notes on the walk', () => {
 
 // AI.md § "A Block Is a Section": a section has a handle that reorders it, and
 // reordering is the only act on one here.
-describe('a note’s sections under its row in the walk', () => {
+describe('a note read and arranged under its row in the walk', () => {
 	const S1 = held('1/s1');
 	const S2 = held('1/s2');
 	const S3 = held('1/s3');
+	const T1 = held('2/t1');
+	const T2 = held('2/t2');
 
-	let stack: TreeSection[];
+	let stacks: Record<string, TreeSection[]>;
 	let shows: [OwnedRef, boolean][];
 	let moves: [OwnedRef, OwnedRef, OwnedRef | null][];
+	let into: [OwnedRef, OwnedRef, OwnedRef | null][];
+	let onto: [OwnedRef, OwnedRef][];
+	let out: [OwnedRef, OwnedRef, string][];
 	let word: string;
 	let again: boolean;
 
 	function sections(
-		shown: OwnedRef[] = [held('1')]
+		shown: OwnedRef[] = [held('1')],
+		carries = true
 	): OutlineSections & { shown: SvelteSet<OwnedRef> } {
 		return {
 			shown: new SvelteSet(shown),
-			of: (note) => (note === held('1') ? stack : undefined),
+			of: (note) => stacks[note],
 			says: () => ({ says: word, again }),
 			onShow: (note, show) => shows.push([note, show]),
-			onMove: (note, section, after) => moves.push([note, section, after])
+			onMove: (note, section, after) => moves.push([note, section, after]),
+			onCarry: carries
+				? {
+						into: (section, note, after) => into.push([section, note, after]),
+						onto: (section, note) => onto.push([section, note]),
+						out: (section, on, relation) => out.push([section, on, relation])
+					}
+				: undefined
 		};
 	}
 
-	const sectionRow = (of: OwnedRef) =>
-		target.querySelector<HTMLElement>(`[data-row="section:${of}"]`) as HTMLElement;
+	/** What the writing surface puts under a row, standing in for it: one element
+	 *  per saved section, which is what the handles beside them line up with. */
+	const interior = createRawSnippet<[TreeNote]>((note) => ({
+		render: () =>
+			`<div>${(stacks[note().ref] ?? [])
+				.map((one) => `<p data-block-ref="${one.ref}">${one.says}</p>`)
+				.join('')}</div>`
+	}));
 
-	const gripIn = (of: OwnedRef) => sectionRow(of).querySelector('button') as HTMLButtonElement;
+	const interiorOf = (note: OwnedRef) =>
+		target.querySelector<HTMLElement>(`[data-interior="${note}"]`) as HTMLElement;
 
-	/** Every row 44 tall, in the order they are drawn. */
+	const gripIn = (of: OwnedRef) =>
+		target.querySelector<HTMLButtonElement>(`[data-handle="${of}"]`) as HTMLButtonElement;
+
+	const beside = (of: OwnedRef, label: string) =>
+		gripIn(of).parentElement?.querySelector<HTMLButtonElement>(`[aria-label^="${label}"]`) ?? null;
+
+	function box(part: Element, top: number, bottom: number): void {
+		Object.defineProperty(part, 'getBoundingClientRect', {
+			configurable: true,
+			value: () => ({ top, bottom, left: 0, right: 400 })
+		});
+	}
+
+	/** Note rows 44 tall, and each open note's interior as tall as the sections
+	 *  the writing surface drew in it, 40 apiece. */
 	function lay(): void {
-		for (const [at, row] of rows().entries()) {
-			Object.defineProperty(row, 'getBoundingClientRect', {
-				configurable: true,
-				value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 0, right: 400 })
-			});
+		let y = 0;
+		for (const tree of target.querySelectorAll('[role="tree"]')) {
+			for (const part of [...tree.children] as HTMLElement[]) {
+				const drawn = [...part.querySelectorAll<HTMLElement>('[data-block-ref]')];
+				const tall = part.hasAttribute('data-interior') ? Math.max(40, drawn.length * 40) : 44;
+				box(part, y, y + tall);
+				drawn.forEach((one, at) => box(one, y + at * 40, y + at * 40 + 40));
+				y += tall;
+			}
 		}
 	}
 
@@ -1397,59 +1449,100 @@ describe('a note’s sections under its row in the walk', () => {
 
 	const said = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
 
+	/** Drags the handle on `section` to `y`, and answers what the walk said there. */
+	function drag(section: OwnedRef, to: { x?: number; y: number }, from = 60): string {
+		gripIn(section).dispatchEvent(pull('pointerdown', 30, from));
+		window.dispatchEvent(pull('pointermove', to.x ?? 0, to.y));
+		flushSync();
+		return said();
+	}
+
+	function letGo(to: { x?: number; y: number }): void {
+		window.dispatchEvent(pull('pointerup', to.x ?? 0, to.y));
+		flushSync();
+	}
+
 	beforeEach(() => {
-		stack = [
-			{ ref: S1, says: 'The first thing' },
-			{ ref: S2, says: 'A drawing' },
-			{ ref: S3, says: 'The last thing' }
-		];
+		stacks = {
+			[held('1')]: [
+				{ ref: S1, says: 'The first thing' },
+				{ ref: S2, says: 'A drawing' },
+				{ ref: S3, says: 'The last thing' }
+			],
+			[held('2')]: [
+				{ ref: T1, says: 'Something else' },
+				{ ref: T2, says: 'And after it' }
+			]
+		};
 		shows = [];
 		moves = [];
+		into = [];
+		onto = [];
+		out = [];
 		word = '';
 		again = false;
 	});
 
-	it('draws each section under the note, by its first line', () => {
-		render({ sections: sections() });
-		expect(rows().map((row) => row.textContent?.trim())).toEqual([
-			expect.stringContaining('About 1'),
-			'The first thing',
-			'A drawing',
-			'The last thing',
-			expect.stringContaining('About 2')
-		]);
+	it('opens the note where it stands when its row is tapped', () => {
+		render({ sections: sections([]), interior });
+		labelled('About 1').click();
+		flushSync();
+		expect(shows).toEqual([[held('1'), true]]);
+		expect(openedNotes).toEqual([]);
+		expect(toggled).toEqual([]);
 	});
 
-	// The notes at this level are counted as their own set, so the stack is
-	// counted on its handles rather than a second time on the rows.
-	it('sets the sections one level under the note and counts them on their handles', () => {
-		render({ sections: sections() });
-		expect(sectionRow(S2).getAttribute('aria-level')).toBe('2');
-		expect(sectionRow(S2).getAttribute('aria-posinset')).toBeNull();
-		expect(sectionRow(S2).getAttribute('aria-setsize')).toBeNull();
+	it('folds it back up on the next tap', () => {
+		render({ sections: sections(), interior });
+		labelled('About 1').click();
+		flushSync();
+		expect(shows).toEqual([[held('1'), false]]);
+	});
+
+	it('draws what is written in the note under its row, and folds it away again', () => {
+		const surface = sections();
+		render({ sections: surface, interior });
+		expect(interiorOf(held('1')).textContent).toContain('The first thing');
+		expect(interiorOf(held('2'))).toBeNull();
+
+		surface.shown.delete(held('1'));
+		flushSync();
+		expect(interiorOf(held('1'))).toBeNull();
+	});
+
+	it('names the note its interior belongs to', () => {
+		render({ sections: sections(), interior });
+		expect(interiorOf(held('1')).getAttribute('aria-label')).toBe('What is written in 1');
+		expect(interiorOf(held('1')).getAttribute('role')).toBe('group');
+	});
+
+	it('stands a handle on every section, counted in the note it is in', () => {
+		render({ sections: sections(), interior });
 		expect(gripIn(S2).getAttribute('aria-label')).toBe('Move section 2 of 3 in 1');
+		expect(gripIn(S3).getAttribute('aria-label')).toBe('Move section 3 of 3 in 1');
+	});
+
+	it('reaches the note’s own page from the row’s own act', () => {
+		render({ sections: sections(), interior });
+		const act = labelled('About 1').querySelector<HTMLButtonElement>(
+			'[aria-label^="Open the page of"]'
+		) as HTMLButtonElement;
+		expect(act.getAttribute('aria-label')).toBe('Open the page of 1');
+		act.click();
+		flushSync();
+		expect(openedNotes).toEqual([held('1')]);
+		expect(shows).toEqual([]);
 	});
 
 	it('leaves the walk the notes alone where it was given no sections', () => {
 		render();
 		expect(rows()).toHaveLength(2);
-		expect(target.querySelector('[aria-label^="Show the sections"]')).toBeNull();
+		expect(target.querySelector('[aria-label^="Open the page of"]')).toBeNull();
+		expect(target.querySelector('[data-interior]')).toBeNull();
 	});
 
-	it('asks for a note’s sections from its own control, apart from the branch', () => {
-		render({ sections: sections([]) });
-		const control = labelled('About 1').querySelector<HTMLButtonElement>(
-			'[aria-label^="Show the sections"]'
-		) as HTMLButtonElement;
-		control.click();
-		flushSync();
-		expect(shows).toEqual([[held('1'), true]]);
-		expect(toggled).toEqual([]);
-		expect(openedNotes).toEqual([]);
-	});
-
-	it('asks for them and folds them back from the keyboard, apart from the branch', () => {
-		render({ sections: sections([]), opened: new Set([held('1')]) });
+	it('opens the note and folds it back from the keyboard, apart from the branch', () => {
+		render({ sections: sections([]), opened: new Set([held('1')]), interior });
 		const note = labelled('About 1');
 		expect(note.getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowRight Alt+ArrowLeft');
 
@@ -1463,65 +1556,49 @@ describe('a note’s sections under its row in the walk', () => {
 	});
 
 	it('leaves the plain arrows folding the branch', () => {
-		render({ sections: sections([]) });
+		render({ sections: sections([]), interior });
 		press(labelled('About 1'), 'ArrowRight');
 		expect(toggled).toEqual([[held('1'), true]]);
 		expect(shows).toEqual([]);
 	});
 
-	it('folds them back up from the same control', () => {
-		render({ sections: sections() });
-		const control = labelled('About 1').querySelector<HTMLButtonElement>(
-			'[aria-label^="Hide the sections"]'
-		) as HTMLButtonElement;
-		control.click();
-		flushSync();
-		expect(shows).toEqual([[held('1'), false]]);
-	});
-
-	it('says what stands under a note that has no sections to draw, and answers no tap', () => {
-		stack = [];
+	it('says what stands under a note that has nothing to draw, and answers no tap', () => {
+		stacks[held('1')] = [];
 		word = 'Nothing is written in this note yet';
-		render({ sections: sections() });
-		expect(rows().map((row) => row.textContent?.trim())).toEqual([
-			expect.stringContaining('About 1'),
-			'Nothing is written in this note yet',
-			expect.stringContaining('About 2')
-		]);
+		render({ sections: sections(), interior });
+		const only = rows().find((row) => row.textContent?.trim() === word) as HTMLElement;
+		expect(only).toBeTruthy();
 
-		rows()[1].click();
+		only.click();
 		flushSync();
 		expect(shows).toEqual([]);
-		expect(rows()[1].className).not.toContain('cursor-pointer');
+		expect(only.className).not.toContain('cursor-pointer');
 	});
 
 	it('asks for the note again from the one word that offers it', () => {
-		stack = [];
+		stacks[held('1')] = [];
 		word = 'These sections could not be read. Tap to try again.';
 		again = true;
-		render({ sections: sections() });
-		expect(rows()[1].className).toContain('cursor-pointer');
+		render({ sections: sections(), interior });
+		const only = rows().find((row) => row.textContent?.trim() === word) as HTMLElement;
+		expect(only.className).toContain('cursor-pointer');
 
-		rows()[1].click();
+		only.click();
 		flushSync();
 		expect(shows).toEqual([[held('1'), true]]);
 	});
 
 	it('keeps the row’s own fold what aria-expanded stands for', () => {
-		render({ sections: sections() });
+		render({ sections: sections(), interior });
 		expect(labelled('About 1').getAttribute('aria-expanded')).toBe('false');
 		expect(labelled('About 2').getAttribute('aria-expanded')).toBeNull();
-		expect(
-			labelled('About 1')
-				.querySelector('[aria-label^="Hide the sections"]')
-				?.getAttribute('aria-expanded')
-		).toBe('true');
 	});
 
 	it('leaves the sections chord to the tree, not to the run at its head', () => {
 		render({
 			lead: [{ group: 'one', title: 'Last written', notes: [note('1')] }],
-			sections: sections([])
+			sections: sections([]),
+			interior
 		});
 		const head = rows()[0];
 		expect(head.getAttribute('aria-keyshortcuts')).toBeNull();
@@ -1531,119 +1608,134 @@ describe('a note’s sections under its row in the walk', () => {
 	});
 
 	it('moves a section with the arrow keys, within its own note', () => {
-		render({ sections: sections() });
-		press(sectionRow(S3), 'ArrowUp', { altKey: true });
+		render({ sections: sections(), interior });
+		press(gripIn(S3), 'ArrowUp', { altKey: true });
 		expect(moves).toEqual([[held('1'), S3, S1]]);
 
-		press(sectionRow(S1), 'ArrowDown', { altKey: true });
+		press(gripIn(S1), 'ArrowDown', { altKey: true });
 		expect(moves).toEqual([
 			[held('1'), S3, S1],
 			[held('1'), S1, S2]
 		]);
 	});
 
-	it('leaves the plain arrows walking the rows', () => {
-		render({ sections: sections() });
-		press(sectionRow(S2), 'ArrowDown');
-		expect(moves).toEqual([]);
-		expect(document.activeElement).toBe(sectionRow(S3));
-	});
-
 	it('moves nothing at either end of the stack', () => {
-		render({ sections: sections() });
-		press(sectionRow(S1), 'ArrowUp', { altKey: true });
-		press(sectionRow(S3), 'ArrowDown', { altKey: true });
+		render({ sections: sections(), interior });
+		press(gripIn(S1), 'ArrowUp', { altKey: true });
+		press(gripIn(S3), 'ArrowDown', { altKey: true });
 		expect(moves).toEqual([]);
 	});
 
-	it('puts a dragged section where it is let go, and says so first', () => {
-		render({ sections: sections() });
+	// Row 1 is 0–44 and its three sections 44–164; row 2 is 164–208, and where
+	// note 2 is open too its two sections are 208–288.
+	it('puts a dragged section where it is let go in its own note, and says so first', () => {
+		render({ sections: sections([held('1'), held('2')]), interior });
 		lay();
 
-		gripIn(S3).dispatchEvent(pull('pointerdown', 30, 150));
-		window.dispatchEvent(pull('pointermove', 30, 50));
-		flushSync();
-		expect(said()).toBe('Put it first in 1');
-
-		window.dispatchEvent(pull('pointerup', 30, 50));
-		flushSync();
+		expect(drag(S3, { y: 50 }, 150)).toBe('Put it first in 1');
+		letGo({ y: 50 });
 		expect(moves).toEqual([[held('1'), S3, null]]);
 		expect(said()).toBe('');
 	});
 
 	it('names the section a drop would follow', () => {
-		render({ sections: sections() });
+		render({ sections: sections(), interior });
 		lay();
 
-		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
-		window.dispatchEvent(pull('pointermove', 30, 140));
-		flushSync();
-		expect(said()).toBe('Put it after A drawing');
-
-		window.dispatchEvent(pull('pointerup', 30, 140));
-		flushSync();
+		expect(drag(S1, { y: 140 }, 50)).toBe('Put it after A drawing');
+		letGo({ y: 140 });
 		expect(moves).toEqual([[held('1'), S1, S2]]);
 	});
 
-	// A section belongs to the note it was written in, and the walk says so
-	// rather than letting go of it somewhere it cannot land.
-	it('refuses a drop outside the note, in words, and moves nothing', () => {
-		render({ sections: sections() });
+	it('carries a section into another open note, and counts where it lands', () => {
+		render({ sections: sections([held('1'), held('2')]), interior });
 		lay();
 
-		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
-		window.dispatchEvent(pull('pointermove', 30, 200));
-		flushSync();
-		expect(said()).toBe('A section stays in the note it was written in');
-
-		window.dispatchEvent(pull('pointerup', 30, 200));
-		flushSync();
+		expect(drag(S1, { y: 240 }, 50)).toBe('Into 2, after the first section');
+		letGo({ y: 240 });
+		expect(into).toEqual([[S1, held('2'), T1]]);
 		expect(moves).toEqual([]);
+	});
+
+	it('carries a section to the top of another open note', () => {
+		render({ sections: sections([held('1'), held('2')]), interior });
+		lay();
+
+		expect(drag(S1, { y: 215 }, 50)).toBe('Into 2, first');
+		letGo({ y: 215 });
+		expect(into).toEqual([[S1, held('2'), null]]);
+	});
+
+	it('carries a section onto a note that is not open, at the end of it', () => {
+		render({ sections: sections(), interior });
+		lay();
+
+		expect(drag(S1, { y: 186 }, 50)).toBe('Onto 2, at the end');
+		letGo({ y: 186 });
+		expect(onto).toEqual([[S1, held('2')]]);
+		expect(into).toEqual([]);
+	});
+
+	it('says a section let go back on its own note stays where it is, and moves nothing', () => {
+		render({ sections: sections(), interior });
+		lay();
+
+		expect(drag(S1, { y: 22 }, 50)).toBe('Stays where it is');
+		letGo({ y: 22 });
+		expect(onto).toEqual([]);
+		expect(into).toEqual([]);
+	});
+
+	it('carries a section out between two rows, where it becomes a note in that run', () => {
+		render({ sections: sections(), interior });
+		lay();
+
+		expect(drag(S1, { y: 168 }, 50)).toBe('Becomes a note beside 2');
+		letGo({ y: 168 });
+		expect(out).toEqual([[S1, held('2'), 'after']]);
+	});
+
+	it('becomes a note under the row it is let go past the row’s own words', () => {
+		render({ sections: sections(), interior });
+		lay();
+
+		expect(drag(S1, { x: 60, y: 204 }, 50)).toBe('Becomes a note under 2');
+		letGo({ x: 60, y: 204 });
+		expect(out).toEqual([[S1, held('2'), 'under']]);
+	});
+
+	it('leaves a section in its own note on a walk with no way to carry one', () => {
+		render({ sections: sections([held('1')], false), interior });
+		lay();
+
+		drag(S1, { y: 186 }, 50);
+		letGo({ y: 186 });
+		expect(onto).toEqual([]);
+		expect(out).toEqual([]);
 	});
 
 	it('neither moves nor opens the note when Escape calls the drag off', () => {
-		render({ sections: sections() });
+		render({ sections: sections(), interior });
 		lay();
 
-		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
-		window.dispatchEvent(pull('pointermove', 30, 140));
-		flushSync();
+		drag(S1, { y: 140 }, 50);
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-		window.dispatchEvent(pull('pointerup', 30, 140));
-		flushSync();
+		letGo({ y: 140 });
 
 		expect(moves).toEqual([]);
+		expect(into).toEqual([]);
 		expect(openedNotes).toEqual([]);
-	});
-
-	it('opens the note a section belongs to when its row is tapped', () => {
-		render({ sections: sections() });
-		sectionRow(S2).click();
-		flushSync();
-		expect(openedNotes).toEqual([held('1')]);
-	});
-
-	// A tap while notes are being chosen adds the note it belongs to, as every
-	// other row of the walk does, rather than leaving the choosing for it.
-	it('chooses the note a section belongs to while the walk is being chosen on', () => {
-		render({ sections: sections(), chosen: new Set<OwnedRef>() });
-		sectionRow(S2).click();
-		flushSync();
-		expect(openedNotes).toEqual([]);
-		expect(chose).toEqual([held('1')]);
 	});
 
 	// A finger has no hover and no held key, so the handle answers a tap with
 	// the same move a drag makes.
 	it('offers a place up and a place down from the handle it is dragged by', () => {
-		render({ sections: sections() });
+		render({ sections: sections(), interior });
 		gripIn(S2).click();
 		flushSync();
 
-		const up = sectionRow(S2).querySelector<HTMLButtonElement>('[aria-label^="Move it up"]');
-		const down = sectionRow(S2).querySelector<HTMLButtonElement>('[aria-label^="Move it down"]');
-		up?.click();
-		down?.click();
+		beside(S2, 'Move it up')?.click();
+		beside(S2, 'Move it down')?.click();
 		flushSync();
 		expect(moves).toEqual([
 			[held('1'), S2, null],
@@ -1653,69 +1745,59 @@ describe('a note’s sections under its row in the walk', () => {
 	});
 
 	it('offers neither at the end of the stack it is already at', () => {
-		render({ sections: sections() });
+		render({ sections: sections(), interior });
 		gripIn(S1).click();
 		flushSync();
-		expect(
-			sectionRow(S1).querySelector<HTMLButtonElement>('[aria-label^="Move it up"]')?.disabled
-		).toBe(true);
-		expect(
-			sectionRow(S1).querySelector<HTMLButtonElement>('[aria-label^="Move it down"]')?.disabled
-		).toBe(false);
+		expect(beside(S1, 'Move it up')?.disabled).toBe(true);
+		expect(beside(S1, 'Move it down')?.disabled).toBe(false);
 	});
 
 	it('draws them on the one handle that was tapped, and folds them back', () => {
-		render({ sections: sections() });
+		render({ sections: sections(), interior });
 		gripIn(S1).click();
 		flushSync();
-		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).toBeNull();
+		expect(beside(S2, 'Move it up')).toBeNull();
 
 		gripIn(S1).click();
 		flushSync();
-		expect(sectionRow(S1).querySelector('[aria-label^="Move it up"]')).toBeNull();
+		expect(beside(S1, 'Move it up')).toBeNull();
 	});
 
 	it('lets go of the handle it was offering when the note is folded back up', () => {
 		const surface = sections();
-		render({ sections: surface });
+		render({ sections: surface, interior });
 		gripIn(S2).click();
 		flushSync();
-		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).not.toBeNull();
+		expect(beside(S2, 'Move it up')).not.toBeNull();
 
 		surface.shown.delete(held('1'));
 		flushSync();
 		surface.shown.add(held('1'));
 		flushSync();
 
-		expect(sectionRow(S2).querySelector('[aria-label^="Move it up"]')).toBeNull();
+		expect(beside(S2, 'Move it up')).toBeNull();
 		expect(gripIn(S2).getAttribute('aria-expanded')).toBe('false');
 	});
 
 	it('leaves them out of a drag that ended on the handle', () => {
-		render({ sections: sections() });
+		render({ sections: sections(), interior });
 		lay();
 
-		gripIn(S3).dispatchEvent(pull('pointerdown', 30, 150));
-		window.dispatchEvent(pull('pointermove', 30, 50));
-		window.dispatchEvent(pull('pointerup', 30, 50));
+		drag(S3, { y: 50 }, 150);
+		letGo({ y: 50 });
 		gripIn(S3).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 		flushSync();
-		expect(sectionRow(S3).querySelector('[aria-label^="Move it up"]')).toBeNull();
+		expect(beside(S3, 'Move it up')).toBeNull();
 	});
 
 	// The two drags a row offers stand on one surface and say their words in one
 	// place, so a section moved leaves nothing behind for the note written next.
 	it('keeps a section drag and a write drag to their own words and their own act', () => {
-		render({ writable: true, sections: sections() });
+		render({ writable: true, sections: sections(), interior });
 		lay();
 
-		gripIn(S1).dispatchEvent(pull('pointerdown', 30, 50));
-		window.dispatchEvent(pull('pointermove', 30, 140));
-		flushSync();
-		expect(said()).toBe('Put it after A drawing');
-
-		window.dispatchEvent(pull('pointerup', 30, 140));
-		flushSync();
+		expect(drag(S1, { y: 140 }, 50)).toBe('Put it after A drawing');
+		letGo({ y: 140 });
 		expect(moves).toEqual([[held('1'), S1, S2]]);
 		expect(said()).toBe('');
 		expect(written).toEqual([]);
@@ -1863,7 +1945,7 @@ describe('a note row on the narrowest phone', () => {
 
 		expect(controls.map((one) => one.getAttribute('aria-label'))).toEqual([
 			`Unfold ${DEEPEST}`,
-			`Show the sections of ${DEEPEST}`,
+			`Open the page of ${DEEPEST}`,
 			`Write a note under ${DEEPEST}`
 		]);
 		for (const one of controls) {

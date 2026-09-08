@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { node, ref, useFakeApi, VIEWER, type FakeApi } from '../stores/fake-api.test-support.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
 import { session } from '../stores/session.svelte.js';
 import { tags } from '../stores/tags.svelte.js';
@@ -136,6 +137,7 @@ beforeEach(() => {
 	startAt('/');
 	stubViewport();
 	nodes.clear();
+	outlineSections.clear();
 	tags.clear();
 	publications.clear();
 	api = useFakeApi();
@@ -212,21 +214,29 @@ describe('walking the notes instead of looking at them', () => {
 		expect(() => labelled('Walk the notes one at a time')).toThrow();
 	});
 
-	it('opens a note where the reader taps one', async () => {
+	it('opens a note where it stands when the reader taps its row', async () => {
 		await walk();
 		rows()[0].click();
+		await settle();
+		expect(document.body.querySelector(`[data-interior="${FIRST}"]`)).not.toBeNull();
+		expect(at.note).toBeNull();
+	});
+
+	it('takes the reader to a note’s own page from the row’s own act', async () => {
+		await walk();
+		labelled('Open the page of 1').click();
 		await settle();
 		expect(at.note).toBe(FIRST);
 		expect(document.body.textContent).toContain('Origins');
 	});
 
-	it('keeps the branch the reader opened while they read a note', async () => {
+	it('keeps the branch the reader opened while they read a note in place', async () => {
 		await walk();
 		(rows()[0].querySelector('button') as HTMLButtonElement).click();
 		await settle();
 		expect(addresses()).toEqual(['1', '1a', '2']);
 		rows()[1].click();
 		await settle();
-		expect(addresses()).toEqual(['1', '1a', '2']);
+		expect(addresses().filter((one) => one !== '')).toEqual(['1', '1a', '2']);
 	});
 });
