@@ -338,10 +338,15 @@
 					<h3 class="text-sm font-medium">What a reader needs</h3>
 					<p class="text-sm text-muted-foreground">Send somebody this and they can read it.</p>
 					<dl class="space-y-2">
-						{#if address || link}
+						{#if address}
 							<div>
 								<dt class="text-xs text-muted-foreground">This branch</dt>
-								<dd class="address text-sm break-all select-text">{address ?? link}</dd>
+								<dd class="address text-sm break-all select-text">{address}</dd>
+							</div>
+						{:else if link}
+							<div>
+								<dt class="text-xs text-muted-foreground">A link to this branch</dt>
+								<dd class="address text-sm break-all select-text">{link}</dd>
 							</div>
 						{/if}
 						{#if reader.identity}

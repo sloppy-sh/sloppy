@@ -165,8 +165,9 @@ export const PullSchema = OwnedEntitySchema.extend({
    *  current when a newer version has been published. */
   version: PublishedVersionSchema,
   /** The address the author gave the region, as the answer carried it — the
-   *  label a reader cites, not what the copy is found by. */
-  root_address: AddressSchema,
+   *  label a reader cites, not what the copy is found by. Absent is a branch
+   *  its author gave no number, which is held like any other. */
+  root_address: AddressSchema.optional(),
   /** Which of the author's graphs the region is in, as the answer carried it:
    *  the context that address is read in. Absent is the author's home graph,
    *  which is also what a region served before graphs existed carries. */

@@ -54,14 +54,12 @@ import {
 } from "./publication.repository";
 import {
   citedEmoji,
+  inPreorder,
+  ordAt,
   publishedDocument,
   publishedNodeOf,
   type Snapshotted,
 } from "./snapshot";
-
-/** A note of a branch about to be published: publishing refuses a branch
- *  holding one with no address, so every note past that check has one. */
-type Numbered = Node & { address: Address };
 
 /** How much of a branch is held in memory at once. A published branch is
  *  written a run of notes at a time, sections and all. */
@@ -200,7 +198,7 @@ export class PublicationService {
     version: OwnedRef,
   ): Promise<Map<OwnedRef, FiledNote>> {
     const held = new Map<OwnedRef, FiledNote>();
-    let after: Address | undefined;
+    let after: string | undefined;
     for (;;) {
       const page = await this.publications.notesIn(
         did,
@@ -210,7 +208,7 @@ export class PublicationService {
       );
       for (const note of page) held.set(note.source, note);
       if (page.length < NOTES_PER_PAGE) return held;
-      after = page[page.length - 1].address;
+      after = page[page.length - 1].ord;
     }
   }
 
@@ -254,20 +252,8 @@ export class PublicationService {
     const did = delegation.did;
     const root = await this.nodes.find(did, request.root);
     if (!root) throw new NotFoundException("That note is not here.");
-    // What a reader cites a published branch by is its root's number, and a
-    // version is read back in number order — docs/ARCHITECTURE.md § "The
-    // genealogy and the address" names this as the gap it is.
-    if (root.address === undefined) {
-      throw new BadRequestException(
-        "Give this note a number before publishing it.",
-      );
-    }
 
-    const { publication, opened } = await this.chainFor(
-      delegation,
-      root,
-      root.address,
-    );
+    const { publication, opened } = await this.chainFor(delegation, root);
     const chain = ownedRefFrom(publication.id);
     const id = createOwnedRecordId("publication_version", did);
     // The number a version of this chain would take next, read before any bytes
@@ -280,7 +266,6 @@ export class PublicationService {
     try {
       const marking = await this.freeze(delegation, {
         root,
-        address: root.address,
         version: ownedRefFrom(id),
         chain,
         copies,
@@ -365,7 +350,6 @@ export class PublicationService {
   private async chainFor(
     delegation: Delegation,
     root: Node,
-    address: Address,
   ): Promise<{ publication: Publication; opened: boolean }> {
     const did = delegation.did;
     const store = delegation.syr_instance_url;
@@ -373,11 +357,22 @@ export class PublicationService {
     const now = nowIso();
     const held = await this.publications.findByRoot(did, ref);
     if (held) {
-      if (held.identity_store !== store) {
-        await this.publications.setIdentityStore(did, ref, store, now);
+      // The label follows the note: a person who renumbers the note a branch is
+      // rooted at is cited by the new number from the next publish on.
+      if (held.identity_store !== store || held.root_address !== root.address) {
+        await this.publications.restate(
+          did,
+          ref,
+          { identityStore: store, address: root.address },
+          now,
+        );
       }
       return {
-        publication: { ...held, identity_store: store },
+        publication: {
+          ...held,
+          identity_store: store,
+          root_address: root.address,
+        },
         opened: false,
       };
     }
@@ -386,7 +381,7 @@ export class PublicationService {
         id: createOwnedRecordId("publication", did),
         created_by: did,
         root: ref,
-        root_address: address,
+        ...(root.address === undefined ? {} : { root_address: root.address }),
         graph: root.graph,
         comments: DEFAULT_COMMENT_ACCESS,
         identity_store: store,
@@ -408,24 +403,21 @@ export class PublicationService {
     delegation: Delegation,
     into: {
       root: Node;
-      address: Address;
       version: OwnedRef;
       chain: OwnedRef;
       copies: Copies;
     },
   ): Promise<RecordId[]> {
     const did = delegation.did;
-    const whole = await this.nodes.subtree(did, into.root);
-    const unnumbered = whole.find((node) => node.address === undefined);
-    if (unnumbered !== undefined) {
-      throw new BadRequestException(
-        `Give “${noteLabel(unnumbered)}” a number before publishing this branch.`,
-      );
-    }
-    const branch = whole as Numbered[];
+    const branch = inPreorder(
+      into.root,
+      await this.nodes.subtree(did, into.root),
+    );
     const region = {
       root: ownedRefFrom(into.root.id),
-      address: into.address,
+      ...(into.root.address === undefined
+        ? {}
+        : { address: into.root.address }),
       graph: graphOf(into.root),
     };
     const carried = new Set(branch.map((node) => ownedRefFrom(node.id)));
@@ -445,7 +437,7 @@ export class PublicationService {
         batch,
         stacks,
       );
-      await this.write(did, into, region, reach, emoji, batch, stacks);
+      await this.write(did, into, region, reach, emoji, batch, stacks, at);
     }
     return branch.filter((node) => !node.published).map((node) => node.id);
   }
@@ -453,11 +445,13 @@ export class PublicationService {
   private async write(
     did: string,
     into: { version: OwnedRef; copies: Copies },
-    region: { root: OwnedRef; address: Address; graph: OwnedRef },
+    region: { root: OwnedRef; address?: Address; graph: OwnedRef },
     reach: Reach,
     emoji: ReadonlyMap<string, string>,
-    batch: readonly Numbered[],
+    batch: readonly Node[],
     stacks: ReadonlyMap<OwnedRef, Block[]>,
+    /** Where the first of this run sits in the version's walk of the branch. */
+    from: number,
   ): Promise<void> {
     const held = snapshotted(into.copies, emoji, reach);
     const left = await this.publications.aliasesOf(
@@ -465,10 +459,11 @@ export class PublicationService {
       region.graph,
       batch.map((node) => ownedRefFrom(node.id)),
     );
+    const within = region.address;
     const now = nowIso();
     const nodes: SnapshotNode[] = [];
     const blocks: SnapshotBlock[] = [];
-    for (const node of batch) {
+    for (const [at, node] of batch.entries()) {
       const source = ownedRefFrom(node.id);
       nodes.push(
         parseSnapshotNode({
@@ -476,12 +471,18 @@ export class PublicationService {
           created_by: did,
           version: into.version,
           source,
-          address: node.address,
+          ...(node.address === undefined ? {} : { address: node.address }),
+          ord: ordAt(from + at),
           node: publishedNodeOf(node, region, {
             links: node.links.filter((target) => reach.holds(target)),
-            aliases: (left.get(source) ?? []).filter((was) =>
-              isInSubtree(region.address, was),
-            ),
+            // A region its author gave no number opens no run of addresses for
+            // an address left behind to lie inside, so none of them travels.
+            aliases:
+              within === undefined
+                ? []
+                : (left.get(source) ?? []).filter((was) =>
+                    isInSubtree(within, was),
+                  ),
           }),
           created_at: now,
           updated_at: now,
@@ -816,7 +817,9 @@ function whatMoved(
     ...(node.address === undefined ? {} : { address: node.address }),
     title: node.title,
     change: "changed",
-    ...(carried ? { was_at: before.address } : {}),
+    ...(carried && before.address !== undefined
+      ? { was_at: before.address }
+      : {}),
     ...(renamed ? { was_titled: before.title } : {}),
     tags_gained: gained,
     tags_lost: lost,

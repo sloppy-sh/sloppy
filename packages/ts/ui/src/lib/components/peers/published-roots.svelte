@@ -1,6 +1,7 @@
 <script lang="ts">
-	// What one identity publishes on one instance: a branch to take, cited by the
-	// address a peer resolves, under the notebook that address is read in.
+	// What one identity publishes on one instance: a branch to take, under the
+	// notebook it sits in, cited by the address a peer resolves where its author
+	// gave it one and read by its title where they did not.
 	import Download from '@lucide/svelte/icons/download';
 	import type { OwnedRef, PublishedPublication } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -43,7 +44,9 @@
 			<ul class="space-y-1">
 				{#each notebook.rows as branch (branch.ref)}
 					<li class="flex items-center gap-3 py-1">
-						<span class="shrink-0 address">{branch.root_address}</span>
+						{#if branch.root_address !== undefined}
+							<span class="shrink-0 address">{branch.root_address}</span>
+						{/if}
 						<span class="min-w-0 flex-1 truncate text-sm">{branch.title || 'Untitled'}</span>
 						<Button
 							variant="ghost"

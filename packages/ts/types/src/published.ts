@@ -92,7 +92,8 @@ export type PublishedVersion = z.infer<typeof PublishedVersionSchema>;
  * one and pull it, and nothing that is not already public in it.
  *
  * `root_address` is a label a person cites and reads a shape from, not what the
- * publication is found by — `ref` is. `graph` is which of the author's
+ * publication is found by — `ref` is, and absent is a branch its author gave no
+ * number, which `title` names instead. `graph` is which of the author's
  * notebooks that label is read in, absent for their home graph and so for
  * everything published before an author could have a second. `title` and
  * `latest` are the newest version's, which is what a plain read of the
@@ -100,7 +101,7 @@ export type PublishedVersion = z.infer<typeof PublishedVersionSchema>;
  */
 export const PublishedPublicationSchema = z.object({
   ref: OwnedRefSchema,
-  root_address: AddressSchema,
+  root_address: AddressSchema.optional(),
   graph: OwnedRefSchema.optional(),
   /**
    * What the author calls that notebook. A label a reader shows beside an
@@ -228,7 +229,17 @@ export type PublishedBlock = z.infer<typeof PublishedBlockSchema>;
 export const PublishedSubtreePageSchema = z.object({
   publication: OwnedRefSchema,
   version: PublishedVersionSchema,
-  root_address: AddressSchema,
+  /**
+   * The note the region is rooted at. It is what every page of one run is held
+   * to, so an answer that changed which branch it was about half way through is
+   * refused whatever it calls the branch. **Absent from an instance serving
+   * pages before this was carried**, which leaves `root_address` as the only
+   * anchor a run of those pages has.
+   */
+  root: OwnedRefSchema.optional(),
+  /** The label its author cites the region by. Absent is a branch they gave no
+   *  number, which is read by its root note's title. */
+  root_address: AddressSchema.optional(),
   graph: OwnedRefSchema.optional(),
   graph_title: z.string().min(1).max(512).optional(),
   comments: ReceivedCommentAccessSchema,
@@ -244,7 +255,8 @@ export type PublishedSubtreePage = z.infer<typeof PublishedSubtreePageSchema>;
 export interface PublishedSubtree {
   publication: OwnedRef;
   version: PublishedVersion;
-  root_address: Address;
+  root?: OwnedRef;
+  root_address?: Address;
   graph?: OwnedRef;
   graph_title?: string;
   comments: CommentAccess;
@@ -313,7 +325,8 @@ export const PublishedNoteChangeSchema = z.discriminatedUnion("change", [
 export type PublishedNoteChange = z.infer<typeof PublishedNoteChangeSchema>;
 
 /**
- * One page of the difference between two versions, in address order.
+ * One page of the difference between two versions, in the order the later one
+ * reads.
  *
  * The instance holds every version and the reader holds none, so the comparison
  * is made where the versions are: a phone asking what changed between two
@@ -323,7 +336,11 @@ export type PublishedNoteChange = z.infer<typeof PublishedNoteChangeSchema>;
  */
 export const PublishedChangesPageSchema = z.object({
   publication: OwnedRefSchema,
-  root_address: AddressSchema,
+  /** The note the region is rooted at, which every page of one comparison is
+   *  held to. Absent from an instance serving pages before this was carried. */
+  root: OwnedRefSchema.optional(),
+  /** The label its author cites the region by, absent where they gave it none. */
+  root_address: AddressSchema.optional(),
   /** The versions compared, in that order. */
   from: OwnedRefSchema,
   to: OwnedRefSchema,
@@ -442,6 +459,7 @@ export function publishedSubtreeReader(
   let regionRoot: OwnedRef | undefined;
   let heldVersion: OwnedRef | undefined;
   let heldAddress: Address | undefined;
+  let addressHeld = false;
   let heldGraph: OwnedRef | undefined;
   let pages = 0;
 
@@ -466,10 +484,16 @@ export function publishedSubtreeReader(
       if (heldVersion !== undefined && page.version.ref !== heldVersion) {
         throw new UnaskedAnswerError("a second version of one region");
       }
-      if (heldAddress !== undefined && page.root_address !== heldAddress) {
+      if (addressHeld && page.root_address !== heldAddress) {
         throw new UnaskedAnswerError(
-          `a region rooted at ${page.root_address} and at ${heldAddress}`,
+          `a region rooted at ${named(page.root_address)} and at ${named(heldAddress)}`,
         );
+      }
+      if (page.root !== undefined) {
+        requireAuthor(page.root, author);
+        if (regionRoot !== undefined && page.root !== regionRoot) {
+          throw new UnaskedAnswerError(`a region rooted at ${page.root}`);
+        }
       }
       if (page.graph !== undefined) requireAuthor(page.graph, author);
       // Resolved rather than compared as it arrived: absent and the home
@@ -493,8 +517,11 @@ export function publishedSubtreeReader(
       // not be free to make it about a note it did not send.
       if (rootless[0] !== undefined && rootless[0].address !== rootAddress) {
         throw new UnaskedAnswerError(
-          `a region rooted at ${rootAddress} opening at ${rootless[0].address ?? "a note with no address"}`,
+          `a region rooted at ${named(rootAddress)} opening at ${named(rootless[0].address)}`,
         );
+      }
+      if (page.root !== undefined && page.root !== root) {
+        throw new UnaskedAnswerError(`a region rooted at ${page.root}`);
       }
 
       const pageNodes = new Set<OwnedRef>();
@@ -566,6 +593,7 @@ export function publishedSubtreeReader(
       regionRoot = root;
       heldVersion = page.version.ref;
       heldAddress = rootAddress;
+      addressHeld = true;
       heldGraph = graph;
       pages += 1;
       for (const node of page.nodes) heldNodes.add(node.ref);
@@ -644,6 +672,7 @@ export function publishedChangesReader(asked: {
   const author = splitOwnedRef(asked.publication).did;
   const held = new Set<OwnedRef>();
   let heldAddress: Address | undefined;
+  let addressHeld = false;
   let heldOrigin: OwnedRef | undefined;
   let pages = 0;
 
@@ -664,10 +693,17 @@ export function publishedChangesReader(asked: {
       if (page.from !== asked.from || page.to !== asked.to) {
         throw new UnaskedAnswerError("a difference between other versions");
       }
-      if (heldAddress !== undefined && page.root_address !== heldAddress) {
+      if (addressHeld && page.root_address !== heldAddress) {
         throw new UnaskedAnswerError(
-          `a region rooted at ${page.root_address} and at ${heldAddress}`,
+          `a region rooted at ${named(page.root_address)} and at ${named(heldAddress)}`,
         );
+      }
+      if (page.root !== undefined) {
+        requireAuthor(page.root, author);
+        if (heldOrigin !== undefined && page.root !== heldOrigin) {
+          throw new UnaskedAnswerError(`a region rooted at ${page.root}`);
+        }
+        heldOrigin = page.root;
       }
       const onPage = new Set<OwnedRef>();
       for (const entry of page.changes) {
@@ -702,11 +738,17 @@ export function publishedChangesReader(asked: {
         }
       }
       heldAddress = page.root_address;
+      addressHeld = true;
       pages += 1;
       for (const ref of onPage) held.add(ref);
       return page;
     },
   };
+}
+
+/** How a region's own label reads back where its author gave it none. */
+function named(address: Address | undefined): string {
+  return address ?? "no address";
 }
 
 function requirePage(taken: number): void {

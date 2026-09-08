@@ -35,7 +35,7 @@ function version(n: number) {
 
 function node(
   index: number,
-  address: string,
+  address: string | undefined,
   over: Partial<PublishedNode> = {},
 ) {
   return {
@@ -147,6 +147,64 @@ describe("a region a peer answered with", () => {
     const reader = publishedSubtreeReader(asked);
     reader.take(subtree({ next_cursor: "more" }));
     expect(() => reader.take(nextPage({ root_address: "1b" }))).toThrow(
+      UnaskedAnswerError,
+    );
+  });
+
+  // A branch its author gave no number is published like any other: the note it
+  // is rooted at is what says which region this is, and a label was never it.
+  it("is taken when its author gave the region no address", () => {
+    const root = node(0, undefined);
+    const page = takeWhole(
+      subtree({
+        root: root.ref,
+        root_address: undefined,
+        nodes: [root, node(1, undefined, { parent: root.ref })],
+        blocks: [section(2, root.ref)],
+      }),
+    );
+    expect(page.nodes.map((n) => n.address)).toEqual([undefined, undefined]);
+    expect(page.root_address).toBeUndefined();
+  });
+
+  it("is refused when a later page gives an unnumbered region an address", () => {
+    const root = node(0, undefined);
+    const reader = publishedSubtreeReader(asked);
+    reader.take(
+      subtree({
+        root: root.ref,
+        root_address: undefined,
+        nodes: [root],
+        blocks: [],
+        next_cursor: "more",
+      }),
+    );
+    expect(() =>
+      reader.take(nextPage({ root: root.ref, root_address: "1b" })),
+    ).toThrow(UnaskedAnswerError);
+  });
+
+  it("is refused when a later page names another note as the region's root", () => {
+    const root = node(0, undefined);
+    const reader = publishedSubtreeReader(asked);
+    reader.take(
+      subtree({
+        root: root.ref,
+        root_address: undefined,
+        nodes: [root],
+        blocks: [],
+        next_cursor: "more",
+      }),
+    );
+    expect(() =>
+      reader.take(
+        nextPage({ root: `${AUTHOR}/${ulid(77)}`, root_address: undefined }),
+      ),
+    ).toThrow(UnaskedAnswerError);
+  });
+
+  it("is refused when the note it opens on is not the root it names", () => {
+    expect(() => takeWhole(subtree({ root: `${AUTHOR}/${ulid(78)}` }))).toThrow(
       UnaskedAnswerError,
     );
   });
@@ -710,6 +768,36 @@ describe("what a peer says changed between two versions", () => {
       difference([rewritten]),
     );
     expect(page.changes).toHaveLength(1);
+  });
+
+  // The note a region is rooted at is what a run of pages is held to. A branch
+  // its author gave no number carries no label to hold it to instead.
+  it("is taken for a region its author gave no address, and held to its root", () => {
+    const unnumbered = node(0, undefined);
+    const page = publishedChangesReader(askedChanges).take({
+      ...difference([{ change: "removed", note: unnumbered }]),
+      root: unnumbered.origin,
+      root_address: undefined,
+    });
+    expect(page.root_address).toBeUndefined();
+    expect(page.changes).toHaveLength(1);
+  });
+
+  it("is refused when a later page names another note as the region's root", () => {
+    const reader = publishedChangesReader(askedChanges);
+    reader.take({
+      ...difference([rewritten]),
+      root: root.origin,
+      root_address: undefined,
+      next_cursor: "more",
+    });
+    expect(() =>
+      reader.take({
+        ...difference([]),
+        root: `${AUTHOR}/${ulid(77)}`,
+        root_address: undefined,
+      }),
+    ).toThrow(UnaskedAnswerError);
   });
 
   it("is refused when it compares other versions", () => {

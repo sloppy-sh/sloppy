@@ -8,65 +8,72 @@ import type {
   PublishedSectionChange,
 } from "@sloppy/types";
 
-/** One note as one version has it, with the stack that version froze. */
+/** One note as one version has it, with the stack that version froze and the
+ *  place that version gives it. */
 export interface SnapshotSide {
+  ord: string;
   note: PublishedNode;
   sections: PublishedBlock[];
 }
 
+/** One change with the place a page cuts it at: the later version's, or the
+ *  earlier one's for a note that is gone. */
+export interface OrderedChange {
+  ord: string;
+  change: PublishedNoteChange;
+}
+
 /**
- * What became of each note between two runs of one publication, in address
- * order. Each side covers the same range of that order, so a note missing from
- * one of them is a note that version does not carry rather than one further on
- * — except for a note its author has moved, whose two rows can be a page apart
- * and which the caller hands to this side by side.
+ * What became of each note between two runs of one publication, in the order
+ * the versions themselves are read in. Each side covers the same range of that
+ * order, so a note missing from one of them is a note that version does not
+ * carry rather than one further on — except for a note whose place has moved,
+ * whose two rows can be a page apart and which the caller hands to this side by
+ * side.
  *
- * A note whose address holds a different note in each version is one note gone
- * and another arrived, and the reader is told both.
+ * A place holding a different note in each version is one note gone and another
+ * arrived, and the reader is told both.
  */
 export function noteChanges(
   from: readonly SnapshotSide[],
   to: readonly SnapshotSide[],
-): PublishedNoteChange[] {
+): OrderedChange[] {
   const earlier = new Map(from.map((side) => [side.note.ref, side]));
   const later = new Map(to.map((side) => [side.note.ref, side]));
-  const changes: PublishedNoteChange[] = [];
+  const changes: OrderedChange[] = [];
   for (const side of from) {
     if (!later.has(side.note.ref)) {
-      changes.push({ change: "removed", note: side.note });
+      changes.push({
+        ord: side.ord,
+        change: { change: "removed", note: side.note },
+      });
     }
   }
   for (const side of to) {
     const before = earlier.get(side.note.ref);
     if (before === undefined) {
-      changes.push(arrived(side));
+      changes.push({ ord: side.ord, change: arrived(side) });
       continue;
     }
     const sections = sectionChanges(before.sections, side.sections);
     if (sections.length === 0 && sameNote(before.note, side.note)) continue;
     changes.push({
-      change: "changed",
-      note: side.note,
-      before: before.note,
-      sections,
+      ord: side.ord,
+      change: {
+        change: "changed",
+        note: side.note,
+        before: before.note,
+        sections,
+      },
     });
   }
-  // Stable, so the note gone from an address the other version reuses stays
-  // ahead of the one that arrived there. A note with no address follows the
-  // ones that have one, the way a run reads.
-  return changes.sort((a, b) => {
-    if (a.note.address === undefined || b.note.address === undefined) {
-      return (
-        (a.note.address === undefined ? 1 : 0) -
-        (b.note.address === undefined ? 1 : 0)
-      );
-    }
-    return compare(a.note.address, b.note.address);
-  });
+  // Stable, so the note gone from a place the other version reuses stays ahead
+  // of the one that arrived there.
+  return changes.sort((a, b) => compare(a.ord, b.ord));
 }
 
-/** Where the address order stops being decidable: past the lower of two windows
- *  a note's counterpart may still be unread, so nothing beyond it is compared.
+/** Where the order stops being decidable: past the lower of two windows a
+ *  note's counterpart may still be unread, so nothing beyond it is compared.
  *  `undefined` where both sides are exhausted and the run is complete. */
 export function comparableTo(
   from: { last?: string; more: boolean },
@@ -157,7 +164,7 @@ function same(a: unknown, b: unknown): boolean {
   );
 }
 
-/** Lexicographic, which is the order a version's own pages are served in. */
+/** As a string, which is the order a version's own pages are served in. */
 function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }

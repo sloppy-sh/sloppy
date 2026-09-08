@@ -14,8 +14,12 @@ import { z } from "zod";
 const MarkSchema = z.object({
   /** What the run is of, so a cursor cannot be spent on another answer. */
   of: z.string().min(1),
-  /** The last address served, where a run is ordered by address. */
+  /** The last place served, where a run is ordered by a version's own walk of
+   *  a branch or by the labels a listing carries. */
   at: z.string().min(1).optional(),
+  /** The note the last publication served is rooted at, which is what settles
+   *  a listing's order where two branches carry no label. */
+  root: z.string().min(1).optional(),
   /** The last section served of the note at `at`, where its stack ran past one
    *  page and the next carries the rest of it. */
   ord: z.string().min(1).optional(),

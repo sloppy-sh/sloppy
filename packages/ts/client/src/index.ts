@@ -597,6 +597,7 @@ export class SloppyClient {
     return {
       publication,
       version: page.version,
+      root: page.root,
       root_address: page.root_address,
       graph: page.graph,
       graph_title: page.graph_title,

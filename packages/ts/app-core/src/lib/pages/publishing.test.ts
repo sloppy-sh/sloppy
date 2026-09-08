@@ -36,6 +36,8 @@ const UNDER_PUBLICATION = ref(11);
 const VERSION_ONE = ref(20);
 // Seeded away from zero: `ulid(0)` pads to the home graph's own local id.
 const OTHER_GRAPH = ref(99);
+/** A note of that other notebook, which nothing here springs from. */
+const ELSEWHERE = ref(98);
 const VERSION_TWO = ref(21);
 
 const PHONE = 390;
@@ -361,8 +363,10 @@ describe('publishing a branch', () => {
 		expect(says()).not.toContain('already carries this branch');
 	});
 
-	it('leaves a note unpublished where the branch at its address is another graph’s', async () => {
-		held = [publication({ graph: OTHER_GRAPH })];
+	// A publication is rooted at a NOTE, so one of another note — the `1` of the
+	// author's other notebook, say — is not this one's however it is labelled.
+	it('leaves a note unpublished where the branch is another note’s', async () => {
+		held = [publication({ root: ELSEWHERE, root_address: '1', graph: OTHER_GRAPH })];
 		chain = [version(VERSION_ONE, 1)];
 
 		await open();
@@ -372,8 +376,8 @@ describe('publishing a branch', () => {
 		expect(has('Published · version 1')).toBe(false);
 	});
 
-	it('says nothing about a branch above it where that branch is another graph’s', async () => {
-		held = [publication({ graph: OTHER_GRAPH })];
+	it('says nothing about a branch above it where that branch is another note’s', async () => {
+		held = [publication({ root: ELSEWHERE, root_address: '1', graph: OTHER_GRAPH })];
 		chain = [version(VERSION_ONE, 1)];
 
 		await open(UNDER);
@@ -394,6 +398,10 @@ describe('publishing a branch', () => {
 				comments: 'nobody'
 			})
 		];
+		// Which notes a branch carries is the genealogy, so the note that branch
+		// is rooted at has to be in hand for anything to say it lies under this
+		// one.
+		await nodes.fetch(UNDER);
 
 		await open();
 		await openActs();

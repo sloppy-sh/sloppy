@@ -153,6 +153,21 @@ describe('a branch somebody else published', () => {
 		await settle();
 		expect(dropped).toEqual([OTHER]);
 	});
+
+	// A branch its author never numbered is held like any other: nothing is
+	// cited by an address that is not there, and the row is named in words.
+	it('holds a region its author gave no address', async () => {
+		await open({ regions: [region({ address: undefined })] });
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('Ada Lovelace');
+		expect(text).not.toContain('undefined');
+		expect(find('Read this branch again')).not.toBeNull();
+
+		find('Stop holding this branch')?.click();
+		await settle();
+		expect(dropped).toEqual([REGION]);
+	});
 });
 
 describe("a note of the reader's own that somebody answered", () => {

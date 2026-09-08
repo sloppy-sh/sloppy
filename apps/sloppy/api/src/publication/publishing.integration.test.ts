@@ -547,6 +547,128 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(JSON.stringify(page)).not.toContain(root.ref);
   });
 
+  // A branch its author never numbered publishes like any other: what a peer
+  // reads it back by is the note it is rooted at, and the walk of the branch is
+  // what the pages are taken in.
+  scenario(
+    "publishes a branch nobody numbered, and reads it back",
+    async () => {
+      const root = await newNode({
+        from: { relation: "free" },
+        title: "A branch nobody numbered",
+      });
+      expect(root.address).toBeUndefined();
+      const under = await newNode({
+        from: { relation: "under", note: root.ref },
+        title: "Under it",
+      });
+      expect(under.address).toBeUndefined();
+      const numbered = (await ok(
+        "PUT",
+        `/nodes/${at(under.ref)}/address`,
+        ada,
+        {
+          address: "7",
+        },
+      )) as NodeView;
+      expect(numbered.address).toBe("7");
+      const beside = await newNode({
+        from: { relation: "after", note: under.ref },
+        title: "Beside it",
+      });
+      await newBlock(root.ref, {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "It stands." }],
+          },
+        ],
+      });
+
+      const publication = await publish(root.ref);
+      expect(publication.root_address).toBeUndefined();
+
+      const first = publishedSubtreeReader({
+        publication: publication.ref,
+      }).take(await read(publication.ref));
+      expect(first.root).toBe(root.ref);
+      expect(first.root_address).toBeUndefined();
+      // Parents ahead of what springs from them, and the run in the order a
+      // person reads it: the numbered note first, then the one nobody numbered.
+      expect(first.nodes.map((node) => node.ref)).toEqual([
+        root.ref,
+        numbered.ref,
+        beside.ref,
+      ]);
+      expect(first.nodes.map((node) => node.address)).toEqual([
+        undefined,
+        "7",
+        undefined,
+      ]);
+      expect(first.blocks).toHaveLength(1);
+
+      // A listing names it by its title, having no number to cite it by.
+      const listed = (await published()).publications.find(
+        (one) => one.ref === publication.ref,
+      );
+      expect(listed?.root_address).toBeUndefined();
+      expect(listed?.title).toBe("A branch nobody numbered");
+
+      // The label is the author's to write and to take off, and the next publish
+      // says what the branch is cited by now.
+      await ok("PUT", `/nodes/${at(root.ref)}/address`, ada, { address: "9" });
+      await ok("PUT", `/nodes/${at(under.ref)}/address`, ada, {
+        address: null,
+      });
+      const again = await publish(root.ref);
+      expect(again.root_address).toBe("9");
+
+      const second = publishedSubtreeReader({
+        publication: publication.ref,
+      }).take(await read(publication.ref));
+      expect(second.root_address).toBe("9");
+      expect(second.nodes.map((node) => node.address)).toEqual([
+        "9",
+        undefined,
+        undefined,
+      ]);
+
+      // The version a peer is already holding still says what its own copy says,
+      // so a run of its pages is still taken.
+      const held = publishedSubtreeReader({
+        publication: publication.ref,
+        version: publication.latest.ref,
+      }).take(
+        await read(
+          publication.ref,
+          `?version=${encodeURIComponent(publication.latest.ref)}`,
+        ),
+      );
+      expect(held.root_address).toBeUndefined();
+
+      const difference = publishedChangesReader({
+        publication: publication.ref,
+        from: publication.latest.ref,
+        to: again.latest.ref,
+      }).take(
+        await ok(
+          "GET",
+          `/public/publications/${at(publication.ref)}/changes?from=${encodeURIComponent(publication.latest.ref)}&to=${encodeURIComponent(again.latest.ref)}`,
+          null,
+        ),
+      );
+      expect(difference.root).toBe(root.ref);
+      expect(difference.root_address).toBe("9");
+      expect(difference.changes.map((one) => one.note.ref).sort()).toEqual(
+        [root.ref, under.ref].sort(),
+      );
+      for (const one of difference.changes) {
+        expect(one.change).toBe("changed");
+      }
+    },
+  );
+
   scenario("puts every note somebody chose out, each on its own", async () => {
     const first = await newNode({ title: "Aqueducts" });
     const under = await newNode({
