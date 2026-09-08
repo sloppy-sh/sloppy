@@ -177,7 +177,7 @@ export class NodeRepository {
              WHERE created_by = $did AND origin = $origin AND depth = $depth
                AND ${under}`;
     const [taken, retired, aliased] = await this.db.handle.query<
-      [(string | null)[], string[], string[]]
+      [(string | null | undefined)[], string[], string[]]
     >(
       `${held};
        SELECT VALUE address FROM retired_address
@@ -193,7 +193,9 @@ export class NodeRepository {
       },
     );
     return [
-      ...taken.filter((address) => address !== null),
+      ...taken.filter(
+        (address): address is string => typeof address === "string",
+      ),
       ...retired,
       ...aliased,
     ];

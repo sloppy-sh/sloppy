@@ -90,8 +90,7 @@ ships both branches to every platform.
 ## The genealogy and the address
 
 The part that has to be right first, because peers hold each other's graphs. AI.md § "The
-Genealogy Is the Protocol, and the Address Is a Label" states the rules; this is the
-mechanism.
+Genealogy Is the Protocol" states the rules; this is the mechanism.
 
 **A note is reached by its ref.** `<did>/<ulid>` is the row's own composite key spelled for
 the wire, and it is what a link, a publication, a pull and every route are keyed on. No

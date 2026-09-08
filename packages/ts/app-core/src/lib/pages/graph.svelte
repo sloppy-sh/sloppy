@@ -322,7 +322,7 @@
 		const across = new Set(opened.flatMap(({ note }) => (note ? [graphOf(note)] : [])));
 		return opened.map(({ ref, note }) => ({
 			ref,
-			address: note?.address ?? '',
+			...(note?.address === undefined ? {} : { address: note.address }),
 			title: note?.title ?? '',
 			graph: note && across.size > 1 ? graphs.titleOf(graphOf(note)) || 'Untitled' : null
 		}));

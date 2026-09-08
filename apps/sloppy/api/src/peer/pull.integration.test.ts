@@ -651,6 +651,51 @@ describe("holding a region of somebody else's graph", () => {
     },
   );
 
+  scenario(
+    "reads a page that lists a note before the one it springs from",
+    async () => {
+      serves(page(WIDE, [note("1", "1a1"), note("1", "1a"), note("1", "1")]));
+
+      const region = await pulled(WIDE);
+      const depths = new Map(
+        (await heldIn(region)).map((n) => [n.address, n.depth]),
+      );
+      expect(depths.get("1")).toBe(1);
+      expect(depths.get("1a")).toBe(2);
+      expect(depths.get("1a1")).toBe(3);
+    },
+  );
+
+  scenario(
+    "keeps a note's own depth when the one above it is refuted",
+    async () => {
+      serves(
+        page(WIDE, [
+          note("1", "1"),
+          {
+            ...note("1", "1a"),
+            content_signature: "z2i7YveT8N8bmBrE",
+            signing_device_public_key: STRANGER.slice("did:syr:".length),
+            signed_payload_json: JSON.stringify({
+              type: "sloppy-node@v1",
+              did: AUTHOR,
+              node_id: ID.a,
+              address: "1a",
+              title: "Somebody else's note",
+              created_at: "2026-01-01T00:00:00.000Z",
+            }),
+          },
+          note("1", "1a1"),
+        ]),
+      );
+
+      const region = await pulled(WIDE);
+      const held = await heldIn(region);
+      expect(held.map((n) => n.address)).toEqual(["1", "1a1"]);
+      expect(held[1].depth).toBe(3);
+    },
+  );
+
   scenario("holds a note it cannot check the signature on", async () => {
     serves(
       page(NARROW, [
