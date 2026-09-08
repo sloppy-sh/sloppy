@@ -270,6 +270,25 @@ describe('where a note carried over the outline would land', () => {
 		});
 	});
 
+	// Beside a note is the run that note's own parent numbers, which a note
+	// nobody numbered is not in and does not empty.
+	it('numbers a note carried beside one nobody numbered', () => {
+		const rows = [...ROWS, bare('loose', 1, '1')];
+		const beside = { on: held('loose'), title: 'About loose', relation: 'after' as const };
+		expect(movesTo(rows, carried('2'), beside)).toEqual({
+			says: 'Goes beside About loose, as 1c or later',
+			to: beside
+		});
+	});
+
+	it('numbers a note carried beside one nobody numbered at the top of the tree', () => {
+		const rows = [...ROWS, bare('loose', 0)];
+		const beside = { on: held('loose'), title: 'About loose', relation: 'after' as const };
+		expect(movesTo(rows, carried('1a1'), beside)?.says).toBe(
+			'Goes beside About loose, as 3 or later'
+		);
+	});
+
 	// A run under a note nobody numbered numbers nothing, so the note joining it
 	// carries no number either.
 	it('names no number for a note carried under one that has none', () => {

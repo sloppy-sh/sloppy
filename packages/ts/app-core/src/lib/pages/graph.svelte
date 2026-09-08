@@ -58,6 +58,7 @@
 		pictureTurn,
 		RootAddressSchema,
 		graphOf,
+		noteLabel,
 		peerOrigin,
 		publishRootsOf,
 		splitOwnedRef,
@@ -176,6 +177,9 @@
 		trip: WritingNote;
 		from: OwnedRef | null;
 		shape: NoteTemplate | null;
+		/** Whether an address comes with it: a note written on its own carries
+		 *  none until somebody writes one on it. */
+		numbering: boolean;
 		title: string;
 		body: string;
 		/** Which field the caret was in, so the note opens where it was left. */
@@ -1327,6 +1331,7 @@
 			trip: nodes.write(asked),
 			from,
 			shape,
+			numbering: asked.from?.relation !== 'free',
 			title: '',
 			body: '',
 			where: 'title',
@@ -1899,7 +1904,9 @@
 				{#if pointing}
 					<div class="flex items-center gap-3">
 						<p class="min-w-0 flex-1 text-sm">
-							Tap a note to link it to <span class="address">{pointingNote?.address}</span>
+							Tap a note to link it to <span class:address={!!pointingNote?.address}
+								>{pointingNote ? noteLabel(pointingNote) : ''}</span
+							>
 						</p>
 						<Button
 							variant="outline"
@@ -2342,6 +2349,7 @@
 		<Writing
 			title={writingNow.title}
 			body={writingNow.body}
+			numbering={writingNow.numbering}
 			refused={writingNow.refused}
 			onTitle={(said) => {
 				if (writing) writing.title = said;

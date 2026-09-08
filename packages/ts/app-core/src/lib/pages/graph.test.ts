@@ -1816,6 +1816,18 @@ describe('a note written before the server has answered', () => {
 		expect(document.body.querySelector('.address')).toBeNull();
 	});
 
+	// A note written on its own is given no address, so the surface it is written
+	// on says what is happening rather than what is not.
+	it('promises no address for a note written on its own', async () => {
+		await open();
+		labelled('New note, which opens no branch').click();
+		await settle();
+
+		expect(reading()).toBe(true);
+		expect(screen()).toContain('Putting it down');
+		expect(screen()).not.toContain('Giving it an address');
+	});
+
 	it('puts what was typed into the note the moment there is one', async () => {
 		await open();
 		button('New branch').click();

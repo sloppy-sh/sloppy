@@ -834,6 +834,18 @@ describe('moving a note from its own page', () => {
 		await settle();
 	}
 
+	/** A row of the sheet, by what it reads: a note with no address has no
+	 *  `.address` for {@link noteRow} to find it by. */
+	function rowFor(shows: string): HTMLButtonElement {
+		const row = [
+			...document.body.querySelectorAll<HTMLButtonElement>(
+				'[aria-label="Notes to move it to"] li button'
+			)
+		].find((one) => one.textContent?.includes(shows));
+		if (!row) throw new Error(`The sheet offers no row reading "${shows}"`);
+		return row;
+	}
+
 	it('finds where it goes by the address a person would cite', async () => {
 		await openNote(THIRD);
 		await findToMove('2');
@@ -972,22 +984,35 @@ describe('moving a note from its own page', () => {
 		expect(screen()).not.toContain('or the next one free');
 	});
 
-	it('offers a note with no number as somewhere to go', async () => {
+	// Beside a note is the run that note's own parent numbers, which a note
+	// nobody numbered is not in and does not empty.
+	it('numbers a note put beside one with no number, from the run it joins', async () => {
 		nodes.clear();
 		installGraph().set(FOURTH, unnumbered(4, { title: 'Method' }));
 		await loadGraph();
 		await openNote(THIRD);
 		await findToMove('Method');
-		const row = [
-			...document.body.querySelectorAll<HTMLButtonElement>(
-				'[aria-label="Notes to move it to"] li button'
-			)
-		].find((one) => one.textContent?.includes('Method'));
-		if (!row) throw new Error('The sheet offers no row for a note with no number');
-		row.click();
+		rowFor('Method').click();
 		await settle();
 
 		expect(screen()).toContain('Put it under Method');
+		expect(screen()).toContain('It carries no number there.');
+		expect(screen()).toContain('Put it beside Method');
+		expect(screen()).toContain('It becomes 2, or the next one free.');
+	});
+
+	it('numbers a note put beside one with no number, under a note that has one', async () => {
+		nodes.clear();
+		installGraph().set(FIFTH, unnumbered(5, { title: 'Pores', origin: FIRST, parent: SECOND }));
+		await loadGraph();
+		await openNote(THIRD);
+		await findToMove('Pores');
+		rowFor('Pores').click();
+		await settle();
+
+		expect(screen()).toContain('Put it beside Pores');
+		expect(screen()).toContain('It becomes 1a2, or the next one free.');
+		expect(screen()).toContain('Put it under Pores');
 		expect(screen()).toContain('It carries no number there.');
 	});
 });
@@ -1082,6 +1107,26 @@ describe('writing the address on a note', () => {
 		await save();
 
 		expect(noteHead()).toContain('1b is already the address of another note.');
+		expect(field()).not.toBeNull();
+	});
+
+	it('says plainly what an address looks like, rather than asking the server', async () => {
+		const asked: (string | null)[] = [];
+		numbering(api, SECOND, (address) => {
+			asked.push(address);
+			return node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST });
+		});
+		await openNote(SECOND);
+
+		labelled('Edit the address 1a').click();
+		await settle();
+		const typing = field();
+		if (!typing) throw new Error('The header has no address field');
+		type(typing, 'a note');
+		await save();
+
+		expect(asked).toEqual([]);
+		expect(noteHead()).toContain('Number a note like 1a1');
 		expect(field()).not.toBeNull();
 	});
 

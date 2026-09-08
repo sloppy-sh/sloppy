@@ -25,6 +25,7 @@
 		citedNotes,
 		compareOrd,
 		graphOf,
+		isAddress,
 		isInSubtree,
 		nextChildAddress,
 		noteLabel,
@@ -560,16 +561,28 @@
 		]);
 	}
 
+	/** The address the run `target` lies in is numbered against: `null` at the top
+	 *  of the graph, `undefined` where nothing numbers it. */
+	function runAbove(target: NodeView): Address | null | undefined {
+		if (!target.parent) return null;
+		const above = nodes.get(target.parent);
+		if (above) return above.address;
+		return target.address === undefined ? undefined : parentAddress(target.address);
+	}
+
 	/** The earliest address this note could take carried against `target`: a run
-	 *  may have spent addresses this device has not read. */
-	function landsAt(target: NodeView, at: Address): { under: Address; after: Address } {
-		const above = target.parent ? nodes.get(target.parent) : undefined;
+	 *  may have spent addresses this device has not read. Either landing is absent
+	 *  where the run it joins numbers nothing. */
+	function landsAt(target: NodeView): { under?: Address; after?: Address } {
+		const along = runAbove(target);
 		const alongTarget = target.parent
 			? nodes.children(target.parent)
 			: here.filter((note) => !note.parent);
 		return {
-			under: nextChildAddress(at, spentIn(nodes.children(target.ref))),
-			after: nextChildAddress(above?.address ?? parentAddress(at), spentIn(alongTarget))
+			...(target.address === undefined
+				? {}
+				: { under: nextChildAddress(target.address, spentIn(nodes.children(target.ref))) }),
+			...(along === undefined ? {} : { after: nextChildAddress(along, spentIn(alongTarget)) })
 		};
 	}
 
@@ -593,15 +606,15 @@
 
 	/** What letting the moved note go on `target` would do, or why it cannot. A
 	 *  number is named only where there will be one: a note with none keeps none,
-	 *  and a run under a note nobody numbered numbers nothing. */
+	 *  and beside a note nobody numbered is still the run its parent numbers. */
 	function landingOn(
 		moving: NodeView,
 		target: NodeView
 	): { under?: Address; after?: Address } | { refused: string } {
 		if (target.ref === moving.ref) return { refused: 'The note you are moving.' };
 		if (beneath(moving, target)) return { refused: 'Inside the note you are moving.' };
-		if (moving.address === undefined || target.address === undefined) return {};
-		return landsAt(target, target.address);
+		if (moving.address === undefined) return {};
+		return landsAt(target);
 	}
 
 	/** Where this note may be carried: the notes of the graph it was written in,
@@ -782,7 +795,6 @@
 	let addressing = $state<OwnedRef | null>(null);
 	let addressTyped = $state('');
 	let addressField = $state<HTMLInputElement | null>(null);
-	/** The address is with the server, so the acts stop taking taps. */
 	let writingAddress = $state(false);
 	const addressingHere = $derived(addressing === ref);
 
@@ -807,6 +819,10 @@
 	 *  is one note's own label. */
 	async function writeAddress(taking: string | null): Promise<void> {
 		const of = ref;
+		if (taking !== null && !isAddress(taking)) {
+			refuse(of, 'address', 'Number a note like 1a1: a number first, then letters and numbers.');
+			return;
+		}
 		writingAddress = true;
 		refuse(of, 'address', null);
 		try {
@@ -1614,7 +1630,9 @@
 				: undefined}
 			class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 		>
-			<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
+			{#if note.address}
+				<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
+			{/if}
 			<span class="min-w-0 flex-1 truncate">{note.title || 'Untitled'}</span>
 			{#if away}
 				<span class="max-w-28 shrink-0 truncate text-xs text-muted-foreground">{away}</span>
@@ -1727,18 +1745,17 @@
 		</div>
 
 		{#if node && own && addressingHere}
-			<!-- In place rather than in a modal: a label is written where it is read. -->
 			<form
 				class="flex items-center gap-2 pt-1 pb-1"
 				onsubmit={(event) => {
 					event.preventDefault();
-					void writeAddress(addressTyped.trim() || null);
+					void writeAddress(addressTyped.trim().toLowerCase() || null);
 				}}
 			>
 				<Input
 					bind:ref={addressField}
 					bind:value={addressTyped}
-					class="address h-9 min-w-0 flex-1"
+					class="address h-11 min-w-0 flex-1"
 					autocapitalize="none"
 					autocomplete="off"
 					spellcheck="false"
@@ -1751,13 +1768,12 @@
 						stopAddressing();
 					}}
 				/>
-				<Button type="submit" size="sm" class="h-9 shrink-0" disabled={writingAddress}>Save</Button>
+				<Button type="submit" class="h-11 shrink-0" disabled={writingAddress}>Save</Button>
 				{#if node.address}
 					<Button
 						type="button"
 						variant="ghost"
-						size="sm"
-						class="h-9 shrink-0"
+						class="h-11 shrink-0"
 						disabled={writingAddress}
 						onclick={() => void writeAddress(null)}
 					>
@@ -1768,7 +1784,7 @@
 					type="button"
 					variant="ghost"
 					size="icon"
-					class="size-9 shrink-0"
+					class="size-11 shrink-0"
 					aria-label="Leave the address as it is"
 					disabled={writingAddress}
 					onclick={stopAddressing}
