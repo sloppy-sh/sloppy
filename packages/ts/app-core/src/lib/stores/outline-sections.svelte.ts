@@ -110,7 +110,10 @@ class OutlineSectionsStore {
 
 		const epoch = this.#epoch;
 		void api.updateBlock(section, { after }).then(
-			() => this.#answered(note, epoch),
+			(saved) => {
+				this.#took(saved, epoch);
+				this.#answered(note, epoch);
+			},
 			(err: unknown) => {
 				if (!this.#answered(note, epoch)) return;
 				void this.#read(note);
@@ -150,7 +153,8 @@ class OutlineSectionsStore {
 
 		const epoch = this.#epoch;
 		void api.updateBlock(section, { node, after }).then(
-			() => {
+			(saved) => {
+				this.#took(saved, epoch);
 				if (into) this.#answered(node, epoch);
 				this.#answered(from, epoch);
 			},
@@ -190,6 +194,12 @@ class OutlineSectionsStore {
 			if (held.some((one) => one.ref === section)) return note;
 		}
 		return undefined;
+	}
+
+	/** The section as the write left it, which is what the next write of it has
+	 *  to be made against. */
+	#took(section: BlockView, epoch: number): void {
+		if (epoch === this.#epoch) this.#rows.set(section.ref, section);
 	}
 
 	#asked(note: OwnedRef): void {

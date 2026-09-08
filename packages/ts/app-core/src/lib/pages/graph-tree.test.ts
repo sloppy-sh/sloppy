@@ -66,6 +66,13 @@ function render(props: {
 
 const rows = () => [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')];
 
+/** One tree's rows and the interiors opened between them, in the order they are
+ *  drawn; a tree owns its rows by id, so its own element holds nothing. */
+const rowsAndInteriors = (tree: Element): HTMLElement[] =>
+	([...tree.children] as HTMLElement[]).filter(
+		(part) => part.getAttribute('role') === 'treeitem' || part.hasAttribute('data-interior')
+	);
+
 const shown = () =>
 	rows().map(
 		(row) => row.querySelector('.address')?.textContent?.trim() ?? row.textContent?.trim()
@@ -327,7 +334,7 @@ describe('the notes last written into', () => {
 		render({ notes: branch, fields });
 		await settle();
 
-		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
 		expect(
 			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
 		).toEqual(['1a', '2']);
@@ -336,13 +343,17 @@ describe('the notes last written into', () => {
 		]);
 	});
 
-	it('opens the note whose row was tapped', async () => {
+	it('opens the note whose row was tapped on its own row down the tree', async () => {
 		finding(fake, { recent: [branch[1]] });
 		render({ notes: branch, fields });
 		await settle();
 
 		rows()[0].click();
-		expect(read).toEqual([ref(51)]);
+		await settle();
+		expect(read).toEqual([]);
+		expect(shown().slice(0, 3)).toEqual(['1a', '1', '1a']);
+		expect(target.querySelector(`[data-interior="${ref(51)}"]`)).not.toBeNull();
+		expect(said()).toBe('1a is open here');
 	});
 
 	it('asks for nothing where the branch is somebody else’s', async () => {
@@ -364,7 +375,7 @@ describe('the notes last written into', () => {
 		render({ notes: dozen, fields });
 		await settle();
 
-		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
 		expect(trees[0].querySelectorAll('.address')).toHaveLength(8);
 	});
 
@@ -373,7 +384,7 @@ describe('the notes last written into', () => {
 		render({ notes: branch, fields });
 		await settle();
 
-		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
 		expect(
 			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
 		).toEqual(['2']);
@@ -400,7 +411,7 @@ describe('the notes last written into', () => {
 			'Last written in Garden',
 			'Garden'
 		]);
-		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
 		expect(trees).toHaveLength(4);
 		expect(
 			[trees[0], trees[2]].map((tree) =>
@@ -468,7 +479,11 @@ describe('a note’s sections in the walk', () => {
 		render({ notes: branch, fields: [{ ref: THESIS, title: 'Thesis' }] });
 		await openInPlace();
 
-		expect(target.querySelector(`[data-interior="${NOTE}"]`)).not.toBeNull();
+		const held = target.querySelector(`[data-interior="${NOTE}"]`) as HTMLElement;
+		expect(held).not.toBeNull();
+		expect(held.textContent).toContain('The first thing');
+		expect(held.textContent).toContain('The last thing');
+		expect(held.querySelector('[contenteditable]')).not.toBeNull();
 		expect(handles()).toEqual([S1, S2]);
 		expect(read).toEqual([]);
 	});
@@ -558,8 +573,8 @@ describe('carrying a section out of the note it was written in', () => {
 	/** Note rows 44 tall, each open note's interior 60 under its own row. */
 	function lay(): void {
 		let y = 0;
-		for (const tree of target.querySelectorAll('[role="tree"]')) {
-			for (const part of [...tree.children] as HTMLElement[]) {
+		for (const tree of target.querySelectorAll('[data-tree]')) {
+			for (const part of rowsAndInteriors(tree)) {
 				const tall = part.hasAttribute('data-interior') ? 60 : 44;
 				box(part, y, y + tall);
 				for (const one of part.querySelectorAll<HTMLElement>('[data-handle]')) {

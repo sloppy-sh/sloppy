@@ -82,6 +82,13 @@
 			refused?: string;
 		};
 	}
+
+	let surfaces = 0;
+
+	function nextSurface(): string {
+		surfaces += 1;
+		return `tree${surfaces}`;
+	}
 </script>
 
 <script lang="ts">
@@ -252,6 +259,14 @@
 		return `${heads ? 'lead:' : ''}${held}`;
 	};
 
+	/** A tree owns its rows by id rather than by holding them, so a note opened
+	 *  under its row is written in outside the tree's own content: nothing a
+	 *  person writes in is a node of a tree. */
+	const uid = nextSurface();
+	const rowId = (group: string, heads: boolean, row: OutlineRow): string =>
+		`${uid}-${group}-${rowKey(heads, row)}`;
+	const interiorId = (note: OwnedRef): string => `${uid}-in-${note}`;
+
 	/** The tab stop: wherever focus was left, else the note being read, else the
 	 *  first row — so arriving on the tree lands where the reader is. */
 	function stop(key: string, heads: boolean, rows: readonly OutlineRow[]): string {
@@ -299,11 +314,40 @@
 		}
 		const note = row.note.ref;
 		if (choosing && onChoose) onChoose(note);
-		else if (sections && !heads) sections.onShow(note, !showing(note));
-		else onOpen(note);
+		else if (!sections) onOpen(note);
+		else if (heads) fromLead(row.note);
+		else showHere(row.note, !showing(note));
 	}
 
 	const showing = (ref: OwnedRef): boolean => sections?.shown.has(ref) ?? false;
+
+	/** A row's own act, which `aria-expanded` cannot carry: that attribute is the
+	 *  branch under the row, and this is the note inside it. */
+	function showHere(note: TreeNote, open: boolean): void {
+		sections?.onShow(note.ref, open);
+		told = open ? `${noteLabel(note)} is open here` : `${noteLabel(note)} is closed`;
+	}
+
+	/** The lead says what was written last, not where it stands, so a row of it
+	 *  opens the note on its own row down the tree and goes there. */
+	function fromLead(note: TreeNote): void {
+		for (const up of ancestry(note)) toggle(up, true);
+		showHere(note, true);
+		heading = note.ref;
+	}
+
+	/** The notes a note hangs off, nearest first, within the graph it is drawn
+	 *  in. */
+	function ancestry(note: TreeNote): OwnedRef[] {
+		const byRef = new Map(groups.flatMap((group) => group.notes).map((one) => [one.ref, one]));
+		const up: OwnedRef[] = [];
+		let at = byRef.get(note.ref)?.parent;
+		while (at !== undefined && byRef.has(at) && !up.includes(at)) {
+			up.push(at);
+			at = byRef.get(at)?.parent;
+		}
+		return up;
+	}
 
 	/** What a note row advertises for `aria-keyshortcuts`. */
 	const chords = (tree: boolean): string =>
@@ -330,7 +374,7 @@
 		heads: boolean
 	): void {
 		const item = event.currentTarget as HTMLElement;
-		const tree = item.closest('[role="tree"]');
+		const tree = item.closest('[data-tree]');
 		if (!tree) return;
 		const items = [...tree.querySelectorAll<HTMLElement>('[role="treeitem"]')];
 		const here = items.indexOf(item);
@@ -374,7 +418,7 @@
 			!heads &&
 			(event.key === 'ArrowRight' || event.key === 'ArrowLeft')
 		) {
-			sections.onShow(row.note.ref, event.key === 'ArrowRight');
+			showHere(row.note, event.key === 'ArrowRight');
 			event.preventDefault();
 			return;
 		}
@@ -447,6 +491,20 @@
 		scroller
 			.querySelector<HTMLElement>(`[data-row="${CSS.escape(landing)}"]`)
 			?.scrollIntoView?.({ block: 'nearest' });
+	});
+
+	/** A note asked for from the lead, until the branches above it are drawn and
+	 *  its own row is there to go to. */
+	let heading = $state<OwnedRef | null>(null);
+
+	$effect(() => {
+		void drawn;
+		const to = heading;
+		if (!to || !scroller) return;
+		const row = scroller.querySelector<HTMLElement>(`[data-row="${CSS.escape(to)}"]`);
+		if (!row) return;
+		heading = null;
+		row.scrollIntoView?.({ block: 'nearest' });
 	});
 
 	/** A note being carried to where it will be written — `tree-drag.ts`. */
@@ -664,14 +722,22 @@
 	 *  section it moves. */
 	const railed = new SvelteMap<OwnedRef, number>();
 
+	/** A handle is `size-11`, so two of them on sections shorter than that would
+	 *  paint over each other and take each other's press. */
+	const RAIL_STEP = 44;
+
 	function railing(host: HTMLElement): () => void {
 		let frame = 0;
 		const measure = (): void => {
 			frame = 0;
 			const top = host.getBoundingClientRect().top;
+			let floor = 0;
 			for (const drawn of host.querySelectorAll<HTMLElement>('[data-block-ref]')) {
 				const ref = drawn.dataset.blockRef as OwnedRef | undefined;
-				if (ref) railed.set(ref, drawn.getBoundingClientRect().top - top);
+				if (!ref) continue;
+				const at = Math.max(drawn.getBoundingClientRect().top - top, floor);
+				railed.set(ref, at);
+				floor = at + RAIL_STEP;
 			}
 		};
 		const soon = (): void => {
@@ -838,7 +904,12 @@
 						</h2>
 					{/if}
 
-					<div role="tree" data-tree={group} aria-label={by ?? (title || 'Notes')}>
+					<div data-tree={group}>
+						<div
+							role="tree"
+							aria-label={by ?? (title || 'Notes')}
+							aria-owns={rows.map((row) => rowId(group, heads, row)).join(' ')}
+						></div>
 						{#each rows as row (rowKey(heads, row))}
 							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
@@ -850,12 +921,16 @@
 								{@const drags = carryable ? 'Drag it to move this note' : undefined}
 								<div
 									role="treeitem"
+									id={rowId(group, heads, row)}
 									data-row={key}
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
 									aria-posinset={row.at}
 									aria-setsize={row.of}
 									aria-expanded={row.children > 0 ? row.open : undefined}
+									aria-controls={sections && !heads && showing(row.note.ref)
+										? interiorId(row.note.ref)
+										: undefined}
 									aria-selected={row.note.ref === reading}
 									aria-checked={chosen ? chosen.has(row.note.ref) : undefined}
 									aria-keyshortcuts={chords(!heads) || undefined}
@@ -1010,11 +1085,9 @@
 								</div>
 
 								{#if sections && !heads && showing(row.note.ref)}
-									<!-- The note itself, under its row: what is written in it is
-									     read and written here, and the handles beside it are what
-									     carry a section anywhere in the outline. -->
 									<div
 										role="group"
+										id={interiorId(row.note.ref)}
 										data-interior={row.note.ref}
 										aria-label="What is written in {noteLabel(row.note)}"
 										class="relative ps-11 pe-2 pb-2"
@@ -1079,6 +1152,7 @@
 							{:else if row.kind === 'says'}
 								<div
 									role="treeitem"
+									id={rowId(group, heads, row)}
 									data-row={key}
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
@@ -1098,6 +1172,7 @@
 							{:else}
 								<div
 									role="treeitem"
+									id={rowId(group, heads, row)}
 									data-row={key}
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}

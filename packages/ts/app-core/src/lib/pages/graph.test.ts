@@ -2882,6 +2882,32 @@ describe('reading the graph as an outline', () => {
 		expect(readingName()).toContain('Origins');
 		expect(labelled('Walk the notes one at a time')).toBeTruthy();
 	});
+
+	// The run at the head of the outline is the outline's own, so a row of it is
+	// read where the note stands like any other.
+	it('never opens the aside from the run of what was last written either', async () => {
+		finding(api, { recent: [graph.get(SECOND) as NodeView] });
+		await walk();
+
+		const head = document.body.querySelector<HTMLElement>(`[data-row="lead:${SECOND}"]`);
+		if (!head) throw new Error('The walk is not headed by what was last written');
+		head.click();
+		await settle();
+
+		expect(reading()).toBe(false);
+		expect(document.body.querySelector(`[data-interior="${SECOND}"]`)).not.toBeNull();
+	});
+
+	// AI.md § "The Genealogy Is the Protocol": the address is what a person cites
+	// and a peer resolves, so it has to land somewhere for whoever follows it.
+	it('opens a note reached by its address where it stands while the reader is walking', async () => {
+		prefs.set('walking', true);
+		startAt(`/n/${segments(FIRST)}`);
+		await open();
+
+		expect(document.body.querySelector(`[data-interior="${FIRST}"]`)).not.toBeNull();
+		expect(reading()).toBe(false);
+	});
 });
 
 // The sheet asks and the store forgets the graph; what only the page does is

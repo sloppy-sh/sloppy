@@ -44,6 +44,7 @@
 		onChoosing,
 		onToggle,
 		onOpen,
+		onReached,
 		writeUnder,
 		writeAlone
 	}: {
@@ -63,6 +64,9 @@
 		onChoosing?: (on: boolean) => void;
 		onToggle: (ref: OwnedRef, open: boolean) => void;
 		onOpen: (ref: OwnedRef) => void;
+		/** A note opened where it stands, so the graph behind the walk is at it
+		 *  when the reader goes back to it. */
+		onReached?: (ref: OwnedRef) => void;
 		/** Writing a note under a row, from the row. Absent where these notes are
 		 *  not the reader's to write under. */
 		writeUnder?: TreeSurfaceProps['writeUnder'];
@@ -155,7 +159,10 @@
 					shown: outlineSections.shown,
 					of: (note) => outlineSections.of(note),
 					says: (note) => outlineSections.says(note),
-					onShow: (note, show) => outlineSections.show(note, show),
+					onShow: (note, show) => {
+						outlineSections.show(note, show);
+						if (show) onReached?.(note);
+					},
 					onMove: (note, section, after) => outlineSections.move(note, section, after),
 					onCarry: {
 						into: (section, note, after) => outlineSections.moveTo(section, note, after),
@@ -237,8 +244,6 @@
 	 *  beside it. A reference into one of the reader's other graphs is written
 	 *  from the note's own page, which the row keeps an act away. */
 	function referencesFor(from: OwnedRef): NoteReferences {
-		// An address means one thing inside one graph, so what `[[` offers is the
-		// notes of the graph the note being written in was written in.
 		const field = byRef.get(from);
 		return {
 			find: (query: string) => {

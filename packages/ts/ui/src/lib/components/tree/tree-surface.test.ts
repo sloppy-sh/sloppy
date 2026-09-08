@@ -124,6 +124,13 @@ function render(
 
 const rows = () => [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')];
 
+/** One tree's rows and the interiors opened between them, in the order they are
+ *  drawn; a tree owns its rows by id, so its own element holds nothing. */
+const rowsAndInteriors = (tree: Element): HTMLElement[] =>
+	([...tree.children] as HTMLElement[]).filter(
+		(part) => part.getAttribute('role') === 'treeitem' || part.hasAttribute('data-interior')
+	);
+
 const labelled = (address: string) =>
 	rows().find((row) => row.textContent?.includes(address)) as HTMLElement;
 
@@ -571,7 +578,7 @@ describe('the notes last written into', () => {
 
 	it('heads the walk, in the order it was given rather than in address order', () => {
 		render({ lead: last });
-		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
 		expect(trees).toHaveLength(2);
 		expect(
 			[...trees[0].querySelectorAll('.address')].map((one) => one.textContent?.trim())
@@ -633,7 +640,7 @@ describe('the notes last written into', () => {
 			'Last written in Garden',
 			'Garden'
 		]);
-		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
 		expect(trees).toHaveLength(4);
 		expect(trees.map((tree) => tree.querySelector('.address')?.textContent?.trim())).toEqual([
 			'1',
@@ -648,7 +655,7 @@ describe('the notes last written into', () => {
 			lead: [{ group: 'one', title: 'Last written', notes: [note('2')] }],
 			reading: held('2')
 		});
-		const trees = [...target.querySelectorAll<HTMLElement>('[role="tree"]')];
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
 		expect(scrolledTo).toEqual([trees[1].querySelector(`[data-row="${held('2')}"]`)]);
 	});
 });
@@ -1430,8 +1437,8 @@ describe('a note read and arranged under its row in the walk', () => {
 	 *  the writing surface drew in it, 40 apiece. */
 	function lay(): void {
 		let y = 0;
-		for (const tree of target.querySelectorAll('[role="tree"]')) {
-			for (const part of [...tree.children] as HTMLElement[]) {
+		for (const tree of target.querySelectorAll('[data-tree]')) {
+			for (const part of rowsAndInteriors(tree)) {
 				const drawn = [...part.querySelectorAll<HTMLElement>('[data-block-ref]')];
 				const tall = part.hasAttribute('data-interior') ? Math.max(40, drawn.length * 40) : 44;
 				box(part, y, y + tall);
@@ -1592,6 +1599,67 @@ describe('a note read and arranged under its row in the walk', () => {
 		render({ sections: sections(), interior });
 		expect(labelled('About 1').getAttribute('aria-expanded')).toBe('false');
 		expect(labelled('About 2').getAttribute('aria-expanded')).toBeNull();
+	});
+
+	it('says a note is open where it stands, and closed again', () => {
+		const surface = sections([]);
+		render({ sections: surface, interior });
+		labelled('About 1').click();
+		flushSync();
+		expect(said()).toBe('1 is open here');
+
+		surface.shown.add(held('1'));
+		flushSync();
+		labelled('About 1').click();
+		flushSync();
+		expect(said()).toBe('1 is closed');
+	});
+
+	it('points the row at what it opened, and leaves the writing outside the tree', () => {
+		render({ sections: sections(), interior });
+		const tree = target.querySelector('[role="tree"]') as HTMLElement;
+		expect(tree.querySelector('[data-interior]')).toBeNull();
+		expect(tree.querySelector('[role="treeitem"]')).toBeNull();
+		expect(tree.getAttribute('aria-owns')?.split(' ')).toContain(labelled('About 1').id);
+		expect(labelled('About 1').getAttribute('aria-controls')).toBe(interiorOf(held('1')).id);
+		expect(labelled('About 2').getAttribute('aria-controls')).toBeNull();
+	});
+
+	it('stands each handle clear of the one above it, however short the section', () => {
+		render({ sections: sections(), interior });
+		expect([S1, S2, S3].map((one) => gripIn(one).parentElement?.style.top)).toEqual([
+			'0px',
+			'44px',
+			'88px'
+		]);
+	});
+
+	it('opens a note tapped at the head of the walk on its own row down the tree', () => {
+		render({
+			lead: [{ group: 'one', title: 'Last written', notes: [note('1a1', '1a')] }],
+			sections: sections([]),
+			interior
+		});
+		rows()[0].click();
+		flushSync();
+		expect(shows).toEqual([[held('1a1'), true]]);
+		expect(openedNotes).toEqual([]);
+		expect(toggled).toEqual([
+			[held('1a'), true],
+			[held('1'), true]
+		]);
+	});
+
+	it('takes the walk down to that row once the tree draws it', () => {
+		render({
+			lead: [{ group: 'one', title: 'Last written', notes: [note('2')] }],
+			sections: sections([]),
+			interior
+		});
+		rows()[0].click();
+		flushSync();
+		const trees = [...target.querySelectorAll<HTMLElement>('[data-tree]')];
+		expect(scrolledTo).toEqual([trees[1].querySelector(`[data-row="${held('2')}"]`)]);
 	});
 
 	it('leaves the sections chord to the tree, not to the run at its head', () => {

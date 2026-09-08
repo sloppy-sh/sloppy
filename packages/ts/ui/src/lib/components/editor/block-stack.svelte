@@ -1108,8 +1108,6 @@
 		--block-gutter: 1.75rem;
 		--block-line: 1.75rem;
 	}
-	/* Whoever hosts this surface without its handles owns the gutter they stood
-	   in, and stands its own there instead. */
 	.note-body.no-gutter {
 		--block-gutter: 0rem;
 	}

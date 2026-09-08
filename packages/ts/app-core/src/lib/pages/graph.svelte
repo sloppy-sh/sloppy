@@ -730,6 +730,7 @@
 			await reachHeld(cited);
 			return;
 		}
+		openInPlace(cited);
 		const note = nodes.get(cited) ?? (await nodes.fetch(cited).catch(() => null));
 		if (note && !graphs.onCanvas.includes(graphOf(note))) graphs.enter(graphOf(note));
 	}
@@ -892,10 +893,14 @@
 			wrote?.typed && (wrote.typed.title || wrote.typed.body) ? { ref, ...wrote.typed } : null;
 		leaveWriting();
 		refused = null;
-		// The outline reads a note where the note stands, so one opened while the
-		// walk is up opens there rather than beside it.
-		if (walking) outlineSections.show(ref, true);
+		openInPlace(ref);
 		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
+	}
+
+	/** The outline reads a note where the note stands, so one reached while the
+	 *  walk is up opens under its own row rather than beside the graph. */
+	function openInPlace(ref: OwnedRef): void {
+		if (walking) outlineSections.show(ref, true);
 	}
 
 	/** A note's own page, which is off the outline: the walk reads and arranges,
@@ -1847,6 +1852,7 @@
 					onChoosing={foreign ? undefined : (on) => (on ? startChoosing() : stopChoosing())}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
 					onOpen={foreign ? (ref) => void readHeld(ref) : openPage}
+					onReached={(ref) => (bringingTo = ref)}
 					writeUnder={foreign ? undefined : writeFromRow}
 					writeAlone={foreign ? undefined : writeAlone}
 				/>
