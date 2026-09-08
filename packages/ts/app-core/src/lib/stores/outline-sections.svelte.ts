@@ -2,8 +2,8 @@
  * The sections of the notes a reader has opened in the outline: what each one
  * says on its first line, and which notes are showing them.
  *
- * AI.md § "A Block Is a Section": moving one within its note is the only act
- * here.
+ * AI.md § "A Block Is a Section": the acts here are moving one within its note
+ * and carrying one into another note.
  */
 
 import { type BlockView, compareOrd, type OwnedRef } from '@sloppy/types';
@@ -81,9 +81,7 @@ class OutlineSectionsStore {
 		if (to === 0 && after !== null) return;
 		this.#held.set(note, [...rest.slice(0, to), held[at], ...rest.slice(to)]);
 		this.#trouble.delete(note);
-
-		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
-		this.#moves.set(note, { ...moves, asked: moves.asked + 1 });
+		this.#asked(note);
 
 		const epoch = this.#epoch;
 		void api.updateBlock(section, { after }).then(
@@ -92,6 +90,55 @@ class OutlineSectionsStore {
 				if (!this.#answered(note, epoch)) return;
 				void this.#read(note);
 				this.#trouble.set(note, serverMessage(err) ?? UNMOVED);
+			}
+		);
+	}
+
+	/** Carry a section into `node`, out of whichever note holds it: `after` is
+	 *  the section of `node` it is to follow, null its top. Both stacks move at
+	 *  once; a refused write reads them again. */
+	moveTo(section: OwnedRef, node: OwnedRef, after: OwnedRef | null): void {
+		const from = this.#noteOf(section);
+		if (from === undefined) return;
+		if (from === node) {
+			this.move(node, section, after);
+			return;
+		}
+		const held = this.#held.get(from) ?? [];
+		const carried = held.find((one) => one.ref === section);
+		if (!carried) return;
+
+		const into = this.#held.get(node);
+		if (into) {
+			const to = after === null ? 0 : into.findIndex((one) => one.ref === after) + 1;
+			if (to === 0 && after !== null) return;
+			this.#held.set(node, [...into.slice(0, to), carried, ...into.slice(to)]);
+			this.#trouble.delete(node);
+			this.#asked(node);
+		}
+		this.#held.set(
+			from,
+			held.filter((one) => one.ref !== section)
+		);
+		this.#trouble.delete(from);
+		this.#asked(from);
+
+		const epoch = this.#epoch;
+		void api.updateBlock(section, { node, after }).then(
+			() => {
+				if (into) this.#answered(node, epoch);
+				this.#answered(from, epoch);
+			},
+			(err: unknown) => {
+				if (into) this.#answered(node, epoch);
+				if (!this.#answered(from, epoch)) return;
+				const says = serverMessage(err) ?? UNMOVED;
+				void this.#read(from);
+				this.#trouble.set(from, says);
+				if (into) {
+					void this.#read(node);
+					this.#trouble.set(node, says);
+				}
 			}
 		);
 	}
@@ -110,6 +157,18 @@ class OutlineSectionsStore {
 		this.#trouble.clear();
 		this.#inflight.clear();
 		this.#moves.clear();
+	}
+
+	#noteOf(section: OwnedRef): OwnedRef | undefined {
+		for (const [note, held] of this.#held) {
+			if (held.some((one) => one.ref === section)) return note;
+		}
+		return undefined;
+	}
+
+	#asked(note: OwnedRef): void {
+		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
+		this.#moves.set(note, { ...moves, asked: moves.asked + 1 });
 	}
 
 	#answered(note: OwnedRef, epoch: number): boolean {

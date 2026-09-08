@@ -6,6 +6,7 @@
 import {
 	addressDepth,
 	type AnsweredNote,
+	type BlockView,
 	type Converses,
 	type CreateNodeRequest,
 	graphOf,
@@ -18,6 +19,7 @@ import {
 	type RefuseVoiceRequest,
 	type SearchHit,
 	type SetAddressRequest,
+	UpdateBlockRequestSchema,
 	type Viewer
 } from '@sloppy/types';
 import { resetApi } from '../api.js';
@@ -173,6 +175,81 @@ export function writing(api: FakeApi, answer: (request: CreateNodeRequest) => No
 	api.on('POST /nodes', (_url, init) =>
 		answer(JSON.parse(String(init?.body ?? '{}')) as CreateNodeRequest)
 	);
+}
+
+/**
+ * Answer how a note's sections are read and arranged, over stacks held here: a
+ * listing, a section moved within its note, and one carried into another note.
+ * The stacks are handed back, so a suite reads what the writes left rather than
+ * what they said. Every note a write can reach needs a stack, empty or not.
+ *
+ * A stack a write touches is renumbered end to end instead of the moved row
+ * being placed between its neighbours — nothing here reads an `ord` but the
+ * order it puts a stack in.
+ */
+export function arranging(
+	api: FakeApi,
+	stacks: Record<OwnedRef, readonly BlockView[]>
+): Map<OwnedRef, BlockView[]> {
+	const held = new Map<OwnedRef, BlockView[]>(
+		Object.entries(stacks).map(([note, stack]) => [note as OwnedRef, [...stack]])
+	);
+	let writes = 0;
+	const refused = (says: string, status: number) =>
+		new Response(JSON.stringify({ message: says }), { status });
+
+	const write = (section: OwnedRef, body: string): unknown => {
+		const asked = UpdateBlockRequestSchema.safeParse(JSON.parse(body));
+		if (!asked.success) return refused('That is not a write of a section.', 400);
+		const was = [...held].find(([, stack]) => stack.some((one) => one.ref === section))?.[0];
+		const stack = was === undefined ? undefined : held.get(was);
+		const row = stack?.find((one) => one.ref === section);
+		if (was === undefined || !stack || !row) return refused('That section is not here.', 404);
+		if (asked.data.expects !== undefined && asked.data.expects !== row.updated_at) {
+			return refused('This section was written somewhere else.', 409);
+		}
+		const note = asked.data.node ?? was;
+		if (!held.has(note)) return refused('That note is not here.', 404);
+
+		const rest = (held.get(note) as BlockView[]).filter((one) => one.ref !== section);
+		let at: number;
+		if (asked.data.after === undefined && note === was) at = stack.indexOf(row);
+		else if (!asked.data.after) at = 0;
+		else {
+			at = rest.findIndex((one) => one.ref === asked.data.after) + 1;
+			if (at === 0) return refused('That section is not in this note.', 400);
+		}
+
+		writes += 1;
+		const written: BlockView = {
+			...row,
+			node: note,
+			...(asked.data.content === undefined ? {} : { content: asked.data.content }),
+			updated_at: new Date(Date.parse(AT) + writes * 1000).toISOString()
+		};
+		held.set(
+			was,
+			(held.get(was) as BlockView[]).filter((one) => one.ref !== section)
+		);
+		const landed = [...rest.slice(0, at), written, ...rest.slice(at)].map((one, i) => ({
+			...one,
+			ord: String(i).padStart(3, '0')
+		}));
+		held.set(note, landed);
+		return landed[at];
+	};
+
+	for (const note of held.keys()) {
+		api.on(`GET /nodes${refPath(note)}/blocks`, () => held.get(note));
+	}
+	for (const stack of Object.values(stacks)) {
+		for (const one of stack) {
+			api.on(`PATCH /blocks${refPath(one.ref)}`, (_url, init) =>
+				write(one.ref, String(init?.body ?? '{}'))
+			);
+		}
+	}
+	return held;
 }
 
 export const VIEWER: Viewer = {

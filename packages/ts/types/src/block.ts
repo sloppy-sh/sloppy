@@ -58,6 +58,12 @@ export type CreateBlockRequest = z.input<typeof CreateBlockRequestSchema>;
 /**
  * `after` absent leaves the position alone; `null` moves the block to the top.
  *
+ * `node` absent leaves the block in the note it is already in. Given, it names
+ * the note the block belongs to after the write — which must be the writer's
+ * own, and is refused otherwise — and the block leaves the stack it was in.
+ * `after` then names a section of THAT note; `null` or absent puts it at the
+ * top, since a block arriving has no position there to leave alone.
+ *
  * `expects` is the `updated_at` the writer last read off this section. Absent
  * asks for no precondition and overwrites whatever is there; a value that does
  * not match the row the write lands on means the section was written somewhere
@@ -65,6 +71,7 @@ export type CreateBlockRequest = z.input<typeof CreateBlockRequestSchema>;
  * with it.
  */
 export const UpdateBlockRequestSchema = z.object({
+  node: OwnedRefSchema.optional(),
   after: OwnedRefSchema.nullable().optional(),
   content: BlockDocumentSchema.optional(),
   expects: TimestampSchema.optional(),

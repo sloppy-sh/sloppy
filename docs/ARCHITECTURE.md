@@ -1530,7 +1530,8 @@ TipTap/ProseMirror document — as many paragraphs, headings, lists, drawings an
 as somebody wrote into that section — and a note is an ordered stack of those rows.
 Adding one is an explicit act, so the row count is the number of sections a person made
 rather than the number of times they pressed Enter, and the drag handle moves a thought
-rather than a line.
+rather than a line. A block belongs to one note at a time and may be carried between two
+notes of the same owner, which is what `node` on `UpdateBlockRequest` asks for.
 
 **The stored shape is the editor's own, stored losslessly.** Markdown cannot carry ink
 strokes or a picture's dimensions, and a single side-payload column cannot describe a

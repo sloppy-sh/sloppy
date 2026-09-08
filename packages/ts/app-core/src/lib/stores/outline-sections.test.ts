@@ -1,24 +1,33 @@
 import type { BlockView, OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AT, DID, type FakeApi, ref, useFakeApi } from './fake-api.test-support.js';
+import { arranging, AT, DID, type FakeApi, ref, useFakeApi } from './fake-api.test-support.js';
 import { outlineSections } from './outline-sections.svelte.js';
 
 const NOTE = ref(100);
 const S1 = ref(101);
 const S2 = ref(102);
 const S3 = ref(103);
+const OTHER = ref(200);
+const O1 = ref(201);
+const O2 = ref(202);
+const ELSEWHERE = ref(300);
 
 const PATH = `/nodes/${encodeURIComponent(DID)}/${encodeURIComponent(NOTE.split('/')[1])}/blocks`;
 const blockPath = (of: OwnedRef) =>
 	`/blocks/${encodeURIComponent(DID)}/${encodeURIComponent(of.split('/')[1])}`;
 
-function block(of: OwnedRef, ord: string, content: BlockView['content']): BlockView {
+function block(
+	of: OwnedRef,
+	ord: string,
+	content: BlockView['content'],
+	inNote: OwnedRef = NOTE
+): BlockView {
 	return {
 		ref: of,
 		created_by: DID,
 		created_at: AT,
 		updated_at: `2026-01-0${ord}T00:00:00.000Z`,
-		node: NOTE,
+		node: inNote,
 		ord,
 		content
 	};
@@ -33,6 +42,11 @@ const STACK = [
 	block(S1, '1', words('The first thing')),
 	block(S2, '2', { type: 'doc', content: [{ type: 'ink', attrs: { strokes: [] } }] }),
 	block(S3, '3', words('The last thing'))
+];
+
+const OTHER_STACK = [
+	block(O1, '1', words('Something else'), OTHER),
+	block(O2, '2', words('And after it'), OTHER)
 ];
 
 let api: FakeApi;
@@ -261,5 +275,99 @@ describe('arranging a note’s sections', () => {
 		outlineSections.mine('did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH');
 		expect(outlineSections.of(NOTE)).toBeUndefined();
 		expect(outlineSections.shown.has(NOTE)).toBe(false);
+	});
+});
+
+describe('carrying a section into another note', () => {
+	/** The stacks the server holds, as the writes leave them. */
+	let stacks: Map<OwnedRef, BlockView[]>;
+
+	beforeEach(async () => {
+		stacks = arranging(api, { [NOTE]: STACK, [OTHER]: OTHER_STACK, [ELSEWHERE]: [] });
+		outlineSections.show(NOTE, true);
+		outlineSections.show(OTHER, true);
+		await settle();
+	});
+
+	/** What the server holds for a note, in order. */
+	const held = (note: OwnedRef) => stacks.get(note)?.map((one) => one.ref);
+
+	it('takes it out of one stack and into the other at once', async () => {
+		outlineSections.moveTo(S3, OTHER, O1);
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2]);
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([O1, S3, O2]);
+
+		await settle();
+		expect(held(NOTE)).toEqual([S1, S2]);
+		expect(held(OTHER)).toEqual([O1, S3, O2]);
+		expect(outlineSections.says(OTHER).says).toBe('');
+		expect(outlineSections.says(NOTE).says).toBe('');
+	});
+
+	it('lands it at the top of the note it arrives in', async () => {
+		outlineSections.moveTo(S1, OTHER, null);
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([S1, O1, O2]);
+
+		await settle();
+		expect(held(OTHER)).toEqual([S1, O1, O2]);
+		expect(stacks.get(OTHER)?.[0].node).toBe(OTHER);
+	});
+
+	it('carries one into a note whose stack is not in hand', async () => {
+		outlineSections.moveTo(S2, ELSEWHERE, null);
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S3]);
+		expect(outlineSections.of(ELSEWHERE)).toBeUndefined();
+
+		await settle();
+		outlineSections.show(ELSEWHERE, true);
+		await settle();
+		expect(outlineSections.of(ELSEWHERE)?.map((one) => one.says)).toEqual(['A drawing']);
+	});
+
+	it('moves it within its own note when that is the note it is carried to', async () => {
+		outlineSections.moveTo(S3, NOTE, null);
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+
+		await settle();
+		expect(held(NOTE)).toEqual([S3, S1, S2]);
+	});
+
+	// Both stacks were disturbed, so both are read again and both say so.
+	it('puts both stacks back and says what to do when the write is refused', async () => {
+		api.on(
+			`PATCH ${blockPath(S3)}`,
+			() => new Response('{"message":"This section was written somewhere else."}', { status: 409 })
+		);
+		outlineSections.moveTo(S3, OTHER, null);
+		await settle();
+
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2, S3]);
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([O1, O2]);
+		expect(outlineSections.says(NOTE).says).toBe('This section was written somewhere else.');
+		expect(outlineSections.says(OTHER).says).toBe('This section was written somewhere else.');
+	});
+
+	it('carries nothing for a section no stack in hand holds', async () => {
+		outlineSections.moveTo(ref(999), OTHER, null);
+		await settle();
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([O1, O2]);
+		expect(held(OTHER)).toEqual([O1, O2]);
+	});
+
+	it('carries nothing where the section it is to follow is not in that note', async () => {
+		outlineSections.moveTo(S3, OTHER, S1);
+		await settle();
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2, S3]);
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([O1, O2]);
+	});
+
+	it('holds a carry against a listing that was already in the air', async () => {
+		outlineSections.show(OTHER, false);
+		outlineSections.show(OTHER, true);
+		outlineSections.moveTo(S3, OTHER, null);
+		await settle();
+
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([S3, O1, O2]);
+		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2]);
 	});
 });
