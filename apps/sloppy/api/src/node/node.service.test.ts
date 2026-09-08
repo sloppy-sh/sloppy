@@ -992,6 +992,145 @@ describe("the label a person writes on a note", () => {
   });
 });
 
+describe("the number a person names for a note they are writing", () => {
+  /** `2`, with `2c` under it, and `3` beside them. */
+  const beside = () => {
+    const root = live("2");
+    const under = live("2c", { origin: root.ref, parent: root.ref });
+    const other = live("3");
+    return { root, under, other, all: [root, under, other] };
+  };
+
+  const refused = async (
+    service: NodeService,
+    request: Parameters<NodeService["create"]>[1],
+  ) => {
+    const written = service.create(DID, request);
+    await expect(written).rejects.toBeInstanceOf(BadRequestException);
+    return written.catch((err: Error) => err.message);
+  };
+
+  it("is what the note takes, rather than the one the rule would offer", async () => {
+    const { root, all } = beside();
+    const { service } = notebook(all);
+
+    const written = await service.create(DID, {
+      from: { relation: "under", note: root.ref },
+      address: "2z",
+      title: "Osmosis",
+      tags: [],
+    });
+
+    expect([written.address, written.depth, written.parent]).toEqual([
+      "2z",
+      2,
+      root.ref,
+    ]);
+  });
+
+  it("opens a branch at a whole number nobody is at", async () => {
+    const { all } = beside();
+    const { service } = notebook(all);
+
+    const written = await service.create(DID, {
+      from: { relation: "branch" },
+      address: "9",
+      title: "",
+      tags: [],
+    });
+
+    expect([written.address, written.depth, written.parent]).toEqual([
+      "9",
+      1,
+      undefined,
+    ]);
+  });
+
+  it("is refused where another note is already at it", async () => {
+    const { root, all } = beside();
+    const { service } = notebook(all);
+
+    expect(
+      await refused(service, {
+        from: { relation: "under", note: root.ref },
+        address: "2c",
+        title: "",
+        tags: [],
+      }),
+    ).toMatch(/2c already leads to “2c”\. Pick another number\./);
+  });
+
+  it("is refused where it still leads to a note carried away from it", async () => {
+    const { root, under, other, all } = beside();
+    const { service } = notebook(all);
+    await service.move(DID, under.ref, { relation: "under", note: other.ref });
+
+    expect(
+      await refused(service, {
+        from: { relation: "under", note: root.ref },
+        address: "2c",
+        title: "",
+        tags: [],
+      }),
+    ).toMatch(/2c still leads to “2c”/);
+  });
+
+  it("is refused where it does not spring from the note it is written under", async () => {
+    const { other, all } = beside();
+    const { service } = notebook(all);
+
+    expect(
+      await refused(service, {
+        from: { relation: "under", note: other.ref },
+        address: "2d",
+        title: "",
+        tags: [],
+      }),
+    ).toMatch(/2d does not spring from 3\. Number it under 3 instead\./);
+  });
+
+  it("is refused where it springs from a note and this one springs from nothing", async () => {
+    const { all } = beside();
+    const { service } = notebook(all);
+
+    expect(
+      await refused(service, {
+        from: { relation: "branch" },
+        address: "9a",
+        title: "",
+        tags: [],
+      }),
+    ).toMatch(/9a springs from another note/);
+  });
+
+  it("is refused under a note whose author numbered none", async () => {
+    const above = unnumbered("Mushrooms");
+    const { service } = notebook([above]);
+
+    expect(
+      await refused(service, {
+        from: { relation: "under", note: above.ref },
+        address: "3a",
+        title: "",
+        tags: [],
+      }),
+    ).toMatch(/“Mushrooms” has no number/);
+  });
+
+  it("is refused beside a placement that names a branch's number too", async () => {
+    const { service } = notebook([]);
+
+    expect(
+      await refused(service, {
+        from: { relation: "root", address: "9" },
+        address: "9",
+        title: "",
+        tags: [],
+      }),
+    ).toMatch(/Sloppy is out of date/);
+  });
+});
+
 // A label sits wherever its author wrote it, so the run the store reads by
 // parent is not the whole of what a number could be on. These are the sequences
 // where the rule offers a number somebody has already written somewhere else.

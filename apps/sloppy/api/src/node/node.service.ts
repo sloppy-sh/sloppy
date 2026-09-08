@@ -310,7 +310,15 @@ export class NodeService {
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
     const from = request.from;
+    if (from?.relation === "root" && request.address !== undefined) {
+      throw new BadRequestException(
+        "Sloppy is out of date. Update it and try again.",
+      );
+    }
     return this.addressing.run(did, async () => {
+      if (request.address !== undefined) {
+        return this.writeNumbered(did, request, request.address);
+      }
       if (from?.relation === "root") {
         return this.writeAt(
           did,
@@ -428,11 +436,30 @@ export class NodeService {
     ) {
       return;
     }
-    if (held.note === undefined) throw leadsNowhere(address);
+    throw await this.leadsElsewhere(did, address, held);
+  }
+
+  /** The same question asked for a note that does not exist yet, which no
+   *  address in the graph can be leading to. */
+  private async requireUnheld(
+    did: string,
+    graph: OwnedRef,
+    address: Address,
+  ): Promise<void> {
+    const held = await this.nodes.addressLeadsTo(did, graph, address);
+    if (held !== null) throw await this.leadsElsewhere(did, address, held);
+  }
+
+  private async leadsElsewhere(
+    did: string,
+    address: Address,
+    held: { hold: AddressHold; note?: OwnedRef },
+  ): Promise<BadRequestException> {
+    if (held.note === undefined) return leadsNowhere(address);
     const at =
       (await this.nodes.find(did, held.note)) ??
       (await this.nodes.findDeleted(did, held.note));
-    throw leadsTo(address, held.hold, at);
+    return leadsTo(address, held.hold, at);
   }
 
   /**
@@ -936,6 +963,37 @@ export class NodeService {
     } catch (err) {
       const lost = await this.nodes.addressTaken(did, graph, address);
       if (lost) throw taken(address, lost);
+      throw err;
+    }
+  }
+
+  /**
+   * A note written at the address its author named rather than at the one the
+   * rule offers. Held to everything {@link setAddress} holds a label to, and to
+   * the one thing a standing note is not held to: it springs from the address
+   * of the note it is written under, or from nothing where it opens a branch.
+   */
+  private async writeNumbered(
+    did: string,
+    request: CreateRequest,
+    address: Address,
+  ): Promise<NodeView> {
+    const { graph, parent } = await this.placeFor(did, request.from);
+    const under = parent === null ? null : parent.address;
+    if (under === undefined) {
+      throw new BadRequestException(
+        `${called(parent)} has no number, so a note springing from it can carry none either. Number that note first, or write this one without a number.`,
+      );
+    }
+    if (impliedParent(address) !== under)
+      throw springsElsewhere(address, under);
+    await this.requireUnheld(did, graph, address);
+    try {
+      return entityView(
+        await this.nodes.insert(newNode(did, graph, parent, request, address)),
+      );
+    } catch (err) {
+      await this.requireUnheld(did, graph, address);
       throw err;
     }
   }
