@@ -391,9 +391,19 @@ export class SloppyClient {
    * Carry a note somewhere else, with everything that sprang from it. Answers
    * the note and every note under it as they now stand — the whole subtree,
    * because a move re-addresses all of them.
+   *
+   * `address` is the label the person named for it; absent leaves it to the
+   * rule, which is the next address in the run the note joins.
    */
-  async moveNote(ref: OwnedRef, to: NoteDestination): Promise<NodeView[]> {
-    const body = await this.send("POST", `/nodes${refPath(ref)}/move`, { to });
+  async moveNote(
+    ref: OwnedRef,
+    to: NoteDestination,
+    address?: Address,
+  ): Promise<NodeView[]> {
+    const body = await this.send("POST", `/nodes${refPath(ref)}/move`, {
+      to,
+      ...(address === undefined ? {} : { address }),
+    });
     return (body as unknown[]).map(parseNodeView);
   }
 

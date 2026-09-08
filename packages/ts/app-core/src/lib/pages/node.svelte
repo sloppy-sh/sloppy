@@ -52,6 +52,7 @@
 		LookControls,
 		MoveSheet,
 		nameOf,
+		NestingSheet,
 		namedBranch,
 		namedBranches,
 		NoteMenu,
@@ -64,6 +65,7 @@
 		textDocument,
 		writeTemplate,
 		type MoveTarget,
+		type NestingAsk,
 		type NoteMenuItem,
 		type NoteReferences,
 		type NoteTemplate,
@@ -92,6 +94,7 @@
 	import { people } from '../stores/people.svelte.js';
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
+	import { addressNesting, type AddressNesting } from './address-nesting.js';
 	import { citationUrl } from './routes.js';
 	import { WRITE_UNDER } from './shortcuts.js';
 	import { session } from '../stores/session.svelte.js';
@@ -313,7 +316,14 @@
 
 	$effect(() => {
 		onAsking?.(
-			acting || tagging || linking || carrying || publishing || removing || shaping !== null
+			acting ||
+				tagging ||
+				linking ||
+				carrying ||
+				publishing ||
+				removing ||
+				nesting !== null ||
+				shaping !== null
 		);
 		return () => onAsking?.(false);
 	});
@@ -809,6 +819,7 @@
 	const addressingHere = $derived(addressing === ref);
 
 	function startAddressing(): void {
+		nesting = null;
 		addressing = ref;
 		addressTyped = node?.address ?? '';
 		refuse(ref, 'address', null);
@@ -816,6 +827,7 @@
 
 	function stopAddressing(): void {
 		refuse(ref, 'address', null);
+		nesting = null;
 		addressing = null;
 	}
 
@@ -825,19 +837,67 @@
 		addressField?.select();
 	});
 
-	/** `null` takes the address off. Nothing else in the graph moves — an address
-	 *  is one note's own label. */
+	/** An address whose shape says this note springs from somewhere it does not,
+	 *  until the reader has said what they meant by it. */
+	let nesting = $state<{ of: OwnedRef; taking: Address; what: AddressNesting } | null>(null);
+
+	/** How the note this one springs from reads, for the words that offer to
+	 *  leave it there. */
+	const springsFrom = $derived.by(() => {
+		const above = node?.parent === undefined ? undefined : nodes.get(node.parent);
+		return above === undefined ? undefined : noteLabel(above);
+	});
+
+	const nestingAsk = $derived.by((): NestingAsk | null => {
+		const asking = nesting;
+		if (!asking) return null;
+		const shown = { address: asking.taking, ...(springsFrom ? { here: springsFrom } : {}) };
+		if (asking.what.act === 'branch') return { ...shown, kind: 'branch' };
+		if (asking.what.act === 'nowhere') {
+			return { ...shown, kind: 'nowhere', parent: asking.what.parent };
+		}
+		if (asking.what.act === 'carry') {
+			return {
+				...shown,
+				kind: 'carry',
+				under: noteLabel(asking.what.under),
+				...(asking.what.address ? { takes: asking.what.address } : {})
+			};
+		}
+		return null;
+	});
+
+	/** `null` takes the address off. An address that says this note springs from
+	 *  another one asks first — {@link addressNesting} — and everything else is
+	 *  the note's own label and moves nothing. */
 	async function writeAddress(taking: string | null): Promise<void> {
 		const of = ref;
 		if (taking !== null && !isAddress(taking)) {
 			refuse(of, 'address', 'Number a note like 1a1: a number first, then letters and numbers.');
 			return;
 		}
+		if (taking !== null && node) {
+			const what = addressNesting(node, taking, here);
+			if (what.act === 'refuse') {
+				refuse(of, 'address', what.words);
+				return;
+			}
+			if (what.act !== 'write') {
+				refuse(of, 'address', null);
+				nesting = { of, taking, what };
+				return;
+			}
+		}
+		await saveAddress(of, taking);
+	}
+
+	async function saveAddress(of: OwnedRef, taking: string | null): Promise<void> {
 		writingAddress = true;
 		refuse(of, 'address', null);
 		try {
 			await nodes.setAddress(of, taking);
 			if (addressing === of) addressing = null;
+			nesting = null;
 			acknowledge(taking === null ? 'Address taken off.' : `This note is ${taking}.`);
 		} catch (error) {
 			refuse(
@@ -848,6 +908,23 @@
 		} finally {
 			writingAddress = false;
 		}
+	}
+
+	/** The note carried to where the number a person wrote says it springs from,
+	 *  taking that number as it lands. */
+	async function carryToNesting(): Promise<void> {
+		const asking = nesting;
+		if (!asking || !node) return;
+		const to =
+			asking.what.act === 'carry'
+				? ({ relation: 'under', note: asking.what.under.ref } as const)
+				: ({ relation: 'after', note: node.origin } as const);
+		const taking = asking.what.act === 'carry' ? asking.what.address : asking.taking;
+		if (!(await carryTo(to, taking))) return;
+		nesting = null;
+		if (addressing === asking.of) addressing = null;
+		const landed = nodes.get(asking.of)?.address;
+		acknowledge(landed ? `This note is ${landed}.` : 'Note moved.');
 	}
 
 	async function handOver(text: string, landed: string): Promise<void> {
@@ -1451,23 +1528,31 @@
 		cited = '';
 	}
 
-	async function carryTo(to: { relation: 'under' | 'after'; note: OwnedRef }): Promise<void> {
+	/** Whether it landed, so a surface that asked can stand until it has. */
+	async function carryTo(
+		to: { relation: 'under' | 'after'; note: OwnedRef },
+		taking: Address | undefined = undefined
+	): Promise<boolean> {
 		const of = ref;
+		if (relocating.has(of)) return false;
+		// The surface that asked is the one the refusal has to reach.
+		const asked = nesting === null ? 'move' : 'address';
 		const was = node?.address;
-		if (!was || relocating.has(of)) return;
 		relocating.add(of);
-		refuse(of, 'move', null);
+		refuse(of, asked, null);
 		try {
-			await nodes.move(of, to);
-			moved = { of, was };
+			await nodes.move(of, to, taking);
+			if (was) moved = { of, was };
 			carrying = false;
 			sought = '';
+			return true;
 		} catch (error) {
 			refuse(
 				of,
-				'move',
+				asked,
 				serverMessage(error) ?? 'Sloppy could not move that note. Try again in a moment.'
 			);
+			return false;
 		} finally {
 			relocating.delete(of);
 		}
@@ -2240,6 +2325,26 @@
 				onquery={(words) => (sought = words)}
 				onmove={(to) => void carryTo(to)}
 			/>
+			{#if nestingAsk}
+				<NestingSheet
+					open={nesting !== null}
+					onOpenChange={(shown) => {
+						if (!shown) nesting = null;
+					}}
+					ask={nestingAsk}
+					refused={refused.address ?? null}
+					busy={writingAddress || relocating.has(ref)}
+					oncarry={() => void carryToNesting()}
+					onkeep={() => {
+						const taking = nesting?.taking;
+						if (taking) void saveAddress(ref, taking);
+					}}
+					onelse={() => {
+						nesting = null;
+						void tick().then(() => addressField?.select());
+					}}
+				/>
+			{/if}
 		{/key}
 
 		<TemplatePicker

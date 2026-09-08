@@ -18,6 +18,7 @@ import {
   graphAsked,
   graphOf,
   isAddress,
+  isAncestorAddress,
   isRootAddress,
   isUnstyled,
   nextChildAddress,
@@ -36,11 +37,13 @@ import {
   nowIso,
   type OwnedRef,
   ownedRefFrom,
+  parentAddress,
   parseNode,
   namesGraph,
   noteLabel,
   orderSiblings,
   publishRootsOf,
+  rebaseAddress,
   type SearchHit,
   type TagCount,
   type Tags,
@@ -372,7 +375,13 @@ export class NodeService {
     return this.addressing.run(did, async () => {
       const note = await this.nodes.find(did, ref);
       if (!note) throw new NotFoundException("That note is not here.");
-      if (address !== null) await this.requireFree(did, note, address);
+      const own = new Set([ownedRefFrom(note.id)]);
+      const free = async () => {
+        if (address !== null) {
+          await this.requireFree(did, graphOf(note), address, own);
+        }
+      };
+      await free();
       const written = await this.nodes
         .writeAddress(
           did,
@@ -383,7 +392,7 @@ export class NodeService {
             : leftBehind(note, note.address),
         )
         .catch(async (err: unknown) => {
-          if (address !== null) await this.requireFree(did, note, address);
+          await free();
           throw err;
         });
       if (!written) throw new NotFoundException("That note is not here.");
@@ -393,14 +402,18 @@ export class NodeService {
 
   /** Refused in words where the address leads somewhere else in this graph. A
    *  writer in another process gets past the queue and is refused by the unique
-   *  index, so this is asked again on the way out of a failed write. */
+   *  index, so this is asked again on the way out of a failed write. `mine` is
+   *  the notes whose own hold on it is theirs to take back. */
   private async requireFree(
     did: string,
-    note: Node,
+    graph: OwnedRef,
     address: Address,
+    mine: ReadonlySet<OwnedRef>,
   ): Promise<void> {
-    const held = await this.nodes.addressLeadsTo(did, graphOf(note), address);
-    if (held === null || held.note === ownedRefFrom(note.id)) return;
+    const held = await this.nodes.addressLeadsTo(did, graph, address);
+    if (held === null || (held.note !== undefined && mine.has(held.note))) {
+      return;
+    }
     if (held.note === undefined) throw leadsNowhere(address);
     const at =
       (await this.nodes.find(did, held.note)) ??
@@ -412,18 +425,24 @@ export class NodeService {
    * A note carried somewhere else, with everything that sprang from it. The
    * answer is that subtree as it now stands, because a move can re-address all
    * of it — AI.md § "The Genealogy Is the Protocol".
+   *
+   * `address` is the label the person named for it; absent, the rule offers one.
    */
   async move(
     did: string,
     ref: OwnedRef,
     to: NoteDestination,
+    address?: Address,
   ): Promise<NodeView[]> {
     return this.addressing.run(did, async () => {
       const note = await this.nodes.find(did, ref);
       if (!note) throw new NotFoundException("That note is not here.");
       const carried = await this.nodes.carried(did, note);
       const landing = await this.landingFor(did, note, to, carried);
-      return this.carry(did, note, graphOf(note), carried, landing);
+      const graph = graphOf(note);
+      return address === undefined
+        ? this.carry(did, note, graph, carried, landing)
+        : this.carryTo(did, note, graph, carried, landing, address);
     });
   }
 
@@ -528,6 +547,61 @@ export class NodeService {
         passed.push(now);
       }
     }
+  }
+
+  /**
+   * The same carry, landing on the address the person named rather than the one
+   * the rule offers. Every refusal is here rather than in the rule, because a
+   * label somebody wrote is never quietly moved to the next number for them.
+   */
+  private async carryTo(
+    did: string,
+    note: Node,
+    graph: OwnedRef,
+    carried: readonly Node[],
+    parent: Node | null,
+    now: Address,
+  ): Promise<NodeView[]> {
+    const under = parent === null ? null : parent.address;
+    if (under === undefined) {
+      throw new BadRequestException(
+        `${called(parent)} has no number, so a note springing from it can carry none either. Number that note first, or carry this one without a number.`,
+      );
+    }
+    if (impliedParent(now) !== under) throw springsElsewhere(now, under);
+
+    const ref = ownedRefFrom(note.id);
+    const was = note.address;
+    const landing = new Map<Address, Address>();
+    if (was !== undefined) {
+      landing.set(was, now);
+      for (const one of carried) {
+        const at = one.address;
+        if (at !== undefined && isAncestorAddress(was, at)) {
+          landing.set(at, rebaseAddress(was, now, at));
+        }
+      }
+    }
+
+    const mine = new Set(carried.map((one) => ownedRefFrom(one.id)));
+    mine.add(ref);
+    for (const at of new Set([now, ...landing.values()])) {
+      await this.requireFree(did, graph, at, mine);
+    }
+
+    const { root, landed, aliases } = landedRows(
+      note,
+      parent,
+      carried,
+      landing,
+      now,
+    );
+    requireDistinct(landed);
+    await this.nodes.move(did, landed, aliases).catch(async (err: unknown) => {
+      await this.requireFree(did, graph, now, mine);
+      throw err;
+    });
+    return this.asRead(did, await this.nodes.subtree(did, root));
   }
 
   /**
@@ -938,6 +1012,45 @@ function allSpent(reached: readonly Address[]): BadRequestException {
   return new BadRequestException(
     `${reached[0]} through ${reached[reached.length - 1]} all lead somewhere already. Take one of those numbers off a note and try again.`,
   );
+}
+
+/** The address a label springs from, refused in words where the number in it is
+ *  larger than a graph can carry. */
+function impliedParent(address: Address): Address | null {
+  try {
+    return parentAddress(address);
+  } catch {
+    throw new BadRequestException(
+      `${address} is a bigger number than Sloppy can count to. Pick a smaller one.`,
+    );
+  }
+}
+
+/** A named address that disagrees with where the note is landing. */
+function springsElsewhere(
+  address: Address,
+  under: Address | null,
+): BadRequestException {
+  return new BadRequestException(
+    under === null
+      ? `${address} springs from another note, and this one would spring from nothing. Number it with a whole number, like 7.`
+      : `${address} does not spring from ${under}. Number it under ${under} instead.`,
+  );
+}
+
+/** Two notes of one carried subtree landing on one number, which the graph's own
+ *  rule that an address leads one way would otherwise be left to refuse. */
+function requireDistinct(landed: readonly Node[]): void {
+  const taken = new Set<Address>();
+  for (const one of landed) {
+    if (one.address === undefined) continue;
+    if (taken.has(one.address)) {
+      throw new BadRequestException(
+        `Numbering it that way would put two of these notes at ${one.address}. Pick another number.`,
+      );
+    }
+    taken.add(one.address);
+  }
 }
 
 /** An address a note carried and no longer can, its note purged. */

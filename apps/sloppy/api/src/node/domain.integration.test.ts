@@ -573,6 +573,116 @@ describe("the domain routes", () => {
     );
   });
 
+  // AI.md § "The Genealogy Is the Protocol": a person who writes a number that
+  // says their note springs from another one may carry it there, and the note
+  // keeps leading by every number it has held.
+  describe("carrying a note to the number a person named", () => {
+    let notebook: GraphView;
+    let two: NodeView;
+    let alongside: NodeView;
+    let moving: NodeView;
+    let beneath: NodeView;
+    let three: NodeView;
+    let landing: NodeView;
+
+    const rooted = (address: string) => ({
+      relation: "root",
+      address,
+      graph: notebook.ref,
+    });
+
+    const carry = (
+      note: NodeView,
+      to: Record<string, unknown>,
+      address?: string,
+    ) =>
+      call("POST", `/nodes/${at(note.ref)}/move`, ada, {
+        to,
+        ...(address === undefined ? {} : { address }),
+      });
+
+    const said = (body: unknown) => (body as { message: string }).message;
+
+    beforeAll(async () => {
+      if (!runs) return;
+      notebook = await newGraph(ada, "Nesting");
+      two = await newNode(ada, { from: rooted("2"), title: "Two" });
+      await newNode(ada, { from: springsFrom(two) });
+      alongside = await newNode(ada, { from: springsFrom(two) });
+      moving = await newNode(ada, { from: springsFrom(two), title: "Cells" });
+      beneath = await newNode(ada, { from: springsFrom(moving) });
+      three = await newNode(ada, { from: rooted("3"), title: "Three" });
+      landing = await newNode(ada, { from: springsFrom(three) });
+      expect([alongside.address, moving.address, beneath.address]).toEqual([
+        "2b",
+        "2c",
+        "2c1",
+      ]);
+      expect(landing.address).toBe("3a");
+    });
+
+    scenario("takes it, with everything under it, in one act", async () => {
+      const answer = await carry(moving, springsFrom(landing), "3a1");
+      expect(answer.status, JSON.stringify(answer.body)).toBeLessThan(300);
+      const subtree = answer.body as NodeView[];
+
+      expect(subtree.map((one) => [one.address, one.depth])).toEqual([
+        ["3a1", 3],
+        ["3a1a", 4],
+      ]);
+      expect(subtree[0].parent).toBe(landing.ref);
+      expect(subtree[1].parent).toBe(moving.ref);
+      expect(subtree.map((one) => one.aliases)).toEqual([["2c"], ["2c1"]]);
+    });
+
+    scenario("keeps every number it has held leading to it", async () => {
+      for (const address of ["2c", "3a1"]) {
+        const hits = (await ok(
+          "GET",
+          `/nodes/search?q=${address}&graph=${encodeURIComponent(notebook.ref)}`,
+          ada,
+        )) as SearchHit[];
+        expect(hits[0]?.note, address).toBe(moving.ref);
+      }
+      const hits = (await ok(
+        "GET",
+        `/nodes/search?q=2c1&graph=${encodeURIComponent(notebook.ref)}`,
+        ada,
+      )) as SearchHit[];
+      expect(hits[0]?.note).toBe(beneath.ref);
+    });
+
+    scenario("refuses one that springs from somewhere else", async () => {
+      const answer = await carry(alongside, springsFrom(landing), "3b1");
+      expect(answer.status).toBe(400);
+      expect(said(answer.body)).toMatch(/3b1 does not spring from 3a/);
+    });
+
+    scenario("refuses one another note is already at", async () => {
+      const answer = await carry(alongside, springsFrom(landing), "3a1");
+      expect(answer.status).toBe(400);
+      expect(said(answer.body)).toMatch(/3a1 already leads to “Cells”/);
+    });
+
+    scenario("refuses one a note was carried away from", async () => {
+      const answer = await carry(alongside, springsFrom(two), "2c");
+      expect(answer.status).toBe(400);
+      expect(said(answer.body)).toMatch(/2c still leads to “Cells”/);
+    });
+
+    scenario("refuses a number no branch could hold", async () => {
+      const answer = await carry(alongside, follows(three), "3a1");
+      expect(answer.status).toBe(400);
+      expect(said(answer.body)).toMatch(/whole number/);
+    });
+
+    scenario("leaves the landing to the rule where none is named", async () => {
+      const answer = await carry(alongside, springsFrom(landing));
+      expect(answer.status, JSON.stringify(answer.body)).toBeLessThan(300);
+      expect((answer.body as NodeView[])[0].address).toBe("3a2");
+    });
+  });
+
   describe("reading a region", () => {
     let origin: OwnedRef;
 

@@ -286,10 +286,13 @@ class NodesStore {
 	 * answer is the whole subtree as it now stands, so the canvas and the outline
 	 * re-derive from addresses that have already changed rather than from the
 	 * ones they were drawn at.
+	 *
+	 * `address` is the label the person named for it; absent leaves it to the
+	 * rule, which is the next address in the run the note joins.
 	 */
-	async move(ref: OwnedRef, to: NoteDestination): Promise<NodeView[]> {
+	async move(ref: OwnedRef, to: NoteDestination, address?: Address): Promise<NodeView[]> {
 		const epoch = this.#epoch;
-		const moved = await api.moveNote(ref, to);
+		const moved = await api.moveNote(ref, to, address);
 		if (epoch !== this.#epoch) return moved;
 		for (const node of moved) this.#learn(node);
 		return moved;

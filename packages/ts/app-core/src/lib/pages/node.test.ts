@@ -9,7 +9,13 @@ import type {
 	PullView,
 	Tag
 } from '@sloppy/types';
-import { citedNotes, homeGraphRef, MARK_SCALE_MAX, REFERENCE_NOTE_ATTR } from '@sloppy/types';
+import {
+	citedNotes,
+	homeGraphRef,
+	MARK_SCALE_MAX,
+	rebaseAddress,
+	REFERENCE_NOTE_ATTR
+} from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deviceStore } from '../device-store.js';
@@ -1161,6 +1167,159 @@ describe('writing the address on a note', () => {
 			)
 		).toBe(false);
 		expect(labelled('Copy the address 1a')).toBeTruthy();
+	});
+});
+
+// AI.md § "The Genealogy Is the Protocol": a number whose shape says the note
+// springs from another one is a question about where the note sits, never a
+// label written over a genealogy that disagrees with it.
+describe('a number that says the note springs from somewhere else', () => {
+	const field = () =>
+		document.body.querySelector<HTMLInputElement>(
+			'[aria-label="The address you cite this note by"]'
+		);
+
+	let carried: { to: NoteDestination; address?: string }[];
+	let written: (string | null)[];
+
+	/** `1a`, under `1`, with `1a1` under it and `2` on its own branch. */
+	async function openCells(): Promise<void> {
+		const graph = installGraph();
+		carried = [];
+		written = [];
+		numbering(api, SECOND, (address) => {
+			written.push(address);
+			return { ...(graph.get(SECOND) as NodeView), address: address ?? undefined };
+		});
+		moving(api, SECOND, (to, address) => {
+			carried.push({ to, ...(address === undefined ? {} : { address }) });
+			return [
+				{ ...(graph.get(SECOND) as NodeView), address, parent: FOURTH, origin: FOURTH, depth: 2 },
+				{
+					...(graph.get(THIRD) as NodeView),
+					address: address ? rebaseAddress('1a', address, '1a1') : undefined,
+					origin: FOURTH,
+					depth: 3
+				}
+			] as NodeView[];
+		});
+		await loadGraph();
+		await openNote(SECOND);
+		labelled('Edit the address 1a').click();
+		await settle();
+	}
+
+	async function write(words: string): Promise<void> {
+		const typing = field();
+		if (!typing) throw new Error('The header has no address field');
+		typing.value = words;
+		typing.dispatchEvent(new Event('input', { bubbles: true }));
+		exactly('Save').click();
+		await settle();
+		await settle();
+	}
+
+	beforeEach(() => {
+		session.adopt(VIEWER, 'a-session');
+	});
+
+	it('asks before writing it, naming both places', async () => {
+		await openCells();
+		await write('2a');
+
+		expect(screen()).toContain('2a springs from 2.');
+		expect(screen()).toContain('This note springs from 1.');
+		expect(written).toEqual([]);
+		expect(carried).toEqual([]);
+	});
+
+	it('carries the note and everything under it, on that number', async () => {
+		await openCells();
+		await write('2a');
+
+		button('Move it under 2').click();
+		await settle();
+		await settle();
+
+		expect(carried).toEqual([{ to: { relation: 'under', note: FOURTH }, address: '2a' }]);
+		expect(written).toEqual([]);
+		expect(nodes.get(SECOND)?.address).toBe('2a');
+		expect(nodes.children(FOURTH).map((one) => one.ref)).toEqual([SECOND]);
+		expect(nodes.children(SECOND).map((one) => one.address)).toEqual(['2a1']);
+	});
+
+	it('writes it as a label alone where that is what the reader meant', async () => {
+		await openCells();
+		await write('2a');
+
+		button('Keep it under 1 as 2a').click();
+		await settle();
+		await settle();
+
+		expect(written).toEqual(['2a']);
+		expect(carried).toEqual([]);
+	});
+
+	it('offers a branch of its own to a note given a whole number', async () => {
+		await openCells();
+		await write('5');
+
+		expect(screen()).toContain("5 is a branch's own number.");
+		button('Make it a branch of its own').click();
+		await settle();
+		await settle();
+
+		expect(carried).toEqual([{ to: { relation: 'after', note: FIRST }, address: '5' }]);
+	});
+
+	it('says when nothing in the graph is at the number it springs from', async () => {
+		await openCells();
+		await write('9a1');
+
+		expect(screen()).toContain('There is no note at 9a yet');
+		button('Keep it under 1 as 9a1').click();
+		await settle();
+		await settle();
+
+		expect(written).toEqual(['9a1']);
+	});
+
+	it('refuses a number that springs from a note this one carries, and asks nothing', async () => {
+		await openCells();
+		await write('1a1a');
+
+		expect(noteHead()).toContain('1a1 springs from this note');
+		expect(screen()).not.toContain('Move it under');
+		expect(written).toEqual([]);
+		expect(carried).toEqual([]);
+	});
+
+	it('writes a number that springs from the note it already does, with no question', async () => {
+		await openCells();
+		await write('1b');
+
+		expect(written).toEqual(['1b']);
+		expect(screen()).not.toContain('Where should this note sit?');
+	});
+
+	it('repeats the server’s words when the carry is refused, and keeps the question up', async () => {
+		await openCells();
+		api.on(
+			`POST ${path(SECOND)}/move`,
+			() =>
+				new Response(JSON.stringify({ message: '2a already leads to “Method”.' }), {
+					status: 400,
+					headers: { 'content-type': 'application/json' }
+				})
+		);
+		await write('2a');
+
+		button('Move it under 2').click();
+		await settle();
+		await settle();
+
+		expect(screen()).toContain('2a already leads to “Method”.');
+		expect(screen()).toContain('Move it under 2');
 	});
 });
 

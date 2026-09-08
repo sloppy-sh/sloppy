@@ -139,6 +139,16 @@ the same millisecond still order the same way on every peer.
   the rule again, up to `ADDRESS_ATTEMPTS` of them, and refuse in words past that rather
   than leaving the person a write that cannot succeed. A move carries its whole subtree
   along to the next address rather than landing part of it on a label.
+- **A move may carry the address a person named instead.** `MoveNoteRequest.address` is
+  optional, and absent leaves the landing to the rule above. Given, `NodeService.carryTo`
+  holds it to everything `setAddress` holds a written label to — free in the graph, the
+  note's own spent addresses its to take back — and to the one thing a standing note is not
+  held to: it springs from the address of the note it lands under, or from nothing where the
+  note becomes a branch. What is beneath rebases off it through `rebaseAddress`, exactly as
+  the rule's own landing does, and everything is written in the one call `carry` writes
+  through. A named address the graph has already spent is refused in words rather than
+  passed over: the rule may offer the next number, a person's own label may not be moved for
+  them.
 - **A mark is seeded off the genealogy, and never off the address.** `seedField` in
   `@sloppy/graph` is handed a note's ref, parent, `created_at` and depth, and nothing else —
   which is the mechanism behind "a label never moves a mark". A note with nothing above it

@@ -137,16 +137,17 @@ export function holding(api: FakeApi, hits: readonly PulledNoteHit[] = []): void
 
 /**
  * Answer a move of `note` with the subtree as it stands afterwards — the note
- * and everything under it, at the addresses the move gave them.
+ * and everything under it, at the addresses the move gave them. `address` is
+ * the one the person named for it, absent where they left it to the rule.
  */
 export function moving(
 	api: FakeApi,
 	note: OwnedRef,
-	subtree: (to: NoteDestination) => readonly NodeView[]
+	subtree: (to: NoteDestination, address?: string) => readonly NodeView[]
 ): void {
 	api.on(`POST /nodes${refPath(note)}/move`, (_url, init) => {
 		const asked = JSON.parse(String(init?.body ?? '{}')) as MoveNoteRequest;
-		return subtree(asked.to);
+		return subtree(asked.to, asked.address);
 	});
 }
 
