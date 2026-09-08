@@ -112,6 +112,11 @@ function caret(): { into: string; at: number } {
 	return { into: where.parent.type.name, at: where.parentOffset };
 }
 
+const acts = () =>
+	document.body.querySelector<HTMLButtonElement>('button[aria-label="What to do with this note"]');
+const citation = () =>
+	document.body.querySelector<HTMLButtonElement>('button[aria-label^="Copy the address"]');
+
 function button(labelled: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find((b) =>
 		b.textContent?.includes(labelled)
@@ -227,6 +232,7 @@ describe('a note opened to read', () => {
 		await settle();
 
 		expect(document.title).toBe('1 · Origins · Sloppy');
+		expect(citation()).not.toBeNull();
 	});
 
 	it('names a window on a note with no number by its title', async () => {
@@ -249,6 +255,31 @@ describe('a note opened to read', () => {
 		await settle();
 
 		expect(document.title).toBe('On its own · Sloppy');
+	});
+
+	// A note nobody numbered is an ordinary note: everything a person does to
+	// one is still here, and only the citation is not.
+	it('keeps every act on a note with no number, and offers no address to copy', async () => {
+		const alone = unnumbered(1);
+		api.on('POST /nodes', () => alone);
+		api.on(`GET ${path(FIRST)}`, () => alone);
+		session.adopt(VIEWER, 'a-session');
+		stubViewport(PHONE);
+		const written = await nodes.create({ from: { relation: 'free' } });
+		mounted = mount(NoteOnSurface, { target, props: { opened: written.ref, fresh: false } });
+		flushSync();
+		await settle();
+
+		expect(citation()).toBeNull();
+		const open = acts();
+		if (!open) throw new Error('The note offers nothing to do with it');
+		open.click();
+		await settle();
+
+		const offered = document.body.textContent ?? '';
+		for (const act of ['Move this note', 'Publishing', 'Tags', 'Delete this note']) {
+			expect(offered).toContain(act);
+		}
 	});
 
 	it('does not call writing it could not read nothing at all', async () => {

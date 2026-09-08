@@ -2,7 +2,6 @@
 
 import { Injectable } from "@nestjs/common";
 import {
-  type Address,
   type Block,
   BlockSchema,
   type DidSyr,
@@ -10,6 +9,7 @@ import {
   type OwnedRef,
   ownedRefFrom,
   parseNode,
+  recordIdFromOwnedRef,
 } from "@sloppy/types";
 import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
@@ -21,49 +21,61 @@ export interface BlockCursor {
   ord: string;
 }
 
+/** The keyset a page of notes is read on, as the clause and the variables it
+ *  binds: every note has a reference, and not every note has an address. */
+function pageOn(
+  did: DidSyr,
+  graph: OwnedRef,
+  from: OwnedRef | undefined,
+  limit: number,
+) {
+  return {
+    after: from === undefined ? "" : " AND id > $from",
+    vars: {
+      did,
+      graph,
+      limit,
+      from: from && recordIdFromOwnedRef("node", from),
+    },
+  };
+}
+
 @Injectable()
 export class ExportRepository {
   constructor(private readonly db: DbService) {}
 
-  /**
-   * The live notes of one graph, in address order, after `from`. Ordered by the
-   * column `node_owner_graph_address` is keyed on, and unique within the graph,
-   * so a page picks up exactly where the last one stopped.
-   */
+  /** The live notes of one graph, in reference order, after `from`. */
   async notesIn(
     did: DidSyr,
     graph: OwnedRef,
-    from: Address | undefined,
+    from: OwnedRef | undefined,
     limit: number,
   ): Promise<Node[]> {
-    const after = from === undefined ? "" : " AND address > $from";
+    const { after, vars } = pageOn(did, graph, from, limit);
     const [rows] = await this.query(
       `SELECT * FROM node
          WHERE created_by = $did AND graph = $graph AND deleted_at = NONE${after}
-         ORDER BY address LIMIT $limit`,
-      { did, graph, from, limit },
+         ORDER BY id LIMIT $limit`,
+      vars,
     );
     return rows.map((row) => parseNode(row));
   }
 
-  /** The same run, as the reference and the key of the next page alone. */
+  /** The same run, as the reference alone, which is also the next page's key. */
   async noteRefsIn(
     did: DidSyr,
     graph: OwnedRef,
-    from: Address | undefined,
+    from: OwnedRef | undefined,
     limit: number,
-  ): Promise<{ ref: OwnedRef; address: Address }[]> {
-    const after = from === undefined ? "" : " AND address > $from";
-    const [rows] = await this.query<{ id: RecordId; address: Address }>(
-      `SELECT id, address FROM node
+  ): Promise<OwnedRef[]> {
+    const { after, vars } = pageOn(did, graph, from, limit);
+    const [rows] = await this.query<{ id: RecordId }>(
+      `SELECT id FROM node
          WHERE created_by = $did AND graph = $graph AND deleted_at = NONE${after}
-         ORDER BY address LIMIT $limit`,
-      { did, graph, from, limit },
+         ORDER BY id LIMIT $limit`,
+      vars,
     );
-    return rows.map((row) => ({
-      ref: ownedRefFrom(row.id),
-      address: row.address,
-    }));
+    return rows.map((row) => ownedRefFrom(row.id));
   }
 
   /** The live sections of a run of notes, in stack order within each note. */

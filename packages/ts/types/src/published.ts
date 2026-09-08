@@ -498,17 +498,22 @@ export function publishedSubtreeReader(
       }
 
       const pageNodes = new Set<OwnedRef>();
+      const pageByAddress = new Map<Address, OwnedRef>();
       for (const node of page.nodes) {
         requireAuthor(node.ref, author);
         for (const target of node.links) requireAuthor(target, author);
         if (heldNodes.has(node.ref) || pageNodes.has(node.ref)) {
           throw new UnaskedAnswerError(`${node.ref} twice`);
         }
-        if (node.address !== undefined && heldByAddress.has(node.address)) {
-          throw new UnaskedAnswerError(`a second note at ${node.address}`);
+        if (node.address !== undefined) {
+          if (
+            heldByAddress.has(node.address) ||
+            pageByAddress.has(node.address)
+          ) {
+            throw new UnaskedAnswerError(`a second note at ${node.address}`);
+          }
+          pageByAddress.set(node.address, node.ref);
         }
-        if (node.address !== undefined)
-          heldByAddress.set(node.address, node.ref);
         pageNodes.add(node.ref);
       }
       // Membership is the parent chain and nothing else: a person writes their
@@ -564,6 +569,9 @@ export function publishedSubtreeReader(
       heldGraph = graph;
       pages += 1;
       for (const node of page.nodes) heldNodes.add(node.ref);
+      for (const [address, ref] of pageByAddress) {
+        heldByAddress.set(address, ref);
+      }
       for (const ref of pageBlocks) heldBlocks.add(ref);
       return page;
     },

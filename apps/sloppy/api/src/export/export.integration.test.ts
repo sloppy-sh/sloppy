@@ -357,6 +357,16 @@ describe("a copy of everything somebody keeps", () => {
           }),
         );
       }
+      // A note nobody numbered is in the walk too, and has to be able to say
+      // where the page after it starts.
+      for (let n = 0; n < 3; n += 1) {
+        written.push(
+          await newNode(ada, {
+            from: { relation: "free", graph: shelf.ref },
+            title: `On its own ${n}`,
+          }),
+        );
+      }
       let after: OwnedRef | undefined;
       for (let s = 0; s < 5; s += 1) {
         after = (await newBlock(ada, written[0].ref, `section ${s}`, after))
@@ -370,18 +380,22 @@ describe("a copy of everything somebody keeps", () => {
       const notesAtOnce = await rows.notesIn(did, shelf.ref, undefined, 100);
       const notesByPage: typeof notesAtOnce = [];
       for (;;) {
+        const last = notesByPage.at(-1);
         const page = await rows.notesIn(
           did,
           shelf.ref,
-          notesByPage.at(-1)?.address,
+          last && ownedRefFrom(last.id),
           2,
         );
         notesByPage.push(...page);
         if (page.length < 2) break;
       }
-      expect(notesAtOnce.length).toBe(5);
-      expect(notesByPage.map((note) => note.address)).toEqual(
-        notesAtOnce.map((note) => note.address),
+      expect(notesAtOnce.length).toBe(8);
+      expect(
+        notesAtOnce.filter((note) => note.address === undefined).length,
+      ).toBe(3);
+      expect(notesByPage.map((note) => ownedRefFrom(note.id))).toEqual(
+        notesAtOnce.map((note) => ownedRefFrom(note.id)),
       );
 
       const notes = notesAtOnce.map((note) => ownedRefFrom(note.id));

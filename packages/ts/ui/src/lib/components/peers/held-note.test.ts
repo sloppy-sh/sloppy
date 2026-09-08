@@ -42,11 +42,18 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-async function read(person: Person | null, unplaced = false): Promise<void> {
+const citation = () =>
+	document.body.querySelector<HTMLButtonElement>('button[aria-label="Copy this note\'s address"]');
+
+async function read(
+	person: Person | null,
+	unplaced = false,
+	note: NodeView = NOTE_VIEW
+): Promise<void> {
 	mounted = mount(HeldNote, {
 		target,
 		props: {
-			note: NOTE_VIEW,
+			note,
 			author: { identity: ADA, person, unplaced },
 			blocks: [],
 			pictures: { picture: () => Promise.reject(new Error('no pictures here')) },
@@ -69,6 +76,22 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	document.body.innerHTML = '';
+});
+
+describe('the address on a note somebody else wrote', () => {
+	it('is there to copy', async () => {
+		await read(ADA_PERSON);
+		expect(citation()).not.toBeNull();
+	});
+
+	it('is nowhere to be copied where its author gave it none', async () => {
+		const unnumbered: NodeView = { ...NOTE_VIEW, depth: 1 };
+		delete unnumbered.address;
+		await read(ADA_PERSON, false, unnumbered);
+
+		expect(citation()).toBeNull();
+		expect(document.body.textContent).toContain('What a run of thought is for');
+	});
 });
 
 describe('the byline on a note somebody else wrote', () => {

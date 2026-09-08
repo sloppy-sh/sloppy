@@ -28,17 +28,21 @@ function localId(ref: OwnedRef): string {
   return ref.slice(ref.lastIndexOf("/") + 1);
 }
 
-function note(ref: OwnedRef, address: Address, graph: OwnedRef): Node {
+function note(
+  ref: OwnedRef,
+  address: Address | undefined,
+  graph: OwnedRef,
+): Node {
   return {
     id: new RecordId("node", { created_by: DID, id: localId(ref) }),
     created_by: DID,
     created_at: AT,
     updated_at: AT,
     graph,
-    address,
-    depth: addressDepth(address),
+    ...(address === undefined ? {} : { address }),
+    depth: address === undefined ? 1 : addressDepth(address),
     origin: ref,
-    title: address,
+    title: address ?? "On its own",
     tags: [],
     links: [],
     published: false,
@@ -69,40 +73,43 @@ function section(
 }
 
 /** A store holding one page's worth of rows per graph, answering the keyset
- *  reads the walk is written against. */
+ *  reads the walk is written against. A note read twice is a walk that never
+ *  moved on, so the store refuses it rather than running for ever. */
 function holding(rows: { notes: Node[]; blocks: Block[] }) {
   const asked: string[] = [];
   const refOf = (row: Node | Block) =>
     `${DID}/${(row.id.id as { id: string }).id}` as OwnedRef;
 
+  const once = (read: string) => {
+    if (asked.includes(read)) throw new Error(`${read} was read twice`);
+    asked.push(read);
+  };
+
+  const page = (graph: OwnedRef, from: OwnedRef | undefined, limit: number) =>
+    rows.notes
+      .filter((n) => n.graph === graph && (!from || refOf(n) > from))
+      .sort((a, b) => (refOf(a) < refOf(b) ? -1 : 1))
+      .slice(0, limit);
+
   const repository = {
     notesIn: (
       _did: DidSyr,
       graph: OwnedRef,
-      from: string | undefined,
+      from: OwnedRef | undefined,
       limit: number,
     ) => {
-      asked.push(`notes ${graph} ${from ?? "-"}`);
-      return Promise.resolve(
-        rows.notes
-          .filter(
-            (n) => n.graph === graph && (!from || (n.address ?? "") > from),
-          )
-          .sort((a, b) => ((a.address ?? "") < (b.address ?? "") ? -1 : 1))
-          .slice(0, limit),
-      );
+      once(`notes ${graph} ${from ?? "-"}`);
+      return Promise.resolve(page(graph, from, limit));
     },
     noteRefsIn: (
-      did: DidSyr,
+      _did: DidSyr,
       graph: OwnedRef,
-      from: string | undefined,
+      from: OwnedRef | undefined,
       limit: number,
-    ) =>
-      repository
-        .notesIn(did, graph, from, limit)
-        .then((page) =>
-          page.map((n) => ({ ref: refOf(n), address: n.address })),
-        ),
+    ) => {
+      once(`refs ${graph} ${from ?? "-"}`);
+      return Promise.resolve(page(graph, from, limit).map(refOf));
+    },
     blocksOf: (
       _did: DidSyr,
       notes: readonly OwnedRef[],
@@ -229,11 +236,38 @@ describe("a copy of everything somebody keeps", () => {
 
     const held = GraphExportSchema.parse(JSON.parse(await written(service)));
 
-    const pages = new Set(
-      asked.filter((a) => a.startsWith(`notes ${HOME}`)).map((a) => a),
-    );
+    const pages = asked.filter((a) => a.startsWith(`notes ${HOME}`));
     expect(held.notes.length).toBe(450);
-    expect(pages.size).toBe(3);
+    expect(pages.length).toBe(3);
+  });
+
+  // A page a person numbered nothing on still has to say where the next one
+  // starts, so the walk keys on the reference every note has.
+  it("turns the page on a run nobody has numbered", async () => {
+    const notes = Array.from({ length: 250 }, (_, at) =>
+      note(
+        `${DID}/${String(at).padStart(26, "0")}` as OwnedRef,
+        undefined,
+        HOME,
+      ),
+    );
+    const { service, asked } = holding({
+      notes,
+      blocks: [
+        section(
+          `${DID}/0000000000000000000000000A` as OwnedRef,
+          `${DID}/${String(249).padStart(26, "0")}` as OwnedRef,
+          "a0",
+        ),
+      ],
+    });
+
+    const held = GraphExportSchema.parse(JSON.parse(await written(service)));
+
+    expect(held.notes.length).toBe(250);
+    expect(held.notes.every((n) => n.address === undefined)).toBe(true);
+    expect(held.blocks.length).toBe(1);
+    expect(asked.filter((a) => a.startsWith(`notes ${HOME}`)).length).toBe(2);
   });
 
   it("carries a whole stack, however far past a page it runs", async () => {

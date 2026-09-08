@@ -176,10 +176,7 @@ export function parentAddress(address: Address): Address | null {
   return formatAddress(segments.slice(0, -1));
 }
 
-/**
- * Segment count, so a root is 1. Pinned rather than merely chosen: `node.depth`
- * stores this number, and rows on other people's machines already hold it.
- */
+/** Segment count, so a root is 1: how deep the address itself runs. */
 export function addressDepth(address: Address): number {
   return parseAddress(address).length;
 }
