@@ -58,6 +58,9 @@
 			 *  leaves the control a tap and the accelerator. */
 			beside?: (ref: OwnedRef) => void;
 		};
+		/** Writing a note that springs from nothing and carries no address until
+		 *  its author gives it one. Absent leaves the walk no way to start one. */
+		writeAlone?: () => void;
 		/** A note's sections, drawn under its row where the reader has asked for
 		 *  them and arranged there by their handles. Absent leaves the walk the
 		 *  notes alone, which is what a region pulled from somebody else is. */
@@ -83,6 +86,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import Globe from '@lucide/svelte/icons/globe';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import List from '@lucide/svelte/icons/list';
@@ -126,6 +130,7 @@
 		onToggle,
 		onOpen,
 		writeUnder,
+		writeAlone,
 		sections,
 		moveNote
 	}: TreeSurfaceProps = $props();
@@ -463,7 +468,7 @@
 					continue;
 				}
 				if (row.kind !== 'note') continue;
-				const words = item.querySelector('.address')?.getBoundingClientRect();
+				const words = item.querySelector('.grip')?.getBoundingClientRect();
 				out.push({
 					on: row.note.ref,
 					address: row.note.address,
@@ -515,9 +520,9 @@
 		return rows.filter((row): row is TreeRow => row.kind === 'note' || row.kind === 'rest');
 	}
 
-	/** Whether the press landed on the row's address, which is its grip. */
-	const onAddress = (event: PointerEvent): boolean =>
-		event.target instanceof Element && event.target.closest('.address') !== null;
+	/** Whether the press landed on what the row is read by, which is its grip. */
+	const onGrip = (event: PointerEvent): boolean =>
+		event.target instanceof Element && event.target.closest('.grip') !== null;
 
 	function liftNote(event: PointerEvent, group: string, note: TreeNote): void {
 		dragged = false;
@@ -589,9 +594,12 @@
 			if (group.lead) continue;
 			for (const row of group.rows) {
 				if (row.kind !== 'note' || row.note.ref !== settling.note) continue;
-				return row.note.address === settling.was
-					? ''
-					: `${settling.was} is now ${row.note.address}, and ${settling.was} still leads to it`;
+				const { was } = settling;
+				const now = row.note.address;
+				if (now === was) return '';
+				if (was === undefined) return `It is now ${now}`;
+				if (now === undefined) return `It carries no number now, and ${was} still leads to it`;
+				return `${was} is now ${now}, and ${was} still leads to it`;
 			}
 		}
 		return '';
@@ -690,28 +698,36 @@
 	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
-		{#if onChoosing}
+		{#if onChoosing || writeAlone}
 			<!-- Stuck at the top of the scroller's content box, which the padding
 			     above already keeps below the chrome: a sticky offset is measured
 			     from that box, so adding the inset again would stand the band a
 			     rail's height down the run, over the rows. -->
 			<div
 				bind:clientHeight={band}
-				class="sticky top-0 z-20 flex justify-end bg-background/95 py-2 backdrop-blur"
+				class="sticky top-0 z-20 flex justify-end gap-1 bg-background/95 py-2 backdrop-blur"
 			>
-				<Button
-					variant="ghost"
-					class="h-9 gap-1.5 rounded-full text-xs"
-					onclick={() => onChoosing?.(!choosing)}
-				>
-					{#if choosing}
-						<Check class="size-4" />
-						Done choosing
-					{:else}
-						<ListChecks class="size-4" />
-						Choose notes
-					{/if}
-				</Button>
+				{#if writeAlone && !choosing}
+					<Button variant="ghost" class="h-9 gap-1.5 rounded-full text-xs" onclick={writeAlone}>
+						<FilePlus class="size-4" />
+						New note
+					</Button>
+				{/if}
+				{#if onChoosing}
+					<Button
+						variant="ghost"
+						class="h-9 gap-1.5 rounded-full text-xs"
+						onclick={() => onChoosing?.(!choosing)}
+					>
+						{#if choosing}
+							<Check class="size-4" />
+							Done choosing
+						{:else}
+							<ListChecks class="size-4" />
+							Choose notes
+						{/if}
+					</Button>
+				{/if}
 			</div>
 		{/if}
 
@@ -737,6 +753,9 @@
 							{#if row.kind === 'note'}
 								{@const asked = askedOf(row.note)}
 								{@const listed = tagsOf(row.note, asked)}
+								{@const carryable = !!moveNote && !heads}
+								{@const grab = carryable ? 'cursor-grab touch-pan-y' : ''}
+								{@const drags = carryable ? 'Drag it to move this note' : undefined}
 								<div
 									role="treeitem"
 									data-row={key}
@@ -750,7 +769,7 @@
 									aria-keyshortcuts={chords(!heads) || undefined}
 									onpointerdown={(event) => {
 										dragged = false;
-										if (moveNote && !heads && onAddress(event)) {
+										if (moveNote && !heads && onGrip(event)) {
 											liftNote(event, group, row.note);
 										}
 									}}
@@ -788,22 +807,28 @@
 										<span class="size-11 shrink-0" aria-hidden="true"></span>
 									{/if}
 
-									<!-- The address is the row's grip: it is what a move rewrites,
-									     and DESIGN.md § "A note's row fits the narrowest phone"
-									     leaves no room for a fourth control. The padding is pulled
-									     back by as much, so a thumb has more than the glyphs to
-									     press and the row is no wider for it. -->
-									<span
-										class="shrink-0 address text-xs text-muted-foreground {moveNote && !heads
-											? '-mx-2 cursor-grab touch-pan-y px-2'
-											: ''}"
-										title={moveNote && !heads ? 'Drag it to move this note' : undefined}
-									>
-										{row.note.address}
-									</span>
-									<span class="min-w-0 flex-1 truncate text-sm">
-										{row.note.title || 'Untitled'}
-									</span>
+									<!-- What the row is read by is its grip: it is what a move
+									     rewrites, and DESIGN.md § "A note's row fits the narrowest
+									     phone" leaves no room for a fourth control. On an address the
+									     padding is pulled back by as much, so a thumb has more than
+									     the glyphs to press and the row is no wider for it. -->
+									{#if row.note.address}
+										<span
+											class="grip shrink-0 address text-xs text-muted-foreground {carryable
+												? '-mx-2 px-2'
+												: ''} {grab}"
+											title={drags}
+										>
+											{row.note.address}
+										</span>
+										<span class="min-w-0 flex-1 truncate text-sm">
+											{row.note.title || 'Untitled'}
+										</span>
+									{:else}
+										<span class="grip min-w-0 flex-1 truncate text-sm {grab}" title={drags}>
+											{noteLabel(row.note)}
+										</span>
+									{/if}
 
 									{#if listed.length > 0}
 										<span
@@ -1026,7 +1051,9 @@
 				<CornerDownRight class="size-4 shrink-0" />
 			{/if}
 			{#if lifting}
-				<span class="shrink-0 text-xs text-muted-foreground">{lifting.note.address}</span>
+				{#if lifting.note.address}
+					<span class="shrink-0 text-xs text-muted-foreground">{lifting.note.address}</span>
+				{/if}
 				<span class="max-w-32 min-w-0 truncate">{lifting.note.title || 'Untitled'}</span>
 			{/if}
 			<span class="min-w-0 truncate">{says}</span>

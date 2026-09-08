@@ -32,8 +32,12 @@
 
 	export interface PublishModalProps {
 		open?: boolean;
-		/** The branch's root, as a person cites it. */
-		address: Address;
+		/** The branch's root, as a person cites it. Absent where its author gave
+		 *  it none. */
+		address?: Address;
+		/** Where the branch can be opened, handed to a reader in place of an
+		 *  address where its author gave it none. */
+		link?: string;
 		reader?: ReaderNeeds;
 		/** Absent where nothing here is published yet. */
 		published?: PublishedBranch | null;
@@ -83,6 +87,7 @@
 	let {
 		open = $bindable(false),
 		address,
+		link,
 		reader = {},
 		published = null,
 		carriedBy = null,
@@ -100,6 +105,8 @@
 	const chain = $derived(
 		published ? (published.versions.length > 0 ? published.versions : [published.latest]) : []
 	);
+
+	const named = $derived(address ?? 'this branch');
 
 	let working = $state(false);
 	/** What the branch has done since it was last published, once the instance
@@ -248,8 +255,8 @@
 			? `What version ${reviewing.sequence} changed`
 			: `Version ${reviewing.sequence}`
 		: published
-			? `${address} is published`
-			: `Publish ${address}?`}
+			? `${address ?? 'This branch'} is published`
+			: `Publish ${named}?`}
 	class="sm:max-w-lg"
 >
 	<div class="space-y-5 px-2 pt-3">
@@ -283,7 +290,7 @@
 				{/if}
 			{:else}
 				<p class="text-sm text-muted-foreground">
-					This is where {address} was first published, so everything in it went out at once.
+					This is where {named} was first published, so everything in it went out at once.
 				</p>
 			{/if}
 
@@ -331,10 +338,12 @@
 					<h3 class="text-sm font-medium">What a reader needs</h3>
 					<p class="text-sm text-muted-foreground">Send somebody this and they can read it.</p>
 					<dl class="space-y-2">
-						<div>
-							<dt class="text-xs text-muted-foreground">This branch</dt>
-							<dd class="address text-sm break-all select-text">{address}</dd>
-						</div>
+						{#if address || link}
+							<div>
+								<dt class="text-xs text-muted-foreground">This branch</dt>
+								<dd class="address text-sm break-all select-text">{address ?? link}</dd>
+							</div>
+						{/if}
 						{#if reader.identity}
 							<div>
 								<dt class="text-xs text-muted-foreground">Your identity</dt>
@@ -360,7 +369,7 @@
 				{:else if changedSince}
 					<p class="text-sm text-muted-foreground">This branch has changed since then.</p>
 				{/if}
-				<p class="text-sm text-muted-foreground">{publishingAgain({ address })}</p>
+				<p class="text-sm text-muted-foreground">{publishingAgain({ branch: named })}</p>
 				{#each narrower as under (under)}
 					<p class="text-sm text-muted-foreground">{narrowerSays(under, 'already')}</p>
 				{/each}
@@ -415,11 +424,11 @@
 			</Button>
 		{:else}
 			<div class="space-y-3 text-sm text-muted-foreground">
-				{#each publishingSays({ address }, answersReach) as line (line)}
+				{#each publishingSays({ branch: named }, answersReach) as line (line)}
 					<p>{line}</p>
 				{/each}
 				{#if carriedBy}
-					<p>{alreadyCarried({ address }, carriedBy)}</p>
+					<p>{alreadyCarried({ branch: named }, carriedBy)}</p>
 				{/if}
 				{#each narrower as under (under)}
 					<p>{narrowerSays(under, 'going')}</p>
@@ -449,7 +458,7 @@
 
 <ConfirmModal
 	bind:open={takingDown}
-	title="Take {address} down?"
+	title="Take {named} down?"
 	description="Nobody new can read it, and the pictures in it stop opening. Whoever has already read it keeps their copy of the writing."
 	confirmLabel="Take it down"
 	refused={downRefused ? refused : null}

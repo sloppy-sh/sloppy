@@ -26,6 +26,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
@@ -57,6 +58,7 @@
 		pictureTurn,
 		RootAddressSchema,
 		graphOf,
+		noteLabel,
 		peerOrigin,
 		publishRootsOf,
 		splitOwnedRef,
@@ -134,7 +136,7 @@
 	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
 	import Writing from './writing.svelte';
-	import { nodeHref, refFromPath } from './routes.js';
+	import { citationUrl, nodeHref, refFromPath } from './routes.js';
 	import {
 		acceleratorFor,
 		FIND_NOTE,
@@ -175,6 +177,9 @@
 		trip: WritingNote;
 		from: OwnedRef | null;
 		shape: NoteTemplate | null;
+		/** Whether an address comes with it: a note written on its own carries
+		 *  none until somebody writes one on it. */
+		numbering: boolean;
 		title: string;
 		body: string;
 		/** Which field the caret was in, so the note opens where it was left. */
@@ -1187,6 +1192,8 @@
 		if (!choosing) {
 			if (!on) {
 				const bare: CanvasMenuItem[] = [
+					{ label: 'New branch', icon: Plus, onSelect: () => writeBranch(null) },
+					{ label: 'New note', icon: FilePlus, onSelect: writeAlone },
 					{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }
 				];
 				return chooseLit ? [chooseLit, ...bare] : bare;
@@ -1296,6 +1303,12 @@
 		startWriting({ from: { relation: 'branch', graph: graphs.current } }, null, shape);
 	}
 
+	/** A note that springs from nothing and carries no address until the reader
+	 *  writes one on it. */
+	function writeAlone(): void {
+		startWriting({ from: { relation: 'free', graph: graphs.current } }, null, null);
+	}
+
 	/** The note that springs from one already on the canvas, without opening it
 	 *  first. */
 	function writeUnder(on: OwnedRef): void {
@@ -1318,6 +1331,7 @@
 			trip: nodes.write(asked),
 			from,
 			shape,
+			numbering: asked.from?.relation !== 'free',
 			title: '',
 			body: '',
 			where: 'title',
@@ -1814,6 +1828,7 @@
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
 					onOpen={foreign ? (ref) => void readHeld(ref) : show}
 					writeUnder={foreign ? undefined : writeFromRow}
+					writeAlone={foreign ? undefined : writeAlone}
 				/>
 			{/if}
 		</div>
@@ -1889,7 +1904,9 @@
 				{#if pointing}
 					<div class="flex items-center gap-3">
 						<p class="min-w-0 flex-1 text-sm">
-							Tap a note to link it to <span class="address">{pointingNote?.address}</span>
+							Tap a note to link it to <span class:address={!!pointingNote?.address}
+								>{pointingNote ? noteLabel(pointingNote) : ''}</span
+							>
 						</p>
 						<Button
 							variant="outline"
@@ -1968,6 +1985,16 @@
 						>
 							<Plus class="size-4" />
 							New branch
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-9 shrink-0 rounded-full"
+							aria-label="New note, which opens no branch"
+							disabled={creating}
+							onclick={writeAlone}
+						>
+							<FilePlus class="size-4" />
 						</Button>
 						<Button
 							variant="ghost"
@@ -2242,6 +2269,7 @@
 		note={reachedNote}
 		author={{ identity: authorOf(foreign), person: regionAuthor }}
 		notebook={foreign.graph_title}
+		link={reached ? citationUrl(reached) : undefined}
 		blocks={reached ? peers.stack(reached) : []}
 		loading={reaching !== null && reaching === reached}
 		says={reachRefused}
@@ -2322,6 +2350,7 @@
 		<Writing
 			title={writingNow.title}
 			body={writingNow.body}
+			numbering={writingNow.numbering}
 			refused={writingNow.refused}
 			onTitle={(said) => {
 				if (writing) writing.title = said;

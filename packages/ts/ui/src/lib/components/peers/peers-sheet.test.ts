@@ -4,7 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import type { Person } from '../identity/person.js';
-import type { HeldRegion, Peer, PublishedThere } from './peer.js';
+import type { Answered, HeldRegion, Peer, PublishedThere } from './peer.js';
 import PeersSheet from './peers-sheet.svelte';
 
 const ADA = 'did:syr:z6MkAdaAdaAdaAdaAdaAdaAdaAdaAdaAda';
@@ -51,7 +51,9 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-async function open(props: { regions?: HeldRegion[]; following?: Peer[] } = {}): Promise<void> {
+async function open(
+	props: { regions?: HeldRegion[]; following?: Peer[]; answers?: Answered[] } = {}
+): Promise<void> {
 	if (mounted) unmount(mounted, { outro: false });
 	document.body.innerHTML = '';
 	target = document.createElement('div');
@@ -65,6 +67,7 @@ async function open(props: { regions?: HeldRegion[]; following?: Peer[] } = {}):
 			open: true,
 			regions: props.regions ?? [],
 			following: props.following ?? [],
+			answers: props.answers ?? [],
 			onEnter: () => {},
 			onDrop: (ref: OwnedRef) => dropped.push(ref),
 			onLook: (who: string, where: string | undefined): Promise<PublishedThere | null> => {
@@ -149,6 +152,36 @@ describe('a branch somebody else published', () => {
 		find('Stop holding 3b2')?.click();
 		await settle();
 		expect(dropped).toEqual([OTHER]);
+	});
+});
+
+describe("a note of the reader's own that somebody answered", () => {
+	const answered = (over: Partial<Answered> = {}): Answered => ({
+		note: OTHER,
+		address: '2b',
+		title: 'Spores',
+		graph: `${BRAM}/01ARZ3NDEKTSV4RRFFQ69G5FC0` as OwnedRef,
+		voices: [{ identity: ADA, person: ADA_PERSON }],
+		...over
+	});
+
+	it('is named by the address it is cited at, and by who answered it', async () => {
+		await open({ answers: [answered()] });
+
+		const shown = document.body.textContent ?? '';
+		expect(shown).toContain('2b');
+		expect(shown).toContain('Spores');
+		expect(shown).toContain('Ada Lovelace');
+	});
+
+	it('is named by its title alone where it has no address', async () => {
+		const bare = answered();
+		delete bare.address;
+		await open({ answers: [bare] });
+
+		const shown = document.body.textContent ?? '';
+		expect(shown).toContain('Spores');
+		expect(document.body.querySelector('.address')).toBeNull();
 	});
 });
 

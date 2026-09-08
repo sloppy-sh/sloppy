@@ -145,6 +145,22 @@ let ownInstance: string | null;
  *  not outlive it. */
 let restoreClipboard: (() => void) | undefined;
 
+/** Stands in for the clipboard until the case is over, answering with what the
+ *  surface handed it. */
+function clipboardKeeps(): string[] {
+	const copied: string[] = [];
+	const board = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
+	Object.defineProperty(globalThis.navigator, 'clipboard', {
+		configurable: true,
+		value: { writeText: (text: string) => (copied.push(text), Promise.resolve()) }
+	});
+	restoreClipboard = () => {
+		if (board) Object.defineProperty(globalThis.navigator, 'clipboard', board);
+		else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+	};
+	return copied;
+}
+
 function stubViewport(): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
@@ -216,6 +232,16 @@ function onCanvas(address: string): HTMLButtonElement {
 		(b) => b.textContent?.trim().split(/\s+/)[0] === address
 	);
 	if (!found) throw new Error(`No note addressed ${address} is drawn`);
+	return found as HTMLButtonElement;
+}
+
+/** A note's control on the stand-in canvas, by the title written on it, for one
+ *  its author gave no address to find it by. */
+function onCanvasNamed(title: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('[aria-label="The graph"] button')].find(
+		(b) => b.textContent?.trim() === title
+	);
+	if (!found) throw new Error(`No note titled ${title} is drawn`);
 	return found as HTMLButtonElement;
 }
 
@@ -862,16 +888,7 @@ describe('a note of the reader’s own, off one they are holding', () => {
 	});
 
 	it('copies the address a peer would resolve, with the notebook it is read in', async () => {
-		const copied: string[] = [];
-		const board = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
-		Object.defineProperty(globalThis.navigator, 'clipboard', {
-			configurable: true,
-			value: { writeText: (text: string) => (copied.push(text), Promise.resolve()) }
-		});
-		restoreClipboard = () => {
-			if (board) Object.defineProperty(globalThis.navigator, 'clipboard', board);
-			else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
-		};
+		const copied = clipboardKeeps();
 		regions = [{ ...held, graph: ref(90, AUTHOR), graph_title: 'The thesis' }];
 
 		await enterHeldRegion();
@@ -881,6 +898,28 @@ describe('a note of the reader’s own, off one they are holding', () => {
 		await settle();
 
 		expect(copied).toEqual(['1a · The thesis']);
+	});
+
+	// Their author gave it no address, so there is nothing to cite — what the
+	// reader can still hand somebody is the way to open it.
+	it('hands over a link where the note its author wrote carries no address', async () => {
+		const copied = clipboardKeeps();
+		const bare = theirs(13, '1b', { title: 'Nothing numbered it', parent: THEIR_ROOT });
+		delete bare.address;
+		api.on(`GET /pulls/${encodeURIComponent(DID)}/${REGION_ID}/nodes`, () => [
+			theirs(11, '1', { title: 'Note 1' }),
+			bare
+		]);
+
+		await enterHeldRegion();
+		onCanvasNamed('Nothing numbered it').click();
+		await settle();
+		labelledControl('Copy a link to this note').click();
+		await settle();
+
+		expect(copied).toEqual([
+			`${globalThis.location.origin}/n/${encodeURIComponent(AUTHOR)}/${ulid(13)}`
+		]);
 	});
 });
 

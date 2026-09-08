@@ -49,6 +49,7 @@ let toggled: [OwnedRef, boolean][];
 let written: OwnedRef[];
 let besides: OwnedRef[];
 let moves: [OwnedRef, NoteDestination][];
+let alone: boolean[];
 let chose: OwnedRef[];
 let choosing: boolean[];
 let scrolledTo: HTMLElement[];
@@ -74,6 +75,8 @@ function render(
 		sections?: TreeSurfaceProps['sections'];
 		/** Absent stands for a walk where no note is the reader's to carry. */
 		movable?: boolean;
+		/** Absent stands for a walk with no way to start a note of its own. */
+		writeAlone?: boolean;
 		/** What the app says about a note that did not go. */
 		moveRefused?: string;
 	} = {}
@@ -101,6 +104,7 @@ function render(
 					beside: props.draggable === false ? undefined : (ref: OwnedRef) => besides.push(ref)
 				}
 			: undefined,
+		writeAlone: props.writeAlone ? () => alone.push(true) : undefined,
 		sections: props.sections,
 		moveNote: props.movable
 			? {
@@ -127,7 +131,7 @@ function lay(): void {
 			configurable: true,
 			value: () => ({ top: at * 44, bottom: at * 44 + 44, left: 0, right: 400 })
 		});
-		const words = row.querySelector('.address');
+		const words = row.querySelector('.grip');
 		if (!words) continue;
 		Object.defineProperty(words, 'getBoundingClientRect', {
 			configurable: true,
@@ -170,6 +174,7 @@ beforeEach(() => {
 	written = [];
 	besides = [];
 	moves = [];
+	alone = [];
 	chose = [];
 	choosing = [];
 	scrolledTo = [];
@@ -1076,6 +1081,24 @@ describe('carrying a note to another run', () => {
 		expect(openedNotes).toEqual([held('2')]);
 	});
 
+	// AI.md § "The Genealogy Is the Protocol": a note with no address is an
+	// ordinary note, and what it is read by is its grip like any other row's.
+	it('carries a note with no address by the title it is read by', () => {
+		const loose = note('loose', undefined, { address: undefined, title: 'On its own' });
+		render({ ...OPEN, groups: [{ key: 'one', title: 'Field notes', notes: [...BRANCH, loose] }] });
+		lay();
+
+		const grip = labelled('On its own').querySelector('.grip') as HTMLElement;
+		grip.dispatchEvent(pull('pointerdown', 12, 230));
+		window.dispatchEvent(pull('pointermove', 60, 60));
+		flushSync();
+		expect(said()).toBe('Goes under 1a About 1a');
+
+		window.dispatchEvent(pull('pointerup', 60, 60));
+		flushSync();
+		expect(moves).toEqual([[held('loose'), { relation: 'under', note: held('1a') }]]);
+	});
+
 	it('leaves every note where it is on a walk that is not the reader’s', () => {
 		render({ opened: new Set([held('1'), held('1a')]) });
 		lay();
@@ -1220,6 +1243,33 @@ describe('what a row says about a note', () => {
 	it('counts several notes as several', () => {
 		render();
 		expect(labelled('About 1').textContent).toContain('3 notes under this');
+	});
+});
+
+// AI.md § "The Genealogy Is the Protocol": a note written with no parent and no
+// address is an ordinary note, and the walk is one place to start one.
+describe('writing a note of its own from the walk', () => {
+	const newNote = () =>
+		[...target.querySelectorAll<HTMLButtonElement>('button')].find(
+			(button) => button.textContent?.trim() === 'New note'
+		);
+
+	it('offers it over the run, and asks for it once', () => {
+		render({ writeAlone: true });
+		newNote()?.click();
+		expect(alone).toEqual([true]);
+	});
+
+	// The band over a set being chosen acts on that set, and writing is not one
+	// of the acts it offers.
+	it('offers it on the ordinary walk and not while a set is being chosen', () => {
+		render({ writeAlone: true, chosen: new Set([held('1')]) });
+		expect(newNote()).toBeUndefined();
+	});
+
+	it('offers nothing on a walk that is not the reader’s to write in', () => {
+		render();
+		expect(newNote()).toBeUndefined();
 	});
 });
 
