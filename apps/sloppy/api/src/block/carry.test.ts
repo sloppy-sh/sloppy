@@ -23,6 +23,7 @@ const WRITTEN_AT = "2026-01-01T00:00:05.000Z";
 
 const HERE = ownedRefFrom(createOwnedRecordId("node", ADA));
 const THERE = ownedRefFrom(createOwnedRecordId("node", ADA));
+const ELSEWHERE = ownedRefFrom(createOwnedRecordId("node", ADA));
 
 const prose = (line: string): BlockDocument => ({
   type: "doc",
@@ -44,7 +45,10 @@ function section(node: OwnedRef, ord: string, content?: BlockDocument): Block {
 /** The two notes and their stacks, with `reachable` saying which notes the
  *  writer can still write into — one that is deleted, or somebody else's,
  *  answers nothing. */
-function store(rows: Block[], reachable: readonly OwnedRef[] = [HERE, THERE]) {
+function store(
+  rows: Block[],
+  reachable: readonly OwnedRef[] = [HERE, THERE, ELSEWHERE],
+) {
   const at = (ref: OwnedRef) =>
     rows.findIndex((row) => ownedRefFrom(row.id) === ref);
   const blocks = {
@@ -161,7 +165,7 @@ describe("a section carried into another note", () => {
     });
 
     await expect(write).rejects.toBeInstanceOf(BadRequestException);
-    await expect(write).rejects.toThrow(/not in that note/);
+    await expect(write).rejects.toThrow(/was going after is not in the note/);
     expect(stackOf(rows, HERE)).toEqual([
       ownedRefFrom(carried.id),
       ownedRefFrom(alongside.id),
@@ -194,6 +198,41 @@ describe("a section carried into another note", () => {
 
     await expect(behind).rejects.toBeInstanceOf(ConflictException);
     await expect(behind).rejects.toThrow(/in another note now/);
+  });
+
+  it("keeps the words a writer typed while somebody else carried the section away", async () => {
+    const written = prose("Typed on the note page while the outline moved it.");
+    const carried = section(HERE, "a0");
+    const standing = section(THERE, "a0");
+    const rows = [carried, standing];
+    const service = store(rows);
+    const ref = ownedRefFrom(carried.id);
+    const behind = service.update(ADA, ref, { content: written });
+    rows[0] = { ...rows[0], node: THERE };
+
+    const view = await behind;
+
+    expect(view.content).toEqual(written);
+    expect(view.node).toBe(THERE);
+    expect(stackOf(rows, THERE)).toEqual([ref, ownedRefFrom(standing.id)]);
+  });
+
+  it("lands in the note the writer named even if it moved on the way there", async () => {
+    const carried = section(HERE, "a0");
+    const standing = section(THERE, "a0");
+    const rows = [carried, standing];
+    const service = store(rows);
+    const ref = ownedRefFrom(carried.id);
+    const behind = service.update(ADA, ref, {
+      node: THERE,
+      after: ownedRefFrom(standing.id),
+    });
+    rows[0] = { ...rows[0], node: ELSEWHERE };
+
+    await behind;
+
+    expect(stackOf(rows, ELSEWHERE)).toEqual([]);
+    expect(stackOf(rows, THERE)).toEqual([ownedRefFrom(standing.id), ref]);
   });
 
   it("leaves a section named in the same note alone where it sits", async () => {

@@ -111,10 +111,11 @@ export class BlockService {
       // anything read before it.
       const before = await this.blocks.find(did, ref);
       if (!before) throw new NotFoundException("That block is not here.");
-      // The stacks held are the ones read before the queue, so a section
-      // carried out of `from` in between would be placed against a stack it is
-      // no longer in.
-      if (before.node !== from) {
+      // A reorder is placed against the stack the section was read in; a carry
+      // names the stack it goes into, and a write that places nothing reads
+      // neither.
+      const reordering = !carried && request.after !== undefined;
+      if (reordering && before.node !== from) {
         throw new ConflictException(
           "This section is in another note now. Open that note to see where it sits.",
         );
@@ -236,7 +237,7 @@ export class BlockService {
     } catch (err) {
       if (err instanceof UnknownNeighbourError) {
         throw new BadRequestException(
-          "The block this one was going after is not in that note.",
+          "The block this one was going after is not in the note it is going into.",
         );
       }
       throw err;
