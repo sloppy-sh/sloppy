@@ -290,7 +290,7 @@
 							showing ? 'text-foreground' : 'text-muted-foreground'
 						)}
 					>
-						<span class="shrink-0 address text-xs">{tab.address}</span>
+						{#if tab.address}<span class="shrink-0 address text-xs">{tab.address}</span>{/if}
 						<span class="truncate">{tab.title || 'Untitled'}</span>
 						{#if tab.graph}
 							<span class="max-w-24 shrink-0 truncate text-xs text-muted-foreground"

@@ -26,7 +26,7 @@
 	/** Which graph a note is in is fixed at creation, so a saved choice is
 	 *  confirmed against the listing before anything is written — a listing that
 	 *  will not load refuses rather than filing the thought somewhere else. */
-	async function graphForBranch(): Promise<OwnedRef> {
+	async function graphFor(): Promise<OwnedRef> {
 		const saved = prefs.current.graph;
 		if (saved && saved !== graphs.home) await graphs.load();
 		return graphs.current;
@@ -36,7 +36,7 @@
 		refused = null;
 		const asked = page.url.searchParams;
 		// An `under` that names no note must not cost somebody the thought, so it
-		// opens a branch instead.
+		// writes a note of its own instead.
 		const under = OwnedRefSchema.safeParse(asked.get('under'));
 		const text = (asked.get('text') ?? '').trim();
 		try {
@@ -44,7 +44,7 @@
 				const note = await nodes.create({
 					from: under.success
 						? { relation: 'under', note: under.data }
-						: { relation: 'branch', graph: await graphForBranch() }
+						: { relation: 'free', graph: await graphFor() }
 				});
 				written = note.ref;
 			}
