@@ -76,12 +76,14 @@ export function aimAt(
 	};
 }
 
-const named = (row: { address?: Address; title: string }): string =>
+/** What a row is called where a drop names it: the address a person cites, and
+ *  the title beside it. */
+export const rowName = (row: { address?: Address; title: string }): string =>
 	[row.address, row.title || 'Untitled'].filter(Boolean).join(' ');
 
 /** What the drop is about to do, for the reader and for anyone listening. */
 export function aimSays(aim: TreeAim): string {
-	return aim.relation === 'under' ? `Write under ${named(aim)}` : `Write beside ${named(aim)}`;
+	return aim.relation === 'under' ? `Write under ${rowName(aim)}` : `Write beside ${rowName(aim)}`;
 }
 
 /** What letting a carried note go would do, in the reader's words. */
@@ -149,18 +151,18 @@ export function movesTo(
 	const how = aim.relation === 'under' ? 'under' : 'beside';
 	const run = aim.relation === 'under' ? on.address : runAbove(notes, on);
 	if (moved.address === undefined || run === undefined) {
-		return { says: `Goes ${how} ${named(on)}`, to: aim };
+		return { says: `Goes ${how} ${rowName(on)}`, to: aim };
 	}
 	const folded = aim.relation === 'under' && item.children > 0 && !item.open;
 	const waiting = rows.some((row) => row.kind === 'rest' && row.parent === run);
 	if (folded || waiting) {
-		return { says: `Goes ${how} ${named(on)}, at the end of its run`, to: aim };
+		return { says: `Goes ${how} ${rowName(on)}, at the end of its run`, to: aim };
 	}
 	const along = notes.flatMap((row) => (row.note.address ? [row.note.address] : []));
 	const takes = nextChildAddress(run, along);
 	const alreadyLast = takes === siblingAddress(moved.address);
 	if (alreadyLast) return { says: 'Stays where it is' };
-	return { says: `Goes ${how} ${named(on)}, as ${takes} or later`, to: aim };
+	return { says: `Goes ${how} ${rowName(on)}, as ${takes} or later`, to: aim };
 }
 
 /**
