@@ -303,8 +303,9 @@ describe("with tags selected", () => {
   });
 });
 
-// AI.md § "The Genealogy Is the Protocol": the run between two notes is a
-// function of their addresses, so the model derives it and no row carries it.
+// AI.md § "The Genealogy Is the Protocol": which two notes a run joins is a
+// function of what they sprang from and the order they read in, so the model
+// derives it and no row carries it.
 describe("the run of thought", () => {
   const model = buildModel(drawn, {
     selection: [],
@@ -508,7 +509,7 @@ describe("the two ways of connecting two notes", () => {
 
   // Writing about the note a thought sprang from is ordinary Zettelkasten, and
   // there the citation is the rarer fact — so it takes the line from parentage.
-  // How far apart the two sit is still the addresses' to say.
+  // How far apart the two sit is still the genealogy's to say.
   it("takes a parent's line without moving it", () => {
     const parent = note("1");
     const child = { ...note("1a"), parent: parent.ref, origin: parent.ref };
@@ -633,7 +634,7 @@ describe("carrying positions across an update", () => {
 
   // The seeds are what a peer agrees with, so what one reader's session did to
   // the picture must not reach them.
-  it("leaves every seed where the address put it", () => {
+  it("leaves every seed where the tree put it", () => {
     const model = buildModel(drawn, {
       selection: [],
       palette,
@@ -892,18 +893,20 @@ describe("several graphs on one canvas", () => {
   const options = { selection: [], palette, viewer: corpus.owner };
   const model = buildModel([...mine, ...twin], { ...options, fields });
   const alone = buildModel(mine, options);
-
-  const gapAt = (node: NodeView) =>
-    model.graph.getNodeAttributes(inOther(node).ref).anchorX -
-    model.graph.getNodeAttributes(node.ref).anchorX;
+  const twinAlone = buildModel(twin, options);
 
   it("keeps a note's place inside its own field, and moves the field", () => {
-    for (const { node } of mine) {
-      const here = model.graph.getNodeAttributes(node.ref);
-      const there = model.graph.getNodeAttributes(inOther(node).ref);
-      expect(there.anchorY).toBe(here.anchorY);
-      expect(gapAt(node)).toBeCloseTo(gapAt(mine[0].node), 6);
+    const gapAt = (ref: OwnedRef) =>
+      model.graph.getNodeAttributes(ref).anchorX -
+      twinAlone.graph.getNodeAttributes(ref).anchorX;
+    const first = inOther(mine[0].node).ref;
+    for (const { node } of twin) {
+      expect(model.graph.getNodeAttributes(node.ref).anchorY).toBe(
+        twinAlone.graph.getNodeAttributes(node.ref).anchorY,
+      );
+      expect(gapAt(node.ref), node.ref).toBeCloseTo(gapAt(first), 6);
     }
+    expect(gapAt(first)).toBeGreaterThan(0);
   });
 
   it("never lets one field's marks reach into the next", () => {

@@ -91,8 +91,8 @@ export interface GraphPalette {
    */
   unselectedAlpha(fill: number): number;
   /**
-   * The run of consecutive addresses — DESIGN.md § Edges makes it the heaviest
-   * line on the canvas, and dims it with the tree while tags are selected.
+   * The run a reader walks — DESIGN.md § Edges makes it the heaviest line on
+   * the canvas, and dims it with the tree while tags are selected.
    */
   run: number;
   runAlpha: number;

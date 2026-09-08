@@ -194,7 +194,7 @@ export interface NamedField extends GraphField {
 
 export interface BuiltModel {
   graph: GraphModel;
-  /** Drawn order, which is address order — the layout indexes by position. */
+  /** The order the region was handed in — the layout indexes by position. */
   order: readonly OwnedRef[];
   /** Empty on a canvas drawing one graph, which needs no name to tell apart. */
   fields: readonly NamedField[];
@@ -259,7 +259,7 @@ export function buildModel(
 
   // One line per pair, and it is the strongest kind true of it — DESIGN.md
   // § Edges. Distance belongs to whichever line got there first, which is why
-  // the addresses' two kinds are laid before the two a person made: a
+  // the two kinds the tree makes are laid before the two a person made: a
   // connection changes how a line is drawn and never how far apart the two
   // notes sit.
   const join = (
@@ -297,7 +297,7 @@ export function buildModel(
   }
 
   // Distance is the gap the pair's own seeds already sit at, so the run
-  // reinforces the shape the addresses fixed rather than pulling siblings
+  // reinforces the shape the genealogy fixed rather than pulling siblings
   // together — with the shared floor still holding the most crowded
   // generations apart.
   for (const [before, after] of runs(drawn)) {
@@ -375,10 +375,10 @@ function startPoints(
 }
 
 /**
- * Where each drawn note starts, and where each field's name is written. An
- * address seeds the same point in every graph — that is the protocol — so on a
- * canvas holding several the field a note is in is what moves it, and the note's
- * place inside its own field is untouched.
+ * Where each drawn note starts, and where each field's name is written. Every
+ * graph is seeded onto the same ring, so on a canvas holding several the field a
+ * note is in is what moves it, and the note's place inside its own field is
+ * untouched.
  */
 function seedFields(
   drawn: readonly DrawnNode[],

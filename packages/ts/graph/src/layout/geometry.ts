@@ -1,19 +1,16 @@
 // Where a node starts before the simulation touches it.
 //
-// Seeds are a pure function of what a peer already holds — the address where a
-// note has one, its ref where it has none — which is the point: AI.md § "The
-// Genealogy Is the Protocol" says a subtree radiates the same way on every
-// peer, and it can only do that if no coordinate is ever shipped. The force
-// pass then resolves overlap around a shape the protocol already fixed.
+// A seed is a pure function of the genealogy — what a note sprang out of, and
+// where it falls among the notes written alongside it. AI.md § "The Genealogy
+// Is the Protocol" is why: a subtree radiates the same way on every peer, and it
+// can only do that if no coordinate is ever shipped and no label ever moves a
+// mark. The force pass resolves the crowding around the shape that fixes.
+//
+// A peer that pulled a subtree without the notes above it draws it in the same
+// shape rather than in the same place — where those sat is not something the
+// subtree carries.
 
-import {
-  type Address,
-  addressSector,
-  formatAddress,
-  type OwnedRef,
-  parseAddress,
-  refSector,
-} from "@sloppy/types";
+import { orderSiblings, type OwnedRef, refSector } from "@sloppy/types";
 
 /** Roots sit on this ring; their subtrees radiate outward from it. */
 const ROOT_RADIUS = 1400;
@@ -23,9 +20,10 @@ const STEP_DECAY = 0.8;
 const SPREAD_FIRST = 1.15;
 const SPREAD_DECAY = 0.66;
 /**
- * How much of a child's lean comes from its ordinal rather than its sector.
- * Ordinal alone fans siblings in reading order; sector alone gives the subtree
- * the direction every peer agrees on. Both are address-pure, so both are kept.
+ * How much of a child's lean comes from its place in the run rather than from
+ * its ref. The run alone fans siblings in the order they were written; the ref
+ * alone gives each subtree a direction of its own. Both travel with the note, so
+ * both are kept.
  */
 const FAN_WEIGHT = 0.7;
 /** Saturates the ordinal fan, so 23 siblings still fit inside one spread. */
@@ -38,37 +36,119 @@ export interface SeedPoint {
   outward: number;
 }
 
-/** A note as the seeding reads it: its ref, and the address it has where it has
- *  one. */
+/**
+ * A note as the seeding reads it. There is no address on it, and that is the
+ * contract: a label a person writes, edits or takes off must not move a mark.
+ */
 export interface SeededNote {
   ref: OwnedRef;
-  address?: Address;
+  /** Absent, or naming a note the field does not hold, seeds on the root ring. */
+  parent?: OwnedRef;
+  created_at: string;
+  /** Its generation, for a note whose parent is not here to count from. */
+  depth: number;
 }
 
-/**
- * Seed every note, by ref. Memoised over shared address prefixes — a tree
- * shares almost all of its prefixes, so this stays close to linear in the node
- * count.
- */
+/** Seed every note, by ref. */
 export function seedField(
   notes: Iterable<SeededNote>,
 ): ReadonlyMap<OwnedRef, SeedPoint> {
-  const seeds = new Map<OwnedRef, SeedPoint>();
-  const memo = new Map<Address, SeedPoint>();
-  for (const note of notes) {
-    seeds.set(
-      note.ref,
-      note.address === undefined
-        ? seedRing(refSector(note.ref))
-        : seedAt(note.address, memo),
-    );
-  }
-  return seeds;
+  const held = [...notes];
+  const byRef = new Map(held.map((note) => [note.ref, note]));
+  const ordinals = runOrdinals(held, byRef);
+  const placed = new Map<OwnedRef, Placed>();
+
+  for (const note of held) place(note, byRef, ordinals, placed);
+
+  return new Map(
+    [...placed].map(([ref, under]) => [ref, under.point] as const),
+  );
 }
 
-/** One address's seed. Total over valid addresses, and free of any clock. */
-export function seedAddress(address: Address): SeedPoint {
-  return seedAt(address, new Map());
+/** A seed and the generation it was reached at, which is what the next one
+ *  steps and leans off. */
+interface Placed {
+  point: SeedPoint;
+  depth: number;
+}
+
+function place(
+  note: SeededNote,
+  byRef: ReadonlyMap<OwnedRef, SeededNote>,
+  ordinals: ReadonlyMap<OwnedRef, number>,
+  placed: Map<OwnedRef, Placed>,
+): Placed {
+  // Walked rather than recursed: a chain as deep as the field is long would
+  // otherwise be a stack the corpus size decides.
+  const chain: SeededNote[] = [];
+  const walking = new Set<OwnedRef>();
+  for (
+    let at: SeededNote | undefined = note;
+    at !== undefined && !placed.has(at.ref) && !walking.has(at.ref);
+    at = at.parent === undefined ? undefined : byRef.get(at.parent)
+  ) {
+    walking.add(at.ref);
+    chain.push(at);
+  }
+
+  for (let at = chain.length - 1; at >= 0; at--) {
+    const under = chain[at];
+    const from =
+      under.parent === undefined ? undefined : placed.get(under.parent);
+    placed.set(
+      under.ref,
+      from === undefined
+        ? { point: seedRing(refSector(under.ref)), depth: under.depth }
+        : leanOff(from, under, ordinals.get(under.ref) ?? 1),
+    );
+  }
+
+  return placed.get(note.ref) as Placed;
+}
+
+function leanOff(from: Placed, note: SeededNote, ordinal: number): Placed {
+  const depth = from.depth + 1;
+  const lean =
+    spreadAt(depth) *
+    (FAN_WEIGHT * fanOffset(ordinal) +
+      (1 - FAN_WEIGHT) * signedUnit(refSector(note.ref)));
+  const outward = from.point.outward + lean;
+  const step = STEP_FIRST * STEP_DECAY ** (depth - 2);
+  return {
+    point: {
+      x: from.point.x + Math.cos(outward) * step,
+      y: from.point.y + Math.sin(outward) * step,
+      outward,
+    },
+    depth,
+  };
+}
+
+/**
+ * Each note's place in the run it lies in, from 1. `orderSiblings` is handed the
+ * notes without their labels, so what fans a run is the order it was written —
+ * the half of that rule two peers cannot disagree about.
+ */
+function runOrdinals(
+  held: readonly SeededNote[],
+  byRef: ReadonlyMap<OwnedRef, SeededNote>,
+): ReadonlyMap<OwnedRef, number> {
+  const runs = new Map<OwnedRef, { ref: OwnedRef; created_at: string }[]>();
+  for (const note of held) {
+    if (note.parent === undefined || !byRef.has(note.parent)) continue;
+    const member = { ref: note.ref, created_at: note.created_at };
+    const run = runs.get(note.parent);
+    if (run === undefined) runs.set(note.parent, [member]);
+    else run.push(member);
+  }
+
+  const ordinals = new Map<OwnedRef, number>();
+  for (const run of runs.values()) {
+    orderSiblings(run).forEach((member, at) =>
+      ordinals.set(member.ref, at + 1),
+    );
+  }
+  return ordinals;
 }
 
 function seedRing(outward: number): SeedPoint {
@@ -79,44 +159,14 @@ function seedRing(outward: number): SeedPoint {
   };
 }
 
-function seedAt(address: Address, memo: Map<Address, SeedPoint>): SeedPoint {
-  const hit = memo.get(address);
-  if (hit) return hit;
-
-  const segments = parseAddress(address);
-  let point: SeedPoint;
-
-  if (segments.length === 1) {
-    point = seedRing(addressSector(address));
-  } else {
-    const parent = seedAt(formatAddress(segments.slice(0, -1)), memo);
-    const depth = segments.length;
-    const lean =
-      spreadAt(depth) *
-      (FAN_WEIGHT * fanOffset(segments[depth - 1].ordinal) +
-        (1 - FAN_WEIGHT) * signedUnit(addressSector(address)));
-    const outward = parent.outward + lean;
-    const step = STEP_FIRST * STEP_DECAY ** (depth - 2);
-    point = {
-      x: parent.x + Math.cos(outward) * step,
-      y: parent.y + Math.sin(outward) * step,
-      outward,
-    };
-  }
-
-  memo.set(address, point);
-  return point;
-}
-
 function spreadAt(depth: number): number {
   return SPREAD_FIRST * SPREAD_DECAY ** (depth - 2);
 }
 
 /**
- * A sibling's place in its parent's fan, in `(-1, 1)`: `a` on the centre line,
- * then alternating outward. Saturating rather than proportional, because the
- * sibling count is not knowable from an address and a peer holding half a
- * branch must still place it where we do.
+ * A sibling's place in its parent's fan, in `(-1, 1)`: the first on the centre
+ * line, then alternating outward. Saturating rather than proportional, so a run
+ * of 23 stays inside one spread.
  */
 function fanOffset(ordinal: number): number {
   const k = ordinal - 1;

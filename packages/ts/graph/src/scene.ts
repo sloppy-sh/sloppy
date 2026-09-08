@@ -1176,7 +1176,7 @@ export class GraphScene {
 
     // Two strokes, because the two do not recede together. A reference is
     // solid, so while a tag question is being asked it steps back with the
-    // lines the addresses draw; a hand link is the one somebody made and stays
+    // lines the genealogy draws; a hand link is the one somebody made and stays
     // where it was — DESIGN.md § Edges.
     this.connections.clear();
     for (let at = 0; at < this.referencePairs.length; at += 2) {

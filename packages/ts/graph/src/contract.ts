@@ -142,11 +142,11 @@ export interface GraphHoverAt {
 }
 
 export interface GraphSurfaceProps {
-  /** The region to draw, in address order. */
+  /** The region to draw. */
   nodes: readonly NodeView[];
   /**
    * The graphs on the canvas, in the order the reader put them there. Fewer
-   * than two is one field, drawn where the addresses alone put it and named
+   * than two is one field, drawn where the genealogy alone puts it and named
    * only in the chrome: with nothing to tell apart there is no question for a
    * name on the canvas to answer.
    */

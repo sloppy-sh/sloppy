@@ -36,6 +36,7 @@ function drawn(
   tags: string[],
   owner = OWNER,
   folded = 0,
+  parent?: OwnedRef,
 ): DrawnNode {
   const ref = `${owner}/${address}` as OwnedRef;
   const node = {
@@ -45,7 +46,8 @@ function drawn(
     updated_at: "2026-01-01T00:00:00.000Z",
     address,
     depth: address.length,
-    origin: ref,
+    ...(parent === undefined ? {} : { parent }),
+    origin: parent ?? ref,
     title: `note ${address}`,
     tags,
     links: [],
@@ -56,10 +58,17 @@ function drawn(
 
 /** More marks than `LABEL_RETEXT_BUDGET`, so a rebuild of the marks is a canvas
  *  that has to trickle its words back over several frames. */
+const BRANCH = `${OWNER}/1` as OwnedRef;
 const field: DrawnNode[] = [
   drawn("1", ["seed"]),
   ...Array.from({ length: 12 }, (_, at) =>
-    drawn(`1${"abcdefghijkl"[at]}`, at % 2 === 0 ? ["seed"] : ["method"]),
+    drawn(
+      `1${"abcdefghijkl"[at]}`,
+      at % 2 === 0 ? ["seed"] : ["method"],
+      OWNER,
+      0,
+      BRANCH,
+    ),
   ),
   drawn("2", [], STRANGER, 4),
 ];
@@ -76,6 +85,12 @@ async function canvas(): Promise<{
   const app = FakeApplication.latest as FakeApplication;
   scene.setModel(buildModel(field, { selection: [], palette }), false);
   scene.fit();
+  // Read at the branch rather than at the whole field, which is where a mark is
+  // drawn big enough to be given words at all.
+  const branch = scene.indexOf(BRANCH);
+  if (branch === undefined) throw new Error("the branch was not drawn");
+  scene.viewport.scale = 1;
+  scene.viewport.centreOn(scene.positionOf(branch), 390, 740);
   // Only a few label slots may change hands in a frame, so the canvas is left
   // with every word it wants on it before anything below moves.
   for (let frame = 0; frame < field.length; frame++) {
