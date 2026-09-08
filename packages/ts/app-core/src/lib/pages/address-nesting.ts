@@ -33,8 +33,9 @@ export type AddressNesting =
 	/** Nothing in this graph is at the address the label springs from. `write` is
 	 *  the notes that would have to be written for it to be, topmost first, and
 	 *  the note the topmost of them hangs under — absent where that one opens a
-	 *  branch. `write` itself is absent where an address on that chain has been
-	 *  spent already, which is nobody's to write a note at. */
+	 *  branch. `write` itself is absent where the chain is not the person's to
+	 *  write: an address on it has been spent already, or it would hang under
+	 *  this note. */
 	| {
 			act: 'nowhere';
 			parent: Address;
@@ -67,8 +68,18 @@ export function addressNesting(
 
 	const found = graph.find((one) => leadsTo(one, springs));
 	if (found === undefined) return nothingAt(note, springs, taking, graph);
-	const cycles = wouldCycle(note, found, springs, taking, graph);
-	if (cycles) return cycles;
+	if (found.ref === note.ref) {
+		return {
+			act: 'refuse',
+			words: `${taking} would make this note spring from itself. Pick another number.`
+		};
+	}
+	if (beneath(note, found, graph)) {
+		return {
+			act: 'refuse',
+			words: `${springs} springs from this note, so this note cannot spring from it. Pick a number outside it.`
+		};
+	}
 	return found.address === springs
 		? { act: 'carry', under: found, address: taking }
 		: { act: 'carry', under: found, wasAt: springs };
@@ -91,33 +102,10 @@ function nothingAt(
 			missing.unshift(reached);
 			continue;
 		}
-		const cycles = wouldCycle(note, found, reached, taking, graph);
-		if (cycles) return cycles;
+		if (found.ref === note.ref || beneath(note, found, graph)) return answer;
 		return found.address === reached ? { ...answer, write: { missing, under: found } } : answer;
 	}
 	return { ...answer, write: { missing } };
-}
-
-/** Whether the note would end up springing from itself by landing under
- *  `found`, whose address is `at`. */
-function wouldCycle(
-	note: NestingNote,
-	found: NestingNote,
-	at: Address,
-	taking: Address,
-	graph: readonly NestingNote[]
-): AddressNesting | null {
-	if (found.ref === note.ref) {
-		return {
-			act: 'refuse',
-			words: `${taking} would make this note spring from itself. Pick another number.`
-		};
-	}
-	if (!beneath(note, found, graph)) return null;
-	return {
-		act: 'refuse',
-		words: `${at} springs from this note, so this note cannot spring from it. Pick a number outside it.`
-	};
 }
 
 /** `undefined` where the number in it is larger than a graph can carry, which

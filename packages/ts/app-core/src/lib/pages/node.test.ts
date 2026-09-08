@@ -1539,6 +1539,15 @@ describe('writing the notes a number springs through', () => {
 		expect(screen()).not.toContain('and move it there');
 		expect(button('Keep it under 1 as 5a1')).toBeTruthy();
 	});
+
+	it('offers to write nothing where the chain would hang under a note this one carries', async () => {
+		await openCells();
+		await write('1a1b1');
+		await until(() => screen().includes('There is no note at 1a1b yet'));
+
+		expect(screen()).not.toContain('and move it there');
+		expect(button('Keep it under 1 as 1a1b1')).toBeTruthy();
+	});
 });
 
 // The line a citation draws comes from `references`, derived from the writing,

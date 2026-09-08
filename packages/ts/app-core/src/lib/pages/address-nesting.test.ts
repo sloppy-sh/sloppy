@@ -95,19 +95,20 @@ describe('what a number written on a note says about where it sits', () => {
 		});
 	});
 
-	it('refuses a chain that would hang under the note itself', () => {
+	it('offers to write nothing where the chain would hang under the note itself', () => {
 		expect(addressNesting(CELLS, '2c1a' as Address, GRAPH)).toEqual({
-			act: 'refuse',
-			words: '2c1a would make this note spring from itself. Pick another number.'
+			act: 'nowhere',
+			parent: '2c1',
+			address: '2c1a'
 		});
 	});
 
-	it('refuses a chain that would hang under a note this one carries', () => {
+	it('offers to write nothing where the chain would hang under a note this one carries', () => {
 		const under = note(5, '2c1', { parent: CELLS.ref });
 		expect(addressNesting(CELLS, '2c1a1' as Address, [...GRAPH, under])).toEqual({
-			act: 'refuse',
-			words:
-				'2c1 springs from this note, so this note cannot spring from it. Pick a number outside it.'
+			act: 'nowhere',
+			parent: '2c1a',
+			address: '2c1a1'
 		});
 	});
 
