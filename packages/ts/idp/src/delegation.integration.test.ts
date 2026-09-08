@@ -111,7 +111,12 @@ describe.skipIf(!runs)(`the provider against ${ENDPOINT.href}`, () => {
     ).rejects.toMatchObject({ code: "username_taken" });
   });
 
-  it("signs somebody back in with the password that seals their key", async () => {
+  // Four password costs in one test — a seal and three unseals, the last
+  // deliberately spent on a name nobody holds. Under the whole suite at once
+  // that has passed the five-second default.
+  it("signs somebody back in with the password that seals their key", {
+    timeout: 20_000,
+  }, async () => {
     const username = someone();
     const registered = await register(ctx, { username, password: PASSWORD });
     const returned = await login(ctx, { username, password: PASSWORD });
