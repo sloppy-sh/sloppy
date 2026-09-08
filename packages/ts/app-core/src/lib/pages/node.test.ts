@@ -24,6 +24,7 @@ import {
 	DID,
 	moving,
 	node,
+	numbering,
 	ref,
 	ulid,
 	unnumbered,
@@ -953,6 +954,168 @@ describe('moving a note from its own page', () => {
 		await settle();
 
 		expect(screen()).not.toContain('Move this note');
+	});
+
+	// AI.md § "The Genealogy Is the Protocol": a note with no address keeps none
+	// wherever it lands, and a run under a note nobody numbered numbers nothing.
+	it('offers a note with no number a place to go, without promising it one', async () => {
+		nodes.clear();
+		installGraph().set(THIRD, unnumbered(3, { title: 'Membranes', origin: FIRST, parent: SECOND }));
+		await loadGraph();
+		await openNote(THIRD);
+		await findToMove('2');
+		noteRow('Method').click();
+		await settle();
+
+		expect(screen()).toContain('Put it under 2');
+		expect(screen()).toContain('It carries no number there.');
+		expect(screen()).not.toContain('or the next one free');
+	});
+
+	it('offers a note with no number as somewhere to go', async () => {
+		nodes.clear();
+		installGraph().set(FOURTH, unnumbered(4, { title: 'Method' }));
+		await loadGraph();
+		await openNote(THIRD);
+		await findToMove('Method');
+		const row = [
+			...document.body.querySelectorAll<HTMLButtonElement>(
+				'[aria-label="Notes to move it to"] li button'
+			)
+		].find((one) => one.textContent?.includes('Method'));
+		if (!row) throw new Error('The sheet offers no row for a note with no number');
+		row.click();
+		await settle();
+
+		expect(screen()).toContain('Put it under Method');
+		expect(screen()).toContain('It carries no number there.');
+	});
+});
+
+// AI.md § "The Genealogy Is the Protocol": the address is a person's label, and
+// a person writes, changes and takes it off wherever one is shown.
+describe('writing the address on a note', () => {
+	const field = () =>
+		document.body.querySelector<HTMLInputElement>(
+			'[aria-label="The address you cite this note by"]'
+		);
+
+	function type(into: HTMLInputElement, words: string): void {
+		into.value = words;
+		into.dispatchEvent(new Event('input', { bubbles: true }));
+	}
+
+	async function save(): Promise<void> {
+		exactly('Save').click();
+		await settle();
+		await settle();
+	}
+
+	beforeEach(async () => {
+		session.adopt(VIEWER, 'a-session');
+		installGraph();
+		await loadGraph();
+	});
+
+	it('gives a note that has none the address a person types', async () => {
+		const alone = unnumbered(5, { title: 'On its own' });
+		api.on(`GET ${path(alone.ref)}`, () => alone);
+		api.on(`GET ${path(alone.ref)}/blocks`, () => []);
+		const asked: (string | null)[] = [];
+		numbering(api, alone.ref, (address) => {
+			asked.push(address);
+			return { ...alone, address: address ?? undefined };
+		});
+		await nodes.fetch(alone.ref);
+		await openNote(alone.ref);
+
+		exactly('Give it an address').click();
+		await settle();
+		const typing = field();
+		if (!typing) throw new Error('The header has no address field');
+		type(typing, '3');
+		await save();
+
+		expect(asked).toEqual(['3']);
+		expect(noteHead()).toContain('3');
+		expect(field()).toBeNull();
+	});
+
+	it('takes an address off the note that carries one', async () => {
+		const asked: (string | null)[] = [];
+		numbering(api, SECOND, (address) => {
+			asked.push(address);
+			return {
+				...node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST }),
+				address: undefined
+			};
+		});
+		await openNote(SECOND);
+
+		labelled('Edit the address 1a').click();
+		await settle();
+		exactly('Take it off').click();
+		await settle();
+		await settle();
+
+		expect(asked).toEqual([null]);
+		expect(noteHead()).toContain('Give it an address');
+	});
+
+	it('repeats the server’s words when the address is refused, and keeps the field up', async () => {
+		numbering(
+			api,
+			SECOND,
+			() =>
+				new Response(JSON.stringify({ message: '1b is already the address of another note.' }), {
+					status: 409,
+					headers: { 'content-type': 'application/json' }
+				}) as unknown as NodeView
+		);
+		await openNote(SECOND);
+
+		labelled('Edit the address 1a').click();
+		await settle();
+		const typing = field();
+		if (!typing) throw new Error('The header has no address field');
+		type(typing, '1b');
+		await save();
+
+		expect(noteHead()).toContain('1b is already the address of another note.');
+		expect(field()).not.toBeNull();
+	});
+
+	it('leaves the address alone when the reader backs out of the field', async () => {
+		const asked: (string | null)[] = [];
+		numbering(api, SECOND, (address) => {
+			asked.push(address);
+			return node(2, address ?? '1a', { title: 'Cells', origin: FIRST, parent: FIRST });
+		});
+		await openNote(SECOND);
+
+		labelled('Edit the address 1a').click();
+		await settle();
+		const typing = field();
+		if (!typing) throw new Error('The header has no address field');
+		type(typing, '4');
+		labelled('Leave the address as it is').click();
+		await settle();
+
+		expect(asked).toEqual([]);
+		expect(labelled('Edit the address 1a')).toBeTruthy();
+	});
+
+	it('leaves a note the reader did not write with nothing to write on it', async () => {
+		session.clear();
+		await openNote(SECOND);
+
+		expect(noteHead()).not.toContain('Give it an address');
+		expect(
+			[...document.body.querySelectorAll('button')].some(
+				(b) => b.getAttribute('aria-label')?.startsWith('Edit the address') === true
+			)
+		).toBe(false);
+		expect(labelled('Copy the address 1a')).toBeTruthy();
 	});
 });
 

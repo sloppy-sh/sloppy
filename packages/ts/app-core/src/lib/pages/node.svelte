@@ -217,6 +217,7 @@
 		publish?: string;
 		remove?: string;
 		copy?: string;
+		address?: string;
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
 	const refused = $derived<Refusals>(refusals.get(ref) ?? {});
@@ -235,7 +236,16 @@
 	$effect(() => {
 		const of = ref;
 		untrack(() => {
-			for (const act of ['remove', 'tag', 'look', 'link', 'move', 'publish', 'copy'] as const) {
+			for (const act of [
+				'remove',
+				'tag',
+				'look',
+				'link',
+				'move',
+				'publish',
+				'copy',
+				'address'
+			] as const) {
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
 		});
@@ -563,21 +573,34 @@
 		};
 	}
 
+	/** Whether `target` lies under `moving`: by the genealogy where this device
+	 *  holds the chain up from it, and by the addresses where it does not. */
+	function beneath(moving: NodeView, target: NodeView): boolean {
+		if (
+			moving.address !== undefined &&
+			target.address !== undefined &&
+			isInSubtree(moving.address, target.address)
+		) {
+			return true;
+		}
+		let up = target.parent;
+		while (up !== undefined) {
+			if (up === moving.ref) return true;
+			up = nodes.get(up)?.parent;
+		}
+		return false;
+	}
+
 	/** What letting the moved note go on `target` would do, or why it cannot. A
-	 *  carry reads the run off the addresses, so neither end of it can be a note
-	 *  nobody has numbered — the server refuses the same two. */
+	 *  number is named only where there will be one: a note with none keeps none,
+	 *  and a run under a note nobody numbered numbers nothing. */
 	function landingOn(
 		moving: NodeView,
 		target: NodeView
-	): { under: Address; after: Address } | { refused: string } {
+	): { under?: Address; after?: Address } | { refused: string } {
 		if (target.ref === moving.ref) return { refused: 'The note you are moving.' };
-		if (moving.address === undefined) {
-			return { refused: 'The note you are carrying has no number yet.' };
-		}
-		if (target.address === undefined) return { refused: 'This note has no number yet.' };
-		if (isInSubtree(moving.address, target.address)) {
-			return { refused: 'Inside the note you are moving.' };
-		}
+		if (beneath(moving, target)) return { refused: 'Inside the note you are moving.' };
+		if (moving.address === undefined || target.address === undefined) return {};
 		return landsAt(target, target.address);
 	}
 
@@ -751,6 +774,54 @@
 		said = words;
 		clearTimeout(saying);
 		saying = setTimeout(() => (said = null), 2000);
+	}
+
+	/** The note whose address the reader is writing, until they save it or leave
+	 *  it. Held per note, so walking away from a half-typed one puts the field
+	 *  away rather than carrying it to the next note. */
+	let addressing = $state<OwnedRef | null>(null);
+	let addressTyped = $state('');
+	let addressField = $state<HTMLInputElement | null>(null);
+	/** The address is with the server, so the acts stop taking taps. */
+	let writingAddress = $state(false);
+	const addressingHere = $derived(addressing === ref);
+
+	function startAddressing(): void {
+		addressing = ref;
+		addressTyped = node?.address ?? '';
+		refuse(ref, 'address', null);
+	}
+
+	function stopAddressing(): void {
+		refuse(ref, 'address', null);
+		addressing = null;
+	}
+
+	$effect(() => {
+		if (!addressingHere) return;
+		addressField?.focus();
+		addressField?.select();
+	});
+
+	/** `null` takes the address off. Nothing else in the graph moves — an address
+	 *  is one note's own label. */
+	async function writeAddress(taking: string | null): Promise<void> {
+		const of = ref;
+		writingAddress = true;
+		refuse(of, 'address', null);
+		try {
+			await nodes.setAddress(of, taking);
+			if (addressing === of) addressing = null;
+			acknowledge(taking === null ? 'Address taken off.' : `This note is ${taking}.`);
+		} catch (error) {
+			refuse(
+				of,
+				'address',
+				serverMessage(error) ?? 'Sloppy could not write that address. Try again in a moment.'
+			);
+		} finally {
+			writingAddress = false;
+		}
 	}
 
 	async function handOver(text: string, landed: string): Promise<void> {
@@ -1596,13 +1667,17 @@
 
 			{#if node}
 				<div class="ml-auto flex min-w-0 items-center gap-2">
-					{#if node.address}
+					{#if node.address && !addressingHere}
 						<button
 							type="button"
-							aria-label={graphHere
-								? `Copy the address ${node.address}, in ${graphHere}`
-								: `Copy the address ${node.address}`}
-							onclick={() => void handOver(citation, 'Address copied.')}
+							aria-label={own
+								? graphHere
+									? `Edit the address ${node.address}, in ${graphHere}`
+									: `Edit the address ${node.address}`
+								: graphHere
+									? `Copy the address ${node.address}, in ${graphHere}`
+									: `Copy the address ${node.address}`}
+							onclick={() => (own ? startAddressing() : void handOver(citation, 'Address copied.'))}
 							class="flex min-h-11 min-w-0 items-baseline gap-2 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 						>
 							<span class="address truncate">{node.address}</span>
@@ -1610,11 +1685,32 @@
 								<span class="max-w-28 truncate text-xs text-muted-foreground">{graphHere}</span>
 							{/if}
 						</button>
+						{#if own}
+							<Button
+								variant="ghost"
+								size="icon"
+								class="size-11 shrink-0 text-muted-foreground"
+								aria-label={graphHere
+									? `Copy the address ${node.address}, in ${graphHere}`
+									: `Copy the address ${node.address}`}
+								onclick={() => void handOver(citation, 'Address copied.')}
+							>
+								<Copy class="size-4" />
+							</Button>
+						{/if}
 						{#if moved?.of === ref}
 							<span class="shrink-0 text-xs text-muted-foreground">
 								was <span class="address">{moved.was}</span>
 							</span>
 						{/if}
+					{:else if own && !addressingHere}
+						<button
+							type="button"
+							onclick={startAddressing}
+							class="min-h-11 shrink-0 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						>
+							Give it an address
+						</button>
 					{/if}
 					<Button
 						bind:ref={actsFrom}
@@ -1630,6 +1726,60 @@
 			{/if}
 		</div>
 
+		{#if node && own && addressingHere}
+			<!-- In place rather than in a modal: a label is written where it is read. -->
+			<form
+				class="flex items-center gap-2 pt-1 pb-1"
+				onsubmit={(event) => {
+					event.preventDefault();
+					void writeAddress(addressTyped.trim() || null);
+				}}
+			>
+				<Input
+					bind:ref={addressField}
+					bind:value={addressTyped}
+					class="address h-9 min-w-0 flex-1"
+					autocapitalize="none"
+					autocomplete="off"
+					spellcheck="false"
+					maxlength={64}
+					aria-label="The address you cite this note by"
+					placeholder="1a"
+					onkeydown={(event) => {
+						if (event.key !== 'Escape') return;
+						event.preventDefault();
+						stopAddressing();
+					}}
+				/>
+				<Button type="submit" size="sm" class="h-9 shrink-0" disabled={writingAddress}>Save</Button>
+				{#if node.address}
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="h-9 shrink-0"
+						disabled={writingAddress}
+						onclick={() => void writeAddress(null)}
+					>
+						Take it off
+					</Button>
+				{/if}
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					class="size-9 shrink-0"
+					aria-label="Leave the address as it is"
+					disabled={writingAddress}
+					onclick={stopAddressing}
+				>
+					<X class="size-4" />
+				</Button>
+			</form>
+			{#if refused.address}
+				<p class="pb-1 text-sm text-destructive" role="alert">{refused.address}</p>
+			{/if}
+		{/if}
 		{#if refused.writing}
 			<p class="pb-1 text-sm text-destructive" role="alert">{refused.writing}</p>
 		{/if}
