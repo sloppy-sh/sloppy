@@ -286,6 +286,15 @@ async function run(): Promise<void> {
   const mountedAt = performance.now();
   handle = timed("mount", () => mountGraph(host, props()));
 
+  // `?still` settles the field and measures nothing, for a driver taking
+  // pictures of the canvas rather than timings — the passes below move the
+  // viewport, and at a dense screen's fill rate they are most of the run.
+  if (asked.has("still")) {
+    await settle();
+    done();
+    return;
+  }
+
   say("");
   say("name                             frame p50/p95   draw p50/p95 (max)");
 
@@ -405,6 +414,11 @@ async function run(): Promise<void> {
 
   if (notes < PRINCIPLE_NOTES) await atTenThousand();
 
+  done();
+}
+
+/** What a driver waits on: the run is over and everything it said is here. */
+function done(): void {
   say("");
   say("BENCH DONE");
   (window as unknown as { __bench: unknown }).__bench = { samples, lines };

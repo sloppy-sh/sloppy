@@ -235,7 +235,11 @@ beforeAll(() => {
     addEventListener: () => {},
     removeEventListener: () => {},
   });
-  vi.stubGlobal("matchMedia", () => ({ matches: true }));
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
   vi.stubGlobal("getComputedStyle", () => ({
     fontFamily: "",
     getPropertyValue: () => "",

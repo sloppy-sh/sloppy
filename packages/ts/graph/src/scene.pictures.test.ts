@@ -129,6 +129,10 @@ function wearing(address: string, pictures: string[], every = 60): DrawnNode {
   };
 }
 
+/** The screen these scenes are drawn on. A mark's picture is cut for that as
+ *  much as for the mark's own size. */
+const DENSITY = 2;
+
 async function sceneOn(
   field: DrawnNode[],
   pictures?: GraphPictures,
@@ -140,7 +144,7 @@ async function sceneOn(
   const scene = await GraphScene.create({} as HTMLCanvasElement, {
     fonts: { ui: "ui", address: "mono" },
     palette,
-    resolution: 2,
+    resolution: DENSITY,
     pictures,
     reduced,
   });
@@ -245,7 +249,7 @@ describe("a picture reaching a mark", () => {
     );
     await settle();
 
-    const leaf = markPictureSide(LEAF_RADIUS, PREVIEW_COVER_MIN);
+    const leaf = markPictureSide(LEAF_RADIUS, PREVIEW_COVER_MIN, DENSITY);
     const wide = painted.find((cut) => cut.canvas === leaf);
     expect(
       wide,
@@ -283,6 +287,7 @@ describe("a picture reaching a mark", () => {
             markPictureSide(
               model.graph.getNodeAttributes(entry.node.ref).radius,
               PREVIEW_COVER_MIN,
+              DENSITY,
             ),
         )?.canvas,
     );

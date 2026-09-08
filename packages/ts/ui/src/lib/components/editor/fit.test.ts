@@ -26,10 +26,12 @@ afterEach(() => {
 
 describe('a picture on its way out of the device', () => {
 	it('is redrawn at the size a note draws it, and named for what it became', async () => {
-		const box = stub(4032, 3024, { size: 300_000 });
+		const [wide, tall] = [4032, 3024];
+		const box = stub(wide, tall, { size: 300_000 });
 		const sent = await fitted(picture('IMG_0042.jpeg', 'image/jpeg', 4_200_000), NOTE_PX);
 
-		expect(box).toEqual([0, 0, NOTE_PX, 1200]);
+		// The long side reaches the bound and the short one keeps the shape.
+		expect(box).toEqual([0, 0, NOTE_PX, Math.round((tall * NOTE_PX) / wide)]);
 		expect(sent.size).toBe(300_000);
 		expect(sent.type).toBe('image/webp');
 		expect(sent.name).toBe('IMG_0042.webp');

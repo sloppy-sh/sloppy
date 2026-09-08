@@ -16,6 +16,7 @@ import {
   type GraphSurfaceProps,
   type GraphTransform,
 } from "./contract.js";
+import { screenDensity } from "./density.js";
 import { attachGestures, type ScreenBox } from "./gestures.js";
 import { LayoutClient } from "./layout/client.js";
 import type { LayoutEvent } from "./layout/protocol.js";
@@ -170,6 +171,20 @@ export function mountGraph(
   let budgetFolded: ReadonlySet<OwnedRef> = new Set();
   let mountedKey = options.remountKey;
   let destroyed = false;
+  // A window dragged onto another screen changes density without changing size,
+  // and there is no event for it: what stops matching is a query on the density
+  // the window had.
+  let densities: MediaQueryList | null = null;
+  const onDensityChange = (): void => {
+    scene?.setResolution(screenDensity());
+    watchDensity();
+  };
+  const watchDensity = (): void => {
+    if (destroyed) return;
+    densities?.removeEventListener("change", onDensityChange);
+    densities = matchMedia(`(resolution: ${globalThis.devicePixelRatio}dppx)`);
+    densities.addEventListener("change", onDensityChange);
+  };
   /**
    * Keep the whole field framed while it settles, and stop the moment the
    * reader takes hold of it — a canvas that re-frames itself under somebody's
@@ -336,7 +351,7 @@ export function mountGraph(
     const built = await GraphScene.create(canvas, {
       fonts,
       palette,
-      resolution: Math.min(globalThis.devicePixelRatio || 1, 2),
+      resolution: screenDensity(),
       pictures: props.pictures,
       reduced,
     });
@@ -346,6 +361,7 @@ export function mountGraph(
     }
     scene = built;
     built.setGround(props.ground ?? "none");
+    watchDensity();
     detachGestures = attachGestures(field, built.viewport, {
       hitTest: (world) => built.hitTest(world),
       onTap: (target, _world, withModifier) => {
@@ -534,6 +550,7 @@ export function mountGraph(
     destroy() {
       destroyed = true;
       document.removeEventListener("visibilitychange", returned);
+      densities?.removeEventListener("change", onDensityChange);
       themes.disconnect();
       resized.disconnect();
       detachGestures?.();

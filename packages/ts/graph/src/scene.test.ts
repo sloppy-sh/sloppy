@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
+import { MAX_DENSITY, screenDensity } from "./density.js";
 import { applyLod } from "./lod.js";
 import {
   buildModel,
@@ -30,6 +31,9 @@ import {
   LOOK_MIN_RADIUS,
   looksDrawn,
   MARK_SHEET_PX,
+  MARK_SHEET_TIERS,
+  markSheetReach,
+  markSheetTier,
   PICK_GAP,
   wholeInView,
 } from "./scene.js";
@@ -39,8 +43,71 @@ import { type Bounds, MAX_SCALE, MIN_SCALE, Viewport } from "./viewport.js";
 // a GPU Sloppy runs on will hold. 2048 is that floor, and every ring weight or
 // style added after this one is bounded by it.
 describe("the sheet every mark is cut from", () => {
+  const [coarse, middle, top] = MARK_SHEET_TIERS;
+  /** What the canvas asks the sheet for on a screen reporting `dpr`. */
+  const asked = (zoom: number, dpr: number, held?: number) =>
+    markSheetTier(zoom, screenDensity(dpr), held ?? null);
+
   it("stays inside the smallest texture a GPU is guaranteed to hold", () => {
     expect(MARK_SHEET_PX).toBeLessThanOrEqual(2048);
+  });
+
+  // DESIGN.md § "The mark": the sheet is cut for what is on the screen, so a
+  // phone and a 4K desk are drawn at their own densities rather than at one
+  // number written for neither.
+  it("is cut for the zoom and the screen in front of it", () => {
+    expect(asked(1, 1)).toBe(coarse);
+    expect(asked(1, 2)).toBe(middle);
+    expect(asked(1, 3)).toBe(top);
+    expect(asked(MIN_SCALE, 3)).toBe(coarse);
+    expect(asked(MAX_SCALE, 1)).toBe(top);
+    expect(asked(MAX_SCALE, 3)).toBe(top);
+  });
+
+  // A screen denser than anything the canvas draws for is still drawn for what
+  // it draws for: the ceiling is what stops a sheet nobody can see paying off.
+  it("asks for no more than the densest screen it draws", () => {
+    expect(screenDensity(4)).toBe(MAX_DENSITY);
+    expect(asked(1, 4)).toBe(asked(1, MAX_DENSITY));
+    expect(screenDensity(0)).toBe(1);
+  });
+
+  // A pinch crosses a boundary now and then; a sheet cut every frame of one is
+  // a stutter under the fingers.
+  it("cuts up at once and back down only once the zoom is well inside", () => {
+    expect(asked(1.5, 1, coarse)).toBe(middle);
+    expect(asked(1.35, 1, middle)).toBe(middle);
+    expect(asked(1, 1, middle)).toBe(coarse);
+  });
+
+  // Nothing is drawn from a texture stretched past MARK_UPSAMPLE_MAX: up to
+  // here the sheet holds the mark, and past it the mark is drawn as a shape.
+  it("holds a mark at the fold's cap wherever the tiers have room", () => {
+    for (const zoom of [MIN_SCALE, 0.5, 1, 1.5]) {
+      for (const dpr of [1, 2, 3]) {
+        const density = screenDensity(dpr);
+        const tier = markSheetTier(zoom, density);
+        if (tier === top && zoom * density > 1.4) continue;
+        expect(
+          markSheetReach(tier, zoom, density),
+          `${zoom} at ${dpr}`,
+        ).toBeGreaterThanOrEqual(MAX_RADIUS);
+      }
+    }
+  });
+
+  // The zoomed-in end of a dense screen is where the tiers run out, and what
+  // the shapes take over there is a handful of the biggest marks — never the
+  // ordinary ones a field is made of.
+  it("hands the shapes only marks drawn far wider than a note's own", () => {
+    const density = screenDensity(3);
+    const reach = markSheetReach(
+      markSheetTier(MAX_SCALE, density),
+      MAX_SCALE,
+      density,
+    );
+    expect(reach).toBeLessThan(MAX_RADIUS);
+    expect(reach * MAX_SCALE).toBeGreaterThan(LEAF_RADIUS * 8);
   });
 });
 

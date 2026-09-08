@@ -9,6 +9,7 @@ import type {
   Texture,
   TilingSprite,
 } from "pixi.js";
+import { MAX_DENSITY } from "./density.js";
 import {
   CELL,
   type GraphGround,
@@ -21,9 +22,9 @@ import {
 
 type Pixi = typeof import("pixi.js");
 
-/** Fixed rather than the screen's, so a cell is always 128 device pixels and a
+/** Fixed at the most any canvas draws at rather than at this screen's, so a
  *  repeat lands on the same texel wherever it is drawn. */
-const CELL_RESOLUTION = 2;
+const CELL_RESOLUTION = MAX_DENSITY;
 
 const DOT_RADIUS = 1.1;
 const RULE_WIDTH = 0.7;

@@ -3,8 +3,9 @@
 // of it — in the note and in the picker — pays that difference again.
 
 /** The longest side a picture in a note is kept at: wider than the reading
- *  column on every screen Sloppy runs on, dense ones included. */
-export const NOTE_PX = 1600;
+ *  column on every screen Sloppy runs on, at the most device pixels any of them
+ *  draws a CSS pixel with. */
+export const NOTE_PX = 2400;
 /** The longest side a custom emoji is kept at. */
 export const EMOJI_PX = 128;
 
