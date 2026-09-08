@@ -19,6 +19,10 @@
 				/** How much of what this person keeps has been read: only `whole`
 				 *  may say there is no such note. */
 				looking: 'whole' | 'reading' | 'short';
+				/** The numbers that would have to be written for the note to sit
+				 *  where its own says, topmost first. Absent where none of them is
+				 *  free to write. */
+				writes?: readonly string[];
 		  }
 	);
 </script>
@@ -37,6 +41,7 @@
 		refused = null,
 		busy = false,
 		oncarry,
+		onwrite,
 		onkeep,
 		onelse,
 		onlookagain
@@ -50,6 +55,9 @@
 		busy?: boolean;
 		/** Carry the note to where the number says it springs from. */
 		oncarry: () => void;
+		/** Write the notes the number springs through, and carry it under the
+		 *  last of them. */
+		onwrite?: () => void;
 		/** Keep it where it is, and let it carry that number. */
 		onkeep: () => void;
 		/** Back to the field to write another number. */
@@ -83,6 +91,20 @@
 	const keeping = $derived(
 		ask.here ? `Keep it under ${ask.here} as ${ask.address}` : `Keep it as ${ask.address}`
 	);
+
+	/** The notes to write, offered only once every graph has been read: until
+	 *  then nobody knows whether they are missing. */
+	const writes = $derived(
+		ask.kind === 'nowhere' && ask.looking === 'whole' && onwrite && ask.writes?.length
+			? ask.writes
+			: null
+	);
+
+	/** `a, b and c`. */
+	function listed(numbers: readonly string[]): string {
+		if (numbers.length < 2) return numbers.join('');
+		return `${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`;
+	}
 </script>
 
 <ResponsiveModal bind:open {onOpenChange} {title} {description}>
@@ -96,6 +118,24 @@
 					Look again
 				</Button>
 			{/if}
+		{/if}
+
+		{#if writes}
+			<Button
+				variant="outline"
+				class="h-auto min-h-11 w-full flex-col items-start gap-0.5 py-2 text-left whitespace-normal"
+				disabled={busy}
+				onclick={onwrite}
+			>
+				<span class="text-sm">
+					Write {listed(writes)}{writes.length > 1 ? ',' : ''} and move it there
+				</span>
+				<span class="text-xs font-normal text-muted-foreground">
+					{writes.length > 1
+						? `New notes at ${listed(writes)}, and this one becomes ${ask.address} under ${writes[writes.length - 1]}, with everything under it.`
+						: `A new note at ${writes[0]}, and this one becomes ${ask.address} under it, with everything under it.`}
+				</span>
+			</Button>
 		{/if}
 
 		{#if ask.kind !== 'nowhere'}

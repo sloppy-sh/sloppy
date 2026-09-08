@@ -30,8 +30,18 @@ export type AddressNesting =
 	| { act: 'carry'; under: NestingNote; address?: Address; wasAt?: Address }
 	/** The label is a branch's own number, and the note springs from something. */
 	| { act: 'branch'; address: Address }
-	/** Nothing in this graph is at the address the label springs from. */
-	| { act: 'nowhere'; parent: Address; address: Address }
+	/** Nothing in this graph is at the address the label springs from. `write` is
+	 *  the notes that would have to be written for it to be, topmost first, and
+	 *  the note the topmost of them hangs under — absent where that one opens a
+	 *  branch. `write` itself is absent where the chain is not the person's to
+	 *  write: an address on it has been spent already, or it would hang under
+	 *  this note. */
+	| {
+			act: 'nowhere';
+			parent: Address;
+			address: Address;
+			write?: { missing: readonly [Address, ...Address[]]; under?: NestingNote };
+	  }
 	| { act: 'refuse'; words: string };
 
 /**
@@ -57,7 +67,7 @@ export function addressNesting(
 	if (above !== null && leadsTo(above, springs)) return { act: 'write' };
 
 	const found = graph.find((one) => leadsTo(one, springs));
-	if (found === undefined) return { act: 'nowhere', parent: springs, address: taking };
+	if (found === undefined) return nothingAt(note, springs, taking, graph);
 	if (found.ref === note.ref) {
 		return {
 			act: 'refuse',
@@ -73,6 +83,29 @@ export function addressNesting(
 	return found.address === springs
 		? { act: 'carry', under: found, address: taking }
 		: { act: 'carry', under: found, wasAt: springs };
+}
+
+/** The chain of notes nobody has written between the graph and `springs`, and
+ *  the note that chain would hang under. */
+function nothingAt(
+	note: NestingNote,
+	springs: Address,
+	taking: Address,
+	graph: readonly NestingNote[]
+): AddressNesting {
+	const answer = { act: 'nowhere', parent: springs, address: taking } as const;
+	const missing: [Address, ...Address[]] = [springs];
+	for (let at = impliedParent(springs); at != null; at = impliedParent(at)) {
+		const reached = at;
+		const found = graph.find((one) => leadsTo(one, reached));
+		if (found === undefined) {
+			missing.unshift(reached);
+			continue;
+		}
+		if (found.ref === note.ref || beneath(note, found, graph)) return answer;
+		return found.address === reached ? { ...answer, write: { missing, under: found } } : answer;
+	}
+	return { ...answer, write: { missing } };
 }
 
 /** `undefined` where the number in it is larger than a graph can carry, which

@@ -215,9 +215,8 @@ export function graphAsked(
 }
 
 /**
- * Create a node. The server mints the id, and assigns every address except the
- * one a `root` placement names: a client that could name a node's place under
- * another could mint a citation into somebody else's graph.
+ * Create a node. The server mints the id, and assigns every address the
+ * request does not name.
  *
  * An absent `from` opens a branch at the next number in the home graph, which
  * is what `branch` says with a graph beside it. An unknown field, in the body
@@ -229,6 +228,14 @@ export function graphAsked(
 export const CreateNodeRequestSchema = z.strictObject(
   {
     from: NodePlacementSchema.optional(),
+    /**
+     * Absent leaves the address to the rule: the next in the run the note is
+     * written into. A person who names one has the new note take it instead,
+     * and it must spring from the address of the note it is written under — or
+     * from nothing, where the note opens a branch. A `root` placement names a
+     * branch's own number already, and a request carrying both is refused.
+     */
+    address: AddressSchema.optional(),
     title: z.string().max(512).default(""),
     tags: TagsSchema.default([]),
   },

@@ -854,7 +854,14 @@
 		const shown = { address: asking.taking, ...(springsFrom ? { here: springsFrom } : {}) };
 		if (asking.what.act === 'branch') return { ...shown, kind: 'branch' };
 		if (asking.what.act === 'nowhere') {
-			return { ...shown, kind: 'nowhere', parent: asking.what.parent, looking: reach };
+			const write = asking.what.write;
+			return {
+				...shown,
+				kind: 'nowhere',
+				parent: asking.what.parent,
+				looking: reach,
+				...(write ? { writes: write.missing } : {})
+			};
 		}
 		if (asking.what.act === 'carry') {
 			return {
@@ -934,6 +941,63 @@
 		if (addressing === asking.of) addressing = null;
 		const landed = nodes.get(asking.of)?.address;
 		acknowledge(landed ? `This note is ${landed}.` : 'Note moved.');
+	}
+
+	/** `a, b and c`. */
+	function listed(numbers: readonly string[]): string {
+		if (numbers.length < 2) return numbers.join('');
+		return `${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`;
+	}
+
+	function stayPut(wrote: readonly Address[]): string {
+		if (wrote.length === 0) return '';
+		return wrote.length > 1
+			? ` The new notes at ${listed(wrote)} stay where they are.`
+			: ` The new note at ${wrote[0]} stays where it is.`;
+	}
+
+	/** The notes a number springs through that nobody has written, written
+	 *  untitled from the top down, and this note carried under the last of them.
+	 *  What is written before a refusal stays written, and the words say so. */
+	async function writeNesting(): Promise<void> {
+		const asking = nesting;
+		const write = asking?.what.act === 'nowhere' ? asking.what.write : undefined;
+		if (!asking || !write || !node) return;
+		const of = asking.of;
+		const wrote: Address[] = [];
+		let under = write.under?.ref;
+		writingAddress = true;
+		refuse(of, 'address', null);
+		try {
+			for (const address of write.missing) {
+				const written = await nodes.create({
+					from: under
+						? { relation: 'under', note: under }
+						: { relation: 'branch', ...(inGraph ? { graph: inGraph } : {}) },
+					address
+				});
+				under = written.ref;
+				wrote.push(address);
+			}
+		} catch (error) {
+			const says =
+				serverMessage(error) ?? 'Sloppy could not write that note. Try again in a moment.';
+			refuse(of, 'address', `${says}${stayPut(wrote)}`);
+			return;
+		} finally {
+			writingAddress = false;
+		}
+		if (under === undefined) return;
+		if (!(await carryTo({ relation: 'under', note: under }, asking.taking))) {
+			const says = refusals.get(of)?.address;
+			if (says) refuse(of, 'address', `${says}${stayPut(wrote)}`);
+			const now = addressNesting(node, asking.taking, here);
+			nesting = now.act === 'carry' || now.act === 'nowhere' ? { ...asking, what: now } : null;
+			return;
+		}
+		nesting = null;
+		if (addressing === of) addressing = null;
+		acknowledge(`This note is ${asking.taking}, under a new note at ${wrote[wrote.length - 1]}.`);
 	}
 
 	async function handOver(text: string, landed: string): Promise<void> {
@@ -2344,6 +2408,7 @@
 					refused={refused.address ?? null}
 					busy={writingAddress || relocating.has(ref)}
 					oncarry={() => void carryToNesting()}
+					onwrite={() => void writeNesting()}
 					onkeep={() => {
 						const taking = nesting?.taking;
 						if (taking) void saveAddress(ref, taking);

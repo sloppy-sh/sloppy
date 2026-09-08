@@ -170,3 +170,29 @@ describe("the address a person names on a move", () => {
     }
   });
 });
+
+describe("the address a person names on a creation", () => {
+  const under = { relation: "under", note: `${DID}/${ULID}` } as const;
+
+  it("is absent where they named none, leaving it to the rule", () => {
+    expect(CreateNodeRequestSchema.parse({ from: under })).toEqual({
+      from: under,
+      title: "",
+      tags: [],
+    });
+  });
+
+  it("is the label the new note takes", () => {
+    expect(
+      CreateNodeRequestSchema.parse({ from: under, address: "3a1" }),
+    ).toEqual({ from: under, address: "3a1", title: "", tags: [] });
+  });
+
+  it("is refused where it is not an address at all", () => {
+    for (const address of ["", "a1", "1A", "01", " 1a", null]) {
+      expect(() =>
+        CreateNodeRequestSchema.parse({ from: under, address }),
+      ).toThrow();
+    }
+  });
+});

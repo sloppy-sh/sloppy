@@ -82,4 +82,19 @@ describe("writing the address a note is cited by", () => {
     expect(written.parent).toBeUndefined();
     expect(written.depth).toBe(1);
   });
+
+  it("carries the number a person named for a note being written", async () => {
+    const { asked, client } = serving(note({ address: "3a", depth: 2 }));
+
+    const written = await client.createNode({
+      from: { relation: "under", note: NOTE },
+      address: "3a",
+    });
+
+    expect(JSON.parse(asked[0].body)).toEqual({
+      from: { relation: "under", note: NOTE },
+      address: "3a",
+    });
+    expect(written.address).toBe("3a");
+  });
 });

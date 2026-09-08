@@ -112,6 +112,74 @@ describe('the sheet a number with another parent in it opens', () => {
 		expect(acts).toEqual(['else']);
 	});
 
+	it('offers to write the note nothing is at, and to carry this one under it', async () => {
+		let wrote = 0;
+		await open(
+			{
+				kind: 'nowhere',
+				address: '3a1',
+				here: '2',
+				parent: '3a',
+				looking: 'whole',
+				writes: ['3a']
+			},
+			{ onwrite: () => (wrote += 1) }
+		);
+
+		expect(screen()).toContain(
+			'A new note at 3a, and this one becomes 3a1 under it, with everything under it.'
+		);
+		button('Write 3a and move it there').click();
+		await settle();
+
+		expect(wrote).toBe(1);
+		expect(screen()).toContain('Keep it under 2 as 3a1');
+	});
+
+	it('names every note it would write where the number springs through several', async () => {
+		await open(
+			{
+				kind: 'nowhere',
+				address: '7b3c',
+				here: '2',
+				parent: '7b3',
+				looking: 'whole',
+				writes: ['7', '7b', '7b3']
+			},
+			{ onwrite: () => undefined }
+		);
+
+		expect(button('Write 7, 7b and 7b3, and move it there')).toBeTruthy();
+		expect(screen()).toContain(
+			'New notes at 7, 7b and 7b3, and this one becomes 7b3c under 7b3, with everything under it.'
+		);
+	});
+
+	it('offers to write nothing where a number on the way already leads somewhere', async () => {
+		await open(
+			{ kind: 'nowhere', address: '3a1', here: '2', parent: '3a', looking: 'whole' },
+			{ onwrite: () => undefined }
+		);
+
+		expect(screen()).not.toContain('and move it there');
+	});
+
+	it('offers to write nothing while a graph has not been read', async () => {
+		await open(
+			{
+				kind: 'nowhere',
+				address: '3a1',
+				here: '2',
+				parent: '3a',
+				looking: 'reading',
+				writes: ['3a']
+			},
+			{ onwrite: () => undefined }
+		);
+
+		expect(screen()).not.toContain('and move it there');
+	});
+
 	it('never says there is no such note while the graphs are still opening', async () => {
 		await open({ kind: 'nowhere', address: '3a1', here: '2', parent: '3a', looking: 'reading' });
 

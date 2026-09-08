@@ -724,6 +724,59 @@ describe("the domain routes", () => {
     );
   });
 
+  // AI.md § "The Genealogy Is the Protocol": where nothing carries the number a
+  // person's own springs from, they may write that note and carry theirs under
+  // it, and both halves are one person's own labels.
+  describe("writing the note a number springs from", () => {
+    let notebook: GraphView;
+    let three: NodeView;
+    let moving: NodeView;
+    let beneath: NodeView;
+
+    beforeAll(async () => {
+      if (!runs) return;
+      notebook = await newGraph(ada, "Missing");
+      const two = await newNode(ada, {
+        from: { relation: "root", address: "2", graph: notebook.ref },
+        title: "Two",
+      });
+      await newNode(ada, { from: springsFrom(two) });
+      await newNode(ada, { from: springsFrom(two) });
+      moving = await newNode(ada, { from: springsFrom(two), title: "Cells" });
+      beneath = await newNode(ada, { from: springsFrom(moving) });
+      three = await newNode(ada, {
+        from: { relation: "root", address: "3", graph: notebook.ref },
+        title: "Three",
+      });
+      expect([moving.address, beneath.address]).toEqual(["2c", "2c1"]);
+    });
+
+    scenario("writes it, and carries the note under it", async () => {
+      const written = await newNode(ada, {
+        from: springsFrom(three),
+        address: "3a",
+      });
+      expect([written.address, written.parent, written.title]).toEqual([
+        "3a",
+        three.ref,
+        "",
+      ]);
+
+      const answer = await call("POST", `/nodes/${at(moving.ref)}/move`, ada, {
+        to: springsFrom(written),
+        address: "3a1",
+      });
+      expect(answer.status, JSON.stringify(answer.body)).toBeLessThan(300);
+      expect(
+        (answer.body as NodeView[]).map((one) => [one.address, one.aliases]),
+      ).toEqual([
+        ["3a1", ["2c"]],
+        ["3a1a", ["2c1"]],
+      ]);
+      expect((answer.body as NodeView[])[0].parent).toBe(written.ref);
+    });
+  });
+
   describe("reading a region", () => {
     let origin: OwnedRef;
 

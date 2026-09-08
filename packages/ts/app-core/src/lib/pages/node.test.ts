@@ -36,6 +36,7 @@ import {
 	unnumbered,
 	useFakeApi,
 	VIEWER,
+	writing,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
 import Note from './node.svelte';
@@ -1390,6 +1391,164 @@ describe('a number that says the note springs from somewhere else', () => {
 
 		expect(screen()).toContain('2a already leads to “Method”.');
 		expect(screen()).toContain('Move it under 2');
+	});
+});
+
+// AI.md § "The Genealogy Is the Protocol": where nothing carries the number a
+// person's own springs from, they may write it and carry their note under it.
+describe('writing the notes a number springs through', () => {
+	const field = () =>
+		document.body.querySelector<HTMLInputElement>(
+			'[aria-label="The address you cite this note by"]'
+		);
+
+	let wrote: { address?: string; under?: OwnedRef }[];
+	let carried: { to: NoteDestination; address?: string }[];
+	/** The refs the fake server mints, in the order it minted them. */
+	let minted: OwnedRef[];
+
+	async function openCells(alter?: (graph: Map<OwnedRef, NodeView>) => void): Promise<void> {
+		const graph = installGraph();
+		alter?.(graph);
+		api.on('GET /graphs', () => [
+			{
+				ref: homeGraphRef(DID),
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				title: 'My graph'
+			}
+		]);
+		wrote = [];
+		carried = [];
+		minted = [];
+		writing(api, (request) => {
+			const from = request.from as { relation: string; note?: OwnedRef } | undefined;
+			const under = from?.relation === 'under' ? from.note : undefined;
+			const address = request.address as string;
+			wrote.push({ address, ...(under ? { under } : {}) });
+			const above = under === undefined ? undefined : graph.get(under);
+			const made = node(100 + minted.length, address, {
+				...(under && above ? { parent: under, origin: above.origin } : {})
+			});
+			graph.set(made.ref, made);
+			minted.push(made.ref);
+			api.on(`GET ${path(made.ref)}`, () => graph.get(made.ref) ?? null);
+			api.on(`GET ${path(made.ref)}/blocks`, () => []);
+			return made;
+		});
+		moving(api, SECOND, (to, address) => {
+			carried.push({ to, ...(address === undefined ? {} : { address }) });
+			const landing = graph.get(to.note);
+			const origin = landing?.origin ?? to.note;
+			const depth = (landing?.depth ?? 1) + 1;
+			return [
+				{ ...(graph.get(SECOND) as NodeView), address, parent: to.note, origin, depth },
+				{
+					...(graph.get(THIRD) as NodeView),
+					address: address ? rebaseAddress('1a', address, '1a1') : undefined,
+					origin,
+					depth: depth + 1
+				}
+			] as NodeView[];
+		});
+		await loadGraph();
+		await openNote(SECOND);
+		labelled('Edit the address 1a').click();
+		await settle();
+	}
+
+	async function write(words: string): Promise<void> {
+		const typing = field();
+		if (!typing) throw new Error('The header has no address field');
+		typing.value = words;
+		typing.dispatchEvent(new Event('input', { bubbles: true }));
+		exactly('Save').click();
+		await settle();
+		await settle();
+	}
+
+	beforeEach(() => {
+		graphs.clear();
+		session.adopt(VIEWER, 'a-session');
+	});
+
+	it('writes the one note nothing is at, and carries this one under it', async () => {
+		await openCells();
+		await write('2a1');
+		await until(() => screen().includes('There is no note at 2a yet'));
+
+		expect(screen()).toContain(
+			'A new note at 2a, and this one becomes 2a1 under it, with everything under it.'
+		);
+		button('Write 2a and move it there').click();
+		await until(() => carried.length > 0);
+		await settle();
+
+		expect(wrote).toEqual([{ address: '2a', under: FOURTH }]);
+		expect(carried).toEqual([{ to: { relation: 'under', note: minted[0] }, address: '2a1' }]);
+		expect(nodes.children(FOURTH).map((one) => [one.address, one.title])).toEqual([['2a', '']]);
+		expect(nodes.get(SECOND)?.address).toBe('2a1');
+		expect(screen()).toContain('This note is 2a1, under a new note at 2a.');
+	});
+
+	it('writes every note on the way down, from the top', async () => {
+		await openCells();
+		await write('9a1');
+		await until(() => screen().includes('There is no note at 9a yet'));
+
+		expect(screen()).toContain(
+			'New notes at 9 and 9a, and this one becomes 9a1 under 9a, with everything under it.'
+		);
+		button('Write 9 and 9a, and move it there').click();
+		await until(() => carried.length > 0);
+		await settle();
+
+		expect(wrote).toEqual([{ address: '9' }, { address: '9a', under: minted[0] }]);
+		expect(carried).toEqual([{ to: { relation: 'under', note: minted[1] }, address: '9a1' }]);
+		expect(screen()).toContain('This note is 9a1, under a new note at 9a.');
+	});
+
+	it('says the notes it wrote stay where they are when the move is refused', async () => {
+		await openCells();
+		api.on(
+			`POST ${path(SECOND)}/move`,
+			() =>
+				new Response(JSON.stringify({ message: '2a1 already leads to “Method”.' }), {
+					status: 400,
+					headers: { 'content-type': 'application/json' }
+				})
+		);
+		await write('2a1');
+		await until(() => screen().includes('There is no note at 2a yet'));
+
+		button('Write 2a and move it there').click();
+		await until(() => screen().includes('2a1 already leads to “Method”.'));
+
+		expect(screen()).toContain('The new note at 2a stays where it is.');
+		expect(wrote).toEqual([{ address: '2a', under: FOURTH }]);
+		expect(screen()).not.toContain('Write 2a and move it there');
+		expect(button('Move it under 2a')).toBeTruthy();
+	});
+
+	it('offers to write nothing where a number on the way already leads somewhere', async () => {
+		await openCells((graph) =>
+			graph.set(FOURTH, { ...node(4, '2', { title: 'Method' }), aliases: ['5'] })
+		);
+		await write('5a1');
+		await until(() => screen().includes('There is no note at 5a yet'));
+
+		expect(screen()).not.toContain('and move it there');
+		expect(button('Keep it under 1 as 5a1')).toBeTruthy();
+	});
+
+	it('offers to write nothing where the chain would hang under a note this one carries', async () => {
+		await openCells();
+		await write('1a1b1');
+		await until(() => screen().includes('There is no note at 1a1b yet'));
+
+		expect(screen()).not.toContain('and move it there');
+		expect(button('Keep it under 1 as 1a1b1')).toBeTruthy();
 	});
 });
 
