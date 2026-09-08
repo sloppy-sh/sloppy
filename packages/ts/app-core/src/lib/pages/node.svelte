@@ -452,7 +452,7 @@
 	const suggested = $derived(offered === 'this' ? null : suggestedFor(offered));
 
 	/** Every note the cache holds, across every graph — a link crosses them, and
-	 *  so does what points back at this note. In address order within a graph. */
+	 *  so does what points back at this note. */
 	const everyNote = $derived.by(() => {
 		const out: NodeView[] = [];
 		const walk = (list: NodeView[]) => {

@@ -376,7 +376,6 @@
 		return note !== undefined && onCanvas.includes(graphOf(note)) ? previous : null;
 	});
 	const pointingNote = $derived(pointing ? nodes.get(pointing) : undefined);
-	/** The region's notes, already in address order. */
 	const heldNotes = $derived(foreign ? peers.held(foreign.ref) : []);
 	const reachedNote = $derived(
 		reached ? (heldNotes.find((note) => note.ref === reached) ?? null) : null
@@ -385,7 +384,6 @@
 		foreign ? heldNotes.length > 0 : !loading && !unreachable && roots.length > 0
 	);
 
-	/** Depth-first from the roots, which is address order without re-deriving it. */
 	const visible = $derived.by(() => {
 		if (foreign) return heldNotes;
 		const out: NodeView[] = [];
