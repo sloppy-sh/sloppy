@@ -1167,7 +1167,7 @@ describe("the domain routes", () => {
   });
 
   describe("the run a note continues", () => {
-    // AI.md § "The Address Is the Protocol": the run is a function of the two
+    // AI.md § "The Genealogy Is the Protocol": the run is a function of the two
     // addresses, so no placement writes one down. `links` stays what a person
     // drew by hand, and stays empty until they draw one.
     scenario("is in the addresses, and nowhere else", async () => {

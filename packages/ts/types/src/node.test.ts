@@ -44,7 +44,7 @@ function row(address: Address, depth = addressDepth(address)) {
 }
 
 // `depth` is a second copy of something the address already says, which is what
-// AI.md § "The Address Is the Protocol" forbids and what the ruling in
+// AI.md § "The Genealogy Is the Protocol" forbids and what the ruling in
 // docs/ARCHITECTURE.md § "Data model" overrode. These are the tests that ruling
 // is conditioned on: the copy is safe only for as long as it cannot drift.
 describe("depth against the address it duplicates", () => {

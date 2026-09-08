@@ -313,6 +313,46 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     await expect(db.create(graphless.id).content(graphless)).rejects.toThrow();
   });
 
+  it("holds any number of notes with no address in one graph", async () => {
+    // What makes an address a label rather than a key: absence is not a value
+    // in `node_owner_graph_address`, so the index that refuses a second `3`
+    // never sees these rows. The index is untouched by that rule — this is what
+    // says so, against the server rather than from the definition.
+    const unlabelled = (localId: string) => {
+      const { address: _none, ...row } = nodeRow(AVA, "1", localId);
+      return row;
+    };
+
+    const first = unlabelled("01JNADDRESSA00000000000000");
+    const second = unlabelled("01JNADDRESSB00000000000000");
+    await expect(db.create(first.id).content(first)).resolves.toBeDefined();
+    await expect(db.create(second.id).content(second)).resolves.toBeDefined();
+    expect((await read(first.id)).address).toBeUndefined();
+
+    // And a labelled note gives its label up by a write that omits the column.
+    // NULL is not the spelling: `option<string>` refuses it, which is what
+    // keeps a row from carrying an address nothing can compare.
+    const labelled = nodeRow(AVA, "9", "01JDRPADDRESS0000000000000");
+    await db.create(labelled.id).content(labelled);
+    await expect(
+      db.update(labelled.id).merge({ address: null }),
+    ).rejects.toThrow();
+    await db.query("UPDATE $id UNSET address;", { id: labelled.id });
+    expect((await read(labelled.id)).address).toBeUndefined();
+
+    // The label lookup is still an index seek, which is the whole reason the
+    // index is left leading with the address rather than a derived key.
+    const [plan] = await db.query(
+      `SELECT id FROM node
+         WHERE created_by = $did AND graph = $graph AND address = $address
+         EXPLAIN;`,
+      { did: AVA, graph: homeGraphRef(AVA), address: "3" },
+    );
+    expect(JSON.stringify(plan)).toContain(
+      '"index":"node_owner_graph_address"',
+    );
+  });
+
   it("reads one graph's branches through the index that ends at the parent", async () => {
     // Without the graph in the middle this read is "every note the person has
     // written, filtered to the ones with no parent" — the whole graph scanned
@@ -602,6 +642,31 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       2,
     );
     await expect(db.create(graphless.id).content(graphless)).rejects.toThrow();
+
+    // And a region may carry notes its author gave no label. They are outside
+    // the index above the way an unlabelled note of the reader's own is, so the
+    // reader holds every one of them.
+    const unlabelled = (localId: string) => {
+      const { address: _none, node, ...row } = heldNodeRow(localId, "4a", 2);
+      const { address: _also, ...published } = node;
+      return {
+        ...row,
+        source: OwnedRefSchema.parse(`${CAI}/${localId}`),
+        source_did: CAI,
+        source_graph: homeGraphRef(CAI),
+        node: published,
+      };
+    };
+
+    const bare = unlabelled("01JPEERNADDRA0000000000000");
+    const alsoBare = unlabelled("01JPEERNADDRB0000000000000");
+    await expect(db.create(bare.id).content(bare)).resolves.toBeDefined();
+    await expect(
+      db.create(alsoBare.id).content(alsoBare),
+    ).resolves.toBeDefined();
+    expect(
+      (await db.select<{ address?: string }>(bare.id))?.address,
+    ).toBeUndefined();
   });
 
   it("records which region served a note, and reads it both ways", async () => {

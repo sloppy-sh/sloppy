@@ -1,5 +1,5 @@
 // Graphs: the notebooks a person keeps, and the context each address is read
-// in. AI.md § "The Address Is the Protocol".
+// in. AI.md § "The Genealogy Is the Protocol".
 
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {

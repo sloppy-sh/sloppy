@@ -720,8 +720,8 @@ describe('writing from a row', () => {
 	});
 });
 
-// AI.md § "The Address Is the Protocol": a drag writes one more note at the end
-// of a run, and no note already written moves.
+// AI.md § "The Genealogy Is the Protocol": a drag writes one more note at the
+// end of a run, and no note already written moves.
 describe('dragging a row’s write control to where the note goes', () => {
 	const OPEN = { writable: true, opened: new Set([held('1')]) };
 
@@ -904,7 +904,7 @@ describe('dragging a row’s write control to where the note goes', () => {
 	});
 });
 
-// AI.md § "The Address Is the Protocol": a note carried to another run takes
+// AI.md § "The Genealogy Is the Protocol": a note carried to another run takes
 // the next address there, nobody else is renumbered, and the address it leaves
 // keeps leading to it.
 describe('carrying a note to another run', () => {

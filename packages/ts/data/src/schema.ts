@@ -14,7 +14,7 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
  * Widening the address scope from the author to one of their graphs, on a store
  * that already holds notes. Every note keeps the address, the ref and the
  * timestamps it had; it gains the graph its author started with.
- * docs/ARCHITECTURE.md § "The addressing protocol" says why the column is
+ * docs/ARCHITECTURE.md § "The genealogy and the address" says why the column is
  * filled rather than its absence read as the home graph.
  *
  * Gated on the index it replaces rather than on the rows, so a store that has
@@ -63,12 +63,18 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS node_alias SCHEMALESS;
 
 ${MIGRATIONS}
-  -- Writable, alone among the columns the address protocol rests on, because a
-  -- move re-addresses a note and everything under it; docs/ARCHITECTURE.md
-  -- § "The addressing protocol" carries the rule. OVERWRITE rather than
-  -- IF NOT EXISTS: a store already holding these two has them READONLY, and a
-  -- definition guarded on absence would leave that store unable to move a note.
-  DEFINE FIELD OVERWRITE address ON node TYPE string;
+  -- Writable, because a move and a rename both rewrite them;
+  -- docs/ARCHITECTURE.md § "The genealogy and the address" carries the rule.
+  -- OVERWRITE rather than IF NOT EXISTS: a store already holding these two has
+  -- them READONLY, and a definition guarded on absence would leave that store
+  -- unable to move a note.
+  --
+  -- option, because a note is allowed no label at all. A UNIQUE index does not
+  -- constrain a row whose indexed column is absent, so that is what lets any
+  -- number of them sit in one graph while two at one label are still refused —
+  -- which is why node_owner_graph_address below is untouched. NULL is refused
+  -- by the type: a note gives its label up by a write that omits the column.
+  DEFINE FIELD OVERWRITE address ON node TYPE option<string>;
   DEFINE FIELD OVERWRITE depth ON node TYPE int ASSERT $value > 0;
   -- Which of its author's graphs a note is in, and so the context its address
   -- is read in. Immutable for the reason the address is: a note that moved
@@ -139,7 +145,10 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS source ON pulled_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source_did ON pulled_node TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS address ON pulled_node TYPE string READONLY;
+  -- option for the reason node.address is, and OVERWRITE for the reason it is:
+  -- a store already holding it has it TYPE string, and a held region may carry
+  -- a note whose author gave it no label.
+  DEFINE FIELD OVERWRITE address ON pulled_node TYPE option<string> READONLY;
   DEFINE FIELD IF NOT EXISTS depth ON pulled_node TYPE int ASSERT $value > 0 READONLY;
 
   -- Which region served which note. Both immutable: this row IS the pairing,
@@ -216,9 +225,11 @@ ${MIGRATIONS}
 
   REMOVE INDEX IF EXISTS node_owner_parent ON node;
 
-  -- UNIQUE is the address protocol, enforced: one address per graph, so a
-  -- second row claiming a taken address fails at write rather than becoming a
-  -- citation that resolves two ways inside the graph it is read in.
+  -- UNIQUE is the address rule, enforced: one address per graph, so a second
+  -- row claiming a taken address fails at write rather than becoming a citation
+  -- that resolves two ways inside the graph it is read in. A note with no
+  -- address is not in it at all, absence being no value — measured on 3.1.3 and
+  -- held by schema.integration.test.ts.
   DEFINE INDEX IF NOT EXISTS node_owner_graph_address ON node FIELDS created_by, graph, address UNIQUE;
   -- The children of a node, and — bound to NONE — the branches one graph opens.
   DEFINE INDEX IF NOT EXISTS node_owner_graph_parent ON node FIELDS created_by, graph, parent;

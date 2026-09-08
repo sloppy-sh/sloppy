@@ -492,7 +492,7 @@ describe('a note’s sections in the walk', () => {
 	});
 });
 
-// AI.md § "The Address Is the Protocol": a note carried to another run takes
+// AI.md § "The Genealogy Is the Protocol": a note carried to another run takes
 // the next address there, and the one it leaves keeps leading to it.
 describe('carrying a note to another run', () => {
 	const branch = [

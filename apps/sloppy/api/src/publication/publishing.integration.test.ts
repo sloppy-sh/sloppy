@@ -1358,7 +1358,8 @@ describe("publishing a branch, and what a peer reads back", () => {
   });
 
   // Two of one author's notebooks each hand a reader a `1a`, so the name is
-  // what tells the two regions apart — AI.md § "The Address Is the Protocol".
+  // what tells the two regions apart — AI.md § "The Genealogy Is the
+  // Protocol".
   scenario("names the notebook a branch's addresses are read in", async () => {
     const [home] = (await ok("GET", "/graphs", ada)) as {
       ref: OwnedRef;

@@ -3,10 +3,12 @@
 A Zettelkasten-structured, socially-shareable knowledge graph.
 
 Notion imposes a tree; Obsidian imposes nothing. Sloppy takes a third position: **the
-shape of the graph is part of the protocol, not a per-user accident.** Every node's
-address derives from where the thought came from — `1`, `1a`, `1a1`, `1b` — by rules that
-are the same on every peer, so one person's subtree can be published, pulled into
-somebody else's graph, and land in a shape they can read, with its addresses intact.
+shape of the graph is part of the protocol, not a per-user accident.** What a note sprang
+out of, and the order it was written in, are read the same way on every peer, so one
+person's subtree can be published, pulled into somebody else's graph, and land in the shape
+its author saw. On top of that shape a note carries an **address** — `1`, `1a`, `1a1`,
+`1b` — the label its author cites it by, offered by the Folgezettel rule and theirs to
+change or leave off.
 
 A note carries **tags** — plain strings, nothing declared first — so sets intersect
 _across_ the tree. Selecting several **highlights** the notes that carry them and dims the
@@ -26,12 +28,12 @@ Mobile and tablet are the primary surface. Desktop is the same product with more
 **The product is built and runs end to end.** From a clone, `pnpm dev` brings up something
 you can use: sign in — against a syr instance, or against the API's own identity provider
 with nothing else running anywhere — keep as many graphs as you want a notebook for, and
-write notes that are handed a Folgezettel address by rules every peer applies the same way.
+write notes that are offered a Folgezettel address by rules every peer applies the same way.
 A note's interior is a stack of blocks, each holding paragraphs, headings, lists, code,
 pictures and Apple-Pencil ink. Tags cut across the genealogy and highlight rather than
 filter. The graph itself is a pixi canvas: a subtree collapses into a mega-node, detail
 drops away as you pull back, and a reader may put a picture behind the field. A subtree can
-be published by address and a peer's published region pulled into a graph of your own and
+be published and a peer's published region pulled into a graph of your own and
 read there, with profiles, comments, reactions and emoji coming from the identity side.
 Everything you have written comes back out as one file whenever you ask for it.
 

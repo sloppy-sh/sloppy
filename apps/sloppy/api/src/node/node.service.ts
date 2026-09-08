@@ -1,5 +1,5 @@
 // Nodes, and the one thing about them that is a protocol rather than a feature:
-// the address. AI.md § "The Address Is the Protocol".
+// the address. AI.md § "The Genealogy Is the Protocol".
 
 import {
   BadRequestException,
@@ -347,7 +347,7 @@ export class NodeService {
   /**
    * A note carried somewhere else, with everything that sprang from it. The
    * answer is that subtree as it now stands, because a move re-addresses all of
-   * it — AI.md § "The Address Is the Protocol".
+   * it — AI.md § "The Genealogy Is the Protocol".
    */
   async move(
     did: string,

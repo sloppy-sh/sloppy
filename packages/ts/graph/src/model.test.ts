@@ -303,7 +303,7 @@ describe("with tags selected", () => {
   });
 });
 
-// AI.md § "The Address Is the Protocol": the run between two notes is a
+// AI.md § "The Genealogy Is the Protocol": the run between two notes is a
 // function of their addresses, so the model derives it and no row carries it.
 describe("the run of thought", () => {
   const model = buildModel(drawn, {

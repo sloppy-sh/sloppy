@@ -67,7 +67,7 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * When its author deleted it. Absent is a note that is there, which is every
    * note stored before anybody could put one back. A deleted note keeps its row
    * and its address, and the address stays spent whether or not it comes back —
-   * AI.md § "The Address Is the Protocol".
+   * AI.md § "The Genealogy Is the Protocol".
    */
   deleted_at: TimestampSchema.optional(),
   content_signature: z.string().optional(),
@@ -85,8 +85,8 @@ export const DELETED_KEPT_FOR_DAYS = 30;
 
 /**
  * An address a graph has assigned and will not assign again, kept after the
- * note that held it is purged — AI.md § "The Address Is the Protocol". `parent`
- * is absent for a branch, as it is on the note the row outlives.
+ * note that held it is purged — AI.md § "The Genealogy Is the Protocol".
+ * `parent` is absent for a branch, as it is on the note the row outlives.
  */
 export const RetiredAddressSchema = OwnedEntitySchema.extend({
   graph: OwnedRefSchema,
@@ -97,7 +97,7 @@ export type RetiredAddress = z.infer<typeof RetiredAddressSchema>;
 
 /**
  * An address a note was at before it was moved, and the note it still resolves
- * to — AI.md § "The Address Is the Protocol". `parent` is the note it hung
+ * to — AI.md § "The Genealogy Is the Protocol". `parent` is the note it hung
  * under when it was left, absent for a branch, and it is what puts the address
  * back in the run it was spent in.
  */
@@ -243,7 +243,7 @@ export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
  *
  * Dropping it between two siblings is `after` the one before it, and puts it at
  * the end of their run: neither of them is renumbered, and the address it leaves
- * keeps leading to it. AI.md § "The Address Is the Protocol".
+ * keeps leading to it. AI.md § "The Genealogy Is the Protocol".
  */
 export const NoteDestinationSchema = z.discriminatedUnion("relation", [
   UNDER,

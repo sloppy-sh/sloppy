@@ -1,7 +1,7 @@
 // Dragging in the outline: {@link dragFrom} is the press every control here
 // becomes a drag through, and the rest of this file is what a drop on a row
 // does — a note written at the end of a run, or a note already written carried
-// to the end of another. AI.md § "The Address Is the Protocol": either way the
+// to the end of another. AI.md § "The Genealogy Is the Protocol": either way the
 // run appends, nobody else is renumbered, and the address is the server's to
 // assign.
 //

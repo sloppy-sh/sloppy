@@ -812,8 +812,8 @@ describe('moving a note from its own page', () => {
 		expect(screen()).toContain('It becomes 3, or the next one free.');
 	});
 
-	// AI.md § "The Address Is the Protocol": a note is never moved under itself or
-	// a note beneath it.
+	// AI.md § "The Genealogy Is the Protocol": a note is never moved under
+	// itself or a note beneath it.
 	it('refuses itself and everything under it, in words', async () => {
 		await openNote(FIRST);
 		await findToMove('1');

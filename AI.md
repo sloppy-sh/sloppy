@@ -22,9 +22,10 @@ is what makes the graph _social_ rather than merely shared.
 
 Two orthogonal axes:
 
-1. **The genealogical axis (Zettelkasten / Folgezettel).** Every node carries an
-   address derived from its parent — `1`, `1a`, `1a1`, `1b`. This is not containment,
-   it is _sequence of thought_: the direction a note springs out from its origin.
+1. **The genealogical axis (Zettelkasten / Folgezettel).** Every node knows what it
+   sprang out of, and carries the address that springs from it — `1`, `1a`, `1a1`,
+   `1b` — as the label a person cites it by. This is not containment, it is _sequence
+   of thought_: the direction a note springs out from its origin.
 2. **The tag axis (multi-dimensional set classification).** A tag is a plain string on
    a note — `biology`, `seed`, `question` — and nothing declares it first. A note
    carries as many as it likes, so selecting several intersects sets _across_ the
@@ -41,64 +42,76 @@ UI given more room, never the mobile UI minus features.
 
 Domain: `sloppy.sh` · bundle id `sh.sloppy.app` · packages `@sloppy/*`.
 
-## The Address Is the Protocol (required)
+## The Genealogy Is the Protocol (required)
 
-Everything else in Sloppy is an implementation detail that can be replaced. The
-address cannot, because **a peer somewhere is holding it.** Once a subtree has been
-published and pulled, its addresses are load-bearing on machines we do not control and
-cannot migrate.
+Everything else in Sloppy is an implementation detail that can be replaced. **What a note
+sprang out of cannot**, because a peer somewhere is holding a copy of that shape. Once a
+subtree has been published and pulled, the genealogy inside it is load-bearing on machines
+we do not control and cannot migrate.
 
-**An address is a human-readable label within a graph, and never a machine identifier.**
-A person keeps as many graphs as they like — a notebook each for the thesis, the garden
-and the company — and every one of them has its own `1a`. What identifies a note
-anywhere is the ref it already travels by, `<did>/<ulid>`: that is what a link holds,
-what a publication is rooted at, and what a pulled region is a copy of. The address is
-what a person reads, cites and navigates by, and it is read inside a graph the way a
-page number is read inside a book.
+**A note is identified by its ref, `<did>/<ulid>`, and by nothing else.** That is what a
+link holds, what a publication is rooted at, what a pulled region is a copy of, and what
+every lookup on the wire and in the store keys on. Nothing keys a note by its address.
 
-- **An address resolves one way inside one graph, and that is the whole guarantee.**
-  The database holds it rather than the code around it, on our own rows and on the ones a
-  peer hands us. Two notes at `1a` in one graph would be a citation that means two things;
-  two across a person's graphs are two labels, the way two people's `1a`s always were.
-  So an address travels with the graph it is read in, and one shown with no graph beside
-  it means the graph in front of you.
-- **An address is assigned at creation, and changes only when its note is moved.** A move
-  gives the note the next address in the run it joins, by exactly the rule creation uses,
-  and every note beneath it keeps its place relative to it — `1a1` under `1a` is `2c1`
-  once `1a` is `2c`. No other note's address changes: a note dropped between two siblings
-  goes to the end of their run rather than renumbering them. Which graph a note is in is
-  fixed at creation, because a note that changed graph would land where its address may
-  already be taken.
-- **The addresses a move leaves behind become aliases.** They resolve to the same notes
-  for as long as those notes exist, are read by every address lookup, and are never
-  assigned again — so a citation somebody wrote down before the move still lands on the
-  note they cited. Purging a note takes its aliases with it, because there is nothing left
-  for one to resolve to, and retires every one of those addresses instead. Renumbering the
-  notes around a move, or handing an old address to a second thought, is a broken link in
-  somebody else's graph.
-- **An address is assigned once inside a graph, and nothing frees it.** Deleting a note
-  does not hand its address back: the row keeps it while the note can still be put back,
-  and purging that row retires the address instead of releasing it. Moving a note away
-  does not free the one it left either. A number reissued to a second thought is the same
-  broken citation as a renumbering, arrived at from the other side — and people cite
-  their own addresses out loud long before a peer pulls one.
-- **Assignment is deterministic, and determinism is proved, never asserted.** Two peers
-  applying the same operations — deleting, purging and moving among them — must produce
-  byte-identical addresses and byte-identical aliases, and neither may assign one twice.
-  That is the protocol claim, so it ships as a property test over generated operation
-  sequences, not as a handful of hand-picked cases. The rules do not mention a graph:
-  what a graph decides is which run of siblings a new address is assigned against.
-- **Anything derived from an address is derived, never stored.** The angular sector a
-  subtree radiates into, its collapse key — both are functions of the address. Persisting
-  one creates a second copy of a truth that no longer has a single author, and it will
-  disagree with the function the day the function changes. `node.depth` is the one ratified
-  exception; `docs/ARCHITECTURE.md` § "Data model" carries the ruling and the conditions it
-  is held to. **And anything that groups notes by address needs the graph beside it** —
-  a person's branches are a run within one graph, so grouping them by author draws a line
-  between two notebooks.
-- **A change to the addressing rules is a protocol break, and is treated as one.** It
-  does not land inside a feature commit. If implementation shows a rule is wrong, stop
-  and say so.
+**The genealogy is the agreement.** A note's parent — absent on a branch and on an
+independent note — and its order among the notes alongside it are the whole of what every
+peer reads the same way. Position on the canvas, depth, folding and what a subtree carries
+with it are derived from those, so one person's graph draws the same shape on somebody
+else's screen without anybody shipping coordinates.
+
+**The address is a person's label.** `1`, `1a`, `1a1`, `1b` — what somebody reads, cites
+and navigates by, inside a graph, the way a page number is read inside a book. It is not a
+machine identifier and nothing in the system needs one to be there. The rules it is held
+to, all of them about what a person can rely on rather than about what the code can find:
+
+- **A note may have no address, and that is an ordinary note.** One written with no parent
+  and no address is an independent note: it opens no branch, it is still linked to and read
+  like any other, and it stays alongside everything else in its graph. A person gives it an
+  address later or never. Two acts still want one and refuse plainly rather than half-doing
+  it — moving a note, and publishing a region that holds one; `docs/ARCHITECTURE.md`
+  § "The genealogy and the address" carries why, and it is a gap to close, not a rule.
+- **An address is unique inside its graph while a note holds one.** A person keeps as many
+  graphs as they like — a notebook each for the thesis, the garden and the company — and
+  every one of them has its own `1a`. Two notes at `1a` in one graph would be a citation
+  that means two things; two across a person's graphs are two labels, the way two people's
+  `1a`s always were. The database holds that rule rather than the code around it, on our
+  own rows and on the ones a peer hands us, and an address shown with no graph beside it
+  means the graph in front of you.
+- **The Folgezettel rule suggests the address at creation, and it stays deterministic.** A
+  note written under `1a` is offered `1a1`, one written alongside it `1b`. Two peers
+  applying the same creation operations must produce byte-identical suggestions, so the
+  rule ships as a property test over generated operation sequences rather than a handful of
+  hand-picked cases. What a graph decides is which run of siblings a suggestion is made
+  against; a sibling with no address is not in that run and never moves what the rule
+  offers.
+- **A person edits and removes an address wherever one is shown.** That is the whole of
+  what makes it a label. Renumbering the notes AROUND one is still not a thing that
+  happens: a person changes their own note's label and nobody else's.
+- **Every address a note has carried keeps leading to it, and belongs to it.** An address
+  it was moved from, or renamed away from, resolves to the same note for as long as that
+  note exists, and is never given to a second one — a citation somebody wrote down still
+  lands where they meant. Purging a note takes its aliases with it and retires every one of
+  those addresses rather than releasing it. Deleting a note does not hand its address back
+  either: the row keeps it while the note can still be put back.
+- **A move re-addresses a note that has an address and leaves one that has none alone.** A
+  moved note takes the next address in the run it joins, by exactly the rule creation uses,
+  and everything beneath it keeps its place relative to it. The addresses left behind become
+  aliases, and the person may edit the result afterwards.
+- **Within a run, the notes with addresses come first, in address order, and the rest
+  follow in the order they were written.** That is one ordering, in one function, so no two
+  surfaces can disagree about what a run reads as.
+
+**Derived, never stored — with `depth` the ratified exception.** The angular sector a
+subtree radiates into and its collapse key are functions of the address; persisting one
+creates a second copy of a truth that no longer has a single author. `node.depth` is
+maintained from the parent chain instead — a branch and an independent note are 1 —
+because a range over it is what bounds a region read; `docs/ARCHITECTURE.md` § "Data model"
+carries the ruling and the conditions it is held to. **And anything that groups notes by
+address needs the graph beside it** — a person's branches are a run within one graph, so
+grouping them by author draws a line between two notebooks.
+
+**A change to these rules is a protocol break, and is treated as one.** It does not land
+inside a feature commit. If implementation shows a rule is wrong, stop and say so.
 
 ## A Block Is a Section (required)
 

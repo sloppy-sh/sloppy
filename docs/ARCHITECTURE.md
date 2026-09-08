@@ -87,10 +87,28 @@ Platform branching is **compile-time**, via `import.meta.env.TAURI_ENV_PLATFORM`
 `vite.config.ts` so the constants dead-code-eliminate per target. A runtime `if (isIOS)`
 ships both branches to every platform.
 
-## The addressing protocol
+## The genealogy and the address
 
-The part that has to be right first, because peers hold each other's addresses. AI.md § "The
-Address Is the Protocol" states the rules; this is the mechanism.
+The part that has to be right first, because peers hold each other's graphs. AI.md § "The
+Genealogy Is the Protocol, and the Address Is a Label" states the rules; this is the
+mechanism.
+
+**A note is reached by its ref.** `<did>/<ulid>` is the row's own composite key spelled for
+the wire, and it is what a link, a publication, a pull and every route are keyed on. No
+lookup anywhere resolves a note by address except the one a person types, which is exactly
+the citation case the address exists for.
+
+**The genealogy is `parent`, `origin` and `created_at`.** `parent` is the note this one
+sprang out of, absent on a branch and on an independent note; `origin` is the root of its
+tree; `depth` is the parent's depth and one more, so a branch and an independent note are
+both 1. Those three are what a peer reads a region's shape out of, and `depth` is the
+column a bounded read slices on — `node_owner_origin_depth`.
+
+**A run is a note's children, and a graph's branches are the run under no note at all.**
+`runKeyOf` in `@sloppy/types` is that key: the parent's ref, or the graph where there is no
+parent. `orderSiblings` is the order within it — the notes that have addresses first, in
+address order, then the rest by `created_at`, ties broken by ref so two notes written in
+the same millisecond still order the same way on every peer.
 
 - A person keeps one or more **graphs**, and an address is read inside one of them. `graph`
   on a note is the ref of the graph it is in, and `node_owner_graph_address UNIQUE` is what
@@ -98,9 +116,18 @@ Address Is the Protocol" states the rules; this is the mechanism.
 - Root nodes take integers: `1`, `2`, `3`.
 - A child alternates segment type: `1` → `1a` → `1a1` → `1a1a`.
 - A sibling increments the last segment: `1a` → `1b`.
-- An address is assigned at creation and changes **only when its note is moved**, and a
-  move renumbers nothing around it. `graph` is immutable: a note that changed graph would
-  land where its address may already be taken.
+- **A note may hold no address**, and `node.address` is `option<string>` for it. A UNIQUE
+  index does not constrain a row whose indexed column is absent — measured on 3.1.3, and
+  held by `schema.integration.test.ts` — so any number of notes with no address sit in one
+  graph while two with the same address are still refused at the write. That is why the
+  index is untouched: absence is not a value in it, which is the behaviour this rule wants.
+  A note gives its address up by a write that omits the column; `NULL` is refused by the
+  type, so a repository unsets it rather than writing one.
+- An address is suggested at creation by the rule above, rewritten when its note is moved,
+  and written by the person whenever they want. A note written under one that has no address
+  is written with none too: there is no address for the rule to spring one from, and the
+  person numbers it when they number the note above it. `graph` is immutable: a note that changed
+  graph would land where its address may already be taken.
 - An address is assigned **once** in a graph and never assigned again. Deleting a note
   does not free it, and neither does purging the row: `NodeRepository.remove` stamps `deleted_at`, and
   `purgeExpired` writes a `retired_address` row for every note it finally takes. `childAddresses` and `addressTaken`
@@ -114,14 +141,20 @@ Address Is the Protocol" states the rules; this is the mechanism.
   each is drawn in its own field, offset from the last — DESIGN.md § "Several graphs on one
   canvas". Between the reader's and another author's, it is that a pulled region is drawn
   on its own, and § "Federating the graph" is where that rule is held.
+- **A note with no address seeds from its ref**, through `refSector` beside it, and sits on
+  the root ring. The ref is what every peer holding the note has, so the seed is agreed on
+  the way an address-derived one is. It is a placeholder for seeding the whole field off
+  the genealogy, which is what the canvas is meant to do and does not yet.
 
 Determinism is a property test over generated operation sequences — writing, deleting and
 purging — in `@sloppy/types`' `address.test.ts`: two simulated peers applying identical
-operations must produce byte-identical addresses, and neither may assign one twice. One
-replica holds the high-water mark of each run and the other holds nothing but addresses,
-in the three states a graph holds them in, so the union is what the two agree on rather
-than a detail either of them remembers. The rules above do not mention a graph; what a
-graph decides is which run of siblings the next address follows.
+operations must produce byte-identical addresses, and neither may assign one twice. A note
+written with no address is one of those operations, and what it proves is that such a note
+is not in the run at all: it never moves what the rule offers the next note. One replica
+holds the high-water mark of each run and the other holds nothing but addresses, in the
+three states a graph holds them in, so the union is what the two agree on rather than a
+detail either of them remembers. The rules above do not mention a graph; what a graph
+decides is which run of siblings the next address follows.
 
 **The home graph.** Everybody has a graph before they open a second one, and its local id is
 reserved — `HOME_GRAPH_ULID` in `@sloppy/types` — so `homeGraphRef(did)` is a function of the
@@ -176,6 +209,15 @@ function of its address alone (`layout/geometry.ts`), so a moved subtree radiate
 it now is, which is what a genealogy edge drawn from `parent` (`@sloppy/graph`'s `model.ts`)
 already says. And `origin` and `depth` are the columns `node_owner_origin_depth` slices a
 tree by, so a move between trees rewrites both for every note beneath the one that moved.
+
+**Two acts still want an address, and refuse plainly rather than half-doing it.** Moving a
+note with none, or under a note with none, is refused: the rebase rule above is written
+over addresses, and what replaces it is the ordering `orderSiblings` already states.
+Publishing a region holding one is refused for a narrower reason — a version is paged in
+address order through `snapshot_node_owner_version_address`, and a publication is cited by
+its root's label — so `snapshot_node.address` and `publication.root_address` stay required
+while `PublishedNodeSchema.address` and `pulled_node.address` do not: a peer on a later
+build may hand us a region we cannot yet send, and holding it is the easy half.
 
 ## syr integration
 
@@ -244,9 +286,10 @@ DID→provider → fetch `/.well-known/syr/{did}` → hit that identity's public
 directly.
 
 Sloppy adds public read endpoints for published subtrees. A peer follows a DID and pulls
-a subtree in as a foreign, read-only region **with its addresses intact** — the
-deterministic address is what makes a pulled subtree land in a known shape rather than as
-an opaque blob.
+a subtree in as a foreign, read-only region **with its addresses intact** — the genealogy
+a region carries, what each note sprang from, is what makes a pulled subtree land in a
+known shape rather than as an opaque blob, and the addresses are what a reader cites it
+by.
 
 **Publishing takes a SNAPSHOT, and a peer reads the snapshot.** Publishing copies the
 notes, their sections and every asset those sections cite into a version of the
@@ -321,8 +364,9 @@ creating the chain if the note has none, and writing a version either way;
 `PATCH /api/publications/{ref}` changes who is invited to comment and publishes nothing;
 `DELETE /api/publications/{ref}` takes the whole chain down; and
 `GET /api/publications/{ref}/versions` is the author's own history. A published node
-travels **without its `depth`** — a reader recomputes depth, sector and which addresses lie
-under which from the address. **A look's shape travels and its pictures do not:** ring
+travels **without its `depth`** — a reader walks depth down the parent chain the region's
+pages carry, and reads a note's sector off its address or, where it has none, off its
+ref. **A look's shape travels and its pictures do not:** ring
 weight, ring style and size are plain shape and go in `PublishedNode.look`, absent reading
 as unstyled, so every version published before one could travel is unchanged; a picture is
 an upload in the author's own store and stays there (§ "Pictures"). DESIGN.md § "A note's
@@ -459,11 +503,11 @@ what it may name is bounded in three places and none of them is a server's own i
 - **The answer is held to the question.** `parsePublishedIndex`, `publishedSubtreeReader`,
   `publishedVersionsReader` and `publishedChangesReader` in `@sloppy/types` are that
   boundary: an instance that answers about a different identity or a different publication,
-  changes version half way through a region, roots one region at two addresses, carries a
+  changes version half way through a region, roots one region at two addresses, opens a
+  region at a note that is not at the address it says the region is rooted at, carries a
   note attributed to somebody else, carries one outside the region that was asked for, puts
-  a second note at an address another note in the region already has, springs a note from
-  anything but the note at its own parent address, names a link to a note somebody else
-  wrote, writes a timestamp at a width other than `TimestampSchema`'s, refers to a note it
+  a second note at an address another note in the region already has, sends a note that
+  springs from nothing else it sent, names a link to a note somebody else wrote, writes a timestamp at a width other than `TimestampSchema`'s, refers to a note it
   did not send, or hands back a history whose numbering stops falling is answering a
   question nobody asked. A page that does any of it is refused WHOLE, and a refused page
   leaves the reader holding exactly what it held before — the reader is writing rows under
@@ -591,7 +635,7 @@ pull writes rows:
 - `pull_member` is **which region served which note, recorded rather than derived.** An
   address says which regions COVER a note; only the answer says which one handed it over,
   and the difference is what a refresh and a drop are made of. This is not the rule about
-  deriving from an address (AI.md § "The Address Is the Protocol") bent: what a peer's
+  deriving from an address (AI.md § "The Genealogy Is the Protocol") bent: what a peer's
   instance chose to send is not a fact any address states.
 - **A note whose own signature refutes it is left out; the branch around it still
   arrives.** `PublishedNodeSchema` bounds what a reader may claim — one that cannot verify
@@ -627,8 +671,10 @@ pull writes rows:
   foreign off the author, given the viewer beside it.
 - The published node is carried **untouched**, because a signature is over what the author
   sent and a reader that reshaped it could no longer check one. `depth` beside it is the
-  reader's own mint from the address, held to the address by `parsePulledNode` exactly as
-  `parseNode` holds a node's.
+  reader's own, walked down the parents the region's pages carry, so it is the depth the note
+  sits at in the AUTHOR's graph and a bounded read slices on the same number there and here.
+  It is walked before a note whose signature refutes it is dropped, so the notes under a
+  dropped one still know where they sit.
 
 **Comments and reactions are syr's records, addressed by an opaque pair.** A note is
 `post_did` + `post_id` — the two halves of its `<did>/<ulid>` — and the store never learns
@@ -958,8 +1004,8 @@ graph:{ created_by: <did>, id: <ulid> }
 node:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
   graph       ref       the graph its address is read in, immutable
-  address     string    Folgezettel; rewritten by a move and by nothing else
-  depth       int       the address's segment count; a root is 1, rewritten with it
+  address     string?   the label its author cites it by; absent is a note with none
+  depth       int       the parent's and one more; a branch and a free note are 1
   parent      ref?      absent on a root
   origin      ref       the root of this node's tree; a root is its own origin
   title       string
@@ -1163,8 +1209,8 @@ pulled_node:{ created_by: <did>, id: <ulid> }
   source        ref       the node as its AUTHOR addresses it, immutable
   source_did    did       who wrote it, immutable
   source_graph  ref       which of their graphs addressed it, immutable
-  address       string    where its author addressed it, immutable
-  depth         int       the reader's own mint from the address, immutable
+  address       string?   the label its author gave it; absent is a note with none
+  depth         int       the reader's own mint from the region's shape, immutable
   node          object    the published node, carried untouched
 
 pulled_block:{ created_by: <did>, id: <ulid> }
@@ -1274,12 +1320,17 @@ The rules AI.md's foundation-wave section states, applied here:
   `DeletedBranch`, one row per branch that can still be put back with the size of what
   comes back with it, and `GraphExport`, one person's graphs, live notes and sections as
   JSON they can hold.
-- **Nothing derivable from the address is stored, except `depth`** — AI.md § "The Address
-  Is the Protocol" states the rule, and this is the one ratified exception to it. The
+- **Nothing derivable from the address is stored, and `depth` is not derived from it** —
+  AI.md § "The Genealogy Is the Protocol" states the rule. The
   angular sector and subtree membership stay functions in `address.ts`. `graph` is not an
   exception and not a derived value: nothing computes which graph a note is in, its author
   chose one, and it is the scope the address is unique under rather than a fact the address
   states.
+
+  `depth` is the ratified exception to the wider rule, that a derived value is computed
+  rather than stored. It is derived from the GENEALOGY — the parent's depth and one more,
+  1 for a branch and for a note written with no parent — which is what lets a note with no
+  address have one at all.
 
   The read that buys the exception is level of detail. It collapses a subtree past a
   threshold measured from the node in focus, which reads at first like something a stored
@@ -1291,12 +1342,14 @@ The rules AI.md's foundation-wave section states, applied here:
   index now; the alternative is a migration on the protocol's core table later.
 
   A second copy of a truth is only safe while it cannot drift, so the exception is
-  conditioned on holding `depth = parseAddress(address).length` by construction. `depth` is
-  written from `addressDepth()` and nothing else; `parseNode()` in `@sloppy/types` is where
-  every row is held to the equality, in both directions, because the column is immutable and
-  a row that gets past it is wrong for as long as it exists. `ASSERT $value > 0` pins the
-  convention on top of that: a root is 1, so a writer that counted from the other end fails
-  at its first write rather than mis-slicing every region it goes on to store.
+  conditioned on the column being written from the parent chain and from nothing else: a
+  note is written and moved with its parent's depth and one more, and `ASSERT $value > 0`
+  pins the convention that a branch is 1, so a writer that counted from the other end fails
+  at its first write rather than mis-slicing every region it goes on to store. The equality
+  `depth = addressDepth(address)` is no longer an invariant and `parseNode()` no longer
+  holds a row to it: a person may write `5` on a note three deep, and the label is theirs.
+  What the suggestion rule offers still agrees with the parent chain, which is why nothing
+  a person has not renamed by hand looks any different.
 
 - **`appearance` is authored, and that is what makes storing it right.** The rule it looks
   like it breaks — nothing derivable from an address is stored — is about facts the address
@@ -1340,10 +1393,13 @@ something the application cannot be trusted to. What qualifies is all of it stat
 that changed one would move a note into a graph where its address may already be taken, or
 answer for a region it is not a copy of; every table's `created_by`, made immutable with
 `READONLY`; `created_at` / `updated_at` as `TYPE string`, which is what makes a write in the
-wrong encoding fail at the write; `node.address` as `TYPE string`, and `node.depth` and
+wrong encoding fail at the write; `node.address` and `pulled_node.address` as
+`TYPE option<string>`, so a note with no label is a row the database takes and any number of
+them sit in one graph, while the UNIQUE index still refuses a second note at a label one
+holds; `node.depth` and
 `pulled_node.depth` as `TYPE int ASSERT $value > 0`, because a depth is read as a range and a
 range is where a string or a zero would go wrong quietly — `pulled_node.depth` immutable like
-the address it mirrors, `node`'s two left writable because a move rewrites them; a held row's
+the address beside it, `node`'s two left writable because a move and a rename rewrite them; a held row's
 `source`, `source_did` and `address`, a `pull`'s publication and a `pull_member`'s two halves,
 immutable for the reason `created_by` is — a row that changed one would quietly become a copy
 of a different node, of the same node by somebody else, or the record of a region that never

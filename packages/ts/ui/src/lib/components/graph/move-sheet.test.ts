@@ -103,7 +103,7 @@ describe('the move sheet', () => {
 		expect(typed).toEqual(['2']);
 	});
 
-	// AI.md § "The Address Is the Protocol": a note is never moved under itself
+	// AI.md § "The Genealogy Is the Protocol": a note is never moved under itself
 	// or a note beneath it, and somebody who reached for one is told why.
 	it('will not take a note the moving one already carries, and says so', async () => {
 		await open({ query: '1', found: [method, inside] });

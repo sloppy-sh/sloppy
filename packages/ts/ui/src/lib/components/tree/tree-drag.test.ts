@@ -137,7 +137,7 @@ describe('the run a drop would join', () => {
 	});
 });
 
-// AI.md § "The Address Is the Protocol": the run appends, so a note carried
+// AI.md § "The Genealogy Is the Protocol": the run appends, so a note carried
 // into one takes the address after its greatest and nobody else is renumbered.
 describe('where a note carried over the outline would land', () => {
 	const ROWS = [

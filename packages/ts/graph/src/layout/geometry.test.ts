@@ -1,5 +1,5 @@
 // The seed is the part of the layout the protocol claims, so it is proved here
-// rather than asserted: AI.md § "The Address Is the Protocol" says two peers
+// rather than asserted: AI.md § "The Genealogy Is the Protocol" says two peers
 // applying the same creations must agree, and a seed that disagreed would put
 // the same subtree in a different place on every screen.
 

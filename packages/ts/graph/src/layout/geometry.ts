@@ -1,7 +1,7 @@
 // Where a node starts before the simulation touches it.
 //
 // Seeds are a pure function of the address and nothing else, which is the point:
-// AI.md § "The Address Is the Protocol" says a subtree radiates the same way on
+// AI.md § "The Genealogy Is the Protocol" says a subtree radiates the same way on
 // every peer, and it can only do that if no coordinate is ever shipped. The
 // force pass then resolves overlap around a shape the protocol already fixed.
 

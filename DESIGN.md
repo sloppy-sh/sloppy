@@ -557,12 +557,13 @@ Seven rulings hold that table together:
   step takes is a target until they hold it.
 - **The break says how the line was made, and it is the only thing that says it.** A hand
   drew it, and a hand is what takes it away. Every other line on the canvas comes out of
-  something the note already holds — its address, or its own words — and those are drawn
-  whole. So a broken line between two marks is exactly one fact: a hand made it.
+  something the note already holds — what it sprang from, or its own words — and those are
+  drawn whole. So a broken line between two marks is exactly one fact: a hand made it.
 - **Genealogy is everywhere, so it recedes.** The run is the line a reader walks —
   `1 → 2 → 3`, `1a → 1b` — so it is the one that carries weight, and it is **derived from
-  the addresses, never stored** (AI.md § "The Address Is the Protocol"): the two notes either
-  side of a deleted one still read as consecutive, because they are.
+  the run's own order, never stored** (AI.md § "The Genealogy Is the Protocol"): the address
+  leads that order where a note has one, and the two notes either side of a deleted one still
+  read as consecutive, because they are.
 - **A reference is solid, because it is the note's own words.** Typing `[[X]]` is the author
   saying inside the thought itself that this note and that one go together — a statement of
   the same kind the address makes, and drawn whole for the same reason. A reference that drew

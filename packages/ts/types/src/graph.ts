@@ -1,7 +1,7 @@
 // A graph: one person's notebook, and the context an address is read in.
 //
-// AI.md § "The Address Is the Protocol" states the scope; docs/ARCHITECTURE.md
-// § "The addressing protocol" states the mechanism.
+// AI.md § "The Genealogy Is the Protocol" states the scope; docs/ARCHITECTURE.md
+// § "The genealogy and the address" states the mechanism.
 
 import { z } from "zod";
 import { splitOwnedRef } from "./codecs.js";

@@ -375,7 +375,7 @@ export class NodeRepository {
   /**
    * The same, with the notes their author has deleted among them — what a move
    * carries. A deleted one left where it was would sit under an address no note
-   * is at; docs/ARCHITECTURE.md § "The addressing protocol".
+   * is at; docs/ARCHITECTURE.md § "The genealogy and the address".
    */
   async carried(did: string, root: Node): Promise<Node[]> {
     return this.kin(
@@ -506,7 +506,7 @@ export class NodeRepository {
    * Everything of theirs deleted before `before`, gone for real: the writing,
    * what other people left pointing at it, and the note. Each address stays
    * behind in a `retired_address` row, because the graph has assigned it and
-   * nothing may assign it again — AI.md § "The Address Is the Protocol".
+   * nothing may assign it again — AI.md § "The Genealogy Is the Protocol".
    */
   async purgeExpired(did: string, before: string): Promise<void> {
     const going = await this.read(

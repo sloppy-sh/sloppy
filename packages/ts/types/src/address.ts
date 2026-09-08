@@ -1,5 +1,5 @@
-// The Folgezettel address. AI.md § "The Address Is the Protocol" states the
-// rules these functions keep; docs/ARCHITECTURE.md § "The addressing protocol"
+// The Folgezettel address. AI.md § "The Genealogy Is the Protocol" states the
+// rules these functions keep; docs/ARCHITECTURE.md § "The genealogy and the address"
 // states the grammar and why it is shaped this way.
 //
 // Every function here is pure and total over valid addresses. A peer somewhere
