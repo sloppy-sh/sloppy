@@ -663,6 +663,12 @@ so.
   full-width on a phone, and it is the way to every other graph — moving into one, standing
   one up beside it, naming one, starting one. Moving between graphs is a top-level act on
   the surface the graphs are on, never a setting.
+- **What only changes how the canvas is LOOKED at sits on the canvas, at a weight below the
+  row that writes.** Putting the whole field back in view, walking it note by note, the
+  drawing, the ground under it: none of them makes or changes a note, so none of them takes a
+  place in the row where the graph is named and a branch is written. They ride the canvas they
+  act on, as one quiet column against its edge, held clear of the system nav (§ "The four
+  inset vars").
 - **Floating nav, not a top bar.** A pill anchored bottom-centre (`fixed`, safe-area
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
@@ -692,9 +698,12 @@ so.
   beside a mark all place themselves against that number. Below the dock width the note is
   the whole screen and there is no wall, because there is nothing left to take room from.
   How much room was taken is this device's, kept beside the theme (§ Persistence).
-- **The note's way out and its address keep their place** at the head of the surface however
-  far the note runs. The way back out of a long note must never be a scroll away, and the
-  address is the thing a person cites.
+- **The note's way out and its acts keep their place** at the head of the surface however
+  far the note runs. The way back out of a long note must never be a scroll away, and
+  neither may the acts, because that is where a refused one answers. **The address is read
+  with the title it labels**, on the line above it and flush with it, since it is what that
+  title is filed under rather than a piece of chrome — so the acts carry a way to copy it,
+  and a reader deep in a long note can still cite what they are reading.
 - **Several notes stay open in that surface, and a strip across its head says which.** A
   reader working across a few related notes switches between them without losing their
   place in any — what was typed, what a note is showing, what a failed act left to say, and

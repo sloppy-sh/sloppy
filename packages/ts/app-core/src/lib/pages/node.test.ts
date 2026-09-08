@@ -473,10 +473,11 @@ const writingIn = (): { commands: { insertContentAt(at: number, text: string): b
 		}
 	).editor;
 
-/** The row that keeps its place at the head of the note however far it runs —
- *  the way out, the address, the one control every act is asked from, and what
- *  one of those acts was refused. */
-const noteHead = () => document.body.querySelector('header')?.textContent ?? '';
+/** The head of the note: the way out and the acts, then the address line the title
+ *  is read with. */
+const noteHead = () =>
+	(document.body.querySelector('header')?.textContent ?? '') +
+	(document.body.querySelector('[data-address-line]')?.textContent ?? '');
 
 /** Only what the typed field turned up: the note's own lists must not answer
  *  for it. */
@@ -2906,6 +2907,33 @@ describe('handing a note to somebody', () => {
 
 		expect(copied).toEqual(['1a · Biology']);
 		expect(noteHead()).toContain('Address copied.');
+	});
+
+	// The address is read up with the title, so far enough down a long note it is
+	// off screen — and the one control that keeps its place is what is left.
+	it('copies the address from the control that keeps its place', async () => {
+		api.on('GET /graphs', () => [
+			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Biology' }
+		]);
+		await graphs.load();
+		await openNote(SECOND);
+		await act('Copy address');
+
+		expect(copied).toEqual(['1a · Biology']);
+		expect(noteHead()).toContain('Address copied.');
+	});
+
+	it('offers no address to copy on a note that carries none', async () => {
+		const alone = unnumbered(5, { title: 'On its own' });
+		api.on(`GET ${path(alone.ref)}`, () => alone);
+		api.on(`GET ${path(alone.ref)}/blocks`, () => []);
+		await nodes.fetch(alone.ref);
+		await openNote(alone.ref);
+		labelled('What to do with this note').click();
+		await settle();
+
+		expect(menuReads('Copy link')).toBe(true);
+		expect(menuReads('Copy address')).toBe(false);
 	});
 
 	it('copies a link a peer can open', async () => {
