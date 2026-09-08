@@ -2905,3 +2905,32 @@ describe('closing a graph the reader is standing in', () => {
 		expect(reading()).toBe(false);
 	});
 });
+
+// A note nobody numbered opens no branch, so the chrome cannot count it as one
+// — AI.md § "The Genealogy Is the Protocol".
+describe('what the chrome says the canvas holds', () => {
+	it('counts the branches, and the notes standing on their own beside them', async () => {
+		const ALONE = ref(4);
+		graph.set(ALONE, unnumbered(4, { title: 'On its own' }));
+
+		await open();
+
+		expect(screen()).toContain('4 notes, 2 branches and 1 on its own');
+	});
+
+	it('counts branches alone where every root carries an address', async () => {
+		await open();
+
+		expect(screen()).toContain('3 notes across 2 branches');
+	});
+
+	it('says only what stands on its own where nobody numbered a root', async () => {
+		graph.clear();
+		graph.set(ref(4), unnumbered(4, { title: 'On its own' }));
+		graph.set(ref(5), unnumbered(5, { title: 'Beside it' }));
+
+		await open();
+
+		expect(screen()).toContain('2 notes, 2 on their own');
+	});
+});

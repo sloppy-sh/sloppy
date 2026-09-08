@@ -382,6 +382,19 @@ describe('publishing a branch', () => {
 		expect(says()).toContain('Published under 1');
 	});
 
+	it('names a branch above that nobody numbered by what its root is called', async () => {
+		const root = unnumbered(1, { title: 'Where the argument starts' });
+		held = [publication({ root_address: undefined })];
+		chain = [version(VERSION_ONE, 1)];
+		branch = [root, node(2, '1a', { origin: FIRST, parent: FIRST })];
+		api.on(`GET /nodes${refPath(FIRST)}`, () => root);
+
+		await open(UNDER);
+		await until(() => says().includes('Published under'));
+
+		expect(says()).toContain('Published under Where the argument starts');
+	});
+
 	it('names a branch above that nobody numbered in words', async () => {
 		held = [publication({ root_address: undefined })];
 		chain = [version(VERSION_ONE, 1)];

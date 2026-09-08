@@ -562,11 +562,24 @@
 				? count(visible.length, 'note', 'notes')
 				: onCanvas.length > 1
 					? `${count(visible.length, 'note', 'notes')} across ${count(onCanvas.length, 'graph', 'graphs')}`
-					: `${count(visible.length, 'note', 'notes')} across ${count(roots.length, 'branch', 'branches')}`
+					: heldIn(visible.length, roots)
 	);
 
 	function count(n: number, one: string, many: string): string {
 		return `${n.toLocaleString()} ${n === 1 ? one : many}`;
+	}
+
+	/** A root carrying an address opens a branch; one carrying none opens no
+	 *  branch and stands on its own, so the two are counted apart. */
+	function heldIn(notes: number, roots: readonly NodeView[]): string {
+		const held = count(notes, 'note', 'notes');
+		const branches = roots.filter((root) => root.address !== undefined).length;
+		const alone = roots.length - branches;
+		if (alone === 0) return `${held} across ${count(branches, 'branch', 'branches')}`;
+		const own = alone === 1 ? '1 on its own' : `${alone.toLocaleString()} on their own`;
+		return branches === 0
+			? `${held}, ${own}`
+			: `${held}, ${count(branches, 'branch', 'branches')} and ${own}`;
 	}
 
 	const graphName = $derived(graphs.titleOf(graphs.current) || 'Your graph');

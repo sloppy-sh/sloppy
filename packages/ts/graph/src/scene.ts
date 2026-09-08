@@ -1307,7 +1307,8 @@ export class GraphScene {
    * expensive thing a frame here can do — a pinch that re-seats every slot costs
    * more than drawing everything else put together. So a mark keeps the slot it
    * had, holds it through a margin either side of the threshold, and only a few
-   * slots may change hands in any one frame.
+   * slots are written in any one frame — whether they changed hands or the mark
+   * holding one was given an address, retitled or folded under.
    */
   private layoutLabels(): void {
     const view = visibleBounds(this.viewport, this.width, this.height, 80);
@@ -1344,15 +1345,24 @@ export class GraphScene {
 
     let budget = LABEL_RETEXT_BUDGET;
     for (const mark of wanted) {
-      if (held.has(mark.ref) || budget <= 0) continue;
-      const at = free.pop();
-      if (at === undefined) break;
-      budget -= 1;
+      if (budget <= 0) break;
+      let at = held.get(mark.ref);
+      if (at === undefined) {
+        at = free.pop();
+        if (at === undefined) break;
+        held.set(mark.ref, at);
+      }
       const slot = this.labelPool[at];
       const caption = markCaption(mark.attributes);
+      if (
+        slot.address.text === caption.label &&
+        slot.title.text === caption.title
+      ) {
+        continue;
+      }
+      budget -= 1;
       slot.address.text = caption.label;
       slot.title.text = caption.title;
-      held.set(mark.ref, at);
     }
 
     this.placeMarkLabels(wanted);
