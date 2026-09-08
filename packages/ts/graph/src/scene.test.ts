@@ -86,8 +86,8 @@ describe("a look on a mark too small to carry it", () => {
 /**
  * The smallest mark drawn, in CSS pixels, at the view a graph of `total` notes
  * opens on: a phone, and the whole field framed the way `mount.ts` frames it
- * while the layout settles. Measured at the seeds, which are the shape the
- * the tree fixes — the settle only resolves the crowding around them.
+ * while the layout settles. Measured at the seeds, which are the shape the tree
+ * fixes — the settle only resolves the crowding around them.
  */
 function smallestOnAPhone(total: number): number {
   const corpus = makeCorpus({ total });
@@ -121,12 +121,10 @@ function smallestOnAPhone(total: number): number {
 
 // The threshold is only worth what it does at the view a reader actually gets,
 // and a graph opens framed whole on the narrowest screen Sloppy runs on. What
-// the smallest mark is drawn at there is what decides the figure — and what
-// decides THAT is how far the branches stand apart on the root ring, so a field
-// keeps its looks while it is small enough to open inside one branch's reach.
+// the smallest mark is drawn at there is what decides the figure.
 describe("a look at the view a graph opens on", () => {
-  it("is drawn on every mark of a field a phone opens whole", () => {
-    for (const total of [8, 16, 24]) {
+  it("is drawn on every mark, up to a field of some dozens of notes", () => {
+    for (const total of [12, 24, 40, 80]) {
       expect(looksDrawn(smallestOnAPhone(total), false), `${total}`).toBe(true);
     }
   });
@@ -137,7 +135,7 @@ describe("a look at the view a graph opens on", () => {
   it("goes once the whole field will not hold it, and a pinch returns it", () => {
     const smallest = smallestOnAPhone(2400);
     expect(looksDrawn(smallest, false)).toBe(false);
-    expect(looksDrawn(smallest * 3, false)).toBe(true);
+    expect(looksDrawn(smallest * 2, false)).toBe(true);
   });
 });
 

@@ -12,8 +12,11 @@
 
 import { orderSiblings, type OwnedRef, refSector } from "@sloppy/types";
 
-/** Roots sit on this ring; their subtrees radiate outward from it. */
+/** The widest the root ring gets; past it the force pass is what holds a
+ *  crowded ring apart. */
 const ROOT_RADIUS = 1400;
+/** How far apart two notes stand on the root ring while it has room for them. */
+const ROOT_SPACING = 300;
 const STEP_FIRST = 300;
 const STEP_DECAY = 0.8;
 /** The widest a child may lean off its parent's outward direction. */
@@ -56,9 +59,12 @@ export function seedField(
   const held = [...notes];
   const byRef = new Map(held.map((note) => [note.ref, note]));
   const ordinals = runOrdinals(held, byRef);
+  const radius = ringRadius(
+    held.filter((note) => onTheRing(note, byRef)).length,
+  );
   const placed = new Map<OwnedRef, Placed>();
 
-  for (const note of held) place(note, byRef, ordinals, placed);
+  for (const note of held) place(note, byRef, ordinals, radius, placed);
 
   return new Map(
     [...placed].map(([ref, under]) => [ref, under.point] as const),
@@ -72,10 +78,20 @@ interface Placed {
   depth: number;
 }
 
+/** Nothing above it here: a branch, an independent note, or one whose parent
+ *  this reader does not hold. */
+function onTheRing(
+  note: SeededNote,
+  byRef: ReadonlyMap<OwnedRef, SeededNote>,
+): boolean {
+  return note.parent === undefined || !byRef.has(note.parent);
+}
+
 function place(
   note: SeededNote,
   byRef: ReadonlyMap<OwnedRef, SeededNote>,
   ordinals: ReadonlyMap<OwnedRef, number>,
+  radius: number,
   placed: Map<OwnedRef, Placed>,
 ): Placed {
   // Walked rather than recursed: a chain as deep as the field is long would
@@ -98,7 +114,7 @@ function place(
     placed.set(
       under.ref,
       from === undefined
-        ? { point: seedRing(refSector(under.ref)), depth: under.depth }
+        ? { point: seedRing(refSector(under.ref), radius), depth: under.depth }
         : leanOff(from, under, ordinals.get(under.ref) ?? 1),
     );
   }
@@ -151,10 +167,16 @@ function runOrdinals(
   return ordinals;
 }
 
-function seedRing(outward: number): SeedPoint {
+/** A ring only as wide as the number standing on it, so a field of a few
+ *  branches opens whole on a phone. */
+function ringRadius(standing: number): number {
+  return Math.min(ROOT_RADIUS, (ROOT_SPACING * standing) / (2 * Math.PI));
+}
+
+function seedRing(outward: number, radius: number): SeedPoint {
   return {
-    x: Math.cos(outward) * ROOT_RADIUS,
-    y: Math.sin(outward) * ROOT_RADIUS,
+    x: Math.cos(outward) * radius,
+    y: Math.sin(outward) * radius,
     outward,
   };
 }

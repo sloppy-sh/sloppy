@@ -107,19 +107,23 @@ describe("seedField", () => {
   // or one whose parent this reader does not hold — starts on the ring, from
   // the ref every peer holding it has.
   it("starts a note with nothing above it on the root ring", () => {
-    const loose = unnumbered(notes.slice(0, 40)).map(
-      ({ parent: _above, ...rest }) => rest,
-    );
-    const field = seedField(loose);
+    const field = seedField(loose(40));
     const seen = new Set<string>();
-    for (const node of loose) {
-      const seed = field.get(node.ref);
-      if (!seed) throw new Error(`${node.ref} was not seeded`);
+    for (const seed of field.values()) {
       expect(Math.hypot(seed.x, seed.y)).toBeCloseTo(ROOT_RADIUS, 6);
       const key = `${seed.x}:${seed.y}`;
       expect(seen.has(key)).toBe(false);
       seen.add(key);
     }
+  });
+
+  // A ring sized for forty branches is one a graph of six opens too far out to
+  // read: DESIGN.md § "The mark" measures the look against the view a graph
+  // opens on, and for a small field the ring is most of that view.
+  it("stands a few branches on a tighter ring than a crowd", () => {
+    const few = ringOf(seedField(loose(6)));
+    expect(few).toBeLessThan(ringOf(seedField(loose(40))));
+    expect(few).toBeGreaterThan(0);
   });
 
   it("fans a run by which of its notes was written first", () => {
@@ -212,6 +216,20 @@ describe("placeFields", () => {
     expect(placed[1].minX).toBeGreaterThan(placed[0].maxX);
   });
 });
+
+/** `many` notes with nothing above any of them. */
+function loose(many: number): NodeView[] {
+  return unnumbered(notes.slice(0, many)).map(
+    ({ parent: _above, ...rest }) => rest,
+  );
+}
+
+/** The one radius a field of loose notes stands at. */
+function ringOf(field: ReadonlyMap<OwnedRef, SeedPoint>): number {
+  const radii = [...field.values()].map((seed) => Math.hypot(seed.x, seed.y));
+  for (const radius of radii) expect(radius).toBeCloseTo(radii[0], 6);
+  return radii[0];
+}
 
 /** The same notes with nobody's label on them. */
 function unnumbered(of: readonly CorpusNote[]): NodeView[] {

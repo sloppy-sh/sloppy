@@ -85,12 +85,6 @@ async function canvas(): Promise<{
   const app = FakeApplication.latest as FakeApplication;
   scene.setModel(buildModel(field, { selection: [], palette }), false);
   scene.fit();
-  // Read at the branch rather than at the whole field, which is where a mark is
-  // drawn big enough to be given words at all.
-  const branch = scene.indexOf(BRANCH);
-  if (branch === undefined) throw new Error("the branch was not drawn");
-  scene.viewport.scale = 1;
-  scene.viewport.centreOn(scene.positionOf(branch), 390, 740);
   // Only a few label slots may change hands in a frame, so the canvas is left
   // with every word it wants on it before anything below moves.
   for (let frame = 0; frame < field.length; frame++) {

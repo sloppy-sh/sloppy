@@ -500,7 +500,7 @@ describe("a mark wearing more than one picture", () => {
   it("exchanges without drawing the change on a mark off the screen", async () => {
     const pictures = host();
     const { scene, app } = await sceneOn([wearing("1", ["a", "b"])], pictures);
-    // Left where a fresh viewport sits, which is not where the field is.
+    scene.viewport.centreOn({ x: 50_000, y: 50_000 }, 390, 740);
     await settle();
     app.tick();
     const held = (previewsOf(app).children[0] as FakeSprite).texture;
