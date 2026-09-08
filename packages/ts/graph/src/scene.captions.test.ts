@@ -102,6 +102,16 @@ describe("what is written beside a mark", () => {
     ]);
   });
 
+  // The count is part of the name, so it comes out of the same budget rather
+  // than being added past the end of it.
+  it("keeps a counted title inside the room an uncounted one gets", async () => {
+    const long = "Mushrooms of the coastal temperate rainforest";
+    const [counted] = await captionOf({ title: long, folded: 12 });
+    const [plain] = await captionOf({ title: long });
+    expect(counted.endsWith(" +12")).toBe(true);
+    expect(counted.length).toBeLessThanOrEqual(plain.length);
+  });
+
   it("writes the count alone for a fold with nothing naming it", async () => {
     expect(await captionOf({ title: "  ", folded: 12 })).toEqual(["+12"]);
   });

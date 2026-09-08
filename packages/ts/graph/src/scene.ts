@@ -1463,14 +1463,20 @@ function markCaption(attributes: GraphNodeAttributes): {
   label: string;
   title: string;
 } {
-  const title = shorten(attributes.title.trim(), TITLE_CHARS);
+  const name = attributes.title.trim();
   const count = attributes.folded === 0 ? "" : `+${attributes.folded}`;
   const address = attributes.address;
   if (address !== undefined) {
-    return { label: count === "" ? address : `${address} ${count}`, title };
+    return {
+      label: count === "" ? address : `${address} ${count}`,
+      title: shorten(name, TITLE_CHARS),
+    };
   }
-  if (title === "") return { label: count, title: "" };
-  return { label: "", title: count === "" ? title : `${title} ${count}` };
+  if (count === "") return { label: "", title: shorten(name, TITLE_CHARS) };
+  const title = shorten(name, TITLE_CHARS - count.length - 1);
+  return title === ""
+    ? { label: count, title: "" }
+    : { label: "", title: `${title} ${count}` };
 }
 
 /** One ring of a lift: the circle stroked, in world units from the mark's
