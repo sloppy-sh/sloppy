@@ -1915,7 +1915,7 @@
 	{:else}
 		<div class="space-y-3">
 			<!-- The address is read with the title it labels, not off in the chrome. -->
-			<div data-address-line class="-mb-3 space-y-1">
+			<div data-address-line class="space-y-1" class:-mb-3={!addressingHere}>
 				<div class="flex min-w-0 flex-wrap items-center gap-x-1">
 					{#if node.address && !addressingHere}
 						<button
