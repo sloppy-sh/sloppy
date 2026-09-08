@@ -67,7 +67,7 @@ describe('what a publish did', () => {
 		expect(document.body.querySelector('.address')).toBeNull();
 	});
 
-	it('says where a note was once its author took the address off it', () => {
+	it('says where a note was once its author took the address off it, without calling it moved', () => {
 		draw([
 			{
 				change: 'changed',
@@ -78,7 +78,9 @@ describe('what a publish did', () => {
 		]);
 
 		expect(screen()).toContain('Spores');
+		expect(screen()).toContain('Unnumbered');
 		expect(screen()).toContain('Was at 1c');
+		expect(screen()).not.toContain('Moved');
 	});
 
 	it('says nothing about where a note was when it has not been carried anywhere', () => {

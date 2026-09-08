@@ -4,7 +4,7 @@
 	// the author's words as they published them.
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Check from '@lucide/svelte/icons/check';
-	import Link2 from '@lucide/svelte/icons/link-2';
+	import Copy from '@lucide/svelte/icons/copy';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import type { BlockView, NodeView } from '@sloppy/types';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -131,9 +131,9 @@
 						{#if copied}
 							<Check class="size-4 shrink-0" />
 						{:else}
-							<Link2 class="size-4 shrink-0" />
+							<Copy class="size-4 shrink-0" />
 						{/if}
-						<span class="truncate">Copy a link</span>
+						<span class="truncate">Copy link</span>
 					</button>
 				{/if}
 			</div>

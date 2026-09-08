@@ -33,9 +33,11 @@
 	export interface PublishModalProps {
 		open?: boolean;
 		/** The branch's root, as a person cites it. Absent where its author gave
-		 *  it none, which a branch already published never is: a publication is
-		 *  cited by its root's label. */
+		 *  it none. */
 		address?: Address;
+		/** Where the branch can be opened, handed to a reader in place of an
+		 *  address where its author gave it none. */
+		link?: string;
 		reader?: ReaderNeeds;
 		/** Absent where nothing here is published yet. */
 		published?: PublishedBranch | null;
@@ -85,6 +87,7 @@
 	let {
 		open = $bindable(false),
 		address,
+		link,
 		reader = {},
 		published = null,
 		carriedBy = null,
@@ -103,8 +106,6 @@
 		published ? (published.versions.length > 0 ? published.versions : [published.latest]) : []
 	);
 
-	/** What the sheet calls the branch, which is its address wherever its author
-	 *  wrote one. */
 	const named = $derived(address ?? 'this branch');
 
 	let working = $state(false);
@@ -337,10 +338,12 @@
 					<h3 class="text-sm font-medium">What a reader needs</h3>
 					<p class="text-sm text-muted-foreground">Send somebody this and they can read it.</p>
 					<dl class="space-y-2">
-						<div>
-							<dt class="text-xs text-muted-foreground">This branch</dt>
-							<dd class="address text-sm break-all select-text">{address}</dd>
-						</div>
+						{#if address || link}
+							<div>
+								<dt class="text-xs text-muted-foreground">This branch</dt>
+								<dd class="address text-sm break-all select-text">{address ?? link}</dd>
+							</div>
+						{/if}
 						{#if reader.identity}
 							<div>
 								<dt class="text-xs text-muted-foreground">Your identity</dt>

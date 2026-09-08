@@ -102,8 +102,7 @@
 	});
 	const sections = $derived(branch && showing ? sectionsOf(branch, showing) : []);
 	/** The address as it is cited: the notebook it is read in comes with it where
-	 *  its author named one. Empty where they gave the note none, and the title
-	 *  is what a reader has to go on. */
+	 *  its author named one. */
 	const citation = $derived(
 		open ? [open.address, branch?.graph_title].filter(Boolean).join(' · ') : ''
 	);

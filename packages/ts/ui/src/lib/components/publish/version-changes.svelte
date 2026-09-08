@@ -59,13 +59,15 @@
 	}
 
 	function became(entry: PublishedNoteChange): string {
+		if (entry.change !== 'changed') return BECAME[entry.change];
 		const carried =
 			moved(entry) !== null &&
 			renamed(entry) === null &&
 			gained(entry).length === 0 &&
 			lost(entry).length === 0 &&
 			sectionsOf(entry).length === 0;
-		return carried ? 'Moved' : BECAME[entry.change];
+		if (!carried) return BECAME.changed;
+		return entry.note.address === undefined ? 'Unnumbered' : 'Moved';
 	}
 
 	/**

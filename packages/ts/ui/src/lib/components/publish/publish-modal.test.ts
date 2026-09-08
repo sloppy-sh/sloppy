@@ -345,12 +345,15 @@ describe('the decision to publish again', () => {
 });
 
 describe('what a reader has to be given', () => {
-	const opened = (reader: { identity?: string; where?: string }) => {
+	const opened = (
+		reader: { identity?: string; where?: string },
+		branchIs: { address?: string; link?: string } = { address: '1a' }
+	) => {
 		mounted = mount(PublishModal, {
 			target,
 			props: {
 				open: true,
-				address: '1a',
+				...branchIs,
 				reader,
 				published: branch,
 				onchanges: async () => null,
@@ -383,6 +386,22 @@ describe('what a reader has to be given', () => {
 		opened({});
 
 		expect(document.body.textContent).not.toContain('What a reader needs');
+	});
+
+	it('hands over a link to a branch its author gave no address', () => {
+		opened({ identity: AUTHOR }, { link: 'https://sloppy.sh/n/1' });
+
+		expect(selectable()).toEqual(['https://sloppy.sh/n/1', AUTHOR]);
+		expect(document.body.textContent).not.toContain('undefined');
+	});
+
+	it('leaves the branch out entirely where it has neither', () => {
+		opened({ identity: AUTHOR }, {});
+
+		expect(selectable()).toEqual([AUTHOR]);
+		expect([...document.body.querySelectorAll('dt')].map((one) => one.textContent)).toEqual([
+			'Your identity'
+		]);
 	});
 });
 

@@ -140,7 +140,7 @@ describe('a note somebody else wrote with no address', () => {
 		clipboardKeeps();
 		await read(ADA_PERSON, false, unnumbered(), { link: LINK });
 
-		expect(document.body.textContent).toContain('Copy a link');
+		expect(document.body.textContent).toContain('Copy link');
 		linkControl()?.click();
 		await settle();
 

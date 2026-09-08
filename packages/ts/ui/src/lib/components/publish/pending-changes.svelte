@@ -30,7 +30,8 @@
 	function became(entry: UnpublishedChange): string {
 		if (entry.change !== 'changed') return BECAME[entry.change];
 		if (entry.written) return 'Written in';
-		return onlyCarried(entry) ? 'Moved' : BECAME.changed;
+		if (!onlyCarried(entry)) return BECAME.changed;
+		return entry.address === undefined ? 'Unnumbered' : 'Moved';
 	}
 </script>
 

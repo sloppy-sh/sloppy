@@ -82,12 +82,14 @@ describe('a note written since with no address', () => {
 		expect(document.body.querySelector('.address')).toBeNull();
 	});
 
-	it('says where it was once its author took the address off it', () => {
+	it('says where it was once its author took the address off it, without calling it moved', () => {
 		const unnumbered = entry({ was_at: '1c', title: 'Spores' });
 		delete unnumbered.address;
 		draw([unnumbered]);
 
 		expect(screen()).toContain('Spores');
+		expect(screen()).toContain('Unnumbered');
 		expect(screen()).toContain('Was at 1c');
+		expect(screen()).not.toContain('Moved');
 	});
 });
