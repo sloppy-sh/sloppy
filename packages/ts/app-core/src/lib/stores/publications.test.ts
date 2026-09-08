@@ -92,6 +92,15 @@ describe('the branch a note is published in', () => {
 		expect(publications.above(held(ROOT))).toBeUndefined();
 	});
 
+	// Nothing between the two is published, so the walk has to run the whole way
+	// up rather than stopping at the note's own parent.
+	it('is one rooted two notes above it', async () => {
+		await publishes(publication({ root: ROOT, root_address: undefined }));
+
+		expect(publications.above(held(LEAF))?.root).toBe(ROOT);
+		expect(publications.answersOn(held(LEAF))).toBe('anyone');
+	});
+
 	it('is not one rooted at a note this one does not spring from', async () => {
 		await publishes(publication({ root: ELSEWHERE, root_address: '1' }));
 
@@ -108,6 +117,14 @@ describe('what publishing a branch would carry', () => {
 				root_address: '7a',
 				comments: 'nobody'
 			})
+		);
+
+		expect(publications.narrowerUnder(held(ROOT), 'anyone').map((one) => one.root)).toEqual([LEAF]);
+	});
+
+	it('names one its author never numbered, which nothing else could cite', async () => {
+		await publishes(
+			publication({ ref: ref(51), root: LEAF, root_address: undefined, comments: 'nobody' })
 		);
 
 		expect(publications.narrowerUnder(held(ROOT), 'anyone').map((one) => one.root)).toEqual([LEAF]);

@@ -67,8 +67,8 @@ export class PublicationRepository {
     return rows[0] === undefined ? null : PublicationSchema.parse(rows[0]);
   }
 
-  /** Everything the caller publishes, in address order. Their own listing, so
-   *  it is not paged: a person has one publication per branch they published. */
+  /** Everything the caller publishes. Their own listing, so it is not paged: a
+   *  person has one publication per branch they published. */
   async listOwn(did: string): Promise<Publication[]> {
     const [rows] = await this.query(
       "SELECT * FROM publication WHERE created_by = $did ORDER BY root_address",
@@ -91,10 +91,11 @@ export class PublicationRepository {
   }
 
   /**
-   * One page of what an identity publishes, by the label each branch carries
-   * and by the note it is rooted at where two carry none. The pair is unique
-   * per owner, so it is also the cursor — an address alone is not, now that a
-   * person may publish as many unnumbered branches as they like.
+   * One page of what an identity publishes, in the order a run reads: the
+   * branches carrying a label first, by label, then the rest by the note each
+   * is rooted at. That note settles the order where two carry none, and the
+   * pair is the cursor — a label alone is not, now that a person may publish as
+   * many unnumbered branches as they like.
    */
   async page(
     did: string,
@@ -107,13 +108,16 @@ export class PublicationRepository {
         : after.root === undefined
           ? // A cursor minted before a listing carried the note as well, which
             // was one publication per address and pages on that.
-            " AND root_address > $after"
+            ` AND (root_address > $after OR root_address = NONE)`
           : after.address === undefined
-            ? " AND (root_address != NONE OR root > $afterRoot)"
-            : " AND (root_address > $after OR (root_address = $after AND root > $afterRoot))";
+            ? " AND root_address = NONE AND root > $afterRoot"
+            : ` AND (root_address > $after
+                 OR (root_address = $after AND root > $afterRoot)
+                 OR root_address = NONE)`;
     const [rows] = await this.query(
-      `SELECT * FROM publication WHERE created_by = $did${from}
-         ORDER BY root_address, root LIMIT $limit`,
+      `SELECT *, root_address = NONE AS unnumbered FROM publication
+         WHERE created_by = $did${from}
+         ORDER BY unnumbered, root_address, root LIMIT $limit`,
       { did, after: after?.address, afterRoot: after?.root, limit },
     );
     return rows.map((row) => PublicationSchema.parse(row));

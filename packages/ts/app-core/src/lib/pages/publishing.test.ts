@@ -1,5 +1,6 @@
 import type {
 	BlockView,
+	NodeView,
 	NoteComment,
 	NoteReaction,
 	OwnedRef,
@@ -31,6 +32,9 @@ const PEER = 'did:syr:z6MkPeerPeerPeerPeerPeerPeerPeerPeerPeer';
 
 const FIRST = ref(1);
 const UNDER = ref(2);
+/** A note two below the root, which is how deep a publication above one can sit
+ *  while a person opens it by its own link. */
+const DEEPER = ref(3);
 const PUBLICATION = ref(10);
 const UNDER_PUBLICATION = ref(11);
 const VERSION_ONE = ref(20);
@@ -163,6 +167,9 @@ let api: FakeApi;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let held: PublicationView[];
+/** The branch the surface reads when it asks for the notes this one springs
+ *  from. Empty is a branch nothing else has read. */
+let branch: NodeView[];
 let chain: PublishedVersion[];
 let said: NoteComment[];
 let reacted: NoteReaction[];
@@ -180,6 +187,7 @@ beforeEach(() => {
 	people.hold(null);
 	api = useFakeApi();
 	held = [];
+	branch = [];
 	chain = [];
 	said = [];
 	reacted = [];
@@ -190,6 +198,9 @@ beforeEach(() => {
 	api.on(`GET /nodes${refPath(FIRST)}/blocks`, () => []);
 	api.on(`GET /nodes${refPath(UNDER)}`, () => node(2, '1a', { origin: FIRST, parent: FIRST }));
 	api.on(`GET /nodes${refPath(UNDER)}/blocks`, () => []);
+	api.on(`GET /nodes${refPath(DEEPER)}`, () => node(3, '1a1', { origin: FIRST, parent: UNDER }));
+	api.on(`GET /nodes${refPath(DEEPER)}/blocks`, () => []);
+	api.on('GET /nodes', () => branch);
 	api.on('GET /publications', () => held);
 	api.on(`GET /publications${refPath(PUBLICATION)}/versions`, () => chain);
 	api.on(`GET /nodes${refPath(FIRST)}/comments`, () => said);
@@ -353,6 +364,42 @@ describe('publishing a branch', () => {
 		expect(says()).toContain('1 already carries this branch');
 	});
 
+	// A note opened by its own link arrives on its own, so the notes between it
+	// and the branch above have to be read before anything can say one carries
+	// it.
+	it('says a branch two notes above it carries it, opened by its own link', async () => {
+		held = [publication()];
+		chain = [version(VERSION_ONE, 1)];
+		branch = [
+			node(1, '1'),
+			node(2, '1a', { origin: FIRST, parent: FIRST }),
+			node(3, '1a1', { origin: FIRST, parent: UNDER })
+		];
+
+		await open(DEEPER);
+		await until(() => says().includes('Published under'));
+
+		expect(says()).toContain('Published under 1');
+	});
+
+	it('names a branch above that nobody numbered in words', async () => {
+		held = [publication({ root_address: undefined })];
+		chain = [version(VERSION_ONE, 1)];
+		branch = [unnumbered(1), node(2, '1a', { origin: FIRST, parent: FIRST })];
+		api.on(`GET /nodes${refPath(FIRST)}`, () => unnumbered(1));
+
+		await open(UNDER);
+		await until(() => says().includes('Published under'));
+
+		expect(says()).toContain('Published under a branch above');
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('A branch you never numbered already carries this branch');
+	});
+
 	it('says nothing about a branch above it where there is none', async () => {
 		await open(UNDER);
 		await openActs();
@@ -398,10 +445,7 @@ describe('publishing a branch', () => {
 				comments: 'nobody'
 			})
 		];
-		// Which notes a branch carries is the genealogy, so the note that branch
-		// is rooted at has to be in hand for anything to say it lies under this
-		// one.
-		await nodes.fetch(UNDER);
+		branch = [node(1, '1'), node(2, '1a', { origin: FIRST, parent: FIRST })];
 
 		await open();
 		await openActs();
@@ -425,6 +469,28 @@ describe('publishing a branch', () => {
 		flushSync();
 
 		expect(says()).toContain('Not right now.');
+	});
+
+	it('names a narrower branch nobody numbered in words, since none can be cited', async () => {
+		held = [
+			publication({
+				ref: UNDER_PUBLICATION,
+				root: UNDER,
+				root_address: undefined,
+				comments: 'nobody'
+			})
+		];
+		branch = [node(1, '1'), unnumbered(2, { origin: FIRST, parent: FIRST, depth: 2 })];
+
+		await open();
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain(
+			'A branch you never numbered is published inviting fewer people to answer'
+		);
 	});
 
 	it('says nothing about narrower branches where every one of them is as wide', async () => {

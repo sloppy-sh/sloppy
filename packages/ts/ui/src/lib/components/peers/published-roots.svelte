@@ -44,9 +44,7 @@
 			<ul class="space-y-1">
 				{#each notebook.rows as branch (branch.ref)}
 					<li class="flex items-center gap-3 py-1">
-						{#if branch.root_address !== undefined}
-							<span class="shrink-0 address">{branch.root_address}</span>
-						{/if}
+						<span class="min-w-6 shrink-0 address">{branch.root_address ?? ''}</span>
 						<span class="min-w-0 flex-1 truncate text-sm">{branch.title || 'Untitled'}</span>
 						<Button
 							variant="ghost"

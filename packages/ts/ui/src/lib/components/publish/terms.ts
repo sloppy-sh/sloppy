@@ -2,7 +2,7 @@
 // surface and about every note they chose on the canvas. PRODUCT.md § "Design
 // Principles" 5 puts it at the decision, and one wording serves both.
 
-import type { Address } from '@sloppy/types';
+import type { Address, OwnedRef } from '@sloppy/types';
 
 /** What a publish is about: one branch, by the name a person cites it by — its
  *  address, or words for one whose author gave it none — or however many notes
@@ -60,17 +60,68 @@ export function publishingAgain(of: PublishSubject): string {
 /** What publishing again does to who may answer: nothing. */
 export const KEEPS_TERMS = 'What you have already published keeps the terms you set on it.';
 
+/** A branch a person is told about, by the name they read it by: its address,
+ *  or how many there are where nobody numbered them, since none of those can be
+ *  cited apart from the rest. */
+export type NamedBranches = { address: Address } | { unnumbered: number };
+
+/** A published branch, as far as naming one takes: what tells it from the
+ *  others, and the address it is cited by where it carries one. */
+interface Branch {
+	ref: OwnedRef;
+	root_address?: Address;
+}
+
+export function namedBranch(branch: Branch): NamedBranches {
+	return branch.root_address === undefined ? { unnumbered: 1 } : { address: branch.root_address };
+}
+
+/** One entry per address, and every branch nobody numbered gathered into a
+ *  single one. */
+export function namedBranches(branches: readonly Branch[]): NamedBranches[] {
+	const named: NamedBranches[] = [];
+	const unnumbered = new Set<OwnedRef>();
+	for (const branch of branches) {
+		if (branch.root_address === undefined) unnumbered.add(branch.ref);
+		else if (!named.some((one) => 'address' in one && one.address === branch.root_address))
+			named.push({ address: branch.root_address });
+	}
+	return unnumbered.size === 0 ? named : [...named, { unnumbered: unnumbered.size }];
+}
+
+/** The branches carrying the notes going out, each with how many of them it
+ *  carries — one entry per branch a person is told about, so a branch named
+ *  twice is counted once. */
+export function branchesCarrying(
+	above: readonly Branch[]
+): { branch: NamedBranches; notes: number }[] {
+	return namedBranches(above).map((branch) => ({
+		branch,
+		notes: above.filter((one) =>
+			'address' in branch ? one.root_address === branch.address : one.root_address === undefined
+		).length
+	}));
+}
+
 /** A branch rooted above this one that already carries it, so publishing here
  *  puts that writing out a second time. */
-export function alreadyCarried(of: PublishSubject, by: Address): string {
+export function alreadyCarried(of: PublishSubject, by: NamedBranches): string {
 	const what =
 		'branch' in of ? 'this branch' : of.notes === 1 ? 'the note you chose' : 'notes you chose';
-	return `${by} already carries ${what}, on its own terms.`;
+	if ('address' in by) return `${by.address} already carries ${what}, on its own terms.`;
+	return by.unnumbered === 1
+		? `A branch you never numbered already carries ${what}, on its own terms.`
+		: `${by.unnumbered.toLocaleString()} branches you never numbered already carry ${what}, on their own terms.`;
 }
 
 /** A branch under this one published inviting fewer people to answer. What goes
  *  out here carries it on these terms. */
-export function narrowerSays(under: Address, out: 'going' | 'already'): string {
+export function narrowerSays(under: NamedBranches, out: 'going' | 'already'): string {
 	const carrier = out === 'going' ? 'What you publish here' : 'What is published here';
-	return `${under} is published inviting fewer people to answer. ${carrier} carries it on these terms.`;
+	if ('address' in under) {
+		return `${under.address} is published inviting fewer people to answer. ${carrier} carries it on these terms.`;
+	}
+	return under.unnumbered === 1
+		? `A branch you never numbered is published inviting fewer people to answer. ${carrier} carries it on these terms.`
+		: `${under.unnumbered.toLocaleString()} branches you never numbered are published inviting fewer people to answer. ${carrier} carries them on these terms.`;
 }

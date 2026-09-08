@@ -376,17 +376,17 @@ addresses in a version are labels it carries, and nothing reads a shape out of t
 calls:
 
 - `GET /api/public/publications/{did}` lists what that identity publishes here — each
-  publication's ref, the address it is rooted at, the notebook that address is read in and
-  what the author calls it, the newest version's title, and that version — and nothing that
-  is not already public in it.
+  publication's ref, the address it is rooted at where its author gave it one, the notebook
+  that address is read in and what the author calls it, the newest version's title, and that
+  version — and nothing that is not already public in it.
 - `GET /api/public/publications/{did}/{id}` answers a page of a version: `?version=`
   names one, and absent is the newest when the first page is asked for. Every page after
   that answers at the version its cursor was minted against, so publishing again moves
   what a fresh read gets and never what a read already under way is part of.
 - `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
 - `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
-  between those two versions, one entry per note and in the same address order a version's
-  own pages take.
+  between those two versions, one entry per note and in the same order a version's own pages
+  take.
 
 The first of those is the exposure publishing creates, and the copy at the moment of the
 decision has to be true to it: from the moment a subtree is published, anyone holding the

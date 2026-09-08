@@ -6,6 +6,7 @@
 		PublishedVersion,
 		UnpublishedChanges
 	} from '@sloppy/types';
+	import type { NamedBranches } from './terms.js';
 	import type { VersionComparison } from './version-changes.svelte';
 
 	/** A branch as it stands published: the version a reader gets, the chain
@@ -42,9 +43,9 @@
 		/** Absent where nothing here is published yet. */
 		published?: PublishedBranch | null;
 		/** A branch above this one that already carries it, if there is one. */
-		carriedBy?: Address | null;
+		carriedBy?: NamedBranches | null;
 		/** Branches under this one that were published inviting fewer people. */
-		narrower?: readonly Address[];
+		narrower?: readonly NamedBranches[];
 		/** True where a note in this branch has changed since the newest version.
 		 *  False says nothing: it is silent where it cannot tell. What
 		 *  {@link onpending} answers replaces it the moment it arrives. */
@@ -375,7 +376,7 @@
 					<p class="text-sm text-muted-foreground">This branch has changed since then.</p>
 				{/if}
 				<p class="text-sm text-muted-foreground">{publishingAgain({ branch: named })}</p>
-				{#each narrower as under (under)}
+				{#each narrower as under, i (i)}
 					<p class="text-sm text-muted-foreground">{narrowerSays(under, 'already')}</p>
 				{/each}
 				<Button class="h-11 w-full" disabled={working} onclick={() => act(onpublish)}>
@@ -435,7 +436,7 @@
 				{#if carriedBy}
 					<p>{alreadyCarried({ branch: named }, carriedBy)}</p>
 				{/if}
-				{#each narrower as under (under)}
+				{#each narrower as under, i (i)}
 					<p>{narrowerSays(under, 'going')}</p>
 				{/each}
 			</div>

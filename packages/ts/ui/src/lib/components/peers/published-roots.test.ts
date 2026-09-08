@@ -71,7 +71,7 @@ describe('the branches somebody publishes', () => {
 		const text = document.body.textContent ?? '';
 		expect(text).toContain('Cells');
 		expect(text).not.toContain('undefined');
-		expect(document.querySelector('.address')).toBeNull();
+		expect(document.querySelector('.address')?.textContent).toBe('');
 
 		press('Read it');
 		expect(pulled).toEqual([branch().ref]);

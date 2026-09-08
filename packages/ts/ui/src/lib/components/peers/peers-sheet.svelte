@@ -228,9 +228,10 @@
 	}
 
 	/** What a held region is called where an act on it has to name one: the
-	 *  address its author gave it, and words for a branch they gave none. */
+	 *  address its author gave it, and whose branch it is where they gave none,
+	 *  since one row of several has to be told from the rest. */
 	function names(region: HeldRegion): string {
-		return region.address ?? 'this branch';
+		return region.address ?? `${nameOr(personOr(region))}'s branch`;
 	}
 
 	/** The version a region's author serves now, where it is past the one held. */
@@ -319,9 +320,7 @@
 												onEnter(region.ref);
 											}}
 										>
-											{#if region.address !== undefined}
-												<span class="shrink-0 address">{region.address}</span>
-											{/if}
+											<span class="min-w-6 shrink-0 address">{region.address ?? ''}</span>
 											<span class="min-w-0 flex-1">
 												<span class="block truncate text-sm">{nameOr(personOr(region))}</span>
 												{#if !region.person}

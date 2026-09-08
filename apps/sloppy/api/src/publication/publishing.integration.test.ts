@@ -30,6 +30,7 @@ import {
   type PublicationView,
   type PublishedIndex,
   type PublishedSubtreePage,
+  ownedRefFrom,
   parsePublishedIndex,
   publishedChangesReader,
   publishedSubtreeReader,
@@ -39,6 +40,7 @@ import {
 } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbService } from "../db/db.service";
+import type { PublicationRepository } from "./publication.repository";
 import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
 
@@ -609,11 +611,57 @@ describe("publishing a branch, and what a peer reads back", () => {
       expect(first.blocks).toHaveLength(1);
 
       // A listing names it by its title, having no number to cite it by.
-      const listed = (await published()).publications.find(
-        (one) => one.ref === publication.ref,
-      );
+      const listing = (await published()).publications;
+      const listed = listing.find((one) => one.ref === publication.ref);
       expect(listed?.root_address).toBeUndefined();
       expect(listed?.title).toBe("A branch nobody numbered");
+
+      // And it reads the way a run does: the branches carrying a number first,
+      // by number, then the ones nobody numbered.
+      const cited = listing.flatMap((one) =>
+        one.root_address === undefined ? [] : [one.root_address],
+      );
+      expect(cited.length).toBeGreaterThan(0);
+      expect(cited).toEqual([...cited].sort(compareAddresses));
+      expect(
+        listing
+          .slice(cited.length)
+          .every((one) => one.root_address === undefined),
+      ).toBe(true);
+
+      // A cursor spent at the turn from one to the other carries on rather than
+      // stopping there, so a peer reading a row at a time sees the same order.
+      const { PublicationRepository: Repository } = await import(
+        "./publication.repository"
+      );
+      const repository = app.get<PublicationRepository>(Repository);
+      const paged: OwnedRef[] = [];
+      let after: { address?: Address; root?: OwnedRef } | undefined;
+      for (let row = 0; row <= listing.length; row += 1) {
+        const [next] = await repository.page(ada.did, after, 1);
+        if (next === undefined) break;
+        paged.push(ownedRefFrom(next.id));
+        after = {
+          ...(next.root_address === undefined
+            ? {}
+            : { address: next.root_address }),
+          root: next.root,
+        };
+      }
+      expect(paged).toEqual(listing.map((one) => one.ref));
+
+      // A cursor minted before a listing carried the note as well names an
+      // address and nothing more, and the branches nobody numbered are still
+      // past it.
+      const past = await repository.page(
+        ada.did,
+        { address: cited[cited.length - 1] },
+        50,
+      );
+      expect(past.every((one) => one.root_address === undefined)).toBe(true);
+      expect(past.map((one) => ownedRefFrom(one.id))).toEqual(
+        listing.slice(cited.length).map((one) => one.ref),
+      );
 
       // The label is the author's to write and to take off, and the next publish
       // says what the branch is cited by now.

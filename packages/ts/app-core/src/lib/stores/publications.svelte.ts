@@ -9,7 +9,6 @@
  */
 
 import {
-	type Address,
 	type CommentAccess,
 	type NodeView,
 	orderSiblings,
@@ -133,18 +132,11 @@ class PublicationsStore {
 	 * Publishing here carries their notes on this publication's terms, so these
 	 * are what a person has to be told about before they do — docs/ARCHITECTURE.md
 	 * § "Federating the graph".
-	 *
-	 * Only the ones carrying a number: a person is told which branch by citing
-	 * it, and one their author never numbered cannot be cited here.
 	 */
-	narrowerUnder(
-		note: NodeView,
-		terms: CommentAccess
-	): (PublicationView & { root_address: Address })[] {
+	narrowerUnder(note: NodeView, terms: CommentAccess): PublicationView[] {
 		if (terms !== 'anyone') return [];
 		return this.all.filter(
-			(publication): publication is PublicationView & { root_address: Address } =>
-				publication.root_address !== undefined &&
+			(publication) =>
 				publication.comments !== 'anyone' &&
 				publication.root !== note.ref &&
 				this.under(note.ref, publication.root)
@@ -166,8 +158,9 @@ class PublicationsStore {
 
 	/**
 	 * Every note this one springs from, nearest first, as far as the notes in
-	 * hand reach: a surface that has not loaded the branch gets a shorter chain,
-	 * so every answer below it is narrower than the truth and never wider.
+	 * hand reach. A surface reads the branch before it asks any of this: a chain
+	 * that stops short answers as though nothing above the break carried the
+	 * note.
 	 */
 	private springsFrom(note: NodeView): OwnedRef[] {
 		const chain: OwnedRef[] = [];

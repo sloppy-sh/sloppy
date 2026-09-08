@@ -1,11 +1,11 @@
 <script lang="ts">
 	// Publishing every note somebody chose, asked once for the whole set. What a
 	// publish exposes is `terms.ts`, which the single-note sheet reads too.
-	import type { Address } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import {
 		alreadyCarried,
 		KEEPS_TERMS,
+		type NamedBranches,
 		narrowerSays,
 		publishingAgain,
 		publishingSays
@@ -33,9 +33,9 @@
 		keepsTerms?: boolean;
 		/** Branches rooted above the chosen notes that already carry them, each with
 		 *  how many of those notes it carries. */
-		carriedBy?: readonly { address: Address; notes: number }[];
+		carriedBy?: readonly { branch: NamedBranches; notes: number }[];
 		/** Branches under the chosen notes published inviting fewer people. */
-		narrower?: readonly Address[];
+		narrower?: readonly NamedBranches[];
 		/** False where answers people write will never reach this person, so the
 		 *  sheet promises none. */
 		answersReach?: boolean;
@@ -74,10 +74,10 @@
 					<p>{KEEPS_TERMS}</p>
 				{/if}
 			{/if}
-			{#each carriedBy as by (by.address)}
-				<p>{alreadyCarried({ notes: by.notes }, by.address)}</p>
+			{#each carriedBy as by, i (i)}
+				<p>{alreadyCarried({ notes: by.notes }, by.branch)}</p>
 			{/each}
-			{#each narrower as under (under)}
+			{#each narrower as under, i (i)}
 				<p>{narrowerSays(under, 'going')}</p>
 			{/each}
 		</div>

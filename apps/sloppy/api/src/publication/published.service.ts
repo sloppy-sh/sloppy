@@ -179,8 +179,8 @@ export class PublishedService {
   }
 
   /**
-   * What the writing did between two versions, in the address order a version's
-   * own pages take. Both sides are read here, so a reader holding neither pays
+   * What the writing did between two versions, in the order a version's own
+   * pages take. Both sides are read here, so a reader holding neither pays
    * for neither.
    */
   async changes(
