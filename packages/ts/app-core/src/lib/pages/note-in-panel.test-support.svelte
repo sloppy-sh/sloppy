@@ -67,6 +67,7 @@
 		<Writing
 			title={writing.title}
 			body={writing.body}
+			numbering
 			refused={writing.refused}
 			onTitle={(said) => {
 				if (writing) writing.title = said;

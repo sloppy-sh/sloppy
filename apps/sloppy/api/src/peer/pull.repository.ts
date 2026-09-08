@@ -164,7 +164,11 @@ export class PullRepository {
   ): Promise<void> {
     const at = nowIso();
     const sources = page.nodes.map((node) => node.source);
-    const addresses = page.nodes.map((node) => node.address);
+    // Only the notes the author labelled: a held row with no address is in no
+    // graph's address run, so nothing it could collide with is held either.
+    const addresses = page.nodes.flatMap((node) =>
+      node.address === undefined ? [] : [node.address],
+    );
 
     if (addresses.length > 0) {
       // Bound to the graph the region came from, or the drop takes a copy the

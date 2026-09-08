@@ -4,9 +4,10 @@
 
 import type { Address } from '@sloppy/types';
 
-/** What a publish is about: one branch, by the address a person cites, or
- *  however many notes they chose. */
-export type PublishSubject = { address: Address } | { notes: number };
+/** What a publish is about: one branch, by the name a person cites it by — its
+ *  address, or words for one whose author gave it none — or however many notes
+ *  they chose. */
+export type PublishSubject = { branch: string } | { notes: number };
 
 function subjectOf(of: PublishSubject): {
 	name: string;
@@ -14,7 +15,7 @@ function subjectOf(of: PublishSubject): {
 	stands: string;
 	several: boolean;
 } {
-	if ('address' in of) return { name: of.address, it: 'it', stands: 'it stands', several: false };
+	if ('branch' in of) return { name: of.branch, it: 'it', stands: 'it stands', several: false };
 	if (of.notes === 1) return { name: 'this note', it: 'it', stands: 'it stands', several: false };
 	return {
 		name: `these ${of.notes.toLocaleString()} notes`,
@@ -30,7 +31,7 @@ export function publishingSays(of: PublishSubject, answersReach: boolean): strin
 	const { name, it, several } = subjectOf(of);
 	// "here" names the control the branch's own sheet carries. A set of notes is
 	// told otherwise on each note's own surface, so there is no here to point at.
-	const otherwise = 'address' in of ? 'until you say otherwise here' : 'until you say otherwise';
+	const otherwise = 'branch' in of ? 'until you say otherwise here' : 'until you say otherwise';
 	return [
 		`Everything under ${name} goes out: every note in ${it}, finished or not, and every picture in them.`,
 		`The name you gave the graph ${several ? 'each of them sits' : `${it} sits`} in goes out too.`,
@@ -47,12 +48,12 @@ export function publishingSays(of: PublishSubject, answersReach: boolean): strin
 export function publishingAgain(of: PublishSubject): string {
 	const { stands } = subjectOf(of);
 	const name =
-		'address' in of
-			? of.address
+		'branch' in of
+			? of.branch
 			: of.notes === 1
 				? 'the one you have already published'
 				: `the ${of.notes.toLocaleString()} you have already published`;
-	const before = 'address' in of || of.notes === 1 ? 'it' : 'them';
+	const before = 'branch' in of || of.notes === 1 ? 'it' : 'them';
 	return `Publishing again sends ${name} as ${stands} now. Every version before ${before} stays readable.`;
 }
 
@@ -63,7 +64,7 @@ export const KEEPS_TERMS = 'What you have already published keeps the terms you 
  *  puts that writing out a second time. */
 export function alreadyCarried(of: PublishSubject, by: Address): string {
 	const what =
-		'address' in of ? 'this branch' : of.notes === 1 ? 'the note you chose' : 'notes you chose';
+		'branch' in of ? 'this branch' : of.notes === 1 ? 'the note you chose' : 'notes you chose';
 	return `${by} already carries ${what}, on its own terms.`;
 }
 

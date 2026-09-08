@@ -34,7 +34,7 @@ import { WallLayer } from "./wall.js";
 
 /** How hard each kind of edge pulls: the tree holds its shape, an association
  *  crossing it barely tugs. The two a person made pull alike — how far apart two
- *  notes sit is the addresses' to set (DESIGN.md § Edges), so which way somebody
+ *  notes sit is the genealogy's to set (DESIGN.md § Edges), so which way somebody
  *  made the line cannot move them differently. */
 const SPRING: Record<GraphEdgeAttributes["kind"], number> = {
   genealogy: 0.55,

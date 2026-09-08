@@ -10,9 +10,10 @@
 		/** An address this note has been carried away from that the typed number
 		 *  reached, absent where its own address or its title is what matched. */
 		wasAt?: string;
-		/** The address the note takes under this one and alongside it, or the
-		 *  words for why it cannot go here at all. */
-		lands: { under: string; after: string } | { refused: string };
+		/** The address the note takes under this one and alongside it — either
+		 *  absent where it will carry none there — or the words for why it cannot
+		 *  go here at all. */
+		lands: { under?: string; after?: string } | { refused: string };
 	}
 </script>
 
@@ -67,7 +68,7 @@
 <ResponsiveModal
 	bind:open
 	title="Move this note"
-	description="Everything under it goes too, and the address it has now keeps leading to it."
+	description="Everything under it goes too, and every address it has had keeps leading to it."
 	onOpenAutoFocus={(event) => {
 		event.preventDefault();
 		field?.focus();
@@ -77,7 +78,7 @@
 		{#if chosen && lands}
 			{@const target = chosen}
 			<p class="px-2 text-sm">
-				<span class="address">{target.address}</span>
+				{#if target.address}<span class="address">{target.address}</span>{/if}
 				<span class="text-muted-foreground">{nameOf(target)}</span>
 			</p>
 
@@ -89,7 +90,9 @@
 			>
 				<span class="text-sm">Put it under {noteLabel(target)}</span>
 				<span class="text-xs font-normal text-muted-foreground">
-					It becomes {lands.under}, or the next one free.
+					{lands.under
+						? `It becomes ${lands.under}, or the next one free.`
+						: 'It carries no number there.'}
 				</span>
 			</Button>
 
@@ -101,7 +104,9 @@
 			>
 				<span class="text-sm">Put it beside {noteLabel(target)}</span>
 				<span class="text-xs font-normal text-muted-foreground">
-					It becomes {lands.after}, or the next one free.
+					{lands.after
+						? `It becomes ${lands.after}, or the next one free.`
+						: 'It carries no number there.'}
 				</span>
 			</Button>
 
@@ -151,7 +156,9 @@
 								class="flex min-h-11 w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-60"
 							>
 								<span class="flex w-full min-w-0 items-baseline gap-3 text-sm">
-									<span class="shrink-0 address text-muted-foreground">{target.address}</span>
+									{#if target.address}
+										<span class="shrink-0 address text-muted-foreground">{target.address}</span>
+									{/if}
 									<span class="min-w-0 flex-1 truncate">{nameOf(target)}</span>
 								</span>
 								{#if target.wasAt}

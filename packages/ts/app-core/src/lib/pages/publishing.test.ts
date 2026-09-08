@@ -20,6 +20,7 @@ import {
 	DID,
 	node,
 	ref,
+	unnumbered,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
@@ -258,6 +259,19 @@ describe('publishing a branch', () => {
 		expect(says()).toContain('Anyone who can find your profile can read it');
 		expect(says()).toContain('whoever has already read it keeps their copy');
 		expect(api.countOf('POST /publications')).toBe(0);
+	});
+
+	it('asks the same of a branch nobody numbered, in words, and never by its title', async () => {
+		api.on(`GET /nodes${refPath(FIRST)}`, () => unnumbered(1, { title: 'A thought on its own' }));
+
+		await open();
+		await openActs();
+		button('Publishing').click();
+		await settle();
+		flushSync();
+
+		expect(says()).toContain('Everything under this branch goes out');
+		expect(says()).not.toContain('Everything under A thought on its own goes out');
 	});
 
 	it('publishes the branch the note is at, and says so afterwards', async () => {

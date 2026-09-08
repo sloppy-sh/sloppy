@@ -81,9 +81,7 @@ function runMember(hit: SearchHit) {
   return {
     ref: hit.note,
     ...(hit.address === undefined ? {} : { address: hit.address }),
-    // A hit carries no timestamp: what settles a tie between two notes with no
-    // address is the ref, which `orderSiblings` reaches once these agree.
-    created_at: "",
+    created_at: hit.created_at ?? "",
   };
 }
 

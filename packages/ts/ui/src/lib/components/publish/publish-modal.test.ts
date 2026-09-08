@@ -345,12 +345,15 @@ describe('the decision to publish again', () => {
 });
 
 describe('what a reader has to be given', () => {
-	const opened = (reader: { identity?: string; where?: string }) => {
+	const opened = (
+		reader: { identity?: string; where?: string },
+		branchIs: { address?: string; link?: string } = { address: '1a' }
+	) => {
 		mounted = mount(PublishModal, {
 			target,
 			props: {
 				open: true,
-				address: '1a',
+				...branchIs,
 				reader,
 				published: branch,
 				onchanges: async () => null,
@@ -384,15 +387,32 @@ describe('what a reader has to be given', () => {
 
 		expect(document.body.textContent).not.toContain('What a reader needs');
 	});
+
+	it('hands over a link to a branch its author gave no address', () => {
+		opened({ identity: AUTHOR }, { link: 'https://sloppy.sh/n/1' });
+
+		expect(selectable()).toEqual(['https://sloppy.sh/n/1', AUTHOR]);
+		expect(document.body.textContent).not.toContain('undefined');
+	});
+
+	it('leaves the branch out entirely where it has neither', () => {
+		opened({ identity: AUTHOR }, {});
+
+		expect(selectable()).toEqual([AUTHOR]);
+		expect([...document.body.querySelectorAll('dt')].map((one) => one.textContent)).toEqual([
+			'Your identity'
+		]);
+	});
 });
 
 describe('the terms of a first publish', () => {
-	const asked = () => {
+	/** `null` is a branch its author gave no address. */
+	const asked = (address: string | null = '1a') => {
 		mounted = mount(PublishModal, {
 			target,
 			props: {
 				open: true,
-				address: '1a',
+				...(address === null ? {} : { address }),
 				published: null,
 				onchanges: async () => null,
 				onpending: async () => null,
@@ -412,6 +432,17 @@ describe('the terms of a first publish', () => {
 		expect(shown).toContain(
 			'How it looks on the graph goes out as well — the ring and the size, though not a picture you set there.'
 		);
+	});
+
+	it('names the branch by its address wherever its author wrote one', () => {
+		expect(asked()).toContain('Everything under 1a goes out');
+	});
+
+	it('asks the same of a branch its author gave no address, in words', () => {
+		const shown = asked(null);
+
+		expect(shown).toContain('Everything under this branch goes out');
+		expect(shown).not.toContain('undefined');
 	});
 });
 

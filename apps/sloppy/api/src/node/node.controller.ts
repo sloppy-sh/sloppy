@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from "@nestjs/common";
@@ -24,6 +25,7 @@ import {
   OwnedRefSchema,
   RECENT_NOTES,
   type SearchHit,
+  SetAddressRequestSchema,
   type TagCount,
   UpdateNodeRequestSchema,
 } from "@sloppy/types";
@@ -170,6 +172,21 @@ export class NodeController {
       requireRef(did, localId),
       parsePatch(UpdateNodeRequestSchema, body),
       req.delegation,
+    );
+  }
+
+  /** The label this note is cited by, written or taken off with `null`. */
+  @Put(":did/:localId/address")
+  setAddress(
+    @Req() req: AuthedRequest,
+    @Param("did") did: string,
+    @Param("localId") localId: string,
+    @Body() body: unknown,
+  ): Promise<NodeView> {
+    return this.nodes.setAddress(
+      viewerDid(req),
+      requireRef(did, localId),
+      parseBody(SetAddressRequestSchema, body).address,
     );
   }
 

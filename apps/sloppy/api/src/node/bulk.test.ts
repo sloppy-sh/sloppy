@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import {
+  type Address,
   createOwnedRecordId,
   MAX_TAGS_PER_NODE,
   type Node,
@@ -16,6 +17,7 @@ import {
   nowIso,
   type OwnedRef,
   ownedRefFrom,
+  parentAddress,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
@@ -60,12 +62,24 @@ function note(address: string, tags: string[] = [], published = false): Node {
   } as Node;
 }
 
-/** One tree, rooted at the first address: what descends from what is read off
- *  the addresses, and only within an origin. */
+/** One tree, rooted at the first address: each note hangs under the one whose
+ *  address is its parent's, so the fixture carries the parent chain the store's
+ *  own rows do. */
 function tree(...addresses: string[]): Node[] {
   const notes = addresses.map((address) => note(address));
   const origin = ownedRefFrom(notes[0].id);
-  return notes.map((one) => ({ ...one, origin }));
+  const at = new Map(notes.map((one) => [one.address as Address, one]));
+  return notes.map((one, place) => {
+    const up =
+      place === 0
+        ? undefined
+        : at.get(parentAddress(one.address as Address) as Address);
+    return {
+      ...one,
+      origin,
+      ...(up === undefined ? {} : { parent: ownedRefFrom(up.id) }),
+    };
+  });
 }
 
 /**
@@ -92,8 +106,17 @@ function serviceOver(
       writes.push(...changes.values());
       return Promise.resolve(notes);
     },
-    subtree: (_did: string, root: Node) =>
-      Promise.resolve([root, ...notes.filter((n) => n !== root)]),
+    subtree: (_did: string, root: Node) => {
+      const byRef = new Map(notes.map((one) => [ownedRefFrom(one.id), one]));
+      const springs = (one: Node): boolean => {
+        for (let walk: Node | undefined = one; walk !== undefined; ) {
+          if (ownedRefFrom(walk.id) === ownedRefFrom(root.id)) return true;
+          walk = walk.parent === undefined ? undefined : byRef.get(walk.parent);
+        }
+        return false;
+      };
+      return Promise.resolve(notes.filter(springs));
+    },
     remove: (_did: string, going: readonly Node[]) => {
       removed.push(...going);
       return Promise.resolve();
@@ -317,6 +340,29 @@ describe("publishing the notes somebody chose", () => {
     await service.bulk(DID, over(notes, { act: "publish" }), ada);
 
     expect(published).toEqual([ownedRefFrom(notes[0].id)]);
+  });
+
+  // A publication carries what sprang from its root, and a person's label is
+  // not that: a note labelled into the run beneath it stayed where it was.
+  it("leaves out a note whose label alone reads as under a chosen note", async () => {
+    const [root, chosen, beneath, beside] = tree("1", "1a", "1a1", "1b");
+    const labelled: Node = {
+      ...note("1a2"),
+      origin: root.origin,
+      parent: ownedRefFrom(beside.id),
+    };
+    const set = [chosen, beneath, labelled];
+    const { service, published } = serviceOver(
+      [root, chosen, beneath, beside, labelled],
+      [],
+      [],
+    );
+
+    const result = await service.bulk(DID, over(set, { act: "publish" }), ada);
+
+    expect(published).toEqual([ownedRefFrom(chosen.id)]);
+    expect(result.reached).toBe(2);
+    expect(result.missed).toBe(1);
   });
 
   // A chain of its own is its own: a carrier's snapshot does not advance it, so

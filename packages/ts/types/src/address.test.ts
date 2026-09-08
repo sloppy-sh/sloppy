@@ -523,6 +523,7 @@ describe("where a moved subtree lands", () => {
 
 type Op =
   | { kind: "root" }
+  | { kind: "free" }
   | { kind: "child" | "sibling" | "delete" | "purge"; target: number }
   | { kind: "move"; target: number; relation: "under" | "after"; to: number };
 
@@ -592,25 +593,28 @@ class AppendOrderPeer implements Peer {
       return;
     }
     const parent =
-      op.kind === "root"
+      op.kind === "root" || op.kind === "free"
         ? null
         : op.kind === "child"
           ? op.target
           : this.parentOf[op.target];
     const node = this.parentOf.length;
-    const address = this.next(parent);
+    const address = op.kind === "free" ? undefined : this.next(parent);
     this.parentOf.push(parent);
-    this.addressOf.set(node, address);
     this.there.add(node);
+    if (address === undefined) return;
+    this.addressOf.set(node, address);
     this.assigned.push(address);
   }
 
   private move(moved: number, parent: number | null): void {
     const was = this.rowAt(moved);
     const now = this.next(parent);
+    if (now === undefined) throw new Error(`no run to carry ${moved} into`);
     const carried = this.carried(moved);
     for (const node of carried) {
-      const old = this.addressOf.get(node) as Address;
+      const old = this.addressOf.get(node);
+      if (old === undefined) continue;
       this.left.set(old, node);
       this.addressOf.set(node, rebaseAddress(was, now, old));
     }
@@ -622,7 +626,12 @@ class AppendOrderPeer implements Peer {
     this.assigned.push(now);
   }
 
-  private next(parent: number | null): Address {
+  /** `undefined` under a note nobody numbered: there is no run to take the
+   *  next address in, so nothing is spent. */
+  private next(parent: number | null): Address | undefined {
+    if (parent !== null && this.addressOf.get(parent) === undefined) {
+      return undefined;
+    }
     const spent = this.lastUnder.get(parent);
     const address =
       spent === undefined
@@ -633,11 +642,12 @@ class AppendOrderPeer implements Peer {
   }
 
   private remark(node: number): void {
-    const children = this.parentOf.flatMap((parent, child) =>
-      parent === node && !this.purged.has(child)
-        ? [this.addressOf.get(child) as Address]
-        : [],
-    );
+    const children = this.parentOf.flatMap((parent, child) => {
+      const address = this.addressOf.get(child);
+      return parent === node && !this.purged.has(child) && address !== undefined
+        ? [address]
+        : [];
+    });
     if (children.length === 0) this.lastUnder.delete(node);
     else this.lastUnder.set(node, greatestOf(children));
   }
@@ -672,8 +682,9 @@ class AppendOrderPeer implements Peer {
 
 class AddressOrderPeer implements Peer {
   readonly assigned: Address[] = [];
-  /** Where each note it has been told about is, in creation order. */
-  private readonly at: Address[] = [];
+  /** Where each note it has been told about is, in creation order — absent for
+   *  one nobody numbered, which is a note this peer holds no address for. */
+  private readonly at: (Address | undefined)[] = [];
   private readonly live = new Set<Address>();
   private readonly deleted = new Set<Address>();
   private readonly retired = new Set<Address>();
@@ -691,6 +702,7 @@ class AddressOrderPeer implements Peer {
   apply(op: Op): void {
     if (op.kind === "delete") {
       const going = this.at[op.target];
+      if (going === undefined) return;
       for (const address of [...this.live]) {
         if (!isInSubtree(going, address)) continue;
         this.live.delete(address);
@@ -700,6 +712,7 @@ class AddressOrderPeer implements Peer {
     }
     if (op.kind === "purge") {
       const address = this.at[op.target];
+      if (address === undefined) return;
       this.deleted.delete(address);
       this.retired.add(address);
       for (const [alias, resolves] of [...this.left]) {
@@ -710,24 +723,40 @@ class AddressOrderPeer implements Peer {
       return;
     }
     if (op.kind === "move") {
-      this.move(
-        this.at[op.target],
-        op.relation === "under"
-          ? this.at[op.to]
-          : parentAddress(this.at[op.to]),
-      );
+      const was = this.at[op.target];
+      const to = this.at[op.to];
+      if (was === undefined || to === undefined) {
+        throw new Error(`no run to carry ${op.target} into`);
+      }
+      this.move(was, op.relation === "under" ? to : parentAddress(to));
       return;
     }
-    const parent =
-      op.kind === "root"
-        ? null
-        : op.kind === "child"
-          ? this.at[op.target]
-          : parentAddress(this.at[op.target]);
+    if (op.kind === "free") {
+      this.at.push(undefined);
+      return;
+    }
+    if (op.kind === "root") {
+      this.at.push(this.spend(null));
+      return;
+    }
+    const of = this.at[op.target];
+    if (of === undefined) {
+      // A note written under one nobody numbered takes no number either, so
+      // this peer holds nothing for it and the rule never sees it. A note
+      // FOLLOWING one is a run this peer cannot name: it recovers a run from
+      // the addresses in it, and there are none here.
+      if (op.kind === "sibling") throw new Error(`no run beside ${op.target}`);
+      this.at.push(undefined);
+      return;
+    }
+    this.at.push(this.spend(op.kind === "sibling" ? parentAddress(of) : of));
+  }
+
+  private spend(parent: Address | null): Address {
     const address = this.nextUnder(parent);
     this.live.add(address);
-    this.at.push(address);
     this.assigned.push(address);
+    return address;
   }
 
   private move(was: Address, parent: Address | null): void {
@@ -748,6 +777,7 @@ class AddressOrderPeer implements Peer {
       }
     }
     for (const [node, address] of this.at.entries()) {
+      if (address === undefined) continue;
       if (this.retired.has(address) || !isInSubtree(was, address)) continue;
       this.at[node] = rebaseAddress(was, now, address);
     }
@@ -785,13 +815,23 @@ function seededRandom(seed: number): () => number {
  * alongside or into again, and a note is never carried under itself or under
  * anything it holds, which are the sequences the product will not let anybody
  * ask for either.
+ *
+ * With `bare`, some of the notes are ones nobody numbered, and some are written
+ * under those. Those are the sequences the claim below is about: neither peer
+ * may let one of them move an address. They are never carried anywhere and
+ * never followed, because what those two acts do to a label is decided by the
+ * server and tested there — `node.service.test.ts`.
  */
-function generateOps(seed: number, count: number): Op[] {
+function generateOps(seed: number, count: number, bare = false): Op[] {
   const random = seededRandom(seed);
   const ops: Op[] = [{ kind: "root" }];
   const parentOf: (number | null)[] = [null];
   const live = new Set<number>([0]);
   const deleted = new Set<number>();
+  /** The notes carrying no address, and so the ones no address is read off. */
+  const unnumbered = new Set<number>();
+  const numbered = (from: ReadonlySet<number>) =>
+    [...from].filter((node) => !unnumbered.has(node));
   const pick = (from: ReadonlySet<number>): number =>
     [...from][Math.floor(random() * from.size)];
   const under = (root: number, node: number): boolean => {
@@ -803,6 +843,13 @@ function generateOps(seed: number, count: number): Op[] {
 
   while (ops.length < count) {
     const roll = random();
+    if (bare && roll < 0.06) {
+      parentOf.push(null);
+      live.add(parentOf.length - 1);
+      unnumbered.add(parentOf.length - 1);
+      ops.push({ kind: "free" });
+      continue;
+    }
     if (roll < 0.08) {
       parentOf.push(null);
       live.add(parentOf.length - 1);
@@ -830,13 +877,17 @@ function generateOps(seed: number, count: number): Op[] {
       continue;
     }
     if (roll < 0.34) {
-      const target = pick(live);
+      const carrying = numbered(live);
+      const target = carrying[Math.floor(random() * carrying.length)];
       const relation = random() < 0.5 ? "under" : "after";
-      const allowed = [...live].filter((to) =>
-        relation === "under"
-          ? !under(target, to)
-          : parentOf[to] === null || !under(target, parentOf[to]),
-      );
+      const allowed =
+        target === undefined
+          ? []
+          : numbered(live).filter((to) =>
+              relation === "under"
+                ? !under(target, to)
+                : parentOf[to] === null || !under(target, parentOf[to]),
+            );
       if (allowed.length > 0) {
         const to = allowed[Math.floor(random() * allowed.length)];
         parentOf[target] = relation === "under" ? to : parentOf[to];
@@ -844,10 +895,15 @@ function generateOps(seed: number, count: number): Op[] {
         continue;
       }
     }
-    const target = pick(live);
-    const kind = roll < 0.66 ? "child" : "sibling";
+    const wantsChild = roll < 0.66;
+    const from = wantsChild ? [...live] : numbered(live);
+    if (from.length === 0) continue;
+    const target = from[Math.floor(random() * from.length)];
+    const kind = wantsChild ? "child" : "sibling";
+    const node = parentOf.length;
     parentOf.push(kind === "child" ? target : parentOf[target]);
-    live.add(parentOf.length - 1);
+    live.add(node);
+    if (kind === "child" && unnumbered.has(target)) unnumbered.add(node);
     ops.push({ kind, target });
   }
   return ops;
@@ -978,6 +1034,40 @@ describe("determinism across peers", () => {
       }
     }
     expect(runs).toBeGreaterThan(200);
+  });
+
+  it("assigns the same addresses over a graph holding unnumbered notes", () => {
+    let bare = 0;
+    for (let seed = 1; seed <= SEEDS; seed++) {
+      const ops = generateOps(seed, OPS_PER_SEED, true);
+      bare += ops.filter((op) => op.kind === "free").length;
+      const a = replay(new AppendOrderPeer(), ops);
+      const b = replay(new AddressOrderPeer(), ops);
+      expect(b.assigned.join("\n")).toBe(a.assigned.join("\n"));
+      expect(b.current.join("\n")).toBe(a.current.join("\n"));
+      expect(b.aliases.join("\n")).toBe(a.aliases.join("\n"));
+      expect(new Set(a.assigned).size).toBe(a.assigned.length);
+    }
+    // The claim above is empty over sequences that number everything.
+    expect(bare).toBeGreaterThan(SEEDS);
+  });
+
+  it("assigns nothing for an unnumbered note or anything under one", () => {
+    // Written in order: a note with no number, one under it, one under THAT,
+    // then a branch and a note under the branch. Only the last two are in a run
+    // anybody numbered, and the first three neither take an address nor move
+    // what the branch beside them is offered.
+    const ops: Op[] = [
+      { kind: "free" },
+      { kind: "child", target: 0 },
+      { kind: "child", target: 1 },
+      { kind: "root" },
+      { kind: "child", target: 3 },
+    ];
+
+    for (const peer of [new AppendOrderPeer(), new AddressOrderPeer()]) {
+      expect(replay(peer, ops).assigned).toEqual(["1", "1a"]);
+    }
   });
 
   it("orders addresses the same way on both peers", () => {

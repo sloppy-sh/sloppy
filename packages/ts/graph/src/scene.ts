@@ -1176,7 +1176,7 @@ export class GraphScene {
 
     // Two strokes, because the two do not recede together. A reference is
     // solid, so while a tag question is being asked it steps back with the
-    // lines the addresses draw; a hand link is the one somebody made and stays
+    // lines the genealogy draws; a hand link is the one somebody made and stays
     // where it was — DESIGN.md § Edges.
     this.connections.clear();
     for (let at = 0; at < this.referencePairs.length; at += 2) {
@@ -1349,8 +1349,9 @@ export class GraphScene {
       if (at === undefined) break;
       budget -= 1;
       const slot = this.labelPool[at];
-      slot.address.text = addressCaption(mark.attributes);
-      slot.title.text = shorten(mark.attributes.title.trim(), TITLE_CHARS);
+      const caption = markCaption(mark.attributes);
+      slot.address.text = caption.label;
+      slot.title.text = caption.title;
       held.set(mark.ref, at);
     }
 
@@ -1452,12 +1453,30 @@ function shorten(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit - 1).trimEnd()}…`;
 }
 
-function addressCaption(attributes: GraphNodeAttributes): string {
-  const address = attributes.address ?? "";
-  if (attributes.folded === 0) return address;
-  return address === ""
-    ? `+${attributes.folded}`
-    : `${address} +${attributes.folded}`;
+/**
+ * The two texts beside a mark, in the two faces DESIGN.md § Typography gives
+ * them. A note is named by its address where it has one and by its title where
+ * it has none — `noteLabel` in `@sloppy/types` — so a mega-node's count follows
+ * whichever of the two named it rather than standing ahead of the title.
+ */
+function markCaption(attributes: GraphNodeAttributes): {
+  label: string;
+  title: string;
+} {
+  const name = attributes.title.trim();
+  const count = attributes.folded === 0 ? "" : `+${attributes.folded}`;
+  const address = attributes.address;
+  if (address !== undefined) {
+    return {
+      label: count === "" ? address : `${address} ${count}`,
+      title: shorten(name, TITLE_CHARS),
+    };
+  }
+  if (count === "") return { label: "", title: shorten(name, TITLE_CHARS) };
+  const title = shorten(name, TITLE_CHARS - count.length - 1);
+  return title === ""
+    ? { label: count, title: "" }
+    : { label: "", title: `${title} ${count}` };
 }
 
 /** One ring of a lift: the circle stroked, in world units from the mark's

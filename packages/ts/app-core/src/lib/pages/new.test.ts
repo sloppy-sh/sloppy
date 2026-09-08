@@ -132,12 +132,12 @@ afterEach(() => {
 // A thought that arrives outside Sloppy is put down without its author first
 // finding the graph — PRODUCT.md § Purpose.
 describe('putting a thought down from outside', () => {
-	it('opens a branch in the graph the reader is in, and takes them to it', async () => {
+	it('writes a note of its own in the graph the reader is in, and takes them to it', async () => {
 		prefs.set('graph', GARDEN);
 
 		await arriveAt(newHref());
 
-		expect(wrote).toEqual([{ from: { relation: 'branch', graph: GARDEN } }]);
+		expect(wrote).toEqual([{ from: { relation: 'free', graph: GARDEN } }]);
 		expect(at.path).toBe(nodeHref(WRITTEN));
 	});
 
@@ -164,7 +164,7 @@ describe('putting a thought down from outside', () => {
 
 		await arriveAt(newHref({ text: 'Keep this' }));
 
-		expect(wrote).toEqual([{ from: { relation: 'branch', graph: HOME } }]);
+		expect(wrote).toEqual([{ from: { relation: 'free', graph: HOME } }]);
 		expect(at.path).toBe(nodeHref(WRITTEN));
 	});
 
@@ -215,7 +215,7 @@ describe('putting a thought down from outside', () => {
 		expect(at.path).toBe(nodeHref(WRITTEN));
 	});
 
-	it('continues the note it is given rather than opening a branch', async () => {
+	it('continues the note it is given rather than writing one of its own', async () => {
 		const parent = ref(7);
 
 		await arriveAt(newHref({ under: parent, text: 'And yet' }));
@@ -224,10 +224,10 @@ describe('putting a thought down from outside', () => {
 		expect(sections[0].node).toBe(WRITTEN);
 	});
 
-	it('opens a branch when it is handed a note nobody can continue', async () => {
+	it('writes a note of its own when it is handed a note nobody can continue', async () => {
 		await arriveAt('/new?under=not-a-note');
 
-		expect(wrote).toEqual([{ from: { relation: 'branch', graph: HOME } }]);
+		expect(wrote).toEqual([{ from: { relation: 'free', graph: HOME } }]);
 	});
 
 	it('says a refusal in the server’s own words, and a second try writes no second note', async () => {

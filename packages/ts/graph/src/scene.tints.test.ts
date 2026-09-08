@@ -36,6 +36,7 @@ function drawn(
   tags: string[],
   owner = OWNER,
   folded = 0,
+  parent?: OwnedRef,
 ): DrawnNode {
   const ref = `${owner}/${address}` as OwnedRef;
   const node = {
@@ -45,7 +46,8 @@ function drawn(
     updated_at: "2026-01-01T00:00:00.000Z",
     address,
     depth: address.length,
-    origin: ref,
+    ...(parent === undefined ? {} : { parent }),
+    origin: parent ?? ref,
     title: `note ${address}`,
     tags,
     links: [],
@@ -56,10 +58,17 @@ function drawn(
 
 /** More marks than `LABEL_RETEXT_BUDGET`, so a rebuild of the marks is a canvas
  *  that has to trickle its words back over several frames. */
+const BRANCH = `${OWNER}/1` as OwnedRef;
 const field: DrawnNode[] = [
   drawn("1", ["seed"]),
   ...Array.from({ length: 12 }, (_, at) =>
-    drawn(`1${"abcdefghijkl"[at]}`, at % 2 === 0 ? ["seed"] : ["method"]),
+    drawn(
+      `1${"abcdefghijkl"[at]}`,
+      at % 2 === 0 ? ["seed"] : ["method"],
+      OWNER,
+      0,
+      BRANCH,
+    ),
   ),
   drawn("2", [], STRANGER, 4),
 ];

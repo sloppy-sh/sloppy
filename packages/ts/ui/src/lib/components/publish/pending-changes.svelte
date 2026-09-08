@@ -30,7 +30,8 @@
 	function became(entry: UnpublishedChange): string {
 		if (entry.change !== 'changed') return BECAME[entry.change];
 		if (entry.written) return 'Written in';
-		return onlyCarried(entry) ? 'Moved' : BECAME.changed;
+		if (!onlyCarried(entry)) return BECAME.changed;
+		return entry.address === undefined ? 'Unnumbered' : 'Moved';
 	}
 </script>
 
@@ -38,7 +39,9 @@
 	{#each changes as entry (entry.note)}
 		<li class="space-y-0.5">
 			<div class="flex items-baseline gap-2">
-				<span class="shrink-0 address text-sm">{entry.address}</span>
+				{#if entry.address !== undefined}
+					<span class="shrink-0 address text-sm">{entry.address}</span>
+				{/if}
 				<span class="min-w-0 flex-1 truncate text-sm">{entry.title || 'Untitled'}</span>
 				<span class="shrink-0 text-xs text-muted-foreground">{became(entry)}</span>
 			</div>

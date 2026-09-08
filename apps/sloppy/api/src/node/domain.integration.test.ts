@@ -1899,6 +1899,293 @@ describe("the domain routes", () => {
     );
   });
 
+  describe("the label a person writes on a note", () => {
+    const label = (note: NodeView, address: string | null) =>
+      call("PUT", `/nodes/${at(note.ref)}/address`, ada, { address });
+
+    const labelled = (
+      note: NodeView,
+      address: string | null,
+    ): Promise<NodeView> =>
+      ok("PUT", `/nodes/${at(note.ref)}/address`, ada, {
+        address,
+      }) as Promise<NodeView>;
+
+    const readNote = (ref: OwnedRef): Promise<NodeView> =>
+      ok("GET", `/nodes/${at(ref)}`, ada) as Promise<NodeView>;
+
+    const searchIn = (graph: OwnedRef, q: string): Promise<SearchHit[]> =>
+      ok(
+        "GET",
+        `/nodes/search?q=${q}&graph=${encodeURIComponent(graph)}`,
+        ada,
+      ) as Promise<SearchHit[]>;
+
+    scenario("writes one on a note that carried none", async () => {
+      const alone = await newGraph(ada, "Labelled later");
+      const note = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "A thought on its own",
+      });
+      const under = await newNode(ada, {
+        from: springsFrom(note),
+        title: "What it led to",
+      });
+
+      const written = await labelled(note, "1");
+
+      expect(written.address).toBe("1");
+      expect(written.depth).toBe(1);
+      // The genealogy is untouched: what sprang from it still has no label,
+      // and still springs from it.
+      const beneath = await readNote(under.ref);
+      expect(beneath.address).toBeUndefined();
+      expect(beneath.parent).toBe(note.ref);
+      expect(beneath.depth).toBe(2);
+    });
+
+    scenario("takes one off, and it still leads to the note", async () => {
+      const alone = await newGraph(ada, "Unlabelled again");
+      const note = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+        title: "Numbered for a while",
+      });
+      expect(note.address).toBe("1");
+
+      const bare = await labelled(note, null);
+      expect(bare.address).toBeUndefined();
+      expect(bare.aliases).toEqual(["1"]);
+
+      expect(
+        (await searchIn(alone.ref, "1")).map((hit) => [hit.note, hit.wasAt]),
+      ).toEqual([[note.ref, "1"]]);
+    });
+
+    scenario("refuses one that leads somewhere else already", async () => {
+      const alone = await newGraph(ada, "Two labels, one number");
+      const held = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+        title: "Mycelium",
+      });
+      const note = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "Mushrooms",
+      });
+
+      const refused = await label(note, held.address as string);
+
+      expect(refused.status).toBe(400);
+      expect(JSON.stringify(refused.body)).toContain("Mycelium");
+      expect((await readNote(note.ref)).address).toBeUndefined();
+    });
+
+    scenario(
+      "is passed over by the next note written into its run",
+      async () => {
+        const alone = await newGraph(ada, "Numbered ahead of the run");
+        const branch = await newNode(ada, {
+          from: { relation: "branch", graph: alone.ref },
+        });
+        const aside = await newNode(ada, {
+          from: { relation: "free", graph: alone.ref },
+          title: "Numbered by hand",
+        });
+        await labelled(aside, `${branch.address}a`);
+
+        const written = await newNode(ada, { from: springsFrom(branch) });
+
+        expect(written.address).toBe(`${branch.address}b`);
+        expect((await readNote(aside.ref)).address).toBe(`${branch.address}a`);
+      },
+    );
+
+    scenario("moves a subtree along rather than under it", async () => {
+      const alone = await newGraph(ada, "Numbered in a move's way");
+      const first = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const under = await newNode(ada, { from: springsFrom(first) });
+      const second = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const aside = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "Numbered by hand",
+      });
+      await labelled(aside, `${second.address}a1`);
+
+      const carried = (await ok("POST", `/nodes/${at(first.ref)}/move`, ada, {
+        to: { relation: "under", note: second.ref },
+      })) as NodeView[];
+
+      expect(carried.map((one) => [one.ref, one.address])).toEqual([
+        [first.ref, `${second.address}b`],
+        [under.ref, `${second.address}b1`],
+      ]);
+      expect((await readNote(aside.ref)).address).toBe(`${second.address}a1`);
+    });
+
+    scenario(
+      "is passed over by that note too once it has been taken off",
+      async () => {
+        const alone = await newGraph(ada, "Numbered and unnumbered again");
+        const branch = await newNode(ada, {
+          from: { relation: "branch", graph: alone.ref },
+        });
+        const aside = await newNode(ada, {
+          from: { relation: "free", graph: alone.ref },
+          title: "Numbered by hand",
+        });
+        await labelled(aside, `${branch.address}a`);
+        await labelled(aside, null);
+
+        const written = await newNode(ada, { from: springsFrom(branch) });
+
+        expect(written.address).toBe(`${branch.address}b`);
+        expect(
+          (await searchIn(alone.ref, `${branch.address}a`)).map((hit) => [
+            hit.note,
+            hit.wasAt,
+          ]),
+        ).toEqual([[aside.ref, `${branch.address}a`]]);
+      },
+    );
+
+    scenario("moves a subtree along past one taken off too", async () => {
+      const alone = await newGraph(ada, "Carried past a number taken off");
+      const first = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const under = await newNode(ada, { from: springsFrom(first) });
+      const second = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const aside = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "Numbered by hand",
+      });
+      await labelled(aside, `${second.address}a`);
+      await labelled(aside, null);
+
+      const carried = (await ok("POST", `/nodes/${at(first.ref)}/move`, ada, {
+        to: { relation: "under", note: second.ref },
+      })) as NodeView[];
+
+      expect(carried.map((one) => [one.ref, one.address])).toEqual([
+        [first.ref, `${second.address}b`],
+        [under.ref, `${second.address}b1`],
+      ]);
+      expect(
+        (await searchIn(alone.ref, `${second.address}a`)).map((hit) => [
+          hit.note,
+          hit.wasAt,
+        ]),
+      ).toEqual([[aside.ref, `${second.address}a`]]);
+    });
+
+    scenario("hands a note back a number it carried before", async () => {
+      const alone = await newGraph(ada, "Carried and labelled back");
+      const first = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const second = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      await ok("POST", `/nodes/${at(second.ref)}/move`, ada, {
+        to: { relation: "under", note: first.ref },
+      });
+
+      const back = await labelled(second, "2");
+
+      expect(back.address).toBe("2");
+      expect(back.aliases).toEqual(["1a"]);
+      // The number is this note's own, so nothing else in the graph may take it.
+      const other = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+      });
+      expect((await label(other, "2")).status).toBe(400);
+    });
+  });
+
+  describe("carrying a note nobody numbered", () => {
+    const carry = (
+      note: NodeView,
+      to: { relation: "under" | "after"; note: OwnedRef },
+    ): Promise<NodeView[]> =>
+      ok("POST", `/nodes/${at(note.ref)}/move`, ada, { to }) as Promise<
+        NodeView[]
+      >;
+
+    const readNote = (ref: OwnedRef): Promise<NodeView> =>
+      ok("GET", `/nodes/${at(ref)}`, ada) as Promise<NodeView>;
+
+    scenario("leaves it with none under a numbered note", async () => {
+      const alone = await newGraph(ada, "Bare and carried");
+      const note = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "A thought on its own",
+      });
+      const branch = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+
+      const moved = await carry(note, { relation: "under", note: branch.ref });
+
+      expect(moved.map((one) => [one.ref, one.address])).toEqual([
+        [note.ref, undefined],
+      ]);
+      expect(moved[0].parent).toBe(branch.ref);
+      expect(moved[0].depth).toBe(2);
+      expect(moved[0].aliases).toBeUndefined();
+      // The run it joined is unmoved, and the next note written into it takes
+      // the number the bare one never held.
+      const next = await newNode(ada, { from: springsFrom(branch) });
+      expect(next.address).toBe(`${branch.address}a`);
+    });
+
+    scenario("takes the number off one carried under a bare note", async () => {
+      const alone = await newGraph(ada, "Numbered under bare");
+      const bare = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "A thought on its own",
+      });
+      const branch = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const under = await newNode(ada, { from: springsFrom(branch) });
+
+      const moved = await carry(branch, { relation: "under", note: bare.ref });
+
+      // The run it joins numbers nothing, so it takes no number, and the one it
+      // left keeps leading to it. The answer reads as a run does — the notes
+      // carrying a number first — so what it sprang from comes after it.
+      expect(moved.map((one) => [one.ref, one.address])).toEqual([
+        [under.ref, "1a"],
+        [branch.ref, undefined],
+      ]);
+      expect(moved[1].aliases).toEqual(["1"]);
+      expect(moved.map((one) => one.depth)).toEqual([3, 2]);
+      expect((await readNote(under.ref)).parent).toBe(branch.ref);
+    });
+
+    scenario("links it to a note somebody did number", async () => {
+      const alone = await newGraph(ada, "Linked without a number");
+      const bare = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "A thought on its own",
+      });
+      const branch = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+
+      await ok("PATCH", `/nodes/${at(branch.ref)}`, ada, {
+        links: [bare.ref],
+      });
+
+      expect((await readNote(branch.ref)).links).toEqual([bare.ref]);
+    });
+  });
+
   describe("a note's look", () => {
     scenario(
       "is stored as its author set it, and taken back off whole",

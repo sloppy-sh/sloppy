@@ -289,11 +289,11 @@ describe("a branch folded and unfolded again", () => {
 
   const measured = [...under]
     .filter(([ref, count]) => open.graph.hasNode(ref) && count >= 8)
-    .slice(0, 8)
+    .slice(0, 24)
     .map(([ref]) => foldAndBack(ref));
 
   it("puts a branch back beside its parent rather than at its bare seed", () => {
-    expect(measured.length).toBe(8);
+    expect(measured.length).toBe(24);
     const ratios = measured.map((one) => one.appears / one.appearsFromSeed);
     expect(median(ratios)).toBeLessThan(0.9);
     expect(ratios.filter((ratio) => ratio < 1).length * 2).toBeGreaterThan(

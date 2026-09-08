@@ -132,7 +132,7 @@
 							onclick={() => onopen(note.ref)}
 						>
 							<span class="flex w-full min-w-0 items-baseline gap-2 text-sm">
-								<span class="shrink-0 address text-xs">{note.address}</span>
+								{#if note.address}<span class="shrink-0 address text-xs">{note.address}</span>{/if}
 								<span class="min-w-0 flex-1 truncate">{nameOf(note)}</span>
 							</span>
 							{#if note.wasAt}

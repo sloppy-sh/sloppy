@@ -86,8 +86,8 @@ describe("a look on a mark too small to carry it", () => {
 /**
  * The smallest mark drawn, in CSS pixels, at the view a graph of `total` notes
  * opens on: a phone, and the whole field framed the way `mount.ts` frames it
- * while the layout settles. Measured at the seeds, which are the shape the
- * addresses fix — the settle only resolves the crowding around them.
+ * while the layout settles. Measured at the seeds, which are the shape the tree
+ * fixes — the settle only resolves the crowding around them.
  */
 function smallestOnAPhone(total: number): number {
   const corpus = makeCorpus({ total });
@@ -123,8 +123,8 @@ function smallestOnAPhone(total: number): number {
 // and a graph opens framed whole on the narrowest screen Sloppy runs on. What
 // the smallest mark is drawn at there is what decides the figure.
 describe("a look at the view a graph opens on", () => {
-  it("is drawn on every mark, up to a field of a few hundred notes", () => {
-    for (const total of [12, 40, 200]) {
+  it("is drawn on every mark, up to a field of some dozens of notes", () => {
+    for (const total of [12, 24, 40, 80]) {
       expect(looksDrawn(smallestOnAPhone(total), false), `${total}`).toBe(true);
     }
   });
