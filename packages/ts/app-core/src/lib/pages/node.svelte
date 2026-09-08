@@ -2234,7 +2234,8 @@
 		{#if own}
 			<PublishModal
 				bind:open={publishing}
-				address={noteLabel(node)}
+				address={node.address}
+				link={citationUrl(ref)}
 				reader={readerNeeds}
 				published={branch}
 				carriedBy={carriedBy?.root_address ?? null}
