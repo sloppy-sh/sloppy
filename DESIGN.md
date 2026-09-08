@@ -787,7 +787,8 @@ so.
   Carrying that handle says in words where letting go will put the section — up or down its
   own note, into another open note's stack, onto a closed row at the end of it, or out
   between two rows as a note of its own, springing from the run it landed in. Tapping the
-  handle offers the same moves as steps, for a finger that has no hover to read. No note
+  handle offers the moves within its own note as steps, for a finger that has no hover to
+  read. No note
   moves with a section, and the run the outline draws keeps its own order.
 - **A note's row fits the narrowest phone, and the title is what gives.** The chevron, the
   control that opens the note's own page and the write control are touch targets and hold their size, and the
