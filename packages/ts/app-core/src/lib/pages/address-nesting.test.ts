@@ -60,10 +60,54 @@ describe('what a number written on a note says about where it sits', () => {
 	});
 
 	it('says when nothing in the graph is at the number it springs from', () => {
-		expect(addressNesting(CELLS, '4b1' as Address, GRAPH)).toEqual({
+		expect(addressNesting(CELLS, '3a1a' as Address, GRAPH)).toEqual({
 			act: 'nowhere',
-			parent: '4b',
-			address: '4b1'
+			parent: '3a1',
+			address: '3a1a',
+			write: { missing: ['3a1'], under: LANDING }
+		});
+	});
+
+	it('names every note missing between the graph and the number, topmost first', () => {
+		expect(addressNesting(CELLS, '7b3c' as Address, GRAPH)).toEqual({
+			act: 'nowhere',
+			parent: '7b3',
+			address: '7b3c',
+			write: { missing: ['7', '7b', '7b3'] }
+		});
+	});
+
+	it('hangs the chain under the deepest note the graph does carry', () => {
+		expect(addressNesting(CELLS, '3a1b2' as Address, GRAPH)).toEqual({
+			act: 'nowhere',
+			parent: '3a1b',
+			address: '3a1b2',
+			write: { missing: ['3a1', '3a1b'], under: LANDING }
+		});
+	});
+
+	it('offers to write nothing where a number on the chain led somewhere already', () => {
+		const carried = { ...LANDING, address: '5b' as Address, aliases: ['3a' as Address] };
+		expect(addressNesting(CELLS, '3a1a' as Address, [TWO, CELLS, THREE, carried])).toEqual({
+			act: 'nowhere',
+			parent: '3a1',
+			address: '3a1a'
+		});
+	});
+
+	it('refuses a chain that would hang under the note itself', () => {
+		expect(addressNesting(CELLS, '2c1a' as Address, GRAPH)).toEqual({
+			act: 'refuse',
+			words: '2c1a would make this note spring from itself. Pick another number.'
+		});
+	});
+
+	it('refuses a chain that would hang under a note this one carries', () => {
+		const under = note(5, '2c1', { parent: CELLS.ref });
+		expect(addressNesting(CELLS, '2c1a1' as Address, [...GRAPH, under])).toEqual({
+			act: 'refuse',
+			words:
+				'2c1 springs from this note, so this note cannot spring from it. Pick a number outside it.'
 		});
 	});
 

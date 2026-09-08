@@ -30,8 +30,17 @@ export type AddressNesting =
 	| { act: 'carry'; under: NestingNote; address?: Address; wasAt?: Address }
 	/** The label is a branch's own number, and the note springs from something. */
 	| { act: 'branch'; address: Address }
-	/** Nothing in this graph is at the address the label springs from. */
-	| { act: 'nowhere'; parent: Address; address: Address }
+	/** Nothing in this graph is at the address the label springs from. `write` is
+	 *  the notes that would have to be written for it to be, topmost first, and
+	 *  the note the topmost of them hangs under — absent where that one opens a
+	 *  branch. `write` itself is absent where an address on that chain has been
+	 *  spent already, which is nobody's to write a note at. */
+	| {
+			act: 'nowhere';
+			parent: Address;
+			address: Address;
+			write?: { missing: readonly [Address, ...Address[]]; under?: NestingNote };
+	  }
 	| { act: 'refuse'; words: string };
 
 /**
@@ -57,22 +66,58 @@ export function addressNesting(
 	if (above !== null && leadsTo(above, springs)) return { act: 'write' };
 
 	const found = graph.find((one) => leadsTo(one, springs));
-	if (found === undefined) return { act: 'nowhere', parent: springs, address: taking };
+	if (found === undefined) return nothingAt(note, springs, taking, graph);
+	const cycles = wouldCycle(note, found, springs, taking, graph);
+	if (cycles) return cycles;
+	return found.address === springs
+		? { act: 'carry', under: found, address: taking }
+		: { act: 'carry', under: found, wasAt: springs };
+}
+
+/** The chain of notes nobody has written between the graph and `springs`, and
+ *  the note that chain would hang under. */
+function nothingAt(
+	note: NestingNote,
+	springs: Address,
+	taking: Address,
+	graph: readonly NestingNote[]
+): AddressNesting {
+	const answer = { act: 'nowhere', parent: springs, address: taking } as const;
+	const missing: [Address, ...Address[]] = [springs];
+	for (let at = impliedParent(springs); at != null; at = impliedParent(at)) {
+		const reached = at;
+		const found = graph.find((one) => leadsTo(one, reached));
+		if (found === undefined) {
+			missing.unshift(reached);
+			continue;
+		}
+		const cycles = wouldCycle(note, found, reached, taking, graph);
+		if (cycles) return cycles;
+		return found.address === reached ? { ...answer, write: { missing, under: found } } : answer;
+	}
+	return { ...answer, write: { missing } };
+}
+
+/** Whether the note would end up springing from itself by landing under
+ *  `found`, whose address is `at`. */
+function wouldCycle(
+	note: NestingNote,
+	found: NestingNote,
+	at: Address,
+	taking: Address,
+	graph: readonly NestingNote[]
+): AddressNesting | null {
 	if (found.ref === note.ref) {
 		return {
 			act: 'refuse',
 			words: `${taking} would make this note spring from itself. Pick another number.`
 		};
 	}
-	if (beneath(note, found, graph)) {
-		return {
-			act: 'refuse',
-			words: `${springs} springs from this note, so this note cannot spring from it. Pick a number outside it.`
-		};
-	}
-	return found.address === springs
-		? { act: 'carry', under: found, address: taking }
-		: { act: 'carry', under: found, wasAt: springs };
+	if (!beneath(note, found, graph)) return null;
+	return {
+		act: 'refuse',
+		words: `${at} springs from this note, so this note cannot spring from it. Pick a number outside it.`
+	};
 }
 
 /** `undefined` where the number in it is larger than a graph can carry, which
