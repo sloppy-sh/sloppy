@@ -24,18 +24,18 @@ export function referencesOf(
   return [...named];
 }
 
+/** Whether a section names any note at all. One that names none leaves what a
+ *  note cites alone wherever it lands, and wherever it is carried. */
+export function namesNotes(content: BlockDocument): boolean {
+  return citedNotes(content).length > 0;
+}
+
 /**
  * Whether writing `after` where `before` stood could have moved the NOTE's
  * references; `null` is a section that was not there. A section naming the same
  * notes in the same order cannot have, and asking here is what spares an
  * ordinary save a read of the whole stack — every drawing in it included.
  */
-/** Whether moving a section within its stack could reorder what the note
- *  cites. One that names nothing cannot, wherever it lands. */
-export function movingReorders(content: BlockDocument): boolean {
-  return citedNotes(content).length > 0;
-}
-
 export function citationsMoved(
   before: BlockDocument | null,
   after: BlockDocument | null,

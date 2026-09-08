@@ -26,7 +26,7 @@ import { ordAfter, type Placed, UnknownNeighbourError } from "./placement";
 import {
   alreadyDerived,
   citationsMoved,
-  movingReorders,
+  namesNotes,
   referencesOf,
 } from "./references";
 
@@ -87,25 +87,38 @@ export class BlockService {
     ref: OwnedRef,
     request: UpdateRequest,
   ): Promise<BlockView> {
-    const node = await this.blocks.nodeOf(did, ref);
-    if (!node) throw new NotFoundException("That block is not here.");
+    const from = await this.blocks.nodeOf(did, ref);
+    if (!from) throw new NotFoundException("That block is not here.");
     // A deleted note keeps its sections so they come back with it, and a write
     // that landed in one would be neither read nor counted in what the note
     // cites.
-    if (!(await this.nodes.find(did, node))) {
+    if (!(await this.nodes.find(did, from))) {
       throw new NotFoundException("That note is not here.");
+    }
+    const into = request.node ?? from;
+    const carried = into !== from;
+    if (carried && !(await this.nodes.find(did, into))) {
+      throw new BadRequestException("That note is not here.");
     }
     if (request.after === ref) {
       throw new BadRequestException("A block cannot follow itself.");
     }
 
-    const { written, moved } = await this.perNote.run(node, async () => {
+    const { written, derives } = await this.inNotes([from, into], async () => {
       // Read inside the queue: what this write replaced is what says whether
       // the note's citations moved and whether the section is still the one the
       // writer read, and a writer ahead in the queue has already replaced
       // anything read before it.
       const before = await this.blocks.find(did, ref);
       if (!before) throw new NotFoundException("That block is not here.");
+      // The stacks held are the ones read before the queue, so a section
+      // carried out of `from` in between would be placed against a stack it is
+      // no longer in.
+      if (before.node !== from) {
+        throw new ConflictException(
+          "This section is in another note now. Open that note to see where it sits.",
+        );
+      }
       if (
         request.expects !== undefined &&
         request.expects !== before.updated_at
@@ -117,8 +130,11 @@ export class BlockService {
 
       const changes: BlockPatch = {};
       if (request.content !== undefined) changes.content = request.content;
-      if (request.after !== undefined) {
-        const stack = (await this.stack(node)).filter(
+      // Which note holds it and where it sits there are one write, so a carried
+      // section is never in both stacks and never in neither.
+      if (carried) changes.node = into;
+      if (carried || request.after !== undefined) {
+        const stack = (await this.stack(into)).filter(
           (other) => other.ref !== ref,
         );
         changes.ord = this.place(stack, request.after ?? null);
@@ -126,14 +142,10 @@ export class BlockService {
       const saved = await this.save(did, ref, changes);
       return {
         written: saved,
-        // A section moved within the stack names the same notes in a new order
-        // — unless it names none, which no position can reorder.
-        moved:
-          citationsMoved(before.content, saved.content) ||
-          (request.after !== undefined && movingReorders(saved.content)),
+        derives: this.rederives(before, saved, request),
       };
     });
-    if (moved) await this.derive(did, node);
+    for (const note of derives) await this.derive(did, note);
     return blockView(written);
   }
 
@@ -175,6 +187,42 @@ export class BlockService {
     }
   }
 
+  /**
+   * The notes whose `references` this write can have moved: the note the
+   * section is in now, and the one it was carried out of.
+   */
+  private rederives(
+    before: Block,
+    saved: Block,
+    request: UpdateRequest,
+  ): OwnedRef[] {
+    if (saved.node !== before.node) {
+      return namesNotes(before.content) || namesNotes(saved.content)
+        ? [before.node, saved.node]
+        : [];
+    }
+    // A section moved within the stack names the same notes in a new order —
+    // unless it names none, which no position can reorder.
+    const moved =
+      citationsMoved(before.content, saved.content) ||
+      (request.after !== undefined && namesNotes(saved.content));
+    return moved ? [saved.node] : [];
+  }
+
+  /**
+   * Holds every note the write touches, always in the same order, so a section
+   * carried one way and another carried back cannot each be waiting on the
+   * stack the other holds.
+   */
+  private inNotes<T>(
+    notes: readonly OwnedRef[],
+    task: () => Promise<T>,
+  ): Promise<T> {
+    const [first, ...rest] = [...new Set(notes)].sort();
+    if (first === undefined) return task();
+    return this.perNote.run(first, () => this.inNotes(rest, task));
+  }
+
   private async stack(node: OwnedRef): Promise<Placed[]> {
     return (await this.blocks.listByNode(node)).map((block) => ({
       ref: ownedRefFrom(block.id),
@@ -188,7 +236,7 @@ export class BlockService {
     } catch (err) {
       if (err instanceof UnknownNeighbourError) {
         throw new BadRequestException(
-          "The block this one was going after is no longer in this note.",
+          "The block this one was going after is not in that note.",
         );
       }
       throw err;
