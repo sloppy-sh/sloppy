@@ -1349,8 +1349,9 @@ export class GraphScene {
       if (at === undefined) break;
       budget -= 1;
       const slot = this.labelPool[at];
-      slot.address.text = addressCaption(mark.attributes);
-      slot.title.text = shorten(mark.attributes.title.trim(), TITLE_CHARS);
+      const caption = markCaption(mark.attributes);
+      slot.address.text = caption.label;
+      slot.title.text = caption.title;
       held.set(mark.ref, at);
     }
 
@@ -1452,12 +1453,24 @@ function shorten(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit - 1).trimEnd()}…`;
 }
 
-function addressCaption(attributes: GraphNodeAttributes): string {
-  const address = attributes.address ?? "";
-  if (attributes.folded === 0) return address;
-  return address === ""
-    ? `+${attributes.folded}`
-    : `${address} +${attributes.folded}`;
+/**
+ * The two texts beside a mark, in the two faces DESIGN.md § Typography gives
+ * them. A note is named by its address where it has one and by its title where
+ * it has none — `noteLabel` in `@sloppy/types` — so a mega-node's count follows
+ * whichever of the two named it rather than standing ahead of the title.
+ */
+function markCaption(attributes: GraphNodeAttributes): {
+  label: string;
+  title: string;
+} {
+  const title = shorten(attributes.title.trim(), TITLE_CHARS);
+  const count = attributes.folded === 0 ? "" : `+${attributes.folded}`;
+  const address = attributes.address;
+  if (address !== undefined) {
+    return { label: count === "" ? address : `${address} ${count}`, title };
+  }
+  if (title === "") return { label: count, title: "" };
+  return { label: "", title: count === "" ? title : `${title} ${count}` };
 }
 
 /** One ring of a lift: the circle stroked, in world units from the mark's
