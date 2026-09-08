@@ -377,7 +377,11 @@ describe.skipIf(!runs)(`the provider against ${ENDPOINT.href}`, () => {
     ).rejects.toMatchObject({ code: "consent_expired" });
   });
 
-  it("erases an identity by the column that names its owner", async () => {
+  // A purge walks every table an identity owns; under the whole suite running at
+  // once it has taken six seconds against a five-second default.
+  it("erases an identity by the column that names its owner", {
+    timeout: 20_000,
+  }, async () => {
     const username = someone();
     const { did } = await register(ctx, { username, password: PASSWORD });
     const other = await register(ctx, {
