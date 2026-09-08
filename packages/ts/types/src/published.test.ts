@@ -259,11 +259,11 @@ describe("a region a peer answered with", () => {
     }
   });
 
-  it("is refused when a note springs from anything but its parent address", () => {
-    // A mark's position seeds from its address, so a genealogy that disagrees
-    // with the addresses draws edges the shape does not answer to. A cycle is
-    // the same disagreement at its worst: our own rows cannot hold one, so the
-    // walk up a note's ancestors does not guard itself against one.
+  it("is refused when a note does not reach the region's root", () => {
+    // Every note in a region springs from the root, however far down. A pair
+    // pointing at each other is that rule at its worst: our own rows cannot
+    // hold a cycle, so the walk up a note's ancestors does not guard itself
+    // against one.
     const cycle = subtree();
     cycle.nodes = [
       cycle.nodes[0],
@@ -271,14 +271,28 @@ describe("a region a peer answered with", () => {
       node(2, "1a2", { parent: `${AUTHOR}/${ulid(1)}` }),
     ];
     expect(() => takeWhole(cycle)).toThrow(UnaskedAnswerError);
+  });
 
-    const regrafted = subtree();
-    regrafted.nodes = [
-      regrafted.nodes[0],
-      node(1, "1a1", { parent: regrafted.nodes[0].ref }),
-      node(2, "1a1a", { parent: regrafted.nodes[0].ref }),
+  it("takes a note whose address says nothing about where it hangs", () => {
+    // A person writes their own addresses, so an address that reads like a
+    // grandchild on a note that springs from the root is not a disagreement —
+    // it is a label, and the parent is the shape.
+    const relabelled = subtree();
+    relabelled.nodes = [
+      relabelled.nodes[0],
+      node(1, "1a1", { parent: relabelled.nodes[0].ref }),
+      node(2, "1a1a", { parent: relabelled.nodes[0].ref }),
     ];
-    expect(() => takeWhole(regrafted)).toThrow(UnaskedAnswerError);
+    expect(takeWhole(relabelled).nodes).toHaveLength(3);
+
+    // And a note with no address at all is one this reader holds like any
+    // other: what places it is the parent it names.
+    const unlabelled = subtree();
+    const { address: _none, ...bare } = node(3, "1b", {
+      parent: unlabelled.nodes[0].ref,
+    });
+    unlabelled.nodes = [...unlabelled.nodes, bare];
+    expect(takeWhole(unlabelled).nodes).toHaveLength(3);
   });
 
   it("is refused when a note links to one its author did not write", () => {

@@ -595,10 +595,12 @@ describe("holding a region of somebody else's graph", () => {
     );
     expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
 
-    // A second page that contradicts the first is refused with the first kept.
+    // A second page that contradicts the first is refused with the first kept:
+    // a note springing from one this region has not sent is outside it, whatever
+    // its author has written on it.
     serves(
       page(NARROW, [note("1a", "1a")], [], "1"),
-      page(NARROW, [{ ...note("1a", "1a1"), address: "2" }]),
+      page(NARROW, [{ ...note("1a", "1a1"), parent: ref(ID.other) }]),
     );
     expect((await pull(NARROW)).status).toBeGreaterThanOrEqual(400);
 

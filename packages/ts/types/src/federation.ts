@@ -9,12 +9,11 @@
 // docs/ARCHITECTURE.md § "Federating the graph" is the doc of record.
 
 import { z } from "zod";
-import { addressDepth, AddressSchema } from "./address.js";
+import { AddressSchema } from "./address.js";
 import { splitOwnedRef } from "./codecs.js";
 import { DidSyrSchema, OwnedEntitySchema, OwnedRefSchema } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
 import { requireOwnGraph } from "./graph.js";
-import { NodeDepthMismatchError } from "./node.js";
 import {
   CommentAccessSchema,
   PageCursorSchema,
@@ -226,15 +225,17 @@ export const PulledNodeSchema = OwnedEntitySchema.extend({
   source_graph: OwnedRefSchema.optional(),
   /** `node.address`, beside the node rather than inside it for the same reason,
    *  and unique per author's graph: an address a peer handed us resolves one
-   *  way inside it, the way our own do. */
-  address: AddressSchema,
+   *  way inside it, the way our own do. Absent is a note its author gave
+   *  none. */
+  address: AddressSchema.optional(),
   /** `node.aliases`, beside the node the way `address` is, so a row and the
    *  note it copies cannot come apart. Absent is a note never moved. */
   aliases: z.array(AddressSchema).optional(),
   /**
-   * `addressDepth(node.address)`, minted here because a published node carries
-   * none. It is the same ratified exception `node.depth` is, bought by the same
-   * level-of-detail read; `parsePulledNode` is the boundary it is held at.
+   * The reader's own mint from the region's shape — the root's depth in the
+   * author's graph, and one more for each step down the parents — because a
+   * published node carries none. It is the same ratified exception
+   * `node.depth` is, bought by the same level-of-detail read.
    */
   depth: z.int().positive(),
   node: PublishedNodeSchema.omit({ ref: true }),
@@ -260,10 +261,6 @@ export function parsePulledNode(row: unknown): PulledNode {
     throw new Error(
       `Held node ${pulled.source} is filed under other addresses than the ones it carries`,
     );
-  }
-  const actual = addressDepth(pulled.node.address);
-  if (pulled.depth !== actual) {
-    throw new NodeDepthMismatchError(pulled.node.address, pulled.depth, actual);
   }
   const { did } = splitOwnedRef(pulled.source);
   if (pulled.source_did !== did) {

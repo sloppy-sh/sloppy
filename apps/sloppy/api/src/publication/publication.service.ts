@@ -20,6 +20,7 @@ import {
   graphOf,
   isInSubtree,
   type Node,
+  noteLabel,
   nowIso,
   type OwnedRef,
   ownedRefFrom,
@@ -57,6 +58,10 @@ import {
   publishedNodeOf,
   type Snapshotted,
 } from "./snapshot";
+
+/** A note of a branch about to be published: publishing refuses a branch
+ *  holding one with no address, so every note past that check has one. */
+type Numbered = Node & { address: Address };
 
 /** How much of a branch is held in memory at once. A published branch is
  *  written a run of notes at a time, sections and all. */
@@ -172,7 +177,14 @@ export class PublicationService {
       if (now.has(note)) continue;
       changes.push(gainedOrLost(note, before.address, before.title, "removed"));
     }
-    changes.sort((a, b) => compareAddresses(a.address, b.address));
+    changes.sort((a, b) => {
+      if (a.address === undefined || b.address === undefined) {
+        return (
+          (a.address === undefined ? 1 : 0) - (b.address === undefined ? 1 : 0)
+        );
+      }
+      return compareAddresses(a.address, b.address);
+    });
 
     return {
       publication: ref,
@@ -242,8 +254,20 @@ export class PublicationService {
     const did = delegation.did;
     const root = await this.nodes.find(did, request.root);
     if (!root) throw new NotFoundException("That note is not here.");
+    // What a reader cites a published branch by is its root's number, and a
+    // version is read back in number order — docs/ARCHITECTURE.md § "The
+    // genealogy and the address" names this as the gap it is.
+    if (root.address === undefined) {
+      throw new BadRequestException(
+        "Give this note a number before publishing it.",
+      );
+    }
 
-    const { publication, opened } = await this.chainFor(delegation, root);
+    const { publication, opened } = await this.chainFor(
+      delegation,
+      root,
+      root.address,
+    );
     const chain = ownedRefFrom(publication.id);
     const id = createOwnedRecordId("publication_version", did);
     // The number a version of this chain would take next, read before any bytes
@@ -256,6 +280,7 @@ export class PublicationService {
     try {
       const marking = await this.freeze(delegation, {
         root,
+        address: root.address,
         version: ownedRefFrom(id),
         chain,
         copies,
@@ -340,6 +365,7 @@ export class PublicationService {
   private async chainFor(
     delegation: Delegation,
     root: Node,
+    address: Address,
   ): Promise<{ publication: Publication; opened: boolean }> {
     const did = delegation.did;
     const store = delegation.syr_instance_url;
@@ -360,7 +386,7 @@ export class PublicationService {
         id: createOwnedRecordId("publication", did),
         created_by: did,
         root: ref,
-        root_address: root.address,
+        root_address: address,
         graph: root.graph,
         comments: DEFAULT_COMMENT_ACCESS,
         identity_store: store,
@@ -382,16 +408,24 @@ export class PublicationService {
     delegation: Delegation,
     into: {
       root: Node;
+      address: Address;
       version: OwnedRef;
       chain: OwnedRef;
       copies: Copies;
     },
   ): Promise<RecordId[]> {
     const did = delegation.did;
-    const branch = await this.nodes.subtree(did, into.root);
+    const whole = await this.nodes.subtree(did, into.root);
+    const unnumbered = whole.find((node) => node.address === undefined);
+    if (unnumbered !== undefined) {
+      throw new BadRequestException(
+        `Give “${noteLabel(unnumbered)}” a number before publishing this branch.`,
+      );
+    }
+    const branch = whole as Numbered[];
     const region = {
       root: ownedRefFrom(into.root.id),
-      address: into.root.address,
+      address: into.address,
       graph: graphOf(into.root),
     };
     const carried = new Set(branch.map((node) => ownedRefFrom(node.id)));
@@ -422,7 +456,7 @@ export class PublicationService {
     region: { root: OwnedRef; address: Address; graph: OwnedRef },
     reach: Reach,
     emoji: ReadonlyMap<string, string>,
-    batch: readonly Node[],
+    batch: readonly Numbered[],
     stacks: ReadonlyMap<OwnedRef, Block[]>,
   ): Promise<void> {
     const held = snapshotted(into.copies, emoji, reach);
@@ -489,7 +523,7 @@ export class PublicationService {
   ): Promise<Map<string, string>> {
     const wanted = new Map<
       string,
-      { address: Address; source: () => Promise<Picture> }
+      { note: string; source: () => Promise<Picture> }
     >();
     const drawn = new Map<string, string>();
     for (const node of batch) {
@@ -497,7 +531,7 @@ export class PublicationService {
         for (const uploadId of citedUploads(block.content)) {
           if (into.copies.of(uploadId) !== undefined) continue;
           wanted.set(uploadId, {
-            address: node.address,
+            note: noteLabel(node),
             source: () =>
               this.media.ownStoredPicture(delegation, uploadId, "block"),
           });
@@ -509,7 +543,7 @@ export class PublicationService {
           drawn.set(shortcode.toLowerCase(), id);
           if (into.copies.of(id) !== undefined) continue;
           wanted.set(id, {
-            address: node.address,
+            note: noteLabel(node),
             source: async () => ({
               url: entry.url,
               filename: entry.shortcode,
@@ -523,7 +557,7 @@ export class PublicationService {
       const copy = await this.media.copyForPublication(
         delegation,
         await asked.source().catch((err: unknown) => {
-          throw missing(err) ? notInTheLibrary(asked.address) : err;
+          throw missing(err) ? notInTheLibrary(asked.note) : err;
         }),
       );
       const now = nowIso();
@@ -742,13 +776,13 @@ function cited(
  *  the change is worth naming. */
 function gainedOrLost(
   note: OwnedRef,
-  address: Address,
+  address: Address | undefined,
   title: string,
   change: UnpublishedChange["change"],
 ): UnpublishedChange {
   return {
     note,
-    address,
+    ...(address === undefined ? {} : { address }),
     title,
     change,
     tags_gained: [],
@@ -779,7 +813,7 @@ function whatMoved(
   }
   return {
     note: ownedRefFrom(node.id),
-    address: node.address,
+    ...(node.address === undefined ? {} : { address: node.address }),
     title: node.title,
     change: "changed",
     ...(carried ? { was_at: before.address } : {}),
@@ -828,9 +862,9 @@ function gone(): NotFoundException {
 
 /** A note cannot be published around a picture there is nothing to copy from,
  *  and the address is what tells somebody which note to open. */
-function notInTheLibrary(address: Address): BadRequestException {
+function notInTheLibrary(note: string): BadRequestException {
   return new BadRequestException(
-    `A picture in ${address} is not in your library. Take it out of the note and publish again.`,
+    `A picture in ${note} is not in your library. Take it out of the note and publish again.`,
   );
 }
 

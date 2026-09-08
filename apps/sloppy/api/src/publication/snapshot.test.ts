@@ -248,10 +248,16 @@ describe("a note as a version froze it", () => {
   });
 
   // A publication rooted below depth 1 has a parent outside it, and naming one
-  // would say a note exists that nobody published.
+  // would say a note exists that nobody published. Which note is the root is
+  // read off the ref the region is rooted at, never off an address a person
+  // writes.
   it("names no parent on the region's own root", () => {
     const written = publishedNodeOf(
       note({
+        id: new RecordId("node", {
+          created_by: AVA,
+          id: "RGNRT".padEnd(26, "0"),
+        }),
         address: "1a",
         depth: 2,
         parent: at(AVA, "AWAY"),

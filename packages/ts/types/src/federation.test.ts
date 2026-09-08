@@ -21,7 +21,6 @@ import {
   PulledBlockSchema,
   PullMemberSchema,
 } from "./federation.js";
-import { NodeDepthMismatchError } from "./node.js";
 import { nodeRefFromSyrPost, syrPostRefFor } from "./syr.js";
 
 const AUTHOR = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
@@ -78,16 +77,23 @@ describe("a held node", () => {
     expect(view.updated_at).toBe("2025-06-02T00:00:00.000Z");
   });
 
-  it("is refused when its depth and its address disagree", () => {
+  it("keeps the depth the reader minted from the region's shape", () => {
+    // No longer read back out of the address: a person writes their own, so a
+    // row's depth answers to the parent chain the region carried and not to
+    // what the label happens to spell.
     for (const address of spread(24)) {
-      const actual = addressDepth(address);
-      for (const wrong of [actual + 1, actual + 2]) {
-        expect(() => parsePulledNode(heldNode(address, wrong))).toThrow(
-          NodeDepthMismatchError,
-        );
+      for (const depth of [1, 2, 7]) {
+        expect(parsePulledNode(heldNode(address, depth)).depth).toBe(depth);
       }
-      expect(parsePulledNode(heldNode(address)).depth).toBe(actual);
     }
+  });
+
+  it("is a row like any other when its author gave it no address", () => {
+    const { address: _none, node, ...row } = heldNode("1a");
+    const { address: _also, ...published } = node;
+    const held = parsePulledNode({ ...row, node: published });
+    expect(held.address).toBeUndefined();
+    expect(pulledNodeView(held).address).toBeUndefined();
   });
 
   it("is refused when it names an author its source does not", () => {
@@ -140,10 +146,10 @@ describe("a held node", () => {
     // because an answer that did not carry it is not something an address knows.
     const held = heldNode("1a1");
     for (const root of ["1", "1a", "1a1"] as const) {
-      expect(isInSubtree(root, held.address)).toBe(true);
+      expect(isInSubtree(root, "1a1")).toBe(true);
     }
     for (const root of ["1b", "2"] as const) {
-      expect(isInSubtree(root, held.address)).toBe(false);
+      expect(isInSubtree(root, "1a1")).toBe(false);
     }
 
     const served = PullMemberSchema.parse({

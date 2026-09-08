@@ -58,9 +58,14 @@
 	} = $props();
 
 	/** The citation, as somebody says it: the address, and the notebook it is
-	 *  read in where its name came with it. */
+	 *  read in where its name came with it. Empty for a note its author gave no
+	 *  address, which is nothing anybody can cite. */
 	const citation = $derived(
-		note ? (notebook ? `${note.address} · ${notebook}` : note.address) : ''
+		!note || note.address === undefined
+			? ''
+			: notebook
+				? `${note.address} · ${notebook}`
+				: note.address
 	);
 	let copied = $state(false);
 	let sayingCopied: ReturnType<typeof setTimeout> | undefined;
@@ -82,7 +87,9 @@
 	onOpenChange={(open) => {
 		if (!open) onClose();
 	}}
-	title={note ? `${note.address} ${note.title || 'Untitled'}` : 'A note you are holding'}
+	title={note
+		? [note.address, note.title || 'Untitled'].filter(Boolean).join(' ')
+		: 'A note you are holding'}
 >
 	{#if note}
 		<header

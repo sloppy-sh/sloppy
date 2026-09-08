@@ -426,7 +426,11 @@ differ, which is what a review-shaped diff needs and no more. A note that is gon
 no sections, what it said being in the version that still has it; where one address holds a
 different note in each version the reader is told both, one gone and one arrived.
 `PublishedNoteChange` in `@sloppy/types` is that shape and `publishedChangesReader` its
-boundary. **The author's own instance answers it as a peer's does** — `/changes` above is
+boundary. It holds a changes page to ONE tree — every change in it has to spring from the
+same root — but not yet to the tree that was asked about, because `PublishedChangesPage`
+carries a root address and no root ref, and an address is a label the answer writes. A peer
+answering consistently about a branch nobody asked about is a gap in that wire shape, not
+in the reader. **The author's own instance answers it as a peer's does** — `/changes` above is
 public, so the surface a person reads it on asks over `GET /api/peers/changes` whether the
 publication is theirs or somebody else's, and one path serves both.
 

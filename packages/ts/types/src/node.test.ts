@@ -4,14 +4,15 @@ import {
   type Address,
   addressDepth,
   childAddress,
-  parseAddress,
+  orderSiblings,
   siblingAddress,
 } from "./address.js";
 import {
   CreateNodeRequestSchema,
-  NodeDepthMismatchError,
   NodeSchema,
+  noteLabel,
   parseNode,
+  SetAddressRequestSchema,
   UpdateNodeRequestSchema,
 } from "./node.js";
 
@@ -43,45 +44,93 @@ function row(address: Address, depth = addressDepth(address)) {
   };
 }
 
-// `depth` is a second copy of something the address already says, which is what
-// AI.md § "The Genealogy Is the Protocol" forbids and what the ruling in
-// docs/ARCHITECTURE.md § "Data model" overrode. These are the tests that ruling
-// is conditioned on: the copy is safe only for as long as it cannot drift.
-describe("depth against the address it duplicates", () => {
-  it("is the address's segment count, for every address the protocol assigns", () => {
-    for (const address of spread(500)) {
-      expect(addressDepth(address)).toBe(parseAddress(address).length);
-    }
-  });
-
-  it("reaches a row unchanged, and starts at 1 on a root", () => {
+// `depth` is a stored derivation, which docs/ARCHITECTURE.md § "Data model"
+// ratifies as the one exception. What it is derived from is the parent chain,
+// so a person writing their own address cannot put a row out of step with it.
+describe("depth, and the address it no longer duplicates", () => {
+  it("reaches a row unchanged, whatever the address on it says", () => {
     expect(parseNode(row("1")).depth).toBe(1);
-    for (const address of spread(500)) {
-      const node = parseNode(row(address));
-      expect(node.depth).toBe(parseAddress(node.address).length);
-    }
-  });
-
-  it("spans more than one generation, so the test above is not vacuous", () => {
-    const depths = new Set(spread(500).map(addressDepth));
-    expect(Math.min(...depths)).toBe(1);
-    expect(Math.max(...depths)).toBeGreaterThan(5);
-  });
-
-  it("is refused at the row boundary when it disagrees with the address", () => {
     for (const address of spread(200)) {
-      const wrong = addressDepth(address) + 1;
-      expect(() => parseNode(row(address, wrong))).toThrow(
-        NodeDepthMismatchError,
-      );
+      expect(parseNode(row(address, 4)).depth).toBe(4);
     }
   });
 
-  it("refuses a number no address could produce", () => {
+  it("refuses a number no depth could be", () => {
     // 0 is what a depth counted from the wrong end gives a root, and it is the
     // one wrong value the database's own `ASSERT $value > 0` also catches.
     for (const depth of [0, -1, 1.5, Number.NaN]) {
       expect(() => NodeSchema.parse(row("1a", depth))).toThrow();
+    }
+  });
+});
+
+describe("a note with no address", () => {
+  const bare = () => {
+    const { address: _none, ...rest } = row("1");
+    return rest;
+  };
+
+  it("is a row like any other", () => {
+    expect(parseNode(bare()).address).toBeUndefined();
+  });
+
+  it("is read by its title, and by a word where it has none of those either", () => {
+    expect(noteLabel({ ...parseNode(bare()), title: "Mushrooms" })).toBe(
+      "Mushrooms",
+    );
+    expect(noteLabel({ ...parseNode(bare()), title: "   " })).toBe("Untitled");
+  });
+
+  it("is read by its address wherever it has one", () => {
+    expect(noteLabel({ address: "1a", title: "Mushrooms" })).toBe("1a");
+  });
+});
+
+describe("a run in the order it reads", () => {
+  const note = (ref: string, created_at: string, address?: Address) => ({
+    ref,
+    created_at,
+    ...(address === undefined ? {} : { address }),
+  });
+
+  it("puts the addressed notes first, in address order", () => {
+    const run = orderSiblings([
+      note("a/2", "2026-01-01T00:00:00.000Z"),
+      note("a/1", "2026-01-02T00:00:00.000Z", "1b"),
+      note("a/3", "2026-01-03T00:00:00.000Z", "1a"),
+    ]);
+    expect(run.map((one) => one.ref)).toEqual(["a/3", "a/1", "a/2"]);
+  });
+
+  it("puts the rest after them, in the order they were written", () => {
+    const run = orderSiblings([
+      note("a/3", "2026-01-03T00:00:00.000Z"),
+      note("a/1", "2026-01-01T00:00:00.000Z"),
+      note("a/2", "2026-01-02T00:00:00.000Z"),
+    ]);
+    expect(run.map((one) => one.ref)).toEqual(["a/1", "a/2", "a/3"]);
+  });
+
+  it("breaks a tie by ref, so two peers read one run the same way", () => {
+    const same = "2026-01-01T00:00:00.000Z";
+    const run = orderSiblings([note("a/2", same), note("a/1", same)]);
+    expect(run.map((one) => one.ref)).toEqual(["a/1", "a/2"]);
+  });
+});
+
+describe("what a person writes where an address is shown", () => {
+  it("takes an address, and takes it back off", () => {
+    expect(SetAddressRequestSchema.parse({ address: "1a1" })).toEqual({
+      address: "1a1",
+    });
+    expect(SetAddressRequestSchema.parse({ address: null })).toEqual({
+      address: null,
+    });
+  });
+
+  it("refuses anything that is not an address", () => {
+    for (const address of ["", "a1", "1A", "01", " 1a"]) {
+      expect(() => SetAddressRequestSchema.parse({ address })).toThrow();
     }
   });
 });

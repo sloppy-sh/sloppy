@@ -15,12 +15,17 @@ const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
 const held = (of: string): OwnedRef => `${DID}/${of}` as OwnedRef;
 
+/** Every fixture note is written in the same moment; what orders these runs
+ *  is their addresses. */
+const WRITTEN = '2026-01-01T00:00:00.000Z';
+
 function row(address: string, depth: number): TreeRow {
 	return {
 		kind: 'note',
 		note: {
 			ref: held(address),
 			address: address as Address,
+			created_at: WRITTEN,
 			title: `About ${address}`,
 			tags: [],
 			published: false

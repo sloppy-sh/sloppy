@@ -226,7 +226,8 @@ export type RefuseVoiceRequest = z.input<typeof RefuseVoiceRequestSchema>;
  */
 export const AnsweredNoteSchema = z.object({
   note: OwnedRefSchema,
-  address: AddressSchema,
+  /** Absent is a note with no address; `title` is what names it. */
+  address: AddressSchema.optional(),
   graph: OwnedRefSchema,
   title: z.string(),
   voices: z.array(DidSyrSchema),

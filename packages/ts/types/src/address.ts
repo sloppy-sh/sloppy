@@ -147,17 +147,23 @@ export function siblingAddress(address: Address): Address {
  * first gap in it, so a note taken out of the middle does not hand its address
  * to a later one.
  *
- * `siblings` may carry addresses from another run — a move gives a parent a
- * different address, and the rows an address was spent on are read by the
+ * `siblings` is the run as a caller holds it, so a sibling its author left
+ * unaddressed is passed in as absent and never moves the answer.
+ *
+ * `siblings` may also carry addresses from another run — a move gives a parent
+ * a different address, and the rows an address was spent on are read by the
  * parent they hung under. Those are dropped rather than followed: they are
  * spent under an address no note is at, and nothing will be written there
  * again.
  */
 export function nextChildAddress(
   parent: Address | null,
-  siblings: readonly Address[],
+  siblings: readonly (Address | undefined)[],
 ): Address {
-  const run = siblings.filter((address) => parentAddress(address) === parent);
+  const run = siblings.filter(
+    (address): address is Address =>
+      address !== undefined && parentAddress(address) === parent,
+  );
   if (run.length === 0) return childAddress(parent);
   const greatest = run.reduce((a, b) => (compareAddresses(a, b) >= 0 ? a : b));
   return siblingAddress(greatest);
@@ -251,16 +257,46 @@ export function compareAddresses(a: Address, b: Address): number {
 }
 
 /**
- * The run of thought over notes that lie alongside each other, in pairs: each
- * one and the one that follows it. Address order is the whole rule, so a note
- * taken out of the middle leaves the two either side of it consecutive.
+ * A note as a run reads it: the ref that names it, the address it carries where
+ * its author has written one, and when it was written.
  */
-export function runPairs<T extends { address: Address }>(
+export interface RunMember {
+  ref: string;
+  address?: Address;
+  created_at: string;
+}
+
+/**
+ * Notes in the order a person reads them: the ones carrying addresses first, by
+ * address, then the rest in the order they were written — ties broken by ref, so
+ * two notes written in one millisecond still read the same way on every peer. A
+ * run is what this is named for and what {@link runPairs} needs it for; a listing
+ * that is not one is ordered by the same rule so no two surfaces disagree.
+ */
+export function orderSiblings<T extends RunMember>(
+  alongside: readonly T[],
+): T[] {
+  return [...alongside].sort((a, b) => {
+    if (a.address !== undefined && b.address !== undefined) {
+      return compareAddresses(a.address, b.address);
+    }
+    if (a.address !== undefined) return -1;
+    if (b.address !== undefined) return 1;
+    return (
+      a.created_at.localeCompare(b.created_at) || a.ref.localeCompare(b.ref)
+    );
+  });
+}
+
+/**
+ * The run of thought over notes that lie alongside each other, in pairs: each
+ * one and the one that follows it. {@link orderSiblings} is the whole rule, so
+ * a note taken out of the middle leaves the two either side of it consecutive.
+ */
+export function runPairs<T extends RunMember>(
   alongside: readonly T[],
 ): [T, T][] {
-  const order = [...alongside].sort((a, b) =>
-    compareAddresses(a.address, b.address),
-  );
+  const order = orderSiblings(alongside);
   const pairs: [T, T][] = [];
   for (let at = 1; at < order.length; at++) {
     pairs.push([order[at - 1], order[at]]);
@@ -269,19 +305,19 @@ export function runPairs<T extends { address: Address }>(
 }
 
 /**
- * Where `address` sits along the run of the notes it is `alongside`, which are
+ * Where the note at `ref` sits along the run it is `alongside`, which is
  * expected to include it: the one before it and the one after, `null` at either
  * end of the run.
  */
-export function alongRun<T extends { address: Address }>(
-  address: Address,
+export function alongRun<T extends RunMember>(
+  ref: string,
   alongside: readonly T[],
 ): { before: T | null; after: T | null } {
   let before: T | null = null;
   let after: T | null = null;
   for (const [left, right] of runPairs(alongside)) {
-    if (right.address === address) before = left;
-    if (left.address === address) after = right;
+    if (right.ref === ref) before = left;
+    if (left.ref === ref) after = right;
   }
   return { before, after };
 }
@@ -296,7 +332,20 @@ export function addressSector(address: Address): number {
   if (!ADDRESS_PATTERN.test(address)) {
     throw new InvalidAddressError(address, "does not match the grammar");
   }
-  return (fnv1a32(address) / 0x1_0000_0000) * TAU;
+  return sectorOf(address);
+}
+
+/**
+ * The same direction for a note that has no address to take one from: over the
+ * ref, which every peer holding the note has, so the seed is agreed on the way
+ * an address-derived one is. Radians on `[0, 2π)`.
+ */
+export function refSector(ref: string): number {
+  return sectorOf(ref);
+}
+
+function sectorOf(value: string): number {
+  return (fnv1a32(value) / 0x1_0000_0000) * TAU;
 }
 
 function letterOrdinal(address: string, run: string): number {

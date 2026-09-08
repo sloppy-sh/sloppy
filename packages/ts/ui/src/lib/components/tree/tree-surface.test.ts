@@ -13,6 +13,10 @@ const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
 const held = (address: string): OwnedRef => `${DID}/${address}` as OwnedRef;
 
+/** Every fixture note is written in the same moment; what orders these runs
+ *  is their addresses. */
+const WRITTEN = '2026-01-01T00:00:00.000Z';
+
 function letters(ordinal: number): string {
 	let out = '';
 	let left = ordinal;
@@ -27,6 +31,7 @@ function note(address: string, parent?: string, over: Partial<TreeNote> = {}): T
 	return {
 		ref: held(address),
 		address: address as Address,
+		created_at: WRITTEN,
 		parent: parent === undefined ? undefined : held(parent),
 		title: `About ${address}`,
 		tags: [],

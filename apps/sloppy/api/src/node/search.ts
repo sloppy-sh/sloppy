@@ -2,7 +2,7 @@
 // asked, and what a hit shows of the answer.
 // docs/ARCHITECTURE.md § "Data model".
 
-import { compareAddresses, type OwnedRef, type SearchHit } from "@sloppy/types";
+import { orderSiblings, type OwnedRef, type SearchHit } from "@sloppy/types";
 
 /** One section whose writing carries the words asked for. `at` is where each
  *  match starts, counted in characters of `text`. */
@@ -69,14 +69,22 @@ export interface Ranked {
 }
 
 /** Best first: the note whose writing carries the words most often, ties
- *  settled by address and then by ref, so one search answers the same way
- *  twice. */
+ *  settled the way a run reads — `orderSiblings` — so one search answers the
+ *  same way twice. */
 export function bestFirst(a: Ranked, b: Ranked): number {
-  return (
-    b.matches - a.matches ||
-    compareAddresses(a.hit.address, b.hit.address) ||
-    a.hit.note.localeCompare(b.hit.note)
-  );
+  if (b.matches !== a.matches) return b.matches - a.matches;
+  const [first] = orderSiblings([runMember(a.hit), runMember(b.hit)]);
+  return first.ref === a.hit.note ? -1 : 1;
+}
+
+function runMember(hit: SearchHit) {
+  return {
+    ref: hit.note,
+    ...(hit.address === undefined ? {} : { address: hit.address }),
+    // A hit carries no timestamp: what settles a tie between two notes with no
+    // address is the ref, which `orderSiblings` reaches once these agree.
+    created_at: "",
+  };
 }
 
 /** The writing around one match, cut to what a list can show. Whole where the

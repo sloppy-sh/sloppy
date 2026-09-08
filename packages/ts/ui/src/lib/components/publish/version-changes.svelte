@@ -50,7 +50,7 @@
 
 	function moved(entry: PublishedNoteChange): string | null {
 		if (entry.change !== 'changed' || entry.before.address === entry.note.address) return null;
-		return entry.before.address;
+		return entry.before.address ?? null;
 	}
 
 	function renamed(entry: PublishedNoteChange): string | null {

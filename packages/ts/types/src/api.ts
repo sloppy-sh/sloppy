@@ -220,7 +220,8 @@ export function parseNodeBulkResult(value: unknown): NodeBulkResult {
  */
 export const DeletedBranchSchema = z.object({
   ref: OwnedRefSchema,
-  address: AddressSchema,
+  /** Absent is a branch with no address; `title` names it instead. */
+  address: AddressSchema.optional(),
   graph: OwnedRefSchema,
   title: z.string(),
   deleted_at: TimestampSchema,
@@ -240,7 +241,9 @@ export type DeletedBranch = z.infer<typeof DeletedBranchSchema>;
  */
 export const SearchHitSchema = z.object({
   note: OwnedRefSchema,
-  address: AddressSchema,
+  /** Absent is a note its author has given no address; `title` is what a
+   *  reader has to go on then, as `noteLabel` says. */
+  address: AddressSchema.optional(),
   graph: OwnedRefSchema,
   title: z.string(),
   snippet: z.string().default(""),

@@ -8,9 +8,12 @@ import {
 	DID,
 	moving,
 	node,
+	numbering,
 	ref,
+	unnumbered,
 	useFakeApi,
 	VIEWER,
+	writing,
 	type FakeApi
 } from './fake-api.test-support.js';
 
@@ -322,6 +325,56 @@ describe('the graph this device kept', () => {
 
 		expect(nodes.region().map((n) => n.address)).toEqual(['1']);
 		expect(nodes.get(OTHER_ROOT)).toBeUndefined();
+	});
+});
+
+describe('the address a person writes on a note', () => {
+	it('reads the note back at the address it was given, and nothing else moves', async () => {
+		await nodes.load({ origin: ROOT });
+		numbering(api, ref(2), (address) => node(2, address ?? '1a', { origin: ROOT, parent: ROOT }));
+
+		const written = await nodes.setAddress(ref(2), '1c');
+
+		expect(written.address).toBe('1c');
+		expect(nodes.get(ref(2))?.address).toBe('1c');
+		expect(nodes.get(ref(3))?.address).toBe('1a1');
+	});
+
+	it('takes the address off, and the note stays in the run it was written in', async () => {
+		await nodes.load({ origin: ROOT });
+		numbering(api, ref(2), () => unnumbered(2, { origin: ROOT, parent: ROOT, depth: 2 }));
+
+		await nodes.setAddress(ref(2), null);
+
+		expect(nodes.get(ref(2))?.address).toBeUndefined();
+		expect(nodes.children(ROOT).map((one) => one.ref)).toEqual([ref(2)]);
+	});
+
+	it('reads a note written with no parent and no address', async () => {
+		writing(api, () => unnumbered(9));
+
+		const written = await nodes.create({ from: { relation: 'free' } });
+
+		expect(written.address).toBeUndefined();
+		expect(written.parent).toBeUndefined();
+		expect(nodes.get(ref(9))?.address).toBeUndefined();
+	});
+
+	it('puts a note with no address after the ones that have one, in its run', async () => {
+		// Written long before its addressed sibling, and still read after it: an
+		// address leads a run and the rest follow in the order they were written.
+		api.on('GET /nodes', () => [
+			...TREE,
+			unnumbered(7, {
+				origin: ROOT,
+				parent: ROOT,
+				depth: 2,
+				created_at: '2020-01-01T00:00:00.000Z'
+			})
+		]);
+		await nodes.load({ origin: ROOT });
+
+		expect(nodes.children(ROOT).map((one) => one.ref)).toEqual([ref(2), ref(7)]);
 	});
 });
 

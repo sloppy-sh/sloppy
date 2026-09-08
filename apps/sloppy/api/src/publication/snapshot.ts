@@ -15,6 +15,7 @@ import {
   type PublishedLook,
   type PublishedNode,
   REFERENCE_NOTE_ATTR,
+  ownedRefFrom,
 } from "@sloppy/types";
 
 /**
@@ -78,22 +79,23 @@ export function publishedDocument(
 }
 
 /**
- * One note as a version froze it. It carries no `depth` — a reader computes
- * that from the address — and `origin` is the root of the REGION, which for a
- * publication rooted below depth 1 is not the root of the author's tree.
+ * One note as a version froze it. It carries no `depth` — a reader mints that
+ * walking the parents the region carries — and `origin` is the root of the
+ * REGION, which for a publication rooted below depth 1 is not the root of the
+ * author's tree.
  *
  * Its look is the shape channels alone; DESIGN.md § "A note's look never uses
  * colour" carries why the pictures stay behind.
  */
 export function publishedNodeOf(
   node: Node,
-  region: { root: OwnedRef; address: Address },
+  region: { root: OwnedRef },
   carried: { links: readonly OwnedRef[]; aliases: readonly Address[] },
 ): Omit<PublishedNode, "ref"> {
-  const root = node.address === region.address;
+  const root = ownedRefFrom(node.id) === region.root;
   const look = travellingLook(node.appearance);
   return {
-    address: node.address,
+    ...(node.address === undefined ? {} : { address: node.address }),
     ...(carried.aliases.length === 0 ? {} : { aliases: [...carried.aliases] }),
     ...(root || node.parent === undefined ? {} : { parent: node.parent }),
     origin: region.root,

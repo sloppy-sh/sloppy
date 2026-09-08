@@ -9,8 +9,6 @@ import {
 } from "@nestjs/common";
 import {
   type Address,
-  addressDepth,
-  compareAddresses,
   type CreateNodeRequestSchema,
   createOwnedRecordId,
   DELETED_KEPT_FOR_DAYS,
@@ -20,7 +18,6 @@ import {
   graphAsked,
   graphOf,
   isAddress,
-  isAncestorAddress,
   isInSubtree,
   isRootAddress,
   isUnstyled,
@@ -41,6 +38,9 @@ import {
   type OwnedRef,
   ownedRefFrom,
   parseNode,
+  namesGraph,
+  noteLabel,
+  orderSiblings,
   publishRootsOf,
   type SearchHit,
   type TagCount,
@@ -185,21 +185,22 @@ export class NodeService {
     const notes = await this.nodes.many(did, [
       ...new Set([...reach.at, ...reach.carriedAway]),
     ]);
-    return notes
-      .sort(
-        (a, b) =>
-          compareAddresses(a.address, b.address) ||
-          ownedRefFrom(a.id).localeCompare(ownedRefFrom(b.id)),
-      )
-      .map((note) => ({
-        note: ownedRefFrom(note.id),
+    return orderSiblings(
+      notes.map((note) => ({
+        ref: ownedRefFrom(note.id),
         address: note.address,
-        graph: graphOf(note),
-        title: note.title,
-        snippet: "",
-        ...(at.has(ownedRefFrom(note.id)) ? {} : { wasAt: address }),
-        held: false,
-      }));
+        created_at: note.created_at,
+        node: note,
+      })),
+    ).map(({ node: note }) => ({
+      note: ownedRefFrom(note.id),
+      ...(note.address === undefined ? {} : { address: note.address }),
+      graph: graphOf(note),
+      title: note.title,
+      snippet: "",
+      ...(at.has(ownedRefFrom(note.id)) ? {} : { wasAt: address }),
+      held: false,
+    }));
   }
 
   async recent(
@@ -300,16 +301,24 @@ export class NodeService {
 
   async create(did: string, request: CreateRequest): Promise<NodeView> {
     const from = request.from;
-    return this.addressing.run(did, async () =>
-      from?.relation === "root"
-        ? this.writeAt(
-            did,
-            await this.graphFor(did, from),
-            from.address,
-            request,
-          )
-        : this.write(did, request),
-    );
+    return this.addressing.run(did, async () => {
+      if (from?.relation === "root") {
+        return this.writeAt(
+          did,
+          await this.graphFor(did, from),
+          from.address,
+          request,
+        );
+      }
+      if (from?.relation === "free") {
+        return entityView(
+          await this.nodes.insert(
+            newNode(did, await this.graphFor(did, from), null, request),
+          ),
+        );
+      }
+      return this.write(did, request);
+    });
   }
 
   /** The graph a new branch opens in, where the placement is one that names a
@@ -357,8 +366,19 @@ export class NodeService {
     return this.addressing.run(did, async () => {
       const note = await this.nodes.find(did, ref);
       if (!note) throw new NotFoundException("That note is not here.");
+      if (note.address === undefined) {
+        throw new BadRequestException(
+          "Give this note a number before carrying it somewhere else.",
+        );
+      }
       const graph = graphOf(note);
-      return this.carry(did, note, graph, await this.landingFor(did, note, to));
+      const landing = await this.landingFor(did, note, to);
+      if (landing !== null && landing.address === undefined) {
+        throw new BadRequestException(
+          "That note has no number yet, so nothing can be numbered under it. Give it one first.",
+        );
+      }
+      return this.carry(did, note, graph, landing);
     });
   }
 
@@ -394,6 +414,8 @@ export class NodeService {
   private outside(note: Node, parent: Node): Node {
     if (
       parent.origin === note.origin &&
+      note.address !== undefined &&
+      parent.address !== undefined &&
       isInSubtree(note.address, parent.address)
     ) {
       throw new BadRequestException(
@@ -415,35 +437,45 @@ export class NodeService {
     parent: Node | null,
   ): Promise<NodeView[]> {
     const ref = ownedRefFrom(note.id);
+    const was = note.address as Address;
     const carried = await this.nodes.carried(did, note);
     const beneath = carried.filter((one) => ownedRefFrom(one.id) !== ref);
     const landing = movedSubtree(
       parent?.address ?? null,
       await this.nodes.childAddresses(did, parent, graph),
-      note.address,
-      beneath.map((one) => one.address),
+      was,
+      beneath.flatMap((one) => (one.address ? [one.address] : [])),
     );
-    const lands = (was: Address) => landing.get(was) as Address;
-    if (parent === null && !isRootAddress(lands(note.address))) {
+    const lands = (at: Address) => landing.get(at) as Address;
+    if (parent === null && !isRootAddress(lands(was))) {
       throw new BadRequestException(
         "There is no number left after your highest branch. Carry this note under a note instead.",
       );
     }
 
     const origin = parent ? parent.origin : ref;
-    const landedAt = (one: Node, over: Partial<Node> = {}) =>
-      parseNode({
-        ...one,
-        address: lands(one.address),
-        depth: addressDepth(lands(one.address)),
+    const depthAt = depthsUnder(carried, ref, parent ? parent.depth + 1 : 1);
+    const landedAt = (one: Node, over: Partial<Node> = {}) => {
+      const { address, ...rest } = one;
+      return parseNode({
+        ...rest,
+        ...(address === undefined ? {} : { address: lands(address) }),
+        depth: depthAt(one),
         origin,
         ...over,
       });
+    };
     const root = landedAt(note, {
       parent: parent ? ownedRefFrom(parent.id) : undefined,
     });
     const landed = [root, ...beneath.map((one) => landedAt(one))];
-    await this.nodes.move(did, landed, carried.map(leftBehind));
+    await this.nodes.move(
+      did,
+      landed,
+      carried.flatMap((one) =>
+        one.address ? [leftBehind(one, one.address)] : [],
+      ),
+    );
     return this.asRead(did, await this.nodes.subtree(did, root));
   }
 
@@ -650,6 +682,8 @@ export class NodeService {
         ? sent.has(ref)
         : put.some(
             (root) =>
+              root.address !== undefined &&
+              note.address !== undefined &&
               root.origin === note.origin &&
               isInSubtree(root.address, note.address),
           );
@@ -722,7 +756,7 @@ export class NodeService {
     did: string,
     from: CreateRequest["from"],
   ): Promise<{ graph: OwnedRef; parent: Node | null }> {
-    if (!from || from.relation === "root" || from.relation === "branch") {
+    if (!from || namesGraph(from)) {
       return { graph: await this.graphFor(did, from), parent: null };
     }
     const anchor = await this.nodes.find(did, from.note);
@@ -755,7 +789,7 @@ export class NodeService {
     if (held) throw taken(address, held);
     try {
       return entityView(
-        await this.nodes.insert(newNode(did, graph, address, null, request)),
+        await this.nodes.insert(newNode(did, graph, null, request, address)),
       );
     } catch (err) {
       const lost = await this.nodes.addressTaken(did, graph, address);
@@ -767,6 +801,11 @@ export class NodeService {
   private async write(did: string, request: CreateRequest): Promise<NodeView> {
     for (let attempt = 1; ; attempt++) {
       const { graph, parent } = await this.placeFor(did, request.from);
+      if (parent !== null && parent.address === undefined) {
+        return entityView(
+          await this.nodes.insert(newNode(did, graph, parent, request)),
+        );
+      }
       const address = nextChildAddress(
         parent?.address ?? null,
         await this.nodes.childAddresses(did, parent, graph),
@@ -781,7 +820,7 @@ export class NodeService {
       try {
         return entityView(
           await this.nodes.insert(
-            newNode(did, graph, address, parent, request),
+            newNode(did, graph, parent, request, address),
           ),
         );
       } catch (err) {
@@ -800,19 +839,44 @@ function missing(relation: NoteDestination["relation"]): string {
     : "The note this follows is not here.";
 }
 
-/** The address a note is leaving, still leading to it. */
-function leftBehind(was: Node): NodeAlias {
+/** The address a note is leaving, still leading to it. A note with none leaves
+ *  nothing behind. */
+function leftBehind(was: Node, address: Address): NodeAlias {
   const at = nowIso();
   return {
     id: createOwnedRecordId("node_alias", was.created_by),
     created_by: was.created_by,
     graph: graphOf(was),
     ...(was.parent ? { parent: was.parent } : {}),
-    address: was.address,
+    address,
     note: ownedRefFrom(was.id),
     created_at: at,
     updated_at: at,
   };
+}
+
+/**
+ * The depth every note of a carried subtree lands at, read off the parent chain
+ * and not off the address: a note its author left unaddressed is carried like
+ * any other.
+ */
+function depthsUnder(
+  carried: readonly Node[],
+  root: OwnedRef,
+  rootDepth: number,
+): (one: Node) => number {
+  const byRef = new Map(carried.map((one) => [ownedRefFrom(one.id), one]));
+  const known = new Map<OwnedRef, number>([[root, rootDepth]]);
+  const depthOf = (one: Node): number => {
+    const at = ownedRefFrom(one.id);
+    const held = known.get(at);
+    if (held !== undefined) return held;
+    const up = one.parent === undefined ? undefined : byRef.get(one.parent);
+    const depth = up === undefined ? rootDepth : depthOf(up) + 1;
+    known.set(at, depth);
+    return depth;
+  };
+  return depthOf;
 }
 
 /** The moment before which a deleted branch can no longer be put back. */
@@ -838,36 +902,45 @@ function answer(
  * a note deleted earlier is counted under nothing but itself.
  */
 function branchesAmong(gone: readonly Node[]): DeletedBranch[] {
-  const away = new Set(gone.map((node) => ownedRefFrom(node.id)));
+  const byRef = new Map(gone.map((node) => [ownedRefFrom(node.id), node]));
+  const away = new Set(byRef.keys());
+  const springsFrom = (root: OwnedRef, node: Node): boolean => {
+    const seen = new Set<OwnedRef>();
+    for (let walk: Node | undefined = node; walk !== undefined; ) {
+      const at = ownedRefFrom(walk.id);
+      if (at === root) return true;
+      if (seen.has(at)) return false;
+      seen.add(at);
+      walk = walk.parent === undefined ? undefined : byRef.get(walk.parent);
+    }
+    return false;
+  };
   const under = (root: Node, at: string) =>
     gone.filter(
       (node) =>
-        node.deleted_at === at &&
-        node.origin === root.origin &&
-        (node.address === root.address ||
-          isAncestorAddress(root.address, node.address)),
+        node.deleted_at === at && springsFrom(ownedRefFrom(root.id), node),
     ).length;
-  return gone
-    .flatMap((root) => {
-      const at = root.deleted_at;
-      if (at === undefined) return [];
-      if (root.parent && away.has(root.parent)) return [];
-      return [
-        {
-          ref: ownedRefFrom(root.id),
-          address: root.address,
-          graph: graphOf(root),
-          title: root.title,
-          deleted_at: at,
-          notes: under(root, at),
-        },
-      ];
-    })
-    .sort(
-      (a, b) =>
-        b.deleted_at.localeCompare(a.deleted_at) ||
-        compareAddresses(a.address, b.address),
-    );
+  const branches = gone.flatMap((root) => {
+    const at = root.deleted_at;
+    if (at === undefined) return [];
+    if (root.parent && away.has(root.parent)) return [];
+    return [
+      {
+        ref: ownedRefFrom(root.id),
+        ...(root.address === undefined ? {} : { address: root.address }),
+        graph: graphOf(root),
+        title: root.title,
+        deleted_at: at,
+        created_at: root.created_at,
+        notes: under(root, at),
+      },
+    ];
+  });
+  // Newest act first, and the run's own order inside one act — the sort is
+  // stable, so `orderSiblings` decides what a person reads down the list.
+  return orderSiblings(branches)
+    .sort((a, b) => b.deleted_at.localeCompare(a.deleted_at))
+    .map(({ created_at: _written, ...branch }) => branch);
 }
 
 /**
@@ -882,7 +955,7 @@ function retag(note: Node, adding: boolean, named: Tags): Tags {
   const parsed = TagsSchema.safeParse(after);
   if (!parsed.success) {
     throw new BadRequestException(
-      `A note carries at most ${MAX_TAGS_PER_NODE} tags, and ${note.address} would go past that. Take a few off it first.`,
+      `A note carries at most ${MAX_TAGS_PER_NODE} tags, and ${noteLabel(note)} would go past that. Take a few off it first.`,
     );
   }
   return parsed.data;
@@ -904,9 +977,9 @@ function taken(address: Address, held: AddressHold): BadRequestException {
 function newNode(
   did: string,
   graph: OwnedRef,
-  address: Address,
   parent: Node | null,
   request: CreateRequest,
+  address?: Address,
 ): Node {
   const id = createOwnedRecordId("node", did);
   const now = nowIso();
@@ -914,8 +987,8 @@ function newNode(
     id,
     created_by: did,
     graph,
-    address,
-    depth: addressDepth(address),
+    ...(address === undefined ? {} : { address }),
+    depth: parent ? parent.depth + 1 : 1,
     ...(parent ? { parent: ownedRefFrom(parent.id) } : {}),
     origin: parent ? parent.origin : ownedRefFrom(id),
     title: request.title,

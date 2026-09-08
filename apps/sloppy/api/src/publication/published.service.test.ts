@@ -285,7 +285,12 @@ async function readThrough(
     );
     pages += 1;
     if (pages === 1) between?.();
-    for (const node of page.nodes) addresses.push(node.address);
+    for (const node of page.nodes) {
+      if (node.address === undefined) {
+        throw new Error(`${node.ref} was published without an address`);
+      }
+      addresses.push(node.address);
+    }
     for (const block of page.blocks) sections.push(block.ref);
     cursor = page.next_cursor;
   } while (cursor !== undefined);

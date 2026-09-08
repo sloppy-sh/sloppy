@@ -3,7 +3,8 @@
 
 	/** Enough of a note to know whether you want it open. */
 	export interface PreviewedNote {
-		address: string;
+		/** Absent on a note its author gave none; the title names it. */
+		address?: string;
 		title: string;
 		/** Every tag the MARK stands for, which on a mega-node is the subtree's. */
 		tags: readonly Tag[];

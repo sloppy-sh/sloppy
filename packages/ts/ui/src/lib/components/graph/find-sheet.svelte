@@ -4,7 +4,8 @@
 	/** One note the words reached, as the list offers it. */
 	export interface FoundNote {
 		ref: OwnedRef;
-		address: string;
+		/** Absent on a note its author gave none; the title names it. */
+		address?: string;
 		title: string;
 		/** What the graph this address is read in is called, or null where naming
 		 *  it would tell the reader nothing. */

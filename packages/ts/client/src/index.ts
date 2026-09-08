@@ -4,6 +4,7 @@
 // embedded server. docs/ARCHITECTURE.md § "Deployment modes" states the three.
 
 import {
+  type Address,
   type AnsweredNote,
   AnsweredNoteSchema,
   type BlockView,
@@ -372,6 +373,17 @@ export class SloppyClient {
   ): Promise<NodeView> {
     return parseNodeView(
       await this.send("PATCH", `/nodes${refPath(ref)}`, request),
+    );
+  }
+
+  /**
+   * Write the address a person cites this note by, or take it off with `null`.
+   * An address nothing else in the graph holds or has ever held; anything else
+   * is refused with words to show somebody.
+   */
+  async setAddress(ref: OwnedRef, address: Address | null): Promise<NodeView> {
+    return parseNodeView(
+      await this.send("PUT", `/nodes${refPath(ref)}/address`, { address }),
     );
   }
 

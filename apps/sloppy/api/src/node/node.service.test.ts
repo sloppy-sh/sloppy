@@ -224,7 +224,10 @@ function notebook(
   const under = (root: Node, from: readonly Node[]) =>
     from.filter(
       (one) =>
-        one.origin === root.origin && isInSubtree(root.address, one.address),
+        one.origin === root.origin &&
+        root.address !== undefined &&
+        one.address !== undefined &&
+        isInSubtree(root.address, one.address),
     );
   const repository = {
     find: (_did: string, ref: OwnedRef) =>
@@ -577,5 +580,39 @@ describe("an address typed into a search", () => {
 
     expect(await service.search(DID, "spores")).toEqual([]);
     expect(asked.address).toBeUndefined();
+  });
+});
+
+/** One note its author never numbered. */
+function unnumbered(
+  title: string,
+  over: Partial<Node> = {},
+): Node & { ref: OwnedRef } {
+  const { address: _left, ...rest } = live("1", { title, ...over });
+  return rest as Node & { ref: OwnedRef };
+}
+
+describe("a graph holding a note nobody numbered", () => {
+  it("still opens the next branch after its highest one", async () => {
+    const { service } = notebook([unnumbered("On its own"), live("1")]);
+
+    const written = await service.create(DID, { title: "", tags: [] });
+
+    expect(written.address).toBe("2");
+  });
+
+  it("writes a note under it with no number either", async () => {
+    const alone = unnumbered("On its own");
+    const { service } = notebook([alone]);
+
+    const written = await service.create(DID, {
+      from: { relation: "under", note: alone.ref },
+      title: "What it led to",
+      tags: [],
+    });
+
+    expect(written.address).toBeUndefined();
+    expect(written.parent).toBe(alone.ref);
+    expect(written.depth).toBe(alone.depth + 1);
   });
 });

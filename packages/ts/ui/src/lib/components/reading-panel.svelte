@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { OwnedRef } from '@sloppy/types';
+	import { noteLabel, type OwnedRef } from '@sloppy/types';
 
 	/** Below this the panel would leave the graph beside it too little to read. */
 	const DOCK_FROM_PX = 900;
@@ -30,11 +30,11 @@
 		return Math.min(most, Math.max(least, Math.round(want)));
 	}
 
-	/** One note open in the panel. The address leads, because it is what a person
-	 *  cites and the one label that is never blank. */
+	/** One note open in the panel. The address leads where there is one, because
+	 *  it is what a person cites; a note with none is read by its title. */
 	export interface ReadingTab {
 		ref: OwnedRef;
-		address: string;
+		address?: string;
 		title: string;
 		/** The graph the address is read in. Null where every open note is in one
 		 *  graph, which the strip does not repeat. */
@@ -281,7 +281,7 @@
 						type="button"
 						aria-current={showing ? 'page' : undefined}
 						aria-label={tab.graph
-							? `${tab.address} ${tab.title || 'Untitled'}, in ${tab.graph}`
+							? `${[tab.address, tab.title || 'Untitled'].filter(Boolean).join(' ')}, in ${tab.graph}`
 							: undefined}
 						onclick={() => onActivate?.(tab.ref)}
 						class={cn(
@@ -300,7 +300,9 @@
 					</button>
 					<button
 						type="button"
-						aria-label={tab.graph ? `Close ${tab.address} in ${tab.graph}` : `Close ${tab.address}`}
+						aria-label={tab.graph
+							? `Close ${noteLabel(tab)} in ${tab.graph}`
+							: `Close ${noteLabel(tab)}`}
 						onclick={() => onCloseTab?.(tab.ref)}
 						class="flex w-11 shrink-0 items-center justify-center rounded-r-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>

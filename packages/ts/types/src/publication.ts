@@ -67,20 +67,23 @@ export type CreatePublicationRequest = z.input<
  * `rooted` answers whether a publication is already rooted at a note. The
  * surface counts what it says over this and the API acts on it, so what a
  * person is told and what happens are one decision — docs/ARCHITECTURE.md
- * § "Federating the graph".
+ * § "Federating the graph". A note with no address is its own root: nothing
+ * carries it, because what carries it is read off the addresses.
  */
 export function publishRootsOf<
-  T extends { origin: OwnedRef; address: Address },
+  T extends { origin: OwnedRef; address?: Address },
 >(chosen: readonly T[], rooted: (note: T) => boolean): T[] {
-  return chosen.filter(
-    (note) =>
-      rooted(note) ||
-      !chosen.some(
-        (other) =>
-          other.origin === note.origin &&
-          isAncestorAddress(other.address, note.address),
-      ),
-  );
+  return chosen.filter((note) => {
+    if (rooted(note)) return true;
+    const under = note.address;
+    if (under === undefined) return true;
+    return !chosen.some(
+      (other) =>
+        other.address !== undefined &&
+        other.origin === note.origin &&
+        isAncestorAddress(other.address, under),
+    );
+  });
 }
 
 /** Change who is invited to comment. It publishes nothing: the terms of a
@@ -204,7 +207,8 @@ export const MAX_UNPUBLISHED_CHANGES = 200;
  */
 export const UnpublishedChangeSchema = z.object({
   note: OwnedRefSchema,
-  address: AddressSchema,
+  /** Absent is a note with no address; `title` is what names it. */
+  address: AddressSchema.optional(),
   title: z.string().max(512),
   change: z.enum(["added", "removed", "changed"]),
   /** Where it was in the version, where that is not where it is now. Absent is

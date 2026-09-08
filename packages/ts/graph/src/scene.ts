@@ -1406,9 +1406,14 @@ export class GraphScene {
         this.positions[mark.index * 2 + 1],
       );
       const left = screen.x + mark.radius * this.viewport.scale + LABEL_GAP;
+      // A note with no address draws its title alone, where the address would
+      // have started, rather than one gap along from an empty caption.
+      const captioned = slot.address.text !== "";
+      const titled = slot.title.text !== "";
+      const indent = captioned ? slot.address.width + LABEL_GAP : 0;
       const width =
-        slot.address.width +
-        (slot.title.text === "" ? 0 : LABEL_GAP + slot.title.width);
+        (captioned ? slot.address.width : 0) +
+        (titled ? (captioned ? LABEL_GAP : 0) + slot.title.width : 0);
 
       if (overlaps(placed, left, screen.y, width)) {
         slot.address.visible = false;
@@ -1419,10 +1424,10 @@ export class GraphScene {
 
       slot.address.position.set(left, screen.y);
       slot.address.tint = fill;
-      slot.address.visible = true;
-      slot.title.position.set(left + slot.address.width + LABEL_GAP, screen.y);
+      slot.address.visible = captioned;
+      slot.title.position.set(left + indent, screen.y);
       slot.title.tint = fill;
-      slot.title.visible = slot.title.text !== "";
+      slot.title.visible = titled;
     }
   }
 }
@@ -1448,9 +1453,11 @@ function shorten(text: string, limit: number): string {
 }
 
 function addressCaption(attributes: GraphNodeAttributes): string {
-  return attributes.folded > 0
-    ? `${attributes.address} +${attributes.folded}`
-    : attributes.address;
+  const address = attributes.address ?? "";
+  if (attributes.folded === 0) return address;
+  return address === ""
+    ? `+${attributes.folded}`
+    : `${address} +${attributes.folded}`;
 }
 
 /** One ring of a lift: the circle stroked, in world units from the mark's

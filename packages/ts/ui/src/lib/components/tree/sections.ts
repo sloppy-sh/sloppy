@@ -1,7 +1,7 @@
 // A note's sections drawn under its row in the outline, and the arranging of
 // them there.
 
-import type { Address, OwnedRef } from '@sloppy/types';
+import { noteLabel, type OwnedRef } from '@sloppy/types';
 import type { TreeRow } from './walk.js';
 
 /** One section, as a row of the outline says it. */
@@ -13,10 +13,10 @@ export interface TreeSection {
 
 export interface SectionItem {
 	kind: 'section';
-	/** The note it belongs to, and that note's address, which is how a row of it
-	 *  is named. */
+	/** The note it belongs to, and what names it — `noteLabel` in
+	 *  `@sloppy/types`, so a note with no address is named by its title. */
 	note: OwnedRef;
-	address: Address;
+	named: string;
 	section: TreeSection;
 	depth: number;
 	/** Its place in the note's stack, from 1, and how long that stack is. */
@@ -71,7 +71,7 @@ export function withSections(
 			out.push({
 				kind: 'section',
 				note: row.note.ref,
-				address: row.note.address,
+				named: noteLabel(row.note),
 				section,
 				depth,
 				at: at + 1,
@@ -112,10 +112,10 @@ export function aimSection(band: SectionBand, y: number): SectionAim | null {
 }
 
 /** What the drop is about to do, for the reader and for anyone listening. */
-export function sectionSays(band: SectionBand, address: Address, aim: SectionAim | null): string {
+export function sectionSays(band: SectionBand, named: string, aim: SectionAim | null): string {
 	if (!aim) return 'A section stays in the note it was written in';
 	const above = band.rows[aim.slot - 1];
-	return above ? `Put it after ${above.says}` : `Put it first in ${address}`;
+	return above ? `Put it after ${above.says}` : `Put it first in ${named}`;
 }
 
 /**

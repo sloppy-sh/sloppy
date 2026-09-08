@@ -15,22 +15,23 @@ import {
 } from "./geometry.js";
 
 const corpus = makeCorpus();
-const addresses = corpus.nodes.map((node) => node.address);
+const notes = corpus.nodes;
+const addresses = notes.map((node) => node.address);
+const seedOf = (address: Address) => seedAddress(address);
 
 describe("seedField", () => {
   it("agrees with the one-address form, everywhere", () => {
-    const field = seedField(addresses);
-    for (const address of addresses) {
-      expect(field.get(address)).toEqual(seedAddress(address));
+    const field = seedField(notes);
+    for (const node of notes) {
+      expect(field.get(node.ref)).toEqual(seedOf(node.address));
     }
   });
 
   it("does not depend on the order it is handed", () => {
-    const shuffled = shuffle(addresses, 7);
-    const straight = seedField(addresses);
-    const scrambled = seedField(shuffled);
-    for (const address of addresses) {
-      expect(scrambled.get(address)).toEqual(straight.get(address));
+    const straight = seedField(notes);
+    const scrambled = seedField(shuffle(notes, 7));
+    for (const node of notes) {
+      expect(scrambled.get(node.ref)).toEqual(straight.get(node.ref));
     }
   });
 
@@ -38,12 +39,12 @@ describe("seedField", () => {
   // the whole graph put that branch in the same place, without either shipping
   // a coordinate.
   it("gives a peer holding one subtree the same positions", () => {
-    const whole = seedField(addresses);
-    const branch = addresses.filter((address) => address.startsWith("3"));
+    const whole = seedField(notes);
+    const branch = notes.filter((node) => node.address.startsWith("3"));
     expect(branch.length).toBeGreaterThan(10);
     const partial = seedField(branch);
-    for (const address of branch) {
-      expect(partial.get(address)).toEqual(whole.get(address));
+    for (const node of branch) {
+      expect(partial.get(node.ref)).toEqual(whole.get(node.ref));
     }
   });
 
@@ -57,20 +58,40 @@ describe("seedField", () => {
     }
   });
 
+  // A note with no address still has to land somewhere every peer agrees on,
+  // and the ref is the one thing every peer holding it has.
+  it("seeds a note with no address from its ref, on the root ring", () => {
+    const bare = notes.slice(0, 40).map(({ address: _none, ...node }) => node);
+    const field = seedField(bare);
+    const seen = new Set<string>();
+    for (const node of bare) {
+      const seed = field.get(node.ref);
+      if (!seed) throw new Error(`${node.ref} was not seeded`);
+      expect(Math.hypot(seed.x, seed.y)).toBeCloseTo(1400, 6);
+      const key = `${seed.x}:${seed.y}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+    expect(seedField(shuffle(bare, 11)).get(bare[0].ref)).toEqual(
+      field.get(bare[0].ref),
+    );
+  });
+
   // A subtree that started scattered would be a subtree the force pass has to
   // gather, and gathering is what makes a settle look like a hairball resolving.
   it("starts a subtree inside a disc its own generation bounds", () => {
-    const field = seedField(addresses);
+    const field = seedField(notes);
+    const byAddress = new Map(notes.map((node) => [node.address, node.ref]));
     const roots = addresses.filter(
       (address) => parseAddress(address).length === 3,
     );
     for (const root of roots.slice(0, 40)) {
-      const from = field.get(root);
+      const from = field.get(byAddress.get(root) as string);
       if (!from) continue;
       const depth = parseAddress(root).length;
-      for (const address of addresses) {
-        if (!isUnder(root, address)) continue;
-        const to = field.get(address);
+      for (const node of notes) {
+        if (!isUnder(root, node.address)) continue;
+        const to = field.get(node.ref);
         if (!to) continue;
         expect(Math.hypot(to.x - from.x, to.y - from.y)).toBeLessThan(
           reachFrom(depth),
@@ -113,7 +134,12 @@ describe("placeFields", () => {
   // field is what moves, never the place a note has inside it.
   it("moves a whole field together, and nothing within it", () => {
     const [, second] = placeFields(boxes.slice(0, 2));
-    const seeds = seedField(["1", "1a", "2"] as Address[]);
+    const seeds = seedField(
+      (["1", "1a", "2"] as Address[]).map((address) => ({
+        ref: `did:syr:zAva/${address}`,
+        address,
+      })),
+    );
     const moved = [...seeds.values()].map((seed) => seed.x + second.dx);
     const spans = [...seeds.values()].map((seed) => seed.x);
     for (const [at, x] of moved.entries()) {

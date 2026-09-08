@@ -21,7 +21,8 @@ import type { TreeItem, TreeNote, TreeRow } from './walk.js';
 /** Where a drop would put the new note, said against a row already drawn. */
 export interface TreeAim {
 	on: OwnedRef;
-	address: Address;
+	/** Absent on a row whose note has no address. */
+	address?: Address;
 	title: string;
 	/** `under` the row, so the new note springs out of it; `after` it, so the new
 	 *  note continues the run the row is in. */
@@ -31,7 +32,7 @@ export interface TreeAim {
 /** A drawn row as the drag reads it off the page, in viewport coordinates. */
 export interface TreeBox {
 	on: OwnedRef;
-	address: Address;
+	address?: Address;
 	title: string;
 	top: number;
 	bottom: number;
@@ -75,8 +76,8 @@ export function aimAt(
 	};
 }
 
-const named = (row: { address: Address; title: string }): string =>
-	`${row.address} ${row.title || 'Untitled'}`;
+const named = (row: { address?: Address; title: string }): string =>
+	[row.address, row.title || 'Untitled'].filter(Boolean).join(' ');
 
 /** What the drop is about to do, for the reader and for anyone listening. */
 export function aimSays(aim: TreeAim): string {
@@ -107,6 +108,14 @@ export function movesTo(
 	if (!item) return { says: 'A note stays in the graph it was written in' };
 	const on = item.note;
 	if (on.ref === moved.ref) return { says: 'Stays where it is' };
+	// A carry reads the run off the addresses, so neither end of it can be a
+	// note nobody has numbered — the server refuses the same two.
+	if (moved.address === undefined) {
+		return { says: 'Give this note a number before carrying it' };
+	}
+	if (on.address === undefined) {
+		return { says: `${named(on)} has no number yet` };
+	}
 	if (isAncestorAddress(moved.address, on.address)) {
 		return { says: 'A note cannot go inside itself' };
 	}
@@ -117,7 +126,7 @@ export function movesTo(
 	if (folded || waiting) {
 		return { says: `Goes ${how} ${named(on)}, at the end of its run`, to: aim };
 	}
-	const along = notes.map((row) => row.note.address);
+	const along = notes.flatMap((row) => (row.note.address ? [row.note.address] : []));
 	const takes = nextChildAddress(under, along);
 	const alreadyLast = takes === siblingAddress(moved.address);
 	if (alreadyLast) return { says: 'Stays where it is' };

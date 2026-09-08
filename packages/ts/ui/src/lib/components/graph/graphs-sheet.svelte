@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { OwnedRef } from '@sloppy/types';
+	import { noteLabel, type OwnedRef } from '@sloppy/types';
 
 	/** One of somebody's graphs, as this sheet lists it. */
 	export interface GraphChoice {
@@ -10,8 +10,9 @@
 	/** A branch its author deleted and can still put back. */
 	export interface DeletedChoice {
 		ref: OwnedRef;
-		/** The number they cite it by, which is how they will recognise it. */
-		address: string;
+		/** The number they cite it by, which is how they will recognise it.
+		 *  Absent on a branch with none; the title names it. */
+		address?: string;
 		/** The graph it comes back into. An address only means one thing inside one. */
 		graph: OwnedRef;
 		title: string;
@@ -313,7 +314,7 @@
 								variant="outline"
 								class="h-9 shrink-0 rounded-full text-xs"
 								disabled={working || onRestore === undefined}
-								aria-label={`Put ${branch.address} in ${graphHolding(branch)} back`}
+								aria-label={`Put ${noteLabel(branch)} in ${graphHolding(branch)} back`}
 								onclick={() => void putBack(branch)}
 							>
 								<Undo2 class="size-4" />

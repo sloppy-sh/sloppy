@@ -1,10 +1,11 @@
 <script lang="ts" module>
-	import type { OwnedRef } from '@sloppy/types';
+	import { noteLabel, type OwnedRef } from '@sloppy/types';
 
 	/** Where a note may be carried, as this sheet offers it. */
 	export interface MoveTarget {
 		ref: OwnedRef;
-		address: string;
+		/** Absent on a note its author gave none; the title names it. */
+		address?: string;
 		title: string;
 		/** An address this note has been carried away from that the typed number
 		 *  reached, absent where its own address or its title is what matched. */
@@ -86,7 +87,7 @@
 				disabled={busy}
 				onclick={() => onmove({ relation: 'under', note: target.ref })}
 			>
-				<span class="text-sm">Put it under {target.address}</span>
+				<span class="text-sm">Put it under {noteLabel(target)}</span>
 				<span class="text-xs font-normal text-muted-foreground">
 					It becomes {lands.under}, or the next one free.
 				</span>
@@ -98,7 +99,7 @@
 				disabled={busy}
 				onclick={() => onmove({ relation: 'after', note: target.ref })}
 			>
-				<span class="text-sm">Put it beside {target.address}</span>
+				<span class="text-sm">Put it beside {noteLabel(target)}</span>
 				<span class="text-xs font-normal text-muted-foreground">
 					It becomes {lands.after}, or the next one free.
 				</span>

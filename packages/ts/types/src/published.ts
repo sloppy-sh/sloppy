@@ -6,12 +6,7 @@
 // peer fetches whichever one it likes whenever it likes. `publication.ts` is
 // the rows behind it. See docs/ARCHITECTURE.md § "Federating the graph".
 
-import {
-  type Address,
-  AddressSchema,
-  isInSubtree,
-  parentAddress,
-} from "./address.js";
+import { type Address, AddressSchema } from "./address.js";
 import { z } from "zod";
 import { NodeAppearanceSchema } from "./appearance.js";
 import { splitOwnedRef } from "./codecs.js";
@@ -166,7 +161,9 @@ export type PublishedLook = z.infer<typeof PublishedLookSchema>;
  */
 export const PublishedNodeSchema = z.object({
   ref: OwnedRefSchema,
-  address: AddressSchema,
+  /** The label its author cites it by. Absent is a note they gave none — a
+   *  reader reads it by its title, and holds it the same way. */
+  address: AddressSchema.optional(),
   /** The addresses this note was at before its author moved it, so a citation
    *  a reader wrote down before the move still resolves. Absent is a note that
    *  has never been moved, which is every version published before one could
@@ -483,47 +480,63 @@ export function publishedSubtreeReader(
         throw new UnaskedAnswerError("a region in two of one author's graphs");
       }
       const rootAddress = page.root_address;
-      const root =
-        regionRoot ?? page.nodes.find((n) => n.address === rootAddress)?.ref;
-      if (root === undefined) {
+      const rootless = page.nodes.filter((n) => n.parent === undefined);
+      if (regionRoot !== undefined && rootless.length > 0) {
+        throw new UnaskedAnswerError("a second root in one region");
+      }
+      const root = regionRoot ?? rootless[0]?.ref;
+      if (root === undefined || rootless.length > 1) {
         throw new UnaskedAnswerError("a region without its own root");
+      }
+      // The address a region is asked for is the address its root note has to
+      // be at: a reader bounds how deep it reads by that claim, so a peer must
+      // not be free to make it about a note it did not send.
+      if (rootless[0] !== undefined && rootless[0].address !== rootAddress) {
+        throw new UnaskedAnswerError(
+          `a region rooted at ${rootAddress} opening at ${rootless[0].address ?? "a note with no address"}`,
+        );
       }
 
       const pageNodes = new Set<OwnedRef>();
-      const pageByAddress = new Map<Address, OwnedRef>();
       for (const node of page.nodes) {
         requireAuthor(node.ref, author);
         for (const target of node.links) requireAuthor(target, author);
-        if (!isInSubtree(rootAddress, node.address)) {
-          throw new UnaskedAnswerError(`a note at ${node.address}`);
-        }
         if (heldNodes.has(node.ref) || pageNodes.has(node.ref)) {
           throw new UnaskedAnswerError(`${node.ref} twice`);
         }
-        if (
-          heldByAddress.has(node.address) ||
-          pageByAddress.has(node.address)
-        ) {
+        if (node.address !== undefined && heldByAddress.has(node.address)) {
           throw new UnaskedAnswerError(`a second note at ${node.address}`);
         }
+        if (node.address !== undefined)
+          heldByAddress.set(node.address, node.ref);
         pageNodes.add(node.ref);
-        pageByAddress.set(node.address, node.ref);
       }
+      // Membership is the parent chain and nothing else: a person writes their
+      // own addresses, so a region's shape cannot be read out of them. Every
+      // note has to REACH the root, which a note pointing at a sibling that
+      // points back at it does not.
+      const reached = new Set(heldNodes);
+      reached.add(root);
+      const waiting = page.nodes.filter((node) => node.ref !== root);
       for (const node of page.nodes) {
         if (node.origin !== root) {
           throw new UnaskedAnswerError(`a note rooted at ${node.origin}`);
         }
-        if (node.address === rootAddress) {
-          if (node.parent !== undefined) {
-            throw new UnaskedAnswerError("a root pointing outside the region");
+      }
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const node of waiting) {
+          if (reached.has(node.ref)) continue;
+          if (node.parent !== undefined && reached.has(node.parent)) {
+            reached.add(node.ref);
+            grew = true;
           }
-          continue;
         }
-        const above = parentAddress(node.address) ?? rootAddress;
-        const sprangFrom = heldByAddress.get(above) ?? pageByAddress.get(above);
-        if (sprangFrom === undefined || node.parent !== sprangFrom) {
+      }
+      for (const node of waiting) {
+        if (!reached.has(node.ref)) {
           throw new UnaskedAnswerError(
-            `a note at ${node.address} that does not spring from ${above}`,
+            `${node.ref}, which springs from nothing this region sent`,
           );
         }
       }
@@ -550,10 +563,7 @@ export function publishedSubtreeReader(
       heldAddress = rootAddress;
       heldGraph = graph;
       pages += 1;
-      for (const node of page.nodes) {
-        heldNodes.add(node.ref);
-        heldByAddress.set(node.address, node.ref);
-      }
+      for (const node of page.nodes) heldNodes.add(node.ref);
       for (const ref of pageBlocks) heldBlocks.add(ref);
       return page;
     },
@@ -626,6 +636,7 @@ export function publishedChangesReader(asked: {
   const author = splitOwnedRef(asked.publication).did;
   const held = new Set<OwnedRef>();
   let heldAddress: Address | undefined;
+  let heldOrigin: OwnedRef | undefined;
   let pages = 0;
 
   return {
@@ -654,8 +665,9 @@ export function publishedChangesReader(asked: {
       for (const entry of page.changes) {
         const { note } = entry;
         requireAuthor(note.ref, author);
-        if (!isInSubtree(page.root_address, note.address)) {
-          throw new UnaskedAnswerError(`a note at ${note.address}`);
+        heldOrigin ??= note.origin;
+        if (note.origin !== heldOrigin) {
+          throw new UnaskedAnswerError(`a note rooted at ${note.origin}`);
         }
         if (held.has(note.ref) || onPage.has(note.ref)) {
           throw new UnaskedAnswerError(`${note.ref} twice`);

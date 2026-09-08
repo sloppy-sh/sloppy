@@ -321,14 +321,13 @@ describe("the run of thought", () => {
   };
 
   it("joins every note to the one that comes next alongside it", () => {
+    const isDrawn = new Set(drawn.map((entry) => entry.node.ref));
+    const alongside = corpus.nodes.filter((node) => isDrawn.has(node.ref));
     const byAddress = new Map(
-      drawn.map((entry) => [
-        `${entry.node.created_by}|${entry.node.address}`,
-        entry.node,
-      ]),
+      alongside.map((node) => [`${node.created_by}|${node.address}`, node]),
     );
     let joined = 0;
-    for (const { node } of drawn) {
+    for (const node of alongside) {
       const next = byAddress.get(
         `${node.created_by}|${siblingAddress(node.address)}`,
       );

@@ -1,15 +1,18 @@
 // Where a node starts before the simulation touches it.
 //
-// Seeds are a pure function of the address and nothing else, which is the point:
-// AI.md § "The Genealogy Is the Protocol" says a subtree radiates the same way on
-// every peer, and it can only do that if no coordinate is ever shipped. The
-// force pass then resolves overlap around a shape the protocol already fixed.
+// Seeds are a pure function of what a peer already holds — the address where a
+// note has one, its ref where it has none — which is the point: AI.md § "The
+// Genealogy Is the Protocol" says a subtree radiates the same way on every
+// peer, and it can only do that if no coordinate is ever shipped. The force
+// pass then resolves overlap around a shape the protocol already fixed.
 
 import {
   type Address,
   addressSector,
   formatAddress,
+  type OwnedRef,
   parseAddress,
+  refSector,
 } from "@sloppy/types";
 
 /** Roots sit on this ring; their subtrees radiate outward from it. */
@@ -35,21 +38,45 @@ export interface SeedPoint {
   outward: number;
 }
 
+/** A note as the seeding reads it: its ref, and the address it has where it has
+ *  one. */
+export interface SeededNote {
+  ref: OwnedRef;
+  address?: Address;
+}
+
 /**
- * Seed every address, memoised over shared prefixes — a tree shares almost all
- * of its prefixes, so this stays close to linear in the node count.
+ * Seed every note, by ref. Memoised over shared address prefixes — a tree
+ * shares almost all of its prefixes, so this stays close to linear in the node
+ * count.
  */
 export function seedField(
-  addresses: Iterable<Address>,
-): ReadonlyMap<Address, SeedPoint> {
-  const seeds = new Map<Address, SeedPoint>();
-  for (const address of addresses) seedAt(address, seeds);
+  notes: Iterable<SeededNote>,
+): ReadonlyMap<OwnedRef, SeedPoint> {
+  const seeds = new Map<OwnedRef, SeedPoint>();
+  const memo = new Map<Address, SeedPoint>();
+  for (const note of notes) {
+    seeds.set(
+      note.ref,
+      note.address === undefined
+        ? seedRing(refSector(note.ref))
+        : seedAt(note.address, memo),
+    );
+  }
   return seeds;
 }
 
 /** One address's seed. Total over valid addresses, and free of any clock. */
 export function seedAddress(address: Address): SeedPoint {
   return seedAt(address, new Map());
+}
+
+function seedRing(outward: number): SeedPoint {
+  return {
+    x: Math.cos(outward) * ROOT_RADIUS,
+    y: Math.sin(outward) * ROOT_RADIUS,
+    outward,
+  };
 }
 
 function seedAt(address: Address, memo: Map<Address, SeedPoint>): SeedPoint {
@@ -60,12 +87,7 @@ function seedAt(address: Address, memo: Map<Address, SeedPoint>): SeedPoint {
   let point: SeedPoint;
 
   if (segments.length === 1) {
-    const outward = addressSector(address);
-    point = {
-      x: Math.cos(outward) * ROOT_RADIUS,
-      y: Math.sin(outward) * ROOT_RADIUS,
-      outward,
-    };
+    point = seedRing(addressSector(address));
   } else {
     const parent = seedAt(formatAddress(segments.slice(0, -1)), memo);
     const depth = segments.length;

@@ -106,8 +106,18 @@ describe("what was written last", () => {
     );
   });
 
-  it("refuses a note whose depth disagrees with its address", async () => {
-    const { client } = serving([{ ...note, depth: 1 }]);
+  it("takes a note whose address says nothing about how deep it sits", async () => {
+    // A person writes their own addresses, so `2` on a note two deep is a
+    // label and not a disagreement — the parent chain is what depth answers to.
+    const { client } = serving([{ ...note, address: "2", depth: 2 }]);
+
+    const [read] = await client.recentNotes();
+    expect(read.address).toBe("2");
+    expect(read.depth).toBe(2);
+  });
+
+  it("refuses a depth no note could sit at", async () => {
+    const { client } = serving([{ ...note, depth: 0 }]);
 
     await expect(client.recentNotes()).rejects.toThrow();
   });

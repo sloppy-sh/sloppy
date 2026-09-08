@@ -8,11 +8,11 @@ import {
   createOwnedRecordId,
   graphOf,
   homeGraphRef,
-  isAncestorAddress,
   type Node,
   type NodeAlias,
   type NodeAppearance,
   nowIso,
+  orderSiblings,
   ownedRefFrom,
   type OwnedRef,
   parseNode,
@@ -30,8 +30,8 @@ const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
 /**
  * A note its author has not deleted, and its opposite. Every read but the two
  * that assign an address is scoped by the first: a deleted note keeps its row so
- * it can be put back, and nothing else may find it there — AI.md § "The Address
- * Is the Protocol".
+ * it can be put back, and nothing else may find it there — AI.md § "The
+ * Genealogy Is the Protocol".
  */
 const THERE = "deleted_at = NONE";
 const GONE = "deleted_at != NONE";
@@ -40,15 +40,16 @@ const GONE = "deleted_at != NONE";
  *  was and has been moved, in which case the address still leads to it. */
 export type AddressHold = "live" | "deleted" | "moved";
 
-/** The row that outlives a note, so its address is never assigned twice. */
-function retire(node: Node): RetiredAddress {
+/** The row that outlives a note, so its address is never assigned twice. A note
+ *  its author left unaddressed spends nothing and leaves none. */
+function retire(node: Node, address: Address): RetiredAddress {
   const now = nowIso();
   return {
     id: createOwnedRecordId("retired_address", node.created_by),
     created_by: node.created_by,
     graph: graphOf(node),
     ...(node.parent ? { parent: node.parent } : {}),
-    address: node.address,
+    address,
     created_at: now,
     updated_at: now,
   };
@@ -176,7 +177,7 @@ export class NodeRepository {
              WHERE created_by = $did AND origin = $origin AND depth = $depth
                AND ${under}`;
     const [taken, retired, aliased] = await this.db.handle.query<
-      [string[], string[], string[]]
+      [(string | null)[], string[], string[]]
     >(
       `${held};
        SELECT VALUE address FROM retired_address
@@ -191,7 +192,11 @@ export class NodeRepository {
         parent: parent === null ? undefined : ownedRefFrom(parent.id),
       },
     );
-    return [...taken, ...retired, ...aliased];
+    return [
+      ...taken.filter((address) => address !== null),
+      ...retired,
+      ...aliased,
+    ];
   }
 
   /**
@@ -528,7 +533,12 @@ export class NodeRepository {
        DELETE node WHERE id IN $ids;`,
       {
         did,
-        retired: [...going.map(retire), ...aliases.map(retireAlias)],
+        retired: [
+          ...going.flatMap((node) =>
+            node.address === undefined ? [] : [retire(node, node.address)],
+          ),
+          ...aliases.map(retireAlias),
+        ],
         refs,
         ids: going.map((node) => node.id),
       },
@@ -569,18 +579,36 @@ export class NodeRepository {
     return rows.map((row) => TagCountSchema.parse(row));
   }
 
-  /** A read of one tree, cut to `root` and what sprang from it. */
+  /**
+   * A read of one tree, cut to `root` and what sprang from it. The cut is the
+   * parent chain rather than the addresses, because a person writes their own
+   * addresses and a subtree is what a note springs out of.
+   */
   private async kin(
     root: Node,
     sql: string,
     vars: Record<string, unknown>,
   ): Promise<Node[]> {
     const rows = await this.read(sql, vars);
-    return rows.filter(
-      (node) =>
-        node.address === root.address ||
-        isAncestorAddress(root.address, node.address),
-    );
+    const byRef = new Map(rows.map((node) => [ownedRefFrom(node.id), node]));
+    const under = new Set<string>([ownedRefFrom(root.id)]);
+    const springsFromRoot = (node: Node): boolean => {
+      const chain: string[] = [];
+      let walk: Node | undefined = node;
+      while (walk !== undefined) {
+        const ref = ownedRefFrom(walk.id);
+        if (under.has(ref)) break;
+        // Our own rows cannot hold a cycle — a move refuses one — but a walk
+        // that trusted that would hang rather than answer.
+        if (chain.includes(ref)) return false;
+        chain.push(ref);
+        walk = walk.parent === undefined ? undefined : byRef.get(walk.parent);
+      }
+      if (walk === undefined) return false;
+      for (const ref of chain) under.add(ref);
+      return true;
+    };
+    return rows.filter(springsFromRoot);
   }
 
   private async one(
@@ -597,9 +625,15 @@ export class NodeRepository {
     vars: Record<string, unknown>,
   ): Promise<Node[]> {
     const [rows] = await this.query(sql, vars);
-    return rows
-      .map(parseNode)
-      .sort((a, b) => compareAddresses(a.address, b.address));
+    const parsed = rows.map(parseNode);
+    return orderSiblings(
+      parsed.map((node) => ({
+        ref: ownedRefFrom(node.id),
+        address: node.address,
+        created_at: node.created_at,
+        node,
+      })),
+    ).map((one) => one.node);
   }
 
   private query<T = unknown>(

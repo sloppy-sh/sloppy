@@ -122,7 +122,8 @@ const SEED_ANCHOR = 0.035;
 export interface GraphNodeAttributes {
   index: number;
   ref: OwnedRef;
-  address: Address;
+  /** Absent is a note its author gave no address; the title is what names it. */
+  address?: Address;
   depth: number;
   title: string;
   collapsed: boolean;
@@ -229,7 +230,7 @@ export function buildModel(
     graph.addNode(node.ref, {
       index,
       ref: node.ref,
-      address: node.address,
+      ...(node.address === undefined ? {} : { address: node.address }),
       depth: node.depth,
       title: node.title,
       collapsed: entry.collapsed,
@@ -384,8 +385,8 @@ function seedFields(
   asked: readonly GraphField[],
 ): { seedOf: (node: NodeView) => SeedPoint; fields: NamedField[] } {
   if (asked.length < 2) {
-    const seeds = seedField(drawn.map((entry) => entry.node.address));
-    return { seedOf: (node) => seeds.get(node.address) ?? ORIGIN, fields: [] };
+    const seeds = seedField(drawn.map((entry) => entry.node));
+    return { seedOf: (node) => seeds.get(node.ref) ?? ORIGIN, fields: [] };
   }
 
   const byField = new Map<OwnedRef, NodeView[]>();
@@ -402,10 +403,7 @@ function seedFields(
     ...new Set([...asked.map((field) => field.ref), ...byField.keys()]),
   ];
   const seeds = new Map(
-    order.map((of) => [
-      of,
-      seedField((byField.get(of) ?? []).map((node) => node.address)),
-    ]),
+    order.map((of) => [of, seedField(byField.get(of) ?? [])]),
   );
 
   const placed = new Map(
@@ -417,7 +415,7 @@ function seedFields(
   return {
     seedOf: (node) => {
       const of = graphOf(node);
-      const seed = seeds.get(of)?.get(node.address);
+      const seed = seeds.get(of)?.get(node.ref);
       if (seed === undefined) return ORIGIN;
       return { ...seed, x: seed.x + (placed.get(of)?.dx ?? 0) };
     },

@@ -7,8 +7,8 @@
 	// which opens the note in the region it belongs to; signed out it is what its
 	// author published, read and nothing else.
 	import {
-		addressDepth,
 		compareOrd,
+		noteLabel,
 		splitOwnedRef,
 		type BlockView,
 		type NodeView,
@@ -42,14 +42,30 @@
 	const NOT_OPEN =
 		'Sloppy cannot open that note for you without an account. Sign in and look for it.';
 
+	/** How deep in the published region a note sits: the root is 1, and each step
+	 *  down the parents the region carries is one more. Read off the genealogy
+	 *  rather than the address, which is a label its author writes. */
+	function depthOf(published: PublishedNode, of: PublishedSubtree): number {
+		const byRef = new Map(of.nodes.map((one) => [one.ref, one]));
+		let depth = 1;
+		let up = published.parent;
+		// Bounded by the region rather than trusted to end: a page that named a
+		// cycle would otherwise walk forever.
+		for (let step = 0; up !== undefined && step < of.nodes.length; step += 1) {
+			depth += 1;
+			up = byRef.get(up)?.parent;
+		}
+		return depth;
+	}
+
 	/** The published answer as a reading surface takes it. */
 	function noteOf(published: PublishedNode, of: PublishedSubtree): NodeView {
 		return {
 			ref: published.ref,
 			created_by: splitOwnedRef(published.ref).did,
 			...(of.graph === undefined ? {} : { graph: of.graph }),
-			address: published.address,
-			depth: addressDepth(published.address),
+			...(published.address === undefined ? {} : { address: published.address }),
+			depth: depthOf(published, of),
 			...(published.parent === undefined ? {} : { parent: published.parent }),
 			origin: published.origin,
 			title: published.title,
@@ -89,7 +105,7 @@
 	/** The address as it is cited: the notebook it is read in comes with it where
 	 *  its author named one. */
 	const citation = $derived(
-		open ? (branch?.graph_title ? `${open.address} · ${branch.graph_title}` : open.address) : ''
+		open ? [noteLabel(open), branch?.graph_title].filter(Boolean).join(' · ') : ''
 	);
 
 	async function read(of: OwnedRef): Promise<void> {

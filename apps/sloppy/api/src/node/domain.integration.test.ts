@@ -42,6 +42,17 @@ const PASSWORD = "a-long-enough-passphrase";
 /** A graph big enough that reading all of it is visibly the wrong thing to do. */
 const CROWD = 5000;
 
+/** The addresses these notes were written at. Every note a creation answers
+ *  with carries one; this is where that is stated rather than assumed. */
+function numbered(notes: readonly NodeView[]): Address[] {
+  return notes.map((note) => {
+    if (note.address === undefined) {
+      throw new Error(`${note.ref} was written without an address`);
+    }
+    return note.address;
+  });
+}
+
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -284,6 +295,46 @@ describe("the domain routes", () => {
       expect(nextBranch.origin).toBe(nextBranch.ref);
     });
 
+    scenario("writes a note with no number, and keeps numbering", async () => {
+      const alone = await newGraph(ada, "Notes with no numbers");
+
+      const first = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "A thought on its own",
+      });
+      const second = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "Another",
+      });
+
+      expect(first.address).toBeUndefined();
+      expect(second.address).toBeUndefined();
+      expect(first.depth).toBe(1);
+      expect(first.parent).toBeUndefined();
+      expect(first.origin).toBe(first.ref);
+
+      // The run reads them without an address between them, and a branch
+      // opened afterwards still takes the first number the graph has free.
+      const branch = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+        title: "Numbered",
+      });
+      expect(branch.address).toBe("1");
+
+      const under = await newNode(ada, {
+        from: springsFrom(first),
+        title: "What it led to",
+      });
+      expect(under.address).toBeUndefined();
+      expect(under.parent).toBe(first.ref);
+      expect(under.depth).toBe(2);
+
+      const branches = await branchesOf(ada, alone.ref);
+      expect(branches.map((one) => one.ref).sort()).toEqual(
+        [first.ref, second.ref, branch.ref].sort(),
+      );
+    });
+
     scenario("opens a branch at the number its author picked", async () => {
       const picked = await newNode(ada, {
         from: { relation: "root", address: "4096" },
@@ -435,7 +486,7 @@ describe("the domain routes", () => {
         newNode(ada, { from: springsFrom(parent), title: `Racer ${i}` }),
       );
       const born = await Promise.all(racers);
-      const addresses = born.map((node) => node.address).sort(compareAddresses);
+      const addresses = numbered(born).sort(compareAddresses);
       expect(new Set(addresses).size).toBe(24);
       expect(addresses[0]).toBe(`${parent.address}a`);
       expect(addresses[23]).toBe(`${parent.address}x`);
@@ -486,7 +537,7 @@ describe("the domain routes", () => {
           }),
         ),
       );
-      const addresses = born.map((node) => node.address).sort(compareAddresses);
+      const addresses = numbered(born).sort(compareAddresses);
       expect(new Set(addresses).size).toBe(20);
       expect(addresses[19]).toBe(`${parent.address}t`);
     });
@@ -510,7 +561,7 @@ describe("the domain routes", () => {
               }),
             );
           }
-          return written.map((node) => node.address);
+          return numbered(written);
         };
         // Two identities that have written nothing yet, so each sequence starts
         // from the same empty graph and only the sequence decides the addresses.
@@ -1130,7 +1181,7 @@ describe("the domain routes", () => {
     scenario("answers with the note an address leads to", async () => {
       const note = await newNode(ada, { title: "Cited by its number" });
 
-      const hit = (await searching(ada, note.address)).find(
+      const hit = (await searching(ada, note.address as Address)).find(
         (one) => one.note === note.ref,
       );
 
@@ -1157,7 +1208,7 @@ describe("the domain routes", () => {
         )) as NodeView[];
         expect(landed.address).not.toBe(was);
 
-        const hit = (await searching(ada, was)).find(
+        const hit = (await searching(ada, was as Address)).find(
           (one) => one.note === carried.ref,
         );
 

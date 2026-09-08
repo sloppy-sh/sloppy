@@ -57,7 +57,8 @@ export interface PublishedThere {
 /** One of the reader's own notes somebody answered. */
 export interface Answered {
 	note: OwnedRef;
-	address: Address;
+	/** Absent on a note its author gave none; the title names it. */
+	address?: Address;
 	title: string;
 	/** The notebook the address is read in, as a key. */
 	graph: OwnedRef;

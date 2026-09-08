@@ -26,6 +26,7 @@ import {
 	node,
 	ref,
 	ulid,
+	unnumbered,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
@@ -226,6 +227,28 @@ describe('a note opened to read', () => {
 		await settle();
 
 		expect(document.title).toBe('1 · Origins · Sloppy');
+	});
+
+	it('names a window on a note with no number by its title', async () => {
+		const alone = unnumbered(1);
+		api.on('POST /nodes', () => alone);
+		api.on(`GET ${path(FIRST)}`, () => alone);
+		api.on(`PATCH ${path(FIRST)}`, (_url, init) => ({
+			...alone,
+			...(JSON.parse(String(init?.body)) as Partial<NodeView>)
+		}));
+		stubViewport(WIDE);
+		const written = await nodes.create({ from: { relation: 'free' } });
+		mounted = mount(NoteOnSurface, { target, props: { opened: written.ref, fresh: false } });
+		flushSync();
+		await settle();
+
+		expect(document.title).toBe('Untitled · Sloppy');
+
+		await nodes.update(written.ref, { title: 'On its own' });
+		await settle();
+
+		expect(document.title).toBe('On its own · Sloppy');
 	});
 
 	it('does not call writing it could not read nothing at all', async () => {

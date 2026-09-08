@@ -87,7 +87,7 @@
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import List from '@lucide/svelte/icons/list';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
-	import { type Address, assignTagHueSlots } from '@sloppy/types';
+	import { type Address, assignTagHueSlots, noteLabel } from '@sloppy/types';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
@@ -503,7 +503,7 @@
 
 	/** A note let go of, and the address it was at, until the walk draws it at
 	 *  the one the server gave it. */
-	let settling = $state<{ note: OwnedRef; was: Address } | null>(null);
+	let settling = $state<{ note: OwnedRef; was?: Address } | null>(null);
 
 	/** What the last act on a row did, where no drag is saying anything. */
 	let told = $state('');
@@ -601,7 +601,7 @@
 	let moving = $state<{
 		at: { x: number; y: number };
 		note: OwnedRef;
-		address: Address;
+		named: string;
 		band: SectionBand;
 		aim: SectionAim | null;
 	} | null>(null);
@@ -640,7 +640,7 @@
 				return aimSection(band, y);
 			},
 			scroller: () => scroller ?? null,
-			moved: (at, aim) => (moving = { at, note: row.note, address: row.address, band, aim }),
+			moved: (at, aim) => (moving = { at, note: row.note, named: row.named, band, aim }),
 			dropped: (aim) => {
 				moving = null;
 				dragged = true;
@@ -674,7 +674,7 @@
 			: lifting
 				? lifting.landing.says
 				: moving
-					? sectionSays(moving.band, moving.address, moving.aim)
+					? sectionSays(moving.band, moving.named, moving.aim)
 					: (moveNote?.refused ?? '') || settled || told
 	);
 
@@ -770,8 +770,8 @@
 											type="button"
 											tabindex="-1"
 											aria-label={row.open
-												? `Fold ${row.note.address}`
-												: `Unfold ${row.note.address}`}
+												? `Fold ${noteLabel(row.note)}`
+												: `Unfold ${noteLabel(row.note)}`}
 											onclick={(event) => {
 												event.stopPropagation();
 												toggle(row.note.ref, !row.open);
@@ -855,8 +855,8 @@
 											tabindex="-1"
 											aria-expanded={showing(row.note.ref)}
 											aria-label={showing(row.note.ref)
-												? `Hide the sections of ${row.note.address}`
-												: `Show the sections of ${row.note.address}`}
+												? `Hide the sections of ${noteLabel(row.note)}`
+												: `Show the sections of ${noteLabel(row.note)}`}
 											onclick={(event) => {
 												event.stopPropagation();
 												sections?.onShow(row.note.ref, !showing(row.note.ref));
@@ -871,7 +871,7 @@
 										<button
 											type="button"
 											tabindex="-1"
-											aria-label="Write a note under {row.note.address}"
+											aria-label="Write a note under {noteLabel(row.note)}"
 											aria-keyshortcuts={writeUnder.keys}
 											title={writeUnder.beside
 												? 'Tap to write under this note, or drag it to where the new note goes'
@@ -913,7 +913,7 @@
 										type="button"
 										tabindex="-1"
 										aria-expanded={nudging === row.section.ref}
-										aria-label="Move section {row.at} of {row.of} in {row.address}"
+										aria-label="Move section {row.at} of {row.of} in {row.named}"
 										onpointerdown={(event) => carrySection(event, row)}
 										onclick={(event) => {
 											event.stopPropagation();
@@ -936,7 +936,7 @@
 											type="button"
 											tabindex="-1"
 											disabled={row.at === 1}
-											aria-label="Move it up in {row.address}"
+											aria-label="Move it up in {row.named}"
 											onclick={(event) => {
 												event.stopPropagation();
 												arrange(row, -1);
@@ -949,7 +949,7 @@
 											type="button"
 											tabindex="-1"
 											disabled={row.at === row.of}
-											aria-label="Move it down in {row.address}"
+											aria-label="Move it down in {row.named}"
 											onclick={(event) => {
 												event.stopPropagation();
 												arrange(row, 1);

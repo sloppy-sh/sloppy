@@ -17,7 +17,7 @@
 
 	const label = (choice: NoteChoice) =>
 		choice.kind === 'note' && choice.graph
-			? `${choice.note.address} ${choice.note.title || 'Untitled'}, in ${choice.graph}`
+			? `${[choice.note.address, choice.note.title || 'Untitled'].filter(Boolean).join(' ')}, in ${choice.graph}`
 			: undefined;
 </script>
 

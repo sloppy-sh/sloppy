@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The graph walked instead of drawn, for a reader going through the notes one
 	// at a time. A run belongs to the graph it was written in — AI.md § "The
-	// Address Is the Protocol" — so each graph on the canvas is its own tree.
+	// Genealogy Is the Protocol" — so each graph on the canvas is its own tree.
 	import {
 		graphOf,
 		type NodeView,

@@ -37,8 +37,12 @@ export const DEFAULT_CORPUS: CorpusOptions = {
   pulledRoots: [6],
 };
 
+/** Every note this corpus writes carries an address, the way one the Folgezettel
+ *  rule numbered does; the surfaces measured against it read one. */
+export type CorpusNote = NodeView & { address: Address };
+
 export interface Corpus {
-  nodes: NodeView[];
+  nodes: CorpusNote[];
   /** Every tag the corpus carries, most-used first — what the tag read answers. */
   tags: Tag[];
   owner: string;
@@ -55,7 +59,7 @@ const TAG_POOLS: string[][] = [
 export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
   const options = { ...DEFAULT_CORPUS, ...overrides };
   const random = mulberry32(options.seed);
-  const nodes: NodeView[] = [];
+  const nodes: CorpusNote[] = [];
 
   interface Pending {
     address: Address;
@@ -65,9 +69,9 @@ export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
   }
 
   let serial = 0;
-  const emit = (pending: Pending, owner: string): NodeView => {
+  const emit = (pending: Pending, owner: string): CorpusNote => {
     const ref = refAt(owner, serial++);
-    const node: NodeView = {
+    const node: CorpusNote = {
       ref,
       created_by: owner,
       created_at: "2026-01-01T00:00:00.000Z",
@@ -85,7 +89,7 @@ export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
     return node;
   };
 
-  let frontier: { node: NodeView; owner: string }[] = [];
+  let frontier: { node: CorpusNote; owner: string }[] = [];
   for (let root = 1; root <= options.roots; root++) {
     const owner = options.pulledRoots.includes(root) ? OTHER : OWNER;
     const node = emit(
@@ -102,7 +106,7 @@ export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
 
   const profile = levelProfile(options);
   for (let depth = 1; depth < options.maxDepth; depth++) {
-    const next: { node: NodeView; owner: string }[] = [];
+    const next: { node: CorpusNote; owner: string }[] = [];
     // Which parents branch is shuffled, so the wide nodes are not always the
     // first ones a walk in address order reaches.
     const order = shuffled(frontier, random);
@@ -133,7 +137,7 @@ export function makeCorpus(overrides: Partial<CorpusOptions> = {}): Corpus {
   // to draw and the layout has a cross-tree spring.
   const joining = (
     count: number,
-    join: (from: NodeView, to: OwnedRef) => void,
+    join: (from: CorpusNote, to: OwnedRef) => void,
   ): void => {
     for (let at = 0; at < count; at++) {
       const from = nodes[Math.floor(random() * nodes.length)];

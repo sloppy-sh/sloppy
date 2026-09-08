@@ -2,12 +2,14 @@
 // references and the links drawn on it are the note's own to show, so neither
 // is a branch here.
 
-import { type Address, compareAddresses, type OwnedRef, type Tag } from '@sloppy/types';
+import { type Address, orderSiblings, type OwnedRef, type Tag } from '@sloppy/types';
 
 /** The least of a note a row is drawn from; `NodeView` already is one. */
 export interface TreeNote {
 	ref: OwnedRef;
-	address: Address;
+	/** Absent on a note its author gave none; the title names it instead. */
+	address?: Address;
+	created_at: string;
 	/** Absent on a note whose parent is outside what the tree was given. */
 	parent?: OwnedRef;
 	title: string;
@@ -56,7 +58,8 @@ export interface TreeRest {
 	kind: 'rest';
 	/** The note whose run this is, or {@link TOP}. */
 	key: string;
-	/** That note's address, `null` at the top of the tree. */
+	/** That note's address, `null` at the top of the tree and on one with no
+	 *  address of its own. */
 	parent: Address | null;
 	depth: number;
 	/** How many are waiting. */
@@ -185,7 +188,7 @@ export function walkTree({
 	return rows;
 }
 
-/** Each run in address order, which is the order every peer reads it in. */
+/** Each run in the order every peer reads it in — `orderSiblings`. */
 function runsOf(notes: readonly TreeNote[]): Map<string, TreeNote[]> {
 	const held = new Set(notes.map((note) => note.ref));
 	const runs = new Map<string, TreeNote[]>();
@@ -195,7 +198,7 @@ function runsOf(notes: readonly TreeNote[]): Map<string, TreeNote[]> {
 		if (run) run.push(note);
 		else runs.set(key, [note]);
 	}
-	for (const run of runs.values()) run.sort((a, b) => compareAddresses(a.address, b.address));
+	for (const [key, run] of runs) runs.set(key, orderSiblings(run));
 	return runs;
 }
 

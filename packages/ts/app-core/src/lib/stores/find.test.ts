@@ -21,7 +21,7 @@ async function pause(): Promise<void> {
 	await new Promise((done) => setTimeout(done, 260));
 }
 
-const addresses = (): string[] => find.found.map((row) => row.address);
+const addresses = (): (string | undefined)[] => find.found.map((row) => row.address);
 
 beforeEach(async () => {
 	nodes.clear();

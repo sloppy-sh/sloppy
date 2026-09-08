@@ -1,9 +1,9 @@
 // A node: one thought, and its place in the sequence of thought that produced
-// it. The address is the protocol — see `address.ts` and AI.md § "The Address
-// Is the Protocol".
+// it. What it sprang out of is the protocol and its address is a label — see
+// `address.ts` and AI.md § "The Genealogy Is the Protocol".
 
 import { z } from "zod";
-import { addressDepth, AddressSchema, RootAddressSchema } from "./address.js";
+import { AddressSchema, RootAddressSchema } from "./address.js";
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import {
   OwnedEntitySchema,
@@ -23,14 +23,16 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * at boot rather than left to be read that way forever.
    */
   graph: OwnedRefSchema.optional(),
-  /** Assigned at creation, and rewritten only when this note is moved. Every
-   *  address it has been at keeps leading to it, as a `node_alias` row. */
-  address: AddressSchema,
   /**
-   * `addressDepth(address)`, and so rewritten with it. A value derived from an
-   * address is otherwise never stored; docs/ARCHITECTURE.md § "Data model"
-   * carries the ruling that makes this one an exception, and `parseNode` is the
-   * boundary it is held at.
+   * The label its author cites it by, offered at creation and theirs to write,
+   * change or take off. Absent is a note with none, which is read by its title.
+   * Every address it has held keeps leading to it, as a `node_alias` row.
+   */
+  address: AddressSchema.optional(),
+  /**
+   * The parent's depth and one more; a branch and a note with no parent are 1.
+   * A derived value is otherwise never stored; docs/ARCHITECTURE.md § "Data
+   * model" carries the ruling that makes this one an exception.
    */
   depth: z.int().positive(),
   /** Absent on a root. */
@@ -109,10 +111,13 @@ export const NodeAliasSchema = OwnedEntitySchema.extend({
 });
 export type NodeAlias = z.infer<typeof NodeAliasSchema>;
 
-export function nodeDepthMatchesAddress(
-  node: Pick<Node, "address" | "depth">,
-): boolean {
-  return node.depth === addressDepth(node.address);
+/**
+ * What a person reads this note by: its address where it has one, its title
+ * where it does not, and a word for a note that has neither yet. One function,
+ * so two surfaces cannot name the same note differently.
+ */
+export function noteLabel(note: Pick<Node, "address" | "title">): string {
+  return note.address ?? (note.title.trim() || "Untitled");
 }
 
 /** The graph a note is in, as a ref. */
@@ -133,29 +138,10 @@ export function runKeyOf(
   return node.parent ?? `graph/${graphOf(node)}`;
 }
 
-export class NodeDepthMismatchError extends Error {
-  constructor(address: string, stored: number, actual: number) {
-    super(
-      `Address ${JSON.stringify(address)} is ${actual} deep; the row stores ${stored}`,
-    );
-    this.name = "NodeDepthMismatchError";
-  }
-}
-
-/**
- * What `NodeSchema` cannot refuse: a `depth` disagreeing with the address it is
- * derived from, and a `graph` belonging to somebody else.
- */
+/** What `NodeSchema` cannot refuse: a `graph` belonging to somebody else. */
 export function requireNodeConsistent(
-  node: Pick<Node, "created_by" | "graph" | "address" | "depth">,
+  node: Pick<Node, "created_by" | "graph">,
 ): void {
-  if (!nodeDepthMatchesAddress(node)) {
-    throw new NodeDepthMismatchError(
-      node.address,
-      node.depth,
-      addressDepth(node.address),
-    );
-  }
   requireOwnGraph(node.created_by, node.graph);
 }
 
@@ -173,12 +159,13 @@ export function parseNode(row: unknown): Node {
 /**
  * Where a new node goes, said against a node that is already there: `under` it,
  * so the new one springs out of it, or `after` it, so the new one continues the
- * run it belongs to. `root` opens a branch at a number the author picked, and
- * `branch` opens one at the next number.
+ * run it belongs to. `root` opens a branch at a number the author picked,
+ * `branch` opens one at the next number, and `free` writes a note that springs
+ * from nothing and carries no number until its author gives it one.
  *
- * Only the two that open a branch name a graph, because only they have nothing
- * to read it off: a note placed against another is in that note's graph.
- * Absent, as everywhere, is the author's home graph.
+ * Only the three with nothing to read a graph off name one: a note placed
+ * against another is in that note's graph. Absent, as everywhere, is the
+ * author's home graph.
  */
 const UNDER = z.strictObject({
   relation: z.literal("under"),
@@ -201,16 +188,30 @@ export const NodePlacementSchema = z.discriminatedUnion("relation", [
     relation: z.literal("branch"),
     graph: OwnedRefSchema.optional(),
   }),
+  z.strictObject({
+    relation: z.literal("free"),
+    graph: OwnedRefSchema.optional(),
+  }),
 ]);
 export type NodePlacement = z.infer<typeof NodePlacementSchema>;
+
+/** Whether a placement is one that names its own graph, having no note to read
+ *  one off. */
+export function namesGraph(
+  from: NodePlacement,
+): from is Extract<NodePlacement, { relation: "root" | "branch" | "free" }> {
+  return (
+    from.relation === "root" ||
+    from.relation === "branch" ||
+    from.relation === "free"
+  );
+}
 
 /** The graph a placement asks for, where it is one that names a graph at all. */
 export function graphAsked(
   from: NodePlacement | undefined,
 ): OwnedRef | undefined {
-  return from?.relation === "root" || from?.relation === "branch"
-    ? from.graph
-    : undefined;
+  return from && namesGraph(from) ? from.graph : undefined;
 }
 
 /**
@@ -256,6 +257,17 @@ export const MoveNoteRequestSchema = z.strictObject(
   { error: "Sloppy is out of date. Update it and try again." },
 );
 export type MoveNoteRequest = z.input<typeof MoveNoteRequestSchema>;
+
+/**
+ * What a person writes in the place an address is shown. `null` takes the
+ * address off and leaves the note with none; a string is the label it takes,
+ * which nothing else in its graph may already hold or ever have held.
+ */
+export const SetAddressRequestSchema = z.strictObject(
+  { address: AddressSchema.nullable() },
+  { error: "Sloppy is out of date. Update it and try again." },
+);
+export type SetAddressRequest = z.input<typeof SetAddressRequestSchema>;
 
 /**
  * `graph` is absent because it is immutable, and `address`, `depth`, `origin`

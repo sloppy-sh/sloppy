@@ -10,7 +10,7 @@ import { nodes } from './stores/nodes.svelte.js';
  *  been moved from, or words in the title. `needle` is already lowercased. */
 export function carries(note: NodeView, needle: string): boolean {
 	return (
-		note.address.startsWith(needle) ||
+		(note.address?.startsWith(needle) ?? false) ||
 		movedFrom(note, needle) !== undefined ||
 		note.title.toLowerCase().includes(needle)
 	);
@@ -20,7 +20,7 @@ export function carries(note: NodeView, needle: string): boolean {
  *  surface saying where an old number now leads. Absent where the note's own
  *  address is what the needle reaches, and where nothing does. */
 export function movedFrom(note: NodeView, needle: string): Address | undefined {
-	if (note.address.startsWith(needle)) return undefined;
+	if (note.address?.startsWith(needle)) return undefined;
 	return note.aliases?.find((was) => was.startsWith(needle));
 }
 

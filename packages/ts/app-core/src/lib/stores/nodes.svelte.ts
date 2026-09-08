@@ -11,7 +11,7 @@
  */
 
 import {
-	compareAddresses,
+	type Address,
 	type CreateNodeRequest,
 	graphOf,
 	isAncestorAddress,
@@ -19,6 +19,7 @@ import {
 	type NodeBulkResult,
 	type NodeView,
 	NodeViewSchema,
+	orderSiblings,
 	type NoteDestination,
 	type OwnedRef,
 	type UpdateNodeRequest
@@ -74,8 +75,6 @@ function inRegion(node: NodeView, { origin, maxDepth, graph }: NodeRegion): bool
 	return maxDepth === undefined || node.depth <= maxDepth;
 }
 
-const byAddress = (a: NodeView, b: NodeView) => compareAddresses(a.address, b.address);
-
 /** Long enough for a field's branches to have landed, short enough that a tab
  *  closed straight after reading one costs at most the next read. */
 const WRITE_AFTER = 200;
@@ -113,7 +112,7 @@ class NodesStore {
 			if (siblings) siblings.push(node);
 			else index.set(node.parent, [node]);
 		}
-		for (const siblings of index.values()) siblings.sort(byAddress);
+		for (const [key, siblings] of index) index.set(key, orderSiblings(siblings));
 		return index;
 	});
 
@@ -121,18 +120,18 @@ class NodesStore {
 		return this.#byRef.get(ref);
 	}
 
-	/** In address order, which is the order every peer reads them in. */
+	/** In the order every peer reads a run in — `orderSiblings`. */
 	children(ref: OwnedRef): NodeView[] {
 		return this.#children.get(ref) ?? [];
 	}
 
-	/** Cached nodes matching `region`, in address order. */
+	/** Cached nodes matching `region`, in the order a run reads. */
 	region(region: NodeRegion = {}): NodeView[] {
 		const out: NodeView[] = [];
 		for (const node of this.#byRef.values()) {
 			if (inRegion(node, region)) out.push(node);
 		}
-		return out.sort(byAddress);
+		return orderSiblings(out);
 	}
 
 	status(region: NodeRegion = {}): RegionState {
@@ -274,6 +273,15 @@ class NodesStore {
 		return node;
 	}
 
+	/** Write the address a person cites this note by, or take it off with
+	 *  `null`. Nothing else moves: an address is one note's own label. */
+	async setAddress(ref: OwnedRef, address: Address | null): Promise<NodeView> {
+		const epoch = this.#epoch;
+		const node = await api.setAddress(ref, address);
+		if (epoch === this.#epoch) this.#learn(node);
+		return node;
+	}
+
 	/**
 	 * Carry a note somewhere else, with everything that sprang from it. The
 	 * answer is the whole subtree as it now stands, so the canvas and the outline
@@ -318,7 +326,12 @@ class NodesStore {
 		this.#drop(ref);
 		if (!node) return;
 		for (const other of [...this.#byRef.values()]) {
-			if (other.origin === node.origin && isAncestorAddress(node.address, other.address)) {
+			if (
+				other.origin === node.origin &&
+				node.address !== undefined &&
+				other.address !== undefined &&
+				isAncestorAddress(node.address, other.address)
+			) {
 				this.#drop(other.ref);
 			}
 		}

@@ -121,12 +121,14 @@ class PublicationsStore {
 	/** A publication rooted ABOVE this note that already carries it. Where
 	 *  several do, the nearest — it is the one whose address a person recognises. */
 	above(note: NodeView): PublicationView | undefined {
+		const at = note.address;
+		if (at === undefined) return undefined;
 		return this.all
 			.filter(
 				(publication) =>
 					this.graphRefOf(publication) === graphOf(note) &&
-					publication.root_address !== note.address &&
-					isInSubtree(publication.root_address, note.address)
+					publication.root_address !== at &&
+					isInSubtree(publication.root_address, at)
 			)
 			.sort((a, b) => addressDepth(a.root_address) - addressDepth(b.root_address))
 			.at(-1);
@@ -139,12 +141,13 @@ class PublicationsStore {
 	 * § "Federating the graph".
 	 */
 	narrowerUnder(note: NodeView, terms: CommentAccess): PublicationView[] {
-		if (terms !== 'anyone') return [];
+		const at = note.address;
+		if (terms !== 'anyone' || at === undefined) return [];
 		return this.all.filter(
 			(publication) =>
 				this.graphRefOf(publication) === graphOf(note) &&
-				publication.root_address !== note.address &&
-				isInSubtree(note.address, publication.root_address) &&
+				publication.root_address !== at &&
+				isInSubtree(at, publication.root_address) &&
 				publication.comments !== 'anyone'
 		);
 	}
@@ -156,10 +159,11 @@ class PublicationsStore {
 	 * terms — docs/ARCHITECTURE.md § "Federating the graph".
 	 */
 	answersOn(note: NodeView): CommentAccess | null {
+		const at = note.address;
+		if (at === undefined) return null;
 		const covering = this.all.filter(
 			(publication) =>
-				this.graphRefOf(publication) === graphOf(note) &&
-				isInSubtree(publication.root_address, note.address)
+				this.graphRefOf(publication) === graphOf(note) && isInSubtree(publication.root_address, at)
 		);
 		if (covering.length === 0) return null;
 		return covering.some((publication) => publication.comments === 'anyone') ? 'anyone' : 'nobody';

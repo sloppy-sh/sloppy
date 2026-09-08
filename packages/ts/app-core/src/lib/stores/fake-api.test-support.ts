@@ -7,6 +7,7 @@ import {
 	addressDepth,
 	type AnsweredNote,
 	type Converses,
+	type CreateNodeRequest,
 	graphOf,
 	type MoveNoteRequest,
 	type NodeView,
@@ -16,6 +17,7 @@ import {
 	type RefusedVoiceView,
 	type RefuseVoiceRequest,
 	type SearchHit,
+	type SetAddressRequest,
 	type Viewer
 } from '@sloppy/types';
 import { resetApi } from '../api.js';
@@ -59,12 +61,19 @@ export function node(seed: number, address: string, over: Partial<NodeView> = {}
 	};
 }
 
+/** A note its author gave no address — one like any other, read by its title. */
+export function unnumbered(seed: number, over: Partial<NodeView> = {}): NodeView {
+	const written = node(seed, '1', { depth: 1, ...over });
+	delete written.address;
+	return written;
+}
+
 /** One note as a search answers with it. An empty `snippet` is a note whose
  *  title carried the words rather than its writing. */
 export function hit(note: NodeView, over: Partial<SearchHit> = {}): SearchHit {
 	return {
 		note: note.ref,
-		address: note.address,
+		...(note.address === undefined ? {} : { address: note.address }),
 		graph: graphOf(note),
 		title: note.title,
 		snippet: '',
@@ -139,6 +148,30 @@ export function moving(
 		const asked = JSON.parse(String(init?.body ?? '{}')) as MoveNoteRequest;
 		return subtree(asked.to);
 	});
+}
+
+/**
+ * Answer a write of `note`'s address with the note as it stands afterwards. A
+ * `null` address takes it off, which is what the store sends when somebody
+ * clears the field.
+ */
+export function numbering(
+	api: FakeApi,
+	note: OwnedRef,
+	answer: (address: string | null) => NodeView
+): void {
+	api.on(`PUT /nodes${refPath(note)}/address`, (_url, init) => {
+		const asked = JSON.parse(String(init?.body ?? '{}')) as SetAddressRequest;
+		return answer(asked.address);
+	});
+}
+
+/** Answer a creation with the note it wrote, the placement it was asked for in
+ *  hand — `free` among them, which writes a note with no address. */
+export function writing(api: FakeApi, answer: (request: CreateNodeRequest) => NodeView): void {
+	api.on('POST /nodes', (_url, init) =>
+		answer(JSON.parse(String(init?.body ?? '{}')) as CreateNodeRequest)
+	);
 }
 
 export const VIEWER: Viewer = {

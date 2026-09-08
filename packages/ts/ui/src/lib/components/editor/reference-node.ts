@@ -3,16 +3,16 @@
 // under, so a note that has since gone still reads as something. The canvas
 // draws a line for it: DESIGN.md § Edges is the ruling.
 
-import { type OwnedRef, REFERENCE_NOTE_ATTR } from '@sloppy/types';
+import { noteLabel, type OwnedRef, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { NoteReferences } from './contract.js';
 
 export const REFERENCE_NODE = 'reference';
 
-/** The words a note is cited under. Its address stands in where it has no
- *  title, since that is what a person cites and a peer resolves. */
-export function citedAs(note: { address: string; title: string }): string {
-	return note.title || note.address;
+/** The words a note is cited under. Where it has no title, whatever else names
+ *  it stands in — `noteLabel` in `@sloppy/types`. */
+export function citedAs(note: { address?: string; title: string }): string {
+	return note.title || noteLabel(note);
 }
 
 /** Only what a reference already in the writing needs, so a surface that reads

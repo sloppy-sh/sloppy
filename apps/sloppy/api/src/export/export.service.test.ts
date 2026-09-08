@@ -85,8 +85,10 @@ function holding(rows: { notes: Node[]; blocks: Block[] }) {
       asked.push(`notes ${graph} ${from ?? "-"}`);
       return Promise.resolve(
         rows.notes
-          .filter((n) => n.graph === graph && (!from || n.address > from))
-          .sort((a, b) => (a.address < b.address ? -1 : 1))
+          .filter(
+            (n) => n.graph === graph && (!from || (n.address ?? "") > from),
+          )
+          .sort((a, b) => ((a.address ?? "") < (b.address ?? "") ? -1 : 1))
           .slice(0, limit),
       );
     },

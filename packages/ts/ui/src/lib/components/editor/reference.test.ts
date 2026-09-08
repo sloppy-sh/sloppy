@@ -36,7 +36,7 @@ function note(address: string, title: string): NodeView {
 
 const carries = (one: NodeView, query: string) =>
 	!query ||
-	one.address.startsWith(query.toLowerCase()) ||
+	(one.address ?? '').startsWith(query.toLowerCase()) ||
 	one.title.toLowerCase().includes(query.toLowerCase());
 
 /** The notes a graph holds, and what happens when one more is written.

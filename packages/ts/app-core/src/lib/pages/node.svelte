@@ -27,6 +27,7 @@
 		graphOf,
 		isInSubtree,
 		nextChildAddress,
+		noteLabel,
 		parentAddress,
 		runKeyOf,
 		type Address,
@@ -173,7 +174,7 @@
 		return nodes.region().filter((root) => runKeyOf(root) === run);
 	});
 
-	const along = $derived(node ? alongRun(node.address, alongside) : { before: null, after: null });
+	const along = $derived(node ? alongRun(node.ref, alongside) : { before: null, after: null });
 
 	/** Every way out of this note, in the shape the graph is drawn in. A way with
 	 *  nowhere to go keeps its place and stops answering, so a walk presses the
@@ -543,20 +544,41 @@
 	/** Every address a run has spent that this device holds: what the notes in it
 	 *  are at, and what they were at before they were moved. */
 	function spentIn(run: readonly NodeView[]): Address[] {
-		return run.flatMap((note) => [note.address, ...(note.aliases ?? [])]);
+		return run.flatMap((note) => [
+			...(note.address === undefined ? [] : [note.address]),
+			...(note.aliases ?? [])
+		]);
 	}
 
 	/** The earliest address this note could take carried against `target`: a run
 	 *  may have spent addresses this device has not read. */
-	function landsAt(target: NodeView): { under: Address; after: Address } {
+	function landsAt(target: NodeView, at: Address): { under: Address; after: Address } {
 		const above = target.parent ? nodes.get(target.parent) : undefined;
 		const alongTarget = target.parent
 			? nodes.children(target.parent)
 			: here.filter((note) => !note.parent);
 		return {
-			under: nextChildAddress(target.address, spentIn(nodes.children(target.ref))),
-			after: nextChildAddress(above?.address ?? parentAddress(target.address), spentIn(alongTarget))
+			under: nextChildAddress(at, spentIn(nodes.children(target.ref))),
+			after: nextChildAddress(above?.address ?? parentAddress(at), spentIn(alongTarget))
 		};
+	}
+
+	/** What letting the moved note go on `target` would do, or why it cannot. A
+	 *  carry reads the run off the addresses, so neither end of it can be a note
+	 *  nobody has numbered — the server refuses the same two. */
+	function landingOn(
+		moving: NodeView,
+		target: NodeView
+	): { under: Address; after: Address } | { refused: string } {
+		if (target.ref === moving.ref) return { refused: 'The note you are moving.' };
+		if (moving.address === undefined) {
+			return { refused: 'Give this note a number before carrying it.' };
+		}
+		if (target.address === undefined) return { refused: 'This note has no number yet.' };
+		if (isInSubtree(moving.address, target.address)) {
+			return { refused: 'Inside the note you are moving.' };
+		}
+		return landsAt(target, target.address);
 	}
 
 	/** Where this note may be carried: the notes of the graph it was written in,
@@ -574,12 +596,7 @@
 				address: note.address,
 				title: note.title,
 				wasAt: movedFrom(note, needle),
-				lands:
-					note.ref === ref
-						? { refused: 'The note you are moving.' }
-						: isInSubtree(moving.address, note.address)
-							? { refused: 'Inside the note you are moving.' }
-							: landsAt(note)
+				lands: landingOn(moving, note)
 			}));
 	});
 
@@ -673,12 +690,16 @@
 	 * nothing is said on it.
 	 */
 	const changedSince = $derived.by(() => {
-		if (!node || !publication) return false;
+		if (!node?.address || !publication) return false;
+		const at = node.address;
 		const since = publication.latest.published_at;
 		if (blocks.some((section) => section.updated_at > since)) return true;
 		return nodes
 			.region({ origin: node.origin })
-			.some((other) => isInSubtree(node.address, other.address) && other.updated_at > since);
+			.some(
+				(other) =>
+					other.address !== undefined && isInSubtree(at, other.address) && other.updated_at > since
+			);
 	});
 
 	/** What somebody has to be handed beside the address before they can read a
@@ -716,7 +737,7 @@
 	/** What a person says to cite this note: the address, under the name of the
 	 *  notebook it is read in, since an address means one thing inside one. */
 	const citation = $derived.by(() => {
-		if (!node) return '';
+		if (!node?.address) return '';
 		const notebook = inGraph ? graphs.titleOf(inGraph) : '';
 		return notebook ? `${node.address} · ${notebook}` : node.address;
 	});
@@ -1517,7 +1538,9 @@
 		<button
 			type="button"
 			onclick={choose}
-			aria-label={away ? `${note.address} ${note.title || 'Untitled'}, in ${away}` : undefined}
+			aria-label={away
+				? `${[note.address, note.title || 'Untitled'].filter(Boolean).join(' ')}, in ${away}`
+				: undefined}
 			class="flex min-h-11 min-w-0 flex-1 items-baseline gap-3 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 		>
 			<span class="address shrink-0 text-sm text-muted-foreground">{note.address}</span>
@@ -1531,7 +1554,7 @@
 				variant="ghost"
 				size="icon"
 				class="size-11 shrink-0 text-muted-foreground"
-				aria-label="Open {note.address} as well"
+				aria-label="Open {noteLabel(note)} as well"
 				onclick={() => onOpenAlso(note.ref)}
 			>
 				<Files class="size-4" />
@@ -1541,7 +1564,9 @@
 {/snippet}
 
 <svelte:head>
-	<title>{node ? `${node.address} · ${node.title || 'Untitled'}` : 'Note'} · Sloppy</title>
+	<title
+		>{node ? [node.address, node.title || 'Untitled'].filter(Boolean).join(' · ') : 'Note'} · Sloppy</title
+	>
 </svelte:head>
 
 <div
@@ -1569,7 +1594,7 @@
 				{onBack ? 'Back' : 'Graph'}
 			</button>
 
-			{#if node}
+			{#if node?.address}
 				<button
 					type="button"
 					aria-label={graphHere
@@ -1831,7 +1856,7 @@
 											variant="ghost"
 											size="icon"
 											class="size-11 shrink-0 text-muted-foreground hover:text-destructive"
-											aria-label={to ? `Unlink ${to.address}` : 'Unlink'}
+											aria-label={to ? `Unlink ${noteLabel(to)}` : 'Unlink'}
 											disabled={relinking.has(ref)}
 											onclick={() => unlink(target)}
 										>
@@ -1927,11 +1952,13 @@
 						variant="ghost"
 						class="h-11 min-w-0 flex-1 gap-1.5 px-1 text-muted-foreground"
 						disabled={!way.to}
-						aria-label={way.to ? `${way.says}, ${way.to.address}` : way.says}
+						aria-label={way.to ? `${way.says}, ${noteLabel(way.to)}` : way.says}
 						onclick={() => way.to && onOpen(way.to.ref)}
 					>
 						<Way class="size-4 shrink-0" />
-						{#if way.to}<span class="address truncate text-xs">{way.to.address}</span>{/if}
+						{#if way.to}<span class="truncate text-xs" class:address={!!way.to.address}
+								>{noteLabel(way.to)}</span
+							>{/if}
 					</Button>
 				{/each}
 			</nav>
@@ -2037,7 +2064,7 @@
 		{#if own}
 			<PublishModal
 				bind:open={publishing}
-				address={node.address}
+				address={noteLabel(node)}
 				reader={readerNeeds}
 				published={branch}
 				carriedBy={carriedBy?.root_address ?? null}

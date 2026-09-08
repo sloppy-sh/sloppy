@@ -52,8 +52,17 @@ export function noteChanges(
     });
   }
   // Stable, so the note gone from an address the other version reuses stays
-  // ahead of the one that arrived there.
-  return changes.sort((a, b) => compare(a.note.address, b.note.address));
+  // ahead of the one that arrived there. A note with no address follows the
+  // ones that have one, the way a run reads.
+  return changes.sort((a, b) => {
+    if (a.note.address === undefined || b.note.address === undefined) {
+      return (
+        (a.note.address === undefined ? 1 : 0) -
+        (b.note.address === undefined ? 1 : 0)
+      );
+    }
+    return compare(a.note.address, b.note.address);
+  });
 }
 
 /** Where the address order stops being decidable: past the lower of two windows

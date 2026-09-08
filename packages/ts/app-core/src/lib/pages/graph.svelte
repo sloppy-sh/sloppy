@@ -355,7 +355,9 @@
 	/** What the reading surface is called. The address leads, because that is what
 	 *  a person cites and hands to a peer — PRODUCT.md § Design Principles 3. */
 	const readingName = $derived(
-		writingNow || !openNode ? 'Note' : `${openNode.address} · ${openNode.title || 'Untitled'}`
+		writingNow || !openNode
+			? 'Note'
+			: [openNode.address, openNode.title || 'Untitled'].filter(Boolean).join(' · ')
 	);
 	/** The address the graph has just handed the reader, said once. */
 	const justNamed = $derived(naming ? (nodes.get(naming)?.address ?? '') : '');

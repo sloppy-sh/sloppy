@@ -17,6 +17,7 @@ import {
   parentAddress,
   parseAddress,
   rebaseAddress,
+  orderSiblings,
   runPairs,
   siblingAddress,
 } from "./address.js";
@@ -334,21 +335,24 @@ describe("ordering", () => {
 });
 
 describe("the run of thought", () => {
-  const alongside = (...addresses: string[]) =>
-    addresses.map((address) => ({ address }));
+  const WRITTEN = "2026-01-01T00:00:00.000Z";
+  const one = (address?: string, ref = address ?? "bare") => ({
+    ref: `did:syr:zAva/${ref}`,
+    ...(address === undefined ? {} : { address }),
+    created_at: WRITTEN,
+  });
+  const alongside = (...addresses: string[]) => addresses.map((a) => one(a));
 
   it("pairs each note with the one that follows it, however they arrive", () => {
     expect(runPairs(alongside("1c", "1a", "1b"))).toEqual([
-      [{ address: "1a" }, { address: "1b" }],
-      [{ address: "1b" }, { address: "1c" }],
+      [one("1a"), one("1b")],
+      [one("1b"), one("1c")],
     ]);
   });
 
   it("closes over a note taken out of the middle", () => {
-    expect(runPairs(alongside("1", "3"))).toEqual([
-      [{ address: "1" }, { address: "3" }],
-    ]);
-    expect(alongRun("1", alongside("1", "3")).after).toEqual({ address: "3" });
+    expect(runPairs(alongside("1", "3"))).toEqual([[one("1"), one("3")]]);
+    expect(alongRun(one("1").ref, alongside("1", "3")).after).toEqual(one("3"));
   });
 
   it("pairs nothing where there is nothing to follow", () => {
@@ -357,34 +361,43 @@ describe("the run of thought", () => {
   });
 
   it("says what a note sits between", () => {
-    expect(alongRun("1b", alongside("1a", "1b", "1d"))).toEqual({
-      before: { address: "1a" },
-      after: { address: "1d" },
+    expect(alongRun(one("1b").ref, alongside("1a", "1b", "1d"))).toEqual({
+      before: one("1a"),
+      after: one("1d"),
     });
   });
 
   it("says nothing past either end of the run", () => {
     const run = alongside("1a", "1b");
-    expect(alongRun("1a", run).before).toBeNull();
-    expect(alongRun("1b", run).after).toBeNull();
+    expect(alongRun(one("1a").ref, run).before).toBeNull();
+    expect(alongRun(one("1b").ref, run).after).toBeNull();
   });
 
   it("says nothing for a note that is not one of these", () => {
-    expect(alongRun("2", alongside("1a", "1b"))).toEqual({
+    expect(alongRun(one("2").ref, alongside("1a", "1b"))).toEqual({
       before: null,
       after: null,
     });
   });
 
+  it("puts the notes carrying no address after the ones that do", () => {
+    const run = [one("1b"), one(undefined, "second"), one("1a")];
+    expect(orderSiblings(run).map((note) => note.ref)).toEqual([
+      one("1a").ref,
+      one("1b").ref,
+      one(undefined, "second").ref,
+    ]);
+  });
+
   /** A run with notes taken out of it and the rest shuffled — what a cache and
    *  a canvas each hand this, neither of them in order. */
-  function scattered(seed: number): { address: Address }[] {
+  function scattered(seed: number): ReturnType<typeof one>[] {
     const random = seededRandom(seed);
-    const run = [{ address: "1a" as Address }];
+    const run = [one("1a")];
     let address: Address = "1a";
     for (let step = 0; step < 24; step++) {
       address = siblingAddress(address);
-      if (random() < 0.7) run.push({ address });
+      if (random() < 0.7) run.push(one(address));
     }
     for (let at = run.length - 1; at > 0; at--) {
       const swap = Math.floor(random() * (at + 1));
@@ -399,14 +412,14 @@ describe("the run of thought", () => {
     for (let seed = 1; seed <= 200; seed++) {
       const run = scattered(seed);
       const order = [...run].sort((a, b) =>
-        compareAddresses(a.address, b.address),
+        compareAddresses(a.address as Address, b.address as Address),
       );
 
       expect(runPairs(run)).toEqual(
         order.slice(1).map((note, at) => [order[at], note]),
       );
       order.forEach((note, at) => {
-        expect(alongRun(note.address, run)).toEqual({
+        expect(alongRun(note.ref, run)).toEqual({
           before: order[at - 1] ?? null,
           after: order[at + 1] ?? null,
         });
@@ -924,6 +937,47 @@ describe("determinism across peers", () => {
         }
       }
     }
+  });
+
+  it("offers the same address however many siblings carry none", () => {
+    // A caller hands the rule the run as it holds it, absent addresses and all
+    // — which is what a store answers with once a note has been left
+    // unnumbered. The rule follows the GREATEST address, and a note with none
+    // holds nothing to be greater than.
+    const WRITTEN = "2026-01-01T00:00:00.000Z";
+    let runs = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const graph = replay(new AddressOrderPeer(), generateOps(seed, 60));
+      for (const parent of [null, ...graph.current]) {
+        const run = graph.current.filter(
+          (address) => parentAddress(address) === parent,
+        );
+        if (run.length === 0) continue;
+        runs += 1;
+        const alongside = orderSiblings<{
+          ref: string;
+          address?: Address;
+          created_at: string;
+        }>([
+          ...run.map((address, at) => ({
+            ref: `did:syr:zAva/${at}`,
+            address,
+            created_at: WRITTEN,
+          })),
+          ...[1, 2, 3].map((at) => ({
+            ref: `did:syr:zAva/bare${at}`,
+            created_at: WRITTEN,
+          })),
+        ]);
+        expect(
+          nextChildAddress(
+            parent,
+            alongside.map((one) => one.address),
+          ),
+        ).toBe(nextChildAddress(parent, run));
+      }
+    }
+    expect(runs).toBeGreaterThan(200);
   });
 
   it("orders addresses the same way on both peers", () => {

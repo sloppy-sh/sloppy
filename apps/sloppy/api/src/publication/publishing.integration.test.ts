@@ -573,7 +573,9 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(done.notes.every((note) => note.published)).toBe(true);
 
     const mine = (await ok("GET", "/publications", ada)) as PublicationView[];
-    const rooted = new Set(mine.map((one) => one.root_address));
+    const rooted = new Set<string | undefined>(
+      mine.map((one) => one.root_address),
+    );
     expect(rooted.has(first.address)).toBe(true);
     expect(rooted.has(beside.address)).toBe(true);
     expect(rooted.has(under.address)).toBe(false);
@@ -618,7 +620,9 @@ describe("publishing a branch, and what a peer reads back", () => {
     expect(done).toMatchObject({ reached: 2, missed: 0 });
 
     const mine = (await ok("GET", "/publications", ada)) as PublicationView[];
-    const rooted = new Set(mine.map((one) => one.root_address));
+    const rooted = new Set<string | undefined>(
+      mine.map((one) => one.root_address),
+    );
     const inner = mine.find((one) => one.root_address === under.address);
     expect(rooted.has(first.address)).toBe(true);
     expect(inner?.latest.sequence).toBe(2);

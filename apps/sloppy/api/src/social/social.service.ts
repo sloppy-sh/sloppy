@@ -267,7 +267,7 @@ export class SocialService {
       if (heard.length === 0) continue;
       list.push({
         note,
-        address: held.address,
+        ...(held.address === undefined ? {} : { address: held.address }),
         graph: graphRef(delegation.did, held.graph),
         title: held.title,
         voices: heard,

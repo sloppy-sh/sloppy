@@ -20,7 +20,7 @@ import {
   type PulledNoteHit,
   UnaskedAnswerError,
   addressDepth,
-  compareAddresses,
+  orderSiblings,
   entityView,
   graphRef,
   publishedSubtreeReader,
@@ -80,6 +80,10 @@ export class PullService {
     let terms: RegionTerms | undefined;
     let cursor: string | undefined;
     const declined = new Set<OwnedRef>();
+    // How deep in the AUTHOR's graph each held note sits, walked down the
+    // parents a page carries rather than read out of an address a person
+    // writes.
+    const deep = new Map<OwnedRef, number>();
     do {
       const body = await readPeerJson(
         subtreeUrl(origin, publication, request.version, cursor),
@@ -91,7 +95,7 @@ export class PullService {
         }
         throw new ServiceUnavailableException(UNREADABLE);
       }
-      const page = this.take(reading, body, declined);
+      const page = this.take(reading, body, declined, deep);
       terms ??= {
         publication,
         version: page.version,
@@ -108,7 +112,7 @@ export class PullService {
         reader,
         author,
         pullRef(region),
-        held(page, author, graphRef(author, page.graph)),
+        held(page, author, graphRef(author, page.graph), deep),
       );
       cursor = page.next_cursor;
     } while (cursor !== undefined);
@@ -149,10 +153,11 @@ export class PullService {
         : addressDepth(region.root_address) + maxDepth - 1;
     const served = await this.pulls.served(reader, ref);
     const rows = await this.pulls.nodesBySource(reader, served);
-    return rows
-      .filter((row) => bound === undefined || row.depth <= bound)
-      .map(pulledNodeView)
-      .sort((a, b) => compareAddresses(a.address, b.address));
+    return orderSiblings(
+      rows
+        .filter((row) => bound === undefined || row.depth <= bound)
+        .map(pulledNodeView),
+    );
   }
 
   async blocks(reader: DidSyr, node: OwnedRef): Promise<BlockView[]> {
@@ -181,16 +186,19 @@ export class PullService {
    * whose own signature refutes it is left out and named in `declined`, so it
    * is neither held nor swept for. `PublishedNodeSchema` bounds the claim, and
    * not presenting ONE note as its author's is not refusing the branch it sits
-   * in.
+   * in — which is why the depths are walked before a note is dropped, so the
+   * notes under a dropped one still know where they sit.
    */
   private take(
     reading: ReturnType<typeof publishedSubtreeReader>,
     body: unknown,
     declined: Set<OwnedRef>,
+    deep: Map<OwnedRef, number>,
   ): PublishedSubtreePage {
     let page: PublishedSubtreePage;
     try {
       page = reading.take(body);
+      deepen(page, deep);
     } catch (error) {
       if (error instanceof UnaskedAnswerError) {
         this.logger.warn(error.message);
@@ -230,21 +238,56 @@ export class PullService {
   }
 }
 
+/**
+ * How deep each note a page carries sits, written into `deep` — the region's
+ * root at the depth its address puts it, and everything else one below the note
+ * it springs from, wherever in the answer that note arrived.
+ */
+function deepen(
+  page: PublishedSubtreePage,
+  deep: Map<OwnedRef, number>,
+): void {
+  const rootDepth = addressDepth(page.root_address);
+  let waiting = page.nodes;
+  while (waiting.length > 0) {
+    const later: typeof waiting = [];
+    for (const node of waiting) {
+      if (node.parent === undefined) {
+        deep.set(node.ref, rootDepth);
+        continue;
+      }
+      const above = deep.get(node.parent);
+      if (above === undefined) later.push(node);
+      else deep.set(node.ref, above + 1);
+    }
+    if (later.length === waiting.length) {
+      throw new UnaskedAnswerError(
+        `${later[0].ref}, which springs from nothing this region sent`,
+      );
+    }
+    waiting = later;
+  }
+}
+
 function held(
   page: PublishedSubtreePage,
   author: DidSyr,
   graph: OwnedRef,
+  deep: Map<OwnedRef, number>,
 ): HeldPage {
   return {
-    nodes: page.nodes.map(({ ref, ...node }) => ({
-      source: ref,
-      source_did: author,
-      source_graph: graph,
-      address: node.address,
-      ...(node.aliases ? { aliases: node.aliases } : {}),
-      depth: addressDepth(node.address),
-      node: { ...node },
-    })),
+    nodes: page.nodes.map(({ ref, ...node }) => {
+      const depth = deep.get(ref) as number;
+      return {
+        source: ref,
+        source_did: author,
+        source_graph: graph,
+        ...(node.address === undefined ? {} : { address: node.address }),
+        ...(node.aliases ? { aliases: node.aliases } : {}),
+        depth,
+        node: { ...node },
+      };
+    }),
     blocks: page.blocks.map((block) => ({
       source: block.ref,
       node: block.node,
