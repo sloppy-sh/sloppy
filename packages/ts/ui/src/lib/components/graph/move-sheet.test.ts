@@ -88,7 +88,7 @@ describe('the move sheet', () => {
 
 		const field = document.querySelector<HTMLInputElement>('input');
 		expect(document.activeElement).toBe(field);
-		expect(screen()).toContain('the address it has now keeps leading to it');
+		expect(screen()).toContain('every address it has had keeps leading to it');
 	});
 
 	it('hands what was typed back to whoever is looking', async () => {
@@ -127,6 +127,20 @@ describe('the move sheet', () => {
 		expect(screen()).toContain('It becomes 2a, or the next one free.');
 		expect(screen()).toContain('Put it beside 2');
 		expect(screen()).toContain('It becomes 3, or the next one free.');
+	});
+
+	// AI.md § "The Genealogy Is the Protocol": a run under a note nobody numbered
+	// numbers nothing, so the sheet offers the placement without promising one.
+	it('promises no address where the note will carry none there', async () => {
+		const loose: MoveTarget = { ref: CELLS, title: 'Cells', lands: {} };
+		await open({ query: 'cells', found: [loose] });
+
+		rows()[0].click();
+		await settle();
+
+		expect(screen()).toContain('Put it under Cells');
+		expect(screen()).toContain('It carries no number there.');
+		expect(screen()).not.toContain('or the next one free');
 	});
 
 	it('asks for the placement that was tapped', async () => {

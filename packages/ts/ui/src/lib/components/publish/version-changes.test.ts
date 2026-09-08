@@ -9,9 +9,9 @@ import VersionChanges from './version-changes.svelte';
 const AUTHOR = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
 const ref = (mark: string): OwnedRef => `${AUTHOR}/01JQXR${'0'.repeat(19)}${mark}`;
 
-const note = (mark: string, address: string, title: string) => ({
+const note = (mark: string, address: string | undefined, title: string) => ({
 	ref: ref(mark),
-	address,
+	...(address === undefined ? {} : { address }),
 	origin: ref('A'),
 	title,
 	tags: [] as string[],
@@ -57,6 +57,30 @@ describe('what a publish did', () => {
 		expect(screen()).toContain('Was at 1c');
 		expect(screen()).toContain('Moved');
 		expect(screen()).not.toContain('Edited');
+	});
+
+	it('names a note its author gave no address by its title alone', () => {
+		draw([{ change: 'added', note: note('C', undefined, 'Mycelium'), sections: [] }]);
+
+		expect(screen()).toContain('Mycelium');
+		expect(screen()).toContain('New note');
+		expect(document.body.querySelector('.address')).toBeNull();
+	});
+
+	it('says where a note was once its author took the address off it, without calling it moved', () => {
+		draw([
+			{
+				change: 'changed',
+				note: note('B', undefined, 'Spores'),
+				before: note('B', '1c', 'Spores'),
+				sections: []
+			}
+		]);
+
+		expect(screen()).toContain('Spores');
+		expect(screen()).toContain('Unnumbered');
+		expect(screen()).toContain('Was at 1c');
+		expect(screen()).not.toContain('Moved');
 	});
 
 	it('says nothing about where a note was when it has not been carried anywhere', () => {

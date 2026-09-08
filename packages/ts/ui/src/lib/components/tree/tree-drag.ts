@@ -92,10 +92,47 @@ export interface MoveLanding {
 }
 
 /**
+ * Whether `on` lies under `moved`: by the genealogy the drawn rows carry, and
+ * by the addresses where those rows stop short of the note being carried.
+ */
+function beneath(
+	notes: readonly TreeItem[],
+	moved: Pick<TreeNote, 'ref' | 'address'>,
+	on: TreeNote
+): boolean {
+	if (
+		moved.address !== undefined &&
+		on.address !== undefined &&
+		isAncestorAddress(moved.address, on.address)
+	) {
+		return true;
+	}
+	const byRef = new Map(notes.map((row) => [row.note.ref, row.note]));
+	let up = on.parent;
+	while (up !== undefined) {
+		if (up === moved.ref) return true;
+		up = byRef.get(up)?.parent;
+	}
+	return false;
+}
+
+/** The address the run `on` lies in is numbered against: `null` at the top of
+ *  the tree, `undefined` where nothing numbers it. */
+function runAbove(notes: readonly TreeItem[], on: TreeNote): Address | null | undefined {
+	if (on.parent === undefined) return null;
+	const above = notes.find((row) => row.note.ref === on.parent);
+	if (above) return above.note.address;
+	return on.address === undefined ? undefined : parentAddress(on.address);
+}
+
+/**
  * Where a note carried over `rows` would land, read off the rows the reader has
  * drawn. The run appends, so the note takes the address after its greatest —
  * and an address the run has already spent is drawn nowhere, so the one named
- * here is the earliest the server can give it and never a promise.
+ * here is the earliest the server can give it and never a promise. A number is
+ * promised only where there will be one: a note with none keeps none, a run
+ * under a note nobody numbered numbers nothing, and beside such a note is still
+ * the run its own parent numbers.
  */
 export function movesTo(
 	rows: readonly TreeRow[],
@@ -108,26 +145,19 @@ export function movesTo(
 	if (!item) return { says: 'A note stays in the graph it was written in' };
 	const on = item.note;
 	if (on.ref === moved.ref) return { says: 'Stays where it is' };
-	// A carry reads the run off the addresses, so neither end of it can be a
-	// note nobody has numbered — the server refuses the same two.
-	if (moved.address === undefined) {
-		return { says: 'Give this note a number before carrying it' };
-	}
-	if (on.address === undefined) {
-		return { says: `${named(on)} has no number yet` };
-	}
-	if (isAncestorAddress(moved.address, on.address)) {
-		return { says: 'A note cannot go inside itself' };
-	}
-	const under = aim.relation === 'under' ? on.address : parentAddress(on.address);
+	if (beneath(notes, moved, on)) return { says: 'A note cannot go inside itself' };
 	const how = aim.relation === 'under' ? 'under' : 'beside';
+	const run = aim.relation === 'under' ? on.address : runAbove(notes, on);
+	if (moved.address === undefined || run === undefined) {
+		return { says: `Goes ${how} ${named(on)}`, to: aim };
+	}
 	const folded = aim.relation === 'under' && item.children > 0 && !item.open;
-	const waiting = rows.some((row) => row.kind === 'rest' && row.parent === under);
+	const waiting = rows.some((row) => row.kind === 'rest' && row.parent === run);
 	if (folded || waiting) {
 		return { says: `Goes ${how} ${named(on)}, at the end of its run`, to: aim };
 	}
 	const along = notes.flatMap((row) => (row.note.address ? [row.note.address] : []));
-	const takes = nextChildAddress(under, along);
+	const takes = nextChildAddress(run, along);
 	const alreadyLast = takes === siblingAddress(moved.address);
 	if (alreadyLast) return { says: 'Stays where it is' };
 	return { says: `Goes ${how} ${named(on)}, as ${takes} or later`, to: aim };

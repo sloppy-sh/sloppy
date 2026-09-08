@@ -176,6 +176,37 @@ describe('a note somebody was sent to, with no account', () => {
 		expect(screen()).toContain('1 · Their notebook');
 	});
 
+	// A person cites what their author gave a label; a note with none is read by
+	// its title, and the heading is where a title belongs.
+	it('reads a note its author gave no address under the notebook alone', async () => {
+		const under = ref(24, AUTHOR);
+		where.url = new URL(`http://app.test/n${refPath(under)}`);
+		api.on(`GET /public/publications${refPath(under)}`, () =>
+			branch({
+				publication: under,
+				nodes: [
+					...branch().nodes,
+					{
+						ref: under,
+						parent: ROOT,
+						origin: ROOT,
+						title: 'Keys in the wind',
+						tags: [],
+						links: [],
+						created_at: AT,
+						updated_at: AT
+					}
+				]
+			})
+		);
+
+		await open();
+		await until(() => screen().includes('Keys in the wind'));
+
+		expect(screen()).toContain('Their notebook');
+		expect(screen().match(/Keys in the wind/g)).toHaveLength(1);
+	});
+
 	// The offer is the only act this page has, so it stands on the page itself
 	// rather than behind anything a phone would cover it with.
 	it('offers signing in beside the note, on the page the note is on', async () => {

@@ -408,7 +408,9 @@
 											onOpenAnswer?.(answer.note);
 										}}
 									>
-										<span class="shrink-0 address">{answer.address}</span>
+										{#if answer.address !== undefined}
+											<span class="shrink-0 address">{answer.address}</span>
+										{/if}
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-sm">{answer.title || 'Untitled'}</span>
 											<span class="block truncate text-xs text-muted-foreground"

@@ -1,13 +1,14 @@
 <script lang="ts">
 	// The note that has been asked for and not yet answered, on the same reading
 	// surface the note itself opens on. What is typed here is handed to that note
-	// the moment it has an address — PRODUCT.md § "Capture is one gesture".
+	// the moment it lands — PRODUCT.md § "Capture is one gesture".
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { Button } from '@sloppy/ui/button';
 
 	let {
 		title,
 		body,
+		numbering,
 		refused = null,
 		onTitle,
 		onBody,
@@ -17,6 +18,9 @@
 	}: {
 		title: string;
 		body: string;
+		/** Whether an address is coming with the note; one written on its own
+		 *  carries none. */
+		numbering: boolean;
 		/** Why the note is not written yet, in words already fit to show. */
 		refused?: string | null;
 		onTitle: (title: string) => void;
@@ -77,7 +81,7 @@
 			</button>
 			{#if !refused}
 				<span class="ml-auto truncate text-sm text-muted-foreground" role="status">
-					Giving it an address…
+					{numbering ? 'Giving it an address…' : 'Putting it down…'}
 				</span>
 			{/if}
 		</div>

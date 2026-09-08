@@ -59,13 +59,15 @@
 	}
 
 	function became(entry: PublishedNoteChange): string {
+		if (entry.change !== 'changed') return BECAME[entry.change];
 		const carried =
 			moved(entry) !== null &&
 			renamed(entry) === null &&
 			gained(entry).length === 0 &&
 			lost(entry).length === 0 &&
 			sectionsOf(entry).length === 0;
-		return carried ? 'Moved' : BECAME[entry.change];
+		if (!carried) return BECAME.changed;
+		return entry.note.address === undefined ? 'Unnumbered' : 'Moved';
 	}
 
 	/**
@@ -122,7 +124,9 @@
 			{@const fewer = lost(entry)}
 			<li class="space-y-2">
 				<div class="flex items-baseline gap-2">
-					<span class="shrink-0 address text-sm">{entry.note.address}</span>
+					{#if entry.note.address !== undefined}
+						<span class="shrink-0 address text-sm">{entry.note.address}</span>
+					{/if}
 					<span class="min-w-0 flex-1 truncate text-sm">{entry.note.title || 'Untitled'}</span>
 					<span class="shrink-0 text-xs text-muted-foreground">{became(entry)}</span>
 				</div>
