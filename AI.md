@@ -93,8 +93,11 @@ to, all of them about what a person can rely on rather than about what the code 
   either: the row keeps it while the note can still be put back.
 - **A move re-addresses a note that has an address and leaves one that has none alone.** A
   moved note takes the next address in the run it joins, by exactly the rule creation uses,
-  and everything beneath it keeps its place relative to it. The addresses left behind become
-  aliases, and the person may edit the result afterwards.
+  unless the person names one — an address named on a move is held to every rule an address
+  written on a standing note is held to, and to one more: it springs from the address of the
+  note it lands under, or from nothing where the note becomes a branch. Everything beneath it
+  keeps its place relative to it either way. The addresses left behind become aliases, and the
+  person may edit the result afterwards.
 - **Within a run, the notes with addresses come first, in address order, and the rest
   follow in the order they were written.** That is one ordering, in one function, so no two
   surfaces can disagree about what a run reads as.
