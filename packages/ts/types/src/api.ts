@@ -247,6 +247,10 @@ export const SearchHitSchema = z.object({
   graph: OwnedRefSchema,
   title: z.string(),
   snippet: z.string().default(""),
+  /** When the note was written, which is what settles the order of two hits
+   *  neither of which carries an address. Absent from an answer made before it
+   *  travelled, and such a pair falls back to the reference. */
+  created_at: TimestampSchema.optional(),
   /** The address the note was reached by, where it has since been carried away
    *  from that one. Absent is a note reached by where it is now. */
   wasAt: AddressSchema.optional(),

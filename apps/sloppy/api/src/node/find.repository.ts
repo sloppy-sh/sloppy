@@ -51,18 +51,24 @@ export interface AddressReach {
 export interface HeldNote {
   /** The note as its AUTHOR addresses it, which is what opens it. */
   source: OwnedRef;
-  address: Address;
+  /** The label its author gave it, absent where they gave it none. */
+  address?: Address;
   /** The author's graph, which is where that address is read. */
   graph: OwnedRef;
   title: string;
+  /** When its author wrote it, which is what orders two held notes neither of
+   *  which carries an address. Absent where the copy was taken before the
+   *  moment travelled. */
+  created_at?: string;
 }
 
 const HeldNoteSchema = z.object({
   source: OwnedRefSchema,
-  address: AddressSchema,
+  address: AddressSchema.optional(),
   source_did: DidSyrSchema,
   source_graph: OwnedRefSchema.optional(),
   title: z.string().nullish(),
+  created_at: z.string().nullish(),
 });
 
 @Injectable()
@@ -147,7 +153,8 @@ export class FindRepository {
   ): Promise<HeldNote[]> {
     if (sources.length === 0) return [];
     const [rows] = await this.db.handle.query<[unknown[]]>(
-      `SELECT source, address, source_did, source_graph, node.title AS title
+      `SELECT source, address, source_did, source_graph, node.title AS title,
+              node.created_at AS created_at
          FROM pulled_node
          WHERE created_by = $did AND source IN $sources`,
       { did, sources: [...sources] },
@@ -156,9 +163,10 @@ export class FindRepository {
       const held = HeldNoteSchema.parse(row);
       return {
         source: held.source,
-        address: held.address,
+        ...(held.address === undefined ? {} : { address: held.address }),
         graph: graphRef(held.source_did, held.source_graph),
         title: held.title ?? "",
+        ...(held.created_at ? { created_at: held.created_at } : {}),
       };
     });
   }
