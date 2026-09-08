@@ -232,12 +232,11 @@ function notebook(
   /** Every address a note has been carried or renamed away from. */
   const left: NodeAlias[] = [];
   const there = () => held.filter((one) => one.deleted_at === undefined);
-  /** What the unique index on the store's own rows answers, and refuses a
-   *  write against. */
+  /** What the unique index on the store's notes answers, and refuses a write
+   *  against. The one over the addresses they were carried away from is its
+   *  own index: nothing in the store spans the two. */
   const spent = (address: Address, of?: OwnedRef) =>
-    held.some(
-      (one) => one.address === address && ownedRefFrom(one.id) !== of,
-    ) || left.some((one) => one.address === address && one.note !== of);
+    held.some((one) => one.address === address && ownedRefFrom(one.id) !== of);
   /** The parent chain, which is what the store's own read walks. */
   const under = (root: Node, from: readonly Node[]) => {
     const byRef = new Map(from.map((one) => [ownedRefFrom(one.id), one]));
@@ -339,6 +338,20 @@ function notebook(
         left.some((one) => one.address === address) ? "moved" : null,
       );
     },
+    addressesSpent: (
+      _did: string,
+      _graph: OwnedRef,
+      addresses: readonly Address[],
+    ) =>
+      Promise.resolve(
+        new Set(
+          addresses.filter(
+            (address) =>
+              held.some((one) => one.address === address) ||
+              left.some((one) => one.address === address),
+          ),
+        ),
+      ),
     subtree: (_did: string, root: Node) =>
       Promise.resolve(under(root, there())),
     aliasesOf: (_did: string, _graph: OwnedRef, notes: readonly OwnedRef[]) => {
@@ -775,6 +788,36 @@ describe("a label written outside the run it names", () => {
     const child = live("1a", { origin: root.ref, parent: root.ref });
     const other = live("2");
     const { service } = notebook([root, child, other, live("2a1")]);
+
+    const carried = await service.move(DID, root.ref, {
+      relation: "under",
+      note: other.ref,
+    });
+
+    expect(carried.map((one) => [one.ref, one.address])).toEqual([
+      [root.ref, "2b"],
+      [child.ref, "2b1"],
+    ]);
+  });
+
+  it("is passed over once its author has taken it off and it still leads back", async () => {
+    const root = live("1");
+    const aside = unnumbered("Numbered by hand");
+    const { service } = notebook([root, aside]);
+    await service.setAddress(DID, aside.ref, "1a");
+    await service.setAddress(DID, aside.ref, null);
+
+    expect((await service.create(DID, springing(root))).address).toBe("1b");
+  });
+
+  it("moves a subtree along once it has been taken off too", async () => {
+    const root = live("1");
+    const child = live("1a", { origin: root.ref, parent: root.ref });
+    const other = live("2");
+    const aside = unnumbered("Numbered by hand");
+    const { service } = notebook([root, child, other, aside]);
+    await service.setAddress(DID, aside.ref, "2a");
+    await service.setAddress(DID, aside.ref, null);
 
     const carried = await service.move(DID, root.ref, {
       relation: "under",

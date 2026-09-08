@@ -2025,6 +2025,64 @@ describe("the domain routes", () => {
       expect((await readNote(aside.ref)).address).toBe(`${second.address}a1`);
     });
 
+    scenario(
+      "is passed over by that note too once it has been taken off",
+      async () => {
+        const alone = await newGraph(ada, "Numbered and unnumbered again");
+        const branch = await newNode(ada, {
+          from: { relation: "branch", graph: alone.ref },
+        });
+        const aside = await newNode(ada, {
+          from: { relation: "free", graph: alone.ref },
+          title: "Numbered by hand",
+        });
+        await labelled(aside, `${branch.address}a`);
+        await labelled(aside, null);
+
+        const written = await newNode(ada, { from: springsFrom(branch) });
+
+        expect(written.address).toBe(`${branch.address}b`);
+        expect(
+          (await searchIn(alone.ref, `${branch.address}a`)).map((hit) => [
+            hit.note,
+            hit.wasAt,
+          ]),
+        ).toEqual([[aside.ref, `${branch.address}a`]]);
+      },
+    );
+
+    scenario("moves a subtree along past one taken off too", async () => {
+      const alone = await newGraph(ada, "Carried past a number taken off");
+      const first = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const under = await newNode(ada, { from: springsFrom(first) });
+      const second = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const aside = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "Numbered by hand",
+      });
+      await labelled(aside, `${second.address}a`);
+      await labelled(aside, null);
+
+      const carried = (await ok("POST", `/nodes/${at(first.ref)}/move`, ada, {
+        to: { relation: "under", note: second.ref },
+      })) as NodeView[];
+
+      expect(carried.map((one) => [one.ref, one.address])).toEqual([
+        [first.ref, `${second.address}b`],
+        [under.ref, `${second.address}b1`],
+      ]);
+      expect(
+        (await searchIn(alone.ref, `${second.address}a`)).map((hit) => [
+          hit.note,
+          hit.wasAt,
+        ]),
+      ).toEqual([[aside.ref, `${second.address}a`]]);
+    });
+
     scenario("hands a note back a number it carried before", async () => {
       const alone = await newGraph(ada, "Carried and labelled back");
       const first = await newNode(ada, {

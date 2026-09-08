@@ -342,6 +342,29 @@ describe("publishing the notes somebody chose", () => {
     expect(published).toEqual([ownedRefFrom(notes[0].id)]);
   });
 
+  // A publication carries what sprang from its root, and a person's label is
+  // not that: a note labelled into the run beneath it stayed where it was.
+  it("leaves out a note whose label alone reads as under a chosen note", async () => {
+    const [root, chosen, beneath, beside] = tree("1", "1a", "1a1", "1b");
+    const labelled: Node = {
+      ...note("1a2"),
+      origin: root.origin,
+      parent: ownedRefFrom(beside.id),
+    };
+    const set = [chosen, beneath, labelled];
+    const { service, published } = serviceOver(
+      [root, chosen, beneath, beside, labelled],
+      [],
+      [],
+    );
+
+    const result = await service.bulk(DID, over(set, { act: "publish" }), ada);
+
+    expect(published).toEqual([ownedRefFrom(chosen.id)]);
+    expect(result.reached).toBe(2);
+    expect(result.missed).toBe(1);
+  });
+
   // A chain of its own is its own: a carrier's snapshot does not advance it, so
   // skipping it would leave it a version behind what the set was told.
   it("sends a chosen note's own chain again inside a chosen note", async () => {

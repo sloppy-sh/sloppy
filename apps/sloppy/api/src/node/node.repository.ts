@@ -233,6 +233,27 @@ export class NodeRepository {
     return aliased.length > 0 ? "moved" : null;
   }
 
+  /** Which of these addresses the graph has already spent, in one read:
+   *  {@link addressTaken}'s question asked of many at once. */
+  async addressesSpent(
+    did: string,
+    graph: OwnedRef,
+    addresses: readonly Address[],
+  ): Promise<Set<Address>> {
+    if (addresses.length === 0) return new Set();
+    const within = `WHERE created_by = $did AND graph = $graph
+         AND address IN $addresses`;
+    const [held, retired, aliased] = await this.db.handle.query<
+      [Address[], Address[], Address[]]
+    >(
+      `SELECT VALUE address FROM node ${within};
+       SELECT VALUE address FROM retired_address ${within};
+       SELECT VALUE address FROM node_alias ${within};`,
+      { did, graph, addresses: [...addresses] },
+    );
+    return new Set([...held, ...retired, ...aliased]);
+  }
+
   /**
    * The same question with the note named: how the graph holds this address,
    * and which note it still leads to where one is there. `null` where the graph

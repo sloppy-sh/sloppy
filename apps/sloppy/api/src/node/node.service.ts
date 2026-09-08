@@ -502,6 +502,16 @@ export class NodeService {
         );
       }
 
+      const spent = async () =>
+        landing !== null &&
+        (await this.nodes.addressesSpent(did, graph, [...landing.values()]))
+          .size > 0;
+      if (now !== undefined && (await spent())) {
+        if (attempt >= ADDRESS_ATTEMPTS) throw allSpent([...passed, now]);
+        passed.push(now);
+        continue;
+      }
+
       const { root, landed, aliases } = landedRows(
         note,
         parent,
@@ -513,32 +523,11 @@ export class NodeService {
         await this.nodes.move(did, landed, aliases);
         return this.asRead(did, await this.nodes.subtree(did, root));
       } catch (err) {
-        if (
-          landing === null ||
-          now === undefined ||
-          !(await this.anySpent(did, graph, landing.values()))
-        ) {
-          throw err;
-        }
+        if (now === undefined || !(await spent())) throw err;
         if (attempt >= ADDRESS_ATTEMPTS) throw allSpent([...passed, now]);
         passed.push(now);
       }
     }
-  }
-
-  /** Whether this graph has already spent any of these addresses, on a note,
-   *  on one deleted, or on one a move or a rename left leading somewhere. */
-  private async anySpent(
-    did: string,
-    graph: OwnedRef,
-    addresses: Iterable<Address>,
-  ): Promise<boolean> {
-    for (const address of addresses) {
-      if ((await this.nodes.addressTaken(did, graph, address)) !== null) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /**
@@ -882,6 +871,11 @@ export class NodeService {
         throw new BadRequestException(
           "There is no number left after your highest branch. Number a lower one.",
         );
+      }
+      if ((await this.nodes.addressTaken(did, graph, address)) !== null) {
+        if (attempt >= ADDRESS_ATTEMPTS) throw allSpent([...passed, address]);
+        passed.push(address);
+        continue;
       }
       try {
         return entityView(
