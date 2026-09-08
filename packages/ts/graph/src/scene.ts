@@ -22,6 +22,7 @@ import type {
   Sprite,
   Text,
   Texture,
+  TextureSource,
 } from "pixi.js";
 import { clamp } from "./color.js";
 import type {
@@ -315,6 +316,9 @@ export class GraphScene {
   private readonly previewsAsked = new Map<string, number>();
   /** Cuts a bigger one took the place of, freed once no sprite draws them. */
   private readonly retiredTextures: Texture[] = [];
+  /** The sheet a denser or coarser cut replaced. Freed a frame later: until the
+   *  renderer has drawn once without it, it is still bound to a shader. */
+  private spentSheet: TextureSource | null = null;
   /** Marks with a change under way, so an idle frame costs nothing to find
    *  them and a field where nothing is turning costs nothing at all. */
   private readonly turning = new Set<Mark>();
@@ -800,6 +804,7 @@ export class GraphScene {
 
   destroy(): void {
     this.destroyed = true;
+    this.freeSpentSheet();
     this.app.ticker.remove(this.draw);
     this.ground.destroy();
     this.dropPreviewSprites();
@@ -815,6 +820,7 @@ export class GraphScene {
   private readonly draw = (): void => {
     const started = performance.now();
     this.frameSamples.push(this.app.ticker.deltaMS);
+    this.freeSpentSheet();
 
     const rebuilt = this.modelDirty;
     if (this.modelDirty) this.rebuildMarks();
@@ -953,7 +959,7 @@ export class GraphScene {
     );
     if (tier === this.sheetTier) return false;
 
-    const spent = this.textures.disc.source;
+    this.spentSheet = this.textures.disc.source;
     this.textures = markTextures(this.pixi, this.app, tier);
     this.sheetTier = tier;
     for (const mark of this.marks) {
@@ -971,8 +977,12 @@ export class GraphScene {
       layer.texture = this.textures.disc;
       layer.update();
     }
-    spent.destroy();
     return true;
+  }
+
+  private freeSpentSheet(): void {
+    this.spentSheet?.destroy();
+    this.spentSheet = null;
   }
 
   private get sheetReach(): number {

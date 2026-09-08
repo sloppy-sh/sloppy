@@ -22,6 +22,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { type DrawnNode, drawnNodes } from "./contract.js";
 import { makeCorpus } from "./corpus.test-support.js";
+import { MAX_DENSITY } from "./density.js";
 import { applyLod } from "./lod.js";
 import {
   buildModel,
@@ -1020,6 +1021,23 @@ describe("the two budgets a picture is cut against", () => {
   it("cuts marks a hair apart in size to one texture", () => {
     expect(markPictureSide(20, PREVIEW_COVER_MIN)).toBe(
       markPictureSide(21, PREVIEW_COVER_MIN),
+    );
+  });
+
+  // The screen is the other half of what a mark shows: a plain display draws the
+  // same mark in a ninth of the device pixels a dense one at full zoom does, and
+  // decoding for the dense one there is a phone's memory spent on nobody.
+  it("decodes for the screen it is drawn on, and stores for the densest", () => {
+    for (const radius of [LEAF_RADIUS, 20, WIDEST_RADIUS]) {
+      const plain = markPictureSide(radius, PREVIEW_COVER_MIN, 1);
+      const dense = markPictureSide(radius, PREVIEW_COVER_MIN, MAX_DENSITY);
+      expect(plain, `${radius}`).toBeLessThan(dense);
+      expect(markPictureSide(radius, PREVIEW_COVER_MIN), `${radius}`).toBe(
+        dense,
+      );
+    }
+    expect(markPictureSide(WIDEST_RADIUS, PREVIEW_COVER_MAX, 1)).toBeLessThan(
+      MARK_PICTURE_PX,
     );
   });
 
