@@ -1527,6 +1527,8 @@ describe('writing the notes a number springs through', () => {
 
 		expect(screen()).toContain('The new note at 2a stays where it is.');
 		expect(wrote).toEqual([{ address: '2a', under: FOURTH }]);
+		expect(screen()).not.toContain('Write 2a and move it there');
+		expect(button('Move it under 2a')).toBeTruthy();
 	});
 
 	it('offers to write nothing where a number on the way already leads somewhere', async () => {

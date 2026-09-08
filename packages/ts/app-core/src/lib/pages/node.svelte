@@ -991,6 +991,8 @@
 		if (!(await carryTo({ relation: 'under', note: under }, asking.taking))) {
 			const says = refusals.get(of)?.address;
 			if (says) refuse(of, 'address', `${says}${stayPut(wrote)}`);
+			const now = addressNesting(node, asking.taking, here);
+			nesting = now.act === 'carry' || now.act === 'nowhere' ? { ...asking, what: now } : null;
 			return;
 		}
 		nesting = null;
