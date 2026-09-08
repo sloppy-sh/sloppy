@@ -3,7 +3,6 @@
 
 import { Injectable } from "@nestjs/common";
 import {
-  type Address,
   type BlockView,
   blockView,
   type DidSyr,
@@ -12,6 +11,7 @@ import {
   type NodeView,
   nowIso,
   type OwnedRef,
+  ownedRefFrom,
 } from "@sloppy/types";
 import { GraphService } from "../node/graph.service";
 import { type BlockCursor, ExportRepository } from "./export.repository";
@@ -46,7 +46,7 @@ export class ExportService {
     graphs: readonly GraphView[],
   ): AsyncGenerator<NodeView> {
     for (const graph of graphs) {
-      let from: Address | undefined;
+      let from: OwnedRef | undefined;
       for (;;) {
         const page = await this.rows.notesIn(
           did,
@@ -56,7 +56,7 @@ export class ExportService {
         );
         for (const note of page) yield entityView(note);
         if (page.length < NOTES_PER_READ) break;
-        from = page[page.length - 1].address;
+        from = ownedRefFrom(page[page.length - 1].id);
       }
     }
   }
@@ -66,7 +66,7 @@ export class ExportService {
     graphs: readonly GraphView[],
   ): AsyncGenerator<BlockView> {
     for (const graph of graphs) {
-      let from: Address | undefined;
+      let from: OwnedRef | undefined;
       for (;;) {
         const page = await this.rows.noteRefsIn(
           did,
@@ -74,12 +74,9 @@ export class ExportService {
           from,
           NOTES_PER_READ,
         );
-        yield* this.stacksOf(
-          did,
-          page.map((note) => note.ref),
-        );
+        yield* this.stacksOf(did, page);
         if (page.length < NOTES_PER_READ) break;
-        from = page[page.length - 1].address;
+        from = page[page.length - 1];
       }
     }
   }

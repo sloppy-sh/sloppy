@@ -243,6 +243,29 @@ describe("a region a peer answered with", () => {
     expect(() => takeWhole(twoRoots)).toThrow(UnaskedAnswerError);
   });
 
+  it("holds no address out of a page it refused", () => {
+    // A page is taken whole or not at all, so an address that arrived on a
+    // refused one was never held, and the note that really carries it is still
+    // taken afterwards.
+    const reader = publishedSubtreeReader(asked);
+    const opened = subtree({ next_cursor: "more" });
+    reader.take(opened);
+
+    const stray = nextPage({
+      next_cursor: "more",
+      nodes: [
+        node(3, "1a2", { parent: opened.nodes[0].ref }),
+        node(4, "1a3", { parent: `${AUTHOR}/${ulid(9)}` }),
+      ],
+    });
+    expect(() => reader.take(stray)).toThrow(UnaskedAnswerError);
+
+    const carried = nextPage({
+      nodes: [node(5, "1a2", { parent: opened.nodes[0].ref })],
+    });
+    expect(reader.take(carried).nodes).toHaveLength(1);
+  });
+
   it("names no note it did not send", () => {
     // A reference to something outside the publication is a note the author
     // never had to publish and the reader can never resolve.

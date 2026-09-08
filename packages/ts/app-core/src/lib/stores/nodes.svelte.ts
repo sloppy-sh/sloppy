@@ -14,7 +14,6 @@ import {
 	type Address,
 	type CreateNodeRequest,
 	graphOf,
-	isAncestorAddress,
 	type NodeBulkRequest,
 	type NodeBulkResult,
 	type NodeView,
@@ -317,23 +316,18 @@ class NodesStore {
 	}
 
 	/**
-	 * Drop a node and its descendants from the cache. A child's address is
-	 * derived from its parent's, so a subtree cannot outlive its root; a shell
-	 * that learned elsewhere the node is gone calls this directly.
+	 * Drop a node and everything that sprang from it. A note is gone with its
+	 * descendants whether or not anybody numbered them, so the walk down is the
+	 * parent chain; a shell that learned elsewhere the node is gone calls this
+	 * directly.
 	 */
 	forget(ref: OwnedRef): void {
-		const node = this.#byRef.get(ref);
-		this.#drop(ref);
-		if (!node) return;
-		for (const other of [...this.#byRef.values()]) {
-			if (
-				other.origin === node.origin &&
-				node.address !== undefined &&
-				other.address !== undefined &&
-				isAncestorAddress(node.address, other.address)
-			) {
-				this.#drop(other.ref);
+		const going = [ref];
+		for (let at = 0; at < going.length; at += 1) {
+			for (const node of this.#byRef.values()) {
+				if (node.parent === going[at]) going.push(node.ref);
 			}
+			this.#drop(going[at]);
 		}
 	}
 

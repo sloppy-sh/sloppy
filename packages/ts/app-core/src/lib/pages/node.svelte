@@ -572,7 +572,7 @@
 	): { under: Address; after: Address } | { refused: string } {
 		if (target.ref === moving.ref) return { refused: 'The note you are moving.' };
 		if (moving.address === undefined) {
-			return { refused: 'Give this note a number before carrying it.' };
+			return { refused: 'The note you are carrying has no number yet.' };
 		}
 		if (target.address === undefined) return { refused: 'This note has no number yet.' };
 		if (isInSubtree(moving.address, target.address)) {
@@ -1594,35 +1594,39 @@
 				{onBack ? 'Back' : 'Graph'}
 			</button>
 
-			{#if node?.address}
-				<button
-					type="button"
-					aria-label={graphHere
-						? `Copy the address ${node.address}, in ${graphHere}`
-						: `Copy the address ${node.address}`}
-					onclick={() => void handOver(citation, 'Address copied.')}
-					class="ml-auto flex min-h-11 min-w-0 items-baseline gap-2 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-				>
-					<span class="address truncate">{node.address}</span>
-					{#if graphHere}
-						<span class="max-w-28 truncate text-xs text-muted-foreground">{graphHere}</span>
+			{#if node}
+				<div class="ml-auto flex min-w-0 items-center gap-2">
+					{#if node.address}
+						<button
+							type="button"
+							aria-label={graphHere
+								? `Copy the address ${node.address}, in ${graphHere}`
+								: `Copy the address ${node.address}`}
+							onclick={() => void handOver(citation, 'Address copied.')}
+							class="flex min-h-11 min-w-0 items-baseline gap-2 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						>
+							<span class="address truncate">{node.address}</span>
+							{#if graphHere}
+								<span class="max-w-28 truncate text-xs text-muted-foreground">{graphHere}</span>
+							{/if}
+						</button>
+						{#if moved?.of === ref}
+							<span class="shrink-0 text-xs text-muted-foreground">
+								was <span class="address">{moved.was}</span>
+							</span>
+						{/if}
 					{/if}
-				</button>
-				{#if moved?.of === ref}
-					<span class="shrink-0 text-xs text-muted-foreground">
-						was <span class="address">{moved.was}</span>
-					</span>
-				{/if}
-				<Button
-					bind:ref={actsFrom}
-					variant="ghost"
-					size="icon"
-					class="-mr-2 size-11 shrink-0 text-muted-foreground"
-					aria-label="What to do with this note"
-					onclick={() => (acting = true)}
-				>
-					<Ellipsis class="size-4" />
-				</Button>
+					<Button
+						bind:ref={actsFrom}
+						variant="ghost"
+						size="icon"
+						class="-mr-2 size-11 shrink-0 text-muted-foreground"
+						aria-label="What to do with this note"
+						onclick={() => (acting = true)}
+					>
+						<Ellipsis class="size-4" />
+					</Button>
+				</div>
 			{/if}
 		</div>
 

@@ -197,6 +197,25 @@ describe('the node cache', () => {
 		expect(nodes.get(ROOT)?.title).toBe('as it now is');
 	});
 
+	// The branch is gone from the server whether anybody numbered it or not, so
+	// nothing under it may keep drawing here.
+	it('drops a forgotten note nobody numbered, and everything under it', async () => {
+		nodes.clear();
+		const alone = unnumbered(6);
+		api.on('GET /nodes', () => [
+			alone,
+			unnumbered(7, { origin: alone.ref, parent: alone.ref, depth: 2 }),
+			node(8, '1')
+		]);
+		await nodes.load({});
+
+		nodes.forget(alone.ref);
+
+		expect(nodes.get(alone.ref)).toBeUndefined();
+		expect(nodes.get(ref(7))).toBeUndefined();
+		expect(nodes.get(ref(8))).toBeDefined();
+	});
+
 	it('keeps a sibling whose address merely starts with the same characters', async () => {
 		nodes.clear();
 		api.on('GET /nodes', () => [

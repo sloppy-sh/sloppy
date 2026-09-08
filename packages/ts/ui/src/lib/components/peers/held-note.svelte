@@ -58,8 +58,7 @@
 	} = $props();
 
 	/** The citation, as somebody says it: the address, and the notebook it is
-	 *  read in where its name came with it. Empty for a note its author gave no
-	 *  address, which is nothing anybody can cite. */
+	 *  read in where its name came with it. */
 	const citation = $derived(
 		!note || note.address === undefined
 			? ''
@@ -105,17 +104,19 @@
 					<ArrowLeft class="size-4" />
 					Their graph
 				</button>
-				<button
-					type="button"
-					onclick={copy}
-					aria-label="Copy this note's address"
-					class="ml-auto inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-				>
-					<span class="truncate address select-text">{note.address}</span>
-					{#if copied}
-						<Check class="size-4 shrink-0" />
-					{/if}
-				</button>
+				{#if note.address}
+					<button
+						type="button"
+						onclick={copy}
+						aria-label="Copy this note's address"
+						class="ml-auto inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						<span class="truncate address select-text">{note.address}</span>
+						{#if copied}
+							<Check class="size-4 shrink-0" />
+						{/if}
+					</button>
+				{/if}
 			</div>
 		</header>
 
