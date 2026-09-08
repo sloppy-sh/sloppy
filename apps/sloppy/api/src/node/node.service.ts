@@ -378,7 +378,13 @@ export class NodeService {
       const own = new Set([ownedRefFrom(note.id)]);
       const free = async () => {
         if (address !== null) {
-          await this.requireFree(did, graphOf(note), address, own);
+          await this.requireFree(
+            did,
+            graphOf(note),
+            address,
+            own,
+            ownedRefFrom(note.id),
+          );
         }
       };
       await free();
@@ -403,15 +409,23 @@ export class NodeService {
   /** Refused in words where the address leads somewhere else in this graph. A
    *  writer in another process gets past the queue and is refused by the unique
    *  index, so this is asked again on the way out of a failed write. `mine` is
-   *  the notes whose own hold on it is theirs to take back. */
+   *  the notes landing together, whose hold on it one write replaces; `taking`
+   *  is the one landing on this address, and an address a note was carried away
+   *  from is that note's alone to take back — AI.md § "The Genealogy Is the
+   *  Protocol". */
   private async requireFree(
     did: string,
     graph: OwnedRef,
     address: Address,
     mine: ReadonlySet<OwnedRef>,
+    taking: OwnedRef,
   ): Promise<void> {
     const held = await this.nodes.addressLeadsTo(did, graph, address);
-    if (held === null || (held.note !== undefined && mine.has(held.note))) {
+    if (held === null) return;
+    if (
+      held.note !== undefined &&
+      (held.hold === "moved" ? held.note === taking : mine.has(held.note))
+    ) {
       return;
     }
     if (held.note === undefined) throw leadsNowhere(address);
@@ -573,20 +587,23 @@ export class NodeService {
     const ref = ownedRefFrom(note.id);
     const was = note.address;
     const landing = new Map<Address, Address>();
+    const taking = new Map<Address, OwnedRef>([[now, ref]]);
     if (was !== undefined) {
       landing.set(was, now);
       for (const one of carried) {
         const at = one.address;
         if (at !== undefined && isAncestorAddress(was, at)) {
-          landing.set(at, rebaseAddress(was, now, at));
+          const to = rebaseAddress(was, now, at);
+          landing.set(at, to);
+          taking.set(to, ownedRefFrom(one.id));
         }
       }
     }
 
     const mine = new Set(carried.map((one) => ownedRefFrom(one.id)));
     mine.add(ref);
-    for (const at of new Set([now, ...landing.values()])) {
-      await this.requireFree(did, graph, at, mine);
+    for (const [at, who] of taking) {
+      await this.requireFree(did, graph, at, mine, who);
     }
 
     const { root, landed, aliases } = landedRows(
@@ -598,7 +615,7 @@ export class NodeService {
     );
     requireDistinct(landed);
     await this.nodes.move(did, landed, aliases).catch(async (err: unknown) => {
-      await this.requireFree(did, graph, now, mine);
+      await this.requireFree(did, graph, now, mine, ref);
       throw err;
     });
     return this.asRead(did, await this.nodes.subtree(did, root));

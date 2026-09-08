@@ -854,17 +854,26 @@
 		const shown = { address: asking.taking, ...(springsFrom ? { here: springsFrom } : {}) };
 		if (asking.what.act === 'branch') return { ...shown, kind: 'branch' };
 		if (asking.what.act === 'nowhere') {
-			return { ...shown, kind: 'nowhere', parent: asking.what.parent };
+			return { ...shown, kind: 'nowhere', parent: asking.what.parent, looking: reach };
 		}
 		if (asking.what.act === 'carry') {
 			return {
 				...shown,
 				kind: 'carry',
 				under: noteLabel(asking.what.under),
-				...(asking.what.address ? { takes: asking.what.address } : {})
+				...(asking.what.address ? { takes: asking.what.address } : {}),
+				...(asking.what.wasAt ? { wasAt: asking.what.wasAt } : {})
 			};
 		}
 		return null;
+	});
+
+	/** The question stays mounted while the sheet plays itself away, so it leaves
+	 *  the way every other sheet does. */
+	let nestingShown = $state<NestingAsk | null>(null);
+	$effect(() => {
+		const ask = nestingAsk;
+		if (ask) nestingShown = ask;
 	});
 
 	/** `null` takes the address off. An address that says this note springs from
@@ -2325,13 +2334,13 @@
 				onquery={(words) => (sought = words)}
 				onmove={(to) => void carryTo(to)}
 			/>
-			{#if nestingAsk}
+			{#if nestingShown}
 				<NestingSheet
 					open={nesting !== null}
 					onOpenChange={(shown) => {
 						if (!shown) nesting = null;
 					}}
-					ask={nestingAsk}
+					ask={nestingShown}
 					refused={refused.address ?? null}
 					busy={writingAddress || relocating.has(ref)}
 					oncarry={() => void carryToNesting()}
@@ -2343,6 +2352,7 @@
 						nesting = null;
 						void tick().then(() => addressField?.select());
 					}}
+					onlookagain={() => void lookEverywhere()}
 				/>
 			{/if}
 		{/key}

@@ -22,10 +22,12 @@ export interface NestingNote {
 export type AddressNesting =
 	/** The label agrees with where the note already sits; write it and say nothing. */
 	| { act: 'write' }
-	/** A note in this graph is at the address the label springs from. `address`
-	 *  is what the moved note takes there, absent where the run decides it —
-	 *  which is where the label only ever led to that note, never named it. */
-	| { act: 'carry'; under: NestingNote; address?: Address }
+	/** A note in this graph is at the address the label springs from, or was at
+	 *  it and still leads to it. Exactly one of the two follows: `address` is
+	 *  what the moved note takes, where the note it lands under is at the address
+	 *  the label springs from; `wasAt` is the address that led there otherwise,
+	 *  and the run the note joins decides what it takes. */
+	| { act: 'carry'; under: NestingNote; address?: Address; wasAt?: Address }
 	/** The label is a branch's own number, and the note springs from something. */
 	| { act: 'branch'; address: Address }
 	/** Nothing in this graph is at the address the label springs from. */
@@ -56,17 +58,21 @@ export function addressNesting(
 
 	const found = graph.find((one) => leadsTo(one, springs));
 	if (found === undefined) return { act: 'nowhere', parent: springs, address: taking };
-	if (found.ref === note.ref || beneath(note, found, graph)) {
+	if (found.ref === note.ref) {
+		return {
+			act: 'refuse',
+			words: `${taking} would make this note spring from itself. Pick another number.`
+		};
+	}
+	if (beneath(note, found, graph)) {
 		return {
 			act: 'refuse',
 			words: `${springs} springs from this note, so this note cannot spring from it. Pick a number outside it.`
 		};
 	}
-	return {
-		act: 'carry',
-		under: found,
-		...(found.address === springs ? { address: taking } : {})
-	};
+	return found.address === springs
+		? { act: 'carry', under: found, address: taking }
+		: { act: 'carry', under: found, wasAt: springs };
 }
 
 /** `undefined` where the number in it is larger than a graph can carry, which

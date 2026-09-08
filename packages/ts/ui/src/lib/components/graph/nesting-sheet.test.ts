@@ -78,11 +78,16 @@ describe('the sheet a number with another parent in it opens', () => {
 		expect(screen()).toContain('It becomes 3a1, and everything under it comes along.');
 	});
 
-	it('promises no number where the run it lands in decides one', async () => {
-		await open({ kind: 'carry', address: '3a1', here: '2', under: 'Method' });
+	it('says where a number that only led to the note now leads, and what it takes there', async () => {
+		await open({ kind: 'carry', address: '3a1', here: '2', under: '5b', wasAt: '3a' });
 
-		expect(screen()).toContain('Everything under it comes along.');
+		expect(screen()).toContain('3a1 springs from 3a, which now leads to 5b.');
+		expect(screen()).toContain('It takes the next number under 5b');
 		expect(screen()).not.toContain('It becomes');
+		button('Move it under 3a, now 5b').click();
+		await settle();
+
+		expect(acts).toEqual(['carry']);
 	});
 
 	it('offers a branch of its own to a note given a whole number', async () => {
@@ -97,7 +102,7 @@ describe('the sheet a number with another parent in it opens', () => {
 	});
 
 	it('says when nothing is at the number, and offers another', async () => {
-		await open({ kind: 'nowhere', address: '3a1', here: '2', parent: '3a' });
+		await open({ kind: 'nowhere', address: '3a1', here: '2', parent: '3a', looking: 'whole' });
 
 		expect(screen()).toContain('There is no note at 3a yet');
 		expect(screen()).not.toContain('Move it under');
@@ -105,6 +110,29 @@ describe('the sheet a number with another parent in it opens', () => {
 		await settle();
 
 		expect(acts).toEqual(['else']);
+	});
+
+	it('never says there is no such note while the graphs are still opening', async () => {
+		await open({ kind: 'nowhere', address: '3a1', here: '2', parent: '3a', looking: 'reading' });
+
+		expect(screen()).toContain('Still looking for a note at 3a');
+		expect(screen()).not.toContain('There is no note at 3a yet');
+		expect(screen()).toContain('Keep it under 2 as 3a1');
+	});
+
+	it('offers another look where a graph would not open, rather than an answer', async () => {
+		let again = 0;
+		await open(
+			{ kind: 'nowhere', address: '3a1', here: '2', parent: '3a', looking: 'short' },
+			{ onlookagain: () => (again += 1) }
+		);
+
+		expect(screen()).toContain('Sloppy could not find a note at 3a');
+		expect(screen()).toContain('a note at 3a may be missing here');
+		button('Look again').click();
+		await settle();
+
+		expect(again).toBe(1);
 	});
 
 	it('names the note as springing from nothing where it has no note above it', async () => {

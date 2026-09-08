@@ -990,6 +990,29 @@ describe('moving a note from its own page', () => {
 		expect(screen()).not.toContain('or the next one free');
 	});
 
+	it('carries a note nobody numbered, and says nothing about a number it left', async () => {
+		const asked: NoteDestination[] = [];
+		nodes.clear();
+		installGraph().set(THIRD, unnumbered(3, { title: 'Membranes', origin: FIRST, parent: SECOND }));
+		moving(api, THIRD, (to) => {
+			asked.push(to);
+			return [unnumbered(3, { title: 'Membranes', origin: FOURTH, parent: FOURTH })];
+		});
+		await loadGraph();
+		await openNote(THIRD);
+		await findToMove('2');
+		noteRow('Method').click();
+		await settle();
+
+		button('Put it under 2').click();
+		await settle();
+		await settle();
+
+		expect(asked).toEqual([{ relation: 'under', note: FOURTH }]);
+		expect(noteHead()).not.toContain('was');
+		expect(document.body.querySelector(FIND_TO_MOVE)).toBeNull();
+	});
+
 	// Beside a note is the run that note's own parent numbers, which a note
 	// nobody numbered is not in and does not empty.
 	it('numbers a note put beside one with no number, from the run it joins', async () => {
@@ -1182,9 +1205,27 @@ describe('a number that says the note springs from somewhere else', () => {
 	let carried: { to: NoteDestination; address?: string }[];
 	let written: (string | null)[];
 
-	/** `1a`, under `1`, with `1a1` under it and `2` on its own branch. */
-	async function openCells(): Promise<void> {
+	/** `1a`, under `1`, with `1a1` under it and `2` on its own branch. `reads` is
+	 *  whether every graph this person keeps opens; `alter` changes the graph
+	 *  before it is read. */
+	async function openCells(
+		reads = true,
+		alter?: (graph: Map<OwnedRef, NodeView>) => void
+	): Promise<void> {
 		const graph = installGraph();
+		alter?.(graph);
+		api.on('GET /graphs', () => {
+			if (!reads) throw new Error('unreachable');
+			return [
+				{
+					ref: homeGraphRef(DID),
+					created_by: DID,
+					created_at: AT,
+					updated_at: AT,
+					title: 'My graph'
+				}
+			];
+		});
 		carried = [];
 		written = [];
 		numbering(api, SECOND, (address) => {
@@ -1220,6 +1261,7 @@ describe('a number that says the note springs from somewhere else', () => {
 	}
 
 	beforeEach(() => {
+		graphs.clear();
 		session.adopt(VIEWER, 'a-session');
 	});
 
@@ -1275,13 +1317,41 @@ describe('a number that says the note springs from somewhere else', () => {
 	it('says when nothing in the graph is at the number it springs from', async () => {
 		await openCells();
 		await write('9a1');
+		await until(() => screen().includes('There is no note at 9a yet'));
 
-		expect(screen()).toContain('There is no note at 9a yet');
 		button('Keep it under 1 as 9a1').click();
 		await settle();
 		await settle();
 
 		expect(written).toEqual(['9a1']);
+	});
+
+	// AI.md § "The Genealogy Is the Protocol": a number that leads somewhere
+	// unread is not a number that leads nowhere, and the difference is the whole
+	// of what the person is deciding on.
+	it('never says there is no such note while a graph has not read', async () => {
+		await openCells(false);
+		await write('9a1');
+		await until(() => screen().includes('Look again'));
+
+		expect(screen()).not.toContain('There is no note at 9a yet');
+		expect(screen()).toContain('a note at 9a may be missing here');
+		expect(button('Keep it under 1 as 9a1')).toBeTruthy();
+	});
+
+	it('names the number that reaches the note it would carry it under, and where that leads now', async () => {
+		await openCells(true, (graph) =>
+			graph.set(FOURTH, { ...node(4, '5', { title: 'Method' }), aliases: ['2'] })
+		);
+		await write('2a');
+
+		expect(screen()).toContain('2a springs from 2, which now leads to 5.');
+		expect(screen()).toContain('It takes the next number under 5');
+		button('Move it under 2, now 5').click();
+		await settle();
+		await settle();
+
+		expect(carried).toEqual([{ to: { relation: 'under', note: FOURTH } }]);
 	});
 
 	it('refuses a number that springs from a note this one carries, and asks nothing', async () => {

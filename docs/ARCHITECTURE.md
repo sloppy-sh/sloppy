@@ -141,10 +141,13 @@ the same millisecond still order the same way on every peer.
   along to the next address rather than landing part of it on a label.
 - **A move may carry the address a person named instead.** `MoveNoteRequest.address` is
   optional, and absent leaves the landing to the rule above. Given, `NodeService.carryTo`
-  holds it to everything `setAddress` holds a written label to — free in the graph, the
-  note's own spent addresses its to take back — and to the one thing a standing note is not
-  held to: it springs from the address of the note it lands under, or from nothing where the
-  note becomes a branch. What is beneath rebases off it through `rebaseAddress`, exactly as
+  holds it to everything `setAddress` holds a written label to — free in the graph, an
+  address a note was carried away from its own to take back — and to the one thing a
+  standing note is not held to: it springs from the address of the note it lands under, or
+  from nothing where the note becomes a branch. Every note the move re-addresses is held to
+  that same pair, each against its own spent addresses: a number belongs to the note that
+  carried it, so one a note under the moved one left behind is not the moved one's to land
+  on. What is beneath rebases off it through `rebaseAddress`, exactly as
   the rule's own landing does, and everything is written in the one call `carry` writes
   through. A named address the graph has already spent is refused in words rather than
   passed over: the rule may offer the next number, a person's own label may not be moved for
@@ -240,7 +243,9 @@ note's own subtree.
 
 `node_alias` is a row per address the subtree leaves — the moved note's own and one for
 every note under it — and every address lookup reads them, so a citation written before the
-move still opens the note it named. They are never assigned again, which `childAddresses`
+move still opens the note it named. An alias at an address a note LANDS on goes in the same
+write, exactly as it does when the address is written by hand: the note is at that number
+again rather than away from it. They are never assigned again, which `childAddresses`
 and `addressTaken` hold by counting them alongside the live notes, the deleted ones and
 `retired_address`. `address` and `depth` are therefore no longer `READONLY` on `node`, while
 `graph` and `created_by` still are and the `ASSERT` on `depth` still stands.

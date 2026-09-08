@@ -283,6 +283,16 @@ function notebook(
       asked.aliases = [...aliases];
       left.push(...aliases);
       for (const one of landed) {
+        for (let at = left.length - 1; at >= 0; at--) {
+          if (
+            left[at].address === one.address &&
+            left[at].note === ownedRefFrom(one.id)
+          ) {
+            left.splice(at, 1);
+          }
+        }
+      }
+      for (const one of landed) {
         const at = held.findIndex(
           (was) => ownedRefFrom(was.id) === ownedRefFrom(one.id),
         );
@@ -794,6 +804,26 @@ describe("carrying a note to the number a person named", () => {
     );
 
     expect(home.map((one) => one.address)).toEqual(["2c", "2c1"]);
+    // The numbers it is at again lead to it by the rows, not by an alias
+    // beside them.
+    expect(home.map((one) => one.aliases)).toEqual([["3a1"], ["3a1a"]]);
+  });
+
+  it("refuses one a note it carries was carried away from", async () => {
+    const { moving, beneath, landing, all } = nesting();
+    const { service } = notebook(all);
+
+    await service.setAddress(DID, beneath.ref, "3a1");
+    await service.setAddress(DID, beneath.ref, "2c1");
+    const onto = service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: landing.ref },
+      "3a1",
+    );
+
+    await expect(onto).rejects.toBeInstanceOf(BadRequestException);
+    await expect(onto).rejects.toThrow(/3a1 still leads to/);
   });
 
   it("refuses one that springs from somewhere else", async () => {

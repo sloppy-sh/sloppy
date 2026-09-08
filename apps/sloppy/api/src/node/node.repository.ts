@@ -501,6 +501,8 @@ export class NodeRepository {
   /**
    * A note carried somewhere else with everything under it: every row at the
    * address the move gives it, and a `node_alias` for each address left behind.
+   * An alias at an address a note LANDS on goes, as it does when the address is
+   * written by hand: the note is at that address again rather than away from it.
    *
    * One transaction, because the two halves are one fact: a row re-addressed
    * without its alias written is a citation that has stopped resolving, and an
@@ -512,15 +514,23 @@ export class NodeRepository {
     landed: readonly Node[],
     aliases: readonly NodeAlias[],
   ): Promise<void> {
-    const statements = [
-      "BEGIN TRANSACTION;",
-      "INSERT INTO node_alias $aliases;",
-    ];
+    const statements = ["BEGIN TRANSACTION;"];
     const vars: Record<string, unknown> = {
       did,
       aliases: [...aliases],
       at: nowIso(),
     };
+    for (const [slot, node] of landed.entries()) {
+      if (node.address === undefined) continue;
+      statements.push(
+        `DELETE node_alias WHERE created_by = $did AND graph = $graph${slot}
+           AND address = $address${slot} AND note = $note${slot};`,
+      );
+      vars[`graph${slot}`] = graphOf(node);
+      vars[`address${slot}`] = node.address;
+      vars[`note${slot}`] = ownedRefFrom(node.id);
+    }
+    statements.push("INSERT INTO node_alias $aliases;");
     for (const [slot, node] of landed.entries()) {
       statements.push(
         `UPDATE $id${slot} SET

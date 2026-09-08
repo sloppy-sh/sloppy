@@ -670,6 +670,32 @@ describe("the domain routes", () => {
       expect(said(answer.body)).toMatch(/2c still leads to “Cells”/);
     });
 
+    scenario(
+      "refuses one a note it carries was carried away from",
+      async () => {
+        const stem = await newNode(ada, { from: rooted("6"), title: "Stem" });
+        const leaf = await newNode(ada, {
+          from: springsFrom(stem),
+          title: "Leaf",
+        });
+        const tip = await newNode(ada, {
+          from: springsFrom(leaf),
+          title: "Tip",
+        });
+        expect([leaf.address, tip.address]).toEqual(["6a", "6a1"]);
+        const seven = await newNode(ada, { from: rooted("7"), title: "Seven" });
+        const under = await newNode(ada, { from: springsFrom(seven) });
+        expect(under.address).toBe("7a");
+        for (const address of ["7a1", "6a1"]) {
+          await ok("PUT", `/nodes/${at(tip.ref)}/address`, ada, { address });
+        }
+
+        const answer = await carry(leaf, springsFrom(under), "7a1");
+        expect(answer.status).toBe(400);
+        expect(said(answer.body)).toMatch(/7a1 still leads to “Tip”/);
+      },
+    );
+
     scenario("refuses a number no branch could hold", async () => {
       const answer = await carry(alongside, follows(three), "3a1");
       expect(answer.status).toBe(400);
@@ -681,6 +707,21 @@ describe("the domain routes", () => {
       expect(answer.status, JSON.stringify(answer.body)).toBeLessThan(300);
       expect((answer.body as NodeView[])[0].address).toBe("3a2");
     });
+
+    scenario(
+      "takes a number it left back, and is not left leading to it twice",
+      async () => {
+        const answer = await carry(moving, springsFrom(two), "2c");
+        expect(answer.status, JSON.stringify(answer.body)).toBeLessThan(300);
+
+        expect(
+          (answer.body as NodeView[]).map((one) => [one.address, one.aliases]),
+        ).toEqual([
+          ["2c", ["3a1"]],
+          ["2c1", ["3a1a"]],
+        ]);
+      },
+    );
   });
 
   describe("reading a region", () => {

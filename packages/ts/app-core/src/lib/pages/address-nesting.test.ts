@@ -42,7 +42,7 @@ describe('what a number written on a note says about where it sits', () => {
 		const carried = { ...LANDING, address: '5b' as Address, aliases: ['3a' as Address] };
 		const answer = addressNesting(CELLS, '3a1' as Address, [TWO, CELLS, THREE, carried]);
 
-		expect(answer).toEqual({ act: 'carry', under: carried });
+		expect(answer).toEqual({ act: 'carry', under: carried, wasAt: '3a' });
 	});
 
 	it('reads a number the note already springs from through what its parent was at', () => {
@@ -67,15 +67,20 @@ describe('what a number written on a note says about where it sits', () => {
 		});
 	});
 
-	it('refuses a number that springs from the note itself', () => {
-		const answer = addressNesting(CELLS, '2c1' as Address, GRAPH);
-		expect(answer.act).toBe('refuse');
+	it('refuses a number that would make the note spring from itself', () => {
+		expect(addressNesting(CELLS, '2c1' as Address, GRAPH)).toEqual({
+			act: 'refuse',
+			words: '2c1 would make this note spring from itself. Pick another number.'
+		});
 	});
 
 	it('refuses a number that springs from a note under this one', () => {
 		const under = note(5, '2c1', { parent: CELLS.ref });
-		const answer = addressNesting(CELLS, '2c1a' as Address, [...GRAPH, under]);
-		expect(answer.act).toBe('refuse');
+		expect(addressNesting(CELLS, '2c1a' as Address, [...GRAPH, under])).toEqual({
+			act: 'refuse',
+			words:
+				'2c1 springs from this note, so this note cannot spring from it. Pick a number outside it.'
+		});
 	});
 
 	it('refuses one that springs from a note under this one by the genealogy alone', () => {
