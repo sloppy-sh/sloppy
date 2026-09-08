@@ -2,12 +2,13 @@
 // What the sheet says a publish did, drawn from the difference itself rather
 // than from a count of it.
 
-import type { OwnedRef, PublishedNoteChange, UnpublishedChanges } from '@sloppy/types';
+import type { Address, OwnedRef, PublishedNoteChange, UnpublishedChanges } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import { reactive } from '../props.test-support.svelte.js';
 import PublishModal, { type PublishedBranch } from './publish-modal.svelte';
+import type { NamedBranches } from './terms.js';
 
 const AUTHOR = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSLuFvdmsZ2mFmZjMxYZ';
 const ref = (mark: string): OwnedRef => `${AUTHOR}/01JQXR${'0'.repeat(19)}${mark}`;
@@ -471,5 +472,51 @@ describe('a chain longer than the list shows', () => {
 
 		version(2).click();
 		await vi.waitFor(() => expect(asked).toHaveBeenCalledWith(FIRST, SECOND, undefined));
+	});
+});
+
+// A branch nobody numbered has no address to name it by, and it is exactly the
+// one a person cannot find any other way.
+describe('a narrower branch under this one', () => {
+	const warned = (narrower: NamedBranches[], published: PublishedBranch | null) => {
+		mounted = mount(PublishModal, {
+			target,
+			props: {
+				open: true,
+				address: '1a',
+				published,
+				narrower,
+				onchanges: async () => null,
+				onpending: async () => null,
+				onpublish: async () => undefined,
+				oncomments: async () => undefined,
+				onunpublish: async () => undefined
+			}
+		});
+		flushSync();
+		return document.body.textContent ?? '';
+	};
+
+	it('is named by its address before a first publish', () => {
+		expect(warned([{ address: '1a1' as Address }], null)).toContain(
+			'1a1 is published inviting fewer people to answer. What you publish here carries it on these terms.'
+		);
+	});
+
+	it('is said in words where its author never numbered it', () => {
+		const shown = warned([{ unnumbered: 1 }], null);
+
+		expect(shown).toContain(
+			'A branch you never numbered is published inviting fewer people to answer. What you publish here carries it on these terms.'
+		);
+		expect(shown).not.toContain('undefined');
+	});
+
+	it('is said in words on a branch already out, where publishing again carries it', () => {
+		const shown = warned([{ unnumbered: 2 }], branch);
+
+		expect(shown).toContain(
+			'2 branches you never numbered are published inviting fewer people to answer. What is published here carries them on these terms.'
+		);
 	});
 });

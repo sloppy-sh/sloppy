@@ -97,6 +97,16 @@ async function canvas(): Promise<{
 const model = (selection: readonly Tag[]) =>
   buildModel(field, { selection, palette });
 
+/** The same marks, every one of them renamed, so no slot's words stand. */
+const retitled = (selection: readonly Tag[]) =>
+  buildModel(
+    field.map((entry) => ({
+      ...entry,
+      node: { ...entry.node, title: `${entry.node.title} rewritten` },
+    })),
+    { selection, palette },
+  );
+
 /** Every particle on the canvas, in the order the layers hold them. */
 function particles(app: FakeApplication): FakeParticle[] {
   return worldOf(app)
@@ -141,17 +151,29 @@ describe("answering a tag question on the marks already up", () => {
   });
 
   // The cost the path above exists to spare: replacing the model empties the
-  // particle layers and every label slot, and the words come back a few a frame.
+  // particle layers, and words it leaves standing wrong come back a few a frame.
   it("is what replacing the model costs, and does not pay it", async () => {
     const { scene, app } = await canvas();
     const before = particles(app);
     const said = words(app);
 
-    scene.setModel(model(["seed"] as Tag[]), true);
+    scene.setModel(retitled(["seed"] as Tag[]), true);
     app.tick();
 
     expect(particles(app)).not.toEqual(before);
     expect(words(app).length).toBeLessThan(said.length);
+  });
+
+  // Writing a slot is the whole of what the budget is spent on, so a rebuild
+  // that leaves every caption as it was owes nothing and puts them all back.
+  it("puts every word straight back where none of them moved", async () => {
+    const { scene, app } = await canvas();
+    const said = words(app);
+
+    scene.setModel(model(["seed"] as Tag[]), true);
+    app.tick();
+
+    expect(words(app)).toEqual(said);
   });
 
   it("dims what carries none of the tags and lights what does", async () => {

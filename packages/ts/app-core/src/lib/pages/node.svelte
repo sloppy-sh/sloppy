@@ -702,6 +702,16 @@
 	const publication = $derived(node && own ? publications.at(node) : undefined);
 	/** One rooted above it that already carries this branch. */
 	const carriedBy = $derived(node && own ? publications.above(node) : undefined);
+	/** The branch above, by the name a person cites it by: the address its root
+	 *  note carries, or what that note is titled where it carries none. Absent
+	 *  for a root that names itself nothing, which no citation could reach. */
+	const carriedUnder = $derived.by((): { address: Address } | { title: string } | undefined => {
+		const root = carriedBy ? nodes.get(carriedBy.root) : undefined;
+		const address = root?.address ?? carriedBy?.root_address;
+		if (address !== undefined) return { address };
+		const title = root?.title.trim();
+		return title ? { title } : undefined;
+	});
 	const narrower = $derived(
 		node && own
 			? namedBranches(publications.narrowerUnder(node, publication?.comments ?? 'anyone'))
@@ -1871,8 +1881,10 @@
 						<Globe class="size-3.5 shrink-0" />
 						{#if publication}
 							Published · version {publication.latest.sequence}
-						{:else if carriedBy?.root_address !== undefined}
-							Published under <span class="address">{carriedBy.root_address}</span>
+						{:else if carriedUnder && 'address' in carriedUnder}
+							Published under <span class="address">{carriedUnder.address}</span>
+						{:else if carriedUnder}
+							Published under {carriedUnder.title}
 						{:else if carriedBy}
 							Published under a branch above
 						{/if}
