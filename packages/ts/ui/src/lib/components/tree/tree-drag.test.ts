@@ -52,6 +52,14 @@ function row(
 	};
 }
 
+/** A row for a note its author gave no address; `key` stands in for the address
+ *  the other fixtures are named by. */
+function bare(key: string, depth: number, parent?: string): TreeRow {
+	const drawn = row(key, depth, parent);
+	if (drawn.kind !== 'note') throw new Error('row draws a note');
+	return { ...drawn, note: { ...drawn.note, address: undefined } };
+}
+
 /** The tail of a run the reader has not asked for, as `walkTree` draws it. */
 function waiting(parent: Address | null, depth: number): TreeRow {
 	return {
@@ -248,6 +256,42 @@ describe('where a note carried over the outline would land', () => {
 	it('has nowhere to put a note let go off the outline', () => {
 		expect(movesTo(ROWS, carried('2'), null)).toEqual({
 			says: 'Move over a note to put it there'
+		});
+	});
+
+	// AI.md § "The Genealogy Is the Protocol": a note with no address keeps none
+	// wherever it lands, so nothing here promises it one.
+	it('carries a note nobody numbered without naming a number', () => {
+		const loose = { ref: held('loose'), address: undefined };
+		const under = { ...OUTLINE[0], relation: 'under' as const };
+		expect(movesTo([...ROWS, bare('loose', 0)], loose, under)).toEqual({
+			says: 'Goes under 1 About 1',
+			to: under
+		});
+	});
+
+	// A run under a note nobody numbered numbers nothing, so the note joining it
+	// carries no number either.
+	it('names no number for a note carried under one that has none', () => {
+		const rows = [...ROWS, bare('loose', 0)];
+		const onto = { on: held('loose'), title: 'About loose', relation: 'under' as const };
+		expect(movesTo(rows, carried('2'), onto)).toEqual({
+			says: 'Goes under About loose',
+			to: onto
+		});
+	});
+
+	// Neither end has an address to read the containment off, so the genealogy
+	// the rows carry is what answers it.
+	it('refuses a note carried inside itself where neither end is numbered', () => {
+		const rows = [...ROWS, bare('loose', 0), bare('under-loose', 1, 'loose')];
+		const onto = {
+			on: held('under-loose'),
+			title: 'About under-loose',
+			relation: 'under' as const
+		};
+		expect(movesTo(rows, { ref: held('loose'), address: undefined }, onto)).toEqual({
+			says: 'A note cannot go inside itself'
 		});
 	});
 });
