@@ -412,7 +412,9 @@ describe('what the outline hands the writing surface', () => {
 		expect(outlineSections.stack(NOTE)?.map((one) => one.ref)).toEqual([S2, S3]);
 	});
 
-	it('counts the arrangements a note has been asked for', async () => {
+	// Two shapes to one move: the one it puts the stack in at once, and the one
+	// the answer leaves it in, carrying the stamps the write put on the sections.
+	it('counts the shapes a move puts a note’s stack in', async () => {
 		outlineSections.show(NOTE, true);
 		await settle();
 		expect(outlineSections.arranged(NOTE)).toBe(0);
@@ -420,7 +422,7 @@ describe('what the outline hands the writing surface', () => {
 		outlineSections.move(NOTE, S3, null);
 		expect(outlineSections.arranged(NOTE)).toBe(1);
 		await settle();
-		expect(outlineSections.arranged(NOTE)).toBe(1);
+		expect(outlineSections.arranged(NOTE)).toBe(2);
 	});
 
 	it('reads a note nobody is showing, for a carry that has to know its end', async () => {

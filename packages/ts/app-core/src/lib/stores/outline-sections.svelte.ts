@@ -42,6 +42,7 @@ class OutlineSectionsStore {
 	#trouble = new SvelteMap<OwnedRef, string>();
 	#inflight = new Map<OwnedRef, Promise<void>>();
 	#moves = new Map<OwnedRef, Moves>();
+	#shapes = new SvelteMap<OwnedRef, number>();
 	// A {@link clear} that lands mid-request must not be undone by the answer.
 	#epoch = 0;
 	#forWhom: string | null = null;
@@ -65,10 +66,11 @@ class OutlineSectionsStore {
 		});
 	}
 
-	/** How many times this note's stack has been arranged, so a surface drawing
-	 *  it can be opened again on the order it stands in now. */
+	/** How many shapes this note's stack has taken — the one a move puts it in at
+	 *  once, and the one the answer leaves it in — so a surface drawing it opens
+	 *  again on each, holding the sections as the write left them. */
 	arranged(note: OwnedRef): number {
-		return this.#moves.get(note)?.asked ?? 0;
+		return this.#shapes.get(note) ?? 0;
 	}
 
 	/** Read a note's sections, whether or not anybody is showing them. */
@@ -187,6 +189,7 @@ class OutlineSectionsStore {
 		this.#trouble.clear();
 		this.#inflight.clear();
 		this.#moves.clear();
+		this.#shapes.clear();
 	}
 
 	#noteOf(section: OwnedRef): OwnedRef | undefined {
@@ -205,13 +208,19 @@ class OutlineSectionsStore {
 	#asked(note: OwnedRef): void {
 		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
 		this.#moves.set(note, { ...moves, asked: moves.asked + 1 });
+		this.#reshaped(note);
 	}
 
 	#answered(note: OwnedRef, epoch: number): boolean {
 		if (epoch !== this.#epoch) return false;
 		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
 		this.#moves.set(note, { ...moves, answered: moves.answered + 1 });
+		this.#reshaped(note);
 		return true;
+	}
+
+	#reshaped(note: OwnedRef): void {
+		this.#shapes.set(note, (this.#shapes.get(note) ?? 0) + 1);
 	}
 
 	/** Whether a listing begun when the note stood at `since` still describes it:

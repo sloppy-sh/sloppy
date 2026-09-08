@@ -1,4 +1,5 @@
 import type { BlockView, NodeView, NoteDestination, OwnedRef, Tag } from '@sloppy/types';
+import { sectionLines } from '@sloppy/ui';
 import { flushSync, mount, unmount } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +20,13 @@ import { people } from '../stores/people.svelte.js';
 import GraphTree from './graph-tree.svelte';
 
 const OTHER = 'did:syr:z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH';
+
+/** As much of the editor as a test writing in one touches; the editor itself is
+ *  TipTap's, which this package does not depend on. */
+interface Writing {
+	state: { doc: { textContent: string; content: { size: number } } };
+	commands: { insertContentAt: (at: number, text: string) => void };
+}
 
 const THESIS = ref(900);
 const GARDEN = ref(901);
@@ -658,6 +666,31 @@ describe('carrying a section out of the note it was written in', () => {
 		expect(placed).toEqual({ relation: 'under', note: TWO });
 		expect(stacks.get(MADE)?.map((one) => one.ref)).toEqual([S1]);
 		expect(stacks.get(ONE)?.map((one) => one.ref)).toEqual([S2]);
+	});
+
+	// The stamp the carry left on the section is what the writing there is made
+	// against, so it is not refused as writing that happened somewhere else.
+	it('writes in a section where it landed, having carried it there', async () => {
+		await walk([ONE, TWO]);
+		carry(S1, { y: 190 });
+		await settle();
+
+		const writing = [...target.querySelectorAll('.sloppy-prose')].pop() as unknown as {
+			editor: Writing;
+		};
+		const { doc } = writing.editor.state;
+		expect(doc.textContent).toBe('Something elseThe first thing');
+		vi.useFakeTimers();
+		writing.editor.commands.insertContentAt(doc.content.size - 2, ' and more');
+		await vi.advanceTimersByTimeAsync(3000);
+		flushSync();
+		vi.useRealTimers();
+		await settle();
+
+		expect(stacks.get(TWO)?.map((one) => sectionLines(one.content)[0])).toEqual([
+			'Something else',
+			'The first thing and more'
+		]);
 	});
 
 	it('says what a drop would do before the section is let go', async () => {
