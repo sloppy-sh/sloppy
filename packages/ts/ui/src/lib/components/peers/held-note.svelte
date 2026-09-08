@@ -4,6 +4,7 @@
 	// the author's words as they published them.
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Check from '@lucide/svelte/icons/check';
+	import Link2 from '@lucide/svelte/icons/link-2';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import type { BlockView, NodeView } from '@sloppy/types';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -22,6 +23,7 @@
 		note,
 		author,
 		notebook = undefined,
+		link = undefined,
 		blocks,
 		loading = false,
 		says = null,
@@ -39,6 +41,9 @@
 		/** What its author calls the notebook the address is read in, where the
 		 *  name travelled with the copy. */
 		notebook?: string;
+		/** Where this note can be opened, offered in place of a citation where its
+		 *  author gave it no address. */
+		link?: string;
 		/** Its stack, in `ord` order. */
 		blocks: readonly BlockView[];
 		loading?: boolean;
@@ -69,9 +74,9 @@
 	let copied = $state(false);
 	let sayingCopied: ReturnType<typeof setTimeout> | undefined;
 
-	async function copy(): Promise<void> {
+	async function copy(what: string): Promise<void> {
 		try {
-			await navigator.clipboard.writeText(citation);
+			await navigator.clipboard.writeText(what);
 		} catch {
 			return;
 		}
@@ -107,7 +112,7 @@
 				{#if note.address}
 					<button
 						type="button"
-						onclick={copy}
+						onclick={() => void copy(citation)}
 						aria-label="Copy this note's address"
 						class="ml-auto inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
 					>
@@ -115,6 +120,20 @@
 						{#if copied}
 							<Check class="size-4 shrink-0" />
 						{/if}
+					</button>
+				{:else if link}
+					<button
+						type="button"
+						onclick={() => void copy(link)}
+						aria-label="Copy a link to this note"
+						class="ml-auto inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						{#if copied}
+							<Check class="size-4 shrink-0" />
+						{:else}
+							<Link2 class="size-4 shrink-0" />
+						{/if}
+						<span class="truncate">Copy a link</span>
 					</button>
 				{/if}
 			</div>

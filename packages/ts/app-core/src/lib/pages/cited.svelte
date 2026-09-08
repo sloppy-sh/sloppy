@@ -8,7 +8,6 @@
 	// author published, read and nothing else.
 	import {
 		compareOrd,
-		noteLabel,
 		splitOwnedRef,
 		type BlockView,
 		type NodeView,
@@ -103,9 +102,10 @@
 	});
 	const sections = $derived(branch && showing ? sectionsOf(branch, showing) : []);
 	/** The address as it is cited: the notebook it is read in comes with it where
-	 *  its author named one. */
+	 *  its author named one. Empty where they gave the note none, and the title
+	 *  is what a reader has to go on. */
 	const citation = $derived(
-		open ? [noteLabel(open), branch?.graph_title].filter(Boolean).join(' · ') : ''
+		open ? [open.address, branch?.graph_title].filter(Boolean).join(' · ') : ''
 	);
 
 	async function read(of: OwnedRef): Promise<void> {
@@ -164,7 +164,9 @@
 			<Skeleton class="mt-4 h-8 w-2/3" />
 			<Skeleton class="mt-6 h-24 w-full" />
 		{:else if open}
-			<p class="address text-sm text-muted-foreground select-text">{citation}</p>
+			{#if citation}
+				<p class="address text-sm text-muted-foreground select-text">{citation}</p>
+			{/if}
 			<h1 class="mt-2 text-2xl leading-snug font-semibold tracking-tight">
 				{open.title || 'Untitled'}
 			</h1>

@@ -122,7 +122,9 @@
 			{@const fewer = lost(entry)}
 			<li class="space-y-2">
 				<div class="flex items-baseline gap-2">
-					<span class="shrink-0 address text-sm">{entry.note.address}</span>
+					{#if entry.note.address !== undefined}
+						<span class="shrink-0 address text-sm">{entry.note.address}</span>
+					{/if}
 					<span class="min-w-0 flex-1 truncate text-sm">{entry.note.title || 'Untitled'}</span>
 					<span class="shrink-0 text-xs text-muted-foreground">{became(entry)}</span>
 				</div>

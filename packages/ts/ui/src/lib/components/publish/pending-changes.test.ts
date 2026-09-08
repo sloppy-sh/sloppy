@@ -70,3 +70,24 @@ describe('a note carried somewhere else', () => {
 		expect(screen()).not.toContain('Was at');
 	});
 });
+
+describe('a note written since with no address', () => {
+	it('is named by its title, and by nothing standing in for an address', () => {
+		const written = entry({ change: 'added', title: 'Mycelium' });
+		delete written.address;
+		draw([written]);
+
+		expect(screen()).toContain('Mycelium');
+		expect(screen()).toContain('New note');
+		expect(document.body.querySelector('.address')).toBeNull();
+	});
+
+	it('says where it was once its author took the address off it', () => {
+		const unnumbered = entry({ was_at: '1c', title: 'Spores' });
+		delete unnumbered.address;
+		draw([unnumbered]);
+
+		expect(screen()).toContain('Spores');
+		expect(screen()).toContain('Was at 1c');
+	});
+});

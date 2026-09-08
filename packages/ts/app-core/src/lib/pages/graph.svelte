@@ -134,7 +134,7 @@
 	import GraphTree from './graph-tree.svelte';
 	import Note from './node.svelte';
 	import Writing from './writing.svelte';
-	import { nodeHref, refFromPath } from './routes.js';
+	import { citationUrl, nodeHref, refFromPath } from './routes.js';
 	import {
 		acceleratorFor,
 		FIND_NOTE,
@@ -2242,6 +2242,7 @@
 		note={reachedNote}
 		author={{ identity: authorOf(foreign), person: regionAuthor }}
 		notebook={foreign.graph_title}
+		link={reached ? citationUrl(reached) : undefined}
 		blocks={reached ? peers.stack(reached) : []}
 		loading={reaching !== null && reaching === reached}
 		says={reachRefused}
