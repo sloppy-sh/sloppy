@@ -123,8 +123,14 @@ the same millisecond still order the same way on every peer.
   A note gives its address up by a write that omits the column; `NULL` is refused by the
   type, so a repository unsets it rather than writing one.
 - An address is suggested at creation by the rule above, rewritten when its note is moved,
-  and written by the person whenever they want. A note written under one that has no address
-  is written with none too: there is no address for the rule to spring one from, and the
+  and written by the person whenever they want. **A creation may name the address instead.**
+  `CreateNodeRequest.address` is optional, and absent leaves the new note to the rule. Given,
+  `NodeService.writeNumbered` holds it to everything `setAddress` holds a written label to
+  and to the one thing a move's named address is held to as well: it springs from the address
+  of the note it is written under, or from nothing where the note opens a branch. A `root`
+  placement already names a branch's own number, so a request carrying both is refused rather
+  than one of them dropped. A note written under one that has no address is written with none
+  too: there is no address for the rule to spring one from, and the
   person numbers it when they number the note above it. `graph` is immutable: a note that changed
   graph would land where its address may already be taken.
 - An address is assigned **once** in a graph and never assigned again. Deleting a note

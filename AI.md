@@ -76,12 +76,14 @@ to, all of them about what a person can rely on rather than about what the code 
   own rows and on the ones a peer hands us, and an address shown with no graph beside it
   means the graph in front of you.
 - **The Folgezettel rule suggests the address at creation, and it stays deterministic.** A
-  note written under `1a` is offered `1a1`, one written alongside it `1b`. Two peers
-  applying the same creation operations must produce byte-identical suggestions, so the
-  rule ships as a property test over generated operation sequences rather than a handful of
-  hand-picked cases. What a graph decides is which run of siblings a suggestion is made
-  against; a sibling with no address is not in that run and never moves what the rule
-  offers.
+  note written under `1a` is offered `1a1`, one written alongside it `1b`, unless the person
+  names one — an address named at creation is held to every rule an address written on a
+  standing note is held to, and to one more: it springs from the address of the note it is
+  written under, or from nothing where the note opens a branch. Two peers applying the same
+  creation operations must produce byte-identical suggestions, so the rule ships as a
+  property test over generated operation sequences rather than a handful of hand-picked
+  cases. What a graph decides is which run of siblings a suggestion is made against; a
+  sibling with no address is not in that run and never moves what the rule offers.
 - **A person edits and removes an address wherever one is shown.** That is the whole of
   what makes it a label. Renumbering the notes AROUND one is still not a thing that
   happens: a person changes their own note's label and nobody else's.
