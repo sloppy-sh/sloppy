@@ -2,9 +2,22 @@
 // it is measured; these record what it ASKED to have drawn, so a suite can hold
 // the bookkeeping around the GPU without one.
 
+/** What a texture is cut from. Several cuts of one sheet share one of these,
+ *  and freeing the sheet is freeing this. */
+export class FakeSource {
+  destroyed = false;
+  destroy(): void {
+    this.destroyed = true;
+  }
+}
+
 export class FakeTexture {
   destroyed = false;
-  constructor(readonly of: unknown) {}
+  readonly source: FakeSource;
+  constructor(readonly of: unknown) {
+    this.source =
+      (of as { source?: FakeSource } | null)?.source ?? new FakeSource();
+  }
   destroy(): void {
     this.destroyed = true;
   }
@@ -52,6 +65,15 @@ export interface StrokedRing {
   alpha: number;
 }
 
+/** One `circle(…).fill(…)`, which is how a mark too big for the sheet is drawn. */
+export interface FilledDisc {
+  x: number;
+  y: number;
+  radius: number;
+  color: number;
+  alpha: number;
+}
+
 /** One `moveTo(…).lineTo(…)`, which is how an edge is drawn — and how each dash
  *  of a broken one is. The style is the pass's, filled in when it is stroked. */
 export interface StrokedLine {
@@ -64,13 +86,18 @@ export interface StrokedLine {
 
 export class FakeGraphics extends FakeContainer {
   readonly rings: StrokedRing[] = [];
+  readonly discs: FilledDisc[] = [];
   readonly lines: StrokedLine[] = [];
+  /** Where each `arc(…)` was struck, which is how a broken ring is drawn. */
+  readonly arcs: { x: number; y: number; radius: number }[] = [];
   private pending: { x: number; y: number; radius: number } | null = null;
   private pen: [number, number] | null = null;
   private unstroked: StrokedLine[] = [];
   clear(): this {
     this.rings.length = 0;
+    this.discs.length = 0;
     this.lines.length = 0;
+    this.arcs.length = 0;
     this.pending = null;
     this.pen = null;
     this.unstroked = [];
@@ -80,12 +107,21 @@ export class FakeGraphics extends FakeContainer {
     this.pending = { x, y, radius };
     return this;
   }
-  arc(): this {
+  arc(x = 0, y = 0, radius = 0): this {
+    this.arcs.push({ x, y, radius });
     this.pending = null;
     return this;
   }
-  fill(): this {
-    this.pending = null;
+  fill(style?: number | { color?: number; alpha?: number }): this {
+    if (this.pending) {
+      const ink = typeof style === "number" ? { color: style } : style;
+      this.discs.push({
+        ...this.pending,
+        color: ink?.color ?? 0,
+        alpha: ink?.alpha ?? 1,
+      });
+      this.pending = null;
+    }
     return this;
   }
   stroke(style?: { color?: number; alpha?: number; width?: number }): this {
@@ -125,6 +161,7 @@ export class FakeGraphics extends FakeContainer {
 
 export class FakeParticleContainer extends FakeContainer {
   readonly particleChildren: unknown[] = [];
+  texture: FakeTexture | undefined;
   update(): void {}
 }
 
@@ -175,10 +212,12 @@ export class FakeText extends FakeContainer {
   visible = false;
   tint = 0;
   width = 10;
+  resolution = 1;
   readonly anchor = { set: () => {} };
-  constructor(options: { text: string }) {
+  constructor(options: { text: string; resolution?: number }) {
     super();
     this.text = options.text;
+    this.resolution = options.resolution ?? 1;
   }
 }
 
@@ -191,9 +230,16 @@ export class FakeApplication {
     add: (fn: () => void) => this.frames.add(fn),
     remove: (fn: () => void) => this.frames.delete(fn),
   };
+  /** What each texture generated off the renderer was rasterised at, so a suite
+   *  can hold what the marks and the ground were cut for. */
+  readonly cut: number[] = [];
   readonly renderer = {
     screen: { width: 390, height: 740 },
-    generateTexture: () => ({ source: {} }),
+    resolution: 1,
+    generateTexture: (options: { resolution: number }) => {
+      this.cut.push(options.resolution);
+      return new FakeTexture({ source: new FakeSource() });
+    },
   };
   constructor() {
     FakeApplication.latest = this;

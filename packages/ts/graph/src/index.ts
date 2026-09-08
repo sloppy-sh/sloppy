@@ -3,6 +3,7 @@
 
 export * from "./color.js";
 export * from "./contract.js";
+export * from "./density.js";
 // Named, not starred: the ground's LAYER types pixi's own classes, and exporting
 // one from here puts pixi — and the WebGPU globals its types drag in — into the
 // type program of every package that imports this one.

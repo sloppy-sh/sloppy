@@ -324,11 +324,16 @@ Twelve rulings hold that table together:
   it again would only take back what somebody deliberately asked for: **bigger always draws
   bigger**, at every fold, which is the whole of what the control is. The largest mark any
   canvas draws is therefore the fold's cap at the top of that range. **What the top costs is
-  charged where it is spent.** The shapes are one sheet every mark is a scale of, so its
-  density is measured at the largest a look may draw one and paid once, by everybody; a
-  picture is a texture per mark, so it is cut for the mark that wears it and a leaf never
-  carries what the largest needs — a phone holding hundreds of pictured marks is what that
-  difference is for.
+  charged where it is spent.** The shapes are one sheet every mark is a scale of, cut at the
+  density of the screen in front of it times the zoom, in a few steps — so a pinch crosses a
+  step now and then rather than recutting every frame, and the smallest texture a phone's GPU
+  is guaranteed to hold is what bounds the densest step. **The handful of marks past what that
+  step holds are drawn as shapes for the frame rather than stretched**, so nothing on the
+  canvas is enlarged by more than a quarter, at any zoom, on any screen: a mega-node its
+  author sized up, held at full zoom on a dense display, is the case it is for. A picture is a
+  texture per mark, so it is cut for the mark that wears it and the screen it is drawn on, and
+  a leaf never carries what the largest needs — a phone holding hundreds of pictured marks is
+  what that difference is for.
   **The size is one continuous channel, dragged, and its ends are `0.78` and `2.4`.** A
   handful of words cannot hold a channel like this: the size somebody wants is usually
   between two of them, and no amount of picking reaches it. So the words are the COARSE way
@@ -1019,13 +1024,13 @@ over whatever is behind it.
   same with both on. **Those were taken before a mark could wear a series or a size of its
   own, and the corpus they were taken on has since gained both; they are the ground's number and
   not the mark's until `bench/` is run again.** What the mark costs is known without
-  running it: the atlas every mark is cut from is 9.44 MB of RGBA, paid once by every graph
-  — 0.92 MB before a look could scale a mark, 5.31 MB once the sheet's density followed that,
-  and the rest is one cell per ring weight AND style, which is why the styles are four and
-  not ten. A picture is cut for the mark that wears it, so a leaf still takes 64 px where the
-  stored cut is 1,242 px on a side — that cut is 1.56× what it was when a picture could only
-  reach the look's ring, which is 2.4× the pixels behind every stored picture and the price
-  of letting one cover the mark. Those
+  running it: the sheet every mark is cut from is cut for the screen and the zoom, so a graph
+  pays 1.64 MB of RGBA at the coarsest step and 14.75 MB at the densest — a phone with the
+  field in view sits at the first, a 4K desk zoomed into a note at the last — and its cells
+  are one per ring weight AND style, which is why the styles are four and not ten. A picture
+  is cut for the mark that wears it and the screen it is drawn on, so a leaf takes 32 px on a
+  plain display and 128 px on a dense one, where the stored cut is 1,863 px on a side — the
+  biggest mega-node a look could grow, covered whole, at full zoom, on the densest screen. Those
   numbers are a still picture's. **A picture may move if that is what somebody wants behind
   their graph** — a background that lives is a thing people put behind their work, and the
   ground is theirs. It costs what it looks like it costs: an animated picture repaints that

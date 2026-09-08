@@ -8,7 +8,6 @@
 // tint cannot make one texture read as two shapes.
 
 import {
-  MARK_SCALE_MAX,
   pictureTurn,
   RING_STYLES,
   type RingStyle,
@@ -39,6 +38,7 @@ import {
   LOOK_RING_BREAK,
   LOOK_RING_WIDTH,
   markPictureSide,
+  MAX_RADIUS,
   type NamedField,
 } from "./model.js";
 import { DEPTH_STEPS, type GraphPalette } from "./palette.js";
@@ -54,10 +54,6 @@ type Pixi = typeof import("pixi.js");
 
 /** Radius the mark textures are drawn at; every mark is a scale of this. */
 const TEXTURE_RADIUS = 16;
-/** What the sheet is rasterised at. One sheet serves every mark, so its density
- *  is measured at the largest a look may draw one and paid once, by everybody —
- *  DESIGN.md § "The mark". */
-const TEXTURE_RESOLUTION = 4 * MARK_SCALE_MAX;
 /** Empty margin around each shape on the sheet, so sampling one never catches
  *  the shape beside it. */
 const SHEET_PAD = 4;
@@ -65,14 +61,65 @@ const SHEET_CELL = TEXTURE_RADIUS * 2 + SHEET_PAD * 2;
 /** A disc, the two provenance edges, and one per ring weight and style. */
 const SHEET_CELLS =
   3 + Object.keys(LOOK_RING_WIDTH).length * RING_STYLES.length;
+const SHEET_COLUMNS = Math.ceil(Math.sqrt(SHEET_CELLS));
+/** The sheet's side before its density is applied. */
+const SHEET_SIDE = SHEET_COLUMNS * SHEET_CELL;
 /**
- * The sheet's side in device pixels. **2048 is the smallest a GPU Sloppy runs
- * on is guaranteed to hold**, and past it the atlas is refused on the phones
- * least able to say why — so a ring weight or a style added here is bounded by
- * this, and `scene.test.ts` is what keeps that true rather than hoped.
+ * **2048 device pixels is the smallest a GPU Sloppy runs on is guaranteed to
+ * hold**, and past it the atlas is refused on the phones least able to say why
+ * — so a ring weight or a style added here is bounded by this, and
+ * `scene.test.ts` is what keeps that true rather than hoped.
  */
-export const MARK_SHEET_PX =
-  Math.ceil(Math.sqrt(SHEET_CELLS)) * SHEET_CELL * TEXTURE_RESOLUTION;
+const SHEET_LIMIT_PX = 2048;
+/**
+ * The densities the sheet may be cut at, coarsest first, up to the most the GPU
+ * floor above leaves room for. Tiers rather than the zoom itself, so a pinch
+ * crosses a boundary now and then instead of recutting every frame.
+ */
+export const MARK_SHEET_TIERS = [1, 2, 3].map(
+  (step) => (step * Math.floor(SHEET_LIMIT_PX / SHEET_SIDE)) / 3,
+);
+const SHEET_TIER_TOP = MARK_SHEET_TIERS[MARK_SHEET_TIERS.length - 1];
+/** The sheet's side in device pixels at its densest cut. */
+export const MARK_SHEET_PX = SHEET_SIDE * SHEET_TIER_TOP;
+/** How far inside the coarser tier's own reach the zoom falls before the sheet
+ *  is cut back down, so a pinch held at a boundary recuts once. */
+const SHEET_TIER_HOLD = 0.8;
+/** The most a mark's texture is stretched on screen before the mark is drawn as
+ *  a shape for that frame instead — DESIGN.md § "The mark". */
+export const MARK_UPSAMPLE_MAX = 1.25;
+
+/**
+ * What the mark sheet is cut at for a viewport at `scale` on a screen drawing
+ * `density` device pixels per CSS pixel, holding the tier it is already cut at
+ * where the zoom has not moved far enough to be worth another cut.
+ */
+export function markSheetTier(
+  scale: number,
+  density: number,
+  held: number | null = null,
+): number {
+  // The tier covers a mark at the fold's cap; a look that scales one past what
+  // the tier holds is drawn as a shape, so nothing is stretched past a quarter.
+  const wanted = (MAX_RADIUS * scale * density) / TEXTURE_RADIUS;
+  const tier =
+    MARK_SHEET_TIERS.find((step) => step >= wanted) ?? SHEET_TIER_TOP;
+  if (held === null || tier >= held) return tier;
+  return wanted <= tier * SHEET_TIER_HOLD ? tier : held;
+}
+
+/**
+ * How far a mark may reach, in world units, before a sheet cut at `tier` cannot
+ * hold it within {@link MARK_UPSAMPLE_MAX} at this zoom on this screen. Past it
+ * the mark is drawn as a shape instead.
+ */
+export function markSheetReach(
+  tier: number,
+  scale: number,
+  density: number,
+): number {
+  return (TEXTURE_RADIUS * tier * MARK_UPSAMPLE_MAX) / (scale * density);
+}
 
 const MAX_LABELS = 56;
 /** Below this on screen, a mark is too small to carry words. */
@@ -255,6 +302,8 @@ export class GraphScene {
   private modelDirty = false;
   private previewsDirty = false;
   private lastEdgeScale = 0;
+  /** Whether the last pass left a mark drawn as a shape. */
+  private shapesShown = false;
 
   /** One texture per picture, however many marks wear it, cut for the biggest
    *  of them — `side` is what it was cut at. `null` is a picture that will not
@@ -283,14 +332,17 @@ export class GraphScene {
     private readonly runs: Graphics,
     private readonly connections: Graphics,
     private readonly fills: ParticleContainer,
+    private readonly shapes: Graphics,
     private readonly previews: Container,
     private readonly rings: ParticleContainer,
     private readonly looks: ParticleContainer,
+    private readonly shapeRings: Graphics,
     private readonly picks: Graphics,
     private readonly labels: Container,
     private readonly labelPool: LabelSlot[],
     private readonly fieldPool: Text[],
-    private readonly textures: MarkTextures,
+    private textures: MarkTextures,
+    private sheetTier: number,
     private options: SceneOptions,
   ) {
     this.ground = new GroundLayer(pixi, app);
@@ -330,15 +382,18 @@ export class GraphScene {
       },
     };
     const fills = new pixi.ParticleContainer(particleOptions);
+    const shapes = new pixi.Graphics();
     const previews = new pixi.Container();
     const rings = new pixi.ParticleContainer(particleOptions);
     const looks = new pixi.ParticleContainer(particleOptions);
+    const shapeRings = new pixi.Graphics();
     const picks = new pixi.Graphics();
     // The lift is under everything: it is paper, not a line drawn on the field.
     // The author's ring is UNDER their picture, so widening the cover past it
     // takes it — which is what the cover slider is for. Provenance is OVER the
     // picture, so no cover can take that: it is the graph's word, not the
-    // author's. DESIGN.md § "The mark".
+    // author's. DESIGN.md § "The mark". A mark too big for the sheet is drawn as
+    // a shape beside the particles it stands in for, so it keeps that order.
     world.addChild(
       lift,
       edges,
@@ -346,8 +401,10 @@ export class GraphScene {
       connections,
       fills,
       looks,
+      shapes,
       previews,
       rings,
+      shapeRings,
       picks,
     );
 
@@ -355,7 +412,8 @@ export class GraphScene {
     labels.eventMode = "none";
     app.stage.addChild(world, labels);
 
-    const textures = markTextures(pixi, app);
+    const sheetTier = markSheetTier(1, options.resolution);
+    const textures = markTextures(pixi, app, sheetTier);
 
     // Two texts per label, because DESIGN.md § Typography gives the address its
     // own face at every size: `1a1` against `1al` must never be a question.
@@ -403,14 +461,17 @@ export class GraphScene {
       runs,
       connections,
       fills,
+      shapes,
       previews,
       rings,
       looks,
+      shapeRings,
       picks,
       labels,
       labelPool,
       fieldPool,
       textures,
+      sheetTier,
       options,
     );
   }
@@ -429,6 +490,24 @@ export class GraphScene {
     this.options = { ...this.options, palette };
     this.ground.setInk(palette.ink);
     this.lastEdgeScale = 0;
+    this.positionsDirty = true;
+  }
+
+  /**
+   * How many device pixels a CSS pixel of canvas is drawn with, for a window
+   * that has moved to a screen of another density. Everything cut for the screen
+   * — the sheet, the words and the pictures — is asked for again at the new one.
+   */
+  setResolution(resolution: number): void {
+    if (resolution === this.options.resolution) return;
+    this.options = { ...this.options, resolution };
+    this.app.renderer.resolution = resolution;
+    for (const slot of this.labelPool) {
+      slot.address.resolution = resolution;
+      slot.title.resolution = resolution;
+    }
+    for (const name of this.fieldPool) name.resolution = resolution;
+    this.previewsDirty = true;
     this.positionsDirty = true;
   }
 
@@ -737,6 +816,7 @@ export class GraphScene {
     const started = performance.now();
     this.frameSamples.push(this.app.ticker.deltaMS);
 
+    const rebuilt = this.modelDirty;
     if (this.modelDirty) this.rebuildMarks();
     if (this.previewsDirty) this.rebuildPreviews();
 
@@ -746,8 +826,12 @@ export class GraphScene {
 
     this.ground.update(this.viewport, this.width, this.height);
     const turning = this.turning.size > 0;
+    const recut = this.cutSheet();
     if (this.positionsDirty) this.syncMarks();
     if (turning) this.advanceTurns();
+    if (this.positionsDirty || scaleMoved || rebuilt || recut) {
+      this.drawShapes();
+    }
     if (this.positionsDirty || scaleMoved) this.drawLift();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
@@ -788,10 +872,7 @@ export class GraphScene {
         provenance === "own"
           ? null
           : new this.pixi.Particle({
-              texture:
-                provenance === "pulled"
-                  ? this.textures.dashed
-                  : this.textures.ring,
+              texture: this.ringTexture(mark),
               anchorX: 0.5,
               anchorY: 0.5,
               scaleX: scale,
@@ -856,6 +937,124 @@ export class GraphScene {
         mark.look.alpha = mark.looking ? mark.attributes.alpha : 0;
       }
       if (mark.preview) this.placePictures(mark);
+    }
+  }
+
+  /**
+   * Cuts the sheet again where the zoom or the screen has carried the marks onto
+   * another tier, and says whether it did. The cuts are frames of one source, so
+   * every particle drawing from the old one is handed the new one here.
+   */
+  private cutSheet(): boolean {
+    const tier = markSheetTier(
+      this.viewport.scale,
+      this.options.resolution,
+      this.sheetTier,
+    );
+    if (tier === this.sheetTier) return false;
+
+    const spent = this.textures.disc.source;
+    this.textures = markTextures(this.pixi, this.app, tier);
+    this.sheetTier = tier;
+    for (const mark of this.marks) {
+      if (mark.fill) mark.fill.texture = this.textures.disc;
+      if (mark.ring) mark.ring.texture = this.ringTexture(mark);
+      const look = this.lookTexture(
+        mark.attributes.ringWeight,
+        mark.attributes.ringStyle,
+      );
+      if (mark.look && look) mark.look.texture = look;
+    }
+    for (const layer of [this.fills, this.rings, this.looks]) {
+      // Which cut it is handed does not matter: they are frames of one source,
+      // and a container binds the source rather than the frame.
+      layer.texture = this.textures.disc;
+      layer.update();
+    }
+    spent.destroy();
+    return true;
+  }
+
+  private get sheetReach(): number {
+    return markSheetReach(
+      this.sheetTier,
+      this.viewport.scale,
+      this.options.resolution,
+    );
+  }
+
+  /**
+   * The marks the sheet cannot hold, drawn as shapes for this frame so a
+   * mega-node at full zoom has an edge rather than a stair. Their particles are
+   * held at nothing rather than taken off the containers: which marks these are
+   * changes with the zoom, and a rebuild per pinched frame is what particles are
+   * here to avoid.
+   */
+  private drawShapes(): void {
+    const reach = this.sheetReach;
+    let sharp = 0;
+    for (const mark of this.marks) if (mark.radius > reach) sharp++;
+    // A field with nothing past the sheet is most of them, and clearing a
+    // graphics is a frame's worth of work for a layer that draws nothing.
+    if (sharp === 0 && !this.shapesShown) return;
+
+    this.shapes.clear();
+    this.shapeRings.clear();
+    for (const mark of this.marks) {
+      const drawn = mark.radius > reach;
+      const alpha = drawn ? 0 : mark.attributes.alpha;
+      if (mark.fill) mark.fill.alpha = alpha;
+      if (mark.ring) mark.ring.alpha = alpha;
+      if (mark.look) {
+        mark.look.alpha = drawn || !mark.looking ? 0 : mark.attributes.alpha;
+      }
+      if (drawn) this.drawShape(mark);
+    }
+    this.shapesShown = sharp > 0;
+  }
+
+  /** One mark, as the shapes its cells hold — the same geometry the sheet is
+   *  cut from, at the mark's own radius. */
+  private drawShape(mark: Mark): void {
+    const x = this.positions[mark.index * 2];
+    const y = this.positions[mark.index * 2 + 1];
+    const { provenance, fill, alpha, ringWeight, ringStyle } = mark.attributes;
+    const { palette } = this.options;
+
+    if (provenance !== "pulled") {
+      this.shapes
+        .circle(x, y, mark.radius * FILL_AT)
+        .fill({ color: fill, alpha });
+    }
+    if (mark.looking && ringWeight !== "none") {
+      const { dashes, duty } = LOOK_RING_BREAK[ringStyle];
+      strokeRing(
+        this.shapes,
+        x,
+        y,
+        mark.radius * LOOK_RING_AT,
+        mark.radius * LOOK_RING_WIDTH[ringWeight],
+        dashes,
+        duty,
+        {
+          color: palette.lookRing(
+            provenance === "pulled" ? palette.paper : fill,
+          ),
+          alpha,
+        },
+      );
+    }
+    if (provenance !== "own") {
+      strokeRing(
+        this.shapeRings,
+        x,
+        y,
+        mark.radius * EDGE_RING_AT,
+        mark.radius * EDGE_RING_WIDTH,
+        provenance === "pulled" ? EDGE_DASHES : 0,
+        0.5,
+        { color: provenance === "pulled" ? fill : palette.ink, alpha },
+      );
     }
   }
 
@@ -1030,10 +1229,14 @@ export class GraphScene {
     sprite.destroy();
   }
 
-  /** What this mark decodes its picture at — the mark's own size, never the
-   *  largest one a look could reach. */
+  /** What this mark decodes its picture at — the mark's own size on this
+   *  screen, never the largest one a look could reach on the densest. */
   private sideFor(mark: Mark): number {
-    return markPictureSide(mark.radius, mark.attributes.previewCover);
+    return markPictureSide(
+      mark.radius,
+      mark.attributes.previewCover,
+      this.options.resolution,
+    );
   }
 
   /** Marks share one texture per picture, so a sprite goes without its own. */
@@ -1125,6 +1328,13 @@ export class GraphScene {
       this.previewTextures.delete(preview);
       this.previewsAsked.delete(preview);
     }
+  }
+
+  /** Provenance's own edge: broken where the region was pulled. */
+  private ringTexture(mark: Mark): Texture {
+    return mark.attributes.provenance === "pulled"
+      ? this.textures.dashed
+      : this.textures.ring;
   }
 
   /** `null` is no look at all: a weight of `none`, and any pair this build has
@@ -1610,11 +1820,16 @@ async function markPicture(
 }
 
 /**
- * Every mark texture, cut from ONE source. A `ParticleContainer` draws all its
- * particles with a single texture, so a second source would silently put one
- * mark's ring on every other mark in the same container.
+ * Every mark texture, cut from ONE source at `resolution` texels per texture
+ * pixel. A `ParticleContainer` draws all its particles with a single texture, so
+ * a second source would silently put one mark's ring on every other mark in the
+ * same container.
  */
-function markTextures(pixi: Pixi, app: Application): MarkTextures {
+function markTextures(
+  pixi: Pixi,
+  app: Application,
+  resolution: number,
+): MarkTextures {
   const cells: Graphics[] = [];
   const cell = (draw: (into: Graphics) => void): number => {
     const graphics = new pixi.Graphics();
@@ -1630,9 +1845,12 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
   });
   const edgeAt = TEXTURE_RADIUS * EDGE_RING_AT;
   const edgeWidth = TEXTURE_RADIUS * EDGE_RING_WIDTH;
-  const ring = cell((into) => strokeRing(into, edgeAt, edgeWidth, 0));
+  const centre = TEXTURE_RADIUS;
+  const ring = cell((into) =>
+    strokeRing(into, centre, centre, edgeAt, edgeWidth, 0),
+  );
   const dashed = cell((into) =>
-    strokeRing(into, edgeAt, edgeWidth, EDGE_DASHES),
+    strokeRing(into, centre, centre, edgeAt, edgeWidth, EDGE_DASHES),
   );
   // One cell per weight and style both, so the sheet grows with the product of
   // the two — DESIGN.md § "The mark" is where a style has to earn that.
@@ -1645,6 +1863,8 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
         cell((into) =>
           strokeRing(
             into,
+            centre,
+            centre,
             TEXTURE_RADIUS * LOOK_RING_AT,
             TEXTURE_RADIUS * fraction,
             dashes,
@@ -1655,15 +1875,12 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
     }
   }
 
-  // Squared off rather than laid in one row: the sheet's density follows the
-  // ladder, so a row of it would run past the smallest texture a GPU Sloppy
-  // runs on will hold, and a square wastes the least of what it does hold.
-  // From the sets rather than the array, so `MARK_SHEET_PX` above is the size
-  // this actually builds and a test can hold it to the GPU's floor.
-  const columns = Math.ceil(Math.sqrt(SHEET_CELLS));
+  // Squared off rather than laid in one row: a row of it would run past the
+  // smallest texture a GPU Sloppy runs on will hold at the densities the sheet
+  // is cut at, and a square wastes the least of what it does hold.
   const corner = (at: number): { x: number; y: number } => ({
-    x: (at % columns) * SHEET_CELL + SHEET_PAD,
-    y: Math.floor(at / columns) * SHEET_CELL + SHEET_PAD,
+    x: (at % SHEET_COLUMNS) * SHEET_CELL + SHEET_PAD,
+    y: Math.floor(at / SHEET_COLUMNS) * SHEET_CELL + SHEET_PAD,
   });
   for (const [at, graphics] of cells.entries()) {
     const { x, y } = corner(at);
@@ -1678,12 +1895,13 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
     frame: new pixi.Rectangle(
       0,
       0,
-      columns * SHEET_CELL,
-      Math.ceil(cells.length / columns) * SHEET_CELL,
+      SHEET_SIDE,
+      Math.ceil(cells.length / SHEET_COLUMNS) * SHEET_CELL,
     ),
-    resolution: TEXTURE_RESOLUTION,
+    resolution,
     antialias: true,
   });
+  sheet.destroy({ children: true });
   const cut = (at: number): Texture => {
     const { x, y } = corner(at);
     return new pixi.Texture({
@@ -1701,24 +1919,27 @@ function markTextures(pixi: Pixi, app: Application): MarkTextures {
 }
 
 /** `dashes` of 0 strokes the ring whole; `duty` is the share of each dash's
- *  turn that is drawn. */
+ *  turn that is drawn. White is the sheet's, whose cells a mark tints. */
 function strokeRing(
   into: Graphics,
+  x: number,
+  y: number,
   radius: number,
   width: number,
   dashes: number,
   duty = 0.5,
+  ink: { color: number; alpha: number } = { color: 0xffffff, alpha: 1 },
 ): void {
-  const centre = TEXTURE_RADIUS;
+  const style = { ...ink, width };
   if (dashes === 0) {
-    into.circle(centre, centre, radius).stroke({ color: 0xffffff, width });
+    into.circle(x, y, radius).stroke(style);
     return;
   }
   const turn = (Math.PI * 2) / dashes;
   for (let step = 0; step < dashes; step++) {
     const from = step * turn;
-    into.arc(centre, centre, radius, from, from + turn * duty);
-    into.stroke({ color: 0xffffff, width });
+    into.arc(x, y, radius, from, from + turn * duty);
+    into.stroke(style);
   }
 }
 

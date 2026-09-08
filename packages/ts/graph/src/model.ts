@@ -24,6 +24,7 @@ import {
 } from "@sloppy/types";
 import Graph from "graphology";
 import type { DrawnNode, GraphField } from "./contract.js";
+import { MAX_DENSITY } from "./density.js";
 import {
   placeFields,
   type SeedPoint,
@@ -71,13 +72,10 @@ export const LOOK_RING_BREAK: Record<
   dashed: { dashes: 7, duty: 0.4 },
 };
 
-/** Assumed of the densest screen Sloppy runs on. */
-const DENSE_SCREEN = 2;
-
 /**
  * The side of the square a picture is STORED at: the most any mark could ever
  * show of it — the biggest mega-node at the largest a look may size one, covered
- * whole, at full zoom, on a dense display. A picture is stored with its SHORT
+ * whole, at full zoom, on the densest screen. A picture is stored with its SHORT
  * side at this, because the crop spends the long one.
  *
  * The cut is taken once, when somebody chooses the file, and the look it is
@@ -86,21 +84,26 @@ const DENSE_SCREEN = 2;
  * the other budget, and {@link markPictureSide} is that one.
  */
 export const MARK_PICTURE_PX = Math.ceil(
-  WIDEST_RADIUS * PREVIEW_COVER_MAX * 2 * MAX_SCALE * DENSE_SCREEN,
+  WIDEST_RADIUS * PREVIEW_COVER_MAX * 2 * MAX_SCALE * MAX_DENSITY,
 );
 
 /**
  * The side of the square a mark drawn at `radius` world units decodes its
- * picture to, held under {@link MARK_PICTURE_PX}. A leaf never carries a
- * mega-node's pixels however large the stored picture is, which is what makes a
- * phone holding hundreds of pictured marks affordable — `model.test.ts` holds
- * the two budgets apart.
+ * picture to on a screen of `density` device pixels per CSS pixel, held under
+ * {@link MARK_PICTURE_PX}. A leaf never carries a mega-node's pixels however
+ * large the stored picture is, and a plain screen never carries a dense one's,
+ * which is what makes a phone holding hundreds of pictured marks affordable —
+ * `model.test.ts` holds the two budgets apart.
  *
  * Rounded UP to a power of two, so the same picture worn by marks a hair apart
  * in size is one texture rather than a dozen cuts of one file.
  */
-export function markPictureSide(radius: number, cover: number): number {
-  const wanted = radius * cover * 2 * MAX_SCALE * DENSE_SCREEN;
+export function markPictureSide(
+  radius: number,
+  cover: number,
+  density = MAX_DENSITY,
+): number {
+  const wanted = radius * cover * 2 * MAX_SCALE * density;
   const stepped = 2 ** Math.ceil(Math.log2(Math.max(1, wanted)));
   return Math.min(MARK_PICTURE_PX, stepped);
 }
