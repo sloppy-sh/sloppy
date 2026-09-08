@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import {
+  type Address,
   createOwnedRecordId,
   MAX_TAGS_PER_NODE,
   type Node,
@@ -16,6 +17,7 @@ import {
   nowIso,
   type OwnedRef,
   ownedRefFrom,
+  parentAddress,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
@@ -60,12 +62,24 @@ function note(address: string, tags: string[] = [], published = false): Node {
   } as Node;
 }
 
-/** One tree, rooted at the first address: what descends from what is read off
- *  the addresses, and only within an origin. */
+/** One tree, rooted at the first address: each note hangs under the one whose
+ *  address is its parent's, so the fixture carries the parent chain the store's
+ *  own rows do. */
 function tree(...addresses: string[]): Node[] {
   const notes = addresses.map((address) => note(address));
   const origin = ownedRefFrom(notes[0].id);
-  return notes.map((one) => ({ ...one, origin }));
+  const at = new Map(notes.map((one) => [one.address as Address, one]));
+  return notes.map((one, place) => {
+    const up =
+      place === 0
+        ? undefined
+        : at.get(parentAddress(one.address as Address) as Address);
+    return {
+      ...one,
+      origin,
+      ...(up === undefined ? {} : { parent: ownedRefFrom(up.id) }),
+    };
+  });
 }
 
 /**
@@ -92,8 +106,17 @@ function serviceOver(
       writes.push(...changes.values());
       return Promise.resolve(notes);
     },
-    subtree: (_did: string, root: Node) =>
-      Promise.resolve([root, ...notes.filter((n) => n !== root)]),
+    subtree: (_did: string, root: Node) => {
+      const byRef = new Map(notes.map((one) => [ownedRefFrom(one.id), one]));
+      const springs = (one: Node): boolean => {
+        for (let walk: Node | undefined = one; walk !== undefined; ) {
+          if (ownedRefFrom(walk.id) === ownedRefFrom(root.id)) return true;
+          walk = walk.parent === undefined ? undefined : byRef.get(walk.parent);
+        }
+        return false;
+      };
+      return Promise.resolve(notes.filter(springs));
+    },
     remove: (_did: string, going: readonly Node[]) => {
       removed.push(...going);
       return Promise.resolve();

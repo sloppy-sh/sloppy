@@ -13,7 +13,6 @@ import {
   addressDepth,
   createOwnedRecordId,
   DELETED_KEPT_FOR_DAYS,
-  isInSubtree,
   type Node,
   type NodeAlias,
   type NoteDestination,
@@ -206,6 +205,15 @@ function live(
   } as Node & { ref: OwnedRef };
 }
 
+/** One note its author never numbered. */
+function unnumbered(
+  title: string,
+  over: Partial<Node> = {},
+): Node & { ref: OwnedRef } {
+  const { address: _left, ...rest } = live("1", { title, ...over });
+  return rest as Node & { ref: OwnedRef };
+}
+
 /**
  * The reads a move and a creation make over one person's notes, and the writes
  * they ask for, applied so a later read sees them. `landing` holds a move
@@ -220,15 +228,21 @@ function notebook(
     aliases: [],
   };
   const held: Node[] = notes.map((one) => ({ ...one }));
+  /** Every address a note has been carried or renamed away from. */
+  const left: NodeAlias[] = [];
   const there = () => held.filter((one) => one.deleted_at === undefined);
-  const under = (root: Node, from: readonly Node[]) =>
-    from.filter(
-      (one) =>
-        one.origin === root.origin &&
-        root.address !== undefined &&
-        one.address !== undefined &&
-        isInSubtree(root.address, one.address),
-    );
+  /** The parent chain, which is what the store's own read walks. */
+  const under = (root: Node, from: readonly Node[]) => {
+    const byRef = new Map(from.map((one) => [ownedRefFrom(one.id), one]));
+    const springs = (one: Node): boolean => {
+      for (let walk: Node | undefined = one; walk !== undefined; ) {
+        if (ownedRefFrom(walk.id) === ownedRefFrom(root.id)) return true;
+        walk = walk.parent === undefined ? undefined : byRef.get(walk.parent);
+      }
+      return false;
+    };
+    return from.filter(springs);
+  };
   const repository = {
     find: (_did: string, ref: OwnedRef) =>
       Promise.resolve(
@@ -243,12 +257,19 @@ function notebook(
               ? one.parent === ownedRefFrom(parent.id)
               : one.parent === undefined,
           )
-          .map((one) => one.address),
+          .flatMap((one) => (one.address === undefined ? [] : [one.address])),
+      ),
+    findDeleted: (_did: string, ref: OwnedRef) =>
+      Promise.resolve(
+        held.find(
+          (one) => ownedRefFrom(one.id) === ref && one.deleted_at !== undefined,
+        ) ?? null,
       ),
     move: async (_did: string, landed: Node[], aliases: NodeAlias[]) => {
       await landing;
       asked.landed = [...landed];
       asked.aliases = [...aliases];
+      left.push(...aliases);
       for (const one of landed) {
         const at = held.findIndex(
           (was) => ownedRefFrom(was.id) === ownedRefFrom(one.id),
@@ -256,13 +277,51 @@ function notebook(
         held[at] = one;
       }
     },
+    addressLeadsTo: (_did: string, _graph: OwnedRef, address: Address) => {
+      const at = held.find((one) => one.address === address);
+      if (at) {
+        return Promise.resolve({
+          hold: at.deleted_at === undefined ? "live" : "deleted",
+          note: ownedRefFrom(at.id),
+        });
+      }
+      const alias = left.find((one) => one.address === address);
+      return Promise.resolve(
+        alias ? { hold: "moved", note: alias.note } : null,
+      );
+    },
+    writeAddress: (
+      _did: string,
+      node: Node,
+      address: Address | undefined,
+      leaving: NodeAlias | null,
+    ) => {
+      asked.aliases = leaving ? [leaving] : [];
+      if (leaving) left.push(leaving);
+      for (let at = left.length - 1; at >= 0; at--) {
+        if (left[at].address === address) left.splice(at, 1);
+      }
+      const at = held.findIndex(
+        (one) => ownedRefFrom(one.id) === ownedRefFrom(node.id),
+      );
+      const { address: _was, ...rest } = held[at];
+      held[at] = { ...rest, ...(address === undefined ? {} : { address }) };
+      return Promise.resolve(held[at]);
+    },
     insert: (one: Node) => {
       held.push(one);
       return Promise.resolve(one);
     },
     subtree: (_did: string, root: Node) =>
       Promise.resolve(under(root, there())),
-    aliasesOf: () => Promise.resolve(new Map<OwnedRef, Address[]>()),
+    aliasesOf: (_did: string, _graph: OwnedRef, notes: readonly OwnedRef[]) => {
+      const by = new Map<OwnedRef, Address[]>();
+      for (const alias of left) {
+        if (!notes.includes(alias.note)) continue;
+        by.set(alias.note, [...(by.get(alias.note) ?? []), alias.address]);
+      }
+      return Promise.resolve(by);
+    },
   } as unknown as NodeRepository;
   return {
     asked,
@@ -489,6 +548,62 @@ describe("carrying a note somewhere else", () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it("carries a note with no number and leaves it with none", async () => {
+    const root = live("1");
+    const moving = unnumbered("Scratch", {
+      origin: root.ref,
+      parent: root.ref,
+    });
+    const other = live("2");
+    const { asked, service } = notebook([root, moving, other]);
+
+    const after = await service.move(DID, moving.ref, {
+      relation: "under",
+      note: other.ref,
+    });
+
+    expect(after.map((one) => one.address)).toEqual([undefined]);
+    expect(asked.aliases).toEqual([]);
+    expect(asked.landed.map((one) => [one.depth, one.parent])).toEqual([
+      [2, other.ref],
+    ]);
+  });
+
+  it("carries a note under one nobody numbered, and it keeps no number", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const beneath = live("1a1", { origin: root.ref, parent: moving.ref });
+    const landing = unnumbered("Scratch");
+    const { asked, service } = notebook([root, moving, beneath, landing]);
+
+    const after = await service.move(DID, moving.ref, {
+      relation: "under",
+      note: landing.ref,
+    });
+
+    expect(after.map((one) => [one.title, one.address])).toEqual([
+      ["1a", undefined],
+      ["1a1", "1a1"],
+    ]);
+    expect(asked.aliases.map((one) => one.address)).toEqual(["1a"]);
+  });
+
+  it("refuses to carry a note into what sprang from it, numbered or not", async () => {
+    const moving = unnumbered("Scratch");
+    const beneath = unnumbered("Under it", {
+      origin: moving.ref,
+      parent: moving.ref,
+      depth: 2,
+    });
+
+    await expect(
+      refused([moving, beneath], moving.ref, {
+        relation: "under",
+        note: beneath.ref,
+      }),
+    ).resolves.toMatch(/sprang from it/);
+  });
+
   it("refuses a branch of its own when nothing could follow the highest one", async () => {
     const highest = String(Number.MAX_SAFE_INTEGER - 1);
     const root = live(highest);
@@ -503,6 +618,89 @@ describe("carrying a note somewhere else", () => {
         note: root.ref,
       }),
     ).resolves.toMatch(/under a note instead/);
+  });
+});
+
+describe("the label a person writes on a note", () => {
+  it("writes one on a note that carried none", async () => {
+    const note = unnumbered("Mushrooms");
+    const { asked, service } = notebook([note]);
+
+    const written = await service.setAddress(DID, note.ref, "1a");
+
+    expect(written.address).toBe("1a");
+    expect(written.depth).toBe(1);
+    expect(asked.aliases).toEqual([]);
+  });
+
+  it("takes one off, and the address it left still leads to it", async () => {
+    const note = live("1a");
+    const { asked, service } = notebook([note]);
+
+    const written = await service.setAddress(DID, note.ref, null);
+
+    expect(written.address).toBeUndefined();
+    expect(written.aliases).toEqual(["1a"]);
+    expect(asked.aliases.map((one) => [one.address, one.note])).toEqual([
+      ["1a", note.ref],
+    ]);
+  });
+
+  it("leaves the depth where the genealogy puts it", async () => {
+    const root = live("1");
+    const under = live("1a", { origin: root.ref, parent: root.ref });
+    const { service } = notebook([root, under]);
+
+    expect((await service.setAddress(DID, under.ref, null)).depth).toBe(2);
+    expect((await service.setAddress(DID, under.ref, "7b")).depth).toBe(2);
+  });
+
+  it("refuses one another note is at, and names that note", async () => {
+    const held = live("2c", { title: "Mycelium" });
+    const note = unnumbered("Mushrooms");
+    const { service } = notebook([held, note]);
+
+    const written = service.setAddress(DID, note.ref, "2c");
+
+    await expect(written).rejects.toBeInstanceOf(BadRequestException);
+    await expect(written).rejects.toThrow(
+      /2c already leads to “Mycelium”\. Pick another number\./,
+    );
+  });
+
+  it("refuses one that still leads to a note carried away from it", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const other = live("2");
+    const note = unnumbered("Mushrooms");
+    const { service } = notebook([root, moving, other, note]);
+    await service.move(DID, moving.ref, { relation: "under", note: other.ref });
+
+    await expect(service.setAddress(DID, note.ref, "1a")).rejects.toThrow(
+      /1a still leads to “1a”/,
+    );
+  });
+
+  it("hands a note back an address it carried before", async () => {
+    const root = live("1");
+    const moving = live("1a", { origin: root.ref, parent: root.ref });
+    const other = live("2");
+    const { service } = notebook([root, moving, other]);
+    await service.move(DID, moving.ref, { relation: "under", note: other.ref });
+
+    const written = await service.setAddress(DID, moving.ref, "1a");
+
+    expect(written.address).toBe("1a");
+    expect(written.aliases ?? []).toEqual(["2a"]);
+  });
+
+  it("refuses a note that is not here", async () => {
+    const note = live("1", { deleted_at: AT });
+    const { service } = notebook([note]);
+
+    await expect(service.setAddress(DID, note.ref, "2")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
 
@@ -554,6 +752,7 @@ describe("an address typed into a search", () => {
         graph: homeGraphRef(DID),
         title: "1c",
         snippet: "",
+        created_at: AT,
         held: false,
       },
     ]);
@@ -569,6 +768,7 @@ describe("an address typed into a search", () => {
         graph: homeGraphRef(DID),
         title: "1c",
         snippet: "",
+        created_at: AT,
         wasAt: "1a",
         held: false,
       },
@@ -582,15 +782,6 @@ describe("an address typed into a search", () => {
     expect(asked.address).toBeUndefined();
   });
 });
-
-/** One note its author never numbered. */
-function unnumbered(
-  title: string,
-  over: Partial<Node> = {},
-): Node & { ref: OwnedRef } {
-  const { address: _left, ...rest } = live("1", { title, ...over });
-  return rest as Node & { ref: OwnedRef };
-}
 
 describe("a graph holding a note nobody numbered", () => {
   it("still opens the next branch after its highest one", async () => {

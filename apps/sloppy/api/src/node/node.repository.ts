@@ -233,6 +233,90 @@ export class NodeRepository {
     return aliased.length > 0 ? "moved" : null;
   }
 
+  /**
+   * The same question with the note named: how the graph holds this address,
+   * and which note it still leads to where one is there. `null` where the graph
+   * has never assigned it.
+   *
+   * A retired address leads to nothing — the note it was spent on is gone — so
+   * it answers `deleted` with no note. What this is for that
+   * {@link addressTaken} is not: a person writing an address on the note that
+   * already carries it, or on the note it was moved away from, is not taking
+   * anybody's address.
+   */
+  async addressLeadsTo(
+    did: string,
+    graph: OwnedRef,
+    address: Address,
+  ): Promise<{ hold: AddressHold; note?: OwnedRef } | null> {
+    const at = `FROM node
+         WHERE created_by = $did AND graph = $graph AND address = $address`;
+    const [held, deleted, retired, aliased] = await this.db.handle.query<
+      [RecordId[], RecordId[], string[], OwnedRef[]]
+    >(
+      `SELECT VALUE id ${at} AND deleted_at = NONE LIMIT 1;
+       SELECT VALUE id ${at} AND deleted_at != NONE LIMIT 1;
+       SELECT VALUE address FROM retired_address
+         WHERE created_by = $did AND graph = $graph AND address = $address
+         LIMIT 1;
+       SELECT VALUE note FROM node_alias
+         WHERE created_by = $did AND graph = $graph AND address = $address
+         LIMIT 1;`,
+      { did, graph, address },
+    );
+    if (held[0] !== undefined) {
+      return { hold: "live", note: ownedRefFrom(held[0]) };
+    }
+    if (deleted[0] !== undefined) {
+      return { hold: "deleted", note: ownedRefFrom(deleted[0]) };
+    }
+    if (retired.length > 0) return { hold: "deleted" };
+    return aliased[0] === undefined
+      ? null
+      : { hold: "moved", note: aliased[0] };
+  }
+
+  /**
+   * The label a person wrote on one note, `undefined` where they took it off.
+   * `leaving` is the address it had, which keeps leading to it; an alias at the
+   * address it TAKES goes, because the note is at that address again rather
+   * than away from it.
+   *
+   * One transaction, for the reason a move is one: a row re-addressed without
+   * its alias written is a citation that has stopped resolving.
+   */
+  async writeAddress(
+    did: string,
+    node: Node,
+    address: Address | undefined,
+    leaving: NodeAlias | null,
+  ): Promise<Node | null> {
+    const ref = ownedRefFrom(node.id);
+    const statements = ["BEGIN TRANSACTION;"];
+    if (leaving) statements.push("INSERT INTO node_alias $leaving;");
+    if (address !== undefined) {
+      statements.push(
+        `DELETE node_alias WHERE created_by = $did AND graph = $graph
+           AND address = $address AND note = $note;`,
+      );
+    }
+    statements.push(
+      `UPDATE $id SET address = ${address === undefined ? "NONE" : "$address"},
+         updated_at = $at WHERE created_by = $did RETURN NONE;`,
+      "COMMIT TRANSACTION;",
+    );
+    await this.db.handle.query(statements.join("\n"), {
+      did,
+      id: node.id,
+      note: ref,
+      graph: graphOf(node),
+      address,
+      leaving,
+      at: nowIso(),
+    });
+    return this.find(did, ref);
+  }
+
   async insert(node: Node): Promise<Node> {
     const { id, ...content } = node;
     const [rows] = await this.query(
@@ -418,14 +502,16 @@ export class NodeRepository {
     };
     for (const [slot, node] of landed.entries()) {
       statements.push(
-        `UPDATE $id${slot} SET address = $address${slot}, depth = $depth${slot},
+        `UPDATE $id${slot} SET
+           address = ${node.address === undefined ? "NONE" : `$address${slot}`},
+           depth = $depth${slot},
            origin = $origin${slot},
            parent = ${node.parent ? `$parent${slot}` : "NONE"},
            updated_at = $at
            WHERE created_by = $did RETURN NONE;`,
       );
       vars[`id${slot}`] = node.id;
-      vars[`address${slot}`] = node.address;
+      if (node.address !== undefined) vars[`address${slot}`] = node.address;
       vars[`depth${slot}`] = node.depth;
       vars[`origin${slot}`] = node.origin;
       if (node.parent) vars[`parent${slot}`] = node.parent;

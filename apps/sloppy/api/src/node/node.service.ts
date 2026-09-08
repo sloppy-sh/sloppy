@@ -18,7 +18,6 @@ import {
   graphAsked,
   graphOf,
   isAddress,
-  isInSubtree,
   isRootAddress,
   isUnstyled,
   nextChildAddress,
@@ -198,6 +197,7 @@ export class NodeService {
       graph: graphOf(note),
       title: note.title,
       snippet: "",
+      created_at: note.created_at,
       ...(at.has(ownedRefFrom(note.id)) ? {} : { wasAt: address }),
       held: false,
     }));
@@ -250,6 +250,7 @@ export class NodeService {
             graph: graphOf(note),
             title: note.title,
             snippet: carried.snippet,
+            created_at: note.created_at,
             held: false,
           },
         },
@@ -276,6 +277,9 @@ export class NodeService {
             graph: note.graph,
             title: note.title,
             snippet: carried.snippet,
+            ...(note.created_at === undefined
+              ? {}
+              : { created_at: note.created_at }),
             held: true,
           },
         },
@@ -354,9 +358,58 @@ export class NodeService {
   }
 
   /**
+   * The label a person cites this note by, written or taken off. The address it
+   * leaves keeps leading to it, and an address it has carried before is its own
+   * to take back — AI.md § "The Genealogy Is the Protocol".
+   */
+  async setAddress(
+    did: string,
+    ref: OwnedRef,
+    address: Address | null,
+  ): Promise<NodeView> {
+    return this.addressing.run(did, async () => {
+      const note = await this.nodes.find(did, ref);
+      if (!note) throw new NotFoundException("That note is not here.");
+      if (address !== null) await this.requireFree(did, note, address);
+      const written = await this.nodes
+        .writeAddress(
+          did,
+          note,
+          address ?? undefined,
+          note.address === undefined || note.address === address
+            ? null
+            : leftBehind(note, note.address),
+        )
+        .catch(async (err: unknown) => {
+          if (address !== null) await this.requireFree(did, note, address);
+          throw err;
+        });
+      if (!written) throw new NotFoundException("That note is not here.");
+      return (await this.asRead(did, [written]))[0];
+    });
+  }
+
+  /** Refused in words where the address leads somewhere else in this graph. A
+   *  writer in another process gets past the queue and is refused by the unique
+   *  index, so this is asked again on the way out of a failed write. */
+  private async requireFree(
+    did: string,
+    note: Node,
+    address: Address,
+  ): Promise<void> {
+    const held = await this.nodes.addressLeadsTo(did, graphOf(note), address);
+    if (held === null || held.note === ownedRefFrom(note.id)) return;
+    if (held.note === undefined) throw leadsNowhere(address);
+    const at =
+      (await this.nodes.find(did, held.note)) ??
+      (await this.nodes.findDeleted(did, held.note));
+    throw leadsTo(address, held.hold, at);
+  }
+
+  /**
    * A note carried somewhere else, with everything that sprang from it. The
-   * answer is that subtree as it now stands, because a move re-addresses all of
-   * it — AI.md § "The Genealogy Is the Protocol".
+   * answer is that subtree as it now stands, because a move can re-address all
+   * of it — AI.md § "The Genealogy Is the Protocol".
    */
   async move(
     did: string,
@@ -366,19 +419,9 @@ export class NodeService {
     return this.addressing.run(did, async () => {
       const note = await this.nodes.find(did, ref);
       if (!note) throw new NotFoundException("That note is not here.");
-      if (note.address === undefined) {
-        throw new BadRequestException(
-          "Give this note a number before carrying it somewhere else.",
-        );
-      }
-      const graph = graphOf(note);
-      const landing = await this.landingFor(did, note, to);
-      if (landing !== null && landing.address === undefined) {
-        throw new BadRequestException(
-          "That note has no number yet, so nothing can be numbered under it. Give it one first.",
-        );
-      }
-      return this.carry(did, note, graph, landing);
+      const carried = await this.nodes.carried(did, note);
+      const landing = await this.landingFor(did, note, to, carried);
+      return this.carry(did, note, graphOf(note), carried, landing);
     });
   }
 
@@ -391,6 +434,7 @@ export class NodeService {
     did: string,
     note: Node,
     to: NoteDestination,
+    carried: readonly Node[],
   ): Promise<Node | null> {
     if (to.note === ownedRefFrom(note.id)) {
       throw new BadRequestException("Carry this note to a different one.");
@@ -402,64 +446,69 @@ export class NodeService {
         "That note is in another graph. A note stays in the graph it was written in.",
       );
     }
-    if (to.relation === "under") return this.outside(note, anchor);
+    const within = new Set(carried.map((one) => ownedRefFrom(one.id)));
+    if (to.relation === "under") return outside(within, anchor);
     if (!anchor.parent) return null;
     const parent = await this.nodes.find(did, anchor.parent);
     if (!parent) throw new BadRequestException(missing(to.relation));
-    return this.outside(note, parent);
-  }
-
-  /** A landing that is not inside the subtree about to move, which would leave
-   *  the note hanging under itself. */
-  private outside(note: Node, parent: Node): Node {
-    if (
-      parent.origin === note.origin &&
-      note.address !== undefined &&
-      parent.address !== undefined &&
-      isInSubtree(note.address, parent.address)
-    ) {
-      throw new BadRequestException(
-        "A note cannot be carried into what sprang from it.",
-      );
-    }
-    return parent;
+    return outside(within, parent);
   }
 
   /**
-   * The subtree at its new addresses, with the address each note leaves behind
+   * The subtree where it now sits, with the address each note leaves behind
    * still leading to it. Deleted notes under it are carried too; only the ones
    * that are there come back in the answer.
+   *
+   * Which notes are re-addressed is the whole of what the address rule decides
+   * here — docs/ARCHITECTURE.md § "The genealogy and the address" — and the
+   * depths, the origin and the parent are rewritten either way.
    */
   private async carry(
     did: string,
     note: Node,
     graph: OwnedRef,
+    carried: readonly Node[],
     parent: Node | null,
   ): Promise<NodeView[]> {
     const ref = ownedRefFrom(note.id);
-    const was = note.address as Address;
-    const carried = await this.nodes.carried(did, note);
     const beneath = carried.filter((one) => ownedRefFrom(one.id) !== ref);
-    const landing = movedSubtree(
-      parent?.address ?? null,
-      await this.nodes.childAddresses(did, parent, graph),
-      was,
-      beneath.flatMap((one) => (one.address ? [one.address] : [])),
-    );
-    const lands = (at: Address) => landing.get(at) as Address;
-    if (parent === null && !isRootAddress(lands(was))) {
+    const was = note.address;
+    const landing =
+      was === undefined || (parent !== null && parent.address === undefined)
+        ? null
+        : movedSubtree(
+            parent?.address ?? null,
+            await this.nodes.childAddresses(did, parent, graph),
+            was,
+            beneath.flatMap((one) => (one.address ? [one.address] : [])),
+          );
+    const now =
+      landing === null || was === undefined
+        ? undefined
+        : (landing.get(was) as Address);
+    if (parent === null && now !== undefined && !isRootAddress(now)) {
       throw new BadRequestException(
         "There is no number left after your highest branch. Carry this note under a note instead.",
       );
     }
 
+    const addressAt = new Map<OwnedRef, Address | undefined>([[ref, now]]);
+    for (const one of beneath) {
+      addressAt.set(
+        ownedRefFrom(one.id),
+        one.address === undefined
+          ? undefined
+          : (landing?.get(one.address) ?? one.address),
+      );
+    }
     const origin = parent ? parent.origin : ref;
     const depthAt = depthsUnder(carried, ref, parent ? parent.depth + 1 : 1);
     const landedAt = (one: Node, over: Partial<Node> = {}) => {
-      const { address, ...rest } = one;
+      const { address: _left, ...rest } = one;
+      const at = addressAt.get(ownedRefFrom(one.id));
       return parseNode({
         ...rest,
-        ...(address === undefined ? {} : { address: lands(address) }),
+        ...(at === undefined ? {} : { address: at }),
         depth: depthAt(one),
         origin,
         ...over,
@@ -473,7 +522,10 @@ export class NodeService {
       did,
       landed,
       carried.flatMap((one) =>
-        one.address ? [leftBehind(one, one.address)] : [],
+        one.address !== undefined &&
+        one.address !== addressAt.get(ownedRefFrom(one.id))
+          ? [leftBehind(one, one.address)]
+          : [],
       ),
     );
     return this.asRead(did, await this.nodes.subtree(did, root));
@@ -676,17 +728,17 @@ export class NodeService {
     if (put.length === 0) throw refusal;
 
     const sent = new Set(put.map((root) => ownedRefFrom(root.id)));
+    // What a root carried out is its subtree, which a person's own labels
+    // cannot be read as.
+    const within = new Set<OwnedRef>();
+    for (const root of put) {
+      for (const node of await this.nodes.subtree(delegation.did, root)) {
+        within.add(ownedRefFrom(node.id));
+      }
+    }
     const out = mine.filter((note) => {
       const ref = ownedRefFrom(note.id);
-      return rooted.has(ref)
-        ? sent.has(ref)
-        : put.some(
-            (root) =>
-              root.address !== undefined &&
-              note.address !== undefined &&
-              root.origin === note.origin &&
-              isInSubtree(root.address, note.address),
-          );
+      return rooted.has(ref) ? sent.has(ref) : within.has(ref);
     });
     const after = await this.nodes.many(
       delegation.did,
@@ -837,6 +889,45 @@ function missing(relation: NoteDestination["relation"]): string {
   return relation === "under"
     ? "The note this springs from is not here."
     : "The note this follows is not here.";
+}
+
+/** A landing that is not inside the subtree about to move, which would leave
+ *  the note hanging under itself. `within` is the notes the move carries: a
+ *  person writes their own addresses, so what sprang from a note is not in
+ *  them. */
+function outside(within: ReadonlySet<OwnedRef>, parent: Node): Node {
+  if (within.has(ownedRefFrom(parent.id))) {
+    throw new BadRequestException(
+      "A note cannot be carried into what sprang from it.",
+    );
+  }
+  return parent;
+}
+
+/** How a refusal names the note an address already leads to. Its title, because
+ *  the address is the thing being contested. */
+function called(note: Node | null): string {
+  const title = note?.title.trim();
+  return title ? `“${title}”` : "a note you have not titled";
+}
+
+function leadsTo(
+  address: Address,
+  hold: AddressHold,
+  at: Node | null,
+): BadRequestException {
+  return new BadRequestException(
+    hold === "deleted"
+      ? `${address} leads to ${called(at)}, which you deleted. Pick another number.`
+      : `${address} ${hold === "live" ? "already" : "still"} leads to ${called(at)}. Pick another number.`,
+  );
+}
+
+/** An address a note carried and no longer can, its note purged. */
+function leadsNowhere(address: Address): BadRequestException {
+  return new BadRequestException(
+    `You have used ${address} before. Pick another number.`,
+  );
 }
 
 /** The address a note is leaving, still leading to it. A note with none leaves

@@ -178,19 +178,33 @@ otherwise tell that author's two `1a`s apart. A region lies in one graph — the
 rooted at does — so `publishedSubtreeReader` holds every page of a run to the same one, the
 way it holds them to one version.
 
-**Moving a note re-addresses it, and leaves the address it had resolving.** The moved note
-takes the next address in the run it joins, by exactly the rule creation uses:
-`childAddresses` reads that run and `nextChildAddress` steps past the greatest address ever
-assigned in it, so a note dropped between two siblings lands at the end of their run and
-neither sibling is renumbered. Every note beneath the moved one keeps its place relative to
-it, the deleted ones among them included — one left where it was would sit under an address
-no note is at, and come back into a run nothing reads. A note cannot be moved under a
-deleted one for the same reason. `rebaseAddress` in `@sloppy/types` is that rule: it carries
-the segments past the moved note's own, keeping each ordinal and taking the kind from the
-alternation its new depth puts it at, so `1a1` under `1a` becomes `2c1` under `2c` and `3a`
-under `3`. The address the subtree lands on is greater than every address its new run has
-ever spent, so nothing was ever written beneath it and none of the addresses the subtree
-takes can be held.
+**A person writes and removes an address wherever one is shown.** `PUT
+/nodes/:did/:ulid/address` takes `{ address }`, and `null` takes the label off. The address
+it leaves becomes a `node_alias` row, so a citation written before the rename still opens
+the note; the address it takes must be one nothing in that graph has ever been assigned,
+except one this note itself has carried, which is its own to take back —
+`NodeRepository.addressLeadsTo` answers whose it is and the refusal names that note.
+`depth`, `parent` and `origin` are untouched: a label is not a place in the tree.
+
+**Moving a note re-addresses it where the run it joins numbers anything, and leaves the
+address it had resolving.** The moved note takes the next address in that run by exactly the
+rule creation uses: `childAddresses` reads the run and `nextChildAddress` steps past the
+greatest address ever assigned in it, so a note dropped between two siblings lands at the
+end of their run and neither sibling is renumbered. `rebaseAddress` in `@sloppy/types`
+carries the notes beneath: it keeps the segments past the moved note's own, taking the kind
+from the alternation its new depth puts it at, so `1a1` under `1a` becomes `2c1` under `2c`
+and `3a` under `3`. The address the subtree lands on is greater than every address its new
+run has ever spent, so none of the addresses it takes can be held. Deleted notes move with
+it — one left where it was would sit under an address no note is at — and a note cannot be
+moved under a deleted one for the same reason.
+
+Two moves take no address, both of them the creation rule answering the same way. A note
+with none stays with none, and nothing beneath it is touched. And a note carried into a run
+nobody numbered — under a note with no address — comes out with none, exactly as a note
+written there would: it leaves its old address behind as an alias, and the notes beneath it
+keep the labels their author wrote. What sprang from what is read off the parent chain in
+both cases, never off the addresses, which is also what refuses a move into the moving
+note's own subtree.
 
 `node_alias` is a row per address the subtree leaves — the moved note's own and one for
 every note under it — and every address lookup reads them, so a citation written before the
@@ -209,14 +223,15 @@ it now is, which is what a genealogy edge drawn from `parent` (`@sloppy/graph`'s
 already says. And `origin` and `depth` are the columns `node_owner_origin_depth` slices a
 tree by, so a move between trees rewrites both for every note beneath the one that moved.
 
-**Two acts still want an address, and refuse plainly rather than half-doing it.** Moving a
-note with none, or under a note with none, is refused: the rebase rule above is written
-over addresses, and what replaces it is the ordering `orderSiblings` already states.
-Publishing a region holding one is refused for a narrower reason — a version is paged in
-address order through `snapshot_node_owner_version_address`, and a publication is cited by
-its root's label — so `snapshot_node.address` and `publication.root_address` stay required
-while `PublishedNodeSchema.address` and `pulled_node.address` do not: a peer on a later
-build may hand us a region we cannot yet send, and holding it is the easy half.
+**Publishing still wants an address, and refuses plainly rather than half-doing it.** A
+region holding a note with none is refused, and so is one rooted at such a note: a version
+is paged in address order through `snapshot_node_owner_version_address`, and a publication
+is cited by its root's label, so `snapshot_node.address` and `publication.root_address`
+stay required while `PublishedNodeSchema.address` and `pulled_node.address` do not — a peer
+on a later build may hand us a region we cannot yet send, and holding it is the easy half.
+Closing it means paging a version in genealogy order on a cursor that exists for every
+note, which is a change to those two shapes and to the schema rather than to the routes
+above.
 
 ## syr integration
 
