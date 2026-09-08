@@ -283,6 +283,16 @@ function notebook(
       asked.aliases = [...aliases];
       left.push(...aliases);
       for (const one of landed) {
+        for (let at = left.length - 1; at >= 0; at--) {
+          if (
+            left[at].address === one.address &&
+            left[at].note === ownedRefFrom(one.id)
+          ) {
+            left.splice(at, 1);
+          }
+        }
+      }
+      for (const one of landed) {
         const at = held.findIndex(
           (was) => ownedRefFrom(was.id) === ownedRefFrom(one.id),
         );
@@ -658,6 +668,244 @@ describe("carrying a note somewhere else", () => {
         note: root.ref,
       }),
     ).resolves.toMatch(/under a note instead/);
+  });
+});
+
+// AI.md § "The Genealogy Is the Protocol": a moved note takes the next address
+// in the run it joins unless the person names one.
+describe("carrying a note to the number a person named", () => {
+  /** `2c`, with `2c1` under it, and a note at `3a` on another branch. */
+  const nesting = () => {
+    const root = live("2");
+    const moving = live("2c", { origin: root.ref, parent: root.ref });
+    const beneath = live("2c1", { origin: root.ref, parent: moving.ref });
+    const other = live("3");
+    const landing = live("3a", { origin: other.ref, parent: other.ref });
+    return {
+      root,
+      moving,
+      beneath,
+      other,
+      landing,
+      all: [root, moving, beneath, other, landing],
+    };
+  };
+
+  const named = async (
+    notes: readonly (Node & { ref: OwnedRef })[],
+    ref: OwnedRef,
+    to: NoteDestination,
+    address: Address,
+  ) => {
+    const { asked, service } = notebook(notes);
+    const move = service.move(DID, ref, to, address);
+    await expect(move).rejects.toBeInstanceOf(BadRequestException);
+    expect(asked.landed).toEqual([]);
+    return move.catch((err: Error) => err.message);
+  };
+
+  it("takes it, and keeps everything under it where it was relative to it", async () => {
+    const { moving, beneath, other, landing, all } = nesting();
+    const { asked, service } = notebook(all);
+
+    const after = await service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: landing.ref },
+      "3a1",
+    );
+
+    expect(after.map((one) => [one.ref, one.address])).toEqual([
+      [moving.ref, "3a1"],
+      [beneath.ref, "3a1a"],
+    ]);
+    expect(
+      asked.landed.map((one) => [one.depth, one.origin, one.parent]),
+    ).toEqual([
+      [3, other.ref, landing.ref],
+      [4, other.ref, moving.ref],
+    ]);
+  });
+
+  it("leaves every address it was at leading to the note that was there", async () => {
+    const { root, moving, beneath, landing, all } = nesting();
+    const { asked, service } = notebook(all);
+
+    await service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: landing.ref },
+      "3a1",
+    );
+
+    expect(
+      asked.aliases.map((one) => [one.address, one.note, one.parent]),
+    ).toEqual([
+      ["2c", moving.ref, root.ref],
+      ["2c1", beneath.ref, moving.ref],
+    ]);
+  });
+
+  it("numbers a note that carried none, and leaves what is under it unnumbered", async () => {
+    const other = live("3");
+    const landing = live("3a", { origin: other.ref, parent: other.ref });
+    const moving = unnumbered("Pores");
+    const beneath = unnumbered("Membranes", { parent: moving.ref });
+    const { asked, service } = notebook([
+      other,
+      landing,
+      moving,
+      { ...beneath, origin: moving.ref },
+    ]);
+
+    const after = await service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: landing.ref },
+      "3a1",
+    );
+
+    expect(after.map((one) => one.address)).toEqual(["3a1", undefined]);
+    expect(asked.aliases).toEqual([]);
+  });
+
+  it("takes a whole number as it becomes a branch of its own", async () => {
+    const { moving, beneath, other, all } = nesting();
+    const { service } = notebook(all);
+
+    const after = await service.move(
+      DID,
+      moving.ref,
+      { relation: "after", note: other.ref },
+      "9",
+    );
+
+    expect(after.map((one) => [one.ref, one.address])).toEqual([
+      [moving.ref, "9"],
+      [beneath.ref, "9a"],
+    ]);
+  });
+
+  it("hands a note back a number it left behind, on the way home", async () => {
+    const { root, moving, landing, all } = nesting();
+    const { service } = notebook(all);
+
+    await service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: landing.ref },
+      "3a1",
+    );
+    const home = await service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: root.ref },
+      "2c",
+    );
+
+    expect(home.map((one) => one.address)).toEqual(["2c", "2c1"]);
+    // The numbers it is at again lead to it by the rows, not by an alias
+    // beside them.
+    expect(home.map((one) => one.aliases)).toEqual([["3a1"], ["3a1a"]]);
+  });
+
+  it("refuses one a note it carries was carried away from", async () => {
+    const { moving, beneath, landing, all } = nesting();
+    const { service } = notebook(all);
+
+    await service.setAddress(DID, beneath.ref, "3a1");
+    await service.setAddress(DID, beneath.ref, "2c1");
+    const onto = service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: landing.ref },
+      "3a1",
+    );
+
+    await expect(onto).rejects.toBeInstanceOf(BadRequestException);
+    await expect(onto).rejects.toThrow(/3a1 still leads to/);
+  });
+
+  it("refuses one that springs from somewhere else", async () => {
+    const { moving, landing, all } = nesting();
+
+    await expect(
+      named(all, moving.ref, { relation: "under", note: landing.ref }, "3b1"),
+    ).resolves.toMatch(/3b1 does not spring from 3a/);
+  });
+
+  it("refuses a whole number under a note", async () => {
+    const { moving, landing, all } = nesting();
+
+    await expect(
+      named(all, moving.ref, { relation: "under", note: landing.ref }, "4"),
+    ).resolves.toMatch(/does not spring from 3a/);
+  });
+
+  it("refuses one that springs from a note as it becomes a branch", async () => {
+    const { moving, other, all } = nesting();
+
+    await expect(
+      named(all, moving.ref, { relation: "after", note: other.ref }, "3a1"),
+    ).resolves.toMatch(/whole number/);
+  });
+
+  it("refuses any number under a note nobody numbered", async () => {
+    const other = live("3");
+    const landing = unnumbered("Method", {
+      origin: other.ref,
+      parent: other.ref,
+    });
+    const moving = live("2");
+
+    await expect(
+      named(
+        [other, landing, moving],
+        moving.ref,
+        { relation: "under", note: landing.ref },
+        "3a1",
+      ),
+    ).resolves.toMatch(/has no number/);
+  });
+
+  it("refuses one another note is at, and names that note", async () => {
+    const { moving, landing, all } = nesting();
+    const taken = live("3a1", {
+      title: "Osmosis",
+      origin: landing.ref,
+      parent: landing.ref,
+    });
+
+    await expect(
+      named(
+        [...all, taken],
+        moving.ref,
+        { relation: "under", note: landing.ref },
+        "3a1",
+      ),
+    ).resolves.toMatch(/3a1 already leads to “Osmosis”/);
+  });
+
+  it("refuses one that still leads to a note carried away from it", async () => {
+    const { moving, other, landing, all } = nesting();
+    const away = live("3a1", { origin: other.ref, parent: landing.ref });
+    const { service } = notebook([...all, away]);
+
+    await service.move(
+      DID,
+      away.ref,
+      { relation: "after", note: other.ref },
+      "8",
+    );
+    const onto = service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: landing.ref },
+      "3a1",
+    );
+
+    await expect(onto).rejects.toBeInstanceOf(BadRequestException);
+    await expect(onto).rejects.toThrow(/3a1 still leads to/);
   });
 });
 

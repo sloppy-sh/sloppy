@@ -239,8 +239,8 @@ export type CreateNodeRequest = z.input<typeof CreateNodeRequestSchema>;
 /**
  * Where a note is carried to: `under` another note, so it springs out of that
  * one, or `after` it, so it continues the run that one is in. It names no
- * graph — a note stays in the one it was written in — and no address, because
- * the address it takes is the next in the run it joins.
+ * graph — a note stays in the one it was written in — and no address, which
+ * rides the request beside it.
  *
  * Dropping it between two siblings is `after` the one before it, and puts it at
  * the end of their run: neither of them is renumbered, and the address it leaves
@@ -253,7 +253,17 @@ export const NoteDestinationSchema = z.discriminatedUnion("relation", [
 export type NoteDestination = z.infer<typeof NoteDestinationSchema>;
 
 export const MoveNoteRequestSchema = z.strictObject(
-  { to: NoteDestinationSchema },
+  {
+    to: NoteDestinationSchema,
+    /**
+     * Absent leaves the address to the rule: the next in the run the note
+     * joins. A person who names one has the note take it instead, and it must
+     * spring from the address of the note it lands under — or from nothing,
+     * where the note becomes a branch. Everything beneath the note keeps its
+     * place relative to it either way.
+     */
+    address: AddressSchema.optional(),
+  },
   { error: "Sloppy is out of date. Update it and try again." },
 );
 export type MoveNoteRequest = z.input<typeof MoveNoteRequestSchema>;

@@ -74,6 +74,25 @@ describe("carrying a note somewhere else", () => {
     expect(moved[0].aliases).toEqual(["1a"]);
   });
 
+  it("carries the address a person named for it, and leaves it off where they named none", async () => {
+    const { asked, client } = serving([
+      note(NOTE, "3a1", { depth: 3, aliases: ["2c"] }),
+      note(CHILD, "3a1a", { depth: 4, parent: NOTE, aliases: ["2c1"] }),
+    ]);
+
+    const moved = await client.moveNote(
+      NOTE,
+      { relation: "under", note: LANDING },
+      "3a1",
+    );
+
+    expect(JSON.parse(asked[0].body)).toEqual({
+      to: { relation: "under", note: LANDING },
+      address: "3a1",
+    });
+    expect(moved.map((one) => one.address)).toEqual(["3a1", "3a1a"]);
+  });
+
   it("reads a note that has never moved as one carrying no other address", async () => {
     const { client } = serving([note(NOTE, "1b", { depth: 2 })]);
 

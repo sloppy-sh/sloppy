@@ -440,6 +440,21 @@ describe('a note carried somewhere else', () => {
 		expect(asked).toEqual({ relation: 'after', note: ref(4) });
 	});
 
+	// AI.md § "The Genealogy Is the Protocol": a moved note takes the next
+	// address in the run it joins unless the person names one.
+	it('carries the address a person named for it, and none where they named none', async () => {
+		const asked: (string | undefined)[] = [];
+		moving(api, ref(2), (_to, address) => {
+			asked.push(address);
+			return [node(2, address ?? '2a', { origin: OTHER_ROOT, parent: OTHER_ROOT })];
+		});
+
+		await nodes.move(ref(2), { relation: 'under', note: OTHER_ROOT }, '2c');
+		await nodes.move(ref(2), { relation: 'under', note: OTHER_ROOT });
+
+		expect(asked).toEqual(['2c', undefined]);
+	});
+
 	it('is not taken into a cache the next person is already using', async () => {
 		await nodes.load({ origin: ROOT });
 		let answer!: () => void;

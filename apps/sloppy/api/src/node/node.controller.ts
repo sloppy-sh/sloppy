@@ -198,10 +198,12 @@ export class NodeController {
     @Param("localId") localId: string,
     @Body() body: unknown,
   ): Promise<NodeView[]> {
+    const asked = parseBody(MoveNoteRequestSchema, body);
     return this.nodes.move(
       viewerDid(req),
       requireRef(did, localId),
-      parseBody(MoveNoteRequestSchema, body).to,
+      asked.to,
+      asked.address,
     );
   }
 

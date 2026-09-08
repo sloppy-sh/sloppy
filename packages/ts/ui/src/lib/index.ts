@@ -45,6 +45,7 @@ export { default as CanvasInk, type CanvasPen } from './components/graph/canvas-
 export { default as FindSheet, type FoundNote } from './components/graph/find-sheet.svelte';
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
 export { default as MoveSheet, type MoveTarget } from './components/graph/move-sheet.svelte';
+export { default as NestingSheet, type NestingAsk } from './components/graph/nesting-sheet.svelte';
 export * from './components/graph/view.js';
 export {
 	default as TreeSurface,

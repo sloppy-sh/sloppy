@@ -9,6 +9,7 @@ import {
 } from "./address.js";
 import {
   CreateNodeRequestSchema,
+  MoveNoteRequestSchema,
   NodeSchema,
   noteLabel,
   parseNode,
@@ -144,5 +145,28 @@ describe("the references a note's writing names", () => {
     const asked = { references: [`${DID}/${ULID}`] };
     expect(UpdateNodeRequestSchema.parse(asked)).toEqual({});
     expect(() => CreateNodeRequestSchema.parse(asked)).toThrow();
+  });
+});
+
+describe("the address a person names on a move", () => {
+  const under = { relation: "under", note: `${DID}/${ULID}` } as const;
+
+  it("is absent where they named none, leaving the landing to the rule", () => {
+    expect(MoveNoteRequestSchema.parse({ to: under })).toEqual({ to: under });
+  });
+
+  it("is the label the moved note takes", () => {
+    expect(MoveNoteRequestSchema.parse({ to: under, address: "3a1" })).toEqual({
+      to: under,
+      address: "3a1",
+    });
+  });
+
+  it("is refused where it is not an address at all", () => {
+    for (const address of ["", "a1", "1A", "01", " 1a", null]) {
+      expect(() =>
+        MoveNoteRequestSchema.parse({ to: under, address }),
+      ).toThrow();
+    }
   });
 });
