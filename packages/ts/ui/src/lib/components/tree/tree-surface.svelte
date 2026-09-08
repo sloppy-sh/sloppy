@@ -135,6 +135,7 @@
 	/** How tall the control band over the run stands, so the group headings stick
 	 *  below it rather than under it. */
 	let band = $state(0);
+	let head = $state(0);
 
 	/** The deepest a row is set in. Past it every generation sits at the same
 	 *  offset: a phone has run out of room, and the address already says how far
@@ -684,17 +685,19 @@
 <div
 	bind:this={scroller}
 	class="size-full overflow-y-auto overscroll-contain scroll-fade-y [--scroll-fade:1rem] [--tree-step:0.375rem] sm:[--tree-step:1rem]"
-	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}; scroll-padding-top: calc({inset.top} + {band}px); scroll-padding-bottom: {inset.bottom}"
+	style="padding-top: {inset.top}; padding-bottom: {inset.bottom}; scroll-padding-top: calc({inset.top} + {band +
+		head}px); scroll-padding-bottom: {inset.bottom}"
 	{@attach scrollFade('y')}
 >
 	<div class="mx-auto w-full max-w-4xl px-2 pb-4 sm:px-6">
 		{#if onChoosing}
-			<!-- Stuck below the chrome, so choosing starts from wherever the reader
-			     has got to and not from the top of the run. -->
+			<!-- Stuck at the top of the scroller's content box, which the padding
+			     above already keeps below the chrome: a sticky offset is measured
+			     from that box, so adding the inset again would stand the band a
+			     rail's height down the run, over the rows. -->
 			<div
 				bind:clientHeight={band}
-				class="sticky z-20 flex justify-end bg-background/95 py-2 backdrop-blur"
-				style="top: {inset.top}"
+				class="sticky top-0 z-20 flex justify-end bg-background/95 py-2 backdrop-blur"
 			>
 				<Button
 					variant="ghost"
@@ -718,10 +721,10 @@
 				{@const by = author ? `${title || 'Notes'} by ${author}` : null}
 				<section class="pt-2">
 					{#if by || heads || groups.length > 1}
-						<!-- Stuck below the chrome the tree is inset off, not under it. -->
 						<h2
+							bind:clientHeight={head}
 							class="sticky z-10 truncate bg-background/95 py-2 text-xs font-medium text-muted-foreground backdrop-blur"
-							style="top: calc({inset.top} + {band}px)"
+							style="top: {band}px"
 						>
 							{by ?? (title || 'Untitled')}
 						</h2>
