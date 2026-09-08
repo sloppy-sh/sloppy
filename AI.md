@@ -102,7 +102,8 @@ to, all of them about what a person can rely on rather than about what the code 
   surfaces can disagree about what a run reads as.
 
 **Derived, never stored — with `depth` the ratified exception.** The angular sector a
-subtree radiates into and its collapse key are functions of the address; persisting one
+subtree radiates into and its collapse key are functions of the ref and the genealogy —
+never of the address, which is what keeps a label from moving a mark; persisting one
 creates a second copy of a truth that no longer has a single author. `node.depth` is
 maintained from the parent chain instead — a branch and an independent note are 1 —
 because a range over it is what bounds a region read; `docs/ARCHITECTURE.md` § "Data model"

@@ -320,29 +320,13 @@ export function alongRun<T extends RunMember>(
 }
 
 /**
- * The direction this node's branch leaves its parent, in radians on `[0, 2π)`,
- * counter-clockwise from the positive x-axis. Derived rather than stored, so a
- * subtree radiates the same way on every peer's screen without anybody
- * shipping coordinates.
- */
-export function addressSector(address: Address): number {
-  if (!ADDRESS_PATTERN.test(address)) {
-    throw new InvalidAddressError(address, "does not match the grammar");
-  }
-  return sectorOf(address);
-}
-
-/**
- * The same direction for a note that has no address to take one from: over the
- * ref, which every peer holding the note has, so the seed is agreed on the way
- * an address-derived one is. Radians on `[0, 2π)`.
+ * The direction a note's branch leaves from, in radians on `[0, 2π)`,
+ * counter-clockwise from the positive x-axis. Over the ref, which every peer
+ * holding the note has and no label can change, so a subtree radiates the same
+ * way on every peer's screen without anybody shipping coordinates.
  */
 export function refSector(ref: string): number {
-  return sectorOf(ref);
-}
-
-function sectorOf(value: string): number {
-  return (fnv1a32(value) / 0x1_0000_0000) * TAU;
+  return (fnv1a32(ref) / 0x1_0000_0000) * TAU;
 }
 
 function letterOrdinal(address: string, run: string): number {

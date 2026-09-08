@@ -3,7 +3,7 @@ import {
   type Address,
   type AddressSegment,
   addressDepth,
-  addressSector,
+  refSector,
   alongRun,
   childAddress,
   compareAddresses,
@@ -429,29 +429,28 @@ describe("the run of thought", () => {
 });
 
 describe("the angular sector", () => {
+  const alice = "did:plc:alice/01J000000000000000000000";
+  const beside = "did:plc:alice/01J000000000000000000001";
+  const bob = "did:plc:bob/01J000000000000000000000";
+
   it("lands in [0, 2π)", () => {
-    for (const address of ["1", "1a", "1a1", "27", "3zz9aa"]) {
-      const sector = addressSector(address);
+    for (const ref of [alice, beside, bob]) {
+      const sector = refSector(ref);
       expect(sector).toBeGreaterThanOrEqual(0);
       expect(sector).toBeLessThan(Math.PI * 2);
     }
   });
 
-  it("is fixed for a given address", () => {
+  it("is fixed for a given ref", () => {
     // The literals are the point: a change to the hash moves every subtree on
     // every peer's screen, so it must fail here rather than pass quietly.
-    expect(addressSector("1")).toBe(1.2774850847471988);
-    expect(addressSector("1a")).toBe(2.6733127270969375);
-    expect(addressSector("1a1")).toBe(2.6749322754261975);
+    expect(refSector(alice)).toBe(4.360242872908689);
+    expect(refSector(beside)).toBe(4.335698590746533);
+    expect(refSector(bob)).toBe(2.4597414117944);
   });
 
-  it("separates siblings", () => {
-    const sectors = ["1a", "1b", "1c", "1d"].map(addressSector);
-    expect(new Set(sectors).size).toBe(4);
-  });
-
-  it("refuses an address it cannot parse", () => {
-    expect(() => addressSector("nope")).toThrow(InvalidAddressError);
+  it("separates two notes written a moment apart", () => {
+    expect(new Set([refSector(alice), refSector(beside)]).size).toBe(2);
   });
 });
 

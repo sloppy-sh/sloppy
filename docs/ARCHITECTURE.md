@@ -139,18 +139,26 @@ the same millisecond still order the same way on every peer.
   the rule again, up to `ADDRESS_ATTEMPTS` of them, and refuse in words past that rather
   than leaving the person a write that cannot succeed. A move carries its whole subtree
   along to the next address rather than landing part of it on a label.
-- The address hashes to a stable **angular sector**, so a subtree radiates in the same
-  direction from its origin on every peer's screen. The sector is derived on read, never
-  stored. It is a function of the address alone, so a `1` in each of two graphs seeds the
-  same direction, exactly as two authors' `1`s already do. Nothing in the layout tells them
-  apart. Between two graphs the reader keeps, what keeps it from being a collision is that
-  each is drawn in its own field, offset from the last — DESIGN.md § "Several graphs on one
-  canvas". Between the reader's and another author's, it is that a pulled region is drawn
-  on its own, and § "Federating the graph" is where that rule is held.
-- **A note with no address seeds from its ref**, through `refSector` beside it, and sits on
-  the root ring. The ref is what every peer holding the note has, so the seed is agreed on
-  the way an address-derived one is. It is a placeholder for seeding the whole field off
-  the genealogy, which is what the canvas is meant to do and does not yet.
+- **A mark is seeded off the genealogy, and never off the address.** `seedField` in
+  `@sloppy/graph` is handed a note's ref, parent, `created_at` and depth, and nothing else —
+  which is the mechanism behind "a label never moves a mark". A note with nothing above it
+  in the field, meaning a branch, an independent note, or one whose parent this reader does
+  not hold, sits on the root ring at its ref's **angular sector**, `refSector`. Every other
+  note leans off its parent's seed, by its place in the run (`orderSiblings`) and by that
+  same sector. All of it is derived on read, never stored, and every input travels with the
+  note, so a subtree radiates the same way on every peer's screen without anybody shipping
+  coordinates. The force pass then resolves the crowding around the shape that fixes.
+- A ref hashes the same way wherever it is read, so one note seeds the same direction in
+  every field it is drawn in. Between two graphs the reader keeps, what stops that being a
+  collision is that each is drawn in its own field, offset from the last — DESIGN.md §
+  "Several graphs on one canvas". Between the reader's and another author's, it is that a
+  pulled region is drawn on its own, and § "Federating the graph" is where that rule is
+  held.
+- **Publishing still asks for a number.** A reader cites a published branch by its root's
+  address and a version is read back in address order, so `PublicationService` refuses a
+  root that has none, and a branch holding a note that has none, naming the note to number.
+  That is a gap rather than a rule: the genealogy is enough to page a version by, and
+  `root_address` on the published wire shapes is what closing it turns optional.
 
 Determinism is a property test over generated operation sequences — writing, deleting and
 purging — in `@sloppy/types`' `address.test.ts`: two simulated peers applying identical
@@ -392,8 +400,8 @@ creating the chain if the note has none, and writing a version either way;
 `DELETE /api/publications/{ref}` takes the whole chain down; and
 `GET /api/publications/{ref}/versions` is the author's own history. A published node
 travels **without its `depth`** — a reader walks depth down the parent chain the region's
-pages carry, and reads a note's sector off its address or, where it has none, off its
-ref. **A look's shape travels and its pictures do not:** ring
+pages carry, and reads a note's sector off its ref. **A look's shape travels and its
+pictures do not:** ring
 weight, ring style and size are plain shape and go in `PublishedNode.look`, absent reading
 as unstyled, so every version published before one could travel is unchanged; a picture is
 an upload in the author's own store and stays there (§ "Pictures"). DESIGN.md § "A note's
@@ -1351,7 +1359,7 @@ The rules AI.md's foundation-wave section states, applied here:
   `DeletedBranch`, one row per branch that can still be put back with the size of what
   comes back with it, and `GraphExport`, one person's graphs, live notes and sections as
   JSON they can hold.
-- **Nothing derivable from the address is stored, and `depth` is not derived from it** —
+- **Nothing derivable is stored, and `depth` is not derived from the address** —
   AI.md § "The Genealogy Is the Protocol" states the rule. The
   angular sector and subtree membership stay functions in `address.ts`. `graph` is not an
   exception and not a derived value: nothing computes which graph a note is in, its author
@@ -1383,8 +1391,8 @@ The rules AI.md's foundation-wave section states, applied here:
   a person has not renamed by hand looks any different.
 
 - **`appearance` is authored, and that is what makes storing it right.** The rule it looks
-  like it breaks — nothing derivable from an address is stored — is about facts the address
-  ALREADY states: the sector, the collapse key, the depth. Nothing computes a note's look
+  like it breaks — nothing derivable is stored — is about facts the ref and the genealogy
+  ALREADY state: the sector, the collapse key, the depth. Nothing computes a note's look
   from anything; a person chose it, so there is no function for the row to fall out of step
   with, and the only other place it could live is a second store. It is a plain column on a
   SCHEMALESS table, because the database has nothing to enforce about it that
