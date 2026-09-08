@@ -1796,51 +1796,6 @@
 
 			{#if node}
 				<div class="ml-auto flex min-w-0 items-center gap-2">
-					{#if node.address && !addressingHere}
-						<button
-							type="button"
-							aria-label={own
-								? graphHere
-									? `Edit the address ${node.address}, in ${graphHere}`
-									: `Edit the address ${node.address}`
-								: graphHere
-									? `Copy the address ${node.address}, in ${graphHere}`
-									: `Copy the address ${node.address}`}
-							onclick={() => (own ? startAddressing() : void handOver(citation, 'Address copied.'))}
-							class="flex min-h-11 min-w-0 items-baseline gap-2 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-						>
-							<span class="address truncate">{node.address}</span>
-							{#if graphHere}
-								<span class="max-w-28 truncate text-xs text-muted-foreground">{graphHere}</span>
-							{/if}
-						</button>
-						{#if own}
-							<Button
-								variant="ghost"
-								size="icon"
-								class="size-11 shrink-0 text-muted-foreground"
-								aria-label={graphHere
-									? `Copy the address ${node.address}, in ${graphHere}`
-									: `Copy the address ${node.address}`}
-								onclick={() => void handOver(citation, 'Address copied.')}
-							>
-								<Copy class="size-4" />
-							</Button>
-						{/if}
-						{#if moved?.of === ref}
-							<span class="shrink-0 text-xs text-muted-foreground">
-								was <span class="address">{moved.was}</span>
-							</span>
-						{/if}
-					{:else if own && !addressingHere}
-						<button
-							type="button"
-							onclick={startAddressing}
-							class="min-h-11 shrink-0 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-						>
-							Give it an address
-						</button>
-					{/if}
 					<Button
 						bind:ref={actsFrom}
 						variant="ghost"
@@ -1855,58 +1810,6 @@
 			{/if}
 		</div>
 
-		{#if node && own && addressingHere}
-			<form
-				class="flex items-center gap-2 pt-1 pb-1"
-				onsubmit={(event) => {
-					event.preventDefault();
-					void writeAddress(addressTyped.trim().toLowerCase() || null);
-				}}
-			>
-				<Input
-					bind:ref={addressField}
-					bind:value={addressTyped}
-					class="address h-11 min-w-0 flex-1"
-					autocapitalize="none"
-					autocomplete="off"
-					spellcheck="false"
-					maxlength={64}
-					aria-label="The address you cite this note by"
-					placeholder="1a"
-					onkeydown={(event) => {
-						if (event.key !== 'Escape') return;
-						event.preventDefault();
-						stopAddressing();
-					}}
-				/>
-				<Button type="submit" class="h-11 shrink-0" disabled={writingAddress}>Save</Button>
-				{#if node.address}
-					<Button
-						type="button"
-						variant="ghost"
-						class="h-11 shrink-0"
-						disabled={writingAddress}
-						onclick={() => void writeAddress(null)}
-					>
-						Take it off
-					</Button>
-				{/if}
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon"
-					class="size-11 shrink-0"
-					aria-label="Leave the address as it is"
-					disabled={writingAddress}
-					onclick={stopAddressing}
-				>
-					<X class="size-4" />
-				</Button>
-			</form>
-			{#if refused.address}
-				<p class="pb-1 text-sm text-destructive" role="alert">{refused.address}</p>
-			{/if}
-		{/if}
 		{#if refused.writing}
 			<p class="pb-1 text-sm text-destructive" role="alert">{refused.writing}</p>
 		{/if}
@@ -1936,6 +1839,108 @@
 		</p>
 	{:else}
 		<div class="space-y-3">
+			<!-- The address is read with the title it labels, not off in the chrome. -->
+			<div data-address-line class="-mb-1 space-y-1">
+				<div class="flex min-w-0 flex-wrap items-center gap-x-1">
+					{#if node.address && !addressingHere}
+						<button
+							type="button"
+							aria-label={own
+								? graphHere
+									? `Edit the address ${node.address}, in ${graphHere}`
+									: `Edit the address ${node.address}`
+								: graphHere
+									? `Copy the address ${node.address}, in ${graphHere}`
+									: `Copy the address ${node.address}`}
+							onclick={() => (own ? startAddressing() : void handOver(citation, 'Address copied.'))}
+							class="-ml-2 flex min-h-9 min-w-0 items-baseline gap-2 rounded-md px-2 text-sm text-foreground/70 transition-colors duration-150 ease-out select-text hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						>
+							<span class="address truncate">{node.address}</span>
+							{#if graphHere}
+								<span class="max-w-28 truncate text-xs text-muted-foreground">{graphHere}</span>
+							{/if}
+						</button>
+						{#if own}
+							<Button
+								variant="ghost"
+								size="icon"
+								class="size-9 shrink-0 text-muted-foreground"
+								aria-label={graphHere
+									? `Copy the address ${node.address}, in ${graphHere}`
+									: `Copy the address ${node.address}`}
+								onclick={() => void handOver(citation, 'Address copied.')}
+							>
+								<Copy class="size-4" />
+							</Button>
+						{/if}
+						{#if moved?.of === ref}
+							<span class="shrink-0 text-xs text-muted-foreground">
+								was <span class="address">{moved.was}</span>
+							</span>
+						{/if}
+					{:else if own && !addressingHere}
+						<button
+							type="button"
+							onclick={startAddressing}
+							class="-ml-2 min-h-9 shrink-0 rounded-md px-2 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						>
+							Give it an address
+						</button>
+					{/if}
+				</div>
+				{#if own && addressingHere}
+					<form
+						class="flex items-center gap-2"
+						onsubmit={(event) => {
+							event.preventDefault();
+							void writeAddress(addressTyped.trim().toLowerCase() || null);
+						}}
+					>
+						<Input
+							bind:ref={addressField}
+							bind:value={addressTyped}
+							class="address h-11 min-w-0 flex-1"
+							autocapitalize="none"
+							autocomplete="off"
+							spellcheck="false"
+							maxlength={64}
+							aria-label="The address you cite this note by"
+							placeholder="1a"
+							onkeydown={(event) => {
+								if (event.key !== 'Escape') return;
+								event.preventDefault();
+								stopAddressing();
+							}}
+						/>
+						<Button type="submit" class="h-11 shrink-0" disabled={writingAddress}>Save</Button>
+						{#if node.address}
+							<Button
+								type="button"
+								variant="ghost"
+								class="h-11 shrink-0"
+								disabled={writingAddress}
+								onclick={() => void writeAddress(null)}
+							>
+								Take it off
+							</Button>
+						{/if}
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							class="size-11 shrink-0"
+							aria-label="Leave the address as it is"
+							disabled={writingAddress}
+							onclick={stopAddressing}
+						>
+							<X class="size-4" />
+						</Button>
+					</form>
+					{#if refused.address}
+						<p class="pb-1 text-sm text-destructive" role="alert">{refused.address}</p>
+					{/if}
+				{/if}
+			</div>
 			<textarea
 				bind:this={titleField}
 				value={title}

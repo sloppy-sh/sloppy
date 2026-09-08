@@ -213,6 +213,14 @@ function named(text: string): HTMLButtonElement {
 	return found as HTMLButtonElement;
 }
 
+function menuItem(label: string): HTMLElement {
+	const found = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+		(row) => row.textContent?.trim() === label
+	);
+	if (!found) throw new Error(`The menu does not offer "${label}"`);
+	return found;
+}
+
 function labelledControl(label: string): HTMLButtonElement {
 	const found = [...document.body.querySelectorAll('button')].find(
 		(b) => b.getAttribute('aria-label') === label
@@ -264,7 +272,9 @@ async function openPeersSheet(): Promise<void> {
 	mounted = mount(Graph, { target });
 	flushSync();
 	await settle();
-	labelledControl("Other people's graphs").click();
+	labelledControl('More').click();
+	await settle();
+	menuItem("Other people's graphs").click();
 	await settle();
 }
 
@@ -273,7 +283,9 @@ async function enterHeldRegion(): Promise<void> {
 	mounted = mount(Graph, { target });
 	flushSync();
 	await settle();
-	labelledControl("Other people's graphs").click();
+	labelledControl('More').click();
+	await settle();
+	menuItem("Other people's graphs").click();
 	await settle();
 	// The row for the region, which names its author where nobody can resolve
 	// them and its address either way.
@@ -449,7 +461,9 @@ describe('a region of somebody else’s graph, on the canvas', () => {
 		mounted = mount(Graph, { target });
 		flushSync();
 		await settle();
-		labelledControl("Other people's graphs").click();
+		labelledControl('More').click();
+		await settle();
+		menuItem("Other people's graphs").click();
 		await settle();
 
 		const asking = (who: string, where: string) =>

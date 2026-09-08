@@ -581,7 +581,9 @@ describe('a branch somebody else published', () => {
 	 *  what they are holding. */
 	async function enterRegion(): Promise<void> {
 		await open();
-		labelled("Other people's graphs").click();
+		labelled('More').click();
+		await settle();
+		item("Other people's graphs").click();
 		await settle();
 		button(AUTHOR).click();
 		await settle();
@@ -1306,7 +1308,9 @@ describe('choosing several notes to act on', () => {
 	it('keeps the set for a surface it was never asked about', async () => {
 		await chooseThree();
 
-		labelled('A new branch, from a shape').click();
+		labelled('Other ways to write').click();
+		await settle();
+		item('A branch, from a shape').click();
 		await settle();
 		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await settle();
@@ -1512,7 +1516,9 @@ describe('a branch started from a shape', () => {
 	it('writes the sections once, however often the reader comes back to the note', async () => {
 		await open();
 
-		labelled('A new branch, from a shape').click();
+		labelled('Other ways to write').click();
+		await settle();
+		item('A branch, from a shape').click();
 		await settle();
 		shape('Objection').click();
 		await until(() => stack.length === 2);
@@ -1700,7 +1706,9 @@ describe('writing a note of its own', () => {
 	it('asks for one from the chrome, and opens it to be written', async () => {
 		await open();
 
-		labelled('New note, which opens no branch').click();
+		labelled('Other ways to write').click();
+		await settle();
+		item('A note on its own').click();
 		await settle();
 
 		expect(placed).toEqual({ relation: 'free', graph: expect.any(String) });
@@ -1820,7 +1828,9 @@ describe('a note written before the server has answered', () => {
 	// on says what is happening rather than what is not.
 	it('promises no address for a note written on its own', async () => {
 		await open();
-		labelled('New note, which opens no branch').click();
+		labelled('Other ways to write').click();
+		await settle();
+		item('A note on its own').click();
 		await settle();
 
 		expect(reading()).toBe(true);
@@ -1935,7 +1945,9 @@ describe('a note written before the server has answered', () => {
 
 	it('keeps what was typed into a branch started from a shape, above its sections', async () => {
 		await open();
-		labelled('A new branch, from a shape').click();
+		labelled('Other ways to write').click();
+		await settle();
+		item('A branch, from a shape').click();
 		await settle();
 		shape('Objection').click();
 		await settle();
@@ -1962,7 +1974,9 @@ describe('a note written before the server has answered', () => {
 				})
 		);
 		await open();
-		labelled('A new branch, from a shape').click();
+		labelled('Other ways to write').click();
+		await settle();
+		item('A branch, from a shape').click();
 		await settle();
 		shape('Objection').click();
 		await settle();

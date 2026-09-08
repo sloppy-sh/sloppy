@@ -24,6 +24,8 @@
 	// The home surface: the whole graph, the tags it is lit by, and the note that
 	// opens beside it. DESIGN.md § Layout — the graph is the page.
 	import Check from '@lucide/svelte/icons/check';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
@@ -1898,6 +1900,24 @@
 	{/if}
 
 	{#if populated}
+		<!-- What only changes how the picture is looked at sits on the picture, at
+		     a weight below the row that writes — DESIGN.md § "The canvas". -->
+		{#if !walkingNow && !choosing}
+			<div class="pointer-events-none absolute inset-y-0 right-2 z-20 flex items-center sm:right-4">
+				<div
+					class="pointer-events-auto flex flex-col items-center gap-0.5 rounded-full border bg-card/90 p-1 shadow-sm backdrop-blur"
+				>
+					{@render walk()}
+					{@render inkActs()}
+					<GroundChoice
+						value={prefs.current.ground}
+						pictured={wallpaper !== null}
+						onchange={(ground) => prefs.set('ground', ground)}
+						onpicture={() => (choosingWallpaper = true)}
+					/>
+				</div>
+			</div>
+		{/if}
 		<!-- Opaque, not a scrim: the chips in here answer a tag question in the
 		     same hue the canvas does, and DESIGN.md § "The wallpaper" holds that
 		     floor on the theme's own surface rather than on a band. -->
@@ -1947,15 +1967,8 @@
 						>
 							Your graph
 						</Button>
-						{@render walk()}
-						{#if !walkingNow}
-							{@render inkActs()}
-							<GroundChoice
-								value={prefs.current.ground}
-								pictured={wallpaper !== null}
-								onchange={(ground) => prefs.set('ground', ground)}
-								onpicture={() => (choosingWallpaper = true)}
-							/>
+						{#if walkingNow}
+							{@render walk()}
 						{/if}
 					</div>
 				{:else}
@@ -1984,65 +1997,73 @@
 							<Search class="size-4 shrink-0" />
 							<span class="hidden min-w-0 truncate sm:inline">Find a note</span>
 						</button>
-						<Button
-							variant="outline"
-							class="ms-auto h-9 shrink-0 rounded-full"
-							disabled={creating}
-							aria-label="New branch ({NEW_BRANCH.says})"
-							aria-keyshortcuts={NEW_BRANCH.keys}
-							onclick={() => writeBranch(null)}
-						>
-							<Plus class="size-4" />
-							New branch
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-9 shrink-0 rounded-full"
-							aria-label="New note, which opens no branch"
-							disabled={creating}
-							onclick={writeAlone}
-						>
-							<FilePlus class="size-4" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-9 shrink-0 rounded-full"
-							aria-label="A new branch, from a shape"
-							disabled={creating}
-							onclick={() => (shaping = true)}
-						>
-							<LayoutTemplate class="size-4" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-9 shrink-0 rounded-full"
-							aria-label="Number a new branch"
-							disabled={creating}
-							onclick={startNumbering}
-						>
-							<Hash class="size-4" />
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-9 shrink-0 rounded-full"
-							aria-label="Other people's graphs"
-							onclick={visitPeers}
-						>
-							<Users class="size-4" />
-						</Button>
-						{@render walk()}
-						{#if !walkingNow}
-							{@render inkActs()}
-							<GroundChoice
-								value={prefs.current.ground}
-								pictured={wallpaper !== null}
-								onchange={(ground) => prefs.set('ground', ground)}
-								onpicture={() => (choosingWallpaper = true)}
-							/>
+						<div class="ms-auto flex shrink-0 items-center">
+							<Button
+								class="h-9 rounded-s-full rounded-e-none pe-3"
+								disabled={creating}
+								aria-label="New branch ({NEW_BRANCH.says})"
+								aria-keyshortcuts={NEW_BRANCH.keys}
+								onclick={() => writeBranch(null)}
+							>
+								<Plus class="size-4" />
+								New branch
+							</Button>
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											class="h-9 rounded-s-none rounded-e-full border-s border-primary-foreground/25 px-2"
+											disabled={creating}
+											aria-label="Other ways to write"
+										>
+											<ChevronDown class="size-4" />
+										</Button>
+									{/snippet}
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content align="end" class="w-60">
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => (shaping = true)}>
+										<LayoutTemplate class="size-4 text-muted-foreground" />
+										A branch, from a shape
+									</DropdownMenu.Item>
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={writeAlone}>
+										<FilePlus class="size-4 text-muted-foreground" />
+										A note on its own
+									</DropdownMenu.Item>
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startNumbering}>
+										<Hash class="size-4 text-muted-foreground" />
+										Number it yourself
+									</DropdownMenu.Item>
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
+						</div>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon"
+										class="size-9 shrink-0 rounded-full"
+										aria-label="More"
+									>
+										<Ellipsis class="size-4" />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="end" class="w-56">
+								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={visitPeers}>
+									<Users class="size-4 text-muted-foreground" />
+									Other people's graphs
+								</DropdownMenu.Item>
+								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChoosing}>
+									<ListChecks class="size-4 text-muted-foreground" />
+									Choose notes
+								</DropdownMenu.Item>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+						{#if walkingNow}
+							{@render walk()}
 						{/if}
 					</div>
 				{/if}

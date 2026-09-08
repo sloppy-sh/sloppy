@@ -475,7 +475,11 @@ const writingIn = (): { commands: { insertContentAt(at: number, text: string): b
 /** The row that keeps its place at the head of the note however far it runs —
  *  the way out, the address, the one control every act is asked from, and what
  *  one of those acts was refused. */
-const noteHead = () => document.body.querySelector('header')?.textContent ?? '';
+/** The head of the note: the way out and the acts, then the address line the title
+ *  is read with. */
+const noteHead = () =>
+	(document.body.querySelector('header')?.textContent ?? '') +
+	(document.body.querySelector('[data-address-line]')?.textContent ?? '');
 
 /** Only what the typed field turned up: the note's own lists must not answer
  *  for it. */
