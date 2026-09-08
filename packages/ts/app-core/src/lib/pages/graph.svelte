@@ -128,6 +128,7 @@
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
+	import { outlineSections } from '../stores/outline-sections.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
@@ -729,6 +730,7 @@
 			await reachHeld(cited);
 			return;
 		}
+		openInPlace(cited);
 		const note = nodes.get(cited) ?? (await nodes.fetch(cited).catch(() => null));
 		if (note && !graphs.onCanvas.includes(graphOf(note))) graphs.enter(graphOf(note));
 	}
@@ -891,7 +893,22 @@
 			wrote?.typed && (wrote.typed.title || wrote.typed.body) ? { ref, ...wrote.typed } : null;
 		leaveWriting();
 		refused = null;
+		openInPlace(ref);
 		goTo(ref, inPlaceOf(ref, wrote?.from ?? null));
+	}
+
+	/** The outline reads a note where the note stands, so one reached while the
+	 *  walk is up opens under its own row rather than beside the graph. */
+	function openInPlace(ref: OwnedRef): void {
+		if (walking) outlineSections.show(ref, true);
+	}
+
+	/** A note's own page, which is off the outline: the walk reads and arranges,
+	 *  and what it does not draw — the look, the links, publishing — is read
+	 *  beside the graph. */
+	function openPage(ref: OwnedRef): void {
+		prefs.set('walking', false);
+		show(ref);
 	}
 
 	/** Opened beside what is already here rather than in its place. */
@@ -1834,7 +1851,8 @@
 					onChoose={foreign ? undefined : chooseAlso}
 					onChoosing={foreign ? undefined : (on) => (on ? startChoosing() : stopChoosing())}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
-					onOpen={foreign ? (ref) => void readHeld(ref) : show}
+					onOpen={foreign ? (ref) => void readHeld(ref) : openPage}
+					onReached={(ref) => (bringingTo = ref)}
 					writeUnder={foreign ? undefined : writeFromRow}
 					writeAlone={foreign ? undefined : writeAlone}
 				/>
@@ -2363,7 +2381,7 @@
      somebody else's region — a history pop is the way in that nothing else
      closes. -->
 <ReadingPanel
-	open={(writingNow !== null || open !== null) && !foreign}
+	open={(writingNow !== null || (open !== null && !walkingNow)) && !foreign}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}

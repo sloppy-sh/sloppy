@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import type { NoteDestination, OwnedRef, Tag } from '@sloppy/types';
+	import type { Snippet } from 'svelte';
 	import type { OutlineSections } from './sections.js';
 	import type { TreeNote } from './walk.js';
 
@@ -38,12 +39,15 @@
 		 *  tree somebody is choosing on, an empty set included: a row then adds or
 		 *  removes rather than opening. Absent is the ordinary walk. */
 		chosen?: ReadonlySet<OwnedRef>;
-		/** Add or remove one note. Absent is a walk nothing can be chosen on. */
+		/** Add or remove one note. Absent leaves a walk nothing can be chosen on. */
 		onChoose?: (ref: OwnedRef) => void;
 		/** Enter and leave choosing, from the tree's own control. Absent leaves the
 		 *  mode to whatever else enters it. */
 		onChoosing?: (on: boolean) => void;
 		onToggle: (ref: OwnedRef, open: boolean) => void;
+		/** The note itself, on its own page. Where the walk draws interiors this is
+		 *  an act of its own on the row rather than what a tap does, since a tap
+		 *  opens the note where it stands. */
 		onOpen: (ref: OwnedRef) => void;
 		/** Writing a note under a row, from the row: `keys` spells the chord for
 		 *  `aria-keyshortcuts` and `typed` matches it, so the row advertises and
@@ -61,10 +65,14 @@
 		/** Writing a note that springs from nothing and carries no address until
 		 *  its author gives it one. Absent leaves the walk no way to start one. */
 		writeAlone?: () => void;
-		/** A note's sections, drawn under its row where the reader has asked for
+		/** A note's sections, opened under its row where the reader has asked for
 		 *  them and arranged there by their handles. Absent leaves the walk the
 		 *  notes alone, which is what a region pulled from somebody else is. */
 		sections?: OutlineSections;
+		/** What a note's sections are drawn with, under its row: the writing
+		 *  surface itself, so a note is read and written where it stands. Absent
+		 *  leaves the walk the handles and nothing between them. */
+		interior?: Snippet<[TreeNote]>;
 		/** Carrying a note itself to another run, from its address. Absent leaves
 		 *  every note where it is, which is what a region pulled from somebody
 		 *  else is. */
@@ -74,35 +82,44 @@
 			refused?: string;
 		};
 	}
+
+	let surfaces = 0;
+
+	function nextSurface(): string {
+		surfaces += 1;
+		return `tree${surfaces}`;
+	}
 </script>
 
 <script lang="ts">
 	// The graph walked rather than drawn: down into a note's children, along the
-	// run to the note after it, and back up. The notes a note names are the
-	// note's own to show, so neither a reference nor a hand-drawn link branches
-	// here; DESIGN.md § Layout is why a plain tap replaces the note being read.
+	// run to the note after it, and back up, with the note a reader opened read
+	// and written where it stands. The notes a note names are the note's own to
+	// show, so neither a reference nor a hand-drawn link branches here;
+	// DESIGN.md § Layout.
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import Globe from '@lucide/svelte/icons/globe';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
-	import List from '@lucide/svelte/icons/list';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import { type Address, assignTagHueSlots, noteLabel } from '@sloppy/types';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { scrollFade } from '$lib/scroll-fade.svelte.js';
 	import {
-		aimSection,
+		aimCarry,
+		carrySays,
 		landingAt,
 		landingBy,
 		type OutlineRow,
-		type SectionAim,
 		type SectionBand,
-		sectionSays,
+		type SectionLanding,
+		type TreeSection,
 		withSections
 	} from './sections.js';
 	import {
@@ -132,6 +149,7 @@
 		writeUnder,
 		writeAlone,
 		sections,
+		interior,
 		moveNote
 	}: TreeSurfaceProps = $props();
 
@@ -210,8 +228,8 @@
 		})
 	);
 
-	/** The lead is the same notes drawn a second time, so its rows stay notes: a
-	 *  stack shown in both places would be one stack with two handles on it. */
+	/** The lead is the same notes drawn a second time, so its rows stay notes: an
+	 *  interior shown in both places would be one note open twice. */
 	function rowsWithSections(rows: TreeRow[]): OutlineRow[] {
 		return sections ? withSections(rows, sections) : rows;
 	}
@@ -235,13 +253,19 @@
 		const held =
 			row.kind === 'note'
 				? row.note.ref
-				: row.kind === 'section'
-					? `section:${row.section.ref}`
-					: row.kind === 'says'
-						? `says:${row.note}`
-						: `rest:${row.key}`;
+				: row.kind === 'says'
+					? `says:${row.note}`
+					: `rest:${row.key}`;
 		return `${heads ? 'lead:' : ''}${held}`;
 	};
+
+	/** A tree owns its rows by id rather than by holding them, so a note opened
+	 *  under its row is written in outside the tree's own content: nothing a
+	 *  person writes in is a node of a tree. */
+	const uid = nextSurface();
+	const rowId = (group: string, heads: boolean, row: OutlineRow): string =>
+		`${uid}-${group}-${rowKey(heads, row)}`;
+	const interiorId = (note: OwnedRef): string => `${uid}-in-${note}`;
 
 	/** The tab stop: wherever focus was left, else the note being read, else the
 	 *  first row — so arriving on the tree lands where the reader is. */
@@ -275,7 +299,7 @@
 	 *  may send none at all, so the next press in the tree clears it too. */
 	let dragged = false;
 
-	function act(group: string, row: OutlineRow): void {
+	function act(group: string, row: OutlineRow, heads: boolean): void {
 		if (dragged) {
 			dragged = false;
 			return;
@@ -288,12 +312,42 @@
 			if (row.again) sections?.onShow(row.note, true);
 			return;
 		}
-		const note = row.kind === 'section' ? row.note : row.note.ref;
+		const note = row.note.ref;
 		if (choosing && onChoose) onChoose(note);
-		else onOpen(note);
+		else if (!sections) onOpen(note);
+		else if (heads) fromLead(row.note);
+		else showHere(row.note, !showing(note));
 	}
 
 	const showing = (ref: OwnedRef): boolean => sections?.shown.has(ref) ?? false;
+
+	/** A row's own act, which `aria-expanded` cannot carry: that attribute is the
+	 *  branch under the row, and this is the note inside it. */
+	function showHere(note: TreeNote, open: boolean): void {
+		sections?.onShow(note.ref, open);
+		told = open ? `${noteLabel(note)} is open here` : `${noteLabel(note)} is closed`;
+	}
+
+	/** The lead says what was written last, not where it stands, so a row of it
+	 *  opens the note on its own row down the tree and goes there. */
+	function fromLead(note: TreeNote): void {
+		for (const up of ancestry(note)) toggle(up, true);
+		showHere(note, true);
+		heading = note.ref;
+	}
+
+	/** The notes a note hangs off, nearest first, within the graph it is drawn
+	 *  in. */
+	function ancestry(note: TreeNote): OwnedRef[] {
+		const byRef = new Map(groups.flatMap((group) => group.notes).map((one) => [one.ref, one]));
+		const up: OwnedRef[] = [];
+		let at = byRef.get(note.ref)?.parent;
+		while (at !== undefined && byRef.has(at) && !up.includes(at)) {
+			up.push(at);
+			at = byRef.get(at)?.parent;
+		}
+		return up;
+	}
 
 	/** What a note row advertises for `aria-keyshortcuts`. */
 	const chords = (tree: boolean): string =>
@@ -306,11 +360,11 @@
 			.join(' ');
 
 	/** One section a place up or down its note's stack. */
-	function arrange(row: Extract<OutlineRow, { kind: 'section' }>, by: number): void {
-		const stack = sections?.of(row.note);
+	function arrange(note: OwnedRef, section: OwnedRef, by: number): void {
+		const stack = sections?.of(note);
 		if (!stack) return;
-		const landing = landingBy(stack, row.section.ref, by);
-		if (landing) sections?.onMove(row.note, row.section.ref, landing.after);
+		const landing = landingBy(stack, section, by);
+		if (landing) sections?.onMove(note, section, landing.after);
 	}
 
 	function keys(
@@ -320,7 +374,7 @@
 		heads: boolean
 	): void {
 		const item = event.currentTarget as HTMLElement;
-		const tree = item.closest('[role="tree"]');
+		const tree = item.closest('[data-tree]');
 		if (!tree) return;
 		const items = [...tree.querySelectorAll<HTMLElement>('[role="treeitem"]')];
 		const here = items.indexOf(item);
@@ -354,23 +408,19 @@
 			event.preventDefault();
 			return;
 		}
-		// The sections chord: held, the arrows act on a note's sections instead of
-		// walking the rows, so the plain ones stay the walk they already were.
-		if (event.altKey && !event.shiftKey && sections) {
-			if (row.kind === 'section' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-				arrange(row, event.key === 'ArrowUp' ? -1 : 1);
-				event.preventDefault();
-				return;
-			}
-			if (
-				row.kind === 'note' &&
-				!heads &&
-				(event.key === 'ArrowRight' || event.key === 'ArrowLeft')
-			) {
-				sections.onShow(row.note.ref, event.key === 'ArrowRight');
-				event.preventDefault();
-				return;
-			}
+		// The sections chord: held, the arrows open and fold a note's interior, so
+		// the plain ones stay the walk they already were.
+		if (
+			event.altKey &&
+			!event.shiftKey &&
+			sections &&
+			row.kind === 'note' &&
+			!heads &&
+			(event.key === 'ArrowRight' || event.key === 'ArrowLeft')
+		) {
+			showHere(row.note, event.key === 'ArrowRight');
+			event.preventDefault();
+			return;
 		}
 		const move = (to: number): void => {
 			const next = items[Math.max(0, Math.min(items.length - 1, to))];
@@ -401,7 +451,7 @@
 				break;
 			case 'Enter':
 			case ' ':
-				act(group, row);
+				act(group, row, heads);
 				break;
 			default:
 				return;
@@ -443,14 +493,33 @@
 			?.scrollIntoView?.({ block: 'nearest' });
 	});
 
+	/** A note asked for from the lead, until the branches above it are drawn and
+	 *  its own row is there to go to. */
+	let heading = $state<OwnedRef | null>(null);
+
+	$effect(() => {
+		void drawn;
+		const to = heading;
+		if (!to || !scroller) return;
+		const row = scroller.querySelector<HTMLElement>(`[data-row="${CSS.escape(to)}"]`);
+		if (!row) return;
+		heading = null;
+		row.scrollIntoView?.({ block: 'nearest' });
+	});
+
 	/** A note being carried to where it will be written — `tree-drag.ts`. */
 	let carrying = $state<{ at: { x: number; y: number }; aim: TreeAim | null } | null>(null);
 
 	const NO_REFS: ReadonlySet<OwnedRef> = new Set();
 
-	/** The rows a drop can land on: the trees, never the lead, whose order is
-	 *  what was last written rather than the run a new note would join. */
-	function boxes(): TreeBox[] {
+	/**
+	 * The rows a drop can land on: the trees, never the lead, whose order is what
+	 * was last written rather than the run a new note would join. `overOpened`
+	 * reaches a note down over the interior it opened, so a note let go anywhere
+	 * inside one still lands on the note that opened it; a section let go there
+	 * lands in the stack instead, and reads the rows alone.
+	 */
+	function boxes(overOpened = true): TreeBox[] {
 		if (!scroller) return [];
 		const out: TreeBox[] = [];
 		for (const group of drawn) {
@@ -462,7 +531,7 @@
 				const row = group.rows[at];
 				if (!row) continue;
 				const box = item.getBoundingClientRect();
-				if (row.kind === 'section' || row.kind === 'says') {
+				if (row.kind === 'says') {
 					const above = out[out.length - 1];
 					if (above?.on === row.note) above.bottom = box.bottom;
 					continue;
@@ -474,12 +543,17 @@
 					address: row.note.address,
 					title: row.note.title,
 					top: box.top,
-					bottom: box.bottom,
+					bottom: (overOpened ? interiorBottom(row.note.ref) : undefined) ?? box.bottom,
 					left: words?.left ?? box.left
 				});
 			}
 		}
 		return out;
+	}
+
+	function interiorBottom(note: OwnedRef): number | undefined {
+		const host = scroller?.querySelector(`[data-interior="${CSS.escape(note)}"]`);
+		return host?.getBoundingClientRect().bottom;
 	}
 
 	function carry(event: PointerEvent): void {
@@ -513,8 +587,7 @@
 	/** What the last act on a row did, where no drag is saying anything. */
 	let told = $state('');
 
-	/** One group's rows as a move reads them, its notes' sections left out: a
-	 *  section belongs to the note above it. */
+	/** One group's rows as a move reads them. */
 	function treeRows(group: string): TreeRow[] {
 		const rows = drawn.find((one) => one.key === group)?.rows ?? [];
 		return rows.filter((row): row is TreeRow => row.kind === 'note' || row.kind === 'rest');
@@ -605,25 +678,81 @@
 		return '';
 	});
 
-	/** A section being carried up or down its own note — `sections.ts`. */
+	/** A section being carried — `sections.ts`. */
 	let moving = $state<{
 		at: { x: number; y: number };
-		note: OwnedRef;
-		named: string;
-		band: SectionBand;
-		aim: SectionAim | null;
+		from: { note: OwnedRef; named: string };
+		section: OwnedRef;
+		bands: readonly SectionBand[];
+		landing: SectionLanding | null;
 	} | null>(null);
 
-	/** Where one note's section rows stand right now, read off the page. */
-	function bandOf(note: OwnedRef): SectionBand {
-		const head = scroller?.querySelector(`[data-row="${CSS.escape(note)}"]`);
-		const rows: SectionBand['rows'] = (sections?.of(note) ?? []).flatMap((one) => {
-			const drawn = scroller?.querySelector(`[data-row="${CSS.escape(`section:${one.ref}`)}"]`);
-			if (!drawn) return [];
-			const box = drawn.getBoundingClientRect();
-			return [{ ref: one.ref, says: one.says, top: box.top, bottom: box.bottom }];
-		});
-		return { top: head?.getBoundingClientRect().top ?? 0, rows };
+	/** Where each open note's sections stand right now, read off the page. The
+	 *  writing surface draws them, so their bounds are asked for rather than
+	 *  known. */
+	function bands(): SectionBand[] {
+		if (!scroller) return [];
+		const out: SectionBand[] = [];
+		for (const group of drawn) {
+			if (group.lead) continue;
+			for (const row of group.rows) {
+				if (row.kind !== 'note' || !showing(row.note.ref)) continue;
+				const host = scroller.querySelector(`[data-interior="${CSS.escape(row.note.ref)}"]`);
+				if (!host) continue;
+				const box = host.getBoundingClientRect();
+				const rows = (sections?.of(row.note.ref) ?? []).flatMap((one) => {
+					const drawn = scroller?.querySelector(`[data-block-ref="${CSS.escape(one.ref)}"]`);
+					if (!drawn) return [];
+					const at = drawn.getBoundingClientRect();
+					return [{ ref: one.ref, says: one.says, top: at.top, bottom: at.bottom }];
+				});
+				out.push({
+					note: row.note.ref,
+					named: noteLabel(row.note),
+					top: box.top,
+					bottom: box.bottom,
+					rows
+				});
+			}
+		}
+		return out;
+	}
+
+	/** Where a note's handles stand against its interior, so each one sits on the
+	 *  section it moves. */
+	const railed = new SvelteMap<OwnedRef, number>();
+
+	/** A handle is `size-11`, so two of them on sections shorter than that would
+	 *  paint over each other and take each other's press. */
+	const RAIL_STEP = 44;
+
+	function railing(host: HTMLElement): () => void {
+		let frame = 0;
+		const measure = (): void => {
+			frame = 0;
+			const top = host.getBoundingClientRect().top;
+			let floor = 0;
+			for (const drawn of host.querySelectorAll<HTMLElement>('[data-block-ref]')) {
+				const ref = drawn.dataset.blockRef as OwnedRef | undefined;
+				if (!ref) continue;
+				const at = Math.max(drawn.getBoundingClientRect().top - top, floor);
+				railed.set(ref, at);
+				floor = at + RAIL_STEP;
+			}
+		};
+		const soon = (): void => {
+			if (!frame) frame = requestAnimationFrame(measure);
+		};
+		const sized = new ResizeObserver(soon);
+		sized.observe(host);
+		const shaped = new MutationObserver(soon);
+		shaped.observe(host, { childList: true, subtree: true, characterData: true });
+		measure();
+		return () => {
+			sized.disconnect();
+			shaped.disconnect();
+			if (frame) cancelAnimationFrame(frame);
+		};
 	}
 
 	/** The section whose handle was tapped, which then offers the move a drag
@@ -632,37 +761,63 @@
 
 	$effect(() => {
 		if (nudging === null) return;
-		const drawnStill = drawn.some((group) =>
-			group.rows.some((row) => row.kind === 'section' && row.section.ref === nudging)
+		const stillThere = [...(sections?.shown ?? [])].some((note) =>
+			(sections?.of(note) ?? []).some((one) => one.ref === nudging)
 		);
-		if (!drawnStill) nudging = null;
+		if (!stillThere) nudging = null;
 	});
 
-	function carrySection(event: PointerEvent, row: Extract<OutlineRow, { kind: 'section' }>): void {
+	function carrySection(event: PointerEvent, note: TreeNote, section: OwnedRef): void {
 		dragged = false;
 		if (!sections) return;
-		let band = bandOf(row.note);
-		dragFrom<SectionAim>(event, {
-			aim: (_x, y) => {
-				band = bandOf(row.note);
-				return aimSection(band, y);
+		const from = { note: note.ref, named: noteLabel(note) };
+		let held: readonly SectionBand[] = bands();
+		dragFrom<SectionLanding>(event, {
+			aim: (x, y) => {
+				held = bands();
+				return aimCarry(held, boxes(false), x, y);
 			},
 			scroller: () => scroller ?? null,
-			moved: (at, aim) => (moving = { at, note: row.note, named: row.named, band, aim }),
-			dropped: (aim) => {
+			moved: (at, landing) => (moving = { at, from, section, bands: held, landing }),
+			dropped: (landing) => {
 				moving = null;
 				dragged = true;
-				const stack = sections?.of(row.note);
-				if (!aim || !stack) return;
-				const landing = landingAt(stack, row.section.ref, aim.slot);
-				if (landing) sections?.onMove(row.note, row.section.ref, landing.after);
+				if (landing) letGo(from.note, section, landing);
 			}
 		});
 	}
 
+	/** A section let go of, wherever it was let go. */
+	function letGo(from: OwnedRef, section: OwnedRef, landing: SectionLanding): void {
+		if (landing.kind === 'onto') {
+			if (landing.note !== from) sections?.onCarry?.onto(section, landing.note);
+			return;
+		}
+		if (landing.kind === 'note') {
+			sections?.onCarry?.out(section, landing.on, landing.relation);
+			return;
+		}
+		if (landing.note === from) {
+			const stack = sections?.of(from);
+			if (!stack) return;
+			const at = landingAt(stack, section, landing.slot);
+			if (at) sections?.onMove(from, section, at.after);
+			return;
+		}
+		sections?.onCarry?.into(section, landing.note, landing.after);
+	}
+
 	const lit = $derived.by((): ReadonlySet<OwnedRef> => {
+		const landing = moving?.landing;
+		if (landing) {
+			if (landing.kind !== 'note') return new Set([landing.note]);
+			return runOf({ on: landing.on, title: '', relation: landing.relation });
+		}
 		const aim = carrying?.aim ?? lifting?.landing.to;
-		if (!aim) return NO_REFS;
+		return aim ? runOf(aim) : NO_REFS;
+	});
+
+	function runOf(aim: TreeAim): ReadonlySet<OwnedRef> {
 		for (const group of drawn) {
 			if (group.lead) continue;
 			const run = runFor(
@@ -672,7 +827,7 @@
 			if (run.size > 0) return run;
 		}
 		return NO_REFS;
-	});
+	}
 
 	const says = $derived(
 		carrying
@@ -682,12 +837,15 @@
 			: lifting
 				? lifting.landing.says
 				: moving
-					? sectionSays(moving.band, moving.named, moving.aim)
+					? carrySays(moving.landing, moving.from, moving.bands)
 					: (moveNote?.refused ?? '') || settled || told
 	);
 
 	/** Whichever drag is under the pointer, for the pill that follows it. */
 	const carried = $derived(carrying ?? moving ?? lifting);
+
+	/** A note's sections as its handles read them; empty until they are in hand. */
+	const stackOf = (note: OwnedRef): readonly TreeSection[] => sections?.of(note) ?? [];
 </script>
 
 <div
@@ -746,7 +904,12 @@
 						</h2>
 					{/if}
 
-					<div role="tree" data-tree={group} aria-label={by ?? (title || 'Notes')}>
+					<div data-tree={group}>
+						<div
+							role="tree"
+							aria-label={by ?? (title || 'Notes')}
+							aria-owns={rows.map((row) => rowId(group, heads, row)).join(' ')}
+						></div>
 						{#each rows as row (rowKey(heads, row))}
 							{@const key = rowKey(heads, row)}
 							{@const step = `calc(${Math.min(row.depth, DEEPEST_INDENT)} * var(--tree-step))`}
@@ -758,12 +921,16 @@
 								{@const drags = carryable ? 'Drag it to move this note' : undefined}
 								<div
 									role="treeitem"
+									id={rowId(group, heads, row)}
 									data-row={key}
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
 									aria-posinset={row.at}
 									aria-setsize={row.of}
 									aria-expanded={row.children > 0 ? row.open : undefined}
+									aria-controls={sections && !heads && showing(row.note.ref)
+										? interiorId(row.note.ref)
+										: undefined}
 									aria-selected={row.note.ref === reading}
 									aria-checked={chosen ? chosen.has(row.note.ref) : undefined}
 									aria-keyshortcuts={chords(!heads) || undefined}
@@ -773,7 +940,7 @@
 											liftNote(event, group, row.note);
 										}
 									}}
-									onclick={() => act(group, row)}
+									onclick={() => act(group, row, heads)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-selected:bg-muted sm:gap-2 {selection.length >
@@ -875,20 +1042,20 @@
 									{/if}
 
 									{#if sections && !heads}
+										<!-- A tap on the row opens the note where it stands, so the
+										     one control the row can spare goes to its own page —
+										     DESIGN.md § "A note's row fits the narrowest phone". -->
 										<button
 											type="button"
 											tabindex="-1"
-											aria-expanded={showing(row.note.ref)}
-											aria-label={showing(row.note.ref)
-												? `Hide the sections of ${noteLabel(row.note)}`
-												: `Show the sections of ${noteLabel(row.note)}`}
+											aria-label="Open the page of {noteLabel(row.note)}"
 											onclick={(event) => {
 												event.stopPropagation();
-												sections?.onShow(row.note.ref, !showing(row.note.ref));
+												onOpen(row.note.ref);
 											}}
 											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 										>
-											<List class="size-4" />
+											<FileText class="size-4" />
 										</button>
 									{/if}
 
@@ -916,84 +1083,82 @@
 										</button>
 									{/if}
 								</div>
-							{:else if row.kind === 'section'}
-								<div
-									role="treeitem"
-									data-row={key}
-									tabindex={key === held ? 0 : -1}
-									aria-level={row.depth + 1}
-									aria-selected={false}
-									aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-									onpointerdown={() => (dragged = false)}
-									onclick={() => act(group, row)}
-									onkeydown={(event) => keys(event, group, rows, heads)}
-									onfocusin={() => tabbed.set(group, key)}
-									class="flex min-h-11 cursor-pointer items-center gap-1 rounded-lg pe-2 text-start hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {moving?.note ===
-									row.note
-										? 'border-s-2 border-dashed border-foreground/50 bg-muted/60'
-										: ''}"
-									style="padding-inline-start: {step}"
-								>
-									<button
-										type="button"
-										tabindex="-1"
-										aria-expanded={nudging === row.section.ref}
-										aria-label="Move section {row.at} of {row.of} in {row.named}"
-										onpointerdown={(event) => carrySection(event, row)}
-										onclick={(event) => {
-											event.stopPropagation();
-											if (dragged) {
-												dragged = false;
-												return;
-											}
-											nudging = nudging === row.section.ref ? null : row.section.ref;
-										}}
-										class="flex size-11 shrink-0 touch-pan-y items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-									>
-										<GripVertical class="size-4" />
-									</button>
-									<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-										{row.section.says}
-									</span>
 
-									{#if nudging === row.section.ref}
-										<button
-											type="button"
-											tabindex="-1"
-											disabled={row.at === 1}
-											aria-label="Move it up in {row.named}"
-											onclick={(event) => {
-												event.stopPropagation();
-												arrange(row, -1);
-											}}
-											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
-										>
-											<ArrowUp class="size-4" />
-										</button>
-										<button
-											type="button"
-											tabindex="-1"
-											disabled={row.at === row.of}
-											aria-label="Move it down in {row.named}"
-											onclick={(event) => {
-												event.stopPropagation();
-												arrange(row, 1);
-											}}
-											class="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
-										>
-											<ArrowDown class="size-4" />
-										</button>
-									{/if}
-								</div>
+								{#if sections && !heads && showing(row.note.ref)}
+									<div
+										role="group"
+										id={interiorId(row.note.ref)}
+										data-interior={row.note.ref}
+										aria-label="What is written in {noteLabel(row.note)}"
+										class="relative ps-11 pe-2 pb-2"
+										style="margin-inline-start: {step}"
+										{@attach railing}
+									>
+										{#each stackOf(row.note.ref) as one, at (one.ref)}
+											<div
+												class="absolute start-0 flex flex-col items-center"
+												style="top: {railed.get(one.ref) ?? 0}px"
+											>
+												<button
+													type="button"
+													data-handle={one.ref}
+													aria-expanded={nudging === one.ref}
+													aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+													aria-label="Move section {at + 1} of {stackOf(row.note.ref)
+														.length} in {noteLabel(row.note)}"
+													onpointerdown={(event) => carrySection(event, row.note, one.ref)}
+													onkeydown={(event) => {
+														if (!event.altKey || event.shiftKey) return;
+														if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+														arrange(row.note.ref, one.ref, event.key === 'ArrowUp' ? -1 : 1);
+														event.preventDefault();
+													}}
+													onclick={() => {
+														if (dragged) {
+															dragged = false;
+															return;
+														}
+														nudging = nudging === one.ref ? null : one.ref;
+													}}
+													class="flex size-11 shrink-0 cursor-grab touch-pan-y items-center justify-center rounded-md text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+												>
+													<GripVertical class="size-4" />
+												</button>
+												{#if nudging === one.ref}
+													<button
+														type="button"
+														disabled={at === 0}
+														aria-label="Move it up in {noteLabel(row.note)}"
+														onclick={() => arrange(row.note.ref, one.ref, -1)}
+														class="flex size-11 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+													>
+														<ArrowUp class="size-4" />
+													</button>
+													<button
+														type="button"
+														disabled={at === stackOf(row.note.ref).length - 1}
+														aria-label="Move it down in {noteLabel(row.note)}"
+														onclick={() => arrange(row.note.ref, one.ref, 1)}
+														class="flex size-11 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+													>
+														<ArrowDown class="size-4" />
+													</button>
+												{/if}
+											</div>
+										{/each}
+										{@render interior?.(row.note)}
+									</div>
+								{/if}
 							{:else if row.kind === 'says'}
 								<div
 									role="treeitem"
+									id={rowId(group, heads, row)}
 									data-row={key}
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}
 									aria-selected={false}
 									onpointerdown={() => (dragged = false)}
-									onclick={() => act(group, row)}
+									onclick={() => act(group, row, heads)}
 									onkeydown={(event) => keys(event, group, rows, heads)}
 									onfocusin={() => tabbed.set(group, key)}
 									class="flex min-h-11 items-center gap-1 rounded-lg pe-2 text-sm text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:gap-2 {row.again
@@ -1007,6 +1172,7 @@
 							{:else}
 								<div
 									role="treeitem"
+									id={rowId(group, heads, row)}
 									data-row={key}
 									tabindex={key === held ? 0 : -1}
 									aria-level={row.depth + 1}

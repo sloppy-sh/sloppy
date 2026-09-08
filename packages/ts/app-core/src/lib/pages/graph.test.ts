@@ -27,6 +27,7 @@ import { canvasInk } from '../stores/canvas-ink.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
+import { outlineSections } from '../stores/outline-sections.svelte.js';
 import { peers } from '../stores/peers.svelte.js';
 import { prefs } from '../stores/prefs.svelte.js';
 import { publications } from '../stores/publications.svelte.js';
@@ -408,6 +409,7 @@ beforeEach(() => {
 	startAt('/');
 	stubViewport();
 	nodes.clear();
+	outlineSections.clear();
 	peers.clear();
 	tags.clear();
 	publications.clear();
@@ -2853,10 +2855,58 @@ describe('reading the graph as an outline', () => {
 		expect(await dragged('1', 'under')).toEqual({ relation: 'under', note: FIRST });
 	});
 
-	it('opens the note the drag wrote, so the reader can type at once', async () => {
+	it('opens the note the drag wrote where it stands, so the reader can type at once', async () => {
 		await dragged('1a', 'beside');
 
+		expect(document.body.querySelector(`[data-interior="${WRITTEN}"]`)).not.toBeNull();
+		expect(reading()).toBe(false);
+	});
+
+	// The outline is one surface: a note is read and written where it stands,
+	// and the aside beside the canvas is the canvas's.
+	it('never opens the aside from a row of the outline', async () => {
+		await walk();
+		inOutline('1').click();
+		await settle();
+
+		expect(reading()).toBe(false);
+		expect(document.body.querySelector(`[data-interior="${FIRST}"]`)).not.toBeNull();
+	});
+
+	it('reaches the note’s own page from the row’s own act', async () => {
+		await walk();
+		labelled('Open the page of 1').click();
+		await settle();
+
 		expect(reading()).toBe(true);
+		expect(readingName()).toContain('Origins');
+		expect(labelled('Walk the notes one at a time')).toBeTruthy();
+	});
+
+	// The run at the head of the outline is the outline's own, so a row of it is
+	// read where the note stands like any other.
+	it('never opens the aside from the run of what was last written either', async () => {
+		finding(api, { recent: [graph.get(SECOND) as NodeView] });
+		await walk();
+
+		const head = document.body.querySelector<HTMLElement>(`[data-row="lead:${SECOND}"]`);
+		if (!head) throw new Error('The walk is not headed by what was last written');
+		head.click();
+		await settle();
+
+		expect(reading()).toBe(false);
+		expect(document.body.querySelector(`[data-interior="${SECOND}"]`)).not.toBeNull();
+	});
+
+	// AI.md § "The Genealogy Is the Protocol": the address is what a person cites
+	// and a peer resolves, so it has to land somewhere for whoever follows it.
+	it('opens a note reached by its address where it stands while the reader is walking', async () => {
+		prefs.set('walking', true);
+		startAt(`/n/${segments(FIRST)}`);
+		await open();
+
+		expect(document.body.querySelector(`[data-interior="${FIRST}"]`)).not.toBeNull();
+		expect(reading()).toBe(false);
 	});
 });
 

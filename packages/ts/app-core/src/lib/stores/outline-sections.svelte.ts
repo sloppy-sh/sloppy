@@ -36,9 +36,13 @@ function heldOf(stack: readonly BlockView[]): TreeSection[] {
 class OutlineSectionsStore {
 	#shown = new SvelteSet<OwnedRef>();
 	#held = new SvelteMap<OwnedRef, TreeSection[]>();
+	/** Every section read, whole, so a surface that writes in one has what it
+	 *  holds and not only what it says. `#held` keeps the order. */
+	#rows = new SvelteMap<OwnedRef, BlockView>();
 	#trouble = new SvelteMap<OwnedRef, string>();
 	#inflight = new Map<OwnedRef, Promise<void>>();
 	#moves = new Map<OwnedRef, Moves>();
+	#shapes = new SvelteMap<OwnedRef, number>();
 	// A {@link clear} that lands mid-request must not be undone by the answer.
 	#epoch = 0;
 	#forWhom: string | null = null;
@@ -49,6 +53,29 @@ class OutlineSectionsStore {
 
 	of(note: OwnedRef): readonly TreeSection[] | undefined {
 		return this.#held.get(note);
+	}
+
+	/** The same stack, whole and in the same order, for a surface that draws what
+	 *  is written in the note rather than a line of it. */
+	stack(note: OwnedRef): readonly BlockView[] | undefined {
+		const held = this.#held.get(note);
+		if (held === undefined) return undefined;
+		return held.flatMap((one) => {
+			const row = this.#rows.get(one.ref);
+			return row ? [row] : [];
+		});
+	}
+
+	/** How many shapes this note's stack has taken — the one a move puts it in at
+	 *  once, and the one the answer leaves it in — so a surface drawing it opens
+	 *  again on each, holding the sections as the write left them. */
+	arranged(note: OwnedRef): number {
+		return this.#shapes.get(note) ?? 0;
+	}
+
+	/** Read a note's sections, whether or not anybody is showing them. */
+	read(note: OwnedRef): Promise<void> {
+		return this.#read(note);
 	}
 
 	says(note: OwnedRef): SectionSays {
@@ -85,7 +112,10 @@ class OutlineSectionsStore {
 
 		const epoch = this.#epoch;
 		void api.updateBlock(section, { after }).then(
-			() => this.#answered(note, epoch),
+			(saved) => {
+				this.#took(saved, epoch);
+				this.#answered(note, epoch);
+			},
 			(err: unknown) => {
 				if (!this.#answered(note, epoch)) return;
 				void this.#read(note);
@@ -125,7 +155,8 @@ class OutlineSectionsStore {
 
 		const epoch = this.#epoch;
 		void api.updateBlock(section, { node, after }).then(
-			() => {
+			(saved) => {
+				this.#took(saved, epoch);
 				if (into) this.#answered(node, epoch);
 				this.#answered(from, epoch);
 			},
@@ -154,9 +185,11 @@ class OutlineSectionsStore {
 		this.#epoch++;
 		this.#shown.clear();
 		this.#held.clear();
+		this.#rows.clear();
 		this.#trouble.clear();
 		this.#inflight.clear();
 		this.#moves.clear();
+		this.#shapes.clear();
 	}
 
 	#noteOf(section: OwnedRef): OwnedRef | undefined {
@@ -166,16 +199,28 @@ class OutlineSectionsStore {
 		return undefined;
 	}
 
+	/** The section as the write left it, which is what the next write of it has
+	 *  to be made against. */
+	#took(section: BlockView, epoch: number): void {
+		if (epoch === this.#epoch) this.#rows.set(section.ref, section);
+	}
+
 	#asked(note: OwnedRef): void {
 		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
 		this.#moves.set(note, { ...moves, asked: moves.asked + 1 });
+		this.#reshaped(note);
 	}
 
 	#answered(note: OwnedRef, epoch: number): boolean {
 		if (epoch !== this.#epoch) return false;
 		const moves = this.#moves.get(note) ?? { asked: 0, answered: 0 };
 		this.#moves.set(note, { ...moves, answered: moves.answered + 1 });
+		this.#reshaped(note);
 		return true;
+	}
+
+	#reshaped(note: OwnedRef): void {
+		this.#shapes.set(note, (this.#shapes.get(note) ?? 0) + 1);
 	}
 
 	/** Whether a listing begun when the note stood at `since` still describes it:
@@ -197,6 +242,7 @@ class OutlineSectionsStore {
 			.listBlocks(note)
 			.then((stack) => {
 				if (epoch !== this.#epoch || !this.#stands(note, since)) return;
+				for (const block of stack) this.#rows.set(block.ref, block);
 				this.#held.set(note, heldOf(stack));
 			})
 			.catch((err: unknown) => {

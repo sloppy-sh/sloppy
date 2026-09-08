@@ -371,3 +371,91 @@ describe('carrying a section into another note', () => {
 		expect(outlineSections.of(NOTE)?.map((one) => one.ref)).toEqual([S1, S2]);
 	});
 });
+
+// The outline draws a note's sections with the writing surface itself, so it
+// asks for what each one holds and not only for the line it says.
+describe('what the outline hands the writing surface', () => {
+	let stacks: Map<OwnedRef, BlockView[]>;
+
+	beforeEach(() => {
+		stacks = arranging(api, { [NOTE]: STACK, [OTHER]: OTHER_STACK });
+	});
+
+	/** A section as the server holds it, which is what the next write of it has
+	 *  to be made against. */
+	const server = (note: OwnedRef, section: OwnedRef) =>
+		stacks.get(note)?.find((one) => one.ref === section);
+
+	it('holds nothing for a note nobody has opened', () => {
+		expect(outlineSections.stack(NOTE)).toBeUndefined();
+	});
+
+	it('hands over the whole of every section, in stack order', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		expect(outlineSections.stack(NOTE)).toEqual(STACK);
+	});
+
+	it('hands them over in the order an arrangement left them', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		outlineSections.move(NOTE, S3, null);
+		expect(outlineSections.stack(NOTE)?.map((one) => one.ref)).toEqual([S3, S1, S2]);
+	});
+
+	it('carries a section into the stack it was carried to', async () => {
+		outlineSections.show(NOTE, true);
+		outlineSections.show(OTHER, true);
+		await settle();
+		outlineSections.moveTo(S1, OTHER, O1);
+		expect(outlineSections.stack(OTHER)?.map((one) => one.ref)).toEqual([O1, S1, O2]);
+		expect(outlineSections.stack(NOTE)?.map((one) => one.ref)).toEqual([S2, S3]);
+	});
+
+	// Two shapes to one move: the one it puts the stack in at once, and the one
+	// the answer leaves it in, carrying the stamps the write put on the sections.
+	it('counts the shapes a move puts a note’s stack in', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		expect(outlineSections.arranged(NOTE)).toBe(0);
+
+		outlineSections.move(NOTE, S3, null);
+		expect(outlineSections.arranged(NOTE)).toBe(1);
+		await settle();
+		expect(outlineSections.arranged(NOTE)).toBe(2);
+	});
+
+	it('reads a note nobody is showing, for a carry that has to know its end', async () => {
+		await outlineSections.read(OTHER);
+		expect(outlineSections.of(OTHER)?.map((one) => one.ref)).toEqual([O1, O2]);
+		expect(outlineSections.shown.has(OTHER)).toBe(false);
+	});
+
+	// A section is written in where it stands, and the writing surface makes its
+	// write against the section as the last one left it.
+	it('hands a carried section back as the carry left it', async () => {
+		outlineSections.show(NOTE, true);
+		outlineSections.show(OTHER, true);
+		await settle();
+		outlineSections.moveTo(S1, OTHER, O1);
+		await settle();
+
+		expect(outlineSections.stack(OTHER)?.find((one) => one.ref === S1)).toEqual(server(OTHER, S1));
+	});
+
+	it('hands a moved section back as the move left it', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		outlineSections.move(NOTE, S3, null);
+		await settle();
+
+		expect(outlineSections.stack(NOTE)?.find((one) => one.ref === S3)).toEqual(server(NOTE, S3));
+	});
+
+	it('keeps nothing of one person’s reading for the next', async () => {
+		outlineSections.show(NOTE, true);
+		await settle();
+		outlineSections.mine('did:syr:somebody-else');
+		expect(outlineSections.stack(NOTE)).toBeUndefined();
+	});
+});

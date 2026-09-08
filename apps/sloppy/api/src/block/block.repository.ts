@@ -16,7 +16,7 @@ import { DbService } from "../db/db.service";
 import { replacement } from "../node/patch";
 import { wordsOf } from "./text";
 
-const PATCHABLE = ["ord", "content"] as const;
+const PATCHABLE = ["node", "ord", "content"] as const;
 
 /** What a write sets: the columns a request may name, and beside them the words
  *  derived from the document it wrote. */
