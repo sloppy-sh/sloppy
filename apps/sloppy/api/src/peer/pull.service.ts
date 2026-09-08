@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import {
+  type Address,
   type BlockView,
   type CreatePullRequest,
   type DidSyr,
@@ -99,7 +100,9 @@ export class PullService {
       terms ??= {
         publication,
         version: page.version,
-        root_address: page.root_address,
+        ...(page.root_address === undefined
+          ? {}
+          : { root_address: page.root_address }),
         graph: graphRef(author, page.graph),
         ...(page.graph_title === undefined
           ? {}
@@ -150,7 +153,7 @@ export class PullService {
     const bound =
       maxDepth === undefined
         ? undefined
-        : addressDepth(region.root_address) + maxDepth - 1;
+        : rootDepth(region.root_address) + maxDepth - 1;
     const served = await this.pulls.served(reader, ref);
     const rows = await this.pulls.nodesBySource(reader, served);
     return orderSiblings(
@@ -239,18 +242,28 @@ export class PullService {
 }
 
 /**
+ * How deep in the AUTHOR's graph a region's own root sits. Its address says
+ * where, and a region whose author gave it none reads as a branch of theirs:
+ * nothing on the wire places it any deeper, and how deep a reader may read into
+ * the copy counts from here either way.
+ */
+function rootDepth(address: Address | undefined): number {
+  return address === undefined ? 1 : addressDepth(address);
+}
+
+/**
  * How deep each note a page carries sits, written into `deep` — the region's
- * root at the depth its address puts it, and everything else one below the note
+ * root where {@link rootDepth} puts it, and everything else one below the note
  * it springs from, wherever in the answer that note arrived.
  */
 function deepen(page: PublishedSubtreePage, deep: Map<OwnedRef, number>): void {
-  const rootDepth = addressDepth(page.root_address);
+  const opening = rootDepth(page.root_address);
   let waiting = page.nodes;
   while (waiting.length > 0) {
     const later: typeof waiting = [];
     for (const node of waiting) {
       if (node.parent === undefined) {
-        deep.set(node.ref, rootDepth);
+        deep.set(node.ref, opening);
         continue;
       }
       const above = deep.get(node.parent);

@@ -29,10 +29,16 @@ import {
   pinnedVersion,
   subtreeRun,
 } from "./cursor";
-import { comparableTo, noteChanges, type SnapshotSide } from "./difference";
+import {
+  comparableTo,
+  noteChanges,
+  type OrderedChange,
+  type SnapshotSide,
+} from "./difference";
 import {
   publicationVersion,
   PublicationRepository,
+  type RootLabel,
 } from "./publication.repository";
 
 /** What one answer carries. Every one of these is under the bound
@@ -63,7 +69,12 @@ export class PublishedService {
     const mark = pageMark(cursor, did);
     const run = await this.publications.page(
       did,
-      mark?.at,
+      mark === undefined
+        ? undefined
+        : {
+            ...(mark.at === undefined ? {} : { address: mark.at }),
+            ...(mark.root === undefined ? {} : { root: mark.root }),
+          },
       PUBLICATIONS_PER_PAGE + 1,
     );
     const listed = run.slice(0, PUBLICATIONS_PER_PAGE);
@@ -71,13 +82,13 @@ export class PublishedService {
       did,
       listed.map((row) => ownedRefFrom(row.id)),
     );
-    const titles = await this.publications.rootTitles(
+    const labels = await this.publications.rootLabels(
       did,
       listed.flatMap((row) => {
         const version = latest.get(ownedRefFrom(row.id));
         return version === undefined
           ? []
-          : [{ version: ownedRefFrom(version.id), address: row.root_address }];
+          : [{ version: ownedRefFrom(version.id), root: row.root }];
       }),
     );
     const notebooks = await this.publications.graphTitles(
@@ -87,15 +98,10 @@ export class PublishedService {
     return {
       did,
       publications: listed.flatMap((row) =>
-        published(row, latest.get(ownedRefFrom(row.id)), titles, notebooks),
+        published(row, latest.get(ownedRefFrom(row.id)), labels, notebooks),
       ),
       ...(run.length > PUBLICATIONS_PER_PAGE
-        ? {
-            next_cursor: markPage({
-              of: did,
-              at: listed[listed.length - 1].root_address,
-            }),
-          }
+        ? { next_cursor: markPage(resuming(did, listed[listed.length - 1])) }
         : {}),
     };
   }
@@ -124,10 +130,16 @@ export class PublishedService {
       pageMark(cursor, of),
     );
     const notebook = await this.notebook(did, chain.graph);
+    const label = await this.rootAddress(
+      did,
+      ownedRefFrom(version.id),
+      chain.root,
+    );
     return {
       publication,
       version: publicationVersion(version),
-      root_address: chain.root_address,
+      root: chain.root,
+      ...(label === undefined ? {} : { root_address: label }),
       graph: chain.graph,
       ...(notebook === undefined ? {} : { graph_title: notebook }),
       comments: chain.comments,
@@ -167,8 +179,8 @@ export class PublishedService {
   }
 
   /**
-   * What the writing did between two versions, in the address order a version's
-   * own pages take. Both sides are read here, so a reader holding neither pays
+   * What the writing did between two versions, in the order a version's own
+   * pages take. Both sides are read here, so a reader holding neither pays
    * for neither.
    */
   async changes(
@@ -197,9 +209,11 @@ export class PublishedService {
     const taken = held(noteChanges(compared.from, compared.to));
     const resume = taken.at ?? compared.boundary;
 
+    const label = await this.rootAddress(did, to, chain.root);
     return {
       publication,
-      root_address: chain.root_address,
+      root: chain.root,
+      ...(label === undefined ? {} : { root_address: label }),
       from,
       to,
       changes: taken.changes,
@@ -207,6 +221,21 @@ export class PublishedService {
         ? {}
         : { next_cursor: markPage({ of, at: resume }) }),
     };
+  }
+
+  /**
+   * The label a region is cited by, as the version being served froze it —
+   * never as the branch is labelled now. A person who renumbers the note their
+   * branch is rooted at leaves every version already published saying what its
+   * own copy of that note says, which is what a reader holding one is holding.
+   */
+  private async rootAddress(
+    did: DidSyr,
+    version: OwnedRef,
+    root: OwnedRef,
+  ): Promise<Address | undefined> {
+    const [held] = await this.publications.nodesBySource(did, version, [root]);
+    return held?.address;
   }
 
   /** What the author calls the notebook a region's addresses are read in;
@@ -240,10 +269,10 @@ export class PublishedService {
   }
 
   /**
-   * One page of a version: notes in address order, each with the stack that
-   * version froze, until a bound. A note whose stack alone runs past one page
-   * carries what fits and the cursor resumes inside it — every reference still
-   * resolves in the page carrying it or in one already sent.
+   * One page of a version: notes in the order that version was written down,
+   * each with the stack it froze, until a bound. A note whose stack alone runs
+   * past one page carries what fits and the cursor resumes inside it — every
+   * reference still resolves in the page carrying it or in one already sent.
    */
   private async run(
     did: DidSyr,
@@ -289,18 +318,18 @@ export class PublishedService {
         blocks.push(publishedBlock(section));
         spent += weigh(section.content);
         if (spent >= PAGE_BUDGET && at < stack.length - 1) {
-          next = { of, at: row.address, ord: section.ord };
+          next = { of, at: row.ord, ord: section.ord };
           break;
         }
       }
       if (next !== undefined) break;
       if (spent >= PAGE_BUDGET) {
-        next = { of, at: row.address };
+        next = { of, at: row.ord };
         break;
       }
     }
     if (next === undefined && window.length > run.length) {
-      next = { of, at: run[run.length - 1].address };
+      next = { of, at: run[run.length - 1].ord };
     }
     return { nodes, blocks, ...(next === undefined ? {} : { next }) };
   }
@@ -383,13 +412,13 @@ export class PublishedService {
       nodes,
       blocks,
       next: finished
-        ? { of, at: held.address }
-        : { of, at: held.address, ord: listed[blocks.length - 1].ord },
+        ? { of, at: held.ord }
+        : { of, at: held.ord, ord: listed[blocks.length - 1].ord },
     };
   }
 
   /**
-   * Both versions' notes over one run of the address order, each carrying the
+   * Both versions' notes over one run of that order, each carrying the
    * sections a comparison needs: none for a note only the earlier version has,
    * because what it said is in the version that still has it.
    *
@@ -405,14 +434,14 @@ export class PublishedService {
     reach: string | undefined,
   ): Promise<{ from: SnapshotSide[]; to: SnapshotSide[]; boundary?: string }> {
     const within = (row: SnapshotNode) =>
-      reach === undefined || row.address <= reach;
+      reach === undefined || row.ord <= reach;
     const fromRun = earlier.run.filter(within);
     const toRun = later.run.filter(within);
-    const addresses = [
-      ...new Set([...fromRun, ...toRun].map((row) => row.address)),
+    const places = [
+      ...new Set([...fromRun, ...toRun].map((row) => row.ord)),
     ].sort();
 
-    if (addresses.length === 0) {
+    if (places.length === 0) {
       return {
         from: [],
         to: [],
@@ -420,17 +449,17 @@ export class PublishedService {
       };
     }
     for (
-      let width = addresses.length;
+      let width = places.length;
       ;
       width = Math.max(1, Math.floor(width / 4))
     ) {
-      const limit = addresses[width - 1];
-      const to = toRun.filter((row) => row.address <= limit);
+      const limit = places[width - 1];
+      const to = toRun.filter((row) => row.ord <= limit);
       const from = await this.paired(
         did,
         earlier.version,
         later.version,
-        fromRun.filter((row) => row.address <= limit),
+        fromRun.filter((row) => row.ord <= limit),
         to,
       );
       const pairs = new Set(to.map((row) => row.source));
@@ -441,7 +470,7 @@ export class PublishedService {
       );
       const after = await this.stacks(did, later.version, to);
       if (!(before.whole && after.whole) && width > 1) continue;
-      const boundary = width < addresses.length ? limit : reach;
+      const boundary = width < places.length ? limit : reach;
       return {
         from: from.map((row) => sideOf(row, before.stacks)),
         to: to.map((row) => sideOf(row, after.stacks)),
@@ -451,10 +480,10 @@ export class PublishedService {
   }
 
   /**
-   * The earlier run, with the notes their author has since moved beside the
-   * later ones: a move leaves the two rows at two addresses, so a window of the
-   * address order can hold one of them and not the other. Such a pair is read
-   * where the LATER row is, which is what has it read once.
+   * The earlier run, with the notes whose place has since moved beside the
+   * later ones: writing beside a note moves where it is read, so a window of
+   * one version's order can hold a note the other version's window does not.
+   * Such a pair is read where the LATER row is, which is what has it read once.
    */
   private async paired(
     did: DidSyr,
@@ -504,7 +533,7 @@ export class PublishedService {
   private async side(
     did: DidSyr,
     version: OwnedRef,
-    after: Address | undefined,
+    after: string | undefined,
   ): Promise<{ run: SnapshotNode[]; last?: string; more: boolean }> {
     const window = await this.publications.nodesFrom(
       did,
@@ -515,60 +544,74 @@ export class PublishedService {
     const run = window.slice(0, NOTES_PER_COMPARISON);
     return {
       run,
-      ...(run.length === 0 ? {} : { last: run[run.length - 1].address }),
+      ...(run.length === 0 ? {} : { last: run[run.length - 1].ord }),
       more: window.length > NOTES_PER_COMPARISON,
     };
   }
 }
 
 /**
- * As much of a comparison as one page carries, cut at an address: an address
- * whose note is gone in one version and different in the other is two entries,
- * and a page that carried one of them would lose the other.
+ * As much of a comparison as one page carries, cut at a place in the order: a
+ * place whose note is gone in one version and different in the other is two
+ * entries, and a page that carried one of them would lose the other.
  */
-function held(changes: readonly PublishedNoteChange[]): {
+function held(changes: readonly OrderedChange[]): {
   changes: PublishedNoteChange[];
   at?: string;
 } {
-  const taken: PublishedNoteChange[] = [];
+  const taken: OrderedChange[] = [];
   let spent = 0;
   for (let at = 0; at < changes.length; ) {
-    const address = changes[at].note.address;
+    const place = changes[at].ord;
     let next = at;
     let weight = 0;
-    while (next < changes.length && changes[next].note.address === address) {
-      weight += weigh(changes[next]);
+    while (next < changes.length && changes[next].ord === place) {
+      weight += weigh(changes[next].change);
       next += 1;
     }
     const past =
       spent + weight > PAGE_BUDGET ||
       taken.length + (next - at) > MAX_PUBLISHED_CHANGES_PER_PAGE;
     if (taken.length > 0 && past) {
-      return { changes: taken, at: changes[at - 1].note.address };
+      return {
+        changes: taken.map((one) => one.change),
+        at: taken[taken.length - 1].ord,
+      };
     }
     taken.push(...changes.slice(at, next));
     spent += weight;
     at = next;
   }
-  return { changes: taken };
+  return { changes: taken.map((one) => one.change) };
+}
+
+/** Where a listing resumes: the label the last one listed carries and the note
+ *  it is rooted at, which together are unique to it. */
+function resuming(did: DidSyr, last: Publication): PageMark {
+  return {
+    of: did,
+    ...(last.root_address === undefined ? {} : { at: last.root_address }),
+    root: last.root,
+  };
 }
 
 function published(
   row: Publication,
   version: PublicationVersion | undefined,
-  titles: ReadonlyMap<OwnedRef, string>,
+  labels: ReadonlyMap<OwnedRef, RootLabel>,
   notebooks: ReadonlyMap<OwnedRef, string>,
 ): PublishedPublication[] {
   if (version === undefined) return [];
   const ref = ownedRefFrom(version.id);
   const notebook = notebooks.get(graphRef(row.created_by, row.graph));
+  const label = labels.get(ref);
   return [
     {
       ref: ownedRefFrom(row.id),
-      root_address: row.root_address,
+      ...(label?.address === undefined ? {} : { root_address: label.address }),
       graph: row.graph,
       ...(notebook === undefined ? {} : { graph_title: notebook }),
-      title: titles.get(ref) ?? "",
+      title: label?.title ?? "",
       latest: publicationVersion(version),
     },
   ];
@@ -578,7 +621,11 @@ function sideOf(
   row: SnapshotNode,
   stacks: ReadonlyMap<OwnedRef, PublishedBlock[]>,
 ): SnapshotSide {
-  return { note: publishedNode(row), sections: stacks.get(row.source) ?? [] };
+  return {
+    ord: row.ord,
+    note: publishedNode(row),
+    sections: stacks.get(row.source) ?? [],
+  };
 }
 
 function publishedNode(row: SnapshotNode): PublishedNode {

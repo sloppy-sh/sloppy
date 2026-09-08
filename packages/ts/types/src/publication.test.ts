@@ -21,6 +21,7 @@ function snapshotNode(over: Record<string, unknown> = {}) {
     updated_at: "2026-01-01T00:00:00.000Z",
     version: `${AUTHOR}/${VERSION}`,
     source: `${AUTHOR}/${NOTE}`,
+    ord: "00000003",
     address: "1a",
     node: {
       address: "1a",
@@ -46,6 +47,25 @@ describe("a note a version froze", () => {
     expect(() => parseSnapshotNode(snapshotNode({ address: "1b" }))).toThrow();
   });
 
+  // A note its author gave no number publishes like any other, and the place
+  // the version gives it is what a reader is served it by.
+  it("is read where neither the row nor the node it carries has an address", () => {
+    const held = parseSnapshotNode(
+      snapshotNode({
+        address: undefined,
+        node: { ...snapshotNode().node, address: undefined },
+      }),
+    );
+    expect(held.address).toBeUndefined();
+    expect(held.ord).toBe("00000003");
+  });
+
+  it("is refused where it is filed with no address and addressed with one", () => {
+    expect(() =>
+      parseSnapshotNode(snapshotNode({ address: undefined })),
+    ).toThrow();
+  });
+
   it("is refused where its version belongs to somebody else", () => {
     expect(() =>
       parseSnapshotNode(snapshotNode({ version: `${STRANGER}/${VERSION}` })),
@@ -65,6 +85,18 @@ describe("a publication", () => {
     });
     expect(row.comments).toBe(DEFAULT_COMMENT_ACCESS);
     expect(row.comments).toBe("anyone");
+  });
+
+  it("is rooted at a branch its author gave no number", () => {
+    const row = PublicationSchema.parse({
+      id: new RecordId("publication", { created_by: AUTHOR, id: VERSION }),
+      created_by: AUTHOR,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      root: `${AUTHOR}/${NOTE}`,
+    });
+    expect(row.root_address).toBeUndefined();
+    expect(row.root).toBe(`${AUTHOR}/${NOTE}`);
   });
 });
 

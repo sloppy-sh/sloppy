@@ -93,6 +93,12 @@ const ID = {
   narrow: ulid("B"),
   wideVersion: ulid("C"),
   narrowVersion: ulid("D"),
+  unnumbered: ulid("E"),
+  unnumberedVersion: ulid("F"),
+  loose: ulid("G"),
+  looseUnder: ulid("H"),
+  looseBeside: ulid("J"),
+  looseSection: ulid("K"),
 };
 
 /** Which note this fixture puts at an address, so a parent can be referenced
@@ -473,6 +479,61 @@ describe("holding a region of somebody else's graph", () => {
       (await heldIn(region, "?max_depth=1")).map((n) => n.address),
     ).toEqual(["1a"]);
     expect((await heldIn(region)).map((n) => n.address)).toEqual(["1a", "1a1"]);
+  });
+
+  // Nothing on the wire places a region its author gave no address, so the copy
+  // reads as a branch of theirs and how deep a reader may read counts from
+  // there — the genealogy the page carries, not a label it does not.
+  scenario("holds a region its author gave no address", async () => {
+    const UNNUMBERED = {
+      publication: ref(ID.unnumbered),
+      version: {
+        ref: ref(ID.unnumberedVersion),
+        sequence: 1,
+        published_at: "2026-02-01T00:00:00.000Z",
+      },
+    };
+    const loose = (local: string, over: Partial<PublishedNode> = {}) => ({
+      ref: ref(local),
+      origin: ref(ID.loose),
+      title: `Note ${local}`,
+      tags: [],
+      links: [],
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      ...over,
+    });
+    serves({
+      ...UNNUMBERED,
+      root: ref(ID.loose),
+      comments: "anyone",
+      nodes: [
+        loose(ID.loose),
+        loose(ID.looseUnder, { address: "7", parent: ref(ID.loose) }),
+        loose(ID.looseBeside, { parent: ref(ID.loose) }),
+      ],
+      blocks: [section(ID.looseSection, ID.looseUnder, "a0")],
+    });
+
+    const region = (await ok("POST", "/pulls", {
+      publication: UNNUMBERED.publication,
+      source_url: peerOrigin,
+    })) as PullView;
+    expect(region.root_address).toBeUndefined();
+
+    const held = await heldIn(region);
+    expect(new Map(held.map((node) => [node.ref, node.depth]))).toEqual(
+      new Map([
+        [ref(ID.loose), 1],
+        [ref(ID.looseUnder), 2],
+        [ref(ID.looseBeside), 2],
+      ]),
+    );
+    expect((await heldIn(region, "?max_depth=1")).map((n) => n.ref)).toEqual([
+      ref(ID.loose),
+    ]);
+
+    await ok("DELETE", `/pulls/${at(region.ref)}`);
   });
 
   scenario("shares the notes two regions both serve", async () => {

@@ -29,8 +29,9 @@ export interface HeldRegion extends Peer {
 	/** The publication it is a copy of, which is what a second copy of it would
 	 *  refresh rather than grow beside. */
 	publication: OwnedRef;
-	/** The address the region is rooted at, which is what a peer cites. */
-	address: Address;
+	/** The address the region is rooted at, which is what a peer cites. Absent
+	 *  where its author gave the branch none. */
+	address?: Address;
 	/** The version of it the reader holds. */
 	version: PublishedVersion;
 	/** When the copy was last read from its author. */

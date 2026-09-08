@@ -12,15 +12,20 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 
 /**
  * Widening the address scope from the author to one of their graphs, on a store
- * that already holds notes. Every note keeps the address, the ref and the
- * timestamps it had; it gains the graph its author started with.
- * docs/ARCHITECTURE.md § "The genealogy and the address" says why the column is
- * filled rather than its absence read as the home graph.
+ * that already holds notes, and giving every published note the key its version
+ * is now paged on. A note keeps the address, the ref and the timestamps it had;
+ * it gains the graph its author started with. docs/ARCHITECTURE.md § "The
+ * genealogy and the address" says why the graph column is filled rather than
+ * its absence read as the home graph, and § "Publishing" what `ord` is.
  *
- * Gated on the index it replaces rather than on the rows, so a store that has
- * migrated does not scan the table again and one created after this never scans
- * it at all. The fill runs BEFORE the two columns are defined below, which is
- * the only order in which it is allowed to.
+ * A version written before this could hold no note without an address, so its
+ * address is the key it already paged on and filling `ord` from it serves those
+ * versions in exactly the order they were being served in.
+ *
+ * Each is gated on the index it replaces rather than on the rows, so a store
+ * that has migrated does not scan the table again and one created after this
+ * never scans it at all. The fills run BEFORE the columns are defined below,
+ * which is the only order in which they are allowed to.
  */
 const MIGRATIONS = `
   LET $node_indexes = (INFO FOR TABLE node).indexes;
@@ -36,6 +41,12 @@ const MIGRATIONS = `
       SET source_graph = string::concat(source_did, "/${HOME_GRAPH_ULID}")
       WHERE source_graph = NONE;
     REMOVE INDEX IF EXISTS pulled_node_owner_author_address ON pulled_node;
+  };
+
+  LET $snapshot_indexes = (INFO FOR TABLE snapshot_node).indexes;
+  IF $snapshot_indexes.snapshot_node_owner_version_address != NONE {
+    UPDATE snapshot_node SET ord = address WHERE ord = NONE;
+    REMOVE INDEX IF EXISTS snapshot_node_owner_version_address ON snapshot_node;
   };
 `;
 
@@ -156,17 +167,25 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS pull ON pull_member TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source ON pull_member TYPE string READONLY;
 
-  -- What a publication is of, and which version each copy belongs to. All
-  -- immutable: a publication that changed its root, or a copy that changed its
-  -- version, would silently become a snapshot of something else — and a peer is
-  -- reading it.
+  -- What a publication is of, and which version each copy belongs to.
+  -- Immutable, but for the label below: a publication that changed its root, or
+  -- a copy that changed its version, would silently become a snapshot of
+  -- something else — and a peer is reading it.
   DEFINE FIELD IF NOT EXISTS root ON publication TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS root_address ON publication TYPE string READONLY;
+  -- option, and writable, for the reason node.address is: a branch its author
+  -- gave no number publishes like any other, and the label they cite one by is
+  -- theirs to change. What the publication IS stays the note above.
+  DEFINE FIELD OVERWRITE root_address ON publication TYPE option<string>;
   DEFINE FIELD IF NOT EXISTS publication ON publication_version TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS sequence ON publication_version TYPE int ASSERT $value > 0 READONLY;
   DEFINE FIELD IF NOT EXISTS version ON snapshot_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source ON snapshot_node TYPE string READONLY;
-  DEFINE FIELD IF NOT EXISTS address ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD OVERWRITE address ON snapshot_node TYPE option<string> READONLY;
+  -- Where the note sits in the version's walk of the branch, and what the
+  -- version's pages are ordered and cursored on. Required, so that order is
+  -- total: an absent key would leave two notes of one version indistinguishable
+  -- to a cursor, and the UNIQUE index below would not constrain either.
+  DEFINE FIELD IF NOT EXISTS ord ON snapshot_node TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS version ON snapshot_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS source ON snapshot_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS node ON snapshot_block TYPE string READONLY;
@@ -287,9 +306,9 @@ ${MIGRATIONS}
   -- in the same moment cannot share a place in the history.
   DEFINE INDEX IF NOT EXISTS publication_version_owner_publication_sequence ON publication_version FIELDS created_by, publication, sequence UNIQUE;
 
-  -- The address protocol inside one version: one note per address, which is
-  -- also the order a version is served and paged in, parents before children.
-  DEFINE INDEX IF NOT EXISTS snapshot_node_owner_version_address ON snapshot_node FIELDS created_by, version, address UNIQUE;
+  -- The order a version is served and paged in, parents before children. One
+  -- note per key, so it is a cursor as well as an ordering.
+  DEFINE INDEX IF NOT EXISTS snapshot_node_owner_version_ord ON snapshot_node FIELDS created_by, version, ord UNIQUE;
   -- One copy of a note per version, and the seek a difference between two
   -- versions makes over and over.
   DEFINE INDEX IF NOT EXISTS snapshot_node_owner_version_source ON snapshot_node FIELDS created_by, version, source UNIQUE;

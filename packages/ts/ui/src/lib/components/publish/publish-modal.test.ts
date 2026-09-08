@@ -393,6 +393,8 @@ describe('what a reader has to be given', () => {
 
 		expect(selectable()).toEqual(['https://sloppy.sh/n/1', AUTHOR]);
 		expect(document.body.textContent).not.toContain('undefined');
+		// Said as what it is, so nobody reads a link as the number to cite.
+		expect(document.body.textContent).toContain('A link to this branch');
 	});
 
 	it('leaves the branch out entirely where it has neither', () => {

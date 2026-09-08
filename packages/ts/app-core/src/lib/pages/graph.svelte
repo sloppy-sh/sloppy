@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { Address, OwnedRef } from '@sloppy/types';
+	import type { OwnedRef } from '@sloppy/types';
 	import { SvelteSet } from 'svelte/reactivity';
 
 	// Outside the component: the nav pill's destinations are real navigations, so
@@ -73,6 +73,7 @@
 	} from '@sloppy/types';
 	import {
 		AppearanceModal,
+		branchesCarrying,
 		CanvasInk,
 		CanvasMenu,
 		ChosenBar,
@@ -85,6 +86,7 @@
 		GraphSurface,
 		GroundChoice,
 		HeldNote,
+		namedBranches,
 		nameOr,
 		NotePreview,
 		overlay,
@@ -456,29 +458,23 @@
 	const keepsTerms = $derived(chosenChains.some((chain) => chain.comments !== 'anyone'));
 	/** Branches rooted above the notes going out that already carry them, which
 	 *  a publish here puts out a second time on terms of its own. */
-	const carriedAbove = $derived.by(() => {
-		const held: { address: Address; notes: number }[] = [];
-		for (const note of goingOut) {
-			if (publications.at(note) !== undefined) continue;
-			const above = publications.above(note)?.root_address;
-			if (above === undefined) continue;
-			const standing = held.find((one) => one.address === above);
-			if (standing) standing.notes += 1;
-			else held.push({ address: above, notes: 1 });
-		}
-		return held;
-	});
+	const carriedAbove = $derived(
+		branchesCarrying(
+			goingOut
+				.filter((note) => publications.at(note) === undefined)
+				.map((note) => publications.above(note))
+				.filter((above) => above !== undefined)
+		)
+	);
 	/** Branches under the notes going out that were published inviting fewer
 	 *  people to answer, whose notes a publish here carries on its own terms. */
-	const narrowerUnderChosen = $derived([
-		...new Set(
+	const narrowerUnderChosen = $derived(
+		namedBranches(
 			goingOut.flatMap((note) =>
-				publications
-					.narrowerUnder(note, publications.at(note)?.comments ?? 'anyone')
-					.map((under) => under.root_address)
+				publications.narrowerUnder(note, publications.at(note)?.comments ?? 'anyone')
 			)
 		)
-	]);
+	);
 	/** What the publishing sheet says went wrong: the last act's refusal, or that
 	 *  nothing could be read about what is already published. */
 	const publishRefusal = $derived(
@@ -1922,7 +1918,9 @@
 				{:else if foreign}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
-							<span class="address">{foreign.root_address}</span>
+							{#if foreign.root_address !== undefined}
+								<span class="address">{foreign.root_address}</span>
+							{/if}
 							<span>{nameOr(regionAuthor)}</span>
 							{#if foreign.graph_title}
 								<span class="text-muted-foreground">· {foreign.graph_title}</span>

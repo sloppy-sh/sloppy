@@ -28,11 +28,21 @@ import { DbService } from "../db/db.service";
  *  run of these rather than one statement the length of somebody's graph. */
 const PER_STATEMENT = 500;
 
+/** How a version names the branch it is of, as its own copy of the root note
+ *  has it. `address` is absent where its author gave the branch no number. */
+export interface RootLabel {
+  title: string;
+  address?: Address;
+}
+
 /** One note as a version filed it, read for comparison rather than for
  *  serving. */
 export interface FiledNote {
   source: OwnedRef;
-  address: Address;
+  /** Where it sits in the version's walk of the branch, which is what a read of
+   *  the version resumes after. */
+  ord: string;
+  address?: Address;
   title: string;
   tags: string[];
 }
@@ -57,8 +67,8 @@ export class PublicationRepository {
     return rows[0] === undefined ? null : PublicationSchema.parse(rows[0]);
   }
 
-  /** Everything the caller publishes, in address order. Their own listing, so
-   *  it is not paged: a person has one publication per branch they published. */
+  /** Everything the caller publishes. Their own listing, so it is not paged: a
+   *  person has one publication per branch they published. */
   async listOwn(did: string): Promise<Publication[]> {
     const [rows] = await this.query(
       "SELECT * FROM publication WHERE created_by = $did ORDER BY root_address",
@@ -81,19 +91,34 @@ export class PublicationRepository {
   }
 
   /**
-   * One page of what an identity publishes, in address order — which is unique
-   * per owner, so it is also a cursor.
+   * One page of what an identity publishes, in the order a run reads: the
+   * branches carrying a label first, by label, then the rest by the note each
+   * is rooted at. That note settles the order where two carry none, and the
+   * pair is the cursor — a label alone is not, now that a person may publish as
+   * many unnumbered branches as they like.
    */
   async page(
     did: string,
-    after: Address | undefined,
+    after: { address?: Address; root?: OwnedRef } | undefined,
     limit: number,
   ): Promise<Publication[]> {
-    const from = after === undefined ? "" : " AND root_address > $after";
+    const from =
+      after === undefined
+        ? ""
+        : after.root === undefined
+          ? // A cursor minted before a listing carried the note as well, which
+            // was one publication per address and pages on that.
+            ` AND (root_address > $after OR root_address = NONE)`
+          : after.address === undefined
+            ? " AND root_address = NONE AND root > $afterRoot"
+            : ` AND (root_address > $after
+                 OR (root_address = $after AND root > $afterRoot)
+                 OR root_address = NONE)`;
     const [rows] = await this.query(
-      `SELECT * FROM publication WHERE created_by = $did${from}
-         ORDER BY root_address LIMIT $limit`,
-      { did, after, limit },
+      `SELECT *, root_address = NONE AS unnumbered FROM publication
+         WHERE created_by = $did${from}
+         ORDER BY unnumbered, root_address, root LIMIT $limit`,
+      { did, after: after?.address, afterRoot: after?.root, limit },
     );
     return rows.map((row) => PublicationSchema.parse(row));
   }
@@ -110,21 +135,27 @@ export class PublicationRepository {
     return PublicationSchema.parse(rows[0]);
   }
 
-  /** Where the author's identity answered from, as of this publish —
-   *  `Publication.identity_store` says what it is read for. */
-  async setIdentityStore(
+  /**
+   * What a publish restates about the branch it is of: where the author's
+   * identity answered from — `Publication.identity_store` says what that is
+   * read for — and the label the root note carries now, absent where they have
+   * taken it off.
+   */
+  async restate(
     did: string,
     ref: OwnedRef,
-    identityStore: string,
+    now: { identityStore: string; address: Address | undefined },
     at: string,
   ): Promise<void> {
     await this.query(
-      `UPDATE $id SET identity_store = $identityStore, updated_at = $at
+      `UPDATE $id SET identity_store = $identityStore, root_address = $address,
+         updated_at = $at
          WHERE created_by = $did RETURN NONE`,
       {
         id: recordIdFromOwnedRef("publication", ref),
         did,
-        identityStore,
+        identityStore: now.identityStore,
+        address: now.address,
         at,
       },
     );
@@ -281,19 +312,19 @@ export class PublicationRepository {
     });
   }
 
-  /** One run of a version's notes in address order — parents ahead of children,
-   *  because a parent's address is a prefix of its child's. */
+  /** One run of a version's notes in the order it was written down — parents
+   *  ahead of the notes that spring from them. */
   async nodesFrom(
     did: string,
     version: OwnedRef,
-    after: Address | undefined,
+    after: string | undefined,
     limit: number,
   ): Promise<SnapshotNode[]> {
-    const from = after === undefined ? "" : " AND address > $after";
+    const from = after === undefined ? "" : " AND ord > $after";
     const [rows] = await this.query(
       `SELECT * FROM snapshot_node
          WHERE created_by = $did AND version = $version${from}
-         ORDER BY address LIMIT $limit`,
+         ORDER BY ord LIMIT $limit`,
       { did, version, after, limit },
     );
     return rows.map(parseSnapshotNode);
@@ -308,15 +339,15 @@ export class PublicationRepository {
   async notesIn(
     did: string,
     version: OwnedRef,
-    after: Address | undefined,
+    after: string | undefined,
     limit: number,
   ): Promise<FiledNote[]> {
-    const from = after === undefined ? "" : " AND address > $after";
+    const from = after === undefined ? "" : " AND ord > $after";
     const [rows] = await this.query<FiledNote>(
-      `SELECT source, address, node.title AS title, node.tags AS tags
+      `SELECT source, ord, address, node.title AS title, node.tags AS tags
          FROM snapshot_node
          WHERE created_by = $did AND version = $version${from}
-         ORDER BY address LIMIT $limit`,
+         ORDER BY ord LIMIT $limit`,
       { did, version, after, limit },
     );
     return rows;
@@ -342,15 +373,17 @@ export class PublicationRepository {
     return found;
   }
 
+  /** The note a version has at one place in its walk — where a read resumes
+   *  inside a stack that ran past a page. */
   async nodeAt(
     did: string,
     version: OwnedRef,
-    address: Address,
+    ord: string,
   ): Promise<SnapshotNode | null> {
     const [rows] = await this.query(
       `SELECT * FROM snapshot_node
-         WHERE created_by = $did AND version = $version AND address = $address`,
-      { did, version, address },
+         WHERE created_by = $did AND version = $version AND ord = $ord`,
+      { did, version, ord },
     );
     return rows[0] === undefined ? null : parseSnapshotNode(rows[0]);
   }
@@ -392,35 +425,39 @@ export class PublicationRepository {
     return rows.map((row) => SnapshotBlockSchema.parse(row));
   }
 
-  /** The title each of these versions publishes under, which is the title of
-   *  the note at the address its publication is rooted at. */
-  async rootTitles(
+  /** What each of these versions publishes under: the title and the label its
+   *  own copy of the note the publication is rooted at was frozen with. */
+  async rootLabels(
     did: string,
-    of: readonly { version: OwnedRef; address: Address }[],
-  ): Promise<Map<OwnedRef, string>> {
-    const titles = new Map<OwnedRef, string>();
-    if (of.length === 0) return titles;
+    of: readonly { version: OwnedRef; root: OwnedRef }[],
+  ): Promise<Map<OwnedRef, RootLabel>> {
+    const labels = new Map<OwnedRef, RootLabel>();
+    if (of.length === 0) return labels;
     const [rows] = await this.query<{
       version: OwnedRef;
-      address: Address;
+      source: OwnedRef;
       title: string;
+      address?: Address;
     }>(
-      `SELECT version, address, node.title AS title FROM snapshot_node
+      `SELECT version, source, address, node.title AS title FROM snapshot_node
          WHERE created_by = $did AND version IN $versions
-           AND address IN $addresses`,
+           AND source IN $roots`,
       {
         did,
         versions: of.map((one) => one.version),
-        addresses: [...new Set(of.map((one) => one.address))],
+        roots: [...new Set(of.map((one) => one.root))],
       },
     );
-    const wanted = new Map(of.map((one) => [one.version, one.address]));
+    const wanted = new Map(of.map((one) => [one.version, one.root]));
     for (const row of rows) {
-      if (wanted.get(row.version) === row.address) {
-        titles.set(row.version, row.title);
+      if (wanted.get(row.version) === row.source) {
+        labels.set(row.version, {
+          title: row.title,
+          ...(row.address === undefined ? {} : { address: row.address }),
+        });
       }
     }
-    return titles;
+    return labels;
   }
 
   /** What the author calls each of those notebooks. A graph with no row here

@@ -154,11 +154,12 @@ the same millisecond still order the same way on every peer.
   "Several graphs on one canvas". Between the reader's and another author's, it is that a
   pulled region is drawn on its own, and § "Federating the graph" is where that rule is
   held.
-- **Publishing still asks for a number.** A reader cites a published branch by its root's
-  address and a version is read back in address order, so `PublicationService` refuses a
-  root that has none, and a branch holding a note that has none, naming the note to number.
-  That is a gap rather than a rule: the genealogy is enough to page a version by, and
-  `root_address` on the published wire shapes is what closing it turns optional.
+- **Publishing asks for nothing.** A version is written down in the genealogy's own walk —
+  each run in `orderSiblings` order, every note ahead of what springs from it — and
+  `snapshot_node.ord` is that place, which is what a version's pages are ordered and
+  cursored on. What a region IS, on the wire and in the store, is the note it is rooted at;
+  `root_address` beside it is the label a person cites and is absent for a branch nobody
+  numbered. § "Publishing" carries the rest.
 
 Determinism is a property test over generated operation sequences — writing, deleting and
 purging — in `@sloppy/types`' `address.test.ts`: two simulated peers applying identical
@@ -244,15 +245,12 @@ it now is, which is what a genealogy edge drawn from `parent` (`@sloppy/graph`'s
 already says. And `origin` and `depth` are the columns `node_owner_origin_depth` slices a
 tree by, so a move between trees rewrites both for every note beneath the one that moved.
 
-**Publishing still wants an address, and refuses plainly rather than half-doing it.** A
-region holding a note with none is refused, and so is one rooted at such a note: a version
-is paged in address order through `snapshot_node_owner_version_address`, and a publication
-is cited by its root's label, so `snapshot_node.address` and `publication.root_address`
-stay required while `PublishedNodeSchema.address` and `pulled_node.address` do not — a peer
-on a later build may hand us a region we cannot yet send, and holding it is the easy half.
-Closing it means paging a version in genealogy order on a cursor that exists for every
-note, which is a change to those two shapes and to the schema rather than to the routes
-above.
+**Publishing wants no address.** A branch rooted at a note nobody numbered publishes,
+pages, is pulled and is compared like any other, and so does one holding such a note:
+`snapshot_node.address` and `publication.root_address` are `option<string>`, and what
+orders and cursors a version is `snapshot_node.ord`, the place the genealogy's own walk
+gives each note. The label a person cites is carried beside the ref that identifies the
+region — never instead of it.
 
 ## syr integration
 
@@ -361,23 +359,34 @@ moved. Versions are appended and never edited: a peer is reading one.
 **A publication is addressed by its own ref, never by its root address.** An address is a
 human-readable label inside somebody's graph rather than a machine identifier, so
 `root_address` is something a publication CARRIES — shown wherever it helps a person
-navigate or cite — and `<did>/<ulid>` is what a route binds.
+navigate or cite, absent where its author gave the branch no number — and `<did>/<ulid>`
+is what a route binds. The note the region is rooted at rides beside it as `root`, which is
+what a run of pages is held to: a label neither identifies a region nor stays put, and a
+person who renumbers the note their branch is rooted at is cited by the new number from the
+next publish on while every version already published goes on saying what its own copy of
+that note says.
+
+**A version is written down in the genealogy's own walk**, each run in `orderSiblings`
+order and every note ahead of what springs from it. `snapshot_node.ord` is that place, and
+it is what the pages of a version are ordered and cursored on, so a reader never meets a
+note before the one it springs from and a branch nobody numbered pages like any other. The
+addresses in a version are labels it carries, and nothing reads a shape out of them.
 
 **The routes.** Four answer without a session, and they are the ones a peer's instance
 calls:
 
 - `GET /api/public/publications/{did}` lists what that identity publishes here — each
-  publication's ref, the address it is rooted at, the notebook that address is read in and
-  what the author calls it, the newest version's title, and that version — and nothing that
-  is not already public in it.
+  publication's ref, the address it is rooted at where its author gave it one, the notebook
+  that address is read in and what the author calls it, the newest version's title, and that
+  version — and nothing that is not already public in it.
 - `GET /api/public/publications/{did}/{id}` answers a page of a version: `?version=`
   names one, and absent is the newest when the first page is asked for. Every page after
   that answers at the version its cursor was minted against, so publishing again moves
   what a fresh read gets and never what a read already under way is part of.
 - `GET /api/public/publications/{did}/{id}/versions` answers the chain, newest first.
 - `GET /api/public/publications/{did}/{id}/changes?from=&to=` answers what the writing did
-  between those two versions, one entry per note and in the same address order a version's
-  own pages take.
+  between those two versions, one entry per note and in the same order a version's own pages
+  take.
 
 The first of those is the exposure publishing creates, and the copy at the moment of the
 decision has to be true to it: from the moment a subtree is published, anyone holding the
@@ -442,12 +451,12 @@ cursor is minted by the instance that served the page and handed back to it unto
 what it means is that instance's own business and no reader reads one; absent on the
 answer means there is no more. A version's pages are ordered so that every reference
 resolves in the page carrying it or in one already sent: notes go before sections, and
-notes go in **lexicographic** address order — the order the `address` column itself gives,
-which puts a note's parent ahead of it because a parent's address is a prefix of its
-child's. Lexicographic and not `compareAddresses`, which reads `1a2` before `1a10` and is
-what a surface sorts by when it shows a person a list: a server paging by one order and
-cursoring by the other skips notes across a page boundary, and nothing on the reading side
-would catch it. That is what makes the size bounds a defence rather
+notes go in the order `snapshot_node.ord` gives, which is the walk that version was written
+down in and puts a note's parent ahead of it. The key is compared as a plain string, on the
+server and in the cursor alike: a server paging by one order and cursoring by another skips
+notes across a page boundary, and nothing on the reading side would catch it. What a person
+reads a list in is `orderSiblings`, which is the run order the walk itself is built from.
+That is what makes the size bounds a defence rather
 than a ceiling a graph can hit: a branch of any size is read page by page, and what a
 per-page bound refuses is one answer too large to hold, never a subtree too large to
 publish.
@@ -455,17 +464,15 @@ publish.
 **The difference between two versions is computed where the versions are.** The instance
 holds every version and the reader holds none, so a phone asking what changed between two
 snapshots of a ten-thousand-note branch reads the difference rather than both sides of it:
-one entry per note — arrived, gone, or changed — in the same address order a version's own
-pages take, carrying both sides of the note and both sides of only the sections that
-differ, which is what a review-shaped diff needs and no more. A note that is gone carries
-no sections, what it said being in the version that still has it; where one address holds a
-different note in each version the reader is told both, one gone and one arrived.
-`PublishedNoteChange` in `@sloppy/types` is that shape and `publishedChangesReader` its
-boundary. It holds a changes page to ONE tree — every change in it has to spring from the
-same root — but not yet to the tree that was asked about, because `PublishedChangesPage`
-carries a root address and no root ref, and an address is a label the answer writes. A peer
-answering consistently about a branch nobody asked about is a gap in that wire shape, not
-in the reader. **The author's own instance answers it as a peer's does** — `/changes` above is
+one entry per note — arrived, gone, or changed — in the same order a version's own pages
+take, carrying both sides of the note and both sides of only the sections that differ,
+which is what a review-shaped diff needs and no more. A note that is gone carries no
+sections, what it said being in the version that still has it; where one place in the walk
+holds a different note in each version the reader is told both, one gone and one arrived. A
+note whose place moved between the two versions is read where the LATER version has it, so
+it is reported once however far the two are apart. `PublishedNoteChange` in `@sloppy/types`
+is that shape and `publishedChangesReader` its boundary, which holds a run of pages to one
+region by the `root` ref each carries. **The author's own instance answers it as a peer's does** — `/changes` above is
 public, so the surface a person reads it on asks over `GET /api/peers/changes` whether the
 publication is theirs or somebody else's, and one path serves both.
 
@@ -1192,7 +1199,8 @@ cannot follow.
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
   root          ref       the subtree it publishes, immutable
-  root_address  string    the label a person cites, immutable
+  root_address  string?   the label a person cites, restated by each publish;
+                          absent is a branch its author gave no number
   graph         ref?      the graph that label is read in, immutable; absent is home
   comments      string    who the author invites to answer it
 
@@ -1206,7 +1214,9 @@ snapshot_node:{ created_by: <did>, id: <ulid> }
   created_by    did       the author
   version       ref       the snapshot it belongs to, immutable
   source        ref       the note it was copied from, immutable
-  address       string    where its author addressed it, immutable
+  ord           string    its place in the walk this version was written in, and
+                          what the version's pages are ordered and cursored on
+  address       string?   the label its author gave it, immutable; absent is none
   node          object    the published node, in the shape a peer receives
 
 snapshot_block:{ created_by: <did>, id: <ulid> }
@@ -1231,7 +1241,8 @@ pull:{ created_by: <did>, id: <ulid> }
   created_by    did       the reader
   publication   ref       the region, as its author's instance names it, immutable
   version       object    which snapshot this copy is of
-  root_address  string    the label the answer carried
+  root_address  string?   the label the answer carried; absent is a branch its
+                          author gave no number
   graph         ref?      the AUTHOR's graph the region is in; absent is their home one
   graph_title   string?   what the author calls it; absent is a name that did not travel
   comments      string    who the author invites, as of the last refresh

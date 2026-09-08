@@ -52,6 +52,8 @@
 		LookControls,
 		MoveSheet,
 		nameOf,
+		namedBranch,
+		namedBranches,
 		NoteMenu,
 		PublishModal,
 		ResponsiveModal,
@@ -702,9 +704,7 @@
 	const carriedBy = $derived(node && own ? publications.above(node) : undefined);
 	const narrower = $derived(
 		node && own
-			? publications
-					.narrowerUnder(node, publication?.comments ?? 'anyone')
-					.map((under) => under.root_address)
+			? namedBranches(publications.narrowerUnder(node, publication?.comments ?? 'anyone'))
 			: []
 	);
 	const branch = $derived.by(() => {
@@ -1145,6 +1145,13 @@
 	// whether anybody may answer it, so it is read before either is drawn.
 	$effect(() => {
 		if (session.signedIn) void publications.load().catch(() => {});
+	});
+
+	// Which publication carries this note is read off the notes it springs from,
+	// and a note opened by its own link arrives on its own.
+	$effect(() => {
+		const tree = node?.origin;
+		if (own && tree !== undefined) void nodes.load({ origin: tree }).catch(() => {});
 	});
 
 	$effect(() => {
@@ -1864,8 +1871,10 @@
 						<Globe class="size-3.5 shrink-0" />
 						{#if publication}
 							Published · version {publication.latest.sequence}
-						{:else if carriedBy}
+						{:else if carriedBy?.root_address !== undefined}
 							Published under <span class="address">{carriedBy.root_address}</span>
+						{:else if carriedBy}
+							Published under a branch above
 						{/if}
 					</button>
 				{/if}
@@ -2238,7 +2247,7 @@
 				link={citationUrl(ref)}
 				reader={readerNeeds}
 				published={branch}
-				carriedBy={carriedBy?.root_address ?? null}
+				carriedBy={carriedBy ? namedBranch(carriedBy) : null}
 				{narrower}
 				{changedSince}
 				answersReach={identity.kind !== 'local'}

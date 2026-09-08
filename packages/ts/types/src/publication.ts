@@ -31,8 +31,9 @@ import { TagsSchema } from "./tag.js";
  */
 export const PublicationSchema = OwnedEntitySchema.extend({
   root: OwnedRefSchema,
-  /** The address the root note sits at, so a listing needs no join. */
-  root_address: AddressSchema,
+  /** The address the root note sits at, so a listing needs no join. Absent is a
+   *  branch its author gave no number, which publishes like any other. */
+  root_address: AddressSchema.optional(),
   /** The graph that address is read in, beside it for the same reason and
    *  absent for the author's home graph. A region lies in one graph, because
    *  the branch it is rooted at does. */
@@ -124,7 +125,14 @@ export const SnapshotNodeSchema = OwnedEntitySchema.extend({
   version: OwnedRefSchema,
   /** The note as its author addresses it — the ref a peer receives. */
   source: OwnedRefSchema,
-  address: AddressSchema,
+  address: AddressSchema.optional(),
+  /**
+   * Where the note sits in the version's own walk of the branch, and the key
+   * every page and cursor of that version is taken on. Compared as a string it
+   * is the order a person reads the branch in, and a note's parent always
+   * precedes it — so nothing arrives before the note it springs from.
+   */
+  ord: z.string().min(1),
   node: PublishedNodeSchema.omit({ ref: true }),
 });
 export type SnapshotNode = z.infer<typeof SnapshotNodeSchema>;
@@ -139,7 +147,7 @@ export function parseSnapshotNode(row: unknown): SnapshotNode {
   const snapshot = SnapshotNodeSchema.parse(row);
   if (snapshot.address !== snapshot.node.address) {
     throw new Error(
-      `Published note ${snapshot.source} is filed at ${snapshot.address} and addressed ${snapshot.node.address}`,
+      `Published note ${snapshot.source} is filed at ${filed(snapshot.address)} and addressed ${filed(snapshot.node.address)}`,
     );
   }
   const { did } = splitOwnedRef(snapshot.source);
@@ -149,6 +157,10 @@ export function parseSnapshotNode(row: unknown): SnapshotNode {
     );
   }
   return snapshot;
+}
+
+function filed(address: Address | undefined): string {
+  return address ?? "no number";
 }
 
 /**

@@ -5,7 +5,7 @@ import { comparableTo, noteChanges, type SnapshotSide } from "./difference";
 const AVA = "did:syr:z6MkuVRBZ1913zrZgc4nnA3Zs9MEEf84VUN8kgTD6QoqNiu9";
 const at = (tag: string) => `${AVA}/${tag.padEnd(26, "0")}`;
 
-function note(of: Partial<PublishedNode> & { address: string }): PublishedNode {
+function note(of: Partial<PublishedNode> = {}): PublishedNode {
   return {
     ref: at("NTE"),
     origin: at("RT"),
@@ -31,13 +31,21 @@ function section(of: Partial<PublishedBlock> = {}): PublishedBlock {
 const side = (
   held: PublishedNode,
   sections: PublishedBlock[] = [],
-): SnapshotSide => ({ note: held, sections });
+  ord = "00000001",
+): SnapshotSide => ({ ord, note: held, sections });
+
+/** The changes themselves, which is what a page carries; where each is cut is
+ *  the caller's business. */
+const changesBetween = (
+  from: readonly SnapshotSide[],
+  to: readonly SnapshotSide[],
+) => noteChanges(from, to).map((one) => one.change);
 
 describe("what became of a note between two versions", () => {
   it("says nothing about one neither version touched", () => {
     const held = note({ address: "1a" });
     expect(
-      noteChanges([side(held, [section()])], [side(held, [section()])]),
+      changesBetween([side(held, [section()])], [side(held, [section()])]),
     ).toEqual([]);
   });
 
@@ -46,7 +54,7 @@ describe("what became of a note between two versions", () => {
   it("says nothing about one whose writing did not move", () => {
     const held = note({ address: "1a" });
     expect(
-      noteChanges(
+      changesBetween(
         [side(held, [section()])],
         [
           side({ ...held, updated_at: "2026-06-01T00:00:00.000Z" }, [
@@ -59,7 +67,7 @@ describe("what became of a note between two versions", () => {
 
   it("reports a note that arrived, with its whole stack added", () => {
     const held = note({ address: "1a1" });
-    expect(noteChanges([], [side(held, [section()])])).toEqual([
+    expect(changesBetween([], [side(held, [section()])])).toEqual([
       {
         change: "added",
         note: held,
@@ -72,7 +80,7 @@ describe("what became of a note between two versions", () => {
   // is a read a reader makes when it wants one.
   it("reports a note that is gone without its sections", () => {
     const held = note({ address: "1a1" });
-    expect(noteChanges([side(held, [section()])], [])).toEqual([
+    expect(changesBetween([side(held, [section()])], [])).toEqual([
       { change: "removed", note: held },
     ]);
   });
@@ -80,7 +88,7 @@ describe("what became of a note between two versions", () => {
   it("reports a retitled note with both sides of it", () => {
     const before = note({ address: "1a", title: "First" });
     const after = note({ address: "1a", title: "Second" });
-    expect(noteChanges([side(before)], [side(after)])).toEqual([
+    expect(changesBetween([side(before)], [side(after)])).toEqual([
       { change: "changed", note: after, before, sections: [] },
     ]);
   });
@@ -89,7 +97,7 @@ describe("what became of a note between two versions", () => {
     const held = note({ address: "1a" });
     const kept = section({ ref: at("KEPT") });
     const rewritten = section({ ref: at("REWRTE"), ord: "a1" });
-    const changes = noteChanges(
+    const changes = changesBetween(
       [side(held, [kept, rewritten, section({ ref: at("GNE"), ord: "a2" })])],
       [
         side(held, [
@@ -117,16 +125,18 @@ describe("what became of a note between two versions", () => {
     const other = section({
       content: { type: "doc", content: [{ type: "p", attrs: { b: 2, a: 1 } }] },
     });
-    expect(noteChanges([side(held, [one])], [side(held, [other])])).toEqual([]);
+    expect(changesBetween([side(held, [one])], [side(held, [other])])).toEqual(
+      [],
+    );
   });
 
   // An author who deletes every child of a branch and writes a new first one
-  // hands out an address a reader is still holding.
-  it("reports one note gone and another arrived at one address", () => {
+  // hands the place a reader read one note at to another.
+  it("reports one note gone and another arrived at one place", () => {
     const before = note({ address: "1a1", ref: at("FRST") });
     const after = note({ address: "1a1", ref: at("SECND") });
     expect(
-      noteChanges([side(before)], [side(after)]).map((c) => c.change),
+      changesBetween([side(before)], [side(after)]).map((c) => c.change),
     ).toEqual(["removed", "added"]);
   });
 
@@ -135,20 +145,22 @@ describe("what became of a note between two versions", () => {
   it("reports a note its author moved as one note, at both addresses", () => {
     const before = note({ address: "1c", ref: at("CARRD") });
     const after = note({ address: "2c", ref: at("CARRD"), aliases: ["1c"] });
-    expect(noteChanges([side(before)], [side(after)])).toEqual([
+    expect(changesBetween([side(before)], [side(after)])).toEqual([
       { change: "changed", note: after, before, sections: [] },
     ]);
   });
 
-  it("walks both sides in address order", () => {
-    const changes = noteChanges(
-      [side(note({ address: "1a", ref: at("A") }))],
+  // A note nobody numbered is walked with the rest: what both sides are read in
+  // is the place each version gives a note, which never needed a label.
+  it("walks both sides in the order the versions read", () => {
+    const changes = changesBetween(
+      [side(note({ address: "1a", ref: at("A") }), [], "00000002")],
       [
-        side(note({ address: "1", ref: at("R") })),
-        side(note({ address: "1b", ref: at("B") })),
+        side(note({ address: "1", ref: at("R") }), [], "00000001"),
+        side(note({ title: "Unnumbered", ref: at("B") }), [], "00000003"),
       ],
     );
-    expect(changes.map((c) => c.note.address)).toEqual(["1", "1a", "1b"]);
+    expect(changes.map((c) => c.note.ref)).toEqual([at("R"), at("A"), at("B")]);
   });
 });
 

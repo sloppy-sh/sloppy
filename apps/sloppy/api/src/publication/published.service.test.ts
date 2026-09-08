@@ -32,6 +32,8 @@ const ref = (name: string): OwnedRef =>
   `${AVA}/${name.padEnd(26, "0")}` as OwnedRef;
 /** Fixed width, so two counts never pad into one reference. */
 const tag = (at: number) => String(at).padStart(6, "0");
+/** A place in a version's walk of its branch, as `snapshot.ts` writes one. */
+const place = (at: number) => String(at).padStart(8, "0");
 
 const PUBLICATION = ref("PB");
 const VERSION = ref("VR");
@@ -46,8 +48,7 @@ interface Snapshot {
 
 /**
  * A version of `notes` notes, each carrying `sections` sections, all springing
- * from one root. Addresses are strings to everything that reads them, so the
- * run is ordered here the way SurrealDB orders it.
+ * from one root, in the walk a publish would write them down in.
  */
 function version(of: { notes: number; sections: number }): Snapshot {
   const nodes: SnapshotNode[] = [];
@@ -55,13 +56,19 @@ function version(of: { notes: number; sections: number }): Snapshot {
   const root = ref("RT");
   const rootAddress = "1" as Address;
 
-  const note = (source: OwnedRef, address: Address, parent?: OwnedRef) =>
+  const note = (
+    source: OwnedRef,
+    address: Address,
+    at: number,
+    parent?: OwnedRef,
+  ) =>
     parseSnapshotNode({
       id: recordIdFromOwnedRef("snapshot_node", source),
       created_by: AVA,
       version: VERSION,
       source,
       address,
+      ord: place(at),
       node: {
         address,
         ...(parent === undefined ? {} : { parent }),
@@ -100,32 +107,42 @@ function version(of: { notes: number; sections: number }): Snapshot {
     }
   };
 
-  nodes.push(note(root, rootAddress));
+  nodes.push(note(root, rootAddress, 0));
   stack(root, 0);
   let address = childAddress(rootAddress);
   for (let at = 1; at < of.notes; at++) {
     const source = ref(`N${tag(at)}`);
-    nodes.push(note(source, address, root));
+    nodes.push(note(source, address, at, root));
     stack(source, at);
     address = siblingAddress(address);
   }
   return { nodes, blocks };
 }
 
-/** The same version with one note carried to another address, which is what a
- *  move leaves for a comparison to read. */
+/**
+ * The same version with one note carried to another address, and every note
+ * placed again — a note's place in the walk is where its author reads it, so
+ * re-addressing one moves it past the notes it now follows.
+ */
 function carried(held: Snapshot, from: Address, to: Address): Snapshot {
+  const moved = held.nodes.map((row) =>
+    row.address !== from
+      ? row
+      : parseSnapshotNode({
+          ...row,
+          address: to,
+          node: { ...row.node, address: to, aliases: [from] },
+        }),
+  );
+  const walk = [
+    ...moved.filter((row) => row.node.parent === undefined),
+    ...moved
+      .filter((row) => row.node.parent !== undefined)
+      .sort((a, b) => (String(a.address) < String(b.address) ? -1 : 1)),
+  ];
   return {
     ...held,
-    nodes: held.nodes.map((row) =>
-      row.address !== from
-        ? row
-        : parseSnapshotNode({
-            ...row,
-            address: to,
-            node: { ...row.node, address: to, aliases: [from] },
-          }),
-    ),
+    nodes: walk.map((row, at) => parseSnapshotNode({ ...row, ord: place(at) })),
   };
 }
 
@@ -137,7 +154,7 @@ interface Held {
 
 function hold(held: Snapshot): Held {
   const ordered = [...held.nodes].sort((a, b) =>
-    a.address < b.address ? -1 : a.address > b.address ? 1 : 0,
+    a.ord < b.ord ? -1 : a.ord > b.ord ? 1 : 0,
   );
   const stacks = new Map<OwnedRef, SnapshotBlock[]>();
   for (const block of held.blocks) {
@@ -153,7 +170,8 @@ function hold(held: Snapshot): Held {
 
 /**
  * The reads `PublishedService` makes, answered from memory in the repository's
- * own orders: notes by address, sections by note reference and then by `ord`.
+ * own orders: notes by the place a version gives them, sections by note
+ * reference and then by `ord`.
  * A read past its limit is TRUNCATED rather than refused, which is the shape
  * the service has to notice.
  *
@@ -202,17 +220,15 @@ function repositoryOf(first: Snapshot): {
     async nodesFrom(
       _did: string,
       version: OwnedRef,
-      after: Address | undefined,
+      after: string | undefined,
       limit: number,
     ) {
       return rows(version)
-        .ordered.filter((row) => after === undefined || row.address > after)
+        .ordered.filter((row) => after === undefined || row.ord > after)
         .slice(0, limit);
     },
-    async nodeAt(_did: string, version: OwnedRef, address: Address) {
-      return (
-        rows(version).ordered.find((row) => row.address === address) ?? null
-      );
+    async nodeAt(_did: string, version: OwnedRef, ord: string) {
+      return rows(version).ordered.find((row) => row.ord === ord) ?? null;
     },
     async nodesBySource(
       _did: string,
@@ -353,13 +369,16 @@ describe("serving one version a page at a time", () => {
 });
 
 describe("comparing two versions a note moved between", () => {
-  // A comparison reads one window of the address order at a time, and a note
-  // its author moved is at two addresses that can be windows apart. A reader
+  // A comparison reads one window of a version's order at a time, and a note
+  // its author re-addressed is read at two places that can be windows apart. A
+  // reader
   // refuses a run naming one note twice, so the pair has to be reported once
   // however far the move carried it.
   it("reports one note moved, however far apart the two addresses fall", async () => {
     const first = version({ notes: 150, sections: 1 });
-    const order = first.nodes.map((row) => row.address).sort();
+    const order = first.nodes
+      .flatMap((row) => (row.address === undefined ? [] : [row.address]))
+      .sort();
     const early = order[1];
     const late = order[order.length - 1];
     const store = repositoryOf(first);

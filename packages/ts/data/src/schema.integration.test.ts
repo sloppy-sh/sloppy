@@ -778,6 +778,67 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     }
   });
 
+  // What a listing pages on. An address alone stopped being a cursor when a
+  // person could publish two branches they never numbered, so the pair the
+  // listing orders by is the pair it resumes after — and NONE sorting below
+  // every string is what the two halves of that WHERE rest on.
+  it("pages an owner's publications by label and by the note under it", async () => {
+    const rooted = (localId: string, root: string, address?: string) => ({
+      id: avaId("publication", localId),
+      created_by: AVA,
+      root: OwnedRefSchema.parse(`${AVA}/${root}`),
+      ...(address === undefined ? {} : { root_address: address }),
+      comments: "anyone",
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    });
+    const rows = [
+      rooted("01JPGPBCA000000000000000AA", "01JPGRTA0000000000000000AA", "2"),
+      rooted("01JPGPBCB000000000000000AA", "01JPGRTB0000000000000000AA"),
+      rooted("01JPGPBCC000000000000000AA", "01JPGRTC0000000000000000AA", "1"),
+      rooted("01JPGPBCD000000000000000AA", "01JPGRTD0000000000000000AA"),
+    ];
+    for (const row of rows) await db.create(row.id).content(row);
+
+    const PAGE = (from: string) =>
+      `SELECT root, root_address FROM publication
+         WHERE created_by = $did${from}
+         ORDER BY root_address, root LIMIT 1`;
+    type Row = { root: string; root_address?: string };
+    const one = async (from: string, vars: Record<string, unknown> = {}) => {
+      const [answer] = await db.query<[Row[]]>(PAGE(from), {
+        did: AVA,
+        ...vars,
+      });
+      return answer[0];
+    };
+
+    const walked: Row[] = [];
+    let at = await one("");
+    while (at !== undefined) {
+      walked.push(at);
+      at =
+        at.root_address === undefined
+          ? await one(" AND (root_address != NONE OR root > $afterRoot)", {
+              afterRoot: at.root,
+            })
+          : await one(
+              " AND (root_address > $after OR (root_address = $after AND root > $afterRoot))",
+              { after: at.root_address, afterRoot: at.root },
+            );
+    }
+
+    // The ones nobody numbered first, in their own order, then the labelled
+    // ones by label: one page each, and every row once.
+    expect(walked.map((row) => row.root_address)).toEqual([
+      undefined,
+      undefined,
+      "1",
+      "2",
+    ]);
+    expect(new Set(walked.map((row) => row.root)).size).toBe(4);
+  });
+
   it("holds one copy of a note per version, and the same note in two", async () => {
     // A version is a snapshot: the note is copied into each one, so the address
     // protocol holds inside a version and says nothing across two.
@@ -786,16 +847,18 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     const copy = (
       localId: string,
       at: string,
-      address: string,
+      ord: string,
+      address: string | undefined,
       source = note,
     ) => ({
       id: avaId("snapshot_node", localId),
       created_by: AVA,
       version: at,
       source,
-      address,
+      ord,
+      ...(address === undefined ? {} : { address }),
       node: {
-        address,
+        ...(address === undefined ? {} : { address }),
         origin: note,
         title: "As it stood",
         tags: [],
@@ -807,23 +870,52 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       updated_at: "2026-02-01T00:00:00.000Z",
     });
 
-    const inFirst = copy("01JPXSNAPA00000000000000AA", version(1), "1a");
+    const inFirst = copy(
+      "01JPXSNAPA00000000000000AA",
+      version(1),
+      "00000000",
+      "1a",
+    );
     await db.create(inFirst.id).content(inFirst);
-    const inSecond = copy("01JPXSNAPB00000000000000AA", version(2), "1a");
+    const inSecond = copy(
+      "01JPXSNAPB00000000000000AA",
+      version(2),
+      "00000000",
+      "1a",
+    );
     await expect(
       db.create(inSecond.id).content(inSecond),
     ).resolves.toBeDefined();
 
+    // A version reads in one order, so two notes cannot share a place in it.
     const twice = copy(
       "01JPXSNAPC00000000000000AA",
       version(1),
-      "1a",
+      "00000000",
+      "1b",
       `${AVA}/other`,
     );
     await expect(db.create(twice.id).content(twice)).rejects.toThrow();
 
-    const again = copy("01JPXSNAPD00000000000000AA", version(1), "1b");
+    const again = copy(
+      "01JPXSNAPD00000000000000AA",
+      version(1),
+      "00000001",
+      "1b",
+    );
     await expect(db.create(again.id).content(again)).rejects.toThrow();
+
+    // A note its author gave no number is copied into a version like any other.
+    const unnumbered = copy(
+      "01JPXSNAPE00000000000000AA",
+      version(1),
+      "00000001",
+      undefined,
+      `${AVA}/01JPXNOTEB00000000000000AA`,
+    );
+    await expect(
+      db.create(unnumbered.id).content(unnumbered),
+    ).resolves.toBeDefined();
 
     // Every version carrying one note, which is what `node.published` is
     // maintained from when a publication goes.
@@ -844,18 +936,19 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       version(2),
     ]);
 
-    // How a version is served: in address order, which is parents before
-    // children, and resumable from wherever the last page stopped.
-    const PAGE = `SELECT address FROM snapshot_node
-       WHERE created_by = $did AND version = $version AND address > $after
-       ORDER BY address LIMIT 1`;
+    // How a version is served: in the walk it was written down in, which is
+    // parents before children, and resumable from wherever the last page
+    // stopped.
+    const PAGE = `SELECT ord FROM snapshot_node
+       WHERE created_by = $did AND version = $version AND ord > $after
+       ORDER BY ord LIMIT 2`;
     const paging = { did: AVA, version: version(1), after: "" };
     const [paged] = await db.query(`${PAGE} EXPLAIN;`, paging);
     expect(JSON.stringify(paged)).toContain(
-      '"index":"snapshot_node_owner_version_address"',
+      '"index":"snapshot_node_owner_version_ord"',
     );
-    const [page] = await db.query<[{ address: string }[]]>(`${PAGE};`, paging);
-    expect(page.map((row) => row.address)).toEqual(["1a"]);
+    const [page] = await db.query<[{ ord: string }[]]>(`${PAGE};`, paging);
+    expect(page.map((row) => row.ord)).toEqual(["00000000", "00000001"]);
   });
 
   it("mints one public copy of an asset per publication, and holds both halves still", async () => {
@@ -1284,3 +1377,132 @@ describe.skipIf(!runs)("a store written before graphs existed", () => {
     expect(Object.keys(info.indexes)).toContain("node_owner_graph_address");
   });
 });
+
+// ---------------------------------------------------------------------------
+// A store holding versions published while every note in one had to carry an
+// address. A peer is reading those a page at a time, so each has to go on
+// paging in exactly the order it was already paging in.
+// ---------------------------------------------------------------------------
+
+/** The `snapshot_node` shape as it stood before a published note could go
+ *  unnumbered: enough of it to hold rows and to page them the old way. */
+const BEFORE_UNNUMBERED = `
+  DEFINE TABLE IF NOT EXISTS snapshot_node SCHEMALESS;
+  DEFINE FIELD IF NOT EXISTS created_by ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS version ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS source ON snapshot_node TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS address ON snapshot_node TYPE string READONLY;
+  DEFINE INDEX IF NOT EXISTS snapshot_node_owner_version_address ON snapshot_node FIELDS created_by, version, address UNIQUE;
+`;
+
+describe.skipIf(!runs)(
+  "a version published before a note could go unnumbered",
+  () => {
+    const DATABASE_BEFORE = `before_unnumbered_${Date.now()}`;
+    const VERSION = OwnedRefSchema.parse(`${AVA}/01JPFRZNVER000000000000000`);
+    /** The order the store was already serving this version in. */
+    const SERVED = ["1", "1a", "1a1", "2"];
+    const snapshotId = (at: number) =>
+      avaId("snapshot_node", `01JPFRZNSNP${String(at).padStart(15, "0")}`);
+    let db: Surreal;
+
+    beforeAll(async () => {
+      db = new Surreal();
+      await db.connect(ENDPOINT.href);
+      await db.signin({ username: USER, password: PASS });
+      await db.use({ namespace: NAMESPACE, database: DATABASE_BEFORE });
+      await db.query(BEFORE_UNNUMBERED);
+      for (const [at, address] of SERVED.entries()) {
+        const row = {
+          id: snapshotId(at),
+          created_by: AVA,
+          version: VERSION,
+          source: OwnedRefSchema.parse(
+            `${AVA}/01JPFRZNNTE${String(at).padStart(15, "0")}`,
+          ),
+          address,
+          node: {
+            address,
+            origin: OwnedRefSchema.parse(`${AVA}/01JPFRZNNTE000000000000000`),
+            title: "As it stood",
+            tags: [],
+            links: [],
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+          },
+          created_at: "2026-02-01T00:00:00.000Z",
+          updated_at: "2026-02-01T00:00:00.000Z",
+        };
+        await db.create(row.id).content(row);
+      }
+
+      await defineCoreSchema(db);
+      // Twice, because the fill is part of a script that runs on every boot.
+      await defineCoreSchema(db);
+    });
+
+    afterAll(async () => {
+      if (!db) return;
+      await db.query(`REMOVE DATABASE IF EXISTS ${DATABASE_BEFORE};`);
+      await db.close();
+    });
+
+    it("pages the version it was already serving, in the same order", async () => {
+      const PAGE = `SELECT address, ord FROM snapshot_node
+         WHERE created_by = $did AND version = $version AND ord > $after
+         ORDER BY ord`;
+      const paging = { did: AVA, version: VERSION, after: "" };
+      const [paged] = await db.query(`${PAGE} EXPLAIN;`, paging);
+      expect(JSON.stringify(paged)).toContain(
+        '"index":"snapshot_node_owner_version_ord"',
+      );
+      const [rows] = await db.query<[{ address: string; ord: string }[]]>(
+        `${PAGE};`,
+        paging,
+      );
+      expect(rows.map((row) => row.address)).toEqual(SERVED);
+      expect(rows.map((row) => row.ord)).toEqual(SERVED);
+    });
+
+    it("leaves the copies themselves alone", async () => {
+      const held = await db.select<{ address: string; created_at: string }>(
+        snapshotId(0),
+      );
+      expect(held?.address).toBe("1");
+      expect(held?.created_at).toBe("2026-02-01T00:00:00.000Z");
+    });
+
+    it("has taken the index it replaced off the store", async () => {
+      const [info] = await db.query<[{ indexes: Record<string, string> }]>(
+        "INFO FOR TABLE snapshot_node;",
+      );
+      expect(Object.keys(info.indexes)).not.toContain(
+        "snapshot_node_owner_version_address",
+      );
+      expect(Object.keys(info.indexes)).toContain(
+        "snapshot_node_owner_version_ord",
+      );
+    });
+
+    it("takes a note with no address into a version beside them", async () => {
+      const row = {
+        id: avaId("snapshot_node", "01JPFRZNSNPNEW000000000000"),
+        created_by: AVA,
+        version: VERSION,
+        source: OwnedRefSchema.parse(`${AVA}/01JPFRZNNTENEW000000000000`),
+        ord: "3",
+        node: {
+          origin: OwnedRefSchema.parse(`${AVA}/01JPFRZNNTE000000000000000`),
+          title: "Nobody numbered it",
+          tags: [],
+          links: [],
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        created_at: "2026-02-01T00:00:00.000Z",
+        updated_at: "2026-02-01T00:00:00.000Z",
+      };
+      await expect(db.create(row.id).content(row)).resolves.toBeDefined();
+    });
+  },
+);

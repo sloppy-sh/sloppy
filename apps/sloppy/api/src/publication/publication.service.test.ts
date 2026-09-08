@@ -90,6 +90,8 @@ interface Ledger {
   released: string[];
   /** Where the author's identity answered from, as this publish recorded it. */
   identityStore?: string;
+  /** The label the publish restated the branch under. */
+  rootAddress?: Address;
   chainsRemoved: OwnedRef[];
   assetsRemoved: number;
   copying: number;
@@ -132,12 +134,13 @@ function publishing(of: {
     async create() {
       return chain;
     },
-    async setIdentityStore(
+    async restate(
       _did: string,
       _ref: OwnedRef,
-      identityStore: string,
+      now: { identityStore: string; address: Address | undefined },
     ) {
-      ledger.identityStore = identityStore;
+      ledger.identityStore = now.identityStore;
+      ledger.rootAddress = now.address;
     },
     async assetsOf(): Promise<SnapshotAsset[]> {
       return [];
@@ -387,8 +390,14 @@ function comparing(of: {
 }
 
 describe("what a branch has done since it was last published", () => {
-  const filed = (name: string, address: string, title: string): FiledNote => ({
+  const filed = (
+    name: string,
+    address: string,
+    title: string,
+    at = 0,
+  ): FiledNote => ({
     source: ref(name),
+    ord: String(at).padStart(8, "0"),
     address: address as Address,
     title,
     tags: [],

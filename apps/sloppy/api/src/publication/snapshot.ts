@@ -15,6 +15,7 @@ import {
   type PublishedLook,
   type PublishedNode,
   REFERENCE_NOTE_ATTR,
+  orderSiblings,
   ownedRefFrom,
 } from "@sloppy/types";
 
@@ -39,6 +40,63 @@ const NOTE_LABEL_ATTR = "label";
 /** `upload_id`, or anything ending `_upload_id` — `citedUploads`' convention,
  *  applied in the other direction. */
 const CITES_UPLOAD = /^(?:.*_)?upload_id$/;
+
+/**
+ * How wide a place in the walk is written. Fixed, because the keys are compared
+ * as strings: a run of them the same length puts note 10 after note 9.
+ */
+const ORD_DIGITS = 8;
+
+/**
+ * The branch in the order a version serves it: every note ahead of the notes
+ * that spring from it, and each run in the order a person reads it —
+ * `orderSiblings`, which is the whole of that rule.
+ *
+ * A reader meeting a note before its parent would be holding a note springing
+ * from nothing it has, so this order is what lets a version be paged at all.
+ */
+export function inPreorder(root: Node, branch: readonly Node[]): Node[] {
+  const rootRef = ownedRefFrom(root.id);
+  const springing = new Map<OwnedRef, Alongside[]>();
+  for (const node of branch) {
+    const ref = ownedRefFrom(node.id);
+    if (ref === rootRef || node.parent === undefined) continue;
+    const run = springing.get(node.parent);
+    const member = alongside(ref, node);
+    if (run) run.push(member);
+    else springing.set(node.parent, [member]);
+  }
+  const order: Node[] = [];
+  const walk = (ref: OwnedRef, node: Node): void => {
+    order.push(node);
+    for (const member of orderSiblings(springing.get(ref) ?? [])) {
+      walk(member.ref, member.node);
+    }
+  };
+  walk(rootRef, root);
+  return order;
+}
+
+/** Where a note sits in {@link inPreorder}, as the key its version is paged on. */
+export function ordAt(place: number): string {
+  return String(place).padStart(ORD_DIGITS, "0");
+}
+
+interface Alongside {
+  ref: OwnedRef;
+  address?: Address;
+  created_at: string;
+  node: Node;
+}
+
+function alongside(ref: OwnedRef, node: Node): Alongside {
+  return {
+    ref,
+    ...(node.address === undefined ? {} : { address: node.address }),
+    created_at: node.created_at,
+    node,
+  };
+}
 
 /** What a publication holds, as the walk below asks after it. */
 export interface Snapshotted {

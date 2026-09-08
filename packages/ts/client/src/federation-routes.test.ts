@@ -322,10 +322,10 @@ describe("what a peer answered with", () => {
   const NOTE = `${AUTHOR}/01JPEERA000000000000000000`;
   const BELOW = `${AUTHOR}/01JPEERB000000000000000000`;
 
-  function note(ref: string, address: string, parent?: string) {
+  function note(ref: string, address: string | undefined, parent?: string) {
     return {
       ref,
-      address,
+      ...(address === undefined ? {} : { address }),
       origin: NOTE,
       ...(parent === undefined ? {} : { parent }),
       title: "A thought",
@@ -401,6 +401,24 @@ describe("what a peer answered with", () => {
 
     expect(region?.graph).toBe(`${AUTHOR}/01JGRAPH2ND000000000000000`);
     expect(region?.graph_title).toBe("The thesis");
+  });
+
+  // A branch its author gave no number is read like any other: the note it is
+  // rooted at is what the region is, and the pages carry it.
+  it("keeps a region its author gave no address, and the note it is rooted at", async () => {
+    const { client } = serving(
+      page({
+        root: NOTE,
+        root_address: undefined,
+        nodes: [note(NOTE, undefined), note(BELOW, undefined, NOTE)],
+      }),
+    );
+
+    const region = await client.readPublishedSubtree(PUBLICATION);
+
+    expect(region?.root).toBe(NOTE);
+    expect(region?.root_address).toBeUndefined();
+    expect(region?.nodes.map((n) => n.ref)).toEqual([NOTE, BELOW]);
   });
 
   it("reads a peer that names no notebook as naming none", async () => {

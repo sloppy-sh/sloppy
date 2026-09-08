@@ -2,30 +2,26 @@
  * What the signed-in person publishes: the branches they have made readable,
  * the chain of versions of each, and the acts that change them.
  *
- * A publication is keyed by its own ref and CARRIES the address it is rooted
- * at, so which notes one covers is answered from the address rather than
- * stored — `isInSubtree` is that answer, here and everywhere else.
+ * A publication is rooted at a NOTE, and which notes one covers is the
+ * genealogy: the parents in hand, walked. A label neither answers that nor
+ * moves it, and a branch carrying none is published like any other.
  * docs/ARCHITECTURE.md § "Federating the graph".
  */
 
 import {
-	addressDepth,
 	type CommentAccess,
-	compareAddresses,
-	graphOf,
-	graphRef,
-	isInSubtree,
 	type NodeView,
+	orderSiblings,
 	type OwnedRef,
 	type PublicationView,
 	type PublishedNoteChange,
 	type PublishedVersion,
-	splitOwnedRef,
 	type UnpublishedChanges
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { serverMessage } from './errors.js';
+import { nodes } from './nodes.svelte.js';
 
 /** One page of the difference between two versions. */
 export interface VersionChanges {
@@ -62,11 +58,17 @@ class PublicationsStore {
 		return this.#state;
 	}
 
-	/** In address order, which is the order the graph reads them in. */
+	/** In the order a run reads: the ones carrying a number first, by number,
+	 *  then the rest in the order they were published. */
 	get all(): PublicationView[] {
-		return [...this.#byRef.values()].sort((a, b) =>
-			compareAddresses(a.root_address, b.root_address)
-		);
+		return orderSiblings(
+			[...this.#byRef.values()].map((publication) => ({
+				ref: publication.ref,
+				...(publication.root_address === undefined ? {} : { address: publication.root_address }),
+				created_at: publication.created_at,
+				publication
+			}))
+		).map((one) => one.publication);
 	}
 
 	/** Deduped: every surface may call it on mount. */
@@ -112,26 +114,17 @@ class PublicationsStore {
 	/** The publication rooted at this exact note, which is the one an act here
 	 *  changes. */
 	at(note: NodeView): PublicationView | undefined {
-		return this.all.find(
-			(publication) =>
-				this.graphRefOf(publication) === graphOf(note) && publication.root_address === note.address
-		);
+		return this.all.find((publication) => publication.root === note.ref);
 	}
 
 	/** A publication rooted ABOVE this note that already carries it. Where
-	 *  several do, the nearest — it is the one whose address a person recognises. */
+	 *  several do, the nearest — it is the one a person recognises. */
 	above(note: NodeView): PublicationView | undefined {
-		const at = note.address;
-		if (at === undefined) return undefined;
-		return this.all
-			.filter(
-				(publication) =>
-					this.graphRefOf(publication) === graphOf(note) &&
-					publication.root_address !== at &&
-					isInSubtree(publication.root_address, at)
-			)
-			.sort((a, b) => addressDepth(a.root_address) - addressDepth(b.root_address))
-			.at(-1);
+		for (const above of this.springsFrom(note)) {
+			const held = this.all.find((publication) => publication.root === above);
+			if (held) return held;
+		}
+		return undefined;
 	}
 
 	/**
@@ -141,14 +134,12 @@ class PublicationsStore {
 	 * § "Federating the graph".
 	 */
 	narrowerUnder(note: NodeView, terms: CommentAccess): PublicationView[] {
-		const at = note.address;
-		if (terms !== 'anyone' || at === undefined) return [];
+		if (terms !== 'anyone') return [];
 		return this.all.filter(
 			(publication) =>
-				this.graphRefOf(publication) === graphOf(note) &&
-				publication.root_address !== at &&
-				isInSubtree(at, publication.root_address) &&
-				publication.comments !== 'anyone'
+				publication.comments !== 'anyone' &&
+				publication.root !== note.ref &&
+				this.under(note.ref, publication.root)
 		);
 	}
 
@@ -159,14 +150,35 @@ class PublicationsStore {
 	 * terms — docs/ARCHITECTURE.md § "Federating the graph".
 	 */
 	answersOn(note: NodeView): CommentAccess | null {
-		const at = note.address;
-		if (at === undefined) return null;
-		const covering = this.all.filter(
-			(publication) =>
-				this.graphRefOf(publication) === graphOf(note) && isInSubtree(publication.root_address, at)
-		);
-		if (covering.length === 0) return null;
-		return covering.some((publication) => publication.comments === 'anyone') ? 'anyone' : 'nobody';
+		const covering = [note.ref, ...this.springsFrom(note)];
+		const on = this.all.filter((publication) => covering.includes(publication.root));
+		if (on.length === 0) return null;
+		return on.some((publication) => publication.comments === 'anyone') ? 'anyone' : 'nobody';
+	}
+
+	/**
+	 * Every note this one springs from, nearest first, as far as the notes in
+	 * hand reach. A surface reads the branch before it asks any of this: a chain
+	 * that stops short answers as though nothing above the break carried the
+	 * note.
+	 */
+	private springsFrom(note: NodeView): OwnedRef[] {
+		const chain: OwnedRef[] = [];
+		let above = note.parent;
+		// Our own rows cannot hold a cycle — a move refuses one — but a walk that
+		// trusted that would hang rather than answer.
+		while (above !== undefined && above !== note.ref && !chain.includes(above)) {
+			chain.push(above);
+			above = nodes.get(above)?.parent;
+		}
+		return chain;
+	}
+
+	/** Whether `note` springs from `root`, which is what a publication rooted
+	 *  there carries. */
+	private under(root: OwnedRef, note: OwnedRef): boolean {
+		const held = nodes.get(note);
+		return held !== undefined && this.springsFrom(held).includes(root);
 	}
 
 	/** The chain, newest version first, as far back as a person is shown. */
@@ -269,13 +281,6 @@ class PublicationsStore {
 		this.#versionsInflight.clear();
 		this.#inflight = null;
 		this.#state = IDLE;
-	}
-
-	/** Which of its author's graphs a publication is rooted in. Comparing this
-	 *  to a note's graph settles author and notebook at once, so neither is
-	 *  asked separately: two graphs of one person each hold a `1`. */
-	private graphRefOf(publication: PublicationView): OwnedRef {
-		return graphRef(splitOwnedRef(publication.ref).did, publication.graph);
 	}
 }
 
