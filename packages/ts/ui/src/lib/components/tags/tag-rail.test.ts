@@ -28,13 +28,24 @@ const chips = () => [...target.querySelectorAll('button[aria-pressed]')] as HTML
 const named = (tag: string) =>
 	chips().find((chip) => chip.textContent?.includes(tag)) as HTMLButtonElement;
 
-const heading = () => target.querySelector('h2')?.textContent?.trim();
+const railSays = () => target.querySelector('[role="group"]')?.getAttribute('aria-label');
+
+const searchChip = () =>
+	[...target.querySelectorAll('button')].find(
+		(button) => button.getAttribute('aria-label') === 'Find a tag'
+	);
 
 const filter = () => target.querySelector('input') as HTMLInputElement | null;
 
 const names = () => chips().map((chip) => chip.textContent?.trim().split(/\s+/)[0]);
 
+function openSearch(): void {
+	(searchChip() as HTMLButtonElement).click();
+	flushSync();
+}
+
 function type(text: string): void {
+	if (!filter()) openSearch();
 	const field = filter() as HTMLInputElement;
 	field.value = text;
 	field.dispatchEvent(new Event('input', { bubbles: true }));
@@ -150,16 +161,19 @@ describe('the legend', () => {
 		expect(named('seed').getAttribute('aria-pressed')).toBe('false');
 	});
 
-	// The word only earns its place once several tags can be selected at once.
-	it('says that several selected tags means any of them, and not before', () => {
+	// The chips say what they are by being read; the word is what is left for
+	// somebody who is not reading them, so it rides the rail rather than a row of
+	// its own.
+	it('tells a reader who cannot see the chips that several means any of them', () => {
 		render();
-		expect(heading()).toBe('Tags');
+		expect(target.querySelector('h2')).toBeNull();
+		expect(railSays()).toBe('Tags');
 		unmount(mounted!, { outro: false });
 		render(['seed'] as Tag[]);
-		expect(heading()).toBe('Tags');
+		expect(railSays()).toBe('Tags');
 		unmount(mounted!, { outro: false });
 		render(['seed', 'biology'] as Tag[]);
-		expect(heading()).toBe('Notes with any of these');
+		expect(railSays()).toBe('Notes with any of these');
 	});
 
 	it('shows how many notes carry a tag nobody has selected yet', () => {
@@ -171,10 +185,34 @@ describe('the legend', () => {
 describe('typing for a tag', () => {
 	it('offers nowhere to type until the rail holds more than a screen of chips', () => {
 		render();
-		expect(filter()).toBeNull();
+		expect(searchChip()).toBeUndefined();
 		unmount(mounted!, { outro: false });
 		render([], MANY);
+		expect(searchChip()).toBeDefined();
+	});
+
+	// The rail is one row, so the field is the chip's own place rather than a
+	// second row standing over the chips waiting to be used.
+	it('swaps the chip for the field where the chip was, and back once nothing is typed', () => {
+		render([], MANY);
+		expect(filter()).toBeNull();
+		openSearch();
 		expect(filter()).not.toBeNull();
+		expect(searchChip()).toBeUndefined();
+
+		filter()?.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		flushSync();
+		expect(filter()).toBeNull();
+		expect(searchChip()).toBeDefined();
+	});
+
+	it('keeps the field open while a word is still narrowing the rail', () => {
+		render([], MANY);
+		type('ology');
+		filter()?.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+		flushSync();
+		expect(filter()?.value).toBe('ology');
+		expect(names()).toEqual(['biology', 'geology', 'ecology']);
 	});
 
 	it('draws only the tags holding what was typed, still most-used first', () => {
@@ -218,6 +256,7 @@ describe('typing for a tag', () => {
 
 	it('leaves Escape alone once there is nothing typed to clear', () => {
 		render([], MANY);
+		openSearch();
 
 		const away = vi.fn();
 		window.addEventListener('keydown', away);
@@ -246,7 +285,7 @@ describe('typing for a tag', () => {
 	});
 
 	// A filter stands until the reader clears it: the word is still in the field
-	// above the chips, and emptying it out from under them would be the surprise.
+	// beside the chips, and emptying it out from under them would be the surprise.
 	it("holds what was typed when the rail is handed another read's tags", () => {
 		const props = render([], MANY);
 		type('ology');

@@ -3,6 +3,7 @@
 	// DESIGN.md § "Hue — the tags you selected, and only those": selected tags
 	// lead, in the order they were selected, because that order is what hands out
 	// the hues.
+	import Search from '@lucide/svelte/icons/search';
 	import { assignTagHueSlots, type Tag, type TagCount } from '@sloppy/types';
 	import { tick } from 'svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -27,8 +28,13 @@
 	/** Chips past which scrolling the rail costs more than typing the word. */
 	const CROWDED = 12;
 	let typed = $state('');
+	let typing = $state(false);
+	let field = $state<HTMLInputElement | null>(null);
 	const offered = $derived(tags.length > CROWDED);
 	const needle = $derived(offered ? typed.trim().toLowerCase() : '');
+
+	/** What the chips are, for a reader who is not looking at them. */
+	const says = $derived(selected.length > 1 ? 'Notes with any of these' : 'Tags');
 
 	/** Selected first, in selection order; then the rest as the read ordered them. */
 	const order = $derived([
@@ -42,6 +48,12 @@
 	const nothingMatched = $derived(needle !== '' && !order.some((tag) => tag.includes(needle)));
 
 	let rail = $state<HTMLElement | null>(null);
+
+	async function startTyping(): Promise<void> {
+		typing = true;
+		await tick();
+		field?.focus();
+	}
 
 	async function toggle(tag: Tag, tapped: HTMLElement): Promise<void> {
 		const dropping = slots.has(tag);
@@ -69,47 +81,50 @@
 
 	const chip =
 		'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none';
+	const quiet = 'border-transparent text-muted-foreground hover:text-foreground';
 </script>
 
-<div class="space-y-1.5">
-	<div class="flex items-baseline gap-3">
-		<h2 class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-			<!-- The word only appears once several tags can be selected at all, which
-			     is the first moment it means anything. -->
-			{selected.length > 1 ? 'Notes with any of these' : 'Tags'}
-		</h2>
-		{#if selected.length > 0}
+<div role="group" aria-label={says} class="flex items-center gap-1.5">
+	{#if offered}
+		<!-- Out of the scroller, so the way to type a tag is where it was left
+		     however far along the chips the reader has gone. -->
+		{#if typing}
+			<Input
+				bind:ref={field}
+				bind:value={typed}
+				type="search"
+				class="h-11 w-36 shrink-0 rounded-full sm:w-44"
+				autocapitalize="none"
+				autocomplete="off"
+				spellcheck="false"
+				aria-label="Find a tag"
+				placeholder="Find a tag"
+				onblur={() => {
+					if (typed.trim() !== '') return;
+					typed = '';
+					typing = false;
+				}}
+				onkeydown={(event) => {
+					if (event.key !== 'Escape' || typed === '') return;
+					event.stopPropagation();
+					typed = '';
+				}}
+			/>
+		{:else}
 			<button
 				type="button"
-				onclick={() => onselect([])}
-				class="shrink-0 text-sm text-muted-foreground underline underline-offset-4 transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+				aria-label="Find a tag"
+				onclick={() => void startTyping()}
+				class={cn(chip, quiet, 'border-input px-3')}
 			>
-				Clear
+				<Search class="size-4" />
 			</button>
 		{/if}
-	</div>
-
-	{#if offered}
-		<Input
-			bind:value={typed}
-			type="search"
-			class="h-11"
-			autocapitalize="none"
-			autocomplete="off"
-			spellcheck="false"
-			aria-label="Find a tag"
-			placeholder="Find a tag"
-			onkeydown={(event) => {
-				if (event.key !== 'Escape' || typed === '') return;
-				event.stopPropagation();
-				typed = '';
-			}}
-		/>
 	{/if}
 
 	<div
 		bind:this={rail}
-		class="-mx-1 flex gap-1.5 overflow-x-auto scroll-fade-x px-1 py-0.5 [scrollbar-width:none]"
+		class="flex min-w-0 flex-1 gap-1.5 overflow-x-auto scroll-fade-x py-0.5 [scrollbar-width:none]"
 		{@attach scrollFade('x')}
 	>
 		{#each order as tag (tag)}
@@ -119,12 +134,7 @@
 				aria-pressed={slot !== undefined}
 				onclick={(event) => void toggle(tag, event.currentTarget)}
 				style={slot === undefined ? undefined : `border-color: var(--facet-${slot})`}
-				class={cn(
-					chip,
-					slot === undefined
-						? 'border-transparent text-muted-foreground hover:text-foreground'
-						: 'text-foreground'
-				)}
+				class={cn(chip, slot === undefined ? quiet : 'text-foreground')}
 			>
 				{#if slot !== undefined}
 					<span
@@ -139,9 +149,20 @@
 				{/if}
 			</button>
 		{/each}
+
+		{#if nothingMatched}
+			<p
+				role="status"
+				class="flex min-h-11 shrink-0 items-center px-2 text-sm text-muted-foreground"
+			>
+				No tag has that in it.
+			</p>
+		{/if}
 	</div>
 
-	{#if nothingMatched}
-		<p role="status" class="px-1 text-sm text-muted-foreground">No tag has that in it.</p>
+	{#if selected.length > 0}
+		<button type="button" onclick={() => onselect([])} class={cn(chip, quiet, 'border-input px-3')}>
+			Clear
+		</button>
 	{/if}
 </div>

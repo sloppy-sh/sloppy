@@ -272,8 +272,13 @@ function typeTag(word: string): void {
 	field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 }
 
-/** The rail's own find field, which it offers only once it is crowded. */
+/** The rail's own find field, which it offers only once it is crowded, and
+ *  which stands in the chip's place until the chip is tapped. */
 function findTag(word: string): void {
+	[...document.body.querySelectorAll('button')]
+		.find((b) => b.getAttribute('aria-label') === 'Find a tag')
+		?.click();
+	flushSync();
 	const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a tag"]');
 	if (!field) throw new Error('The rail is offering nowhere to type');
 	field.value = word;
@@ -345,6 +350,15 @@ async function open(): Promise<void> {
 	session.adopt(VIEWER, 'a-session');
 	mounted = mount(Graph, { target });
 	flushSync();
+	await settle();
+}
+
+/** The shapes, which the chrome offers only where there is no note yet to open
+ *  "Add a shape" inside. */
+async function fromNothing(): Promise<void> {
+	api.on('GET /nodes', () => []);
+	await open();
+	button('Start from a shape').click();
 	await settle();
 }
 
@@ -633,6 +647,17 @@ describe('linking by pointing at the graph', () => {
 		expect(screen()).toContain('1a');
 		// The note steps aside: on a phone the choice is the whole screen.
 		expect(reading()).toBe(false);
+	});
+
+	// DESIGN.md § Layout, remove-empty chrome: the canvas is answering a question,
+	// so what only changes how it is looked at has nothing to do here — and inking
+	// is off while it does.
+	it('takes what only changes the view off the picture while the graph is asked', async () => {
+		await startLinking();
+
+		expect(() => labelled('See everything on the canvas')).toThrow();
+		expect(() => labelled('Walk the notes one at a time')).toThrow();
+		expect(() => labelled('Background')).toThrow();
 	});
 
 	it('marks the note being pointed from, so it is findable on the canvas', async () => {
@@ -1310,7 +1335,7 @@ describe('choosing several notes to act on', () => {
 
 		labelled('Other ways to write').click();
 		await settle();
-		item('A branch, from a shape').click();
+		item('Number it yourself').click();
 		await settle();
 		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		await settle();
@@ -1514,12 +1539,8 @@ describe('a branch started from a shape', () => {
 	// The shape is handed to the note once. Back unmounts it and Forward mounts
 	// it again from the same entry, so a shape still on offer would be taken twice.
 	it('writes the sections once, however often the reader comes back to the note', async () => {
-		await open();
+		await fromNothing();
 
-		labelled('Other ways to write').click();
-		await settle();
-		item('A branch, from a shape').click();
-		await settle();
 		shape('Objection').click();
 		await until(() => stack.length === 2);
 
@@ -1944,11 +1965,7 @@ describe('a note written before the server has answered', () => {
 	});
 
 	it('keeps what was typed into a branch started from a shape, above its sections', async () => {
-		await open();
-		labelled('Other ways to write').click();
-		await settle();
-		item('A branch, from a shape').click();
-		await settle();
+		await fromNothing();
 		shape('Objection').click();
 		await settle();
 		type(field('Note body'), 'two bars is still four seconds');
@@ -1973,11 +1990,7 @@ describe('a note written before the server has answered', () => {
 					headers: { 'content-type': 'application/json' }
 				})
 		);
-		await open();
-		labelled('Other ways to write').click();
-		await settle();
-		item('A branch, from a shape').click();
-		await settle();
+		await fromNothing();
 		shape('Objection').click();
 		await settle();
 		type(field('Note body'), 'two bars is still four seconds');

@@ -34,7 +34,6 @@
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
-	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListTree from '@lucide/svelte/icons/list-tree';
 	import Maximize from '@lucide/svelte/icons/maximize';
@@ -1902,8 +1901,11 @@
 	{#if populated}
 		<!-- What only changes how the picture is looked at sits on the picture, at
 		     a weight below the row that writes — DESIGN.md § "The canvas". -->
-		{#if !walkingNow && !choosing}
-			<div class="pointer-events-none absolute inset-y-0 right-2 z-20 flex items-center sm:right-4">
+		{#if !walkingNow && !choosing && !pointing}
+			<div
+				style="top: {railHeight}px; bottom: var(--sysnav-clearance)"
+				class="pointer-events-none absolute right-2 z-20 flex items-center sm:right-4"
+			>
 				<div
 					class="pointer-events-auto flex flex-col items-center gap-0.5 rounded-full border bg-card/90 p-1 shadow-sm backdrop-blur"
 				>
@@ -1985,7 +1987,9 @@
 							{#if besideIt}
 								<span class="shrink-0 text-xs text-muted-foreground">{besideIt}</span>
 							{/if}
-							<span class="min-w-0 shrink truncate text-muted-foreground">· {summary}</span>
+							<!-- Nothing of its own to start from, so the graph is named whole
+							     before the census beside it gets a pixel. -->
+							<span class="min-w-0 flex-1 truncate text-muted-foreground">· {summary}</span>
 						</button>
 						<button
 							type="button"
@@ -2022,10 +2026,6 @@
 									{/snippet}
 								</DropdownMenu.Trigger>
 								<DropdownMenu.Content align="end" class="w-60">
-									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => (shaping = true)}>
-										<LayoutTemplate class="size-4 text-muted-foreground" />
-										A branch, from a shape
-									</DropdownMenu.Item>
 									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={writeAlone}>
 										<FilePlus class="size-4 text-muted-foreground" />
 										A note on its own
