@@ -780,16 +780,16 @@ so.
   where the next address in a run is, and nothing already written is moved or renumbered
   by a drag. A tap on that control still writes under its own row and the keyboard keeps
   its chord, so this is a third way in and never the only one.
-- **A row opens its note in place, and a handle carries a section anywhere in the outline.**
-  A tap on the row draws what is written in the note under it, in the writing surface
-  itself, so it is read and written where it stands; the one control the row can spare goes
-  to the note's own page. Each section carries the same handle it has inside the note.
-  Carrying that handle says in words where letting go will put the section — up or down its
-  own note, into another open note's stack, onto a closed row at the end of it, or out
-  between two rows as a note of its own, springing from the run it landed in. Tapping the
-  handle offers the moves within its own note as steps, for a finger that has no hover to
-  read. No note
-  moves with a section, and the run the outline draws keeps its own order.
+- **A row opens its note in place, and a handle carries a section anywhere in the
+  outline.** A tap on the row draws what is written in the note under it, in the writing
+  surface itself, so it is read and written where it stands; the one control the row can
+  spare goes to the note's own page. Each section carries the same handle it has inside
+  the note. Carrying that handle says in words where letting go will put the section — up
+  or down its own note, into another open note's stack, onto a closed row at the end of
+  it, or out between two rows as a note of its own, springing from the run it landed in.
+  Tapping the handle offers the moves within its own note as steps, for a finger that has
+  no hover to read. No note moves with a section, and the run the outline draws keeps its
+  own order.
 - **A note's row fits the narrowest phone, and the title is what gives.** The chevron, the
   control that opens the note's own page and the write control are touch targets and hold their size, and the
   stair a row is set in is shallower where the width is scarcer; the title truncates before
