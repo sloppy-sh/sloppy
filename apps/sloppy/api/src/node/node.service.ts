@@ -74,10 +74,12 @@ type ChangingAct = Exclude<
 >;
 
 /**
- * A writer in another process gets past the queue and is refused by the unique
- * index. The bound is what stops a pathological loop, not a tuned number.
+ * How many addresses the rule may pass over before it refuses in words. A
+ * writer in another process gets past the queue and is refused by the unique
+ * index, and a person's own label sits wherever they wrote it. The bound is
+ * what stops a pathological loop, not a tuned number.
  */
-const ADDRESS_ATTEMPTS = 8;
+const ADDRESS_ATTEMPTS = 32;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -473,62 +475,70 @@ export class NodeService {
     const ref = ownedRefFrom(note.id);
     const beneath = carried.filter((one) => ownedRefFrom(one.id) !== ref);
     const was = note.address;
-    const landing =
+    const run =
       was === undefined || (parent !== null && parent.address === undefined)
         ? null
-        : movedSubtree(
-            parent?.address ?? null,
-            await this.nodes.childAddresses(did, parent, graph),
-            was,
-            beneath.flatMap((one) => (one.address ? [one.address] : [])),
-          );
-    const now =
-      landing === null || was === undefined
-        ? undefined
-        : (landing.get(was) as Address);
-    if (parent === null && now !== undefined && !isRootAddress(now)) {
-      throw new BadRequestException(
-        "There is no number left after your highest branch. Carry this note under a note instead.",
-      );
-    }
-
-    const addressAt = new Map<OwnedRef, Address | undefined>([[ref, now]]);
-    for (const one of beneath) {
-      addressAt.set(
-        ownedRefFrom(one.id),
-        one.address === undefined
+        : await this.nodes.childAddresses(did, parent, graph);
+    // Where the subtree would land on a label its author wrote outside this
+    // run, the whole of it moves along to the next address instead.
+    const passed: Address[] = [];
+    for (let attempt = 1; ; attempt++) {
+      const landing =
+        run === null || was === undefined
+          ? null
+          : movedSubtree(
+              parent?.address ?? null,
+              [...run, ...passed],
+              was,
+              beneath.flatMap((one) => (one.address ? [one.address] : [])),
+            );
+      const now =
+        landing === null || was === undefined
           ? undefined
-          : (landing?.get(one.address) ?? one.address),
+          : (landing.get(was) as Address);
+      if (parent === null && now !== undefined && !isRootAddress(now)) {
+        throw new BadRequestException(
+          "There is no number left after your highest branch. Carry this note under a note instead.",
+        );
+      }
+
+      const { root, landed, aliases } = landedRows(
+        note,
+        parent,
+        carried,
+        landing,
+        now,
       );
+      try {
+        await this.nodes.move(did, landed, aliases);
+        return this.asRead(did, await this.nodes.subtree(did, root));
+      } catch (err) {
+        if (
+          landing === null ||
+          now === undefined ||
+          !(await this.anySpent(did, graph, landing.values()))
+        ) {
+          throw err;
+        }
+        if (attempt >= ADDRESS_ATTEMPTS) throw allSpent([...passed, now]);
+        passed.push(now);
+      }
     }
-    const origin = parent ? parent.origin : ref;
-    const depthAt = depthsUnder(carried, ref, parent ? parent.depth + 1 : 1);
-    const landedAt = (one: Node, over: Partial<Node> = {}) => {
-      const { address: _left, ...rest } = one;
-      const at = addressAt.get(ownedRefFrom(one.id));
-      return parseNode({
-        ...rest,
-        ...(at === undefined ? {} : { address: at }),
-        depth: depthAt(one),
-        origin,
-        ...over,
-      });
-    };
-    const root = landedAt(note, {
-      parent: parent ? ownedRefFrom(parent.id) : undefined,
-    });
-    const landed = [root, ...beneath.map((one) => landedAt(one))];
-    await this.nodes.move(
-      did,
-      landed,
-      carried.flatMap((one) =>
-        one.address !== undefined &&
-        one.address !== addressAt.get(ownedRefFrom(one.id))
-          ? [leftBehind(one, one.address)]
-          : [],
-      ),
-    );
-    return this.asRead(did, await this.nodes.subtree(did, root));
+  }
+
+  /** Whether this graph has already spent any of these addresses, on a note,
+   *  on one deleted, or on one a move or a rename left leading somewhere. */
+  private async anySpent(
+    did: string,
+    graph: OwnedRef,
+    addresses: Iterable<Address>,
+  ): Promise<boolean> {
+    for (const address of addresses) {
+      if ((await this.nodes.addressTaken(did, graph, address)) !== null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -851,6 +861,10 @@ export class NodeService {
   }
 
   private async write(did: string, request: CreateRequest): Promise<NodeView> {
+    // The run read by parent cannot show a label its author wrote on a note
+    // somewhere else in the graph, so the addresses that turn out to be spent
+    // are fed back into it and the rule offers the next one.
+    const passed: Address[] = [];
     for (let attempt = 1; ; attempt++) {
       const { graph, parent } = await this.placeFor(did, request.from);
       if (parent !== null && parent.address === undefined) {
@@ -858,10 +872,10 @@ export class NodeService {
           await this.nodes.insert(newNode(did, graph, parent, request)),
         );
       }
-      const address = nextChildAddress(
-        parent?.address ?? null,
-        await this.nodes.childAddresses(did, parent, graph),
-      );
+      const address = nextChildAddress(parent?.address ?? null, [
+        ...(await this.nodes.childAddresses(did, parent, graph)),
+        ...passed,
+      ]);
       // A branch the server numbers has to be one a person could have named,
       // or the branch after it would have no number left to take.
       if (parent === null && !isRootAddress(address)) {
@@ -876,10 +890,11 @@ export class NodeService {
           ),
         );
       } catch (err) {
-        const lost =
-          attempt < ADDRESS_ATTEMPTS &&
-          (await this.nodes.addressTaken(did, graph, address)) !== null;
-        if (!lost) throw err;
+        if ((await this.nodes.addressTaken(did, graph, address)) === null) {
+          throw err;
+        }
+        if (attempt >= ADDRESS_ATTEMPTS) throw allSpent([...passed, address]);
+        passed.push(address);
       }
     }
   }
@@ -923,11 +938,67 @@ function leadsTo(
   );
 }
 
+/** Every address the rule reached is already leading somewhere in this graph,
+ *  so there is nothing left for it to offer. */
+function allSpent(reached: readonly Address[]): BadRequestException {
+  return new BadRequestException(
+    `${reached[0]} through ${reached[reached.length - 1]} all lead somewhere already. Take one of those numbers off a note and try again.`,
+  );
+}
+
 /** An address a note carried and no longer can, its note purged. */
 function leadsNowhere(address: Address): BadRequestException {
   return new BadRequestException(
     `You have used ${address} before. Pick another number.`,
   );
+}
+
+/** A carried subtree as it lands: the rows to write, the root among them, and
+ *  the addresses they leave behind still leading to them. */
+function landedRows(
+  note: Node,
+  parent: Node | null,
+  carried: readonly Node[],
+  landing: Map<Address, Address> | null,
+  now: Address | undefined,
+): { root: Node; landed: Node[]; aliases: NodeAlias[] } {
+  const ref = ownedRefFrom(note.id);
+  const beneath = carried.filter((one) => ownedRefFrom(one.id) !== ref);
+  const addressAt = new Map<OwnedRef, Address | undefined>([[ref, now]]);
+  for (const one of beneath) {
+    addressAt.set(
+      ownedRefFrom(one.id),
+      one.address === undefined
+        ? undefined
+        : (landing?.get(one.address) ?? one.address),
+    );
+  }
+  const origin = parent ? parent.origin : ref;
+  const depthAt = depthsUnder(carried, ref, parent ? parent.depth + 1 : 1);
+  const landedAt = (one: Node, over: Partial<Node> = {}) => {
+    const { address: _left, ...rest } = one;
+    const at = addressAt.get(ownedRefFrom(one.id));
+    return parseNode({
+      ...rest,
+      ...(at === undefined ? {} : { address: at }),
+      depth: depthAt(one),
+      origin,
+      ...over,
+    });
+  };
+  const root = landedAt(note, {
+    parent: parent ? ownedRefFrom(parent.id) : undefined,
+  });
+  return {
+    root,
+    landed: [root, ...beneath.map((one) => landedAt(one))],
+    aliases: carried.flatMap((one) =>
+      one.address !== undefined &&
+      one.address !== addressAt.get(ownedRefFrom(one.id))
+        ? [leftBehind(one, one.address)]
+        : [],
+    ),
+  };
 }
 
 /** The address a note is leaving, still leading to it. A note with none leaves

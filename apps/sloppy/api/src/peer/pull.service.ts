@@ -243,10 +243,7 @@ export class PullService {
  * root at the depth its address puts it, and everything else one below the note
  * it springs from, wherever in the answer that note arrived.
  */
-function deepen(
-  page: PublishedSubtreePage,
-  deep: Map<OwnedRef, number>,
-): void {
+function deepen(page: PublishedSubtreePage, deep: Map<OwnedRef, number>): void {
   const rootDepth = addressDepth(page.root_address);
   let waiting = page.nodes;
   while (waiting.length > 0) {

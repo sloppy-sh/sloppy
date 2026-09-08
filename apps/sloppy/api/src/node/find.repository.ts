@@ -57,8 +57,7 @@ export interface HeldNote {
   graph: OwnedRef;
   title: string;
   /** When its author wrote it, which is what orders two held notes neither of
-   *  which carries an address. Absent where the copy was taken before the
-   *  moment travelled. */
+   *  which carries an address. */
   created_at?: string;
 }
 

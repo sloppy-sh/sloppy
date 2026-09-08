@@ -132,6 +132,13 @@ the same millisecond still order the same way on every peer.
   `purgeExpired` writes a `retired_address` row for every note it finally takes. `childAddresses` and `addressTaken`
   answer from the notes and those rows together, so `nextChildAddress` steps past a
   number the graph has spent and a branch numbered by hand at one is refused.
+- **The rule passes over an address a label already holds.** `childAddresses` reads a run
+  by the note the run hangs under, and a label is not a place in the tree, so one written
+  on a note in another run is not in what the rule is offered. `NodeService.write` and
+  `NodeService.carry` therefore feed back every address the graph turns out to hold and ask
+  the rule again, up to `ADDRESS_ATTEMPTS` of them, and refuse in words past that rather
+  than leaving the person a write that cannot succeed. A move carries its whole subtree
+  along to the next address rather than landing part of it on a label.
 - The address hashes to a stable **angular sector**, so a subtree radiates in the same
   direction from its origin on every peer's screen. The sector is derived on read, never
   stored. It is a function of the address alone, so a `1` in each of two graphs seeds the
@@ -152,8 +159,12 @@ written with no address is one of those operations, and what it proves is that s
 is not in the run at all: it never moves what the rule offers the next note. One replica
 holds the high-water mark of each run and the other holds nothing but addresses, in the
 three states a graph holds them in, so the union is what the two agree on rather than a
-detail either of them remembers. The rules above do not mention a graph; what a graph
-decides is which run of siblings the next address follows.
+detail either of them remembers. A label somebody wrote by hand is not one of those
+operations, and cannot be: the replica that holds nothing but addresses recovers a run from
+the addresses themselves, and a label is not a place in the tree. What the server does with
+one is held where the server holds it — `node.service.test.ts` and
+`domain.integration.test.ts`. The rules above do not mention a graph; what a graph decides
+is which run of siblings the next address follows.
 
 **The home graph.** Everybody has a graph before they open a second one, and its local id is
 reserved — `HOME_GRAPH_ULID` in `@sloppy/types` — so `homeGraphRef(did)` is a function of the
@@ -193,10 +204,12 @@ greatest address ever assigned in it, so a note dropped between two siblings lan
 end of their run and neither sibling is renumbered. `rebaseAddress` in `@sloppy/types`
 carries the notes beneath: it keeps the segments past the moved note's own, taking the kind
 from the alternation its new depth puts it at, so `1a1` under `1a` becomes `2c1` under `2c`
-and `3a` under `3`. The address the subtree lands on is greater than every address its new
-run has ever spent, so none of the addresses it takes can be held. Deleted notes move with
-it — one left where it was would sit under an address no note is at — and a note cannot be
-moved under a deleted one for the same reason.
+and `3a` under `3`. A note beneath whose label its author wrote outside the moved note's own
+run keeps it: that label is theirs, and moving the note above it is not them changing it.
+Where the subtree would land on an address the graph already holds — a label anywhere is
+free to be one — the whole of it moves along to the next address in the run instead.
+Deleted notes move with it — one left where it was would sit under an address no note is at
+— and a note cannot be moved under a deleted one for the same reason.
 
 Two moves take no address, both of them the creation rule answering the same way. A note
 with none stays with none, and nothing beneath it is touched. And a note carried into a run

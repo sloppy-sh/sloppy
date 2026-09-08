@@ -1979,6 +1979,52 @@ describe("the domain routes", () => {
       expect((await readNote(note.ref)).address).toBeUndefined();
     });
 
+    scenario(
+      "is passed over by the next note written into its run",
+      async () => {
+        const alone = await newGraph(ada, "Numbered ahead of the run");
+        const branch = await newNode(ada, {
+          from: { relation: "branch", graph: alone.ref },
+        });
+        const aside = await newNode(ada, {
+          from: { relation: "free", graph: alone.ref },
+          title: "Numbered by hand",
+        });
+        await labelled(aside, `${branch.address}a`);
+
+        const written = await newNode(ada, { from: springsFrom(branch) });
+
+        expect(written.address).toBe(`${branch.address}b`);
+        expect((await readNote(aside.ref)).address).toBe(`${branch.address}a`);
+      },
+    );
+
+    scenario("moves a subtree along rather than under it", async () => {
+      const alone = await newGraph(ada, "Numbered in a move's way");
+      const first = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const under = await newNode(ada, { from: springsFrom(first) });
+      const second = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const aside = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+        title: "Numbered by hand",
+      });
+      await labelled(aside, `${second.address}a1`);
+
+      const carried = (await ok("POST", `/nodes/${at(first.ref)}/move`, ada, {
+        to: { relation: "under", note: second.ref },
+      })) as NodeView[];
+
+      expect(carried.map((one) => [one.ref, one.address])).toEqual([
+        [first.ref, `${second.address}b`],
+        [under.ref, `${second.address}b1`],
+      ]);
+      expect((await readNote(aside.ref)).address).toBe(`${second.address}a1`);
+    });
+
     scenario("hands a note back a number it carried before", async () => {
       const alone = await newGraph(ada, "Carried and labelled back");
       const first = await newNode(ada, {

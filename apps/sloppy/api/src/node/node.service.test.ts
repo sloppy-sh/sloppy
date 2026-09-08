@@ -19,6 +19,7 @@ import {
   type OwnedRef,
   ownedRefFrom,
   homeGraphRef,
+  siblingAddress,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import type { MediaService } from "../media/media.service";
@@ -231,6 +232,12 @@ function notebook(
   /** Every address a note has been carried or renamed away from. */
   const left: NodeAlias[] = [];
   const there = () => held.filter((one) => one.deleted_at === undefined);
+  /** What the unique index on the store's own rows answers, and refuses a
+   *  write against. */
+  const spent = (address: Address, of?: OwnedRef) =>
+    held.some(
+      (one) => one.address === address && ownedRefFrom(one.id) !== of,
+    ) || left.some((one) => one.address === address && one.note !== of);
   /** The parent chain, which is what the store's own read walks. */
   const under = (root: Node, from: readonly Node[]) => {
     const byRef = new Map(from.map((one) => [ownedRefFrom(one.id), one]));
@@ -267,6 +274,12 @@ function notebook(
       ),
     move: async (_did: string, landed: Node[], aliases: NodeAlias[]) => {
       await landing;
+      for (const one of landed) {
+        if (one.address === undefined) continue;
+        if (spent(one.address, ownedRefFrom(one.id))) {
+          throw new Error(`${one.address} is already indexed`);
+        }
+      }
       asked.landed = [...landed];
       asked.aliases = [...aliases];
       left.push(...aliases);
@@ -309,8 +322,22 @@ function notebook(
       return Promise.resolve(held[at]);
     },
     insert: (one: Node) => {
+      if (one.address !== undefined && spent(one.address)) {
+        return Promise.reject(new Error(`${one.address} is already indexed`));
+      }
       held.push(one);
       return Promise.resolve(one);
+    },
+    addressTaken: (_did: string, _graph: OwnedRef, address: Address) => {
+      const at = held.find((one) => one.address === address);
+      if (at) {
+        return Promise.resolve(
+          at.deleted_at === undefined ? "live" : "deleted",
+        );
+      }
+      return Promise.resolve(
+        left.some((one) => one.address === address) ? "moved" : null,
+      );
     },
     subtree: (_did: string, root: Node) =>
       Promise.resolve(under(root, there())),
@@ -701,6 +728,77 @@ describe("the label a person writes on a note", () => {
     await expect(service.setAddress(DID, note.ref, "2")).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+});
+
+// A label sits wherever its author wrote it, so the run the store reads by
+// parent is not the whole of what a number could be on. These are the sequences
+// where the rule offers a number somebody has already written somewhere else.
+describe("a label written outside the run it names", () => {
+  /** A branch at `1`, and beside it the notes whose authors labelled them. */
+  const beside = (...labels: string[]) => {
+    const root = live("1");
+    return {
+      root,
+      ...notebook([root, ...labels.map((address) => live(address))]),
+    };
+  };
+
+  const springing = (root: Node & { ref: OwnedRef }) => ({
+    title: "",
+    tags: [],
+    from: { relation: "under" as const, note: root.ref },
+  });
+
+  it("is passed over by the next note written into that run", async () => {
+    const { root, service } = beside("1a");
+
+    expect((await service.create(DID, springing(root))).address).toBe("1b");
+  });
+
+  it("is passed over however many of them are in the way", async () => {
+    const { root, service } = beside("1a", "1b", "1c");
+
+    expect((await service.create(DID, springing(root))).address).toBe("1d");
+  });
+
+  it("still numbers the run it was written in from its own end", async () => {
+    const { root, service } = beside("1a");
+    const first = await service.create(DID, springing(root));
+
+    expect(first.address).toBe("1b");
+    expect((await service.create(DID, springing(root))).address).toBe("1c");
+  });
+
+  it("moves a subtree along rather than landing it on one", async () => {
+    const root = live("1");
+    const child = live("1a", { origin: root.ref, parent: root.ref });
+    const other = live("2");
+    const { service } = notebook([root, child, other, live("2a1")]);
+
+    const carried = await service.move(DID, root.ref, {
+      relation: "under",
+      note: other.ref,
+    });
+
+    expect(carried.map((one) => [one.ref, one.address])).toEqual([
+      [root.ref, "2b"],
+      [child.ref, "2b1"],
+    ]);
+  });
+
+  it("is refused in words once every number the rule reaches is one", async () => {
+    const wall: string[] = [];
+    for (let address = "1a" as Address; wall.length < 40; ) {
+      wall.push(address);
+      address = siblingAddress(address);
+    }
+    const { root, service } = beside(...wall);
+
+    const written = service.create(DID, springing(root));
+
+    await expect(written).rejects.toBeInstanceOf(BadRequestException);
+    await expect(written).rejects.toThrow(/1a through .+ all lead somewhere/);
   });
 });
 
