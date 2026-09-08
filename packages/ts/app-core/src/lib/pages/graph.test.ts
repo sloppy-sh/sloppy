@@ -18,6 +18,7 @@ import {
 	hit,
 	node,
 	ref,
+	unnumbered,
 	useFakeApi,
 	VIEWER,
 	type FakeApi
@@ -861,7 +862,7 @@ describe('choosing several notes to act on', () => {
 		await open();
 		menuOn('the canvas').click();
 		await settle();
-		expect(offered()).toEqual(['Choose notes']);
+		expect(offered()).toEqual(['New branch', 'New note', 'Choose notes']);
 
 		item('Choose notes').click();
 		await settle();
@@ -1372,7 +1373,12 @@ describe('choosing the notes a selection lit', () => {
 
 		menuOn('the canvas').click();
 		await settle();
-		expect(offered()).toEqual(['Choose the 2 notes lit up', 'Choose notes']);
+		expect(offered()).toEqual([
+			'Choose the 2 notes lit up',
+			'New branch',
+			'New note',
+			'Choose notes'
+		]);
 
 		item('Choose the 2 notes lit up').click();
 		await settle();
@@ -1395,7 +1401,7 @@ describe('choosing the notes a selection lit', () => {
 		menuOn('the canvas').click();
 		await settle();
 
-		expect(offered()).toEqual(['Choose notes']);
+		expect(offered()).toEqual(['New branch', 'New note', 'Choose notes']);
 	});
 
 	it('counts one lit note as one', async () => {
@@ -1406,7 +1412,7 @@ describe('choosing the notes a selection lit', () => {
 		menuOn('the canvas').click();
 		await settle();
 
-		expect(offered()).toEqual(['Choose the note lit up', 'Choose notes']);
+		expect(offered()).toEqual(['Choose the note lit up', 'New branch', 'New note', 'Choose notes']);
 	});
 
 	// The bound is the reader's to see before the tap: a refusal landing after it
@@ -1420,7 +1426,7 @@ describe('choosing the notes a selection lit', () => {
 		const row = `Choose ${MAX_NOTES_PER_BULK_ACT.toLocaleString()} of the ${many.toLocaleString()} notes lit up`;
 		menuOn('the canvas').click();
 		await settle();
-		expect(offered()).toEqual([row, 'Choose notes']);
+		expect(offered()).toEqual([row, 'New branch', 'New note', 'Choose notes']);
 
 		item(row).click();
 		await settle();
@@ -1449,7 +1455,12 @@ describe('choosing the notes a selection lit', () => {
 		menuOn('the canvas').click();
 		await settle();
 
-		expect(offered()).toEqual(['Choose the 2 notes lit up', 'Choose notes']);
+		expect(offered()).toEqual([
+			'Choose the 2 notes lit up',
+			'New branch',
+			'New note',
+			'Choose notes'
+		]);
 	});
 });
 
@@ -1667,6 +1678,55 @@ describe('writing a note from the keyboard', () => {
 		const branch = button('New branch');
 		expect(branch.getAttribute('aria-keyshortcuts')).toContain('Enter');
 		expect(branch.getAttribute('aria-label')).toMatch(/^New branch \(.+\)$/);
+	});
+});
+
+// AI.md § "The Genealogy Is the Protocol": a note written with no parent and no
+// address is an ordinary note, and it opens no branch.
+describe('writing a note of its own', () => {
+	const WRITTEN = ref(9);
+	let placed: unknown;
+
+	beforeEach(() => {
+		placed = undefined;
+		api.on('POST /nodes', (_url, init) => {
+			placed = (JSON.parse(String(init?.body)) as { from?: unknown }).from;
+			return unnumbered(9);
+		});
+		api.on(`GET ${path(WRITTEN)}`, () => unnumbered(9));
+		api.on(`GET ${path(WRITTEN)}/blocks`, () => []);
+	});
+
+	it('asks for one from the chrome, and opens it to be written', async () => {
+		await open();
+
+		labelled('New note, which opens no branch').click();
+		await settle();
+
+		expect(placed).toEqual({ relation: 'free', graph: expect.any(String) });
+		expect(reading()).toBe(true);
+	});
+
+	it('asks for one from the menu on the bare canvas', async () => {
+		await open();
+		menuOn('the canvas').click();
+		await settle();
+
+		item('New note').click();
+		await settle();
+
+		expect(placed).toEqual({ relation: 'free', graph: expect.any(String) });
+	});
+
+	it('asks for one from the outline', async () => {
+		await open();
+		labelled('Walk the notes one at a time').click();
+		await settle();
+
+		button('New note').click();
+		await settle();
+
+		expect(placed).toEqual({ relation: 'free', graph: expect.any(String) });
 	});
 });
 

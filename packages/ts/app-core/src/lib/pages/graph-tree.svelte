@@ -30,7 +30,8 @@
 		onChoosing,
 		onToggle,
 		onOpen,
-		writeUnder
+		writeUnder,
+		writeAlone
 	}: {
 		/** Every note on the canvas, in any order — the tree finds its own shape. */
 		notes: readonly NodeView[];
@@ -51,6 +52,9 @@
 		/** Writing a note under a row, from the row. Absent where these notes are
 		 *  not the reader's to write under. */
 		writeUnder?: TreeSurfaceProps['writeUnder'];
+		/** Writing a note of its own, from the walk's own chrome. Absent where
+		 *  these notes are not the reader's. */
+		writeAlone?: TreeSurfaceProps['writeAlone'];
 	} = $props();
 
 	const LAST_WRITTEN = 8;
@@ -191,6 +195,7 @@
 	{onToggle}
 	{onOpen}
 	{writeUnder}
+	{writeAlone}
 	{sections}
 	{moveNote}
 />

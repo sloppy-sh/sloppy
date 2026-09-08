@@ -26,6 +26,7 @@
 	import Check from '@lucide/svelte/icons/check';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
@@ -1187,6 +1188,8 @@
 		if (!choosing) {
 			if (!on) {
 				const bare: CanvasMenuItem[] = [
+					{ label: 'New branch', icon: Plus, onSelect: () => writeBranch(null) },
+					{ label: 'New note', icon: FilePlus, onSelect: writeAlone },
 					{ label: 'Choose notes', icon: ListChecks, onSelect: startChoosing }
 				];
 				return chooseLit ? [chooseLit, ...bare] : bare;
@@ -1294,6 +1297,12 @@
 	 *  {@link writeUnder}, which continues the note it is given. */
 	function writeBranch(shape: NoteTemplate | null): void {
 		startWriting({ from: { relation: 'branch', graph: graphs.current } }, null, shape);
+	}
+
+	/** A note that springs from nothing and carries no address until the reader
+	 *  writes one on it. */
+	function writeAlone(): void {
+		startWriting({ from: { relation: 'free', graph: graphs.current } }, null, null);
 	}
 
 	/** The note that springs from one already on the canvas, without opening it
@@ -1814,6 +1823,7 @@
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
 					onOpen={foreign ? (ref) => void readHeld(ref) : show}
 					writeUnder={foreign ? undefined : writeFromRow}
+					writeAlone={foreign ? undefined : writeAlone}
 				/>
 			{/if}
 		</div>
@@ -1968,6 +1978,16 @@
 						>
 							<Plus class="size-4" />
 							New branch
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							class="size-9 shrink-0 rounded-full"
+							aria-label="New note, which opens no branch"
+							disabled={creating}
+							onclick={writeAlone}
+						>
+							<FilePlus class="size-4" />
 						</Button>
 						<Button
 							variant="ghost"
