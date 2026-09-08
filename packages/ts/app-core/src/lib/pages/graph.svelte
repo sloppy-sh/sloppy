@@ -1899,8 +1899,8 @@
 	{/if}
 
 	{#if populated}
-		<!-- What only changes how the picture is looked at sits on the picture, at
-		     a weight below the row that writes — DESIGN.md § "The canvas". -->
+		<!-- What only changes how the canvas is looked at sits on the canvas, at a
+		     weight below the row that writes — DESIGN.md § Layout. -->
 		{#if !walkingNow && !choosing && !pointing}
 			<div
 				style="top: {railHeight}px; bottom: var(--sysnav-clearance)"

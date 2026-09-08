@@ -30,6 +30,7 @@
 	let typed = $state('');
 	let typing = $state(false);
 	let field = $state<HTMLInputElement | null>(null);
+	let group = $state<HTMLElement | null>(null);
 	const offered = $derived(tags.length > CROWDED);
 	const needle = $derived(offered ? typed.trim().toLowerCase() : '');
 
@@ -53,6 +54,15 @@
 		typing = true;
 		await tick();
 		field?.focus();
+	}
+
+	// The row must not move between a finger going down on a chip and coming up,
+	// and WebKit hands that chip no focus for the field's own blur to see it by —
+	// so what puts the field away is a pointer landing outside the rail.
+	function putAway(event: Event): void {
+		if (!typing || typed.trim() !== '' || group?.contains(event.target as Node)) return;
+		typed = '';
+		typing = false;
 	}
 
 	async function toggle(tag: Tag, tapped: HTMLElement): Promise<void> {
@@ -84,7 +94,9 @@
 	const quiet = 'border-transparent text-muted-foreground hover:text-foreground';
 </script>
 
-<div role="group" aria-label={says} class="flex items-center gap-1.5">
+<svelte:window onpointerdowncapture={putAway} />
+
+<div bind:this={group} role="group" aria-label={says} class="flex items-center gap-1.5">
 	{#if offered}
 		<!-- Out of the scroller, so the way to type a tag is where it was left
 		     however far along the chips the reader has gone. -->
@@ -99,11 +111,6 @@
 				spellcheck="false"
 				aria-label="Find a tag"
 				placeholder="Find a tag"
-				onblur={() => {
-					if (typed.trim() !== '') return;
-					typed = '';
-					typing = false;
-				}}
 				onkeydown={(event) => {
 					if (event.key !== 'Escape' || typed === '') return;
 					event.stopPropagation();

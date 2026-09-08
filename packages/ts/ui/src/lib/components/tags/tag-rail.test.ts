@@ -44,6 +44,12 @@ function openSearch(): void {
 	flushSync();
 }
 
+/** What the rail reads to know a tap landed somewhere other than in it. */
+function tapOn(where: EventTarget): void {
+	where.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+	flushSync();
+}
+
 function type(text: string): void {
 	if (!filter()) openSearch();
 	const field = filter() as HTMLInputElement;
@@ -193,24 +199,34 @@ describe('typing for a tag', () => {
 
 	// The rail is one row, so the field is the chip's own place rather than a
 	// second row standing over the chips waiting to be used.
-	it('swaps the chip for the field where the chip was, and back once nothing is typed', () => {
+	it('swaps the chip for the field where the chip was, and back on a tap off the rail', () => {
 		render([], MANY);
 		expect(filter()).toBeNull();
 		openSearch();
 		expect(filter()).not.toBeNull();
 		expect(searchChip()).toBeUndefined();
 
-		filter()?.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-		flushSync();
+		tapOn(document.body);
 		expect(filter()).toBeNull();
 		expect(searchChip()).toBeDefined();
+	});
+
+	// The field is several chips wide, so putting it away moves the row along:
+	// a tap that lands IN the row has to leave it standing, or the chip travels
+	// out from under the finger before it comes up and nothing is tapped at all.
+	it('leaves the field standing when the tap is a chip in the same row', () => {
+		render([], MANY);
+		openSearch();
+		tapOn(named('ethics'));
+		expect(filter()).not.toBeNull();
+		named('ethics').click();
+		expect(asked).toEqual([['ethics']]);
 	});
 
 	it('keeps the field open while a word is still narrowing the rail', () => {
 		render([], MANY);
 		type('ology');
-		filter()?.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-		flushSync();
+		tapOn(document.body);
 		expect(filter()?.value).toBe('ology');
 		expect(names()).toEqual(['biology', 'geology', 'ecology']);
 	});

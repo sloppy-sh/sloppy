@@ -663,6 +663,12 @@ so.
   full-width on a phone, and it is the way to every other graph — moving into one, standing
   one up beside it, naming one, starting one. Moving between graphs is a top-level act on
   the surface the graphs are on, never a setting.
+- **What only changes how the canvas is LOOKED at sits on the canvas, at a weight below the
+  row that writes.** Putting the whole field back in view, walking it note by note, the
+  drawing, the ground under it: none of them makes or changes a note, so none of them takes a
+  place in the row where the graph is named and a branch is written. They ride the canvas they
+  act on, as one quiet column against its edge, held clear of the system nav (§ "The four
+  inset vars").
 - **Floating nav, not a top bar.** A pill anchored bottom-centre (`fixed`, safe-area
   inset) holds the core destinations. ≥44px targets, keyboard-reachable, `aria-label`led.
   The pill publishes its own height as `--sysnav-inset-bottom` and is suppressed while a
