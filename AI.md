@@ -65,11 +65,9 @@ machine identifier and nothing in the system needs one to be there. The rules it
 to, all of them about what a person can rely on rather than about what the code can find:
 
 - **A note may have no address, and that is an ordinary note.** One written with no parent
-  and no address is an independent note: it opens no branch, it is still linked to and read
-  like any other, and it stays alongside everything else in its graph. A person gives it an
-  address later or never. Two acts still want one and refuse plainly rather than half-doing
-  it — moving a note, and publishing a region that holds one; `docs/ARCHITECTURE.md`
-  § "The genealogy and the address" carries why, and it is a gap to close, not a rule.
+  and no address is an independent note: it opens no branch, it is still linked to,
+  published and read like any other, and it stays alongside everything else in its graph. A
+  person gives it an address later or never.
 - **An address is unique inside its graph while a note holds one.** A person keeps as many
   graphs as they like — a notebook each for the thesis, the garden and the company — and
   every one of them has its own `1a`. Two notes at `1a` in one graph would be a citation
