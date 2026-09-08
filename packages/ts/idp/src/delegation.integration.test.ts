@@ -111,12 +111,7 @@ describe.skipIf(!runs)(`the provider against ${ENDPOINT.href}`, () => {
     ).rejects.toMatchObject({ code: "username_taken" });
   });
 
-  // Four password costs in one test — a seal and three unseals, the last
-  // deliberately spent on a name nobody holds. Under the whole suite at once
-  // that has passed the five-second default.
-  it("signs somebody back in with the password that seals their key", {
-    timeout: 20_000,
-  }, async () => {
+  it("signs somebody back in with the password that seals their key", async () => {
     const username = someone();
     const registered = await register(ctx, { username, password: PASSWORD });
     const returned = await login(ctx, { username, password: PASSWORD });
@@ -382,11 +377,7 @@ describe.skipIf(!runs)(`the provider against ${ENDPOINT.href}`, () => {
     ).rejects.toMatchObject({ code: "consent_expired" });
   });
 
-  // A purge walks every table an identity owns; under the whole suite running at
-  // once it has taken six seconds against a five-second default.
-  it("erases an identity by the column that names its owner", {
-    timeout: 20_000,
-  }, async () => {
+  it("erases an identity by the column that names its owner", async () => {
     const username = someone();
     const { did } = await register(ctx, { username, password: PASSWORD });
     const other = await register(ctx, {
