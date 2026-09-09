@@ -2,7 +2,7 @@ import { DELETED_KEPT_FOR_DAYS, splitOwnedRef } from "@sloppy/types";
 import { PICTURES_FILE, decodeText, encodeText } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { MemoryFiles } from "./files.js";
-import type { LocalGraph, StoredNote, StoredSection } from "./graph.js";
+import { type StoredNote, type StoredSection, LocalGraph } from "./graph.js";
 import { NoteWriter } from "./notes.js";
 import { graphOnly, reread, textDocument } from "./local.test-support.js";
 import { BIN_FILE, binPath } from "./vault-paths.js";
@@ -238,6 +238,31 @@ describe("the bin, as a folder holds it", () => {
     await expect(
       new NoteWriter(again).create({ address: "1" }),
     ).rejects.toThrow("You have used 1 before");
+  });
+});
+
+describe("opening a folder", () => {
+  it("never reads a picture's bytes to build the index", async () => {
+    const files = new MemoryFiles();
+    const { graph, writer, did } = await graphOnly(files);
+    await writer.create({ title: "Seeds" });
+    await graph.putPicture(
+      { role: "block", filename: "seed.png", mime_type: "image/png" },
+      new Uint8Array(4_000_000),
+    );
+
+    const watched = files.at("/graphs/one");
+    const asked: string[] = [];
+    const read = watched.read.bind(watched);
+    watched.read = async (path: string) => {
+      asked.push(path);
+      return read(path);
+    };
+
+    const again = await LocalGraph.open(watched, did);
+    expect(asked.some((path) => path.startsWith("media/"))).toBe(false);
+    expect(again.live().map((one) => one.title)).toEqual(["Seeds"]);
+    expect((await again.listPictures("block")).length).toBe(1);
   });
 });
 

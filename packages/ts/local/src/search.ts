@@ -20,22 +20,27 @@ const BEFORE_MATCH = 48;
 const SAYS = new Set(["text", "description", "alt"]);
 
 /**
- * The notes `asked` reaches, best match first: the one it addresses ahead of
- * the ones whose writing carries it. An address carried away from answers
- * alongside the one a note is at, so a citation written down before a move
- * still leads where it meant to.
+ * The notes `asked` reaches across every graph given, best match first: the one
+ * it addresses ahead of the ones whose writing carries it. An address carried
+ * away from answers alongside the one a note is at, so a citation written down
+ * before a move still leads where it meant to. Ranked and bounded over the
+ * whole answer, so a second graph never pushes a better hit off the end.
  */
-export function search(graph: LocalGraph, asked: string): SearchHit[] {
-  const cited = addressed(graph, asked);
+export function search(
+  graphs: readonly LocalGraph[],
+  asked: string,
+): SearchHit[] {
+  const cited = graphs.flatMap((graph) => addressed(graph, asked));
   const wanted = words(asked);
-  if (wanted.length === 0) return cited;
+  if (wanted.length === 0) return cited.slice(0, MAX_SEARCH_HITS);
   const already = new Set(cited.map((hit) => hit.note));
-  const found = graph
-    .live()
-    .flatMap((note) => {
-      const hit = matched(graph, note, wanted);
-      return hit && !already.has(note.ref) ? [hit] : [];
-    })
+  const found = graphs
+    .flatMap((graph) =>
+      graph.live().flatMap((note) => {
+        const hit = matched(graph, note, wanted);
+        return hit && !already.has(note.ref) ? [hit] : [];
+      }),
+    )
     .sort(bestFirst);
   return [...cited, ...found.map((one) => one.hit)].slice(0, MAX_SEARCH_HITS);
 }

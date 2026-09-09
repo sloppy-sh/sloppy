@@ -1,5 +1,5 @@
 import { splitOwnedRef } from "@sloppy/types";
-import { unpack } from "@sloppy/vault";
+import { encodeText, unpack } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import {
   type Device,
@@ -111,6 +111,44 @@ describe("a graph of this device's own brought back in", () => {
     const back = await held.api.importArchive(out);
     expect(back.ref).toBe(second.ref);
     expect((await reopened(held).getNode(note.ref))?.title).toBe("Beans");
+  });
+
+  it("still owes a citation every number the graph it replaces retired", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const second = await held.api.createGraph({ title: "Garden" });
+    await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Beans",
+    });
+    const spent = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Peas",
+    });
+    await held.api.deleteNode(spent.ref);
+    // The bin never travels, so this archive holds "1" and knows nothing of "2".
+    const out = await archiveFrom(held, second.ref);
+
+    held.store.set(
+      `/graphs/two/${BIN_FILE}`,
+      encodeText(
+        JSON.stringify({
+          deleted: {
+            [splitOwnedRef(spent.ref).localId]: "2020-01-01T00:00:00.000Z",
+          },
+          retired: [],
+        }),
+      ),
+    );
+    const client = reopened(held);
+    await client.deletedBranches();
+    await client.importArchive(out);
+
+    await expect(
+      reopened(held).createNode({
+        from: { relation: "root", address: "2", graph: second.ref },
+      }),
+    ).rejects.toThrow("You have used 2 before");
   });
 
   it("refuses one whose notes are already in another graph here", async () => {

@@ -67,9 +67,9 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** One section as this graph holds it. The stamps are the section's own, so two
- *  sections of one note are written one after the other without either
- *  reading as the other's writing. */
+/** One section as this graph holds it. A section written since the folder was
+ *  read carries its own stamps; the rest carry the note's, which is all the
+ *  file says. */
 export interface StoredSection extends VaultSection {
   created_at: Timestamp;
   updated_at: Timestamp;
@@ -164,30 +164,35 @@ export class LocalGraph {
 
   // ── The index ────────────────────────────────────────────────────────────
 
+  /** Only the files the index is read out of are read: a picture's bytes stay
+   *  on the disk, so opening a graph costs what its writing weighs and never
+   *  what its pictures do. */
   private async build(): Promise<void> {
-    const held = await this.carry();
-    for (const [path, bytes] of held) {
+    const paths = (await this.files.list("")).filter(vaultOwned);
+    for (const path of paths) {
       const stem = inkAt(path);
       if (stem === undefined || !path.endsWith(".ink.json")) continue;
-      const attrs = readJson(bytes);
+      const bytes = await this.files.read(path);
+      const attrs = bytes ? readJson(bytes) : undefined;
       if (attrs) this.ink.set(stem, attrs);
     }
-    const sizes = held.get(PICTURES_FILE);
+    const sizes = await this.files.read(PICTURES_FILE);
     if (sizes) {
       for (const [upload, size] of readPicturesFile(sizes)) {
         this.pictures.set(upload, size);
       }
     }
-    this.readMedia(held);
-    this.readEmoji(held);
+    this.readMedia(paths, await this.files.read(MEDIA_FILE));
+    this.readEmoji(paths, await this.files.read(EMOJI_FILE));
 
-    const bin = readBin(held.get(BIN_FILE));
+    const bin = readBin(await this.files.read(BIN_FILE));
     this.retired = bin.retired;
-    for (const [path, bytes] of held) {
+    for (const path of paths) {
       const there = noteAt(path);
       const gone = binAt(path);
       if (there === undefined && gone === undefined) continue;
-      const note = this.readNote(bytes);
+      const bytes = await this.files.read(path);
+      const note = bytes && this.readNote(bytes);
       if (!note) continue;
       if (gone !== undefined) {
         note.deleted_at = bin.deleted[gone] ?? note.updated_at;
@@ -196,9 +201,12 @@ export class LocalGraph {
     }
   }
 
-  private readMedia(held: ReadonlyMap<string, Uint8Array>): void {
-    const said = readRecord(held.get(MEDIA_FILE));
-    for (const path of held.keys()) {
+  private readMedia(
+    paths: readonly string[],
+    file: Uint8Array | undefined,
+  ): void {
+    const said = readRecord(file);
+    for (const path of paths) {
       const upload = uploadAt(path);
       if (upload === undefined) continue;
       const wrote = said[upload] as Partial<StoredPicture> | undefined;
@@ -215,9 +223,12 @@ export class LocalGraph {
     }
   }
 
-  private readEmoji(held: ReadonlyMap<string, Uint8Array>): void {
-    const said = readRecord(held.get(EMOJI_FILE));
-    for (const path of held.keys()) {
+  private readEmoji(
+    paths: readonly string[],
+    file: Uint8Array | undefined,
+  ): void {
+    const said = readRecord(file);
+    for (const path of paths) {
       const shortcode = emojiAt(path);
       if (shortcode === undefined) continue;
       const wrote = said[shortcode];
@@ -533,6 +544,23 @@ export class LocalGraph {
       this.notes.delete(note.ref);
     }
     this.places = null;
+    await this.writeBin();
+  }
+
+  /** Every address this graph has spent and will never assign again. */
+  retiredAddresses(): Address[] {
+    return [...this.retired];
+  }
+
+  /** Addresses spent before whatever is in this folder now was written into it.
+   *  A graph replaced by a copy of itself still owes a citation whatever it
+   *  retired — AI.md § "The Genealogy Is the Protocol". */
+  async keepRetired(addresses: readonly Address[]): Promise<void> {
+    const adding = addresses.filter(
+      (address) => !this.retired.includes(address),
+    );
+    if (adding.length === 0) return;
+    this.retired = [...this.retired, ...adding];
     await this.writeBin();
   }
 

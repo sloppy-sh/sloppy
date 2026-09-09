@@ -109,6 +109,31 @@ describe("a graph in a folder", () => {
     expect((await held.api.listNodes({ graph: second.ref })).length).toBe(1);
   });
 
+  it("writes a child and a sibling in whichever graph they spring from", async () => {
+    const held = device(["/graphs/one", "/graphs/garden"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const second = await held.api.createGraph({ title: "Garden" });
+    const root = await held.api.createNode({
+      title: "Beds",
+      from: { relation: "branch", graph: second.ref },
+    });
+    const child = await held.api.createNode({
+      title: "Compost",
+      from: { relation: "under", note: root.ref },
+    });
+    const sibling = await held.api.createNode({
+      title: "Mulch",
+      from: { relation: "after", note: child.ref },
+    });
+
+    const again = reopened(held);
+    expect((await again.getNode(child.ref))?.graph).toBe(second.ref);
+    expect((await again.getNode(child.ref))?.address).toBe("1a");
+    expect((await again.getNode(sibling.ref))?.graph).toBe(second.ref);
+    expect((await again.getNode(sibling.ref))?.address).toBe("1b");
+    expect((await again.listNodes({ graph: second.ref })).length).toBe(1);
+  });
+
   it("refuses a second graph in a folder that already holds one", async () => {
     const held = device(["/graphs/one", "/graphs/one"]);
     await held.api.createGraph({ title: "Thesis" });

@@ -21,6 +21,7 @@ import {
   type CreateGraphRequest,
   CreateGraphRequestSchema,
   type CreateNodeRequest,
+  CreateNodeRequestSchema,
   type CreateNoteCommentRequest,
   type CreateNoteReactionRequest,
   type CreatePublicationRequest,
@@ -43,6 +44,7 @@ import {
   type MediaLibraryRole,
   type NodeBulkRequest,
   type NodeBulkResult,
+  type NodePlacement,
   type NodeView,
   type NoteComment,
   type NoteDestination,
@@ -78,6 +80,8 @@ import {
   type UploadTicket,
   type Viewer,
   type UpdatePublicationRequest,
+  graphAsked,
+  namesGraph,
   nowIso,
   ulid,
 } from "@sloppy/types";
@@ -254,11 +258,11 @@ export class LocalApi implements SloppyApi {
     return graph && note ? graph.view(note) : null;
   }
 
-  async createNode(request: CreateNodeRequest): Promise<NodeView> {
-    return this.write(async () => {
-      const graph = await this.graphAt(graphNamed(request));
-      return new NoteWriter(graph).create(request);
-    });
+  async createNode(asked: CreateNodeRequest): Promise<NodeView> {
+    const request = checked(() => CreateNodeRequestSchema.parse(asked));
+    return this.write(async () =>
+      new NoteWriter(await this.landingGraph(request.from)).create(request),
+    );
   }
 
   async updateNode(
@@ -327,7 +331,7 @@ export class LocalApi implements SloppyApi {
 
   async searchNotes(q: string, graph?: OwnedRef): Promise<SearchHit[]> {
     const within = graph ? [await this.graphAt(graph)] : await this.allGraphs();
-    return within.flatMap((one) => search(one, q));
+    return search(within, q);
   }
 
   async recentNotes(
@@ -543,9 +547,11 @@ export class LocalApi implements SloppyApi {
         throw refuse("There is already a graph in that folder.");
       }
       const files = this.files.at(root);
+      const retired = into ? into.retiredAddresses() : [];
       if (into) await emptyVault(files);
       for (const [path, bytes] of opened.vault) await files.write(path, bytes);
       const graph = await LocalGraph.open(files, did);
+      await graph.keepRetired(retired);
       this.opened.set(root, graph);
       if (!into) {
         const at = nowIso();
@@ -879,6 +885,25 @@ export class LocalApi implements SloppyApi {
     return graphs;
   }
 
+  /** The graph a new note lands in: the one holding the note it is placed
+   *  against, and otherwise the one the placement names. */
+  private async landingGraph(
+    from: NodePlacement | undefined,
+  ): Promise<LocalGraph> {
+    if (from === undefined || namesGraph(from)) {
+      return this.graphAt(graphAsked(from));
+    }
+    const graph = await this.graphHolding(from.note);
+    if (!graph) {
+      throw refuse(
+        from.relation === "under"
+          ? "The note this springs from is not here."
+          : "The note this follows is not here.",
+      );
+    }
+    return graph;
+  }
+
   /** The graph named, or the one this device started with. */
   private async graphAt(ref?: OwnedRef): Promise<LocalGraph> {
     const graphs = await this.allGraphs();
@@ -1027,14 +1052,6 @@ async function emptyVault(files: Files): Promise<void> {
   for (const path of await files.list("")) {
     if (vaultOwned(path)) await files.remove(path);
   }
-}
-
-/** The graph a request names, where the placement is one that names a graph at
- *  all. */
-function graphNamed(request: CreateNodeRequest): OwnedRef | undefined {
-  const from = request.from;
-  if (!from) return undefined;
-  return "graph" in from ? from.graph : undefined;
 }
 
 /** Where a section lands in a stack: right after the one named. */

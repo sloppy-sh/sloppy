@@ -20,6 +20,7 @@ import {
   graphAsked,
   isAncestorAddress,
   isRootAddress,
+  movedSubtree,
   namesGraph,
   nextChildAddress,
   nowIso,
@@ -65,6 +66,8 @@ export class NoteWriter {
 
   async update(ref: OwnedRef, asked: UpdateNodeRequest): Promise<NodeView> {
     const request = checked(() => UpdateNodeRequestSchema.parse(asked));
+    // `null` takes a look back off, and a note here carries none to take.
+    if (request.appearance != null) throw noLook();
     const note = this.require(ref);
     return this.put({
       ...note,
@@ -169,9 +172,7 @@ export class NoteWriter {
         "Publishing needs a hosted Sloppy. This graph is on your device.",
       );
     }
-    if (act.act === "set_appearance") {
-      throw refuse("A note's look is not kept in a graph on your device yet.");
-    }
+    if (act.act === "set_appearance") throw noLook();
     if (act.act === "delete") {
       await this.graph.sweep();
       const going = new Map<OwnedRef, StoredNote>();
@@ -575,25 +576,8 @@ export class NoteWriter {
   }
 }
 
-/**
- * Where a moved note and everything beneath it land: the address each one is at
- * now, mapped to the address it takes. A note beneath whose label its author
- * wrote from outside the moved note's run is absent from the answer — it is
- * that person's label, and a move of the note above it is not them changing it.
- */
-export function movedSubtree(
-  parent: Address | null,
-  siblings: readonly Address[],
-  moved: Address,
-  beneath: readonly Address[],
-): Map<Address, Address> {
-  const now = nextChildAddress(parent, siblings);
-  const landing = new Map<Address, Address>([[moved, now]]);
-  for (const address of beneath) {
-    if (!isAncestorAddress(moved, address)) continue;
-    landing.set(address, rebaseAddress(moved, now, address));
-  }
-  return landing;
+function noLook(): Error {
+  return refuse("A note's look is not kept in a graph on your device yet.");
 }
 
 function missing(relation: NoteDestination["relation"]): string {

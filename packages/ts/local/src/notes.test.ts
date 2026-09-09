@@ -227,4 +227,25 @@ describe("one act over the notes somebody chose", () => {
       writer.bulk({ notes: [one.ref], act: { act: "publish" } }),
     ).rejects.toThrow("needs a hosted Sloppy");
   });
+
+  it("says a look is not kept here, whichever way one is written", async () => {
+    const { writer } = await graphOnly();
+    const one = await writer.create({ title: "Seeds" });
+    const look = { ring_weight: "heavy" };
+    await expect(
+      writer.bulk({
+        notes: [one.ref],
+        act: { act: "set_appearance", appearance: look },
+      }),
+    ).rejects.toThrow("not kept in a graph on your device yet");
+    await expect(writer.update(one.ref, { appearance: look })).rejects.toThrow(
+      "not kept in a graph on your device yet",
+    );
+
+    const written = await writer.update(one.ref, {
+      title: "Seeds and clocks",
+      appearance: null,
+    });
+    expect(written.title).toBe("Seeds and clocks");
+  });
 });
