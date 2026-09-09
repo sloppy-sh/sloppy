@@ -17,7 +17,8 @@ import {
 	type CreateGraphRequest,
 	type UpdateGraphRequest
 } from '@sloppy/types';
-import { api } from '../api.js';
+import type { ArchivePreview } from '@sloppy/ui';
+import { api, type SloppyApi } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
 import { serverMessage } from './errors.js';
 import { prefs } from './prefs.svelte.js';
@@ -37,6 +38,21 @@ export interface GraphsState {
 }
 
 const IDLE: GraphsState = { loading: false, loaded: false, failed: false };
+
+/**
+ * A graph as a file, both ways — docs/ARCHITECTURE.md § "A graph on disk". The
+ * preview writes nothing and answers what the archive holds, read against the
+ * graphs this person already keeps; an import answers the graph it made, or the
+ * one it replaced. Refs arrive re-keyed to the importing identity, so the graph
+ * that comes back is this person's.
+ */
+export interface ArchiveRoutes {
+	exportArchive(ref: OwnedRef): Promise<Blob>;
+	importArchive(bytes: Uint8Array, asked: { preview: true }): Promise<ArchivePreview>;
+	importArchive(bytes: Uint8Array, asked?: { preview?: false }): Promise<GraphView>;
+}
+
+const archive = (): ArchiveRoutes => api as SloppyApi & ArchiveRoutes;
 
 const LISTING = 'listing';
 
@@ -179,6 +195,30 @@ class GraphsStore {
 		this.#keep();
 		this.enter(made.ref);
 		return made;
+	}
+
+	/** This graph as a file, for somebody to keep. */
+	exportArchive(ref: OwnedRef): Promise<Blob> {
+		return archive().exportArchive(ref);
+	}
+
+	/** What that file holds, before any of it is written. */
+	previewImport(bytes: Uint8Array): Promise<ArchivePreview> {
+		return archive().importArchive(bytes, { preview: true });
+	}
+
+	/** Bring the graph in, and be in it. One replacing a graph already kept
+	 *  takes its place in the listing rather than standing beside it. */
+	async importArchive(bytes: Uint8Array): Promise<GraphView> {
+		const epoch = this.#epoch;
+		const brought = await archive().importArchive(bytes);
+		if (epoch !== this.#epoch) return brought;
+		this.#all = this.#all.some((graph) => graph.ref === brought.ref)
+			? this.#all.map((graph) => (graph.ref === brought.ref ? brought : graph))
+			: [...this.#all, brought];
+		this.#keep();
+		this.enter(brought.ref);
+		return brought;
 	}
 
 	async rename(ref: OwnedRef, request: UpdateGraphRequest): Promise<GraphView> {

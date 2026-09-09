@@ -28,6 +28,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import CircleDashed from '@lucide/svelte/icons/circle-dashed';
 	import CornerDownRight from '@lucide/svelte/icons/corner-down-right';
+	import Download from '@lucide/svelte/icons/download';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
@@ -44,6 +45,7 @@
 	import Search from '@lucide/svelte/icons/search';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Upload from '@lucide/svelte/icons/upload';
 	import Users from '@lucide/svelte/icons/users';
 	import {
 		DEFAULT_BUDGET,
@@ -87,6 +89,7 @@
 		GraphSurface,
 		GroundChoice,
 		HeldNote,
+		ImportSheet,
 		namedBranches,
 		nameOr,
 		NotePreview,
@@ -98,6 +101,7 @@
 		TagRail,
 		TemplatePicker,
 		WallpaperSheet,
+		type ArchivePreview,
 		type CanvasMenuItem,
 		type CanvasPen,
 		type ConversationProps,
@@ -121,6 +125,7 @@
 	import { api } from '../api.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
+	import { runtime } from '../runtime.js';
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
@@ -1548,6 +1553,104 @@
 		if (!visiting) asking = null;
 	});
 
+	/** The graph as a file, named for the graph and the day it was taken. */
+	function archiveName(): string {
+		const day = new Date();
+		const stamp = [
+			day.getFullYear(),
+			String(day.getMonth() + 1).padStart(2, '0'),
+			String(day.getDate()).padStart(2, '0')
+		].join('-');
+		const named = graphs
+			.titleOf(graph)
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '');
+		return `${named || 'graph'}-${stamp}.sloppy`;
+	}
+
+	async function takeArchive(): Promise<void> {
+		refused = null;
+		const save = runtime.saveFile();
+		if (save === null) {
+			refused = 'Sloppy cannot hand you a file here yet.';
+			return;
+		}
+		try {
+			const body = await graphs.exportArchive(graph);
+			const name = archiveName();
+			if (save) await save(name, body);
+			else handOver(name, body);
+		} catch (error) {
+			refused =
+				serverMessage(error) ??
+				'That graph could not be put in a file just now. Try again in a moment.';
+		}
+	}
+
+	function handOver(name: string, body: Blob): void {
+		const at = URL.createObjectURL(body);
+		const link = document.createElement('a');
+		link.href = at;
+		link.download = name;
+		document.body.append(link);
+		link.click();
+		link.remove();
+		// WebKit reads the blob after the click returns; revoking in this task
+		// loses the file.
+		setTimeout(() => URL.revokeObjectURL(at));
+	}
+
+	/** The file picker for a graph somebody is bringing in. */
+	let chooser = $state<HTMLInputElement>();
+	/** The archive in hand, held while its preview is read and answered. */
+	let arriving = $state<{
+		bytes: Uint8Array;
+		preview: ArchivePreview | null;
+		reading: boolean;
+		busy: boolean;
+		refused: string | null;
+	} | null>(null);
+
+	async function readArchive(file: File | undefined): Promise<void> {
+		if (!file) return;
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		arriving = { bytes, preview: null, reading: true, busy: false, refused: null };
+		const held = arriving;
+		try {
+			const preview = await graphs.previewImport(bytes);
+			if (arriving === held) arriving = { ...held, preview, reading: false };
+		} catch (error) {
+			if (arriving === held) {
+				arriving = {
+					...held,
+					reading: false,
+					refused: serverMessage(error) ?? 'That file could not be read as a graph.'
+				};
+			}
+		}
+	}
+
+	async function bringItIn(): Promise<void> {
+		if (!arriving) return;
+		arriving = { ...arriving, busy: true, refused: null };
+		const held = arriving;
+		try {
+			const brought = await graphs.importArchive(held.bytes);
+			if (arriving === held) arriving = null;
+			closeUndrawn();
+			await nodes.reload({ graph: brought.ref }).catch(() => {});
+			void tags.reload(brought.ref).catch(() => {});
+		} catch (error) {
+			if (arriving !== held) return;
+			arriving = {
+				...held,
+				busy: false,
+				refused: serverMessage(error) ?? 'That graph could not be brought in just now.'
+			};
+		}
+	}
+
 	/** Other people's graphs, and a second look at whatever did not arrive the
 	 *  first time. */
 	function visitPeers(): void {
@@ -2078,6 +2181,14 @@
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
 								</DropdownMenu.Item>
+								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => void takeArchive()}>
+									<Download class="size-4 text-muted-foreground" />
+									Export this graph
+								</DropdownMenu.Item>
+								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => chooser?.click()}>
+									<Upload class="size-4 text-muted-foreground" />
+									Import a graph
+								</DropdownMenu.Item>
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 						{#if walkingNow}
@@ -2258,6 +2369,33 @@
 			closeUndrawn();
 			void deleted.reload().catch(() => {});
 		}, 'That graph could not be closed.')}
+/>
+
+<input
+	bind:this={chooser}
+	type="file"
+	accept=".sloppy"
+	class="sr-only"
+	aria-label="The graph to bring in"
+	onchange={(event) => {
+		const input = event.currentTarget;
+		void readArchive(input.files?.[0]);
+		input.value = '';
+	}}
+/>
+
+<ImportSheet
+	open={arriving !== null}
+	onOpenChange={(up) => {
+		if (!up) arriving = null;
+	}}
+	preview={arriving?.preview ?? null}
+	yours={arriving?.preview ? arriving.preview.graph.owner === session.viewer?.did : true}
+	reading={arriving?.reading ?? false}
+	busy={arriving?.busy ?? false}
+	refused={arriving?.refused ?? null}
+	onimport={() => void bringItIn()}
+	oncancel={() => (arriving = null)}
 />
 
 <WallpaperSheet

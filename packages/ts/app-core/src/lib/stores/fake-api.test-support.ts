@@ -9,6 +9,7 @@ import {
 	type BlockView,
 	type Converses,
 	type CreateNodeRequest,
+	type GraphView,
 	graphOf,
 	type MoveNoteRequest,
 	type NodeView,
@@ -22,8 +23,10 @@ import {
 	UpdateBlockRequestSchema,
 	type Viewer
 } from '@sloppy/types';
-import { resetApi } from '../api.js';
+import type { ArchivePreview } from '@sloppy/ui';
+import { createRemoteApi, resetApi } from '../api.js';
 import { initRuntime } from '../runtime.js';
+import type { ArchiveRoutes } from './graphs.svelte.js';
 
 export const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
@@ -301,4 +304,42 @@ export function useFakeApi(): FakeApi {
 	initRuntime({ apiHost: () => 'http://api.test', fetchImpl: () => fake.fetch });
 	resetApi();
 	return fake;
+}
+
+/** How a suite answers for a graph as a file. An answer left out is one the
+ *  suite does not reach; asking for it fails rather than answering emptily. */
+export interface FakeArchive {
+	exported?: (ref: OwnedRef) => Blob | Promise<Blob>;
+	preview?: (bytes: Uint8Array) => ArchivePreview | Promise<ArchivePreview>;
+	imported?: (bytes: Uint8Array) => GraphView | Promise<GraphView>;
+}
+
+/**
+ * Answer the archive routes, which the client serves alongside the ones the
+ * fake fetch answers. The dispatch on `preview` is the fake's, so a suite that
+ * passes has exercised which of the two a surface asked for.
+ */
+export function archiving(fake: FakeApi, answers: FakeArchive): void {
+	const missing = (what: string) => Promise.reject(new Error(`No suite answers for ${what}.`));
+
+	function importArchive(bytes: Uint8Array, asked: { preview: true }): Promise<ArchivePreview>;
+	function importArchive(bytes: Uint8Array, asked?: { preview?: false }): Promise<GraphView>;
+	async function importArchive(
+		bytes: Uint8Array,
+		asked?: { preview?: boolean }
+	): Promise<ArchivePreview | GraphView> {
+		if (asked?.preview) return answers.preview ? answers.preview(bytes) : missing('a preview');
+		return answers.imported ? answers.imported(bytes) : missing('an import');
+	}
+
+	const routes: ArchiveRoutes = {
+		exportArchive: async (ref) => (answers.exported ? answers.exported(ref) : missing('an export')),
+		importArchive
+	};
+	initRuntime({
+		apiHost: () => 'http://api.test',
+		fetchImpl: () => fake.fetch,
+		createApi: () => Object.assign(createRemoteApi(), routes)
+	});
+	resetApi();
 }

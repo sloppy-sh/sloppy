@@ -2,16 +2,20 @@ import type {
 	BlockView,
 	CommentAccess,
 	CreateBlockRequest,
+	GraphView,
 	NodeBulkRequest,
 	NodeView,
 	OwnedRef,
 	PublicationView
 } from '@sloppy/types';
 import { homeGraphRef, MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
+import { SloppyApiError } from '@sloppy/client';
+import type { ArchivePreview } from '@sloppy/ui';
 import { DEFAULT_BUDGET } from '@sloppy/graph';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+	archiving,
 	AT,
 	DID,
 	finding,
@@ -23,6 +27,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
+import { initRuntime } from '../runtime.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -3009,5 +3014,199 @@ describe('what the chrome says the canvas holds', () => {
 		await open();
 
 		expect(screen()).toContain('2 notes, 2 on their own');
+	});
+});
+
+// docs/ARCHITECTURE.md § "A graph on disk": the archive is the vault zipped,
+// and an import says what it holds before any of it is written.
+describe('a graph as a file', () => {
+	const OSMOSIS: GraphView = {
+		ref: ref(60),
+		created_by: DID,
+		created_at: AT,
+		updated_at: AT,
+		title: 'Osmosis'
+	};
+
+	function whatArrives(over: Partial<ArchivePreview> = {}): ArchivePreview {
+		return {
+			graph: { ulid: '01JRZ0000000000000000000AA', name: 'Osmosis', owner: DID, format: 1 },
+			notes: 12,
+			media: 3,
+			missingEmoji: [],
+			colliding: [],
+			replaces: false,
+			...over
+		};
+	}
+
+	/** Hand the picker a file, the way a person's file browser does. */
+	function chooseFile(): void {
+		const input = document.body.querySelector<HTMLInputElement>(
+			'input[aria-label="The graph to bring in"]'
+		);
+		if (!input) throw new Error('Nothing on screen takes a graph in');
+		Object.defineProperty(input, 'files', {
+			configurable: true,
+			value: [new File([new Uint8Array([1, 2, 3])], 'osmosis.sloppy')]
+		});
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+	}
+
+	async function fromMore(offer: string): Promise<void> {
+		await open();
+		labelled('More').click();
+		await settle();
+		item(offer).click();
+		await settle();
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+		graphs.clear();
+	});
+
+	it('offers to export this graph and to bring one in', async () => {
+		await open();
+		labelled('More').click();
+		await settle();
+
+		expect(offered()).toContain('Export this graph');
+		expect(offered()).toContain('Import a graph');
+	});
+
+	it('hands the graph over as a file named for it and for the day', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date(2026, 2, 5, 12));
+		api.on('GET /graphs', () => [
+			{ ref: HOME, created_by: DID, created_at: AT, updated_at: AT, title: 'Cell Biology' }
+		]);
+		const asked: OwnedRef[] = [];
+		const saved: { name: string; body: Blob }[] = [];
+		archiving(api, {
+			exported: (of) => {
+				asked.push(of);
+				return new Blob(['a graph']);
+			}
+		});
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			saveFile: async (name, body) => void saved.push({ name, body })
+		});
+
+		await fromMore('Export this graph');
+
+		expect(asked).toEqual([HOME]);
+		expect(saved.map((one) => one.name)).toEqual(['cell-biology-2026-03-05.sloppy']);
+	});
+
+	// The web shell leaves the seam alone, and the browser saves it.
+	it('is saved by the browser where the shell has no saving of its own', async () => {
+		const asked: { href: string; name: string }[] = [];
+		const clicking = HTMLAnchorElement.prototype.click;
+		HTMLAnchorElement.prototype.click = function () {
+			asked.push({ href: this.href, name: this.download });
+		};
+		URL.createObjectURL = () => 'blob:a-graph';
+		URL.revokeObjectURL = () => {};
+		archiving(api, { exported: () => new Blob(['a graph']) });
+		initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
+
+		await fromMore('Export this graph');
+		HTMLAnchorElement.prototype.click = clicking;
+
+		expect(asked.map((one) => one.href)).toEqual(['blob:a-graph']);
+		expect(asked[0]?.name).toMatch(/\.sloppy$/);
+	});
+
+	it('says what to do where the graph could not be put in a file', async () => {
+		archiving(api, {
+			exported: () =>
+				Promise.reject(
+					new SloppyApiError(503, 'GET /graphs/archive', {
+						detail: 'Sloppy could not reach your writing.'
+					})
+				)
+		});
+		initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
+
+		await fromMore('Export this graph');
+
+		expect(screen()).toContain('Sloppy could not reach your writing.');
+	});
+
+	it('says what is in a file before any of it is brought in', async () => {
+		const asked: string[] = [];
+		archiving(api, {
+			preview: () => {
+				asked.push('preview');
+				return whatArrives();
+			},
+			imported: () => {
+				asked.push('import');
+				return OSMOSIS;
+			}
+		});
+
+		await fromMore('Import a graph');
+		chooseFile();
+		await settle();
+
+		expect(screen()).toContain('Import “Osmosis”?');
+		expect(screen()).toContain('12 notes and 3 pictures arrive.');
+		expect(asked).toEqual(['preview']);
+	});
+
+	it('opens the graph it brought in', async () => {
+		archiving(api, { preview: () => whatArrives(), imported: () => OSMOSIS });
+
+		await fromMore('Import a graph');
+		chooseFile();
+		await settle();
+		button('Import').click();
+		await settle();
+
+		expect(graphs.current).toBe(OSMOSIS.ref);
+		expect(graphs.all.map((one) => one.ref)).toContain(OSMOSIS.ref);
+		expect(screen()).not.toContain('Import “Osmosis”?');
+	});
+
+	it('repeats the words an import came back refused with, and opens nothing', async () => {
+		archiving(api, {
+			preview: () => whatArrives(),
+			imported: () =>
+				Promise.reject(
+					new SloppyApiError(409, 'POST /graphs/import', {
+						detail: 'Some of these notes are already here.'
+					})
+				)
+		});
+
+		await fromMore('Import a graph');
+		chooseFile();
+		await settle();
+		button('Import').click();
+		await settle();
+
+		expect(screen()).toContain('Some of these notes are already here.');
+		expect(graphs.current).toBe(HOME);
+	});
+
+	it('repeats the words a file that could not be read came back with', async () => {
+		archiving(api, {
+			preview: () =>
+				Promise.reject(
+					new SloppyApiError(400, 'POST /graphs/import', {
+						detail: "This file isn't a Sloppy graph."
+					})
+				)
+		});
+
+		await fromMore('Import a graph');
+		chooseFile();
+		await settle();
+
+		expect(screen()).toContain("This file isn't a Sloppy graph.");
+		expect(screen()).not.toContain('Import “Osmosis”?');
 	});
 });
