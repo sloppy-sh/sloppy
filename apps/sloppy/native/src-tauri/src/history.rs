@@ -5,7 +5,7 @@
 //! above it, so a graph kept inside somebody else's repository is still its own
 //! history, and a folder that is not a repository yet becomes one.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -377,6 +377,9 @@ fn standing(repo: &Repository) -> Result<Status, HistoryError> {
     let mut untracked = Vec::new();
     for entry in held.iter() {
         let Some(path) = entry.path() else { continue };
+        if kept_out(path) {
+            continue;
+        }
         if entry.status() == git2::Status::WT_NEW {
             untracked.push(path.to_owned());
         } else if !entry.status().is_empty() {
@@ -528,12 +531,102 @@ fn in_the_way(error: git2::Error) -> HistoryError {
     }
 }
 
-fn lay(repo: &Repository, at: Oid) -> Result<(), HistoryError> {
-    let tree = repo.find_object(at, Some(ObjectType::Commit))?;
+fn kept_out_in(tree: &git2::Tree<'_>, held: &mut BTreeSet<String>) -> Result<(), HistoryError> {
+    tree.walk(TreeWalkMode::PreOrder, |folder, entry| {
+        if entry.kind() == Some(ObjectType::Blob) {
+            if let Some(name) = entry.name() {
+                let path = format!("{folder}{name}");
+                if kept_out(&path) {
+                    held.insert(path);
+                }
+            }
+        }
+        TreeWalkResult::Ok
+    })?;
+    Ok(())
+}
+
+/// Every path a checkout could write or take away that the history has let go
+/// of: what the state being laid down carries, what the folder is on now, and
+/// what it is still tracking.
+fn kept_out_of(repo: &Repository, onto: Oid) -> Result<BTreeSet<String>, HistoryError> {
+    let mut held = BTreeSet::new();
+    kept_out_in(&repo.find_commit(onto)?.tree()?, &mut held)?;
+    if let Some(at) = head_commit(repo)? {
+        kept_out_in(&at.tree()?, &mut held)?;
+    }
+    for entry in repo.index()?.iter() {
+        if let Ok(path) = String::from_utf8(entry.path) {
+            if kept_out(&path) {
+                held.insert(path);
+            }
+        }
+    }
+    Ok(held)
+}
+
+/// A file kept out of the history, and what the folder holds in it — nothing
+/// where it holds none.
+type Aside = (String, Option<Vec<u8>>);
+
+/// The folder's own copies of these, taken out of the checkout's way and held
+/// as they are now. A state somebody committed themselves can carry an older
+/// bin, and laying that one over the live one hands back addresses this graph
+/// has spent — docs/ARCHITECTURE.md § "The vault's history".
+fn set_aside(repo: &Repository, root: &Path, onto: Oid) -> Result<Vec<Aside>, HistoryError> {
+    let mut held = Vec::new();
+    for path in kept_out_of(repo, onto)? {
+        let file = root.join(&path);
+        let was = match fs::read(&file) {
+            Ok(bytes) => {
+                fs::remove_file(&file)?;
+                Some(bytes)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        held.push((path, was));
+    }
+    Ok(held)
+}
+
+/// The folder back the way it was, whether the checkout went through or not,
+/// and the index let go of these again so nothing it laid down is tracked here.
+fn put_back(repo: &Repository, root: &Path, held: Vec<Aside>) -> Result<(), HistoryError> {
+    if held.is_empty() {
+        return Ok(());
+    }
+    for (path, was) in held {
+        let file = root.join(&path);
+        match was {
+            Some(bytes) => {
+                if let Some(folder) = file.parent() {
+                    fs::create_dir_all(folder)?;
+                }
+                fs::write(&file, bytes)?;
+            }
+            None => match fs::remove_file(&file) {
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                other => other?,
+            },
+        }
+    }
+    let mut index = repo.index()?;
+    let_go(&mut index)?;
+    index.write()?;
+    Ok(())
+}
+
+fn lay(repo: &Repository, root: &Path, onto: Oid) -> Result<(), HistoryError> {
+    let held = set_aside(repo, root, onto)?;
+    let tree = repo.find_object(onto, Some(ObjectType::Commit))?;
     let mut how = CheckoutBuilder::new();
     how.safe();
-    repo.checkout_tree(&tree, Some(&mut how))
-        .map_err(in_the_way)
+    let laid = repo
+        .checkout_tree(&tree, Some(&mut how))
+        .map_err(in_the_way);
+    put_back(repo, root, held)?;
+    laid
 }
 
 /// The commit a local branch is at, and nothing where there is no such branch.
@@ -558,7 +651,7 @@ pub fn switch_to(root: &Path, name: &str) -> Result<(), HistoryError> {
     if !held.changed.is_empty() {
         return Err(uncommitted());
     }
-    lay(&repo, head)?;
+    lay(&repo, root, head)?;
     repo.set_head(&format!("refs/heads/{name}"))?;
     Ok(())
 }
@@ -632,7 +725,7 @@ pub fn merge_in(root: &Path, name: &str) -> Result<Merged, HistoryError> {
         return Ok(Merged::whole());
     }
     if reading.is_fast_forward() {
-        lay(&repo, theirs.id())?;
+        lay(&repo, root, theirs.id())?;
         repo.reference(
             &format!("refs/heads/{on}"),
             theirs.id(),
@@ -642,10 +735,14 @@ pub fn merge_in(root: &Path, name: &str) -> Result<Merged, HistoryError> {
         return Ok(Merged::whole());
     }
 
+    let held = set_aside(&repo, root, theirs.id())?;
     let mut how = CheckoutBuilder::new();
     how.safe();
-    repo.merge(&[&theirs], None, Some(&mut how))
-        .map_err(in_the_way)?;
+    let taken = repo
+        .merge(&[&theirs], None, Some(&mut how))
+        .map_err(in_the_way);
+    put_back(&repo, root, held)?;
+    taken?;
     let mut index = repo.index()?;
     if index.has_conflicts() {
         return Ok(Merged::in_two_versions(one_version_each(
@@ -941,13 +1038,13 @@ mod tests {
         assert!(!root.join(".gitignore").exists());
     }
 
-    /// Everything in the folder, committed by the person themselves before the
-    /// app ever opened it.
+    /// Everything in the folder, committed by the person themselves with their
+    /// own git, which never heard of what the app keeps out.
     fn theirs(root: &Path, message: &str) {
         let repo = Repository::open(root).expect("their repository");
         let mut index = repo.index().expect("their index");
         index
-            .add_all(["*"], IndexAddOption::DEFAULT, None)
+            .add_all(["*"], IndexAddOption::FORCE, None)
             .expect("everything staged");
         index.write().expect("their index");
         let tree = repo
@@ -985,6 +1082,61 @@ mod tests {
         ] {
             assert!(root.join(one).exists(), "{one} is still in the folder");
         }
+    }
+
+    #[test]
+    fn a_switch_onto_a_state_that_kept_the_bin_leaves_the_live_one_alone() {
+        let root = scratch("switched");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        write(&root, "notes/a.md", "one");
+        write(&root, ".sloppy/bin.json", "the addresses spent by then");
+        write(&root, "identity.key", "the seed by then");
+        theirs(&root, "Everything I had");
+        let on = status(&root)
+            .expect("the status")
+            .branch
+            .expect("the branch they were on");
+        branch(&root, "later").expect("the branch");
+
+        write(&root, "notes/a.md", "one, changed");
+        made(&root, "A note");
+        write(&root, ".sloppy/bin.json", "one more address spent");
+        write(&root, "identity.key", "the seed now");
+
+        switch_to(&root, "later").expect("the switch");
+        assert_eq!(read(&root, ".sloppy/bin.json"), "one more address spent");
+        assert_eq!(read(&root, "identity.key"), "the seed now");
+        let held = status(&root).expect("the status");
+        assert_eq!(held.branch.as_deref(), Some("later"));
+        assert!(held.changed.is_empty());
+
+        switch_to(&root, &on).expect("back");
+        assert_eq!(read(&root, ".sloppy/bin.json"), "one more address spent");
+        assert_eq!(read(&root, "identity.key"), "the seed now");
+    }
+
+    #[test]
+    fn a_merge_of_a_state_that_kept_the_bin_leaves_the_live_one_alone() {
+        let root = vault();
+        made(&root, "A graph");
+        branch(&root, "later").expect("the branch");
+
+        switch_to(&root, "later").expect("the switch");
+        write(&root, ".sloppy/bin.json", "the addresses spent by then");
+        write(&root, "notes/b.md", "theirs");
+        theirs(&root, "Everything I had");
+
+        switch_to(&root, "main").expect("back");
+        write(&root, ".sloppy/bin.json", "one more address spent");
+        write(&root, "notes/a.md", "mine");
+        made(&root, "My note");
+
+        assert!(merge_in(&root, "later").expect("the merge").merged);
+        assert_eq!(read(&root, ".sloppy/bin.json"), "one more address spent");
+        assert_eq!(read(&root, "notes/b.md"), "theirs");
+        assert!(!kept(&root).contains(&".sloppy/bin.json".to_owned()));
+        assert!(status(&root).expect("the status").changed.is_empty());
     }
 
     #[test]
