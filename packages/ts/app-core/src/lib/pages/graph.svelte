@@ -49,6 +49,7 @@
 	import Upload from '@lucide/svelte/icons/upload';
 	import Users from '@lucide/svelte/icons/users';
 	import {
+		comparingStates,
 		DEFAULT_BUDGET,
 		type GraphDifference,
 		type GraphHandle,
@@ -2427,7 +2428,10 @@
 	onShowDifference={(shown) => {
 		stopActing();
 		asWas = shown?.later ?? null;
-		comparing = shown === null ? null : { says: shown.says, difference: shown.difference };
+		comparing =
+			shown === null || !comparingStates(shown.difference)
+				? null
+				: { says: shown.says, difference: shown.difference };
 	}}
 />
 

@@ -276,6 +276,28 @@ describe('two states of the graph, set against each other', () => {
 		expect(drawn().join(' ')).toContain('A second thought');
 	});
 
+	it('draws nothing on the canvas where the two states are the same', async () => {
+		await graphHistory.keep('A first version');
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+		await pick('From', 'A first version');
+		control('Show what changed').click();
+		await settle();
+
+		expect(screen()).toContain('These two are the same.');
+
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await settle();
+
+		expect(legend()).toEqual([]);
+		expect(document.body.querySelectorAll('[data-difference]')).toHaveLength(0);
+		expect(screen()).not.toContain('What changed');
+		expect(drawn().join(' ')).toContain('Origins');
+	});
+
 	it('puts the words back beside the marks once the surface has been put away', async () => {
 		await graphHistory.keep('A first version');
 		await served.createNode({ title: 'A second thought' });
