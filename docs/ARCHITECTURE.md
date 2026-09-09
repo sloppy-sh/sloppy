@@ -152,8 +152,10 @@ the same millisecond still order the same way on every peer.
   apply it in the transaction that takes the address, so a yield without a taker cannot
   happen. A binned note that had already given its number up yields nothing, its alias
   standing: `node_alias_owner_graph_address` holds one alias per address, and the one there
-  leads to the note that left first. The yielded note comes back from the bin with no
-  address and its alias intact, which is what the note page reads to say `was 2b`.
+  leads to the note that left first. `NodeService.keptBehind` is the same rule on the other
+  side, so the note that took the number and then renames, unnumbers or carries itself away
+  leaves nothing behind. The yielded note comes back from the bin with no address and its
+  alias intact, which is what the note page reads to say `was 2b`.
 - **The rule passes over an address a label already holds.** `childAddresses` reads a run
   by the note the run hangs under, and a label is not a place in the tree, so one written
   on a note in another run is not in what the rule is offered. `NodeService.write` and
@@ -235,8 +237,9 @@ way it holds them to one version.
 
 **A person writes and removes an address wherever one is shown.** `PUT
 /nodes/:did/:ulid/address` takes `{ address }`, and `null` takes the label off. The address
-it leaves becomes a `node_alias` row, so a citation written before the rename still opens
-the note; the address it takes must be one nothing in that graph has ever been assigned,
+it leaves becomes a `node_alias` row, so a citation written before the rename still opens the
+note — unless the graph already leads back by that address, which is the earlier note's; the
+address it takes must be one nothing in that graph has ever been assigned,
 except one this note itself has carried, which is its own to take back, and one a note in
 the bin yields — `NodeRepository.addressLeadsTo` answers whose it is, and the refusal names
 that note. `depth`, `parent` and `origin` are untouched: a label is not a place in the tree.
@@ -1144,7 +1147,10 @@ follows is the live notes, the deleted ones and these together, so nothing is ev
 twice inside one graph. It carries the graph and the parent rather than the note, because
 the note is what has gone — the parent is how one index answers both the children of a note
 and the branches of a graph, `parent = NONE` standing for a branch as it does on `node`.
-Nothing reads it but address assignment, and the per-DID purge takes it with the graph.
+Nothing reads it but address assignment, and the per-DID purge takes it with the graph. What
+a purge writes none for is a number another note is at, there or in the bin: `addressesLedBy`
+reads the rows the sweep is leaving behind, and a note waiting to be put back has not given
+its number up.
 
 **A moved note leaves its old address resolving.** `node_alias` is a row per address a move
 leaves behind, and it carries the note `retired_address` cannot, because the note is still

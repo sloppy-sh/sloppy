@@ -91,8 +91,11 @@ to, all of them about what a person can rely on rather than about what the code 
   An address it was moved from, or renamed away from, resolves to that note for as long as
   it is there, and is never given to a second one — a citation somebody wrote down still
   lands where they meant. Where an address reaches both a note that is at it and a note that
-  was, the note at it is the answer. Purging a note takes its aliases with it and retires
-  every one of those addresses rather than releasing it.
+  was, the note at it is the answer, and where two notes have left it, the first to leave it
+  is: a note that takes a number another note still leads back by, and lets it go again,
+  leaves nothing behind. Purging a note takes its aliases with it and retires every one of
+  those addresses rather than releasing it — except a number another note is at, there or in
+  the bin, which is that note's and stays its own to take back.
 - **A note in the bin holds its address only until a person asks for it.** Deleting a note
   frees nothing on its own: nothing is renumbered, and the rule never offers a number a
   binned note is holding. But a person who writes that number on another note, names it on a
