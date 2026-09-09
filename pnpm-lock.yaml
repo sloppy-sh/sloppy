@@ -134,6 +134,9 @@ importers:
       '@sloppy/types':
         specifier: workspace:*
         version: link:../../../packages/ts/types
+      '@sloppy/vault':
+        specifier: workspace:*
+        version: link:../../../packages/ts/vault
       dotenv:
         specifier: ^17.2.4
         version: 17.4.2
