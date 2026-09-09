@@ -285,15 +285,26 @@ is nothing to act on in a state that is not now. Three values, and a mark is in 
 | A broken band                 | it is in both states and is not as it was                               |
 
 A note that went is the only mark on any canvas drawn as a band around nothing, so it cannot
-be read as a hollow pulled mark: there is no mark inside it at all. **Provenance keeps its
-own edge through all three**, as it keeps it through everything else — the band is in the
-orbit, outside the mark, and an edge is still an edge.
+be read as a hollow pulled mark: there is no mark inside it at all — no fill, no look ring
+and no provenance edge, because each of those is a channel on a mark and there is no mark to
+carry them. **Where there is a mark, provenance keeps its own edge**, as it keeps it through
+everything else: the band is in the orbit, outside the mark, so a note that arrived and a
+note that is not as it was are drawn pulled or not exactly as they are anywhere else.
 
 **A move is a fact about a line, and is drawn on the lines.** A note that changed parent did
 not itself change; the run line it hung from did. So the line to the parent it left is drawn
 as gone and the line to the parent it joined as arrived, in the same ink the marks are, and
 the note at the end of them takes the broken band only if its writing changed too. Those two
 lines are the one thing on the canvas that says WHERE a note went rather than that it moved.
+
+**Both move lines are solid, and they separate on ink alone** — the line the note joined at
+the difference's full ink, the line it left at a little under half of it. Never on the break:
+§ Edges reserves that for the single fact that a hand made a line, and a second broken kind
+would put a move and a hand link in one shape. Ink is the channel left, and the right one —
+§ Edges climbs its three solid kinds on lightness as well as width precisely because width is
+clamped as a field zooms out, so ink is what a reader still has when every line is the same
+hairline. Both sit above a field receded as far as selecting recedes it, so the two lines a
+difference draws are the loudest thing on the page.
 
 **What changed about a note is written, not drawn.** One note can have moved, been renamed,
 been given another address and had three sections rewritten between two states, and one mark
@@ -305,6 +316,12 @@ section.
 two questions at once, and a note outside both answers is not dimmer than a note outside
 either: the floor is what keeps the graph on the page, and two shares taken off one mark go
 straight through it.
+
+**Nothing in the picture names the four kinds, so the surface around it must.** A band closed
+round a mark, a band closed round nothing, a broken band and the pair of move lines are four
+meanings a reader cannot learn from the canvas. The legend that teaches them is four rows with
+no colour swatch in any of them, and it belongs to the surface that asked for the comparison —
+`@sloppy/graph` builds no chrome.
 
 All of it survives the four axes because it is drawn from `--graph-ink` and spends no hue,
 exactly as the lift is (§ "The mark"): it inverts with the theme, it survives greyscale and
