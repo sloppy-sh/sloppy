@@ -97,7 +97,14 @@ export function manifest(bytes: Uint8Array): ArchiveManifest {
     throw new VaultFormatError("This file isn't a Sloppy graph.");
   }
   const said = readGraphFile(join(graph));
-  return { ...said, notes, media };
+  return {
+    format: said.format,
+    graph: said.graph,
+    name: said.name,
+    owner: said.owner,
+    notes,
+    media,
+  };
 }
 
 function isMedia(path: string): boolean {

@@ -77,6 +77,7 @@ import {
   UpdateGraphRequestSchema,
   type UpdateNodeRequest,
   type UpdateProfileRequest,
+  UpdateProfileRequestSchema,
   type UploadTicket,
   type Viewer,
   type UpdatePublicationRequest,
@@ -96,15 +97,23 @@ import {
   noteAt,
   graphFile,
   pack,
+  readGraphFile,
   rekey,
   unpack,
   uploadAt,
+  type VaultGraph,
   type VaultNote,
   vaultToNote,
   VaultFormatError,
 } from "@sloppy/vault";
 import type { Files } from "./files.js";
-import { LocalGraph, localOf } from "./graph.js";
+import {
+  LocalGraph,
+  localOf,
+  picturesDrawnBy,
+  type StoredNote,
+  type StoredPicture,
+} from "./graph.js";
 import { type LocalIdentity, openLocalIdentity } from "./identity.js";
 import { NoteWriter } from "./notes.js";
 import { absent, checked, contested, refuse } from "./refusal.js";
@@ -270,9 +279,12 @@ export class LocalApi implements SloppyApi {
     ref: OwnedRef,
     request: UpdateNodeRequest,
   ): Promise<NodeView> {
-    return this.write(async () =>
-      new NoteWriter(await this.holder(ref)).update(ref, request),
-    );
+    return this.write(async () => {
+      const graph = await this.holder(ref);
+      const written = await new NoteWriter(graph).update(ref, request);
+      await this.carryPictures(graph, graph.find(ref));
+      return written;
+    });
   }
 
   async setAddress(ref: OwnedRef, address: Address | null): Promise<NodeView> {
@@ -309,7 +321,11 @@ export class LocalApi implements SloppyApi {
     return this.write(async () => {
       const first = request.notes?.[0];
       const graph = first ? await this.holder(first) : await this.graphAt();
-      return new NoteWriter(graph).bulk(request);
+      const done = await new NoteWriter(graph).bulk(request);
+      for (const note of done.notes) {
+        await this.carryPictures(graph, graph.find(note.ref));
+      }
+      return done;
     });
   }
 
@@ -397,6 +413,7 @@ export class LocalApi implements SloppyApi {
         sections,
         updated_at: nowIso(),
       });
+      await this.carryPictures(graph, written);
       return graph.blockViews(written)[at];
     });
   }
@@ -459,6 +476,7 @@ export class LocalApi implements SloppyApi {
         sections: stack,
         updated_at: nowIso(),
       });
+      await this.carryPictures(graph, saved);
       return graph.blockViews(saved)[at];
     });
   }
@@ -797,12 +815,66 @@ export class LocalApi implements SloppyApi {
 
   // ── Profile ──────────────────────────────────────────────────────────────
 
+  /** Who this device writes under, as the graphs on it say. Every graph here
+   *  belongs to the one identity, so the first that says who owns it answers
+   *  for all of them. */
   async profile(): Promise<ProfileView> {
-    serverOnly("A profile");
+    const did = (await this.who()).did;
+    const graphs = await this.allGraphs();
+    const graph = graphs.find(
+      (held) =>
+        held.owner.name !== undefined || held.owner.avatar !== undefined,
+    );
+    const avatar = graph?.owner.avatar;
+    return {
+      did,
+      // There is nothing here to be known by but the identity itself.
+      username: did,
+      display_name: graph?.owner.name ?? null,
+      bio: null,
+      avatar_src: graph && avatar ? graph.files.url(avatar) : null,
+      banner_src: null,
+    };
   }
 
-  async updateProfile(_request: UpdateProfileRequest): Promise<ProfileView> {
-    serverOnly("A profile");
+  /** A name and a picture, written into every graph on this device — a graph
+   *  says whose it is wherever it is opened, so each keeps its own copy of the
+   *  picture. */
+  async updateProfile(asked: UpdateProfileRequest): Promise<ProfileView> {
+    const request = checked(() => UpdateProfileRequestSchema.parse(asked));
+    if (request.bio != null || request.banner_upload_id != null) {
+      throw refuse(
+        "A graph on this device keeps your name and your picture, and nothing else about you.",
+      );
+    }
+    return this.write(async () => {
+      const graphs = await this.allGraphs();
+      if (graphs.length === 0) {
+        throw absent(
+          "There is no graph on this device yet. Start one to write.",
+        );
+      }
+      const picture =
+        request.avatar_upload_id == null
+          ? undefined
+          : await this.devicePicture(request.avatar_upload_id);
+      for (const graph of graphs) {
+        const held = graph.owner;
+        const name = chosenName(request.display_name, held.name);
+        const avatar =
+          request.avatar_upload_id === undefined
+            ? held.avatar
+            : picture && (await this.avatarIn(graph, picture));
+        await graph.setOwner({
+          ...(name === undefined ? {} : { name }),
+          ...(avatar === undefined ? {} : { avatar }),
+        });
+        const gone = held.avatar === avatar ? undefined : held.avatar;
+        const upload = gone === undefined ? undefined : uploadAt(gone);
+        if (upload && !graph.draws(upload)) await graph.removePicture(upload);
+      }
+      return this.profile();
+    });
   }
 
   async profileOf(_did: string): Promise<ProfileView> {
@@ -846,6 +918,56 @@ export class LocalApi implements SloppyApi {
     const done = this.queue.then(task, task);
     this.queue = done.catch(() => {});
     return done;
+  }
+
+  /** The bytes of a picture on this device, wherever it was added. */
+  private async devicePicture(upload: string): Promise<DevicePicture> {
+    for (const graph of await this.allGraphs()) {
+      const said = graph.pictureOf(upload);
+      const path = graph.picturePath(upload);
+      const bytes = said && path ? await graph.files.read(path) : undefined;
+      if (said && bytes) return { upload, said, bytes };
+    }
+    throw refuse("That picture is not here. Add it again.");
+  }
+
+  private async avatarIn(
+    graph: LocalGraph,
+    picture: DevicePicture,
+  ): Promise<string> {
+    return (
+      graph.picturePath(picture.upload) ??
+      (await graph.keepPicture(picture.upload, picture.said, picture.bytes))
+    );
+  }
+
+  /**
+   * A vault holds the pictures its own notes draw. A picture is added before
+   * anybody knows which note will draw it, so one that turns out to belong to a
+   * note in another graph on this device is carried into that graph's folder —
+   * where the archive taken out of it will carry it too.
+   */
+  private async carryPictures(
+    graph: LocalGraph,
+    note: StoredNote | undefined,
+  ): Promise<void> {
+    if (!note) return;
+    const wanted = new Set(
+      [...picturesDrawnBy(note)].filter((upload) => !graph.picturePath(upload)),
+    );
+    if (wanted.size === 0) return;
+    for (const other of await this.allGraphs()) {
+      if (other === graph) continue;
+      for (const upload of [...wanted]) {
+        const said = other.pictureOf(upload);
+        const path = other.picturePath(upload);
+        const bytes = said && path ? await other.files.read(path) : undefined;
+        if (!said || !bytes) continue;
+        await graph.keepPicture(upload, said, bytes);
+        wanted.delete(upload);
+        if (!other.draws(upload)) await other.removePicture(upload);
+      }
+    }
   }
 
   private async who(): Promise<LocalIdentity> {
@@ -1026,15 +1148,47 @@ export class LocalApi implements SloppyApi {
     // one arriving opens a graph of its own rather than writing over theirs.
     const opening =
       said.graph === HOME_GRAPH_ULID ? { ...said, graph: ulid() } : said;
+    // Whose it is now is whoever imported it, so somebody else's name does not
+    // come with their graph; a person's own archive still carries theirs back.
+    const owned = said.owner === did ? readGraph(vault) : undefined;
     vault.set(
       GRAPH_FILE,
-      graphFile({ ...opening, format: VAULT_FORMAT, owner: did }),
+      graphFile({
+        format: VAULT_FORMAT,
+        graph: opening.graph,
+        name: opening.name,
+        owner: did,
+        ...(owned?.owner_name === undefined
+          ? {}
+          : { owner_name: owned.owner_name }),
+        ...(owned?.owner_avatar === undefined
+          ? {}
+          : { owner_avatar: owned.owner_avatar }),
+      }),
     );
     const into = (await this.allGraphs()).find(
       (graph) => graph.ref === `${did}/${opening.graph}`,
     );
     return { said: opening, vault, notes, missing: [...missing], into };
   }
+}
+
+/** What a person is called after this patch: absent leaves what they were
+ *  called, and a name cleared or left blank leaves them with none. */
+function chosenName(
+  said: string | null | undefined,
+  held: string | undefined,
+): string | undefined {
+  if (said === undefined) return held;
+  const name = said?.trim() ?? "";
+  return name === "" ? undefined : name;
+}
+
+/** A picture as some graph on this device holds it. */
+interface DevicePicture {
+  upload: string;
+  said: StoredPicture;
+  bytes: Uint8Array;
 }
 
 interface Opened {
@@ -1129,6 +1283,17 @@ export function archiveName(name: string, at: Date = new Date()): string {
     .replace(/\s+/g, " ")
     .trim();
   return `${called === "" ? "graph" : called} ${at.toISOString().slice(0, 10)}.sloppy`;
+}
+
+/** The graph file the vault holds, or absent where it holds none this build can
+ *  read. */
+function readGraph(vault: Vault): VaultGraph | undefined {
+  const bytes = vault.get(GRAPH_FILE);
+  try {
+    return bytes && readGraphFile(bytes);
+  } catch {
+    return undefined;
+  }
 }
 
 /** An archive nobody can read is refused in the words the reader gave. */

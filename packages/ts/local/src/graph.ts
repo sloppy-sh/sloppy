@@ -16,6 +16,7 @@ import {
   DELETED_KEPT_FOR_DAYS,
   type MediaAsset,
   type MediaRole,
+  type NodeAppearance,
   type NodeView,
   type OwnedMediaAsset,
   type OwnedRef,
@@ -23,6 +24,7 @@ import {
   citedNotes,
   nowIso,
   orderSiblings,
+  resolveAppearance,
   ulid,
 } from "@sloppy/types";
 import {
@@ -159,6 +161,31 @@ export class LocalGraph {
 
   async rename(title: string): Promise<void> {
     this.said = { ...this.said, name: title };
+    await this.files.write(GRAPH_FILE, graphFile(this.said));
+  }
+
+  /** What this vault says about whose it is, beyond the DID: what the owner is
+   *  called, and where their picture is in this folder. */
+  get owner(): { name?: string; avatar?: string } {
+    return {
+      ...(this.said.owner_name === undefined
+        ? {}
+        : { name: this.said.owner_name }),
+      ...(this.said.owner_avatar === undefined
+        ? {}
+        : { avatar: this.said.owner_avatar }),
+    };
+  }
+
+  /** The whole block, so a name or a picture taken off is left out of the
+   *  file. */
+  async setOwner(said: { name?: string; avatar?: string }): Promise<void> {
+    const { owner_name: _was, owner_avatar: _wore, ...rest } = this.said;
+    this.said = {
+      ...rest,
+      ...(said.name === undefined ? {} : { owner_name: said.name }),
+      ...(said.avatar === undefined ? {} : { owner_avatar: said.avatar }),
+    };
     await this.files.write(GRAPH_FILE, graphFile(this.said));
   }
 
@@ -370,6 +397,7 @@ export class LocalGraph {
       links: [...note.links],
       references: referencesOf(note),
       published: false,
+      ...(note.appearance === undefined ? {} : { appearance: note.appearance }),
       ...(note.deleted_at === undefined ? {} : { deleted_at: note.deleted_at }),
       created_at: note.created_at,
       updated_at: note.updated_at,
@@ -672,6 +700,17 @@ export class LocalGraph {
     return paths;
   }
 
+  /** What a picture this graph knows is, or absent where it does not know
+   *  one. */
+  pictureOf(upload: string): StoredPicture | undefined {
+    return this.media.get(upload);
+  }
+
+  /** Whether a note here draws this picture — in its writing or on its mark. */
+  draws(upload: string): boolean {
+    return this.all().some((note) => picturesDrawnBy(note).has(upload));
+  }
+
   /** Where the bytes of a picture this graph knows sit, or absent where it does
    *  not know one. */
   picturePath(upload: string): string | undefined {
@@ -715,6 +754,20 @@ export class LocalGraph {
     }
     await this.writeMedia();
     return this.assetOf(upload, held, bytes.byteLength);
+  }
+
+  /** A picture under the id it is already known by, put into this vault as it
+   *  stands. Answers where its bytes now are. */
+  async keepPicture(
+    upload: string,
+    said: StoredPicture,
+    bytes: Uint8Array,
+  ): Promise<string> {
+    this.media.set(upload, { ...said });
+    const path = mediaPath(upload, extensionFor(said.mime_type));
+    await this.files.write(path, bytes);
+    await this.writeMedia();
+    return path;
   }
 
   /** The picture's bytes put straight into the vault, for a caller that already
@@ -838,6 +891,29 @@ export class LocalGraph {
     }
     return held;
   }
+}
+
+/** Every picture a note draws: the ones in its writing, and the ones its mark
+ *  wears. A vault holds the pictures its own notes draw. */
+export function picturesDrawnBy(note: {
+  sections: readonly { content: BlockDocument }[];
+  appearance?: NodeAppearance;
+}): Set<string> {
+  const drawn = new Set(resolveAppearance(note.appearance).preview.pictures);
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const held of value) walk(held);
+      return;
+    }
+    if (value === null || typeof value !== "object") return;
+    const held = value as { type?: unknown; attrs?: { upload_id?: unknown } };
+    if (held.type === "picture" && typeof held.attrs?.upload_id === "string") {
+      drawn.add(held.attrs.upload_id);
+    }
+    for (const inside of Object.values(value)) walk(inside);
+  };
+  walk(note.sections.map((section) => section.content));
+  return drawn;
 }
 
 /** The notes this one's own writing names, derived from its sections. The note

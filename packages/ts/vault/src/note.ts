@@ -5,6 +5,9 @@ import {
   AddressSchema,
   type BlockDocument,
   type BlockView,
+  isUnstyled,
+  type NodeAppearance,
+  NodeAppearanceSchema,
   type NodeView,
   type OwnedRef,
   OwnedRefSchema,
@@ -13,7 +16,14 @@ import {
   TimestampSchema,
   UlidSchema,
 } from "@sloppy/types";
-import { frontList, frontString, splitNoteFile, writeFront } from "./front.js";
+import {
+  type FrontBlock,
+  frontBlock,
+  frontList,
+  frontString,
+  splitNoteFile,
+  writeFront,
+} from "./front.js";
 import { inkSvg } from "./ink.js";
 import {
   encodeText,
@@ -50,6 +60,9 @@ export interface VaultNote {
   tags: string[];
   links: OwnedRef[];
   title: string;
+  /** How its author asked the mark to be drawn. Absent is a note nobody
+   *  styled, which is not itself a look. */
+  appearance?: NodeAppearance;
   /** Absent where the file did not say, which is a file a hand has been in. */
   created?: Timestamp;
   updated?: Timestamp;
@@ -109,6 +122,7 @@ export function noteToVault(
       ["title", note.title],
       ["created", note.created_at],
       ["updated", note.updated_at],
+      ["appearance", lookBlock(note.appearance)],
     ]),
   ];
   for (const block of blocks) {
@@ -164,6 +178,7 @@ export function vaultToNote(files: NoteSource): VaultNote {
     throw new VaultFormatError("This file isn't a note.");
   }
   const parent = OwnedRefSchema.safeParse(frontString(front, "parent"));
+  const look = NodeAppearanceSchema.safeParse(frontBlock(front, "appearance"));
   const address = AddressSchema.safeParse(frontString(front, "address"));
   const stamp = (key: string): { [k: string]: Timestamp } => {
     const held = TimestampSchema.safeParse(frontString(front, key));
@@ -181,10 +196,26 @@ export function vaultToNote(files: NoteSource): VaultNote {
       (held) => OwnedRefSchema.safeParse(held).success,
     ),
     title: frontString(front, "title") ?? "",
+    ...(look.success && !isUnstyled(look.data)
+      ? { appearance: look.data }
+      : {}),
     ...stamp("created"),
     ...stamp("updated"),
     sections: readSections(body, files),
   };
+}
+
+/** The look as one block under the note's own fields. A look with every channel
+ *  taken back off is not written: absent is what unstyled reads as. */
+function lookBlock(
+  appearance: NodeAppearance | undefined,
+): FrontBlock | undefined {
+  if (appearance === undefined || isUnstyled(appearance)) return undefined;
+  const channels = new Map<string, string | number | readonly string[]>();
+  for (const [channel, value] of Object.entries(appearance)) {
+    if (value !== undefined) channels.set(channel, value);
+  }
+  return channels;
 }
 
 function readSections(

@@ -228,24 +228,51 @@ describe("one act over the notes somebody chose", () => {
     ).rejects.toThrow("needs a hosted Sloppy");
   });
 
-  it("says a look is not kept here, whichever way one is written", async () => {
-    const { writer } = await graphOnly();
+  it("keeps a look a person put on a note, and takes it back off", async () => {
+    const files = new MemoryFiles();
+    const { writer, did } = await graphOnly(files);
     const one = await writer.create({ title: "Seeds" });
-    const look = { ring_weight: "heavy" };
-    await expect(
-      writer.bulk({
-        notes: [one.ref],
-        act: { act: "set_appearance", appearance: look },
-      }),
-    ).rejects.toThrow("not kept in a graph on your device yet");
-    await expect(writer.update(one.ref, { appearance: look })).rejects.toThrow(
-      "not kept in a graph on your device yet",
-    );
+    const look = { ring_weight: "heavy", mark_scale: 1.5 };
 
-    const written = await writer.update(one.ref, {
+    const styled = await writer.update(one.ref, { appearance: look });
+    expect(styled.appearance).toEqual(look);
+    expect((await reread(files, did)).find(one.ref)?.appearance).toEqual(look);
+
+    const off = await writer.update(one.ref, {
       title: "Seeds and clocks",
       appearance: null,
     });
-    expect(written.title).toBe("Seeds and clocks");
+    expect(off.title).toBe("Seeds and clocks");
+    expect(off.appearance).toBeUndefined();
+    expect(
+      (await reread(files, did)).find(one.ref)?.appearance,
+    ).toBeUndefined();
+  });
+
+  it("puts one look on however many notes were chosen", async () => {
+    const files = new MemoryFiles();
+    const { writer, did } = await graphOnly(files);
+    const one = await writer.create({ title: "Seeds" });
+    const two = await writer.create({ title: "Clocks" });
+    const done = await writer.bulk({
+      notes: [one.ref, two.ref],
+      act: { act: "set_appearance", appearance: { ring_style: "dashed" } },
+    });
+
+    expect(done.reached).toBe(2);
+    const again = await reread(files, did);
+    for (const note of [one, two]) {
+      expect(again.find(note.ref)?.appearance).toEqual({
+        ring_style: "dashed",
+      });
+    }
+  });
+
+  it("asks for the picture a series starts at before writing the rest", async () => {
+    const { writer } = await graphOnly();
+    const one = await writer.create({ title: "Seeds" });
+    await expect(
+      writer.update(one.ref, { appearance: { preview_more: ["up2"] } }),
+    ).rejects.toThrow("Choose a picture for this note first");
   });
 });

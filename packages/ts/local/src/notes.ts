@@ -9,6 +9,7 @@ import {
   type NodeBulkRequest,
   NodeBulkRequestSchema,
   type NodeBulkResult,
+  type NodeAppearance,
   type NodeView,
   type NoteDestination,
   type OwnedRef,
@@ -18,6 +19,7 @@ import {
   UpdateNodeRequestSchema,
   MAX_TAGS_PER_NODE,
   graphAsked,
+  isUnstyled,
   isAncestorAddress,
   isRootAddress,
   movedSubtree,
@@ -27,6 +29,7 @@ import {
   noteLabel,
   parentAddress,
   rebaseAddress,
+  seriesIsWhole,
   ulid,
 } from "@sloppy/types";
 import type { LocalGraph, StoredNote } from "./graph.js";
@@ -66,11 +69,13 @@ export class NoteWriter {
 
   async update(ref: OwnedRef, asked: UpdateNodeRequest): Promise<NodeView> {
     const request = checked(() => UpdateNodeRequestSchema.parse(asked));
-    // `null` takes a look back off, and a note here carries none to take.
-    if (request.appearance != null) throw noLook();
     const note = this.require(ref);
+    const held =
+      request.appearance === undefined
+        ? note
+        : styled(note, lookWritten(request.appearance));
     return this.put({
-      ...note,
+      ...held,
       ...(request.title === undefined ? {} : { title: request.title }),
       ...(request.tags === undefined ? {} : { tags: [...request.tags] }),
       ...(request.links === undefined ? {} : { links: [...request.links] }),
@@ -172,7 +177,6 @@ export class NoteWriter {
         "Publishing needs a hosted Sloppy. This graph is on your device.",
       );
     }
-    if (act.act === "set_appearance") throw noLook();
     if (act.act === "delete") {
       await this.graph.sweep();
       const going = new Map<OwnedRef, StoredNote>();
@@ -188,15 +192,25 @@ export class NoteWriter {
         notes: [],
       };
     }
-    const written: NodeView[] = [];
-    for (const note of mine) {
-      written.push(await this.put(this.acted(note, act)));
-    }
+    const change: (note: StoredNote) => StoredNote =
+      act.act === "set_appearance"
+        ? this.styling(act.appearance)
+        : (note) => this.acted(note, act);
+    const done: NodeView[] = [];
+    for (const note of mine) done.push(await this.put(change(note)));
     return {
-      reached: written.length,
-      missed: wanted.length - written.length,
-      notes: written,
+      reached: done.length,
+      missed: wanted.length - done.length,
+      notes: done,
     };
+  }
+
+  /** One look, read once, over however many notes it is being put on. */
+  private styling(
+    appearance: NodeAppearance | null,
+  ): (note: StoredNote) => StoredNote {
+    const look = lookWritten(appearance);
+    return (note) => styled(note, look);
   }
 
   // ── Placing ──────────────────────────────────────────────────────────────
@@ -576,8 +590,30 @@ export class NoteWriter {
   }
 }
 
-function noLook(): Error {
-  return refuse("A note's look is not kept in a graph on your device yet.");
+/** The look about to be written, or absent where it leaves the note unstyled.
+ *  Every picture on this device is already this person's, so the only thing to
+ *  hold a look to is its own shape. */
+function lookWritten(
+  appearance: NodeAppearance | null,
+): NodeAppearance | undefined {
+  if (appearance === null || isUnstyled(appearance)) return undefined;
+  // Pictures behind an absent first one would never draw.
+  if (!seriesIsWhole(appearance)) {
+    throw refuse("Choose a picture for this note first.");
+  }
+  return appearance;
+}
+
+function styled(
+  note: StoredNote,
+  look: NodeAppearance | undefined,
+): StoredNote {
+  const { appearance: _unstyled, ...bare } = note;
+  return {
+    ...bare,
+    ...(look === undefined ? {} : { appearance: look }),
+    updated_at: nowIso(),
+  };
 }
 
 function missing(relation: NoteDestination["relation"]): string {

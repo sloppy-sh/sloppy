@@ -149,6 +149,54 @@ describe("a graph in a folder", () => {
     expect((await reopened(held).listGraphs())[0].title).toBe("The thesis");
   });
 
+  it("keeps the owner's name and picture with every graph on the device", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    await held.api.createGraph({ title: "Garden" });
+    const ticket = await held.api.createUpload({
+      role: "avatar",
+      filename: "ada.png",
+      mime_type: "image/png",
+      size: 1,
+    });
+    await held.files
+      .at("/graphs/one")
+      .write(`media/${ticket.upload_id}.png`, new Uint8Array([7]));
+    await held.api.completeUpload({ upload_id: ticket.upload_id });
+
+    const said = await held.api.updateProfile({
+      display_name: "Ada Lovelace",
+      avatar_upload_id: ticket.upload_id,
+    });
+    expect(said.display_name).toBe("Ada Lovelace");
+    expect(said.avatar_src).not.toBeNull();
+    for (const root of ["/graphs/one", "/graphs/two"]) {
+      const file = held.store.get(`${root}/${GRAPH_FILE}`);
+      const graph = JSON.parse(decodeText(file ?? new Uint8Array()));
+      expect(graph.owner_name).toBe("Ada Lovelace");
+      expect(held.store.has(`${root}/${graph.owner_avatar}`)).toBe(true);
+    }
+
+    const again = reopened(held);
+    expect((await again.profile()).display_name).toBe("Ada Lovelace");
+    await again.updateProfile({ display_name: null, avatar_upload_id: null });
+    const off = await reopened(held).profile();
+    expect(off.display_name).toBeNull();
+    expect(off.avatar_src).toBeNull();
+    expect(
+      [...held.store.keys()].filter((path) => path.includes("/media/")),
+    ).toEqual([]);
+  });
+
+  it("says a graph on this device holds no more of you than that", async () => {
+    const held = device();
+    await held.api.createGraph({ title: "Thesis" });
+    await expect(
+      held.api.updateProfile({ bio: "I count things." }),
+    ).rejects.toThrow("nothing else about you");
+    expect((await held.api.profile()).did).toMatch(/^did:syr:/);
+  });
+
   it("takes its own files out of a folder it is closed in, and leaves the rest", async () => {
     const held = device();
     const graph = await held.api.createGraph({ title: "Thesis" });

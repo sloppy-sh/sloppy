@@ -1,4 +1,12 @@
-import type { BlockDocument, BlockView, NodeView } from "@sloppy/types";
+import {
+  type BlockDocument,
+  type BlockView,
+  isUnstyled,
+  MARK_SCALE_MAX,
+  MARK_SCALE_MIN,
+  type NodeAppearance,
+  type NodeView,
+} from "@sloppy/types";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { documents } from "./documents.test-support.js";
@@ -87,6 +95,35 @@ function roundTrip(contents: readonly BlockDocument[]) {
   );
   return read(written.files, written.pictures, written.emoji).sections;
 }
+
+/** Ids of pictures somebody's own store handed back, including the ones that
+ *  would read back as something other than themselves. */
+const pictures = fc.oneof(
+  fc.constantFrom("01J0000000000000000000000E", "17", "1e5", " x", '"q"'),
+  fc.string({ minLength: 1, maxLength: 8 }),
+);
+
+const looks: fc.Arbitrary<NodeAppearance> = fc.record(
+  {
+    ring_weight: fc.constantFrom("none", "hairline", "regular", "heavy"),
+    ring_style: fc.constantFrom("solid", "open", "notched", "dashed"),
+    mark_radius: fc.constantFrom("small", "regular", "large"),
+    mark_scale: fc.double({
+      min: MARK_SCALE_MIN,
+      max: MARK_SCALE_MAX,
+      noNaN: true,
+    }),
+    preview: pictures,
+    // A channel that says nothing is not written down, the way an attribute
+    // that says nothing is not: `isUnstyled` is what reads the two the same.
+    preview_more: fc.array(pictures, { minLength: 1, maxLength: 3 }),
+    preview_every: fc.integer({ min: 1, max: 240 }),
+    preview_transition: fc.constantFrom("none", "fade"),
+    preview_size: fc.constantFrom("small", "medium", "large"),
+    preview_cover: fc.double({ min: 0.42, max: 0.93, noNaN: true }),
+  },
+  { requiredKeys: [] },
+);
 
 describe("a note as a file", () => {
   it("writes what a person reads and cites, and reads it back", () => {
@@ -223,6 +260,41 @@ describe("a note as a file", () => {
       ),
       { numRuns: 10000 },
     );
+  });
+
+  it("carries the look its author gave the mark, whatever it says", () => {
+    fc.assert(
+      fc.property(looks, (look) => {
+        const { files } = noteToVault(note({ appearance: look }), [], []);
+        expect(read(files).appearance).toEqual(
+          isUnstyled(look) ? undefined : look,
+        );
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
+  it("writes the look as its own block, and none at all for a note with none", () => {
+    const { files } = noteToVault(
+      note({ appearance: { ring_weight: "heavy", preview_more: ["up1"] } }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array);
+    expect(text).toContain(
+      [
+        "appearance:",
+        "  ring_weight: heavy",
+        "  preview_more:",
+        "    - up1",
+      ].join("\n"),
+    );
+    for (const said of [{}, { preview_more: [] }]) {
+      const { files: bare } = noteToVault(note({ appearance: said }), [], []);
+      expect(decodeText(bare.get(notePath(NOTE)) as Uint8Array)).not.toContain(
+        "appearance",
+      );
+    }
   });
 
   it("keeps a section whose writing reads as the start of the next one", () => {

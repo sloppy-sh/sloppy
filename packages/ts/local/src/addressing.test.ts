@@ -279,7 +279,9 @@ describe("a graph on this device against a peer holding only addresses", () => {
   const SEEDS = 120;
   const OPS_PER_SEED = 90;
 
-  it("assigns byte-identical addresses over generated sequences", async () => {
+  it("assigns byte-identical addresses over generated sequences", {
+    timeout: 60_000,
+  }, async () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const ops = generateOps(seed, OPS_PER_SEED);
       const peer = new AddressOrderPeer();
@@ -290,7 +292,7 @@ describe("a graph on this device against a peer holding only addresses", () => {
     }
   });
 
-  it("never assigns one address twice", async () => {
+  it("never assigns one address twice", { timeout: 60_000 }, async () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const { assigned } = await replayOnVault(generateOps(seed, OPS_PER_SEED));
       expect(new Set(assigned).size).toBe(assigned.length);

@@ -113,6 +113,25 @@ describe("a graph of this device's own brought back in", () => {
     expect((await reopened(held).getNode(note.ref))?.title).toBe("Beans");
   });
 
+  it("brings its owner's name back with it, and leaves somebody else's behind", async () => {
+    const held = device(["/graphs/one", "/graphs/mine", "/graphs/theirs"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const mine = await held.api.createGraph({ title: "Garden" });
+    await held.api.updateProfile({ display_name: "Ada Lovelace" });
+    const out = await archiveFrom(held, mine.ref);
+    await held.api.importArchive(out);
+    expect((await reopened(held).profile()).display_name).toBe("Ada Lovelace");
+
+    const theirs = await written(["/theirs"]);
+    await theirs.held.api.updateProfile({ display_name: "Somebody else" });
+    const yours = device(["/graphs/one", "/graphs/arrived"]);
+    await yours.api.createGraph({ title: "Mine" });
+    await yours.api.importArchive(
+      await archiveFrom(theirs.held, theirs.graph.ref),
+    );
+    expect((await yours.api.profile()).display_name).toBeNull();
+  });
+
   it("still owes a citation every number the graph it replaces retired", async () => {
     const held = device(["/graphs/one", "/graphs/two"]);
     await held.api.createGraph({ title: "Thesis" });
@@ -155,7 +174,7 @@ describe("a graph of this device's own brought back in", () => {
     const held = device(["/graphs/one", "/graphs/two"]);
     await held.api.createGraph({ title: "Thesis" });
     const second = await held.api.createGraph({ title: "Garden" });
-    await held.api.createNode({
+    const beans = await held.api.createNode({
       from: { relation: "branch", graph: second.ref },
       title: "Beans",
     });
@@ -173,18 +192,34 @@ describe("a graph of this device's own brought back in", () => {
     });
     expect(thrown.address).toBe("6");
     await held.api.deleteNode(thrown.ref);
+    const under = await held.api.createNode({
+      from: { relation: "under", note: beans.ref },
+      title: "Pods",
+    });
+    expect(under.address).toBe("1a");
+    const [carried] = await held.api.moveNote(under.ref, {
+      relation: "after",
+      note: beans.ref,
+    });
+    expect(carried.address).toBe("7");
 
     await held.api.importArchive(out);
 
     const client = reopened(held);
     expect(await client.deletedBranches()).toEqual([]);
-    for (const address of ["2", "5", "6"]) {
+    for (const address of ["2", "5", "6", "7"]) {
       await expect(
         client.createNode({
           from: { relation: "root", address, graph: second.ref },
         }),
       ).rejects.toThrow(`You have used ${address} before`);
     }
+    await expect(
+      client.createNode({
+        from: { relation: "under", note: beans.ref },
+        address: "1a",
+      }),
+    ).rejects.toThrow("You have used 1a before");
   });
 
   it("refuses one whose notes are already in another graph here", async () => {

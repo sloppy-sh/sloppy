@@ -1,4 +1,4 @@
-import { encodeText } from "@sloppy/vault";
+import { encodeText, unpack } from "@sloppy/vault";
 import { describe, expect, it, vi } from "vitest";
 import {
   type Device,
@@ -233,6 +233,45 @@ describe("a picture and an emoji in a folder", () => {
 
     await again.removePicture(ticket.upload_id);
     expect(await reopened(held).ownPictures()).toEqual([]);
+  });
+
+  it("keeps a picture in the folder of the graph whose note draws it", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const second = await held.api.createGraph({ title: "Garden" });
+    const note = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Beans",
+    });
+    const ticket = await held.api.createUpload({
+      role: "block",
+      filename: "bean.png",
+      mime_type: "image/png",
+      size: 3,
+    });
+    await held.files
+      .at("/graphs/one")
+      .write(`media/${ticket.upload_id}.png`, new Uint8Array([1, 2, 3]));
+    await held.api.completeUpload({ upload_id: ticket.upload_id });
+
+    await held.api.createBlock({
+      node: note.ref,
+      content: {
+        type: "doc",
+        content: [{ type: "picture", attrs: { upload_id: ticket.upload_id } }],
+      },
+    });
+
+    const file = `media/${ticket.upload_id}.png`;
+    expect(held.store.has(`/graphs/two/${file}`)).toBe(true);
+    expect(held.store.has(`/graphs/one/${file}`)).toBe(false);
+
+    const again = reopened(held);
+    expect((await again.ownPictures()).map((one) => one.filename)).toEqual([
+      "bean.png",
+    ]);
+    const out = unpack((await again.exportArchive(second.ref)).bytes);
+    expect(out.has(file)).toBe(true);
   });
 
   it("says a picture whose bytes never arrived could not be added", async () => {
