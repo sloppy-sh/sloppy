@@ -618,8 +618,8 @@ fn put_back(repo: &Repository, root: &Path, held: Vec<Aside>) -> Result<(), Hist
 }
 
 fn lay(repo: &Repository, root: &Path, onto: Oid) -> Result<(), HistoryError> {
-    let held = set_aside(repo, root, onto)?;
     let tree = repo.find_object(onto, Some(ObjectType::Commit))?;
+    let held = set_aside(repo, root, onto)?;
     let mut how = CheckoutBuilder::new();
     how.safe();
     let laid = repo
