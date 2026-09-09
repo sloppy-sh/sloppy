@@ -7,6 +7,7 @@ export * from "./address.js";
 export * from "./graph.js";
 export * from "./tag.js";
 export * from "./ink.js";
+export * from "./diagram.js";
 export * from "./picture.js";
 export * from "./appearance.js";
 export * from "./edge.js";

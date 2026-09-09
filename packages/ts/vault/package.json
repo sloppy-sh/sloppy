@@ -1,0 +1,44 @@
+{
+  "name": "@sloppy/vault",
+  "version": "0.0.1",
+  "description": "A graph as files: the vault folder, the .sloppy archive, and the lossless conversion between a block's document and markdown — see docs/ARCHITECTURE.md § \"A graph on disk\".",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.mts",
+        "require": "./dist/index.d.ts"
+      },
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "format:check": "biome ci --linter-enabled=false --assist-enabled=false .",
+    "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
+  },
+  "dependencies": {
+    "@sloppy/types": "workspace:*",
+    "fflate": "0.8.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.0",
+    "fast-check": "^4.3.0",
+    "tsdown": "^0.22.14",
+    "typescript": "catalog:",
+    "vitest": "^4.1.11"
+  }
+}
