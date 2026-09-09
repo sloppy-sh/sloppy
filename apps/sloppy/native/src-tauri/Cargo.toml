@@ -10,6 +10,11 @@ rust-version = "1.77.2"
 name = "sloppy_native_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[dev-dependencies]
+# The webview's side of the bridge, so the commands are exercised the way the
+# page calls them rather than only as functions.
+tauri = { version = "2.11.2", features = ["test"] }
+
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 
@@ -17,6 +22,11 @@ tauri-build = { version = "2.6.2", features = [] }
 tauri = { version = "2.11.2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# A `vault:` URL carries a file's whole path in one segment, so reading one back
+# is a percent-decode.
+percent-encoding = "2"
+# Bytes cross the bridge as base64, because the bridge carries JSON.
+base64 = "0.22"
 # The sign-in round trip: out through opener, back through deep-link.
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
@@ -30,3 +40,7 @@ tauri-plugin-safe-area-insets-css = "0.2"
 # "deep-link" is what re-emits a forwarded URL through the deep-link plugin.
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+# Where a graph lives is a folder somebody picks. A phone and a tablet keep
+# theirs in the app's own documents folder with nobody asked, so the folder
+# dialog ships to a desktop only.
+tauri-plugin-dialog = "2"

@@ -121,6 +121,13 @@ import { recent, search } from "./search.js";
 import { type KnownVault, readVaults, writeVaults } from "./vaults.js";
 import { carriedOut, vaultOwned } from "./vault-paths.js";
 
+/** Whether a folder holds a graph. A shell asks this of a folder it wrote down
+ *  before serving it, so that both sides read a folder that has been moved or
+ *  emptied the same way. */
+export function holdsAGraph(files: Files): Promise<boolean> {
+  return files.exists(GRAPH_FILE);
+}
+
 /**
  * `SloppyApi` over a folder on the device: the vault is the store, and nothing
  * here reaches a network.
@@ -132,6 +139,7 @@ import { carriedOut, vaultOwned } from "./vault-paths.js";
 export class LocalApi implements SloppyApi {
   private identity?: LocalIdentity;
   private known?: KnownVault[];
+  private readonly starting = new Map<string, Promise<LocalGraph>>();
   private readonly opened = new Map<string, LocalGraph>();
   /** One write at a time: an act reads where it is landing and then writes
    *  there, and two would each land where the other had already left. */
@@ -185,18 +193,24 @@ export class LocalApi implements SloppyApi {
     return graphs.map((graph) => this.graphView(graph));
   }
 
+  /** The graph in the folder this device has open, which is the one somebody
+   *  writes in. A folder holding none has one started in it, exactly as reading
+   *  it does. */
+  async graphHere(): Promise<OwnedRef> {
+    return (await this.graphAt()).ref;
+  }
+
   /** A graph is a folder, so starting one asks for the folder to keep it in. */
   async createGraph(asked: CreateGraphRequest): Promise<GraphView> {
     const request = checked(() => CreateGraphRequestSchema.parse(asked));
     return this.write(async () => {
       const did = (await this.who()).did;
-      const known = await this.vaults();
       const root = await this.files.pickFolder();
       if (root === undefined) throw refuse("No folder was chosen.");
+      const known = await this.vaults();
       if (known.some((one) => one.root === root)) {
         throw refuse("There is already a graph in that folder.");
       }
-      const at = nowIso();
       const graph = await LocalGraph.start(this.files.at(root), did, {
         format: VAULT_FORMAT,
         graph: known.length === 0 ? HOME_GRAPH_ULID : ulid(),
@@ -204,7 +218,7 @@ export class LocalApi implements SloppyApi {
         owner: did,
       });
       this.opened.set(root, graph);
-      await this.remember([...known, { root, created_at: at, updated_at: at }]);
+      await this.rememberVault(root);
       return this.graphView(graph);
     });
   }
@@ -232,6 +246,7 @@ export class LocalApi implements SloppyApi {
       const root = this.rootOf(graph);
       await emptyVault(graph.files);
       this.opened.delete(root);
+      this.starting.delete(root);
       await this.remember(
         (await this.vaults()).filter((one) => one.root !== root),
       );
@@ -558,11 +573,10 @@ export class LocalApi implements SloppyApi {
       );
       if (held.length > 0) throw alreadyHere(held.length);
       const did = (await this.who()).did;
-      const known = await this.vaults();
       const into = opened.into;
       const root = into ? this.rootOf(into) : await this.files.pickFolder();
       if (root === undefined) throw refuse("No folder was chosen.");
-      if (!into && known.some((one) => one.root === root)) {
+      if (!into && (await this.vaults()).some((one) => one.root === root)) {
         throw refuse("There is already a graph in that folder.");
       }
       const files = this.files.at(root);
@@ -572,13 +586,7 @@ export class LocalApi implements SloppyApi {
       const graph = await LocalGraph.open(files, did);
       await graph.keepRetired(retired);
       this.opened.set(root, graph);
-      if (!into) {
-        const at = nowIso();
-        await this.remember([
-          ...known,
-          { root, created_at: at, updated_at: at },
-        ]);
-      }
+      if (!into) await this.rememberVault(root);
       return this.graphView(graph);
     });
   }
@@ -773,6 +781,22 @@ export class LocalApi implements SloppyApi {
         upload_url: graph.files.url(path),
         upload_headers: {},
       };
+    });
+  }
+
+  /**
+   * A picture's bytes, put where its ticket says. They cross the same bridge
+   * every other write does rather than being sent to the address the ticket
+   * names: a webview carries no request body to the app it belongs to, so
+   * there is no address on this device that could receive them.
+   */
+  async sendUpload(ticket: UploadTicket, file: Blob): Promise<void> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await this.write(async () => {
+      const graph = await this.graphAt();
+      const path = graph.picturePath(ticket.upload_id);
+      if (!path) throw absent("That picture is not here.");
+      await graph.files.write(path, bytes);
     });
   }
 
@@ -985,10 +1009,32 @@ export class LocalApi implements SloppyApi {
     await writeVaults(this.files.at(await this.files.dataPath()), this.known);
   }
 
-  /** Every graph this device keeps, in the order it opened them. A folder that
-   *  is no longer a vault is left out rather than refused: somebody moved it,
-   *  and the graphs beside it still open. */
+  /** Write a folder down, against the list as it stands rather than one read
+   *  before an await: a read that starts a graph writes this list too, and it
+   *  does not wait for the writing queue. */
+  private async rememberVault(root: string): Promise<void> {
+    const known = await this.vaults();
+    if (known.some((one) => one.root === root)) return;
+    const at = nowIso();
+    await this.remember([...known, { root, created_at: at, updated_at: at }]);
+  }
+
+  /** Every graph this device keeps: the folders it has written down, and the
+   *  folder it has open, which holds a graph whether or not it has been written
+   *  down yet. One that cannot be opened is left out here and said where
+   *  somebody writes, so the graphs beside it still read. */
   private async allGraphs(): Promise<LocalGraph[]> {
+    const graphs = await this.writtenDownGraphs();
+    const open = this.files.root;
+    if (!open) return graphs;
+    const here = await this.graphInTheOpenFolder(open).catch(() => undefined);
+    return here && !graphs.includes(here) ? [...graphs, here] : graphs;
+  }
+
+  /** The graphs in the folders this device wrote down, in the order it opened
+   *  them. A folder that is no longer a vault is left out rather than refused:
+   *  somebody moved it, and the graphs beside it still open. */
+  private async writtenDownGraphs(): Promise<LocalGraph[]> {
     const graphs: LocalGraph[] = [];
     for (const known of await this.vaults()) {
       const already = this.opened.get(known.root);
@@ -1027,8 +1073,11 @@ export class LocalApi implements SloppyApi {
     return graph;
   }
 
-  /** The graph named, or the one this device started with. */
+  /** The graph named; otherwise the one in the folder this device has open,
+   *  and where it has none, the one it started with. */
   private async graphAt(ref?: OwnedRef): Promise<LocalGraph> {
+    const open = this.files.root;
+    if (ref === undefined && open) return this.graphInTheOpenFolder(open);
     const graphs = await this.allGraphs();
     if (graphs.length === 0) {
       throw absent("There is no graph on this device yet. Start one to write.");
@@ -1037,6 +1086,56 @@ export class LocalApi implements SloppyApi {
     const found = graphs.find((graph) => graph.ref === ref);
     if (!found) throw absent("That graph is not on this device.");
     return found;
+  }
+
+  /**
+   * The graph in the folder a shell opened: opening a folder is how somebody
+   * says a graph is in it, so one that holds a graph is read and one that does
+   * not becomes it. The name is the folder's, which is what they called the
+   * place; it is renamed like any other. A folder this device wrote a graph
+   * into and that now holds none has been moved or emptied, and is said rather
+   * than started over.
+   *
+   * Held as the promise rather than the graph, one per folder, so two reads
+   * landing together start one graph between them and a second folder opened in
+   * the same session still starts.
+   */
+  private graphInTheOpenFolder(root: string): Promise<LocalGraph> {
+    let opening = this.starting.get(root);
+    if (opening) return opening;
+    opening = (async () => {
+      const already = this.opened.get(root);
+      if (already) return already;
+      const did = (await this.who()).did;
+      const at = this.files.at(root);
+      const written = (await this.vaults()).some((one) => one.root === root);
+      const holds = await holdsAGraph(at);
+      if (!holds && written) {
+        throw absent(
+          "The folder your notes are in is not there any more. Open it again, or choose another folder.",
+        );
+      }
+      const graph = holds
+        ? await LocalGraph.open(at, did)
+        : await LocalGraph.start(at, did, {
+            format: VAULT_FORMAT,
+            graph: (await this.homeIsTaken(did)) ? ulid() : HOME_GRAPH_ULID,
+            name: folderName(root),
+            owner: did,
+          });
+      this.opened.set(root, graph);
+      if (!written) await this.rememberVault(root);
+      return graph;
+    })();
+    this.starting.set(root, opening);
+    return opening;
+  }
+
+  /** Whether the graph a person started with — the one an archive of a first
+   *  graph names — is already on this device. */
+  private async homeIsTaken(did: DidSyr): Promise<boolean> {
+    const home: OwnedRef = `${did}/${HOME_GRAPH_ULID}`;
+    return (await this.writtenDownGraphs()).some((one) => one.ref === home);
   }
 
   private async graphHolding(ref: OwnedRef): Promise<LocalGraph | undefined> {
@@ -1283,6 +1382,12 @@ export function archiveName(name: string, at: Date = new Date()): string {
     .replace(/\s+/g, " ")
     .trim();
   return `${called === "" ? "graph" : called} ${at.toISOString().slice(0, 10)}.sloppy`;
+}
+
+/** What a person called the folder, which is what a graph in it is called
+ *  until they say otherwise. */
+function folderName(root: string): string {
+  return root.split(/[\\/]/).filter(Boolean).at(-1) ?? "My graph";
 }
 
 /** The graph file the vault holds, or absent where it holds none this build can

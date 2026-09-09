@@ -1,8 +1,8 @@
 /**
  * This shell's half of `Files` in `@sloppy/local`, which declares every method
  * and what its answer means. The commands below live in `src-tauri`; bytes
- * cross as base64 because the bridge carries JSON, and a picture is loaded
- * through `url` rather than read.
+ * cross as base64 because the bridge carries JSON, and a picture is loaded from
+ * the address `url` answers rather than read here.
  */
 
 import { checkPath, joinPath, type Files } from '@sloppy/local';
@@ -20,6 +20,9 @@ const EXISTS = 'files_exists';
 const MKDIR = 'files_mkdir';
 const PICK_FOLDER = 'pick_folder';
 const DATA_PATH = 'app_data_path';
+
+/** The scheme `src-tauri/src/vault.rs` answers a picture at. */
+const VAULT_SCHEME = 'vault';
 
 function decodeBase64(encoded: string): Uint8Array {
 	const binary = atob(encoded);
@@ -93,7 +96,7 @@ class TauriFiles implements Files {
 export function tauriFiles(
 	root = '',
 	call: Invoke = invoke,
-	toUrl: (path: string) => string = convertFileSrc
+	toUrl: (path: string) => string = (path) => convertFileSrc(path, VAULT_SCHEME)
 ): Files {
 	return new TauriFiles(root, call, toUrl);
 }

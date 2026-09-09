@@ -10,6 +10,7 @@
  */
 
 import { setHost } from '@sloppy/client';
+import type { OwnedRef } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
 
@@ -19,6 +20,25 @@ import { storedOrigin } from './stores/prefs.svelte.js';
  * person's writing lives reads; `createApi` below is what the api layer reads.
  */
 export type DeploymentMode = 'hosted' | 'self_hosted' | 'local';
+
+/** The folder a graph on this device is kept in, and the one act that puts one
+ *  there. The shell owns where a folder comes from; a page only asks. */
+export interface VaultAccess {
+	/** `undefined` before any folder has been opened, which is the first run. */
+	folder(): string | undefined;
+	/** The graph in the folder that is open, which is the one in front of
+	 *  somebody here. A folder holding none is a folder somebody has just said a
+	 *  graph is in, so one is started there. `undefined` while no folder is
+	 *  open, which is the first run. */
+	graph(): Promise<OwnedRef | undefined>;
+	/** Open a folder and serve the graph in it from now on. `undefined` is
+	 *  somebody who named none, and is not a failure. */
+	open(): Promise<string | undefined>;
+	/** Whether {@link open} asks somebody where. False is a device that keeps
+	 *  its graphs in one place, and the offer says so rather than promising a
+	 *  choice nobody gets. */
+	readonly asks: boolean;
+}
 
 export interface AppRuntime {
 	/** The origin this build shipped with, or `''` for same-origin. A device
@@ -66,6 +86,11 @@ export interface AppRuntime {
 	 *  has no way to ask at all, and the offer says so rather than doing
 	 *  nothing. */
 	openFile?: ((accept: string) => Promise<File | null>) | null;
+	/** Present where the graph in front of somebody is a folder on this device,
+	 *  and absent everywhere else — a shell that defines it also defines
+	 *  {@link createApi}. It is what the first-run surface asks for a folder
+	 *  with, so no page spells a platform's way of finding one. */
+	vault?: VaultAccess;
 	/** How a stored picture's address becomes one this page can load. Absent →
 	 *  the API's proxy, so viewing somebody else's note never reaches their
 	 *  instance from here. A shell serving a graph off the device answers with
@@ -162,6 +187,7 @@ export const runtime = {
 	signInRedirect: (): string | undefined => current.signInRedirect?.(),
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
 	webOrigin: (): string | undefined => current.webOrigin?.(),
+	vault: (): VaultAccess | undefined => current.vault,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
 	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc

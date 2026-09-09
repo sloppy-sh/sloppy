@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: vi.fn(),
-	convertFileSrc: (path: string) => `asset://localhost/${path}`
+	convertFileSrc: (path: string, scheme: string) => `${scheme}://localhost/${path}`
 }));
 
 const { tauriFiles } = await import('./files.js');
@@ -68,10 +68,10 @@ describe('the shell files a graph on this device is kept in', () => {
 		});
 	});
 
-	it('gives a picture an address the page can load', () => {
+	it('gives a picture an address the page can load it from', () => {
 		const { call } = shell();
 		expect(tauriFiles('/vault', call).url('media/p.png')).toBe(
-			'asset://localhost//vault/media/p.png'
+			'vault://localhost//vault/media/p.png'
 		);
 	});
 });

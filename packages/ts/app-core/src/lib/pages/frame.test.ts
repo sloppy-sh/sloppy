@@ -1,5 +1,6 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { initRuntime } from '../runtime.js';
 import { deleted } from '../stores/deleted.svelte.js';
 import {
 	AT,
@@ -108,7 +109,13 @@ afterEach(() => {
 	if (mounted) unmount(mounted);
 	mounted = undefined;
 	target.remove();
+	running('hosted');
 });
+
+/** Which of the deployments the app is running as, for the mount that follows. */
+function running(mode: 'hosted' | 'local'): void {
+	initRuntime({ apiHost: () => '', mode: () => mode });
+}
 
 describe('the frame around every page', () => {
 	it('shows the page to whoever is signed in', async () => {
@@ -271,6 +278,37 @@ describe('the frame around every page', () => {
 		await show();
 
 		expect(reachable()).toEqual([]);
+	});
+
+	// The identity a graph on this device is written under is made on the spot,
+	// so there is no screen to send anybody to and nothing to send them for.
+	it('shows the page on a device holding its own graph, with nowhere to sign in', async () => {
+		running('local');
+		api.on('GET /auth/me', () => VIEWER);
+
+		await show();
+
+		expect(target.textContent).toContain('The graph');
+		expect(where.gone).toEqual([]);
+	});
+
+	it('sends nobody to sign in there, even where the identity could not be read', async () => {
+		running('local');
+		api.on('GET /auth/me', () => undefined);
+
+		await show();
+
+		expect(where.gone).toEqual([]);
+		expect(target.textContent).toContain('Sloppy could not load just now');
+	});
+
+	it('still sends somebody with no session to sign in where a Sloppy serves the graph', async () => {
+		running('hosted');
+		api.on('GET /auth/me', () => undefined);
+
+		await show();
+
+		expect(where.gone).toEqual(['/sign-in']);
 	});
 
 	it('shows the page once it can be asked again', async () => {

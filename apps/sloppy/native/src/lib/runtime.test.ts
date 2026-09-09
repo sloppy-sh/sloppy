@@ -1,0 +1,223 @@
+import type { AppRuntime } from '@sloppy/app-core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
+
+let registered: Partial<AppRuntime> = {};
+const resetApi = vi.fn();
+vi.mock('@sloppy/app-core', () => ({
+	initRuntime: (rt: Partial<AppRuntime>) => {
+		registered = rt;
+	},
+	resetApi: () => resetApi(),
+	session: { clear: vi.fn() }
+}));
+
+vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
+vi.mock('./deep-link', () => ({ SIGN_IN_CALLBACK: 'sloppy://auth/callback' }));
+
+/** The device's files, as `src-tauri` answers for them: one store keyed by the
+ *  absolute path, and a folder somebody would pick. */
+const held = new Map<string, string>();
+let picks: string | null = '/Users/me/garden';
+let picking: 'answers' | 'fails' = 'answers';
+
+vi.mock('@tauri-apps/api/core', () => ({
+	convertFileSrc: (path: string, scheme: string) => `${scheme}://localhost/${path}`,
+	invoke: async (command: string, args?: Record<string, unknown>) => {
+		const at = `${args?.root as string}/${args?.path as string}`;
+		switch (command) {
+			case 'app_data_path':
+				return '/data';
+			case 'pick_folder':
+				if (picking === 'fails') throw new Error('the folder could not be opened');
+				return picks;
+			case 'files_read':
+				return held.get(at) ?? null;
+			case 'files_write':
+				held.set(at, args?.bytes as string);
+				return null;
+			case 'files_exists':
+				return held.has(at);
+			case 'files_list': {
+				const under = `${args?.root as string}/`;
+				return [...held.keys()]
+					.filter((path) => path.startsWith(under))
+					.map((path) => path.slice(under.length));
+			}
+			default:
+				return null;
+		}
+	}
+}));
+
+/** A graph written in `folder`, as the app writes one once it is opened. */
+function wroteIn(folder: string): void {
+	held.set(`${folder}/graph.json`, '');
+}
+
+/** A launch of the app on `platform`, as the Tauri CLI spells it: fresh module
+ *  state, `initNativeRuntime` called the way the root layout calls it. */
+async function launch(platform = 'desktop'): Promise<typeof import('./runtime.js')> {
+	vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
+	vi.stubEnv('TAURI_ENV_PLATFORM', platform);
+	vi.resetModules();
+	const shell = await import('./runtime.js');
+	shell.initNativeRuntime();
+	return shell;
+}
+
+/** Where the api reads a graph out of right now. */
+function servedFrom(): string {
+	return (registered.createApi?.() as unknown as { files: { root: string } }).files.root;
+}
+
+describe('the native shell in local mode', () => {
+	beforeEach(() => {
+		held.clear();
+		picks = '/Users/me/garden';
+		picking = 'answers';
+		resetApi.mockClear();
+	});
+
+	it('serves the graph off this device, with no server to reach', async () => {
+		await launch();
+
+		expect(registered.mode?.()).toBe('local');
+		expect(registered.vault).toBeDefined();
+	});
+
+	it('has no folder to open on a device that has never had one', async () => {
+		const shell = await launch();
+
+		expect(await shell.openRememberedVault()).toBeUndefined();
+		expect(registered.vault?.folder()).toBeUndefined();
+	});
+
+	it('opens the folder somebody names and serves the graph out of it', async () => {
+		await launch();
+
+		expect(await registered.vault?.open()).toBe('/Users/me/garden');
+		expect(registered.vault?.folder()).toBe('/Users/me/garden');
+		expect(servedFrom()).toBe('/Users/me/garden');
+		expect(resetApi).toHaveBeenCalled();
+	});
+
+	it('opens that same folder again the next time the app starts', async () => {
+		await launch();
+		await registered.vault?.open();
+		wroteIn('/Users/me/garden');
+
+		const again = await launch();
+		expect(registered.vault?.folder()).toBeUndefined();
+		expect(await again.openRememberedVault()).toBe('/Users/me/garden');
+		expect(servedFrom()).toBe('/Users/me/garden');
+	});
+
+	it('offers a folder rather than an empty graph where the last one has been moved', async () => {
+		await launch();
+		await registered.vault?.open();
+		wroteIn('/Users/me/garden');
+
+		for (const path of [...held.keys()]) {
+			if (path.startsWith('/Users/me/garden')) held.delete(path);
+		}
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBeUndefined();
+		expect(again.vaultIsMissing()).toBe(true);
+		expect(registered.vault?.folder()).toBeUndefined();
+	});
+
+	// Every read of it would land in a graph that is not there.
+	it('offers a folder rather than one that holds files but no graph', async () => {
+		await launch();
+		await registered.vault?.open();
+		wroteIn('/Users/me/garden');
+
+		held.delete('/Users/me/garden/graph.json');
+		held.set('/Users/me/garden/README.md', '');
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBeUndefined();
+		expect(again.vaultIsMissing()).toBe(true);
+	});
+
+	it('answers with the graph in the folder it has open', async () => {
+		const shell = await launch();
+		await registered.vault?.open();
+
+		const here = await registered.vault?.graph();
+
+		expect(here).toMatch(/^did:syr:[^/]+\/[0-9A-HJKMNP-TV-Z]{26}$/);
+		expect(await shell.openRememberedVault()).toBe('/Users/me/garden');
+	});
+
+	it('answers with the graph in the folder opened next', async () => {
+		await launch();
+		await registered.vault?.open();
+		const first = await registered.vault?.graph();
+
+		picks = '/Users/me/thesis';
+		await registered.vault?.open();
+
+		expect(await registered.vault?.graph()).not.toBe(first);
+	});
+
+	it('has no graph to name before a folder is open', async () => {
+		await launch();
+
+		expect(await registered.vault?.graph()).toBeUndefined();
+	});
+
+	it('has nothing to say about a folder on a device that has never had one', async () => {
+		const shell = await launch();
+
+		expect(await shell.openRememberedVault()).toBeUndefined();
+		expect(shell.vaultIsMissing()).toBe(false);
+	});
+
+	it('leaves the folder alone where somebody named none', async () => {
+		await launch();
+		await registered.vault?.open();
+		picks = null;
+
+		expect(await registered.vault?.open()).toBeUndefined();
+		expect(registered.vault?.folder()).toBe('/Users/me/garden');
+	});
+
+	it('asks where a desktop can ask', async () => {
+		await launch();
+
+		expect(registered.vault?.asks).toBe(true);
+	});
+
+	it('opens the one folder a phone keeps its graphs in without asking', async () => {
+		const shell = await launch('ios');
+
+		expect(registered.vault?.asks).toBe(false);
+		expect(await shell.openRememberedVault()).toBe('/Users/me/garden');
+		expect(servedFrom()).toBe('/Users/me/garden');
+	});
+
+	// The app's own documents folder moves with the app, so a path written down
+	// before it moved is a graph nobody can find.
+	it('asks a phone where its documents are again rather than remembering where they were', async () => {
+		const first = await launch('ios');
+		await first.openRememberedVault();
+
+		picks = '/var/containers/2/Documents';
+		const again = await launch('ios');
+
+		expect(await again.openRememberedVault()).toBe('/var/containers/2/Documents');
+		expect(servedFrom()).toBe('/var/containers/2/Documents');
+	});
+
+	it('offers a folder on a phone whose own one could not be opened', async () => {
+		picking = 'fails';
+		const shell = await launch('ios');
+
+		expect(await shell.openRememberedVault()).toBeUndefined();
+		expect(registered.vault?.folder()).toBeUndefined();
+	});
+});

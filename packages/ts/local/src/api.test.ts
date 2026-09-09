@@ -55,6 +55,153 @@ describe("the client a graph on this device is served through", () => {
   });
 });
 
+describe("a picture in a graph on this device", () => {
+  it("is kept by the client itself, with nothing sent anywhere", async () => {
+    const held = device(["/graphs/thesis"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const ticket = await held.api.createUpload({
+      role: "block",
+      filename: "seed.png",
+      mime_type: "image/png",
+      size: 3,
+    });
+
+    await held.api.sendUpload(ticket, new Blob([new Uint8Array([1, 2, 3])]));
+    const asset = await held.api.completeUpload({
+      upload_id: ticket.upload_id,
+    });
+
+    expect(asset.upload_id).toBe(ticket.upload_id);
+    expect(
+      held.store.get(`/graphs/thesis/media/${ticket.upload_id}.png`),
+    ).toEqual(new Uint8Array([1, 2, 3]));
+  });
+});
+
+describe("the folder a shell opened", () => {
+  /** A client rooted at one folder, the way the native shell serves the graph
+   *  somebody chose. */
+  function opened(root: string, store = new Map<string, Uint8Array>()) {
+    const files = new MemoryFiles({ root, store, data: "/data" });
+    return { api: new LocalApi(files), files, store };
+  }
+
+  it("becomes the graph, named after itself, where it holds none", async () => {
+    const held = opened("/Users/me/garden");
+
+    const note = await held.api.createNode({ title: "A first thought" });
+
+    expect(held.store.has(`/Users/me/garden/${GRAPH_FILE}`)).toBe(true);
+    const graphs = await held.api.listGraphs();
+    expect(graphs.map((one) => one.title)).toEqual(["garden"]);
+    expect(splitOwnedRef(graphs[0].ref).localId).toBe(HOME_GRAPH_ULID);
+    expect((await held.api.getNode(note.ref))?.title).toBe("A first thought");
+  });
+
+  it("is read rather than written over where it already holds a graph", async () => {
+    const first = opened("/Users/me/garden");
+    const note = await first.api.createNode({ title: "A first thought" });
+
+    // A second launch: the folder is the same, and nothing of the first
+    // client's index survives.
+    const again = opened("/Users/me/garden", first.store);
+
+    expect((await again.api.listGraphs()).map((one) => one.title)).toEqual([
+      "garden",
+    ]);
+    expect((await again.api.getNode(note.ref))?.title).toBe("A first thought");
+    expect((await again.api.listNodes()).length).toBe(1);
+  });
+
+  it("is the folder written in after the shell is pointed at another one", async () => {
+    const first = opened("/Users/me/garden");
+    await first.api.createNode({ title: "A first thought" });
+
+    const second = opened("/Users/me/thesis", first.store);
+    const note = await second.api.createNode({ title: "Chapter one" });
+
+    expect(second.store.has(`/Users/me/thesis/${GRAPH_FILE}`)).toBe(true);
+    expect(
+      second.store.has(
+        `/Users/me/thesis/${notePath(splitOwnedRef(note.ref).localId)}`,
+      ),
+    ).toBe(true);
+    const graphs = await second.api.listGraphs();
+    expect(graphs.map((one) => one.title)).toEqual(["garden", "thesis"]);
+    // The graph a person started with is the one every archive of one names,
+    // so the second folder is not a second claim on it.
+    expect(splitOwnedRef(graphs[1].ref).localId).not.toBe(HOME_GRAPH_ULID);
+    expect((await second.api.listNodes()).map((one) => one.title)).toEqual([
+      "Chapter one",
+    ]);
+  });
+
+  it("says a folder it wrote a graph into is gone rather than starting a second one", async () => {
+    const held = opened("/Users/me/garden");
+    await held.api.createNode({ title: "A first thought" });
+    for (const path of [...held.store.keys()]) {
+      if (path.startsWith("/Users/me/garden")) held.store.delete(path);
+    }
+    held.store.set("/Users/me/garden/README.md", new Uint8Array());
+
+    const again = opened("/Users/me/garden", held.store);
+
+    await expect(again.api.createNode({ title: "Again" })).rejects.toThrow(
+      "not there any more",
+    );
+    expect(again.store.has(`/Users/me/garden/${GRAPH_FILE}`)).toBe(false);
+    expect(await again.api.listGraphs()).toEqual([]);
+  });
+
+  it("starts one graph between two reads that land together", async () => {
+    const held = opened("/Users/me/garden");
+
+    await Promise.all([
+      held.api.listNodes(),
+      held.api.listNodes(),
+      held.api.createNode({ title: "A first thought" }),
+    ]);
+
+    expect((await held.api.listGraphs()).length).toBe(1);
+  });
+
+  // A read of the open folder starts a graph there and writes that folder down
+  // without waiting behind a write, so a write holding a list it read earlier
+  // would put the folder back the way it was before the read.
+  it("keeps the folder a read wrote down while another was being chosen", async () => {
+    let chose!: (root: string) => void;
+    const chosen = new Promise<string>((answer) => (chose = answer));
+    let asking!: () => void;
+    const asked = new Promise<void>((answer) => (asking = answer));
+
+    class Asking extends MemoryFiles {
+      async pickFolder(): Promise<string | undefined> {
+        asking();
+        return chosen;
+      }
+    }
+
+    const store = new Map<string, Uint8Array>();
+    const api = new LocalApi(
+      new Asking({ root: "/Users/me/garden", data: "/data", store }),
+    );
+
+    const starting = api.createGraph({ title: "Thesis" });
+    await asked;
+    await api.listNodes();
+    chose("/Users/me/thesis");
+    await starting;
+
+    // Read with no folder open, so the answer is what was written down rather
+    // than what the open folder holds.
+    const written = new LocalApi(new MemoryFiles({ data: "/data", store }));
+    expect((await written.listGraphs()).map((one) => one.title)).toEqual([
+      "garden",
+      "Thesis",
+    ]);
+  });
+});
+
 describe("a graph in a folder", () => {
   it("starts one where a person put it, and reads it back off the disk", async () => {
     const held = device(["/graphs/thesis"]);

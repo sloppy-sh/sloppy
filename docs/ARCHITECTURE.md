@@ -362,11 +362,24 @@ step on every write, and search reads that index. The address rules are the same
 from `@sloppy/types` the API runs: a suggestion made here and a suggestion made on a
 server are the same suggestion, which is what lets a graph cross between them.
 
-**There is no sign-in, because there is nobody to sign in to.** On first run the app mints
-an Ed25519 identity through `@sloppy/idp`'s crypto, writes the DID into `graph.json` and
-opens the graph, with no screen in the way. The key is a file in the app's own private data
-and it never leaves the device — there is no password over it because there is nothing a
-password would protect it from that reaching the file would not already have defeated.
+**There is no sign-in, because there is nobody to sign in to.** The app mints an Ed25519
+identity through `@sloppy/idp`'s crypto with nothing asked, writes the DID into
+`graph.json` and opens the graph. The one thing a first run does ask is a desktop's, and it
+is asked once: where the graph should live, because a folder there is a person's to put
+anywhere. A phone and a tablet keep their graphs in the app's own documents folder, so
+there is nothing to ask and the app opens straight into the graph — and because that folder
+moves with the app, where it is is asked of the system each launch rather than written
+down. The key is a file in the app's own private data and it never leaves the device —
+there is no password over it because there is nothing a password would protect it from that
+reaching the file would not already have defeated.
+
+**The folder that is open is the graph in front of somebody.** Opening another one from
+Settings serves the graph in that folder, starting one there where it holds none, and every
+folder this device has opened stays listed beside it. The graph a person started with keeps
+the ulid every archive of a first graph names, so a folder becoming a graph beside it takes
+one of its own. A folder a graph was written into and that is no longer there is said rather
+than started over: the app offers a folder to open instead of writing a fresh empty graph
+where a graph somebody moved used to be.
 
 **What only this device knows sits beside the graphs rather than inside one.** The app's
 private data holds `identity.json` and the key file it names, and `vaults.json`, the list
@@ -378,16 +391,24 @@ opened, and there is no profile to read from anywhere else.
 **A vault holds the pictures its own notes draw.** A picture is added before anybody knows
 which note will draw it, so one that turns out to belong to a note in another graph on the
 device is carried into that graph's folder when the note is written — and the archive taken
-out of that graph carries it too.
+out of that graph carries it too. A picture reaches the page over the shell's own
+`vault:` scheme (`src-tauri/src/vault.rs`), which reads anything in a folder somebody
+picked and nothing else — the private data, where the identity's key is, included. It
+never writes: **a webview carries no request body to the app it belongs to**, so the
+middle step of the three-step upload `@sloppy/types`' `media.ts` describes cannot be a
+PUT here. `uploadFile` hands the bytes to the client itself instead when the client can
+take them (`sendUpload`), and `LocalApi` writes them over the same bridge every other
+write crosses; a store across a network is still sent them.
 
 **What needs a server is not offered, and says so.** Publishing, peers, pulling,
 conversation, following, somebody else's profile and somebody else's emoji all need
 another machine to exist; `LocalApi` answers each with `serverOnly`, naming the feature,
-and the surfaces do not put them in front of anybody in the first place. Signing in to a
-hosted Sloppy is still there in Settings and is a **separate mode** — a hosted graph and a
-local one are two graphs, and the only way one becomes the other is by exporting it as an
-archive and importing it, which re-keys its refs under the receiving identity (§ "A graph
-on disk").
+and the surfaces do not put them in front of anybody in the first place. Signing in is not
+among them either: `SLOPPY_LOCAL_MODE` is decided when the app is built, so a build that
+serves a graph off the device offers no sign-in anywhere, and Settings names the folder the
+graph is in instead. A hosted Sloppy is a **separate mode** — a hosted graph and a local one
+are two graphs, and the only way one becomes the other is by exporting it as an archive and
+importing it, which re-keys its refs under the receiving identity (§ "A graph on disk").
 
 #### An API that serves identities itself
 

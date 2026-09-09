@@ -9,7 +9,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
 	import { api } from '../api.js';
-	import { repointRuntime } from '../runtime.js';
+	import { repointRuntime, runtime } from '../runtime.js';
 	import { saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { conversation } from '../stores/conversation.svelte.js';
@@ -37,7 +37,12 @@
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
 
+	const vault = runtime.vault();
+
 	let leaving = $state(false);
+	let opening = $state(false);
+	let folder = $state(vault?.folder());
+	let folderProblem = $state<string | null>(null);
 	let copying = $state(false);
 	let copyProblem = $state<string | null>(null);
 	let typedOrigin = $state(prefs.current.origin ?? '');
@@ -47,7 +52,11 @@
 	const canSaveFiles = savesFiles();
 	const offersCopy = $derived(session.onDevice ? canSaveFiles : session.signedIn);
 
-	const instance = $derived(session.viewer ? new URL(session.viewer.syr_instance_url).host : null);
+	/** Where a person's identity is kept for them. A graph on this device is
+	 *  written under one this device made, and there is nowhere else it is. */
+	const instance = $derived(
+		session.viewer && !session.onDevice ? new URL(session.viewer.syr_instance_url).host : null
+	);
 	const profile = $derived(people.me);
 
 	$effect(() => {
@@ -68,6 +77,26 @@
 				'Sloppy could not put your copy together just now. Try again in a moment.';
 		} finally {
 			copying = false;
+		}
+	}
+
+	async function openAnother() {
+		if (!vault) return;
+		opening = true;
+		folderProblem = null;
+		try {
+			const chosen = await vault.open();
+			if (!chosen) return;
+			folder = chosen;
+			letGoOfWhatWasRead();
+			await graphs.readOpenFolder(true);
+		} catch (error) {
+			folderProblem =
+				typeof error === 'string' && error.trim()
+					? error
+					: 'Sloppy could not open that folder. Try another one.';
+		} finally {
+			opening = false;
 		}
 	}
 
@@ -215,6 +244,27 @@
 					branch, reading somebody else's and answering a note need a Sloppy other people can reach,
 					so they are not offered here.
 				</p>
+				{#if vault?.asks}
+					{#if folder}
+						<p class="text-sm break-all text-foreground select-text">{folder}</p>
+					{/if}
+					<p class="text-sm text-muted-foreground">
+						Open another folder and the graph in it is the one in front of you. An empty one starts
+						a graph of its own; either way, what is in this folder stays in it.
+					</p>
+					<Button
+						variant="outline"
+						class="h-11"
+						disabled={opening}
+						aria-busy={opening}
+						onclick={() => void openAnother()}
+					>
+						{opening ? 'One moment…' : 'Open another folder'}
+					</Button>
+					{#if folderProblem}
+						<p class="text-sm text-destructive" role="alert">{folderProblem}</p>
+					{/if}
+				{/if}
 			</div>
 		{:else}
 			<div class="space-y-3 border-t border-border pt-8">

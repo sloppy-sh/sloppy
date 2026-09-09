@@ -20,6 +20,7 @@ import {
 } from '@sloppy/types';
 import { api } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
+import { runtime } from '../runtime.js';
 import { serverMessage } from './errors.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
@@ -54,6 +55,8 @@ class GraphsStore {
 	// nothing the previous person's graphs returns belongs to the next one.
 	#epoch = 0;
 	#restored: Promise<void> | null = null;
+	#inFolder = $state<OwnedRef | null>(null);
+	#openFolder: Promise<void> | null = null;
 	/** The listing standing is the one this device kept, so an ask that will not
 	 *  answer has nothing to report over it. */
 	#asLastRead = false;
@@ -80,8 +83,11 @@ class GraphsStore {
 	}
 
 	/** The graph somebody has before they open a second one. Answered off the
-	 *  identity rather than the listing, so it is right before the first read. */
+	 *  identity rather than the listing, so it is right before the first read —
+	 *  and where a graph is a folder on this device, off the folder that is open,
+	 *  which is the graph in front of somebody there. */
 	get home(): OwnedRef {
+		if (this.#inFolder) return this.#inFolder;
 		const did = session.viewer?.did;
 		return did ? homeGraphRef(did) : ('' as OwnedRef);
 	}
@@ -124,9 +130,30 @@ class GraphsStore {
 		return this.#restored;
 	}
 
+	/**
+	 * Where a graph is a folder on this device, the graph in the open folder is
+	 * the one in front of somebody, so a choice made against another folder is
+	 * let go of. Deduped like {@link load}; `again` is a folder that has just
+	 * changed. Elsewhere there is no folder and this decides nothing.
+	 */
+	readOpenFolder(again = false): Promise<void> {
+		if (again) this.#openFolder = null;
+		this.#openFolder ??= (async () => {
+			const vault = runtime.vault();
+			if (!vault) return;
+			const epoch = this.#epoch;
+			const ref = await vault.graph().catch(() => undefined);
+			if (epoch !== this.#epoch || ref === undefined) return;
+			this.#inFolder = ref;
+			if (prefs.current.graph !== null && prefs.current.graph !== ref) prefs.set('graph', null);
+		})();
+		return this.#openFolder;
+	}
+
 	/** Deduped and idempotent: every surface may call it on mount. */
 	load(): Promise<GraphView[]> {
 		void this.restore();
+		void this.readOpenFolder();
 		if (this.#inflight) return this.#inflight;
 		if (this.#state.loaded) return Promise.resolve(this.#all);
 		return this.reload();
@@ -267,6 +294,8 @@ class GraphsStore {
 		this.#state = IDLE;
 		this.#inflight = null;
 		this.#restored = null;
+		this.#inFolder = null;
+		this.#openFolder = null;
 		this.#asLastRead = false;
 		prefs.set('graph', null);
 		prefs.set('alsoOnCanvas', []);
