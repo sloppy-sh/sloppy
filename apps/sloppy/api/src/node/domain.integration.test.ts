@@ -2365,7 +2365,7 @@ describe("the domain routes", () => {
     });
 
     scenario(
-      "keeps the number when the note that gave it up is purged",
+      "keeps the number as its own when the note that gave it up is purged",
       async () => {
         const { nowIso } = await import("@sloppy/types");
         const { NodeRepository } = await import("./node.repository");
@@ -2390,6 +2390,9 @@ describe("the domain routes", () => {
         expect(
           (await searchIn(alone.ref, "1a")).map((hit) => hit.note),
         ).toEqual([asking.ref]);
+
+        await labelled(still, null);
+        expect((await labelled(still, "1a")).address).toBe("1a");
       },
     );
   });

@@ -54,7 +54,6 @@ export interface AddressYield {
   alias?: NodeAlias;
 }
 
-/** The two halves of a yield, and the variables they read. */
 function yielded(giving: readonly AddressYield[]): {
   statements: string[];
   vars: Record<string, unknown>;
@@ -71,6 +70,12 @@ function yielded(giving: readonly AddressYield[]): {
     ],
     vars: { yieldAliases: aliases, yielding: giving.map((one) => one.from.id) },
   };
+}
+
+/** An address inside the graph that spent it: two graphs of one person
+ *  each hold a `1`. */
+function placeOf(row: Pick<RetiredAddress, "graph" | "address">): string {
+  return `${row.graph}\u0000${row.address}`;
 }
 
 /** The row that outlives a note, so its address is never assigned twice. A note
@@ -703,7 +708,9 @@ export class NodeRepository {
    * Everything of theirs deleted before `before`, gone for real: the writing,
    * what other people left pointing at it, and the note. Each address stays
    * behind in a `retired_address` row, because the graph has assigned it and
-   * nothing may assign it again — AI.md § "The Genealogy Is the Protocol".
+   * nothing may assign it again — except one a note that is there is at, which
+   * belongs to that note and is still its own to take back — AI.md § "The
+   * Genealogy Is the Protocol".
    */
   async purgeExpired(did: string, before: string): Promise<void> {
     const going = await this.read(
@@ -717,23 +724,47 @@ export class NodeRepository {
       "SELECT * FROM node_alias WHERE created_by = $did AND note IN $refs;",
       { did, refs },
     );
+    const spent = [
+      ...going.flatMap((node) =>
+        node.address === undefined ? [] : [retire(node, node.address)],
+      ),
+      ...aliases.map(retireAlias),
+    ];
+    const led = await this.addressesLedBy(did, spent);
     await this.db.handle.query(
       `INSERT INTO retired_address $retired;
        DELETE node_alias WHERE created_by = $did AND note IN $refs;
        DELETE block WHERE created_by = $did AND node IN $refs;
-       DELETE comment_pointer WHERE created_by = $did AND note IN $refs;
+       DELETE comment_pointer WHERE created_by = $did AND node IN $refs;
        DELETE node WHERE id IN $ids;`,
       {
         did,
-        retired: [
-          ...going.flatMap((node) =>
-            node.address === undefined ? [] : [retire(node, node.address)],
-          ),
-          ...aliases.map(retireAlias),
-        ],
+        retired: spent.filter((row) => !led.has(placeOf(row))),
         refs,
         ids: going.map((node) => node.id),
       },
+    );
+  }
+
+  /** Which of these addresses a note that is there is at. A note in the bin
+   *  hands its address on and keeps it as an alias, so a purge reaches
+   *  addresses another note now leads by. */
+  private async addressesLedBy(
+    did: string,
+    spent: readonly RetiredAddress[],
+  ): Promise<Set<string>> {
+    if (spent.length === 0) return new Set();
+    const at = await this.read(
+      `SELECT * FROM node
+         WHERE created_by = $did AND ${THERE} AND address IN $addresses`,
+      { did, addresses: spent.map((row) => row.address) },
+    );
+    return new Set(
+      at.flatMap((node) =>
+        node.address === undefined
+          ? []
+          : [placeOf({ graph: graphOf(node), address: node.address })],
+      ),
     );
   }
 
