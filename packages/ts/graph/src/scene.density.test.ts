@@ -82,8 +82,9 @@ function shapesOf(app: FakeApplication): {
   under: FakeGraphics;
   over: FakeGraphics;
 } {
-  // Lift, genealogy, runs, connections, the shapes, their edges, then the orbit.
-  const [, , , , under, over] = worldOf(app).children.filter(
+  // Lift, genealogy, runs, connections, the difference, the shapes, their
+  // edges, then the orbit.
+  const [, , , , , under, over] = worldOf(app).children.filter(
     (child): child is FakeGraphics => child instanceof FakeGraphics,
   );
   return { under, over };

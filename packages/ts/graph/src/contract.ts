@@ -141,6 +141,89 @@ export interface GraphHoverAt {
   tags: readonly Tag[];
 }
 
+/**
+ * What a note is between the two states being compared — DESIGN.md § "A
+ * difference between two states". A mark carries exactly one, and a note
+ * several of these are true of takes the first: one that both moved and was
+ * written into is `changed`, with the move on its lines.
+ */
+export type DifferenceMark = "gone" | "arrived" | "changed" | "moved";
+
+/** A note both states hold, hanging from another parent in the earlier one. */
+export interface GraphNoteMoved {
+  ref: OwnedRef;
+  /** The parent it left. Absent is one that hung from nothing then — a branch,
+   *  or an independent note. */
+  from?: OwnedRef;
+}
+
+/**
+ * Two states of a graph, as what a person did between them and keyed by ref the
+ * way `vaultDifference` answers. Present with nothing in it is two states that
+ * are the same, and draws the graph exactly as no difference does.
+ */
+export interface GraphDifference {
+  /** In the later state, and not in the earlier one. */
+  added: ReadonlySet<OwnedRef>;
+  /**
+   * The notes the earlier state held and the later one does not, each carrying
+   * the parent it hung from then: {@link GraphSurfaceProps.nodes} is the later
+   * state, so a note that went can only be drawn where it was if the region is
+   * handed it.
+   */
+  removed: readonly NodeView[];
+  /** In both states, under another parent. An address a person edited is not
+   *  one of these — a label moves no mark. */
+  moved: readonly GraphNoteMoved[];
+  /** In both states and not as it was — retitled, renumbered and written into
+   *  alike, since one mark cannot carry a set. */
+  changed: ReadonlySet<OwnedRef>;
+}
+
+/** The one value each note the difference names draws, by {@link
+ *  DifferenceMark}'s order. */
+export function differenceMarks(
+  difference: GraphDifference | undefined,
+): ReadonlyMap<OwnedRef, DifferenceMark> {
+  const marks = new Map<OwnedRef, DifferenceMark>();
+  if (difference === undefined) return marks;
+  for (const { ref } of difference.moved) marks.set(ref, "moved");
+  for (const ref of difference.changed) marks.set(ref, "changed");
+  for (const ref of difference.added) marks.set(ref, "arrived");
+  for (const node of difference.removed) marks.set(node.ref, "gone");
+  return marks;
+}
+
+/** Whether two states are actually being compared. A difference that names
+ *  nothing is two states that are the same. */
+export function comparingStates(
+  difference: GraphDifference | undefined,
+): boolean {
+  if (difference === undefined) return false;
+  return (
+    difference.added.size > 0 ||
+    difference.removed.length > 0 ||
+    difference.moved.length > 0 ||
+    difference.changed.size > 0
+  );
+}
+
+/**
+ * The region with the notes that went standing back in it, so the seeding puts
+ * each one where the earlier state drew it. Answers `nodes` itself where
+ * nothing went, so a canvas with no difference on it rebuilds off the array it
+ * was handed.
+ */
+export function nodesWithGone(
+  nodes: readonly NodeView[],
+  difference: GraphDifference | undefined,
+): readonly NodeView[] {
+  const gone = difference?.removed ?? [];
+  if (gone.length === 0) return nodes;
+  const held = new Set(nodes.map((node) => node.ref));
+  return [...nodes, ...gone.filter((node) => !held.has(node.ref))];
+}
+
 export interface GraphSurfaceProps {
   /** The region to draw. */
   nodes: readonly NodeView[];
@@ -179,6 +262,18 @@ export interface GraphSurfaceProps {
    * (`lod.ts`); absent means the whole graph, folded by generation.
    */
   focus?: OwnedRef;
+  /**
+   * Two states of this graph being compared. The notes it names are left as
+   * they are and everything else dims, and nothing is picked or chosen while
+   * one is up — DESIGN.md § "A difference between two states". The canvas holds
+   * that last part itself: while this names anything, {@link picking} and
+   * {@link chosen} alongside it are refused rather than drawn, and a tap opens
+   * the note under it.
+   *
+   * The notes it says went are drawn alongside `nodes`, which the region itself
+   * no longer holds; a canvas is otherwise handed the later state.
+   */
+  difference?: GraphDifference;
   /** Absent means a tap opens the note under it. */
   picking?: GraphPicking;
   /**

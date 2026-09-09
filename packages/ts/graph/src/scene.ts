@@ -35,6 +35,7 @@ import { GroundLayer } from "./ground-layer.js";
 import type { GraphNodeAttributes } from "./model.js";
 import {
   type BuiltModel,
+  type DifferenceLines,
   LOOK_RING_AT,
   LOOK_RING_BREAK,
   LOOK_RING_WIDTH,
@@ -182,6 +183,22 @@ const CONNECTION_DASH = 9;
  *  enough that the dashes stretch to meet it. */
 const MAX_DASHES = 60;
 
+/** The band a difference lays in the orbit, at the weight choosing takes: a
+ *  canvas is never comparing and choosing at once, so the two never meet. */
+export const DIFFERENCE_BAND = CHOSEN_BAND;
+export const DIFFERENCE_INK = CHOSEN_INK;
+/** What the line a note left is struck at, a little under half the ink the line
+ *  it joined takes — DESIGN.md § "A difference between two states" separates the
+ *  two on ink and leaves the figure here. */
+export const DIFFERENCE_GONE_INK = 0.4;
+/** How a note that is not as it was breaks its band. Wide gaps, so a band is
+ *  read as broken or closed at a glance and never as nearly one — DESIGN.md
+ *  § "A difference between two states". */
+export const DIFFERENCE_BREAK = { dashes: 8, duty: 0.55 };
+/** The weight the lines a difference draws take, of the three the solid lines
+ *  climb: the heaviest, over a canvas that has receded to be compared. */
+const DIFFERENCE_WEIGHT = RUN_WEIGHT;
+
 /** Below this drawn radius, in CSS pixels, a mark is too small to carry its
  *  author's look — DESIGN.md § "The mark", where the look is the first thing to
  *  go. `scene.test.ts` holds the figure against the view a graph opens on. */
@@ -291,6 +308,8 @@ export class GraphScene {
    *  other broken — DESIGN.md § Edges. */
   private referencePairs: number[] = [];
   private linkPairs: number[] = [];
+  private differenceLines: DifferenceLines = { arrived: [], gone: [] };
+  private comparing = false;
   private readonly labelSlots = new Map<string, number>();
   private fieldNames: readonly NamedField[] = [];
   private selecting = false;
@@ -335,6 +354,7 @@ export class GraphScene {
     private readonly edges: Graphics,
     private readonly runs: Graphics,
     private readonly connections: Graphics,
+    private readonly diffs: Graphics,
     private readonly fills: ParticleContainer,
     private readonly shapes: Graphics,
     private readonly previews: Container,
@@ -377,6 +397,7 @@ export class GraphScene {
     const edges = new pixi.Graphics();
     const runs = new pixi.Graphics();
     const connections = new pixi.Graphics();
+    const diffs = new pixi.Graphics();
     const particleOptions = {
       dynamicProperties: {
         position: true,
@@ -403,6 +424,7 @@ export class GraphScene {
       edges,
       runs,
       connections,
+      diffs,
       fills,
       looks,
       shapes,
@@ -464,6 +486,7 @@ export class GraphScene {
       edges,
       runs,
       connections,
+      diffs,
       fills,
       shapes,
       previews,
@@ -570,7 +593,14 @@ export class GraphScene {
     this.fills.update();
     this.rings.update();
     this.looks.update();
+    this.readComparing();
     this.positionsDirty = true;
+  }
+
+  private readComparing(): void {
+    this.comparing = this.marks.some(
+      (mark) => mark.attributes.difference !== undefined,
+    );
   }
 
   /**
@@ -620,6 +650,15 @@ export class GraphScene {
       const a = byRef.get(source);
       const b = byRef.get(target);
       if (a === undefined || b === undefined) return;
+      // A note that went keeps its edges so the settle puts it back where it
+      // hung, and draws none of them: the one line reaching it is the one
+      // `drawDifference` strikes — DESIGN.md § "A difference between two states".
+      if (
+        model.graph.getNodeAttributes(source).difference === "gone" ||
+        model.graph.getNodeAttributes(target).difference === "gone"
+      ) {
+        return;
+      }
       if (attributes.kind === "link") {
         this.linkPairs.push(a, b);
         return;
@@ -640,6 +679,8 @@ export class GraphScene {
       this.edgesByDepth[depth - 1].push(a, b);
     });
 
+    this.differenceLines = model.difference;
+    this.readComparing();
     this.nameFields(model.fields);
     this.modelDirty = true;
     this.positionsDirty = true;
@@ -840,6 +881,7 @@ export class GraphScene {
     }
     if (this.positionsDirty || scaleMoved) this.drawLift();
     if (this.positionsDirty || scaleMoved) this.rebuildEdges();
+    if (this.positionsDirty || scaleMoved) this.drawDifference();
     if (this.positionsDirty || scaleMoved) this.drawOrbit();
     if (this.positionsDirty || scaleMoved) this.layoutLabels();
     if (this.positionsDirty || scaleMoved) this.layoutFieldNames();
@@ -862,8 +904,9 @@ export class GraphScene {
       const scale = mark.radius / TEXTURE_RADIUS;
       const { provenance, fill, alpha, ringWeight, ringStyle } =
         mark.attributes;
+      const gone = mark.attributes.difference === "gone";
       mark.fill =
-        provenance === "pulled"
+        gone || provenance === "pulled"
           ? null
           : new this.pixi.Particle({
               texture: this.textures.disc,
@@ -875,7 +918,7 @@ export class GraphScene {
               alpha,
             });
       mark.ring =
-        provenance === "own"
+        gone || provenance === "own"
           ? null
           : new this.pixi.Particle({
               texture: this.ringTexture(mark),
@@ -1028,6 +1071,7 @@ export class GraphScene {
   private drawShape(mark: Mark): void {
     const x = this.positions[mark.index * 2];
     const y = this.positions[mark.index * 2 + 1];
+    if (mark.attributes.difference === "gone") return;
     const { provenance, fill, alpha, ringWeight, ringStyle } = mark.attributes;
     const { palette } = this.options;
 
@@ -1354,11 +1398,24 @@ export class GraphScene {
     return this.textures.looks.get(lookKey(weight, style)) ?? null;
   }
 
+  /** What one step of the edge ladder is struck at, held between a hairline and
+   *  a stroke wide enough to close a mark as the field is zoomed out. */
+  private get lineWidth(): number {
+    return Math.min(12, Math.max(0.5, EDGE_WIDTH / this.viewport.scale));
+  }
+
   private rebuildEdges(): void {
     const { palette } = this.options;
-    const width = Math.min(12, Math.max(0.5, EDGE_WIDTH / this.viewport.scale));
+    const width = this.lineWidth;
 
-    const edgeAlpha = this.selecting
+    // Both questions take their answer off the same field: the notes a
+    // difference names are left as they are and everything else dims, the lines
+    // the addresses and the writing make included — DESIGN.md § "A difference
+    // between two states". A hand link is the one thing that stays, as it stays
+    // through a tag question.
+    const receding = this.selecting || this.comparing;
+
+    const edgeAlpha = receding
       ? palette.edgeAlphaWhileSelecting
       : palette.edgeAlpha;
     this.edges.clear();
@@ -1387,9 +1444,7 @@ export class GraphScene {
     if (this.runPairs.length > 0) {
       this.runs.stroke({
         color: palette.run,
-        alpha: this.selecting
-          ? palette.runAlphaWhileSelecting
-          : palette.runAlpha,
+        alpha: receding ? palette.runAlphaWhileSelecting : palette.runAlpha,
         width: width * RUN_WEIGHT,
       });
     }
@@ -1408,7 +1463,7 @@ export class GraphScene {
     if (this.referencePairs.length > 0) {
       this.connections.stroke({
         color: palette.connection,
-        alpha: this.selecting
+        alpha: receding
           ? palette.connectionAlphaWhileSelecting
           : palette.connectionAlpha,
         width: width * CONNECTION_WEIGHT,
@@ -1466,14 +1521,63 @@ export class GraphScene {
   }
 
   /**
+   * The lines a difference draws — the one a note joined and the one it left,
+   * both whole, both in ink and at one weight, over a field that has receded to
+   * be compared. The line it left is the fainter, which is the channel that
+   * survives a zoom-out. DESIGN.md § "A difference between two states".
+   */
+  private drawDifference(): void {
+    this.diffs.clear();
+    const { arrived, gone } = this.differenceLines;
+    if (arrived.length === 0 && gone.length === 0) return;
+    const { ink } = this.options.palette;
+    const width = this.lineWidth * DIFFERENCE_WEIGHT;
+
+    const strike = (pairs: readonly number[], alpha: number): void => {
+      if (pairs.length === 0) return;
+      for (let at = 0; at < pairs.length; at += 2) {
+        const from = pairs[at] * 2;
+        const to = pairs[at + 1] * 2;
+        this.diffs.moveTo(this.positions[from], this.positions[from + 1]);
+        this.diffs.lineTo(this.positions[to], this.positions[to + 1]);
+      }
+      this.diffs.stroke({ color: ink, alpha, width });
+    };
+
+    strike(gone, DIFFERENCE_GONE_INK);
+    strike(arrived, DIFFERENCE_INK);
+  }
+
+  /**
    * The orbit outside each mark, which DESIGN.md § "The mark" gives to the mode
-   * the canvas is in. Picking outlines and choosing fills, and a canvas is only
-   * ever in one of the two.
+   * the canvas is in. Picking outlines, choosing fills, and comparing two states
+   * bands; a canvas is only ever in one of the three.
    */
   private drawOrbit(): void {
     this.picks.clear();
     const { ink } = this.options.palette;
     const gap = PICK_GAP / this.viewport.scale;
+
+    if (this.comparing) {
+      const band = DIFFERENCE_BAND / this.viewport.scale;
+      for (const mark of this.marks) {
+        const kind = mark.attributes.difference;
+        if (kind === undefined || kind === "moved") continue;
+        const { dashes, duty } =
+          kind === "changed" ? DIFFERENCE_BREAK : { dashes: 0, duty: 1 };
+        strokeRing(
+          this.picks,
+          this.positions[mark.index * 2],
+          this.positions[mark.index * 2 + 1],
+          mark.radius + gap + band / 2,
+          band,
+          dashes,
+          duty,
+          { color: ink, alpha: DIFFERENCE_INK },
+        );
+      }
+      return;
+    }
 
     const chosen = this.chosen;
     if (chosen) {
@@ -1509,10 +1613,12 @@ export class GraphScene {
     }
   }
 
-  /** Every mark whose centre falls inside a world rectangle, in drawn order. */
+  /** Every mark whose centre falls inside a world rectangle, in drawn order.
+   *  Never a note that went: there is nothing behind it to hand back. */
   marksWithin(bounds: Bounds): string[] {
     const found: string[] = [];
     for (const mark of this.marks) {
+      if (mark.attributes.difference === "gone") continue;
       const x = this.positions[mark.index * 2];
       const y = this.positions[mark.index * 2 + 1];
       if (x < bounds.minX || x > bounds.maxX) continue;
