@@ -47,9 +47,9 @@ export interface AppRuntime {
 	 *  recognises. */
 	signInRedirect?(): string;
 	/** PRESENT means this platform can serve the graph with no network at all:
-	 *  the embedded engine and the local IdP are built in. Absent → the remote
-	 *  client. A shell that defines it reports `mode() === 'local'` while it is
-	 *  in use, and calls {@link resetApi} when that changes. */
+	 *  the folder on the device is the whole store. Absent → the remote client.
+	 *  A shell that defines it reports `mode() === 'local'` while it is in use,
+	 *  and calls {@link resetApi} when that changes. */
 	createApi?(): SloppyApi;
 	/** Where a note of this person's is opened on the web, as an origin. Absent →
 	 *  the page's own, which is the answer wherever the shell is served from one
@@ -60,6 +60,18 @@ export interface AppRuntime {
 	 *  this; `null` where it has no way to save one, and the offer of a copy
 	 *  says so rather than doing nothing. */
 	saveFile?: ((name: string, body: Blob) => Promise<void>) | null;
+	/** Ask a person for a file to bring in; `accept` is a file input's list of
+	 *  extensions. Resolving to `null` is a person who chose none. Absent → a
+	 *  file input on the page, which is what a tab has; `null` where the shell
+	 *  has no way to ask at all, and the offer says so rather than doing
+	 *  nothing. */
+	openFile?: ((accept: string) => Promise<File | null>) | null;
+	/** How a stored picture's address becomes one this page can load. Absent →
+	 *  the API's proxy, so viewing somebody else's note never reaches their
+	 *  instance from here. A shell serving a graph off the device answers with
+	 *  the address its own webview loads a file from — nothing it holds is
+	 *  somebody else's to leak. */
+	assetSrc?(src: string): string;
 }
 
 const TOKEN_KEY = 'sloppy_token';
@@ -150,5 +162,7 @@ export const runtime = {
 	signInRedirect: (): string | undefined => current.signInRedirect?.(),
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
 	webOrigin: (): string | undefined => current.webOrigin?.(),
-	saveFile: (): AppRuntime['saveFile'] => current.saveFile
+	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
+	openFile: (): AppRuntime['openFile'] => current.openFile,
+	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc
 };

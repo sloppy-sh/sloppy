@@ -5,8 +5,11 @@
  */
 
 import { initRuntime, session } from '@sloppy/app-core';
+import { LocalApi } from '@sloppy/local';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SIGN_IN_CALLBACK } from './deep-link';
+import { tauriFiles } from './files';
+import { LOCAL_MODE } from './local-mode';
 import { TAURI_PLATFORM } from './platform';
 
 /** An Android emulator's loopback is the emulated device itself; 10.0.2.2 is
@@ -20,8 +23,10 @@ const DEV_API_ORIGIN =
 const API_HOST = (import.meta.env.PUBLIC_SLOPPY_API_URL || DEV_API_ORIGIN).replace(/\/+$/, '');
 
 export function initNativeRuntime(): void {
+	const files = LOCAL_MODE ? tauriFiles() : undefined;
 	initRuntime({
 		apiHost: () => API_HOST,
+		mode: () => (files ? 'local' : 'hosted'),
 		onAuthInvalid: () => session.clear(),
 		// The return leg is `deep-link.ts`.
 		openExternal: (url) => openUrl(url),
@@ -29,6 +34,14 @@ export function initNativeRuntime(): void {
 		// so consent comes back over the scheme this app is registered for.
 		signInRedirect: () => SIGN_IN_CALLBACK,
 		// Nothing in this shell writes a file yet.
-		saveFile: null
+		saveFile: null,
+		...(files
+			? {
+					createApi: () => new LocalApi(files),
+					// A graph on this device holds no address of anybody else's, so
+					// there is nothing here the proxy would be keeping off them.
+					assetSrc: (src: string) => src
+				}
+			: {})
 	});
 }

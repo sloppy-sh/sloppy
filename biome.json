@@ -11,6 +11,7 @@
       "packages/ts/graph/**",
       "packages/ts/idp/**",
       "packages/ts/vault/**",
+      "packages/ts/local/**",
       "!**/dist",
       "!**/*.d.ts",
       "!**/.svelte-kit"

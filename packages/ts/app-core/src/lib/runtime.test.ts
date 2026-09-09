@@ -15,6 +15,17 @@ describe('the platform seam', () => {
 		expect(runtime.signInRedirect()).toBe('sloppy://auth/callback');
 	});
 
+	it('serves the graph from the page it is on until a shell says otherwise', () => {
+		initRuntime({ apiHost: () => '' });
+		expect(runtime.mode()).toBe('hosted');
+		expect(runtime.assetSrc()).toBeUndefined();
+		expect(runtime.openFile()).toBeUndefined();
+
+		initRuntime({ apiHost: () => '', mode: () => 'local', assetSrc: (src) => src });
+		expect(runtime.mode()).toBe('local');
+		expect(runtime.assetSrc()?.('asset://localhost/p.png')).toBe('asset://localhost/p.png');
+	});
+
 	it('keeps it through a re-point at another server', () => {
 		initRuntime({ apiHost: () => '', signInRedirect: () => 'sloppy://auth/callback' });
 		initRuntime({ apiHost: () => 'https://elsewhere.test' });

@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/crypto.ts"],
+  entry: ["src/index.ts"],
   format: ["esm", "cjs"],
   dts: true,
   // Never delete dist under a running dev server: vite serves these files live

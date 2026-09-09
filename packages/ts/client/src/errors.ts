@@ -41,3 +41,23 @@ export class SloppyNotImplementedError extends Error {
 export function notImplemented(feature: string): never {
   throw new SloppyNotImplementedError(feature);
 }
+
+/**
+ * Something that genuinely needs another machine to exist, asked of a client
+ * serving a graph off this device. `feature` is a noun phrase, because it is
+ * read as the first half of a sentence a person sees.
+ */
+export class ServerRequiredError extends Error {
+  readonly feature: string;
+
+  constructor(feature: string) {
+    super(`${feature} needs a server connection`);
+    this.name = "ServerRequiredError";
+    this.feature = feature;
+  }
+}
+
+/** A whole method body, for anything a client cannot serve on its own. */
+export function serverOnly(feature: string): never {
+  throw new ServerRequiredError(feature);
+}

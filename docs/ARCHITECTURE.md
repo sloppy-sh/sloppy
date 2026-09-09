@@ -1906,8 +1906,8 @@ an element inside a block and an annotation layer here, not the product itself.
   sequences, byte-identical addresses. This is the protocol claim; prove it, never assert it.
 - **syr round trip** — bring up syr's own docker-compose, complete Platform Delegation end
   to end, and verify a `platform.sign` signature independently with `@syr-is/crypto`.
-- **Local mode** — set `SLOPPY_LOCAL_IDP` with no external syr reachable; register, sign
-  in, create a node, publish a subtree.
+- **An API serving identities itself** — set `SLOPPY_LOCAL_IDP` with no external syr
+  reachable; register, sign in, create a node, publish a subtree.
 - **On-device Pencil check** — `pnpm tauri ios dev` on a physical iPad. Log `pointerType`,
   the `pressure` range, and `getCoalescedEvents().length` during a fast stroke. Pressure
   must vary; coalesced length must exceed 1.

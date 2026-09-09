@@ -59,6 +59,6 @@ jobs:
 
       - run: cargo fmt --check --manifest-path apps/sloppy/native/src-tauri/Cargo.toml
 
-      - run: cargo clippy --manifest-path apps/sloppy/native/src-tauri/Cargo.toml --features local-mode --all-targets -- -D warnings
+      - run: cargo clippy --manifest-path apps/sloppy/native/src-tauri/Cargo.toml --all-targets -- -D warnings
 
-      - run: cargo test --manifest-path apps/sloppy/native/src-tauri/Cargo.toml --features local-mode
+      - run: cargo test --manifest-path apps/sloppy/native/src-tauri/Cargo.toml

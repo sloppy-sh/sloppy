@@ -1,7 +1,7 @@
 {
-  "name": "@sloppy/idp",
+  "name": "@sloppy/local",
   "version": "0.0.1",
-  "description": "The embedded identity provider — syr's wire contracts, crypto and identity store, so Sloppy can be a syr instance with no network at all. See docs/ARCHITECTURE.md.",
+  "description": "The graph served off this device: the shell's files, the identity that owns them, and the client every page already talks to — see docs/ARCHITECTURE.md § \"Local-only mode\".",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -14,20 +14,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js",
       "default": "./dist/index.mjs"
-    },
-    "./crypto": {
-      "types": {
-        "import": "./dist/crypto.d.mts",
-        "require": "./dist/crypto.d.ts"
-      },
-      "import": "./dist/crypto.mjs",
-      "require": "./dist/crypto.js",
-      "default": "./dist/crypto.mjs"
     }
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "sideEffects": false,
   "scripts": {
@@ -41,18 +31,13 @@
     "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
   },
   "dependencies": {
-    "@noble/curves": "^2.3.0",
-    "@noble/hashes": "^2.3.0",
+    "@sloppy/client": "workspace:*",
+    "@sloppy/idp": "workspace:*",
     "@sloppy/types": "workspace:*",
-    "zod": "catalog:"
-  },
-  "peerDependencies": {
-    "surrealdb": ">=2.0.0"
+    "@sloppy/vault": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.0",
-    "@types/node": "^24.10.1",
-    "surrealdb": "catalog:",
     "tsdown": "^0.22.14",
     "typescript": "catalog:",
     "vitest": "^4.1.11"

@@ -10,11 +10,6 @@ rust-version = "1.77.2"
 name = "sloppy_native_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[features]
-# The on-device graph engine (src/db.rs), off by default: surrealdb is ~60 MB of
-# native library per ABI. docs/ARCHITECTURE.md § "Local-only mode".
-local-mode = ["dep:surrealdb", "dep:tokio"]
-
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 
@@ -25,18 +20,6 @@ serde_json = "1"
 # The sign-in round trip: out through opener, back through deep-link.
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
-# What `runtime.assetBytes` reaches a blob host through.
-# Held to the same minor line as the server image in docker-compose.yml: the
-# repositories in @sloppy/data run against both, so SurrealQL has to mean the
-# same thing on-device as it does against a server.
-surrealdb = { version = "~3.1", default-features = false, features = [
-	"kv-surrealkv",
-], optional = true }
-tokio = { version = "1", features = ["sync"], optional = true }
-
-[dev-dependencies]
-tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 # Android's WebView reports env(safe-area-inset-bottom) as 0 for the 3-button nav
 # bar, so the real WindowInsets are read natively and published as CSS vars.

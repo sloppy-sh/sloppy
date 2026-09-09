@@ -1071,3 +1071,10 @@ export class SloppyClient {
     await this.del(`/emoji/me${refPath(emojiId)}`);
   }
 }
+
+/**
+ * The client surface taken structurally, so an adapter satisfies it by shape
+ * and never by cast — the class's private members are part of its emitted type,
+ * and an alias to the class itself would be unimplementable outside this file.
+ */
+export type SloppyApi = { [K in keyof SloppyClient]: SloppyClient[K] };

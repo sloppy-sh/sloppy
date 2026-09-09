@@ -1,6 +1,3 @@
-#[cfg(feature = "local-mode")]
-mod db;
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -20,13 +17,6 @@ pub fn run() {
 
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_safe_area_insets_css::init());
-
-    #[cfg(feature = "local-mode")]
-    let builder = builder.invoke_handler(tauri::generate_handler![
-        db::db_open,
-        db::db_query,
-        db::db_wipe
-    ]);
 
     builder
         .setup(|_app| {

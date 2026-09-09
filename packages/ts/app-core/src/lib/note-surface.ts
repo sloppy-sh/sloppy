@@ -2,10 +2,11 @@
 // server, so `BlockStack`'s capabilities are built here — `contract.ts` in that
 // package states what each one promises.
 
-import { proxied, SloppyApiError, uploadFile } from '@sloppy/client';
+import { SloppyApiError, uploadFile } from '@sloppy/client';
 import type { CustomEmoji, MediaRole } from '@sloppy/types';
 import { SaveFailure, type CustomEmojiEntry, type NoteEmoji, type NoteMedia } from '@sloppy/ui';
 import { api } from './api.js';
+import { pictureSrc } from './asset-src.js';
 import { serverMessage } from './stores/errors.js';
 
 /** Whatever the surface shows a person when a send fails is this message, so a
@@ -79,7 +80,7 @@ function entryOf(emoji: CustomEmoji): CustomEmojiEntry {
 	return {
 		id: emoji.emoji_id,
 		shortcode: emoji.shortcode,
-		src: proxied(emoji.src),
+		src: pictureSrc(emoji.src),
 		sticker: emoji.kind === 'sticker'
 	};
 }

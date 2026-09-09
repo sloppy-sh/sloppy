@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # The wrapper behind `pnpm tauri`. It re-patches the Xcode project before every
-# `ios` command (XCODE_PROJECT.md), derives both halves of local mode from
-# SLOPPY_LOCAL_MODE (docs/ARCHITECTURE.md § "Local-only mode"), and can front the
-# local API on the public https origin a physical device needs.
+# `ios` command (XCODE_PROJECT.md), tells the frontend whether this build opens a
+# graph off the device (docs/ARCHITECTURE.md § "Local-only mode"), and can front
+# the local API on the public https origin a physical device needs.
 #
 # Values come from the monorepo-root .env; a shell variable of the same name wins.
 
@@ -41,14 +41,11 @@ if [[ "$PLATFORM" == "ios" ]]; then
 	fi
 fi
 
-# ── Local mode: one value, both halves ───────────────────────────────────────
+# ── Local mode ───────────────────────────────────────────────────────────────
 SLOPPY_LOCAL_MODE="${SLOPPY_LOCAL_MODE:-$(read_env SLOPPY_LOCAL_MODE)}"
 if is_true "$SLOPPY_LOCAL_MODE"; then LOCAL_MODE=true; else LOCAL_MODE=false; fi
 
 export PUBLIC_ENABLE_LOCAL_MODE="$LOCAL_MODE"
-if [[ "$LOCAL_MODE" == true ]] && [[ "$ACTION" == "dev" || "$ACTION" == "build" ]]; then
-	set -- "$@" --features local-mode
-fi
 
 # ── A reachable API for a physical device ────────────────────────────────────
 # An https origin, because iOS refuses plain http to a LAN address as readily as

@@ -8,7 +8,6 @@
  * or totals, because nobody can; docs/ARCHITECTURE.md § "Federating the graph".
  */
 
-import { proxied } from '@sloppy/client';
 import type {
 	CreateNoteCommentRequest,
 	CreateNoteReactionRequest,
@@ -19,6 +18,7 @@ import type {
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
+import { pictureSrc } from '../asset-src.js';
 import { serverMessage } from './errors.js';
 
 export interface ConversationState {
@@ -38,7 +38,7 @@ const oldestFirst = (a: NoteComment, b: NoteComment) => a.created_at.localeCompa
 /** A reaction whose picture a surface can put straight into an `img`. */
 const drawable = (reaction: NoteReaction): NoteReaction =>
 	reaction.kind === 'emoji'
-		? { ...reaction, emoji: { ...reaction.emoji, src: proxied(reaction.emoji.src) } }
+		? { ...reaction, emoji: { ...reaction.emoji, src: pictureSrc(reaction.emoji.src) } }
 		: reaction;
 
 /**
