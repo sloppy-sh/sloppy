@@ -5,7 +5,19 @@
  * the address `url` answers rather than read here.
  */
 
-import { checkPath, joinPath, type Files } from '@sloppy/local';
+import {
+	checkPath,
+	joinPath,
+	type Branch,
+	type Commit,
+	type CommitPage,
+	type ConflictSide,
+	type Files,
+	type History,
+	type HistoryStatus,
+	type MergeResult
+} from '@sloppy/local';
+import type { Vault } from '@sloppy/vault';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 export type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -20,6 +32,16 @@ const EXISTS = 'files_exists';
 const MKDIR = 'files_mkdir';
 const PICK_FOLDER = 'pick_folder';
 const DATA_PATH = 'app_data_path';
+const HISTORY_STATUS = 'history_status';
+const HISTORY_LOG = 'history_log';
+const HISTORY_COMMIT = 'history_commit';
+const HISTORY_BRANCHES = 'history_branches';
+const HISTORY_BRANCH = 'history_branch';
+const HISTORY_SWITCH = 'history_switch';
+const HISTORY_MERGE = 'history_merge';
+const HISTORY_RESOLVE = 'history_resolve';
+const HISTORY_READ_AT = 'history_read_at';
+const HISTORY_HEAD = 'history_head';
 
 /** The scheme `src-tauri/src/vault.rs` answers a picture at. */
 const VAULT_SCHEME = 'vault';
@@ -89,6 +111,69 @@ class TauriFiles implements Files {
 	async dataPath(): Promise<string> {
 		return this.call<string>(DATA_PATH);
 	}
+}
+
+/**
+ * This shell's half of `History` in `@sloppy/local`, which declares every act
+ * and what its answer means. The commands answer for the folder `root` names,
+ * and land in `src-tauri` with the History surface itself.
+ */
+class TauriHistory implements History {
+	constructor(
+		private readonly root: string,
+		private readonly call: Invoke
+	) {}
+
+	async status(): Promise<HistoryStatus> {
+		return this.call<HistoryStatus>(HISTORY_STATUS, { root: this.root });
+	}
+
+	async log(limit: number, cursor?: string): Promise<CommitPage> {
+		return this.call<CommitPage>(HISTORY_LOG, { root: this.root, limit, cursor: cursor ?? null });
+	}
+
+	async commit(message: string): Promise<Commit | undefined> {
+		return (
+			(await this.call<Commit | null>(HISTORY_COMMIT, { root: this.root, message })) ?? undefined
+		);
+	}
+
+	async branches(): Promise<Branch[]> {
+		return this.call<Branch[]>(HISTORY_BRANCHES, { root: this.root });
+	}
+
+	async branch(name: string): Promise<Branch> {
+		return this.call<Branch>(HISTORY_BRANCH, { root: this.root, name });
+	}
+
+	async switch(name: string): Promise<void> {
+		await this.call<void>(HISTORY_SWITCH, { root: this.root, name });
+	}
+
+	async merge(name: string): Promise<MergeResult> {
+		return this.call<MergeResult>(HISTORY_MERGE, { root: this.root, name });
+	}
+
+	async resolve(path: string, side: ConflictSide): Promise<void> {
+		await this.call<void>(HISTORY_RESOLVE, { root: this.root, path: checkPath(path), side });
+	}
+
+	async readAt(commit: string): Promise<Vault> {
+		const held = await this.call<Record<string, string>>(HISTORY_READ_AT, {
+			root: this.root,
+			commit
+		});
+		return new Map(Object.entries(held).map(([path, bytes]) => [path, decodeBase64(bytes)]));
+	}
+
+	async currentCommit(): Promise<string | undefined> {
+		return (await this.call<string | null>(HISTORY_HEAD, { root: this.root })) ?? undefined;
+	}
+}
+
+/** The states of the graph in the folder at `root`. */
+export function tauriHistory(root: string, call: Invoke = invoke): History {
+	return new TauriHistory(root, call);
 }
 
 /** `root` empty is the device's own idea of where it starts; a graph opens by

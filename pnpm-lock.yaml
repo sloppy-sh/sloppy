@@ -210,6 +210,9 @@ importers:
       '@sloppy/ui':
         specifier: workspace:*
         version: link:../../../packages/ts/ui
+      '@sloppy/vault':
+        specifier: workspace:*
+        version: link:../../../packages/ts/vault
       '@tauri-apps/api':
         specifier: ^2.5.0
         version: 2.11.1
@@ -383,6 +386,9 @@ importers:
       '@sloppy/graph':
         specifier: workspace:*
         version: link:../graph
+      '@sloppy/local':
+        specifier: workspace:*
+        version: link:../local
       '@sloppy/types':
         specifier: workspace:*
         version: link:../types

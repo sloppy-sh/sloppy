@@ -31,6 +31,7 @@
 		"@sloppy/app-core": "workspace:*",
 		"@sloppy/local": "workspace:*",
 		"@sloppy/ui": "workspace:*",
+		"@sloppy/vault": "workspace:*",
 		"@tauri-apps/api": "^2.5.0",
 		"@tauri-apps/plugin-deep-link": "^2.4.0",
 		"@tauri-apps/plugin-http": "^2.5.9",

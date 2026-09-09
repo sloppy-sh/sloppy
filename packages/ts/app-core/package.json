@@ -50,6 +50,7 @@
 		"@lucide/svelte": "^0.561.0",
 		"@sloppy/client": "workspace:*",
 		"@sloppy/graph": "workspace:*",
+		"@sloppy/local": "workspace:*",
 		"@sloppy/types": "workspace:*",
 		"@sloppy/ui": "workspace:*"
 	},

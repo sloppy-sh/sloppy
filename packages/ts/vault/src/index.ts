@@ -7,3 +7,4 @@ export * from "./ink.js";
 export * from "./note.js";
 export * from "./archive.js";
 export * from "./rekey.js";
+export * from "./difference.js";

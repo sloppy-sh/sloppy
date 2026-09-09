@@ -1,3 +1,4 @@
+import { MemoryFiles, MemoryHistory } from '@sloppy/local';
 import { describe, expect, it } from 'vitest';
 import { initRuntime, runtime } from './runtime.js';
 
@@ -24,6 +25,15 @@ describe('the platform seam', () => {
 		initRuntime({ apiHost: () => '', mode: () => 'local', assetSrc: (src) => src });
 		expect(runtime.mode()).toBe('local');
 		expect(runtime.assetSrc()?.('asset://localhost/p.png')).toBe('asset://localhost/p.png');
+	});
+
+	it('keeps no history of the graph until a shell hands one over', () => {
+		initRuntime({ apiHost: () => '' });
+		expect(runtime.history()).toBeUndefined();
+
+		const history = new MemoryHistory(new MemoryFiles());
+		initRuntime({ apiHost: () => '', history: () => history });
+		expect(runtime.history()).toBe(history);
 	});
 
 	it('keeps it through a re-point at another server', () => {

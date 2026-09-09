@@ -6,7 +6,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 	convertFileSrc: (path: string, scheme: string) => `${scheme}://localhost/${path}`
 }));
 
-const { tauriFiles } = await import('./files.js');
+const { tauriFiles, tauriHistory } = await import('./files.js');
 
 /** The commands with the arguments they were called with, answering whatever
  *  `answers` holds for each. */
@@ -73,5 +73,49 @@ describe('the shell files a graph on this device is kept in', () => {
 		expect(tauriFiles('/vault', call).url('media/p.png')).toBe(
 			'vault://localhost//vault/media/p.png'
 		);
+	});
+});
+
+describe('the states the graph in this folder has been in', () => {
+	it('asks about the folder that is open', async () => {
+		const { asked, call } = shell({
+			history_status: { changed: ['notes/a.md'], untracked: [], branch: 'main', ahead: 0 }
+		});
+
+		expect(await tauriHistory('/vault', call).status()).toEqual({
+			changed: ['notes/a.md'],
+			untracked: [],
+			branch: 'main',
+			ahead: 0
+		});
+		expect(asked).toEqual([{ command: 'history_status', args: { root: '/vault' } }]);
+	});
+
+	it('answers nothing for a commit that was not made and a folder on none', async () => {
+		const { call } = shell({ history_commit: null, history_head: null });
+		const history = tauriHistory('/vault', call);
+
+		expect(await history.commit('Nothing new')).toBeUndefined();
+		expect(await history.currentCommit()).toBeUndefined();
+	});
+
+	it('reads a whole graph back out of a commit', async () => {
+		const { asked, call } = shell({ history_read_at: { 'notes/a.md': btoa('one') } });
+
+		expect(await tauriHistory('/vault', call).readAt('abc')).toEqual(
+			new Map([['notes/a.md', Uint8Array.from([111, 110, 101])]])
+		);
+		expect(asked[0]).toEqual({
+			command: 'history_read_at',
+			args: { root: '/vault', commit: 'abc' }
+		});
+	});
+
+	it('refuses to settle a conflict over a path outside the folder', async () => {
+		const { asked, call } = shell();
+		await expect(
+			tauriHistory('/vault', call).resolve('../elsewhere/a.md', 'mine')
+		).rejects.toBeInstanceOf(OutsideRootError);
+		expect(asked).toEqual([]);
 	});
 });

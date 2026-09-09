@@ -10,6 +10,7 @@
  */
 
 import { setHost } from '@sloppy/client';
+import type { History } from '@sloppy/local';
 import type { OwnedRef } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
@@ -91,6 +92,12 @@ export interface AppRuntime {
 	 *  {@link createApi}. It is what the first-run surface asks for a folder
 	 *  with, so no page spells a platform's way of finding one. */
 	vault?: VaultAccess;
+	/** The states the graph in front of somebody has been in — a shell that
+	 *  defines it also defines {@link AppRuntime.vault}. Absent → this platform
+	 *  keeps no history of a graph, and nothing about one is put in front of
+	 *  anybody; `undefined` from it is a shell that keeps histories with no
+	 *  graph open. `History` in `@sloppy/local` declares every act. */
+	history?(): History | undefined;
 	/** How a stored picture's address becomes one this page can load. Absent →
 	 *  the API's proxy, so viewing somebody else's note never reaches their
 	 *  instance from here. A shell serving a graph off the device answers with
@@ -188,6 +195,7 @@ export const runtime = {
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
 	webOrigin: (): string | undefined => current.webOrigin?.(),
 	vault: (): VaultAccess | undefined => current.vault,
+	history: (): History | undefined => current.history?.(),
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
 	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc
