@@ -1,4 +1,5 @@
 import type {
+	ArchivePreview,
 	BlockView,
 	CommentAccess,
 	CreateBlockRequest,
@@ -10,7 +11,6 @@ import type {
 } from '@sloppy/types';
 import { homeGraphRef, MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
 import { SloppyApiError } from '@sloppy/client';
-import type { ArchivePreview } from '@sloppy/ui';
 import { DEFAULT_BUDGET } from '@sloppy/graph';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -3073,6 +3073,28 @@ describe('a graph as a file', () => {
 
 		expect(offered()).toContain('Export this graph');
 		expect(offered()).toContain('Import a graph');
+	});
+
+	it('takes a graph in from the empty graph, where there is nothing else to open a menu on', async () => {
+		archiving(api, { preview: () => whatArrives() });
+		api.on('GET /nodes', () => []);
+
+		await open();
+		button('Import a graph').click();
+		await settle();
+		chooseFile();
+		await settle();
+
+		expect(screen()).toContain('Import “Osmosis”?');
+	});
+
+	it('says where a copy can be taken on a shell that hands over no files', async () => {
+		archiving(api, { exported: () => new Blob(['a graph']) });
+		initRuntime({ apiHost: () => 'http://api.test', saveFile: null });
+
+		await fromMore('Export this graph');
+
+		expect(screen()).toContain('Open Sloppy in a browser to take one.');
 	});
 
 	it('hands the graph over as a file named for it and for the day', async () => {

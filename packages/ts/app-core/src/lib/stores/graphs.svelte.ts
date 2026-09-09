@@ -10,6 +10,7 @@
 
 import { MAX_FIELDS } from '@sloppy/graph';
 import {
+	type ArchivePreview,
 	homeGraphRef,
 	type GraphView,
 	GraphViewSchema,
@@ -17,7 +18,6 @@ import {
 	type CreateGraphRequest,
 	type UpdateGraphRequest
 } from '@sloppy/types';
-import type { ArchivePreview } from '@sloppy/ui';
 import { api, type SloppyApi } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
 import { serverMessage } from './errors.js';
@@ -40,11 +40,9 @@ export interface GraphsState {
 const IDLE: GraphsState = { loading: false, loaded: false, failed: false };
 
 /**
- * A graph as a file, both ways — docs/ARCHITECTURE.md § "A graph on disk". The
- * preview writes nothing and answers what the archive holds, read against the
- * graphs this person already keeps; an import answers the graph it made, or the
- * one it replaced. Refs arrive re-keyed to the importing identity, so the graph
- * that comes back is this person's.
+ * A graph as a file, both ways — docs/ARCHITECTURE.md § "A graph on disk". An
+ * import answers the graph it made or the one it replaced, its refs re-keyed to
+ * the importing identity, so what comes back is this person's.
  */
 export interface ArchiveRoutes {
 	exportArchive(ref: OwnedRef): Promise<Blob>;
@@ -52,6 +50,8 @@ export interface ArchiveRoutes {
 	importArchive(bytes: Uint8Array, asked?: { preview?: false }): Promise<GraphView>;
 }
 
+// The API serves these before `SloppyClient` declares them; the assertion
+// goes when it does.
 const archive = (): ArchiveRoutes => api as SloppyApi & ArchiveRoutes;
 
 const LISTING = 'listing';

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+import type { ArchivePreview } from '@sloppy/types';
 import { flushSync, mount, unmount, type ComponentProps } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
-import ImportSheet, { type ArchivePreview } from './import-sheet.svelte';
+import ImportSheet from './import-sheet.svelte';
 
 const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' as const;
 

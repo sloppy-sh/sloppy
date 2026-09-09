@@ -65,6 +65,7 @@
 		peerOrigin,
 		publishRootsOf,
 		splitOwnedRef,
+		type ArchivePreview,
 		type CreateNodeRequest,
 		type FollowedIdentity,
 		type NodeAppearance,
@@ -101,7 +102,6 @@
 		TagRail,
 		TemplatePicker,
 		WallpaperSheet,
-		type ArchivePreview,
 		type CanvasMenuItem,
 		type CanvasPen,
 		type ConversationProps,
@@ -125,7 +125,7 @@
 	import { api } from '../api.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
-	import { runtime } from '../runtime.js';
+	import { saveHere, savesFiles } from '../save-file.js';
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
@@ -1569,36 +1569,27 @@
 		return `${named || 'graph'}-${stamp}.sloppy`;
 	}
 
+	let taking = $state(false);
+
 	async function takeArchive(): Promise<void> {
+		if (taking) return;
 		refused = null;
-		const save = runtime.saveFile();
-		if (save === null) {
-			refused = 'Sloppy cannot hand you a file here yet.';
+		if (!savesFiles()) {
+			refused =
+				"Taking this graph as a file isn't available here yet. Open Sloppy in a browser to take one.";
 			return;
 		}
+		taking = true;
 		try {
 			const body = await graphs.exportArchive(graph);
-			const name = archiveName();
-			if (save) await save(name, body);
-			else handOver(name, body);
+			await saveHere(archiveName(), body);
 		} catch (error) {
 			refused =
 				serverMessage(error) ??
 				'That graph could not be put in a file just now. Try again in a moment.';
+		} finally {
+			taking = false;
 		}
-	}
-
-	function handOver(name: string, body: Blob): void {
-		const at = URL.createObjectURL(body);
-		const link = document.createElement('a');
-		link.href = at;
-		link.download = name;
-		document.body.append(link);
-		link.click();
-		link.remove();
-		// WebKit reads the blob after the click returns; revoking in this task
-		// loses the file.
-		setTimeout(() => URL.revokeObjectURL(at));
 	}
 
 	/** The file picker for a graph somebody is bringing in. */
@@ -2003,6 +1994,9 @@
 							<Button variant="ghost" class="h-11" disabled={creating} onclick={startNumbering}>
 								Number it yourself
 							</Button>
+							<Button variant="ghost" class="h-11" onclick={() => chooser?.click()}>
+								Import a graph
+							</Button>
 							<Button variant="ghost" class="h-11" onclick={() => (switching = true)}>
 								Your graphs
 							</Button>
@@ -2214,6 +2208,10 @@
 
 				{#if shortField}
 					<p class="text-sm text-destructive" role="alert">{shortField}</p>
+				{/if}
+
+				{#if taking}
+					<p class="text-sm text-muted-foreground" role="status">Putting this graph together…</p>
 				{/if}
 
 				{#if refused}

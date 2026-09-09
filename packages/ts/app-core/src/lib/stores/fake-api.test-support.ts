@@ -6,6 +6,7 @@
 import {
 	addressDepth,
 	type AnsweredNote,
+	type ArchivePreview,
 	type BlockView,
 	type Converses,
 	type CreateNodeRequest,
@@ -23,7 +24,6 @@ import {
 	UpdateBlockRequestSchema,
 	type Viewer
 } from '@sloppy/types';
-import type { ArchivePreview } from '@sloppy/ui';
 import { createRemoteApi, resetApi } from '../api.js';
 import { initRuntime } from '../runtime.js';
 import type { ArchiveRoutes } from './graphs.svelte.js';
@@ -298,10 +298,16 @@ export class FakeApi {
 	};
 }
 
-/** Point the app at a fresh fake and hand it back. */
+/** Point the app at a fresh fake and hand it back. Seams a suite borrowed —
+ *  the api it builds, the way it saves a file — go back to their defaults. */
 export function useFakeApi(): FakeApi {
 	const fake = new FakeApi();
-	initRuntime({ apiHost: () => 'http://api.test', fetchImpl: () => fake.fetch });
+	initRuntime({
+		apiHost: () => 'http://api.test',
+		fetchImpl: () => fake.fetch,
+		createApi: undefined,
+		saveFile: undefined
+	});
 	resetApi();
 	return fake;
 }
@@ -318,6 +324,9 @@ export interface FakeArchive {
  * Answer the archive routes, which the client serves alongside the ones the
  * fake fetch answers. The dispatch on `preview` is the fake's, so a suite that
  * passes has exercised which of the two a surface asked for.
+ *
+ * The routes ride `createApi` because `SloppyClient` does not declare them yet:
+ * the seam is borrowed rather than claimed, and {@link useFakeApi} hands it back.
  */
 export function archiving(fake: FakeApi, answers: FakeArchive): void {
 	const missing = (what: string) => Promise.reject(new Error(`No suite answers for ${what}.`));

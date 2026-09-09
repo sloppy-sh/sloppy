@@ -1,34 +1,6 @@
-<script lang="ts" module>
-	import type { DidSyr } from '@sloppy/types';
-
-	/**
-	 * What an archive holds, read against the graphs this person already keeps.
-	 * Nothing is written to answer it, so a person sees this before they choose.
-	 */
-	export interface ArchivePreview {
-		graph: {
-			/** The graph's own identifier — what makes a second import of it a
-			 *  replace rather than a second copy. */
-			ulid: string;
-			name: string;
-			owner: DidSyr;
-			format: number;
-		};
-		notes: number;
-		media: number;
-		/** Shortcodes the notes were written with that this identity has no
-		 *  picture for, without their colons. */
-		missingEmoji: string[];
-		/** The notes already here that the arriving ones would land on. Absent
-		 *  from a replace, which lands on them by design. */
-		colliding: string[];
-		/** Whether it lands on a graph already here rather than beside them. */
-		replaces: boolean;
-	}
-</script>
-
 <script lang="ts">
 	// What a graph in a file brings with it, said before anything is written.
+	import type { ArchivePreview } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 

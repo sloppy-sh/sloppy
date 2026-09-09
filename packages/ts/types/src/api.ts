@@ -11,6 +11,7 @@ import {
   type OwnedRef,
   OwnedRefSchema,
   TimestampSchema,
+  UlidSchema,
 } from "./common.js";
 import { RefusedVoiceSchema } from "./conversation.js";
 import { GraphSchema } from "./graph.js";
@@ -282,6 +283,33 @@ export const GraphExportSchema = z.object({
   blocks: z.array(BlockViewSchema),
 });
 export type GraphExport = z.infer<typeof GraphExportSchema>;
+
+/**
+ * What a graph in a file holds, read against the graphs the person importing it
+ * already keeps — docs/ARCHITECTURE.md § "A graph on disk". Nothing is written
+ * to answer it, so a person sees this before they choose.
+ */
+export const ArchivePreviewSchema = z.object({
+  graph: z.object({
+    /** The graph's own ULID — what makes a second import of it a replace
+     *  rather than a second copy. */
+    ulid: UlidSchema,
+    name: z.string(),
+    owner: DidSyrSchema,
+    format: z.int(),
+  }),
+  notes: z.int().nonnegative(),
+  media: z.int().nonnegative(),
+  /** Shortcodes the notes were written with that the importing identity has no
+   *  picture for, without their colons. */
+  missingEmoji: z.array(z.string()),
+  /** The notes already here that the arriving ones would land on. Empty on a
+   *  replace, which lands on its own notes by design. */
+  colliding: z.array(z.string()),
+  /** Whether it lands on a graph already here rather than beside them. */
+  replaces: z.boolean(),
+});
+export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
 
 /**
  * Who the API believes is calling.
