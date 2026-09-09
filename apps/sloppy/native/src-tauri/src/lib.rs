@@ -1,6 +1,33 @@
+mod history;
 mod vault;
 
-use tauri::Manager;
+use tauri::{Manager, Runtime};
+
+/// The whole of what this shell answers: `Files` and `History` in
+/// `@sloppy/local`, which declare every one of them and what its answer means.
+pub(crate) fn commands<R: Runtime>(
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![
+        vault::files_read,
+        vault::files_write,
+        vault::files_list,
+        vault::files_remove,
+        vault::files_exists,
+        vault::files_mkdir,
+        vault::app_data_path,
+        vault::pick_folder,
+        history::history_status,
+        history::history_log,
+        history::history_commit,
+        history::history_branches,
+        history::history_branch,
+        history::history_switch,
+        history::history_merge,
+        history::history_resolve,
+        history::history_read_at,
+        history::history_head,
+    ]
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,7 +55,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_safe_area_insets_css::init());
 
     builder
-        .invoke_handler(vault::commands())
+        .invoke_handler(commands())
         // How a picture in a graph loads on the page: one scheme, bounded by
         // the folders somebody picked.
         .register_asynchronous_uri_scheme_protocol(vault::SCHEME, vault::protocol)
