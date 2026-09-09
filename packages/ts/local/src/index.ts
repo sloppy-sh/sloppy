@@ -3,4 +3,6 @@
 
 export * from "./files.js";
 export * from "./identity.js";
+export * from "./vault-paths.js";
+export * from "./graph.js";
 export * from "./api.js";

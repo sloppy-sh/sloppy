@@ -699,6 +699,7 @@
 
 	/** The regions the reader holds, opened so their notes can be pointed at. */
 	async function lookAtWhatIsHeld(): Promise<void> {
+		if (session.onDevice) return;
 		await peers.load();
 		await Promise.all(peers.regions.map((region) => peers.enter(region.ref)));
 	}
@@ -715,6 +716,7 @@
 	// ── Publishing this branch, and what people say back ──────────────────────
 
 	const own = $derived(node !== undefined && node.created_by === session.viewer?.did);
+	const publishable = $derived(own && !session.onDevice);
 	/** The publication rooted at this note, which is what an act here changes. */
 	const publication = $derived(node && own ? publications.at(node) : undefined);
 	/** One rooted above it that already carries this branch. */
@@ -787,7 +789,10 @@
 	 *  draws no graph but the reader's own, so their own invitation is the only
 	 *  one it can be reading. */
 	const answerable = $derived(
-		node !== undefined && own && publications.answersOn(node) === 'anyone' && identity.converses
+		node !== undefined &&
+			publishable &&
+			publications.answersOn(node) === 'anyone' &&
+			identity.converses
 	);
 	const conversing = $derived(conversation.status(ref));
 
@@ -1067,7 +1072,9 @@
 			onSelect: () => void handOver(citationUrl(ref), 'Link copied.')
 		},
 		...(shareable ? [{ label: 'Share', icon: Share2, onSelect: () => void share() }] : []),
-		...(own ? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }] : []),
+		...(publishable
+			? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }]
+			: []),
 		{
 			label: 'Delete this note',
 			icon: Trash2,
@@ -1322,7 +1329,7 @@
 	// What the person publishes decides whether this note draws as published and
 	// whether anybody may answer it, so it is read before either is drawn.
 	$effect(() => {
-		if (session.signedIn) void publications.load().catch(() => {});
+		if (session.signedIn && !session.onDevice) void publications.load().catch(() => {});
 	});
 
 	// Which publication carries this note is read off the notes it springs from,
@@ -1333,7 +1340,7 @@
 	});
 
 	$effect(() => {
-		if (session.signedIn) void identity.load();
+		if (session.signedIn && !session.onDevice) void identity.load();
 	});
 
 	$effect(() => {
@@ -2056,7 +2063,7 @@
 
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 				<NoteAuthor did={node.created_by} />
-				{#if own && (publication || carriedBy)}
+				{#if publishable && (publication || carriedBy)}
 					<button
 						type="button"
 						onclick={() => (publishing = true)}

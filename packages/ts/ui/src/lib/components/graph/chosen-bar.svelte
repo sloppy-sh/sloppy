@@ -22,7 +22,7 @@
 		says?: string | null;
 		onTags: () => void;
 		onLook: () => void;
-		onPublish: () => void;
+		onPublish?: (() => void) | undefined;
 		onDelete: () => void;
 		onDone: () => void;
 	} = $props();
@@ -36,7 +36,7 @@
 	const acts = $derived([
 		{ label: 'Tags', icon: Tag, onSelect: onTags },
 		{ label: 'Look', icon: CircleDashed, onSelect: onLook },
-		{ label: 'Publish', icon: Globe, onSelect: onPublish },
+		...(onPublish ? [{ label: 'Publish', icon: Globe, onSelect: onPublish }] : []),
 		{ label: 'Delete', icon: Trash2, onSelect: onDelete, destructive: true }
 	]);
 
@@ -84,7 +84,7 @@
 		{/if}
 
 		{#if count > 0}
-			<div class="grid grid-cols-4 gap-1">
+			<div class="grid gap-1 {acts.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}">
 				{#each acts as act (act.label)}
 					<Button
 						variant="ghost"

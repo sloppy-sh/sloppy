@@ -368,6 +368,18 @@ opens the graph, with no screen in the way. The key is a file in the app's own p
 and it never leaves the device — there is no password over it because there is nothing a
 password would protect it from that reaching the file would not already have defeated.
 
+**What only this device knows sits beside the graphs rather than inside one.** The app's
+private data holds `identity.json` and the key file it names, and `vaults.json`, the list
+of folders a graph has been put in — a folder cannot remember where somebody put it. What
+a person is called is not there: a name and a picture are written into the owner block of
+every graph on the device (§ "A graph on disk"), so a graph says whose it is wherever it is
+opened, and there is no profile to read from anywhere else.
+
+**A vault holds the pictures its own notes draw.** A picture is added before anybody knows
+which note will draw it, so one that turns out to belong to a note in another graph on the
+device is carried into that graph's folder when the note is written — and the archive taken
+out of that graph carries it too.
+
 **What needs a server is not offered, and says so.** Publishing, peers, pulling,
 conversation, following, somebody else's profile and somebody else's emoji all need
 another machine to exist; `LocalApi` answers each with `serverOnly`, naming the feature,
@@ -1726,14 +1738,31 @@ a folder with. Nothing in it talks to a store: it is handed rows and hands back 
 
 ```
 <vault>/
-├── graph.json                       format, the graph's ulid, its name, the owner's DID
+├── graph.json                       format, the graph's ulid, its name, and whose it is
 ├── notes/<ulid>.md                  one note: front matter, then its sections
 ├── media/<uploadId>.<ext>           the pictures the notes draw
 └── .sloppy/                         what markdown cannot carry
     ├── ink/<block>-<n>.ink.json     one drawing's strokes, and an .svg of it beside
     ├── pictures.json                a picture's size, keyed by upload id
-    └── emoji/<shortcode>.<ext>      the custom emoji the notes are written with
+    ├── media.json                   what a picture was called and what it is
+    ├── emoji/<shortcode>.<ext>      the custom emoji the notes are written with
+    ├── emoji.json                   whether a shortcode draws as an emoji or a sticker
+    ├── bin/<ulid>.md                a note thrown away, still where it can be put back
+    └── bin.json                     when each of those went, and every address spent
 ```
+
+**`graph.json` says whose the graph is, and not only by DID.** `owner_name` and
+`owner_avatar` — a path into this vault's own `media/` — are what a graph carries about
+the person who keeps it, so one opened on another device is not anonymous. Both are
+optional, and absent is somebody who has not said. Importing somebody else's graph leaves
+their name behind with them; a person's own archive brings theirs back.
+
+**The bin is the folder's and never travels.** A deleted note's file moves into
+`.sloppy/bin/` and putting it back moves it out again, while `bin.json` holds when each
+one went and every address this graph has spent and will not assign again — including the
+ones a purge retired and the ones a replaced copy of the graph was at. An archive carries
+the vault without either, because a graph handed to somebody else is what was written and
+not what was thrown away.
 
 **The markdown is the record, and `.sloppy/` is what markdown has no syntax for.** A
 person opens `notes/` in any editor, reads their writing, changes a word and commits it;
@@ -1747,8 +1776,11 @@ strokes are the record and the SVG is what a viewer that has never heard of Slop
 
 **One note is one file, and its sections are marked in the body.** The front matter is the
 note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `tags`, `links`,
-`title`, `created`, `updated`. Absent `parent` is a branch or an independent note; absent
-`address` is a note with none; absent `aliases`, `tags` or `links` is none of them. The
+`title`, `created`, `updated`, `appearance`. Absent `parent` is a branch or an independent
+note; absent `address` is a note with none; absent `aliases`, `tags` or `links` is none of
+them. `appearance` is a block of its own — the channels the author set on the mark, each
+on its own line — and absent is a note nobody styled, which is not itself a look: a
+channel that says nothing is not written down, exactly as `isUnstyled` reads one. The
 body is the note's stack of sections, each opened by `<!-- block <ulid> -->` — so a section
 keeps its identity across an export and an import, and a person who moves one in the file
 has moved a section rather than made two.
