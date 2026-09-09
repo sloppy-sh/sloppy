@@ -1,0 +1,114 @@
+import type { AppRuntime } from '@sloppy/app-core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
+
+let registered: Partial<AppRuntime> = {};
+const resetApi = vi.fn();
+vi.mock('@sloppy/app-core', () => ({
+	initRuntime: (rt: Partial<AppRuntime>) => {
+		registered = rt;
+	},
+	resetApi: () => resetApi(),
+	session: { clear: vi.fn() }
+}));
+
+vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
+vi.mock('./deep-link', () => ({ SIGN_IN_CALLBACK: 'sloppy://auth/callback' }));
+
+/** The device's files, as `src-tauri` answers for them: one store keyed by the
+ *  absolute path, and a folder somebody would pick. */
+const held = new Map<string, string>();
+let picks: string | null = '/Users/me/garden';
+
+vi.mock('@tauri-apps/api/core', () => ({
+	convertFileSrc: (path: string) => `asset://localhost/${path}`,
+	invoke: async (command: string, args?: Record<string, unknown>) => {
+		const at = `${args?.root as string}/${args?.path as string}`;
+		switch (command) {
+			case 'app_data_path':
+				return '/data';
+			case 'pick_folder':
+				return picks;
+			case 'files_read':
+				return held.get(at) ?? null;
+			case 'files_write':
+				held.set(at, args?.bytes as string);
+				return null;
+			case 'files_exists':
+				return held.has(at);
+			default:
+				return null;
+		}
+	}
+}));
+
+/** A launch of the app: fresh module state, `initNativeRuntime` called the way
+ *  the root layout calls it. */
+async function launch(): Promise<typeof import('./runtime.js')> {
+	vi.resetModules();
+	const shell = await import('./runtime.js');
+	shell.initNativeRuntime();
+	return shell;
+}
+
+/** Where the api reads a graph out of right now. */
+function servedFrom(): string {
+	return (registered.createApi?.() as unknown as { files: { root: string } }).files.root;
+}
+
+describe('the native shell in local mode', () => {
+	beforeEach(() => {
+		held.clear();
+		picks = '/Users/me/garden';
+		resetApi.mockClear();
+	});
+
+	it('serves the graph off this device, with no server to reach', async () => {
+		await launch();
+
+		expect(registered.mode?.()).toBe('local');
+		expect(registered.vault).toBeDefined();
+	});
+
+	it('has no folder to open on a device that has never had one', async () => {
+		const shell = await launch();
+
+		expect(await shell.openRememberedVault()).toBeUndefined();
+		expect(registered.vault?.folder()).toBeUndefined();
+	});
+
+	it('opens the folder somebody names and serves the graph out of it', async () => {
+		await launch();
+
+		expect(await registered.vault?.open()).toBe('/Users/me/garden');
+		expect(registered.vault?.folder()).toBe('/Users/me/garden');
+		expect(servedFrom()).toBe('/Users/me/garden');
+		expect(resetApi).toHaveBeenCalled();
+	});
+
+	it('opens that same folder again the next time the app starts', async () => {
+		await launch();
+		await registered.vault?.open();
+
+		const again = await launch();
+		expect(registered.vault?.folder()).toBeUndefined();
+		expect(await again.openRememberedVault()).toBe('/Users/me/garden');
+		expect(servedFrom()).toBe('/Users/me/garden');
+	});
+
+	it('leaves the folder alone where somebody named none', async () => {
+		await launch();
+		await registered.vault?.open();
+		picks = null;
+
+		expect(await registered.vault?.open()).toBeUndefined();
+		expect(registered.vault?.folder()).toBe('/Users/me/garden');
+	});
+
+	it('asks where a desktop can ask', async () => {
+		await launch();
+
+		expect(registered.vault?.asks).toBe(true);
+	});
+});

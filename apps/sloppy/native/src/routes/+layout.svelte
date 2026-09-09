@@ -4,8 +4,10 @@
 	import { answerBack } from '$lib/back';
 	import { forwardDeepLinks } from '$lib/deep-link';
 	import { trackKeyboardInset } from '$lib/keyboard';
+	import { LOCAL_MODE } from '$lib/local-mode';
 	import { IS_MOBILE, TAURI_PLATFORM } from '$lib/platform';
-	import { initNativeRuntime } from '$lib/runtime';
+	import { initNativeRuntime, openRememberedVault } from '$lib/runtime';
+	import FirstRun from '@sloppy/app-core/pages/first-run';
 	import Frame from '@sloppy/app-core/pages/frame';
 
 	let { children } = $props();
@@ -13,7 +15,12 @@
 	// The AppRuntime contract: before any page mounts.
 	initNativeRuntime();
 
+	/** Undefined until the boot read answers, so nobody is offered a folder they
+	 *  already have. A build that talks to a server has one from the start. */
+	let opened = $state<boolean | undefined>(LOCAL_MODE ? undefined : true);
+
 	onMount(() => {
+		if (LOCAL_MODE) void openRememberedVault().then((folder) => (opened = Boolean(folder)));
 		void forwardDeepLinks();
 		// Publishes the real system-bar insets — DESIGN.md § "The four inset vars".
 		if (IS_MOBILE) void import('@saurl/tauri-plugin-safe-area-insets-css-api');
@@ -28,4 +35,10 @@
 	});
 </script>
 
-<Frame>{@render children()}</Frame>
+{#if opened === undefined}
+	<div class="min-h-dvh"></div>
+{:else if opened}
+	<Frame>{@render children()}</Frame>
+{:else}
+	<FirstRun onopened={() => (opened = true)} />
+{/if}
