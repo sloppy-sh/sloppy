@@ -1,0 +1,192 @@
+import {
+  type Address,
+  createOwnedRecordId,
+  type DidSyr,
+  type Node,
+  nowIso,
+  type OwnedRef,
+} from "@sloppy/types";
+import type { VaultNote } from "@sloppy/vault";
+import { describe, expect, it } from "vitest";
+import { type Kept, placed, retiring, rowsFor } from "./arriving";
+
+const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva" as DidSyr;
+const GRAPH: OwnedRef = `${DID}/01JGRAPH2ND000000000000000`;
+
+function ref(nth: number): OwnedRef {
+  return `${DID}/01JNKTE${String(nth).padStart(19, "0")}`;
+}
+
+function note(over: Partial<VaultNote> & { ref: OwnedRef }): VaultNote {
+  return {
+    aliases: [],
+    tags: [],
+    links: [],
+    title: "",
+    sections: [],
+    ...over,
+  };
+}
+
+describe("the genealogy a vault leaves to be re-derived", () => {
+  it("takes each note's depth and origin off the parent chain", () => {
+    const [root, under, deeper] = placed([
+      note({ ref: ref(1) }),
+      note({ ref: ref(2), parent: ref(1) }),
+      note({ ref: ref(3), parent: ref(2) }),
+    ]);
+
+    expect([root.depth, under.depth, deeper.depth]).toEqual([1, 2, 3]);
+    expect([root.origin, under.origin, deeper.origin]).toEqual([
+      ref(1),
+      ref(1),
+      ref(1),
+    ]);
+  });
+
+  it("does the same when a note is written down before its parent", () => {
+    const [under, root] = placed([
+      note({ ref: ref(2), parent: ref(1) }),
+      note({ ref: ref(1) }),
+    ]);
+
+    expect(under.depth).toBe(2);
+    expect(under.origin).toBe(ref(1));
+    expect(root.depth).toBe(1);
+  });
+
+  it("opens a branch where the archive carries no parent for the note", () => {
+    const [orphan] = placed([note({ ref: ref(2), parent: ref(9) })]);
+
+    expect(orphan.parent).toBeUndefined();
+    expect(orphan.depth).toBe(1);
+    expect(orphan.origin).toBe(ref(2));
+  });
+
+  it("settles a chain that names itself rather than walking it forever", () => {
+    const settled = placed([
+      note({ ref: ref(1), parent: ref(2) }),
+      note({ ref: ref(2), parent: ref(1) }),
+    ]);
+
+    expect(settled.map((one) => one.depth).sort()).toEqual([1, 2]);
+    expect(settled.filter((one) => one.parent === undefined)).toHaveLength(1);
+  });
+});
+
+describe("the rows an archive's notes land as", () => {
+  const section = (words: string) => ({
+    type: "doc" as const,
+    content: [{ type: "paragraph", content: [{ type: "text", text: words }] }],
+  });
+
+  it("keeps a note's ULID, its label and the addresses it still leads by", () => {
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({
+          ref: ref(1),
+          address: "1a" as Address,
+          aliases: ["1b" as Address],
+          title: "A city remembers",
+          tags: ["Biology"],
+          links: [ref(2)],
+        }),
+      ]),
+      new Map(),
+    );
+
+    expect(written.nodes).toHaveLength(1);
+    expect(written.nodes[0].address).toBe("1a");
+    expect(written.nodes[0].graph).toBe(GRAPH);
+    expect(written.nodes[0].tags).toEqual(["biology"]);
+    expect(written.nodes[0].links).toEqual([ref(2)]);
+    expect(written.aliases.map((one) => one.address)).toEqual(["1b"]);
+    expect(written.aliases[0].note).toBe(ref(1));
+  });
+
+  it("drops an alias at an address a note arriving is actually at", () => {
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({ ref: ref(1), address: "1a" as Address }),
+        note({ ref: ref(2), aliases: ["1a" as Address] }),
+      ]),
+      new Map(),
+    );
+
+    expect(written.aliases).toEqual([]);
+  });
+
+  it("stacks a note's sections in the order the file reads them", () => {
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({
+          ref: ref(1),
+          sections: [
+            { ulid: "01JSECTAKN0000000000000001", content: section("first") },
+            { ulid: "01JSECTAKN0000000000000002", content: section("second") },
+          ],
+        }),
+      ]),
+      new Map(),
+    );
+
+    expect(written.blocks).toHaveLength(2);
+    expect(written.blocks[0].ord < written.blocks[1].ord).toBe(true);
+    expect(written.blocks.map((one) => one.node)).toEqual([ref(1), ref(1)]);
+  });
+
+  it("leaves the styling and the publication of a note it writes over alone", () => {
+    const kept: Kept = {
+      created_at: "2020-01-01T00:00:00.000Z",
+      published: true,
+      graph: GRAPH,
+      appearance: { ring_weight: "heavy" },
+    };
+
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([note({ ref: ref(1) })]),
+      new Map([[ref(1), kept]]),
+    );
+
+    expect(written.nodes[0].published).toBe(true);
+    expect(written.nodes[0].appearance).toEqual(kept.appearance);
+    expect(written.nodes[0].created_at).toBe("2020-01-01T00:00:00.000Z");
+  });
+});
+
+describe("the addresses the notes an import writes over take with them", () => {
+  const going = (localRef: OwnedRef, address: Address): Node => ({
+    id: createOwnedRecordId("node", DID, localRef.slice(DID.length + 1)),
+    created_by: DID,
+    graph: GRAPH,
+    address,
+    depth: 1,
+    origin: localRef,
+    title: "",
+    tags: [],
+    links: [],
+    published: false,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  });
+
+  it("retires the ones the archive does not bring back", () => {
+    const retired = retiring(
+      DID,
+      GRAPH,
+      [going(ref(1), "1" as Address), going(ref(2), "2" as Address)],
+      new Set(["1" as Address]),
+    );
+
+    expect(retired.map((one) => one.address)).toEqual(["2"]);
+    expect(retired[0].graph).toBe(GRAPH);
+  });
+});

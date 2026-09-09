@@ -285,28 +285,36 @@ export const GraphExportSchema = z.object({
 export type GraphExport = z.infer<typeof GraphExportSchema>;
 
 /**
- * What a graph in a file holds, read against the graphs the person importing it
- * already keeps — docs/ARCHITECTURE.md § "A graph on disk". Nothing is written
- * to answer it, so a person sees this before they choose.
+ * How large an archive this instance will take in, and how many notes it will
+ * read out of one. Both are stated in the words a refusal is given in, so
+ * nobody has to guess which of the two they hit.
+ */
+export const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
+export const MAX_ARCHIVE_NOTES = 5000;
+
+/**
+ * What an archive would bring, answered before anything is written —
+ * docs/ARCHITECTURE.md § "A graph on disk".
+ *
+ * `format`, `graph`, `name` and `owner` are what the archive says about itself;
+ * the rest is what it means for the person importing it.
  */
 export const ArchivePreviewSchema = z.object({
-  graph: z.object({
-    /** The graph's own ULID — what makes a second import of it a replace
-     *  rather than a second copy. */
-    ulid: UlidSchema,
-    name: z.string(),
-    owner: DidSyrSchema,
-    format: z.int(),
-  }),
+  format: z.int(),
+  /** The graph's own ULID, which is what says whether this replaces one. */
+  graph: UlidSchema,
+  name: z.string(),
+  owner: DidSyrSchema,
   notes: z.int().nonnegative(),
-  media: z.int().nonnegative(),
-  /** Shortcodes the notes were written with that the importing identity has no
-   *  picture for, without their colons. */
-  missingEmoji: z.array(z.string()),
-  /** The notes already here that the arriving ones would land on. Empty on a
-   *  replace, which lands on its own notes by design. */
-  colliding: z.array(z.string()),
-  /** Whether it lands on a graph already here rather than beside them. */
+  pictures: z.int().nonnegative(),
+  /** The shortcodes the notes are written with that the importer's own catalog
+   *  has no picture for. Each one arrives, and renders as its shortcode. */
+  missing_emoji: z.array(z.string()),
+  /** Notes the importer already keeps elsewhere that this archive also holds.
+   *  An import is refused while any is here. */
+  collisions: z.array(OwnedRefSchema),
+  /** Whether this writes over a graph the importer already keeps rather than
+   *  opening a new one. */
   replaces: z.boolean(),
 });
 export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
