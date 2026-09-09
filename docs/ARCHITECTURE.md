@@ -18,9 +18,11 @@ backend-agnostic; the same app serves all three.
   interoperate with it exactly as it would with the default. Settings holds that origin
   per device, so an installed app is re-pointed rather than rebuilt; `AppRuntime.apiHost`
   is the origin the build shipped with, and returning to the default returns to it.
-- **Local-only** — no network at all. The Tauri app embeds SurrealDB and an IdP that
-  reimplements syr's wire contracts, so registration, sign-in, capture, and publishing all
-  work on-device. Gated (see "Local-only mode" below) because SurrealDB alone is ~60 MB.
+- **Local-only** — no network at all. The native app opens a folder on the device and the
+  vault in it is the whole store (§ "A graph on disk"); the identity that owns it is made
+  on first run, so there is nothing to sign in to. What genuinely needs a server —
+  publishing, peers, pulling, conversation — is not offered there, and a graph crosses
+  between this mode and a hosted one as an archive. See "Local-only mode" below.
 
 ## Monorepo layout
 
@@ -44,7 +46,8 @@ sloppy/
 │       ├── data/      @sloppy/data      — SurrealDB table definitions and the per-user purge
 │       ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
 │       ├── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
-│       └── vault/     @sloppy/vault     — a graph as files: the vault folder and the archive
+│       ├── vault/     @sloppy/vault     — a graph as files: the vault folder and the archive
+│       └── local/     @sloppy/local     — the graph served off this device: files, a local identity, the vault client
 ├── docs/
 ├── scripts/
 ├── docker/dev/          (the one image api, web and the package builder share)
@@ -78,10 +81,24 @@ and that decision has to live inside it.
 
 - **`app-core/src/lib/runtime.ts`** — an `AppRuntime` interface where **the absence of
   each optional member is meaningful**. `openExternal?` undefined on web means OAuth
-  navigates the tab; `createApi?` present on native means local mode is available. The
-  shell calls `initRuntime()` from its root layout before any page mounts.
+  navigates the tab; `createApi?` present on native means the graph can be served off the
+  device, and `mode()` says whether it is being served that way right now. `saveFile?` and
+  `openFile?` are how a file leaves and arrives where a webview cannot do what a tab does,
+  and `assetSrc?` is how a stored picture becomes an address this page can load — absent,
+  that is the API's proxy, which is what keeps a viewer's IP off somebody else's instance.
+  The shell calls `initRuntime()` from its root layout before any page mounts.
 - **`app-core/src/lib/api.ts`** — `api` is a `Proxy` that resolves its implementation on
-  first property access, so remote ↔ local swaps without touching a call site.
+  first property access, so remote ↔ local swaps without touching a call site. The port it
+  resolves to is `SloppyApi`, the `SloppyClient` surface taken structurally, so an adapter
+  satisfies it by shape and never by cast; `serverOnly` is a whole method body for what an
+  adapter cannot serve.
+
+**What fills those on native is `@sloppy/local`.** `Files` is the shell's own file access —
+read, write, list, remove, exists, mkdir under one root, a folder picker, the app's private
+data path, and the address a picture in the vault loads from;
+`apps/sloppy/native/src/lib/files.ts` is the Tauri-backed adapter and `MemoryFiles` is what
+a test runs against. `LocalApi` is the `SloppyApi` implementation over it, and
+`makeLocalIdentity` is the identity that owns what it writes.
 
 Platform branching is **compile-time**, via `import.meta.env.TAURI_ENV_PLATFORM`
 (`IS_MOBILE`, `IS_APPLE`), with `envPrefix: ['VITE_','PUBLIC_','TAURI_ENV_']` in
@@ -326,10 +343,41 @@ to rediscover.
 
 ### Local-only mode
 
-Slyng's `idp/` tree reimplements syr's wire contracts; it lifts into `@sloppy/idp` with
-its crypto. The Nest module is gated on `SLOPPY_LOCAL_IDP`, and the embedded SurrealDB is
-gated on a Cargo `local-mode` feature driven from **the same variable** as the frontend
-flag, so the two cannot drift. Off by default.
+Two independent things wear this name, and they are worth separating before either is
+read. **An API can serve identities itself** — Slyng's `idp/` tree reimplements syr's wire
+contracts and lifts into `@sloppy/idp` with its crypto, and the Nest module is gated on
+`SLOPPY_LOCAL_IDP`, off by default. That is the rest of this section. **The native app can
+serve a whole graph with no API at all**, and that is the paragraphs immediately below.
+
+#### A graph off the device
+
+**The vault is the local store.** There is no database in the native app: `SLOPPY_LOCAL_MODE`
+decides whether the shell opens a folder on the device, and the folder is § "A graph on
+disk" exactly as an archive holds it, read and written by the one `@sloppy/vault`. The
+shell carries file access and nothing else; `@sloppy/local`'s `LocalApi` is the
+`SloppyApi` implementation over it, so every page, store and component reaches a local
+graph through the same `api` they reach a hosted one through. Opening a graph builds an
+index of it in memory — its notes, sections, tags, links, addresses and aliases — kept in
+step on every write, and search reads that index. The address rules are the same functions
+from `@sloppy/types` the API runs: a suggestion made here and a suggestion made on a
+server are the same suggestion, which is what lets a graph cross between them.
+
+**There is no sign-in, because there is nobody to sign in to.** On first run the app mints
+an Ed25519 identity through `@sloppy/idp`'s crypto, writes the DID into `graph.json` and
+opens the graph, with no screen in the way. The key is a file in the app's own private data
+and it never leaves the device — there is no password over it because there is nothing a
+password would protect it from that reaching the file would not already have defeated.
+
+**What needs a server is not offered, and says so.** Publishing, peers, pulling,
+conversation, following, somebody else's profile and somebody else's emoji all need
+another machine to exist; `LocalApi` answers each with `serverOnly`, naming the feature,
+and the surfaces do not put them in front of anybody in the first place. Signing in to a
+hosted Sloppy is still there in Settings and is a **separate mode** — a hosted graph and a
+local one are two graphs, and the only way one becomes the other is by exporting it as an
+archive and importing it, which re-keys its refs under the receiving identity (§ "A graph
+on disk").
+
+#### An API that serves identities itself
 
 **The embedded provider holds files, emoji and a profile, because a provider that does not
 is not one.** Avatars, banners, emoji and block pictures are syr's to keep (the table

@@ -41,10 +41,10 @@ Everything you have written comes back out as one file whenever you ask for it.
 are integration suites that want a database listening, and a run has to ask for them, so a
 clone with nothing else running still gets a green suite; Common tasks below is how to ask.
 
-What is still ahead is narrower than what is behind it. The native shell's on-device store
-is off by default, so an installed app still talks to an API rather than working with no
-network at all; and the page a browser lands on when it resolves somebody's identity has
-nothing answering it yet.
+What is still ahead is narrower than what is behind it. The native app cannot yet open a
+graph as a folder on the device, so an installed app still talks to an API rather than
+working with no network at all; and the page a browser lands on when it resolves somebody's
+identity has nothing answering it yet.
 
 ## Stack
 
@@ -63,6 +63,7 @@ pnpm + Turborepo monorepo. Every row below is in the tree.
 | `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                 |
 | `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode         |
 | `packages/ts/vault`    | `@sloppy/vault`    | A graph as files: the vault folder and the archive |
+| `packages/ts/local`    | `@sloppy/local`    | The graph served off this device, with no server   |
 
 Identity, profiles, media blobs, emoji and reactions come from **syr**; nodes, addresses,
 tags, blocks and ink are Sloppy's own. That split is not a preference — see
@@ -98,8 +99,8 @@ paths to the API, so the app and the API share an origin the way a deployment do
 Sign-in works from a clone with nothing else running: in dev the API also serves identity
 itself (`SLOPPY_LOCAL_IDP`, on by default in `docker-compose.yml`), so an identity can be
 made and used with no syr instance anywhere — pictures, a name, and a set of emoji
-included. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode". Set it
-to `0` to require an instance elsewhere.
+included. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § "Local-only mode" →
+"An API that serves identities itself". Set it to `0` to require an instance elsewhere.
 
 The datastore ports are overridable with `SURREALDB_PORT`, `S3_PORT` and
 `S3_CONSOLE_PORT`, offset from syr's own dev stack so both can run at once. 8020 and 8030
