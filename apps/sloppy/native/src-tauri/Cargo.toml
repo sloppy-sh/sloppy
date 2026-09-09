@@ -27,6 +27,13 @@ serde_json = "1"
 percent-encoding = "2"
 # Bytes cross the bridge as base64, because the bridge carries JSON.
 base64 = "0.22"
+# The history of the folder a graph is in is git's, and this is git. Nothing
+# here fetches or pushes — docs/ARCHITECTURE.md § "The vault's history" — so the
+# transports, and openssl with them, are left out.
+git2 = { version = "0.20", default-features = false }
+# A commit's time is a count of seconds, and `Timestamp` in `@sloppy/types` is
+# ISO-8601 UTC at millisecond width.
+chrono = { version = "0.4", default-features = false, features = ["std", "now"] }
 # The sign-in round trip: out through opener, back through deep-link.
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"

@@ -14,6 +14,7 @@ import {
 	type ConflictSide,
 	type Files,
 	type History,
+	HistoryError,
 	type HistoryStatus,
 	type MergeResult
 } from '@sloppy/local';
@@ -113,6 +114,14 @@ class TauriFiles implements Files {
 	}
 }
 
+/** An act `src-tauri` would not take. The bridge carries JSON, so what it
+ *  answers is the sentence itself rather than the error `History` promises. */
+function refusal(reason: unknown): HistoryError {
+	if (reason instanceof HistoryError) return reason;
+	if (typeof reason === 'string') return new HistoryError(reason);
+	return new HistoryError('That did not work. Try again.');
+}
+
 /**
  * This shell's half of `History` in `@sloppy/local`, which declares every act
  * and what its answer means. The commands answer for the folder `root` names,
@@ -124,42 +133,50 @@ class TauriHistory implements History {
 		private readonly call: Invoke
 	) {}
 
+	private async asked<T>(command: string, args: Record<string, unknown>): Promise<T> {
+		try {
+			return await this.call<T>(command, args);
+		} catch (reason) {
+			throw refusal(reason);
+		}
+	}
+
 	async status(): Promise<HistoryStatus> {
-		return this.call<HistoryStatus>(HISTORY_STATUS, { root: this.root });
+		return this.asked<HistoryStatus>(HISTORY_STATUS, { root: this.root });
 	}
 
 	async log(limit: number, cursor?: string): Promise<CommitPage> {
-		return this.call<CommitPage>(HISTORY_LOG, { root: this.root, limit, cursor: cursor ?? null });
+		return this.asked<CommitPage>(HISTORY_LOG, { root: this.root, limit, cursor: cursor ?? null });
 	}
 
 	async commit(message: string): Promise<Commit | undefined> {
 		return (
-			(await this.call<Commit | null>(HISTORY_COMMIT, { root: this.root, message })) ?? undefined
+			(await this.asked<Commit | null>(HISTORY_COMMIT, { root: this.root, message })) ?? undefined
 		);
 	}
 
 	async branches(): Promise<Branch[]> {
-		return this.call<Branch[]>(HISTORY_BRANCHES, { root: this.root });
+		return this.asked<Branch[]>(HISTORY_BRANCHES, { root: this.root });
 	}
 
 	async branch(name: string): Promise<Branch> {
-		return this.call<Branch>(HISTORY_BRANCH, { root: this.root, name });
+		return this.asked<Branch>(HISTORY_BRANCH, { root: this.root, name });
 	}
 
 	async switch(name: string): Promise<void> {
-		await this.call<void>(HISTORY_SWITCH, { root: this.root, name });
+		await this.asked<void>(HISTORY_SWITCH, { root: this.root, name });
 	}
 
 	async merge(name: string): Promise<MergeResult> {
-		return this.call<MergeResult>(HISTORY_MERGE, { root: this.root, name });
+		return this.asked<MergeResult>(HISTORY_MERGE, { root: this.root, name });
 	}
 
 	async resolve(path: string, side: ConflictSide): Promise<void> {
-		await this.call<void>(HISTORY_RESOLVE, { root: this.root, path: checkPath(path), side });
+		await this.asked<void>(HISTORY_RESOLVE, { root: this.root, path: checkPath(path), side });
 	}
 
 	async readAt(commit: string): Promise<Vault> {
-		const held = await this.call<Record<string, string>>(HISTORY_READ_AT, {
+		const held = await this.asked<Record<string, string>>(HISTORY_READ_AT, {
 			root: this.root,
 			commit
 		});
@@ -167,7 +184,7 @@ class TauriHistory implements History {
 	}
 
 	async currentCommit(): Promise<string | undefined> {
-		return (await this.call<string | null>(HISTORY_HEAD, { root: this.root })) ?? undefined;
+		return (await this.asked<string | null>(HISTORY_HEAD, { root: this.root })) ?? undefined;
 	}
 }
 
