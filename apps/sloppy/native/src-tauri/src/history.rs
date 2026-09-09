@@ -34,13 +34,11 @@ const GRAPH_FILE: &str = "graph.json";
 const NO_ADDRESS: &str = "sloppy@localhost";
 
 /// What the folder is told not to keep, written once when the app makes it a
-/// repository. The identity this device writes under is the device's and not
-/// the graph's, and the bin's ledger of spent addresses only ever grows, so no
-/// older state of the folder may hand one of those addresses back.
-/// docs/ARCHITECTURE.md § "The vault's history".
+/// repository — docs/ARCHITECTURE.md § "The vault's history".
 const IGNORED: &str = "identity.json
 identity.key
 folders.json
+vaults.json
 /.sloppy/bin.json
 /.sloppy/bin/
 ";
@@ -101,26 +99,8 @@ fn mid_merge() -> HistoryError {
     HistoryError::new("Finish the merge you are in the middle of first.")
 }
 
-fn uncommitted(changed: &[String]) -> HistoryError {
-    HistoryError::new(format!(
-        "There is writing here that is not committed: {}. Commit it first, or put it back the way it was.",
-        named(changed)
-    ))
-}
-
-/// The paths a person is shown in a sentence: three of them, and a count for
-/// whatever is left.
-fn named(paths: &[String]) -> String {
-    const SHOWN: usize = 3;
-    let mut said: Vec<String> = paths.iter().take(SHOWN).cloned().collect();
-    if paths.len() > SHOWN {
-        said.push(format!("{} more", paths.len() - SHOWN));
-    }
-    match said.split_last() {
-        None => String::new(),
-        Some((last, [])) => last.clone(),
-        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-    }
+fn uncommitted() -> HistoryError {
+    HistoryError::new("Commit what you have written here first, or put it back the way it was.")
 }
 
 /// `Commit` in `@sloppy/local`.
@@ -513,7 +493,7 @@ pub fn switch_to(root: &Path, name: &str) -> Result<(), HistoryError> {
         return Ok(());
     }
     if !held.changed.is_empty() {
-        return Err(uncommitted(&held.changed));
+        return Err(uncommitted());
     }
     lay(&repo, head)?;
     repo.set_head(&format!("refs/heads/{name}"))?;
@@ -521,8 +501,8 @@ pub fn switch_to(root: &Path, name: &str) -> Result<(), HistoryError> {
 }
 
 /// Every path a merge left in two versions, with this branch's own version of
-/// each one in the folder. No note is ever left holding both, because one that
-/// does reads as neither — docs/ARCHITECTURE.md § "The vault's history".
+/// each one written into the folder — docs/ARCHITECTURE.md § "The vault's
+/// history".
 fn one_version_each(
     repo: &Repository,
     root: &Path,
@@ -576,7 +556,7 @@ pub fn merge_in(root: &Path, name: &str) -> Result<Merged, HistoryError> {
         ));
     };
     if !held.changed.is_empty() {
-        return Err(uncommitted(&held.changed));
+        return Err(uncommitted());
     }
     let Some(on) = held.branch else {
         return Err(HistoryError::new(
@@ -700,7 +680,6 @@ pub fn head(root: &Path) -> Result<Option<String>, HistoryError> {
     Ok(head_commit(&at(root)?)?.map(|held| held.id().to_string()))
 }
 
-/// The folder a history command was handed, refused where nobody opened it.
 fn opened(folders: &State<'_, Folders>, root: &str) -> Result<PathBuf, HistoryError> {
     Ok(folders.opened(root)?)
 }
@@ -847,6 +826,7 @@ mod tests {
         write(&root, "identity.json", "{}");
         write(&root, "identity.key", "a seed");
         write(&root, "folders.json", "[]");
+        write(&root, "vaults.json", "[]");
         write(&root, ".sloppy/bin.json", "{}");
         write(&root, ".sloppy/bin/note.md", "thrown away");
         write(&root, "notes/a.md", "one");
@@ -1027,27 +1007,25 @@ mod tests {
     }
 
     #[test]
-    fn a_switch_that_would_lose_writing_says_what_would_be_lost() {
+    fn a_switch_that_would_lose_writing_is_refused_and_the_status_holds_what_it_is() {
         let root = vault();
         made(&root, "A graph");
         branch(&root, "later").expect("the branch");
-        write(&root, GRAPH_FILE, "{}");
-
-        assert_eq!(
-            switch_to(&root, "later").unwrap_err().said(),
-            "There is writing here that is not committed: graph.json. Commit it first, or put it back the way it was."
-        );
-
-        for one in ["a", "b", "c", "d"] {
+        for one in ["a", "b"] {
             write(&root, &format!("notes/{one}.md"), one);
         }
-        made(&root, "Four notes");
-        for one in ["a", "b", "c", "d"] {
+        made(&root, "Two notes");
+        for one in ["a", "b"] {
             write(&root, &format!("notes/{one}.md"), "changed");
         }
+
         assert_eq!(
             switch_to(&root, "later").unwrap_err().said(),
-            "There is writing here that is not committed: notes/a.md, notes/b.md, notes/c.md and 1 more. Commit it first, or put it back the way it was."
+            "Commit what you have written here first, or put it back the way it was."
+        );
+        assert_eq!(
+            status(&root).expect("the status").changed,
+            vec!["notes/a.md", "notes/b.md"]
         );
     }
 
