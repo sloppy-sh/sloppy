@@ -264,6 +264,52 @@ note is gone. **Whose thought this is must never be a question the reader has to
 (PRODUCT.md principle 4) — so it is carried by shape, by a written label, and only
 incidentally by anything else.
 
+### A difference between two states
+
+A person comparing two states of their graph has asked a question of it, so it is answered
+where their questions are answered: **the notes the difference names are left as they are
+and everything else dims**, by § Hue's measured share and down to the same 1.6:1 floor. The
+shape of the graph survives the question here for the reason it survives the tag question —
+what changed is only legible against what did not.
+
+**The kinds are drawn in ink, never in colour.** Hue is the tag question's and stays it: a
+reader looking at a difference can still ask which of these notes carry a tag, and a second
+colour table would take that answer away from them. So a difference takes the orbit outside
+the mark, which is the channel a comparison frees — picking and choosing are acts, and there
+is nothing to act on in a state that is not now. Three values, and a mark is in exactly one:
+
+| On the mark                   | Means                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| A closed band, mark inside    | it arrived — the later state has this note and the earlier one does not |
+| A closed band, nothing inside | it went — drawn where the earlier state put it, with no mark to draw    |
+| A broken band                 | it is in both states and is not as it was                               |
+
+A note that went is the only mark on any canvas drawn as a band around nothing, so it cannot
+be read as a hollow pulled mark: there is no mark inside it at all. **Provenance keeps its
+own edge through all three**, as it keeps it through everything else — the band is in the
+orbit, outside the mark, and an edge is still an edge.
+
+**A move is a fact about a line, and is drawn on the lines.** A note that changed parent did
+not itself change; the run line it hung from did. So the line to the parent it left is drawn
+as gone and the line to the parent it joined as arrived, in the same ink the marks are, and
+the note at the end of them takes the broken band only if its writing changed too. Those two
+lines are the one thing on the canvas that says WHERE a note went rather than that it moved.
+
+**What changed about a note is written, not drawn.** One note can have moved, been renamed,
+been given another address and had three sections rewritten between two states, and one mark
+cannot carry a set — the same reason a note carrying several selected tags draws in one hue.
+The mark says a note is not as it was; the panel beside it says how, in words, section by
+section.
+
+**The dim has one strength and never doubles.** Comparing two states with tags selected is
+two questions at once, and a note outside both answers is not dimmer than a note outside
+either: the floor is what keeps the graph on the page, and two shares taken off one mark go
+straight through it.
+
+All of it survives the four axes because it is drawn from `--graph-ink` and spends no hue,
+exactly as the lift is (§ "The mark"): it inverts with the theme, it survives greyscale and
+full zoom-out, and no theme, accent, style or face has to know it exists.
+
 ### The mark — five meanings on one small disc
 
 A note is one small mark, and five separate things have to be readable off it: where the
@@ -280,7 +326,7 @@ whether it is one of the notes open in front of the reader. Each gets its own ch
 | **A ring inside it** — weight, and how broken  | the author's look                                                              |
 | **Its radius**                                 | how much is folded into it, times the size its author asked for                |
 | **The disc's imagery**                         | the author's picture, or a few taking turns, at the share of the disc they set |
-| **The orbit outside it**                       | the mode the canvas is in — picking, or choosing                               |
+| **The orbit outside it**                       | the mode the canvas is in — picking, choosing, or comparing two states         |
 | **The paper under it** — how far it lifts      | this note is open, and whether it is the one being read                        |
 | **Which field it stands in**                   | which graph it is in (§ "Several graphs on one canvas")                        |
 
@@ -307,6 +353,9 @@ Twelve rulings hold that table together:
   **picking outlines, choosing fills.** A hairline ring in the orbit is a note already
   linked and a heavier one is the note being linked from; a solid band in that same orbit
   is a note in the chosen set. The chrome names the mode; the mark says membership.
+  **Comparing two states is a third mode of the same kind**, and § "A difference between two
+  states" is what it draws in that orbit — a state that is not now is not a thing anybody can
+  act on, so nothing is being picked or chosen while a difference is up.
 - **Radius is the one channel two meanings share, and the fold does not hold it alone.**
   A radius says how much thought is folded into a mark, and a look scales that rather than
   replacing it — the two multiply, so a fold is always bigger than the note it collapsed and

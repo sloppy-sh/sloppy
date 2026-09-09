@@ -1846,6 +1846,56 @@ counts the entries out of the zip's own listing without inflating them, so an im
 preview can say whose graph it is, what it is called and how much of it is arriving while
 the file is still a file.
 
+## The vault's history
+
+**The folder is a git repository, and that is the whole of the history.** A folder of
+markdown files is a folder git can keep (§ "A graph on disk"), so the app writes no history
+of its own: opening a folder that is not a repository initialises one, and everything below
+is git doing what git does. The commands run in `src-tauri` over `git2`, because a webview
+cannot reach a disk and a second implementation of git in TypeScript is not a thing anybody
+should own. `History` in `@sloppy/local` declares every one of them and what its answer
+means, and `MemoryHistory` beside it is that surface over `MemoryFiles`, so a page's tests
+never need a repository on a disk.
+
+**The app commits, branches, switches and merges, and nothing else.** There is no remote in
+this — syr federation is pull-only and has nothing to do with git (§ "Federating the graph")
+— so the app never pushes and never fetches. A folder is a person's, so one they have given
+a remote of their own keeps it: `status` says how far ahead the branch is of whatever it
+tracks, and what to do about that is theirs.
+
+**What the history holds is the graph; what this device knows about itself stays out.** The
+repository the app initialises writes a `.gitignore`, and two things are in it. The
+identity's key and the record of which folders hold graphs live in the app's own private
+data rather than in any vault (§ "Local-only mode"), and the ignore names them so a folder
+that also holds one never commits it. The bin is the second, and its reason is the protocol:
+`.sloppy/bin.json` carries every address this graph has spent and will not assign again, and
+that ledger only ever grows — a switch to an older commit that handed those addresses back
+would let a second note be written at one, which AI.md § "The Genealogy Is the Protocol"
+forbids. The bin is the folder's and travels neither in an archive nor through the history.
+
+**Any commit's vault is readable, and reading one moves nothing.** `readAt` answers the
+whole vault as it was at a commit — the same `Vault` a folder and an archive already are, so
+a past state is read by the code that reads the present one and drawn on the canvas and in
+the outline with every act that would change a note gone. Going back to a state is a
+`switch` onto a branch, which somebody decides rather than falls into by looking.
+
+**A difference between two states is computed from the two vaults, note by note and section
+by section.** `vaultDifference` in `@sloppy/vault` reads both sides as notes and answers
+what a person did: which notes arrived, which went, which moved under another parent, which
+were retitled or given another address, and which sections of which notes were added, taken
+out, reordered or written into. It never reads a text diff. Git's hunks are lines of a file,
+and a line of a note's file is not a thing anybody wrote — a section is, and a note is.
+DESIGN.md § "A difference between two states" is how one is drawn.
+
+**A conflict is resolved per note or per section, and a note is never shown with markers in
+it.** A merge that cannot be taken whole answers with the paths it could not settle; the app
+resolves each one — mine or theirs for the note, or section by section in the editor — and
+the commit that follows carries both parents. Conflict markers are git's way of handing a
+person two versions of a line, and a note's file is markdown carrying block openers: markers
+left in one make a note that reads as neither version and a section stack that is neither
+stack. So no note is written to disk with markers in it and no surface puts one in front of
+anybody.
+
 ## Tagging a note
 
 **The tag axis is read inside one graph.** `GET /api/nodes/tags` counts the notes of one
