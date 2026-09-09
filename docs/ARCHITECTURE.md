@@ -95,7 +95,10 @@ Genealogy Is the Protocol" states the rules; this is the mechanism.
 **A note is reached by its ref.** `<did>/<ulid>` is the row's own composite key spelled for
 the wire, and it is what a link, a publication, a pull and every route are keyed on. No
 lookup anywhere resolves a note by address except the one a person types, which is exactly
-the citation case the address exists for.
+the citation case the address exists for. Where an address reaches a note that is at it and
+one that was carried away from it, the note at it is the answer: `addressLeadsTo` reads the
+live row ahead of the alias, and `NodeService.addressed` answers a search out of
+`NodeRepository.many`, which no deleted row is in.
 
 **The genealogy is `parent`, `origin` and `created_at`.** `parent` is the note this one
 sprang out of, absent on a branch and on an independent note; `origin` is the root of its
@@ -133,11 +136,26 @@ the same millisecond still order the same way on every peer.
   too: there is no address for the rule to spring one from, and the
   person numbers it when they number the note above it. `graph` is immutable: a note that changed
   graph would land where its address may already be taken.
-- An address is assigned **once** in a graph and never assigned again. Deleting a note
-  does not free it, and neither does purging the row: `NodeRepository.remove` stamps `deleted_at`, and
-  `purgeExpired` writes a `retired_address` row for every note it finally takes. `childAddresses` and `addressTaken`
-  answer from the notes and those rows together, so `nextChildAddress` steps past a
-  number the graph has spent and a branch numbered by hand at one is refused.
+- An address is assigned **once** in a graph and never assigned again while the note that
+  took it is there. Purging the row does not free it either: `NodeRepository.remove` stamps
+  `deleted_at`, and `purgeExpired` writes a `retired_address` row for every note it finally
+  takes. `childAddresses` and `addressTaken` answer from the notes and those rows together,
+  so `nextChildAddress` steps past a number the graph has spent — a note in the bin
+  included, which is what keeps the rule deterministic.
+- **A note in the bin yields its address to whoever asks for it.** The rule never offers
+  one, but a person writing a number by hand, naming one on a move or writing a new note at
+  one is given it where the only thing holding it is a note they have deleted, or an alias
+  of one. `NodeService.claim` is that check: `addressLeadsTo` says what the address leads to,
+  a note that is there refuses the write as before, and a note in the bin yields.
+  `AddressYield` is what it hands the write — the row the address comes off and the
+  `node_alias` that keeps it leading there — and `writeAddress`, `insert` and `move` each
+  apply it in the transaction that takes the address, so a yield without a taker cannot
+  happen. A binned note that had already given its number up yields nothing, its alias
+  standing: `node_alias_owner_graph_address` holds one alias per address, and the one there
+  leads to the note that left first. `NodeService.keptBehind` is the same rule on the other
+  side, so the note that took the number and then renames, unnumbers or carries itself away
+  leaves nothing behind. The yielded note comes back from the bin with no address and its
+  alias intact, which is what the note page reads to say `was 2b`.
 - **The rule passes over an address a label already holds.** `childAddresses` reads a run
   by the note the run hangs under, and a label is not a place in the tree, so one written
   on a note in another run is not in what the rule is offered. `NodeService.write` and
@@ -156,8 +174,8 @@ the same millisecond still order the same way on every peer.
   on. What is beneath rebases off it through `rebaseAddress`, exactly as
   the rule's own landing does, and everything is written in the one call `carry` writes
   through. A named address the graph has already spent is refused in words rather than
-  passed over: the rule may offer the next number, a person's own label may not be moved for
-  them.
+  passed over, unless a note in the bin is the only thing holding it: the rule may offer the
+  next number, a person's own label may not be moved for them.
 - **A mark is seeded off the genealogy, and never off the address.** `seedField` in
   `@sloppy/graph` is handed a note's ref, parent, `created_at` and depth, and nothing else —
   which is the mechanism behind "a label never moves a mark". A note with nothing above it
@@ -219,11 +237,12 @@ way it holds them to one version.
 
 **A person writes and removes an address wherever one is shown.** `PUT
 /nodes/:did/:ulid/address` takes `{ address }`, and `null` takes the label off. The address
-it leaves becomes a `node_alias` row, so a citation written before the rename still opens
-the note; the address it takes must be one nothing in that graph has ever been assigned,
-except one this note itself has carried, which is its own to take back —
-`NodeRepository.addressLeadsTo` answers whose it is and the refusal names that note.
-`depth`, `parent` and `origin` are untouched: a label is not a place in the tree.
+it leaves becomes a `node_alias` row, so a citation written before the rename still opens the
+note — unless the graph already leads back by that address, which is the earlier note's; the
+address it takes must be one nothing in that graph has ever been assigned,
+except one this note itself has carried, which is its own to take back, and one a note in
+the bin yields — `NodeRepository.addressLeadsTo` answers whose it is, and the refusal names
+that note. `depth`, `parent` and `origin` are untouched: a label is not a place in the tree.
 
 **Moving a note re-addresses it where the run it joins numbers anything, and leaves the
 address it had resolving.** The moved note takes the next address in that run by exactly the
@@ -1117,7 +1136,10 @@ find. A deleted branch is listed by `GET /nodes/deleted` and put back by
 confirmation that promises it, so what a person is told cannot outlive what is kept. The reads that decide a NEW
 address are the ones that deliberately do not filter it:
 `childAddresses` and `addressTaken` count a deleted note among what a graph has assigned,
-because an address is spent whether or not the note comes back.
+because the rule offers no number a deleted note is holding. What a person names by hand is
+the one thing that reaches past that — § "The genealogy and the address" carries the yield —
+so a note put back comes back with whatever address it still holds, and `NodeService.restore`
+answers through `asRead` for the alias that says what it gave up.
 
 **A deleted note leaves its address behind.** `retired_address` is a row per note a purge
 takes, and it is what makes the address protocol survive a deletion: the run a new address
@@ -1125,7 +1147,10 @@ follows is the live notes, the deleted ones and these together, so nothing is ev
 twice inside one graph. It carries the graph and the parent rather than the note, because
 the note is what has gone — the parent is how one index answers both the children of a note
 and the branches of a graph, `parent = NONE` standing for a branch as it does on `node`.
-Nothing reads it but address assignment, and the per-DID purge takes it with the graph.
+Nothing reads it but address assignment, and the per-DID purge takes it with the graph. What
+a purge writes none for is a number another note is at, there or in the bin: `addressesLedBy`
+reads the rows the sweep is leaving behind, and a note waiting to be put back has not given
+its number up.
 
 **A moved note leaves its old address resolving.** `node_alias` is a row per address a move
 leaves behind, and it carries the note `retired_address` cannot, because the note is still

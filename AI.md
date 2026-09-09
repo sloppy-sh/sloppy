@@ -87,12 +87,24 @@ to, all of them about what a person can rely on rather than about what the code 
 - **A person edits and removes an address wherever one is shown.** That is the whole of
   what makes it a label. Renumbering the notes AROUND one is still not a thing that
   happens: a person changes their own note's label and nobody else's.
-- **Every address a note has carried keeps leading to it, and belongs to it.** An address
-  it was moved from, or renamed away from, resolves to the same note for as long as that
-  note exists, and is never given to a second one — a citation somebody wrote down still
-  lands where they meant. Purging a note takes its aliases with it and retires every one of
-  those addresses rather than releasing it. Deleting a note does not hand its address back
-  either: the row keeps it while the note can still be put back.
+- **Every address a note that is there has carried keeps leading to it, and belongs to it.**
+  An address it was moved from, or renamed away from, resolves to that note for as long as
+  it is there, and is never given to a second one — a citation somebody wrote down still
+  lands where they meant. Where an address reaches both a note that is at it and a note that
+  was, the note at it is the answer, and where two notes have left it, the first to leave it
+  is: a note that takes a number another note still leads back by, and lets it go again,
+  leaves nothing behind. Purging a note takes its aliases with it and retires every one of
+  those addresses rather than releasing it — except a number another note is at, there or in
+  the bin, which is that note's and stays its own to take back.
+- **A note in the bin holds its address only until a person asks for it.** Deleting a note
+  frees nothing on its own: nothing is renumbered, and the rule never offers a number a
+  binned note is holding. But a person who writes that number on another note, names it on a
+  move, or writes a new note at it is given it. The binned note keeps it as an alias, so a
+  citation still leads there while the note at the address is what it resolves to, and it
+  comes back from the bin with no number and the one it gave up shown beside it, for its
+  author to renumber. Where that number already led back to a note that left it earlier,
+  that note keeps it and the one giving it up comes back with nothing beside it. A note
+  that is there never yields this way.
 - **A move re-addresses a note that has an address and leaves one that has none alone.** A
   moved note takes the next address in the run it joins, by exactly the rule creation uses,
   unless the person names one — an address named on a move is held to every rule an address

@@ -223,14 +223,28 @@ function unnumbered(
 function notebook(
   notes: readonly (Node & { ref: OwnedRef })[],
   landing: Promise<void> = Promise.resolve(),
+  /** What the graph has spent on notes that are not among `notes`: addresses
+   *  they were carried away from, and ones a purge retired. */
+  spentAlready: {
+    aliases?: readonly NodeAlias[];
+    retired?: readonly Address[];
+  } = {},
 ) {
-  const asked: { landed: Node[]; aliases: NodeAlias[] } = {
+  const asked: {
+    landed: Node[];
+    aliases: NodeAlias[];
+    /** What each note in the bin gave up, and the alias it kept where it wrote
+     *  one. */
+    yielded: { from: OwnedRef; alias?: Address }[];
+  } = {
     landed: [],
     aliases: [],
+    yielded: [],
   };
   const held: Node[] = notes.map((one) => ({ ...one }));
   /** Every address a note has been carried or renamed away from. */
-  const left: NodeAlias[] = [];
+  const left: NodeAlias[] = [...(spentAlready.aliases ?? [])];
+  const retired = new Set<Address>(spentAlready.retired ?? []);
   const there = () => held.filter((one) => one.deleted_at === undefined);
   /** What the unique index on the store's notes answers, and refuses a write
    *  against. The one over the addresses they were carried away from is its
@@ -248,6 +262,32 @@ function notebook(
       return false;
     };
     return from.filter(springs);
+  };
+  /** What `node_alias_owner_graph_address` allows: one alias per address, and
+   *  a write of a second is what the store refuses. */
+  const leadBack = (alias: NodeAlias) => {
+    if (left.some((one) => one.address === alias.address)) {
+      throw new Error(`${alias.address} is already led back by`);
+    }
+    left.push(alias);
+  };
+  /** A note in the bin handing its address over: the row loses it and the alias
+   *  the service wrote keeps it leading there. */
+  const yieldUp = (
+    giving: readonly { from: Node; alias?: NodeAlias }[] = [],
+  ) => {
+    for (const one of giving) {
+      asked.yielded.push({
+        from: ownedRefFrom(one.from.id),
+        ...(one.alias ? { alias: one.alias.address } : {}),
+      });
+      if (one.alias) leadBack(one.alias);
+      const at = held.findIndex(
+        (was) => ownedRefFrom(was.id) === ownedRefFrom(one.from.id),
+      );
+      const { address: _gone, ...rest } = held[at];
+      held[at] = rest as Node;
+    }
   };
   const repository = {
     find: (_did: string, ref: OwnedRef) =>
@@ -271,8 +311,14 @@ function notebook(
           (one) => ownedRefFrom(one.id) === ref && one.deleted_at !== undefined,
         ) ?? null,
       ),
-    move: async (_did: string, landed: Node[], aliases: NodeAlias[]) => {
+    move: async (
+      _did: string,
+      landed: Node[],
+      aliases: NodeAlias[],
+      giving: { from: Node; alias?: NodeAlias }[] = [],
+    ) => {
       await landing;
+      yieldUp(giving);
       for (const one of landed) {
         if (one.address === undefined) continue;
         if (spent(one.address, ownedRefFrom(one.id))) {
@@ -281,7 +327,6 @@ function notebook(
       }
       asked.landed = [...landed];
       asked.aliases = [...aliases];
-      left.push(...aliases);
       for (const one of landed) {
         for (let at = left.length - 1; at >= 0; at--) {
           if (
@@ -292,6 +337,7 @@ function notebook(
           }
         }
       }
+      for (const one of aliases) leadBack(one);
       for (const one of landed) {
         const at = held.findIndex(
           (was) => ownedRefFrom(was.id) === ownedRefFrom(one.id),
@@ -307,6 +353,7 @@ function notebook(
           note: ownedRefFrom(at.id),
         });
       }
+      if (retired.has(address)) return Promise.resolve({ hold: "deleted" });
       const alias = left.find((one) => one.address === address);
       return Promise.resolve(
         alias ? { hold: "moved", note: alias.note } : null,
@@ -317,11 +364,18 @@ function notebook(
       node: Node,
       address: Address | undefined,
       leaving: NodeAlias | null,
+      giving: { from: Node; alias?: NodeAlias }[] = [],
     ) => {
+      yieldUp(giving);
       asked.aliases = leaving ? [leaving] : [];
-      if (leaving) left.push(leaving);
+      if (leaving) leadBack(leaving);
       for (let at = left.length - 1; at >= 0; at--) {
-        if (left[at].address === address) left.splice(at, 1);
+        if (
+          left[at].address === address &&
+          left[at].note === ownedRefFrom(node.id)
+        ) {
+          left.splice(at, 1);
+        }
       }
       const at = held.findIndex(
         (one) => ownedRefFrom(one.id) === ownedRefFrom(node.id),
@@ -330,13 +384,26 @@ function notebook(
       held[at] = { ...rest, ...(address === undefined ? {} : { address }) };
       return Promise.resolve(held[at]);
     },
-    insert: (one: Node) => {
+    insert: (one: Node, giving: { from: Node; alias?: NodeAlias }[] = []) => {
+      yieldUp(giving);
       if (one.address !== undefined && spent(one.address)) {
         return Promise.reject(new Error(`${one.address} is already indexed`));
       }
       held.push(one);
       return Promise.resolve(one);
     },
+    addressesLedBack: (
+      _did: string,
+      _graph: OwnedRef,
+      addresses: readonly Address[],
+    ) =>
+      Promise.resolve(
+        new Set(
+          addresses.filter((address) =>
+            left.some((one) => one.address === address),
+          ),
+        ),
+      ),
     addressTaken: (_did: string, _graph: OwnedRef, address: Address) => {
       const at = held.find((one) => one.address === address);
       if (at) {
@@ -344,6 +411,7 @@ function notebook(
           at.deleted_at === undefined ? "live" : "deleted",
         );
       }
+      if (retired.has(address)) return Promise.resolve("deleted");
       return Promise.resolve(
         left.some((one) => one.address === address) ? "moved" : null,
       );
@@ -358,7 +426,8 @@ function notebook(
           addresses.filter(
             (address) =>
               held.some((one) => one.address === address) ||
-              left.some((one) => one.address === address),
+              left.some((one) => one.address === address) ||
+              retired.has(address),
           ),
         ),
       ),
@@ -988,6 +1057,193 @@ describe("the label a person writes on a note", () => {
 
     await expect(service.setAddress(DID, note.ref, "2")).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+});
+
+/** An address one note was carried away from, as the store holds it. */
+function carriedAwayFrom(address: string, note: OwnedRef): NodeAlias {
+  return {
+    id: createOwnedRecordId("node_alias", DID),
+    created_by: DID,
+    graph: HOME,
+    address,
+    note,
+    created_at: AT,
+    updated_at: AT,
+  } as NodeAlias;
+}
+
+// AI.md § "The Genealogy Is the Protocol": a note in the bin holds its address
+// only until a person asks for it.
+describe("a number a note in the bin is holding", () => {
+  it("goes to the note a person writes it on, and stays leading to the one in the bin", async () => {
+    const binned = live("2b", { title: "Spores", deleted_at: AT });
+    const note = unnumbered("Mushrooms");
+    const { asked, service } = notebook([binned, note]);
+
+    const written = await service.setAddress(DID, note.ref, "2b");
+
+    expect(written.address).toBe("2b");
+    expect(asked.yielded).toEqual([{ from: binned.ref, alias: "2b" }]);
+  });
+
+  it("goes to a note written at it", async () => {
+    const root = live("2");
+    const binned = live("2c", {
+      origin: root.ref,
+      parent: root.ref,
+      deleted_at: AT,
+    });
+    const { asked, service } = notebook([root, binned]);
+
+    const written = await service.create(DID, {
+      from: { relation: "under", note: root.ref },
+      address: "2c",
+      title: "Osmosis",
+      tags: [],
+    });
+
+    expect(written.address).toBe("2c");
+    expect(asked.yielded).toEqual([{ from: binned.ref, alias: "2c" }]);
+  });
+
+  it("goes to a branch written at it", async () => {
+    const binned = live("9", { deleted_at: AT });
+    const { asked, service } = notebook([binned]);
+
+    const written = await service.create(DID, {
+      from: { relation: "root", address: "9" },
+      title: "Lichen",
+      tags: [],
+    });
+
+    expect(written.address).toBe("9");
+    expect(asked.yielded).toEqual([{ from: binned.ref, alias: "9" }]);
+  });
+
+  it("goes to a note carried onto it", async () => {
+    const root = live("2");
+    const binned = live("2a", {
+      origin: root.ref,
+      parent: root.ref,
+      deleted_at: AT,
+    });
+    const other = live("3");
+    const moving = live("3a", { origin: other.ref, parent: other.ref });
+    const { asked, service } = notebook([root, binned, other, moving]);
+
+    const carried = await service.move(
+      DID,
+      moving.ref,
+      { relation: "under", note: root.ref },
+      "2a",
+    );
+
+    expect(carried[0].address).toBe("2a");
+    expect(asked.yielded).toEqual([{ from: binned.ref, alias: "2a" }]);
+  });
+
+  it("is given up once: a second asking leaves the alias where it is", async () => {
+    const first = live("1a", { deleted_at: AT });
+    const second = live("2b", { deleted_at: AT });
+    const note = unnumbered("Mushrooms");
+    const { asked, service } = notebook(
+      [first, second, note],
+      Promise.resolve(),
+      { aliases: [carriedAwayFrom("2b", first.ref)] },
+    );
+
+    const written = await service.setAddress(DID, note.ref, "2b");
+
+    expect(written.address).toBe("2b");
+    expect(asked.yielded).toEqual([{ from: second.ref }]);
+  });
+
+  it("goes on leading to the note in the bin when the one that took it lets it go", async () => {
+    const binned = live("2b", { title: "Spores", deleted_at: AT });
+    const note = unnumbered("Mushrooms");
+    const { asked, service } = notebook([binned, note]);
+    await service.setAddress(DID, note.ref, "2b");
+
+    const off = await service.setAddress(DID, note.ref, null);
+
+    expect(off.address).toBeUndefined();
+    expect(asked.aliases).toEqual([]);
+  });
+
+  it("goes on leading to it when the note that took it is carried elsewhere", async () => {
+    const root = live("1");
+    const binned = live("1a", {
+      origin: root.ref,
+      parent: root.ref,
+      deleted_at: AT,
+    });
+    const other = live("2");
+    const note = unnumbered("Mushrooms", {
+      origin: other.ref,
+      parent: other.ref,
+    });
+    const { asked, service } = notebook([root, binned, other, note]);
+    await service.setAddress(DID, note.ref, "1a");
+
+    const carried = await service.move(DID, note.ref, {
+      relation: "under",
+      note: root.ref,
+    });
+
+    expect(carried[0].address).toBe("1b");
+    expect(asked.aliases).toEqual([]);
+  });
+
+  it("is free to write where the note in the bin gave it up already", async () => {
+    const binned = live("1a", { deleted_at: AT });
+    const note = unnumbered("Mushrooms");
+    const { asked, service } = notebook([binned, note], Promise.resolve(), {
+      aliases: [carriedAwayFrom("2b", binned.ref)],
+    });
+
+    const written = await service.setAddress(DID, note.ref, "2b");
+
+    expect(written.address).toBe("2b");
+    expect(asked.yielded).toEqual([]);
+  });
+
+  it("is refused where the note holding it is there", async () => {
+    const there = live("2c", { title: "Mycelium" });
+    const note = unnumbered("Mushrooms");
+    const { service } = notebook([there, note]);
+
+    await expect(service.setAddress(DID, note.ref, "2c")).rejects.toThrow(
+      /2c already leads to “Mycelium”\. Pick another number\./,
+    );
+  });
+
+  it("is refused where a note that is there was carried away from it", async () => {
+    const root = live("1");
+    const moving = live("1a", {
+      title: "Hyphae",
+      origin: root.ref,
+      parent: root.ref,
+    });
+    const other = live("2");
+    const note = unnumbered("Mushrooms");
+    const { service } = notebook([root, moving, other, note]);
+    await service.move(DID, moving.ref, { relation: "under", note: other.ref });
+
+    await expect(service.setAddress(DID, note.ref, "1a")).rejects.toThrow(
+      /1a still leads to “Hyphae”/,
+    );
+  });
+
+  it("is refused where the note that spent it has been purged", async () => {
+    const note = unnumbered("Mushrooms");
+    const { service } = notebook([note], Promise.resolve(), {
+      retired: ["2b" as Address],
+    });
+
+    await expect(service.setAddress(DID, note.ref, "2b")).rejects.toThrow(
+      /You have used 2b before\. Pick another number\./,
     );
   });
 });
