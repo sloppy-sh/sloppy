@@ -178,6 +178,20 @@ describe('a stack of sections opened as one document', () => {
 		expect(planSave(opened, rows(of))).toEqual([]);
 	});
 
+	it('keeps a link as the address somebody wrote, and nothing the extension dressed it in', () => {
+		const of = open([block({ content: section(...text('see this page')) })]);
+		of.commands.setTextSelection({ from: 6, to: 15 });
+		of.commands.setLink({ href: 'https://example.com/' });
+		expect(rows(of)[0].content.content[0].content).toEqual([
+			{ type: 'text', text: 'see ' },
+			{
+				type: 'text',
+				marks: [{ type: 'link', attrs: { href: 'https://example.com/' } }],
+				text: 'this page'
+			}
+		]);
+	});
+
 	it('keeps a drawing as its strokes, inside the section it was made in', () => {
 		const of = open([block({ content: section(...text('a thought'), INK) })]);
 		const [row] = rows(of);

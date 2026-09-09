@@ -66,6 +66,7 @@ describe("a vault as one file", () => {
         [escaping]: encodeText("no"),
       });
       expect(() => unpack(held)).toThrow(VaultFormatError);
+      expect(() => manifest(held)).toThrow(VaultFormatError);
     }
   });
 

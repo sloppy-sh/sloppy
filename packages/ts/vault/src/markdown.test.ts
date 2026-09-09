@@ -121,6 +121,51 @@ describe("what markdown carries", () => {
     expect(sidecars.emoji.get("smile")).toEqual({ char: "🙂" });
   });
 
+  it("writes a link as the address somebody wrote", () => {
+    const link = (attrs: Record<string, unknown>): BlockDocument =>
+      doc({
+        type: "paragraph",
+        content: [
+          { type: "text", text: "see " },
+          { type: "text", text: "this page", marks: [{ type: "link", attrs }] },
+        ],
+      });
+    const href = "https://example.com/";
+    expect(written(link({ href })).text).toBe(
+      "see [this page](https://example.com/)",
+    );
+    expect(
+      written(
+        link({
+          href,
+          target: "_blank",
+          rel: "noopener noreferrer nofollow",
+          class: null,
+          title: null,
+        }),
+      ).text,
+    ).toBe("see [this page](https://example.com/)");
+    expect(readBack(link({ href }))).toEqual(link({ href }));
+  });
+
+  it("writes a link to a note as itself, so a citation stays a citation", () => {
+    const ref =
+      "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01J0000000000000000000000A";
+    const held = doc({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: "That note",
+          marks: [{ type: "link", attrs: { href: `sloppy:${ref}` } }],
+        },
+      ],
+    });
+    const { text } = written(held);
+    expect(text).toContain("<!-- sloppy:span ");
+    expect(readBack(held)).toEqual(held);
+  });
+
   it("writes a picture into media and its size beside it", () => {
     const { text, sidecars } = written(
       doc({

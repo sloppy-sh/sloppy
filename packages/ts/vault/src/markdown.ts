@@ -72,6 +72,10 @@ const INK_WITHOUT_STROKES = { strokes: [], width: 600, height: 200 };
  */
 const MARK_ORDER = ["link", "bold", "italic", "strike", "code"];
 
+/** What the link extension decided rather than the person who wrote the link;
+ *  a vault carries the address alone — docs/ARCHITECTURE.md § "A graph on disk". */
+const RENDERED_LINK = ["target", "rel", "class", "title"];
+
 const BLOCK_FALLBACK = "sloppy:node";
 const INLINE_FALLBACK = "sloppy:span";
 const EMPTY_PARAGRAPH = "<!-- -->";
@@ -148,8 +152,6 @@ function unescapeText(value: string): string {
 function escapeLineStart(line: string): string {
   return /^([#>\-+=!\s]|\d+\.)/.test(line) ? `\\${line}` : line;
 }
-
-// ---------------------------------------------------------------------------
 
 /**
  * A section's document as markdown, with everything markdown cannot carry
@@ -401,8 +403,6 @@ function writeInk(held: DocumentNode, sidecars: Sidecars): string | null {
   return `![${escapeText(alt)}](${inkImagePath(stem)})`;
 }
 
-// ---------------------------------------------------------------------------
-
 function writeInline(
   nodes: readonly DocumentNode[],
   sidecars: Sidecars,
@@ -471,24 +471,41 @@ function writeEmoji(
   return `${wrap}${name}${wrap}`;
 }
 
+/**
+ * Where a link goes, or null where the run has to be written as its JSON: an
+ * address markdown cannot hold, and one that would read back as a citation of a
+ * note rather than as a link to it.
+ */
+function linkHref(mark: DocumentMark): string | null {
+  const attrs = attrsOf(mark);
+  if (!only(attrs, [...RENDERED_LINK, "href"])) return null;
+  const href = attrs.href;
+  if (typeof href !== "string" || !SAFE_HREF.test(href)) return null;
+  if (
+    href.startsWith(REFERENCE_SCHEME) &&
+    OwnedRefSchema.safeParse(href.slice(REFERENCE_SCHEME.length)).success
+  ) {
+    return null;
+  }
+  return href;
+}
+
 function writeRun(held: DocumentNode): string | null {
   const value = held.text ?? "";
   if (value === "" || value.includes("\n")) return null;
   const marks = held.marks ?? [];
+  let href: string | null = null;
   for (const mark of marks) {
     if (!MARK_ORDER.includes(mark.type)) return null;
-    const attrs = attrsOf(mark);
-    if (mark.type !== "link") {
-      if (Object.keys(attrs).length > 0) return null;
+    if (mark.type === "link") {
+      href = linkHref(mark);
+      if (href === null) return null;
       continue;
     }
-    if (!only(attrs, ["href"])) return null;
-    if (typeof attrs.href !== "string" || !SAFE_HREF.test(attrs.href)) {
-      return null;
-    }
+    if (Object.keys(attrsOf(mark)).length > 0) return null;
   }
-  const carries = (type: string): DocumentMark | undefined =>
-    marks.find((mark) => mark.type === type);
+  const carries = (type: string): boolean =>
+    marks.some((mark) => mark.type === type);
   let out: string;
   if (carries("code")) {
     const span = writeCodeSpan(value);
@@ -500,8 +517,7 @@ function writeRun(held: DocumentNode): string | null {
   if (carries("strike")) out = `~~${out}~~`;
   if (carries("italic")) out = `_${out}_`;
   if (carries("bold")) out = `**${out}**`;
-  const link = carries("link");
-  if (link) out = `[${out}](${(link.attrs as { href: string }).href})`;
+  if (href !== null) out = `[${out}](${href})`;
   return out;
 }
 
@@ -521,8 +537,6 @@ function writeCodeSpan(value: string): string | null {
       : "";
   return `${bar}${pad}${value}${pad}${bar}`;
 }
-
-// ---------------------------------------------------------------------------
 
 /**
  * A section's markdown as the document it was written from. `sidecars` carries
@@ -803,8 +817,6 @@ function readParagraph(
   }
   return { node: node("paragraph", {}, content), next: cursor };
 }
-
-// ---------------------------------------------------------------------------
 
 /** Where a delimiter closes, stepping over escapes and code spans. */
 function closingAt(

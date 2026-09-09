@@ -13,11 +13,20 @@ const words = fc
 
 const MARKS = ["link", "bold", "italic", "strike", "code"] as const;
 
+const REF =
+  "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01J0000000000000000000000A";
+
 const marks: fc.Arbitrary<DocumentMark[]> = fc
   .subarray([...MARKS])
   .chain((chosen) =>
     fc
-      .constantFrom("https://a.example/x", "sloppy:not-a-ref")
+      .constantFrom(
+        "https://a.example/x",
+        "sloppy:not-a-ref",
+        // A link somebody wrote to a note, which a citation of that note reads
+        // exactly like.
+        `sloppy:${REF}`,
+      )
       .map((href) =>
         chosen.map((type) =>
           type === "link" ? { type, attrs: { href } } : { type },
@@ -32,9 +41,6 @@ const run: fc.Arbitrary<DocumentNode> = fc
       ? { type: "text", text, marks: held }
       : { type: "text", text },
   );
-
-const REF =
-  "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01J0000000000000000000000A";
 
 const atoms: fc.Arbitrary<DocumentNode> = fc.oneof(
   fc.constant({ type: "hardBreak" }),

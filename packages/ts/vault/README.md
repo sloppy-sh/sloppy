@@ -52,7 +52,15 @@ where it disagrees with the first, and only this call can see both.
 ## Reading one in
 
 ```ts
-import { manifest, unpack, rekey, noteUlids, vaultToNote } from '@sloppy/vault';
+import {
+  decodeText,
+  manifest,
+  noteUlids,
+  notePath,
+  rekey,
+  unpack,
+  vaultToNote
+} from '@sloppy/vault';
 
 const says = manifest(archive); // whose it is, what it is called, how much of it
 const arriving = rekey(unpack(archive), says.owner, viewer.did);

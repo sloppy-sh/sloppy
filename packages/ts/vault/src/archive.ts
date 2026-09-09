@@ -63,7 +63,9 @@ export interface ArchiveManifest {
 /**
  * What an archive holds, read out of its listing: only `graph.json` is
  * inflated, so this stays cheap on a graph of any size. Throws where the file
- * is not an archive this build can read.
+ * is not an archive this build can read, and where an entry names a file
+ * outside the vault — a preview answers for the same archive {@link unpack}
+ * would take.
  */
 export function manifest(bytes: Uint8Array): ArchiveManifest {
   const reader = new Unzip();
@@ -73,6 +75,10 @@ export function manifest(bytes: Uint8Array): ArchiveManifest {
   const graph: Uint8Array[] = [];
   let trouble: Error | null = null;
   reader.onfile = (file) => {
+    if (!file.name.endsWith("/") && !insideVault(file.name)) {
+      trouble ??= new VaultFormatError("This file isn't a Sloppy graph.");
+      return;
+    }
     if (noteAt(file.name)) notes++;
     else if (isMedia(file.name)) media++;
     if (file.name !== GRAPH_FILE) return;

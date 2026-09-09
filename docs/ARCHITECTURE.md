@@ -1708,18 +1708,21 @@ has moved a section rather than made two.
 **What a vault carries is what a person wrote; what a renderer decided is not carried.** A
 note's `depth` and `origin` fall out of the parent chain, its `references` out of its own
 writing, and an emoji's picture out of the catalog in `.sloppy/emoji/` — so none of
-the four is written down twice. A link's `target` and `rel`, a picture's upload progress: the same. An
-element kind this build has no renderer for is carried whole, as an HTML comment holding
-its JSON, so a vault written by a newer Sloppy loses nothing on the way through an older
-one.
+the four is written down twice. A picture's upload progress is the same. A link is
+`[label](href)` and nothing else: where it opens and what it is dressed in — `target`,
+`rel`, `class`, `title` — are the link extension's defaults rather than anybody's writing,
+so the editor stores none of them and a vault carries none of them. An element kind this
+build has no renderer for is carried whole, as an HTML comment holding its JSON, so a vault
+written by a newer Sloppy loses nothing on the way through an older one.
 
 **The conversion is lossless, and that is a property test rather than a promise.**
 `toMarkdown` and `fromMarkdown` are inverse over the documents the editor writes:
 `document -> markdown + sidecars -> document` is identity, and two documents that differ
 never write the same files. An element whose markdown would read back as something else —
 a code block in a diagram's language, a formula holding a `$`, a fence whose source holds a
-line that would open the next section, one upload the note draws at two sizes — is written
-as its JSON instead of guessed at. That last one is why a graph is written note by note
+line that would open the next section, a link whose address is a note's ref, which a
+citation of that note is written exactly like, one upload the note draws at two sizes — is
+written as its JSON instead of guessed at. That last one is why a graph is written note by note
 against the picture sizes and the emoji the vault already holds: the writer has to see the
 first use to know the second disagrees with it.
 

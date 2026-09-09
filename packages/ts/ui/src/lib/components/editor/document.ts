@@ -6,6 +6,7 @@
 import {
 	type BlockDocument,
 	type BlockView,
+	type DocumentMark,
 	type DocumentNode,
 	type OwnedRef,
 	type Timestamp,
@@ -23,6 +24,14 @@ import { nextUid, SECTION_NODE } from './section-node.js';
 const STORED_AS: Partial<Record<string, (node: DocumentNode) => DocumentNode | null>> = {
 	[PICTURE_NODE]: storedPicture
 };
+
+/** A link is stored as the address somebody wrote; where it opens and what it is
+ *  dressed in are the link extension's defaults, and nobody's writing. */
+function storedMark(mark: DocumentMark): DocumentMark {
+	if (mark.type !== 'link') return mark;
+	const href = mark.attrs?.href;
+	return typeof href === 'string' && href ? { type: mark.type, attrs: { href } } : mark;
+}
 
 /**
  * Whether an element's own module can read its `attrs`. `BlockDocumentSchema`
@@ -126,7 +135,8 @@ function keepAll(nodes: readonly DocumentNode[]): DocumentNode[] {
 			: node.content
 				? { ...node, content: keepAll(node.content) }
 				: node;
-		if (held) kept.push(held);
+		if (!held) continue;
+		kept.push(node.marks ? { ...held, marks: node.marks.map(storedMark) } : held);
 	}
 	return kept;
 }
