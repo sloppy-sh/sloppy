@@ -20,7 +20,11 @@
 	let opened = $state<boolean | undefined>(LOCAL_MODE ? undefined : true);
 
 	onMount(() => {
-		if (LOCAL_MODE) void openRememberedVault().then((folder) => (opened = Boolean(folder)));
+		if (LOCAL_MODE)
+			void openRememberedVault().then(
+				(folder) => (opened = Boolean(folder)),
+				() => (opened = false)
+			);
 		void forwardDeepLinks();
 		// Publishes the real system-bar insets — DESIGN.md § "The four inset vars".
 		if (IS_MOBILE) void import('@saurl/tauri-plugin-safe-area-insets-css-api');

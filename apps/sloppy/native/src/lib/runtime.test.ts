@@ -20,6 +20,7 @@ vi.mock('./deep-link', () => ({ SIGN_IN_CALLBACK: 'sloppy://auth/callback' }));
  *  absolute path, and a folder somebody would pick. */
 const held = new Map<string, string>();
 let picks: string | null = '/Users/me/garden';
+let picking: 'answers' | 'fails' = 'answers';
 
 vi.mock('@tauri-apps/api/core', () => ({
 	convertFileSrc: (path: string) => `asset://localhost/${path}`,
@@ -29,6 +30,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'app_data_path':
 				return '/data';
 			case 'pick_folder':
+				if (picking === 'fails') throw new Error('the folder could not be opened');
 				return picks;
 			case 'files_read':
 				return held.get(at) ?? null;
@@ -43,9 +45,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 	}
 }));
 
-/** A launch of the app: fresh module state, `initNativeRuntime` called the way
- *  the root layout calls it. */
-async function launch(): Promise<typeof import('./runtime.js')> {
+/** A launch of the app on `platform`, as the Tauri CLI spells it: fresh module
+ *  state, `initNativeRuntime` called the way the root layout calls it. */
+async function launch(platform = 'desktop'): Promise<typeof import('./runtime.js')> {
+	vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
+	vi.stubEnv('TAURI_ENV_PLATFORM', platform);
 	vi.resetModules();
 	const shell = await import('./runtime.js');
 	shell.initNativeRuntime();
@@ -61,6 +65,7 @@ describe('the native shell in local mode', () => {
 	beforeEach(() => {
 		held.clear();
 		picks = '/Users/me/garden';
+		picking = 'answers';
 		resetApi.mockClear();
 	});
 
@@ -110,5 +115,21 @@ describe('the native shell in local mode', () => {
 		await launch();
 
 		expect(registered.vault?.asks).toBe(true);
+	});
+
+	it('opens the one folder a phone keeps its graphs in without asking', async () => {
+		const shell = await launch('ios');
+
+		expect(registered.vault?.asks).toBe(false);
+		expect(await shell.openRememberedVault()).toBe('/Users/me/garden');
+		expect(servedFrom()).toBe('/Users/me/garden');
+	});
+
+	it('offers a folder on a phone whose own one could not be opened', async () => {
+		picking = 'fails';
+		const shell = await launch('ios');
+
+		expect(await shell.openRememberedVault()).toBeUndefined();
+		expect(registered.vault?.folder()).toBeUndefined();
 	});
 });

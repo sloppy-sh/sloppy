@@ -15,6 +15,9 @@ export default defineConfig({
 	// § "The two files that carry the platform seam".
 	envPrefix: ['VITE_', 'PUBLIC_', 'TAURI_ENV_'],
 	build: { target: 'esnext' },
+	// A component mounted in a test is browser code, and the server build of
+	// svelte has no `mount`.
+	resolve: process.env.VITEST ? { conditions: ['browser'] } : undefined,
 	server: {
 		port: 8040,
 		strictPort: true,

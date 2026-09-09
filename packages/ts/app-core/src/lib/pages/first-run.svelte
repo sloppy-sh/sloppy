@@ -41,12 +41,14 @@
 					Your notes are files in a folder you choose. Pick an empty one, or make a new one along
 					the way.
 				{:else}
-					Your notes are files kept on this device.
+					Your notes are kept on this device.
 				{/if}
 			</p>
 			<p class="text-sm text-muted-foreground">
-				Nothing here leaves the device, and there is nobody to sign in to. The folder is yours —
-				move it or back it up like any other.
+				Nothing here leaves the device, and there is nobody to sign in to.
+				{#if vault?.asks}
+					The folder is yours — move it or back it up like any other.
+				{/if}
 			</p>
 
 			{#if problem}

@@ -31,7 +31,7 @@ pub fn run() {
         .invoke_handler(vault::commands())
         .setup(|app| {
             let folders = vault::Folders::new(app.path().app_data_dir()?)?;
-            for folder in folders.reachable() {
+            for folder in folders.picked() {
                 vault::serve(app.handle(), &folder);
             }
             app.manage(folders);

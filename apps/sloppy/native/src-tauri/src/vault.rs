@@ -18,8 +18,8 @@ use base64::Engine as _;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime, State};
 
-/// What a person is told, and the whole of it. Which check refused is this
-/// file's business.
+/// What a person is told, and the whole of it. Which check refused, and what
+/// the platform called it, is this file's business.
 #[derive(Debug)]
 pub enum FileError {
     NoFolder,
@@ -29,14 +29,21 @@ pub enum FileError {
 
 impl From<io::Error> for FileError {
     fn from(error: io::Error) -> Self {
-        FileError::Failed(error.to_string())
+        FileError::Failed(
+            match error.kind() {
+                io::ErrorKind::NotFound => "That folder is not there any more.",
+                io::ErrorKind::PermissionDenied => "Sloppy cannot write in that folder.",
+                _ => "That did not work. Try again, or choose another folder.",
+            }
+            .into(),
+        )
     }
 }
 
 impl Serialize for FileError {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(match self {
-            FileError::NoFolder => "This app has not been given that folder.",
+            FileError::NoFolder => "That folder is not open. Choose it to open the graph in it.",
             FileError::Outside => "That is not a file inside the folder.",
             FileError::Failed(why) => why,
         })
@@ -109,11 +116,8 @@ fn own_only(_path: &Path, _mode: u32) -> io::Result<()> {
 }
 
 /// The folders this app may reach: its own private data, and every folder a
-/// person has picked. Picking is the only way in, and it is written down so a
-/// graph opened yesterday opens today without anybody being asked again.
-///
-/// The methods below are the command bodies; the `#[tauri::command]` functions
-/// under them carry base64 across the bridge and nothing else.
+/// person has picked. A pick is written down, so a graph opened yesterday opens
+/// today without anybody being asked again.
 pub struct Folders {
     data: PathBuf,
     record: PathBuf,
@@ -141,12 +145,11 @@ impl Folders {
         self.data.to_string_lossy().into_owned()
     }
 
-    /// Every folder this app may reach, for handing to the asset protocol so a
-    /// picture in one loads on the page.
-    pub fn reachable(&self) -> Vec<PathBuf> {
-        let mut all = vec![self.data.clone()];
-        all.extend(self.picked.lock().unwrap().iter().cloned());
-        all
+    /// Every folder a person has picked, for handing to the asset protocol so a
+    /// picture in one loads on the page. The private data is not among them: it
+    /// holds the identity's key and nothing any page draws.
+    pub fn picked(&self) -> Vec<PathBuf> {
+        self.picked.lock().unwrap().iter().cloned().collect()
     }
 
     pub fn pick(&self, folder: PathBuf) -> io::Result<()> {
@@ -175,8 +178,8 @@ impl Folders {
                 .any(|folder| root.starts_with(folder))
     }
 
-    /// Where the command's `root` and `path` land, refusing a folder nobody
-    /// picked before it says anything about the path.
+    /// Where the command's `root` and `path` land, the root checked before
+    /// anything is said about the path.
     fn resolve(&self, root: &str, path: &str, allow_root: bool) -> Result<PathBuf, FileError> {
         let root = PathBuf::from(root);
         if !self.allows(&root) {
@@ -341,8 +344,7 @@ pub fn app_data_path(folders: State<'_, Folders>) -> String {
     folders.data_path()
 }
 
-/// The whole of what this shell answers for `Files`. Anything not on this list
-/// is not a thing the webview can ask for, whatever it spells.
+/// The whole of what this shell answers for `Files`.
 pub fn commands<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         files_read,
@@ -368,6 +370,9 @@ pub async fn pick_folder<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>
     let Some(folder) = ask(&app).await? else {
         return Ok(None);
     };
+    // The asset protocol matches a URL against the scope by spelling, so what is
+    // recorded, what is granted and what the page is handed is one string.
+    let folder = settled(&folder);
     app.state::<Folders>().pick(folder.clone())?;
     serve(&app, &folder);
     Ok(Some(folder.to_string_lossy().into_owned()))
@@ -651,6 +656,19 @@ mod tests {
 
         let after = folders(&data);
         assert!(after.read(&vault.to_string_lossy(), "graph.json").is_ok());
-        assert!(after.reachable().contains(&settled(&vault)));
+        assert!(after.picked().contains(&settled(&vault)));
+    }
+
+    /// The page draws pictures out of a picked folder; the identity's key is in
+    /// the private data, and no URL reaches it.
+    #[test]
+    fn what_a_page_may_load_is_the_picked_folders_and_not_the_private_data() {
+        let data = scratch("data");
+        let vault = scratch("vault");
+        let held = folders(&data);
+        held.pick(vault.clone()).expect("picking");
+
+        assert_eq!(held.picked(), vec![settled(&vault)]);
+        assert!(held.read(&held.data_path(), "identity.key").is_ok());
     }
 }

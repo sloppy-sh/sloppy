@@ -61,6 +61,17 @@ describe('the first run of a graph on this device', () => {
 		show();
 
 		expect(button().textContent?.trim()).toBe('Start writing');
+		// The folder is this app's own there: nobody can move it or back it up
+		// beside their other folders, so nothing says they can.
+		expect(target.textContent).not.toContain('move it');
+		expect(target.textContent).toContain('Nothing here leaves the device');
+	});
+
+	it('says the folder is theirs where they chose it', () => {
+		shell({ asks: true });
+		show();
+
+		expect(target.textContent).toContain('move it or back it up');
 	});
 
 	it('hands the folder somebody names to the shell', async () => {
