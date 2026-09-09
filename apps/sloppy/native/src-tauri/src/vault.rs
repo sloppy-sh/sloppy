@@ -192,6 +192,15 @@ impl Folders {
         path.starts_with(&self.data)
     }
 
+    /// The record is what `allows` reads on the next launch, so a command may
+    /// not be the thing that writes it.
+    fn changeable(&self, at: PathBuf) -> Result<PathBuf, FileError> {
+        if at == self.record {
+            return Err(FileError::Outside);
+        }
+        Ok(at)
+    }
+
     pub fn read(&self, root: &str, path: &str) -> Result<Option<Vec<u8>>, FileError> {
         let at = self.resolve(root, path, false)?;
         match fs::read(&at) {
@@ -202,7 +211,7 @@ impl Folders {
     }
 
     pub fn write(&self, root: &str, path: &str, bytes: &[u8]) -> Result<(), FileError> {
-        let at = self.resolve(root, path, false)?;
+        let at = self.changeable(self.resolve(root, path, false)?)?;
         if let Some(parent) = at.parent() {
             fs::create_dir_all(parent)?;
             if self.is_private(parent) {
@@ -252,7 +261,7 @@ impl Folders {
     }
 
     pub fn remove(&self, root: &str, path: &str) -> Result<(), FileError> {
-        let at = self.resolve(root, path, false)?;
+        let at = self.changeable(self.resolve(root, path, false)?)?;
         let removed = match fs::symlink_metadata(&at) {
             Ok(held) if held.is_dir() => fs::remove_dir_all(&at),
             Ok(_) => fs::remove_file(&at),
@@ -270,7 +279,7 @@ impl Folders {
     }
 
     pub fn mkdir(&self, root: &str, path: &str) -> Result<(), FileError> {
-        let at = self.resolve(root, path, true)?;
+        let at = self.changeable(self.resolve(root, path, true)?)?;
         fs::create_dir_all(&at)?;
         if self.is_private(&at) {
             own_only(&at, 0o700)?;
@@ -399,10 +408,9 @@ async fn ask<R: Runtime>(app: &AppHandle<R>) -> Result<Option<PathBuf>, FileErro
 /// that folder is the answer and nobody is asked for one.
 #[cfg(mobile)]
 async fn ask<R: Runtime>(app: &AppHandle<R>) -> Result<Option<PathBuf>, FileError> {
-    let documents = app
-        .path()
-        .document_dir()
-        .map_err(|error| FileError::Failed(error.to_string()))?;
+    let documents = app.path().document_dir().map_err(|_| {
+        FileError::Failed("Sloppy could not find a place to keep this graph.".into())
+    })?;
     fs::create_dir_all(&documents)?;
     Ok(Some(documents))
 }
@@ -657,6 +665,42 @@ mod tests {
         let after = folders(&data);
         assert!(after.read(&vault.to_string_lossy(), "graph.json").is_ok());
         assert!(after.picked().contains(&settled(&vault)));
+    }
+
+    /// Which folders may be reached is settled outside the webview, so the
+    /// record of them is not a file the webview's own commands can rewrite.
+    #[test]
+    fn the_record_of_what_was_picked_is_not_a_file_a_command_can_write() {
+        let data = scratch("data");
+        let vault = scratch("vault");
+        let elsewhere = scratch("elsewhere");
+        fs::write(elsewhere.join("secret"), b"not yours").expect("a file elsewhere");
+        let held = folders(&data);
+        held.pick(vault).expect("picking the folder");
+        let spelled = held.data_path();
+        let elsewhere = settled(&elsewhere);
+        let forged =
+            serde_json::to_string(&[elsewhere.to_string_lossy()]).expect("a list of folders");
+
+        assert!(matches!(
+            held.write(&spelled, "folders.json", forged.as_bytes()),
+            Err(FileError::Outside)
+        ));
+        assert!(matches!(
+            held.remove(&spelled, "folders.json"),
+            Err(FileError::Outside)
+        ));
+        assert!(matches!(
+            held.mkdir(&spelled, "folders.json"),
+            Err(FileError::Outside)
+        ));
+
+        let after = folders(&data);
+        assert!(matches!(
+            after.read(&elsewhere.to_string_lossy(), "secret"),
+            Err(FileError::NoFolder)
+        ));
+        assert!(!after.picked().contains(&elsewhere));
     }
 
     /// The page draws pictures out of a picked folder; the identity's key is in
