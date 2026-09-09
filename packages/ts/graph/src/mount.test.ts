@@ -1265,7 +1265,7 @@ describe("comparing two states of the graph", () => {
     published: false,
   };
 
-  const comparing = async () => {
+  const comparing = async (overrides: Partial<GraphMountOptions> = {}) => {
     const graph = await mount();
     const difference = {
       added: new Set<OwnedRef>(),
@@ -1274,9 +1274,19 @@ describe("comparing two states of the graph", () => {
       changed: new Set<OwnedRef>(),
     };
     const before = graph.starts();
-    graph.handle.update({ ...graph.props, difference });
+    graph.handle.update({ ...graph.props, difference, ...overrides });
     return { graph, difference, before };
   };
+
+  /** Notes this state holds and no fold swallowed, so a tap reaches them. */
+  const standing = (graph: Awaited<ReturnType<typeof mount>>): OwnedRef[] =>
+    graph
+      .model()
+      .order.filter(
+        (ref) =>
+          ref !== gone.ref &&
+          !graph.model().graph.getNodeAttributes(ref).collapsed,
+      );
 
   it("draws the notes it says went alongside the ones that stayed", async () => {
     const { graph } = await comparing();
@@ -1314,6 +1324,66 @@ describe("comparing two states of the graph", () => {
     expect(rested).toEqual([null]);
   });
 
+  it("opens no menu on a note that is not in this state", async () => {
+    const asked: (OwnedRef | null)[] = [];
+    const { graph } = await comparing({ onMenu: (at) => asked.push(at.ref) });
+
+    graph.press(gone.ref);
+    expect(asked).toEqual([]);
+
+    const ref = standing(graph)[0];
+    graph.press(ref);
+    expect(asked).toEqual([ref]);
+  });
+
+  it("folds nothing behind one either, where no menu is bound", async () => {
+    const folded: OwnedRef[] = [];
+    const { graph } = await comparing({
+      onCollapse: (ref) => folded.push(ref),
+    });
+
+    graph.press(gone.ref);
+    expect(folded).toEqual([]);
+  });
+
+  // Picking and choosing are acts, and a canvas comparing two states is in
+  // neither mode — which is what frees the orbit for the difference's bands.
+  it("opens the note under a tap rather than pointing at it or taking it", async () => {
+    const { graph, difference } = await comparing();
+    const [from, other] = standing(graph);
+    const picked: OwnedRef[] = [];
+    const taken: OwnedRef[] = [];
+    graph.handle.update({
+      ...graph.props,
+      difference,
+      chosen: new Set<OwnedRef>(),
+      onChoose: (ref) => taken.push(ref),
+      picking: { from, taken: new Set(), onPick: (ref) => picked.push(ref) },
+    });
+
+    graph.tap(other);
+
+    expect(picked).toEqual([]);
+    expect(taken).toEqual([]);
+    expect(graph.opened).toEqual([other]);
+  });
+
+  it("hands nothing back from a sweep over the field", async () => {
+    const { graph, difference } = await comparing();
+    const swept: OwnedRef[][] = [];
+    graph.handle.update({
+      ...graph.props,
+      difference,
+      chosen: new Set<OwnedRef>(),
+      onChooseWithin: (refs) => swept.push([...refs]),
+    });
+
+    graph.sweep({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
+    graph.sweepByFinger({ x: -1000, y: -1000 }, { x: 1000, y: 1000 });
+
+    expect(swept).toEqual([]);
+  });
+
   it("holds the field still while only the reader's tags move", async () => {
     const { graph, difference } = await comparing();
     const models = graph.scene.models;
@@ -1325,6 +1395,20 @@ describe("comparing two states of the graph", () => {
     });
     expect(graph.scene.models).toBe(models);
     expect(graph.scene.tints).toBe(tints + 1);
+  });
+
+  it("reads the two states by what they say, not by which object said it", async () => {
+    const { graph, difference } = await comparing();
+    const settles = graph.starts();
+
+    graph.handle.update({ ...graph.props, difference: { ...difference } });
+    expect(graph.starts()).toBe(settles);
+
+    graph.handle.update({
+      ...graph.props,
+      difference: { ...difference, changed: new Set([standing(graph)[0]]) },
+    });
+    expect(graph.starts()).toBe(settles + 1);
   });
 });
 

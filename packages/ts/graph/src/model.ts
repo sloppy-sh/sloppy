@@ -242,6 +242,9 @@ export function buildModel(
   // Two states that turn out to be the same ask nothing, so nothing recedes to
   // answer it — DESIGN.md § "A difference between two states".
   const comparing = marks.size > 0;
+  const went = new Set(
+    (options.difference?.removed ?? []).map((node) => node.ref),
+  );
 
   drawn.forEach((entry, index) => {
     const { node } = entry;
@@ -318,11 +321,16 @@ export function buildModel(
 
   for (const { node } of drawn) {
     if (node.parent !== undefined && graph.hasNode(node.parent)) {
-      graph.updateNodeAttribute(
-        node.parent,
-        "children",
-        (count) => (count ?? 0) + 1,
-      );
+      // The edge is what holds a note that went beside the parent it hung from
+      // while the field settles; the count is what a fold answers off, and a
+      // note this state does not hold is nothing to fold.
+      if (!went.has(node.ref)) {
+        graph.updateNodeAttribute(
+          node.parent,
+          "children",
+          (count) => (count ?? 0) + 1,
+        );
+      }
       join(node.parent, node.ref, "genealogy", () =>
         Math.max(
           EDGE_MIN,
@@ -336,7 +344,7 @@ export function buildModel(
   // reinforces the shape the genealogy fixed rather than pulling siblings
   // together — with the shared floor still holding the most crowded
   // generations apart.
-  for (const [before, after] of runs(drawn)) {
+  for (const [before, after] of runs(drawn, went)) {
     join(before.ref, after.ref, "run", () => {
       const from = graph.getNodeAttributes(before.ref);
       const to = graph.getNodeAttributes(after.ref);
@@ -523,10 +531,18 @@ function seedFields(
  * The run of thought, in pairs. Only which notes are alongside each other is
  * decided here: those that sprang from the same note, or the branches of one
  * graph.
+ *
+ * `went` is the notes this state does not hold. They stand on the canvas to be
+ * compared and take no place in the run — the two either side of one read as
+ * consecutive, because they are (DESIGN.md § Edges).
  */
-function runs(drawn: readonly DrawnNode[]): [NodeView, NodeView][] {
+function runs(
+  drawn: readonly DrawnNode[],
+  went: ReadonlySet<OwnedRef>,
+): [NodeView, NodeView][] {
   const levels = new Map<string, NodeView[]>();
   for (const { node } of drawn) {
+    if (went.has(node.ref)) continue;
     const level = runKeyOf(node);
     const alongside = levels.get(level);
     if (alongside === undefined) levels.set(level, [node]);

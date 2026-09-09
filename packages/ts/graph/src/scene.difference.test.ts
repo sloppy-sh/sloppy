@@ -18,7 +18,12 @@ import {
   type StrokedLine,
   worldOf,
 } from "./pixi.test-support.js";
-import { CHOSEN_BAND, DIFFERENCE_BREAK, DIFFERENCE_INK } from "./scene.js";
+import {
+  CHOSEN_BAND,
+  DIFFERENCE_BREAK,
+  DIFFERENCE_GONE_INK,
+  DIFFERENCE_INK,
+} from "./scene.js";
 
 vi.mock("pixi.js", async () => {
   const { fakePixi } = await import("./pixi.test-support.js");
@@ -105,13 +110,22 @@ async function canvasOn(
 /** The graphics the world holds, in the order `scene.ts` adds them: the lift,
  *  the three line passes, the difference, the shapes, their edges, the orbit. */
 function layers(app: FakeApplication): {
+  genealogy: FakeGraphics;
+  runs: FakeGraphics;
+  connections: FakeGraphics;
   difference: FakeGraphics;
   orbit: FakeGraphics;
 } {
   const held = worldOf(app).children.filter(
     (child): child is FakeGraphics => child instanceof FakeGraphics,
   );
-  return { difference: held[4], orbit: held[held.length - 1] };
+  return {
+    genealogy: held[1],
+    runs: held[2],
+    connections: held[3],
+    difference: held[4],
+    orbit: held[held.length - 1],
+  };
 }
 
 /** The mark fills the canvas put up, which is what stands inside a band. */
@@ -123,9 +137,6 @@ function fillCount(app: FakeApplication): number {
   if (!layer) throw new Error("The world holds no marks");
   return layer.particleChildren.length;
 }
-
-const span = (line: StrokedLine): number =>
-  Math.hypot(line.to[0] - line.from[0], line.to[1] - line.from[1]);
 
 describe("the orbit while two states are compared", () => {
   it("closes a band round a note that arrived, with the mark inside it", async () => {
@@ -215,36 +226,122 @@ describe("the lines a difference draws", () => {
     scene.destroy();
   });
 
-  // A line that is not there any more is drawn as one that is not there.
-  it("draws the line a note left broken", async () => {
-    const { scene: whole, app: wholeApp } = await canvasOn(
-      asking({ added: new Set([field[1].ref]) }),
-    );
-    const reach = span(layers(wholeApp).difference.lines[0]);
-    whole.destroy();
-
+  // The break belongs to the hand that drew a line and says nothing else
+  // (DESIGN.md § Edges), so the two move lines separate on ink instead: one
+  // whole line each, and the fainter is the one the note left.
+  it("draws both lines whole, at one weight, and separates them on ink", async () => {
     const { scene, app } = await canvasOn(
       asking({ moved: [{ ref: field[1].ref, from: field[2].ref }] }),
     );
     const lines = layers(app).difference.lines;
-    // One whole line to the parent it joined, and the rest are the dashes of
-    // the one it left.
-    const dashes = lines.filter((line) => span(line) < reach);
-    expect(dashes.length).toBeGreaterThan(1);
-    expect(lines.length).toBe(dashes.length + 1);
+    expect(lines).toHaveLength(2);
+    expect(new Set(lines.map((line) => line.color))).toEqual(
+      new Set([palette.ink]),
+    );
+    expect(new Set(lines.map((line) => line.width)).size).toBe(1);
+    expect(new Set(lines.map((line) => line.alpha))).toEqual(
+      new Set([DIFFERENCE_INK, DIFFERENCE_GONE_INK]),
+    );
     scene.destroy();
   });
 
-  it("strikes both at one weight and one ink", async () => {
+  // Both stand clear of the loudest line under them, which is the run's while
+  // the field has receded to be compared.
+  it("strikes both over everything the receded field draws", async () => {
     const { scene, app } = await canvasOn(
       asking({ moved: [{ ref: field[1].ref, from: field[2].ref }] }),
     );
-    const styles = new Set(
-      layers(app).difference.lines.map(
-        (line) => `${line.color}:${line.alpha}:${line.width}`,
-      ),
+    const under = layers(app).runs.lines[0].alpha;
+    for (const line of layers(app).difference.lines) {
+      expect(line.alpha).toBeGreaterThan(under);
+    }
+    scene.destroy();
+  });
+});
+
+describe("the field a difference is read against", () => {
+  it("recedes every line the addresses and the writing make", async () => {
+    const plain = await canvasOn(undefined);
+    const before = layers(plain.app);
+    const alphas = {
+      genealogy: before.genealogy.lines[0].alpha,
+      runs: before.runs.lines[0].alpha,
+    };
+    plain.scene.destroy();
+
+    const { scene, app } = await canvasOn(
+      asking({ changed: new Set([field[1].ref]) }),
     );
-    expect(styles.size).toBe(1);
+    const receded = layers(app);
+    expect(receded.genealogy.lines[0].alpha).toBeLessThan(alphas.genealogy);
+    expect(receded.runs.lines[0].alpha).toBeLessThan(alphas.runs);
+    scene.destroy();
+  });
+
+  it("leaves every line where it was where the two states are the same", async () => {
+    const plain = await canvasOn(undefined);
+    const before = layers(plain.app);
+    const alphas = [
+      before.genealogy.lines[0].alpha,
+      before.runs.lines[0].alpha,
+    ];
+    plain.scene.destroy();
+
+    const { scene, app } = await canvasOn(nothing);
+    const held = layers(app);
+    expect([held.genealogy.lines[0].alpha, held.runs.lines[0].alpha]).toEqual(
+      alphas,
+    );
+    scene.destroy();
+  });
+});
+
+// The later state's own shape survives the question: nothing but the line a
+// difference strikes reaches a note this state does not hold, and the notes
+// either side of one read as consecutive, because they are.
+describe("a note that went, against the lines the state itself draws", () => {
+  const gone = note("1b", { parent: ref("1") });
+
+  it("draws no ordinary line to it", async () => {
+    const { scene, app } = await canvasOn(asking({ removed: [gone] }));
+    const held = layers(app);
+    const ends = (lines: readonly StrokedLine[]) =>
+      lines.flatMap((line) => [line.from, line.to]);
+    const at = held.difference.lines[0].from;
+    for (const point of ends([...held.genealogy.lines, ...held.runs.lines])) {
+      expect(point).not.toEqual(at);
+    }
+    expect(held.difference.lines).toHaveLength(1);
+    scene.destroy();
+  });
+
+  it("leaves the notes either side of it reading as consecutive", async () => {
+    const run = [note("1"), note("1a", { parent: ref("1") })];
+    const later = [...run, note("1c", { parent: ref("1") })];
+    const between = note("1b", { parent: ref("1") });
+
+    const plain = await canvasOn(undefined, later);
+    const held = layers(plain.app).runs.lines.length;
+    plain.scene.destroy();
+
+    const { scene, app } = await canvasOn(
+      asking({ removed: [between] }),
+      later,
+    );
+    expect(layers(app).runs.lines).toHaveLength(held);
+    scene.destroy();
+  });
+
+  it("hands nothing back for it out of a sweep", async () => {
+    const { scene } = await canvasOn(asking({ removed: [gone] }));
+    const swept = scene.marksWithin({
+      minX: -1e6,
+      minY: -1e6,
+      maxX: 1e6,
+      maxY: 1e6,
+    });
+    expect(swept).toHaveLength(field.length);
+    expect(swept).not.toContain(gone.ref);
     scene.destroy();
   });
 });

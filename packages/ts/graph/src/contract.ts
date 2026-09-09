@@ -194,6 +194,20 @@ export function differenceMarks(
   return marks;
 }
 
+/** Whether two states are actually being compared. A difference that names
+ *  nothing is two states that are the same. */
+export function comparingStates(
+  difference: GraphDifference | undefined,
+): boolean {
+  if (difference === undefined) return false;
+  return (
+    difference.added.size > 0 ||
+    difference.removed.length > 0 ||
+    difference.moved.length > 0 ||
+    difference.changed.size > 0
+  );
+}
+
 /**
  * The region with the notes that went standing back in it, so the seeding puts
  * each one where the earlier state drew it. Answers `nodes` itself where
@@ -251,7 +265,10 @@ export interface GraphSurfaceProps {
   /**
    * Two states of this graph being compared. The notes it names are left as
    * they are and everything else dims, and nothing is picked or chosen while
-   * one is up — DESIGN.md § "A difference between two states".
+   * one is up — DESIGN.md § "A difference between two states". The canvas holds
+   * that last part itself: while this names anything, {@link picking} and
+   * {@link chosen} alongside it are refused rather than drawn, and a tap opens
+   * the note under it.
    *
    * The notes it says went are drawn alongside `nodes`, which the region itself
    * no longer holds; a canvas is otherwise handed the later state.

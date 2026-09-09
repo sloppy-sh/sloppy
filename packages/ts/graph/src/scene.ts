@@ -187,6 +187,10 @@ const MAX_DASHES = 60;
  *  canvas is never comparing and choosing at once, so the two never meet. */
 export const DIFFERENCE_BAND = CHOSEN_BAND;
 export const DIFFERENCE_INK = CHOSEN_INK;
+/** What the line a note left is struck at, a little under half the ink the line
+ *  it joined takes — DESIGN.md § "A difference between two states" separates the
+ *  two on ink and leaves the figure here. */
+export const DIFFERENCE_GONE_INK = 0.4;
 /** How a note that is not as it was breaks its band. Wide gaps, so a band is
  *  read as broken or closed at a glance and never as nearly one — DESIGN.md
  *  § "A difference between two states". */
@@ -305,8 +309,6 @@ export class GraphScene {
   private referencePairs: number[] = [];
   private linkPairs: number[] = [];
   private differenceLines: DifferenceLines = { arrived: [], gone: [] };
-  /** Whether two states are being compared, which is what the orbit says while
-   *  one is up rather than picking or choosing. */
   private comparing = false;
   private readonly labelSlots = new Map<string, number>();
   private fieldNames: readonly NamedField[] = [];
@@ -569,11 +571,9 @@ export class GraphScene {
   setTints(model: BuiltModel, selecting: boolean): void {
     this.model = model;
     this.selecting = selecting;
-    this.comparing = false;
     for (const mark of this.marks) {
       const attributes = model.graph.getNodeAttributes(mark.ref);
       mark.attributes = attributes;
-      if (attributes.difference !== undefined) this.comparing = true;
       const { provenance, fill, alpha } = attributes;
       if (mark.fill) {
         mark.fill.tint = fill;
@@ -593,7 +593,14 @@ export class GraphScene {
     this.fills.update();
     this.rings.update();
     this.looks.update();
+    this.readComparing();
     this.positionsDirty = true;
+  }
+
+  private readComparing(): void {
+    this.comparing = this.marks.some(
+      (mark) => mark.attributes.difference !== undefined,
+    );
   }
 
   /**
@@ -643,6 +650,15 @@ export class GraphScene {
       const a = byRef.get(source);
       const b = byRef.get(target);
       if (a === undefined || b === undefined) return;
+      // A note that went keeps its edges so the settle puts it back where it
+      // hung, and draws none of them: the one line reaching it is the one
+      // `drawDifference` strikes — DESIGN.md § "A difference between two states".
+      if (
+        model.graph.getNodeAttributes(source).difference === "gone" ||
+        model.graph.getNodeAttributes(target).difference === "gone"
+      ) {
+        return;
+      }
       if (attributes.kind === "link") {
         this.linkPairs.push(a, b);
         return;
@@ -664,9 +680,7 @@ export class GraphScene {
     });
 
     this.differenceLines = model.difference;
-    this.comparing = this.marks.some(
-      (mark) => mark.attributes.difference !== undefined,
-    );
+    this.readComparing();
     this.nameFields(model.fields);
     this.modelDirty = true;
     this.positionsDirty = true;
@@ -1394,7 +1408,14 @@ export class GraphScene {
     const { palette } = this.options;
     const width = this.lineWidth;
 
-    const edgeAlpha = this.selecting
+    // Both questions take their answer off the same field: the notes a
+    // difference names are left as they are and everything else dims, the lines
+    // the addresses and the writing make included — DESIGN.md § "A difference
+    // between two states". A hand link is the one thing that stays, as it stays
+    // through a tag question.
+    const receding = this.selecting || this.comparing;
+
+    const edgeAlpha = receding
       ? palette.edgeAlphaWhileSelecting
       : palette.edgeAlpha;
     this.edges.clear();
@@ -1423,9 +1444,7 @@ export class GraphScene {
     if (this.runPairs.length > 0) {
       this.runs.stroke({
         color: palette.run,
-        alpha: this.selecting
-          ? palette.runAlphaWhileSelecting
-          : palette.runAlpha,
+        alpha: receding ? palette.runAlphaWhileSelecting : palette.runAlpha,
         width: width * RUN_WEIGHT,
       });
     }
@@ -1444,7 +1463,7 @@ export class GraphScene {
     if (this.referencePairs.length > 0) {
       this.connections.stroke({
         color: palette.connection,
-        alpha: this.selecting
+        alpha: receding
           ? palette.connectionAlphaWhileSelecting
           : palette.connectionAlpha,
         width: width * CONNECTION_WEIGHT,
@@ -1502,46 +1521,31 @@ export class GraphScene {
   }
 
   /**
-   * The lines a difference draws — the one a note joined, whole, and the one it
-   * left, broken. Both in ink and at one weight, so what tells them apart is
-   * the break: a line that is not there any more is drawn as one that is not
-   * there. DESIGN.md § "A difference between two states".
+   * The lines a difference draws — the one a note joined and the one it left,
+   * both whole, both in ink and at one weight, over a field that has receded to
+   * be compared. The line it left is the fainter, which is the channel that
+   * survives a zoom-out. DESIGN.md § "A difference between two states".
    */
   private drawDifference(): void {
     this.diffs.clear();
     const { arrived, gone } = this.differenceLines;
     if (arrived.length === 0 && gone.length === 0) return;
     const { ink } = this.options.palette;
-    const style = {
-      color: ink,
-      alpha: DIFFERENCE_INK,
-      width: this.lineWidth * DIFFERENCE_WEIGHT,
+    const width = this.lineWidth * DIFFERENCE_WEIGHT;
+
+    const strike = (pairs: readonly number[], alpha: number): void => {
+      if (pairs.length === 0) return;
+      for (let at = 0; at < pairs.length; at += 2) {
+        const from = pairs[at] * 2;
+        const to = pairs[at + 1] * 2;
+        this.diffs.moveTo(this.positions[from], this.positions[from + 1]);
+        this.diffs.lineTo(this.positions[to], this.positions[to + 1]);
+      }
+      this.diffs.stroke({ color: ink, alpha, width });
     };
-    const ends = (pair: readonly number[], at: number) => ({
-      from: pair[at] * 2,
-      to: pair[at + 1] * 2,
-    });
 
-    for (let at = 0; at < arrived.length; at += 2) {
-      const { from, to } = ends(arrived, at);
-      this.diffs.moveTo(this.positions[from], this.positions[from + 1]);
-      this.diffs.lineTo(this.positions[to], this.positions[to + 1]);
-    }
-    if (arrived.length > 0) this.diffs.stroke(style);
-
-    const dash = CONNECTION_DASH / this.viewport.scale;
-    for (let at = 0; at < gone.length; at += 2) {
-      const { from, to } = ends(gone, at);
-      dashLine(
-        this.diffs,
-        this.positions[from],
-        this.positions[from + 1],
-        this.positions[to],
-        this.positions[to + 1],
-        dash,
-      );
-    }
-    if (gone.length > 0) this.diffs.stroke(style);
+    strike(gone, DIFFERENCE_GONE_INK);
+    strike(arrived, DIFFERENCE_INK);
   }
 
   /**
@@ -1609,10 +1613,12 @@ export class GraphScene {
     }
   }
 
-  /** Every mark whose centre falls inside a world rectangle, in drawn order. */
+  /** Every mark whose centre falls inside a world rectangle, in drawn order.
+   *  Never a note that went: there is nothing behind it to hand back. */
   marksWithin(bounds: Bounds): string[] {
     const found: string[] = [];
     for (const mark of this.marks) {
+      if (mark.attributes.difference === "gone") continue;
       const x = this.positions[mark.index * 2];
       const y = this.positions[mark.index * 2 + 1];
       if (x < bounds.minX || x > bounds.maxX) continue;
