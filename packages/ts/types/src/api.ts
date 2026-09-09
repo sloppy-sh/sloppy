@@ -11,6 +11,7 @@ import {
   type OwnedRef,
   OwnedRefSchema,
   TimestampSchema,
+  UlidSchema,
 } from "./common.js";
 import { RefusedVoiceSchema } from "./conversation.js";
 import { GraphSchema } from "./graph.js";
@@ -282,6 +283,45 @@ export const GraphExportSchema = z.object({
   blocks: z.array(BlockViewSchema),
 });
 export type GraphExport = z.infer<typeof GraphExportSchema>;
+
+/**
+ * How large an archive this instance will take in, and how many notes it will
+ * read out of one. Both are stated in the words a refusal is given in, so
+ * nobody has to guess which of the two they hit.
+ */
+export const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
+export const MAX_ARCHIVE_NOTES = 5000;
+
+/**
+ * What an archive would bring, answered before anything is written —
+ * docs/ARCHITECTURE.md § "A graph on disk".
+ *
+ * `format`, `graph`, `name` and `owner` are what the archive says about itself;
+ * the rest is what it means for the person importing it.
+ */
+export const ArchivePreviewSchema = z.object({
+  format: z.int(),
+  /** The graph's own ULID, which is what says whether this replaces one. */
+  graph: UlidSchema,
+  name: z.string(),
+  owner: DidSyrSchema,
+  notes: z.int().nonnegative(),
+  pictures: z.int().nonnegative(),
+  /** The shortcodes the notes are written with that the importer's own catalog
+   *  has no picture for. Each one arrives, and renders as its shortcode. */
+  missing_emoji: z.array(z.string()),
+  /** Notes the importer already keeps elsewhere that this archive also holds.
+   *  An import is refused while any is here. */
+  collisions: z.array(OwnedRefSchema),
+  /** Whether this writes over a graph the importer already keeps rather than
+   *  opening a new one. */
+  replaces: z.boolean(),
+  /** How many notes that graph holds now, every one of which the import takes
+   *  with it — the ones in the bin included, which no archive carries. Zero
+   *  where this opens a graph of its own. */
+  replacing: z.int().nonnegative(),
+});
+export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
 
 /**
  * Who the API believes is calling.

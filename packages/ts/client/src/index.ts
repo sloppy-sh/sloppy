@@ -7,6 +7,8 @@ import {
   type Address,
   type AnsweredNote,
   AnsweredNoteSchema,
+  type ArchivePreview,
+  ArchivePreviewSchema,
   type BlockView,
   BlockViewSchema,
   type CompleteUploadRequest,
@@ -130,6 +132,13 @@ function refPath(ref: string): string {
   return `/${encodeURIComponent(ref.slice(0, separator))}/${encodeURIComponent(
     ref.slice(separator + 1),
   )}`;
+}
+
+/** What the server called the file, or a plain name where it said nothing this
+ *  can read. */
+function filenameOf(disposition: string | null): string {
+  const said = /filename="([^"]*)"/.exec(disposition ?? "");
+  return said?.[1] || "graph.sloppy";
 }
 
 /**
@@ -515,6 +524,50 @@ export class SloppyClient {
     return GraphExportSchema.parse(
       await this.json("/export", { method: "GET" }),
     );
+  }
+
+  /**
+   * One graph as the folder somebody keeps it in, zipped: the notes as
+   * markdown, the pictures and drawings beside them. `filename` is what the
+   * server called it, for a surface that offers it as a download.
+   */
+  async exportArchive(
+    graph: OwnedRef,
+  ): Promise<{ bytes: Uint8Array; filename: string }> {
+    const path = `/graphs${refPath(graph)}/archive`;
+    const res = await this.request(path, {
+      method: "GET",
+      headers: { accept: "application/zip" },
+    });
+    if (!res.ok) {
+      throw this.error(res, path, await res.text().catch(() => ""));
+    }
+    return {
+      bytes: new Uint8Array(await res.arrayBuffer()),
+      filename: filenameOf(res.headers.get("content-disposition")),
+    };
+  }
+
+  /** What one of those would bring, without bringing it. */
+  async previewArchive(archive: BodyInit): Promise<ArchivePreview> {
+    return ArchivePreviewSchema.parse(await this.sendArchive(archive, true));
+  }
+
+  /** And the graph it brought: a new one, or the one it was taken out of. */
+  async importArchive(archive: BodyInit): Promise<GraphView> {
+    return GraphViewSchema.parse(await this.sendArchive(archive, false));
+  }
+
+  private sendArchive(archive: BodyInit, preview: boolean): Promise<unknown> {
+    return this.json(`/graphs/import${preview ? "?preview=1" : ""}`, {
+      method: "POST",
+      // A `File` or a `FormData` names its own type, and neither may be
+      // overridden: a form's boundary is minted with the body.
+      ...(archive instanceof Uint8Array
+        ? { headers: { "content-type": "application/zip" } }
+        : {}),
+      body: archive,
+    });
   }
 
   // ── Publishing, following, and what a peer holds ─────────────────────────

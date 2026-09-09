@@ -15,7 +15,7 @@ import {
 } from "@sloppy/types";
 import { AppConfigService } from "../config/app-config.service";
 import { type Delegation, SyrService } from "../syr/syr.service";
-import { readRemotePicture } from "./remote-fetch";
+import { readRemotePicture, type RemotePicture } from "./remote-fetch";
 
 /**
  * What a role may carry. The store enforces its own limits too; these are
@@ -287,6 +287,30 @@ export class MediaService {
       );
     }
     return { url: source, filename: stored.filename };
+  }
+
+  /**
+   * The bytes of one of the caller's own pictures, held here. For the caller
+   * that has to have the file itself — writing it into an archive — where every
+   * other reader streams it through the proxy instead.
+   */
+  async readOwnPicture(
+    delegation: Delegation,
+    uploadId: string,
+    role: MediaRole,
+  ): Promise<RemotePicture & { filename: string }> {
+    const limits = ROLE_LIMITS[role];
+    const picture = await this.ownStoredPicture(delegation, uploadId, role);
+    const fetched = await readRemotePicture(picture.url, {
+      allowPrivate: !this.config.isProduction,
+      publicUrl: this.config.publicUrl,
+      maxBytes: limits.maxBytes,
+      mimeTypes: limits.mimeTypes,
+      // Read as the person whose picture it is — the same credential
+      // `/media/uploads` relays one with.
+      headers: { authorization: `Bearer ${delegation.access_token}` },
+    });
+    return { ...fetched, filename: picture.filename };
   }
 
   /**

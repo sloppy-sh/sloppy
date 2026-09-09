@@ -44,6 +44,7 @@ export type { HeldRegion, Peer, PublishedThere } from './components/peers/peer.j
 export { default as CanvasInk, type CanvasPen } from './components/graph/canvas-ink.svelte';
 export { default as FindSheet, type FoundNote } from './components/graph/find-sheet.svelte';
 export { default as GraphSurface } from './components/graph/graph-surface.svelte';
+export { default as ImportSheet } from './components/graph/import-sheet.svelte';
 export { default as MoveSheet, type MoveTarget } from './components/graph/move-sheet.svelte';
 export { default as NestingSheet, type NestingAsk } from './components/graph/nesting-sheet.svelte';
 export * from './components/graph/view.js';
