@@ -5,7 +5,15 @@ import { deviceStore } from '../device-store.js';
 import { graphs, MOST_ON_CANVAS } from './graphs.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
-import { AT, DID, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
+import {
+	archiving,
+	AT,
+	DID,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from './fake-api.test-support.js';
 
 const HOME = `${DID}/00000000000000000000000000` as OwnedRef;
 
@@ -300,5 +308,77 @@ describe('the graphs this device kept', () => {
 		await graphs.restore();
 
 		expect(graphs.all.map((one) => one.title)).toEqual(['Allotment']);
+	});
+});
+
+// docs/ARCHITECTURE.md § "A graph on disk": a re-import is a replace rather
+// than a second copy, so the listing gains one graph either way.
+describe('a graph brought in from a file', () => {
+	it('joins the listing, and is the one they are in', async () => {
+		const BROUGHT = graph(30, 'Osmosis');
+		archiving(api, { imported: () => BROUGHT });
+		await graphs.load();
+
+		const back = await graphs.importArchive(new Blob([new Uint8Array([1])]));
+
+		expect(back).toEqual(BROUGHT);
+		expect(graphs.all.map((one) => one.title)).toEqual([
+			'My graph',
+			'Garden',
+			'Company',
+			'Osmosis'
+		]);
+		expect(graphs.current).toBe(BROUGHT.ref);
+	});
+
+	it('takes the place of the graph it replaced rather than standing beside it', async () => {
+		archiving(api, { imported: () => ({ ...GARDEN, title: 'Garden, as it was' }) });
+		await graphs.load();
+
+		await graphs.importArchive(new Blob([new Uint8Array([1])]));
+
+		expect(graphs.all.map((one) => one.title)).toEqual([
+			'My graph',
+			'Garden, as it was',
+			'Company'
+		]);
+		expect(graphs.current).toBe(GARDEN.ref);
+	});
+
+	it('asks what the file holds without writing any of it', async () => {
+		archiving(api, {
+			preview: () => ({
+				format: 1,
+				graph: '01JRZ0000000000000000000AA',
+				name: 'Osmosis',
+				owner: DID,
+				notes: 4,
+				pictures: 0,
+				missing_emoji: [],
+				collisions: [],
+				replaces: false
+			}),
+			imported: () => GARDEN
+		});
+
+		const said = await graphs.previewImport(new Blob([new Uint8Array([1])]));
+
+		expect(said.notes).toBe(4);
+		expect(api.calls.filter((one) => one.startsWith('POST /graphs/import'))).toEqual([
+			'POST /graphs/import?preview=1'
+		]);
+	});
+
+	it('asks for the graph a person is keeping as a file, and hands back what to call it', async () => {
+		archiving(api, {
+			exported: {
+				[GARDEN.ref]: () => ({ body: 'a graph', filename: 'Garden 2026-03-05.sloppy' })
+			}
+		});
+
+		const file = await graphs.exportArchive(GARDEN.ref);
+
+		expect(new TextDecoder().decode(file.bytes)).toBe('a graph');
+		expect(file.filename).toBe('Garden 2026-03-05.sloppy');
 	});
 });

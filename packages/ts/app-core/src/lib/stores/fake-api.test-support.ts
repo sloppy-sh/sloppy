@@ -6,9 +6,11 @@
 import {
 	addressDepth,
 	type AnsweredNote,
+	type ArchivePreview,
 	type BlockView,
 	type Converses,
 	type CreateNodeRequest,
+	type GraphView,
 	graphOf,
 	type MoveNoteRequest,
 	type NodeView,
@@ -195,21 +197,19 @@ export function arranging(
 		Object.entries(stacks).map(([note, stack]) => [note as OwnedRef, [...stack]])
 	);
 	let writes = 0;
-	const refused = (says: string, status: number) =>
-		new Response(JSON.stringify({ message: says }), { status });
 
 	const write = (section: OwnedRef, body: string): unknown => {
 		const asked = UpdateBlockRequestSchema.safeParse(JSON.parse(body));
-		if (!asked.success) return refused('That is not a write of a section.', 400);
+		if (!asked.success) return refuses('That is not a write of a section.', 400);
 		const was = [...held].find(([, stack]) => stack.some((one) => one.ref === section))?.[0];
 		const stack = was === undefined ? undefined : held.get(was);
 		const row = stack?.find((one) => one.ref === section);
-		if (was === undefined || !stack || !row) return refused('That section is not here.', 404);
+		if (was === undefined || !stack || !row) return refuses('That section is not here.', 404);
 		if (asked.data.expects !== undefined && asked.data.expects !== row.updated_at) {
-			return refused('This section was written somewhere else.', 409);
+			return refuses('This section was written somewhere else.', 409);
 		}
 		const note = asked.data.node ?? was;
-		if (!held.has(note)) return refused('That note is not here.', 404);
+		if (!held.has(note)) return refuses('That note is not here.', 404);
 
 		const rest = (held.get(note) as BlockView[]).filter((one) => one.ref !== section);
 		let at: number;
@@ -217,7 +217,7 @@ export function arranging(
 		else if (!asked.data.after) at = 0;
 		else {
 			at = rest.findIndex((one) => one.ref === asked.data.after) + 1;
-			if (at === 0) return refused('That section is not in this note.', 400);
+			if (at === 0) return refuses('That section is not in this note.', 400);
 		}
 
 		writes += 1;
@@ -295,10 +295,56 @@ export class FakeApi {
 	};
 }
 
-/** Point the app at a fresh fake and hand it back. */
+/** Point the app at a fresh fake and hand it back. A seam a suite borrowed —
+ *  the way it saves a file — goes back to its default. */
 export function useFakeApi(): FakeApi {
 	const fake = new FakeApi();
-	initRuntime({ apiHost: () => 'http://api.test', fetchImpl: () => fake.fetch });
+	initRuntime({
+		apiHost: () => 'http://api.test',
+		fetchImpl: () => fake.fetch,
+		saveFile: undefined
+	});
 	resetApi();
 	return fake;
+}
+
+/** A refusal in the server's own words, which is the only way a suite can
+ *  exercise what a person is told. */
+export function refuses(says: string, status = 400): Response {
+	return new Response(JSON.stringify({ message: says }), { status });
+}
+
+/** How a suite answers for a graph as a file: the archive each graph is taken
+ *  out as, and what an arriving one holds. */
+export interface FakeArchive {
+	exported?: Record<OwnedRef, () => { body: BodyInit; filename: string } | Response>;
+	preview?: () => ArchivePreview | Response;
+	imported?: () => GraphView | Response;
+}
+
+/**
+ * Answer the routes a graph goes out and comes back through. Which of the two
+ * an arriving archive asks for is the client's own dispatch on the query, so a
+ * suite that passes has exercised the one the surface meant.
+ */
+export function archiving(api: FakeApi, answers: FakeArchive): void {
+	for (const [graph, taken] of Object.entries(answers.exported ?? {})) {
+		api.on(`GET /graphs${refPath(graph as OwnedRef)}/archive`, () => {
+			const answer = taken();
+			return answer instanceof Response
+				? answer
+				: new Response(answer.body, {
+						status: 200,
+						headers: {
+							'content-type': 'application/zip',
+							'content-disposition': `attachment; filename="${answer.filename}"`
+						}
+					});
+		});
+	}
+	api.on('POST /graphs/import', (url) =>
+		url.searchParams.has('preview')
+			? (answers.preview?.() ?? refuses('No suite answers for a preview.', 500))
+			: (answers.imported?.() ?? refuses('No suite answers for an import.', 500))
+	);
 }

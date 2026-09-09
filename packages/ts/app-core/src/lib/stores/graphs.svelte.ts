@@ -10,6 +10,7 @@
 
 import { MAX_FIELDS } from '@sloppy/graph';
 import {
+	type ArchivePreview,
 	homeGraphRef,
 	type GraphView,
 	GraphViewSchema,
@@ -179,6 +180,29 @@ class GraphsStore {
 		this.#keep();
 		this.enter(made.ref);
 		return made;
+	}
+
+	exportArchive(ref: OwnedRef): Promise<{ bytes: Uint8Array; filename: string }> {
+		return api.exportArchive(ref);
+	}
+
+	/** What that file holds, with none of it written. */
+	previewImport(archive: Blob): Promise<ArchivePreview> {
+		return api.previewArchive(archive);
+	}
+
+	/** Bring the graph in, and be in it. One replacing a graph already kept
+	 *  takes its place in the listing rather than standing beside it. */
+	async importArchive(archive: Blob): Promise<GraphView> {
+		const epoch = this.#epoch;
+		const brought = await api.importArchive(archive);
+		if (epoch !== this.#epoch) return brought;
+		this.#all = this.#all.some((graph) => graph.ref === brought.ref)
+			? this.#all.map((graph) => (graph.ref === brought.ref ? brought : graph))
+			: [...this.#all, brought];
+		this.#keep();
+		this.enter(brought.ref);
+		return brought;
 	}
 
 	async rename(ref: OwnedRef, request: UpdateGraphRequest): Promise<GraphView> {
