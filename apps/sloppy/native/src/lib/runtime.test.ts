@@ -39,11 +39,22 @@ vi.mock('@tauri-apps/api/core', () => ({
 				return null;
 			case 'files_exists':
 				return held.has(at);
+			case 'files_list': {
+				const under = `${args?.root as string}/`;
+				return [...held.keys()]
+					.filter((path) => path.startsWith(under))
+					.map((path) => path.slice(under.length));
+			}
 			default:
 				return null;
 		}
 	}
 }));
+
+/** A graph written in `folder`, as the app writes one once it is opened. */
+function wroteIn(folder: string): void {
+	held.set(`${folder}/graph.json`, '');
+}
 
 /** A launch of the app on `platform`, as the Tauri CLI spells it: fresh module
  *  state, `initNativeRuntime` called the way the root layout calls it. */
@@ -95,11 +106,34 @@ describe('the native shell in local mode', () => {
 	it('opens that same folder again the next time the app starts', async () => {
 		await launch();
 		await registered.vault?.open();
+		wroteIn('/Users/me/garden');
 
 		const again = await launch();
 		expect(registered.vault?.folder()).toBeUndefined();
 		expect(await again.openRememberedVault()).toBe('/Users/me/garden');
 		expect(servedFrom()).toBe('/Users/me/garden');
+	});
+
+	it('offers a folder rather than an empty graph where the last one has been moved', async () => {
+		await launch();
+		await registered.vault?.open();
+		wroteIn('/Users/me/garden');
+
+		for (const path of [...held.keys()]) {
+			if (path.startsWith('/Users/me/garden')) held.delete(path);
+		}
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBeUndefined();
+		expect(again.vaultIsMissing()).toBe(true);
+		expect(registered.vault?.folder()).toBeUndefined();
+	});
+
+	it('has nothing to say about a folder on a device that has never had one', async () => {
+		const shell = await launch();
+
+		expect(await shell.openRememberedVault()).toBeUndefined();
+		expect(shell.vaultIsMissing()).toBe(false);
 	});
 
 	it('leaves the folder alone where somebody named none', async () => {

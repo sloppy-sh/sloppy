@@ -113,6 +113,45 @@ describe("the folder a shell opened", () => {
     expect((await again.api.listNodes()).length).toBe(1);
   });
 
+  it("is the folder written in after the shell is pointed at another one", async () => {
+    const first = opened("/Users/me/garden");
+    await first.api.createNode({ title: "A first thought" });
+
+    const second = opened("/Users/me/thesis", first.store);
+    const note = await second.api.createNode({ title: "Chapter one" });
+
+    expect(second.store.has(`/Users/me/thesis/${GRAPH_FILE}`)).toBe(true);
+    expect(
+      second.store.has(
+        `/Users/me/thesis/${notePath(splitOwnedRef(note.ref).localId)}`,
+      ),
+    ).toBe(true);
+    const graphs = await second.api.listGraphs();
+    expect(graphs.map((one) => one.title)).toEqual(["garden", "thesis"]);
+    // The graph a person started with is the one every archive of one names,
+    // so the second folder is not a second claim on it.
+    expect(splitOwnedRef(graphs[1].ref).localId).not.toBe(HOME_GRAPH_ULID);
+    expect((await second.api.listNodes()).map((one) => one.title)).toEqual([
+      "Chapter one",
+    ]);
+  });
+
+  it("says a folder it wrote a graph into is gone rather than starting a second one", async () => {
+    const held = opened("/Users/me/garden");
+    await held.api.createNode({ title: "A first thought" });
+    for (const path of [...held.store.keys()]) {
+      if (path.startsWith("/Users/me/garden")) held.store.delete(path);
+    }
+
+    const again = opened("/Users/me/garden", held.store);
+
+    await expect(again.api.createNode({ title: "Again" })).rejects.toThrow(
+      "not there any more",
+    );
+    expect(again.store.has(`/Users/me/garden/${GRAPH_FILE}`)).toBe(false);
+    expect(await again.api.listGraphs()).toEqual([]);
+  });
+
   it("starts one graph between two reads that land together", async () => {
     const held = opened("/Users/me/garden");
 

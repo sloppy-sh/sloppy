@@ -2,7 +2,7 @@
  * This shell's half of `Files` in `@sloppy/local`, which declares every method
  * and what its answer means. The commands below live in `src-tauri`; bytes
  * cross as base64 because the bridge carries JSON, and a picture is loaded from
- * — and sent to — the address `url` answers rather than read and written here.
+ * the address `url` answers rather than read here.
  */
 
 import { checkPath, joinPath, type Files } from '@sloppy/local';
@@ -21,8 +21,7 @@ const MKDIR = 'files_mkdir';
 const PICK_FOLDER = 'pick_folder';
 const DATA_PATH = 'app_data_path';
 
-/** The scheme `src-tauri/src/vault.rs` answers a picture at, both to draw one
- *  and to keep one that is arriving. */
+/** The scheme `src-tauri/src/vault.rs` answers a picture at. */
 const VAULT_SCHEME = 'vault';
 
 function decodeBase64(encoded: string): Uint8Array {

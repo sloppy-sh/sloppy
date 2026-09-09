@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /** What the boot read answers, held open until a test settles it. */
 let boot: { resolve: (folder: string | undefined) => void; reject: (why: Error) => void };
 let reading: Promise<string | undefined>;
+/** Whether the boot read found the folder gone rather than never chosen. */
+let missing = false;
 
 vi.mock('$lib/back', () => ({ answerBack: vi.fn() }));
 vi.mock('$lib/deep-link', () => ({ forwardDeepLinks: vi.fn(async () => {}) }));
@@ -12,7 +14,8 @@ vi.mock('$lib/local-mode', () => ({ LOCAL_MODE: true }));
 vi.mock('$lib/platform', () => ({ IS_MOBILE: false, TAURI_PLATFORM: 'desktop' }));
 vi.mock('$lib/runtime', () => ({
 	initNativeRuntime: vi.fn(),
-	openRememberedVault: () => reading
+	openRememberedVault: () => reading,
+	vaultIsMissing: () => missing
 }));
 vi.mock('@sloppy/app-core/pages/frame', async () => ({
 	default: (await import('./frame.test-support.svelte')).default
@@ -44,6 +47,7 @@ async function boots(): Promise<void> {
 }
 
 beforeEach(() => {
+	missing = false;
 	reading = new Promise((resolve, reject) => {
 		boot = { resolve, reject };
 	});
@@ -87,6 +91,17 @@ describe('what the native shell opens on', () => {
 		await settle();
 
 		expect(showing()).toBe('first-run');
+	});
+
+	it('says the folder is gone where the one this device had is not there any more', async () => {
+		missing = true;
+		await boots();
+		boot.resolve(undefined);
+		await settle();
+
+		expect(target.querySelector('[data-page="first-run"]')?.getAttribute('data-missing')).toBe(
+			'true'
+		);
 	});
 
 	it('opens the graph in the folder somebody names', async () => {

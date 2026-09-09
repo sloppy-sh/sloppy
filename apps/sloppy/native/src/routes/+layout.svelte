@@ -6,7 +6,7 @@
 	import { trackKeyboardInset } from '$lib/keyboard';
 	import { LOCAL_MODE } from '$lib/local-mode';
 	import { IS_MOBILE, TAURI_PLATFORM } from '$lib/platform';
-	import { initNativeRuntime, openRememberedVault } from '$lib/runtime';
+	import { initNativeRuntime, openRememberedVault, vaultIsMissing } from '$lib/runtime';
 	import FirstRun from '@sloppy/app-core/pages/first-run';
 	import Frame from '@sloppy/app-core/pages/frame';
 
@@ -18,11 +18,15 @@
 	/** Undefined until the boot read answers, so nobody is offered a folder they
 	 *  already have. A build that talks to a server has one from the start. */
 	let opened = $state<boolean | undefined>(LOCAL_MODE ? undefined : true);
+	let missing = $state(false);
 
 	onMount(() => {
 		if (LOCAL_MODE)
 			void openRememberedVault().then(
-				(folder) => (opened = Boolean(folder)),
+				(folder) => {
+					opened = Boolean(folder);
+					missing = vaultIsMissing();
+				},
 				() => (opened = false)
 			);
 		void forwardDeepLinks();
@@ -44,5 +48,5 @@
 {:else if opened}
 	<Frame>{@render children()}</Frame>
 {:else}
-	<FirstRun onopened={() => (opened = true)} />
+	<FirstRun {missing} onopened={() => (opened = true)} />
 {/if}

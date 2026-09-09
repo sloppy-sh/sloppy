@@ -373,6 +373,14 @@ down. The key is a file in the app's own private data and it never leaves the de
 there is no password over it because there is nothing a password would protect it from that
 reaching the file would not already have defeated.
 
+**The folder that is open is the graph in front of somebody.** Opening another one from
+Settings serves the graph in that folder, starting one there where it holds none, and every
+folder this device has opened stays listed beside it. The graph a person started with keeps
+the ulid every archive of a first graph names, so a folder becoming a graph beside it takes
+one of its own. A folder a graph was written into and that is no longer there is said rather
+than started over: the app offers a folder to open instead of writing a fresh empty graph
+where a graph somebody moved used to be.
+
 **What only this device knows sits beside the graphs rather than inside one.** The app's
 private data holds `identity.json` and the key file it names, and `vaults.json`, the list
 of folders a graph has been put in — a folder cannot remember where somebody put it. What

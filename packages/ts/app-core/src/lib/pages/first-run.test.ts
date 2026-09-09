@@ -12,8 +12,11 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-function show(): void {
-	mounted = mount(FirstRun, { target, props: { onopened: (folder) => opened.push(folder) } });
+function show(missing = false): void {
+	mounted = mount(FirstRun, {
+		target,
+		props: { missing, onopened: (folder) => opened.push(folder) }
+	});
 	flushSync();
 }
 
@@ -72,6 +75,15 @@ describe('the first run of a graph on this device', () => {
 		show();
 
 		expect(target.textContent).toContain('move it or back it up');
+	});
+
+	it('says the folder is not where it was rather than offering a first one', () => {
+		shell({});
+		show(true);
+
+		expect(target.textContent).toContain('is not where it was');
+		expect(target.textContent).not.toContain('Pick an empty one');
+		expect(button().textContent?.trim()).toBe('Choose a folder');
 	});
 
 	it('hands the folder somebody names to the shell', async () => {

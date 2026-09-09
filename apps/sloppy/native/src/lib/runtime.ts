@@ -32,6 +32,8 @@ const ASKS_WHERE = !IS_MOBILE;
  *  time it is asked, so opening a folder re-points a running app. */
 let opened: string | undefined;
 
+let missing = false;
+
 function serve(folder: string): void {
 	opened = folder;
 	resetApi();
@@ -49,6 +51,18 @@ async function openFolder(files: Files): Promise<string | undefined> {
 	return folder;
 }
 
+/** Whether the folder this device had a graph in is not where it was. The first
+ *  run is what somebody is offered then, and this is what it says there. */
+export function vaultIsMissing(): boolean {
+	return missing;
+}
+
+/** A folder a graph was written into never reads back empty, so nothing in it
+ *  means it has been moved, renamed or emptied rather than that it is there. */
+async function stillHoldsIt(files: Files, folder: string): Promise<boolean> {
+	return (await files.at(folder).list('')).length > 0;
+}
+
 /**
  * The folder this device has a graph in, opened before any page reads `api`.
  * `undefined` is a device with none, which is what puts the first run in front
@@ -60,6 +74,8 @@ export async function openRememberedVault(): Promise<string | undefined> {
 	if (!ASKS_WHERE) return openFolder(device).catch(() => undefined);
 	const remembered = await rememberedVault(device);
 	if (!remembered) return undefined;
+	missing = !(await stillHoldsIt(device, remembered).catch(() => false));
+	if (missing) return undefined;
 	serve(remembered);
 	return remembered;
 }

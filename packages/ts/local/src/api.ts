@@ -132,7 +132,7 @@ import { carriedOut, vaultOwned } from "./vault-paths.js";
 export class LocalApi implements SloppyApi {
   private identity?: LocalIdentity;
   private known?: KnownVault[];
-  private starting?: Promise<LocalGraph>;
+  private readonly starting = new Map<string, Promise<LocalGraph>>();
   private readonly opened = new Map<string, LocalGraph>();
   /** One write at a time: an act reads where it is landing and then writes
    *  there, and two would each land where the other had already left. */
@@ -233,6 +233,7 @@ export class LocalApi implements SloppyApi {
       const root = this.rootOf(graph);
       await emptyVault(graph.files);
       this.opened.delete(root);
+      this.starting.delete(root);
       await this.remember(
         (await this.vaults()).filter((one) => one.root !== root),
       );
@@ -1002,10 +1003,22 @@ export class LocalApi implements SloppyApi {
     await writeVaults(this.files.at(await this.files.dataPath()), this.known);
   }
 
-  /** Every graph this device keeps, in the order it opened them. A folder that
-   *  is no longer a vault is left out rather than refused: somebody moved it,
-   *  and the graphs beside it still open. */
+  /** Every graph this device keeps: the folders it has written down, and the
+   *  folder it has open, which holds a graph whether or not it has been written
+   *  down yet. One that cannot be opened is left out here and said where
+   *  somebody writes, so the graphs beside it still read. */
   private async allGraphs(): Promise<LocalGraph[]> {
+    const graphs = await this.writtenDownGraphs();
+    const open = this.files.root;
+    if (!open) return graphs;
+    const here = await this.graphInTheOpenFolder(open).catch(() => undefined);
+    return here && !graphs.includes(here) ? [...graphs, here] : graphs;
+  }
+
+  /** The graphs in the folders this device wrote down, in the order it opened
+   *  them. A folder that is no longer a vault is left out rather than refused:
+   *  somebody moved it, and the graphs beside it still open. */
+  private async writtenDownGraphs(): Promise<LocalGraph[]> {
     const graphs: LocalGraph[] = [];
     for (const known of await this.vaults()) {
       const already = this.opened.get(known.root);
@@ -1044,14 +1057,12 @@ export class LocalApi implements SloppyApi {
     return graph;
   }
 
-  /** The graph named, or the one this device started with. */
+  /** The graph named; otherwise the one in the folder this device has open,
+   *  and where it has none, the one it started with. */
   private async graphAt(ref?: OwnedRef): Promise<LocalGraph> {
-    let graphs = await this.allGraphs();
     const open = this.files.root;
-    if (graphs.length === 0 && open) {
-      await this.graphInTheOpenFolder(open);
-      graphs = await this.allGraphs();
-    }
+    if (ref === undefined && open) return this.graphInTheOpenFolder(open);
+    const graphs = await this.allGraphs();
     if (graphs.length === 0) {
       throw absent("There is no graph on this device yet. Start one to write.");
     }
@@ -1062,30 +1073,44 @@ export class LocalApi implements SloppyApi {
   }
 
   /**
-   * The graph in the folder a shell opened, where this device knows of none
-   * yet: opening a folder is how somebody says a graph is in it, so one that
-   * holds a graph is read and one that does not becomes it. The name is the
-   * folder's, which is what they called the place; it is renamed like any other.
+   * The graph in the folder a shell opened: opening a folder is how somebody
+   * says a graph is in it, so one that holds a graph is read and one that does
+   * not becomes it. The name is the folder's, which is what they called the
+   * place; it is renamed like any other. A folder this device wrote a graph
+   * into and that now holds none has been moved or emptied, and is said rather
+   * than started over.
    *
-   * Held as the promise rather than the graph, so two reads landing together
-   * start one graph between them.
+   * Held as the promise rather than the graph, one per folder, so two reads
+   * landing together start one graph between them and a second folder opened in
+   * the same session still starts.
    */
   private graphInTheOpenFolder(root: string): Promise<LocalGraph> {
-    this.starting ??= (async () => {
+    let opening = this.starting.get(root);
+    if (opening) return opening;
+    opening = (async () => {
+      const already = this.opened.get(root);
+      if (already) return already;
       const did = (await this.who()).did;
       const at = this.files.at(root);
-      const graph = (await at.exists(GRAPH_FILE))
+      const known = await this.vaults();
+      const written = known.some((one) => one.root === root);
+      const holds = await at.exists(GRAPH_FILE);
+      if (!holds && written) {
+        throw absent(
+          "The folder your notes are in is not there any more. Open it again, or choose another folder.",
+        );
+      }
+      const graph = holds
         ? await LocalGraph.open(at, did)
         : await LocalGraph.start(at, did, {
             format: VAULT_FORMAT,
-            graph: HOME_GRAPH_ULID,
+            graph: (await this.homeIsTaken(did)) ? ulid() : HOME_GRAPH_ULID,
             name: folderName(root),
             owner: did,
           });
       this.opened.set(root, graph);
-      const known = await this.vaults();
       const when = nowIso();
-      if (!known.some((one) => one.root === root)) {
+      if (!written) {
         await this.remember([
           ...known,
           { root, created_at: when, updated_at: when },
@@ -1093,7 +1118,15 @@ export class LocalApi implements SloppyApi {
       }
       return graph;
     })();
-    return this.starting;
+    this.starting.set(root, opening);
+    return opening;
+  }
+
+  /** Whether the graph a person started with — the one an archive of a first
+   *  graph names — is already on this device. */
+  private async homeIsTaken(did: DidSyr): Promise<boolean> {
+    const home: OwnedRef = `${did}/${HOME_GRAPH_ULID}`;
+    return (await this.writtenDownGraphs()).some((one) => one.ref === home);
   }
 
   private async graphHolding(ref: OwnedRef): Promise<LocalGraph | undefined> {

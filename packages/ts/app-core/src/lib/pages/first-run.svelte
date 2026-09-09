@@ -2,7 +2,12 @@
 	import { Button } from '@sloppy/ui/button';
 	import { runtime } from '../runtime.js';
 
-	let { onopened }: { onopened: (folder: string) => void } = $props();
+	let {
+		onopened,
+		/** Somebody whose folder is no longer where they put it, rather than
+		 *  somebody who has never had one. */
+		missing = false
+	}: { onopened: (folder: string) => void; missing?: boolean } = $props();
 
 	const vault = runtime.vault();
 
@@ -47,7 +52,9 @@
 
 		<div class="space-y-4">
 			<p class="text-balance">
-				{#if vault?.asks}
+				{#if missing}
+					The folder your notes are in is not where it was. Open it again, or choose another one.
+				{:else if vault?.asks}
 					Your notes are files in a folder you choose. Pick an empty one, or make a new one along
 					the way.
 				{:else}

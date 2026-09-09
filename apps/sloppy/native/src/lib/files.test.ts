@@ -68,7 +68,7 @@ describe('the shell files a graph on this device is kept in', () => {
 		});
 	});
 
-	it('gives a picture an address the page can load it from and send it to', () => {
+	it('gives a picture an address the page can load it from', () => {
 		const { call } = shell();
 		expect(tauriFiles('/vault', call).url('media/p.png')).toBe(
 			'vault://localhost//vault/media/p.png'

@@ -29,8 +29,8 @@ pub fn run() {
 
     builder
         .invoke_handler(vault::commands())
-        // How a picture in a graph loads on the page and how one arriving is
-        // written: one scheme, bounded by the folders somebody picked.
+        // How a picture in a graph loads on the page: one scheme, bounded by
+        // the folders somebody picked.
         .register_asynchronous_uri_scheme_protocol(vault::SCHEME, vault::protocol)
         .setup(|app| {
             app.manage(vault::Folders::new(app.path().app_data_dir()?)?);
