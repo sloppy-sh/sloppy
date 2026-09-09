@@ -13,7 +13,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
-import { type AppRuntime, initRuntime } from '../runtime.js';
+import { type AppRuntime, initRuntime, type VaultAccess } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -104,11 +104,33 @@ async function settle(): Promise<void> {
 }
 
 /** Which of the two deployments the app is running as, for the mount that
- *  follows, and what the shell around it can do with a file. `afterEach` puts
- *  it back. */
-function running(mode: 'hosted' | 'local', saveFile?: AppRuntime['saveFile']): void {
-	initRuntime({ apiHost: () => 'http://api.test', mode: () => mode, saveFile });
+ *  follows, what the shell around it can do with a file, and where it keeps the
+ *  graph. `afterEach` puts it back. */
+function running(
+	mode: 'hosted' | 'local',
+	saveFile?: AppRuntime['saveFile'],
+	vault?: VaultAccess
+): void {
+	initRuntime({ apiHost: () => 'http://api.test', mode: () => mode, saveFile, vault });
 }
+
+/** A shell keeping the graph in `folder`, which somebody chose unless `asks`
+ *  says the device keeps its graphs in one place. */
+function keeping(folder: string | undefined, asks = true): VaultAccess & { opened: number } {
+	return {
+		opened: 0,
+		folder: () => folder,
+		asks,
+		async open() {
+			this.opened += 1;
+			return '/Users/me/thesis';
+		}
+	};
+}
+
+/** The identity a device writes its own graphs under: no instance, because
+ *  there is none. */
+const ON_DEVICE = { ...VIEWER, syr_instance_url: '' };
 
 const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
 
@@ -355,6 +377,37 @@ describe('Settings, on a device holding its own graph', () => {
 		expect(has('Sign out')).toBe(false);
 		expect(screen()).not.toContain('Your graph opens once you sign in');
 		expect(api.countOf('GET /profile/me')).toBe(0);
+	});
+
+	it('names the folder the graph is in, and offers another', async () => {
+		const vault = keeping('/Users/me/garden');
+		running('local', undefined, vault);
+		session.adopt(ON_DEVICE, 'this device');
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(screen()).toContain('/Users/me/garden');
+
+		control('Open another folder').click();
+		await settle();
+
+		expect(vault.opened).toBe(1);
+		expect(screen()).toContain('/Users/me/thesis');
+	});
+
+	// The folder is this app's own there, and there is only the one, so a path
+	// nobody chose and cannot move is a fact they can do nothing with.
+	it('names no folder on a device that keeps its graphs in one place', async () => {
+		running('local', undefined, keeping('/var/mobile/Containers/1/Documents', false));
+		session.adopt(ON_DEVICE, 'this device');
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(screen()).toContain('Your graph is a folder on this device');
+		expect(screen()).not.toContain('/var/mobile');
+		expect(has('Open another folder')).toBe(false);
 	});
 
 	it('still hands over a copy of everything written', async () => {

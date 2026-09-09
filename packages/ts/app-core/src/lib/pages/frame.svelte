@@ -42,8 +42,9 @@
 	 *  credential we already know is missing. */
 	const admitted = $derived(session.ready && (session.signedIn || isOpenRoute(path)));
 	/** Sending somebody to sign in because Sloppy could not ask who they are puts
-	 *  them on a page that cannot help them either. */
-	const held = $derived(session.ready && !admitted && session.unavailable);
+	 *  them on a page that cannot help them either — and on a device holding its
+	 *  own graph there is no such page to send them to at all. */
+	const held = $derived(session.ready && !admitted && (session.unavailable || session.onDevice));
 	const me = $derived(people.me && personFrom(people.me));
 	/** With nobody signed in and Sloppy out of reach, a page about the reader has
 	 *  nobody to be about, so only what stands without an account is offered. */
@@ -103,8 +104,10 @@
 		}
 	});
 
+	// Signing in, and being sent to it. A graph on this device has nobody to sign
+	// in to, so none of this is its business.
 	$effect(() => {
-		if (!session.ready) return;
+		if (!session.ready || session.onDevice) return;
 		if (!session.signedIn) {
 			// A cited note is read where the reader stands, and signing in from it
 			// brings them back to it rather than to the graph.

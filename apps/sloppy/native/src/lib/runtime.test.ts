@@ -23,7 +23,7 @@ let picks: string | null = '/Users/me/garden';
 let picking: 'answers' | 'fails' = 'answers';
 
 vi.mock('@tauri-apps/api/core', () => ({
-	convertFileSrc: (path: string) => `asset://localhost/${path}`,
+	convertFileSrc: (path: string, scheme: string) => `${scheme}://localhost/${path}`,
 	invoke: async (command: string, args?: Record<string, unknown>) => {
 		const at = `${args?.root as string}/${args?.path as string}`;
 		switch (command) {
@@ -123,6 +123,19 @@ describe('the native shell in local mode', () => {
 		expect(registered.vault?.asks).toBe(false);
 		expect(await shell.openRememberedVault()).toBe('/Users/me/garden');
 		expect(servedFrom()).toBe('/Users/me/garden');
+	});
+
+	// The app's own documents folder moves with the app, so a path written down
+	// before it moved is a graph nobody can find.
+	it('asks a phone where its documents are again rather than remembering where they were', async () => {
+		const first = await launch('ios');
+		await first.openRememberedVault();
+
+		picks = '/var/containers/2/Documents';
+		const again = await launch('ios');
+
+		expect(await again.openRememberedVault()).toBe('/var/containers/2/Documents');
+		expect(servedFrom()).toBe('/var/containers/2/Documents');
 	});
 
 	it('offers a folder on a phone whose own one could not be opened', async () => {

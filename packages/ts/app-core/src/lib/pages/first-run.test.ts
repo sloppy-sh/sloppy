@@ -97,6 +97,40 @@ describe('the first run of a graph on this device', () => {
 		expect(button().disabled).toBe(false);
 	});
 
+	it('says what the shell said, which is the half that knows what went wrong', async () => {
+		shell({
+			open: async () => {
+				throw 'Sloppy cannot write in that folder.';
+			}
+		});
+		show();
+
+		button().click();
+		await settle();
+
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+			'Sloppy cannot write in that folder.'
+		);
+	});
+
+	// There was no choice to make, so there is no other one to try.
+	it('offers no other folder on a device that keeps its graphs in one place', async () => {
+		shell({
+			asks: false,
+			open: async () => {
+				throw new Error('EACCES');
+			}
+		});
+		show();
+
+		button().click();
+		await settle();
+
+		const said = target.querySelector('[role="alert"]');
+		expect(said?.textContent).not.toContain('Try another one');
+		expect(said?.textContent).toContain('this device');
+	});
+
 	it('says what to do next when a folder cannot be written in', async () => {
 		shell({
 			open: async () => {

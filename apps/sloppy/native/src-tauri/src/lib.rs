@@ -29,12 +29,11 @@ pub fn run() {
 
     builder
         .invoke_handler(vault::commands())
+        // How a picture in a graph loads on the page and how one arriving is
+        // written: one scheme, bounded by the folders somebody picked.
+        .register_asynchronous_uri_scheme_protocol(vault::SCHEME, vault::protocol)
         .setup(|app| {
-            let folders = vault::Folders::new(app.path().app_data_dir()?)?;
-            for folder in folders.picked() {
-                vault::serve(app.handle(), &folder);
-            }
-            app.manage(folders);
+            app.manage(vault::Folders::new(app.path().app_data_dir()?)?);
 
             // A custom scheme only fires for an installed app: iOS and Android
             // take it from the generated manifests and macOS from the bundled

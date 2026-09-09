@@ -15,8 +15,17 @@ use std::sync::Mutex;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+use percent_encoding::percent_decode_str;
 use serde::Serialize;
-use tauri::{AppHandle, Manager, Runtime, State};
+use tauri::http::{header, Method, Request, Response, StatusCode, Uri};
+use tauri::{AppHandle, Manager, Runtime, State, UriSchemeContext, UriSchemeResponder};
+
+/// The scheme a picture in a graph loads from. It is this app's own rather than
+/// Tauri's asset protocol so that one gate — the folders somebody picked —
+/// stands between the webview and the disk; `src/lib/files.ts` spells the same
+/// word. Bytes only come back this way: everything the page writes crosses the
+/// bridge, because a webview carries no request body to the app it belongs to.
+pub const SCHEME: &str = "vault";
 
 /// What a person is told, and the whole of it. Which check refused, and what
 /// the platform called it, is this file's business.
@@ -63,6 +72,34 @@ fn settled(path: &Path) -> PathBuf {
     }
 }
 
+/// Whether two paths name one file. `settled` has already followed what is
+/// there; what is left is a filesystem that answers to a second spelling of the
+/// same name, which macOS and Windows both do.
+fn same_file(a: &Path, b: &Path) -> bool {
+    a == b
+        || a.as_os_str()
+            .as_encoded_bytes()
+            .eq_ignore_ascii_case(b.as_os_str().as_encoded_bytes())
+}
+
+/// `insideVault` in `@sloppy/vault`, which is what the page checked before it
+/// asked. A colon is a path a person may well have spelled, and is refused in
+/// the one place it names a drive instead.
+fn inside_vault(path: &str) -> bool {
+    if path.is_empty() || path.starts_with('/') || path.contains('\\') {
+        return false;
+    }
+    let mut spelled = path.chars();
+    let drive = matches!(
+        (spelled.next(), spelled.next()),
+        (Some(letter), Some(':')) if letter.is_ascii_alphabetic()
+    );
+    !drive
+        && path
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
 /// The relative path a command was handed, or nothing where it is not one. The
 /// empty path is the folder itself, which only listing and making a folder
 /// take.
@@ -74,20 +111,7 @@ fn relative(path: &str, allow_root: bool) -> Option<PathBuf> {
             None
         };
     }
-    let mut built = PathBuf::new();
-    for part in path.split('/') {
-        let bad = part.is_empty()
-            || part == "."
-            || part == ".."
-            || part.contains('\\')
-            || part.contains(':')
-            || part.contains('\0');
-        if bad {
-            return None;
-        }
-        built.push(part);
-    }
-    Some(built)
+    inside_vault(path).then(|| path.split('/').collect())
 }
 
 /// Where `path` names a file under `root`, and nothing where it would leave it.
@@ -145,13 +169,6 @@ impl Folders {
         self.data.to_string_lossy().into_owned()
     }
 
-    /// Every folder a person has picked, for handing to the asset protocol so a
-    /// picture in one loads on the page. The private data is not among them: it
-    /// holds the identity's key and nothing any page draws.
-    pub fn picked(&self) -> Vec<PathBuf> {
-        self.picked.lock().unwrap().iter().cloned().collect()
-    }
-
     pub fn pick(&self, folder: PathBuf) -> io::Result<()> {
         let mut picked = self.picked.lock().unwrap();
         picked.insert(settled(&folder));
@@ -195,10 +212,25 @@ impl Folders {
     /// The record is what `allows` reads on the next launch, so a command may
     /// not be the thing that writes it.
     fn changeable(&self, at: PathBuf) -> Result<PathBuf, FileError> {
-        if at == self.record {
+        if same_file(&at, &self.record) {
             return Err(FileError::Outside);
         }
         Ok(at)
+    }
+
+    /// A file the page may draw: anything in a folder somebody picked. Nothing
+    /// where no picked folder holds it — the private data included, which is
+    /// where the identity's key is.
+    pub fn loadable(&self, at: &Path) -> Option<PathBuf> {
+        if !at.is_absolute() {
+            return None;
+        }
+        let at = settled(at);
+        let picked = self.picked.lock().unwrap();
+        picked
+            .iter()
+            .any(|folder| at.starts_with(folder))
+            .then_some(at)
     }
 
     pub fn read(&self, root: &str, path: &str) -> Result<Option<Vec<u8>>, FileError> {
@@ -367,24 +399,91 @@ pub fn commands<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send +
     ]
 }
 
-/// Let a picture inside `folder` load on the page. The asset protocol's scope
-/// is the whole of what stands between the webview and the rest of the disk,
-/// so it is widened here and nowhere else.
-pub fn serve<R: Runtime>(app: &AppHandle<R>, folder: &Path) {
-    let _ = app.asset_protocol_scope().allow_directory(folder, true);
-}
-
 #[tauri::command]
 pub async fn pick_folder<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>, FileError> {
     let Some(folder) = ask(&app).await? else {
         return Ok(None);
     };
-    // The asset protocol matches a URL against the scope by spelling, so what is
-    // recorded, what is granted and what the page is handed is one string.
+    // What is recorded and what the page is handed is one string, so a URL the
+    // page builds out of it lands on the folder that was granted.
     let folder = settled(&folder);
     app.state::<Folders>().pick(folder.clone())?;
-    serve(&app, &folder);
     Ok(Some(folder.to_string_lossy().into_owned()))
+}
+
+/// What every answer at this scheme carries. The page is served from another
+/// scheme, so the webview asks before it draws a picture; nothing outside this
+/// app can reach `vault:` at all.
+fn sent(status: StatusCode, kind: &str, body: Vec<u8>) -> Response<Vec<u8>> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, kind)
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, HEAD, OPTIONS")
+        .body(body)
+        .expect("a response built out of static headers")
+}
+
+fn said(status: StatusCode) -> Response<Vec<u8>> {
+    sent(status, "text/plain", Vec::new())
+}
+
+/// What a picture's bytes are. A vault names a picture by what it is
+/// (`@sloppy/local`'s `extensionFor`), so the name is the whole answer.
+fn kind_of(at: &Path) -> &'static str {
+    let extension = at
+        .extension()
+        .and_then(|held| held.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => "application/octet-stream",
+    }
+}
+
+/// The file a `vault:` URL names. `convertFileSrc` on the page spells the whole
+/// path into one segment, so decoding that segment is the whole of reading it.
+fn asked(uri: &Uri) -> Option<PathBuf> {
+    let spelled = percent_decode_str(uri.path().trim_start_matches('/'))
+        .decode_utf8()
+        .ok()?;
+    (!spelled.is_empty()).then(|| PathBuf::from(spelled.as_ref()))
+}
+
+/// What the page is answered when it loads a picture out of a graph.
+pub fn answer(folders: &Folders, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
+    let at = asked(request.uri());
+    match *request.method() {
+        Method::OPTIONS => said(StatusCode::NO_CONTENT),
+        Method::GET | Method::HEAD => {
+            let Some(at) = at.as_deref().and_then(|at| folders.loadable(at)) else {
+                return said(StatusCode::FORBIDDEN);
+            };
+            match fs::read(&at) {
+                Ok(bytes) => sent(StatusCode::OK, kind_of(&at), bytes),
+                Err(_) => said(StatusCode::NOT_FOUND),
+            }
+        }
+        _ => said(StatusCode::METHOD_NOT_ALLOWED),
+    }
+}
+
+/// The page's side of `vault:`, as `lib.rs` registers it.
+pub fn protocol<R: Runtime>(
+    ctx: UriSchemeContext<'_, R>,
+    request: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
+    let app = ctx.app_handle().clone();
+    // Disk work, and the webview's own thread is what would be waiting on it.
+    tauri::async_runtime::spawn_blocking(move || {
+        responder.respond(answer(&app.state::<Folders>(), &request));
+    });
 }
 
 /// A person is asked where a desktop can ask them.
@@ -465,6 +564,13 @@ mod tests {
         assert_eq!(relative("C:/Windows", false), None);
         assert_eq!(relative("notes\\..\\a.md", false), None);
         assert_eq!(relative("notes/./a.md", false), None);
+
+        // The same paths `insideVault` takes, so one spelling is not a file to
+        // the page and no file here: a colon names a drive and nothing else.
+        assert_eq!(
+            relative("notes/a:b.md", false),
+            Some(PathBuf::from("notes/a:b.md"))
+        );
     }
 
     #[test]
@@ -664,7 +770,7 @@ mod tests {
 
         let after = folders(&data);
         assert!(after.read(&vault.to_string_lossy(), "graph.json").is_ok());
-        assert!(after.picked().contains(&settled(&vault)));
+        assert!(after.loadable(&vault.join("graph.json")).is_some());
     }
 
     /// Which folders may be reached is settled outside the webview, so the
@@ -700,7 +806,30 @@ mod tests {
             after.read(&elsewhere.to_string_lossy(), "secret"),
             Err(FileError::NoFolder)
         ));
-        assert!(!after.picked().contains(&elsewhere));
+        assert!(after.loadable(&elsewhere.join("secret")).is_none());
+    }
+
+    /// macOS and Windows answer to a second spelling of the same file name, so
+    /// the record is guarded by what the disk calls the file and not by how the
+    /// page happened to type it.
+    #[test]
+    fn the_record_is_not_a_file_a_command_can_write_under_another_spelling() {
+        let data = scratch("data");
+        let held = folders(&data);
+        let spelled = held.data_path();
+
+        for name in ["Folders.json", "FOLDERS.JSON"] {
+            assert!(matches!(
+                held.write(&spelled, name, b"[]"),
+                Err(FileError::Outside)
+            ));
+            assert!(matches!(
+                held.remove(&spelled, name),
+                Err(FileError::Outside)
+            ));
+        }
+        held.write(&spelled, "identity.json", b"{}")
+            .expect("what is not the record");
     }
 
     /// The page draws pictures out of a picked folder; the identity's key is in
@@ -712,7 +841,89 @@ mod tests {
         let held = folders(&data);
         held.pick(vault.clone()).expect("picking");
 
-        assert_eq!(held.picked(), vec![settled(&vault)]);
-        assert!(held.read(&held.data_path(), "identity.key").is_ok());
+        assert!(held.loadable(&vault.join("media/a.png")).is_some());
+        assert!(held.loadable(&vault.join("notes/a.md")).is_some());
+        assert!(held
+            .loadable(&PathBuf::from(held.data_path()).join("identity.key"))
+            .is_none());
+        assert!(held
+            .loadable(&scratch("elsewhere").join("secret"))
+            .is_none());
+        assert!(held.loadable(&PathBuf::from("media/a.png")).is_none());
+    }
+
+    /// The URL a page builds, as `convertFileSrc` spells it.
+    fn at(path: &Path) -> String {
+        format!(
+            "{SCHEME}://localhost/{}",
+            path.to_string_lossy().replace('/', "%2F")
+        )
+    }
+
+    fn ask(folders: &Folders, method: &str, path: &Path, body: &[u8]) -> Response<Vec<u8>> {
+        let request = Request::builder()
+            .method(method)
+            .uri(at(path))
+            .body(body.to_vec())
+            .expect("a request");
+        answer(folders, &request)
+    }
+
+    #[test]
+    fn a_picture_is_loaded_out_of_a_picked_folder_and_out_of_nowhere_else() {
+        let data = scratch("data");
+        let vault = scratch("vault");
+        let elsewhere = scratch("elsewhere");
+        fs::write(elsewhere.join("secret"), b"not yours").expect("a file elsewhere");
+        let held = folders(&data);
+        held.pick(vault.clone()).expect("picking");
+        held.write(&vault.to_string_lossy(), "media/a.png", b"a picture")
+            .expect("a picture");
+
+        let drawn = ask(&held, "GET", &vault.join("media/a.png"), b"");
+        assert_eq!(drawn.status(), StatusCode::OK);
+        assert_eq!(drawn.body(), b"a picture");
+        assert_eq!(drawn.headers()[header::CONTENT_TYPE], "image/png");
+
+        assert_eq!(
+            ask(&held, "GET", &vault.join("media/gone.png"), b"").status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ask(&held, "GET", &elsewhere.join("secret"), b"").status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            ask(
+                &held,
+                "GET",
+                &PathBuf::from(held.data_path()).join("identity.key"),
+                b""
+            )
+            .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[test]
+    fn the_webview_may_ask_before_it_draws_a_picture_and_may_do_nothing_else() {
+        let data = scratch("data");
+        let vault = scratch("vault");
+        let held = folders(&data);
+        held.pick(vault.clone()).expect("picking");
+        held.write(&vault.to_string_lossy(), "media/a.png", b"a picture")
+            .expect("a picture");
+
+        let asked = ask(&held, "OPTIONS", &vault.join("media/a.png"), b"");
+        assert_eq!(asked.status(), StatusCode::NO_CONTENT);
+        assert_eq!(asked.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+
+        for method in ["PUT", "POST", "DELETE"] {
+            assert_eq!(
+                ask(&held, method, &vault.join("media/a.png"), b"theirs").status(),
+                StatusCode::METHOD_NOT_ALLOWED
+            );
+        }
+        assert_eq!(fs::read(vault.join("media/a.png")).unwrap(), b"a picture");
     }
 }

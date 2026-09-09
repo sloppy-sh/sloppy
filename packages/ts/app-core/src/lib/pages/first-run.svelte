@@ -9,6 +9,12 @@
 	let opening = $state(false);
 	let problem = $state<string | null>(null);
 
+	/** The shell says what went wrong in words fit to show; anything else that
+	 *  went wrong is not in any. */
+	function shellSaid(error: unknown): string | null {
+		return typeof error === 'string' && error.trim() ? error : null;
+	}
+
 	async function begin() {
 		if (!vault) return;
 		opening = true;
@@ -16,8 +22,12 @@
 		try {
 			const folder = await vault.open();
 			if (folder) onopened(folder);
-		} catch {
-			problem = 'Sloppy could not write in that folder. Try another one.';
+		} catch (error) {
+			problem =
+				shellSaid(error) ??
+				(vault.asks
+					? 'Sloppy could not write in that folder. Try another one.'
+					: 'Sloppy could not make a place for your notes on this device.');
 		} finally {
 			opening = false;
 		}
@@ -71,10 +81,5 @@
 				{/if}
 			</Button>
 		</div>
-
-		<p class="text-sm text-muted-foreground">
-			Signing in to a hosted Sloppy is in Settings, whenever you want it. It is a separate place to
-			write: what is there stays there until you bring a copy across.
-		</p>
 	</div>
 </div>

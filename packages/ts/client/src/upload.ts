@@ -1,8 +1,14 @@
 // Sending a file, from a browser. The three steps `@sloppy/types`' `media.ts`
 // describes, with the middle one going straight from the device to wherever the
-// ticket points — the bytes never travel through Sloppy.
+// ticket points — the bytes never travel through Sloppy — or, where the store
+// is this device, no further than the client below it.
 
-import type { CreateUploadRequest, MediaAsset, MediaRole } from "@sloppy/types";
+import type {
+  CreateUploadRequest,
+  MediaAsset,
+  MediaRole,
+  UploadTicket,
+} from "@sloppy/types";
 import type { SloppyClient } from "./index.js";
 
 /**
@@ -13,7 +19,14 @@ import type { SloppyClient } from "./index.js";
 export type UploadClient = Pick<
   SloppyClient,
   "createUpload" | "completeUpload"
->;
+> & {
+  /**
+   * Present where the store is this device and the client itself puts the
+   * bytes there. Absent → they are sent to the address the ticket names, which
+   * is what a store across a network is.
+   */
+  sendUpload?: (ticket: UploadTicket, file: Blob) => Promise<void>;
+};
 
 export interface UploadHandle {
   readonly asset: Promise<MediaAsset>;
@@ -115,13 +128,19 @@ export function uploadFile(
       ...measured,
     };
     const ticket = await client.createUpload(request);
-    await put(
-      ticket.upload_url,
-      ticket.upload_headers,
-      file,
-      stop.signal,
-      options.onProgress,
-    );
+    if (client.sendUpload) {
+      if (stop.signal.aborted) throw new Error("That file was not added.");
+      await client.sendUpload(ticket, file);
+      options.onProgress?.(1);
+    } else {
+      await put(
+        ticket.upload_url,
+        ticket.upload_headers,
+        file,
+        stop.signal,
+        options.onProgress,
+      );
+    }
     return client.completeUpload({
       upload_id: ticket.upload_id,
       ...(sha256 ? { sha256 } : {}),

@@ -132,6 +132,7 @@ import { carriedOut, vaultOwned } from "./vault-paths.js";
 export class LocalApi implements SloppyApi {
   private identity?: LocalIdentity;
   private known?: KnownVault[];
+  private starting?: Promise<LocalGraph>;
   private readonly opened = new Map<string, LocalGraph>();
   /** One write at a time: an act reads where it is landing and then writes
    *  there, and two would each land where the other had already left. */
@@ -776,6 +777,22 @@ export class LocalApi implements SloppyApi {
     });
   }
 
+  /**
+   * A picture's bytes, put where its ticket says. They cross the same bridge
+   * every other write does rather than being sent to the address the ticket
+   * names: a webview carries no request body to the app it belongs to, so
+   * there is no address on this device that could receive them.
+   */
+  async sendUpload(ticket: UploadTicket, file: Blob): Promise<void> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await this.write(async () => {
+      const graph = await this.graphAt();
+      const path = graph.picturePath(ticket.upload_id);
+      if (!path) throw absent("That picture is not here.");
+      await graph.files.write(path, bytes);
+    });
+  }
+
   async completeUpload(asked: CompleteUploadRequest): Promise<MediaAsset> {
     const request = checked(() => CompleteUploadRequestSchema.parse(asked));
     return this.write(async () =>
@@ -1029,7 +1046,12 @@ export class LocalApi implements SloppyApi {
 
   /** The graph named, or the one this device started with. */
   private async graphAt(ref?: OwnedRef): Promise<LocalGraph> {
-    const graphs = await this.allGraphs();
+    let graphs = await this.allGraphs();
+    const open = this.files.root;
+    if (graphs.length === 0 && open) {
+      await this.graphInTheOpenFolder(open);
+      graphs = await this.allGraphs();
+    }
     if (graphs.length === 0) {
       throw absent("There is no graph on this device yet. Start one to write.");
     }
@@ -1037,6 +1059,41 @@ export class LocalApi implements SloppyApi {
     const found = graphs.find((graph) => graph.ref === ref);
     if (!found) throw absent("That graph is not on this device.");
     return found;
+  }
+
+  /**
+   * The graph in the folder a shell opened, where this device knows of none
+   * yet: opening a folder is how somebody says a graph is in it, so one that
+   * holds a graph is read and one that does not becomes it. The name is the
+   * folder's, which is what they called the place; it is renamed like any other.
+   *
+   * Held as the promise rather than the graph, so two reads landing together
+   * start one graph between them.
+   */
+  private graphInTheOpenFolder(root: string): Promise<LocalGraph> {
+    this.starting ??= (async () => {
+      const did = (await this.who()).did;
+      const at = this.files.at(root);
+      const graph = (await at.exists(GRAPH_FILE))
+        ? await LocalGraph.open(at, did)
+        : await LocalGraph.start(at, did, {
+            format: VAULT_FORMAT,
+            graph: HOME_GRAPH_ULID,
+            name: folderName(root),
+            owner: did,
+          });
+      this.opened.set(root, graph);
+      const known = await this.vaults();
+      const when = nowIso();
+      if (!known.some((one) => one.root === root)) {
+        await this.remember([
+          ...known,
+          { root, created_at: when, updated_at: when },
+        ]);
+      }
+      return graph;
+    })();
+    return this.starting;
   }
 
   private async graphHolding(ref: OwnedRef): Promise<LocalGraph | undefined> {
@@ -1283,6 +1340,12 @@ export function archiveName(name: string, at: Date = new Date()): string {
     .replace(/\s+/g, " ")
     .trim();
   return `${called === "" ? "graph" : called} ${at.toISOString().slice(0, 10)}.sloppy`;
+}
+
+/** What a person called the folder, which is what a graph in it is called
+ *  until they say otherwise. */
+function folderName(root: string): string {
+  return root.split(/[\\/]/).filter(Boolean).at(-1) ?? "My graph";
 }
 
 /** The graph file the vault holds, or absent where it holds none this build can

@@ -55,6 +55,77 @@ describe("the client a graph on this device is served through", () => {
   });
 });
 
+describe("a picture in a graph on this device", () => {
+  it("is kept by the client itself, with nothing sent anywhere", async () => {
+    const held = device(["/graphs/thesis"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const ticket = await held.api.createUpload({
+      role: "block",
+      filename: "seed.png",
+      mime_type: "image/png",
+      size: 3,
+    });
+
+    await held.api.sendUpload(ticket, new Blob([new Uint8Array([1, 2, 3])]));
+    const asset = await held.api.completeUpload({
+      upload_id: ticket.upload_id,
+    });
+
+    expect(asset.upload_id).toBe(ticket.upload_id);
+    expect(
+      held.store.get(`/graphs/thesis/media/${ticket.upload_id}.png`),
+    ).toEqual(new Uint8Array([1, 2, 3]));
+  });
+});
+
+describe("the folder a shell opened", () => {
+  /** A client rooted at one folder, the way the native shell serves the graph
+   *  somebody chose. */
+  function opened(root: string, store = new Map<string, Uint8Array>()) {
+    const files = new MemoryFiles({ root, store, data: "/data" });
+    return { api: new LocalApi(files), files, store };
+  }
+
+  it("becomes the graph, named after itself, where it holds none", async () => {
+    const held = opened("/Users/me/garden");
+
+    const note = await held.api.createNode({ title: "A first thought" });
+
+    expect(held.store.has(`/Users/me/garden/${GRAPH_FILE}`)).toBe(true);
+    const graphs = await held.api.listGraphs();
+    expect(graphs.map((one) => one.title)).toEqual(["garden"]);
+    expect(splitOwnedRef(graphs[0].ref).localId).toBe(HOME_GRAPH_ULID);
+    expect((await held.api.getNode(note.ref))?.title).toBe("A first thought");
+  });
+
+  it("is read rather than written over where it already holds a graph", async () => {
+    const first = opened("/Users/me/garden");
+    const note = await first.api.createNode({ title: "A first thought" });
+
+    // A second launch: the folder is the same, and nothing of the first
+    // client's index survives.
+    const again = opened("/Users/me/garden", first.store);
+
+    expect((await again.api.listGraphs()).map((one) => one.title)).toEqual([
+      "garden",
+    ]);
+    expect((await again.api.getNode(note.ref))?.title).toBe("A first thought");
+    expect((await again.api.listNodes()).length).toBe(1);
+  });
+
+  it("starts one graph between two reads that land together", async () => {
+    const held = opened("/Users/me/garden");
+
+    await Promise.all([
+      held.api.listNodes(),
+      held.api.listNodes(),
+      held.api.createNode({ title: "A first thought" }),
+    ]);
+
+    expect((await held.api.listGraphs()).length).toBe(1);
+  });
+});
+
 describe("a graph in a folder", () => {
   it("starts one where a person put it, and reads it back off the disk", async () => {
     const held = device(["/graphs/thesis"]);

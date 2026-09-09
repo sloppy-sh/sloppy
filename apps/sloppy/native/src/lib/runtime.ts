@@ -40,27 +40,28 @@ function serve(folder: string): void {
 async function openFolder(files: Files): Promise<string | undefined> {
 	const folder = await files.pickFolder();
 	if (!folder) return undefined;
-	await rememberVault(files, folder);
+	// A folder somebody chose is theirs and may be anywhere, so where it is is
+	// written down. The one a phone keeps its graphs in is asked for again each
+	// launch instead: it moves with the app, and a path written down before it
+	// moved leads nowhere.
+	if (ASKS_WHERE) await rememberVault(files, folder);
 	serve(folder);
 	return folder;
 }
 
 /**
- * The folder this device had a graph in last, opened again, before any page
- * reads `api`. `undefined` is a device with none, which is what puts the first
- * run in front of somebody instead. A device that keeps its graphs in one place
- * has nothing to be asked about, so its folder is opened here, and the first
- * run is what is left when even that fails.
+ * The folder this device has a graph in, opened before any page reads `api`.
+ * `undefined` is a device with none, which is what puts the first run in front
+ * of somebody instead — and is what is left where a device that keeps its
+ * graphs in one place cannot reach that place either.
  */
 export async function openRememberedVault(): Promise<string | undefined> {
 	if (!device) return undefined;
+	if (!ASKS_WHERE) return openFolder(device).catch(() => undefined);
 	const remembered = await rememberedVault(device);
-	if (remembered) {
-		serve(remembered);
-		return remembered;
-	}
-	if (ASKS_WHERE) return undefined;
-	return openFolder(device).catch(() => undefined);
+	if (!remembered) return undefined;
+	serve(remembered);
+	return remembered;
 }
 
 export function initNativeRuntime(): void {

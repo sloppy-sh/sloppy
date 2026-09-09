@@ -19,11 +19,12 @@ tauri = { version = "2.11.2", features = ["test"] }
 tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
-# "protocol-asset" is how a picture in the folder a graph lives in loads on the
-# page; which folders it reaches is set at runtime in src/vault.rs.
-tauri = { version = "2.11.2", features = ["protocol-asset"] }
+tauri = { version = "2.11.2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# A `vault:` URL carries a file's whole path in one segment, so reading one back
+# is a percent-decode.
+percent-encoding = "2"
 # Bytes cross the bridge as base64, because the bridge carries JSON.
 base64 = "0.22"
 # The sign-in round trip: out through opener, back through deep-link.
