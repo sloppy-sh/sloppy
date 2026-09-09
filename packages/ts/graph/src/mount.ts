@@ -8,13 +8,16 @@
 
 import type { OwnedRef } from "@sloppy/types";
 import {
+  comparingStates,
   drawnNodes,
   drawnReading,
+  type GraphDifference,
   type GraphField,
   type GraphFieldInset,
   type GraphHoverAt,
   type GraphSurfaceProps,
   type GraphTransform,
+  nodesWithGone,
 } from "./contract.js";
 import { screenDensity } from "./density.js";
 import { attachGestures, type ScreenBox } from "./gestures.js";
@@ -255,6 +258,7 @@ export function mountGraph(
 
   const fold = makeFold();
   const lodBudget = (): LodBudget => ({ ...DEFAULT_BUDGET, ...props.lod });
+  const comparing = (): boolean => comparingStates(props.difference);
 
   /**
    * Everything the marks now on the canvas were drawn from EXCEPT the reader's
@@ -266,6 +270,7 @@ export function mountGraph(
     collapsed: GraphMountOptions["collapsed"];
     viewer: GraphMountOptions["viewer"];
     fields: GraphMountOptions["fields"];
+    difference: GraphMountOptions["difference"];
     focus: OwnedRef | undefined;
     palette: GraphPalette;
     budget: LodBudget;
@@ -288,21 +293,26 @@ export function mountGraph(
       standing.nodes === props.nodes &&
       standing.collapsed === props.collapsed &&
       standing.viewer === props.viewer &&
+      sameDifference(standing.difference, props.difference) &&
       sameFields(standing.fields, props.fields) &&
       standing.focus === focus &&
       standing.palette === palette &&
       standing.budget.depth === budget.depth &&
       standing.budget.maxDrawn === budget.maxDrawn;
 
-    const lod = fold(props.nodes, props.collapsed, focus, budget);
+    // The notes the difference says went stand in the region alongside it, so
+    // every mark on the canvas is seeded and folded by the one rule.
+    const nodes = nodesWithGone(props.nodes, props.difference);
+    const lod = fold(nodes, props.collapsed, focus, budget);
     budgetFolded = lod.folded;
 
-    const model = buildModel(drawnNodes(props.nodes, lod.collapsed), {
+    const model = buildModel(drawnNodes(nodes, lod.collapsed), {
       selection: props.selection,
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),
       fields: props.fields,
+      difference: props.difference,
     });
 
     if (recolour) scene.setTints(model, props.selection.length > 0);
@@ -312,6 +322,7 @@ export function mountGraph(
       collapsed: props.collapsed,
       viewer: props.viewer,
       fields: props.fields,
+      difference: props.difference,
       focus,
       palette,
       budget,
@@ -319,9 +330,7 @@ export function mountGraph(
     scene.setPicking(props.picking ?? null);
     scene.setChosen(props.chosen ?? null);
     scene.setReading(
-      props.reading
-        ? drawnReading(props.nodes, lod.collapsed, props.reading)
-        : null,
+      props.reading ? drawnReading(nodes, lod.collapsed, props.reading) : null,
     );
     dragged = null;
     if (!relayout) return;
@@ -377,20 +386,35 @@ export function mountGraph(
           if (budgetFolded.has(ref)) rebuild();
           return;
         }
-        const picking = props.picking;
-        if (picking) {
-          if (ref !== picking.from) picking.onPick(ref);
-          return;
-        }
-        // A tap adds and removes wherever somebody is already choosing, which is
-        // the phone's way in; the modifier is the desk's way of starting.
-        if (props.onChoose && (props.chosen !== undefined || withModifier)) {
-          props.onChoose(ref);
-          return;
+        // A note that went is not in the state the reader is on, so there is no
+        // note behind its mark to open — DESIGN.md § "A difference between two
+        // states".
+        if (node.difference === "gone") return;
+        // Picking and choosing are acts, and a canvas comparing two states is
+        // not in either mode: the orbit is the difference's while one is up, so
+        // a tap opens rather than pointing at or taking.
+        if (!comparing()) {
+          const picking = props.picking;
+          if (picking) {
+            if (ref !== picking.from) picking.onPick(ref);
+            return;
+          }
+          // A tap adds and removes wherever somebody is already choosing, which
+          // is the phone's way in; the modifier is the desk's way of starting.
+          if (props.onChoose && (props.chosen !== undefined || withModifier)) {
+            props.onChoose(ref);
+            return;
+          }
         }
         props.onOpenNode(ref);
       },
       onPress: (target, at) => {
+        if (
+          target !== null &&
+          built.attributesOf(target)?.difference === "gone"
+        ) {
+          return;
+        }
         if (props.onMenu) {
           props.onMenu({
             ...at,
@@ -411,9 +435,11 @@ export function mountGraph(
             : hoverAt(built, field, target),
         );
       },
-      canSweep: () => props.onChooseWithin !== undefined,
+      canSweep: () => !comparing() && props.onChooseWithin !== undefined,
       canSweepByFinger: () =>
-        props.chosen !== undefined && props.onChooseWithin !== undefined,
+        !comparing() &&
+        props.chosen !== undefined &&
+        props.onChooseWithin !== undefined,
       onSweep: (box, done) => {
         takeViewport();
         if (!done) {
@@ -606,21 +632,54 @@ function presenceOf(props: GraphSurfaceProps, ceiling: () => number): number {
 /**
  * Whether anything the layout reads has moved. `selection` is deliberately not
  * one of them: DESIGN.md § Hue answers a tag question in colour, and a field
- * that re-settled under the reader would be answering it somewhere else.
+ * that re-settled under the reader would be answering it somewhere else. A
+ * difference IS one, because the notes it says went stand in the field.
  *
- * `lod` is read field by field because a host naturally writes that bag inline
- * and a fresh object each render is not a moved budget. The collections are
- * compared by identity, which is what a `$derived` gives them.
+ * `lod` and `difference` are read rather than compared by identity, because a
+ * host naturally writes either bag inline and a fresh object each render is not
+ * a moved budget or a fresh question. `nodes` and `collapsed` are compared by
+ * identity, which is what a `$derived` gives them.
  */
 function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
   return (
     a.nodes !== b.nodes ||
     a.collapsed !== b.collapsed ||
     a.viewer !== b.viewer ||
+    !sameDifference(a.difference, b.difference) ||
     a.focus !== b.focus ||
     a.lod?.depth !== b.lod?.depth ||
     a.lod?.maxDrawn !== b.lod?.maxDrawn
   );
+}
+
+/**
+ * Whether the same two states are being compared. Read rather than compared by
+ * identity for the reason the fields are: a host writes this bag inline, and a
+ * fresh object each render is not a fresh question.
+ */
+function sameDifference(
+  a: GraphDifference | undefined,
+  b: GraphDifference | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  return (
+    sameRefs(a.added, b.added) &&
+    sameRefs(a.changed, b.changed) &&
+    a.removed.length === b.removed.length &&
+    a.removed.every((node, at) => node.ref === b.removed[at].ref) &&
+    a.moved.length === b.moved.length &&
+    a.moved.every(
+      (note, at) =>
+        note.ref === b.moved[at].ref && note.from === b.moved[at].from,
+    )
+  );
+}
+
+function sameRefs(a: ReadonlySet<OwnedRef>, b: ReadonlySet<OwnedRef>): boolean {
+  if (a.size !== b.size) return false;
+  for (const ref of a) if (!b.has(ref)) return false;
+  return true;
 }
 
 /**
@@ -642,9 +701,11 @@ function sameFields(
 /**
  * Whether the canvas is being asked a question of its own — a note to point at,
  * or notes to choose. A preview then sits over what somebody is reaching for,
- * and answers something they did not ask.
+ * and answers something they did not ask. Neither is asked while two states are
+ * being compared, whatever a host left bound.
  */
 function asked(props: GraphSurfaceProps): boolean {
+  if (comparingStates(props.difference)) return false;
   return props.picking !== undefined || props.chosen !== undefined;
 }
 
@@ -658,6 +719,7 @@ function hoverAt(
   const node = scene.attributesOf(ref);
   const index = scene.indexOf(ref);
   if (!node || index === undefined) return null;
+  if (node.difference === "gone") return null;
   const box = field.getBoundingClientRect();
   const world = scene.positionOf(index);
   const at = scene.viewport.toScreen(world.x, world.y);
