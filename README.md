@@ -62,6 +62,7 @@ pnpm + Turborepo monorepo. Every row below is in the tree.
 | `packages/ts/data`     | `@sloppy/data`     | SurrealDB table definitions and the per-user purge |
 | `packages/ts/graph`    | `@sloppy/graph`    | pixi.js v8 + graphology + d3-force                 |
 | `packages/ts/idp`      | `@sloppy/idp`      | syr IdP contracts + crypto, for local mode         |
+| `packages/ts/vault`    | `@sloppy/vault`    | A graph as files: the vault folder and the archive |
 
 Identity, profiles, media blobs, emoji and reactions come from **syr**; nodes, addresses,
 tags, blocks and ink are Sloppy's own. That split is not a preference — see

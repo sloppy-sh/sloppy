@@ -43,7 +43,8 @@ sloppy/
 │       ├── ui/        @sloppy/ui        — shadcn-svelte vocabulary + app.css design tokens
 │       ├── data/      @sloppy/data      — SurrealDB table definitions and the per-user purge
 │       ├── graph/     @sloppy/graph     — pixi renderer + graphology model + layout worker
-│       └── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
+│       ├── idp/       @sloppy/idp       — syr IdP wire contracts + crypto, for local mode
+│       └── vault/     @sloppy/vault     — a graph as files: the vault folder and the archive
 ├── docs/
 ├── scripts/
 ├── docker/dev/          (the one image api, web and the package builder share)
@@ -1660,6 +1661,71 @@ this adds a field to a request and nothing to the store.
 **A section goes and comes back with the note that holds it.** `deleted_at` on `block`
 says the note went, so it is stamped and cleared alongside the note's; taking one section
 out of a note on its own is still the row going, and no timestamp.
+
+## A graph on disk
+
+**The vault is a folder somebody owns, and the archive is that folder zipped.** One
+reader and one writer serve both, in `@sloppy/vault` — pure TypeScript with no server and
+no browser in it, so the API streams an archive out of the same code the native app reads
+a folder with. Nothing in it talks to a store: it is handed rows and hands back files.
+
+```
+<vault>/
+├── graph.json                       format, the graph's ulid, its name, the owner's DID
+├── notes/<ulid>.md                  one note: front matter, then its sections
+├── media/<uploadId>.<ext>           the pictures the notes draw
+└── .sloppy/                         what markdown cannot carry
+    ├── ink/<block>-<n>.ink.json     one drawing's strokes, and an .svg of it beside
+    ├── pictures.json                a picture's size, keyed by upload id
+    └── emoji/<shortcode>.<ext>      the custom emoji the notes are written with
+```
+
+**The markdown is the record, and `.sloppy/` is what markdown has no syntax for.** A
+person opens `notes/` in any editor, reads their writing, changes a word and commits it;
+the folder is theirs, and a folder of text files is a folder git can keep. So
+everything that can be written as markdown is: headings, lists, todos, code, quotes, links, `:shortcode:` for
+an emoji, `$…$` and `$$` for a formula, a fence for a diagram, an image link for a picture
+and for a drawing. Strokes, a picture's pixel size and the emoji pictures have no markdown
+syntax at all, so they sit in `.sloppy/` beside the link that names them. A drawing is
+written twice — its strokes as `.ink.json`, and an `.svg` drawn from them — because the
+strokes are the record and the SVG is what a viewer that has never heard of Sloppy shows.
+
+**One note is one file, and its sections are marked in the body.** The front matter is the
+note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `tags`, `links`,
+`title`, `created`, `updated`. Absent `parent` is a branch or an independent note; absent
+`address` is a note with none; absent `aliases`, `tags` or `links` is none of them. The
+body is the note's stack of sections, each opened by `<!-- block <ulid> -->` — so a section
+keeps its identity across an export and an import, and a person who moves one in the file
+has moved a section rather than made two.
+
+**What a vault carries is what a person wrote; what a renderer decided is not carried.** A
+note's `depth` and `origin` fall out of the parent chain, its `references` out of its own
+writing, and an emoji's picture out of the catalog in `.sloppy/emoji/` — so none of
+the four is written down twice. A link's `target` and `rel`, a picture's upload progress: the same. An
+element kind this build has no renderer for is carried whole, as an HTML comment holding
+its JSON, so a vault written by a newer Sloppy loses nothing on the way through an older
+one.
+
+**The conversion is lossless, and that is a property test rather than a promise.**
+`toMarkdown` and `fromMarkdown` are inverse over the documents the editor writes:
+`document -> markdown + sidecars -> document` is identity, and two documents that differ
+never write the same files. An element whose markdown would read back as something else —
+a code block in a diagram's language, a formula holding a `$` — is written as its JSON
+instead of guessed at.
+
+**Refs are re-keyed on import; ulids are kept.** An archive carries refs under the DID that
+exported it. Importing into an identity rewrites `<sourceDid>/<ulid>` to `<targetDid>/<ulid>`
+through the note's own ref, its parent, its links and every reference in its writing — the
+aliases ride the note, so its ref carries them. The ulid half never changes, which is what
+makes a re-import a replace rather than a second copy of everything. An import is refused
+where the target already holds one of the ulids arriving, unless it is a replace of the same
+graph — the graph's own ulid says which. Addresses arrive as the labels they are, and are
+held unique inside the graph by the same rule that writes one.
+
+**An archive says what it holds before it is opened.** `manifest` reads `graph.json` and
+counts the entries out of the zip's own listing without inflating them, so an import
+preview can say whose graph it is, what it is called and how much of it is arriving while
+the file is still a file.
 
 ## Tagging a note
 
