@@ -50,6 +50,16 @@ function vault(): Vault {
               attrs: { note: `${FROM}/${CITED}`, label: "the other" },
             },
             { type: "text", text: ` and ${FROM}/${CITED} in prose` },
+            {
+              type: "text",
+              text: "and a link to it",
+              marks: [
+                {
+                  type: "link",
+                  attrs: { href: `sloppy:${FROM}/${CITED}` },
+                },
+              ],
+            },
           ],
         },
         {
@@ -98,10 +108,14 @@ describe("a graph moving into another identity", () => {
         type: string;
         attrs?: Record<string, unknown>;
         text?: string;
+        marks?: { type: string; attrs?: Record<string, unknown> }[];
       }[];
     }[];
     expect(prose.content?.[0].attrs?.note).toBe(`${TO}/${CITED}`);
     expect(prose.content?.[1].text).toBe(` and ${FROM}/${CITED} in prose`);
+    expect(prose.content?.[2].marks?.[0].attrs?.href).toBe(
+      `sloppy:${TO}/${CITED}`,
+    );
     expect(unheard.attrs?.note).toBe(`${TO}/${CITED}`);
   });
 
