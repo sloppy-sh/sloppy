@@ -34,12 +34,20 @@ let opened: string | undefined;
 
 let missing = false;
 
-/** One reader and writer over the folder that is open, so the graph the app is
- *  in and the graph a page asks about are the same one. */
 let served: LocalApi | undefined;
 
+/** A reader and writer over the folder that is open. app-core asks for one
+ *  again only after `resetApi`, and by then the folder is at a state the last
+ *  one's index is not — a commit switched, a merge landed — so every ask is
+ *  answered with its own. */
+function fresh(files: Files): LocalApi {
+	return (served = new LocalApi(opened ? files.at(opened) : files));
+}
+
+/** The one the app is reading, so the graph the app is in and the graph a page
+ *  asks about are the same one. */
 function serving(files: Files): LocalApi {
-	return (served ??= new LocalApi(opened ? files.at(opened) : files));
+	return served ?? fresh(files);
 }
 
 function serve(folder: string): void {
@@ -104,7 +112,7 @@ export function initNativeRuntime(): void {
 		saveFile: null,
 		...(device
 			? {
-					createApi: () => serving(device),
+					createApi: () => fresh(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,

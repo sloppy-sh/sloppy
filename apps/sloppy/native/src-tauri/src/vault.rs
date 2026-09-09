@@ -49,20 +49,27 @@ impl From<io::Error> for FileError {
     }
 }
 
-impl Serialize for FileError {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(match self {
+impl FileError {
+    /// What a person is told, and what `Serialize` hands the page.
+    pub fn said(&self) -> &str {
+        match self {
             FileError::NoFolder => "That folder is not open. Choose it to open the graph in it.",
             FileError::Outside => "That is not a file inside the folder.",
             FileError::Failed(why) => why,
-        })
+        }
+    }
+}
+
+impl Serialize for FileError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.said())
     }
 }
 
 /// `path` with as much of it as exists resolved — symlinks followed, `.`
 /// dropped — and the rest left as it was spelled, so a file that is not there
 /// yet still answers where it would be.
-fn settled(path: &Path) -> PathBuf {
+pub(crate) fn settled(path: &Path) -> PathBuf {
     if let Ok(real) = fs::canonicalize(path) {
         return real;
     }
@@ -203,6 +210,23 @@ impl Folders {
             return Err(FileError::NoFolder);
         }
         inside(&root, path, allow_root)
+    }
+
+    /// The folder a history command works in, refused where nobody opened it.
+    /// Everything that command then reaches is under what this answers.
+    pub fn opened(&self, root: &str) -> Result<PathBuf, FileError> {
+        let root = PathBuf::from(root);
+        if self.allows(&root) {
+            Ok(settled(&root))
+        } else {
+            Err(FileError::NoFolder)
+        }
+    }
+
+    /// Where a file the page named lands, refused where it would leave the
+    /// folder or be the record itself.
+    pub fn within(&self, root: &str, path: &str) -> Result<PathBuf, FileError> {
+        self.changeable(self.resolve(root, path, false)?)
     }
 
     fn is_private(&self, path: &Path) -> bool {
@@ -383,20 +407,6 @@ pub fn files_mkdir(
 #[tauri::command]
 pub fn app_data_path(folders: State<'_, Folders>) -> String {
     folders.data_path()
-}
-
-/// The whole of what this shell answers for `Files`.
-pub fn commands<R: Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
-    tauri::generate_handler![
-        files_read,
-        files_write,
-        files_list,
-        files_remove,
-        files_exists,
-        files_mkdir,
-        app_data_path,
-        pick_folder,
-    ]
 }
 
 #[tauri::command]
@@ -714,7 +724,7 @@ mod tests {
 
         let (held, _, vault) = opened();
         let app = mock_builder()
-            .invoke_handler(commands())
+            .invoke_handler(crate::commands())
             .build(mock_context(noop_assets()))
             .expect("an app");
         app.manage(held);

@@ -1871,7 +1871,12 @@ that also holds one never commits it. The bin is the second, and its reason is t
 `.sloppy/bin.json` carries every address this graph has spent and will not assign again, and
 that ledger only ever grows — a switch to an older commit that handed those addresses back
 would let a second note be written at one, which AI.md § "The Genealogy Is the Protocol"
-forbids. The bin is the folder's and travels neither in an archive nor through the history.
+forbids. The bin is the folder's and travels neither in an archive nor through the
+history. An ignore alone cannot hold that line, so three things do: the repository
+excludes them for itself, a commit lets go of any a folder was already tracking before
+the app opened it, and a checkout keeps the folder's own aside and puts them back, so no
+switch or merge writes an older bin or identity over the live one. The files themselves
+stay where they are throughout — only the history lets go of them.
 
 **Any commit's vault is readable, and reading one moves nothing.** `readAt` answers the
 whole vault as it was at a commit — the same `Vault` a folder and an archive already are, so

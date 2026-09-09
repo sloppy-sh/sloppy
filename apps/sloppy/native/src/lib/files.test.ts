@@ -1,4 +1,4 @@
-import { OutsideRootError } from '@sloppy/local';
+import { HistoryError, OutsideRootError } from '@sloppy/local';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -109,6 +109,18 @@ describe('the states the graph in this folder has been in', () => {
 			command: 'history_read_at',
 			args: { root: '/vault', commit: 'abc' }
 		});
+	});
+
+	it('hands on what an act it would not take was refused with', async () => {
+		const call = async <T>(): Promise<T> => {
+			throw 'Finish the merge you are in the middle of first.';
+		};
+		const history = tauriHistory('/vault', call);
+
+		await expect(history.switch('later')).rejects.toBeInstanceOf(HistoryError);
+		await expect(history.switch('later')).rejects.toThrow(
+			'Finish the merge you are in the middle of first.'
+		);
 	});
 
 	it('refuses to settle a conflict over a path outside the folder', async () => {
