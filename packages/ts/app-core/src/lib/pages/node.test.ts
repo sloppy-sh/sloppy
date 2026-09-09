@@ -1117,7 +1117,8 @@ describe('writing the address on a note', () => {
 			asked.push(address);
 			return {
 				...node(2, '1a', { title: 'Cells', origin: FIRST, parent: FIRST }),
-				address: undefined
+				address: undefined,
+				aliases: ['1a']
 			};
 		});
 		await openNote(SECOND);
@@ -1130,6 +1131,7 @@ describe('writing the address on a note', () => {
 
 		expect(asked).toEqual([null]);
 		expect(noteHead()).toContain('Give it an address');
+		expect(noteHead()).toContain('was 1a');
 	});
 
 	it('repeats the server’s words when the address is refused, and keeps the field up', async () => {

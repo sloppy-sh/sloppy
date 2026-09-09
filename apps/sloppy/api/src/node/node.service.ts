@@ -448,9 +448,8 @@ export class NodeService {
     return held === null ? null : this.yieldedBy(did, graph, address, held);
   }
 
-  /** What the note holding this address gives up: nothing where it is in the
-   *  bin and has already given the address up, the address itself where it is
-   *  still at it, and a refusal where the note is there. */
+  /** Throws where the note this address leads to is there rather than in the
+   *  bin: only a note in the bin gives its address up. */
   private async yieldedBy(
     did: string,
     graph: OwnedRef,
