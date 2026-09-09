@@ -137,6 +137,29 @@ describe("finding a note again", () => {
     expect(found[0].snippet).toContain("keeps its own clock");
   });
 
+  it("answers the best match first, whichever graph it is in", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const second = await held.api.createGraph({ title: "Garden" });
+    const passing = await held.api.createNode({ title: "Passing" });
+    await held.api.createBlock({
+      node: passing.ref,
+      content: textDocument("A clock, in passing."),
+    });
+    const kept = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Clocks",
+    });
+    await held.api.createBlock({
+      node: kept.ref,
+      content: textDocument("A clock, another clock, a third clock."),
+    });
+
+    expect(
+      (await reopened(held).searchNotes("clock")).map((hit) => hit.note),
+    ).toEqual([kept.ref, passing.ref]);
+  });
+
   it("reaches it by a tag, and counts the tags a graph carries", async () => {
     const held = await opened();
     const one = await held.api.createNode({ title: "One", tags: ["seed"] });

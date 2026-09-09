@@ -151,6 +151,42 @@ describe("a graph of this device's own brought back in", () => {
     ).rejects.toThrow("You have used 2 before");
   });
 
+  it("still owes a citation every number the graph it replaces was at", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const second = await held.api.createGraph({ title: "Garden" });
+    await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Beans",
+    });
+    const out = await archiveFrom(held, second.ref);
+
+    const later = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Peas",
+    });
+    expect(later.address).toBe("2");
+    await held.api.setAddress(later.ref, "5");
+    const thrown = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Kale",
+    });
+    expect(thrown.address).toBe("6");
+    await held.api.deleteNode(thrown.ref);
+
+    await held.api.importArchive(out);
+
+    const client = reopened(held);
+    expect(await client.deletedBranches()).toEqual([]);
+    for (const address of ["2", "5", "6"]) {
+      await expect(
+        client.createNode({
+          from: { relation: "root", address, graph: second.ref },
+        }),
+      ).rejects.toThrow(`You have used ${address} before`);
+    }
+  });
+
   it("refuses one whose notes are already in another graph here", async () => {
     const { held, graph, note } = await written();
     const said = await held.api.previewArchive(

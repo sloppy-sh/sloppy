@@ -99,6 +99,7 @@ import {
   rekey,
   unpack,
   uploadAt,
+  type VaultNote,
   vaultToNote,
   VaultFormatError,
 } from "@sloppy/vault";
@@ -547,7 +548,7 @@ export class LocalApi implements SloppyApi {
         throw refuse("There is already a graph in that folder.");
       }
       const files = this.files.at(root);
-      const retired = into ? into.retiredAddresses() : [];
+      const retired = into ? spentBefore(into, opened.notes) : [];
       if (into) await emptyVault(files);
       for (const [path, bytes] of opened.vault) await files.write(path, bytes);
       const graph = await LocalGraph.open(files, did);
@@ -1039,11 +1040,36 @@ export class LocalApi implements SloppyApi {
 interface Opened {
   said: { format: number; graph: string; name: string; owner: DidSyr };
   vault: Vault;
-  notes: { ref: OwnedRef; sections: { content: BlockDocument }[] }[];
+  notes: VaultNote[];
   missing: string[];
   /** The graph on this device this archive writes over, absent where it opens
    *  one of its own. */
   into?: LocalGraph;
+}
+
+/**
+ * Every address the graph an import writes over has spent: the ones its notes
+ * are at, the bin's among them, the ones they were carried away from, and the
+ * ones it had already retired — less the ones the arriving notes lead by. None
+ * of them is ever assigned again, AI.md § "The Genealogy Is the Protocol".
+ */
+function spentBefore(
+  into: LocalGraph,
+  arriving: readonly VaultNote[],
+): Address[] {
+  const led = new Set<Address>();
+  for (const note of arriving) {
+    if (note.address !== undefined) led.add(note.address);
+    for (const alias of note.aliases) led.add(alias);
+  }
+  const going = into
+    .all()
+    .flatMap((note) => [
+      ...(note.address === undefined ? [] : [note.address]),
+      ...note.aliases,
+    ])
+    .filter((address) => !led.has(address));
+  return [...new Set([...into.retiredAddresses(), ...going])];
 }
 
 /** The graph's own files gone from a folder somebody keeps. What else is in it
