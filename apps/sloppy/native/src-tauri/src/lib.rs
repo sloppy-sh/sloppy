@@ -1,3 +1,7 @@
+mod vault;
+
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -15,18 +19,30 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init());
 
+    // Asking for a folder happens in `vault.rs` rather than on the page, so the
+    // webview is never handed the dialog itself.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_dialog::init());
+
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_safe_area_insets_css::init());
 
     builder
-        .setup(|_app| {
+        .invoke_handler(vault::commands())
+        .setup(|app| {
+            let folders = vault::Folders::new(app.path().app_data_dir()?)?;
+            for folder in folders.reachable() {
+                vault::serve(app.handle(), &folder);
+            }
+            app.manage(folders);
+
             // A custom scheme only fires for an installed app: iOS and Android
             // take it from the generated manifests and macOS from the bundled
             // .app, but Windows and Linux need it registered at runtime.
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                _app.deep_link().register_all()?;
+                app.deep_link().register_all()?;
             }
             Ok(())
         })
