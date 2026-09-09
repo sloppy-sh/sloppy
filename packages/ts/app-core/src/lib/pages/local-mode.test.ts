@@ -18,6 +18,7 @@ import { type AppRuntime, initRuntime, type VaultAccess } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
+import { graphHistory } from '../stores/history.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
@@ -125,6 +126,15 @@ function running(
 /** A shell that keeps the states the graph has been in. */
 function withAHistory(): History {
 	return new MemoryHistory(new MemoryFiles());
+}
+
+/** One with a version already kept, for a surface that shows them. */
+async function aFolderWithAVersion(): Promise<History> {
+	const files = new MemoryFiles();
+	await files.write('graph.json', new TextEncoder().encode('{}'));
+	const kept = new MemoryHistory(files);
+	await kept.commit('A first version');
+	return kept;
 }
 
 /** The graph each folder a suite opens holds, as the shell answers for it. */
@@ -242,6 +252,7 @@ beforeEach(() => {
 	identity.clear();
 	find.clear();
 	graphs.clear();
+	graphHistory.clear();
 	people.hold(null);
 	api = useFakeApi();
 	written = [node(1, '1', { title: 'Origins' })];
@@ -266,6 +277,7 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	session.clear();
+	graphHistory.clear();
 	running('hosted');
 	target.remove();
 	document.body.innerHTML = '';
@@ -491,6 +503,24 @@ describe('Settings, on a device holding its own graph', () => {
 
 	// The folder is this app's own there, and there is only the one, so a path
 	// nobody chose and cannot move is a fact they can do nothing with.
+	it('lets go of the states the last folder was in when another one opens', async () => {
+		const keptHere = await aFolderWithAVersion();
+		running('local', undefined, keeping('/Users/me/garden'), keptHere);
+		session.adopt(ON_DEVICE, 'this device');
+		await graphHistory.read();
+		expect(graphHistory.versions.map((one) => one.message)).toEqual(['A first version']);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		control('Open another folder').click();
+		await settle();
+
+		expect(graphHistory.versions).toEqual([]);
+		expect(graphHistory.line).toBeUndefined();
+		expect(graphHistory.changed).toBe(null);
+	});
+
 	it('names no folder on a device that keeps its graphs in one place', async () => {
 		running('local', undefined, keeping('/var/mobile/Containers/1/Documents', false));
 		session.adopt(ON_DEVICE, 'this device');

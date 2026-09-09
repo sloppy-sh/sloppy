@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api, resetApi } from '../api.js';
 import { initRuntime } from '../runtime.js';
 import { graphHistory } from './history.svelte.js';
+import { nodes } from './nodes.svelte.js';
+import { outlineSections } from './outline-sections.svelte.js';
 
 const ROOT = '/Users/me/garden';
 
@@ -49,12 +51,16 @@ beforeEach(async () => {
 	store = new Map();
 	kept = new MemoryHistory(folder(), { author: 'Ada' });
 	graphHistory.clear();
+	nodes.clear();
+	outlineSections.clear();
 	shellKeeping(kept);
 	await api.createNode({ title: 'Origins' });
 });
 
 afterEach(() => {
 	graphHistory.clear();
+	nodes.clear();
+	outlineSections.clear();
 	initRuntime({ apiHost: () => '', mode: () => 'hosted', history: () => undefined });
 	resetApi();
 });
@@ -305,5 +311,105 @@ describe('a version of the graph', () => {
 				after: words('The seed of it')
 			}
 		]);
+	});
+});
+
+describe('the graph an act leaves in front of somebody', () => {
+	it('is read again, so the notes drawn are the line the folder is on', async () => {
+		const under = await api.createNode({ title: 'Where it starts' });
+		await nodes.load();
+		await nodes.load({ origin: under.ref });
+		await graphHistory.keep('A first version');
+		await graphHistory.startLine('an-argument');
+		await graphHistory.workOn('an-argument');
+		const alone = await nodes.create({ title: 'Written over there' });
+		const below = await nodes.create({
+			title: 'And under it',
+			from: { relation: 'under', note: under.ref }
+		});
+		await graphHistory.keep('Over there');
+		expect(nodes.get(alone.ref)?.title).toBe('Written over there');
+		expect(nodes.get(below.ref)?.title).toBe('And under it');
+
+		expect(await graphHistory.workOn('main')).toBe(true);
+
+		expect(nodes.get(alone.ref)).toBeUndefined();
+		expect(nodes.get(below.ref)).toBeUndefined();
+		expect(nodes.region().map((one) => one.title)).toEqual(['Origins', 'Where it starts']);
+	});
+
+	it('reads the sections of a note somebody is showing again', async () => {
+		const note = await api.createNode({ title: 'Where it starts' });
+		const section = await api.createBlock({ node: note.ref, content: words('The seed') });
+		await nodes.load();
+		await graphHistory.keep('A first version');
+		await graphHistory.startLine('an-argument');
+		await graphHistory.workOn('an-argument');
+		await api.updateBlock(section.ref, { content: words('The seed of the argument') });
+		await graphHistory.keep('Over there');
+		await graphHistory.workOn('main');
+		outlineSections.show(note.ref, true);
+		await outlineSections.read(note.ref);
+		expect(outlineSections.of(note.ref)?.map((one) => one.says)).toEqual(['The seed']);
+
+		expect(await graphHistory.workOn('an-argument')).toBe(true);
+
+		expect(outlineSections.of(note.ref)?.map((one) => one.says)).toEqual([
+			'The seed of the argument'
+		]);
+	});
+
+	it('brings the notes of a line back onto the canvas when it is taken in', async () => {
+		await nodes.load();
+		await graphHistory.keep('A first version');
+		await graphHistory.startLine('an-argument');
+		await graphHistory.workOn('an-argument');
+		const there = await api.createNode({ title: 'Written over there' });
+		await graphHistory.keep('Over there');
+		await graphHistory.workOn('main');
+		expect(nodes.get(there.ref)).toBeUndefined();
+
+		expect(await graphHistory.bringIn('an-argument')).toBe(true);
+
+		expect(nodes.get(there.ref)?.title).toBe('Written over there');
+	});
+});
+
+describe('another folder opened, or the session ended', () => {
+	it('leaves nothing of the folder that was open behind', async () => {
+		await graphHistory.keep('A first version');
+		await api.createNode({ title: 'A second thought' });
+		await graphHistory.read();
+		expect(graphHistory.versions).toHaveLength(1);
+		expect(graphHistory.changed?.notes).toHaveLength(1);
+
+		graphHistory.clear();
+
+		expect(graphHistory.versions).toEqual([]);
+		expect(graphHistory.lines).toEqual([]);
+		expect(graphHistory.changed).toBe(null);
+		expect(graphHistory.at).toBeUndefined();
+		expect(graphHistory.line).toBeUndefined();
+		expect(graphHistory.unkept).toBe(false);
+	});
+
+	it('leaves no unsettled merge behind either', async () => {
+		const note = await api.createNode({ title: 'Origins' });
+		const section = await api.createBlock({ node: note.ref, content: words('The seed') });
+		await graphHistory.keep('A first version');
+		await graphHistory.startLine('an-argument');
+		await graphHistory.workOn('an-argument');
+		await api.updateBlock(section.ref, { content: words('The seed of the argument') });
+		await graphHistory.keep('Over there');
+		await graphHistory.workOn('main');
+		await api.updateBlock(section.ref, { content: words('The seed of it all') });
+		await graphHistory.keep('Over here');
+		await graphHistory.bringIn('an-argument');
+		expect(graphHistory.inTwoVersions).toHaveLength(1);
+
+		graphHistory.clear();
+
+		expect(graphHistory.inTwoVersions).toEqual([]);
+		expect(graphHistory.taking).toBe(null);
 	});
 });

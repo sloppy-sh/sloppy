@@ -214,6 +214,22 @@ class NodesStore {
 		return request;
 	}
 
+	/**
+	 * Every region asked for, read from the top, for a graph that has moved
+	 * underneath the cache rather than been written to through it. A region's
+	 * answer is the whole of it, so a note it no longer holds goes; a branch that
+	 * arrived is read down, because nothing has ever asked for its tree.
+	 */
+	async readAgain(): Promise<void> {
+		for (const ref of this.#byRef.keys()) this.#unconfirmed.add(ref);
+		const asked = [...this.#asked.values()];
+		await Promise.allSettled(asked.map((region) => this.reload(region)));
+		const branches = asked
+			.filter((region) => region.origin === undefined)
+			.flatMap((region) => this.region(region));
+		await Promise.allSettled(branches.map((root) => this.load({ origin: root.ref })));
+	}
+
 	/** One node, deduped against a concurrent ask for the same one. `null` where
 	 *  it is gone, which a stale associative link expects. */
 	fetch(ref: OwnedRef): Promise<NodeView | null> {

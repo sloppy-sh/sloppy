@@ -13,6 +13,10 @@ import type { BlockView, NodeView, OwnedRef } from '@sloppy/types';
 import { api, resetApi } from '../api.js';
 import { runtime } from '../runtime.js';
 import { serverMessage } from './errors.js';
+import { graphs } from './graphs.svelte.js';
+import { nodes } from './nodes.svelte.js';
+import { outlineSections } from './outline-sections.svelte.js';
+import { tags } from './tags.svelte.js';
 
 /** How many versions a page of the log holds. */
 const PAGE = 30;
@@ -53,6 +57,18 @@ export interface SectionInTwoVersions {
  *  carry it. */
 async function local() {
 	return import('@sloppy/local');
+}
+
+/** Everything drawn out of the folder, read again: an act leaves the folder at
+ *  another state of itself. */
+async function readTheGraphAgain(): Promise<void> {
+	await nodes.readAgain();
+	const counted = graphs.onCanvas.filter((graph) => tags.status(graph).loaded);
+	const showing = [...outlineSections.shown].filter((note) => nodes.get(note) !== undefined);
+	await Promise.all([
+		...counted.map((graph) => tags.reload(graph).catch(() => {})),
+		...showing.map((note) => outlineSections.read(note))
+	]);
 }
 
 /** The words an act came back with. A history and a graph on this device both
@@ -385,8 +401,8 @@ class HistoryStore {
 		return graphAsItIs(api);
 	}
 
-	/** An act, with what it refuses in the words it gave, and the surface read
-	 *  again after it. */
+	/** An act, with what it refuses in the words it gave, and the surface and the
+	 *  graph both read again after it. */
 	private async act(what: (history: History) => Promise<boolean>): Promise<boolean> {
 		const history = runtime.history();
 		if (!history) return false;
@@ -397,7 +413,7 @@ class HistoryStore {
 			// An act moves the folder underneath whatever is serving the graph out
 			// of it, so it is served again before anything is read back.
 			resetApi();
-			await this.read();
+			await Promise.all([this.read(), readTheGraphAgain()]);
 			return done;
 		} catch (err) {
 			this.#says = said(err);

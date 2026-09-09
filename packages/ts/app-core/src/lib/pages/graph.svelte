@@ -87,6 +87,7 @@
 		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
+		DifferenceLegend,
 		FindSheet,
 		GraphsSheet,
 		GraphSurface,
@@ -2288,6 +2289,10 @@
 
 				{#if railTags.length > 0 || selection.length > 0}
 					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
+				{/if}
+
+				{#if comparing}
+					<DifferenceLegend />
 				{/if}
 
 				{#if asLastRead}

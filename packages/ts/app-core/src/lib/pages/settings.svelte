@@ -114,6 +114,7 @@
 	}
 
 	function letGoOfWhatWasRead() {
+		graphHistory.clear();
 		nodes.clear();
 		outlineSections.clear();
 		deleted.clear();

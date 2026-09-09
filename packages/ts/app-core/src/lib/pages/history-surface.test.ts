@@ -113,6 +113,13 @@ function drawn(): string[] {
 		);
 }
 
+/** The rows teaching what the canvas is drawing, beside the tag rail. */
+function legend(): string[] {
+	return [...document.body.querySelectorAll('[aria-label="What the graph is drawing"] li')].map(
+		(one) => (one.textContent ?? '').replace(/\s+/g, ' ').trim()
+	);
+}
+
 async function openMore(): Promise<void> {
 	const more = [...document.body.querySelectorAll('button')].find(
 		(one) => one.getAttribute('aria-label') === 'More'
@@ -240,6 +247,33 @@ describe('two states of the graph, set against each other', () => {
 		await settle();
 
 		expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
+	});
+
+	it('teaches the four things the marks and the lines mean, and stops when the comparison does', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+		await pick('From', 'A first version');
+		control('Show what changed').click();
+		await settle();
+
+		expect(legend()).toEqual([
+			'A new note',
+			'A note that went, where it stood',
+			'A note that is not as it was',
+			'A note that moved: the line it joined, over the one it left'
+		]);
+
+		control('Your graph now').click();
+		await settle();
+
+		expect(legend()).toEqual([]);
+		expect(document.body.querySelectorAll('[data-difference]')).toHaveLength(0);
+		expect(drawn().join(' ')).toContain('A second thought');
 	});
 
 	it('puts the words back beside the marks once the surface has been put away', async () => {
