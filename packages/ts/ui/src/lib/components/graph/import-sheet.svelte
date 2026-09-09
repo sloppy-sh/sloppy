@@ -50,13 +50,15 @@
 		return `${notes} and ${count(preview.pictures, 'picture', 'pictures')} arrive.`;
 	});
 
-	const landing = $derived(
-		empty
-			? null
-			: preview?.replaces
-				? 'You already keep this graph. What is in the file replaces what is here.'
-				: 'It arrives as a graph of its own, beside the ones you keep.'
-	);
+	const landing = $derived.by(() => {
+		if (!preview || empty) return null;
+		if (!preview.replaces) return 'It arrives as a graph of its own, beside the ones you keep.';
+		if (preview.replacing === 0)
+			return 'You already keep this graph, and there is nothing in it now. What is in the file fills it.';
+		const going = count(preview.replacing, 'note', 'notes');
+		const make = preview.replacing === 1 ? 'makes' : 'make';
+		return `You already keep this graph. The ${going} in it now, recently deleted ones included, ${make} way for what is in the file.`;
+	});
 
 	const keptElsewhere = $derived(preview?.collisions.length ?? 0);
 

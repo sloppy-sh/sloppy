@@ -22,6 +22,7 @@ function preview(over: Partial<ArchivePreview> = {}): ArchivePreview {
 		missing_emoji: [],
 		collisions: [],
 		replaces: false,
+		replacing: 0,
 		...over
 	};
 }
@@ -90,12 +91,28 @@ describe('the preview a graph in a file opens', () => {
 		expect(acts).toEqual(['import']);
 	});
 
-	it('says a graph already kept is replaced rather than stood beside', async () => {
-		await open({ preview: preview({ replaces: true }) });
+	it('counts what a replace takes with it, rather than saying only that it replaces', async () => {
+		await open({ preview: preview({ replaces: true, replacing: 12 }) });
 
 		expect(screen()).toContain('You already keep this graph.');
-		expect(screen()).toContain('What is in the file replaces what is here.');
+		expect(screen()).toContain(
+			'The 12 notes in it now, recently deleted ones included, make way for what is in the file.'
+		);
 		expect(screen()).not.toContain('beside the ones you keep');
+	});
+
+	it('counts a single note it takes without pluralising it', async () => {
+		await open({ preview: preview({ replaces: true, replacing: 1 }) });
+
+		expect(screen()).toContain('The 1 note in it now');
+		expect(screen()).toContain('makes way for what is in the file.');
+	});
+
+	it('says a graph with nothing in it loses nothing', async () => {
+		await open({ preview: preview({ replaces: true, replacing: 0 }) });
+
+		expect(screen()).toContain('there is nothing in it now');
+		expect(screen()).not.toContain('make way');
 	});
 
 	it('counts one note without pluralising it', async () => {
@@ -160,7 +177,7 @@ describe('the preview a graph in a file opens', () => {
 	// Replacing a graph writes over its own notes, and one of them living in
 	// another graph now still stops the whole archive.
 	it('does not offer a replace either while a note of it is kept elsewhere', async () => {
-		await open({ preview: preview({ collisions: [`${DID}/01A`], replaces: true }) });
+		await open({ preview: preview({ collisions: [`${DID}/01A`], replaces: true, replacing: 3 }) });
 
 		expect(screen()).toContain('One of these notes is already in another of your graphs.');
 		expect(button('Import').disabled).toBe(true);
@@ -176,9 +193,12 @@ describe('the preview a graph in a file opens', () => {
 	});
 
 	it('says nothing about where an empty graph would land, on a replace either', async () => {
-		await open({ preview: preview({ notes: 0, pictures: 0, replaces: true }), yours: false });
+		await open({
+			preview: preview({ notes: 0, pictures: 0, replaces: true, replacing: 5 }),
+			yours: false
+		});
 
-		expect(screen()).not.toContain('replaces what is here');
+		expect(screen()).not.toContain('make way for what is in the file');
 	});
 
 	it('says the file is being read before it says what is in it', async () => {

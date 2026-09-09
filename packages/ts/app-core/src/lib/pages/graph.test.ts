@@ -3040,6 +3040,7 @@ describe('a graph as a file', () => {
 			missing_emoji: [],
 			collisions: [],
 			replaces: false,
+			replacing: 0,
 			...over
 		};
 	}

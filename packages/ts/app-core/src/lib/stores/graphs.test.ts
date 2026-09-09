@@ -356,7 +356,8 @@ describe('a graph brought in from a file', () => {
 				pictures: 0,
 				missing_emoji: [],
 				collisions: [],
-				replaces: false
+				replaces: false,
+				replacing: 0
 			}),
 			imported: () => GARDEN
 		});
