@@ -13,7 +13,9 @@ import {
 } from '@sloppy/types';
 import type { JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
+import { DIAGRAM_NODE, readsAsDiagram } from './diagram-node.js';
 import { INK_NODE } from './ink-node.js';
+import { MATH_BLOCK_NODE, MATH_NODE, readsAsMath } from './math-node.js';
 import { PICTURE_NODE, storedPicture } from './picture-node.js';
 import { nextUid, SECTION_NODE } from './section-node.js';
 
@@ -28,7 +30,10 @@ const STORED_AS: Partial<Record<string, (node: DocumentNode) => DocumentNode | n
  * docs/ARCHITECTURE.md § "Blocks and ink".
  */
 const CLAIMED_BY: Partial<Record<string, (attrs: unknown) => boolean>> = {
-	[INK_NODE]: readsAsInk
+	[INK_NODE]: readsAsInk,
+	[MATH_NODE]: readsAsMath,
+	[MATH_BLOCK_NODE]: readsAsMath,
+	[DIAGRAM_NODE]: readsAsDiagram
 };
 
 export interface DocBlock {

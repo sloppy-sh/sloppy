@@ -19,8 +19,10 @@
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Quote from '@lucide/svelte/icons/quote';
+	import Sigma from '@lucide/svelte/icons/sigma';
 	import Smile from '@lucide/svelte/icons/smile';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Workflow from '@lucide/svelte/icons/workflow';
 	import type { InkStroke, OwnedRef } from '@sloppy/types';
 	import { Editor } from '@tiptap/core';
 	import { TaskItem, TaskList } from '@tiptap/extension-list';
@@ -55,6 +57,7 @@
 	import { citedLarge, emojiInsert, EmojiNode, EMOJI_NODE, reclaimEmoji } from './emoji-node.js';
 	import EmojiSuggestionPopup from './emoji-suggestion-popup.svelte';
 	import { EmojiCompletions, EmojiSuggestion } from './emoji-suggestion.svelte.js';
+	import { DRAWN_ELEMENTS } from './elements.js';
 	import { fitted, NOTE_PX } from './fit.js';
 	import { InkNode } from './ink-node.js';
 	import {
@@ -372,7 +375,13 @@
 				blockRef: ref
 			});
 		});
-		if (tr) from.view.dispatch(quiet(tr));
+		if (!tr) return;
+		// Writing the ref onto the section draws it again, and a field an element
+		// keeps inside it — a formula's source, a drawing's description — is taken
+		// out of the page and put back, which drops whoever was typing in it.
+		const writing = document.activeElement;
+		from.view.dispatch(quiet(tr));
+		if (writing instanceof HTMLElement && writing.isConnected) writing.focus();
 	}
 
 	/** A change to the document that is bookkeeping, not writing. */
@@ -706,7 +715,8 @@
 					ReferenceNode(() => references),
 					ReferenceSuggestion(noteCompletions, () => references),
 					InkNode,
-					PictureNode(() => media)
+					PictureNode(() => media),
+					...DRAWN_ELEMENTS
 				],
 				editorProps: {
 					attributes: { class: 'sloppy-prose', role: 'textbox', 'aria-label': 'Note body' },
@@ -1005,7 +1015,21 @@
 		{ id: 'cite', label: 'Cite a note', icon: Brackets, run: citeNote },
 		{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) },
 		{ id: 'emoji', label: 'Emoji', icon: Smile, run: () => (pickerOpen = true) },
-		{ id: 'draw', label: 'Draw', icon: PenLine, run: startDrawing }
+		{ id: 'draw', label: 'Draw', icon: PenLine, run: startDrawing },
+		// Both leave the caret in the source they open, so `focus()` is left out of
+		// the chain: it takes the caret back to the writing a frame later.
+		{
+			id: 'formula',
+			label: 'Formula',
+			icon: Sigma,
+			run: () => editor?.commands.insertMathBlock()
+		},
+		{
+			id: 'diagram',
+			label: 'Diagram',
+			icon: Workflow,
+			run: () => editor?.commands.insertDiagram()
+		}
 	]);
 </script>
 
@@ -1446,5 +1470,112 @@
 	}
 	:global(.sloppy-ink-action:disabled) {
 		opacity: 0.45;
+	}
+	:global(.sloppy-math) {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.35em;
+	}
+	:global(.sloppy-math.is-selected) {
+		border-radius: calc(var(--radius) - 4px);
+		background: color-mix(in oklab, var(--primary) 12%, transparent);
+	}
+	:global(.sloppy-math-block) {
+		margin: 0.85em 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--card);
+		padding: 0.6rem 0.75rem;
+	}
+	:global(.sloppy-math-block.is-selected) {
+		outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+		outline-offset: 2px;
+	}
+	:global(.sloppy-math-block .sloppy-math-drawn) {
+		overflow-x: auto;
+	}
+	/* A formula nobody has written yet, and one that would not draw, still take
+	   a line, so the source under them does not sit against the border. */
+	:global(.sloppy-math-block.is-blank .sloppy-math-drawn),
+	:global(.sloppy-math-block.has-trouble .sloppy-math-drawn) {
+		display: none;
+	}
+	:global(.sloppy-math-trouble) {
+		color: var(--muted-foreground);
+		font-size: 0.75rem;
+	}
+	:global(.sloppy-math-trouble:empty) {
+		display: none;
+	}
+	:global(.sloppy-math .sloppy-math-source) {
+		display: none;
+	}
+	:global(.sloppy-math.is-writing .sloppy-math-source),
+	:global(.sloppy-math.is-blank .sloppy-math-source) {
+		display: inline-block;
+		width: 12ch;
+	}
+	:global(.sloppy-math-source),
+	:global(.sloppy-diagram-source) {
+		border: 0;
+		border-radius: calc(var(--radius) - 4px);
+		background: var(--muted);
+		padding: 0.2rem 0.45rem;
+		color: var(--foreground);
+		font-family: var(--font-address);
+		font-size: 0.8125rem;
+		outline: none;
+	}
+	:global(.sloppy-math-source::placeholder),
+	:global(.sloppy-diagram-source::placeholder) {
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-math-block .sloppy-math-source) {
+		display: block;
+		margin-top: 0.5rem;
+		width: 100%;
+		resize: vertical;
+	}
+	:global(.sloppy-diagram) {
+		margin: 0.85em 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--card);
+		padding: 0.6rem 0.75rem;
+	}
+	:global(.sloppy-diagram.is-selected) {
+		outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+		outline-offset: 2px;
+	}
+	:global(.sloppy-diagram-drawn) {
+		overflow-x: auto;
+	}
+	:global(.sloppy-diagram-drawn:empty) {
+		display: none;
+	}
+	:global(.sloppy-diagram-drawn svg) {
+		display: block;
+		max-width: 100%;
+		height: auto;
+	}
+	/* A language this build draws nothing for: the source is what is left to
+	   read. */
+	:global(.sloppy-diagram-drawn.is-plain) {
+		font-family: var(--font-address);
+		font-size: 0.8125rem;
+		white-space: pre-wrap;
+	}
+	:global(.sloppy-diagram-trouble) {
+		color: var(--muted-foreground);
+		font-size: 0.75rem;
+	}
+	:global(.sloppy-diagram-trouble:empty) {
+		display: none;
+	}
+	:global(.sloppy-diagram-source) {
+		display: block;
+		margin-top: 0.5rem;
+		width: 100%;
+		resize: vertical;
 	}
 </style>

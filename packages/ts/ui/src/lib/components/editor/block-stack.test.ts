@@ -973,11 +973,31 @@ describe('the writing controls', () => {
 		const rail = bar.querySelector('.overflow-x-auto') as HTMLElement;
 		const control = (label: string) => bar.querySelector(`button[aria-label="${label}"]`);
 
-		for (const label of ['Cite a note', 'Picture', 'Emoji', 'Draw']) {
+		for (const label of ['Cite a note', 'Picture', 'Emoji', 'Draw', 'Formula', 'Diagram']) {
 			expect(control(label), label).not.toBeNull();
 			expect(rail.contains(control(label)), label).toBe(false);
 		}
 		expect(rail.contains(control('Bold'))).toBe(true);
+	});
+
+	// The row is created as they type into it, and writing the ref onto the
+	// section draws it again.
+	it('leaves the caret in a formula it just opened, and there while the row lands', async () => {
+		open([]);
+		surface().dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+
+		(target.querySelector('button[aria-label="Formula"]') as HTMLElement).click();
+		flushSync();
+		const field = target.querySelector('.sloppy-math-source') as HTMLTextAreaElement;
+		expect(field).not.toBeNull();
+		expect(document.activeElement).toBe(field);
+
+		field.value = 'a^2';
+		field.dispatchEvent(new Event('input'));
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(written.created).toHaveLength(1);
+		expect(document.activeElement).toBe(target.querySelector('.sloppy-math-source'));
 	});
 });
 
