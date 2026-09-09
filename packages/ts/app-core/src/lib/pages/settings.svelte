@@ -45,12 +45,13 @@
 	let moved = $state<string | null>(null);
 
 	const canSaveFiles = savesFiles();
+	const offersCopy = $derived(session.onDevice ? canSaveFiles : session.signedIn);
 
 	const instance = $derived(session.viewer ? new URL(session.viewer.syr_instance_url).host : null);
 	const profile = $derived(people.me);
 
 	$effect(() => {
-		if (session.signedIn && !people.me) void people.read().catch(() => {});
+		if (session.signedIn && !session.onDevice && !people.me) void people.read().catch(() => {});
 	});
 
 	async function takeCopy() {
@@ -206,43 +207,54 @@
 			</div>
 		</fieldset>
 
-		<div class="space-y-3 border-t border-border pt-8">
-			<h2 class="text-sm font-medium">Where your Sloppy is</h2>
-			<p class="text-sm text-muted-foreground">
-				Your writing lives wherever Sloppy is. Give the web address of one you run yourself and
-				Sloppy reads and writes there from now on — you'll be signed out here, and can sign in
-				there. What you have already written stays on the Sloppy that holds it.
-			</p>
-			<form class="flex flex-col gap-2 sm:flex-row" onsubmit={pointHere}>
-				<Label for="sloppy-origin" class="sr-only">The web address of your Sloppy</Label>
-				<Input
-					id="sloppy-origin"
-					name="origin"
-					type="text"
-					inputmode="url"
-					autocomplete="url"
-					autocapitalize="none"
-					spellcheck={false}
-					placeholder="sloppy.example.com"
-					bind:value={typedOrigin}
-					class="h-11 sm:flex-1"
-				/>
-				<Button type="submit" variant="outline" class="h-11">Point Sloppy here</Button>
-			</form>
-			{#if originProblem}
-				<p class="text-sm text-destructive" role="alert">{originProblem}</p>
-			{/if}
-			{#if moved}
-				<p class="text-sm text-muted-foreground" role="status">{moved}</p>
-			{/if}
-			{#if prefs.current.origin}
-				<Button variant="ghost" class="h-11 px-0" onclick={() => pointAt(null)}>
-					Use the one Sloppy came with
-				</Button>
-			{/if}
-		</div>
+		{#if session.onDevice}
+			<div class="space-y-3 border-t border-border pt-8">
+				<h2 class="text-sm font-medium">Where your writing is</h2>
+				<p class="text-sm text-muted-foreground">
+					Your graph is a folder on this device, and everything you write stays in it. Publishing a
+					branch, reading somebody else's and answering a note need a Sloppy other people can reach,
+					so they are not offered here.
+				</p>
+			</div>
+		{:else}
+			<div class="space-y-3 border-t border-border pt-8">
+				<h2 class="text-sm font-medium">Where your Sloppy is</h2>
+				<p class="text-sm text-muted-foreground">
+					Your writing lives wherever Sloppy is. Give the web address of one you run yourself and
+					Sloppy reads and writes there from now on — you'll be signed out here, and can sign in
+					there. What you have already written stays on the Sloppy that holds it.
+				</p>
+				<form class="flex flex-col gap-2 sm:flex-row" onsubmit={pointHere}>
+					<Label for="sloppy-origin" class="sr-only">The web address of your Sloppy</Label>
+					<Input
+						id="sloppy-origin"
+						name="origin"
+						type="text"
+						inputmode="url"
+						autocomplete="url"
+						autocapitalize="none"
+						spellcheck={false}
+						placeholder="sloppy.example.com"
+						bind:value={typedOrigin}
+						class="h-11 sm:flex-1"
+					/>
+					<Button type="submit" variant="outline" class="h-11">Point Sloppy here</Button>
+				</form>
+				{#if originProblem}
+					<p class="text-sm text-destructive" role="alert">{originProblem}</p>
+				{/if}
+				{#if moved}
+					<p class="text-sm text-muted-foreground" role="status">{moved}</p>
+				{/if}
+				{#if prefs.current.origin}
+					<Button variant="ghost" class="h-11 px-0" onclick={() => pointAt(null)}>
+						Use the one Sloppy came with
+					</Button>
+				{/if}
+			</div>
+		{/if}
 
-		{#if session.signedIn}
+		{#if offersCopy}
 			<div class="space-y-3 border-t border-border pt-8">
 				<h2 class="text-sm font-medium">Your writing</h2>
 				<p class="text-sm text-muted-foreground">
@@ -269,32 +281,34 @@
 			</div>
 		{/if}
 
-		<div class="space-y-3 border-t border-border pt-8">
-			{#if session.signedIn}
-				{#if profile}
+		{#if !session.onDevice}
+			<div class="space-y-3 border-t border-border pt-8">
+				{#if session.signedIn}
+					{#if profile}
+						<a
+							href="/profile"
+							class="-mx-2 flex min-h-14 items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors duration-150 ease-out hover:bg-muted/70 motion-reduce:transition-none"
+						>
+							<PersonChip person={personFrom(profile)} />
+							<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+						</a>
+					{/if}
+					<p class="text-sm text-muted-foreground">
+						Your identity lives at <span class="text-foreground select-text">{instance}</span>.
+					</p>
+					<Button variant="ghost" onclick={signOut} disabled={leaving} class="h-11 px-0">
+						Sign out
+					</Button>
+				{:else}
+					<p class="text-sm text-muted-foreground">Your graph opens once you sign in.</p>
 					<a
-						href="/profile"
-						class="-mx-2 flex min-h-14 items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors duration-150 ease-out hover:bg-muted/70 motion-reduce:transition-none"
+						href="/sign-in"
+						class="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline"
 					>
-						<PersonChip person={personFrom(profile)} />
-						<ChevronRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+						Sign in
 					</a>
 				{/if}
-				<p class="text-sm text-muted-foreground">
-					Your identity lives at <span class="text-foreground select-text">{instance}</span>.
-				</p>
-				<Button variant="ghost" onclick={signOut} disabled={leaving} class="h-11 px-0">
-					Sign out
-				</Button>
-			{:else}
-				<p class="text-sm text-muted-foreground">Your graph opens once you sign in.</p>
-				<a
-					href="/sign-in"
-					class="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline"
-				>
-					Sign in
-				</a>
-			{/if}
-		</div>
+			</div>
+		{/if}
 	</div>
 </div>

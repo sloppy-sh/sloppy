@@ -36,6 +36,12 @@ class SessionStore {
 		return this.#viewer !== null;
 	}
 
+	/** The graph is a folder on this device. Which deployment is running, not
+	 *  whether anybody is signed in — {@link signedIn} answers that separately. */
+	get onDevice(): boolean {
+		return runtime.mode() === 'local';
+	}
+
 	/** True once the first {@link load} has settled, either way. */
 	get ready(): boolean {
 		return this.#ready;

@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deviceStore } from '../device-store.js';
-import { runtime } from '../runtime.js';
+import { initRuntime, runtime } from '../runtime.js';
 import { useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
 import { session } from './session.svelte.js';
 
@@ -150,5 +150,21 @@ describe('the session', () => {
 		expect(await notes.keys()).toEqual(['1a']);
 
 		await deviceStore.forget(VIEWER.did);
+	});
+});
+
+describe('a graph the device holds itself', () => {
+	beforeEach(() => {
+		session.clear();
+		useFakeApi();
+	});
+
+	afterEach(() => initRuntime({ apiHost: () => 'http://api.test', mode: () => 'hosted' }));
+
+	it('is a session with nobody to sign in or out', () => {
+		expect(session.onDevice).toBe(false);
+
+		initRuntime({ apiHost: () => 'http://api.test', mode: () => 'local' });
+		expect(session.onDevice).toBe(true);
 	});
 });

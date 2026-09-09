@@ -1,7 +1,7 @@
-import type { OwnedMediaAsset } from '@sloppy/types';
+import type { CustomEmoji, OwnedMediaAsset } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetApi, type SloppyApi } from './api.js';
-import { noteMedia, wallpaperMedia } from './note-surface.js';
+import { noteEmoji, noteMedia, wallpaperMedia } from './note-surface.js';
 import { initRuntime } from './runtime.js';
 
 const OWNER = 'did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc';
@@ -73,5 +73,57 @@ describe('the pictures the ground offers', () => {
 	it('takes one out of the store by the upload it arrived on', async () => {
 		await wallpaperMedia.remove(`${OWNER}/1`);
 		expect(removed).toEqual([`${OWNER}/1`]);
+	});
+});
+
+// docs/ARCHITECTURE.md § "Local-only mode": a shortcode is read against the
+// catalog whichever api the runtime handed over answers with.
+describe('the catalog a note reads its shortcodes against', () => {
+	const fire = (src: string): CustomEmoji => ({
+		emoji_id: 'e1',
+		did: OWNER,
+		shortcode: 'fire',
+		kind: 'emoji',
+		src
+	});
+
+	it('is the one beside a graph the device holds', async () => {
+		initRuntime({
+			apiHost: () => 'https://sloppy.example',
+			mode: () => 'local',
+			assetSrc: (src) => src,
+			createApi: () =>
+				({
+					ownEmoji: async () => [fire('/.sloppy/emoji/fire.png')]
+				}) as unknown as SloppyApi
+		});
+		resetApi();
+
+		expect(await noteEmoji(OWNER).catalog(OWNER)).toEqual([
+			{ id: 'e1', shortcode: 'fire', src: '/.sloppy/emoji/fire.png', sticker: false }
+		]);
+	});
+
+	it('is the instance’s where a Sloppy serves the graph', async () => {
+		initRuntime({
+			apiHost: () => 'https://sloppy.example',
+			mode: () => 'hosted',
+			assetSrc: undefined,
+			createApi: undefined,
+			fetchImpl: () => async () =>
+				new Response(JSON.stringify([fire('/proxy?ref=fire')]), {
+					headers: { 'content-type': 'application/json' }
+				})
+		});
+		resetApi();
+
+		expect(await noteEmoji(OWNER).catalog(OWNER)).toEqual([
+			{
+				id: 'e1',
+				shortcode: 'fire',
+				src: 'https://sloppy.example/api/proxy?ref=fire',
+				sticker: false
+			}
+		]);
 	});
 });
