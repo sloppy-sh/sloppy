@@ -99,7 +99,9 @@ to, all of them about what a person can rely on rather than about what the code 
   move, or writes a new note at it is given it. The binned note keeps it as an alias, so a
   citation still leads there while the note at the address is what it resolves to, and it
   comes back from the bin with no number and the one it gave up shown beside it, for its
-  author to renumber. A note that is there never yields this way.
+  author to renumber. Where that number already led back to a note that left it earlier,
+  that note keeps it and the one giving it up comes back with nothing beside it. A note
+  that is there never yields this way.
 - **A move re-addresses a note that has an address and leaves one that has none alone.** A
   moved note takes the next address in the run it joins, by exactly the rule creation uses,
   unless the person names one — an address named on a move is held to every rule an address
