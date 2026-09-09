@@ -40,6 +40,7 @@ x-package-dist: &package-dist
   - data-dist:/app/packages/ts/data/dist
   - graph-dist:/app/packages/ts/graph/dist
   - idp-dist:/app/packages/ts/idp/dist
+  - vault-dist:/app/packages/ts/vault/dist
   - types-dist:/app/packages/ts/types/dist
   - ui-dist:/app/packages/ts/ui/dist
 
@@ -288,5 +289,6 @@ volumes:
   data-dist:
   graph-dist:
   idp-dist:
+  vault-dist:
   types-dist:
   ui-dist:
