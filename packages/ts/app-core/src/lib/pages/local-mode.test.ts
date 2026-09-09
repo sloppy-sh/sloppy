@@ -374,6 +374,41 @@ describe('a note, on a device holding its own graph', () => {
 	});
 });
 
+describe('who wrote a note, on a device holding its own graph', () => {
+	/** What a graph on this device answers about its owner: the identity itself
+	 *  stands where a username would, and there is no name until one is given. */
+	function owner(name: string | null): ProfileView {
+		return {
+			did: DID,
+			username: DID,
+			display_name: name,
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		};
+	}
+
+	it('says nothing where the owner has not said what to call them', async () => {
+		api.on('GET /profile/me', () => owner(null));
+		running('local');
+		await openNote();
+		await people.read();
+		await settle();
+
+		expect(screen()).not.toContain(DID);
+	});
+
+	it('names them where they have', async () => {
+		api.on('GET /profile/me', () => owner('Ada Lovelace'));
+		running('local');
+		await openNote();
+		await people.read();
+		await settle();
+
+		expect(screen()).toContain('Ada Lovelace');
+	});
+});
+
 describe('Settings, on a device holding its own graph', () => {
 	it('says where the writing is, and offers no Sloppy to point at', async () => {
 		running('local');
