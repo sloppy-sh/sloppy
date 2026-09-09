@@ -2224,7 +2224,7 @@
 			says={actRefused ?? actMissed}
 			onTags={() => openTags(null)}
 			onLook={() => openLook(null)}
-			onPublish={openPublish}
+			onPublish={session.onDevice ? undefined : openPublish}
 			onDelete={() => askToDelete(null)}
 			onDone={stopChoosing}
 		/>

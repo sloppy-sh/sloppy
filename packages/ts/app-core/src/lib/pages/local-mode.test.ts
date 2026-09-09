@@ -276,6 +276,10 @@ describe('the graph, on a device holding its own', () => {
 		await settle();
 		onCanvas('1').click();
 		await settle();
+
+		expect(has('Delete')).toBe(true);
+		expect(has('Publish')).toBe(false);
+
 		menuOn('1').click();
 		await settle();
 
@@ -293,6 +297,9 @@ describe('the graph, on a device holding its own', () => {
 		await settle();
 		onCanvas('1').click();
 		await settle();
+
+		expect(has('Publish')).toBe(true);
+
 		menuOn('1').click();
 		await settle();
 
