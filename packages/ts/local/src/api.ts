@@ -2,6 +2,7 @@
 // docs/ARCHITECTURE.md § "Local-only mode".
 
 import { type SloppyApi, serverOnly } from "@sloppy/client";
+import { encodePublicKey, publicKeyFromDid } from "@sloppy/idp/crypto";
 import {
   type Address,
   AddressSchema,
@@ -101,12 +102,14 @@ import {
   rekey,
   unpack,
   uploadAt,
+  type VaultDifference,
+  vaultDifference,
   type VaultGraph,
   type VaultNote,
   vaultToNote,
   VaultFormatError,
 } from "@sloppy/vault";
-import type { Files } from "./files.js";
+import { type Files, MemoryFiles } from "./files.js";
 import {
   LocalGraph,
   localOf,
@@ -114,7 +117,11 @@ import {
   type StoredNote,
   type StoredPicture,
 } from "./graph.js";
-import { type LocalIdentity, openLocalIdentity } from "./identity.js";
+import {
+  type LocalIdentity,
+  openLocalIdentity,
+  SEED_FILE,
+} from "./identity.js";
 import { NoteWriter } from "./notes.js";
 import { absent, checked, contested, refuse } from "./refusal.js";
 import { recent, search } from "./search.js";
@@ -145,7 +152,15 @@ export class LocalApi implements SloppyApi {
    *  there, and two would each land where the other had already left. */
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(readonly files: Files) {}
+  /** `as` is whose graph this is reading, for a folder that is not this
+   *  device's own to write in; absent is the identity this device writes
+   *  under. */
+  constructor(
+    readonly files: Files,
+    options: { as?: LocalIdentity } = {},
+  ) {
+    this.identity = options.as;
+  }
 
   // ── Service ──────────────────────────────────────────────────────────────
 
@@ -530,11 +545,22 @@ export class LocalApi implements SloppyApi {
     ref: OwnedRef,
   ): Promise<{ bytes: Uint8Array; filename: string }> {
     const graph = await this.graphAt(ref);
+    return {
+      bytes: pack(await this.vaultHere(ref)),
+      filename: archiveName(graph.title),
+    };
+  }
+
+  /** The graph in the folder as it stands, as a state to read beside the ones
+   *  a history kept. What is in the bin is not in it, and is in no kept state
+   *  either. */
+  async vaultHere(ref?: OwnedRef): Promise<Vault> {
+    const graph = await this.graphAt(ref);
     const vault: Vault = new Map();
     for (const [path, bytes] of await graph.carry()) {
       if (carriedOut(path)) vault.set(path, bytes);
     }
-    return { bytes: pack(vault), filename: archiveName(graph.title) };
+    return vault;
   }
 
   async previewArchive(archive: BodyInit): Promise<ArchivePreview> {
@@ -1419,4 +1445,283 @@ function alreadyHere(count: number): Error {
       ? "One of these notes is already in another of your graphs, so this cannot arrive as a graph of its own. Take that note out first, or import this somewhere else."
       : `${count} of these notes are already in another of your graphs, so this cannot arrive as a graph of its own. Take those notes out first, or import this somewhere else.`,
   );
+}
+
+/** Where a state the history kept is laid out to be read: nowhere on a disk, so
+ *  reading one touches no folder anybody writes in. */
+const STATE_ROOT = "/state";
+
+/**
+ * `SloppyApi` over a state of a graph rather than over the folder itself: it
+ * reads exactly as the folder does and takes nothing. Every act that would
+ * change a note is refused in words — docs/ARCHITECTURE.md § "The vault's
+ * history".
+ */
+export class GraphAsItWas extends LocalApi {
+  private refused(): never {
+    throw refuse(
+      "This is your graph as it was. Open it as it is now to write in it.",
+    );
+  }
+
+  async createGraph(_asked: CreateGraphRequest): Promise<GraphView> {
+    this.refused();
+  }
+
+  async updateGraph(
+    _ref: OwnedRef,
+    _asked: UpdateGraphRequest,
+  ): Promise<GraphView> {
+    this.refused();
+  }
+
+  async closeGraph(_ref: OwnedRef): Promise<void> {
+    this.refused();
+  }
+
+  async createNode(_asked: CreateNodeRequest): Promise<NodeView> {
+    this.refused();
+  }
+
+  async updateNode(
+    _ref: OwnedRef,
+    _asked: UpdateNodeRequest,
+  ): Promise<NodeView> {
+    this.refused();
+  }
+
+  async setAddress(
+    _ref: OwnedRef,
+    _address: Address | null,
+  ): Promise<NodeView> {
+    this.refused();
+  }
+
+  async moveNote(
+    _ref: OwnedRef,
+    _to: NoteDestination,
+    _address?: Address,
+  ): Promise<NodeView[]> {
+    this.refused();
+  }
+
+  async deleteNode(_ref: OwnedRef): Promise<void> {
+    this.refused();
+  }
+
+  async actOnNodes(_request: NodeBulkRequest): Promise<NodeBulkResult> {
+    this.refused();
+  }
+
+  async restoreBranch(_ref: OwnedRef): Promise<NodeView> {
+    this.refused();
+  }
+
+  async createBlock(_asked: CreateBlockRequest): Promise<BlockView> {
+    this.refused();
+  }
+
+  async updateBlock(
+    _ref: OwnedRef,
+    _asked: UpdateBlockRequest,
+  ): Promise<BlockView> {
+    this.refused();
+  }
+
+  async deleteBlock(_ref: OwnedRef): Promise<void> {
+    this.refused();
+  }
+
+  async importArchive(_archive: BodyInit): Promise<GraphView> {
+    this.refused();
+  }
+
+  async createUpload(_asked: CreateUploadRequest): Promise<UploadTicket> {
+    this.refused();
+  }
+
+  async sendUpload(_ticket: UploadTicket, _file: Blob): Promise<void> {
+    this.refused();
+  }
+
+  async completeUpload(_asked: CompleteUploadRequest): Promise<MediaAsset> {
+    this.refused();
+  }
+
+  async removePicture(_uploadId: MediaAsset["upload_id"]): Promise<void> {
+    this.refused();
+  }
+
+  async updateProfile(_asked: UpdateProfileRequest): Promise<ProfileView> {
+    this.refused();
+  }
+
+  async addEmoji(_asked: CreateEmojiRequest): Promise<CustomEmoji> {
+    this.refused();
+  }
+
+  async removeEmoji(_emojiId: CustomEmoji["emoji_id"]): Promise<void> {
+    this.refused();
+  }
+}
+
+/**
+ * The graph a state of the folder held, ready to read on the canvas and in the
+ * outline. It is read under the identity the graph itself says it belongs to,
+ * so nothing this device keeps about itself is wanted to open one.
+ */
+export async function graphAsItWas(vault: Vault): Promise<GraphAsItWas> {
+  const said = readGraph(vault);
+  if (!said) {
+    throw absent("Your graph was not in this folder yet at that point.");
+  }
+  const files = new MemoryFiles({ root: STATE_ROOT });
+  for (const [path, bytes] of vault) await files.write(path, bytes);
+  return new GraphAsItWas(files, {
+    as: {
+      did: said.owner,
+      public_key: encodePublicKey(publicKeyFromDid(said.owner)),
+      seed: SEED_FILE,
+    },
+  });
+}
+
+/**
+ * The graph in the folder as it stands, for a page that reaches the folder only
+ * through whatever is serving the graph out of it. `graph` absent is the one in
+ * the folder that is open.
+ */
+export async function graphAsItIs(
+  api: SloppyApi,
+  graph?: OwnedRef,
+): Promise<Vault> {
+  const serving = api as Partial<LocalApi>;
+  if (typeof serving.vaultHere !== "function") {
+    throw absent("The graph in front of you is not one this device keeps.");
+  }
+  return serving.vaultHere(graph);
+}
+
+/** One section of a note as two states have it, each as the editor's own
+ *  document. Absent on a side is a state that has no such section at all. */
+export interface SectionBesideSection {
+  ulid: string;
+  before?: BlockDocument;
+  after?: BlockDocument;
+}
+
+/**
+ * A note something happened to between two states, with what to call it and
+ * what changed inside it. The title and the address are the later state's where
+ * it has the note and the earlier one's where it does not.
+ */
+export interface NoteChangedBetween {
+  ref: OwnedRef;
+  title: string;
+  address?: Address;
+  became: "added" | "removed" | "kept";
+  /** Absent on a side is no parent at all — a branch, or a note on its own. */
+  moved?: { from?: OwnedRef; to?: OwnedRef };
+  retitled?: { from: string; to: string };
+  renumbered?: { from?: Address; to?: Address };
+  /** Only the sections the two states do not hold alike. */
+  sections: SectionBesideSection[];
+  /** The sections both states hold, standing in another order. */
+  reordered: boolean;
+}
+
+/** What a person did between two states of a graph, as a surface says it. */
+export interface ChangedBetween {
+  notes: NoteChangedBetween[];
+  pictures: { added: number; removed: number };
+}
+
+/**
+ * What changed between two states of a graph, note by note and section by
+ * section, in the words each side had. `vaultDifference` in `@sloppy/vault` is
+ * what enumerates it; this is that enumeration with the notes' own words beside
+ * it.
+ *
+ * A drawing's own attributes are not read: a difference is read as words and
+ * as what each element is, and nothing that reads this draws one.
+ */
+export function changedBetween(before: Vault, after: Vault): ChangedBetween {
+  const difference = vaultDifference(before, after);
+  const was = byRef(before);
+  const now = byRef(after);
+  const notes = new Map<OwnedRef, NoteChangedBetween>();
+  const of = (ref: OwnedRef, became: NoteChangedBetween["became"]) => {
+    const held = notes.get(ref);
+    if (held) return held;
+    const note = now.get(ref) ?? was.get(ref);
+    const fresh: NoteChangedBetween = {
+      ref,
+      title: note?.title ?? "",
+      ...(note?.address === undefined ? {} : { address: note.address }),
+      became,
+      sections: [],
+      reordered: false,
+    };
+    notes.set(ref, fresh);
+    return fresh;
+  };
+  for (const ref of difference.notes.added) of(ref, "added");
+  for (const ref of difference.notes.removed) of(ref, "removed");
+  for (const held of difference.notes.moved) {
+    of(held.ref, "kept").moved = {
+      ...(held.from === undefined ? {} : { from: held.from }),
+      ...(held.to === undefined ? {} : { to: held.to }),
+    };
+  }
+  for (const held of difference.notes.retitled) {
+    of(held.ref, "kept").retitled = { from: held.from, to: held.to };
+  }
+  for (const held of difference.notes.renumbered) {
+    of(held.ref, "kept").renumbered = {
+      ...(held.from === undefined ? {} : { from: held.from }),
+      ...(held.to === undefined ? {} : { to: held.to }),
+    };
+  }
+  for (const held of difference.notes.changed) {
+    const note = of(held.ref, "kept");
+    note.reordered = held.sections.reordered;
+    note.sections = sectionsBeside(
+      held.sections,
+      was.get(held.ref),
+      now.get(held.ref),
+    );
+  }
+  return {
+    notes: [...notes.values()].sort((a, b) => a.ref.localeCompare(b.ref)),
+    pictures: {
+      added: difference.media.added.length,
+      removed: difference.media.removed.length,
+    },
+  };
+}
+
+function sectionsBeside(
+  changed: VaultDifference["notes"]["changed"][number]["sections"],
+  was: VaultNote | undefined,
+  now: VaultNote | undefined,
+): SectionBesideSection[] {
+  const said = (note: VaultNote | undefined, ulid: string) =>
+    note?.sections.find((one) => one.ulid === ulid)?.content;
+  return [...changed.added, ...changed.removed, ...changed.changed]
+    .sort()
+    .map((ulid) => {
+      const before = said(was, ulid);
+      const after = said(now, ulid);
+      return {
+        ulid,
+        ...(before === undefined ? {} : { before }),
+        ...(after === undefined ? {} : { after }),
+      };
+    });
+}
+
+function byRef(vault: Vault): Map<OwnedRef, VaultNote> {
+  const held = new Map<OwnedRef, VaultNote>();
+  for (const note of readNotes(vault, new Map())) held.set(note.ref, note);
+  return held;
 }
