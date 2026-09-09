@@ -10,7 +10,6 @@ import type {
 	PublicationView
 } from '@sloppy/types';
 import { homeGraphRef, MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
-import { SloppyApiError } from '@sloppy/client';
 import { DEFAULT_BUDGET } from '@sloppy/graph';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,10 +21,12 @@ import {
 	hit,
 	node,
 	ref,
+	refuses,
 	unnumbered,
 	useFakeApi,
 	VIEWER,
-	type FakeApi
+	type FakeApi,
+	type FakeArchive
 } from '../stores/fake-api.test-support.js';
 import { initRuntime } from '../runtime.js';
 import { canvasInk } from '../stores/canvas-ink.svelte.js';
@@ -3030,20 +3031,29 @@ describe('a graph as a file', () => {
 
 	function whatArrives(over: Partial<ArchivePreview> = {}): ArchivePreview {
 		return {
-			graph: { ulid: '01JRZ0000000000000000000AA', name: 'Osmosis', owner: DID, format: 1 },
+			format: 1,
+			graph: '01JRZ0000000000000000000AA',
+			name: 'Osmosis',
+			owner: DID,
 			notes: 12,
-			media: 3,
-			missingEmoji: [],
-			colliding: [],
+			pictures: 3,
+			missing_emoji: [],
+			collisions: [],
 			replaces: false,
 			...over
+		};
+	}
+
+	function takenAs(filename: string): FakeArchive['exported'] {
+		return {
+			[HOME]: () => ({ body: 'a graph', filename })
 		};
 	}
 
 	/** Hand the picker a file, the way a person's file browser does. */
 	function chooseFile(): void {
 		const input = document.body.querySelector<HTMLInputElement>(
-			'input[aria-label="The graph to bring in"]'
+			'input[type="file"][accept=".sloppy"]'
 		);
 		if (!input) throw new Error('Nothing on screen takes a graph in');
 		Object.defineProperty(input, 'files', {
@@ -3062,7 +3072,6 @@ describe('a graph as a file', () => {
 	}
 
 	afterEach(() => {
-		vi.useRealTimers();
 		graphs.clear();
 	});
 
@@ -3089,7 +3098,7 @@ describe('a graph as a file', () => {
 	});
 
 	it('says where a copy can be taken on a shell that hands over no files', async () => {
-		archiving(api, { exported: () => new Blob(['a graph']) });
+		archiving(api, { exported: takenAs('Cell Biology 2026-03-05.sloppy') });
 		initRuntime({ apiHost: () => 'http://api.test', saveFile: null });
 
 		await fromMore('Export this graph');
@@ -3097,20 +3106,9 @@ describe('a graph as a file', () => {
 		expect(screen()).toContain('Open Sloppy in a browser to take one.');
 	});
 
-	it('hands the graph over as a file named for it and for the day', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
-		vi.setSystemTime(new Date(2026, 2, 5, 12));
-		api.on('GET /graphs', () => [
-			{ ref: HOME, created_by: DID, created_at: AT, updated_at: AT, title: 'Cell Biology' }
-		]);
-		const asked: OwnedRef[] = [];
+	it('hands the graph over under the name it came back named', async () => {
 		const saved: { name: string; body: Blob }[] = [];
-		archiving(api, {
-			exported: (of) => {
-				asked.push(of);
-				return new Blob(['a graph']);
-			}
-		});
+		archiving(api, { exported: takenAs('Cell Biology 2026-03-05.sloppy') });
 		initRuntime({
 			apiHost: () => 'http://api.test',
 			saveFile: async (name, body) => void saved.push({ name, body })
@@ -3118,8 +3116,8 @@ describe('a graph as a file', () => {
 
 		await fromMore('Export this graph');
 
-		expect(asked).toEqual([HOME]);
-		expect(saved.map((one) => one.name)).toEqual(['cell-biology-2026-03-05.sloppy']);
+		expect(saved.map((one) => one.name)).toEqual(['Cell Biology 2026-03-05.sloppy']);
+		expect(await saved[0].body.text()).toBe('a graph');
 	});
 
 	// The web shell leaves the seam alone, and the browser saves it.
@@ -3131,24 +3129,18 @@ describe('a graph as a file', () => {
 		};
 		URL.createObjectURL = () => 'blob:a-graph';
 		URL.revokeObjectURL = () => {};
-		archiving(api, { exported: () => new Blob(['a graph']) });
+		archiving(api, { exported: takenAs('Cell Biology 2026-03-05.sloppy') });
 		initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
 
 		await fromMore('Export this graph');
 		HTMLAnchorElement.prototype.click = clicking;
 
-		expect(asked.map((one) => one.href)).toEqual(['blob:a-graph']);
-		expect(asked[0]?.name).toMatch(/\.sloppy$/);
+		expect(asked).toEqual([{ href: 'blob:a-graph', name: 'Cell Biology 2026-03-05.sloppy' }]);
 	});
 
 	it('says what to do where the graph could not be put in a file', async () => {
 		archiving(api, {
-			exported: () =>
-				Promise.reject(
-					new SloppyApiError(503, 'GET /graphs/archive', {
-						detail: 'Sloppy could not reach your writing.'
-					})
-				)
+			exported: { [HOME]: () => refuses('Sloppy could not reach your writing.', 503) }
 		});
 		initRuntime({ apiHost: () => 'http://api.test', saveFile: undefined });
 
@@ -3158,17 +3150,7 @@ describe('a graph as a file', () => {
 	});
 
 	it('says what is in a file before any of it is brought in', async () => {
-		const asked: string[] = [];
-		archiving(api, {
-			preview: () => {
-				asked.push('preview');
-				return whatArrives();
-			},
-			imported: () => {
-				asked.push('import');
-				return OSMOSIS;
-			}
-		});
+		archiving(api, { preview: () => whatArrives(), imported: () => OSMOSIS });
 
 		await fromMore('Import a graph');
 		chooseFile();
@@ -3176,7 +3158,9 @@ describe('a graph as a file', () => {
 
 		expect(screen()).toContain('Import “Osmosis”?');
 		expect(screen()).toContain('12 notes and 3 pictures arrive.');
-		expect(asked).toEqual(['preview']);
+		expect(api.calls.filter((one) => one.startsWith('POST /graphs/import'))).toEqual([
+			'POST /graphs/import?preview=1'
+		]);
 	});
 
 	it('opens the graph it brought in', async () => {
@@ -3196,12 +3180,7 @@ describe('a graph as a file', () => {
 	it('repeats the words an import came back refused with, and opens nothing', async () => {
 		archiving(api, {
 			preview: () => whatArrives(),
-			imported: () =>
-				Promise.reject(
-					new SloppyApiError(409, 'POST /graphs/import', {
-						detail: 'Some of these notes are already here.'
-					})
-				)
+			imported: () => refuses('Some of these notes are already here.')
 		});
 
 		await fromMore('Import a graph');
@@ -3215,14 +3194,7 @@ describe('a graph as a file', () => {
 	});
 
 	it('repeats the words a file that could not be read came back with', async () => {
-		archiving(api, {
-			preview: () =>
-				Promise.reject(
-					new SloppyApiError(400, 'POST /graphs/import', {
-						detail: "This file isn't a Sloppy graph."
-					})
-				)
-		});
+		archiving(api, { preview: () => refuses("This file isn't a Sloppy graph.") });
 
 		await fromMore('Import a graph');
 		chooseFile();

@@ -21,7 +21,6 @@
 		preview?: ArchivePreview | null;
 		/** Whether this identity is the one the graph was written under. */
 		yours?: boolean;
-		/** The file is still being read. */
 		reading?: boolean;
 		/** The import is with the server, so the choices stop taking taps. */
 		busy?: boolean;
@@ -35,33 +34,33 @@
 		return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 	}
 
-	const named = $derived(preview?.graph.name.trim() ?? '');
+	const named = $derived(preview?.name.trim() ?? '');
 
 	const title = $derived(
 		preview ? (named ? `Import “${named}”?` : 'Import this graph?') : 'Import a graph'
 	);
 
+	const empty = $derived(preview !== null && preview.notes === 0);
+
 	const description = $derived.by(() => {
 		if (!preview) return reading ? 'Reading what is in the file…' : undefined;
-		if (preview.notes === 0) return 'There is nothing in it to bring in.';
+		if (empty) return 'There is nothing in it to bring in.';
 		const notes = count(preview.notes, 'note', 'notes');
-		if (preview.media === 0) return `${notes} ${preview.notes === 1 ? 'arrives' : 'arrive'}.`;
-		return `${notes} and ${count(preview.media, 'picture', 'pictures')} arrive.`;
+		if (preview.pictures === 0) return `${notes} ${preview.notes === 1 ? 'arrives' : 'arrive'}.`;
+		return `${notes} and ${count(preview.pictures, 'picture', 'pictures')} arrive.`;
 	});
 
 	const landing = $derived(
-		preview?.replaces
-			? 'You already keep this graph. What is in the file replaces what is here.'
-			: 'It arrives as a graph of its own, beside the ones you keep.'
+		empty
+			? null
+			: preview?.replaces
+				? 'You already keep this graph. What is in the file replaces what is here.'
+				: 'It arrives as a graph of its own, beside the ones you keep.'
 	);
 
-	/** The notes arriving that this person already has. A replace lands on its
-	 *  own notes, so only a graph arriving beside them is stopped by this. */
-	const alreadyHere = $derived(
-		preview && !preview.replaces && preview.colliding.length > 0 ? preview.colliding.length : 0
-	);
+	const keptElsewhere = $derived(preview?.collisions.length ?? 0);
 
-	const emoji = $derived(preview?.missingEmoji ?? []);
+	const emoji = $derived(preview?.missing_emoji ?? []);
 
 	/** `:a:, :b: and 4 more`. */
 	function listed(all: readonly string[]): string {
@@ -76,9 +75,11 @@
 <ResponsiveModal bind:open {onOpenChange} {title} {description}>
 	<div class="space-y-3 px-2 pt-4 pb-2">
 		{#if preview}
-			<p class="px-2 text-sm text-muted-foreground">{landing}</p>
+			{#if landing}
+				<p class="px-2 text-sm text-muted-foreground">{landing}</p>
+			{/if}
 
-			{#if !yours}
+			{#if !yours && !empty}
 				<p class="px-2 text-sm text-muted-foreground">
 					It was written under another identity. The notes become yours here, and keep the numbers
 					they carry.
@@ -94,12 +95,12 @@
 				</p>
 			{/if}
 
-			{#if alreadyHere > 0}
+			{#if keptElsewhere > 0}
 				<p class="px-2 text-sm text-destructive">
-					{alreadyHere === 1
-						? 'One of these notes is already here.'
-						: `${alreadyHere.toLocaleString()} of these notes are already here.`} Sloppy will not write
-					over them, so this graph cannot come in beside the ones you keep.
+					{keptElsewhere === 1
+						? 'One of these notes is already in another of your graphs.'
+						: `${keptElsewhere.toLocaleString()} of these notes are already in another of your graphs.`}
+					Nothing here takes them out of it, so this graph cannot come in.
 				</p>
 			{/if}
 		{/if}
@@ -109,11 +110,7 @@
 		{/if}
 
 		{#if preview}
-			<Button
-				class="h-11 w-full"
-				disabled={busy || alreadyHere > 0 || preview.notes === 0}
-				onclick={onimport}
-			>
+			<Button class="h-11 w-full" disabled={busy || keptElsewhere > 0 || empty} onclick={onimport}>
 				Import
 			</Button>
 		{/if}

@@ -3,7 +3,6 @@
 
 import { runtime } from './runtime.js';
 
-/** Whether this shell can hand a person a file at all. */
 export function savesFiles(): boolean {
 	return runtime.saveFile() !== null;
 }

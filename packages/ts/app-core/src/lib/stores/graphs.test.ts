@@ -319,7 +319,7 @@ describe('a graph brought in from a file', () => {
 		archiving(api, { imported: () => BROUGHT });
 		await graphs.load();
 
-		const back = await graphs.importArchive(new Uint8Array([1]));
+		const back = await graphs.importArchive(new Blob([new Uint8Array([1])]));
 
 		expect(back).toEqual(BROUGHT);
 		expect(graphs.all.map((one) => one.title)).toEqual([
@@ -335,7 +335,7 @@ describe('a graph brought in from a file', () => {
 		archiving(api, { imported: () => ({ ...GARDEN, title: 'Garden, as it was' }) });
 		await graphs.load();
 
-		await graphs.importArchive(new Uint8Array([1]));
+		await graphs.importArchive(new Blob([new Uint8Array([1])]));
 
 		expect(graphs.all.map((one) => one.title)).toEqual([
 			'My graph',
@@ -346,43 +346,39 @@ describe('a graph brought in from a file', () => {
 	});
 
 	it('asks what the file holds without writing any of it', async () => {
-		const asked: string[] = [];
 		archiving(api, {
-			preview: () => {
-				asked.push('preview');
-				return {
-					graph: { ulid: '01JRZ0000000000000000000AA', name: 'Osmosis', owner: DID, format: 1 },
-					notes: 4,
-					media: 0,
-					missingEmoji: [],
-					colliding: [],
-					replaces: false
-				};
-			},
-			imported: () => {
-				asked.push('import');
-				return GARDEN;
-			}
+			preview: () => ({
+				format: 1,
+				graph: '01JRZ0000000000000000000AA',
+				name: 'Osmosis',
+				owner: DID,
+				notes: 4,
+				pictures: 0,
+				missing_emoji: [],
+				collisions: [],
+				replaces: false
+			}),
+			imported: () => GARDEN
 		});
 
-		const said = await graphs.previewImport(new Uint8Array([1]));
+		const said = await graphs.previewImport(new Blob([new Uint8Array([1])]));
 
 		expect(said.notes).toBe(4);
-		expect(asked).toEqual(['preview']);
+		expect(api.calls.filter((one) => one.startsWith('POST /graphs/import'))).toEqual([
+			'POST /graphs/import?preview=1'
+		]);
 	});
 
-	it('asks for the graph a person is keeping as a file', async () => {
-		const asked: OwnedRef[] = [];
+	it('asks for the graph a person is keeping as a file, and hands back what to call it', async () => {
 		archiving(api, {
-			exported: (of) => {
-				asked.push(of);
-				return new Blob(['a graph']);
+			exported: {
+				[GARDEN.ref]: () => ({ body: 'a graph', filename: 'Garden 2026-03-05.sloppy' })
 			}
 		});
 
 		const file = await graphs.exportArchive(GARDEN.ref);
 
-		expect(await file.text()).toBe('a graph');
-		expect(asked).toEqual([GARDEN.ref]);
+		expect(new TextDecoder().decode(file.bytes)).toBe('a graph');
+		expect(file.filename).toBe('Garden 2026-03-05.sloppy');
 	});
 });

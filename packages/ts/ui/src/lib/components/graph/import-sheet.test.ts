@@ -13,11 +13,14 @@ let acts: string[];
 
 function preview(over: Partial<ArchivePreview> = {}): ArchivePreview {
 	return {
-		graph: { ulid: '01JRZ0000000000000000000AA', name: 'Osmosis', owner: DID, format: 1 },
+		format: 1,
+		graph: '01JRZ0000000000000000000AA',
+		name: 'Osmosis',
+		owner: DID,
 		notes: 42,
-		media: 7,
-		missingEmoji: [],
-		colliding: [],
+		pictures: 7,
+		missing_emoji: [],
+		collisions: [],
 		replaces: false,
 		...over
 	};
@@ -96,7 +99,7 @@ describe('the preview a graph in a file opens', () => {
 	});
 
 	it('counts one note without pluralising it', async () => {
-		await open({ preview: preview({ notes: 1, media: 0 }) });
+		await open({ preview: preview({ notes: 1, pictures: 0 }) });
 
 		expect(screen()).toContain('1 note arrives.');
 	});
@@ -117,7 +120,7 @@ describe('the preview a graph in a file opens', () => {
 	});
 
 	it('names the emoji that cannot come along, and what the notes keep', async () => {
-		await open({ preview: preview({ missingEmoji: ['seedling', 'ink'] }) });
+		await open({ preview: preview({ missing_emoji: ['seedling', 'ink'] }) });
 
 		expect(screen()).toContain(
 			'2 emoji it was written with cannot come along: :seedling: and :ink:.'
@@ -126,48 +129,56 @@ describe('the preview a graph in a file opens', () => {
 	});
 
 	it('names three of them and counts the rest', async () => {
-		await open({ preview: preview({ missingEmoji: ['a', 'b', 'c', 'd', 'e'] }) });
+		await open({ preview: preview({ missing_emoji: ['a', 'b', 'c', 'd', 'e'] }) });
 
 		expect(screen()).toContain('cannot come along: :a:, :b:, :c: and 2 more.');
 	});
 
 	it('says which one where a single emoji is missing', async () => {
-		await open({ preview: preview({ missingEmoji: ['seedling'] }) });
+		await open({ preview: preview({ missing_emoji: ['seedling'] }) });
 
 		expect(screen()).toContain('One emoji it was written with cannot come along: :seedling:.');
 	});
 
-	// Refs are re-keyed on import and ulids are kept, so a graph arriving beside
-	// notes this person already holds cannot land at all.
-	it('does not offer an import that would land on notes already here', async () => {
-		await open({ preview: preview({ colliding: ['01A', '01B'] }) });
+	// A note keeps its ulid through an import, so one this person already keeps
+	// in some other graph is what an arriving archive cannot land beside.
+	it('does not offer an import of notes kept in another graph', async () => {
+		await open({ preview: preview({ collisions: [`${DID}/01A`, `${DID}/01B`] }) });
 
-		expect(screen()).toContain('2 of these notes are already here.');
-		expect(screen()).toContain('this graph cannot come in beside the ones you keep');
+		expect(screen()).toContain('2 of these notes are already in another of your graphs.');
+		expect(screen()).toContain('this graph cannot come in');
 		expect(button('Import').disabled).toBe(true);
 	});
 
-	it('never says an internal identifier of the notes already here', async () => {
-		await open({ preview: preview({ colliding: ['01JRZ0000000000000000000AB'] }) });
+	it('never says an internal identifier of the notes kept elsewhere', async () => {
+		await open({ preview: preview({ collisions: [`${DID}/01JRZ0000000000000000000AB`] }) });
 
-		expect(screen()).toContain('One of these notes is already here.');
+		expect(screen()).toContain('One of these notes is already in another of your graphs.');
 		expect(screen()).not.toContain('01JRZ0000000000000000000AB');
 	});
 
-	// A replace lands on its own notes by design, so the same ulids arriving are
-	// not what stops it.
-	it('offers the import where the notes already here are the ones being replaced', async () => {
-		await open({ preview: preview({ colliding: ['01A'], replaces: true }) });
+	// Replacing a graph writes over its own notes, and one of them living in
+	// another graph now still stops the whole archive.
+	it('does not offer a replace either while a note of it is kept elsewhere', async () => {
+		await open({ preview: preview({ collisions: [`${DID}/01A`], replaces: true }) });
 
-		expect(screen()).not.toContain('already here');
-		expect(button('Import').disabled).toBe(false);
+		expect(screen()).toContain('One of these notes is already in another of your graphs.');
+		expect(button('Import').disabled).toBe(true);
 	});
 
 	it('offers nothing to import out of a graph with no notes in it', async () => {
-		await open({ preview: preview({ notes: 0, media: 0 }) });
+		await open({ preview: preview({ notes: 0, pictures: 0 }) });
 
 		expect(screen()).toContain('There is nothing in it to bring in.');
+		expect(screen()).not.toContain('beside the ones you keep');
+		expect(screen()).not.toContain('another identity');
 		expect(button('Import').disabled).toBe(true);
+	});
+
+	it('says nothing about where an empty graph would land, on a replace either', async () => {
+		await open({ preview: preview({ notes: 0, pictures: 0, replaces: true }), yours: false });
+
+		expect(screen()).not.toContain('replaces what is here');
 	});
 
 	it('says the file is being read before it says what is in it', async () => {

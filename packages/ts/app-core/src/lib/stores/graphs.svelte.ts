@@ -18,7 +18,7 @@ import {
 	type CreateGraphRequest,
 	type UpdateGraphRequest
 } from '@sloppy/types';
-import { api, type SloppyApi } from '../api.js';
+import { api } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
 import { serverMessage } from './errors.js';
 import { prefs } from './prefs.svelte.js';
@@ -38,21 +38,6 @@ export interface GraphsState {
 }
 
 const IDLE: GraphsState = { loading: false, loaded: false, failed: false };
-
-/**
- * A graph as a file, both ways — docs/ARCHITECTURE.md § "A graph on disk". An
- * import answers the graph it made or the one it replaced, its refs re-keyed to
- * the importing identity, so what comes back is this person's.
- */
-export interface ArchiveRoutes {
-	exportArchive(ref: OwnedRef): Promise<Blob>;
-	importArchive(bytes: Uint8Array, asked: { preview: true }): Promise<ArchivePreview>;
-	importArchive(bytes: Uint8Array, asked?: { preview?: false }): Promise<GraphView>;
-}
-
-// The API serves these before `SloppyClient` declares them; the assertion
-// goes when it does.
-const archive = (): ArchiveRoutes => api as SloppyApi & ArchiveRoutes;
 
 const LISTING = 'listing';
 
@@ -197,21 +182,20 @@ class GraphsStore {
 		return made;
 	}
 
-	/** This graph as a file, for somebody to keep. */
-	exportArchive(ref: OwnedRef): Promise<Blob> {
-		return archive().exportArchive(ref);
+	exportArchive(ref: OwnedRef): Promise<{ bytes: Uint8Array; filename: string }> {
+		return api.exportArchive(ref);
 	}
 
-	/** What that file holds, before any of it is written. */
-	previewImport(bytes: Uint8Array): Promise<ArchivePreview> {
-		return archive().importArchive(bytes, { preview: true });
+	/** What that file holds, with none of it written. */
+	previewImport(archive: Blob): Promise<ArchivePreview> {
+		return api.previewArchive(archive);
 	}
 
 	/** Bring the graph in, and be in it. One replacing a graph already kept
 	 *  takes its place in the listing rather than standing beside it. */
-	async importArchive(bytes: Uint8Array): Promise<GraphView> {
+	async importArchive(archive: Blob): Promise<GraphView> {
 		const epoch = this.#epoch;
-		const brought = await archive().importArchive(bytes);
+		const brought = await api.importArchive(archive);
 		if (epoch !== this.#epoch) return brought;
 		this.#all = this.#all.some((graph) => graph.ref === brought.ref)
 			? this.#all.map((graph) => (graph.ref === brought.ref ? brought : graph))

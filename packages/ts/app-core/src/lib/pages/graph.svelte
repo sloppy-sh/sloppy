@@ -1553,22 +1553,6 @@
 		if (!visiting) asking = null;
 	});
 
-	/** The graph as a file, named for the graph and the day it was taken. */
-	function archiveName(): string {
-		const day = new Date();
-		const stamp = [
-			day.getFullYear(),
-			String(day.getMonth() + 1).padStart(2, '0'),
-			String(day.getDate()).padStart(2, '0')
-		].join('-');
-		const named = graphs
-			.titleOf(graph)
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/^-+|-+$/g, '');
-		return `${named || 'graph'}-${stamp}.sloppy`;
-	}
-
 	let taking = $state(false);
 
 	async function takeArchive(): Promise<void> {
@@ -1581,8 +1565,8 @@
 		}
 		taking = true;
 		try {
-			const body = await graphs.exportArchive(graph);
-			await saveHere(archiveName(), body);
+			const { bytes, filename } = await graphs.exportArchive(graph);
+			await saveHere(filename, new Blob([bytes as BlobPart], { type: 'application/zip' }));
 		} catch (error) {
 			refused =
 				serverMessage(error) ??
@@ -1596,7 +1580,7 @@
 	let chooser = $state<HTMLInputElement>();
 	/** The archive in hand, held while its preview is read and answered. */
 	let arriving = $state<{
-		bytes: Uint8Array;
+		file: File;
 		preview: ArchivePreview | null;
 		reading: boolean;
 		busy: boolean;
@@ -1605,11 +1589,10 @@
 
 	async function readArchive(file: File | undefined): Promise<void> {
 		if (!file) return;
-		const bytes = new Uint8Array(await file.arrayBuffer());
-		arriving = { bytes, preview: null, reading: true, busy: false, refused: null };
+		arriving = { file, preview: null, reading: true, busy: false, refused: null };
 		const held = arriving;
 		try {
-			const preview = await graphs.previewImport(bytes);
+			const preview = await graphs.previewImport(file);
 			if (arriving === held) arriving = { ...held, preview, reading: false };
 		} catch (error) {
 			if (arriving === held) {
@@ -1627,7 +1610,7 @@
 		arriving = { ...arriving, busy: true, refused: null };
 		const held = arriving;
 		try {
-			const brought = await graphs.importArchive(held.bytes);
+			const brought = await graphs.importArchive(held.file);
 			if (arriving === held) arriving = null;
 			closeUndrawn();
 			await nodes.reload({ graph: brought.ref }).catch(() => {});
@@ -2373,8 +2356,7 @@
 	bind:this={chooser}
 	type="file"
 	accept=".sloppy"
-	class="sr-only"
-	aria-label="The graph to bring in"
+	class="hidden"
 	onchange={(event) => {
 		const input = event.currentTarget;
 		void readArchive(input.files?.[0]);
@@ -2388,7 +2370,7 @@
 		if (!up) arriving = null;
 	}}
 	preview={arriving?.preview ?? null}
-	yours={arriving?.preview ? arriving.preview.graph.owner === session.viewer?.did : true}
+	yours={arriving?.preview ? arriving.preview.owner === session.viewer?.did : true}
 	reading={arriving?.reading ?? false}
 	busy={arriving?.busy ?? false}
 	refused={arriving?.refused ?? null}
