@@ -36,11 +36,8 @@ class SessionStore {
 		return this.#viewer !== null;
 	}
 
-	/**
-	 * Nobody signs in or out here: the identity this device made is the session,
-	 * and the graph beside it is a folder. Surfaces read it to know that an act
-	 * needing another machine is not theirs to offer.
-	 */
+	/** The graph is a folder on this device. Which deployment is running, not
+	 *  whether anybody is signed in — {@link signedIn} answers that separately. */
 	get onDevice(): boolean {
 		return runtime.mode() === 'local';
 	}

@@ -716,8 +716,6 @@
 	// ── Publishing this branch, and what people say back ──────────────────────
 
 	const own = $derived(node !== undefined && node.created_by === session.viewer?.did);
-	/** Publishing a branch, and everything anybody says back, needs a Sloppy for
-	 *  a reader to reach — so a graph kept on the device offers none of it. */
 	const publishable = $derived(own && !session.onDevice);
 	/** The publication rooted at this note, which is what an act here changes. */
 	const publication = $derived(node && own ? publications.at(node) : undefined);

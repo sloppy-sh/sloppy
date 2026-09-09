@@ -744,6 +744,7 @@
 	 *  Held by nobody here, the branch that carries it is what to offer instead. */
 	async function reachHeld(cited: OwnedRef): Promise<void> {
 		if (session.onDevice) {
+			hide();
 			refused =
 				"That note is somebody else's. This graph is on your device, so only what is in it opens here.";
 			return;

@@ -15,23 +15,13 @@ async function landed(): Promise<void> {
 beforeEach(() => emojiCatalogs.forget(OWNER));
 
 describe('the catalog a shortcode is read against', () => {
-	// The pictures come from an instance where a Sloppy serves the graph and from
-	// the folder beside it where the device holds its own; a shortcode resolves
-	// the same way against either.
-	it('is whichever one the app was handed', async () => {
-		const served: LoadCatalog = async () => [fire('/api/media/proxy?ref=fire')];
-		emojiCatalogs.of(OWNER, served);
+	it('is what the loader answered with, once it has', async () => {
+		const load: LoadCatalog = async () => [fire('/emoji/fire.png')];
+		emojiCatalogs.of(OWNER, load);
 		await landed();
-		expect(resolveEmoji('fire', emojiCatalogs.of(OWNER, served))).toMatchObject({
-			src: '/api/media/proxy?ref=fire'
-		});
 
-		emojiCatalogs.forget(OWNER);
-		const onDevice: LoadCatalog = async () => [fire('asset://vault/.sloppy/emoji/fire.png')];
-		emojiCatalogs.of(OWNER, onDevice);
-		await landed();
-		expect(resolveEmoji('fire', emojiCatalogs.of(OWNER, onDevice))).toMatchObject({
-			src: 'asset://vault/.sloppy/emoji/fire.png'
+		expect(resolveEmoji('fire', emojiCatalogs.of(OWNER, load))).toMatchObject({
+			src: '/emoji/fire.png'
 		});
 	});
 

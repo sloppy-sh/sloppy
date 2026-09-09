@@ -150,10 +150,14 @@
 			<h1 class="text-2xl font-semibold tracking-tight">You</h1>
 			<section class="space-y-2 border-t border-border pt-6">
 				<h2 class="text-sm font-medium">Your identity</h2>
-				<IdentityLine identity={session.viewer?.did ?? ''} label="Copy your identity" />
-				<p class="text-sm text-muted-foreground">
-					Everything you write here is written under this, and none of it leaves this device.
-				</p>
+				{#if session.viewer}
+					<IdentityLine identity={session.viewer.did} label="Copy your identity" />
+					<p class="text-sm text-muted-foreground">
+						Everything you write here is written under this, and none of it leaves this device.
+					</p>
+				{:else}
+					<p class="text-sm text-muted-foreground">Your graph is opening.</p>
+				{/if}
 			</section>
 		{:else if unreachable}
 			<p class="text-sm text-destructive" role="alert">{unreachable}</p>

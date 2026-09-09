@@ -13,7 +13,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
-import { initRuntime } from '../runtime.js';
+import { type AppRuntime, initRuntime } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
@@ -104,15 +104,24 @@ async function settle(): Promise<void> {
 }
 
 /** Which of the two deployments the app is running as, for the mount that
- *  follows. `afterEach` puts it back. */
-function running(mode: 'hosted' | 'local'): void {
-	initRuntime({ apiHost: () => 'http://api.test', mode: () => mode });
+ *  follows, and what the shell around it can do with a file. `afterEach` puts
+ *  it back. */
+function running(mode: 'hosted' | 'local', saveFile?: AppRuntime['saveFile']): void {
+	initRuntime({ apiHost: () => 'http://api.test', mode: () => mode, saveFile });
 }
 
 const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
 
 const has = (labelled: string) =>
 	[...document.body.querySelectorAll('button')].some((b) => b.textContent?.includes(labelled));
+
+function control(labelled: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find((b) =>
+		b.textContent?.includes(labelled)
+	);
+	if (!found) throw new Error(`Nothing on the screen is labelled "${labelled}"`);
+	return found;
+}
 
 const offered = (): string[] =>
 	[...document.body.querySelectorAll('[role="menuitem"]')].map(
@@ -300,6 +309,9 @@ describe('the graph, on a device holding its own', () => {
 		await openGraph();
 
 		expect(screen()).toContain("That note is somebody else's");
+		expect(at.note).toBe(null);
+		expect(at.notes).toEqual([]);
+		expect(screen()).not.toContain('Nothing lives at that address');
 		expect(api.countOf('GET /pulls')).toBe(0);
 	});
 });
@@ -338,13 +350,25 @@ describe('Settings, on a device holding its own graph', () => {
 		expect(api.countOf('GET /profile/me')).toBe(0);
 	});
 
-	it('still offers a copy of everything written', async () => {
-		running('local');
+	it('still hands over a copy of everything written', async () => {
+		running('local', async () => {});
 		mounted = mount(Settings, { target });
 		flushSync();
 		await settle();
 
-		expect(has('Download a copy')).toBe(true);
+		expect(control('Download a copy').disabled).toBe(false);
+	});
+
+	// A folder on this device is not something a browser can be opened on, so the
+	// offer goes rather than standing there disabled beside advice to try one.
+	it('offers no copy where the app around it can save no file', async () => {
+		running('local', null);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(has('Download a copy')).toBe(false);
+		expect(screen()).not.toContain('Open Sloppy in a browser');
 	});
 
 	it('keeps the Sloppy to point at, and the way out, where one serves the graph', async () => {
@@ -371,6 +395,16 @@ describe('the page about you, on a device holding its own graph', () => {
 		expect(screen()).not.toContain('What you publish');
 		expect(api.countOf('GET /profile/me')).toBe(0);
 		expect(api.countOf('GET /publications')).toBe(0);
+	});
+
+	it('draws no identity to copy before the graph has opened', async () => {
+		running('local');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		expect(document.body.querySelector('[aria-label="Copy your identity"]')).toBe(null);
+		expect(screen()).toContain('Your graph is opening');
 	});
 
 	it('reads the profile a Sloppy holds where one serves the graph', async () => {

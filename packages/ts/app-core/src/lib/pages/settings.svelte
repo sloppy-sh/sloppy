@@ -45,6 +45,7 @@
 	let moved = $state<string | null>(null);
 
 	const canSaveFiles = savesFiles();
+	const offersCopy = $derived(session.onDevice ? canSaveFiles : session.signedIn);
 
 	const instance = $derived(session.viewer ? new URL(session.viewer.syr_instance_url).host : null);
 	const profile = $derived(people.me);
@@ -211,8 +212,8 @@
 				<h2 class="text-sm font-medium">Where your writing is</h2>
 				<p class="text-sm text-muted-foreground">
 					Your graph is a folder on this device, and everything you write stays in it. Publishing a
-					branch, reading somebody else's and answering a note need a Sloppy you sign in to, so they
-					are not offered here.
+					branch, reading somebody else's and answering a note need a Sloppy other people can reach,
+					so they are not offered here.
 				</p>
 			</div>
 		{:else}
@@ -253,7 +254,7 @@
 			</div>
 		{/if}
 
-		{#if session.signedIn || session.onDevice}
+		{#if offersCopy}
 			<div class="space-y-3 border-t border-border pt-8">
 				<h2 class="text-sm font-medium">Your writing</h2>
 				<p class="text-sm text-muted-foreground">
