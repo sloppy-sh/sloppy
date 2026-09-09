@@ -18,6 +18,7 @@ import {
   MEDIA_DIR,
   mediaPath,
   type PictureSize,
+  SECTION_OPENER,
 } from "./layout.js";
 
 /** How an emoji is drawn, which its shortcode does not say: a standard one's
@@ -142,9 +143,10 @@ function unescapeText(value: string): string {
   return value.replace(/\\(.)/g, "$1");
 }
 
-/** What a line must not open with to stay the paragraph it is. */
+/** What a line must not open with to stay the paragraph it is — the space
+ *  included, which the list before it would otherwise take for its own. */
 function escapeLineStart(line: string): string {
-  return /^([#>\-+=!]|\d+\.)/.test(line) ? `\\${line}` : line;
+  return /^([#>\-+=!\s]|\d+\.)/.test(line) ? `\\${line}` : line;
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +189,16 @@ const LIST_KINDS: Record<string, string | undefined> = {
 
 /** Null where this element has no markdown that reads back as itself. */
 function writeBlock(held: DocumentNode, sidecars: Sidecars): string | null {
+  const text = writeElement(held, sidecars);
+  if (text === null) return null;
+  // A fence carries its source through untouched, so the one line a note's
+  // body may not hold is the one that opens the next section.
+  return text.split("\n").some((line) => SECTION_OPENER.test(line))
+    ? null
+    : text;
+}
+
+function writeElement(held: DocumentNode, sidecars: Sidecars): string | null {
   const attrs = attrsOf(held);
   const children = held.content ?? [];
   switch (held.type) {

@@ -215,6 +215,16 @@ describe("what markdown carries", () => {
     expect(readBack(held)).toEqual(held);
   });
 
+  it("writes a fence that would open the next section as itself", () => {
+    const held = doc({
+      type: "codeBlock",
+      content: [{ type: "text", text: `<!-- block ${BLOCK} -->` }],
+    });
+    const { text } = written(held);
+    expect(text.startsWith("<!-- sloppy:node ")).toBe(true);
+    expect(readBack(held)).toEqual(held);
+  });
+
   it("carries an element kind it has never heard of", () => {
     const held = doc({ type: "hologram", attrs: { spin: 3 } });
     const { text } = written(held);

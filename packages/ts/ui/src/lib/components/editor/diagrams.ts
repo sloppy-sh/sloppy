@@ -1,6 +1,7 @@
 // Drawing a diagram from the source somebody wrote, keyed by the language they
-// wrote it in. A second language is another entry in `DRAWS` and a renderer
-// beside it, never a change to what a diagram element stores.
+// wrote it in. What a fence OPENS a diagram in is `DIAGRAM_LANGUAGES` in
+// `@sloppy/types`, which a vault reads by too; this is only what this build
+// draws, and a language in neither is still carried whole.
 
 /** The one this build draws. Anything else is carried and shown as its source. */
 export const MERMAID = 'mermaid';
@@ -30,10 +31,6 @@ const DRAWS: Record<string, Drawer> = {
 		return svg;
 	}
 };
-
-/** Every language a fence opens a diagram in, and the whole of what this build
- *  draws. */
-export const DIAGRAM_LANGUAGES: readonly string[] = Object.keys(DRAWS);
 
 export function drawsDiagrams(language: string): boolean {
 	return language in DRAWS;

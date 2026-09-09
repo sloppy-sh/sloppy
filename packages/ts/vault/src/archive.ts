@@ -5,6 +5,7 @@ import { type DidSyr } from "@sloppy/types";
 import { Unzip, UnzipInflate, unzipSync, zipSync } from "fflate";
 import {
   GRAPH_FILE,
+  insideVault,
   MEDIA_DIR,
   noteAt,
   readGraphFile,
@@ -25,6 +26,8 @@ export function pack(vault: Vault): Uint8Array {
   return zipSync(entries, { mtime: STAMPED });
 }
 
+/** The vault an archive holds. Throws where the file is not one, and where an
+ *  entry names a file outside the vault, which nothing writes to disk. */
 export function unpack(bytes: Uint8Array): Vault {
   let held: Record<string, Uint8Array>;
   try {
@@ -32,7 +35,17 @@ export function unpack(bytes: Uint8Array): Vault {
   } catch {
     throw new VaultFormatError("This file isn't a Sloppy graph.");
   }
-  return new Map(Object.entries(held));
+  const vault: Vault = new Map();
+  for (const [path, entry] of Object.entries(held)) {
+    // Some zip writers list a folder as an entry of its own; a vault is its
+    // files.
+    if (path.endsWith("/")) continue;
+    if (!insideVault(path)) {
+      throw new VaultFormatError("This file isn't a Sloppy graph.");
+    }
+    vault.set(path, entry);
+  }
+  return vault;
 }
 
 /** What an archive holds, as an import preview says it before anything is

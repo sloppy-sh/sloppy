@@ -5,7 +5,7 @@
 import type { DocumentMark, DocumentNode } from "@sloppy/types";
 import fc from "fast-check";
 
-const LETTERS = [..."ab XY", ..."*_`~[]()#>=+-.!$:", ..."\\'\"{}|/", ..."019"];
+const LETTERS = [..."ab XY", ..."*_`~[]()#<>=+-.!$:", ..."\\'\"{}|/", ..."019"];
 
 const words = fc
   .array(fc.constantFrom(...LETTERS), { minLength: 1, maxLength: 8 })
@@ -86,6 +86,9 @@ const inline = fc
 
 const UPLOAD = "01J0000000000000000000000B";
 
+/** A source somebody wrote that reads as the start of the next section. */
+const OPENS_A_SECTION = "one\n<!-- block 01J0000000000000000000000D -->\ntwo";
+
 function element(
   type: string,
   attrs: Record<string, unknown>,
@@ -106,7 +109,12 @@ const leaves: fc.Arbitrary<DocumentNode> = fc.oneof(
   fc
     .tuple(
       fc.option(fc.constantFrom("ts", "rust", "mermaid"), { nil: undefined }),
-      fc.oneof(words, fc.constant("a\n\nb"), fc.constant("```\nx")),
+      fc.oneof(
+        words,
+        fc.constant("a\n\nb"),
+        fc.constant("```\nx"),
+        fc.constant(OPENS_A_SECTION),
+      ),
     )
     .map(([language, source]) =>
       element("codeBlock", language === undefined ? {} : { language }, [
@@ -114,10 +122,10 @@ const leaves: fc.Arbitrary<DocumentNode> = fc.oneof(
       ]),
     ),
   fc
-    .oneof(words, fc.constant("graph TD;\nA-->B"))
+    .oneof(words, fc.constant("graph TD;\nA-->B"), fc.constant(OPENS_A_SECTION))
     .map((source) => element("diagram", { language: "mermaid", source })),
   fc
-    .oneof(words, fc.constant("x = 1\n$ y"))
+    .oneof(words, fc.constant("x = 1\n$ y"), fc.constant(OPENS_A_SECTION))
     .map((tex) => element("mathBlock", { tex })),
   fc
     .tuple(

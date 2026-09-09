@@ -1638,6 +1638,13 @@ device. `elements.ts` is the one list of the kinds that need nothing from the su
 are drawn on, so the writing surface, a held note and the outline register them together
 and a fourth kind is added once.
 
+**What a fence OPENS a diagram in is one list, and what a build DRAWS is another.**
+`DIAGRAM_LANGUAGES` in `@sloppy/types` is the first: the editor's input rule and the vault
+both read it, so a fence means the same thing in a note as it does in a file — two lists
+would let a round trip through a folder turn a code block into a diagram. `DRAWS` in
+`@sloppy/ui` is the second, and a language in the first with no renderer in it is carried
+whole and shown as its source until a build has one.
+
 **Ink over the CANVAS is not this, and has no row.** A pen over the graph leaves a
 drawing on the field rather than an element inside a note, so it is neither a block nor a
 table: it is kept on the device for the person signed in, under the graph it was drawn
@@ -1710,8 +1717,16 @@ one.
 `toMarkdown` and `fromMarkdown` are inverse over the documents the editor writes:
 `document -> markdown + sidecars -> document` is identity, and two documents that differ
 never write the same files. An element whose markdown would read back as something else —
-a code block in a diagram's language, a formula holding a `$` — is written as its JSON
-instead of guessed at.
+a code block in a diagram's language, a formula holding a `$`, a fence whose source holds a
+line that would open the next section, one upload the note draws at two sizes — is written
+as its JSON instead of guessed at. That last one is why a graph is written note by note
+against the picture sizes and the emoji the vault already holds: the writer has to see the
+first use to know the second disagrees with it.
+
+**An entry that is not inside the vault is not read.** An archive is a file somebody else
+made, so `unpack` refuses one carrying a path that climbs out of the folder or names a
+place of its own — nothing downstream has to remember the rule before writing a vault to
+disk.
 
 **Refs are re-keyed on import; ulids are kept.** An archive carries refs under the DID that
 exported it. Importing into an identity rewrites `<sourceDid>/<ulid>` to `<targetDid>/<ulid>`

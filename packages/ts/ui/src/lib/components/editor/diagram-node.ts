@@ -4,13 +4,8 @@
 
 import { InputRule, Node, mergeAttributes } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
-import {
-	DIAGRAM_LANGUAGES,
-	MERMAID,
-	drawDiagram,
-	drawsDiagrams,
-	whenThemeChanges
-} from './diagrams.js';
+import { DIAGRAM_LANGUAGES } from '@sloppy/types';
+import { MERMAID, drawDiagram, drawsDiagrams, whenThemeChanges } from './diagrams.js';
 import { placeBlock, replaceBlock } from './placement.js';
 
 export const DIAGRAM_NODE = 'diagram';

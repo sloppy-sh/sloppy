@@ -14,6 +14,10 @@ export const INK_DIR = `${SLOPPY_DIR}/ink`;
 export const PICTURES_FILE = `${SLOPPY_DIR}/pictures.json`;
 export const EMOJI_DIR = `${SLOPPY_DIR}/emoji`;
 
+/** What opens a section in a note's body, capturing the block's ULID. Nothing
+ *  else in a note's markdown may read as this, or the note splits there. */
+export const SECTION_OPENER = /^<!-- block ([0-9A-HJKMNP-TV-Z]{26}) -->$/;
+
 /** What an archive is called and what it is made of. */
 export const ARCHIVE_EXTENSION = ".sloppy";
 export const ARCHIVE_MIME = "application/zip";
@@ -70,6 +74,19 @@ function under(directory: string, path: string): string | undefined {
   if (!path.startsWith(prefix)) return undefined;
   const rest = path.slice(prefix.length);
   return rest.includes("/") || rest.length === 0 ? undefined : rest;
+}
+
+/**
+ * Whether a path names a file inside the vault. An archive is a file somebody
+ * else made, so a path that climbs out of the folder or names one of its own is
+ * refused before it is ever written down.
+ */
+export function insideVault(path: string): boolean {
+  if (path === "" || path.startsWith("/") || path.includes("\\")) return false;
+  if (/^[A-Za-z]:/.test(path)) return false;
+  return path
+    .split("/")
+    .every((segment) => segment !== "" && segment !== "." && segment !== "..");
 }
 
 export function notePath(ulid: string): string {
@@ -149,14 +166,14 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
   if (!said || typeof said !== "object" || typeof said.name !== "string") {
     throw new VaultFormatError("This file isn't a Sloppy graph.");
   }
-  if (said.format !== VAULT_FORMAT) {
+  if (typeof said.format === "number" && said.format > VAULT_FORMAT) {
     throw new VaultFormatError(
       "This graph was written by a newer Sloppy. Update and open it again.",
     );
   }
   const owner = DidSyrSchema.safeParse(said.owner);
   const graph = UlidSchema.safeParse(said.graph);
-  if (!owner.success || !graph.success) {
+  if (said.format !== VAULT_FORMAT || !owner.success || !graph.success) {
     throw new VaultFormatError("This file isn't a Sloppy graph.");
   }
   return {

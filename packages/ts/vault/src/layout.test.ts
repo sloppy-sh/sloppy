@@ -9,6 +9,7 @@ import {
   inkImagePath,
   inkPath,
   inkStem,
+  insideVault,
   mediaPath,
   noteAt,
   notePath,
@@ -77,6 +78,30 @@ describe("where a vault keeps things", () => {
     expect(() => readGraphFile(encodeText("not json"))).toThrow(
       VaultFormatError,
     );
+    for (const held of [
+      JSON.stringify({ graph: NOTE, name: "x", owner: OWNER }),
+      JSON.stringify({ format: 0, graph: NOTE, name: "x", owner: OWNER }),
+    ]) {
+      expect(() => readGraphFile(encodeText(held))).toThrow(
+        /isn't a Sloppy graph/,
+      );
+    }
+  });
+
+  it("holds a path to what is inside the vault", () => {
+    expect(insideVault(notePath(NOTE))).toBe(true);
+    expect(insideVault(".sloppy/ink/a.svg")).toBe(true);
+    for (const outside of [
+      "",
+      "/etc/passwd",
+      "C:/notes/x.md",
+      "../x.md",
+      "notes/../../x.md",
+      "notes\\x.md",
+      "notes//x.md",
+    ]) {
+      expect(insideVault(outside)).toBe(false);
+    }
   });
 
   it("keeps a picture's size and drops what is not one", () => {

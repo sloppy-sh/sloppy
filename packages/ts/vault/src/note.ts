@@ -21,17 +21,16 @@ import {
   inkPath,
   notePath,
   type PictureSize,
+  SECTION_OPENER,
   VaultFormatError,
 } from "./layout.js";
 import {
   type EmojiDrawing,
   emptySidecars,
   fromMarkdown,
+  type Sidecars,
   toMarkdown,
 } from "./markdown.js";
-
-/** What opens a section in a note's body. */
-const SECTION_OPENER = /^<!-- block ([0-9A-HJKMNP-TV-Z]{26}) -->$/;
 
 export interface VaultSection {
   /** The block's own ULID; its owner is the note's. */
@@ -57,27 +56,48 @@ export interface VaultNote {
   sections: VaultSection[];
 }
 
-/** The files one note writes into a vault, and what it adds to the vault's own
- *  `.sloppy/pictures.json`. */
+/** What the vault already holds when a note is written into it. */
+export interface VaultSoFar {
+  /** Where each upload's bytes are in the vault, keyed by upload id. An upload
+   *  missing from it is linked by its id alone, which is still what reads
+   *  back. */
+  media?: ReadonlyMap<string, string>;
+  /** `.sloppy/pictures.json` as the notes written so far leave it. */
+  pictures?: ReadonlyMap<string, PictureSize>;
+  /** The emoji catalog as the notes written so far leave it. */
+  emoji?: ReadonlyMap<string, EmojiDrawing>;
+}
+
+/** The files one note writes into a vault, and the vault's own picture sizes
+ *  and emoji catalog with this note's in them. */
 export interface NoteFiles {
   files: Map<string, Uint8Array>;
+  /** `.sloppy/pictures.json`. */
   pictures: Map<string, PictureSize>;
+  /** How each shortcode the notes are written with draws. `src` is wherever the
+   *  writer's catalog holds the picture; a reader hands back whatever it will
+   *  draw the shortcode with, which is what the note then carries. */
+  emoji: Map<string, EmojiDrawing>;
 }
 
 /**
  * One note as its file, with each drawing written beside it. `blocks` are the
- * note's sections in the order they are read in, and `media` says where each
- * upload's bytes are in the vault — an upload missing from it is linked by its
- * id alone, which is still what reads back.
+ * note's sections in the order they are read in.
+ *
+ * Hand the returned `pictures` and `emoji` back in through `held` for the next
+ * note: one upload at two sizes, or one shortcode drawn two ways, comes back
+ * exact only where this call can see the first of them.
  */
 export function noteToVault(
   note: NodeView,
   aliases: readonly Address[],
   blocks: readonly BlockView[],
-  media?: ReadonlyMap<string, string>,
+  held: VaultSoFar = {},
 ): NoteFiles {
   const files = new Map<string, Uint8Array>();
-  const pictures = new Map<string, PictureSize>();
+  const pictures = new Map<string, PictureSize>(held.pictures);
+  const emoji = new Map<string, EmojiDrawing>(held.emoji);
+  const media = new Map<string, string>(held.media);
   const parts = [
     writeFront([
       ["ref", note.ref],
@@ -93,9 +113,13 @@ export function noteToVault(
   ];
   for (const block of blocks) {
     const ulid = splitOwnedRef(block.ref).localId;
-    const sidecars = emptySidecars(ulid);
-    if (media)
-      for (const [upload, path] of media) sidecars.media.set(upload, path);
+    const sidecars: Sidecars = {
+      block: ulid,
+      media,
+      pictures,
+      emoji,
+      ink: new Map(),
+    };
     const markdown = toMarkdown(block.content, sidecars);
     parts.push(`<!-- block ${ulid} -->`);
     if (markdown !== "") parts.push(markdown);
@@ -106,13 +130,12 @@ export function noteToVault(
       );
       files.set(inkImagePath(stem), encodeText(inkSvg(attrs)));
     }
-    for (const [upload, size] of sidecars.pictures) pictures.set(upload, size);
   }
   files.set(
     notePath(splitOwnedRef(note.ref).localId),
     encodeText(`${parts.join("\n\n")}\n`),
   );
-  return { files, pictures };
+  return { files, pictures, emoji };
 }
 
 /** A note's file and the sidecars its sections draw on. What is missing from

@@ -1,5 +1,7 @@
-import type { BlockView, NodeView } from "@sloppy/types";
+import type { BlockDocument, BlockView, NodeView } from "@sloppy/types";
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { documents } from "./documents.test-support.js";
 import {
   decodeText,
   inkPath,
@@ -7,6 +9,7 @@ import {
   type PictureSize,
   VaultFormatError,
 } from "./layout.js";
+import type { EmojiDrawing } from "./markdown.js";
 import { noteToVault, type NoteSource, vaultToNote } from "./note.js";
 
 const OWNER = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
@@ -53,6 +56,7 @@ const paragraph = (text: string) => ({
 function read(
   files: Map<string, Uint8Array>,
   pictures?: Map<string, PictureSize>,
+  emoji?: Map<string, EmojiDrawing>,
 ) {
   const ink = new Map<string, Record<string, unknown>>();
   for (const [path, bytes] of files) {
@@ -64,8 +68,24 @@ function read(
     markdown: decodeText(files.get(notePath(NOTE)) as Uint8Array),
     ink,
     pictures,
+    emoji,
   };
   return vaultToNote(source);
+}
+
+const ULIDS = [
+  "01J0000000000000000000000C",
+  "01J0000000000000000000000D",
+  "01J0000000000000000000000E",
+];
+
+function roundTrip(contents: readonly BlockDocument[]) {
+  const written = noteToVault(
+    note(),
+    [],
+    contents.map((content, at) => block(ULIDS[at], content)),
+  );
+  return read(written.files, written.pictures, written.emoji).sections;
 }
 
 describe("a note as a file", () => {
@@ -187,6 +207,89 @@ describe("a note as a file", () => {
         { type: "picture", attrs: { upload_id: "up1", width: 8, height: 6 } },
       ],
     });
+  });
+
+  it("carries every section of it back, whatever is written in them", {
+    timeout: 60_000,
+  }, () => {
+    fc.assert(
+      fc.property(
+        fc.array(documents(), { minLength: 1, maxLength: ULIDS.length }),
+        (contents) => {
+          expect(roundTrip(contents)).toEqual(
+            contents.map((content, at) => ({ ulid: ULIDS[at], content })),
+          );
+        },
+      ),
+      { numRuns: 10000 },
+    );
+  });
+
+  it("keeps a section whose writing reads as the start of the next one", () => {
+    const source = `<!-- block ${SECOND} -->\nand then`;
+    const held: BlockDocument = {
+      type: "doc",
+      content: [
+        { type: "codeBlock", content: [{ type: "text", text: source }] },
+      ],
+    } as BlockDocument;
+    expect(roundTrip([held])).toEqual([{ ulid: BLOCK, content: held }]);
+  });
+
+  it("keeps both sizes of one picture used twice", () => {
+    const picture = (width: number): BlockDocument =>
+      ({
+        type: "doc",
+        content: [
+          {
+            type: "picture",
+            attrs: { upload_id: "up1", width, height: width },
+          },
+        ],
+      }) as BlockDocument;
+    expect(roundTrip([picture(800), picture(200)])).toEqual([
+      { ulid: ULIDS[0], content: picture(800) },
+      { ulid: ULIDS[1], content: picture(200) },
+    ]);
+
+    const first = noteToVault(note(), [], [block(BLOCK, picture(800))]);
+    const second = noteToVault(note(), [], [block(BLOCK, picture(200))], {
+      pictures: first.pictures,
+      emoji: first.emoji,
+    });
+    expect(second.pictures.get("up1")).toEqual({ width: 800, height: 800 });
+    expect(read(first.files, second.pictures).sections[0].content).toEqual(
+      picture(800),
+    );
+    expect(read(second.files, second.pictures).sections[0].content).toEqual(
+      picture(200),
+    );
+  });
+
+  it("hands back how each emoji the note is written with draws", () => {
+    const { emoji } = noteToVault(
+      note(),
+      [],
+      [
+        block(BLOCK, {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "emoji",
+                  attrs: { name: "party_parrot", src: "https://a.example/p" },
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    );
+    expect(emoji).toEqual(
+      new Map([["party_parrot", { src: "https://a.example/p" }]]),
+    );
   });
 
   it("refuses a file that is not a note", () => {

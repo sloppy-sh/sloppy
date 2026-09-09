@@ -1,3 +1,4 @@
+import { zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { manifest, pack, unpack } from "./archive.js";
 import {
@@ -56,6 +57,23 @@ describe("a vault as one file", () => {
   it("refuses a file that is not an archive", () => {
     expect(() => unpack(new Uint8Array([1, 2, 3]))).toThrow(VaultFormatError);
     expect(() => manifest(new Uint8Array([1, 2, 3]))).toThrow(VaultFormatError);
+  });
+
+  it("refuses an archive that names a file outside the vault", () => {
+    for (const escaping of ["../../../.ssh/authorized_keys", "/etc/cron.d/x"]) {
+      const held = zipSync({
+        "graph.json": vault().get("graph.json") as Uint8Array,
+        [escaping]: encodeText("no"),
+      });
+      expect(() => unpack(held)).toThrow(VaultFormatError);
+    }
+  });
+
+  it("reads a vault somebody zipped folders and all", () => {
+    const held = vault();
+    const listed: Record<string, Uint8Array> = { "notes/": new Uint8Array() };
+    for (const [path, bytes] of held) listed[path] = bytes;
+    expect(unpack(zipSync(listed))).toEqual(held);
   });
 
   it("refuses an archive with no graph in it", () => {
