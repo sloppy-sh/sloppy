@@ -1022,13 +1022,19 @@ function readLink(
 
 /**
  * A section's markdown, with every note it names moved to another identity. A
- * reference's link and the JSON an element this build cannot read is carried in
- * are the two places a ref appears in a section.
+ * reference's link and the JSON that holds what markdown cannot — an element
+ * this build has no writer for, a link somebody wrote to a note — are the two
+ * places a ref appears in a section.
  */
 export function rekeyMarkdown(text: string, from: string, to: string): string {
   return text
     .replaceAll(`](${REFERENCE_SCHEME}${from}/`, `](${REFERENCE_SCHEME}${to}/`)
     .replace(/<!-- sloppy:(?:node|span) .*? -->/g, (held) =>
-      held.replaceAll(`"${from}/`, `"${to}/`),
+      held
+        .replaceAll(`"${from}/`, `"${to}/`)
+        .replaceAll(
+          `"${REFERENCE_SCHEME}${from}/`,
+          `"${REFERENCE_SCHEME}${to}/`,
+        ),
     );
 }
