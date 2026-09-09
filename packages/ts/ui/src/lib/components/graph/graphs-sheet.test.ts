@@ -136,6 +136,16 @@ describe('the graphs sheet', () => {
 		expect(putBack).toEqual([OTHER]);
 	});
 
+	// AI.md § "The Genealogy Is the Protocol": a branch whose number went to
+	// another note waits under its title, with nothing standing where one was.
+	it('names a branch with no number by its title alone', async () => {
+		await open([branch({ address: undefined, title: 'The seed of the argument' })]);
+
+		expect(document.body.querySelector('.address')).toBeNull();
+		expect(document.body.textContent).toContain('The seed of the argument');
+		expect(find('Put The seed of the argument in My graph back')).not.toBeNull();
+	});
+
 	it('counts one note as one', async () => {
 		await open([branch({ notes: 1 })]);
 		expect(document.body.textContent).toContain('1 note ·');

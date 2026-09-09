@@ -1097,6 +1097,20 @@ describe('writing the address on a note', () => {
 		expect(field()).toBeNull();
 	});
 
+	// AI.md § "The Genealogy Is the Protocol": a note put back out of the bin
+	// after it gave its number away comes back with none, and the number it still
+	// leads by is what its author renumbers it against.
+	it('says the number a note with none still leads by', async () => {
+		const alone = unnumbered(5, { title: 'Back out of the bin', aliases: ['2b'] });
+		api.on(`GET ${path(alone.ref)}`, () => alone);
+		api.on(`GET ${path(alone.ref)}/blocks`, () => []);
+		await nodes.fetch(alone.ref);
+		await openNote(alone.ref);
+
+		expect(noteHead()).toContain('was 2b');
+		expect(noteHead()).toContain('Give it an address');
+	});
+
 	it('takes an address off the note that carries one', async () => {
 		const asked: (string | null)[] = [];
 		numbering(api, SECOND, (address) => {

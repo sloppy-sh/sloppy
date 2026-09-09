@@ -340,6 +340,12 @@
 	/** The address this note was at before the reader moved it, until they open
 	 *  another: it is what a citation written before the move still leads by. */
 	let moved = $state<{ of: OwnedRef; was: Address } | null>(null);
+	/** What this note still leads by and is no longer at: the address the reader
+	 *  just moved it off, or — where nothing numbers it now — every one it kept. */
+	const wasAt = $derived.by((): readonly Address[] => {
+		if (moved?.of === ref) return [moved.was];
+		return node && node.address === undefined ? (node.aliases ?? []) : [];
+	});
 	/** Link targets a lookup found nothing at, so their row can say so. */
 	const gone = new SvelteSet<OwnedRef>();
 
@@ -1950,11 +1956,6 @@
 								<Copy class="size-4" />
 							</Button>
 						{/if}
-						{#if moved?.of === ref}
-							<span class="shrink-0 text-xs text-muted-foreground">
-								was <span class="address">{moved.was}</span>
-							</span>
-						{/if}
 					{:else if own && !addressingHere}
 						<button
 							type="button"
@@ -1963,6 +1964,13 @@
 						>
 							Give it an address
 						</button>
+					{/if}
+					{#if wasAt.length > 0 && !addressingHere}
+						<span class="shrink-0 text-xs text-muted-foreground">
+							was {#each wasAt as at, place (at)}{place > 0 ? ', ' : ''}<span class="address"
+									>{at}</span
+								>{/each}
+						</span>
 					{/if}
 				</div>
 				{#if own && addressingHere}

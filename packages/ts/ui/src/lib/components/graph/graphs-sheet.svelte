@@ -301,7 +301,9 @@
 						<li class="flex items-center gap-2 px-2">
 							<div class="min-w-0 flex-1">
 								<p class="flex min-w-0 items-baseline gap-2 text-sm">
-									<span class="shrink-0 address text-xs">{branch.address}</span>
+									{#if branch.address}
+										<span class="shrink-0 address text-xs">{branch.address}</span>
+									{/if}
 									<span class="min-w-0 flex-1 truncate">{nameOf(branch)}</span>
 								</p>
 								<p class="truncate text-xs text-muted-foreground">
