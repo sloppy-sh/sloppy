@@ -393,14 +393,19 @@ export class NodeService {
           ? null
           : this.claim(did, graphOf(note), address, own, ownedRefFrom(note.id));
       const giving = await free();
+      const [leaving] = await this.keptBehind(
+        did,
+        graphOf(note),
+        note.address === undefined || note.address === address
+          ? []
+          : [leftBehind(note, note.address)],
+      );
       const written = await this.nodes
         .writeAddress(
           did,
           note,
           address ?? undefined,
-          note.address === undefined || note.address === address
-            ? null
-            : leftBehind(note, note.address),
+          leaving ?? null,
           giving ? [giving] : [],
         )
         .catch(async (err: unknown) => {
@@ -461,12 +466,29 @@ export class NodeService {
     if (there) throw leadsTo(address, held.hold, there);
     const binned = await this.nodes.findDeleted(did, held.note);
     if (!binned) throw leadsTo(address, held.hold, null);
-    // Already given up once: its alias stands and its row is at another number.
     if (binned.address !== address) return null;
-    const back = await this.nodes.aliasedTo(did, graph, address);
-    return back === null
-      ? { from: binned, alias: leftBehind(binned, address) }
-      : { from: binned };
+    const [alias] = await this.keptBehind(did, graph, [
+      leftBehind(binned, address),
+    ]);
+    return alias ? { from: binned, alias } : { from: binned };
+  }
+
+  /** Of the addresses these notes are leaving behind, the ones that are theirs
+   *  to keep leading by: where the graph already leads back by one, it leads to
+   *  the note that left it first and that note keeps it — AI.md § "The
+   *  Genealogy Is the Protocol". */
+  private async keptBehind(
+    did: string,
+    graph: OwnedRef,
+    leaving: readonly NodeAlias[],
+  ): Promise<NodeAlias[]> {
+    if (leaving.length === 0) return [];
+    const led = await this.nodes.addressesLedBack(
+      did,
+      graph,
+      leaving.map((one) => one.address),
+    );
+    return leaving.filter((one) => !led.has(one.address));
   }
 
   /**
@@ -587,7 +609,11 @@ export class NodeService {
         now,
       );
       try {
-        await this.nodes.move(did, landed, aliases);
+        await this.nodes.move(
+          did,
+          landed,
+          await this.keptBehind(did, graph, aliases),
+        );
         return this.asRead(did, await this.nodes.subtree(did, root));
       } catch (err) {
         if (now === undefined || !(await spent())) throw err;
@@ -651,7 +677,7 @@ export class NodeService {
     );
     requireDistinct(landed);
     await this.nodes
-      .move(did, landed, aliases, giving)
+      .move(did, landed, await this.keptBehind(did, graph, aliases), giving)
       .catch(async (err: unknown) => {
         await this.claim(did, graph, now, mine, ref);
         throw err;

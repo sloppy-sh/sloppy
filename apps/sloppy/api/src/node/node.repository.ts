@@ -379,20 +379,21 @@ export class NodeRepository {
     return this.find(did, ref);
   }
 
-  /** The note an address leads back to where none is at it, `null` where the
-   *  graph holds no alias at it. */
-  async aliasedTo(
+  /** Which of these addresses the graph already leads back by.
+   *  `node_alias_owner_graph_address` holds one alias per address, so a note
+   *  leaving one of these leaves nothing behind. */
+  async addressesLedBack(
     did: string,
     graph: OwnedRef,
-    address: Address,
-  ): Promise<OwnedRef | null> {
-    const [rows] = await this.db.handle.query<[OwnedRef[]]>(
-      `SELECT VALUE note FROM node_alias
-         WHERE created_by = $did AND graph = $graph AND address = $address
-         LIMIT 1`,
-      { did, graph, address },
+    addresses: readonly Address[],
+  ): Promise<Set<Address>> {
+    if (addresses.length === 0) return new Set();
+    const [rows] = await this.db.handle.query<[Address[]]>(
+      `SELECT VALUE address FROM node_alias
+         WHERE created_by = $did AND graph = $graph AND address IN $addresses`,
+      { did, graph, addresses: [...addresses] },
     );
-    return rows[0] ?? null;
+    return new Set(rows);
   }
 
   async insert(
@@ -708,9 +709,9 @@ export class NodeRepository {
    * Everything of theirs deleted before `before`, gone for real: the writing,
    * what other people left pointing at it, and the note. Each address stays
    * behind in a `retired_address` row, because the graph has assigned it and
-   * nothing may assign it again — except one a note that is there is at, which
-   * belongs to that note and is still its own to take back — AI.md § "The
-   * Genealogy Is the Protocol".
+   * nothing may assign it again — except one another note is at, which belongs
+   * to that note and is still its own to take back — AI.md § "The Genealogy Is
+   * the Protocol".
    */
   async purgeExpired(did: string, before: string): Promise<void> {
     const going = await this.read(
@@ -720,6 +721,7 @@ export class NodeRepository {
     );
     if (going.length === 0) return;
     const refs = going.map((node) => ownedRefFrom(node.id));
+    const ids = going.map((node) => node.id);
     const [aliases] = await this.db.handle.query<[NodeAlias[]]>(
       "SELECT * FROM node_alias WHERE created_by = $did AND note IN $refs;",
       { did, refs },
@@ -730,7 +732,7 @@ export class NodeRepository {
       ),
       ...aliases.map(retireAlias),
     ];
-    const led = await this.addressesLedBy(did, spent);
+    const led = await this.addressesLedBy(did, spent, ids);
     await this.db.handle.query(
       `INSERT INTO retired_address $retired;
        DELETE node_alias WHERE created_by = $did AND note IN $refs;
@@ -741,23 +743,30 @@ export class NodeRepository {
         did,
         retired: spent.filter((row) => !led.has(placeOf(row))),
         refs,
-        ids: going.map((node) => node.id),
+        ids,
       },
     );
   }
 
-  /** Which of these addresses a note that is there is at. A note in the bin
-   *  hands its address on and keeps it as an alias, so a purge reaches
-   *  addresses another note now leads by. */
+  /** Which of these addresses a note this purge is leaving behind is at,
+   *  whether that note is there or in the bin: a note waiting to be put back
+   *  has not given its number up, and the purge of another note may not spend
+   *  it. */
   private async addressesLedBy(
     did: string,
     spent: readonly RetiredAddress[],
+    going: readonly RecordId[],
   ): Promise<Set<string>> {
     if (spent.length === 0) return new Set();
     const at = await this.read(
       `SELECT * FROM node
-         WHERE created_by = $did AND ${THERE} AND address IN $addresses`,
-      { did, addresses: spent.map((row) => row.address) },
+         WHERE created_by = $did AND address IN $addresses
+           AND id NOT IN $going`,
+      {
+        did,
+        addresses: spent.map((row) => row.address),
+        going: [...going],
+      },
     );
     return new Set(
       at.flatMap((node) =>

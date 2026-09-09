@@ -2395,6 +2395,91 @@ describe("the domain routes", () => {
         expect((await labelled(still, "1a")).address).toBe("1a");
       },
     );
+
+    scenario(
+      "lets the note that took the number off the bin take it off again",
+      async () => {
+        const alone = await newGraph(ada, "A number handed on and let go");
+        const first = await newNode(ada, {
+          from: { relation: "branch", graph: alone.ref },
+        });
+        const going = await newNode(ada, { from: springsFrom(first) });
+        expect(going.address).toBe("1a");
+        await ok("DELETE", `/nodes/${at(going.ref)}`, ada);
+
+        const asking = await newNode(ada, {
+          from: { relation: "free", graph: alone.ref },
+        });
+        expect((await labelled(asking, "1a")).address).toBe("1a");
+
+        const off = await labelled(asking, null);
+        expect(off.address).toBeUndefined();
+        expect(off.aliases).toBeUndefined();
+
+        const back = (await ok(
+          "POST",
+          `/nodes/${at(going.ref)}/restore`,
+          ada,
+        )) as NodeView;
+        expect(back.aliases).toEqual(["1a"]);
+      },
+    );
+
+    scenario("carries the note that took it out of the run", async () => {
+      const alone = await newGraph(ada, "A number handed on and carried");
+      const first = await newNode(ada, {
+        from: { relation: "branch", graph: alone.ref },
+      });
+      const going = await newNode(ada, { from: springsFrom(first) });
+      expect(going.address).toBe("1a");
+      await ok("DELETE", `/nodes/${at(going.ref)}`, ada);
+
+      const asking = await newNode(ada, {
+        from: { relation: "free", graph: alone.ref },
+      });
+      expect((await labelled(asking, "1a")).address).toBe("1a");
+
+      const carried = (await ok("POST", `/nodes/${at(asking.ref)}/move`, ada, {
+        to: { relation: "under", note: first.ref },
+      })) as NodeView[];
+      expect(carried[0].address).toBe("1b");
+      expect(carried[0].aliases).toBeUndefined();
+    });
+
+    scenario(
+      "keeps the number for the note in the bin that is at it",
+      async () => {
+        const { nowIso } = await import("@sloppy/types");
+        const { NodeRepository } = await import("./node.repository");
+
+        const alone = await newGraph(ada, "Purged around a note in the bin");
+        const first = await newNode(ada, {
+          from: { relation: "branch", graph: alone.ref },
+        });
+        const going = await newNode(ada, { from: springsFrom(first) });
+        expect(going.address).toBe("1a");
+        await ok("DELETE", `/nodes/${at(going.ref)}`, ada);
+
+        const asking = await newNode(ada, {
+          from: { relation: "free", graph: alone.ref },
+        });
+        expect((await labelled(asking, "1a")).address).toBe("1a");
+
+        const between = nowIso();
+        await ok("DELETE", `/nodes/${at(asking.ref)}`, ada);
+        await app.get(NodeRepository).purgeExpired(ada.did, between);
+
+        const back = (await ok(
+          "POST",
+          `/nodes/${at(asking.ref)}/restore`,
+          ada,
+        )) as NodeView;
+        expect(back.address).toBe("1a");
+
+        await labelled(back, null);
+        expect((await labelled(back, "1a")).address).toBe("1a");
+      },
+    );
   });
 
   describe("carrying a note nobody numbered", () => {
