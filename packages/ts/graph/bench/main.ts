@@ -15,7 +15,11 @@ import {
   DEFAULT_CORPUS,
   makeCorpus,
 } from "../src/corpus.test-support.js";
-import type { GraphPictures, GraphWallpaper } from "../src/contract.js";
+import type {
+  GraphDifference,
+  GraphPictures,
+  GraphWallpaper,
+} from "../src/contract.js";
 import type { GraphGround } from "../src/ground.js";
 import {
   type GraphHandle,
@@ -149,8 +153,41 @@ const collapsed = new Set<string>();
 
 let pictured = false;
 
+/**
+ * Two states of the corpus an afternoon apart: a share of the notes arrived, a
+ * share went, a share moved under another parent and a share were written into.
+ * Every share is taken by counting, so the two states are the same on every run.
+ *
+ * `region` is the LATER state, which is what a canvas is handed; the notes that
+ * went reach it through the difference and stand back in the field there.
+ */
+function compared(of: Corpus): {
+  region: NodeView[];
+  difference: GraphDifference;
+} {
+  const every = (step: number, from: readonly NodeView[]): NodeView[] =>
+    from.filter((_, at) => at % step === 0);
+  const went = new Set(every(37, of.nodes).map((node) => node.ref));
+  const region = of.nodes.filter((node) => !went.has(node.ref));
+  const branch = of.nodes[0].ref;
+  return {
+    region,
+    difference: {
+      added: new Set(every(23, region).map((node) => node.ref)),
+      removed: of.nodes.filter((node) => went.has(node.ref)),
+      moved: every(29, region)
+        .filter((node) => node.ref !== branch)
+        .map((node) => ({ ref: node.ref, from: branch })),
+      changed: new Set(every(13, region).map((node) => node.ref)),
+    },
+  };
+}
+
+let comparing: ReturnType<typeof compared> | null = null;
+
 const props = (): GraphMountOptions => ({
-  nodes: pictured ? withPictures : corpus.nodes,
+  nodes: comparing ? comparing.region : pictured ? withPictures : corpus.nodes,
+  difference: comparing?.difference,
   collapsed,
   selection,
   ground,
@@ -412,6 +449,34 @@ async function run(): Promise<void> {
     return [performance.now() - started];
   });
 
+  // What comparing two states costs, measured against the same passes with
+  // none: the marks that went stand in the field, so this prices a bigger field
+  // as well as the bands and the lines drawn over it.
+  say("");
+  await measure("put a difference up → first frame", async () => {
+    const started = performance.now();
+    comparing = compared(corpus);
+    handle.update(props());
+    await frame();
+    const took = performance.now() - started;
+    const { added, removed, moved, changed } = comparing.difference;
+    say(
+      "put a difference up".padEnd(32) +
+        `${took.toFixed(1)} ms to first frame · ` +
+        `${added.size} arrived, ${removed.length} went, ` +
+        `${moved.length} moved, ${changed.size} written in`,
+    );
+    return [took];
+  });
+  await settle();
+  await measure("idle, a difference up", async () => {
+    await frames(120);
+  });
+  await measure("pan, a difference up", () => panRun(120));
+  comparing = null;
+  handle.update(props());
+  await settle();
+
   if (notes < PRINCIPLE_NOTES) await atTenThousand();
 
   done();
@@ -493,10 +558,17 @@ function cycleGround(): void {
   say(`ground ${ground}`);
 }
 
+function toggleDifference(): void {
+  comparing = comparing === null ? compared(corpus) : null;
+  handle.update(props());
+  say(comparing === null ? "one state" : "two states compared");
+}
+
 for (const [label, action] of [
   ["fit", fit],
   ["select a tag", cycleSelection],
   ["ground", cycleGround],
+  ["compare two states", toggleDifference],
 ] as const) {
   const button = document.createElement("button");
   button.textContent = label;

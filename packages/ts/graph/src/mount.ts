@@ -15,6 +15,7 @@ import {
   type GraphHoverAt,
   type GraphSurfaceProps,
   type GraphTransform,
+  nodesWithGone,
 } from "./contract.js";
 import { screenDensity } from "./density.js";
 import { attachGestures, type ScreenBox } from "./gestures.js";
@@ -266,6 +267,7 @@ export function mountGraph(
     collapsed: GraphMountOptions["collapsed"];
     viewer: GraphMountOptions["viewer"];
     fields: GraphMountOptions["fields"];
+    difference: GraphMountOptions["difference"];
     focus: OwnedRef | undefined;
     palette: GraphPalette;
     budget: LodBudget;
@@ -288,21 +290,26 @@ export function mountGraph(
       standing.nodes === props.nodes &&
       standing.collapsed === props.collapsed &&
       standing.viewer === props.viewer &&
+      standing.difference === props.difference &&
       sameFields(standing.fields, props.fields) &&
       standing.focus === focus &&
       standing.palette === palette &&
       standing.budget.depth === budget.depth &&
       standing.budget.maxDrawn === budget.maxDrawn;
 
-    const lod = fold(props.nodes, props.collapsed, focus, budget);
+    // The notes the difference says went stand in the region alongside it, so
+    // every mark on the canvas is seeded and folded by the one rule.
+    const nodes = nodesWithGone(props.nodes, props.difference);
+    const lod = fold(nodes, props.collapsed, focus, budget);
     budgetFolded = lod.folded;
 
-    const model = buildModel(drawnNodes(props.nodes, lod.collapsed), {
+    const model = buildModel(drawnNodes(nodes, lod.collapsed), {
       selection: props.selection,
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),
       fields: props.fields,
+      difference: props.difference,
     });
 
     if (recolour) scene.setTints(model, props.selection.length > 0);
@@ -312,6 +319,7 @@ export function mountGraph(
       collapsed: props.collapsed,
       viewer: props.viewer,
       fields: props.fields,
+      difference: props.difference,
       focus,
       palette,
       budget,
@@ -319,9 +327,7 @@ export function mountGraph(
     scene.setPicking(props.picking ?? null);
     scene.setChosen(props.chosen ?? null);
     scene.setReading(
-      props.reading
-        ? drawnReading(props.nodes, lod.collapsed, props.reading)
-        : null,
+      props.reading ? drawnReading(nodes, lod.collapsed, props.reading) : null,
     );
     dragged = null;
     if (!relayout) return;
@@ -377,6 +383,10 @@ export function mountGraph(
           if (budgetFolded.has(ref)) rebuild();
           return;
         }
+        // A note that went is not in the state the reader is on, so there is no
+        // note behind its mark to open — DESIGN.md § "A difference between two
+        // states".
+        if (node.difference === "gone") return;
         const picking = props.picking;
         if (picking) {
           if (ref !== picking.from) picking.onPick(ref);
@@ -606,7 +616,8 @@ function presenceOf(props: GraphSurfaceProps, ceiling: () => number): number {
 /**
  * Whether anything the layout reads has moved. `selection` is deliberately not
  * one of them: DESIGN.md § Hue answers a tag question in colour, and a field
- * that re-settled under the reader would be answering it somewhere else.
+ * that re-settled under the reader would be answering it somewhere else. A
+ * difference IS one, because the notes it says went stand in the field.
  *
  * `lod` is read field by field because a host naturally writes that bag inline
  * and a fresh object each render is not a moved budget. The collections are
@@ -617,6 +628,7 @@ function layoutMoved(a: GraphMountOptions, b: GraphMountOptions): boolean {
     a.nodes !== b.nodes ||
     a.collapsed !== b.collapsed ||
     a.viewer !== b.viewer ||
+    a.difference !== b.difference ||
     a.focus !== b.focus ||
     a.lod?.depth !== b.lod?.depth ||
     a.lod?.maxDrawn !== b.lod?.maxDrawn
@@ -658,6 +670,7 @@ function hoverAt(
   const node = scene.attributesOf(ref);
   const index = scene.indexOf(ref);
   if (!node || index === undefined) return null;
+  if (node.difference === "gone") return null;
   const box = field.getBoundingClientRect();
   const world = scene.positionOf(index);
   const at = scene.viewport.toScreen(world.x, world.y);

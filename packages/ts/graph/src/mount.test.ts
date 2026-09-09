@@ -1248,6 +1248,86 @@ describe("choosing notes to act on", () => {
   });
 });
 
+describe("comparing two states of the graph", () => {
+  /** A note the earlier state held and this one does not, standing on the root
+   *  ring so no fold decides whether the canvas draws it. */
+  const gone = {
+    ref: `${corpus.owner}/01JZZZZZZZZZZZZZZZZZZZZZZZ` as OwnedRef,
+    created_by: corpus.owner,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    address: "9",
+    depth: 1,
+    origin: `${corpus.owner}/01JZZZZZZZZZZZZZZZZZZZZZZZ` as OwnedRef,
+    title: "the one that went",
+    tags: [] as Tag[],
+    links: [] as OwnedRef[],
+    published: false,
+  };
+
+  const comparing = async () => {
+    const graph = await mount();
+    const difference = {
+      added: new Set<OwnedRef>(),
+      removed: [gone],
+      moved: [],
+      changed: new Set<OwnedRef>(),
+    };
+    const before = graph.starts();
+    graph.handle.update({ ...graph.props, difference });
+    return { graph, difference, before };
+  };
+
+  it("draws the notes it says went alongside the ones that stayed", async () => {
+    const { graph } = await comparing();
+    const mark = graph.model().graph.getNodeAttributes(gone.ref);
+    expect(mark.difference).toBe("gone");
+  });
+
+  // The notes that went stand in the field, so the field is a different one.
+  it("settles the field again when the states compared change", async () => {
+    const { graph, before } = await comparing();
+    expect(graph.starts()).toBe(before + 1);
+  });
+
+  it("opens nothing behind a note that is not in this state", async () => {
+    const { graph } = await comparing();
+    graph.tap(gone.ref);
+    expect(graph.opened).toEqual([]);
+  });
+
+  it("stays quiet when a pointer rests on one", async () => {
+    const rested: (GraphHoverAt | null)[] = [];
+    const graph = await mount({ onHover: (at) => rested.push(at) });
+    graph.handle.update({
+      ...graph.props,
+      onHover: (at) => rested.push(at),
+      difference: {
+        added: new Set<OwnedRef>(),
+        removed: [gone],
+        moved: [],
+        changed: new Set<OwnedRef>(),
+      },
+    });
+
+    graph.rest(gone.ref);
+    expect(rested).toEqual([null]);
+  });
+
+  it("holds the field still while only the reader's tags move", async () => {
+    const { graph, difference } = await comparing();
+    const models = graph.scene.models;
+    const tints = graph.scene.tints;
+    graph.handle.update({
+      ...graph.props,
+      difference,
+      selection: [corpus.tags[0]],
+    });
+    expect(graph.scene.models).toBe(models);
+    expect(graph.scene.tints).toBe(tints + 1);
+  });
+});
+
 describe("the notes open on the reading surface", () => {
   const drawnRefs = (graph: Awaited<ReturnType<typeof mount>>) =>
     new Set(graph.model().order);
