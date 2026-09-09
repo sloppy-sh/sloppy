@@ -33,15 +33,16 @@ const GRAPH_FILE: &str = "graph.json";
 /// name without one.
 const NO_ADDRESS: &str = "sloppy@localhost";
 
-/// What the folder is told not to keep, written once when the app makes it a
-/// repository — docs/ARCHITECTURE.md § "The vault's history".
-const IGNORED: &str = "identity.json
-identity.key
-folders.json
-vaults.json
-/.sloppy/bin.json
-/.sloppy/bin/
-";
+/// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
+/// history".
+const IGNORED: [&str; 6] = [
+    "identity.json",
+    "identity.key",
+    "folders.json",
+    "vaults.json",
+    "/.sloppy/bin.json",
+    "/.sloppy/bin/",
+];
 
 /// An act the history would not take. What a person is told is the whole of it,
 /// exactly as `HistoryError` in `@sloppy/local` promises.
@@ -172,14 +173,17 @@ pub enum ConflictSide {
     Theirs,
 }
 
-/// The repository the folder is, made into one where it is not one yet.
+/// The repository the folder is, made into one where it is not one yet, and
+/// keeping none of `IGNORED` either way.
 fn at(root: &Path) -> Result<Repository, HistoryError> {
     let ceiling: [&Path; 0] = [];
-    match Repository::open_ext(root, RepositoryOpenFlags::NO_SEARCH, ceiling) {
-        Ok(repo) => Ok(repo),
-        Err(error) if error.code() == ErrorCode::NotFound => start(root),
-        Err(error) => Err(error.into()),
-    }
+    let repo = match Repository::open_ext(root, RepositoryOpenFlags::NO_SEARCH, ceiling) {
+        Ok(repo) => repo,
+        Err(error) if error.code() == ErrorCode::NotFound => start(root)?,
+        Err(error) => return Err(error.into()),
+    };
+    keep_out(&repo)?;
+    Ok(repo)
 }
 
 fn start(root: &Path) -> Result<Repository, HistoryError> {
@@ -188,9 +192,38 @@ fn start(root: &Path) -> Result<Repository, HistoryError> {
     let repo = Repository::init_opts(root, &how)?;
     let ignore = root.join(".gitignore");
     if !ignore.exists() {
-        fs::write(&ignore, IGNORED)?;
+        fs::write(&ignore, IGNORED.join("\n") + "\n")?;
     }
     Ok(repo)
+}
+
+/// What the repository excludes for itself, so a folder that was a repository
+/// before the app opened it keeps none of `IGNORED` either. A `.gitignore` is a
+/// file the person wrote, and stays theirs.
+fn keep_out(repo: &Repository) -> Result<(), HistoryError> {
+    let exclude = repo.commondir().join("info").join("exclude");
+    let held = fs::read_to_string(&exclude).unwrap_or_default();
+    let missing: Vec<&str> = IGNORED
+        .iter()
+        .copied()
+        .filter(|line| !held.lines().any(|one| one.trim() == *line))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let mut written = held;
+    if !written.is_empty() && !written.ends_with('\n') {
+        written.push('\n');
+    }
+    for line in missing {
+        written.push_str(line);
+        written.push('\n');
+    }
+    if let Some(folder) = exclude.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    fs::write(&exclude, written)?;
+    Ok(())
 }
 
 fn unborn(error: &git2::Error) -> bool {
@@ -820,15 +853,27 @@ mod tests {
             .expect("a commit")
     }
 
+    /// What a folder holds beside the graph that no commit of it may carry.
+    fn beside_the_graph(root: &Path) {
+        write(root, "identity.json", "{}");
+        write(root, "identity.key", "a seed");
+        write(root, "folders.json", "[]");
+        write(root, "vaults.json", "[]");
+        write(root, ".sloppy/bin.json", "{}");
+        write(root, ".sloppy/bin/note.md", "thrown away");
+    }
+
+    fn kept(root: &Path) -> Vec<String> {
+        read_at(root, "HEAD")
+            .expect("the commit's vault")
+            .into_keys()
+            .collect()
+    }
+
     #[test]
     fn a_folder_that_is_not_a_repository_becomes_one_that_keeps_no_identity() {
         let root = vault();
-        write(&root, "identity.json", "{}");
-        write(&root, "identity.key", "a seed");
-        write(&root, "folders.json", "[]");
-        write(&root, "vaults.json", "[]");
-        write(&root, ".sloppy/bin.json", "{}");
-        write(&root, ".sloppy/bin/note.md", "thrown away");
+        beside_the_graph(&root);
         write(&root, "notes/a.md", "one");
 
         let held = status(&root).expect("the status");
@@ -838,10 +883,32 @@ mod tests {
         assert_eq!(held.untracked, vec![".gitignore", GRAPH_FILE, "notes/a.md"]);
 
         made(&root, "A graph");
-        let vault = read_at(&root, "HEAD").expect("the commit's vault");
-        let mut kept: Vec<&String> = vault.keys().collect();
-        kept.sort();
-        assert_eq!(kept, vec![".gitignore", GRAPH_FILE, "notes/a.md"]);
+        assert_eq!(kept(&root), [".gitignore", GRAPH_FILE, "notes/a.md"]);
+    }
+
+    #[test]
+    fn a_folder_with_an_ignore_of_its_own_keeps_it_and_still_commits_no_identity() {
+        let root = vault();
+        write(&root, ".gitignore", "drafts/\n");
+        beside_the_graph(&root);
+        write(&root, "notes/a.md", "one");
+
+        made(&root, "A graph");
+        assert_eq!(read(&root, ".gitignore"), "drafts/\n");
+        assert_eq!(kept(&root), [".gitignore", GRAPH_FILE, "notes/a.md"]);
+    }
+
+    #[test]
+    fn a_folder_that_was_already_a_repository_commits_no_identity_either() {
+        let root = scratch("theirs");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        beside_the_graph(&root);
+        write(&root, "notes/a.md", "one");
+
+        made(&root, "A graph");
+        assert_eq!(kept(&root), [GRAPH_FILE, "notes/a.md"]);
+        assert!(!root.join(".gitignore").exists());
     }
 
     #[test]
