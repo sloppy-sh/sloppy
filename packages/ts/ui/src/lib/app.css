@@ -12,6 +12,10 @@
 @import 'tailwindcss';
 /* The enter/exit utilities shadcn-svelte components animate with. */
 @import 'tw-animate-css';
+/* What a formula is drawn with, and the faces it is drawn in. Here rather than
+   in the module that draws one: that module is also loaded outside a bundler —
+   a suite, a server render — and Node cannot load a stylesheet. */
+@import 'katex/dist/katex.min.css';
 
 /* app.css ships to dist/app.css; scan the built components next to it so their
    utility classes survive tree-shaking in the consuming app's Tailwind build. */

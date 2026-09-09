@@ -1628,6 +1628,15 @@ rendered to canvas, with a rasterized PNG pushed to syr blob storage so peers wh
 re-render strokes still see the drawing. It is an element inside a block's document, so a
 section can hold several drawings and prose between them.
 
+**A formula and a diagram are elements too.** `math` and `mathBlock` hold the TeX somebody
+typed and `diagram` holds a language beside its source — never the picture drawn from
+either, so a build with no renderer for a language still carries the diagram whole and a
+later one draws it. KaTeX and Mermaid ship with the app rather than off a CDN, and Mermaid
+is asked for the first time a diagram is drawn; nothing about drawing one leaves the
+device. `elements.ts` is the one list of the kinds that need nothing from the surface they
+are drawn on, so the writing surface, a held note and the outline register them together
+and a fourth kind is added once.
+
 **Ink over the CANVAS is not this, and has no row.** A pen over the graph leaves a
 drawing on the field rather than an element inside a note, so it is neither a block nor a
 table: it is kept on the device for the person signed in, under the graph it was drawn

@@ -8,6 +8,7 @@ import StarterKit from '@tiptap/starter-kit';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
 import type { NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
 import { docBlocks, openBlocks, type DraftStore, type SavedBlock } from './document.js';
+import { DRAWN_ELEMENTS } from './elements.js';
 import { EmojiNode } from './emoji-node.js';
 import { InkNode } from './ink-node.js';
 import { PictureNode } from './picture-node.js';
@@ -122,6 +123,18 @@ export function stubCanvas(): void {
 	})) as unknown as HTMLCanvasElement['getContext'];
 }
 
+/** Types at the caret one character at a time, the way a keyboard does, so the
+ *  input rules see what a writer's typing gives them. */
+export function typeInto(editor: Editor, written: string): void {
+	for (const letter of written) {
+		const { view } = editor;
+		const { from, to } = view.state.selection;
+		const plainly = () => view.state.tr.insertText(letter, from, to);
+		const taken = view.someProp('handleTextInput', (rule) => rule(view, from, to, letter, plainly));
+		if (!taken) view.dispatch(plainly());
+	}
+}
+
 /** The editor and the baseline it opened with, exactly as the surface takes them. */
 export function makeEditor(blocks: readonly BlockView[] = []): {
 	editor: Editor;
@@ -140,7 +153,8 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 			EmojiNode(() => []),
 			InkNode,
 			PictureNode(() => undefined),
-			ReferenceNode(() => undefined)
+			ReferenceNode(() => undefined),
+			...DRAWN_ELEMENTS
 		]
 	});
 	const opening = openBlocks(blocks, editor.schema);
