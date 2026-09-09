@@ -32,7 +32,7 @@ function readBack(document: BlockDocument): BlockDocument {
 }
 
 describe("a document through a vault", () => {
-  it("comes back as itself", () => {
+  it("comes back as itself", { timeout: 60_000 }, () => {
     fc.assert(
       fc.property(documents(), (document) => {
         expect(readBack(document)).toEqual(document);

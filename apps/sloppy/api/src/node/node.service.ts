@@ -37,6 +37,7 @@ import {
   nowIso,
   type OwnedRef,
   ownedRefFrom,
+  movedSubtree,
   parentAddress,
   parseNode,
   namesGraph,
@@ -54,7 +55,6 @@ import type { z } from "zod";
 import { MediaService } from "../media/media.service";
 import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
-import { movedSubtree } from "./address-assignment";
 import { FindRepository } from "./find.repository";
 import { GraphService } from "./graph.service";
 import type {

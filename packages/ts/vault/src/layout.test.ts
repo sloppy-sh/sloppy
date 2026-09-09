@@ -66,6 +66,34 @@ describe("where a vault keeps things", () => {
     expect(readGraphFile(graphFile(graph))).toEqual(graph);
   });
 
+  it("reads back who the graph belongs to, and their picture in this folder", () => {
+    const graph = {
+      format: VAULT_FORMAT,
+      graph: NOTE,
+      name: "The thesis",
+      owner: OWNER,
+      owner_name: "Ada Lovelace",
+      owner_avatar: mediaPath("up1", "png"),
+    };
+    expect(readGraphFile(graphFile(graph))).toEqual(graph);
+  });
+
+  it("leaves out a name nobody wrote and a picture this folder does not hold", () => {
+    const bytes = encodeText(
+      JSON.stringify({
+        format: VAULT_FORMAT,
+        graph: NOTE,
+        name: "The thesis",
+        owner: OWNER,
+        owner_name: "",
+        owner_avatar: "https://a.example/ada.png",
+      }),
+    );
+    const read = readGraphFile(bytes);
+    expect(read.owner_name).toBeUndefined();
+    expect(read.owner_avatar).toBeUndefined();
+  });
+
   it("says a file written by a newer Sloppy needs a newer Sloppy", () => {
     const bytes = encodeText(
       JSON.stringify({ format: 99, graph: NOTE, name: "x", owner: OWNER }),

@@ -37,6 +37,11 @@ export interface VaultGraph {
   graph: string;
   name: string;
   owner: DidSyr;
+  /** What the owner is called. Absent where they have not said. */
+  owner_name?: string;
+  /** Their picture, as the path of a file in this vault's `media/`, so a graph
+   *  carries the picture it names. Absent where they have none. */
+  owner_avatar?: string;
 }
 
 /** A vault that cannot be read as one. `message` is fit to show somebody. */
@@ -150,7 +155,17 @@ export function emojiAt(path: string): string | undefined {
 }
 
 export function graphFile(graph: VaultGraph): Uint8Array {
-  return encodeText(`${JSON.stringify(graph, null, 2)}\n`);
+  const held = {
+    format: graph.format,
+    graph: graph.graph,
+    name: graph.name,
+    owner: graph.owner,
+    ...(graph.owner_name === undefined ? {} : { owner_name: graph.owner_name }),
+    ...(graph.owner_avatar === undefined
+      ? {}
+      : { owner_avatar: graph.owner_avatar }),
+  };
+  return encodeText(`${JSON.stringify(held, null, 2)}\n`);
 }
 
 /** What `graph.json` holds. Throws where the file is not one this build can
@@ -181,6 +196,15 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
     graph: graph.data,
     name: said.name,
     owner: owner.data,
+    ...(typeof said.owner_name === "string" && said.owner_name !== ""
+      ? { owner_name: said.owner_name }
+      : {}),
+    // A picture the vault does not hold would name a file somewhere else on
+    // whoever opens it.
+    ...(typeof said.owner_avatar === "string" &&
+    uploadAt(said.owner_avatar) !== undefined
+      ? { owner_avatar: said.owner_avatar }
+      : {}),
   };
 }
 
