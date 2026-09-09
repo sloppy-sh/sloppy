@@ -164,6 +164,20 @@ describe('the native shell in local mode', () => {
 		expect(await registered.vault?.graph()).not.toBe(first);
 	});
 
+	// app-core asks for one again only after `resetApi`, which is what a switch,
+	// a merge or a settled conflict leaves behind.
+	it('reads the folder again rather than the graph it read before the history moved it', async () => {
+		await launch();
+		await registered.vault?.open();
+
+		const before = registered.createApi?.() as unknown as { files: { root: string } };
+		const after = registered.createApi?.() as unknown as { files: { root: string } };
+
+		expect(after).not.toBe(before);
+		expect(after.files.root).toBe('/Users/me/garden');
+		expect(before.files.root).toBe('/Users/me/garden');
+	});
+
 	it('has no graph to name before a folder is open', async () => {
 		await launch();
 

@@ -197,9 +197,9 @@ fn start(root: &Path) -> Result<Repository, HistoryError> {
     Ok(repo)
 }
 
-/// What the repository excludes for itself, so a folder that was a repository
-/// before the app opened it keeps none of `IGNORED` either. A `.gitignore` is a
-/// file the person wrote, and stays theirs.
+/// What the repository excludes for itself, so nothing untracked here is ever
+/// offered to a commit. A `.gitignore` is a file the person wrote, and stays
+/// theirs.
 fn keep_out(repo: &Repository) -> Result<(), HistoryError> {
     let exclude = repo.commondir().join("info").join("exclude");
     let held = fs::read_to_string(&exclude).unwrap_or_default();
@@ -223,6 +223,35 @@ fn keep_out(repo: &Repository) -> Result<(), HistoryError> {
         fs::create_dir_all(folder)?;
     }
     fs::write(&exclude, written)?;
+    Ok(())
+}
+
+/// Whether a path in the index is one of `IGNORED`, matched the way git matches
+/// the lines these are written as: a bare name wherever it is, a leading slash
+/// pinned to the folder, a trailing one covering everything under it.
+fn kept_out(path: &str) -> bool {
+    IGNORED.iter().any(|line| match line.strip_prefix('/') {
+        Some(pinned) => match pinned.strip_suffix('/') {
+            Some(folder) => path.starts_with(&format!("{folder}/")),
+            None => path == pinned,
+        },
+        None => path.rsplit('/').next() == Some(*line),
+    })
+}
+
+/// What an exclude cannot do: a folder that was a repository before the app
+/// opened it can already be tracking these, and nothing untracks a file by
+/// ignoring it. The files stay where they are; only the history lets go.
+fn let_go(index: &mut Index) -> Result<(), HistoryError> {
+    let held: Vec<PathBuf> = index
+        .iter()
+        .filter_map(|entry| String::from_utf8(entry.path).ok())
+        .filter(|path| kept_out(path))
+        .map(PathBuf::from)
+        .collect();
+    for path in held {
+        index.remove_path(&path)?;
+    }
     Ok(())
 }
 
@@ -418,6 +447,7 @@ pub fn commit(root: &Path, message: &str) -> Result<Option<Commit>, HistoryError
             "Some of these are still here in two versions. Choose one of each and try again.",
         ));
     }
+    let_go(&mut index)?;
     index.update_all(["*"], None)?;
     index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
     index.write()?;
@@ -909,6 +939,52 @@ mod tests {
         made(&root, "A graph");
         assert_eq!(kept(&root), [GRAPH_FILE, "notes/a.md"]);
         assert!(!root.join(".gitignore").exists());
+    }
+
+    /// Everything in the folder, committed by the person themselves before the
+    /// app ever opened it.
+    fn theirs(root: &Path, message: &str) {
+        let repo = Repository::open(root).expect("their repository");
+        let mut index = repo.index().expect("their index");
+        index
+            .add_all(["*"], IndexAddOption::DEFAULT, None)
+            .expect("everything staged");
+        index.write().expect("their index");
+        let tree = repo
+            .find_tree(index.write_tree().expect("their tree"))
+            .expect("their tree");
+        let by = Signature::now("Ada", "ada@example.com").expect("their signature");
+        let head = head_commit(&repo).expect("their head");
+        let parents: Vec<&git2::Commit<'_>> = head.iter().collect();
+        repo.commit(Some("HEAD"), &by, &by, message, &tree, &parents)
+            .expect("their commit");
+    }
+
+    #[test]
+    fn a_repository_that_was_already_keeping_the_identity_stops_keeping_it() {
+        let root = scratch("kept");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        beside_the_graph(&root);
+        write(&root, "notes/a.md", "one");
+        theirs(&root, "Everything I had");
+        assert!(kept(&root).contains(&".sloppy/bin.json".to_owned()));
+
+        write(&root, "notes/a.md", "one, changed");
+        made(&root, "A note");
+
+        assert_eq!(kept(&root), [GRAPH_FILE, "notes/a.md"]);
+        assert!(status(&root).expect("the status").changed.is_empty());
+        for one in [
+            "identity.json",
+            "identity.key",
+            "folders.json",
+            "vaults.json",
+            ".sloppy/bin.json",
+            ".sloppy/bin/note.md",
+        ] {
+            assert!(root.join(one).exists(), "{one} is still in the folder");
+        }
     }
 
     #[test]
