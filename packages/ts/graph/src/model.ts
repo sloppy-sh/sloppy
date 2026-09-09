@@ -23,7 +23,13 @@ import {
   type Tag,
 } from "@sloppy/types";
 import Graph from "graphology";
-import type { DrawnNode, GraphField } from "./contract.js";
+import {
+  type DifferenceMark,
+  differenceMarks,
+  type DrawnNode,
+  type GraphDifference,
+  type GraphField,
+} from "./contract.js";
 import { MAX_DENSITY } from "./density.js";
 import {
   placeFields,
@@ -155,8 +161,12 @@ export interface GraphNodeAttributes {
   preview: PictureSeries;
   /** The share of the mark's radius they cover. */
   previewCover: number;
+  /** What the difference being compared says of this note, absent on a canvas
+   *  comparing nothing and on a note neither state moved or wrote in. */
+  difference?: DifferenceMark;
   fill: number;
-  /** Below 1 for a node the selection has nothing to say about. */
+  /** Below 1 for a node no question in front of the reader has anything to say
+   *  about — and at one strength however many are being asked. */
   alpha: number;
   x: number;
   y: number;
@@ -184,6 +194,9 @@ export interface ModelOptions {
   keep?: ReadonlyMap<OwnedRef, { x: number; y: number }>;
   /** {@link GraphSurfaceProps.fields} — the graphs on the canvas, in order. */
   fields?: readonly GraphField[];
+  /** Two states being compared, the notes that went already standing in
+   *  `drawn` — `nodesWithGone` in `contract.ts` is what puts them there. */
+  difference?: GraphDifference;
 }
 
 /** A graph's name, where the canvas writes it, and how far its field reaches —
@@ -195,12 +208,23 @@ export interface NamedField extends GraphField {
   maxX: number;
 }
 
+/**
+ * The lines a difference draws, as index pairs into {@link BuiltModel.order}:
+ * the ones that arrived with a note and the ones that went with it. Not edges —
+ * a line to the parent a note LEFT would otherwise pull it back there.
+ */
+export interface DifferenceLines {
+  arrived: readonly number[];
+  gone: readonly number[];
+}
+
 export interface BuiltModel {
   graph: GraphModel;
   /** The order the region was handed in — the layout indexes by position. */
   order: readonly OwnedRef[];
   /** Empty on a canvas drawing one graph, which needs no name to tell apart. */
   fields: readonly NamedField[];
+  difference: DifferenceLines;
 }
 
 export function buildModel(
@@ -214,6 +238,13 @@ export function buildModel(
   const rank = new Map([...slots.keys()].map((tag, at) => [tag, at] as const));
   const { seedOf, fields } = seedFields(drawn, options.fields ?? []);
   const starts = startPoints(drawn, seedOf, options.keep);
+  const marks = differenceMarks(options.difference);
+  // Two states that turn out to be the same ask nothing, so nothing recedes to
+  // answer it — DESIGN.md § "A difference between two states".
+  const comparing = marks.size > 0;
+  const went = new Set(
+    (options.difference?.removed ?? []).map((node) => node.ref),
+  );
 
   drawn.forEach((entry, index) => {
     const { node } = entry;
@@ -229,6 +260,13 @@ export function buildModel(
       slot === undefined
         ? options.palette.depth(node.depth)
         : options.palette.tag(slot);
+    const difference = marks.get(node.ref);
+    // A note that went is a band around nothing: there is no mark inside it to
+    // carry a look or a picture — DESIGN.md § "A difference between two states".
+    const gone = difference === "gone";
+    const answering =
+      (options.selection.length === 0 || slot !== undefined) &&
+      (!comparing || difference !== undefined);
 
     graph.addNode(node.ref, {
       index,
@@ -243,15 +281,13 @@ export function buildModel(
       children: 0,
       tags: entry.tags,
       tag,
-      ringWeight: look.ringWeight,
+      ringWeight: gone ? "none" : look.ringWeight,
       ringStyle: look.ringStyle,
-      preview: look.preview,
+      preview: gone ? { ...look.preview, pictures: [] } : look.preview,
       previewCover: look.previewCover,
+      ...(difference === undefined ? {} : { difference }),
       fill,
-      alpha:
-        slot === undefined && options.selection.length > 0
-          ? options.palette.unselectedAlpha(fill)
-          : 1,
+      alpha: answering ? 1 : options.palette.unselectedAlpha(fill),
       x: start.x,
       y: start.y,
       anchorX: seed.x,
@@ -285,11 +321,16 @@ export function buildModel(
 
   for (const { node } of drawn) {
     if (node.parent !== undefined && graph.hasNode(node.parent)) {
-      graph.updateNodeAttribute(
-        node.parent,
-        "children",
-        (count) => (count ?? 0) + 1,
-      );
+      // The edge is what holds a note that went beside the parent it hung from
+      // while the field settles; the count is what a fold answers off, and a
+      // note this state does not hold is nothing to fold.
+      if (!went.has(node.ref)) {
+        graph.updateNodeAttribute(
+          node.parent,
+          "children",
+          (count) => (count ?? 0) + 1,
+        );
+      }
       join(node.parent, node.ref, "genealogy", () =>
         Math.max(
           EDGE_MIN,
@@ -303,7 +344,7 @@ export function buildModel(
   // reinforces the shape the genealogy fixed rather than pulling siblings
   // together — with the shared floor still holding the most crowded
   // generations apart.
-  for (const [before, after] of runs(drawn)) {
+  for (const [before, after] of runs(drawn, went)) {
     join(before.ref, after.ref, "run", () => {
       const from = graph.getNodeAttributes(before.ref);
       const to = graph.getNodeAttributes(after.ref);
@@ -323,7 +364,57 @@ export function buildModel(
     }
   }
 
-  return { graph, order: drawn.map((entry) => entry.node.ref), fields };
+  return {
+    graph,
+    order: drawn.map((entry) => entry.node.ref),
+    fields,
+    difference: differenceLines(drawn, graph, marks, options.difference),
+  };
+}
+
+/**
+ * A move is a fact about a line and is drawn on the lines — DESIGN.md § "A
+ * difference between two states". A note that arrived brought the line to its
+ * parent with it and one that went took its own, so all three answer here.
+ *
+ * A pair with an end the canvas is not drawing — a parent outside the region,
+ * or one a fold swallowed — draws no line: a line has to reach two marks.
+ */
+function differenceLines(
+  drawn: readonly DrawnNode[],
+  graph: GraphModel,
+  marks: ReadonlyMap<OwnedRef, DifferenceMark>,
+  difference: GraphDifference | undefined,
+): DifferenceLines {
+  const arrived: number[] = [];
+  const gone: number[] = [];
+  if (marks.size === 0) return { arrived, gone };
+
+  const byRef = new Map(drawn.map((entry) => [entry.node.ref, entry.node]));
+  const indexOf = (ref: OwnedRef | undefined): number | undefined =>
+    ref !== undefined && graph.hasNode(ref)
+      ? graph.getNodeAttributes(ref).index
+      : undefined;
+  const line = (
+    into: number[],
+    ref: OwnedRef,
+    parent: OwnedRef | undefined,
+  ): void => {
+    const from = indexOf(ref);
+    const to = indexOf(parent);
+    if (from !== undefined && to !== undefined) into.push(from, to);
+  };
+
+  for (const { node } of drawn) {
+    const mark = marks.get(node.ref);
+    if (mark === "arrived") line(arrived, node.ref, node.parent);
+    if (mark === "gone") line(gone, node.ref, node.parent);
+  }
+  for (const moved of difference?.moved ?? []) {
+    line(arrived, moved.ref, byRef.get(moved.ref)?.parent);
+    line(gone, moved.ref, moved.from);
+  }
+  return { arrived, gone };
 }
 
 /**
@@ -440,10 +531,18 @@ function seedFields(
  * The run of thought, in pairs. Only which notes are alongside each other is
  * decided here: those that sprang from the same note, or the branches of one
  * graph.
+ *
+ * `went` is the notes this state does not hold. They stand on the canvas to be
+ * compared and take no place in the run — the two either side of one read as
+ * consecutive, because they are (DESIGN.md § Edges).
  */
-function runs(drawn: readonly DrawnNode[]): [NodeView, NodeView][] {
+function runs(
+  drawn: readonly DrawnNode[],
+  went: ReadonlySet<OwnedRef>,
+): [NodeView, NodeView][] {
   const levels = new Map<string, NodeView[]>();
   for (const { node } of drawn) {
+    if (went.has(node.ref)) continue;
     const level = runKeyOf(node);
     const alongside = levels.get(level);
     if (alongside === undefined) levels.set(level, [node]);
