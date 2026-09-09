@@ -5,11 +5,12 @@
  * so the nav, the settings row and a note's author cannot disagree.
  */
 
-import { proxied, SloppyApiError } from '@sloppy/client';
+import { SloppyApiError } from '@sloppy/client';
 import type { ProfileView } from '@sloppy/types';
 import type { Person } from '@sloppy/ui';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { api } from '../api.js';
+import { pictureSrc } from '../asset-src.js';
 
 /** Their pictures resolved for an `<img>`; the rest is the store's own answer. */
 export function personFrom(profile: ProfileView): Person {
@@ -17,8 +18,8 @@ export function personFrom(profile: ProfileView): Person {
 		displayName: profile.display_name,
 		handle: profile.username,
 		bio: profile.bio,
-		avatar: profile.avatar_src && proxied(profile.avatar_src),
-		banner: profile.banner_src && proxied(profile.banner_src)
+		avatar: profile.avatar_src && pictureSrc(profile.avatar_src),
+		banner: profile.banner_src && pictureSrc(profile.banner_src)
 	};
 }
 
