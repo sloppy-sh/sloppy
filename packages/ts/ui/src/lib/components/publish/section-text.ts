@@ -3,7 +3,9 @@
 // those lines can carry.
 
 import type { BlockDocument, DocumentNode } from '@sloppy/types';
+import { DIAGRAM_NODE } from '../editor/diagram-node.js';
 import { INK_NODE } from '../editor/ink-node.js';
+import { MATH_BLOCK_NODE, MATH_NODE } from '../editor/math-node.js';
 import { PICTURE_NODE } from '../editor/picture-node.js';
 import { REFERENCE_NODE } from '../editor/reference-node.js';
 
@@ -11,7 +13,10 @@ import { REFERENCE_NODE } from '../editor/reference-node.js';
  *  is. One this build has never heard of is left out rather than named wrongly. */
 const NAMED: Partial<Record<string, string>> = {
 	[PICTURE_NODE]: 'A picture',
-	[INK_NODE]: 'A drawing'
+	[INK_NODE]: 'A drawing',
+	[MATH_NODE]: 'A formula',
+	[MATH_BLOCK_NODE]: 'A formula',
+	[DIAGRAM_NODE]: 'A diagram'
 };
 
 /** One line per element of a section, in the order they are written. Empty

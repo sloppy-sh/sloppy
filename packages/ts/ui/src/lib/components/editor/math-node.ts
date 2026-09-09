@@ -122,7 +122,11 @@ function MathKind(shape: Shape) {
 					const field = source;
 					field.addEventListener('input', () => write(field.value));
 					field.addEventListener('keydown', (event) => {
-						if (event.key !== 'Escape' && (event.key !== 'Enter' || event.shiftKey)) return;
+						if (
+							event.key !== 'Escape' &&
+							(event.key !== 'Enter' || event.shiftKey || shape.source === 'textarea')
+						)
+							return;
 						event.preventDefault();
 						// The sheet's escape layer does not consult `defaultPrevented`, so an
 						// un-stopped Escape closes the note the formula is being written in.
