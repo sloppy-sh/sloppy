@@ -50,6 +50,7 @@
 	import Users from '@lucide/svelte/icons/users';
 	import {
 		DEFAULT_BUDGET,
+		type GraphDifference,
 		type GraphHandle,
 		type GraphHoverAt,
 		type GraphMenuAt,
@@ -293,6 +294,9 @@
 	/** A state the graph was in, drawn in place of the one it is in. Nothing on
 	 *  the canvas writes while it is up. */
 	let asWas = $state<{ commit: string; message: string; notes: NodeView[] } | null>(null);
+	/** Two states set against each other, drawn on whichever of them is on the
+	 *  canvas. */
+	let comparing = $state<{ says: string; difference: GraphDifference } | null>(null);
 	/** The held note being read, which the canvas also opens around. */
 	let reached = $state<OwnedRef | null>(null);
 	/** The held note whose sections are still on their way. */
@@ -397,6 +401,10 @@
 	const reachedNote = $derived(
 		reached ? (heldNotes.find((note) => note.ref === reached) ?? null) : null
 	);
+	/** Whether what is on the canvas is a state that is not now — DESIGN.md § "A
+	 *  difference between two states": there is nothing in one to act on. */
+	const notNow = $derived(asWas !== null || comparing !== null);
+
 	const populated = $derived.by(() => {
 		if (asWas) return true;
 		if (foreign) return heldNotes.length > 0;
@@ -1085,6 +1093,19 @@
 		choosing = false;
 		picked.clear();
 		forgetLastAct();
+	}
+
+	/** Everything the reader had going on the graph as it is, put away before a
+	 *  state that is not now goes on the canvas. */
+	function stopActing(): void {
+		stopChoosing();
+		stopPointing();
+		hide();
+	}
+
+	function backToNow(): void {
+		asWas = null;
+		comparing = null;
 	}
 
 	/** The way in as well as the way around: the first note chosen is what puts
@@ -1793,7 +1814,7 @@
 	onkeydown={(event) => {
 		// Last resort: a row of the walk answers these keys for the note it is on,
 		// and has refused the default by the time they reach here.
-		if (event.defaultPrevented || asked || pointing || foreign) return;
+		if (event.defaultPrevented || asked || pointing || foreign || notNow) return;
 		if (opensFind(event)) {
 			event.preventDefault();
 			finding = true;
@@ -1915,11 +1936,12 @@
 						strength: wallpaper?.strength ?? 0,
 						transition: wallpaper?.transition
 					}}
-					onHover={(at) => (hoverAt = overGraph || asWas ? null : at)}
-					chosen={foreign || asWas ? undefined : chosen}
-					onChoose={pointing || foreign || asWas ? undefined : chooseAlso}
-					onChooseWithin={pointing || foreign || asWas ? undefined : chooseWithin}
-					onMenu={pointing || foreign || asWas ? undefined : (at) => (menuAt = at)}
+					difference={comparing?.difference}
+					onHover={(at) => (hoverAt = overGraph || notNow ? null : at)}
+					chosen={foreign || notNow ? undefined : chosen}
+					onChoose={pointing || foreign || notNow ? undefined : chooseAlso}
+					onChooseWithin={pointing || foreign || notNow ? undefined : chooseWithin}
+					onMenu={pointing || foreign || notNow ? undefined : (at) => (menuAt = at)}
 					onOpenNode={asWas
 						? (ref) => (bringingTo = ref)
 						: foreign
@@ -1930,7 +1952,7 @@
 						if (pointing) looking = ref;
 					}}
 					onCollapse={(ref) => folded.add(ref)}
-					onInkPointer={pointing || asWas ? undefined : inkPen}
+					onInkPointer={pointing || notNow ? undefined : inkPen}
 					onTransform={(at) => (fieldAt = at)}
 				/>
 				<CanvasInk
@@ -1953,9 +1975,9 @@
 					{selection}
 					reading={asWas ? null : foreign ? reached : open}
 					opened={unfolded}
-					chosen={foreign || asWas ? undefined : chosen}
-					onChoose={foreign || asWas ? undefined : chooseAlso}
-					onChoosing={foreign || asWas
+					chosen={foreign || notNow ? undefined : chosen}
+					onChoose={foreign || notNow ? undefined : chooseAlso}
+					onChoosing={foreign || notNow
 						? undefined
 						: (on) => (on ? startChoosing() : stopChoosing())}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
@@ -1965,8 +1987,8 @@
 							? (ref) => void readHeld(ref)
 							: openPage}
 					onReached={(ref) => (bringingTo = ref)}
-					writeUnder={foreign || asWas ? undefined : writeFromRow}
-					writeAlone={foreign || asWas ? undefined : writeAlone}
+					writeUnder={foreign || notNow ? undefined : writeFromRow}
+					writeAlone={foreign || notNow ? undefined : writeAlone}
 				/>
 			{/if}
 		</div>
@@ -2085,6 +2107,19 @@
 					{#if pointRefused}
 						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
 					{/if}
+				{:else if comparing}
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+						<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
+							What changed
+							<span class="text-muted-foreground">· {comparing.says}</span>
+						</p>
+						<Button variant="outline" class="ms-auto h-9 shrink-0 rounded-full" onclick={backToNow}>
+							Your graph now
+						</Button>
+						{#if walkingNow}
+							{@render walk()}
+						{/if}
+					</div>
 				{:else if asWas}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
@@ -2093,11 +2128,7 @@
 								<span class="text-muted-foreground">· {asWas.message}</span>
 							{/if}
 						</p>
-						<Button
-							variant="outline"
-							class="ms-auto h-9 shrink-0 rounded-full"
-							onclick={() => (asWas = null)}
-						>
+						<Button variant="outline" class="ms-auto h-9 shrink-0 rounded-full" onclick={backToNow}>
 							Your graph now
 						</Button>
 						{#if walkingNow}
@@ -2370,10 +2401,14 @@
 <HistorySurface
 	bind:open={showingHistory}
 	onShowVersion={(version) => {
-		stopChoosing();
-		stopPointing();
-		hide();
+		stopActing();
+		comparing = null;
 		asWas = version;
+	}}
+	onShowDifference={(shown) => {
+		stopActing();
+		asWas = shown?.later ?? null;
+		comparing = shown === null ? null : { says: shown.says, difference: shown.difference };
 	}}
 />
 
@@ -2576,7 +2611,7 @@
      somebody else's region — a history pop is the way in that nothing else
      closes. -->
 <ReadingPanel
-	open={(writingNow !== null || (open !== null && !walkingNow)) && !foreign}
+	open={(writingNow !== null || (open !== null && !walkingNow)) && !foreign && !notNow}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}

@@ -61,6 +61,11 @@ function folder(): MemoryFiles {
 }
 
 function stubBrowser(): void {
+	// jsdom drives no pointer, and a picker asks the element it is on about one.
+	Element.prototype.hasPointerCapture = () => false;
+	Element.prototype.setPointerCapture = () => {};
+	Element.prototype.releasePointerCapture = () => {};
+	Element.prototype.scrollIntoView = () => {};
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
 		writable: true,
@@ -115,6 +120,29 @@ async function openMore(): Promise<void> {
 	if (!more) throw new Error('The graph carries no More control');
 	more.click();
 	await settle();
+}
+
+async function pick(labelled: string, state: string): Promise<void> {
+	const trigger = document.body.querySelector<HTMLElement>(
+		`[aria-labelledby="difference-${labelled.toLowerCase()}"]`
+	);
+	if (!trigger) throw new Error(`No picker is labelled "${labelled}"`);
+	trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+	trigger.click();
+	await settle();
+	const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+		(one) => one.textContent?.trim() === state
+	);
+	if (!option) throw new Error(`The picker does not offer "${state}"`);
+	option.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+	option.click();
+	await settle();
+}
+
+function menu(on: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(`[data-menu="${on}"]`);
+	if (!found) throw new Error(`Nothing on the graph carries a menu on ${on}`);
+	return found;
 }
 
 function item(label: string): HTMLButtonElement {
@@ -175,6 +203,37 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
+describe('two states of the graph, set against each other', () => {
+	it('draws what changed on the canvas, and acts on nothing while it is up', async () => {
+		await graphHistory.keep('A first version');
+		const second = await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+
+		await pick('From', 'A first version');
+		control('Show what changed').click();
+		await settle();
+
+		expect(screen()).toContain('What changed');
+		expect(screen()).toContain('A first version to Now');
+		const marks = [...document.body.querySelectorAll('[aria-label="The graph"] [data-difference]')];
+		expect(
+			marks.map((one) => [
+				(one.textContent ?? '').replace(/\s+/g, ' ').trim(),
+				one.getAttribute('data-difference')
+			])
+		).toEqual([[`${second.address} A second thought`, 'arrived']]);
+
+		menu('the canvas').click();
+		await settle();
+
+		expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
+	});
+});
+
 describe('a version of the graph, opened from the history', () => {
 	it('draws the graph as it was, and takes nothing while it is up', async () => {
 		await graphHistory.keep('A first version');
@@ -201,6 +260,29 @@ describe('a version of the graph, opened from the history', () => {
 				one.textContent?.includes('New branch')
 			)
 		).toBe(false);
+	});
+
+	it('writes nothing into the graph when the keyboard asks for a note', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+		control('A first version').click();
+		await settle();
+
+		window.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
+		);
+		await settle();
+
+		const fresh = new LocalApi(folder());
+		const still = await fresh.listNodes({ graph: await fresh.graphHere() });
+		expect(still.map((one) => one.title)).toEqual(['Origins', 'A second thought']);
+		expect(screen()).toContain('Your graph as it was');
+		expect(drawn().join(' ')).not.toContain('Untitled');
 	});
 
 	it('goes back to the graph as it is', async () => {

@@ -4,8 +4,9 @@
 		id: string;
 		/** What they said had changed. */
 		message: string;
-		/** Whoever it records as having kept it. */
-		author: string;
+		/** Whoever kept it, where that is a name they chose to be called by.
+		 *  Absent is a version with nothing to name them with. */
+		author?: string;
 		/** When, as the row shows it. */
 		when: string;
 		/** Whether it brought another line of work in. */
@@ -19,6 +20,14 @@
 		head: string;
 		/** Whether the folder is on it. */
 		here: boolean;
+	}
+
+	/** A state of the graph somebody picked to compare. `at` absent is the
+	 *  folder as it stands. */
+	export interface StatePicked {
+		at?: string;
+		/** What the picker called it, for a surface that says which two. */
+		label: string;
 	}
 
 	/** One note two lines of work both wrote in. */
@@ -41,6 +50,7 @@
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
 	import ChangedNotes, { type ChangedNote } from './changed-notes.svelte';
 
@@ -93,14 +103,12 @@
 		onSettle: (path: string) => void;
 		/** Absent where a version cannot be put on the graph from here. */
 		onOpenVersion?: (id: string) => void;
-		onCompare: (
-			before: string | undefined,
-			after: string | undefined
-		) => Promise<readonly ChangedNote[] | null>;
+		onCompare: (before: StatePicked, after: StatePicked) => Promise<readonly ChangedNote[] | null>;
 	} = $props();
 
-	/** What the pickers call the folder as it stands. */
-	const NOW = '';
+	/** What the pickers hold for the folder as it stands, kept apart from the
+	 *  versions so no id of one can collide with it. */
+	const NOW = 'now';
 
 	let keeping = $state(false);
 	let message = $state('');
@@ -114,19 +122,36 @@
 		if (open) untrack(() => onShow?.());
 	});
 
-	const states = $derived([
-		{ value: NOW, label: 'Now' },
-		...lines
-			.filter((one) => !one.here)
-			.map((one) => ({ value: one.head, label: `${one.name}, as it stands` })),
-		...versions.map((one) => ({ value: one.id, label: one.message || 'A version' }))
-	]);
+	/** A line standing at a version that is also in the log is one state, named
+	 *  by the line: two options carrying it would be one state offered twice. */
+	const states = $derived(
+		[
+			{ value: NOW, label: 'Now' },
+			...lines
+				.filter((one) => !one.here)
+				.map((one) => ({ value: at(one.head), label: `${one.name}, as it stands` })),
+			...versions.map((one) => ({ value: at(one.id), label: one.message || 'A version' }))
+		].filter((state, held, all) => all.findIndex((one) => one.value === state.value) === held)
+	);
 
 	const kept = $derived(versions.length > 0);
 	const unsettled = $derived(conflicts.length > 0);
 
+	function at(version: string): string {
+		return `at:${version}`;
+	}
+
 	function asked(value: string): string | undefined {
-		return value === NOW ? undefined : value;
+		return value === NOW ? undefined : value.slice('at:'.length);
+	}
+
+	function labelled(value: string): string {
+		return states.find((one) => one.value === value)?.label ?? 'Now';
+	}
+
+	function picked(value: string): StatePicked {
+		const held = asked(value);
+		return { ...(held === undefined ? {} : { at: held }), label: labelled(value) };
 	}
 
 	async function keep(): Promise<void> {
@@ -147,7 +172,7 @@
 	async function compare(): Promise<void> {
 		comparing = true;
 		try {
-			compared = await onCompare(asked(before), asked(after));
+			compared = await onCompare(picked(before), picked(after));
 		} finally {
 			comparing = false;
 		}
@@ -200,9 +225,11 @@
 			{:else}
 				<ChangedNotes
 					notes={changed}
-					nothing={kept
-						? 'Nothing has changed since your last version.'
-						: 'Nothing is kept yet. Keep this version and you can come back to it.'}
+					nothing={!kept
+						? 'Nothing is kept yet. Keep this version and you can come back to it.'
+						: anythingToKeep
+							? 'Something changed that is not written in a note.'
+							: 'Nothing has changed since your last version.'}
 				/>
 			{/if}
 			<Button
@@ -325,28 +352,32 @@
 		<section class="space-y-3 border-t border-border pt-6">
 			<h3 class="text-sm font-medium">What is different</h3>
 			<div class="flex flex-col gap-2 sm:flex-row sm:items-end">
-				<label class="flex-1 text-xs text-muted-foreground">
-					From
-					<select
-						bind:value={before}
-						class="mt-1 h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
-					>
-						{#each states as state (state.value)}
-							<option value={state.value}>{state.label}</option>
-						{/each}
-					</select>
-				</label>
-				<label class="flex-1 text-xs text-muted-foreground">
-					To
-					<select
-						bind:value={after}
-						class="mt-1 h-11 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
-					>
-						{#each states as state (state.value)}
-							<option value={state.value}>{state.label}</option>
-						{/each}
-					</select>
-				</label>
+				<div class="flex-1 space-y-1">
+					<span class="text-xs text-muted-foreground" id="difference-from">From</span>
+					<Select.Root type="single" bind:value={before}>
+						<Select.Trigger class="h-11 w-full" aria-labelledby="difference-from">
+							{labelled(before)}
+						</Select.Trigger>
+						<Select.Content>
+							{#each states as state (state.value)}
+								<Select.Item value={state.value} class="min-h-11">{state.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+				<div class="flex-1 space-y-1">
+					<span class="text-xs text-muted-foreground" id="difference-to">To</span>
+					<Select.Root type="single" bind:value={after}>
+						<Select.Trigger class="h-11 w-full" aria-labelledby="difference-to">
+							{labelled(after)}
+						</Select.Trigger>
+						<Select.Content>
+							{#each states as state (state.value)}
+								<Select.Item value={state.value} class="min-h-11">{state.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
 				<Button
 					variant="outline"
 					class="h-11 shrink-0"

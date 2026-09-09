@@ -2,6 +2,7 @@
 	// The states the graph in front of somebody has been in, and the acts that
 	// add to them — docs/ARCHITECTURE.md § "The vault's history". What is on
 	// screen is `HistorySheet`'s; what any of it means is the history store's.
+	import type { GraphDifference, GraphNoteMoved } from '@sloppy/graph';
 	import type { NoteChangedBetween } from '@sloppy/local';
 	import { noteLabel, type NodeView, type OwnedRef } from '@sloppy/types';
 	import {
@@ -10,19 +11,35 @@
 		type KeptVersion,
 		type LineOfWork,
 		type NoteInTwo,
-		SettleNote
+		SettleNote,
+		type StatePicked
 	} from '@sloppy/ui';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { graphHistory, type NoteInTwoVersions } from '../stores/history.svelte.js';
+	import {
+		type DifferenceBetween,
+		graphHistory,
+		type NoteInTwoVersions
+	} from '../stores/history.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { session } from '../stores/session.svelte.js';
 
 	let {
 		open = $bindable(false),
-		onShowVersion
+		onShowVersion,
+		onShowDifference
 	}: {
 		open?: boolean;
 		/** Absent where there is no graph on screen to draw a state on. */
 		onShowVersion?: (version: { commit: string; message: string; notes: NodeView[] }) => void;
+		/** Two states to draw against each other, `later` being the one the canvas
+		 *  holds — absent where that is the graph as it stands. */
+		onShowDifference?: (
+			shown: {
+				says: string;
+				later: { commit: string; message: string; notes: NodeView[] } | null;
+				difference: GraphDifference;
+			} | null
+		) => void;
 	} = $props();
 
 	/** What each note left in two versions holds on either side, once read. */
@@ -31,13 +48,16 @@
 	let settleOpen = $state(false);
 
 	const versions = $derived<KeptVersion[]>(
-		graphHistory.versions.map((one) => ({
-			id: one.id,
-			message: one.message,
-			author: one.author,
-			when: when(one.at),
-			merged: one.parents.length > 1
-		}))
+		graphHistory.versions.map((one) => {
+			const author = named(one.author);
+			return {
+				id: one.id,
+				message: one.message,
+				...(author === undefined ? {} : { author }),
+				when: when(one.at),
+				merged: one.parents.length > 1
+			};
+		})
 	);
 
 	const lines = $derived<LineOfWork[]>(
@@ -70,6 +90,13 @@
 			void graphHistory.inTwo(path).then((held) => inTwo.set(path, held));
 		}
 	});
+
+	/** Whoever kept a version, where the graph has a name for them. One kept on
+	 *  this device is kept under the identity it belongs to, and an identifier is
+	 *  not a name to call anybody. */
+	function named(author: string): string | undefined {
+		return author === '' || author === session.viewer?.did ? undefined : author;
+	}
 
 	/** The day it was kept, in the reader's own language. */
 	function when(at: string): string {
@@ -127,12 +154,46 @@
 		onShowVersion({ commit, message: version?.message ?? '', notes });
 	}
 
-	async function compare(
-		before: string | undefined,
-		after: string | undefined
-	): Promise<ChangedNote[] | null> {
-		const held = await graphHistory.between(before, after);
-		return held ? rows(held.notes) : null;
+	async function compare(before: StatePicked, after: StatePicked): Promise<ChangedNote[] | null> {
+		const held = await graphHistory.between(before.at, after.at);
+		if (!held) return null;
+		if (onShowDifference) {
+			onShowDifference({
+				says: `${before.label} to ${after.label}`,
+				later:
+					after.at === undefined
+						? null
+						: {
+								commit: after.at,
+								message: after.label,
+								notes: await graphHistory.notesAt(after.at)
+							},
+				difference: drawn(held)
+			});
+		}
+		return rows(held.notes);
+	}
+
+	/** What the canvas draws the two states as. A note that only moved is not
+	 *  `changed`: the move is drawn on its lines, and its mark says nothing. */
+	function drawn(held: DifferenceBetween): GraphDifference {
+		const added: OwnedRef[] = [];
+		const changed: OwnedRef[] = [];
+		const moved: GraphNoteMoved[] = [];
+		for (const note of held.notes) {
+			if (note.became === 'added') added.push(note.ref);
+			if (note.became !== 'kept') continue;
+			if (note.moved) {
+				moved.push({
+					ref: note.ref,
+					...(note.moved.from === undefined ? {} : { from: note.moved.from })
+				});
+			}
+			if (note.retitled || note.renumbered || note.reordered || note.sections.length > 0) {
+				changed.push(note.ref);
+			}
+		}
+		return { added: new Set(added), removed: held.gone, moved, changed: new Set(changed) };
 	}
 
 	async function settleWhole(side: 'mine' | 'theirs'): Promise<void> {
@@ -183,6 +244,7 @@
 	<SettleNote
 		bind:open={settleOpen}
 		title={settled ? settled.title : 'Something else your graph keeps for you'}
+		address={settled ? nodes.get(settled.ref)?.address : undefined}
 		line={graphHistory.taking ?? 'the other line'}
 		sections={(settled?.sections ?? []).map((section) => ({
 			ulid: section.ulid,

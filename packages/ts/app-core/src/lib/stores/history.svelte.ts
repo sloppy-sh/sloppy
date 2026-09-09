@@ -21,6 +21,17 @@ const PAGE = 30;
  *  there is no commit. */
 export type StateAsked = string | undefined;
 
+/** The whole folder as one state of it had it — `Vault` in `@sloppy/vault`,
+ *  which a page reaches only through the history. */
+type FolderAt = Awaited<ReturnType<History['readAt']>>;
+
+/** What changed between two states, with the notes that went as the earlier
+ *  state drew them: the later state is what a canvas holds, so a note that is
+ *  no longer there can only be put back where it was from here. */
+export interface DifferenceBetween extends ChangedBetween {
+	gone: NodeView[];
+}
+
 /** One note both sides of a merge changed, with each section as each side has
  *  it. A section absent from a side is one that side does not have at all. */
 export interface NoteInTwoVersions {
@@ -62,10 +73,14 @@ class HistoryStore {
 	#at = $state<string | undefined>(undefined);
 	#line = $state<string | undefined>(undefined);
 	#ahead = $state(0);
-	#changed = $state<ChangedBetween | null>(null);
+	#changed = $state<DifferenceBetween | null>(null);
+	#dirty = $state(false);
 	#conflicts = $state<string[]>([]);
 	/** The line a merge was taking in, while any of it is still unsettled. */
 	#taking = $state<{ name: string; head: string } | null>(null);
+	/** Notes the history has already been asked to settle, while their sections
+	 *  are still being written. */
+	#taken = new Set<string>();
 	#epoch = 0;
 
 	/** Whether this platform keeps the states a graph has been in at all. */
@@ -114,17 +129,15 @@ class HistoryStore {
 
 	/** What has changed since the version the folder stands on; `null` before
 	 *  it has been read. */
-	get changed(): ChangedBetween | null {
+	get changed(): DifferenceBetween | null {
 		return this.#changed;
 	}
 
-	/** Whether anything at all has changed since that version. */
+	/** Whether there is anything at all to keep. The history answers this and
+	 *  not {@link changed}, which names notes and no more: a note's tags, its
+	 *  links and its look change the folder without changing any of those. */
 	get unkept(): boolean {
-		const changed = this.#changed;
-		return (
-			changed !== null &&
-			(changed.notes.length > 0 || changed.pictures.added > 0 || changed.pictures.removed > 0)
-		);
+		return this.#dirty;
 	}
 
 	/** The notes a merge left in two versions, as the history names them. */
@@ -148,7 +161,9 @@ class HistoryStore {
 		this.#line = undefined;
 		this.#ahead = 0;
 		this.#changed = null;
+		this.#dirty = false;
 		this.#conflicts = [];
+		this.#taken.clear();
 		this.#taking = null;
 	}
 
@@ -170,6 +185,7 @@ class HistoryStore {
 			if (at !== this.#epoch) return;
 			this.#line = status.branch;
 			this.#ahead = status.ahead;
+			this.#dirty = status.changed.length > 0 || status.untracked.length > 0;
 			this.#commits = page.commits;
 			this.#cursor = page.cursor;
 			this.#branches = branches;
@@ -232,6 +248,7 @@ class HistoryStore {
 			const result = await history.merge(name);
 			if (result.merged) return true;
 			const head = (await history.branches()).find((one) => one.name === name)?.head;
+			this.#taken.clear();
 			this.#conflicts = [...result.conflicts];
 			this.#taking = head === undefined ? null : { name, head };
 			return false;
@@ -255,26 +272,37 @@ class HistoryStore {
 	async settleSections(note: NoteInTwoVersions, takeTheirs: ReadonlySet<string>): Promise<boolean> {
 		return this.act(async (history) => {
 			// Settled first, and written into after: settling a note takes it whole
-			// from one side, so anything written before that is written over.
-			await history.resolve(note.path, 'mine');
-			this.#conflicts = this.#conflicts.filter((held) => held !== note.path);
+			// from one side, so anything written before that is written over. A
+			// second run after a write refused is not a second thing to settle.
+			if (!this.#taken.has(note.path)) {
+				await history.resolve(note.path, 'mine');
+				this.#taken.add(note.path);
+			}
+			// Each section goes in after whatever stands in the note by then, so a
+			// run of them taken from the other line keeps the order it has there.
 			let after: OwnedRef | undefined;
 			for (const section of note.sections) {
 				const theirs = takeTheirs.has(section.ulid);
 				if (theirs && section.theirs && section.mine) {
-					await api.updateBlock(section.mine.ref, { content: section.theirs.content });
+					const written = await api.updateBlock(section.mine.ref, {
+						content: section.theirs.content
+					});
+					after = written.ref;
 				} else if (theirs && section.theirs) {
-					await api.createBlock({
+					const written = await api.createBlock({
 						node: note.ref,
 						content: section.theirs.content,
 						...(after === undefined ? {} : { after })
 					});
+					after = written.ref;
 				} else if (theirs && section.mine) {
 					await api.deleteBlock(section.mine.ref);
+				} else if (section.mine) {
+					after = section.mine.ref;
 				}
-				const standing = section.mine?.ref ?? undefined;
-				if (standing !== undefined) after = standing;
 			}
+			this.#taken.delete(note.path);
+			this.#conflicts = this.#conflicts.filter((held) => held !== note.path);
 			return true;
 		});
 	}
@@ -316,21 +344,31 @@ class HistoryStore {
 
 	/** What changed between two states, note by note and section by section.
 	 *  `undefined` on either side is the folder as it stands. */
-	async between(before: StateAsked, after: StateAsked): Promise<ChangedBetween | null> {
+	async between(before: StateAsked, after: StateAsked): Promise<DifferenceBetween | null> {
 		const history = runtime.history();
 		if (!history) return null;
 		const { changedBetween } = await local();
 		const [was, now] = await Promise.all([this.vaultAt(before), this.vaultAt(after)]);
 		if (!was || !now) return null;
-		return changedBetween(was, now);
+		const changed = changedBetween(was, now);
+		const went = new Set(
+			changed.notes.filter((one) => one.became === 'removed').map((one) => one.ref)
+		);
+		const gone =
+			went.size === 0 ? [] : (await this.notesIn(was)).filter((note) => went.has(note.ref));
+		return { ...changed, gone };
 	}
 
 	/** Every note a version had, for the canvas and the outline to draw. */
 	async notesAt(commit: string): Promise<NodeView[]> {
 		const history = runtime.history();
 		if (!history) return [];
+		return this.notesIn(await history.readAt(commit));
+	}
+
+	private async notesIn(folder: FolderAt): Promise<NodeView[]> {
 		const { graphAsItWas } = await local();
-		const then = await graphAsItWas(await history.readAt(commit));
+		const then = await graphAsItWas(folder);
 		const graph = await then.graphHere();
 		const roots = await then.listNodes({ graph });
 		const trees = await Promise.all(roots.map((root) => then.listNodes({ origin: root.ref })));

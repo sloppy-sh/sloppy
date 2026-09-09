@@ -4,7 +4,11 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import type { ChangedNote } from './changed-notes.svelte';
-import HistorySheet, { type KeptVersion, type LineOfWork } from './history-sheet.svelte';
+import HistorySheet, {
+	type KeptVersion,
+	type LineOfWork,
+	type StatePicked
+} from './history-sheet.svelte';
 
 const VERSION: KeptVersion = {
 	id: 'a1',
@@ -49,7 +53,7 @@ let worked: string[];
 let brought: string[];
 let settled: string[];
 let opened: string[];
-let compares: [string | undefined, string | undefined][];
+let compares: [StatePicked, StatePicked][];
 
 async function settle(): Promise<void> {
 	for (let at = 0; at < 4; at += 1) {
@@ -87,7 +91,7 @@ function open(over: Record<string, unknown> = {}): void {
 			},
 			onSettle: (path: string) => settled.push(path),
 			onOpenVersion: (id: string) => opened.push(id),
-			onCompare: async (before: string | undefined, after: string | undefined) => {
+			onCompare: async (before: StatePicked, after: StatePicked) => {
 				compares.push([before, after]);
 				return CHANGED;
 			},
@@ -113,6 +117,30 @@ function field(labelled: string): HTMLInputElement {
 	return found;
 }
 
+/** The states one of the pickers offers, with it left open. */
+async function states(labelled: string): Promise<string[]> {
+	const trigger = document.body.querySelector<HTMLElement>(
+		`[aria-labelledby="difference-${labelled.toLowerCase()}"]`
+	);
+	if (!trigger) throw new Error(`No picker is labelled "${labelled}"`);
+	trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+	trigger.click();
+	await settle();
+	return [...document.body.querySelectorAll('[role="option"]')].map(
+		(one) => one.textContent?.trim() ?? ''
+	);
+}
+
+async function pick(labelled: string): Promise<void> {
+	const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
+		(one) => one.textContent?.trim() === labelled
+	);
+	if (!option) throw new Error(`The picker does not offer "${labelled}"`);
+	option.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+	option.click();
+	await settle();
+}
+
 function typeInto(input: HTMLInputElement, said: string): void {
 	input.value = said;
 	input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -122,6 +150,11 @@ function typeInto(input: HTMLInputElement, said: string): void {
 beforeEach(() => {
 	stubMediaQuery((query) => query.includes('max-width'));
 	stubResizeObserver();
+	// jsdom drives no pointer, and a Select asks the element it is on about one.
+	Element.prototype.hasPointerCapture = () => false;
+	Element.prototype.setPointerCapture = () => {};
+	Element.prototype.releasePointerCapture = () => {};
+	Element.prototype.scrollIntoView = () => {};
 	kept = [];
 	started = [];
 	worked = [];
@@ -203,21 +236,46 @@ describe('the history of a graph', () => {
 
 	it('shows what is different between two states somebody picks', async () => {
 		open();
-		const pickers = [...document.body.querySelectorAll('select')];
-		expect(pickers).toHaveLength(2);
-		expect([...pickers[0].options].map((one) => one.textContent?.trim())).toEqual([
+
+		expect(await states('From')).toEqual([
 			'Now',
 			'an-argument, as it stands',
 			'Where the argument turned'
 		]);
-
-		pickers[0].value = 'a1';
-		pickers[0].dispatchEvent(new Event('change', { bubbles: true }));
-		flushSync();
+		await pick('Where the argument turned');
 		control('Show what changed').click();
 		await settle();
 
-		expect(compares).toEqual([['a1', undefined]]);
+		expect(compares).toEqual([
+			[{ at: 'a1', label: 'Where the argument turned' }, { label: 'Now' }]
+		]);
+	});
+
+	it('offers a line standing at a version once, under the name of the line', async () => {
+		open({ lines: [...LINES.slice(0, 1), { name: 'an-argument', head: 'a1', here: false }] });
+
+		expect(await states('From')).toEqual(['Now', 'an-argument, as it stands']);
+		await pick('an-argument, as it stands');
+		control('Show what changed').click();
+		await settle();
+
+		expect(compares).toEqual([
+			[{ at: 'a1', label: 'an-argument, as it stands' }, { label: 'Now' }]
+		]);
+	});
+
+	it('names whoever kept a version only where the graph has a name for them', () => {
+		open({ versions: [{ ...VERSION, author: undefined }] });
+
+		expect(screen()).toContain('Where the argument turned');
+		expect(screen()).not.toContain('Yesterday ·');
+	});
+
+	it('offers the version where what changed is in no note', () => {
+		open({ changed: [], anythingToKeep: true });
+
+		expect(screen()).toContain('Something changed that is not written in a note');
+		expect(control('Keep this version').disabled).toBe(false);
 	});
 
 	it('puts the notes two lines both wrote in first, and holds the version back', () => {

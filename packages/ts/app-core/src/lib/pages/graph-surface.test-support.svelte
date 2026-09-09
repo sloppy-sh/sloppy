@@ -6,7 +6,7 @@
 	// note, and one for opening the fold it stands for. What a tap MEANS is the
 	// real surface's contract, held by `@sloppy/graph`'s mount suite; this stands
 	// in for the pixels.
-	import type { GraphHandle, GraphSurfaceProps } from '@sloppy/graph';
+	import { differenceMarks, type GraphHandle, type GraphSurfaceProps } from '@sloppy/graph';
 
 	let brought = $state<string[]>([]);
 	let fitted = $state(0);
@@ -19,6 +19,7 @@
 	let {
 		handle = $bindable(),
 		nodes,
+		difference,
 		wallpaper,
 		picking,
 		chosen,
@@ -33,6 +34,8 @@
 	}: GraphSurfaceProps & { handle?: GraphHandle } = $props();
 
 	handle = canvas;
+
+	const marks = $derived(differenceMarks(difference));
 </script>
 
 <ul
@@ -44,12 +47,16 @@
 	data-fitted={fitted}
 	data-inking={onInkPointer ? 'yes' : undefined}
 >
+	{#each difference?.removed ?? [] as note (note.ref)}
+		<li data-gone={note.ref}></li>
+	{/each}
 	{#each nodes as note (note.ref)}
 		{@const marked =
 			picking?.from === note.ref ? 'from' : picking?.taken.has(note.ref) ? 'taken' : undefined}
 		<li>
 			<button
 				type="button"
+				data-difference={marks.get(note.ref)}
 				data-marked={marked}
 				data-chosen={chosen?.has(note.ref) ? 'yes' : undefined}
 				data-lifted={reading?.open.has(note.ref)
