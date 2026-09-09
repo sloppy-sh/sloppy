@@ -73,6 +73,7 @@ export type { DraftStore, NoteDraft, SaveTrouble } from './components/editor/doc
 export type { PictureSource } from './components/editor/picture-node.js';
 export type { ReferenceReader } from './components/editor/reference-node.js';
 export type { CustomEmojiEntry } from './emoji/catalog.js';
+export * from './components/history/index.js';
 export * from './components/publish/index.js';
 export * from './components/social/index.js';
 export * from './components/templates/index.js';

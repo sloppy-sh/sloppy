@@ -1,0 +1,223 @@
+// The graph as it was, on the canvas: a version kept, opened from the history,
+// drawn in place of the graph and taking nothing.
+
+import { LocalApi, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import type { OwnedRef, Viewer } from '@sloppy/types';
+import { flushSync, mount, unmount } from 'svelte';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetApi } from '../api.js';
+import { initRuntime } from '../runtime.js';
+import { conversation } from '../stores/conversation.svelte.js';
+import { find } from '../stores/find.svelte.js';
+import { graphs } from '../stores/graphs.svelte.js';
+import { graphHistory } from '../stores/history.svelte.js';
+import { identity } from '../stores/identity.svelte.js';
+import { nodes } from '../stores/nodes.svelte.js';
+import { outlineSections } from '../stores/outline-sections.svelte.js';
+import { peers } from '../stores/peers.svelte.js';
+import { people } from '../stores/people.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
+import { publications } from '../stores/publications.svelte.js';
+import { session } from '../stores/session.svelte.js';
+import { tags } from '../stores/tags.svelte.js';
+import { at, pushed, replaced, startAt } from './page.test-support.svelte.js';
+
+vi.mock('$app/state', () => ({
+	page: {
+		get url() {
+			return new URL(at.path, 'http://app.test');
+		},
+		get state() {
+			return at.note ? { note: at.note, notes: at.notes } : {};
+		}
+	}
+}));
+
+vi.mock('$app/navigation', () => ({
+	pushState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
+		pushed(path, state.note ?? null, [...(state.notes ?? [])]),
+	replaceState: (path: string, state: { note?: OwnedRef; notes?: readonly OwnedRef[] }) =>
+		replaced(path, state.note ?? null, [...(state.notes ?? [])]),
+	afterNavigate: () => {}
+}));
+
+vi.mock('@sloppy/ui', async (original) => ({
+	...((await original()) as object),
+	GraphSurface: (await import('./graph-surface.test-support.svelte')).default
+}));
+
+const Graph = (await import('./graph.svelte')).default;
+
+const ROOT = '/Users/me/garden';
+
+let store: Map<string, Uint8Array>;
+let served: LocalApi;
+let kept: MemoryHistory;
+let target: HTMLElement;
+let mounted: ReturnType<typeof mount> | undefined;
+
+function folder(): MemoryFiles {
+	return new MemoryFiles({ root: ROOT, store, data: '/data' });
+}
+
+function stubBrowser(): void {
+	Object.defineProperty(globalThis, 'matchMedia', {
+		configurable: true,
+		writable: true,
+		value: (query: string) => ({
+			matches: query.includes('max-width'),
+			addEventListener: () => {},
+			removeEventListener: () => {}
+		})
+	});
+	Object.defineProperty(globalThis, 'ResizeObserver', {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	});
+}
+
+async function settle(): Promise<void> {
+	for (let turn = 0; turn < 8; turn += 1) {
+		await new Promise((done) => setTimeout(done, 0));
+		flushSync();
+	}
+	for (let frame = 0; frame < 3; frame += 1) await new Promise(requestAnimationFrame);
+	flushSync();
+}
+
+const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
+
+function control(labelled: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll('button')].find((one) =>
+		one.textContent?.includes(labelled)
+	);
+	if (!found) throw new Error(`Nothing on the screen is labelled "${labelled}"`);
+	return found;
+}
+
+function drawn(): string[] {
+	return [...document.body.querySelectorAll('[aria-label="The graph"] li button')]
+		.map((one) => one.textContent?.trim() ?? '')
+		.filter(
+			(said) => said !== '' && !said.startsWith('open what is under') && !said.startsWith('menu on')
+		);
+}
+
+async function openMore(): Promise<void> {
+	const more = [...document.body.querySelectorAll('button')].find(
+		(one) => one.getAttribute('aria-label') === 'More'
+	);
+	if (!more) throw new Error('The graph carries no More control');
+	more.click();
+	await settle();
+}
+
+function item(label: string): HTMLButtonElement {
+	const found = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+		(row) => row.textContent?.trim() === label
+	);
+	if (!found) throw new Error(`The menu does not offer "${label}"`);
+	return found;
+}
+
+beforeEach(async () => {
+	startAt('/');
+	stubBrowser();
+	localStorage.clear();
+	prefs.init();
+	nodes.clear();
+	outlineSections.clear();
+	peers.clear();
+	tags.clear();
+	publications.clear();
+	conversation.clear();
+	identity.clear();
+	find.clear();
+	graphs.clear();
+	people.hold(null);
+	graphHistory.clear();
+	store = new Map();
+	served = new LocalApi(folder());
+	kept = new MemoryHistory(folder(), { author: 'Ada' });
+	initRuntime({
+		apiHost: () => '',
+		mode: () => 'local',
+		createApi: () => (served = new LocalApi(folder())),
+		vault: {
+			folder: () => ROOT,
+			graph: () => new LocalApi(folder()).graphHere(),
+			asks: true,
+			open: async () => ROOT
+		},
+		history: () => kept
+	});
+	resetApi();
+	target = document.createElement('div');
+	document.body.appendChild(target);
+	await served.createNode({ title: 'Origins' });
+	const viewer = (await served.me()) as Viewer;
+	session.adopt(viewer, 'this device');
+});
+
+afterEach(() => {
+	if (mounted) unmount(mounted, { outro: false });
+	mounted = undefined;
+	session.clear();
+	graphHistory.clear();
+	initRuntime({ apiHost: () => '', mode: () => 'hosted', history: () => undefined });
+	resetApi();
+	target.remove();
+	document.body.innerHTML = '';
+});
+
+describe('a version of the graph, opened from the history', () => {
+	it('draws the graph as it was, and takes nothing while it is up', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		expect(drawn().join(' ')).toContain('A second thought');
+
+		await openMore();
+		item('History').click();
+		await settle();
+		control('A first version').click();
+		await settle();
+
+		expect(screen()).toContain('Your graph as it was');
+		expect(screen()).toContain('A first version');
+		expect(drawn().join(' ')).toContain('Origins');
+		expect(drawn().join(' ')).not.toContain('A second thought');
+		expect(
+			document.body.querySelector('[aria-label="The graph"]')?.getAttribute('data-inking')
+		).toBe(null);
+		expect(
+			[...document.body.querySelectorAll('button')].some((one) =>
+				one.textContent?.includes('New branch')
+			)
+		).toBe(false);
+	});
+
+	it('goes back to the graph as it is', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+		control('A first version').click();
+		await settle();
+
+		control('Your graph now').click();
+		await settle();
+
+		expect(screen()).not.toContain('Your graph as it was');
+		expect(drawn().join(' ')).toContain('A second thought');
+	});
+});

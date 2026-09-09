@@ -35,6 +35,7 @@
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
+	import HistoryIcon from '@lucide/svelte/icons/history';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListTree from '@lucide/svelte/icons/list-tree';
 	import Maximize from '@lucide/svelte/icons/maximize';
@@ -131,6 +132,7 @@
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
+	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
@@ -143,6 +145,7 @@
 	import { tags } from '../stores/tags.svelte.js';
 	import { openingWallpaper } from '../wallpaper.js';
 	import GraphTree from './graph-tree.svelte';
+	import HistorySurface from './history.svelte';
 	import Note from './node.svelte';
 	import Writing from './writing.svelte';
 	import { citationUrl, nodeHref, refFromPath } from './routes.js';
@@ -285,6 +288,11 @@
 	 * seed identically and mean different things.
 	 */
 	let foreign = $state<PullView | null>(null);
+	/** Whether the states this graph has been in are up. */
+	let showingHistory = $state(false);
+	/** A state the graph was in, drawn in place of the one it is in. Nothing on
+	 *  the canvas writes while it is up. */
+	let asWas = $state<{ commit: string; message: string; notes: NodeView[] } | null>(null);
 	/** The held note being read, which the canvas also opens around. */
 	let reached = $state<OwnedRef | null>(null);
 	/** The held note whose sections are still on their way. */
@@ -389,11 +397,14 @@
 	const reachedNote = $derived(
 		reached ? (heldNotes.find((note) => note.ref === reached) ?? null) : null
 	);
-	const populated = $derived(
-		foreign ? heldNotes.length > 0 : !loading && !unreachable && roots.length > 0
-	);
+	const populated = $derived.by(() => {
+		if (asWas) return true;
+		if (foreign) return heldNotes.length > 0;
+		return !loading && !unreachable && roots.length > 0;
+	});
 
 	const visible = $derived.by(() => {
+		if (asWas) return asWas.notes;
 		if (foreign) return heldNotes;
 		const out: NodeView[] = [];
 		const walk = (list: NodeView[]) => {
@@ -1881,10 +1892,14 @@
 					nodes={visible}
 					{collapsed}
 					{selection}
-					fields={foreign ? undefined : graphs.fields}
+					fields={foreign || asWas ? undefined : graphs.fields}
 					viewer={session.viewer?.did}
-					remountKey={foreign?.ref}
-					focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
+					remountKey={asWas ? asWas.commit : foreign?.ref}
+					focus={asWas
+						? undefined
+						: foreign
+							? (reached ?? undefined)
+							: (open ?? looking ?? undefined)}
 					picking={pointing && pointingNote
 						? {
 								from: pointing,
@@ -1893,25 +1908,29 @@
 							}
 						: undefined}
 					pictures={ownPictures}
-					reading={foreign ? heldReading : reading}
+					reading={asWas ? undefined : foreign ? heldReading : reading}
 					ground={prefs.current.ground}
 					wallpaper={{
 						picture: showing,
 						strength: wallpaper?.strength ?? 0,
 						transition: wallpaper?.transition
 					}}
-					onHover={(at) => (hoverAt = overGraph ? null : at)}
-					chosen={foreign ? undefined : chosen}
-					onChoose={pointing || foreign ? undefined : chooseAlso}
-					onChooseWithin={pointing || foreign ? undefined : chooseWithin}
-					onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
-					onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
+					onHover={(at) => (hoverAt = overGraph || asWas ? null : at)}
+					chosen={foreign || asWas ? undefined : chosen}
+					onChoose={pointing || foreign || asWas ? undefined : chooseAlso}
+					onChooseWithin={pointing || foreign || asWas ? undefined : chooseWithin}
+					onMenu={pointing || foreign || asWas ? undefined : (at) => (menuAt = at)}
+					onOpenNode={asWas
+						? (ref) => (bringingTo = ref)
+						: foreign
+							? (ref) => void readHeld(ref)
+							: show}
 					onExpand={(ref) => {
 						folded.delete(ref);
 						if (pointing) looking = ref;
 					}}
 					onCollapse={(ref) => folded.add(ref)}
-					onInkPointer={pointing ? undefined : inkPen}
+					onInkPointer={pointing || asWas ? undefined : inkPen}
 					onTransform={(at) => (fieldAt = at)}
 				/>
 				<CanvasInk
@@ -1930,18 +1949,24 @@
 						bottom: 'calc(var(--sysnav-clearance) + var(--chosen-bar-inset-bottom, 0px))'
 					}}
 					notes={visible}
-					fields={foreign ? undefined : graphs.fields}
+					fields={foreign || asWas ? undefined : graphs.fields}
 					{selection}
-					reading={foreign ? reached : open}
+					reading={asWas ? null : foreign ? reached : open}
 					opened={unfolded}
-					chosen={foreign ? undefined : chosen}
-					onChoose={foreign ? undefined : chooseAlso}
-					onChoosing={foreign ? undefined : (on) => (on ? startChoosing() : stopChoosing())}
+					chosen={foreign || asWas ? undefined : chosen}
+					onChoose={foreign || asWas ? undefined : chooseAlso}
+					onChoosing={foreign || asWas
+						? undefined
+						: (on) => (on ? startChoosing() : stopChoosing())}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
-					onOpen={foreign ? (ref) => void readHeld(ref) : openPage}
+					onOpen={asWas
+						? (ref) => (bringingTo = ref)
+						: foreign
+							? (ref) => void readHeld(ref)
+							: openPage}
 					onReached={(ref) => (bringingTo = ref)}
-					writeUnder={foreign ? undefined : writeFromRow}
-					writeAlone={foreign ? undefined : writeAlone}
+					writeUnder={foreign || asWas ? undefined : writeFromRow}
+					writeAlone={foreign || asWas ? undefined : writeAlone}
 				/>
 			{/if}
 		</div>
@@ -2060,6 +2085,25 @@
 					{#if pointRefused}
 						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
 					{/if}
+				{:else if asWas}
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+						<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
+							Your graph as it was
+							{#if asWas.message}
+								<span class="text-muted-foreground">· {asWas.message}</span>
+							{/if}
+						</p>
+						<Button
+							variant="outline"
+							class="ms-auto h-9 shrink-0 rounded-full"
+							onclick={() => (asWas = null)}
+						>
+							Your graph now
+						</Button>
+						{#if walkingNow}
+							{@render walk()}
+						{/if}
+					</div>
 				{:else if foreign}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
@@ -2172,6 +2216,15 @@
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
 								</DropdownMenu.Item>
+								{#if graphHistory.keeps}
+									<DropdownMenu.Item
+										class="min-h-11 gap-2"
+										onSelect={() => (showingHistory = true)}
+									>
+										<HistoryIcon class="size-4 text-muted-foreground" />
+										History
+									</DropdownMenu.Item>
+								{/if}
 								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => void takeArchive()}>
 									<Download class="size-4 text-muted-foreground" />
 									Export this graph
@@ -2312,6 +2365,16 @@
 	exact={find.exact}
 	onquery={(words) => find.type(words)}
 	onopen={openFound}
+/>
+
+<HistorySurface
+	bind:open={showingHistory}
+	onShowVersion={(version) => {
+		stopChoosing();
+		stopPointing();
+		hide();
+		asWas = version;
+	}}
 />
 
 <GraphsSheet

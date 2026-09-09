@@ -15,6 +15,7 @@
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
+	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -36,10 +37,12 @@
 	import { publications } from '../stores/publications.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { tags } from '../stores/tags.svelte.js';
+	import HistorySurface from './history.svelte';
 
 	const vault = runtime.vault();
 
 	let leaving = $state(false);
+	let showingHistory = $state(false);
 	let opening = $state(false);
 	let folder = $state(vault?.folder());
 	let folderProblem = $state<string | null>(null);
@@ -266,6 +269,20 @@
 					{/if}
 				{/if}
 			</div>
+
+			{#if graphHistory.keeps}
+				<div class="space-y-3 border-t border-border pt-8">
+					<h2 class="text-sm font-medium">History</h2>
+					<p class="text-sm text-muted-foreground">
+						Keep a version of your graph whenever it is worth coming back to, and see what has
+						changed since the last one. A line of your own is where you try something without
+						touching the graph you have.
+					</p>
+					<Button variant="outline" class="h-11" onclick={() => (showingHistory = true)}>
+						Open the history
+					</Button>
+				</div>
+			{/if}
 		{:else}
 			<div class="space-y-3 border-t border-border pt-8">
 				<h2 class="text-sm font-medium">Where your Sloppy is</h2>
@@ -362,3 +379,7 @@
 		{/if}
 	</div>
 </div>
+
+{#if graphHistory.keeps}
+	<HistorySurface bind:open={showingHistory} />
+{/if}

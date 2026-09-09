@@ -2,6 +2,7 @@
 // need another machine to finish, and say where the writing is instead.
 // docs/ARCHITECTURE.md § "Local-only mode".
 
+import { type History, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import type { NodeView, OwnedRef, ProfileView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -109,9 +110,21 @@ async function settle(): Promise<void> {
 function running(
 	mode: 'hosted' | 'local',
 	saveFile?: AppRuntime['saveFile'],
-	vault?: VaultAccess
+	vault?: VaultAccess,
+	keeping?: History
 ): void {
-	initRuntime({ apiHost: () => 'http://api.test', mode: () => mode, saveFile, vault });
+	initRuntime({
+		apiHost: () => 'http://api.test',
+		mode: () => mode,
+		saveFile,
+		vault,
+		history: () => keeping
+	});
+}
+
+/** A shell that keeps the states the graph has been in. */
+function withAHistory(): History {
+	return new MemoryHistory(new MemoryFiles());
 }
 
 /** The graph each folder a suite opens holds, as the shell answers for it. */
@@ -270,6 +283,22 @@ describe('the graph, on a device holding its own', () => {
 		expect(api.countOf('GET /publications')).toBe(0);
 	});
 
+	it('offers the states the graph has been in where the device keeps them', async () => {
+		running('local', undefined, undefined, withAHistory());
+		await openGraph();
+		await openMore();
+
+		expect(offered()).toContain('History');
+	});
+
+	it('offers nothing about them where the platform keeps none', async () => {
+		running('local');
+		await openGraph();
+		await openMore();
+
+		expect(offered()).not.toContain('History');
+	});
+
 	it('still offers it where a Sloppy is serving the graph', async () => {
 		running('hosted');
 		await openGraph();
@@ -421,6 +450,25 @@ describe('Settings, on a device holding its own graph', () => {
 		expect(has('Sign out')).toBe(false);
 		expect(screen()).not.toContain('Your graph opens once you sign in');
 		expect(api.countOf('GET /profile/me')).toBe(0);
+	});
+
+	it('offers the history where the device keeps one, and nothing where it does not', async () => {
+		running('local', undefined, keeping('/Users/me/garden'), withAHistory());
+		session.adopt(ON_DEVICE, 'this device');
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(has('Open the history')).toBe(true);
+
+		unmount(mounted as ReturnType<typeof mount>, { outro: false });
+		mounted = undefined;
+		running('local', undefined, keeping('/Users/me/garden'));
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(has('Open the history')).toBe(false);
 	});
 
 	it('names the folder the graph is in, and offers another', async () => {
