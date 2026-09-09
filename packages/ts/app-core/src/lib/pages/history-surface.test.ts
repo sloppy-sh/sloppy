@@ -139,6 +139,15 @@ async function pick(labelled: string, state: string): Promise<void> {
 	await settle();
 }
 
+/** What stands under a heading on the surface. */
+function said(heading: string): string {
+	const found = [...document.body.querySelectorAll('h3')].find(
+		(one) => one.textContent?.trim() === heading
+	);
+	if (!found) throw new Error(`Nothing on the screen is headed "${heading}"`);
+	return (found.parentElement?.textContent ?? '').replace(/\s+/g, ' ');
+}
+
 function menu(on: string): HTMLButtonElement {
 	const found = document.body.querySelector<HTMLButtonElement>(`[data-menu="${on}"]`);
 	if (!found) throw new Error(`Nothing on the graph carries a menu on ${on}`);
@@ -232,6 +241,30 @@ describe('two states of the graph, set against each other', () => {
 
 		expect(document.body.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
 	});
+
+	it('puts the words back beside the marks once the surface has been put away', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+		await pick('From', 'A first version');
+		control('Show what changed').click();
+		await settle();
+
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await settle();
+		expect(screen()).not.toContain('Since your last version');
+
+		control('In words').click();
+		await settle();
+
+		expect(screen()).toContain('Since your last version');
+		expect(screen()).toContain('A first version to Now');
+		expect(said('What is different')).toContain('New note');
+	});
 });
 
 describe('a version of the graph, opened from the history', () => {
@@ -283,6 +316,26 @@ describe('a version of the graph, opened from the history', () => {
 		expect(still.map((one) => one.title)).toEqual(['Origins', 'A second thought']);
 		expect(screen()).toContain('Your graph as it was');
 		expect(drawn().join(' ')).not.toContain('Untitled');
+	});
+
+	it('opens the history again without leaving the version', async () => {
+		await graphHistory.keep('A first version');
+		await served.createNode({ title: 'A second thought' });
+		mounted = mount(Graph, { target });
+		await settle();
+		await openMore();
+		item('History').click();
+		await settle();
+		control('A first version').click();
+		await settle();
+		expect(screen()).not.toContain('Since your last version');
+
+		control('History').click();
+		await settle();
+
+		expect(screen()).toContain('Since your last version');
+		expect(screen()).toContain('Your graph as it was');
+		expect(drawn().join(' ')).not.toContain('A second thought');
 	});
 
 	it('goes back to the graph as it is', async () => {

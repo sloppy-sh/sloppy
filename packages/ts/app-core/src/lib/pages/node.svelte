@@ -718,9 +718,8 @@
 	const own = $derived(node !== undefined && node.created_by === session.viewer?.did);
 	const publishable = $derived(own && !session.onDevice);
 
-	/** Whether to name whoever wrote this. A graph on this device is one person's
-	 *  and says who they are only once they have said it; the identifier it is
-	 *  written under is not a name and is never shown as one. */
+	/** Whether to name whoever wrote this: a graph on this device says who its
+	 *  owner is only once they have said it. */
 	const showsAuthor = $derived(
 		!session.onDevice || (people.of(node?.created_by ?? '')?.displayName ?? '').trim() !== ''
 	);

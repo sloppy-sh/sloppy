@@ -52,11 +52,12 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
-	import ChangedNotes, { type ChangedNote } from './changed-notes.svelte';
+	import ChangedNotes, { type ChangedNote, type ChangedPictures } from './changed-notes.svelte';
 
 	let {
 		open = $bindable(false),
 		changed,
+		pictures,
 		anythingToKeep = false,
 		versions,
 		older = false,
@@ -79,6 +80,8 @@
 		/** What has changed since the version the folder stands on; `null` where
 		 *  it has not been read. */
 		changed: readonly ChangedNote[] | null;
+		/** The pictures that changed with it, which stand in no note. */
+		pictures?: ChangedPictures;
 		/** Whether there is anything to keep at all: a picture put in the graph
 		 *  changes it without changing a note. */
 		anythingToKeep?: boolean;
@@ -103,7 +106,10 @@
 		onSettle: (path: string) => void;
 		/** Absent where a version cannot be put on the graph from here. */
 		onOpenVersion?: (id: string) => void;
-		onCompare: (before: StatePicked, after: StatePicked) => Promise<readonly ChangedNote[] | null>;
+		onCompare: (
+			before: StatePicked,
+			after: StatePicked
+		) => Promise<{ notes: readonly ChangedNote[]; pictures: ChangedPictures } | null>;
 	} = $props();
 
 	/** What the pickers hold for the folder as it stands, kept apart from the
@@ -116,7 +122,7 @@
 	let before = $state(NOW);
 	let after = $state(NOW);
 	let comparing = $state(false);
-	let compared = $state<readonly ChangedNote[] | null>(null);
+	let compared = $state<{ notes: readonly ChangedNote[]; pictures: ChangedPictures } | null>(null);
 
 	$effect(() => {
 		if (open) untrack(() => onShow?.());
@@ -225,6 +231,7 @@
 			{:else}
 				<ChangedNotes
 					notes={changed}
+					{pictures}
 					nothing={!kept
 						? 'Nothing is kept yet. Keep this version and you can come back to it.'
 						: anythingToKeep
@@ -388,7 +395,11 @@
 				</Button>
 			</div>
 			{#if compared}
-				<ChangedNotes notes={compared} nothing="These two are the same." />
+				<ChangedNotes
+					notes={compared.notes}
+					pictures={compared.pictures}
+					nothing="These two are the same."
+				/>
 			{/if}
 		</section>
 

@@ -1624,7 +1624,9 @@ export interface NoteChangedBetween {
   moved?: { from?: OwnedRef; to?: OwnedRef };
   retitled?: { from: string; to: string };
   renumbered?: { from?: Address; to?: Address };
-  /** Only the sections the two states do not hold alike. */
+  /** Only the sections the two states do not hold alike, in the order they
+   *  stand in the note — the later state's order, then whatever only the
+   *  earlier one has. */
   sections: SectionBesideSection[];
   /** The sections both states hold, standing in another order. */
   reordered: boolean;
@@ -1707,17 +1709,26 @@ function sectionsBeside(
 ): SectionBesideSection[] {
   const said = (note: VaultNote | undefined, ulid: string) =>
     note?.sections.find((one) => one.ulid === ulid)?.content;
-  return [...changed.added, ...changed.removed, ...changed.changed]
-    .sort()
-    .map((ulid) => {
-      const before = said(was, ulid);
-      const after = said(now, ulid);
-      return {
-        ulid,
-        ...(before === undefined ? {} : { before }),
-        ...(after === undefined ? {} : { after }),
-      };
-    });
+  const left = new Set([
+    ...changed.added,
+    ...changed.removed,
+    ...changed.changed,
+  ]);
+  const standing: string[] = [];
+  for (const note of [now, was]) {
+    for (const one of note?.sections ?? []) {
+      if (left.delete(one.ulid)) standing.push(one.ulid);
+    }
+  }
+  return [...standing, ...[...left].sort()].map((ulid) => {
+    const before = said(was, ulid);
+    const after = said(now, ulid);
+    return {
+      ulid,
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+    };
+  });
 }
 
 function byRef(vault: Vault): Map<OwnedRef, VaultNote> {

@@ -93,7 +93,7 @@ function open(over: Record<string, unknown> = {}): void {
 			onOpenVersion: (id: string) => opened.push(id),
 			onCompare: async (before: StatePicked, after: StatePicked) => {
 				compares.push([before, after]);
-				return CHANGED;
+				return { notes: CHANGED, pictures: { added: 0, removed: 0 } };
 			},
 			...over
 		}
@@ -276,6 +276,14 @@ describe('the history of a graph', () => {
 
 		expect(screen()).toContain('Something changed that is not written in a note');
 		expect(control('Keep this version').disabled).toBe(false);
+	});
+
+	it('names the pictures that came and went, which stand in no note', () => {
+		open({ changed: [], anythingToKeep: true, pictures: { added: 1, removed: 2 } });
+
+		expect(screen()).toContain('A picture arrived');
+		expect(screen()).toContain('2 pictures went');
+		expect(screen()).not.toContain('Something changed that is not written in a note');
 	});
 
 	it('puts the notes two lines both wrote in first, and holds the version back', () => {

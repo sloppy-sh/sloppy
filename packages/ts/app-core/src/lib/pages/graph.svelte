@@ -1942,7 +1942,7 @@
 					onChoose={pointing || foreign || notNow ? undefined : chooseAlso}
 					onChooseWithin={pointing || foreign || notNow ? undefined : chooseWithin}
 					onMenu={pointing || foreign || notNow ? undefined : (at) => (menuAt = at)}
-					onOpenNode={asWas
+					onOpenNode={notNow
 						? (ref) => (bringingTo = ref)
 						: foreign
 							? (ref) => void readHeld(ref)
@@ -1981,7 +1981,7 @@
 						? undefined
 						: (on) => (on ? startChoosing() : stopChoosing())}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
-					onOpen={asWas
+					onOpen={notNow
 						? (ref) => (bringingTo = ref)
 						: foreign
 							? (ref) => void readHeld(ref)
@@ -2113,7 +2113,14 @@
 							What changed
 							<span class="text-muted-foreground">· {comparing.says}</span>
 						</p>
-						<Button variant="outline" class="ms-auto h-9 shrink-0 rounded-full" onclick={backToNow}>
+						<Button
+							variant="ghost"
+							class="ms-auto h-9 shrink-0 rounded-full"
+							onclick={() => (showingHistory = true)}
+						>
+							In words
+						</Button>
+						<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
 							Your graph now
 						</Button>
 						{#if walkingNow}
@@ -2128,7 +2135,14 @@
 								<span class="text-muted-foreground">· {asWas.message}</span>
 							{/if}
 						</p>
-						<Button variant="outline" class="ms-auto h-9 shrink-0 rounded-full" onclick={backToNow}>
+						<Button
+							variant="ghost"
+							class="ms-auto h-9 shrink-0 rounded-full"
+							onclick={() => (showingHistory = true)}
+						>
+							History
+						</Button>
+						<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
 							Your graph now
 						</Button>
 						{#if walkingNow}

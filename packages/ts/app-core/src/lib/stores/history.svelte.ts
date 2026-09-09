@@ -133,9 +133,8 @@ class HistoryStore {
 		return this.#changed;
 	}
 
-	/** Whether there is anything at all to keep. The history answers this and
-	 *  not {@link changed}, which names notes and no more: a note's tags, its
-	 *  links and its look change the folder without changing any of those. */
+	/** Whether there is anything at all to keep — the history answers this, and
+	 *  {@link changed} names notes and no more. */
 	get unkept(): boolean {
 		return this.#dirty;
 	}
@@ -190,8 +189,9 @@ class HistoryStore {
 			this.#cursor = page.cursor;
 			this.#branches = branches;
 			this.#at = commit;
-			this.#changed = await this.between(commit, undefined);
+			const since = await this.between(commit, undefined);
 			if (at !== this.#epoch) return;
+			this.#changed = since;
 		} catch (err) {
 			if (at === this.#epoch) this.#says = said(err);
 		} finally {

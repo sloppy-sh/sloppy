@@ -7,6 +7,7 @@
 	import { noteLabel, type NodeView, type OwnedRef } from '@sloppy/types';
 	import {
 		type ChangedNote,
+		type ChangedPictures,
 		HistorySheet,
 		type KeptVersion,
 		type LineOfWork,
@@ -21,7 +22,6 @@
 		type NoteInTwoVersions
 	} from '../stores/history.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
-	import { session } from '../stores/session.svelte.js';
 
 	let {
 		open = $bindable(false),
@@ -91,11 +91,9 @@
 		}
 	});
 
-	/** Whoever kept a version, where the graph has a name for them. One kept on
-	 *  this device is kept under the identity it belongs to, and an identifier is
-	 *  not a name to call anybody. */
+	/** Whoever kept a version, where the graph has a name for them. */
 	function named(author: string): string | undefined {
-		return author === '' || author === session.viewer?.did ? undefined : author;
+		return author === '' || author.startsWith('did:') ? undefined : author;
 	}
 
 	/** The day it was kept, in the reader's own language. */
@@ -154,7 +152,10 @@
 		onShowVersion({ commit, message: version?.message ?? '', notes });
 	}
 
-	async function compare(before: StatePicked, after: StatePicked): Promise<ChangedNote[] | null> {
+	async function compare(
+		before: StatePicked,
+		after: StatePicked
+	): Promise<{ notes: ChangedNote[]; pictures: ChangedPictures } | null> {
 		const held = await graphHistory.between(before.at, after.at);
 		if (!held) return null;
 		if (onShowDifference) {
@@ -171,7 +172,7 @@
 				difference: drawn(held)
 			});
 		}
-		return rows(held.notes);
+		return { notes: rows(held.notes), pictures: held.pictures };
 	}
 
 	/** What the canvas draws the two states as. A note that only moved is not
@@ -218,6 +219,7 @@
 <HistorySheet
 	bind:open
 	{changed}
+	pictures={graphHistory.changed?.pictures}
 	anythingToKeep={graphHistory.unkept}
 	{versions}
 	older={graphHistory.older}

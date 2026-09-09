@@ -222,6 +222,33 @@ describe("what changed between two states", () => {
     );
   });
 
+  it("lists the sections in the order they stand in the note", async () => {
+    const held = opened();
+    const note = await held.api.createNode({ title: "Origins" });
+    const was = await state(held.files);
+    const under = await held.api.createBlock({
+      node: note.ref,
+      content: textDocument("What grew out of it"),
+    });
+    // A ulid orders by the millisecond it was made in: two in one millisecond
+    // would not tell creation order and standing order apart.
+    await new Promise((done) => setTimeout(done, 2));
+    const over = await held.api.createBlock({
+      node: note.ref,
+      content: textDocument("The seed"),
+    });
+    const now = await state(held.files);
+
+    const changed = changedBetween(was, now).notes.find(
+      (one) => one.ref === note.ref,
+    );
+
+    expect(changed?.sections.map((one) => one.ulid)).toEqual([
+      over.ref.split("/")[1],
+      under.ref.split("/")[1],
+    ]);
+  });
+
   it("is empty between one state and itself", async () => {
     const held = opened();
     await held.api.createNode({ title: "Origins" });

@@ -9,6 +9,12 @@
 		after?: BlockDocument;
 	}
 
+	/** The pictures a difference names, which stand in no note. */
+	export interface ChangedPictures {
+		added: number;
+		removed: number;
+	}
+
 	/** A note a difference names, as the list shows it. Every label here is
 	 *  already what a person calls the thing — a note's address or its title,
 	 *  never a ref. */
@@ -37,12 +43,26 @@
 
 	let {
 		notes,
+		pictures,
 		nothing = 'Nothing has changed.'
 	}: {
 		notes: readonly ChangedNote[];
+		pictures?: ChangedPictures;
 		/** What to say where the difference names nothing. */
 		nothing?: string;
 	} = $props();
+
+	function ofPictures(many: number, became: string): string | null {
+		if (many === 0) return null;
+		return many === 1 ? `A picture ${became}.` : `${many} pictures ${became}.`;
+	}
+
+	const aboutPictures = $derived(
+		[
+			ofPictures(pictures?.added ?? 0, 'arrived'),
+			ofPictures(pictures?.removed ?? 0, 'went')
+		].filter((line): line is string => line !== null)
+	);
 
 	const BECAME: Record<ChangedNote['became'], string> = {
 		added: 'New note',
@@ -85,9 +105,11 @@
 	{/if}
 {/snippet}
 
-{#if notes.length === 0}
-	<p class="px-1 py-2 text-sm text-muted-foreground">{nothing}</p>
-{:else}
+{#each aboutPictures as line (line)}
+	<p class="px-1 py-1 text-sm text-muted-foreground">{line}</p>
+{/each}
+
+{#if notes.length > 0}
 	<ul class="space-y-6">
 		{#each notes as note (note.ref)}
 			<li class="space-y-2">
@@ -144,4 +166,6 @@
 			</li>
 		{/each}
 	</ul>
+{:else if aboutPictures.length === 0}
+	<p class="px-1 py-2 text-sm text-muted-foreground">{nothing}</p>
 {/if}
