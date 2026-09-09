@@ -66,7 +66,7 @@ afterEach(() => {
 
 describe('writing a diagram', () => {
 	it('opens one where a line holds only a mermaid fence', () => {
-		const into = open(block({ content: section(...text('')) }));
+		const into = open(block({ content: section() }));
 		into.commands.setTextSelection(2);
 		typeInto(into, '```mermaid ');
 		expect(kinds(into)).toEqual(['diagram', 'paragraph']);
@@ -77,7 +77,7 @@ describe('writing a diagram', () => {
 	});
 
 	it('leaves a fence in a language it does not draw as a code block', () => {
-		const into = open(block({ content: section(...text('')) }));
+		const into = open(block({ content: section() }));
 		into.commands.setTextSelection(2);
 		typeInto(into, '```rust ');
 		expect(into.state.doc.firstChild?.firstChild?.type.name).toBe('codeBlock');

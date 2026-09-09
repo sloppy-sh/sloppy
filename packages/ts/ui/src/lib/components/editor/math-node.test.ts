@@ -63,14 +63,14 @@ describe('a formula on the page', () => {
 
 describe('writing a formula', () => {
 	it('stands one on its own where a line holds only $$, with room to write on', () => {
-		const into = open(block({ content: section(...text('')) }));
+		const into = open(block({ content: section() }));
 		into.commands.setTextSelection(2);
 		typeInto(into, '$$');
 		expect(kinds(into)).toEqual(['mathBlock', 'paragraph']);
 	});
 
 	it('closes one inside a sentence at the second dollar', () => {
-		const into = open(block({ content: section(...text('')) }));
+		const into = open(block({ content: section() }));
 		into.commands.setTextSelection(2);
 		typeInto(into, 'let $x^2$ be');
 		const [row] = docBlocks(into.state.doc);
@@ -81,7 +81,7 @@ describe('writing a formula', () => {
 	});
 
 	it('leaves two prices in one sentence as two prices', () => {
-		const into = open(block({ content: section(...text('')) }));
+		const into = open(block({ content: section() }));
 		into.commands.setTextSelection(2);
 		typeInto(into, 'it cost $5 and $6');
 		const [row] = docBlocks(into.state.doc);
