@@ -18,6 +18,7 @@
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { people, personFrom } from '../stores/people.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
+	import { session } from '../stores/session.svelte.js';
 	import { nodeHref } from './routes.js';
 
 	/** An invitation the author sets, in the words the publishing sheet sets it
@@ -133,6 +134,7 @@
 	}
 
 	onMount(() => {
+		if (session.onDevice) return;
 		void readProfile();
 		void readPublished();
 	});
@@ -144,7 +146,16 @@
 	<div
 		class="mx-auto w-full max-w-2xl space-y-6 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-12 sm:px-8"
 	>
-		{#if unreachable}
+		{#if session.onDevice}
+			<h1 class="text-2xl font-semibold tracking-tight">You</h1>
+			<section class="space-y-2 border-t border-border pt-6">
+				<h2 class="text-sm font-medium">Your identity</h2>
+				<IdentityLine identity={session.viewer?.did ?? ''} label="Copy your identity" />
+				<p class="text-sm text-muted-foreground">
+					Everything you write here is written under this, and none of it leaves this device.
+				</p>
+			</section>
+		{:else if unreachable}
 			<p class="text-sm text-destructive" role="alert">{unreachable}</p>
 		{:else if !shown}
 			<div class="space-y-3">

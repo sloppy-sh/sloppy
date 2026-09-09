@@ -743,6 +743,11 @@
 	/** Somebody else's note: the region holding it, opened at the note itself.
 	 *  Held by nobody here, the branch that carries it is what to offer instead. */
 	async function reachHeld(cited: OwnedRef): Promise<void> {
+		if (session.onDevice) {
+			refused =
+				"That note is somebody else's. This graph is on your device, so only what is in it opens here.";
+			return;
+		}
 		const hit = await peers.heldNote(cited);
 		hide();
 		if (hit) {
@@ -772,7 +777,7 @@
 
 	onMount(() => {
 		openCited();
-		void peers.load();
+		if (!session.onDevice) void peers.load();
 		const back = (): void => {
 			if (document.visibilityState === 'visible' && wallpaper) {
 				showing = pictureTurn(wallpaper, Date.now()) ?? null;
@@ -1244,11 +1249,15 @@
 			items.push(
 				{ label: 'Tags', icon: Tag, onSelect: () => openTags(null) },
 				{ label: 'Give them a look', icon: CircleDashed, onSelect: () => openLook(null) },
-				{
-					label: picked.size === 1 ? 'Publish it' : `Publish these ${picked.size}`,
-					icon: Globe,
-					onSelect: openPublish
-				},
+				...(session.onDevice
+					? []
+					: [
+							{
+								label: picked.size === 1 ? 'Publish it' : `Publish these ${picked.size}`,
+								icon: Globe,
+								onSelect: openPublish
+							}
+						]),
 				{
 					label: picked.size === 1 ? 'Delete it' : `Delete these ${picked.size}`,
 					icon: Trash2,
@@ -1698,13 +1707,13 @@
 	// Where the reader's identity is kept decides whether a held note is offered
 	// a conversation at all, so it is asked before one is drawn.
 	$effect(() => {
-		if (session.signedIn) void identity.load();
+		if (session.signedIn && !session.onDevice) void identity.load();
 	});
 
 	// What is already published decides what a publish of the chosen set widens,
 	// so it is read before the question is asked and not at it.
 	$effect(() => {
-		if (session.signedIn) void publications.load().catch(() => {});
+		if (session.signedIn && !session.onDevice) void publications.load().catch(() => {});
 	});
 
 	$effect(() => {
@@ -1983,9 +1992,11 @@
 							<Button variant="ghost" class="h-11" onclick={() => (switching = true)}>
 								Your graphs
 							</Button>
-							<Button variant="ghost" class="h-11" onclick={visitPeers}>
-								Read somebody else's
-							</Button>
+							{#if !session.onDevice}
+								<Button variant="ghost" class="h-11" onclick={visitPeers}>
+									Read somebody else's
+								</Button>
+							{/if}
 						</div>
 						{#if refused}
 							<p class="text-sm text-destructive" role="alert">{refused}</p>
@@ -2150,10 +2161,12 @@
 								{/snippet}
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content align="end" class="w-56">
-								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={visitPeers}>
-									<Users class="size-4 text-muted-foreground" />
-									Other people's graphs
-								</DropdownMenu.Item>
+								{#if !session.onDevice}
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={visitPeers}>
+										<Users class="size-4 text-muted-foreground" />
+										Other people's graphs
+									</DropdownMenu.Item>
+								{/if}
 								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={startChoosing}>
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
