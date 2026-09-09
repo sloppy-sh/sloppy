@@ -40,6 +40,39 @@ const GONE = "deleted_at != NONE";
  *  was and has been moved, in which case the address still leads to it. */
 export type AddressHold = "live" | "deleted" | "moved";
 
+/**
+ * A note in the bin giving its address to whoever asked for it — AI.md § "The
+ * Genealogy Is the Protocol". `alias` is what keeps the address leading to it,
+ * absent where the graph already holds one at that address: the index allows
+ * one, and the note that left first is who it leads to.
+ *
+ * The write that takes the address applies this in the same transaction, so an
+ * address given up with nobody taking it cannot happen.
+ */
+export interface AddressYield {
+  from: Node;
+  alias?: NodeAlias;
+}
+
+/** The two halves of a yield, and the variables they read. */
+function yielded(giving: readonly AddressYield[]): {
+  statements: string[];
+  vars: Record<string, unknown>;
+} {
+  if (giving.length === 0) return { statements: [], vars: {} };
+  const aliases = giving.flatMap((one) => (one.alias ? [one.alias] : []));
+  return {
+    statements: [
+      ...(aliases.length === 0
+        ? []
+        : ["INSERT INTO node_alias $yieldAliases;"]),
+      `UPDATE $yielding SET address = NONE, updated_at = $at
+         WHERE created_by = $did RETURN NONE;`,
+    ],
+    vars: { yieldAliases: aliases, yielding: giving.map((one) => one.from.id) },
+  };
+}
+
 /** The row that outlives a note, so its address is never assigned twice. A note
  *  its author left unaddressed spends nothing and leaves none. */
 function retire(node: Node, address: Address): RetiredAddress {
@@ -311,9 +344,11 @@ export class NodeRepository {
     node: Node,
     address: Address | undefined,
     leaving: NodeAlias | null,
+    giving: readonly AddressYield[] = [],
   ): Promise<Node | null> {
     const ref = ownedRefFrom(node.id);
-    const statements = ["BEGIN TRANSACTION;"];
+    const gives = yielded(giving);
+    const statements = ["BEGIN TRANSACTION;", ...gives.statements];
     if (leaving) statements.push("INSERT INTO node_alias $leaving;");
     if (address !== undefined) {
       statements.push(
@@ -334,17 +369,52 @@ export class NodeRepository {
       address,
       leaving,
       at: nowIso(),
+      ...gives.vars,
     });
     return this.find(did, ref);
   }
 
-  async insert(node: Node): Promise<Node> {
-    const { id, ...content } = node;
-    const [rows] = await this.query(
-      "CREATE $id CONTENT $content RETURN AFTER",
-      { id, content },
+  /** The note an address leads back to where none is at it, `null` where the
+   *  graph holds no alias at it. */
+  async aliasedTo(
+    did: string,
+    graph: OwnedRef,
+    address: Address,
+  ): Promise<OwnedRef | null> {
+    const [rows] = await this.db.handle.query<[OwnedRef[]]>(
+      `SELECT VALUE note FROM node_alias
+         WHERE created_by = $did AND graph = $graph AND address = $address
+         LIMIT 1`,
+      { did, graph, address },
     );
-    return parseNode(rows[0]);
+    return rows[0] ?? null;
+  }
+
+  async insert(
+    node: Node,
+    giving: readonly AddressYield[] = [],
+  ): Promise<Node> {
+    const { id, ...content } = node;
+    if (giving.length === 0) {
+      const [rows] = await this.query(
+        "CREATE $id CONTENT $content RETURN AFTER",
+        { id, content },
+      );
+      return parseNode(rows[0]);
+    }
+    const gives = yielded(giving);
+    await this.db.handle.query(
+      [
+        "BEGIN TRANSACTION;",
+        ...gives.statements,
+        "CREATE $id CONTENT $content RETURN NONE;",
+        "COMMIT TRANSACTION;",
+      ].join("\n"),
+      { did: node.created_by, id, content, at: nowIso(), ...gives.vars },
+    );
+    const written = await this.find(node.created_by, ownedRefFrom(id));
+    if (!written) throw new Error("the note was not written");
+    return written;
   }
 
   /** Of the notes named, the ones this person actually owns. */
@@ -513,12 +583,15 @@ export class NodeRepository {
     did: string,
     landed: readonly Node[],
     aliases: readonly NodeAlias[],
+    giving: readonly AddressYield[] = [],
   ): Promise<void> {
-    const statements = ["BEGIN TRANSACTION;"];
+    const gives = yielded(giving);
+    const statements = ["BEGIN TRANSACTION;", ...gives.statements];
     const vars: Record<string, unknown> = {
       did,
       aliases: [...aliases],
       at: nowIso(),
+      ...gives.vars,
     };
     for (const [slot, node] of landed.entries()) {
       if (node.address === undefined) continue;

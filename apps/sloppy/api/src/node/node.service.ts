@@ -57,7 +57,11 @@ import type { Delegation } from "../syr/syr.service";
 import { movedSubtree } from "./address-assignment";
 import { FindRepository } from "./find.repository";
 import { GraphService } from "./graph.service";
-import type { AddressHold, NodeBulkPatch } from "./node.repository";
+import type {
+  AddressHold,
+  AddressYield,
+  NodeBulkPatch,
+} from "./node.repository";
 import { NodeRepository } from "./node.repository";
 import {
   bestFirst,
@@ -384,18 +388,11 @@ export class NodeService {
       const note = await this.nodes.find(did, ref);
       if (!note) throw new NotFoundException("That note is not here.");
       const own = new Set([ownedRefFrom(note.id)]);
-      const free = async () => {
-        if (address !== null) {
-          await this.requireFree(
-            did,
-            graphOf(note),
-            address,
-            own,
-            ownedRefFrom(note.id),
-          );
-        }
-      };
-      await free();
+      const free = async () =>
+        address === null
+          ? null
+          : this.claim(did, graphOf(note), address, own, ownedRefFrom(note.id));
+      const giving = await free();
       const written = await this.nodes
         .writeAddress(
           did,
@@ -404,6 +401,7 @@ export class NodeService {
           note.address === undefined || note.address === address
             ? null
             : leftBehind(note, note.address),
+          giving ? [giving] : [],
         )
         .catch(async (err: unknown) => {
           await free();
@@ -414,52 +412,62 @@ export class NodeService {
     });
   }
 
-  /** Refused in words where the address leads somewhere else in this graph. A
-   *  writer in another process gets past the queue and is refused by the unique
-   *  index, so this is asked again on the way out of a failed write. `mine` is
-   *  the notes landing together, whose hold on it one write replaces; `taking`
-   *  is the one landing on this address, and an address a note was carried away
-   *  from is that note's alone to take back — AI.md § "The Genealogy Is the
-   *  Protocol". */
-  private async requireFree(
+  /** The address made this note's to take, or refused in words where it leads
+   *  somewhere else in this graph. A writer in another process gets past the
+   *  queue and is refused by the unique index, so this is asked again on the way
+   *  out of a failed write. `mine` is the notes landing together, whose hold on
+   *  it one write replaces; `taking` is the one landing on this address, and an
+   *  address a note was carried away from is that note's alone to take back —
+   *  AI.md § "The Genealogy Is the Protocol". */
+  private async claim(
     did: string,
     graph: OwnedRef,
     address: Address,
     mine: ReadonlySet<OwnedRef>,
     taking: OwnedRef,
-  ): Promise<void> {
+  ): Promise<AddressYield | null> {
     const held = await this.nodes.addressLeadsTo(did, graph, address);
-    if (held === null) return;
+    if (held === null) return null;
     if (
       held.note !== undefined &&
       (held.hold === "moved" ? held.note === taking : mine.has(held.note))
     ) {
-      return;
+      return null;
     }
-    throw await this.leadsElsewhere(did, address, held);
+    return this.yieldedBy(did, graph, address, held);
   }
 
   /** The same question asked for a note that does not exist yet, which no
    *  address in the graph can be leading to. */
-  private async requireUnheld(
+  private async claimUnheld(
     did: string,
     graph: OwnedRef,
     address: Address,
-  ): Promise<void> {
+  ): Promise<AddressYield | null> {
     const held = await this.nodes.addressLeadsTo(did, graph, address);
-    if (held !== null) throw await this.leadsElsewhere(did, address, held);
+    return held === null ? null : this.yieldedBy(did, graph, address, held);
   }
 
-  private async leadsElsewhere(
+  /** What the note holding this address gives up: nothing where it is in the
+   *  bin and has already given the address up, the address itself where it is
+   *  still at it, and a refusal where the note is there. */
+  private async yieldedBy(
     did: string,
+    graph: OwnedRef,
     address: Address,
     held: { hold: AddressHold; note?: OwnedRef },
-  ): Promise<BadRequestException> {
-    if (held.note === undefined) return leadsNowhere(address);
-    const at =
-      (await this.nodes.find(did, held.note)) ??
-      (await this.nodes.findDeleted(did, held.note));
-    return leadsTo(address, held.hold, at);
+  ): Promise<AddressYield | null> {
+    if (held.note === undefined) throw leadsNowhere(address);
+    const there = await this.nodes.find(did, held.note);
+    if (there) throw leadsTo(address, held.hold, there);
+    const binned = await this.nodes.findDeleted(did, held.note);
+    if (!binned) throw leadsTo(address, held.hold, null);
+    // Already given up once: its alias stands and its row is at another number.
+    if (binned.address !== address) return null;
+    const back = await this.nodes.aliasedTo(did, graph, address);
+    return back === null
+      ? { from: binned, alias: leftBehind(binned, address) }
+      : { from: binned };
   }
 
   /**
@@ -629,8 +637,10 @@ export class NodeService {
 
     const mine = new Set(carried.map((one) => ownedRefFrom(one.id)));
     mine.add(ref);
+    const giving: AddressYield[] = [];
     for (const [at, who] of taking) {
-      await this.requireFree(did, graph, at, mine, who);
+      const gives = await this.claim(did, graph, at, mine, who);
+      if (gives) giving.push(gives);
     }
 
     const { root, landed, aliases } = landedRows(
@@ -641,10 +651,12 @@ export class NodeService {
       now,
     );
     requireDistinct(landed);
-    await this.nodes.move(did, landed, aliases).catch(async (err: unknown) => {
-      await this.requireFree(did, graph, now, mine, ref);
-      throw err;
-    });
+    await this.nodes
+      .move(did, landed, aliases, giving)
+      .catch(async (err: unknown) => {
+        await this.claim(did, graph, now, mine, ref);
+        throw err;
+      });
     return this.asRead(did, await this.nodes.subtree(did, root));
   }
 
@@ -710,7 +722,9 @@ export class NodeService {
     return standing;
   }
 
-  /** One of them back where it was, with its addresses and its writing. */
+  /** One of them back where it was, with its writing and whatever address it
+   *  still holds. One that gave its number to another note comes back with
+   *  none, and the alias that still leads to it says which it was. */
   async restore(did: string, ref: OwnedRef): Promise<NodeView> {
     await this.sweep(did);
     const gone = await this.nodes.findDeleted(did, ref);
@@ -726,7 +740,7 @@ export class NodeService {
     const back = await this.nodes.find(did, ref);
     if (!back)
       throw new NotFoundException("That branch is not here to put back.");
-    return entityView(back);
+    return (await this.asRead(did, [back]))[0];
   }
 
   /**
@@ -946,23 +960,24 @@ export class NodeService {
     return { graph, parent };
   }
 
-  /** A branch at the number its author picked, which nothing else in that graph
-   *  may hold. */
+  /** A branch at the number its author picked, which nothing in that graph but a
+   *  note in the bin may be holding. */
   private async writeAt(
     did: string,
     graph: OwnedRef,
     address: Address,
     request: CreateRequest,
   ): Promise<NodeView> {
-    const held = await this.nodes.addressTaken(did, graph, address);
-    if (held) throw taken(address, held);
+    const giving = await this.claimUnheld(did, graph, address);
     try {
       return entityView(
-        await this.nodes.insert(newNode(did, graph, null, request, address)),
+        await this.nodes.insert(
+          newNode(did, graph, null, request, address),
+          giving ? [giving] : [],
+        ),
       );
     } catch (err) {
-      const lost = await this.nodes.addressTaken(did, graph, address);
-      if (lost) throw taken(address, lost);
+      await this.claimUnheld(did, graph, address);
       throw err;
     }
   }
@@ -987,13 +1002,16 @@ export class NodeService {
     }
     if (impliedParent(address) !== under)
       throw springsElsewhere(address, under);
-    await this.requireUnheld(did, graph, address);
+    const giving = await this.claimUnheld(did, graph, address);
     try {
       return entityView(
-        await this.nodes.insert(newNode(did, graph, parent, request, address)),
+        await this.nodes.insert(
+          newNode(did, graph, parent, request, address),
+          giving ? [giving] : [],
+        ),
       );
     } catch (err) {
-      await this.requireUnheld(did, graph, address);
+      await this.claimUnheld(did, graph, address);
       throw err;
     }
   }
@@ -1303,19 +1321,6 @@ function retag(note: Node, adding: boolean, named: Tags): Tags {
     );
   }
   return parsed.data;
-}
-
-const TAKEN: Record<AddressHold, (address: Address) => string> = {
-  live: (address) =>
-    `You already have a branch numbered ${address}. Pick another number.`,
-  deleted: (address) =>
-    `You used the number ${address} for a branch you have since deleted. Pick another number.`,
-  moved: (address) =>
-    `The number ${address} still leads to a note you moved. Pick another number.`,
-};
-
-function taken(address: Address, held: AddressHold): BadRequestException {
-  return new BadRequestException(TAKEN[held](address));
 }
 
 function newNode(

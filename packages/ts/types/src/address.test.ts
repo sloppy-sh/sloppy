@@ -259,6 +259,14 @@ describe("an address a note has left behind", () => {
   it("leaves a branch number spent too", () => {
     expect(nextChildAddress(null, run(["1", "2"], ["3"]))).toBe("4");
   });
+
+  it("reads the same whether the note holding it is there or in the bin", () => {
+    // A note in the bin hands its number to whoever writes it, so 1b can be at
+    // a note or waiting under one. The rule offers neither, which is what keeps
+    // it the same on both peers whatever became of that note.
+    expect(nextChildAddress("1", run(["1a", "1b"], []))).toBe("1c");
+    expect(nextChildAddress("1", run(["1a"], ["1b"]))).toBe("1c");
+  });
 });
 
 describe("ancestry", () => {
