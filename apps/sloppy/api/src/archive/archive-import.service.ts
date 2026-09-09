@@ -9,7 +9,6 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import {
-  type Address,
   type ArchivePreview,
   type BlockDocument,
   citedUploads,
@@ -31,7 +30,6 @@ import {
   inkAt,
   manifest,
   noteAt,
-  noteUlids,
   type PictureSize,
   PICTURES_FILE,
   readPicturesFile,
@@ -50,7 +48,15 @@ import { GraphService } from "../node/graph.service";
 import { SerialQueue } from "../node/serial-queue";
 import { PublicationService } from "../publication/publication.service";
 import { type Delegation, SyrService } from "../syr/syr.service";
-import { type Kept, placed, retiring, rowsFor } from "./arriving";
+import {
+  addressesLedBy,
+  type Kept,
+  placed,
+  type Repeat,
+  repeated,
+  retiring,
+  rowsFor,
+} from "./arriving";
 import { ArchiveRepository } from "./archive.repository";
 import { mimeForExtension, rewriteUploads } from "./uploads";
 
@@ -114,11 +120,15 @@ export class ArchiveImportService {
         opened.notes.map((note) => note.ref),
       ),
       replaces: opened.replaces,
+      replacing: opened.replaces
+        ? await this.rows.countIn(did, opened.graph)
+        : 0,
     };
   }
 
   /** The graph written: a new one, or the one this archive was last taken out
-   *  of. Nothing lands unless all of it does. */
+   *  of. The rows land whole or not at all; what the departing notes were
+   *  publishing comes down before them and does not go back up. */
   async write(
     delegation: Delegation,
     did: DidSyr,
@@ -138,6 +148,7 @@ export class ArchiveImportService {
     if (elsewhere.length > 0) throw alreadyHere(elsewhere.length);
 
     const going = await this.rows.notesIn(did, opened.graph);
+    const led = await this.rows.aliasesIn(did, opened.graph);
     const sent = new Map<string, string>();
     try {
       await this.carryPictures(delegation, opened, sent);
@@ -153,14 +164,17 @@ export class ArchiveImportService {
       const kept = new Map<OwnedRef, Kept>(
         going.map((note) => [ownedRefFrom(note.id), note]),
       );
-      const addresses = new Set<Address>(
-        notes.flatMap((note) => (note.address ? [note.address] : [])),
-      );
       await this.takeDownDeparting(delegation, did, going, new Set(arriving));
       await this.rows.replace(did, opened.graph, {
         going: [...kept.keys()],
         ...rowsFor(did, opened.graph, notes, kept),
-        retiring: retiring(did, opened.graph, going, addresses),
+        retiring: retiring(
+          did,
+          opened.graph,
+          going,
+          led,
+          addressesLedBy(notes),
+        ),
       });
     } catch (err) {
       await this.unsend(delegation, sent);
@@ -209,24 +223,31 @@ export class ArchiveImportService {
       );
     }
     let said: ArchiveManifest;
-    let vault: Vault;
     try {
       said = manifest(bytes);
-      vault = unpack(bytes);
     } catch (err) {
       throw refused(err);
     }
-    if (noteUlids(vault).length > MAX_ARCHIVE_NOTES) {
+    if (said.notes > MAX_ARCHIVE_NOTES) {
       throw new BadRequestException(
         `That graph has more notes than can arrive at once. The limit here is ${MAX_ARCHIVE_NOTES.toLocaleString("en-US")} notes.`,
       );
     }
+    let vault: Vault;
+    try {
+      vault = unpack(bytes);
+    } catch (err) {
+      throw refused(err);
+    }
     const moved = rekey(vault, said.owner, did);
+    const notes = readNotes(moved, emoji);
+    const twice = repeated(notes);
+    if (twice) throw repeats(twice);
     const graph = await this.landing(did, said.graph);
     return {
       said,
       vault: moved,
-      notes: readNotes(moved, emoji),
+      notes,
       graph: graph.ref,
       replaces: graph.replaces,
     };
@@ -375,6 +396,28 @@ function alreadyHere(count: number): BadRequestException {
     count === 1
       ? "One of these notes is already in another of your graphs, so this cannot arrive as a graph of its own. Take that note out first, or import this somewhere else."
       : `${count} of these notes are already in another of your graphs, so this cannot arrive as a graph of its own. Take those notes out first, or import this somewhere else.`,
+  );
+}
+
+function called(note: VaultNote): string {
+  const title = note.title.trim();
+  return title ? `“${title}”` : "a note you have not titled";
+}
+
+function repeats(found: Repeat): BadRequestException {
+  const naming = found.notes.map(called).join(" and ");
+  if (found.what === "address") {
+    return new BadRequestException(
+      `Two notes in this graph are numbered ${found.address} — ${naming}. A number belongs to one note, so change one of them or take it off.`,
+    );
+  }
+  if (found.what === "note") {
+    return new BadRequestException(
+      `This graph holds one note twice — ${naming}. Take one of them out and try again.`,
+    );
+  }
+  return new BadRequestException(
+    `The same section is in this graph twice, in ${naming}. Take one of them out and try again.`,
   );
 }
 

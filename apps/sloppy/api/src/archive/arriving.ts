@@ -149,36 +149,106 @@ export function rowsFor(
   return rows;
 }
 
+/** Every address these notes lead by: the one each is at, and the ones each was
+ *  carried away from. */
+export function addressesLedBy(notes: readonly VaultNote[]): Set<Address> {
+  const led = new Set<Address>();
+  for (const note of notes) {
+    if (note.address !== undefined) led.add(note.address);
+    for (const alias of note.aliases) led.add(alias);
+  }
+  return led;
+}
+
 /**
  * The addresses the notes an import writes over are taking with them: the ones
- * the archive does not bring back. An address a graph has spent is never
+ * they were at, the ones they were carried away from, and neither where the
+ * archive brings that address back. An address a graph has spent is never
  * assigned again — AI.md § "The Genealogy Is the Protocol".
  */
 export function retiring(
   did: DidSyr,
   graph: OwnedRef,
   going: readonly Node[],
+  leaving: readonly NodeAlias[],
   arriving: ReadonlySet<Address>,
   at: Timestamp = nowIso(),
 ): RetiredAddress[] {
+  const spent: { address: Address; parent?: OwnedRef }[] = [
+    ...going.flatMap((note) =>
+      note.address === undefined
+        ? []
+        : [{ address: note.address, parent: note.parent }],
+    ),
+    ...leaving.map((alias) => ({
+      address: alias.address,
+      parent: alias.parent,
+    })),
+  ];
   const rows: RetiredAddress[] = [];
   const written = new Set<Address>();
-  for (const note of going) {
-    const address = note.address;
-    if (address === undefined || written.has(address)) continue;
-    if (arriving.has(address)) continue;
+  for (const { address, parent } of spent) {
+    if (written.has(address) || arriving.has(address)) continue;
     written.add(address);
     rows.push({
       id: createOwnedRecordId("retired_address", did),
       created_by: did,
       graph,
-      ...(note.parent ? { parent: note.parent } : {}),
+      ...(parent ? { parent } : {}),
       address,
       created_at: at,
       updated_at: at,
     });
   }
   return rows;
+}
+
+/** Two files an archive holds that would land as one row. */
+export interface Repeat {
+  what: "note" | "address" | "section";
+  /** The number two notes are both at, where that is what repeats. */
+  address?: Address;
+  /** Where it is: one note where a note repeats a section of its own. */
+  notes: VaultNote[];
+}
+
+/**
+ * The first thing an archive says twice, or absent where it says everything
+ * once. A vault is a folder a person edits, so one of these is an ordinary
+ * mistake rather than a broken file, and each would land as a row written over
+ * another.
+ */
+export function repeated(notes: readonly VaultNote[]): Repeat | undefined {
+  const refs = new Map<OwnedRef, VaultNote>();
+  const addresses = new Map<Address, VaultNote>();
+  const sections = new Map<string, VaultNote>();
+  for (const note of notes) {
+    const sameNote = refs.get(note.ref);
+    if (sameNote) return { what: "note", notes: [sameNote, note] };
+    refs.set(note.ref, note);
+    if (note.address !== undefined) {
+      const sameAddress = addresses.get(note.address);
+      if (sameAddress) {
+        return {
+          what: "address",
+          address: note.address,
+          notes: [sameAddress, note],
+        };
+      }
+      addresses.set(note.address, note);
+    }
+    for (const section of note.sections) {
+      const holder = sections.get(section.ulid);
+      if (holder) {
+        return {
+          what: "section",
+          notes: holder === note ? [note] : [holder, note],
+        };
+      }
+      sections.set(section.ulid, note);
+    }
+  }
+  return undefined;
 }
 
 function idFor(table: string, did: DidSyr, ref: OwnedRef) {

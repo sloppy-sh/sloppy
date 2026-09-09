@@ -316,6 +316,10 @@ export const ArchivePreviewSchema = z.object({
   /** Whether this writes over a graph the importer already keeps rather than
    *  opening a new one. */
   replaces: z.boolean(),
+  /** How many notes that graph holds now, every one of which the import takes
+   *  with it — the ones in the bin included, which no archive carries. Zero
+   *  where this opens a graph of its own. */
+  replacing: z.int().nonnegative(),
 });
 export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
 

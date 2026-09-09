@@ -18,6 +18,7 @@ import {
   type OwnedRef,
   splitOwnedRef,
 } from "@sloppy/types";
+import { decodeText, encodeText, noteAt, pack, unpack } from "@sloppy/vault";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
@@ -387,6 +388,7 @@ describe("a graph handed over as an archive", () => {
       expect(preview.notes).toBe(2);
       expect(preview.pictures).toBe(1);
       expect(preview.replaces).toBe(false);
+      expect(preview.replacing).toBe(0);
       expect(preview.collisions).toEqual([]);
       expect(
         await notesOf(bram, `${bram.did}/${preview.graph}` as OwnedRef),
@@ -463,6 +465,7 @@ describe("a graph handed over as an archive", () => {
         (await importing(bram, archive, true)).body,
       );
       expect(preview.replaces).toBe(true);
+      expect(preview.replacing).toBe(2);
       expect(preview.collisions).toEqual([]);
 
       const answered = await importing(bram, archive, false);
@@ -472,6 +475,9 @@ describe("a graph handed over as an archive", () => {
       const notes = await notesOf(bram, landed.ref);
       expect(notes).toHaveLength(2);
       expect(notes.map((one) => one.address).sort()).toEqual(["1", "1b"]);
+      expect(notes.find((one) => one.address === "1b")?.aliases).toEqual([
+        wasAt,
+      ]);
       expect(
         (await blocksOf(bram, notes.sort((a, b) => a.depth - b.depth)[0].ref))
           .length,
@@ -506,6 +512,31 @@ describe("a graph handed over as an archive", () => {
       expect(landed.ref).not.toBe(bramsHome.ref);
     },
     120_000,
+  );
+
+  scenario(
+    "refuses a graph that puts two notes at one number, naming both",
+    async () => {
+      const bent = unpack(archive);
+      for (const [path, bytes] of bent) {
+        if (noteAt(path) === undefined) continue;
+        const text = decodeText(bytes);
+        if (!text.includes("\naddress: 1b\n")) continue;
+        bent.set(
+          path,
+          encodeText(text.replace("\naddress: 1b\n", "\naddress: 1\n")),
+        );
+      }
+
+      const answered = await importing(bram, pack(bent), true);
+
+      expect(answered.status).toBe(400);
+      const said = (answered.body as { message: string }).message;
+      expect(said).toContain("are numbered 1 —");
+      expect(said).toContain("“A city remembers”");
+      expect(said).toContain("“Under it”");
+    },
+    60_000,
   );
 
   scenario(

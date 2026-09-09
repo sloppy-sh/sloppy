@@ -89,6 +89,7 @@ describe("bringing one in", () => {
     missing_emoji: ["thinking"],
     collisions: [],
     replaces: false,
+    replacing: 0,
   };
 
   it("asks what would arrive without bringing it", async () => {

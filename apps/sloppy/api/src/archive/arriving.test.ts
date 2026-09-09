@@ -3,12 +3,20 @@ import {
   createOwnedRecordId,
   type DidSyr,
   type Node,
+  type NodeAlias,
   nowIso,
   type OwnedRef,
 } from "@sloppy/types";
 import type { VaultNote } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
-import { type Kept, placed, retiring, rowsFor } from "./arriving";
+import {
+  addressesLedBy,
+  type Kept,
+  placed,
+  repeated,
+  retiring,
+  rowsFor,
+} from "./arriving";
 
 const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva" as DidSyr;
 const GRAPH: OwnedRef = `${DID}/01JGRAPH2ND000000000000000`;
@@ -178,15 +186,127 @@ describe("the addresses the notes an import writes over take with them", () => {
     updated_at: nowIso(),
   });
 
+  const led = (address: Address, note: OwnedRef): NodeAlias => ({
+    id: createOwnedRecordId("node_alias", DID),
+    created_by: DID,
+    graph: GRAPH,
+    address,
+    note,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  });
+
   it("retires the ones the archive does not bring back", () => {
     const retired = retiring(
       DID,
       GRAPH,
       [going(ref(1), "1" as Address), going(ref(2), "2" as Address)],
+      [],
       new Set(["1" as Address]),
     );
 
     expect(retired.map((one) => one.address)).toEqual(["2"]);
     expect(retired[0].graph).toBe(GRAPH);
+  });
+
+  it("retires an address the graph led back by that the archive drops", () => {
+    const retired = retiring(
+      DID,
+      GRAPH,
+      [going(ref(1), "1b" as Address)],
+      [led("1a" as Address, ref(1))],
+      new Set(["1b" as Address]),
+    );
+
+    expect(retired.map((one) => one.address)).toEqual(["1a"]);
+  });
+
+  it("leaves an address alone where the archive brings it back as an alias", () => {
+    const retired = retiring(
+      DID,
+      GRAPH,
+      [going(ref(1), "1a" as Address)],
+      [],
+      addressesLedBy([
+        note({
+          ref: ref(1),
+          address: "1c" as Address,
+          aliases: ["1a" as Address],
+        }),
+      ]),
+    );
+
+    expect(retired).toEqual([]);
+  });
+});
+
+describe("an archive that says one thing twice", () => {
+  const section = (ulid: string) => ({
+    ulid,
+    content: { type: "doc" as const, content: [] },
+  });
+
+  it("reads clean where every note, number and section is its own", () => {
+    expect(
+      repeated([
+        note({
+          ref: ref(1),
+          address: "1" as Address,
+          sections: [section("01JSECTAKN0000000000000001")],
+        }),
+        note({
+          ref: ref(2),
+          address: "1a" as Address,
+          sections: [section("01JSECTAKN0000000000000002")],
+        }),
+      ]),
+    ).toBeUndefined();
+  });
+
+  it("names the two notes it puts at one number", () => {
+    const found = repeated([
+      note({ ref: ref(1), address: "1a" as Address, title: "A city" }),
+      note({ ref: ref(2), address: "1a" as Address, title: "The river" }),
+    ]);
+
+    expect(found?.what).toBe("address");
+    expect(found?.address).toBe("1a");
+    expect(found?.notes.map((one) => one.title)).toEqual([
+      "A city",
+      "The river",
+    ]);
+  });
+
+  it("catches one note written into two files", () => {
+    const found = repeated([note({ ref: ref(1) }), note({ ref: ref(1) })]);
+
+    expect(found?.what).toBe("note");
+    expect(found?.notes).toHaveLength(2);
+  });
+
+  it("catches one section pasted into a second note", () => {
+    const found = repeated([
+      note({ ref: ref(1), sections: [section("01JSECTAKN0000000000000001")] }),
+      note({ ref: ref(2), sections: [section("01JSECTAKN0000000000000001")] }),
+    ]);
+
+    expect(found?.what).toBe("section");
+    expect(found?.notes).toHaveLength(2);
+  });
+
+  it("names the one note where a section of it is written twice", () => {
+    const found = repeated([
+      note({
+        ref: ref(1),
+        title: "A city",
+        sections: [
+          section("01JSECTAKN0000000000000001"),
+          section("01JSECTAKN0000000000000001"),
+        ],
+      }),
+    ]);
+
+    expect(found?.what).toBe("section");
+    expect(found?.notes.map((one) => one.title)).toEqual(["A city"]);
   });
 });
