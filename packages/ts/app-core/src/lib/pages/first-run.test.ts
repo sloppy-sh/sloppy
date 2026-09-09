@@ -31,7 +31,13 @@ function shell(vault: Partial<VaultAccess>): void {
 	initRuntime({
 		apiHost: () => '',
 		mode: () => 'local',
-		vault: { folder: () => undefined, asks: true, open: async () => undefined, ...vault }
+		vault: {
+			folder: () => undefined,
+			graph: async () => undefined,
+			asks: true,
+			open: async () => undefined,
+			...vault
+		}
 	});
 }
 

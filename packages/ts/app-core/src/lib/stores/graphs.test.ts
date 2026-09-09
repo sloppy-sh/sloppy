@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import type { GraphView, OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deviceStore } from '../device-store.js';
+import { initRuntime, type VaultAccess } from '../runtime.js';
 import { graphs, MOST_ON_CANVAS } from './graphs.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
@@ -55,6 +56,7 @@ beforeEach(async () => {
 afterEach(() => {
 	localStorage.clear();
 	session.clear();
+	initRuntime({ apiHost: () => 'http://api.test', vault: undefined });
 });
 
 describe('the graphs somebody keeps', () => {
@@ -381,5 +383,89 @@ describe('a graph brought in from a file', () => {
 
 		expect(new TextDecoder().decode(file.bytes)).toBe('a graph');
 		expect(file.filename).toBe('Garden 2026-03-05.sloppy');
+	});
+});
+
+describe('a graph that is a folder on this device', () => {
+	const GARDEN_FOLDER = '/Users/me/garden';
+	const THESIS_FOLDER = '/Users/me/thesis';
+	const IN_FOLDER: Record<string, OwnedRef> = {
+		[GARDEN_FOLDER]: GARDEN.ref,
+		[THESIS_FOLDER]: COMPANY.ref
+	};
+
+	/** A shell serving whichever folder is open, which `open` changes the way a
+	 *  person choosing another one does. */
+	function keeping(folder: string): VaultAccess {
+		let open = folder;
+		return {
+			folder: () => open,
+			graph: async () => IN_FOLDER[open],
+			asks: true,
+			open: async () => (open = THESIS_FOLDER)
+		};
+	}
+
+	function serving(vault: VaultAccess): void {
+		initRuntime({ apiHost: () => 'http://api.test', vault });
+	}
+
+	it('is the one in the folder that is open, not the one the device started with', async () => {
+		serving(keeping(GARDEN_FOLDER));
+
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(graphs.current).toBe(GARDEN.ref);
+	});
+
+	it('is the one in the folder opened next, wherever the reader had been', async () => {
+		const vault = keeping(GARDEN_FOLDER);
+		serving(vault);
+		await graphs.load();
+		await graphs.readOpenFolder();
+		graphs.enter(HOME);
+
+		await vault.open();
+		await graphs.readOpenFolder(true);
+
+		expect(graphs.current).toBe(COMPANY.ref);
+		expect(prefs.current.graph).toBeNull();
+	});
+
+	it('is the one in the folder a launch opens, whatever was read last time', async () => {
+		prefs.set('graph', HOME);
+		serving(keeping(THESIS_FOLDER));
+
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(graphs.current).toBe(COMPANY.ref);
+	});
+
+	it('stays where the reader moved to while that folder is the open one', async () => {
+		serving(keeping(GARDEN_FOLDER));
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		graphs.enter(HOME);
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(graphs.current).toBe(HOME);
+	});
+
+	it('is the one the device started with where no folder is open yet', async () => {
+		serving({
+			folder: () => undefined,
+			graph: async () => undefined,
+			asks: true,
+			open: async () => undefined
+		});
+
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(graphs.current).toBe(HOME);
 	});
 });

@@ -5,7 +5,7 @@
  */
 
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
-import { LocalApi, type Files } from '@sloppy/local';
+import { holdsAGraph, LocalApi, type Files } from '@sloppy/local';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SIGN_IN_CALLBACK } from './deep-link';
 import { tauriFiles } from './files';
@@ -34,8 +34,17 @@ let opened: string | undefined;
 
 let missing = false;
 
+/** One reader and writer over the folder that is open, so the graph the app is
+ *  in and the graph a page asks about are the same one. */
+let served: LocalApi | undefined;
+
+function serving(files: Files): LocalApi {
+	return (served ??= new LocalApi(opened ? files.at(opened) : files));
+}
+
 function serve(folder: string): void {
 	opened = folder;
+	served = undefined;
 	resetApi();
 }
 
@@ -57,10 +66,11 @@ export function vaultIsMissing(): boolean {
 	return missing;
 }
 
-/** A folder a graph was written into never reads back empty, so nothing in it
- *  means it has been moved, renamed or emptied rather than that it is there. */
-async function stillHoldsIt(files: Files, folder: string): Promise<boolean> {
-	return (await files.at(folder).list('')).length > 0;
+/** Whether the graph this device wrote down is still in that folder — the same
+ *  question `@sloppy/local` asks of a folder it is handed, so a folder holding
+ *  files but no graph is offered again here rather than read as one there. */
+function stillHoldsIt(files: Files, folder: string): Promise<boolean> {
+	return holdsAGraph(files.at(folder));
 }
 
 /**
@@ -94,12 +104,13 @@ export function initNativeRuntime(): void {
 		saveFile: null,
 		...(device
 			? {
-					createApi: () => new LocalApi(opened ? device.at(opened) : device),
+					createApi: () => serving(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,
 					vault: {
 						folder: () => opened,
+						graph: async () => (opened ? serving(device).graphHere() : undefined),
 						asks: ASKS_WHERE,
 						open: () => openFolder(device)
 					}

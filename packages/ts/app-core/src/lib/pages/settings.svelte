@@ -88,8 +88,8 @@
 			const chosen = await vault.open();
 			if (!chosen) return;
 			folder = chosen;
-			// The graph in front of somebody is the one in the folder that was open.
 			letGoOfWhatWasRead();
+			await graphs.readOpenFolder(true);
 		} catch (error) {
 			folderProblem =
 				typeof error === 'string' && error.trim()
@@ -249,8 +249,8 @@
 						<p class="text-sm break-all text-foreground select-text">{folder}</p>
 					{/if}
 					<p class="text-sm text-muted-foreground">
-						Open another folder to write in the graph there instead. An empty one starts a graph of
-						its own; either way, what is in this folder stays in it.
+						Open another folder and the graph in it is the one in front of you. An empty one starts
+						a graph of its own; either way, what is in this folder stays in it.
 					</p>
 					<Button
 						variant="outline"

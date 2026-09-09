@@ -114,16 +114,25 @@ function running(
 	initRuntime({ apiHost: () => 'http://api.test', mode: () => mode, saveFile, vault });
 }
 
+/** The graph each folder a suite opens holds, as the shell answers for it. */
+const IN_FOLDER: Record<string, OwnedRef> = {
+	'/Users/me/garden': ref(20),
+	'/Users/me/thesis': ref(21)
+};
+
 /** A shell keeping the graph in `folder`, which somebody chose unless `asks`
- *  says the device keeps its graphs in one place. */
+ *  says the device keeps its graphs in one place. The graph it answers with is
+ *  the one in whichever folder is open. */
 function keeping(folder: string | undefined, asks = true): VaultAccess & { opened: number } {
 	return {
 		opened: 0,
 		folder: () => folder,
+		graph: async () => (folder === undefined ? undefined : IN_FOLDER[folder]),
 		asks,
 		async open() {
 			this.opened += 1;
-			return '/Users/me/thesis';
+			folder = '/Users/me/thesis';
+			return folder;
 		}
 	};
 }
@@ -394,6 +403,7 @@ describe('Settings, on a device holding its own graph', () => {
 
 		expect(vault.opened).toBe(1);
 		expect(screen()).toContain('/Users/me/thesis');
+		expect(graphs.current).toBe(IN_FOLDER['/Users/me/thesis']);
 	});
 
 	// The folder is this app's own there, and there is only the one, so a path

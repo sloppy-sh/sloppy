@@ -129,6 +129,47 @@ describe('the native shell in local mode', () => {
 		expect(registered.vault?.folder()).toBeUndefined();
 	});
 
+	// Every read of it would land in a graph that is not there.
+	it('offers a folder rather than one that holds files but no graph', async () => {
+		await launch();
+		await registered.vault?.open();
+		wroteIn('/Users/me/garden');
+
+		held.delete('/Users/me/garden/graph.json');
+		held.set('/Users/me/garden/README.md', '');
+		const again = await launch();
+
+		expect(await again.openRememberedVault()).toBeUndefined();
+		expect(again.vaultIsMissing()).toBe(true);
+	});
+
+	it('answers with the graph in the folder it has open', async () => {
+		const shell = await launch();
+		await registered.vault?.open();
+
+		const here = await registered.vault?.graph();
+
+		expect(here).toMatch(/^did:syr:[^/]+\/[0-9A-HJKMNP-TV-Z]{26}$/);
+		expect(await shell.openRememberedVault()).toBe('/Users/me/garden');
+	});
+
+	it('answers with the graph in the folder opened next', async () => {
+		await launch();
+		await registered.vault?.open();
+		const first = await registered.vault?.graph();
+
+		picks = '/Users/me/thesis';
+		await registered.vault?.open();
+
+		expect(await registered.vault?.graph()).not.toBe(first);
+	});
+
+	it('has no graph to name before a folder is open', async () => {
+		await launch();
+
+		expect(await registered.vault?.graph()).toBeUndefined();
+	});
+
 	it('has nothing to say about a folder on a device that has never had one', async () => {
 		const shell = await launch();
 

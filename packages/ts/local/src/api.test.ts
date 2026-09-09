@@ -142,6 +142,7 @@ describe("the folder a shell opened", () => {
     for (const path of [...held.store.keys()]) {
       if (path.startsWith("/Users/me/garden")) held.store.delete(path);
     }
+    held.store.set("/Users/me/garden/README.md", new Uint8Array());
 
     const again = opened("/Users/me/garden", held.store);
 
@@ -162,6 +163,42 @@ describe("the folder a shell opened", () => {
     ]);
 
     expect((await held.api.listGraphs()).length).toBe(1);
+  });
+
+  // A read of the open folder starts a graph there and writes that folder down
+  // without waiting behind a write, so a write holding a list it read earlier
+  // would put the folder back the way it was before the read.
+  it("keeps the folder a read wrote down while another was being chosen", async () => {
+    let chose!: (root: string) => void;
+    const chosen = new Promise<string>((answer) => (chose = answer));
+    let asking!: () => void;
+    const asked = new Promise<void>((answer) => (asking = answer));
+
+    class Asking extends MemoryFiles {
+      async pickFolder(): Promise<string | undefined> {
+        asking();
+        return chosen;
+      }
+    }
+
+    const store = new Map<string, Uint8Array>();
+    const api = new LocalApi(
+      new Asking({ root: "/Users/me/garden", data: "/data", store }),
+    );
+
+    const starting = api.createGraph({ title: "Thesis" });
+    await asked;
+    await api.listNodes();
+    chose("/Users/me/thesis");
+    await starting;
+
+    // Read with no folder open, so the answer is what was written down rather
+    // than what the open folder holds.
+    const written = new LocalApi(new MemoryFiles({ data: "/data", store }));
+    expect((await written.listGraphs()).map((one) => one.title)).toEqual([
+      "garden",
+      "Thesis",
+    ]);
   });
 });
 

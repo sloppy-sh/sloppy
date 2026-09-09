@@ -10,6 +10,7 @@
  */
 
 import { setHost } from '@sloppy/client';
+import type { OwnedRef } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
 
@@ -25,6 +26,11 @@ export type DeploymentMode = 'hosted' | 'self_hosted' | 'local';
 export interface VaultAccess {
 	/** `undefined` before any folder has been opened, which is the first run. */
 	folder(): string | undefined;
+	/** The graph in the folder that is open, which is the one in front of
+	 *  somebody here. A folder holding none is a folder somebody has just said a
+	 *  graph is in, so one is started there. `undefined` while no folder is
+	 *  open, which is the first run. */
+	graph(): Promise<OwnedRef | undefined>;
 	/** Open a folder and serve the graph in it from now on. `undefined` is
 	 *  somebody who named none, and is not a failure. */
 	open(): Promise<string | undefined>;
