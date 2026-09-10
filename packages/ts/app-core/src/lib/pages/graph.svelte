@@ -35,6 +35,7 @@
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
+	import HistoryIcon from '@lucide/svelte/icons/history';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListTree from '@lucide/svelte/icons/list-tree';
 	import Maximize from '@lucide/svelte/icons/maximize';
@@ -48,7 +49,9 @@
 	import Upload from '@lucide/svelte/icons/upload';
 	import Users from '@lucide/svelte/icons/users';
 	import {
+		comparingStates,
 		DEFAULT_BUDGET,
+		type GraphDifference,
 		type GraphHandle,
 		type GraphHoverAt,
 		type GraphMenuAt,
@@ -85,6 +88,7 @@
 		ChosenPublish,
 		ChosenTags,
 		ConfirmModal,
+		DifferenceLegend,
 		FindSheet,
 		GraphsSheet,
 		GraphSurface,
@@ -131,6 +135,7 @@
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
+	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
 	import { outlineSections } from '../stores/outline-sections.svelte.js';
@@ -143,6 +148,7 @@
 	import { tags } from '../stores/tags.svelte.js';
 	import { openingWallpaper } from '../wallpaper.js';
 	import GraphTree from './graph-tree.svelte';
+	import HistorySurface from './history.svelte';
 	import Note from './node.svelte';
 	import Writing from './writing.svelte';
 	import { citationUrl, nodeHref, refFromPath } from './routes.js';
@@ -285,6 +291,14 @@
 	 * seed identically and mean different things.
 	 */
 	let foreign = $state<PullView | null>(null);
+	/** Whether the states this graph has been in are up. */
+	let showingHistory = $state(false);
+	/** A state the graph was in, drawn in place of the one it is in. Nothing on
+	 *  the canvas writes while it is up. */
+	let asWas = $state<{ commit: string; message: string; notes: NodeView[] } | null>(null);
+	/** Two states set against each other, drawn on whichever of them is on the
+	 *  canvas. */
+	let comparing = $state<{ says: string; difference: GraphDifference } | null>(null);
 	/** The held note being read, which the canvas also opens around. */
 	let reached = $state<OwnedRef | null>(null);
 	/** The held note whose sections are still on their way. */
@@ -389,11 +403,18 @@
 	const reachedNote = $derived(
 		reached ? (heldNotes.find((note) => note.ref === reached) ?? null) : null
 	);
-	const populated = $derived(
-		foreign ? heldNotes.length > 0 : !loading && !unreachable && roots.length > 0
-	);
+	/** Whether what is on the canvas is a state that is not now — DESIGN.md § "A
+	 *  difference between two states": there is nothing in one to act on. */
+	const notNow = $derived(asWas !== null || comparing !== null);
+
+	const populated = $derived.by(() => {
+		if (asWas) return true;
+		if (foreign) return heldNotes.length > 0;
+		return !loading && !unreachable && roots.length > 0;
+	});
 
 	const visible = $derived.by(() => {
+		if (asWas) return asWas.notes;
 		if (foreign) return heldNotes;
 		const out: NodeView[] = [];
 		const walk = (list: NodeView[]) => {
@@ -1074,6 +1095,19 @@
 		choosing = false;
 		picked.clear();
 		forgetLastAct();
+	}
+
+	/** Everything the reader had going on the graph as it is, put away before a
+	 *  state that is not now goes on the canvas. */
+	function stopActing(): void {
+		stopChoosing();
+		stopPointing();
+		hide();
+	}
+
+	function backToNow(): void {
+		asWas = null;
+		comparing = null;
 	}
 
 	/** The way in as well as the way around: the first note chosen is what puts
@@ -1782,7 +1816,7 @@
 	onkeydown={(event) => {
 		// Last resort: a row of the walk answers these keys for the note it is on,
 		// and has refused the default by the time they reach here.
-		if (event.defaultPrevented || asked || pointing || foreign) return;
+		if (event.defaultPrevented || asked || pointing || foreign || notNow) return;
 		if (opensFind(event)) {
 			event.preventDefault();
 			finding = true;
@@ -1881,10 +1915,14 @@
 					nodes={visible}
 					{collapsed}
 					{selection}
-					fields={foreign ? undefined : graphs.fields}
+					fields={foreign || asWas ? undefined : graphs.fields}
 					viewer={session.viewer?.did}
-					remountKey={foreign?.ref}
-					focus={foreign ? (reached ?? undefined) : (open ?? looking ?? undefined)}
+					remountKey={asWas ? asWas.commit : foreign?.ref}
+					focus={asWas
+						? undefined
+						: foreign
+							? (reached ?? undefined)
+							: (open ?? looking ?? undefined)}
 					picking={pointing && pointingNote
 						? {
 								from: pointing,
@@ -1893,25 +1931,30 @@
 							}
 						: undefined}
 					pictures={ownPictures}
-					reading={foreign ? heldReading : reading}
+					reading={asWas ? undefined : foreign ? heldReading : reading}
 					ground={prefs.current.ground}
 					wallpaper={{
 						picture: showing,
 						strength: wallpaper?.strength ?? 0,
 						transition: wallpaper?.transition
 					}}
-					onHover={(at) => (hoverAt = overGraph ? null : at)}
-					chosen={foreign ? undefined : chosen}
-					onChoose={pointing || foreign ? undefined : chooseAlso}
-					onChooseWithin={pointing || foreign ? undefined : chooseWithin}
-					onMenu={pointing || foreign ? undefined : (at) => (menuAt = at)}
-					onOpenNode={foreign ? (ref) => void readHeld(ref) : show}
+					difference={comparing?.difference}
+					onHover={(at) => (hoverAt = overGraph || notNow ? null : at)}
+					chosen={foreign || notNow ? undefined : chosen}
+					onChoose={pointing || foreign || notNow ? undefined : chooseAlso}
+					onChooseWithin={pointing || foreign || notNow ? undefined : chooseWithin}
+					onMenu={pointing || foreign || notNow ? undefined : (at) => (menuAt = at)}
+					onOpenNode={notNow
+						? (ref) => (bringingTo = ref)
+						: foreign
+							? (ref) => void readHeld(ref)
+							: show}
 					onExpand={(ref) => {
 						folded.delete(ref);
 						if (pointing) looking = ref;
 					}}
 					onCollapse={(ref) => folded.add(ref)}
-					onInkPointer={pointing ? undefined : inkPen}
+					onInkPointer={pointing || notNow ? undefined : inkPen}
 					onTransform={(at) => (fieldAt = at)}
 				/>
 				<CanvasInk
@@ -1930,18 +1973,24 @@
 						bottom: 'calc(var(--sysnav-clearance) + var(--chosen-bar-inset-bottom, 0px))'
 					}}
 					notes={visible}
-					fields={foreign ? undefined : graphs.fields}
+					fields={foreign || asWas ? undefined : graphs.fields}
 					{selection}
-					reading={foreign ? reached : open}
+					reading={asWas ? null : foreign ? reached : open}
 					opened={unfolded}
-					chosen={foreign ? undefined : chosen}
-					onChoose={foreign ? undefined : chooseAlso}
-					onChoosing={foreign ? undefined : (on) => (on ? startChoosing() : stopChoosing())}
+					chosen={foreign || notNow ? undefined : chosen}
+					onChoose={foreign || notNow ? undefined : chooseAlso}
+					onChoosing={foreign || notNow
+						? undefined
+						: (on) => (on ? startChoosing() : stopChoosing())}
 					onToggle={(ref, open) => (open ? unfolded.add(ref) : unfolded.delete(ref))}
-					onOpen={foreign ? (ref) => void readHeld(ref) : openPage}
+					onOpen={notNow
+						? (ref) => (bringingTo = ref)
+						: foreign
+							? (ref) => void readHeld(ref)
+							: openPage}
 					onReached={(ref) => (bringingTo = ref)}
-					writeUnder={foreign ? undefined : writeFromRow}
-					writeAlone={foreign ? undefined : writeAlone}
+					writeUnder={foreign || notNow ? undefined : writeFromRow}
+					writeAlone={foreign || notNow ? undefined : writeAlone}
 				/>
 			{/if}
 		</div>
@@ -2060,6 +2109,48 @@
 					{#if pointRefused}
 						<p class="text-sm text-destructive" role="alert">{pointRefused}</p>
 					{/if}
+				{:else if comparing}
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+						<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
+							What changed
+							<span class="text-muted-foreground">· {comparing.says}</span>
+						</p>
+						<Button
+							variant="ghost"
+							class="ms-auto h-9 shrink-0 rounded-full"
+							onclick={() => (showingHistory = true)}
+						>
+							In words
+						</Button>
+						<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
+							Your graph now
+						</Button>
+						{#if walkingNow}
+							{@render walk()}
+						{/if}
+					</div>
+				{:else if asWas}
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+						<p class="w-full min-w-0 text-sm sm:w-auto sm:flex-1">
+							Your graph as it was
+							{#if asWas.message}
+								<span class="text-muted-foreground">· {asWas.message}</span>
+							{/if}
+						</p>
+						<Button
+							variant="ghost"
+							class="ms-auto h-9 shrink-0 rounded-full"
+							onclick={() => (showingHistory = true)}
+						>
+							History
+						</Button>
+						<Button variant="outline" class="h-9 shrink-0 rounded-full" onclick={backToNow}>
+							Your graph now
+						</Button>
+						{#if walkingNow}
+							{@render walk()}
+						{/if}
+					</div>
 				{:else if foreign}
 					<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
 						<p class="w-full min-w-0 truncate text-sm sm:w-auto sm:flex-1">
@@ -2172,6 +2263,15 @@
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
 								</DropdownMenu.Item>
+								{#if graphHistory.keeps}
+									<DropdownMenu.Item
+										class="min-h-11 gap-2"
+										onSelect={() => (showingHistory = true)}
+									>
+										<HistoryIcon class="size-4 text-muted-foreground" />
+										History
+									</DropdownMenu.Item>
+								{/if}
 								<DropdownMenu.Item class="min-h-11 gap-2" onSelect={() => void takeArchive()}>
 									<Download class="size-4 text-muted-foreground" />
 									Export this graph
@@ -2190,6 +2290,10 @@
 
 				{#if railTags.length > 0 || selection.length > 0}
 					<TagRail tags={railTags} selected={selection} onselect={(next) => tags.select(next)} />
+				{/if}
+
+				{#if comparing}
+					<DifferenceLegend />
 				{/if}
 
 				{#if asLastRead}
@@ -2312,6 +2416,23 @@
 	exact={find.exact}
 	onquery={(words) => find.type(words)}
 	onopen={openFound}
+/>
+
+<HistorySurface
+	bind:open={showingHistory}
+	onShowVersion={(version) => {
+		stopActing();
+		comparing = null;
+		asWas = version;
+	}}
+	onShowDifference={(shown) => {
+		stopActing();
+		asWas = shown?.later ?? null;
+		comparing =
+			shown === null || !comparingStates(shown.difference)
+				? null
+				: { says: shown.says, difference: shown.difference };
+	}}
 />
 
 <GraphsSheet
@@ -2513,7 +2634,7 @@
      somebody else's region — a history pop is the way in that nothing else
      closes. -->
 <ReadingPanel
-	open={(writingNow !== null || (open !== null && !walkingNow)) && !foreign}
+	open={(writingNow !== null || (open !== null && !walkingNow)) && !foreign && !notNow}
 	onOpenChange={(v) => {
 		if (!v) hide();
 	}}

@@ -2,6 +2,7 @@
 // need another machine to finish, and say where the writing is instead.
 // docs/ARCHITECTURE.md § "Local-only mode".
 
+import { type History, MemoryFiles, MemoryHistory } from '@sloppy/local';
 import type { NodeView, OwnedRef, ProfileView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +18,7 @@ import { type AppRuntime, initRuntime, type VaultAccess } from '../runtime.js';
 import { conversation } from '../stores/conversation.svelte.js';
 import { find } from '../stores/find.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
+import { graphHistory } from '../stores/history.svelte.js';
 import { identity } from '../stores/identity.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { outlineSections } from '../stores/outline-sections.svelte.js';
@@ -109,9 +111,30 @@ async function settle(): Promise<void> {
 function running(
 	mode: 'hosted' | 'local',
 	saveFile?: AppRuntime['saveFile'],
-	vault?: VaultAccess
+	vault?: VaultAccess,
+	keeping?: History
 ): void {
-	initRuntime({ apiHost: () => 'http://api.test', mode: () => mode, saveFile, vault });
+	initRuntime({
+		apiHost: () => 'http://api.test',
+		mode: () => mode,
+		saveFile,
+		vault,
+		history: () => keeping
+	});
+}
+
+/** A shell that keeps the states the graph has been in. */
+function withAHistory(): History {
+	return new MemoryHistory(new MemoryFiles());
+}
+
+/** One with a version already kept, for a surface that shows them. */
+async function aFolderWithAVersion(): Promise<History> {
+	const files = new MemoryFiles();
+	await files.write('graph.json', new TextEncoder().encode('{}'));
+	const kept = new MemoryHistory(files);
+	await kept.commit('A first version');
+	return kept;
 }
 
 /** The graph each folder a suite opens holds, as the shell answers for it. */
@@ -229,6 +252,7 @@ beforeEach(() => {
 	identity.clear();
 	find.clear();
 	graphs.clear();
+	graphHistory.clear();
 	people.hold(null);
 	api = useFakeApi();
 	written = [node(1, '1', { title: 'Origins' })];
@@ -253,6 +277,7 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	session.clear();
+	graphHistory.clear();
 	running('hosted');
 	target.remove();
 	document.body.innerHTML = '';
@@ -268,6 +293,22 @@ describe('the graph, on a device holding its own', () => {
 		expect(offered()).not.toContain("Other people's graphs");
 		expect(api.countOf('GET /pulls')).toBe(0);
 		expect(api.countOf('GET /publications')).toBe(0);
+	});
+
+	it('offers the states the graph has been in where the device keeps them', async () => {
+		running('local', undefined, undefined, withAHistory());
+		await openGraph();
+		await openMore();
+
+		expect(offered()).toContain('History');
+	});
+
+	it('offers nothing about them where the platform keeps none', async () => {
+		running('local');
+		await openGraph();
+		await openMore();
+
+		expect(offered()).not.toContain('History');
 	});
 
 	it('still offers it where a Sloppy is serving the graph', async () => {
@@ -374,6 +415,41 @@ describe('a note, on a device holding its own graph', () => {
 	});
 });
 
+describe('who wrote a note, on a device holding its own graph', () => {
+	/** What a graph on this device answers about its owner: the identity itself
+	 *  stands where a username would, and there is no name until one is given. */
+	function owner(name: string | null): ProfileView {
+		return {
+			did: DID,
+			username: DID,
+			display_name: name,
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		};
+	}
+
+	it('says nothing where the owner has not said what to call them', async () => {
+		api.on('GET /profile/me', () => owner(null));
+		running('local');
+		await openNote();
+		await people.read();
+		await settle();
+
+		expect(screen()).not.toContain(DID);
+	});
+
+	it('names them where they have', async () => {
+		api.on('GET /profile/me', () => owner('Ada Lovelace'));
+		running('local');
+		await openNote();
+		await people.read();
+		await settle();
+
+		expect(screen()).toContain('Ada Lovelace');
+	});
+});
+
 describe('Settings, on a device holding its own graph', () => {
 	it('says where the writing is, and offers no Sloppy to point at', async () => {
 		running('local');
@@ -386,6 +462,25 @@ describe('Settings, on a device holding its own graph', () => {
 		expect(has('Sign out')).toBe(false);
 		expect(screen()).not.toContain('Your graph opens once you sign in');
 		expect(api.countOf('GET /profile/me')).toBe(0);
+	});
+
+	it('offers the history where the device keeps one, and nothing where it does not', async () => {
+		running('local', undefined, keeping('/Users/me/garden'), withAHistory());
+		session.adopt(ON_DEVICE, 'this device');
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(has('Open the history')).toBe(true);
+
+		unmount(mounted as ReturnType<typeof mount>, { outro: false });
+		mounted = undefined;
+		running('local', undefined, keeping('/Users/me/garden'));
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		expect(has('Open the history')).toBe(false);
 	});
 
 	it('names the folder the graph is in, and offers another', async () => {
@@ -408,6 +503,24 @@ describe('Settings, on a device holding its own graph', () => {
 
 	// The folder is this app's own there, and there is only the one, so a path
 	// nobody chose and cannot move is a fact they can do nothing with.
+	it('lets go of the states the last folder was in when another one opens', async () => {
+		const keptHere = await aFolderWithAVersion();
+		running('local', undefined, keeping('/Users/me/garden'), keptHere);
+		session.adopt(ON_DEVICE, 'this device');
+		await graphHistory.read();
+		expect(graphHistory.versions.map((one) => one.message)).toEqual(['A first version']);
+		mounted = mount(Settings, { target });
+		flushSync();
+		await settle();
+
+		control('Open another folder').click();
+		await settle();
+
+		expect(graphHistory.versions).toEqual([]);
+		expect(graphHistory.line).toBeUndefined();
+		expect(graphHistory.changed).toBe(null);
+	});
+
 	it('names no folder on a device that keeps its graphs in one place', async () => {
 		running('local', undefined, keeping('/var/mobile/Containers/1/Documents', false));
 		session.adopt(ON_DEVICE, 'this device');

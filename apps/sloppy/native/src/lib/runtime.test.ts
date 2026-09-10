@@ -21,6 +21,8 @@ vi.mock('./deep-link', () => ({ SIGN_IN_CALLBACK: 'sloppy://auth/callback' }));
 const held = new Map<string, string>();
 let picks: string | null = '/Users/me/garden';
 let picking: 'answers' | 'fails' = 'answers';
+/** Each act asked of the history, with the folder it was asked about. */
+const historyAsked: [string, string][] = [];
 
 vi.mock('@tauri-apps/api/core', () => ({
 	convertFileSrc: (path: string, scheme: string) => `${scheme}://localhost/${path}`,
@@ -39,6 +41,9 @@ vi.mock('@tauri-apps/api/core', () => ({
 				return null;
 			case 'files_exists':
 				return held.has(at);
+			case 'history_head':
+				historyAsked.push([command, args?.root as string]);
+				return 'a1b2c3';
 			case 'files_list': {
 				const under = `${args?.root as string}/`;
 				return [...held.keys()]
@@ -77,6 +82,7 @@ describe('the native shell in local mode', () => {
 		held.clear();
 		picks = '/Users/me/garden';
 		picking = 'answers';
+		historyAsked.length = 0;
 		resetApi.mockClear();
 	});
 
@@ -198,6 +204,20 @@ describe('the native shell in local mode', () => {
 
 		expect(await registered.vault?.open()).toBeUndefined();
 		expect(registered.vault?.folder()).toBe('/Users/me/garden');
+	});
+
+	it('has no states to read before a folder is open', async () => {
+		await launch();
+
+		expect(registered.history?.()).toBeUndefined();
+	});
+
+	it('reads the states of the folder it has open', async () => {
+		await launch();
+		await registered.vault?.open();
+
+		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
+		expect(historyAsked).toContainEqual(['history_head', '/Users/me/garden']);
 	});
 
 	it('asks where a desktop can ask', async () => {

@@ -8,7 +8,7 @@ import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import { holdsAGraph, LocalApi, type Files } from '@sloppy/local';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SIGN_IN_CALLBACK } from './deep-link';
-import { tauriFiles } from './files';
+import { tauriFiles, tauriHistory } from './files';
 import { LOCAL_MODE, rememberedVault, rememberVault } from './local-mode';
 import { IS_MOBILE, TAURI_PLATFORM } from './platform';
 
@@ -121,7 +121,8 @@ export function initNativeRuntime(): void {
 						graph: async () => (opened ? serving(device).graphHere() : undefined),
 						asks: ASKS_WHERE,
 						open: () => openFolder(device)
-					}
+					},
+					history: () => (opened ? tauriHistory(opened) : undefined)
 				}
 			: {})
 	});
