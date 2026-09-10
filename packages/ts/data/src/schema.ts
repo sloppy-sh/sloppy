@@ -20,6 +20,11 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
  * Every column carrying the old ref is READONLY, so the definitions come off
  * first and are put back by the ones below. Gated on the index that finds a
  * home graph, which is defined below this and so is absent exactly once.
+ *
+ * The statements commit one at a time, so a person's mint stands on its own if
+ * the process stops mid-crossing: what is minted is the home graph the rest of
+ * the run carries their rows to, and a later run picks that one up and finishes
+ * the carrying rather than passing them over.
  */
 const HOME_GRAPHS = `
   LET $graph_indexes = (INFO FOR TABLE graph).indexes;
@@ -31,17 +36,19 @@ const HOME_GRAPHS = `
     REMOVE FIELD IF EXISTS source_graph ON pulled_node;
     LET $owners = array::distinct(array::concat(
       (SELECT VALUE created_by FROM graph GROUP BY created_by),
-      (SELECT VALUE created_by FROM node GROUP BY created_by)
+      (SELECT VALUE created_by FROM node GROUP BY created_by),
+      (SELECT VALUE created_by FROM retired_address GROUP BY created_by)
     ));
     FOR $did IN $owners {
-      LET $flagged = (SELECT VALUE id FROM graph
-                        WHERE created_by = $did AND home = true LIMIT 1);
+      LET $shared = type::record("graph", {
+        created_by: $did, id: "${UNNAMED_GRAPH_ULID}"
+      });
+      LET $flagged = (SELECT VALUE record::id(id).id FROM graph
+                        WHERE created_by = $did AND home = true
+                        ORDER BY created_at, id LIMIT 1);
+      LET $ulid = $flagged[0] ?? rand::ulid();
       IF array::len($flagged) = 0 {
-        LET $shared = type::record("graph", {
-          created_by: $did, id: "${UNNAMED_GRAPH_ULID}"
-        });
         LET $was = (SELECT title, created_at FROM graph WHERE id = $shared)[0];
-        LET $ulid = rand::ulid();
         LET $now = time::format(time::now(), "%Y-%m-%dT%H:%M:%S.%3fZ");
         CREATE type::record("graph", { created_by: $did, id: $ulid }) CONTENT {
           created_by: $did,
@@ -50,20 +57,20 @@ const HOME_GRAPHS = `
           created_at: $was.created_at ?? $now,
           updated_at: $now
         };
-        LET $from = string::concat($did, "/${UNNAMED_GRAPH_ULID}");
-        LET $to = string::concat($did, "/", $ulid);
-        UPDATE node SET graph = $to
-          WHERE created_by = $did AND graph = $from;
-        UPDATE node_alias SET graph = $to
-          WHERE created_by = $did AND graph = $from;
-        UPDATE retired_address SET graph = $to
-          WHERE created_by = $did AND graph = $from;
-        UPDATE publication SET graph = $to
-          WHERE created_by = $did AND (graph = $from OR graph = NONE);
-        UPDATE pulled_node SET source_graph = $to
-          WHERE source_did = $did AND source_graph = $from;
-        DELETE $shared;
       };
+      LET $from = string::concat($did, "/${UNNAMED_GRAPH_ULID}");
+      LET $to = string::concat($did, "/", $ulid);
+      UPDATE node SET graph = $to
+        WHERE created_by = $did AND graph = $from;
+      UPDATE node_alias SET graph = $to
+        WHERE created_by = $did AND graph = $from;
+      UPDATE retired_address SET graph = $to
+        WHERE created_by = $did AND graph = $from;
+      UPDATE publication SET graph = $to
+        WHERE created_by = $did AND (graph = $from OR graph = NONE);
+      UPDATE pulled_node SET source_graph = $to
+        WHERE source_did = $did AND source_graph = $from;
+      DELETE $shared;
     };
   };
 `;

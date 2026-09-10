@@ -79,4 +79,11 @@ describe("what the person chose beside the file", () => {
 
     expect(fieldIn(body, BOUNDARY, "settle")).toBeNull();
   });
+
+  it("is the whole name, so a field beginning with it is a different field", () => {
+    const body = form([{ name: "settle_later", body: "no" }]);
+
+    expect(fieldIn(body, BOUNDARY, "settle")).toBeNull();
+    expect(fieldIn(body, BOUNDARY, "settle_later")).toBe("no");
+  });
 });

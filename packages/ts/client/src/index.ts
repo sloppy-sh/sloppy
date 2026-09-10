@@ -1088,11 +1088,6 @@ export class SloppyClient {
   }
 }
 
-/**
- * The client surface taken structurally, so an adapter satisfies it by shape
- * and never by cast — the class's private members are part of its emitted type,
- * and an alias to the class itself would be unimplementable outside this file.
- */
 /** The archive and the person's choices as one form, so both reach the import
  *  in the request the archive already travels in. */
 function asForm(archive: BodyInit, settle: ImportSettlement): FormData {
@@ -1110,4 +1105,9 @@ function asForm(archive: BodyInit, settle: ImportSettlement): FormData {
   return form;
 }
 
+/**
+ * The client surface taken structurally, so an adapter satisfies it by shape
+ * and never by cast — the class's private members are part of its emitted type,
+ * and an alias to the class itself would be unimplementable outside this file.
+ */
 export type SloppyApi = { [K in keyof SloppyClient]: SloppyClient[K] };

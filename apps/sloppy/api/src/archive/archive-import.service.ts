@@ -12,6 +12,7 @@ import {
   type ArchivePreview,
   type BlockDocument,
   citedUploads,
+  createOwnedRecordId,
   type DidSyr,
   entityView,
   type GraphView,
@@ -21,6 +22,7 @@ import {
   type Node,
   type OwnedRef,
   ownedRefFrom,
+  UNNAMED_GRAPH_ULID,
 } from "@sloppy/types";
 import {
   type ArchiveManifest,
@@ -269,11 +271,20 @@ export class ArchiveImportService {
    * is what makes taking one out and putting it back a settling of that graph
    * rather than a second copy of everything — the graph somebody started with
    * included, since that one now has a ulid of its own.
+   *
+   * An archive taken out before every graph had one names the ulid no graph
+   * anybody keeps is ever at, so it opens a graph of its own instead.
    */
   private async landing(
     did: DidSyr,
     ulid: string,
   ): Promise<{ ref: OwnedRef; replaces: boolean }> {
+    if (ulid === UNNAMED_GRAPH_ULID) {
+      return {
+        ref: ownedRefFrom(createOwnedRecordId("graph", did)),
+        replaces: false,
+      };
+    }
     const ref: OwnedRef = `${did}/${ulid}`;
     return { ref, replaces: await this.graphs.holds(did, ref) };
   }

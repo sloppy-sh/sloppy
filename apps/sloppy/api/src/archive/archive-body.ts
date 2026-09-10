@@ -71,6 +71,15 @@ export function fileIn(body: Buffer, boundary: string): Uint8Array | null {
   return null;
 }
 
+/** A part's `name` parameter, whole: `settle_later` is not `settle`. */
+function named(name: string): RegExp {
+  const literal = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `;\\s*name\\s*=\\s*(?:"${literal}"|${literal}(?=[;\\s]|$))`,
+    "i",
+  );
+}
+
 /**
  * The value of a form field, or `null` where the form carries none by that
  * name. A part with a filename is the archive rather than a field.
@@ -82,9 +91,7 @@ export function fieldIn(
 ): string | null {
   for (const part of partsIn(body, boundary)) {
     if (CARRIES_A_FILE.test(part.headers)) continue;
-    if (new RegExp(`;\\s*name\\s*=\\s*"?${name}"?`, "i").test(part.headers)) {
-      return part.value.toString("utf8");
-    }
+    if (named(name).test(part.headers)) return part.value.toString("utf8");
   }
   return null;
 }

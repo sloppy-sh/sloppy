@@ -17,8 +17,16 @@ import {
   type NodeView,
   type OwnedRef,
   splitOwnedRef,
+  UNNAMED_GRAPH_ULID,
 } from "@sloppy/types";
-import { decodeText, encodeText, noteAt, pack, unpack } from "@sloppy/vault";
+import {
+  decodeText,
+  encodeText,
+  GRAPH_FILE,
+  noteAt,
+  pack,
+  unpack,
+} from "@sloppy/vault";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
@@ -510,6 +518,36 @@ describe("a graph handed over as an archive", () => {
         (await ok("GET", "/graphs", bram)) as GraphView[]
       )[0] as GraphView;
       expect(landed.ref).not.toBe(bramsHome.ref);
+    },
+    120_000,
+  );
+
+  scenario(
+    "opens a graph of its own for an archive taken out before graphs had one",
+    async () => {
+      const older = unpack(archive);
+      const said = JSON.parse(decodeText(older.get(GRAPH_FILE) as Uint8Array));
+      older.set(
+        GRAPH_FILE,
+        encodeText(
+          `${JSON.stringify({ ...said, graph: UNNAMED_GRAPH_ULID }, null, 2)}\n`,
+        ),
+      );
+      const taken = pack(older);
+      const cleo = await signIn(`cleo${Date.now().toString(36)}`);
+
+      const preview = ArchivePreviewSchema.parse(
+        (await importing(cleo, taken, true)).body,
+      );
+      expect(preview.replaces).toBe(false);
+
+      const landed = (await importing(cleo, taken, false)).body as GraphView;
+      const local = splitOwnedRef(landed.ref).localId;
+      const cleosHome = (
+        (await ok("GET", "/graphs", cleo)) as GraphView[]
+      )[0] as GraphView;
+      expect(local).not.toBe(UNNAMED_GRAPH_ULID);
+      expect(landed.ref).not.toBe(cleosHome.ref);
     },
     120_000,
   );

@@ -44,8 +44,16 @@ export class GraphService {
     return this.minting.run(did, async () => {
       const found = await this.graphs.home(did);
       if (found !== null) return found;
-      const opened = await this.graphs.insert(did, HOME_GRAPH_TITLE, true);
-      return ownedRefFrom(opened.id);
+      try {
+        const opened = await this.graphs.insert(did, HOME_GRAPH_TITLE, true);
+        return ownedRefFrom(opened.id);
+      } catch (err) {
+        // One home graph per person is `graph_owner_home`'s rule, so a second
+        // process minting alongside this one is refused rather than raced.
+        const won = await this.graphs.home(did);
+        if (won === null) throw err;
+        return won;
+      }
     });
   }
 

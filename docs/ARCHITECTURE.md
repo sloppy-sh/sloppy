@@ -255,8 +255,12 @@ otherwise be left naming a graph none of its own notes are in — and the
 `pulled_node.source_graph` of an author this instance itself holds, from
 `<did>/00000000000000000000000000` to the minted ref. It is
 idempotent because it is bounded by what still spells that ulid, and a second run over a
-store it has already crossed reads nothing to write. `schema.integration.test.ts` holds it
-against a store built the old way.
+store it has already crossed reads nothing to write. The statements commit one at a time, so
+a run that stops part way leaves an identity minted and its rows still spelling the old ulid;
+the next run carries them to the home graph already flagged rather than passing that identity
+over, which is why the mint is what is gated and never the carrying.
+`schema.integration.test.ts` holds it against a store built the old way and against one whose
+crossing stopped after the mint.
 
 **One home graph per person is the database's rule**, not the application's:
 `graph_owner_home` is UNIQUE, and a graph that is not home leaves the column out rather than
@@ -271,7 +275,9 @@ is the constant: `graphRef(owner, undefined)` answers it, and it is what a peer 
 from before a page carried its graph leaves out. Nothing mints it — `ulid()` writes the current
 time into a ULID's first ten characters — so no graph anybody keeps is ever at it, and a
 `pulled_node` of a peer this instance does not hold keeps it rather than being given a home
-graph ulid nobody here can know.
+graph ulid nobody here can know. An archive taken out before every graph had one names it in
+`graph.json`; both surfaces open a graph of its own for it rather than settling it into the
+graph the importer started with — `ArchiveImportService`'s landing and `LocalGraph.open`.
 
 The two columns a UNIQUE index reads — `node.graph` and `pulled_node.source_graph` — are never
 absent, because SurrealDB does not constrain a row whose indexed column is absent, and two rows

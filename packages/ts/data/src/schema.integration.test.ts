@@ -1461,6 +1461,107 @@ describe.skipIf(!runs)("a store whose graphs all shared one ulid", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The crossing that stopped part way.
+//
+// The statements commit one at a time, so a process that dies mid-crossing
+// leaves one identity minted and its rows still naming the old ref. The next
+// run has to finish that identity rather than pass over it, or the addresses
+// its retired rows are holding are offered again.
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!runs)("a crossing that stopped after the mint", () => {
+  const DATABASE_HALF = `half_home_${Date.now()}`;
+  const MINTED = "01JMNTED0000000000000000AB";
+  let db: Surreal;
+
+  beforeAll(async () => {
+    db = new Surreal();
+    await db.connect(ENDPOINT.href);
+    await db.signin({ username: USER, password: PASS });
+    await db.use({ namespace: NAMESPACE, database: DATABASE_HALF });
+    const was = unnamedGraphRef(AVA);
+    await db.query(
+      `DEFINE TABLE IF NOT EXISTS graph SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS node_alias SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS retired_address SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
+       CREATE $shared CONTENT $sharedRow;
+       CREATE $minted CONTENT $mintedRow;
+       CREATE $node CONTENT $nodeRow;
+       CREATE $retired CONTENT $retiredRow;`,
+      {
+        shared: new RecordId("graph", {
+          created_by: AVA,
+          id: "00000000000000000000000000",
+        }),
+        sharedRow: {
+          created_by: AVA,
+          title: "Everything",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        minted: new RecordId("graph", { created_by: AVA, id: MINTED }),
+        mintedRow: {
+          created_by: AVA,
+          title: "Everything",
+          home: true,
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-02-01T00:00:00.000Z",
+        },
+        node: nodeId(AVA, "01JSTPN00000000000000000AB"),
+        nodeRow: {
+          created_by: AVA,
+          graph: was,
+          address: "1",
+          depth: 1,
+          origin: `${AVA}/01JSTPN00000000000000000AB`,
+          title: "Root",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        retired: avaId("retired_address", "01JSTPR00000000000000000AB"),
+        retiredRow: {
+          created_by: AVA,
+          graph: was,
+          address: "3",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+      },
+    );
+
+    await defineCoreSchema(db);
+    await defineCoreSchema(db);
+  });
+
+  afterAll(async () => {
+    if (!db) return;
+    await db.query(`REMOVE DATABASE IF EXISTS ${DATABASE_HALF};`);
+    await db.close();
+  });
+
+  it("carries the rows left behind to the home graph already minted", async () => {
+    const [nodes, retired] = await db.query<[string[], string[]]>(
+      `SELECT VALUE graph FROM node;
+       SELECT VALUE graph FROM retired_address;`,
+    );
+    expect(nodes).toEqual([`${AVA}/${MINTED}`]);
+    expect(retired).toEqual([`${AVA}/${MINTED}`]);
+  });
+
+  it("leaves one graph, and not the one everybody shared", async () => {
+    const [rows] = await db.query<[{ id: RecordId; home?: boolean }[]]>(
+      "SELECT id, home FROM graph WHERE created_by = $did;",
+      { did: AVA },
+    );
+    expect(rows).toHaveLength(1);
+    expect(String((rows[0].id.id as { id: string }).id)).toBe(MINTED);
+    expect(rows[0].home).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The store somebody already has.
 //
 // Every note written before a person could keep more than one graph is in the
