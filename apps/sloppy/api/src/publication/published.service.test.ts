@@ -7,7 +7,7 @@ import {
   type Address,
   type DidSyr,
   childAddress,
-  homeGraphRef,
+  unnamedGraphRef,
   MAX_PUBLISHED_PAGES,
   type OwnedRef,
   type Publication,
@@ -255,7 +255,7 @@ function repositoryOf(first: Snapshot): {
     async graphTitles(_did: string, graphs: readonly OwnedRef[]) {
       return new Map(
         graphs
-          .filter((of) => of === homeGraphRef(AVA))
+          .filter((of) => of === unnamedGraphRef(AVA))
           .map((of) => [of, NOTEBOOK]),
       );
     },

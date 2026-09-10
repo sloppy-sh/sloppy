@@ -8,22 +8,28 @@ import { splitOwnedRef } from "./codecs.js";
 import { type DidSyr, OwnedEntitySchema, type OwnedRef } from "./common.js";
 
 /**
- * The local id of the graph everybody already has. Reserved rather than minted:
- * `ulid()` writes the current time into a ULID's first ten characters, so
- * nothing it draws can collide with this one.
+ * The local id a graph nobody named is read under: what a row written before
+ * graphs existed holds, and what a peer serving a page from before a page
+ * carried its graph leaves out. Reserved rather than minted — `ulid()` writes
+ * the current time into a ULID's first ten characters — so no graph anybody
+ * keeps is ever at it.
  */
-export const HOME_GRAPH_ULID = "00000000000000000000000000";
+export const UNNAMED_GRAPH_ULID = "00000000000000000000000000";
 
 /** What the home graph is called until its owner calls it something else. */
 export const HOME_GRAPH_TITLE = "My graph";
 
 /**
- * A graph somebody keeps. The row is the NAME and nothing more — what a note
- * belongs to is the ref, and the home graph answers to its ref whether or not
- * a row for it has ever been written.
+ * A graph somebody keeps. What a note belongs to is the ref; the row is the
+ * name, and which of them its owner started with.
+ *
+ * `home` is that one — where a note naming no graph goes, and the graph its
+ * owner cannot close. Absent is a graph that is not it, which is what every
+ * graph opened alongside it says and what a row written before the column says.
  */
 export const GraphSchema = OwnedEntitySchema.extend({
   title: z.string().min(1).max(512),
+  home: z.boolean().optional(),
 });
 export type Graph = z.infer<typeof GraphSchema>;
 
@@ -34,26 +40,24 @@ export class InvalidGraphRefError extends Error {
   }
 }
 
-/**
- * The graph a person's notes are in before they make a second one. Its local id
- * is fixed, so this is a function of the identity rather than a lookup, and the
- * boot migration in `@sloppy/data`'s `schema.ts` can spell it in SurrealQL.
- */
-export function homeGraphRef(owner: DidSyr): OwnedRef {
-  return `${owner}/${HOME_GRAPH_ULID}`;
+/** The graph a ref names where nobody named one. */
+export function unnamedGraphRef(owner: DidSyr): OwnedRef {
+  return `${owner}/${UNNAMED_GRAPH_ULID}`;
 }
 
-export function isHomeGraphRef(ref: OwnedRef): boolean {
-  return splitOwnedRef(ref).localId === HOME_GRAPH_ULID;
+export function isUnnamedGraphRef(ref: OwnedRef): boolean {
+  return splitOwnedRef(ref).localId === UNNAMED_GRAPH_ULID;
 }
 
 /**
- * Which graph something is in. **Absent is the owner's home graph** — what a
- * note written before anybody could have a second graph says, and what a peer
- * serving that answer sends — so this is the one place the two are made one.
+ * Which graph something is in. **Absent is a graph nobody named** — what a row
+ * written before anybody could have a second graph holds, and what a peer that
+ * has not heard of graphs sends — so this is the one place the two are made
+ * one. It is never somebody's home graph: that one has a ulid of its own and
+ * is looked up, not spelled.
  */
 export function graphRef(owner: DidSyr, graph: OwnedRef | undefined): OwnedRef {
-  return graph ?? homeGraphRef(owner);
+  return graph ?? unnamedGraphRef(owner);
 }
 
 /** A graph belongs to one identity, and nobody files a note in somebody else's.
@@ -84,7 +88,7 @@ export const CreateGraphRequestSchema = z.strictObject(
 );
 export type CreateGraphRequest = z.input<typeof CreateGraphRequestSchema>;
 
-/** Rename one. Renaming the home graph is what first writes a row for it. */
+/** Rename one. */
 export const UpdateGraphRequestSchema = z.object({
   title: z
     .string()

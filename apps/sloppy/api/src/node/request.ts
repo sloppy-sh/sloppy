@@ -11,7 +11,6 @@ import {
   DidSyrSchema,
   type OwnedRef,
   OwnedRefSchema,
-  homeGraphRef,
   splitOwnedRef,
 } from "@sloppy/types";
 import type { z } from "zod";
@@ -114,12 +113,15 @@ export function requireGraphRef(did: string, localId: string): OwnedRef {
 }
 
 /**
- * Which of the caller's graphs a read is about. An absent parameter is their
- * home graph, the way an address with no graph beside it means the one they are
- * looking at.
+ * Which of the caller's graphs a read is about, or absent where they named
+ * none — which the service reads as the graph they started with, the way an
+ * address with no graph beside it means the one they are looking at.
  */
-export function graphOrRefuse(raw: string | undefined, did: DidSyr): OwnedRef {
-  if (!raw) return homeGraphRef(did);
+export function graphOrRefuse(
+  raw: string | undefined,
+  did: DidSyr,
+): OwnedRef | undefined {
+  if (!raw) return undefined;
   const parsed = OwnedRefSchema.safeParse(raw);
   if (!parsed.success || splitOwnedRef(parsed.data).did !== did) {
     throw new NotFoundException("That graph is not here.");

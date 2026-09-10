@@ -9,13 +9,7 @@ import type {
 	PullView,
 	Tag
 } from '@sloppy/types';
-import {
-	citedNotes,
-	homeGraphRef,
-	MARK_SCALE_MAX,
-	rebaseAddress,
-	REFERENCE_NOTE_ATTR
-} from '@sloppy/types';
+import { citedNotes, MARK_SCALE_MAX, rebaseAddress, REFERENCE_NOTE_ATTR } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deviceStore } from '../device-store.js';
@@ -532,7 +526,8 @@ describe('deleting a note', () => {
 
 	it('will not name a number before the branch it would count is here', async () => {
 		nodes.clear();
-		await nodes.load();
+		// The branch will not read, so nothing here can count what goes with it.
+		api.on('GET /nodes', () => new Response('{}', { status: 503 }));
 		await openNote(FIRST);
 		await act('Delete this note');
 
@@ -1236,7 +1231,7 @@ describe('a number that says the note springs from somewhere else', () => {
 			if (!reads) throw new Error('unreachable');
 			return [
 				{
-					ref: homeGraphRef(DID),
+					ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef,
 					created_by: DID,
 					created_at: AT,
 					updated_at: AT,
@@ -1429,7 +1424,7 @@ describe('writing the notes a number springs through', () => {
 		alter?.(graph);
 		api.on('GET /graphs', () => [
 			{
-				ref: homeGraphRef(DID),
+				ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef,
 				created_by: DID,
 				created_at: AT,
 				updated_at: AT,
@@ -2407,7 +2402,7 @@ describe('how a note looks', () => {
 describe('linking a note to one in another graph', () => {
 	const GARDEN = ref(30);
 	const BEDS = ref(31);
-	const HOME = homeGraphRef(DID);
+	const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 	let graph: Map<OwnedRef, NodeView>;
 
 	function listedGraph(self: OwnedRef, title: string) {
@@ -2745,7 +2740,7 @@ describe('citing a note held from somebody else', () => {
 	/** A note out of that region: addressed by its AUTHOR, as every held one is. */
 	function theirs(over: Partial<NodeView> = {}): NodeView {
 		return {
-			...node(71, '1a', { title: 'Ash keys' }),
+			...node(71, '1a', { title: 'Ash keys', created_by: PEER }),
 			ref: THEIRS,
 			created_by: PEER,
 			origin: THEIRS,
@@ -2853,7 +2848,13 @@ describe('which graph the note at the head is read in', () => {
 		graphs.clear();
 		installGraph();
 		api.on('GET /graphs', () => [
-			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Biology' },
+			{
+				ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef,
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				title: 'Biology'
+			},
 			{ ref: GARDEN, created_by: DID, created_at: AT, updated_at: AT, title: 'Garden' }
 		]);
 		api.on(`GET ${path(COMPOST.ref)}`, () => COMPOST);
@@ -2913,7 +2914,13 @@ describe('handing a note to somebody', () => {
 
 	it('copies the address under the name of the graph it is read in', async () => {
 		api.on('GET /graphs', () => [
-			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Biology' }
+			{
+				ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef,
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				title: 'Biology'
+			}
 		]);
 		await graphs.load();
 		await openNote(SECOND);
@@ -2929,7 +2936,13 @@ describe('handing a note to somebody', () => {
 	// off screen — and the one control that keeps its place is what is left.
 	it('copies the address from the control that keeps its place', async () => {
 		api.on('GET /graphs', () => [
-			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Biology' }
+			{
+				ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef,
+				created_by: DID,
+				created_at: AT,
+				updated_at: AT,
+				title: 'Biology'
+			}
 		]);
 		await graphs.load();
 		await openNote(SECOND);

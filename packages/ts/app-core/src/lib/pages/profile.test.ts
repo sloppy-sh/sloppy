@@ -1,6 +1,6 @@
 import {
 	HOME_GRAPH_TITLE,
-	homeGraphRef,
+	type OwnedRef,
 	type ProfileView,
 	type PublicationView
 } from '@sloppy/types';
@@ -95,7 +95,7 @@ beforeEach(() => {
 	api.on('GET /profile/me', () => STORED);
 	api.on('GET /graphs', () => [
 		{
-			ref: homeGraphRef(DID),
+			ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef,
 			created_by: DID,
 			created_at: AT,
 			updated_at: AT,

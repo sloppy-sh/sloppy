@@ -1,5 +1,4 @@
 import {
-	homeGraphRef,
 	type CreateBlockRequest,
 	type CreateNodeRequest,
 	type GraphView,
@@ -43,7 +42,7 @@ vi.mock('$app/navigation', () => ({
 
 const New = (await import('./new.svelte')).default;
 
-const HOME = homeGraphRef(VIEWER.did);
+const HOME = `${VIEWER.did}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 const GARDEN = ref(40);
 const WRITTEN = ref(90);
 
@@ -164,7 +163,9 @@ describe('putting a thought down from outside', () => {
 
 		await arriveAt(newHref({ text: 'Keep this' }));
 
-		expect(wrote).toEqual([{ from: { relation: 'free', graph: HOME } }]);
+		// Naming no graph is the graph they started with, which the server knows
+		// without anybody here being told which one it is.
+		expect(wrote).toEqual([{ from: { relation: 'free' } }]);
 		expect(at.path).toBe(nodeHref(WRITTEN));
 	});
 
@@ -227,7 +228,7 @@ describe('putting a thought down from outside', () => {
 	it('writes a note of its own when it is handed a note nobody can continue', async () => {
 		await arriveAt('/new?under=not-a-note');
 
-		expect(wrote).toEqual([{ from: { relation: 'free', graph: HOME } }]);
+		expect(wrote).toEqual([{ from: { relation: 'free' } }]);
 	});
 
 	it('says a refusal in the server’s own words, and a second try writes no second note', async () => {

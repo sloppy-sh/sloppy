@@ -18,7 +18,7 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
-import { homeGraphRef } from "./graph.js";
+import { unnamedGraphRef } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
 /**
@@ -496,10 +496,10 @@ export function publishedSubtreeReader(
         }
       }
       if (page.graph !== undefined) requireAuthor(page.graph, author);
-      // Resolved rather than compared as it arrived: absent and the home
-      // graph's own ref are one graph said two ways, and a peer that spells it
-      // the other way has not changed its answer half way through.
-      const graph = page.graph ?? homeGraphRef(author);
+      // Resolved rather than compared as it arrived: absent and the ref for a
+      // graph nobody named are one graph said two ways, and a peer that spells
+      // it the other way has not changed its answer half way through.
+      const graph = page.graph ?? unnamedGraphRef(author);
       if (heldGraph !== undefined && graph !== heldGraph) {
         throw new UnaskedAnswerError("a region in two of one author's graphs");
       }

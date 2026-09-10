@@ -145,6 +145,16 @@ describe("the domain routes", () => {
   const newGraph = (person: Person, title: string): Promise<GraphView> =>
     ok("POST", "/graphs", person, { title }) as Promise<GraphView>;
 
+  /** The graph this person started with. Its ulid is its own, so it is read
+   *  rather than spelled — docs/ARCHITECTURE.md § "The genealogy and the
+   *  address". */
+  const homeOf = async (person: Person): Promise<OwnedRef> => {
+    const listed = (await ok("GET", "/graphs", person)) as GraphView[];
+    const home = listed.find((graph) => graph.home);
+    if (!home) throw new Error("That person has no graph of their own.");
+    return home.ref;
+  };
+
   const branchesOf = (person: Person, graph?: OwnedRef): Promise<NodeView[]> =>
     ok(
       "GET",
@@ -790,10 +800,9 @@ describe("the domain routes", () => {
 
       const rows: unknown[] = [];
       const now = "2026-01-01T00:00:00.000Z";
-      const { homeGraphRef } = await import("@sloppy/types");
       const shared = {
         created_by: bram.did,
-        graph: homeGraphRef(bram.did),
+        graph: await homeOf(bram),
         origin,
         created_at: now,
         updated_at: now,
@@ -1448,17 +1457,17 @@ describe("the domain routes", () => {
     scenario(
       "lists the one they started with first, and their own only",
       async () => {
-        const { homeGraphRef } = await import("@sloppy/types");
+        const home = await homeOf(bram);
         const listed = (await ok("GET", "/graphs", bram)) as GraphView[];
 
-        expect(listed[0].ref).toBe(homeGraphRef(bram.did));
+        expect(listed[0].ref).toBe(home);
         expect(listed.every((graph) => graph.ref.startsWith(bram.did))).toBe(
           true,
         );
 
         await newGraph(bram, "Field notes");
         const after = (await ok("GET", "/graphs", bram)) as GraphView[];
-        expect(after[0].ref).toBe(homeGraphRef(bram.did));
+        expect(after[0].ref).toBe(home);
         expect(after.map((graph) => graph.title)).toContain("Field notes");
       },
     );
@@ -1466,8 +1475,7 @@ describe("the domain routes", () => {
     scenario("renames the one that had no name of its own", async () => {
       // Everybody has that graph before anything is written down about it, so
       // naming it is the first thing that is.
-      const { homeGraphRef } = await import("@sloppy/types");
-      const home = homeGraphRef(ada.did);
+      const home = await homeOf(ada);
       const renamed = (await ok("PATCH", `/graphs/${at(home)}`, ada, {
         title: "Everything so far",
       })) as GraphView;
@@ -1520,12 +1528,11 @@ describe("the domain routes", () => {
     });
 
     scenario("refuses to close the graph somebody started with", async () => {
-      const { homeGraphRef } = await import("@sloppy/types");
       const written = await newNode(ada, { title: "Stays put" });
 
       const answer = await call(
         "DELETE",
-        `/graphs/${at(homeGraphRef(ada.did))}`,
+        `/graphs/${at(await homeOf(ada))}`,
         ada,
       );
 
@@ -1847,9 +1854,7 @@ describe("the domain routes", () => {
       // A note that has moved is reached by two addresses, and the row that
       // carries the older one goes when the note is finally taken. Both numbers
       // stay spent: a citation of either must never open a later thought.
-      const { createOwnedRecordId, homeGraphRef, nowIso } = await import(
-        "@sloppy/types"
-      );
+      const { createOwnedRecordId, nowIso } = await import("@sloppy/types");
       const { DbService } = await import("../db/db.service");
       const { NodeRepository } = await import("./node.repository");
 
@@ -1862,7 +1867,7 @@ describe("the domain routes", () => {
         row: {
           id: createOwnedRecordId("node_alias", ada.did),
           created_by: ada.did,
-          graph: homeGraphRef(ada.did),
+          graph: await homeOf(ada),
           parent: root.ref,
           address: left,
           note: going.ref,
@@ -1880,12 +1885,19 @@ describe("the domain routes", () => {
       );
       expect(aliases).toEqual([]);
 
-      const [retired] = await db.query<[{ address: string; parent: string }[]]>(
-        "SELECT address, parent FROM retired_address WHERE created_by = $did AND parent = $parent;",
+      const [retired] = await db.query<
+        [{ address: string; parent: string; note?: string }[]]
+      >(
+        "SELECT address, parent, note FROM retired_address WHERE created_by = $did AND parent = $parent;",
         { did: ada.did, parent: root.ref },
       );
       expect(retired.map((row) => row.address).sort()).toEqual(
         [going.address, left].sort(),
+      );
+      // Both numbers are the purged note's, and stay its own to take back —
+      // AI.md § "The Genealogy Is the Protocol".
+      expect(new Set(retired.map((row) => row.note))).toEqual(
+        new Set([going.ref]),
       );
 
       const next = await newNode(ada, { from: springsFrom(root) });

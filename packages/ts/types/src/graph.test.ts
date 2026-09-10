@@ -5,11 +5,11 @@ import { splitOwnedRef, ulid } from "./codecs.js";
 import {
   CreateGraphRequestSchema,
   graphRef,
-  HOME_GRAPH_ULID,
-  homeGraphRef,
   InvalidGraphRefError,
-  isHomeGraphRef,
+  isUnnamedGraphRef,
   requireOwnGraph,
+  UNNAMED_GRAPH_ULID,
+  unnamedGraphRef,
   UpdateGraphRequestSchema,
 } from "./graph.js";
 import { graphOf, parseNode, runKeyOf } from "./node.js";
@@ -38,26 +38,26 @@ function row(address: string, graph?: string, parent?: string) {
 }
 
 describe("the graph an address is read in", () => {
-  it("is a ref its owner holds, and the home one is a function of the identity", () => {
-    expect(homeGraphRef(AVA)).toBe(`${AVA}/${HOME_GRAPH_ULID}`);
-    expect(splitOwnedRef(homeGraphRef(AVA)).did).toBe(AVA);
-    expect(isHomeGraphRef(homeGraphRef(AVA))).toBe(true);
-    expect(isHomeGraphRef(SECOND)).toBe(false);
+  it("is a ref its owner holds, and one nobody named is spelled from the DID", () => {
+    expect(unnamedGraphRef(AVA)).toBe(`${AVA}/${UNNAMED_GRAPH_ULID}`);
+    expect(splitOwnedRef(unnamedGraphRef(AVA)).did).toBe(AVA);
+    expect(isUnnamedGraphRef(unnamedGraphRef(AVA))).toBe(true);
+    expect(isUnnamedGraphRef(SECOND)).toBe(false);
   });
 
   it("is reserved, so nothing a fresh mint draws can be it", () => {
-    // The reservation is the whole basis for deriving it rather than storing a
-    // pointer to it, and a ULID carries the clock in its first ten characters.
-    expect(UlidSchema.parse(HOME_GRAPH_ULID)).toBe(HOME_GRAPH_ULID);
+    // The reservation is what keeps a graph nobody named apart from every graph
+    // somebody keeps, and a ULID carries the clock in its first ten characters.
+    expect(UlidSchema.parse(UNNAMED_GRAPH_ULID)).toBe(UNNAMED_GRAPH_ULID);
     for (let drawn = 0; drawn < 5_000; drawn++) {
-      expect(ulid()).not.toBe(HOME_GRAPH_ULID);
+      expect(ulid()).not.toBe(UNNAMED_GRAPH_ULID);
     }
   });
 
-  it("reads an absent one as the owner's home graph, wherever it is absent", () => {
-    expect(graphRef(AVA, undefined)).toBe(homeGraphRef(AVA));
+  it("reads an absent one as a graph nobody named, wherever it is absent", () => {
+    expect(graphRef(AVA, undefined)).toBe(unnamedGraphRef(AVA));
     expect(graphRef(AVA, SECOND)).toBe(SECOND);
-    expect(graphOf(row("1"))).toBe(homeGraphRef(AVA));
+    expect(graphOf(row("1"))).toBe(unnamedGraphRef(AVA));
     expect(graphOf(row("1", SECOND))).toBe(SECOND);
   });
 
@@ -87,7 +87,7 @@ describe("the run a branch lies in", () => {
   it("never reads a graph's ref as a note's", () => {
     // Both are `<did>/<ulid>`, and nothing stops one table minting the id
     // another already used.
-    const asNote = `${AVA}/${HOME_GRAPH_ULID}`;
+    const asNote = `${AVA}/${UNNAMED_GRAPH_ULID}`;
     expect(runKeyOf(row("1a", undefined, asNote))).not.toBe(runKeyOf(row("1")));
   });
 });

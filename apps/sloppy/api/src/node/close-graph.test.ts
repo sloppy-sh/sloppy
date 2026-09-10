@@ -3,7 +3,6 @@
 import { BadRequestException } from "@nestjs/common";
 import {
   createOwnedRecordId,
-  homeGraphRef,
   type Node,
   type OwnedRef,
   ownedRefFrom,
@@ -19,6 +18,7 @@ import { NodeService } from "./node.service";
 
 const DID = "did:syr:z6MkAda";
 const GARDEN = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5FAV` as OwnedRef;
+const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 
 const media = {} as MediaService;
 const finds = {} as FindRepository;
@@ -54,7 +54,9 @@ function deletedNote(address: string): Node {
  *  one note. */
 function holding(roots: Node[]) {
   const rows = {
-    find: vi.fn(() => Promise.resolve({ id: "row" })),
+    find: vi.fn((_did: string, ref: OwnedRef) =>
+      Promise.resolve({ id: "row", home: ref === HOME }),
+    ),
     remove: vi.fn(() => Promise.resolve()),
   } as unknown as GraphRepository;
   const graphs = new GraphService(rows);
@@ -118,7 +120,7 @@ describe("closing a graph", () => {
   it("refuses the graph somebody started with, in words, and leaves it alone", async () => {
     const { service, nodes, rows } = holding([note("1")]);
 
-    const closing = service.closeGraph(DID, homeGraphRef(DID), undefined);
+    const closing = service.closeGraph(DID, HOME, undefined);
 
     await expect(closing).rejects.toBeInstanceOf(BadRequestException);
     await expect(closing).rejects.toThrow(/started with stays/);

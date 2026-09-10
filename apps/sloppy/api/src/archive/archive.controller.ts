@@ -1,14 +1,25 @@
-import { Controller, Get, Param, Post, Query, Req, Res } from "@nestjs/common";
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+} from "@nestjs/common";
 import {
   type ArchivePreview,
   type GraphView,
+  type ImportResolution,
+  ImportSettlementSchema,
   MAX_ARCHIVE_BYTES,
 } from "@sloppy/types";
 import { ARCHIVE_MIME } from "@sloppy/vault";
 import type { Response } from "express";
 import type { AuthedRequest } from "../auth/authed-request";
 import { requireGraphRef, viewerDelegation, viewerDid } from "../node/request";
-import { readArchive } from "./archive-body";
+import { readImport } from "./archive-body";
 import { ArchiveExportService } from "./archive-export.service";
 import { ArchiveImportService } from "./archive-import.service";
 
@@ -49,12 +60,25 @@ export class ArchiveController {
     @Req() req: AuthedRequest,
     @Query("preview") preview: string | undefined,
   ): Promise<ArchivePreview | GraphView> {
-    const bytes = await readArchive(req, MAX_ARCHIVE_BYTES);
+    const { archive, settle } = await readImport(req, MAX_ARCHIVE_BYTES);
     const delegation = viewerDelegation(req);
     const did = viewerDid(req);
     return asked(preview)
-      ? this.incoming.preview(delegation, did, bytes)
-      : this.incoming.write(delegation, did, bytes);
+      ? this.incoming.preview(delegation, did, archive)
+      : this.incoming.write(delegation, did, archive, settled(settle));
+  }
+}
+
+/** What the person chose between the two copies, or none where they were not
+ *  asked. */
+function settled(raw: string | null): ImportResolution[] {
+  if (raw === null) return [];
+  try {
+    return ImportSettlementSchema.parse(JSON.parse(raw)).resolutions;
+  } catch {
+    throw new BadRequestException(
+      "Sloppy is out of date. Update it and try again.",
+    );
   }
 }
 

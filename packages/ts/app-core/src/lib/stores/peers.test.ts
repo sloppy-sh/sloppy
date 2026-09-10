@@ -7,6 +7,7 @@ import {
 	AT,
 	DID,
 	holding,
+	homeOf,
 	node,
 	ref,
 	useFakeApi,
@@ -175,6 +176,7 @@ describe('a note somebody else wrote, cited to the reader', () => {
 		...node(12, '1a'),
 		ref: ref(12, AUTHOR),
 		created_by: AUTHOR,
+		graph: homeOf(AUTHOR),
 		origin: ref(12, AUTHOR),
 		published: true
 	};

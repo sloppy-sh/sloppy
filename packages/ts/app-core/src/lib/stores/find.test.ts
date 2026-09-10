@@ -2,6 +2,7 @@ import { graphOf, type NodeView, type SearchHit } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { find } from './find.svelte.js';
 import { hit, node, ref, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
+import { graphs } from './graphs.svelte.js';
 import { nodes } from './nodes.svelte.js';
 import { session } from './session.svelte.js';
 
@@ -38,6 +39,9 @@ beforeEach(async () => {
 	});
 	api.on('GET /nodes/search', () => hits);
 	await session.refresh();
+	// Which graph the reader is in is the listing's to say, so it is read before
+	// anything is asked about that graph.
+	await graphs.load();
 	await nodes.load({ graph: GRAPH });
 	await nodes.load({ origin: ROOT.ref });
 });
@@ -45,6 +49,7 @@ beforeEach(async () => {
 afterEach(() => {
 	find.clear();
 	nodes.clear();
+	graphs.clear();
 	session.clear();
 });
 

@@ -25,12 +25,19 @@
 
 	/** Which graph a note is in is fixed at creation, so a saved choice is
 	 *  confirmed against the listing before anything is written — a listing that
-	 *  will not load refuses rather than filing the thought somewhere else. */
-	async function graphFor(): Promise<OwnedRef> {
+	 *  will not load refuses rather than filing the thought somewhere else.
+	 *  Absent is the graph they started with, which the server names for a reader
+	 *  who has chosen none, so a listing nobody needed never costs them the
+	 *  thought. */
+	async function graphFor(): Promise<OwnedRef | undefined> {
 		const saved = prefs.current.graph;
-		if (saved && saved !== graphs.home) await graphs.load();
+		if (!saved) return undefined;
+		if (saved !== graphs.home) await graphs.load();
 		return graphs.current;
 	}
+
+	const freeIn = (graph: OwnedRef | undefined) =>
+		graph === undefined ? ({ relation: 'free' } as const) : ({ relation: 'free', graph } as const);
 
 	async function put(): Promise<void> {
 		refused = null;
@@ -42,9 +49,7 @@
 		try {
 			if (!written) {
 				const note = await nodes.create({
-					from: under.success
-						? { relation: 'under', note: under.data }
-						: { relation: 'free', graph: await graphFor() }
+					from: under.success ? { relation: 'under', note: under.data } : freeIn(await graphFor())
 				});
 				written = note.ref;
 			}

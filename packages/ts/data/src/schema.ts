@@ -1,4 +1,4 @@
-import { HOME_GRAPH_ULID } from "@sloppy/types";
+import { HOME_GRAPH_TITLE, UNNAMED_GRAPH_ULID } from "@sloppy/types";
 import type { Surreal } from "surrealdb";
 
 /**
@@ -9,6 +9,64 @@ import type { Surreal } from "surrealdb";
 export async function defineCoreSchema(db: Surreal): Promise<void> {
   await db.query(SCHEMA);
 }
+
+/**
+ * Giving every identity a home graph of its own — docs/ARCHITECTURE.md § "The
+ * genealogy and the address". The graph everybody started with was at one
+ * reserved ulid, so no two people's could be told apart and nobody could bring
+ * an archive of theirs home; each becomes a graph like any other, minted here
+ * and found by `home` from now on.
+ *
+ * Every column carrying the old ref is READONLY, so the definitions come off
+ * first and are put back by the ones below. Gated on the index that finds a
+ * home graph, which is defined below this and so is absent exactly once.
+ */
+const HOME_GRAPHS = `
+  LET $graph_indexes = (INFO FOR TABLE graph).indexes;
+  IF $graph_indexes.graph_owner_home = NONE {
+    REMOVE FIELD IF EXISTS graph ON node;
+    REMOVE FIELD IF EXISTS graph ON node_alias;
+    REMOVE FIELD IF EXISTS graph ON retired_address;
+    REMOVE FIELD IF EXISTS graph ON publication;
+    REMOVE FIELD IF EXISTS source_graph ON pulled_node;
+    LET $owners = array::distinct(array::concat(
+      (SELECT VALUE created_by FROM graph GROUP BY created_by),
+      (SELECT VALUE created_by FROM node GROUP BY created_by)
+    ));
+    FOR $did IN $owners {
+      LET $flagged = (SELECT VALUE id FROM graph
+                        WHERE created_by = $did AND home = true LIMIT 1);
+      IF array::len($flagged) = 0 {
+        LET $shared = type::record("graph", {
+          created_by: $did, id: "${UNNAMED_GRAPH_ULID}"
+        });
+        LET $was = (SELECT title, created_at FROM graph WHERE id = $shared)[0];
+        LET $ulid = rand::ulid();
+        LET $now = time::format(time::now(), "%Y-%m-%dT%H:%M:%S.%3fZ");
+        CREATE type::record("graph", { created_by: $did, id: $ulid }) CONTENT {
+          created_by: $did,
+          title: $was.title ?? "${HOME_GRAPH_TITLE}",
+          home: true,
+          created_at: $was.created_at ?? $now,
+          updated_at: $now
+        };
+        LET $from = string::concat($did, "/${UNNAMED_GRAPH_ULID}");
+        LET $to = string::concat($did, "/", $ulid);
+        UPDATE node SET graph = $to
+          WHERE created_by = $did AND graph = $from;
+        UPDATE node_alias SET graph = $to
+          WHERE created_by = $did AND graph = $from;
+        UPDATE retired_address SET graph = $to
+          WHERE created_by = $did AND graph = $from;
+        UPDATE publication SET graph = $to
+          WHERE created_by = $did AND graph = $from;
+        UPDATE pulled_node SET source_graph = $to
+          WHERE source_did = $did AND source_graph = $from;
+        DELETE $shared;
+      };
+    };
+  };
+`;
 
 /**
  * Widening the address scope from the author to one of their graphs, on a store
@@ -30,7 +88,7 @@ export async function defineCoreSchema(db: Surreal): Promise<void> {
 const MIGRATIONS = `
   LET $node_indexes = (INFO FOR TABLE node).indexes;
   IF $node_indexes.node_owner_address != NONE {
-    UPDATE node SET graph = string::concat(created_by, "/${HOME_GRAPH_ULID}")
+    UPDATE node SET graph = string::concat(created_by, "/${UNNAMED_GRAPH_ULID}")
       WHERE graph = NONE;
     REMOVE INDEX IF EXISTS node_owner_address ON node;
   };
@@ -38,7 +96,7 @@ const MIGRATIONS = `
   LET $held_indexes = (INFO FOR TABLE pulled_node).indexes;
   IF $held_indexes.pulled_node_owner_author_address != NONE {
     UPDATE pulled_node
-      SET source_graph = string::concat(source_did, "/${HOME_GRAPH_ULID}")
+      SET source_graph = string::concat(source_did, "/${UNNAMED_GRAPH_ULID}")
       WHERE source_graph = NONE;
     REMOVE INDEX IF EXISTS pulled_node_owner_author_address ON pulled_node;
   };
@@ -48,7 +106,8 @@ const MIGRATIONS = `
     UPDATE snapshot_node SET ord = address WHERE ord = NONE;
     REMOVE INDEX IF EXISTS snapshot_node_owner_version_address ON snapshot_node;
   };
-`;
+
+${HOME_GRAPHS}`;
 
 /**
  * Tables stay SCHEMALESS; a `DEFINE FIELD` below is an invariant the database
@@ -149,6 +208,10 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS graph ON retired_address TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS parent ON retired_address TYPE option<string> READONLY;
   DEFINE FIELD IF NOT EXISTS address ON retired_address TYPE string READONLY;
+  -- The note the number was spent on, which is the one note that may write it
+  -- again. option, because a row written before this column names nobody and is
+  -- refused to everyone.
+  DEFINE FIELD IF NOT EXISTS note ON retired_address TYPE option<string> READONLY;
 
   -- Which foreign row a held row is a copy of, who wrote it, and where they
   -- addressed it. Immutable for the reason created_by is: a row that changed
@@ -274,6 +337,8 @@ ${MIGRATIONS}
   DEFINE INDEX IF NOT EXISTS node_alias_owner_graph_parent ON node_alias FIELDS created_by, graph, parent;
   -- Somebody's graphs, which is also the purge's reach.
   DEFINE INDEX IF NOT EXISTS graph_owner ON graph FIELDS created_by;
+  -- The one they started with, which is where a note naming no graph goes.
+  DEFINE INDEX IF NOT EXISTS graph_owner_home ON graph FIELDS created_by, home;
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing
   -- AND depth <= $max bounds it to the levels around a focus. One index rather
   -- than two, because the pair is this one's prefix.

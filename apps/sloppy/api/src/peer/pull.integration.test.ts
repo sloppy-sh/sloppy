@@ -25,7 +25,7 @@ import type {
   PullView,
   SearchHit,
 } from "@sloppy/types";
-import { homeGraphRef } from "@sloppy/types";
+import { unnamedGraphRef } from "@sloppy/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dropDatabase } from "../testing/drop-database";
 import { integrationTarget } from "../testing/integration-target";
@@ -1051,7 +1051,7 @@ describe("holding a region of somebody else's graph", () => {
 
     serves(page(WIDE, [note("1", "1"), note("1", "1a")]));
     const home = await pulled(WIDE);
-    expect(home.graph).toBe(homeGraphRef(AUTHOR));
+    expect(home.graph).toBe(unnamedGraphRef(AUTHOR));
 
     serves({
       ...page(beside, []),
@@ -1077,7 +1077,7 @@ describe("holding a region of somebody else's graph", () => {
     // The notes the first region served are still the ones it serves.
     const inHome = await heldIn(home);
     expect(inHome.map((held) => held.ref)).toEqual([ref(ID.root), ref(ID.a)]);
-    expect(inHome.every((held) => held.graph === homeGraphRef(AUTHOR))).toBe(
+    expect(inHome.every((held) => held.graph === unnamedGraphRef(AUTHOR))).toBe(
       true,
     );
   });
@@ -1206,7 +1206,7 @@ describe("holding a region of somebody else's graph", () => {
     // The address is the author's, read in the author's graph, and the reader
     // is told the note is one they are holding.
     expect(hits[0].address).toBe("1");
-    expect(hits[0].graph).toBe(homeGraphRef(AUTHOR));
+    expect(hits[0].graph).toBe(unnamedGraphRef(AUTHOR));
     expect(hits[0].title).toBe("Note 1");
     expect(hits[0].held).toBe(true);
     expect(hits[0].snippet).toContain("quokka");
@@ -1218,7 +1218,7 @@ describe("holding a region of somebody else's graph", () => {
           `/nodes/search?q=quokka&graph=${encodeURIComponent(graph)}`,
         )) as SearchHit[]
       ).map((one) => one.note);
-    expect(await narrowed(homeGraphRef(AUTHOR))).toEqual([ref(ID.root)]);
-    expect(await narrowed(homeGraphRef(reader.did as DidSyr))).toEqual([]);
+    expect(await narrowed(unnamedGraphRef(AUTHOR))).toEqual([ref(ID.root)]);
+    expect(await narrowed(unnamedGraphRef(reader.did as DidSyr))).toEqual([]);
   });
 });

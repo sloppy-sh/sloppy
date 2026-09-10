@@ -11,7 +11,6 @@
 import { MAX_FIELDS } from '@sloppy/graph';
 import {
 	type ArchivePreview,
-	homeGraphRef,
 	type GraphView,
 	GraphViewSchema,
 	type OwnedRef,
@@ -82,14 +81,14 @@ class GraphsStore {
 		return this.held(prefs.current.graph) ?? this.home;
 	}
 
-	/** The graph somebody has before they open a second one. Answered off the
-	 *  identity rather than the listing, so it is right before the first read —
-	 *  and where a graph is a folder on this device, off the folder that is open,
-	 *  which is the graph in front of somebody there. */
+	/** The graph somebody has before they open a second one — the one the
+	 *  listing flags, since every home graph's ulid is its own. Where a graph is
+	 *  a folder on this device it is the folder that is open, which is the graph
+	 *  in front of somebody there. Empty before the first listing has landed. */
 	get home(): OwnedRef {
 		if (this.#inFolder) return this.#inFolder;
-		const did = session.viewer?.did;
-		return did ? homeGraphRef(did) : ('' as OwnedRef);
+		const flagged = this.#all.find((graph) => graph.home) ?? this.#all[0];
+		return flagged?.ref ?? ('' as OwnedRef);
 	}
 
 	/** Every graph on the canvas, the one the reader is in first. */

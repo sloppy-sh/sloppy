@@ -10,6 +10,7 @@ import {
   type NodeAlias,
   nowIso,
   type OwnedRef,
+  ownedRefFrom,
   parseNode,
   type RetiredAddress,
   splitOwnedRef,
@@ -163,8 +164,9 @@ export function addressesLedBy(notes: readonly VaultNote[]): Set<Address> {
 /**
  * The addresses the notes an import writes over are taking with them: the ones
  * they were at, the ones they were carried away from, and neither where the
- * archive brings that address back. An address a graph has spent is never
- * assigned again — AI.md § "The Genealogy Is the Protocol".
+ * archive brings that address back. Each row names the note that spent it, so
+ * that note taking its own number back is the one thing the graph still allows
+ * — AI.md § "The Genealogy Is the Protocol".
  */
 export function retiring(
   did: DidSyr,
@@ -174,20 +176,27 @@ export function retiring(
   arriving: ReadonlySet<Address>,
   at: Timestamp = nowIso(),
 ): RetiredAddress[] {
-  const spent: { address: Address; parent?: OwnedRef }[] = [
+  const spent: { address: Address; parent?: OwnedRef; note: OwnedRef }[] = [
     ...going.flatMap((note) =>
       note.address === undefined
         ? []
-        : [{ address: note.address, parent: note.parent }],
+        : [
+            {
+              address: note.address,
+              parent: note.parent,
+              note: ownedRefFrom(note.id),
+            },
+          ],
     ),
     ...leaving.map((alias) => ({
       address: alias.address,
       parent: alias.parent,
+      note: alias.note,
     })),
   ];
   const rows: RetiredAddress[] = [];
   const written = new Set<Address>();
-  for (const { address, parent } of spent) {
+  for (const { address, parent, note } of spent) {
     if (written.has(address) || arriving.has(address)) continue;
     written.add(address);
     rows.push({
@@ -196,6 +205,7 @@ export function retiring(
       graph,
       ...(parent ? { parent } : {}),
       address,
+      note,
       created_at: at,
       updated_at: at,
     });

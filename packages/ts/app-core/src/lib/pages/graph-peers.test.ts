@@ -82,7 +82,7 @@ const held: PullView = {
 function theirs(seed: number, address: string, over: Partial<NodeView> = {}): NodeView {
 	const self = ref(seed, AUTHOR);
 	return {
-		...node(seed, address, over),
+		...node(seed, address, { ...over, created_by: AUTHOR }),
 		ref: self,
 		created_by: AUTHOR,
 		origin: over.origin ?? self,

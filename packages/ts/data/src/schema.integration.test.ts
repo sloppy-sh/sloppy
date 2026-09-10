@@ -12,9 +12,9 @@
 
 import {
   DidSyrSchema,
-  homeGraphRef,
   OwnedRefSchema,
   UlidSchema,
+  unnamedGraphRef,
 } from "@sloppy/types";
 import { RecordId, Surreal, Table } from "surrealdb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -37,6 +37,12 @@ const AVA = DidSyrSchema.parse("did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva");
 const BOB = DidSyrSchema.parse("did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob");
 const CAI = DidSyrSchema.parse("did:syr:z6MkCaiCaiCaiCaiCaiCaiCaiCaiCaiCai");
 
+/** The graph somebody started with. Minted like any other — a home graph's
+ *  ulid is its own — so a fixture spells one rather than deriving it. */
+function notebook(did: string) {
+  return OwnedRefSchema.parse(`${did}/01JSTARTED0000000000000000`);
+}
+
 /** A graph AVA opened beside the one she started with. */
 const SECOND_GRAPH = OwnedRefSchema.parse(`${AVA}/01JGRAPH2ND000000000000000`);
 
@@ -58,7 +64,7 @@ function nodeRow(
   localId: string,
   depth = 1,
   origin = `${did}/${localId}`,
-  graph = homeGraphRef(did),
+  graph = notebook(did),
 ) {
   return {
     id: nodeId(did, localId),
@@ -113,7 +119,7 @@ function heldNodeRow(localId: string, address: string, depth: number) {
     created_by: AVA,
     source: OwnedRefSchema.parse(`${BOB}/${localId}`),
     source_did: BOB,
-    source_graph: homeGraphRef(BOB),
+    source_graph: notebook(BOB),
     address,
     depth,
     node: {
@@ -251,7 +257,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     await db.create(row.id).content(row);
 
     await expect(
-      db.update(row.id).merge({ graph: homeGraphRef(BOB) }),
+      db.update(row.id).merge({ graph: notebook(BOB) }),
     ).rejects.toThrow();
     expect((await read(row.id)).graph).toBe("");
   });
@@ -297,7 +303,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     // A note cannot be moved into a graph where its address is already taken,
     // which is what makes the rule above hold for as long as the row exists.
     await expect(
-      db.update(beside.id).merge({ graph: homeGraphRef(AVA) }),
+      db.update(beside.id).merge({ graph: notebook(AVA) }),
     ).rejects.toThrow();
 
     // And all of it rests on the column being there. A UNIQUE index does not
@@ -346,7 +352,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       `SELECT id FROM node
          WHERE created_by = $did AND graph = $graph AND address = $address
          EXPLAIN;`,
-      { did: AVA, graph: homeGraphRef(AVA), address: "3" },
+      { did: AVA, graph: notebook(AVA), address: "3" },
     );
     expect(JSON.stringify(plan)).toContain(
       '"index":"node_owner_graph_address"',
@@ -610,7 +616,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       ...heldNodeRow("01JPEERADDRC00000000000000", "4a", 2),
       source: OwnedRefSchema.parse(`${CAI}/01JPEERADDRC00000000000000`),
       source_did: CAI,
-      source_graph: homeGraphRef(CAI),
+      source_graph: notebook(CAI),
     };
     await expect(
       db.create(elsewhere.id).content(elsewhere),
@@ -653,7 +659,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
         ...row,
         source: OwnedRefSchema.parse(`${CAI}/${localId}`),
         source_did: CAI,
-        source_graph: homeGraphRef(CAI),
+        source_graph: notebook(CAI),
         node: published,
       };
     };
@@ -985,13 +991,14 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
   it("keeps an address a note spent, and reads a run of them from its index", async () => {
     // The address protocol after the note is gone: the row is the whole of the
     // fact that the number is spent, so every column of it is immutable.
-    const HOME = homeGraphRef(AVA);
+    const HOME = notebook(AVA);
     const under = {
       id: avaId("retired_address", "01JPXRET000000000000000000"),
       created_by: AVA,
       graph: HOME,
       parent: OwnedRefSchema.parse(`${AVA}/01JREADBACK000000000000000`),
       address: "1a",
+      note: OwnedRefSchema.parse(`${AVA}/01JSPENTBY0000000000000000`),
       created_at: "2026-03-01T00:00:00.000Z",
       updated_at: "2026-03-01T00:00:00.000Z",
     };
@@ -1011,9 +1018,18 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       { parent: `${AVA}/01JREADBACK000000000000001` },
       { address: "1b" },
       { created_by: BOB },
+      { note: `${AVA}/01JSPENTBY0000000000000001` },
     ]) {
       await expect(db.update(under.id).merge(reassignment)).rejects.toThrow();
     }
+
+    // A row written before the column names nobody, and its number is refused
+    // to everyone — AI.md § "The Genealogy Is the Protocol".
+    const [[nobody]] = await db.query<[{ note?: string }[]]>(
+      "SELECT note FROM retired_address WHERE id = $id;",
+      { id: branch.id },
+    );
+    expect(nobody?.note).toBeUndefined();
 
     // A branch's number retires with no parent above it, the way the note it
     // outlives had none — which is how one index answers both shapes.
@@ -1029,7 +1045,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
   });
 
   it("keeps an address a note was moved from leading to that note", async () => {
-    const HOME = homeGraphRef(AVA);
+    const HOME = notebook(AVA);
     const NOTE = OwnedRefSchema.parse(`${AVA}/01JMVEDAWAY000000000000000`);
     const PARENT = OwnedRefSchema.parse(`${AVA}/01JREADBACK000000000000000`);
     const under = {
@@ -1268,6 +1284,124 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
 });
 
 // ---------------------------------------------------------------------------
+// The graph everybody started with, given a ulid of its own.
+//
+// Every identity's first graph was at one reserved ulid, so no two could be
+// told apart and nobody could bring an archive of theirs home. The crossing
+// mints one per identity and carries every row that named the old ref over —
+// docs/ARCHITECTURE.md § "The genealogy and the address".
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!runs)("a store whose graphs all shared one ulid", () => {
+  const DATABASE_SHARED = `shared_home_${Date.now()}`;
+  let db: Surreal;
+  let home: string;
+
+  beforeAll(async () => {
+    db = new Surreal();
+    await db.connect(ENDPOINT.href);
+    await db.signin({ username: USER, password: PASS });
+    await db.use({ namespace: NAMESPACE, database: DATABASE_SHARED });
+    const was = unnamedGraphRef(AVA);
+    await db.query(
+      `DEFINE TABLE IF NOT EXISTS graph SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS node SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS node_alias SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS retired_address SCHEMALESS;
+       DEFINE TABLE IF NOT EXISTS publication SCHEMALESS;
+       CREATE $graph CONTENT $graphRow;
+       CREATE $node CONTENT $nodeRow;
+       CREATE $alias CONTENT $aliasRow;
+       CREATE $retired CONTENT $retiredRow;`,
+      {
+        graph: new RecordId("graph", {
+          created_by: AVA,
+          id: "00000000000000000000000000",
+        }),
+        graphRow: {
+          created_by: AVA,
+          title: "Everything",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        node: nodeId(AVA, "01JSHAREDN0000000000000000"),
+        nodeRow: {
+          created_by: AVA,
+          graph: was,
+          address: "1",
+          depth: 1,
+          origin: `${AVA}/01JSHAREDN0000000000000000`,
+          title: "Root",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        alias: avaId("node_alias", "01JSHAREDA0000000000000000"),
+        aliasRow: {
+          created_by: AVA,
+          graph: was,
+          address: "2",
+          note: `${AVA}/01JSHAREDN0000000000000000`,
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        retired: avaId("retired_address", "01JSHAREDR0000000000000000"),
+        retiredRow: {
+          created_by: AVA,
+          graph: was,
+          address: "3",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+      },
+    );
+
+    await defineCoreSchema(db);
+    // Twice, because it is part of a script that runs on every boot.
+    await defineCoreSchema(db);
+    const [[found]] = await db.query<[string[]]>(
+      "SELECT VALUE graph FROM node LIMIT 1;",
+    );
+    home = found;
+  });
+
+  afterAll(async () => {
+    if (!db) return;
+    await db.query(`REMOVE DATABASE IF EXISTS ${DATABASE_SHARED};`);
+    await db.close();
+  });
+
+  it("mints the graph they started with and keeps what they called it", async () => {
+    const [rows] = await db.query<[{ id: RecordId; title: string }[]]>(
+      "SELECT id, title FROM graph WHERE created_by = $did;",
+      { did: AVA },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].title).toBe("Everything");
+    expect(home).not.toBe(unnamedGraphRef(AVA));
+    expect(home).toBe(`${AVA}/${String((rows[0].id.id as { id: string }).id)}`);
+  });
+
+  it("carries every row that named the old graph over with it", async () => {
+    const [aliases, retired] = await db.query<[string[], string[]]>(
+      `SELECT VALUE graph FROM node_alias;
+       SELECT VALUE graph FROM retired_address;`,
+    );
+    expect(aliases).toEqual([home]);
+    expect(retired).toEqual([home]);
+  });
+
+  it("leaves it alone the next time it runs", async () => {
+    await defineCoreSchema(db);
+    const [[still]] = await db.query<[string[]]>(
+      "SELECT VALUE graph FROM node LIMIT 1;",
+    );
+    expect(still).toBe(home);
+    const [graphs] = await db.query<[unknown[]]>("SELECT * FROM graph;");
+    expect(graphs).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The store somebody already has.
 //
 // Every note written before a person could keep more than one graph is in the
@@ -1326,26 +1460,47 @@ describe.skipIf(!runs)("a store written before graphs existed", () => {
   });
 
   it("files every note it already held in the graph its author started with", async () => {
+    const [homes] = await db.query<[{ id: RecordId; title: string }[]]>(
+      "SELECT id, title FROM graph WHERE created_by = $did AND home = true;",
+      { did: AVA },
+    );
+    expect(homes).toHaveLength(1);
+    const home = `${AVA}/${String((homes[0].id.id as { id: string }).id)}`;
+    expect(home).not.toBe(unnamedGraphRef(AVA));
+
     const [rows] = await db.query<[{ address: string; graph: string }[]]>(
       "SELECT address, graph FROM node ORDER BY address;",
     );
     expect(rows).toEqual([
-      { address: "1", graph: homeGraphRef(AVA) },
-      { address: "1a", graph: homeGraphRef(AVA) },
-      { address: "2", graph: homeGraphRef(AVA) },
+      { address: "1", graph: home },
+      { address: "1a", graph: home },
+      { address: "2", graph: home },
     ]);
 
+    // The author of a held copy is somebody else's identity, whose own home
+    // graph nothing here can mint: the copy stays at the graph they never
+    // named.
     const [held] = await db.query<[{ source_graph: string }[]]>(
       "SELECT source_graph FROM pulled_node;",
     );
-    expect(held).toEqual([{ source_graph: homeGraphRef(BOB) }]);
+    expect(held).toEqual([{ source_graph: unnamedGraphRef(BOB) }]);
   });
 
   it("keeps every address resolving one way inside that graph", async () => {
     // The rule the old index held, still held — and the whole reason the column
-    // is filled rather than its absence read as the home graph: a UNIQUE index
-    // does not constrain a row whose indexed column is absent.
-    const clash = nodeRow(AVA, "1", "01JPREGRAPHRETAKE000000000");
+    // is filled rather than left absent: a UNIQUE index does not constrain a
+    // row whose indexed column is absent.
+    const [[home]] = await db.query<[string[]]>(
+      "SELECT VALUE graph FROM node LIMIT 1;",
+    );
+    const clash = nodeRow(
+      AVA,
+      "1",
+      "01JPREGRAPHRETAKE000000000",
+      1,
+      `${AVA}/01JPREGRAPHRETAKE000000000`,
+      OwnedRefSchema.parse(home),
+    );
     await expect(db.create(clash.id).content(clash)).rejects.toThrow();
 
     const beside = nodeRow(

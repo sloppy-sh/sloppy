@@ -38,6 +38,7 @@ import {
   GraphExportSchema,
   type GraphView,
   GraphViewSchema,
+  type ImportSettlement,
   type HealthReport,
   HealthReportSchema,
   type MediaAsset,
@@ -553,20 +554,35 @@ export class SloppyClient {
     return ArchivePreviewSchema.parse(await this.sendArchive(archive, true));
   }
 
-  /** And the graph it brought: a new one, or the one it was taken out of. */
-  async importArchive(archive: BodyInit): Promise<GraphView> {
-    return GraphViewSchema.parse(await this.sendArchive(archive, false));
+  /**
+   * And the graph it brought: a new one, or the one it was taken out of.
+   * `settle` is what the person chose where the two copies of one graph
+   * disagreed — docs/ARCHITECTURE.md § "A graph on disk". Absent is an import
+   * with nothing to settle.
+   */
+  async importArchive(
+    archive: BodyInit,
+    settle?: ImportSettlement,
+  ): Promise<GraphView> {
+    return GraphViewSchema.parse(
+      await this.sendArchive(archive, false, settle),
+    );
   }
 
-  private sendArchive(archive: BodyInit, preview: boolean): Promise<unknown> {
+  private sendArchive(
+    archive: BodyInit,
+    preview: boolean,
+    settle?: ImportSettlement,
+  ): Promise<unknown> {
+    const body = settle === undefined ? archive : asForm(archive, settle);
     return this.json(`/graphs/import${preview ? "?preview=1" : ""}`, {
       method: "POST",
       // A `File` or a `FormData` names its own type, and neither may be
       // overridden: a form's boundary is minted with the body.
-      ...(archive instanceof Uint8Array
+      ...(body instanceof Uint8Array
         ? { headers: { "content-type": "application/zip" } }
         : {}),
-      body: archive,
+      body,
     });
   }
 
@@ -1077,4 +1093,21 @@ export class SloppyClient {
  * and never by cast — the class's private members are part of its emitted type,
  * and an alias to the class itself would be unimplementable outside this file.
  */
+/** The archive and the person's choices as one form, so both reach the import
+ *  in the request the archive already travels in. */
+function asForm(archive: BodyInit, settle: ImportSettlement): FormData {
+  const form = archive instanceof FormData ? archive : new FormData();
+  if (form !== archive) {
+    form.append(
+      "archive",
+      archive instanceof Blob
+        ? archive
+        : new Blob([archive as BlobPart], { type: "application/zip" }),
+      "graph.zip",
+    );
+  }
+  form.append("settle", JSON.stringify(settle));
+  return form;
+}
+
 export type SloppyApi = { [K in keyof SloppyClient]: SloppyClient[K] };

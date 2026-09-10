@@ -7,7 +7,6 @@ import {
   compareAddresses,
   createOwnedRecordId,
   graphOf,
-  homeGraphRef,
   type Node,
   type NodeAlias,
   type NodeAppearance,
@@ -38,7 +37,9 @@ const GONE = "deleted_at != NONE";
 
 /** How a graph holds an address: a note is at it, one was and has gone, or one
  *  was and has been moved, in which case the address still leads to it. */
-export type AddressHold = "live" | "deleted" | "moved";
+/** How a graph holds an address: a note is at it, a note in the bin is, a note
+ *  was carried away from it, or a note spent it and has gone. */
+export type AddressHold = "live" | "deleted" | "moved" | "retired";
 
 /**
  * A note in the bin giving its address to whoever asked for it — AI.md § "The
@@ -88,6 +89,7 @@ function retire(node: Node, address: Address): RetiredAddress {
     graph: graphOf(node),
     ...(node.parent ? { parent: node.parent } : {}),
     address,
+    note: ownedRefFrom(node.id),
     created_at: now,
     updated_at: now,
   };
@@ -106,6 +108,7 @@ function retireAlias(alias: NodeAlias): RetiredAddress {
     graph: alias.graph,
     ...(alias.parent ? { parent: alias.parent } : {}),
     address: alias.address,
+    note: alias.note,
     created_at: now,
     updated_at: now,
   };
@@ -131,12 +134,8 @@ export type NodeBulkPatch = Partial<Pick<Node, "tags">> & {
 export class NodeRepository {
   constructor(private readonly db: DbService) {}
 
-  /** The branches one graph opens, the caller's home graph where none is
-   *  named. */
-  async roots(
-    did: string,
-    graph: OwnedRef = homeGraphRef(did),
-  ): Promise<Node[]> {
+  /** The branches one graph opens. */
+  async roots(did: string, graph: OwnedRef): Promise<Node[]> {
     return this.read(
       `SELECT * FROM node
          WHERE created_by = $did AND graph = $graph AND parent = NONE
@@ -297,11 +296,13 @@ export class NodeRepository {
    * and which note it still leads to where one is there. `null` where the graph
    * has never assigned it.
    *
-   * A retired address leads to nothing — the note it was spent on is gone — so
-   * it answers `deleted` with no note. What this is for that
-   * {@link addressTaken} is not: a person writing an address on the note that
-   * already carries it, or on the note it was moved away from, is not taking
-   * anybody's address.
+   * A retired address answers `deleted` beside the note that spent it, whose
+   * row has gone: that note, arriving again, is the one thing that may write
+   * the number, and a row from before the column names nobody and is refused to
+   * everyone. What this is for that {@link addressTaken} is not: a person
+   * writing an address on the note that already carries it, on the note it was
+   * moved away from, or on the note that spent it, is not taking anybody's
+   * address.
    */
   async addressLeadsTo(
     did: string,
@@ -311,11 +312,11 @@ export class NodeRepository {
     const at = `FROM node
          WHERE created_by = $did AND graph = $graph AND address = $address`;
     const [held, deleted, retired, aliased] = await this.db.handle.query<
-      [RecordId[], RecordId[], string[], OwnedRef[]]
+      [RecordId[], RecordId[], { note?: OwnedRef }[], OwnedRef[]]
     >(
       `SELECT VALUE id ${at} AND deleted_at = NONE LIMIT 1;
        SELECT VALUE id ${at} AND deleted_at != NONE LIMIT 1;
-       SELECT VALUE address FROM retired_address
+       SELECT note FROM retired_address
          WHERE created_by = $did AND graph = $graph AND address = $address
          LIMIT 1;
        SELECT VALUE note FROM node_alias
@@ -329,7 +330,12 @@ export class NodeRepository {
     if (deleted[0] !== undefined) {
       return { hold: "deleted", note: ownedRefFrom(deleted[0]) };
     }
-    if (retired.length > 0) return { hold: "deleted" };
+    if (retired[0] !== undefined) {
+      const spent = retired[0].note;
+      return spent === undefined
+        ? { hold: "retired" }
+        : { hold: "retired", note: spent };
+    }
     return aliased[0] === undefined
       ? null
       : { hold: "moved", note: aliased[0] };
@@ -795,10 +801,7 @@ export class NodeRepository {
    * from the notes on every call because that is where a tag lives: there is no
    * row to keep in step, and so no way for the count to be wrong.
    */
-  async tagCounts(
-    did: string,
-    graph: OwnedRef = homeGraphRef(did),
-  ): Promise<TagCount[]> {
+  async tagCounts(did: string, graph: OwnedRef): Promise<TagCount[]> {
     const [rows] = await this.query<TagCount>(
       `SELECT tags AS tag, count() AS notes
          FROM (SELECT tags FROM node

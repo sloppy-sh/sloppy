@@ -18,7 +18,6 @@ import {
   type NoteDestination,
   type OwnedRef,
   ownedRefFrom,
-  homeGraphRef,
   siblingAddress,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
@@ -34,9 +33,12 @@ import { NodeService } from "./node.service";
 const media = {} as MediaService;
 /** Nor publishes anything. */
 const publications = {} as PublicationService;
-/** Nothing here names a graph, so every note is in the home graph — the one
- *  graph {@link GraphService} answers for without a read. */
-const graphs = new GraphService({} as GraphRepository);
+/** Nothing here names a graph, so every note is in the one this answers with.
+ *  {@link HOME} is that graph. */
+const graphs = new GraphService({
+  home: () => Promise.resolve(HOME),
+  find: () => Promise.resolve({ id: "row" }),
+} as unknown as GraphRepository);
 /** Nor finds a note by what it says. */
 const finds = {} as FindRepository;
 
@@ -80,6 +82,7 @@ function gone(
     id,
     ref,
     created_by: DID,
+    graph: HOME,
     address,
     depth: address.length,
     origin: ref,
@@ -120,7 +123,7 @@ describe("the branches somebody can still put back", () => {
       {
         ref: root.ref,
         address: "1",
-        graph: `${DID}/00000000000000000000000000`,
+        graph: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM`,
         title: "1",
         deleted_at: AT,
         notes: 3,
@@ -180,7 +183,7 @@ describe("the window closing on everybody at once", () => {
   });
 });
 
-const HOME = `${DID}/00000000000000000000000000`;
+const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM`;
 
 /** One note that is there, of a tree rooted at `origin` or at itself. */
 function live(
@@ -193,6 +196,7 @@ function live(
     id,
     ref,
     created_by: DID,
+    graph: HOME,
     address,
     depth: addressDepth(address as Address),
     origin: ref,
@@ -224,10 +228,11 @@ function notebook(
   notes: readonly (Node & { ref: OwnedRef })[],
   landing: Promise<void> = Promise.resolve(),
   /** What the graph has spent on notes that are not among `notes`: addresses
-   *  they were carried away from, and ones a purge retired. */
+   *  they were carried away from, and ones a purge retired. A retired address
+   *  names the note that spent it where the row carries one. */
   spentAlready: {
     aliases?: readonly NodeAlias[];
-    retired?: readonly Address[];
+    retired?: readonly (Address | { address: Address; note: OwnedRef })[];
   } = {},
 ) {
   const asked: {
@@ -244,7 +249,11 @@ function notebook(
   const held: Node[] = notes.map((one) => ({ ...one }));
   /** Every address a note has been carried or renamed away from. */
   const left: NodeAlias[] = [...(spentAlready.aliases ?? [])];
-  const retired = new Set<Address>(spentAlready.retired ?? []);
+  const retired = new Map<Address, OwnedRef | undefined>(
+    (spentAlready.retired ?? []).map((one) =>
+      typeof one === "string" ? [one, undefined] : [one.address, one.note],
+    ),
+  );
   const there = () => held.filter((one) => one.deleted_at === undefined);
   /** What the unique index on the store's notes answers, and refuses a write
    *  against. The one over the addresses they were carried away from is its
@@ -353,7 +362,14 @@ function notebook(
           note: ownedRefFrom(at.id),
         });
       }
-      if (retired.has(address)) return Promise.resolve({ hold: "deleted" });
+      if (retired.has(address)) {
+        const spentBy = retired.get(address);
+        return Promise.resolve(
+          spentBy === undefined
+            ? { hold: "retired" }
+            : { hold: "retired", note: spentBy },
+        );
+      }
       const alias = left.find((one) => one.address === address);
       return Promise.resolve(
         alias ? { hold: "moved", note: alias.note } : null,
@@ -623,7 +639,7 @@ describe("carrying a note somewhere else", () => {
     const root = live("1");
     const moving = live("1a", { origin: root.ref, parent: root.ref });
     const elsewhere = live("1", {
-      graph: `${DID}/00000000000000000000000001`,
+      graph: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMN`,
     });
 
     await expect(
@@ -1246,6 +1262,22 @@ describe("a number a note in the bin is holding", () => {
       /You have used 2b before\. Pick another number\./,
     );
   });
+
+  it("comes back to the note that spent it, and to no other", async () => {
+    // AI.md § "The Genealogy Is the Protocol": a retired address carries the
+    // note that spent it, so a copy of that note arriving again takes its own
+    // number back.
+    const back = unnumbered("Mushrooms");
+    const another = unnumbered("Hyphae");
+    const { service } = notebook([back, another], Promise.resolve(), {
+      retired: [{ address: "2b" as Address, note: back.ref }],
+    });
+
+    await expect(service.setAddress(DID, another.ref, "2b")).rejects.toThrow(
+      /You have used 2b before\. Pick another number\./,
+    );
+    expect((await service.setAddress(DID, back.ref, "2b")).address).toBe("2b");
+  });
 });
 
 describe("the number a person names for a note they are writing", () => {
@@ -1533,7 +1565,7 @@ describe("an address typed into a search", () => {
       {
         note: note.ref,
         address: "1c",
-        graph: homeGraphRef(DID),
+        graph: HOME,
         title: "1c",
         snippet: "",
         created_at: AT,
@@ -1549,7 +1581,7 @@ describe("an address typed into a search", () => {
       {
         note: note.ref,
         address: "1c",
-        graph: homeGraphRef(DID),
+        graph: HOME,
         title: "1c",
         snippet: "",
         created_at: AT,

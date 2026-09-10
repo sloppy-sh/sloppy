@@ -12,11 +12,10 @@ import {
   type ArchivePreview,
   type BlockDocument,
   citedUploads,
-  createOwnedRecordId,
   type DidSyr,
   entityView,
   type GraphView,
-  HOME_GRAPH_ULID,
+  type ImportResolution,
   MAX_ARCHIVE_BYTES,
   MAX_ARCHIVE_NOTES,
   type Node,
@@ -123,17 +122,29 @@ export class ArchiveImportService {
       replacing: opened.replaces
         ? await this.rows.countIn(did, opened.graph)
         : 0,
+      merges: false,
+      conflicts: [],
     };
   }
 
   /** The graph written: a new one, or the one this archive was last taken out
    *  of. The rows land whole or not at all; what the departing notes were
-   *  publishing comes down before them and does not go back up. */
+   *  publishing comes down before them and does not go back up.
+   *
+   *  `settle` is what the person chose between the two copies. A preview here
+   *  answers no conflicts, so anything chosen was chosen about a graph this
+   *  instance is not the one holding. */
   async write(
     delegation: Delegation,
     did: DidSyr,
     bytes: Uint8Array,
+    settle: readonly ImportResolution[] = [],
   ): Promise<GraphView> {
+    if (settle.length > 0) {
+      throw new BadRequestException(
+        "There was nothing to choose between here. Bring this graph in again.",
+      );
+    }
     const opened = await this.open(bytes, did, await this.catalog(delegation));
     return this.importing.run(did, () => this.land(delegation, did, opened));
   }
@@ -255,20 +266,14 @@ export class ArchiveImportService {
 
   /**
    * Which graph this archive lands in. The same ULID is the same graph, which
-   * is what makes taking one out and putting it back a replace rather than a
-   * second copy of everything — except the graph a person started with, which
-   * every archive of one names and which an import never writes over.
+   * is what makes taking one out and putting it back a settling of that graph
+   * rather than a second copy of everything — the graph somebody started with
+   * included, since that one now has a ulid of its own.
    */
   private async landing(
     did: DidSyr,
     ulid: string,
   ): Promise<{ ref: OwnedRef; replaces: boolean }> {
-    if (ulid === HOME_GRAPH_ULID) {
-      return {
-        ref: ownedRefFrom(createOwnedRecordId("graph", did)),
-        replaces: false,
-      };
-    }
     const ref: OwnedRef = `${did}/${ulid}`;
     return { ref, replaces: await this.graphs.holds(did, ref) };
   }

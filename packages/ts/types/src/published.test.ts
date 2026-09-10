@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MARK_RADIUS_SCALE, resolveAppearance } from "./appearance.js";
 import { emptyDocument } from "./document.js";
-import { homeGraphRef } from "./graph.js";
+import { unnamedGraphRef } from "./graph.js";
 import {
   MAX_PUBLISHED_NODES_PER_PAGE,
   MAX_PUBLISHED_PAGES,
@@ -225,7 +225,7 @@ describe("a region a peer answered with", () => {
     const reader = publishedSubtreeReader(asked);
     reader.take(subtree({ next_cursor: "more" }));
     expect(() =>
-      reader.take(nextPage({ graph: homeGraphRef(AUTHOR) })),
+      reader.take(nextPage({ graph: unnamedGraphRef(AUTHOR) })),
     ).not.toThrow();
   });
 

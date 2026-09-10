@@ -292,6 +292,67 @@ export type GraphExport = z.infer<typeof GraphExportSchema>;
 export const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
 export const MAX_ARCHIVE_NOTES = 5000;
 
+/** Which copy of something a person kept when two graphs disagreed: the one
+ *  already here, or the one the archive brought. */
+export const ImportSideSchema = z.enum(["mine", "theirs"]);
+export type ImportSide = z.infer<typeof ImportSideSchema>;
+
+/**
+ * What the two copies of one graph disagree about — a note both sides wrote
+ * into, a note whose sections they each changed, or a number they have on
+ * different notes.
+ */
+export const ImportConflictKindSchema = z.enum(["note", "address", "section"]);
+export type ImportConflictKind = z.infer<typeof ImportConflictKindSchema>;
+
+/**
+ * One disagreement, said in the words a person settles it in —
+ * docs/ARCHITECTURE.md § "A graph on disk".
+ *
+ * `ref` is the note it is about. `mine` and `theirs` are what each side holds,
+ * as words rather than as rows: nobody settles a merge by reading a document.
+ */
+export const ImportConflictSchema = z.object({
+  kind: ImportConflictKindSchema,
+  ref: OwnedRefSchema,
+  /** The other note carrying the number, on an `address` conflict. Absent on
+   *  the other two, which are about one note. */
+  other: OwnedRefSchema.optional(),
+  /** The number the two notes both carry, on an `address` conflict. Absent
+   *  otherwise. */
+  address: AddressSchema.optional(),
+  /** The sections both sides wrote into, on a `section` conflict. Empty on the
+   *  other two. */
+  sections: z.array(UlidSchema).default([]),
+  mine: z.string(),
+  theirs: z.string(),
+});
+export type ImportConflict = z.infer<typeof ImportConflictSchema>;
+
+/** How one conflict was settled. `keep` is the side taken for the note as a
+ *  whole, and for every section `sections` does not name. */
+export const ImportResolutionSchema = z.object({
+  kind: ImportConflictKindSchema,
+  ref: OwnedRefSchema,
+  keep: ImportSideSchema,
+  /** Section by section, where the two sides wrote into one note. Empty is the
+   *  whole note from `keep`. */
+  sections: z
+    .array(z.object({ section: UlidSchema, keep: ImportSideSchema }))
+    .default([]),
+  /** Which note keeps the number, on an `address` conflict. Absent leaves it
+   *  with the note the `keep` side puts there. */
+  numbered: OwnedRefSchema.optional(),
+});
+export type ImportResolution = z.infer<typeof ImportResolutionSchema>;
+
+/** How a person settled every conflict an import raised. Absent, and empty,
+ *  are an import with nothing to settle. */
+export const ImportSettlementSchema = z.object({
+  resolutions: z.array(ImportResolutionSchema).default([]),
+});
+export type ImportSettlement = z.input<typeof ImportSettlementSchema>;
+
 /**
  * What an archive would bring, answered before anything is written —
  * docs/ARCHITECTURE.md § "A graph on disk".
@@ -320,6 +381,13 @@ export const ArchivePreviewSchema = z.object({
    *  with it — the ones in the bin included, which no archive carries. Zero
    *  where this opens a graph of its own. */
   replacing: z.int().nonnegative(),
+  /** Whether this archive is a copy of a graph the importer already keeps, so
+   *  the two are settled note by note rather than one written over the other.
+   *  Absent is false — an answer made before an import could merge. */
+  merges: z.boolean().default(false),
+  /** What the two copies disagree about, for a person to settle before
+   *  anything is written. Absent, and empty, are nothing to settle. */
+  conflicts: z.array(ImportConflictSchema).default([]),
 });
 export type ArchivePreview = z.infer<typeof ArchivePreviewSchema>;
 

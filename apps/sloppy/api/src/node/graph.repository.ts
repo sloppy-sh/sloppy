@@ -1,5 +1,5 @@
-// The `graph` table: the name a person gives a notebook. What a note belongs to
-// is the ref, which is why the home graph answers without a row here.
+// The `graph` table: the name a person gives a notebook, and which one they
+// started with. What a note belongs to is the ref.
 
 import { Injectable } from "@nestjs/common";
 import {
@@ -8,8 +8,10 @@ import {
   GraphSchema,
   nowIso,
   type OwnedRef,
+  ownedRefFrom,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
+import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
 
 @Injectable()
@@ -33,23 +35,42 @@ export class GraphRepository {
     return rows[0] === undefined ? null : GraphSchema.parse(rows[0]);
   }
 
-  async insert(did: string, title: string): Promise<Graph> {
+  async insert(did: string, title: string, home = false): Promise<Graph> {
     const now = nowIso();
     const [rows] = await this.query(
       "CREATE $id CONTENT $content RETURN AFTER",
       {
         id: createOwnedRecordId("graph", did),
-        content: { created_by: did, title, created_at: now, updated_at: now },
+        content: {
+          created_by: did,
+          title,
+          home,
+          created_at: now,
+          updated_at: now,
+        },
       },
     );
     return GraphSchema.parse(rows[0]);
   }
 
   /**
-   * Name a graph, whether or not it has a row yet — which is what naming the
-   * home graph is. One statement rather than a read and a write, because
-   * `created_at` is immutable and a whole-row save would have to re-send it as
-   * a different moment.
+   * The graph somebody started with, or `null` where they have none yet. Read
+   * through `graph_owner_home` rather than spelled from the identity: every
+   * home graph has a ulid of its own — docs/ARCHITECTURE.md § "The genealogy
+   * and the address".
+   */
+  async home(did: string): Promise<OwnedRef | null> {
+    const [rows] = await this.query<{ id: RecordId }>(
+      "SELECT id FROM graph WHERE created_by = $did AND home = true LIMIT 1",
+      { did },
+    );
+    return rows[0] === undefined ? null : ownedRefFrom(rows[0].id);
+  }
+
+  /**
+   * Name a graph, whether or not it has a row yet. One statement rather than a
+   * read and a write, because `created_at` is immutable and a whole-row save
+   * would have to re-send it as a different moment.
    */
   async name(did: string, ref: OwnedRef, title: string): Promise<Graph> {
     return this.upsert(did, ref, title, "title = $title, updated_at = $now");
@@ -62,14 +83,6 @@ export class GraphRepository {
       id: recordIdFromOwnedRef("graph", ref),
       did,
     });
-  }
-
-  /** The row for a graph its owner already has, written the first time
-   *  something asks for it so a later rename has a row to rename. */
-  async ensure(did: string, ref: OwnedRef, title: string): Promise<Graph> {
-    const found = await this.find(did, ref);
-    if (found !== null) return found;
-    return this.upsert(did, ref, title, "updated_at = $now");
   }
 
   private async upsert(

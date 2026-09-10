@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { nodes } from './nodes.svelte.js';
-import { homeGraphRef, type NodeView, type OwnedRef } from '@sloppy/types';
+import type { NodeView, OwnedRef } from '@sloppy/types';
 import { deviceStore } from '../device-store.js';
 import { session } from './session.svelte.js';
 import {
@@ -267,7 +267,7 @@ describe('a note asked for', () => {
 });
 
 describe('the graph this device kept', () => {
-	const HOME = homeGraphRef(DID);
+	const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 
 	it('draws again with nothing to ask', async () => {
 		await nodes.load();

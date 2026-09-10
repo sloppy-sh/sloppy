@@ -2,7 +2,7 @@
 // are in, moving between them, and seeing more than one at once.
 
 import type { CreateNodeRequest, GraphView, NodeView, OwnedRef } from '@sloppy/types';
-import { homeGraphRef } from '@sloppy/types';
+
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -48,7 +48,7 @@ vi.mock('@sloppy/ui', async (original) => ({
 
 const Graph = (await import('./graph.svelte')).default;
 
-const HOME = homeGraphRef(DID);
+const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 const GARDEN = ref(20);
 
 function graph(self: OwnedRef, title: string): GraphView {

@@ -14,6 +14,7 @@ import { userPurgeStatements } from "@sloppy/data";
 import { DidSyrSchema, type OwnedRef } from "@sloppy/types";
 import { BlockService } from "../block/block.service";
 import { DbService } from "../db/db.service";
+import { GraphService } from "../node/graph.service";
 import { NodeRepository } from "../node/node.repository";
 import { NodeService } from "../node/node.service";
 import { type PlannedNode, planGraph } from "./plan";
@@ -90,8 +91,9 @@ async function main(): Promise<void> {
     const nodes = app.get(NodeService);
     const blocks = app.get(BlockService);
     const repository = app.get(NodeRepository);
+    const home = await app.get(GraphService).home(did);
 
-    const standing = await repository.roots(did);
+    const standing = await repository.roots(did, home);
     if (standing.length > 0 && !options.fresh) {
       throw new Error(
         `This identity already has ${standing.length} root notes. Re-run with --fresh to erase its graph and build a new one.`,
@@ -142,7 +144,7 @@ async function main(): Promise<void> {
     for (const root of plan.roots) await write(root, undefined);
 
     const seconds = ((Date.now() - started) / 1000).toFixed(1);
-    const roots = await repository.roots(did);
+    const roots = await repository.roots(did, home);
     console.log(
       [
         "",

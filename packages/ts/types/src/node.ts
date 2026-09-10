@@ -89,11 +89,16 @@ export const DELETED_KEPT_FOR_DAYS = 30;
  * An address a graph has assigned and will not assign again, kept after the
  * note that held it is purged — AI.md § "The Genealogy Is the Protocol".
  * `parent` is absent for a branch, as it is on the note the row outlives.
+ *
+ * `note` is the ref the number was spent on, and that note — arriving again in
+ * the same graph — is the one thing that may write the number again. Absent is
+ * a row from before the column, whose number is refused to everyone.
  */
 export const RetiredAddressSchema = OwnedEntitySchema.extend({
   graph: OwnedRefSchema,
   parent: OwnedRefSchema.optional(),
   address: AddressSchema,
+  note: OwnedRefSchema.optional(),
 });
 export type RetiredAddress = z.infer<typeof RetiredAddressSchema>;
 

@@ -696,8 +696,11 @@
 		// for — DESIGN.md § Persistence.
 		await Promise.all([graphs.restore(), nodes.restore()]);
 		// What the graphs are called is chrome: one whose name did not arrive still
-		// draws, and the sheet that lists them is where that is said.
-		void graphs.load().catch(() => {});
+		// draws, and the sheet that lists them is where that is said. Which graph
+		// the reader is IN is not — every home graph's ulid is its own, so a device
+		// that kept no listing has to be told before it can ask for anything.
+		const listing = graphs.load().catch(() => {});
+		if (graphs.current === '') await listing;
 		const fields = onCanvas;
 		// A field with anything on it draws while the rest arrives; only a canvas
 		// with nothing on it yet is worth a skeleton.

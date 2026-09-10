@@ -9,6 +9,7 @@ import { session } from './session.svelte.js';
 import {
 	archiving,
 	AT,
+	mergePreview,
 	DID,
 	ref,
 	useFakeApi,
@@ -16,7 +17,7 @@ import {
 	type FakeApi
 } from './fake-api.test-support.js';
 
-const HOME = `${DID}/00000000000000000000000000` as OwnedRef;
+const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 
 function graph(seed: number, title: string): GraphView {
 	return { ref: ref(seed), created_by: DID, created_at: AT, updated_at: AT, title };
@@ -25,7 +26,7 @@ function graph(seed: number, title: string): GraphView {
 const GARDEN = graph(20, 'Garden');
 const COMPANY = graph(21, 'Company');
 const LISTED: GraphView[] = [
-	{ ref: HOME, created_by: DID, created_at: AT, updated_at: AT, title: 'My graph' },
+	{ ref: HOME, created_by: DID, created_at: AT, updated_at: AT, title: 'My graph', home: true },
 	GARDEN,
 	COMPANY
 ];
@@ -60,7 +61,11 @@ afterEach(() => {
 });
 
 describe('the graphs somebody keeps', () => {
-	it('is the one they started with before anything has been read', () => {
+	it('is the one the listing flags as the one they started with', async () => {
+		// Every home graph's ulid is its own, so which graph a person is in is
+		// something the listing says rather than something a ref spells.
+		expect(graphs.current).toBe('');
+		await graphs.load();
 		expect(graphs.current).toBe(HOME);
 		expect(graphs.onCanvas).toEqual([HOME]);
 	});
@@ -81,7 +86,7 @@ describe('the graphs somebody keeps', () => {
 		api.on('GET /graphs', () => new Response('{"message":"Not right now."}', { status: 503 }));
 		await expect(graphs.load()).rejects.toThrow();
 		expect(graphs.state.error).toBe('Not right now.');
-		expect(graphs.current).toBe(HOME);
+		expect(graphs.current).toBe('');
 	});
 });
 
@@ -359,7 +364,9 @@ describe('a graph brought in from a file', () => {
 				missing_emoji: [],
 				collisions: [],
 				replaces: false,
-				replacing: 0
+				replacing: 0,
+				merges: false,
+				conflicts: []
 			}),
 			imported: () => GARDEN
 		});
@@ -370,6 +377,28 @@ describe('a graph brought in from a file', () => {
 		expect(api.calls.filter((one) => one.startsWith('POST /graphs/import'))).toEqual([
 			'POST /graphs/import?preview=1'
 		]);
+	});
+
+	it('says what the two copies of one graph disagree about', async () => {
+		const NOTE = ref(60);
+		archiving(api, {
+			preview: () =>
+				mergePreview('01JRZ0000000000000000000AA', [
+					{
+						kind: 'note',
+						ref: NOTE,
+						sections: [],
+						mine: 'Osmosis, written into this morning',
+						theirs: 'Osmosis, as the file has it'
+					}
+				]),
+			imported: () => GARDEN
+		});
+
+		const said = await graphs.previewImport(new Blob([new Uint8Array([1])]));
+
+		expect(said.merges).toBe(true);
+		expect(said.conflicts.map((one) => [one.kind, one.ref])).toEqual([['note', NOTE]]);
 	});
 
 	it('asks for the graph a person is keeping as a file, and hands back what to call it', async () => {

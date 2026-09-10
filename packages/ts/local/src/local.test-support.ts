@@ -2,7 +2,7 @@
 // shipped.
 
 import type { BlockDocument, DidSyr } from "@sloppy/types";
-import { HOME_GRAPH_ULID } from "@sloppy/types";
+import { ulid } from "@sloppy/types";
 import { VAULT_FORMAT } from "@sloppy/vault";
 import { LocalApi } from "./api.js";
 import { type Files, MemoryFiles } from "./files.js";
@@ -48,7 +48,7 @@ export async function graphOnly(
   const identity = await openLocalIdentity(files);
   const graph = await LocalGraph.start(files.at(root), identity.did, {
     format: VAULT_FORMAT,
-    graph: HOME_GRAPH_ULID,
+    graph: ulid(),
     name: "A graph",
     owner: identity.did,
   });

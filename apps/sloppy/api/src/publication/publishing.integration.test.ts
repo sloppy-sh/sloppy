@@ -22,7 +22,6 @@ import {
   childAddress,
   createOwnedRecordId,
   EMOJI_UPLOAD_ATTR,
-  homeGraphRef,
   type NodeView,
   type OwnedRef,
   POINTERS_PER_NOTE,
@@ -288,6 +287,18 @@ describe("publishing a branch, and what a peer reads back", () => {
     return response.status;
   }
 
+  /** The graph ada started with. Its ulid is its own, so it is read rather than
+   *  spelled — docs/ARCHITECTURE.md § "The genealogy and the address". */
+  async function homeOf(): Promise<OwnedRef> {
+    const listed = (await ok("GET", "/graphs", ada)) as {
+      ref: OwnedRef;
+      home: boolean;
+    }[];
+    const home = listed.find((graph) => graph.home);
+    if (!home) throw new Error("Ada has no graph of her own.");
+    return home.ref;
+  }
+
   /** What that identity publishes, held to the identity it was asked about. */
   async function published(): Promise<PublishedIndex> {
     return parsePublishedIndex(
@@ -310,6 +321,7 @@ describe("publishing a branch, and what a peer reads back", () => {
   ): Promise<void> {
     const { DbService: Db } = await import("../db/db.service");
     const when = new Date().toISOString();
+    const graph = await homeOf();
     await app.get<DbService>(Db).handle.query(
       `UPDATE $note SET address = $address, depth = $depth, parent = $parent,
                         origin = $origin, updated_at = $when;
@@ -324,7 +336,7 @@ describe("publishing a branch, and what a peer reads back", () => {
         left: {
           id: createOwnedRecordId("node_alias", ada.did),
           created_by: ada.did,
-          graph: homeGraphRef(ada.did),
+          graph,
           parent: from.parent,
           address: from.address,
           note,
@@ -1599,7 +1611,7 @@ describe("publishing a branch, and what a peer reads back", () => {
         rows.push({
           id: createOwnedRecordId("node", ada.did),
           created_by: ada.did,
-          graph: homeGraphRef(ada.did),
+          graph: root.graph,
           address,
           depth: addressDepth(address),
           parent: root.ref,
@@ -1657,7 +1669,7 @@ describe("publishing a branch, and what a peer reads back", () => {
         rows.push({
           id: createOwnedRecordId("node", ada.did),
           created_by: ada.did,
-          graph: homeGraphRef(ada.did),
+          graph: root.graph,
           address,
           depth: addressDepth(address),
           parent: root.ref,

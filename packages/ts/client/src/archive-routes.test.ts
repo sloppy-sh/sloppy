@@ -120,6 +120,44 @@ describe("bringing one in", () => {
     expect(graph.title).toBe("The garden");
   });
 
+  it("sends what the person chose between the two copies beside the file", async () => {
+    const { asked, client } = serving(
+      JSON.stringify({
+        ref: GARDEN,
+        created_by: DID,
+        title: "The garden",
+        created_at: "2026-09-09T00:00:00.000Z",
+        updated_at: "2026-09-09T00:00:00.000Z",
+      }),
+    );
+
+    await client.importArchive(new Uint8Array([80, 75]), {
+      resolutions: [
+        {
+          kind: "note",
+          ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5FAV`,
+          keep: "mine",
+        },
+      ],
+    });
+
+    const body = asked[0].body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect(JSON.parse(String(body.get("settle")))).toEqual({
+      resolutions: [
+        {
+          kind: "note",
+          ref: `${DID}/01ARZ3NDEKTSV4RRFFQ69G5FAV`,
+          keep: "mine",
+        },
+      ],
+    });
+    expect(body.get("archive")).toBeInstanceOf(Blob);
+    // A form mints its boundary with the body, so naming the type would make
+    // the parts unreadable.
+    expect(asked[0].headers.get("content-type")).toBeNull();
+  });
+
   // A form mints its boundary with the body, so naming the type would make the
   // parts unreadable.
   it("leaves a form to name its own type", async () => {

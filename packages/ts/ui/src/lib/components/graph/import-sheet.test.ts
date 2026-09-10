@@ -23,6 +23,8 @@ function preview(over: Partial<ArchivePreview> = {}): ArchivePreview {
 		collisions: [],
 		replaces: false,
 		replacing: 0,
+		merges: false,
+		conflicts: [],
 		...over
 	};
 }

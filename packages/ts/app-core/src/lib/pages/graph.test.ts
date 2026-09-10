@@ -9,7 +9,7 @@ import type {
 	OwnedRef,
 	PublicationView
 } from '@sloppy/types';
-import { homeGraphRef, MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
+import { MARK_SCALE_MAX, MAX_NOTES_PER_BULK_ACT } from '@sloppy/types';
 import { DEFAULT_BUDGET } from '@sloppy/graph';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -67,7 +67,7 @@ vi.mock('@sloppy/ui', async (original) => ({
 
 const Graph = (await import('./graph.svelte')).default;
 
-const HOME = homeGraphRef(DID);
+const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 
 const FIRST = ref(1);
 const SECOND = ref(2);
@@ -570,7 +570,7 @@ describe('a branch somebody else published', () => {
 	const UNDER = ref(22, AUTHOR);
 
 	const theirs = (seed: number, address: string, over: Partial<NodeView> = {}): NodeView => ({
-		...node(seed, address),
+		...node(seed, address, { created_by: AUTHOR }),
 		ref: ref(seed, AUTHOR),
 		created_by: AUTHOR,
 		origin: ROOT,
@@ -2336,7 +2336,7 @@ describe('finding a note again from the graph', () => {
 		const COMPOST = node(51, '1', { title: 'Compost', graph: GARDEN });
 		graph.set(COMPOST.ref, COMPOST);
 		api.on('GET /graphs', () => [
-			{ ref: homeGraphRef(DID), created_by: DID, created_at: AT, updated_at: AT, title: 'Notes' },
+			{ ref: HOME, created_by: DID, created_at: AT, updated_at: AT, title: 'Notes' },
 			{ ref: GARDEN, created_by: DID, created_at: AT, updated_at: AT, title: 'Garden' }
 		]);
 
@@ -3041,6 +3041,8 @@ describe('a graph as a file', () => {
 			collisions: [],
 			replaces: false,
 			replacing: 0,
+			merges: false,
+			conflicts: [],
 			...over
 		};
 	}

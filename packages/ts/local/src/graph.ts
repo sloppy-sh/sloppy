@@ -21,6 +21,7 @@ import {
   type OwnedMediaAsset,
   type OwnedRef,
   type Timestamp,
+  UNNAMED_GRAPH_ULID,
   citedNotes,
   nowIso,
   orderSiblings,
@@ -129,12 +130,22 @@ export class LocalGraph {
     private said: VaultGraph,
   ) {}
 
-  /** The graph the folder holds, with its index built. Throws where the folder
-   *  is not a vault this build can read. */
+  /**
+   * The graph the folder holds, with its index built. Throws where the folder
+   * is not a vault this build can read.
+   *
+   * A folder still spelling the ulid every first graph once shared is given one
+   * of its own here, so an archive of it settles into itself rather than into
+   * somebody else's first graph — docs/ARCHITECTURE.md § "A graph on disk".
+   */
   static async open(files: Files, did: DidSyr): Promise<LocalGraph> {
     const bytes = await files.read(GRAPH_FILE);
     if (!bytes) throw absent("There is no graph in that folder.");
-    const graph = new LocalGraph(files, did, readGraphFile(bytes));
+    const said = readGraphFile(bytes);
+    const own =
+      said.graph === UNNAMED_GRAPH_ULID ? { ...said, graph: ulid() } : said;
+    if (own !== said) await files.write(GRAPH_FILE, graphFile(own));
+    const graph = new LocalGraph(files, did, own);
     await graph.build();
     return graph;
   }

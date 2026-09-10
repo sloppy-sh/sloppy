@@ -13,7 +13,6 @@ import {
   createOwnedRecordId,
   DELETED_KEPT_FOR_DAYS,
   type DeletedBranch,
-  homeGraphRef,
   entityView,
   graphAsked,
   graphOf,
@@ -113,7 +112,10 @@ export class NodeService {
   ): Promise<NodeView[]> {
     const rows = query.origin
       ? await this.nodes.region(did, query.origin, query.maxDepth)
-      : await this.nodes.roots(did, query.graph);
+      : await this.nodes.roots(
+          did,
+          query.graph ?? (await this.graphs.home(did)),
+        );
     return this.asRead(did, rows);
   }
 
@@ -141,8 +143,8 @@ export class NodeService {
     });
   }
 
-  tags(did: string, graph?: OwnedRef): Promise<TagCount[]> {
-    return this.nodes.tagCounts(did, graph);
+  async tags(did: string, graph?: OwnedRef): Promise<TagCount[]> {
+    return this.nodes.tagCounts(did, graph ?? (await this.graphs.home(did)));
   }
 
   /**
@@ -349,7 +351,7 @@ export class NodeService {
     from: CreateRequest["from"],
   ): Promise<OwnedRef> {
     const asked = graphAsked(from);
-    if (asked === undefined) return homeGraphRef(did);
+    if (asked === undefined) return this.graphs.home(did);
     await this.graphs.requireHeld(did, asked);
     return asked;
   }
@@ -422,8 +424,8 @@ export class NodeService {
    *  queue and is refused by the unique index, so this is asked again on the way
    *  out of a failed write. `mine` is the notes landing together, whose hold on
    *  it one write replaces; `taking` is the one landing on this address, and an
-   *  address a note was carried away from is that note's alone to take back —
-   *  AI.md § "The Genealogy Is the Protocol". */
+   *  address a note was carried away from — or spent and had retired — is that
+   *  note's alone to take back, AI.md § "The Genealogy Is the Protocol". */
   private async claim(
     did: string,
     graph: OwnedRef,
@@ -435,7 +437,7 @@ export class NodeService {
     if (held === null) return null;
     if (
       held.note !== undefined &&
-      (held.hold === "moved" ? held.note === taking : mine.has(held.note))
+      (held.note === taking || (held.hold !== "moved" && mine.has(held.note)))
     ) {
       return null;
     }
@@ -454,18 +456,21 @@ export class NodeService {
   }
 
   /** Throws where the note this address leads to is there rather than in the
-   *  bin: only a note in the bin gives its address up. */
+   *  bin: only a note in the bin gives its address up, and a note that is gone
+   *  altogether leaves a number nobody else may write. */
   private async yieldedBy(
     did: string,
     graph: OwnedRef,
     address: Address,
     held: { hold: AddressHold; note?: OwnedRef },
   ): Promise<AddressYield | null> {
-    if (held.note === undefined) throw leadsNowhere(address);
+    if (held.hold === "retired" || held.note === undefined) {
+      throw leadsNowhere(address);
+    }
     const there = await this.nodes.find(did, held.note);
     if (there) throw leadsTo(address, held.hold, there);
     const binned = await this.nodes.findDeleted(did, held.note);
-    if (!binned) throw leadsTo(address, held.hold, null);
+    if (!binned) throw leadsNowhere(address);
     if (binned.address !== address) return null;
     const [alias] = await this.keptBehind(did, graph, [
       leftBehind(binned, address),

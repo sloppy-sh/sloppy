@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boundaryOf, fileIn } from "./archive-body";
+import { boundaryOf, fieldIn, fileIn } from "./archive-body";
 
 const BOUNDARY = "----SloppyBoundary";
 
@@ -58,5 +58,25 @@ describe("the file on an import request", () => {
     expect(
       fileIn(form([{ name: "replace", body: "yes" }]), BOUNDARY),
     ).toBeNull();
+  });
+});
+
+describe("what the person chose beside the file", () => {
+  it("is the field of that name, and never the file", () => {
+    const body = form([
+      { name: "settle", body: '{"resolutions":[]}' },
+      { name: "archive", filename: "garden.sloppy", body: "PKzip" },
+    ]);
+
+    expect(fieldIn(body, BOUNDARY, "settle")).toBe('{"resolutions":[]}');
+    expect(fieldIn(body, BOUNDARY, "archive")).toBeNull();
+  });
+
+  it("is absent where the form carries no such field", () => {
+    const body = form([
+      { name: "archive", filename: "garden.sloppy", body: "PKzip" },
+    ]);
+
+    expect(fieldIn(body, BOUNDARY, "settle")).toBeNull();
   });
 });

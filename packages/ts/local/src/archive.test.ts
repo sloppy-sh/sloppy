@@ -1,5 +1,11 @@
 import { splitOwnedRef } from "@sloppy/types";
-import { encodeText, unpack } from "@sloppy/vault";
+import {
+  GRAPH_FILE,
+  decodeText,
+  encodeText,
+  pack,
+  unpack,
+} from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import {
   type Device,
@@ -26,6 +32,20 @@ async function written(picks?: string[]) {
 
 async function archiveFrom(held: Device, ref: string): Promise<Blob> {
   return body((await held.api.exportArchive(ref)).bytes);
+}
+
+/** The same archive under a graph ulid this device does not keep, which is what
+ *  makes it a graph of its own arriving. */
+function renamed(out: { bytes: Uint8Array }): Blob {
+  const vault = unpack(out.bytes);
+  const said = JSON.parse(decodeText(vault.get(GRAPH_FILE) as Uint8Array));
+  vault.set(
+    GRAPH_FILE,
+    encodeText(
+      `${JSON.stringify({ ...said, graph: "01JAPART000000000000000000" })}\n`,
+    ),
+  );
+  return body(pack(vault));
 }
 
 describe("a graph taken out as a file", () => {
@@ -222,17 +242,34 @@ describe("a graph of this device's own brought back in", () => {
     ).rejects.toThrow("You have used 1a before");
   });
 
-  it("refuses one whose notes are already in another graph here", async () => {
+  it("settles into the graph this device started with, like any other", async () => {
     const { held, graph, note } = await written();
     const said = await held.api.previewArchive(
       await archiveFrom(held, graph.ref),
     );
-    // The graph a person started with is what every archive of one names, so
-    // this one opens a graph of its own — and its notes are already here.
+    // Every graph's ulid is its own, the first one included, so an archive of
+    // it comes home rather than opening a stranger beside it.
+    expect(said.replaces).toBe(true);
+    expect(said.collisions).toEqual([]);
+
+    const back = await held.api.importArchive(
+      await archiveFrom(held, graph.ref),
+    );
+    expect(back.ref).toBe(graph.ref);
+    expect((await reopened(held).getNode(note.ref))?.title).toBe("Seeds");
+  });
+
+  it("refuses one whose notes are already in another graph here", async () => {
+    const { held, graph, note } = await written();
+    const said = await held.api.previewArchive(
+      renamed(await held.api.exportArchive(graph.ref)),
+    );
+    // A graph of its own, holding notes this device already keeps somewhere
+    // else.
     expect(said.replaces).toBe(false);
     expect(said.collisions).toEqual([note.ref]);
     await expect(
-      held.api.importArchive(await archiveFrom(held, graph.ref)),
+      held.api.importArchive(renamed(await held.api.exportArchive(graph.ref))),
     ).rejects.toThrow("already in another of your graphs");
   });
 

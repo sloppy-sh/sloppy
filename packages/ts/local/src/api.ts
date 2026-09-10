@@ -37,7 +37,6 @@ import {
   type GraphExport,
   type GraphView,
   type HealthReport,
-  HOME_GRAPH_ULID,
   MAX_ARCHIVE_BYTES,
   MAX_ARCHIVE_NOTES,
   MAX_RECENT_NOTES,
@@ -228,7 +227,7 @@ export class LocalApi implements SloppyApi {
       }
       const graph = await LocalGraph.start(this.files.at(root), did, {
         format: VAULT_FORMAT,
-        graph: known.length === 0 ? HOME_GRAPH_ULID : ulid(),
+        graph: ulid(),
         name: request.title,
         owner: did,
       });
@@ -585,6 +584,8 @@ export class LocalApi implements SloppyApi {
       collisions: held,
       replaces: opened.into !== undefined,
       replacing,
+      merges: false,
+      conflicts: [],
     };
   }
 
@@ -1145,7 +1146,7 @@ export class LocalApi implements SloppyApi {
         ? await LocalGraph.open(at, did)
         : await LocalGraph.start(at, did, {
             format: VAULT_FORMAT,
-            graph: (await this.homeIsTaken(did)) ? ulid() : HOME_GRAPH_ULID,
+            graph: ulid(),
             name: folderName(root),
             owner: did,
           });
@@ -1155,13 +1156,6 @@ export class LocalApi implements SloppyApi {
     })();
     this.starting.set(root, opening);
     return opening;
-  }
-
-  /** Whether the graph a person started with — the one an archive of a first
-   *  graph names — is already on this device. */
-  private async homeIsTaken(did: DidSyr): Promise<boolean> {
-    const home: OwnedRef = `${did}/${HOME_GRAPH_ULID}`;
-    return (await this.writtenDownGraphs()).some((one) => one.ref === home);
   }
 
   private async graphHolding(ref: OwnedRef): Promise<LocalGraph | undefined> {
@@ -1223,14 +1217,16 @@ export class LocalApi implements SloppyApi {
   }
 
   private graphView(graph: LocalGraph): GraphView {
-    const known = (this.known ?? []).find(
-      (one) => one.root === this.rootOf(graph),
-    );
+    const root = this.rootOf(graph);
+    const written = this.known ?? [];
+    const known = written.find((one) => one.root === root);
     const at = known?.created_at ?? nowIso();
     return {
       ref: graph.ref,
       created_by: graph.did,
       title: graph.title,
+      // The folder this device opened first is the one it started with.
+      home: written[0]?.root === root,
       created_at: at,
       updated_at: known?.updated_at ?? at,
     };
@@ -1269,10 +1265,6 @@ export class LocalApi implements SloppyApi {
         if (!drawings.has(shortcode)) missing.add(shortcode);
       }
     }
-    // The graph a person started with is the one every archive of one names, so
-    // one arriving opens a graph of its own rather than writing over theirs.
-    const opening =
-      said.graph === HOME_GRAPH_ULID ? { ...said, graph: ulid() } : said;
     // Whose it is now is whoever imported it, so somebody else's name does not
     // come with their graph; a person's own archive still carries theirs back.
     const owned = said.owner === did ? readGraph(vault) : undefined;
@@ -1280,8 +1272,8 @@ export class LocalApi implements SloppyApi {
       GRAPH_FILE,
       graphFile({
         format: VAULT_FORMAT,
-        graph: opening.graph,
-        name: opening.name,
+        graph: said.graph,
+        name: said.name,
         owner: did,
         ...(owned?.owner_name === undefined
           ? {}
@@ -1292,9 +1284,9 @@ export class LocalApi implements SloppyApi {
       }),
     );
     const into = (await this.allGraphs()).find(
-      (graph) => graph.ref === `${did}/${opening.graph}`,
+      (graph) => graph.ref === `${did}/${said.graph}`,
     );
-    return { said: opening, vault, notes, missing: [...missing], into };
+    return { said, vault, notes, missing: [...missing], into };
   }
 }
 

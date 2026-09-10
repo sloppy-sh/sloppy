@@ -1,6 +1,6 @@
 import { ServerRequiredError, type SloppyApi } from "@sloppy/client";
-import { HOME_GRAPH_ULID, splitOwnedRef } from "@sloppy/types";
-import { GRAPH_FILE, decodeText, notePath } from "@sloppy/vault";
+import { UNNAMED_GRAPH_ULID, splitOwnedRef } from "@sloppy/types";
+import { GRAPH_FILE, decodeText, encodeText, notePath } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
 import { MemoryFiles } from "./files.js";
@@ -94,7 +94,8 @@ describe("the folder a shell opened", () => {
     expect(held.store.has(`/Users/me/garden/${GRAPH_FILE}`)).toBe(true);
     const graphs = await held.api.listGraphs();
     expect(graphs.map((one) => one.title)).toEqual(["garden"]);
-    expect(splitOwnedRef(graphs[0].ref).localId).toBe(HOME_GRAPH_ULID);
+    expect(splitOwnedRef(graphs[0].ref).localId).not.toBe(UNNAMED_GRAPH_ULID);
+    expect(graphs[0].home).toBe(true);
     expect((await held.api.getNode(note.ref))?.title).toBe("A first thought");
   });
 
@@ -128,9 +129,10 @@ describe("the folder a shell opened", () => {
     ).toBe(true);
     const graphs = await second.api.listGraphs();
     expect(graphs.map((one) => one.title)).toEqual(["garden", "thesis"]);
-    // The graph a person started with is the one every archive of one names,
-    // so the second folder is not a second claim on it.
-    expect(splitOwnedRef(graphs[1].ref).localId).not.toBe(HOME_GRAPH_ULID);
+    // Every folder's graph is its own, and the one this device opened first is
+    // the one it started with.
+    expect(graphs[0].ref).not.toBe(graphs[1].ref);
+    expect(graphs.map((one) => one.home)).toEqual([true, false]);
     expect((await second.api.listNodes()).map((one) => one.title)).toEqual([
       "Chapter one",
     ]);
@@ -206,7 +208,7 @@ describe("a graph in a folder", () => {
   it("starts one where a person put it, and reads it back off the disk", async () => {
     const held = device(["/graphs/thesis"]);
     const graph = await held.api.createGraph({ title: "Thesis" });
-    expect(splitOwnedRef(graph.ref).localId).toBe(HOME_GRAPH_ULID);
+    expect(splitOwnedRef(graph.ref).localId).not.toBe(UNNAMED_GRAPH_ULID);
     expect(held.store.has("/graphs/thesis/graph.json")).toBe(true);
 
     const note = await held.api.createNode({ title: "A first thought" });
@@ -242,11 +244,36 @@ describe("a graph in a folder", () => {
     expect(said).toContain("A seed keeps its own clock.");
   });
 
+  it("gives a folder that shared everybody's first ulid one of its own", async () => {
+    const held = device(["/graphs/thesis"]);
+    const graph = await held.api.createGraph({ title: "Thesis" });
+    const note = await held.api.createNode({ title: "Beans" });
+
+    // A folder written when every first graph was at the same ulid.
+    const said = JSON.parse(
+      decodeText(held.store.get("/graphs/thesis/graph.json") as Uint8Array),
+    );
+    held.store.set(
+      "/graphs/thesis/graph.json",
+      encodeText(`${JSON.stringify({ ...said, graph: UNNAMED_GRAPH_ULID })}\n`),
+    );
+
+    const again = reopened(held);
+    const [opened] = await again.listGraphs();
+    expect(splitOwnedRef(opened.ref).localId).not.toBe(UNNAMED_GRAPH_ULID);
+    expect(opened.ref).not.toBe(graph.ref);
+    expect(opened.title).toBe("Thesis");
+    expect((await again.getNode(note.ref))?.title).toBe("Beans");
+
+    // Written back, so the folder answers the same ulid the next time.
+    expect((await reopened(held).listGraphs())[0].ref).toBe(opened.ref);
+  });
+
   it("keeps a second graph in a second folder", async () => {
     const held = device(["/graphs/one", "/graphs/garden"]);
     const first = await held.api.createGraph({ title: "Thesis" });
     const second = await held.api.createGraph({ title: "Garden" });
-    expect(splitOwnedRef(second.ref).localId).not.toBe(HOME_GRAPH_ULID);
+    expect(second.ref).not.toBe(first.ref);
 
     const there = await held.api.createNode({
       from: { relation: "branch", graph: second.ref },

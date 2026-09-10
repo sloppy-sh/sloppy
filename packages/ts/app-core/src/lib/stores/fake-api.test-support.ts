@@ -7,6 +7,7 @@ import {
 	addressDepth,
 	type AnsweredNote,
 	type ArchivePreview,
+	type ImportConflict,
 	type BlockView,
 	type Converses,
 	type CreateNodeRequest,
@@ -25,6 +26,7 @@ import {
 	type Viewer
 } from '@sloppy/types';
 import { resetApi } from '../api.js';
+import { graphs } from './graphs.svelte.js';
 import { initRuntime } from '../runtime.js';
 
 export const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
@@ -47,6 +49,20 @@ export function ref(seed: number, did = DID): OwnedRef {
 
 export const AT = '2026-01-01T00:00:00.000Z';
 
+/** The graph an identity started with, in these fixtures. Every home graph's
+ *  ulid is its own, so a suite spells one rather than deriving it. */
+export const HOME_ULID = '01ARZ3NDEKTSV4RRFFQ69G5HMM';
+export const homeOf = (did: string): OwnedRef => `${did}/${HOME_ULID}`;
+export const HOME: OwnedRef = homeOf(DID);
+
+/** The listing every suite gets unless it answers `GET /graphs` itself: one
+ *  graph, the one they started with. */
+export function homeListing(): GraphView[] {
+	return [
+		{ ref: HOME, created_by: DID, title: 'My graph', home: true, created_at: AT, updated_at: AT }
+	];
+}
+
 export function node(seed: number, address: string, over: Partial<NodeView> = {}): NodeView {
 	const self = ref(seed);
 	return {
@@ -54,6 +70,7 @@ export function node(seed: number, address: string, over: Partial<NodeView> = {}
 		created_by: DID,
 		created_at: AT,
 		updated_at: AT,
+		graph: homeOf(over.created_by ?? DID),
 		address,
 		depth: addressDepth(address),
 		origin: self,
@@ -304,8 +321,39 @@ export function useFakeApi(): FakeApi {
 		fetchImpl: () => fake.fetch,
 		saveFile: undefined
 	});
+	fake.on('GET /graphs', () => homeListing());
+	// A fresh fake is a fresh session, and which graphs somebody keeps is one of
+	// the things a session holds.
+	graphs.clear();
 	resetApi();
 	return fake;
+}
+
+/**
+ * A preview of an archive that is a copy of a graph the reader already keeps:
+ * the two are settled note by note, and `conflicts` is what a person is asked
+ * about first — docs/ARCHITECTURE.md § "A graph on disk".
+ */
+export function mergePreview(
+	graph: string,
+	conflicts: ImportConflict[],
+	over: Partial<ArchivePreview> = {}
+): ArchivePreview {
+	return {
+		format: 1,
+		graph,
+		name: 'Thesis',
+		owner: 'did:syr:z6MkAda' as ArchivePreview['owner'],
+		notes: 1,
+		pictures: 0,
+		missing_emoji: [],
+		collisions: [],
+		replaces: true,
+		replacing: 1,
+		merges: true,
+		conflicts,
+		...over
+	};
 }
 
 /** A refusal in the server's own words, which is the only way a suite can
