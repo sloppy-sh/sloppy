@@ -96,6 +96,13 @@ to, all of them about what a person can rely on rather than about what the code 
   leaves nothing behind. Purging a note takes its aliases with it and retires every one of
   those addresses rather than releasing it — except a number another note is at, there or in
   the bin, which is that note's and stays its own to take back.
+- **A retired address carries the note that spent it, and only that note takes it back.** A
+  number a purge retired, or one a graph gave up when a copy of itself was written over it,
+  is the spent number of one note. That note — the same ref, arriving again in the same
+  graph — takes it back, which is what lets somebody carry a graph out of Sloppy and bring
+  it home again with their citations intact. No other note may have it, and a retired
+  address that names no note is refused to everyone: a row written before one could say
+  whose it was is a number this graph has used, and nothing more.
 - **A note in the bin holds its address only until a person asks for it.** Deleting a note
   frees nothing on its own: nothing is renumbered, and the rule never offers a number a
   binned note is holding. But a person who writes that number on another note, names it on a

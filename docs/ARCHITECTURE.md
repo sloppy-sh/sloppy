@@ -160,6 +160,13 @@ the same millisecond still order the same way on every peer.
   takes. `childAddresses` and `addressTaken` answer from the notes and those rows together,
   so `nextChildAddress` steps past a number the graph has spent — a note in the bin
   included, which is what keeps the rule deterministic.
+- **A retired row names the note that spent the address, and answers to it.** `note` on
+  `retired_address` is the ref the number was purged off, so `addressLeadsTo` reads a
+  retired address back as `deleted` beside that note and `NodeService.claim` lets that one
+  note — and no other — write the number again. What that buys is the round trip: a graph
+  exported, taken back in and settled note by note reaches its own notes at their own
+  numbers. `note` is absent on a row written before the column existed, and such a row is
+  refused to everyone, which is what a retired address was to everyone before this.
 - **A note in the bin yields its address to whoever asks for it.** The rule never offers
   one, but a person writing a number by hand, naming one on a move or writing a new note at
   one is given it where the only thing holding it is a note they have deleted, or an alias
@@ -230,22 +237,38 @@ one is held where the server holds it — `node.service.test.ts` and
 `domain.integration.test.ts`. The rules above do not mention a graph; what a graph decides
 is which run of siblings the next address follows.
 
-**The home graph.** Everybody has a graph before they open a second one, and its local id is
-reserved — `HOME_GRAPH_ULID` in `@sloppy/types` — so `homeGraphRef(did)` is a function of the
-identity rather than a row to look up, and the boot migration can spell it in SurrealQL.
-`ulid()` writes the current time into a ULID's first ten characters, so nothing minted can
-collide with it. It is listed, named and written into like any other graph; its row is
-written the first time the listing is asked for, which is what gives a rename something to
-rename.
+**The home graph is a graph, and its ulid is its own.** Everybody has one before they open a
+second, and it is minted the way every other graph's is: `GraphService.home` writes the row
+the first time anybody asks for it and `home` on that row is what finds it again. No two
+people's home graphs share a ulid, which is what lets somebody export the graph they started
+with, bring it back, and have it settle into itself rather than open a stranger beside it —
+and what stops an archive of one person's first graph from reading as another person's
+first graph. The flag is the whole of what makes it home: it is listed first, it is where a
+note that names no graph goes, and it is the one graph its owner cannot close.
 
-**Absent means the home graph**, on the wire and on a row written before graphs existed.
-The two columns a UNIQUE index reads — `node.graph` and `pulled_node.source_graph` — are the
-exception: they are always present, because SurrealDB does not constrain a row whose indexed
-column is absent, and two rows with no `graph` and one address are both accepted, measured on
-3.1.3. So `schema.ts` fills them once on a store that predates graphs and then declares both
-`TYPE string`, which is what leaves the index holding the address rule rather than the
-application's discipline. `schema.integration.test.ts` holds a store built the old way
-against both halves. `publication.graph` is in no unique index and stays optional.
+**A ulid every identity shared is what this replaces**, and `migrateHomeGraphs` in
+`@sloppy/data` is the crossing. It runs on every open beside the schema, mints one home graph
+per identity that has rows and none, and rewrites `node.graph`, `node_alias.graph`,
+`retired_address.graph`, `publication.graph` and the `pulled_node.source_graph` of an author
+this instance itself holds, from `<did>/00000000000000000000000000` to the minted ref. It is
+idempotent because it is bounded by what still spells that ulid, and a second run over a
+store it has already crossed reads nothing to write. `schema.integration.test.ts` holds it
+against a store built the old way.
+
+**A graph nobody named** is what that ulid is now, and `UNNAMED_GRAPH_ULID` in `@sloppy/types`
+is the constant: `graphRef(owner, undefined)` answers it, and it is what a peer serving a page
+from before a page carried its graph leaves out. Nothing mints it — `ulid()` writes the current
+time into a ULID's first ten characters — so no graph anybody keeps is ever at it, and a
+`pulled_node` of a peer this instance does not hold keeps it rather than being given a home
+graph ulid nobody here can know.
+
+The two columns a UNIQUE index reads — `node.graph` and `pulled_node.source_graph` — are never
+absent, because SurrealDB does not constrain a row whose indexed column is absent, and two rows
+with no `graph` and one address are both accepted, measured on 3.1.3. So `schema.ts` fills them
+once on a store that predates graphs and then declares both `TYPE string`, which is what leaves
+the index holding the address rule rather than the application's discipline.
+`schema.integration.test.ts` holds a store built the old way against both halves.
+`publication.graph` is in no unique index and stays optional.
 
 **The graph travels with a published region.** `PublishedSubtreePage` and
 `PublishedPublication` carry it, because a reader holding two regions of one author cannot
@@ -1168,6 +1191,7 @@ without renaming it. A **ref** below is how one row points at another: the strin
 graph:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
   title       string    what they call it
+  home        bool      the one they started with; absent is false
 
 node:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
@@ -1200,6 +1224,8 @@ retired_address:{ created_by: <did>, id: <ulid> }
   graph       ref       the graph the address is read in, immutable
   parent      ref?      the note it hung under, immutable; absent for a branch
   address     string    the address, immutable
+  note        ref?      the note that spent it, immutable; absent is a row
+                        written before the column, spent by nobody nameable
 
 node_alias:{ created_by: <did>, id: <ulid> }
   created_by  did       the owner, flat and immutable
@@ -1226,10 +1252,12 @@ answers through `asRead` for the alias that says what it gave up.
 **A deleted note leaves its address behind.** `retired_address` is a row per note a purge
 takes, and it is what makes the address protocol survive a deletion: the run a new address
 follows is the live notes, the deleted ones and these together, so nothing is ever assigned
-twice inside one graph. It carries the graph and the parent rather than the note, because
-the note is what has gone — the parent is how one index answers both the children of a note
-and the branches of a graph, `parent = NONE` standing for a branch as it does on `node`.
-Nothing reads it but address assignment, and the per-DID purge takes it with the graph. What
+twice inside one graph. It carries the graph and the parent — the parent is how one index
+answers both the children of a note and the branches of a graph, `parent = NONE` standing
+for a branch as it does on `node` — and it carries `note`, the ref the number was spent on,
+which is the whole of how that one note takes its own number back when a copy of the graph
+brings it home again (§ "The genealogy and the address"). Address assignment and that claim
+are all that read it, and the per-DID purge takes it with the graph. What
 a purge writes none for is a number another note is at, there or in the bin: `addressesLedBy`
 reads the rows the sweep is leaving behind, and a note waiting to be put back has not given
 its number up.
@@ -1778,6 +1806,13 @@ the person who keeps it, so one opened on another device is not anonymous. Both 
 optional, and absent is somebody who has not said. Importing somebody else's graph leaves
 their name behind with them; a person's own archive brings theirs back.
 
+**Every folder's graph has a ulid of its own**, minted when the folder is started, so two
+devices' first folders are two graphs and an archive of either settles into itself.
+`LocalGraph.open` mints one for a folder still spelling the reserved ulid every first graph
+once shared and writes `graph.json` back, which is the local half of the crossing
+§ "The genealogy and the address" describes. `vaults.json` records where a folder is and
+never which graph is in it, so nothing there has to change.
+
 **The bin is the folder's and never travels.** A deleted note's file moves into
 `.sloppy/bin/` and putting it back moves it out again, while `bin.json` holds when each
 one went and every address this graph has spent and will not assign again — including the
@@ -1836,10 +1871,22 @@ disk.
 exported it. Importing into an identity rewrites `<sourceDid>/<ulid>` to `<targetDid>/<ulid>`
 through the note's own ref, its parent, its links and every reference in its writing — the
 aliases ride the note, so its ref carries them. The ulid half never changes, which is what
-makes a re-import a replace rather than a second copy of everything. An import is refused
-where the target already holds one of the ulids arriving, unless it is a replace of the same
-graph — the graph's own ulid says which. Addresses arrive as the labels they are, and are
-held unique inside the graph by the same rule that writes one.
+lets a graph be recognised on the way back in. An import is refused where the target already
+holds one of the ulids arriving in another of its graphs. Addresses arrive as the labels
+they are, and are held unique inside the graph by the same rule that writes one.
+
+**Importing a graph you already hold is a merge, not a replace.** The graph's own ulid says
+which, and where it is one the importer keeps, the two copies are settled note by note: a
+note only the archive has arrives, a note only the graph has stays, and a note both sides
+hold that differs is a conflict. So is a number the two sides have on different notes. What
+a person is handed is the same choice a merge in the folder's history hands them (§ "The
+vault's history") — mine or theirs for the note, section by section where both sides wrote
+into one note, and which note keeps the number for an address — and no note is ever written
+with markers in it. `ImportConflict` and `ImportResolution` in `@sloppy/types` are that
+vocabulary; `ArchivePreview.conflicts` is what a person is shown before anything is written,
+and `merges` says the archive is a copy of a graph they keep. Absent `conflicts` is none and
+absent `merges` is false — what an answer made before an import could merge says. The hosted
+app and the local app settle an import the same way, because both read the same preview.
 
 **An archive says what it holds before it is opened.** `manifest` reads `graph.json` and
 counts the entries out of the zip's own listing without inflating them, so an import
