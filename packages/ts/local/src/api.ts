@@ -31,17 +31,23 @@ import {
   type CustomEmoji,
   type DeletedBranch,
   type DidSyr,
+  type DocumentNode,
   type ExchangeSessionRequest,
   type FollowRequest,
   type FollowedIdentity,
   type GraphExport,
   type GraphView,
   type HealthReport,
+  type ImportConflict,
+  type ImportResolution,
+  type ImportSettlement,
+  ImportSettlementSchema,
   MAX_ARCHIVE_BYTES,
   MAX_ARCHIVE_NOTES,
   MAX_RECENT_NOTES,
   type MediaAsset,
   type MediaLibraryRole,
+  MediaRoleSchema,
   type NodeBulkRequest,
   type NodeBulkResult,
   type NodePlacement,
@@ -88,16 +94,20 @@ import {
 } from "@sloppy/types";
 import {
   type EmojiDrawing,
+  type PictureSize,
   type Vault,
   VAULT_FORMAT,
   GRAPH_FILE,
+  PICTURES_FILE,
   decodeText,
   emojiAt,
+  inkAt,
   manifest,
   noteAt,
   graphFile,
   pack,
   readGraphFile,
+  readPicturesFile,
   rekey,
   unpack,
   uploadAt,
@@ -125,7 +135,14 @@ import { NoteWriter } from "./notes.js";
 import { absent, checked, contested, refuse } from "./refusal.js";
 import { recent, search } from "./search.js";
 import { type KnownVault, readVaults, writeVaults } from "./vaults.js";
-import { carriedOut, vaultOwned } from "./vault-paths.js";
+import {
+  carriedOut,
+  EMOJI_FILE,
+  extensionOf,
+  MEDIA_FILE,
+  mimeForExtension,
+  vaultOwned,
+} from "./vault-paths.js";
 
 /** Whether a folder holds a graph. A shell asks this of a folder it wrote down
  *  before serving it, so that both sides read a folder that has been moved or
@@ -554,7 +571,10 @@ export class LocalApi implements SloppyApi {
    *  a history kept. What is in the bin is not in it, and is in no kept state
    *  either. */
   async vaultHere(ref?: OwnedRef): Promise<Vault> {
-    const graph = await this.graphAt(ref);
+    return this.vaultOf(await this.graphAt(ref));
+  }
+
+  private async vaultOf(graph: LocalGraph): Promise<Vault> {
     const vault: Vault = new Map();
     for (const [path, bytes] of await graph.carry()) {
       if (carriedOut(path)) vault.set(path, bytes);
@@ -568,9 +588,9 @@ export class LocalApi implements SloppyApi {
       opened.notes.map((note) => note.ref),
       opened.into,
     );
-    const replacing = opened.into
-      ? opened.into.live().length + opened.into.binned().length
-      : 0;
+    const merge = opened.into
+      ? await this.merging(opened.into, opened.vault)
+      : undefined;
     return {
       format: opened.said.format,
       graph: opened.said.graph,
@@ -582,16 +602,26 @@ export class LocalApi implements SloppyApi {
       ).length,
       missing_emoji: opened.missing,
       collisions: held,
-      replaces: opened.into !== undefined,
-      replacing,
-      merges: false,
-      conflicts: [],
+      replaces: false,
+      replacing: 0,
+      merges: merge !== undefined,
+      conflicts: merge?.conflicts ?? [],
     };
   }
 
-  /** A graph brought in as a folder of its own, under this device's identity.
-   *  One this device already keeps takes the place of what is in that folder. */
-  async importArchive(archive: BodyInit): Promise<GraphView> {
+  /**
+   * A graph brought in as a folder of its own, under this device's identity. A
+   * copy of one this device already keeps is settled into it note by note
+   * instead — docs/ARCHITECTURE.md § "A graph on disk". `settle` is what the
+   * person chose where the two copies disagree.
+   */
+  async importArchive(
+    archive: BodyInit,
+    settle?: ImportSettlement,
+  ): Promise<GraphView> {
+    const chosen = checked(() =>
+      ImportSettlementSchema.parse(settle ?? {}),
+    ).resolutions;
     const opened = await this.openArchive(archive);
     return this.write(async () => {
       const held = await this.holdingAny(
@@ -599,23 +629,208 @@ export class LocalApi implements SloppyApi {
         opened.into,
       );
       if (held.length > 0) throw alreadyHere(held.length);
-      const did = (await this.who()).did;
-      const into = opened.into;
-      const root = into ? this.rootOf(into) : await this.files.pickFolder();
-      if (root === undefined) throw refuse("No folder was chosen.");
-      if (!into && (await this.vaults()).some((one) => one.root === root)) {
-        throw refuse("There is already a graph in that folder.");
-      }
-      const files = this.files.at(root);
-      const retired = into ? spentBefore(into, opened.notes) : [];
-      if (into) await emptyVault(files);
-      for (const [path, bytes] of opened.vault) await files.write(path, bytes);
-      const graph = await LocalGraph.open(files, did);
-      await graph.keepRetired(retired);
-      this.opened.set(root, graph);
-      if (!into) await this.rememberVault(root);
-      return this.graphView(graph);
+      return opened.into
+        ? this.settleInto(opened.into, opened.vault, chosen)
+        : this.arriveOnItsOwn(opened.vault);
     });
+  }
+
+  /** A graph this device does not keep, put in a folder of its own. */
+  private async arriveOnItsOwn(vault: Vault): Promise<GraphView> {
+    const root = await this.files.pickFolder();
+    if (root === undefined) throw refuse("No folder was chosen.");
+    if ((await this.vaults()).some((one) => one.root === root)) {
+      throw refuse("There is already a graph in that folder.");
+    }
+    const files = this.files.at(root);
+    for (const [path, bytes] of vault) await files.write(path, bytes);
+    const graph = await LocalGraph.open(files, (await this.who()).did);
+    this.opened.set(root, graph);
+    await this.rememberVault(root);
+    return this.graphView(graph);
+  }
+
+  /**
+   * The two copies of one graph settled into the folder: what only the file
+   * holds arrives, what only the folder holds stays, and what they say
+   * differently about one note is settled as the person chose. Nothing is
+   * written over, so no number either copy has spent comes free.
+   */
+  private async settleInto(
+    into: LocalGraph,
+    vault: Vault,
+    settle: readonly ImportResolution[],
+  ): Promise<GraphView> {
+    const merge = await this.merging(into, vault);
+    const chosen = new Map(settle.map((one) => [settling(one), one]));
+    const unsettled = merge.conflicts.filter(
+      (one) => !chosen.has(settling(one)),
+    );
+    if (unsettled.length > 0) throw stillContested(unsettled.length);
+
+    await this.carryEmoji(into, vault);
+    await this.carryArrivingPictures(into, vault, merge.theirs);
+    const arriving = notesIn(
+      vault,
+      new Map(into.ownEmoji().map((one) => [one.shortcode, { src: one.src }])),
+    );
+    for (const [ref, theirs] of arriving) {
+      const how =
+        chosen.get(settling({ kind: "note", ref })) ??
+        chosen.get(settling({ kind: "section", ref }));
+      const mine = into.find(ref);
+      if (mine && !how) continue;
+      const gone = into.findDeleted(ref);
+      if (gone) await into.restore(gone);
+      const note =
+        mine && how ? settled(asVaultNote(mine), theirs, how) : theirs;
+      await into.save(stored(note, into.held(ref)));
+    }
+    for (const conflict of merge.conflicts) {
+      await this.settleAddress(into, conflict, chosen.get(settling(conflict)));
+    }
+    return this.reopened(into);
+  }
+
+  /** The number goes to the note the person chose, and the note that loses it
+   *  keeps leading by it — AI.md § "The Genealogy Is the Protocol". */
+  private async settleAddress(
+    into: LocalGraph,
+    conflict: ImportConflict,
+    how: ImportResolution | undefined,
+  ): Promise<void> {
+    const { address, other } = conflict;
+    if (conflict.kind !== "address" || !address || !other) return;
+    const said = how?.numbered;
+    const keeps =
+      said === conflict.ref || said === other
+        ? said
+        : how?.keep === "theirs"
+          ? other
+          : conflict.ref;
+    const loser = into.held(keeps === conflict.ref ? other : conflict.ref);
+    if (loser?.address === address) {
+      const { address: _spent, ...rest } = loser;
+      await into.save({
+        ...rest,
+        aliases: loser.aliases.includes(address)
+          ? [...loser.aliases]
+          : [...loser.aliases, address],
+      });
+    }
+    const winner = into.held(keeps);
+    if (winner && winner.address !== address) {
+      await into.save({ ...winner, address });
+    }
+  }
+
+  /** The folder read again, so what the settled graph answers is what its files
+   *  say. */
+  private async reopened(into: LocalGraph): Promise<GraphView> {
+    const root = this.rootOf(into);
+    this.starting.delete(root);
+    const graph = await LocalGraph.open(into.files, (await this.who()).did);
+    this.opened.set(root, graph);
+    return this.graphView(graph);
+  }
+
+  /**
+   * What the folder's copy of a graph and the file's copy of it disagree about,
+   * note by note and section by section. `vaultDifference` in `@sloppy/vault`
+   * is what enumerates it; a note whose tags, links or look alone differ is not
+   * in that enumeration and is a disagreement all the same.
+   */
+  private async merging(into: LocalGraph, vault: Vault): Promise<Merging> {
+    const here = await this.vaultOf(into);
+    const difference = vaultDifference(here, vault);
+    const mine = notesIn(here, new Map());
+    const theirs = notesIn(vault, new Map());
+    const sections = new Map(
+      difference.notes.changed.map((one) => [one.ref, one.sections.changed]),
+    );
+    const differing = new Set<OwnedRef>([
+      ...difference.notes.moved.map((one) => one.ref),
+      ...difference.notes.retitled.map((one) => one.ref),
+      ...difference.notes.renumbered.map((one) => one.ref),
+      ...difference.notes.changed.map((one) => one.ref),
+    ]);
+    for (const [ref, was] of mine) {
+      const now = theirs.get(ref);
+      if (now && !alike(was, now)) differing.add(ref);
+    }
+    const conflicts: ImportConflict[] = [];
+    for (const ref of [...differing].sort()) {
+      const changed = sections.get(ref) ?? [];
+      conflicts.push({
+        kind: changed.length > 0 ? "section" : "note",
+        ref,
+        sections: changed,
+        mine: asWords(mine.get(ref), changed),
+        theirs: asWords(theirs.get(ref), changed),
+      });
+    }
+    const at = numbered(theirs);
+    for (const [address, ref] of numbered(mine)) {
+      const other = at.get(address);
+      if (other === undefined || other === ref) continue;
+      conflicts.push({
+        kind: "address",
+        ref,
+        other,
+        address,
+        sections: [],
+        mine: asWords(mine.get(ref), []),
+        theirs: asWords(theirs.get(other), []),
+      });
+    }
+    return { theirs, conflicts };
+  }
+
+  /** The emoji the file was written with that this graph has no picture for,
+   *  put into it so an arriving note draws them. */
+  private async carryEmoji(into: LocalGraph, vault: Vault): Promise<void> {
+    const here = new Set(into.ownEmoji().map((one) => one.shortcode));
+    const said = readSaid(vault.get(EMOJI_FILE));
+    for (const [path, bytes] of vault) {
+      const shortcode = emojiAt(path);
+      if (shortcode === undefined || here.has(shortcode)) continue;
+      const mimeType = mimeForExtension(extensionOf(path));
+      if (mimeType === undefined) continue;
+      const picture = await into.putPicture(
+        {
+          role: "emoji",
+          filename: path.slice(path.lastIndexOf("/") + 1),
+          mime_type: mimeType,
+        },
+        bytes,
+      );
+      await into.addEmoji(
+        shortcode,
+        said[shortcode]?.kind === "sticker" ? "sticker" : "emoji",
+        picture.upload_id,
+      );
+      await into.removePicture(picture.upload_id);
+      here.add(shortcode);
+    }
+  }
+
+  /** The pictures the file's notes draw that this graph does not hold yet. */
+  private async carryArrivingPictures(
+    into: LocalGraph,
+    vault: Vault,
+    theirs: ReadonlyMap<OwnedRef, VaultNote>,
+  ): Promise<void> {
+    const drawn = new Set<string>();
+    for (const note of theirs.values()) {
+      for (const upload of picturesDrawnBy(note)) drawn.add(upload);
+    }
+    const said = readSaid(vault.get(MEDIA_FILE));
+    for (const [path, bytes] of vault) {
+      const upload = uploadAt(path);
+      if (upload === undefined || !drawn.has(upload)) continue;
+      if (into.picturePath(upload)) continue;
+      await into.keepPicture(upload, asPicture(said[upload], path), bytes);
+    }
   }
 
   // ── Publications ─────────────────────────────────────────────────────────
@@ -1313,34 +1528,205 @@ interface Opened {
   vault: Vault;
   notes: VaultNote[];
   missing: string[];
-  /** The graph on this device this archive writes over, absent where it opens
+  /** The graph on this device this archive is a copy of, absent where it opens
    *  one of its own. */
   into?: LocalGraph;
 }
 
-/**
- * Every address the graph an import writes over has spent: the ones its notes
- * are at, the bin's among them, the ones they were carried away from, and the
- * ones it had already retired — less the ones the arriving notes lead by. None
- * of them is ever assigned again, AI.md § "The Genealogy Is the Protocol".
- */
-function spentBefore(
-  into: LocalGraph,
-  arriving: readonly VaultNote[],
-): Address[] {
-  const led = new Set<Address>();
-  for (const note of arriving) {
-    if (note.address !== undefined) led.add(note.address);
-    for (const alias of note.aliases) led.add(alias);
+/** The file's copy of one graph, and what it and the folder's copy say
+ *  differently. */
+interface Merging {
+  theirs: Map<OwnedRef, VaultNote>;
+  conflicts: ImportConflict[];
+}
+
+/** A conflict and the choice made about it stand for the same note, which is
+ *  what pairs them. */
+function settling(one: {
+  kind: ImportConflict["kind"];
+  ref: OwnedRef;
+}): string {
+  return `${one.kind}:${one.ref}`;
+}
+
+/** The note the two copies both hold, as the person settled it: the side they
+ *  kept, with each section they took from the other in its place. */
+function settled(
+  mine: VaultNote,
+  theirs: VaultNote,
+  how: ImportResolution,
+): VaultNote {
+  const base = how.keep === "theirs" ? theirs : mine;
+  const other = how.keep === "theirs" ? mine : theirs;
+  if (how.sections.length === 0) return base;
+  const taking = new Map(how.sections.map((one) => [one.section, one.keep]));
+  return {
+    ...base,
+    sections: base.sections.map((section) => {
+      if ((taking.get(section.ulid) ?? how.keep) === how.keep) return section;
+      return other.sections.find((one) => one.ulid === section.ulid) ?? section;
+    }),
+  };
+}
+
+/** A note this graph holds, back as the file that carries it. */
+function asVaultNote(note: StoredNote): VaultNote {
+  const {
+    ulid: _named,
+    created_at,
+    updated_at,
+    deleted_at: _gone,
+    ...rest
+  } = note;
+  return { ...rest, created: created_at, updated: updated_at };
+}
+
+/** A note as this graph holds it. The stamps are the file's, and the ones the
+ *  graph already had where the file says nothing. */
+function stored(note: VaultNote, held: StoredNote | undefined): StoredNote {
+  const created = note.created ?? held?.created_at ?? nowIso();
+  const updated = note.updated ?? held?.updated_at ?? created;
+  const { sections, ...rest } = note;
+  return {
+    ...rest,
+    ulid: localOf(note.ref),
+    created_at: created,
+    updated_at: updated,
+    sections: sections.map((section) => ({
+      ...section,
+      created_at: created,
+      updated_at: updated,
+    })),
+  };
+}
+
+/** Whether the two copies say the same about a note in the ways an enumerated
+ *  difference does not name. */
+function alike(a: VaultNote, b: VaultNote): boolean {
+  return (
+    JSON.stringify([a.tags, a.links, a.aliases, a.appearance ?? null]) ===
+    JSON.stringify([b.tags, b.links, b.aliases, b.appearance ?? null])
+  );
+}
+
+/** Which note each number is on, leaving out the notes that carry none. */
+function numbered(
+  notes: ReadonlyMap<OwnedRef, VaultNote>,
+): Map<Address, OwnedRef> {
+  const at = new Map<Address, OwnedRef>();
+  for (const [ref, note] of notes) {
+    if (note.address !== undefined && !at.has(note.address)) {
+      at.set(note.address, ref);
+    }
   }
-  const going = into
-    .all()
-    .flatMap((note) => [
-      ...(note.address === undefined ? [] : [note.address]),
-      ...note.aliases,
-    ])
-    .filter((address) => !led.has(address));
-  return [...new Set([...into.retiredAddresses(), ...going])];
+  return at;
+}
+
+/** What one side holds, as words a person settles a disagreement by: what the
+ *  note is called, what it is tagged, then the writing of the sections in
+ *  question. */
+function asWords(
+  note: VaultNote | undefined,
+  sections: readonly string[],
+): string {
+  if (!note) return "";
+  const stack =
+    sections.length === 0
+      ? note.sections
+      : note.sections.filter((one) => sections.includes(one.ulid));
+  return [
+    note.title,
+    note.tags.join(", "),
+    ...stack.flatMap((one) => wordsIn(one.content)),
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+/** An element that carries no words of its own, in the fewest that say what it
+ *  is. One this build has never heard of is left out rather than named
+ *  wrongly. */
+const CALLED: Partial<Record<string, string>> = {
+  picture: "A picture",
+  ink: "A drawing",
+  math: "A formula",
+  mathBlock: "A formula",
+  diagram: "A diagram",
+};
+
+/** One line per element of a section, in the order they are written. */
+function wordsIn(content: BlockDocument): string[] {
+  const written: string[] = [];
+  const walk = (nodes: readonly DocumentNode[]): void => {
+    for (const node of nodes) {
+      if ((node.content ?? []).some((child) => child.content !== undefined)) {
+        walk(node.content ?? []);
+        continue;
+      }
+      const one = words(node).trim() || CALLED[node.type] || "";
+      if (one !== "") written.push(one);
+    }
+  };
+  walk(content.content ?? []);
+  return written;
+}
+
+function words(node: DocumentNode): string {
+  const label = node.attrs?.label;
+  if (node.type === "reference") return typeof label === "string" ? label : "";
+  if (node.text !== undefined) return node.text;
+  return (node.content ?? []).map(words).join("");
+}
+
+function readJson(
+  bytes: Uint8Array | undefined,
+): Record<string, unknown> | undefined {
+  if (!bytes) return undefined;
+  try {
+    const held = JSON.parse(decodeText(bytes)) as unknown;
+    return held && typeof held === "object" && !Array.isArray(held)
+      ? (held as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The `.sloppy/` file that says what the names beside it stand for. One
+ *  nobody can read leaves each file to say what it can for itself. */
+function readSaid(
+  bytes: Uint8Array | undefined,
+): Record<string, Record<string, unknown> | undefined> {
+  const said: Record<string, Record<string, unknown> | undefined> = {};
+  for (const [key, value] of Object.entries(readJson(bytes) ?? {})) {
+    if (value && typeof value === "object") {
+      said[key] = value as Record<string, unknown>;
+    }
+  }
+  return said;
+}
+
+/** A picture arriving, as this device will hold it: what the file it came in
+ *  said, and what its own name says where that file said nothing. */
+function asPicture(
+  said: Record<string, unknown> | undefined,
+  path: string,
+): StoredPicture {
+  const width = said?.width;
+  const height = said?.height;
+  return {
+    role: MediaRoleSchema.safeParse(said?.role).data ?? "block",
+    filename:
+      typeof said?.filename === "string"
+        ? said.filename
+        : path.slice(path.lastIndexOf("/") + 1),
+    mime_type:
+      typeof said?.mime_type === "string"
+        ? said.mime_type
+        : (mimeForExtension(extensionOf(path)) ?? "application/octet-stream"),
+    ...(typeof width === "number" ? { width } : {}),
+    ...(typeof height === "number" ? { height } : {}),
+  };
 }
 
 /** The graph's own files gone from a folder somebody keeps. What else is in it
@@ -1363,13 +1749,39 @@ function placeAfter(
 }
 
 /** Every note file the vault holds, read with the sidecars beside it. */
-function readNotes(vault: Vault, emoji: ReadonlyMap<string, EmojiDrawing>) {
-  const notes = [];
+function readNotes(
+  vault: Vault,
+  emoji: ReadonlyMap<string, EmojiDrawing>,
+): VaultNote[] {
+  const ink = new Map<string, Record<string, unknown>>();
+  for (const [path, bytes] of vault) {
+    const stem = inkAt(path);
+    if (stem === undefined || !path.endsWith(".ink.json")) continue;
+    const attrs = readJson(bytes);
+    if (attrs) ink.set(stem, attrs);
+  }
+  const sizes = vault.get(PICTURES_FILE);
+  const pictures: ReadonlyMap<string, PictureSize> = sizes
+    ? readPicturesFile(sizes)
+    : new Map();
+  const notes: VaultNote[] = [];
   for (const [path, bytes] of vault) {
     if (noteAt(path) === undefined) continue;
-    notes.push(vaultToNote({ markdown: decodeText(bytes), emoji }));
+    notes.push(
+      vaultToNote({ markdown: decodeText(bytes), ink, pictures, emoji }),
+    );
   }
   return notes;
+}
+
+/** The same, keyed by the ref that identifies each note. */
+function notesIn(
+  vault: Vault,
+  emoji: ReadonlyMap<string, EmojiDrawing>,
+): Map<OwnedRef, VaultNote> {
+  const held = new Map<OwnedRef, VaultNote>();
+  for (const note of readNotes(vault, emoji)) held.set(note.ref, note);
+  return held;
 }
 
 /** The `:shortcode:`s a note's writing is written with. */
@@ -1429,6 +1841,16 @@ function readable<T>(read: () => T): T {
     }
     throw err;
   }
+}
+
+/** An import of a copy of this graph, held until the person has said what each
+ *  note they disagree about says. */
+function stillContested(count: number): Error {
+  return refuse(
+    count === 1
+      ? "Your copy of this graph and the one in the file say different things about one note. Choose what it says, then bring it in again."
+      : `Your copy of this graph and the one in the file say different things about ${count} notes. Choose what each one says, then bring it in again.`,
+  );
 }
 
 function alreadyHere(count: number): Error {
@@ -1641,8 +2063,8 @@ export interface ChangedBetween {
  */
 export function changedBetween(before: Vault, after: Vault): ChangedBetween {
   const difference = vaultDifference(before, after);
-  const was = byRef(before);
-  const now = byRef(after);
+  const was = notesIn(before, new Map());
+  const now = notesIn(after, new Map());
   const notes = new Map<OwnedRef, NoteChangedBetween>();
   const of = (ref: OwnedRef, became: NoteChangedBetween["became"]) => {
     const held = notes.get(ref);
@@ -1721,10 +2143,4 @@ function sectionsBeside(
       ...(after === undefined ? {} : { after }),
     };
   });
-}
-
-function byRef(vault: Vault): Map<OwnedRef, VaultNote> {
-  const held = new Map<OwnedRef, VaultNote>();
-  for (const note of readNotes(vault, new Map())) held.set(note.ref, note);
-  return held;
 }
