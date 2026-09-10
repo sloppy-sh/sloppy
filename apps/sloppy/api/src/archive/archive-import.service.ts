@@ -142,7 +142,7 @@ export class ArchiveImportService {
   ): Promise<GraphView> {
     if (settle.length > 0) {
       throw new BadRequestException(
-        "There was nothing to choose between here. Bring this graph in again.",
+        "This copy of Sloppy brings a graph in whole. Bring it in again without choosing between the two copies.",
       );
     }
     const opened = await this.open(bytes, did, await this.catalog(delegation));

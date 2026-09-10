@@ -59,7 +59,7 @@ const HOME_GRAPHS = `
         UPDATE retired_address SET graph = $to
           WHERE created_by = $did AND graph = $from;
         UPDATE publication SET graph = $to
-          WHERE created_by = $did AND graph = $from;
+          WHERE created_by = $did AND (graph = $from OR graph = NONE);
         UPDATE pulled_node SET source_graph = $to
           WHERE source_did = $did AND source_graph = $from;
         DELETE $shared;
@@ -337,8 +337,11 @@ ${MIGRATIONS}
   DEFINE INDEX IF NOT EXISTS node_alias_owner_graph_parent ON node_alias FIELDS created_by, graph, parent;
   -- Somebody's graphs, which is also the purge's reach.
   DEFINE INDEX IF NOT EXISTS graph_owner ON graph FIELDS created_by;
-  -- The one they started with, which is where a note naming no graph goes.
-  DEFINE INDEX IF NOT EXISTS graph_owner_home ON graph FIELDS created_by, home;
+  -- The one they started with, which is where a note naming no graph goes. One
+  -- per person, held here rather than by whichever process asked first: a graph
+  -- that is not it leaves the column out, and SurrealDB does not constrain a row
+  -- whose indexed column is absent, so the rest stay unconstrained.
+  DEFINE INDEX IF NOT EXISTS graph_owner_home ON graph FIELDS created_by, home UNIQUE;
   -- A region, whole or sliced: the leading pair reads a tree, and a trailing
   -- AND depth <= $max bounds it to the levels around a focus. One index rather
   -- than two, because the pair is this one's prefix.

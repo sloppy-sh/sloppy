@@ -77,7 +77,7 @@ function settled(raw: string | null): ImportResolution[] {
     return ImportSettlementSchema.parse(JSON.parse(raw)).resolutions;
   } catch {
     throw new BadRequestException(
-      "Sloppy is out of date. Update it and try again.",
+      "Sloppy could not read what you chose between the two copies. Bring this graph in again.",
     );
   }
 }

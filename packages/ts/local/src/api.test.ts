@@ -132,7 +132,7 @@ describe("the folder a shell opened", () => {
     // Every folder's graph is its own, and the one this device opened first is
     // the one it started with.
     expect(graphs[0].ref).not.toBe(graphs[1].ref);
-    expect(graphs.map((one) => one.home)).toEqual([true, false]);
+    expect(graphs.map((one) => one.home)).toEqual([true, undefined]);
     expect((await second.api.listNodes()).map((one) => one.title)).toEqual([
       "Chapter one",
     ]);

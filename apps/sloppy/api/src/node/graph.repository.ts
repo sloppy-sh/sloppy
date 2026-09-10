@@ -44,7 +44,7 @@ export class GraphRepository {
         content: {
           created_by: did,
           title,
-          home,
+          ...(home ? { home } : {}),
           created_at: now,
           updated_at: now,
         },
@@ -57,11 +57,14 @@ export class GraphRepository {
    * The graph somebody started with, or `null` where they have none yet. Read
    * through `graph_owner_home` rather than spelled from the identity: every
    * home graph has a ulid of its own — docs/ARCHITECTURE.md § "The genealogy
-   * and the address".
+   * and the address". One per person is `graph_owner_home`'s rule; the order is
+   * what makes a store defined before it answer the same graph every time.
    */
   async home(did: string): Promise<OwnedRef | null> {
     const [rows] = await this.query<{ id: RecordId }>(
-      "SELECT id FROM graph WHERE created_by = $did AND home = true LIMIT 1",
+      // created_at is selected because SurrealDB orders on the projection.
+      `SELECT id, created_at FROM graph WHERE created_by = $did AND home = true
+         ORDER BY created_at, id LIMIT 1`,
       { did },
     );
     return rows[0] === undefined ? null : ownedRefFrom(rows[0].id);

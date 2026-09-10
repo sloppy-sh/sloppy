@@ -246,14 +246,25 @@ and what stops an archive of one person's first graph from reading as another pe
 first graph. The flag is the whole of what makes it home: it is listed first, it is where a
 note that names no graph goes, and it is the one graph its owner cannot close.
 
-**A ulid every identity shared is what this replaces**, and `migrateHomeGraphs` in
-`@sloppy/data` is the crossing. It runs on every open beside the schema, mints one home graph
-per identity that has rows and none, and rewrites `node.graph`, `node_alias.graph`,
-`retired_address.graph`, `publication.graph` and the `pulled_node.source_graph` of an author
-this instance itself holds, from `<did>/00000000000000000000000000` to the minted ref. It is
+**A ulid every identity shared is what this replaces**, and the `HOME_GRAPHS` statements in
+`@sloppy/data`'s `schema.ts`, which `defineCoreSchema` applies, are the crossing. They run on
+every open beside the rest of the schema, mint one home graph per identity that has rows and
+none, and rewrite `node.graph`, `node_alias.graph`, `retired_address.graph`,
+`publication.graph` — including a publication written before that column existed, which would
+otherwise be left naming a graph none of its own notes are in — and the
+`pulled_node.source_graph` of an author this instance itself holds, from
+`<did>/00000000000000000000000000` to the minted ref. It is
 idempotent because it is bounded by what still spells that ulid, and a second run over a
 store it has already crossed reads nothing to write. `schema.integration.test.ts` holds it
 against a store built the old way.
+
+**One home graph per person is the database's rule**, not the application's:
+`graph_owner_home` is UNIQUE, and a graph that is not home leaves the column out rather than
+writing `false`, so an index that does not constrain an absent column leaves every other graph
+alone. The mint draws a fresh ulid, so two processes crossing one uncrossed store together
+would each open one; the index is defined a few statements after the crossing and refuses the
+second, which fails the schema rather than leaving a person two home graphs, one of them
+empty. A store is crossed by one process.
 
 **A graph nobody named** is what that ulid is now, and `UNNAMED_GRAPH_ULID` in `@sloppy/types`
 is the constant: `graphRef(owner, undefined)` answers it, and it is what a peer serving a page
@@ -1357,7 +1368,8 @@ publication:{ created_by: <did>, id: <ulid> }
   root          ref       the subtree it publishes, immutable
   root_address  string?   the label a person cites, restated by each publish;
                           absent is a branch its author gave no number
-  graph         ref?      the graph that label is read in, immutable; absent is home
+  graph         ref?      the graph that label is read in, immutable; absent is a row
+                          from before graphs, which the home crossing fills
   comments      string    who the author invites to answer it
 
 publication_version:{ created_by: <did>, id: <ulid> }
@@ -1818,7 +1830,10 @@ never which graph is in it, so nothing there has to change.
 one went and every address this graph has spent and will not assign again — including the
 ones a purge retired and the ones a replaced copy of the graph was at. An archive carries
 the vault without either, because a graph handed to somebody else is what was written and
-not what was thrown away.
+not what was thrown away. **`bin.json` records the number and not the note that spent it**,
+so a folder refuses a spent number to everyone, its own note included — the half of the
+retired-address rule the server holds and a folder cannot until the vault format carries
+the note beside the number.
 
 **The markdown is the record, and `.sloppy/` is what markdown has no syntax for.** A
 person opens `notes/` in any editor, reads their writing, changes a word and commits it;
@@ -1887,6 +1902,10 @@ vocabulary; `ArchivePreview.conflicts` is what a person is shown before anything
 and `merges` says the archive is a copy of a graph they keep. Absent `conflicts` is none and
 absent `merges` is false — what an answer made before an import could merge says. The hosted
 app and the local app settle an import the same way, because both read the same preview.
+**The vocabulary is here and the settling is not**: both previews still answer no conflicts
+and both imports still bring a graph in whole, replacing the copy the person keeps, so this
+paragraph describes the contract the writer of that settlement implements and not yet what
+either surface does.
 
 **An archive says what it holds before it is opened.** `manifest` reads `graph.json` and
 counts the entries out of the zip's own listing without inflating them, so an import

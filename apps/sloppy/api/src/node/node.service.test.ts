@@ -1278,6 +1278,34 @@ describe("a number a note in the bin is holding", () => {
     );
     expect((await service.setAddress(DID, back.ref, "2b")).address).toBe("2b");
   });
+
+  it("is not opened to a note by carrying it alongside the one that spent it", async () => {
+    const root = live("1");
+    const carried = live("1a", { origin: root.ref, parent: root.ref });
+    const spender = live("1a1", { origin: root.ref, parent: carried.ref });
+    const other = live("3");
+    const graph = () =>
+      notebook([root, carried, spender, other], Promise.resolve(), {
+        retired: [{ address: "3a" as Address, note: spender.ref }],
+      });
+
+    await expect(
+      graph().service.move(
+        DID,
+        carried.ref,
+        { relation: "under", note: other.ref },
+        "3a",
+      ),
+    ).rejects.toThrow(/You have used 3a before\. Pick another number\./);
+
+    const back = await graph().service.move(
+      DID,
+      spender.ref,
+      { relation: "under", note: other.ref },
+      "3a",
+    );
+    expect(back.map((one) => one.address)).toEqual(["3a"]);
+  });
 });
 
 describe("the number a person names for a note they are writing", () => {

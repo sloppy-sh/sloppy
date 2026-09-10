@@ -6,7 +6,6 @@ import {
   CreateGraphRequestSchema,
   graphRef,
   InvalidGraphRefError,
-  isUnnamedGraphRef,
   requireOwnGraph,
   UNNAMED_GRAPH_ULID,
   unnamedGraphRef,
@@ -41,8 +40,9 @@ describe("the graph an address is read in", () => {
   it("is a ref its owner holds, and one nobody named is spelled from the DID", () => {
     expect(unnamedGraphRef(AVA)).toBe(`${AVA}/${UNNAMED_GRAPH_ULID}`);
     expect(splitOwnedRef(unnamedGraphRef(AVA)).did).toBe(AVA);
-    expect(isUnnamedGraphRef(unnamedGraphRef(AVA))).toBe(true);
-    expect(isUnnamedGraphRef(SECOND)).toBe(false);
+    expect(splitOwnedRef(unnamedGraphRef(AVA)).localId).toBe(
+      UNNAMED_GRAPH_ULID,
+    );
   });
 
   it("is reserved, so nothing a fresh mint draws can be it", () => {

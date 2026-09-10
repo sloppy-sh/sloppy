@@ -359,6 +359,37 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     );
   });
 
+  it("holds one graph flagged as the one its owner started with", async () => {
+    // The rule is the store's rather than whichever process asked first, so a
+    // second mint racing the first is refused here — docs/ARCHITECTURE.md
+    // § "The genealogy and the address".
+    const row = (localId: string, home?: true) => ({
+      id: avaId("graph", localId),
+      created_by: AVA,
+      title: localId,
+      ...(home ? { home } : {}),
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    });
+    const started = row("01JGSTART00000000000000000", true);
+    const second = row("01JGSTARTB0000000000000000", true);
+
+    await expect(db.create(started.id).content(started)).resolves.toBeDefined();
+    await expect(db.create(second.id).content(second)).rejects.toThrow(
+      /graph_owner_home/,
+    );
+
+    // And a graph that is not it leaves the column out, so any number of them
+    // sit beside it.
+    for (const beside of [
+      "01JGNEXTA00000000000000000",
+      "01JGNEXTB00000000000000000",
+    ]) {
+      const one = row(beside);
+      await expect(db.create(one.id).content(one)).resolves.toBeDefined();
+    }
+  });
+
   it("reads one graph's branches through the index that ends at the parent", async () => {
     // Without the graph in the middle this read is "every note the person has
     // written, filtered to the ones with no parent" — the whole graph scanned
@@ -1312,7 +1343,9 @@ describe.skipIf(!runs)("a store whose graphs all shared one ulid", () => {
        CREATE $graph CONTENT $graphRow;
        CREATE $node CONTENT $nodeRow;
        CREATE $alias CONTENT $aliasRow;
-       CREATE $retired CONTENT $retiredRow;`,
+       CREATE $retired CONTENT $retiredRow;
+       CREATE $published CONTENT $publishedRow;
+       CREATE $older CONTENT $olderRow;`,
       {
         graph: new RecordId("graph", {
           created_by: AVA,
@@ -1352,6 +1385,26 @@ describe.skipIf(!runs)("a store whose graphs all shared one ulid", () => {
           created_at: "2026-01-01T00:00:00.000Z",
           updated_at: "2026-01-01T00:00:00.000Z",
         },
+        published: avaId("publication", "01JSHAREDP0000000000000000"),
+        publishedRow: {
+          created_by: AVA,
+          root: `${AVA}/01JSHAREDN0000000000000000`,
+          root_address: "1",
+          graph: was,
+          comments: "anyone",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        // Published before the column existed, so it names no graph at all.
+        older: avaId("publication", "01JSHAREDQ0000000000000000"),
+        olderRow: {
+          created_by: AVA,
+          root: `${AVA}/01JSHAREDN0000000000000001`,
+          root_address: "1",
+          comments: "anyone",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
       },
     );
 
@@ -1382,12 +1435,18 @@ describe.skipIf(!runs)("a store whose graphs all shared one ulid", () => {
   });
 
   it("carries every row that named the old graph over with it", async () => {
-    const [aliases, retired] = await db.query<[string[], string[]]>(
+    const [aliases, retired, published] = await db.query<
+      [string[], string[], string[]]
+    >(
       `SELECT VALUE graph FROM node_alias;
-       SELECT VALUE graph FROM retired_address;`,
+       SELECT VALUE graph FROM retired_address;
+       SELECT VALUE graph FROM publication ORDER BY id;`,
     );
     expect(aliases).toEqual([home]);
     expect(retired).toEqual([home]);
+    // The second names no graph at all, and is given the one its author
+    // started with rather than left naming none.
+    expect(published).toEqual([home, home]);
   });
 
   it("leaves it alone the next time it runs", async () => {

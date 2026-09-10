@@ -35,8 +35,6 @@ const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
 const THERE = "deleted_at = NONE";
 const GONE = "deleted_at != NONE";
 
-/** How a graph holds an address: a note is at it, one was and has gone, or one
- *  was and has been moved, in which case the address still leads to it. */
 /** How a graph holds an address: a note is at it, a note in the bin is, a note
  *  was carried away from it, or a note spent it and has gone. */
 export type AddressHold = "live" | "deleted" | "moved" | "retired";

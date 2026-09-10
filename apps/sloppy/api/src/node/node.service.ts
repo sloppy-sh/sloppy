@@ -435,12 +435,11 @@ export class NodeService {
   ): Promise<AddressYield | null> {
     const held = await this.nodes.addressLeadsTo(did, graph, address);
     if (held === null) return null;
-    if (
+    const leftBehind = held.hold === "moved" || held.hold === "retired";
+    const takeable =
       held.note !== undefined &&
-      (held.note === taking || (held.hold !== "moved" && mine.has(held.note)))
-    ) {
-      return null;
-    }
+      (leftBehind ? held.note === taking : mine.has(held.note));
+    if (takeable) return null;
     return this.yieldedBy(did, graph, address, held);
   }
 

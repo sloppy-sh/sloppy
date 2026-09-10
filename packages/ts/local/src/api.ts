@@ -1226,7 +1226,7 @@ export class LocalApi implements SloppyApi {
       created_by: graph.did,
       title: graph.title,
       // The folder this device opened first is the one it started with.
-      home: written[0]?.root === root,
+      ...(written[0]?.root === root ? { home: true } : {}),
       created_at: at,
       updated_at: known?.updated_at ?? at,
     };

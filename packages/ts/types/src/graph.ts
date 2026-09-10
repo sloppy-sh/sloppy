@@ -45,10 +45,6 @@ export function unnamedGraphRef(owner: DidSyr): OwnedRef {
   return `${owner}/${UNNAMED_GRAPH_ULID}`;
 }
 
-export function isUnnamedGraphRef(ref: OwnedRef): boolean {
-  return splitOwnedRef(ref).localId === UNNAMED_GRAPH_ULID;
-}
-
 /**
  * Which graph something is in. **Absent is a graph nobody named** — what a row
  * written before anybody could have a second graph holds, and what a peer that
