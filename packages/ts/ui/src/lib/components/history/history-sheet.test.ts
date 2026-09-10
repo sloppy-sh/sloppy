@@ -251,6 +251,24 @@ describe('the history of a graph', () => {
 		]);
 	});
 
+	it('lets a difference go once a line is taken, since now has moved', async () => {
+		open();
+
+		await states('From');
+		await pick('Where the argument turned');
+		control('Show what changed').click();
+		await settle();
+		const shown = screen();
+		expect(compares).toHaveLength(1);
+		control('Work on it').click();
+		await settle();
+
+		expect(worked).toEqual(['an-argument']);
+		const named = (text: string): number => text.split(CHANGED[0].title).length - 1;
+		expect(named(shown)).toBe(2);
+		expect(named(screen())).toBe(1);
+	});
+
 	it('offers a line standing at a version once, under the name of the line', async () => {
 		open({ lines: [...LINES.slice(0, 1), { name: 'an-argument', head: 'a1', here: false }] });
 

@@ -166,7 +166,14 @@
 		if (await onKeep(said)) {
 			message = '';
 			keeping = false;
+			compared = null;
 		}
+	}
+
+	/** A line taken or brought in moves what "now" means, so a difference read
+	 *  against the old now is no longer true. */
+	async function moveLine(act: () => Promise<boolean>): Promise<void> {
+		if (await act()) compared = null;
 	}
 
 	async function startLine(): Promise<void> {
@@ -310,7 +317,7 @@
 								variant="ghost"
 								class="h-9 shrink-0 rounded-full text-xs"
 								disabled={busy}
-								onclick={() => void onWorkOn(one.name)}
+								onclick={() => void moveLine(() => onWorkOn(one.name))}
 							>
 								Work on it
 							</Button>
@@ -318,7 +325,7 @@
 								variant="outline"
 								class="h-9 shrink-0 rounded-full text-xs"
 								disabled={busy || unsettled}
-								onclick={() => void onBringIn(one.name)}
+								onclick={() => void moveLine(() => onBringIn(one.name))}
 							>
 								Bring it in
 							</Button>
