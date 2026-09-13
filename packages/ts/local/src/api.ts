@@ -674,6 +674,11 @@ export class LocalApi implements SloppyApi {
       vault,
       new Map(into.ownEmoji().map((one) => [one.shortcode, { src: one.src }])),
     );
+    const contested = new Set(
+      merge.conflicts.flatMap((one) =>
+        one.address === undefined ? [] : [one.address],
+      ),
+    );
     for (const [ref, theirs] of arriving) {
       const how =
         chosen.get(settling({ kind: "note", ref })) ??
@@ -684,7 +689,9 @@ export class LocalApi implements SloppyApi {
       if (gone) await into.restore(gone);
       const note =
         mine && how ? settled(asVaultNote(mine), theirs, how) : theirs;
-      await into.save(stored(note, into.held(ref)));
+      await into.save(
+        stored(asNumberedHere(note, into, contested), into.held(ref)),
+      );
     }
     for (const conflict of merge.conflicts) {
       await this.settleAddress(into, conflict, chosen.get(settling(conflict)));
@@ -761,12 +768,18 @@ export class LocalApi implements SloppyApi {
     const conflicts: ImportConflict[] = [];
     for (const ref of [...differing].sort()) {
       const changed = sections.get(ref) ?? [];
+      const was = mine.get(ref);
+      const now = theirs.get(ref);
       conflicts.push({
         kind: changed.length > 0 ? "section" : "note",
         ref,
-        sections: changed,
-        mine: asWords(mine.get(ref), changed),
-        theirs: asWords(theirs.get(ref), changed),
+        sections: changed.map((section) => ({
+          section,
+          mine: sectionWords(was, section),
+          theirs: sectionWords(now, section),
+        })),
+        mine: asWords(was),
+        theirs: asWords(now),
       });
     }
     const at = numbered(theirs);
@@ -779,8 +792,8 @@ export class LocalApi implements SloppyApi {
         other,
         address,
         sections: [],
-        mine: asWords(mine.get(ref), []),
-        theirs: asWords(theirs.get(other), []),
+        mine: asWords(mine.get(ref)),
+        theirs: asWords(theirs.get(other)),
       });
     }
     return { theirs, conflicts };
@@ -1569,6 +1582,26 @@ function settled(
   };
 }
 
+/**
+ * The note as it arrives, keeping its number only where this graph leads by it
+ * to this same note: one another note was carried away from is that note's alone
+ * to take back, and one this graph retired names no note here, so it is nobody's
+ * — AI.md § "The Genealogy Is the Protocol". A number two notes carry is in
+ * `contested`, and is the person's to settle instead.
+ */
+function asNumberedHere(
+  note: VaultNote,
+  into: LocalGraph,
+  contested: ReadonlySet<Address>,
+): VaultNote {
+  const address = note.address;
+  if (address === undefined || contested.has(address)) return note;
+  const led = into.leadsTo(address);
+  if (led === undefined || led.note === note.ref) return note;
+  const { address: _theirs, ...rest } = note;
+  return rest;
+}
+
 /** A note this graph holds, back as the file that carries it. */
 function asVaultNote(note: StoredNote): VaultNote {
   const {
@@ -1623,24 +1656,23 @@ function numbered(
 }
 
 /** What one side holds, as words a person settles a disagreement by: what the
- *  note is called, what it is tagged, then the writing of the sections in
- *  question. */
-function asWords(
-  note: VaultNote | undefined,
-  sections: readonly string[],
-): string {
+ *  note is called, what it is tagged, then its writing. */
+function asWords(note: VaultNote | undefined): string {
   if (!note) return "";
-  const stack =
-    sections.length === 0
-      ? note.sections
-      : note.sections.filter((one) => sections.includes(one.ulid));
   return [
     note.title,
     note.tags.join(", "),
-    ...stack.flatMap((one) => wordsIn(one.content)),
+    ...note.sections.flatMap((one) => wordsIn(one.content)),
   ]
     .filter((line) => line !== "")
     .join("\n");
+}
+
+/** The same for one section of it, which is what a person chooses between
+ *  where both sides wrote into the same note. */
+function sectionWords(note: VaultNote | undefined, section: string): string {
+  const held = note?.sections.find((one) => one.ulid === section);
+  return held ? wordsIn(held.content).join("\n") : "";
 }
 
 /** An element that carries no words of its own, in the fewest that say what it
@@ -1848,8 +1880,8 @@ function readable<T>(read: () => T): T {
 function stillContested(count: number): Error {
   return refuse(
     count === 1
-      ? "Your copy of this graph and the one in the file say different things about one note. Choose what it says, then bring it in again."
-      : `Your copy of this graph and the one in the file say different things about ${count} notes. Choose what each one says, then bring it in again.`,
+      ? "Your copy of this graph and the one in the file disagree about one note. Choose what to keep, then bring it in again."
+      : `Your copy of this graph and the one in the file disagree about ${count} notes. Choose what to keep for each, then bring it in again.`,
   );
 }
 

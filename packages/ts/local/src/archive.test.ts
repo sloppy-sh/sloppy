@@ -130,6 +130,37 @@ async function diverged() {
   return { held, second, note, out };
 }
 
+/** Two copies of one graph with the number 2 on a different note in each: the
+ *  folder's "Kale", and the file's "Peas". */
+async function contestedNumber() {
+  const theirs = device(["/graphs/one"]);
+  const away = await theirs.api.createGraph({ title: "Garden" });
+  const beans = await theirs.api.createNode({
+    from: { relation: "branch", graph: away.ref },
+    title: "Beans",
+  });
+  expect(beans.address).toBe("1");
+  const base = await archiveFrom(theirs, away.ref);
+  const peas = await theirs.api.createNode({
+    from: { relation: "branch", graph: away.ref },
+    title: "Peas",
+  });
+  expect(peas.address).toBe("2");
+  const out = await archiveFrom(theirs, away.ref);
+
+  const mine = device(["/graphs/arrived"]);
+  const here = await mine.api.importArchive(base);
+  const kale = await mine.api.createNode({
+    from: { relation: "branch", graph: here.ref },
+    title: "Kale",
+  });
+  expect(kale.address).toBe("2");
+  const arrived = `${splitOwnedRef(kale.ref).did}/${
+    splitOwnedRef(peas.ref).localId
+  }` as OwnedRef;
+  return { mine, here, kale, arrived, out };
+}
+
 describe("a graph of this device's own brought back in", () => {
   it("brings back what only the file holds and keeps what only the folder does", async () => {
     const held = device(["/graphs/one", "/graphs/two"]);
@@ -186,11 +217,39 @@ describe("a graph of this device's own brought back in", () => {
     ]);
 
     await expect(held.api.importArchive(out)).rejects.toThrow(
-      "say different things about one note",
+      "disagree about one note",
     );
     expect((await reopened(held).getNode(note.ref))?.title).toBe(
       "Beans, later",
     );
+  });
+
+  it("writes nothing at all while a disagreement is unsettled", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const second = await held.api.createGraph({ title: "Garden" });
+    const beans = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Beans",
+    });
+    const peas = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Peas",
+    });
+    const out = await archiveFrom(held, second.ref);
+
+    await held.api.updateNode(beans.ref, { title: "Beans, later" });
+    await held.api.deleteNode(peas.ref);
+    await expect(held.api.importArchive(out)).rejects.toThrow(
+      "disagree about one note",
+    );
+
+    const client = reopened(held);
+    expect((await client.getNode(beans.ref))?.title).toBe("Beans, later");
+    // The note in the bin would have come back with the rest of the file.
+    expect((await client.deletedBranches()).map((one) => one.title)).toEqual([
+      "Peas",
+    ]);
   });
 
   it("keeps what is in the folder where the person chose it", async () => {
@@ -257,6 +316,10 @@ describe("a graph of this device's own brought back in", () => {
       node: note.ref,
       content: textDocument("Picked in July."),
     });
+    await held.api.createBlock({
+      node: note.ref,
+      content: textDocument("A row of them by the wall."),
+    });
     const out = await archiveFrom(held, second.ref);
 
     await held.api.updateBlock(first.ref, {
@@ -269,11 +332,25 @@ describe("a graph of this device's own brought back in", () => {
     const said = await held.api.previewArchive(out);
     const [conflict] = said.conflicts;
     expect(conflict.kind).toBe("section");
-    expect(conflict.sections).toEqual(
-      [first, next].map((one) => splitOwnedRef(one.ref).localId).sort(),
-    );
-    expect(conflict.mine).toBe("Beans\nPicked in August.\nSown in May.");
-    expect(conflict.theirs).toBe("Beans\nPicked in July.\nSown in April.");
+    // Each disputed section in both sides' words, and the whole note in them
+    // besides, since the side kept governs the sections nobody disputed.
+    expect(
+      [...conflict.sections].sort((a, b) => (a.mine < b.mine ? -1 : 1)),
+    ).toEqual([
+      {
+        section: splitOwnedRef(next.ref).localId,
+        mine: "Picked in August.",
+        theirs: "Picked in July.",
+      },
+      {
+        section: splitOwnedRef(first.ref).localId,
+        mine: "Sown in May.",
+        theirs: "Sown in April.",
+      },
+    ]);
+    expect(conflict.mine).toContain("A row of them by the wall.");
+    expect(conflict.mine).toContain("Sown in May.");
+    expect(conflict.theirs).toContain("Sown in April.");
 
     await held.api.importArchive(out, {
       resolutions: [
@@ -290,40 +367,22 @@ describe("a graph of this device's own brought back in", () => {
     const client = reopened(held);
     expect(
       (await client.listBlocks(note.ref)).map((one) => one.content),
-    ).toEqual([textDocument("Picked in July."), textDocument("Sown in May.")]);
+    ).toEqual([
+      textDocument("A row of them by the wall."),
+      textDocument("Picked in July."),
+      textDocument("Sown in May."),
+    ]);
   });
 
   it("settles a number the two copies have on different notes", async () => {
-    const theirs = device(["/graphs/one"]);
-    const away = await theirs.api.createGraph({ title: "Garden" });
-    const beans = await theirs.api.createNode({
-      from: { relation: "branch", graph: away.ref },
-      title: "Beans",
-    });
-    expect(beans.address).toBe("1");
-    const base = await archiveFrom(theirs, away.ref);
-    const peas = await theirs.api.createNode({
-      from: { relation: "branch", graph: away.ref },
-      title: "Peas",
-    });
-    expect(peas.address).toBe("2");
-    const out = await archiveFrom(theirs, away.ref);
-
-    const mine = device(["/graphs/arrived"]);
-    const here = await mine.api.importArchive(base);
-    const kale = await mine.api.createNode({
-      from: { relation: "branch", graph: here.ref },
-      title: "Kale",
-    });
-    expect(kale.address).toBe("2");
+    const { mine, here, kale, arrived, out } = await contestedNumber();
 
     const said = await mine.api.previewArchive(out);
-    const spoken = said.conflicts.filter((one) => one.kind === "address");
-    expect(spoken).toEqual([
+    expect(said.conflicts.filter((one) => one.kind === "address")).toEqual([
       {
         kind: "address",
         ref: kale.ref,
-        other: `${splitOwnedRef(kale.ref).did}/${splitOwnedRef(peas.ref).localId}`,
+        other: arrived,
         address: "2",
         sections: [],
         mine: "Kale",
@@ -335,9 +394,9 @@ describe("a graph of this device's own brought back in", () => {
       resolutions: [{ kind: "address", ref: kale.ref, keep: "theirs" }],
     });
     const client = reopened(mine);
-    const arrived = await client.getNode(spoken[0].other as OwnedRef);
-    expect(arrived?.title).toBe("Peas");
-    expect(arrived?.address).toBe("2");
+    const peas = await client.getNode(arrived);
+    expect(peas?.title).toBe("Peas");
+    expect(peas?.address).toBe("2");
     // The note that gave the number up still leads by it.
     const gave = await client.getNode(kale.ref);
     expect(gave?.address).toBeUndefined();
@@ -347,6 +406,53 @@ describe("a graph of this device's own brought back in", () => {
         from: { relation: "root", address: "2", graph: here.ref },
       }),
     ).rejects.toThrow("2 already leads to “Peas”");
+  });
+
+  it("leaves a contested number where the person kept the folder's note", async () => {
+    const { mine, kale, arrived, out } = await contestedNumber();
+    await mine.api.importArchive(out, {
+      resolutions: [{ kind: "address", ref: kale.ref, keep: "mine" }],
+    });
+    const client = reopened(mine);
+    expect((await client.getNode(kale.ref))?.address).toBe("2");
+    const peas = await client.getNode(arrived);
+    expect(peas?.title).toBe("Peas");
+    expect(peas?.address).toBeUndefined();
+    expect(peas?.aliases).toEqual(["2"]);
+  });
+
+  it("gives a contested number to the note the person named", async () => {
+    const { mine, kale, arrived, out } = await contestedNumber();
+    await mine.api.importArchive(out, {
+      resolutions: [
+        { kind: "address", ref: kale.ref, keep: "mine", numbered: arrived },
+      ],
+    });
+    const client = reopened(mine);
+    expect((await client.getNode(arrived))?.address).toBe("2");
+    const gave = await client.getNode(kale.ref);
+    expect(gave?.address).toBeUndefined();
+    expect(gave?.aliases).toEqual(["2"]);
+  });
+
+  it("leaves an arriving note unnumbered where a note here led by its number", async () => {
+    const { mine, here, kale, arrived, out } = await contestedNumber();
+    await mine.api.setAddress(kale.ref, "5");
+
+    // Two notes at 2 no longer, so there is nothing for a person to settle.
+    expect((await mine.api.previewArchive(out)).conflicts).toEqual([]);
+    await mine.api.importArchive(out);
+
+    const client = reopened(mine);
+    const peas = await client.getNode(arrived);
+    expect(peas?.title).toBe("Peas");
+    expect(peas?.address).toBeUndefined();
+    expect(peas?.aliases ?? []).not.toContain("2");
+    await expect(
+      client.createNode({
+        from: { relation: "root", address: "2", graph: here.ref },
+      }),
+    ).rejects.toThrow("2 still leads to “Kale”");
   });
 
   it("brings a drawing and a picture in with the note that arrives", async () => {
@@ -507,6 +613,49 @@ describe("a graph of this device's own brought back in", () => {
 
     await expect(
       reopened(held).createNode({
+        from: { relation: "root", address: "2", graph: second.ref },
+      }),
+    ).rejects.toThrow("You have used 2 before");
+  });
+
+  it("brings a note back without a number this graph retired", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const second = await held.api.createGraph({ title: "Garden" });
+    await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Beans",
+    });
+    const spent = await held.api.createNode({
+      from: { relation: "branch", graph: second.ref },
+      title: "Peas",
+    });
+    const out = await archiveFrom(held, second.ref);
+
+    await held.api.deleteNode(spent.ref);
+    held.store.set(
+      `/graphs/two/${BIN_FILE}`,
+      encodeText(
+        JSON.stringify({
+          deleted: {
+            [splitOwnedRef(spent.ref).localId]: "2020-01-01T00:00:00.000Z",
+          },
+          retired: [],
+        }),
+      ),
+    );
+    const swept = reopened(held);
+    await swept.deletedBranches();
+    await swept.importArchive(out);
+
+    const client = reopened(held);
+    const back = await client.getNode(spent.ref);
+    expect(back?.title).toBe("Peas");
+    // The folder's own copy of 2 says nothing about whose it was, so it is
+    // nobody's to take.
+    expect(back?.address).toBeUndefined();
+    await expect(
+      client.createNode({
         from: { relation: "root", address: "2", graph: second.ref },
       }),
     ).rejects.toThrow("You have used 2 before");
