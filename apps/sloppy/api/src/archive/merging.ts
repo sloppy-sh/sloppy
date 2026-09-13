@@ -34,7 +34,7 @@ export interface TwoCopies {
  */
 export function conflictsBetween(copies: TwoCopies): ImportConflict[] {
   const conflicts: ImportConflict[] = [];
-  for (const ref of differing(copies.difference)) {
+  for (const ref of differing(copies)) {
     const mine = copies.mine.get(ref);
     const theirs = copies.theirs.get(ref);
     if (!mine || !theirs) continue;
@@ -95,9 +95,9 @@ export function unanswered(
 /**
  * Every note the merged graph holds: one only this graph has stays as it is,
  * one only the archive has arrives, and one both sides hold is the side the
- * person kept — section by section where they chose that way, and with every
- * address either copy carried still leading to it. A note nobody was asked
- * about stays as this graph has it.
+ * person kept — section by section where they chose that way, and carrying
+ * every address either copy was moved away from. A note nobody was asked about
+ * stays as this graph has it.
  */
 export function settled(
   copies: TwoCopies,
@@ -134,8 +134,8 @@ export function settled(
   return [...notes.values()];
 }
 
-/** The note that keeps this number, and every other left unnumbered with it
- *  still leading back to them. */
+/** Which note keeps this number. Every other that was at it is left unnumbered,
+ *  carrying it among the numbers it was moved away from. */
 function number(
   notes: Map<OwnedRef, VaultNote>,
   address: Address,
@@ -186,8 +186,9 @@ function between(
   };
 }
 
-/** Every address a note has carried in either copy, which all keep leading to
- *  it — AI.md § "The Genealogy Is the Protocol". */
+/** Every address a note has carried in either copy, beside the one it is at:
+ *  an address a note was carried away from belongs to it — AI.md § "The
+ *  Genealogy Is the Protocol". */
 function carried(base: VaultNote, other: VaultNote): Address[] {
   const addresses = new Set<Address>([...base.aliases, ...other.aliases]);
   if (other.address !== undefined) addresses.add(other.address);
@@ -200,16 +201,33 @@ function led(note: VaultNote, address: Address): Address[] {
 }
 
 /** The notes both sides hold that differ in anything a person settles: what
- *  they are called, what they sprang out of, the number they carry, or their
- *  sections. */
-function differing(difference: VaultDifference): OwnedRef[] {
+ *  they are called, what they sprang out of, the number they carry, the tags
+ *  and links on them, or their sections. A note's look is not one of these: an
+ *  import keeps the styling of the copy the person has. */
+function differing(copies: TwoCopies): OwnedRef[] {
+  const { notes } = copies.difference;
   const refs = new Set<OwnedRef>([
-    ...difference.notes.moved.map((one) => one.ref),
-    ...difference.notes.retitled.map((one) => one.ref),
-    ...difference.notes.renumbered.map((one) => one.ref),
-    ...difference.notes.changed.map((one) => one.ref),
+    ...notes.moved.map((one) => one.ref),
+    ...notes.retitled.map((one) => one.ref),
+    ...notes.renumbered.map((one) => one.ref),
+    ...notes.changed.map((one) => one.ref),
   ]);
+  for (const [ref, mine] of copies.mine) {
+    const theirs = copies.theirs.get(ref);
+    if (!theirs) continue;
+    if (!same(mine.tags, theirs.tags) || !same(mine.links, theirs.links)) {
+      refs.add(ref);
+    }
+  }
   return [...refs].sort();
+}
+
+/** Whether two of a note's lists say the same things, in whatever order. */
+function same(mine: readonly string[], theirs: readonly string[]): boolean {
+  if (mine.length !== theirs.length) return false;
+  const here = [...mine].sort();
+  const there = [...theirs].sort();
+  return here.every((one, at) => one === there[at]);
 }
 
 /** The sections of one note that both sides wrote into, which is what a person

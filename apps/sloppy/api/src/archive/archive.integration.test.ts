@@ -141,6 +141,10 @@ describe("a graph handed over as an archive", () => {
   let alongside: NodeView;
   let staying: NodeView;
   let brought: Uint8Array;
+  /** The graph dana started with, taken out while the note in it was there. */
+  let home: GraphView;
+  let written: NodeView;
+  let atHome: Uint8Array;
 
   const scenario = (name: string, run: () => Promise<void>, timeout?: number) =>
     it(
@@ -838,10 +842,122 @@ describe("a graph handed over as an archive", () => {
   );
 
   scenario(
+    "settles the same file again once it has been settled once",
+    async () => {
+      const preview = ArchivePreviewSchema.parse(
+        (await importing(dana, brought, true)).body,
+      );
+      expect(preview.conflicts.map((one) => one.ref)).toEqual([roots.ref]);
+
+      const answered = await importing(
+        dana,
+        brought,
+        false,
+        preview.conflicts.map((one) => ({
+          kind: one.kind,
+          ref: one.ref,
+          keep: "mine" as const,
+          sections: [],
+        })),
+      );
+
+      expect(answered.status).toBeLessThan(300);
+      const notes = await notesOf(dana, orchard.ref);
+      expect(notes).toHaveLength(5);
+      expect(notes.find((one) => one.ref === under.ref)?.address).toBe(
+        alongside.address,
+      );
+      expect(notes.find((one) => one.ref === alongside.ref)?.aliases).toEqual([
+        alongside.address,
+      ]);
+      expect(JSON.stringify(await blocksOf(dana, roots.ref))).toContain(
+        "written since",
+      );
+    },
+    120_000,
+  );
+
+  scenario(
+    "refuses to hand a number to a second note while it still leads to the first",
+    async () => {
+      const ledger = (await ok("POST", "/graphs", dana, {
+        title: "The ledger",
+      })) as GraphView;
+      const once = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: ledger.ref },
+        title: "Numbered once",
+      })) as NodeView;
+      const beside = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: ledger.ref },
+        title: "Alongside it",
+      })) as NodeView;
+      const response = await fetch(
+        `${base}/api/graphs/${at(ledger.ref)}/archive`,
+        { headers: { cookie: dana.cookie } },
+      );
+      const taken = unpack(new Uint8Array(await response.arrayBuffer()));
+      for (const [path, bytes] of taken) {
+        if (noteAt(path) === undefined) continue;
+        const text = decodeText(bytes);
+        if (text.includes("title: Numbered once")) {
+          taken.set(
+            path,
+            encodeText(text.replace(`\naddress: ${once.address}`, "")),
+          );
+        } else if (text.includes("title: Alongside it")) {
+          taken.set(
+            path,
+            encodeText(
+              text.replace(
+                `address: ${beside.address}`,
+                `address: ${once.address}`,
+              ),
+            ),
+          );
+        }
+      }
+      const file = pack(taken);
+      // The first note is carried off that number after the file is written, so
+      // the number the file hands the second one is still leading back.
+      await ok("PUT", `/nodes/${at(once.ref)}/address`, dana, { address: "3" });
+
+      const refused = await importing(dana, file, false, [
+        { kind: "note", ref: once.ref, keep: "mine", sections: [] },
+        { kind: "note", ref: beside.ref, keep: "theirs", sections: [] },
+      ]);
+
+      expect(refused.status).toBe(400);
+      const said = (refused.body as { message: string }).message;
+      expect(said).toContain(`${once.address} still leads to “Numbered once”`);
+      expect(said).toContain("“Alongside it”");
+      const held = await notesOf(dana, ledger.ref);
+      expect(held.find((one) => one.ref === beside.ref)?.address).toBe(
+        beside.address,
+      );
+
+      const landed = await importing(dana, file, false, [
+        { kind: "note", ref: once.ref, keep: "mine", sections: [] },
+        { kind: "note", ref: beside.ref, keep: "mine", sections: [] },
+      ]);
+
+      expect(landed.status).toBeLessThan(300);
+      const after = await notesOf(dana, ledger.ref);
+      expect(after.find((one) => one.ref === beside.ref)?.address).toBe(
+        beside.address,
+      );
+      expect(after.find((one) => one.ref === once.ref)?.address).toBe("3");
+      expect(after.find((one) => one.ref === once.ref)?.aliases).toContain(
+        once.address,
+      );
+    },
+    120_000,
+  );
+
+  scenario(
     "brings a graph somebody started with back into itself",
     async () => {
-      const home = ((await ok("GET", "/graphs", dana)) as GraphView[])[0];
-      const written = (await ok("POST", "/nodes", dana, {
+      home = ((await ok("GET", "/graphs", dana)) as GraphView[])[0];
+      written = (await ok("POST", "/nodes", dana, {
         from: { relation: "branch", graph: home.ref },
         title: "At home",
       })) as NodeView;
@@ -849,16 +965,32 @@ describe("a graph handed over as an archive", () => {
         `${base}/api/graphs/${at(home.ref)}/archive`,
         { headers: { cookie: dana.cookie } },
       );
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      atHome = new Uint8Array(await response.arrayBuffer());
 
       const preview = ArchivePreviewSchema.parse(
-        (await importing(dana, bytes, true)).body,
+        (await importing(dana, atHome, true)).body,
       );
       expect(preview.merges).toBe(true);
       expect(preview.conflicts).toEqual([]);
 
-      const landed = (await importing(dana, bytes, false)).body as GraphView;
+      const landed = (await importing(dana, atHome, false)).body as GraphView;
       expect(landed.ref).toBe(home.ref);
+      const notes = await notesOf(dana, home.ref);
+      expect(notes.map((one) => one.ref)).toEqual([written.ref]);
+      expect(notes[0].address).toBe(written.address);
+    },
+    120_000,
+  );
+
+  scenario(
+    "brings back a note the person binned since the file was written",
+    async () => {
+      await ok("DELETE", `/nodes/${at(written.ref)}`, dana);
+      expect(await notesOf(dana, home.ref)).toEqual([]);
+
+      const landed = await importing(dana, atHome, false);
+
+      expect(landed.status).toBeLessThan(300);
       const notes = await notesOf(dana, home.ref);
       expect(notes.map((one) => one.ref)).toEqual([written.ref]);
       expect(notes[0].address).toBe(written.address);

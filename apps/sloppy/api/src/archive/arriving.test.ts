@@ -434,7 +434,7 @@ describe("the rows a merge lands as", () => {
         note({ ref: ref(1), address: "1a" as Address, title: "Here" }),
         note({ ref: ref(2), address: "1a" as Address, title: "There" }),
       ]),
-      [],
+      now(),
     );
 
     expect(found?.what).toBe("twice");
@@ -453,7 +453,75 @@ describe("the rows a merge lands as", () => {
     });
     const arriving = placed([note({ ref: ref(1), address: "1a" as Address })]);
 
-    expect(mergeRefusal(arriving, [spent(ref(1))])).toBeUndefined();
-    expect(mergeRefusal(arriving, [spent(ref(2))])?.what).toBe("spent");
+    expect(
+      mergeRefusal(arriving, now({ retired: [spent(ref(1))] })),
+    ).toBeUndefined();
+    expect(
+      mergeRefusal(arriving, now({ retired: [spent(ref(2))] }))?.what,
+    ).toBe("spent");
+  });
+
+  it("refuses a number that still leads back to a note carried away from it", () => {
+    const found = mergeRefusal(
+      placed([
+        note({ ref: ref(1), address: "1a" as Address, title: "Arriving" }),
+        note({
+          ref: ref(2),
+          address: "1b" as Address,
+          aliases: ["1a" as Address],
+          title: "Moved on",
+        }),
+      ]),
+      now({
+        held: [row({ ref: ref(2), address: "1b" as Address })],
+        aliases: [alias("1a" as Address, ref(2))],
+      }),
+    );
+
+    expect(found?.what).toBe("led");
+    expect(found?.address).toBe("1a");
+  });
+
+  it("lets a note keep a number somebody is already standing at", () => {
+    const found = mergeRefusal(
+      placed([
+        note({ ref: ref(1), address: "1a" as Address }),
+        note({ ref: ref(2), aliases: ["1a" as Address] }),
+      ]),
+      now({
+        held: [
+          row({ ref: ref(1), address: "1a" as Address }),
+          row({ ref: ref(2) }),
+        ],
+        aliases: [alias("1a" as Address, ref(2))],
+      }),
+    );
+
+    expect(found).toBeUndefined();
+  });
+
+  it("lets a number lead back to a note that is no longer there", () => {
+    const found = mergeRefusal(
+      placed([note({ ref: ref(1), address: "1a" as Address })]),
+      now({ aliases: [alias("1a" as Address, ref(2))] }),
+    );
+
+    expect(found).toBeUndefined();
+  });
+
+  it("leads every address a settled note carries, not only the rewritten ones", () => {
+    const notes = placed([note({ ref: ref(1), aliases: ["1a" as Address] })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ held: [row({ ref: ref(1) })] }),
+    );
+
+    expect(write.writing).toEqual([]);
+    expect(write.aliases.map((one) => [one.address, one.note])).toEqual([
+      ["1a", ref(1)],
+    ]);
   });
 });

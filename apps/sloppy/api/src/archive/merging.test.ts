@@ -134,6 +134,26 @@ describe("what two copies of one graph disagree about", () => {
     expect(conflict.sections).toEqual([]);
   });
 
+  it("names a note the two copies tag differently", () => {
+    const [conflict] = conflictsBetween(
+      copies([{ ...osmosis, tags: ["biology"] }], [{ ...osmosis, tags: [] }]),
+    );
+
+    expect(conflict.kind).toBe("note");
+    expect(conflict.ref).toBe(ref(FIRST));
+  });
+
+  it("says nothing about tags standing in a different order", () => {
+    expect(
+      conflictsBetween(
+        copies(
+          [{ ...osmosis, tags: ["biology", "seed"] }],
+          [{ ...osmosis, tags: ["seed", "biology"] }],
+        ),
+      ),
+    ).toEqual([]);
+  });
+
   it("says what each side wrote into a section they both wrote into", () => {
     const [conflict] = conflictsBetween(
       copies(
@@ -244,14 +264,29 @@ describe("the two copies settled into one graph", () => {
     expect(held(notes, THIRD).title).toBe("In the file");
   });
 
-  it("leaves a note nobody was asked about as this graph has it", () => {
+  it("leaves a note nobody chose about as this graph has it", () => {
     const two = copies(
       [{ ...osmosis, tags: ["biology"] }],
       [{ ...osmosis, tags: ["seed"] }],
     );
 
-    expect(conflictsBetween(two)).toEqual([]);
-    expect(held(settled(two, [], []), FIRST).tags).toEqual(["biology"]);
+    expect(held(settled(two, conflictsBetween(two), []), FIRST).tags).toEqual([
+      "biology",
+    ]);
+  });
+
+  it("takes the tags of the copy the person kept", () => {
+    const two = copies(
+      [{ ...osmosis, tags: ["biology"] }],
+      [{ ...osmosis, tags: ["seed"] }],
+    );
+    const conflicts = conflictsBetween(two);
+
+    const notes = settled(two, conflicts, [
+      { kind: "note", ref: ref(FIRST), keep: "theirs", sections: [] },
+    ]);
+
+    expect(held(notes, FIRST).tags).toEqual(["seed"]);
   });
 
   it("keeps the copy the person chose, whole", () => {

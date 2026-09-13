@@ -242,17 +242,20 @@ export interface MergeWrite {
 /** What a settled merge still cannot be written as. */
 export type MergeRefusal =
   | { what: "twice"; address: Address; notes: PlacedNote[] }
-  | { what: "spent"; address: Address; note: PlacedNote };
+  | { what: "spent"; address: Address; note: PlacedNote }
+  | { what: "led"; address: Address; note: PlacedNote; to: PlacedNote };
 
 /**
  * The first thing a settlement leaves the graph unable to hold, or absent where
- * it can be written: two notes at one number, and a number this graph spent on
- * a note other than the one arriving at it — AI.md § "The Genealogy Is the
+ * it can be written: two notes at one number, a number this graph spent on a
+ * note other than the one arriving at it, and a number that still leads back to
+ * another note the graph keeps while nobody stands at it, which is a citation
+ * this merge would be the one to take away — AI.md § "The Genealogy Is the
  * Protocol".
  */
 export function mergeRefusal(
   notes: readonly PlacedNote[],
-  retired: readonly RetiredAddress[],
+  now: GraphNow,
 ): MergeRefusal | undefined {
   const at = new Map<Address, PlacedNote>();
   for (const note of notes) {
@@ -264,9 +267,25 @@ export function mergeRefusal(
     at.set(note.address, note);
   }
   for (const [address, note] of at) {
-    const spent = retired.filter((row) => row.address === address);
+    const spent = now.retired.filter((row) => row.address === address);
     if (spent.length > 0 && !spent.some((row) => row.note === note.ref)) {
       return { what: "spent", address, note };
+    }
+  }
+  const byRef = new Map(notes.map((one) => [one.ref, one]));
+  const stoodAt = new Set(
+    now.held.flatMap((row) =>
+      row.deleted_at === undefined && row.address !== undefined
+        ? [row.address]
+        : [],
+    ),
+  );
+  for (const [address, note] of at) {
+    if (stoodAt.has(address)) continue;
+    for (const alias of now.aliases) {
+      if (alias.address !== address || alias.note === note.ref) continue;
+      const to = byRef.get(alias.note);
+      if (to) return { what: "led", address, note, to };
     }
   }
   return undefined;
@@ -321,8 +340,10 @@ export function mergeRows(
       updated_at: at,
     });
   };
-  for (const note of writing) {
-    for (const address of note.aliases) lead(address, note.ref, note.parent);
+  for (const note of notes) {
+    for (const address of note.aliases) {
+      if (address !== note.address) lead(address, note.ref, note.parent);
+    }
   }
   const yielding = now.held.filter(
     (note) =>

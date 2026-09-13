@@ -237,7 +237,7 @@ export class ArchiveImportService {
         aliases: await this.rows.aliasesIn(did, opened.graph),
         retired: await this.rows.retiredIn(did, opened.graph),
       };
-      const cannot = mergeRefusal(notes, now.retired);
+      const cannot = mergeRefusal(notes, now);
       if (cannot) throw unwritable(cannot);
       await this.rows.merge(
         did,
@@ -571,12 +571,17 @@ function notSettled(
   );
 }
 
-/** What a settled merge would still put two notes at one number for, or take a
- *  number this graph spent for. */
+/** What a settled merge would still put two notes at one number for, take a
+ *  number this graph spent for, or take a number off the note it leads to. */
 function unwritable(found: MergeRefusal): BadRequestException {
   if (found.what === "twice") {
     return new BadRequestException(
       `Nothing has been brought in: ${found.notes.map(called).join(" and ")} would both be numbered ${found.address}. Choose again, so that one of them keeps it.`,
+    );
+  }
+  if (found.what === "led") {
+    return new BadRequestException(
+      `Nothing has been brought in: ${found.address} still leads to ${called(found.to)}, so ${called(found.note)} cannot arrive at it. Change that number in the file, or take it off, and bring the graph in again.`,
     );
   }
   return new BadRequestException(
