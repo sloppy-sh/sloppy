@@ -53,6 +53,12 @@
 
 	const unsettled = $derived(merging ? conflicts.length - resolutions.length : 0);
 
+	// A choice is made against one preview; the next file's has none of it.
+	$effect(() => {
+		void preview;
+		resolutions = [];
+	});
+
 	const description = $derived.by(() => {
 		if (!preview) return reading ? 'Reading what is in the file…' : undefined;
 		if (empty) return 'There is nothing in it to bring in.';
