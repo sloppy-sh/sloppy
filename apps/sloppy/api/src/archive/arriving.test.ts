@@ -509,6 +509,24 @@ describe("the rows a merge lands as", () => {
     expect(found).toBeUndefined();
   });
 
+  it("lets a note take a number that leads back to a note in the bin", () => {
+    const found = mergeRefusal(
+      placed([note({ ref: ref(1), address: "1a" as Address })]),
+      now({
+        held: [
+          row({
+            ref: ref(2),
+            address: "1b" as Address,
+            deleted_at: nowIso(),
+          }),
+        ],
+        aliases: [alias("1a" as Address, ref(2))],
+      }),
+    );
+
+    expect(found).toBeUndefined();
+  });
+
   it("leads every address a settled note carries, not only the rewritten ones", () => {
     const notes = placed([note({ ref: ref(1), aliases: ["1a" as Address] })]);
 

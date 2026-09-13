@@ -954,6 +954,61 @@ describe("a graph handed over as an archive", () => {
   );
 
   scenario(
+    "takes a number a note in the bin was holding, and leaves it leading there",
+    async () => {
+      const shelf = (await ok("POST", "/graphs", dana, {
+        title: "The shelf",
+      })) as GraphView;
+      const standing = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: shelf.ref },
+        title: "Standing here",
+      })) as NodeView;
+      const response = await fetch(
+        `${base}/api/graphs/${at(shelf.ref)}/archive`,
+        { headers: { cookie: dana.cookie } },
+      );
+      const taken = unpack(new Uint8Array(await response.arrayBuffer()));
+      const binned = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: shelf.ref },
+        title: "Binned since",
+      })) as NodeView;
+      await ok("DELETE", `/nodes/${at(binned.ref)}`, dana);
+      for (const [path, bytes] of taken) {
+        if (noteAt(path) === undefined) continue;
+        const text = decodeText(bytes);
+        taken.set(
+          path,
+          encodeText(
+            text.replace(
+              `address: ${standing.address}`,
+              `address: ${binned.address}`,
+            ),
+          ),
+        );
+      }
+
+      const landed = await importing(dana, pack(taken), false, [
+        { kind: "note", ref: standing.ref, keep: "theirs", sections: [] },
+      ]);
+
+      expect(landed.status).toBeLessThan(300);
+      const notes = await notesOf(dana, shelf.ref);
+      const took = notes.find((one) => one.ref === standing.ref) as NodeView;
+      expect(took.address).toBe(binned.address);
+      expect(took.aliases).toContain(standing.address);
+
+      const back = (await ok(
+        "POST",
+        `/nodes/${at(binned.ref)}/restore`,
+        dana,
+      )) as NodeView;
+      expect(back.address).toBeUndefined();
+      expect(back.aliases).toContain(binned.address);
+    },
+    120_000,
+  );
+
+  scenario(
     "brings a graph somebody started with back into itself",
     async () => {
       home = ((await ok("GET", "/graphs", dana)) as GraphView[])[0];
