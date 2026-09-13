@@ -99,12 +99,27 @@ export interface StoredPicture {
   height?: number;
 }
 
+/** An address this graph spent on a note that has since been purged. It is
+ *  never assigned to a second note, and the note that spent it is the only one
+ *  that may take it back — AI.md § "The Genealogy Is the Protocol". */
+interface RetiredAddress {
+  address: Address;
+  /** Absent in a bin written before this was kept, which is an address
+   *  refused to everyone. */
+  note?: OwnedRef;
+}
+
 /** What the bin holds, alongside the note files in it. */
 interface BinFile {
   deleted: Record<string, Timestamp>;
-  /** Every address this graph has spent whose note has been purged. It is never
-   *  assigned again — AI.md § "The Genealogy Is the Protocol". */
-  retired: Address[];
+  retired: RetiredAddress[];
+}
+
+/** How a graph holds one address — `LocalGraph.leadsTo`. */
+export interface AddressHold {
+  hold: "live" | "deleted" | "moved";
+  note?: OwnedRef;
+  purged?: OwnedRef;
 }
 
 /** Where a note sits, walked from the parent chain rather than from its
@@ -121,7 +136,7 @@ export class LocalGraph {
   private readonly emoji = new Map<string, CustomEmojiKind>();
   private readonly emojiExtension = new Map<string, string>();
   private readonly ink = new Map<string, Record<string, unknown>>();
-  private retired: Address[] = [];
+  private retired: RetiredAddress[] = [];
   private places: Map<OwnedRef, Place> | null = null;
 
   private constructor(
@@ -452,7 +467,11 @@ export class LocalGraph {
       if ((note.parent ?? null) !== (parent?.ref ?? null)) continue;
       if (note.address !== undefined) run.push(note.address);
     }
-    return [...run, ...this.retired, ...this.aliases().keys()];
+    return [
+      ...run,
+      ...this.retired.map((one) => one.address),
+      ...this.aliases().keys(),
+    ];
   }
 
   /** Each address a note was carried away from, and the note it still leads
@@ -467,11 +486,15 @@ export class LocalGraph {
     return led;
   }
 
-  /** How this graph holds an address, and which note it leads to — absent where
-   *  it has never assigned it. */
-  leadsTo(
-    address: Address,
-  ): { hold: "live" | "deleted" | "moved"; note?: OwnedRef } | undefined {
+  /**
+   * How this graph holds an address, and which note it leads to — absent where
+   * it has never assigned it.
+   *
+   * `note` is one the graph still holds. `purged` is the note a retired address
+   * was spent on: it is gone from here, and it alone may take that address
+   * back.
+   */
+  leadsTo(address: Address): AddressHold | undefined {
     for (const note of this.notes.values()) {
       if (note.address !== address) continue;
       return {
@@ -479,9 +502,14 @@ export class LocalGraph {
         note: note.ref,
       };
     }
-    if (this.retired.includes(address)) return { hold: "deleted" };
     const led = this.aliases().get(address);
-    return led === undefined ? undefined : { hold: "moved", note: led };
+    if (led !== undefined) return { hold: "moved", note: led };
+    const retired = this.retired.find((one) => one.address === address);
+    if (retired === undefined) return undefined;
+    return {
+      hold: "deleted",
+      ...(retired.note === undefined ? {} : { purged: retired.note }),
+    };
   }
 
   spent(addresses: Iterable<Address>): Set<Address> {
@@ -491,7 +519,7 @@ export class LocalGraph {
       const at = [...this.notes.values()].some(
         (note) => note.address === address,
       );
-      if (at || this.retired.includes(address) || led.has(address)) {
+      if (at || this.isRetired(address) || led.has(address)) {
         found.add(address);
       }
     }
@@ -577,8 +605,8 @@ export class LocalGraph {
         ...(note.address === undefined ? [] : [note.address]),
         ...note.aliases,
       ]) {
-        if (stillAt.has(address) || this.retired.includes(address)) continue;
-        this.retired.push(address);
+        if (stillAt.has(address) || this.isRetired(address)) continue;
+        this.retired.push({ address, note: note.ref });
       }
       this.notes.delete(note.ref);
     }
@@ -586,21 +614,8 @@ export class LocalGraph {
     await this.writeBin();
   }
 
-  /** Every address this graph has spent and will never assign again. */
-  retiredAddresses(): Address[] {
-    return [...this.retired];
-  }
-
-  /** Addresses spent before whatever is in this folder now was written into it.
-   *  A graph replaced by a copy of itself still owes a citation whatever it
-   *  retired — AI.md § "The Genealogy Is the Protocol". */
-  async keepRetired(addresses: readonly Address[]): Promise<void> {
-    const adding = addresses.filter(
-      (address) => !this.retired.includes(address),
-    );
-    if (adding.length === 0) return;
-    this.retired = [...this.retired, ...adding];
-    await this.writeBin();
+  private isRetired(address: Address): boolean {
+    return this.retired.some((one) => one.address === address);
   }
 
   /** Everything thrown away longer ago than it can be put back. */
@@ -697,7 +712,12 @@ export class LocalGraph {
     for (const note of this.binned()) {
       if (note.deleted_at !== undefined) deleted[note.ulid] = note.deleted_at;
     }
-    const held: BinFile = { deleted, retired: [...this.retired].sort() };
+    const held: BinFile = {
+      deleted,
+      retired: [...this.retired].sort((a, b) =>
+        a.address < b.address ? -1 : 1,
+      ),
+    };
     await this.files.write(BIN_FILE, writeJson(held));
   }
 
@@ -984,11 +1004,22 @@ function readBin(bytes: Uint8Array | undefined): BinFile {
     if (typeof at === "string") deleted[ulid] = at;
   }
   const retired = Array.isArray(held?.retired)
-    ? (held.retired as unknown[]).filter(
-        (held): held is Address => typeof held === "string",
-      )
+    ? (held.retired as unknown[]).flatMap((one) => asRetired(one) ?? [])
     : [];
   return { deleted, retired };
+}
+
+/** A retired address as the bin file has it — a bare address in one written
+ *  before the note that spent it was kept beside it. */
+function asRetired(held: unknown): RetiredAddress | undefined {
+  if (typeof held === "string") return { address: held as Address };
+  if (!held || typeof held !== "object") return undefined;
+  const { address, note } = held as Record<string, unknown>;
+  if (typeof address !== "string") return undefined;
+  return {
+    address: address as Address,
+    ...(typeof note === "string" ? { note: note as OwnedRef } : {}),
+  };
 }
 
 function writeJson(value: unknown): Uint8Array {

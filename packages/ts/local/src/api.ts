@@ -727,7 +727,11 @@ export class LocalApi implements SloppyApi {
     }
     const winner = into.held(keeps);
     if (winner && winner.address !== address) {
-      await into.save({ ...winner, address });
+      await into.save({
+        ...winner,
+        address,
+        aliases: winner.aliases.filter((one) => one !== address),
+      });
     }
   }
 
@@ -778,8 +782,8 @@ export class LocalApi implements SloppyApi {
           mine: sectionWords(was, section),
           theirs: sectionWords(now, section),
         })),
-        mine: asWords(was),
-        theirs: asWords(now),
+        mine: asWords(was, mine, now),
+        theirs: asWords(now, theirs, was),
       });
     }
     const at = numbered(theirs);
@@ -792,8 +796,8 @@ export class LocalApi implements SloppyApi {
         other,
         address,
         sections: [],
-        mine: asWords(mine.get(ref)),
-        theirs: asWords(theirs.get(other)),
+        mine: asWords(mine.get(ref), mine),
+        theirs: asWords(theirs.get(other), theirs),
       });
     }
     return { theirs, conflicts };
@@ -1562,8 +1566,14 @@ function settling(one: {
   return `${one.kind}:${one.ref}`;
 }
 
-/** The note the two copies both hold, as the person settled it: the side they
- *  kept, with each section they took from the other in its place. */
+/**
+ * The note the two copies both hold, as the person settled it: the side they
+ * kept, with each section they took from the other in its place.
+ *
+ * Both sides are copies of one graph, so a number the side they left leads by
+ * is a number this graph has spent on this note, and the note keeps leading by
+ * it — AI.md § "The Genealogy Is the Protocol".
+ */
 function settled(
   mine: VaultNote,
   theirs: VaultNote,
@@ -1571,10 +1581,15 @@ function settled(
 ): VaultNote {
   const base = how.keep === "theirs" ? theirs : mine;
   const other = how.keep === "theirs" ? mine : theirs;
-  if (how.sections.length === 0) return base;
   const taking = new Map(how.sections.map((one) => [one.section, one.keep]));
+  const led = [
+    ...base.aliases,
+    ...other.aliases,
+    ...(other.address === undefined ? [] : [other.address]),
+  ];
   return {
     ...base,
+    aliases: [...new Set(led)].filter((one) => one !== base.address),
     sections: base.sections.map((section) => {
       if ((taking.get(section.ulid) ?? how.keep) === how.keep) return section;
       return other.sections.find((one) => one.ulid === section.ulid) ?? section;
@@ -1585,9 +1600,9 @@ function settled(
 /**
  * The note as it arrives, keeping its number only where this graph leads by it
  * to this same note: one another note was carried away from is that note's alone
- * to take back, and one this graph retired names no note here, so it is nobody's
- * — AI.md § "The Genealogy Is the Protocol". A number two notes carry is in
- * `contested`, and is the person's to settle instead.
+ * to take back, and so is one this graph retired when it purged this note — AI.md
+ * § "The Genealogy Is the Protocol". A number two notes carry is in `contested`,
+ * and is the person's to settle instead.
  */
 function asNumberedHere(
   note: VaultNote,
@@ -1597,7 +1612,9 @@ function asNumberedHere(
   const address = note.address;
   if (address === undefined || contested.has(address)) return note;
   const led = into.leadsTo(address);
-  if (led === undefined || led.note === note.ref) return note;
+  if (led === undefined || led.note === note.ref || led.purged === note.ref) {
+    return note;
+  }
   const { address: _theirs, ...rest } = note;
   return rest;
 }
@@ -1655,17 +1672,56 @@ function numbered(
   return at;
 }
 
-/** What one side holds, as words a person settles a disagreement by: what the
- *  note is called, what it is tagged, then its writing. */
-function asWords(note: VaultNote | undefined): string {
+/** What one side holds, as words a person settles a disagreement by: where the
+ *  two sides put the note differently, then what it is called, what it is
+ *  tagged, and its writing. */
+function asWords(
+  note: VaultNote | undefined,
+  held: ReadonlyMap<OwnedRef, VaultNote>,
+  other?: VaultNote,
+): string {
   if (!note) return "";
   return [
+    ...whereItSits(note, other, held),
     note.title,
     note.tags.join(", "),
     ...note.sections.flatMap((one) => wordsIn(one.content)),
   ]
     .filter((line) => line !== "")
     .join("\n");
+}
+
+/** Where a side puts the note, said only where the other side puts it
+ *  somewhere else: a renumber or a move is otherwise two identical texts to
+ *  choose between. */
+function whereItSits(
+  note: VaultNote,
+  other: VaultNote | undefined,
+  held: ReadonlyMap<OwnedRef, VaultNote>,
+): string[] {
+  if (!other) return [];
+  const said: string[] = [];
+  if (note.address !== other.address) {
+    said.push(
+      note.address === undefined ? "No number" : `Numbered ${note.address}`,
+    );
+  }
+  if (note.parent !== other.parent) said.push(under(note, held));
+  return said;
+}
+
+/** The note this one springs from, as a person knows it. */
+function under(
+  note: VaultNote,
+  held: ReadonlyMap<OwnedRef, VaultNote>,
+): string {
+  if (note.parent === undefined) return "A branch";
+  const parent = held.get(note.parent);
+  const title = parent?.title.trim();
+  if (title) return `Under “${title}”`;
+  return parent?.address === undefined
+    ? "Under another note"
+    : `Under ${parent.address}`;
 }
 
 /** The same for one section of it, which is what a person chooses between
