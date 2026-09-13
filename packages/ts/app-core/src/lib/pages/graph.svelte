@@ -71,6 +71,7 @@
 		type ArchivePreview,
 		type CreateNodeRequest,
 		type FollowedIdentity,
+		type ImportSettlement,
 		type NodeAppearance,
 		type NodeBulkAct,
 		type NodeView,
@@ -1652,12 +1653,12 @@
 		}
 	}
 
-	async function bringItIn(): Promise<void> {
+	async function bringItIn(settle: ImportSettlement | undefined): Promise<void> {
 		if (!arriving) return;
 		arriving = { ...arriving, busy: true, refused: null };
 		const held = arriving;
 		try {
-			const brought = await graphs.importArchive(held.file);
+			const brought = await graphs.importArchive(held.file, settle);
 			if (arriving === held) arriving = null;
 			closeUndrawn();
 			await nodes.reload({ graph: brought.ref }).catch(() => {});
@@ -2512,7 +2513,7 @@
 	reading={arriving?.reading ?? false}
 	busy={arriving?.busy ?? false}
 	refused={arriving?.refused ?? null}
-	onimport={() => void bringItIn()}
+	onimport={(settle) => void bringItIn(settle)}
 	oncancel={() => (arriving = null)}
 />
 

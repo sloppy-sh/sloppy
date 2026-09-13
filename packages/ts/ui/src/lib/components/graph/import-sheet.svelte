@@ -1,8 +1,9 @@
 <script lang="ts">
 	// What a graph in a file brings with it, said before anything is written.
-	import type { ArchivePreview } from '@sloppy/types';
+	import type { ArchivePreview, ImportResolution, ImportSettlement } from '@sloppy/types';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ResponsiveModal from '../responsive-modal.svelte';
+	import SettleImport from './settle-import.svelte';
 
 	let {
 		open = $bindable(false),
@@ -26,9 +27,13 @@
 		busy?: boolean;
 		/** Why it did not land, in words to show. */
 		refused?: string | null;
-		onimport: () => void;
+		/** `settle` carries the choices where the two copies of one graph
+		 *  disagreed, and is absent where there was nothing to settle. */
+		onimport: (settle?: ImportSettlement) => void;
 		oncancel: () => void;
 	} = $props();
+
+	let resolutions = $state<readonly ImportResolution[]>([]);
 
 	function count(n: number, one: string, many: string): string {
 		return `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -42,16 +47,38 @@
 
 	const empty = $derived(preview !== null && preview.notes === 0);
 
+	const merging = $derived(preview?.merges === true && !empty);
+
+	const conflicts = $derived(preview?.conflicts ?? []);
+
+	const unsettled = $derived(merging ? conflicts.length - resolutions.length : 0);
+
+	// A choice is made against one preview; the next file's has none of it.
+	$effect(() => {
+		void preview;
+		resolutions = [];
+	});
+
 	const description = $derived.by(() => {
 		if (!preview) return reading ? 'Reading what is in the file…' : undefined;
 		if (empty) return 'There is nothing in it to bring in.';
+		if (merging) return 'You already keep this graph, so the two copies become one.';
 		const notes = count(preview.notes, 'note', 'notes');
 		if (preview.pictures === 0) return `${notes} ${preview.notes === 1 ? 'arrives' : 'arrive'}.`;
 		return `${notes} and ${count(preview.pictures, 'picture', 'pictures')} arrive.`;
 	});
 
+	const settling = $derived.by(() => {
+		if (!merging) return null;
+		if (conflicts.length === 0) return 'The two copies agree about everything in them.';
+		return conflicts.length === 1
+			? 'One note needs settling before this comes in.'
+			: `${conflicts.length.toLocaleString()} notes need settling before this comes in.`;
+	});
+
 	const landing = $derived.by(() => {
 		if (!preview || empty) return null;
+		if (merging) return 'What is only in the file arrives, and what is only here stays.';
 		if (!preview.replaces) return 'It arrives as a graph of its own, beside the ones you keep.';
 		if (preview.replacing === 0)
 			return 'You already keep this graph, and there is nothing in it now. What is in the file fills it.';
@@ -79,6 +106,16 @@
 		{#if preview}
 			{#if landing}
 				<p class="px-2 text-sm text-muted-foreground">{landing}</p>
+			{/if}
+
+			{#if settling}
+				<p class="px-2 text-sm text-muted-foreground">{settling}</p>
+			{/if}
+
+			{#if merging && conflicts.length > 0}
+				<div class="px-2 pt-1 pb-2">
+					<SettleImport {conflicts} {busy} onchange={(settled) => (resolutions = settled)} />
+				</div>
 			{/if}
 
 			{#if !yours && !empty}
@@ -112,7 +149,11 @@
 		{/if}
 
 		{#if preview}
-			<Button class="h-11 w-full" disabled={busy || keptElsewhere > 0 || empty} onclick={onimport}>
+			<Button
+				class="h-11 w-full"
+				disabled={busy || keptElsewhere > 0 || empty || unsettled > 0}
+				onclick={() => onimport(merging ? { resolutions: [...resolutions] } : undefined)}
+			>
 				Import
 			</Button>
 		{/if}

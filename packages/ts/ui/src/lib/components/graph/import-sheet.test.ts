@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ArchivePreview } from '@sloppy/types';
+import type { ArchivePreview, ImportConflict, ImportSettlement } from '@sloppy/types';
 import { flushSync, mount, unmount, type ComponentProps } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
@@ -10,6 +10,7 @@ const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' as const;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let acts: string[];
+let settledWith: ImportSettlement | undefined;
 
 function preview(over: Partial<ArchivePreview> = {}): ArchivePreview {
 	return {
@@ -44,16 +45,24 @@ async function open(props: Partial<ComponentProps<typeof ImportSheet>> = {}): Pr
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	acts = [];
+	settledWith = undefined;
 	mounted = mount(ImportSheet, {
 		target,
 		props: {
 			open: true,
-			onimport: () => acts.push('import'),
+			onimport: (settle) => {
+				settledWith = settle;
+				acts.push('import');
+			},
 			oncancel: () => acts.push('cancel'),
 			...props
 		}
 	});
 	await settle();
+}
+
+function buttons(reads: string): HTMLButtonElement[] {
+	return [...document.querySelectorAll('button')].filter((b) => b.textContent?.includes(reads));
 }
 
 function button(reads: string): HTMLButtonElement {
@@ -228,5 +237,206 @@ describe('the preview a graph in a file opens', () => {
 
 		expect(button('Import').disabled).toBe(true);
 		expect(button('Cancel').disabled).toBe(true);
+	});
+});
+
+// docs/ARCHITECTURE.md § "A graph on disk": an archive of a graph the reader
+// already keeps is settled note by note, never written over.
+describe('the two copies of one graph', () => {
+	const NOTE = `${DID}/01JRZ0000000000000000000B1` as const;
+	const OTHER = `${DID}/01JRZ0000000000000000000B2` as const;
+	const FIRST = {
+		section: '01JRZ0000000000000000000S1',
+		mine: 'The first, as I left it',
+		theirs: 'The first, as the file has it'
+	};
+	const SECOND = {
+		section: '01JRZ0000000000000000000S2',
+		mine: 'The second, as I left it',
+		theirs: 'The second, as the file has it'
+	};
+
+	function merging(conflicts: ImportConflict[], over: Partial<ArchivePreview> = {}) {
+		return preview({ replaces: true, replacing: 9, merges: true, conflicts, ...over });
+	}
+
+	function wrote(over: Partial<ImportConflict> = {}): ImportConflict {
+		return {
+			kind: 'note',
+			ref: NOTE,
+			sections: [],
+			mine: 'Osmosis, as I left it',
+			theirs: 'Osmosis, as the file has it',
+			...over
+		};
+	}
+
+	it('says the two become one, and never that anything makes way', async () => {
+		await open({ preview: merging([]) });
+
+		expect(screen()).toContain('You already keep this graph, so the two copies become one.');
+		expect(screen()).toContain('What is only in the file arrives, and what is only here stays.');
+		expect(screen()).toContain('The two copies agree about everything in them.');
+		expect(screen()).not.toContain('make way for what is in the file');
+	});
+
+	it('brings a graph that agrees about everything in with nothing to settle', async () => {
+		await open({ preview: merging([]) });
+
+		expect(button('Import').disabled).toBe(false);
+		button('Import').click();
+		await settle();
+
+		expect(acts).toEqual(['import']);
+		expect(settledWith).toEqual({ resolutions: [] });
+	});
+
+	it('counts the notes that need settling and offers no import until they are', async () => {
+		await open({ preview: merging([wrote(), wrote({ ref: OTHER })]) });
+
+		expect(screen()).toContain('2 notes need settling before this comes in.');
+		expect(button('Import').disabled).toBe(true);
+
+		buttons('Keep what is here')[0].click();
+		await settle();
+
+		expect(button('Import').disabled).toBe(true);
+
+		buttons("Take the file's")[1].click();
+		await settle();
+
+		expect(button('Import').disabled).toBe(false);
+	});
+
+	it('counts one note that needs settling without pluralising it', async () => {
+		await open({ preview: merging([wrote()]) });
+
+		expect(screen()).toContain('One note needs settling before this comes in.');
+	});
+
+	it('shows both copies of a note both sides wrote in, and carries the choice', async () => {
+		await open({ preview: merging([wrote()]) });
+
+		expect(screen()).toContain('Both copies of this note were written in.');
+		expect(screen()).toContain('Osmosis, as I left it');
+		expect(screen()).toContain('Osmosis, as the file has it');
+
+		button("Take the file's").click();
+		await settle();
+		button('Import').click();
+		await settle();
+
+		expect(settledWith).toEqual({
+			resolutions: [{ kind: 'note', ref: NOTE, keep: 'theirs', sections: [] }]
+		});
+	});
+
+	it('says so where one of the two has nothing written in it', async () => {
+		await open({ preview: merging([wrote({ mine: '' })]) });
+
+		expect(screen()).toContain('Nothing written in it.');
+	});
+
+	// AI.md: the address is the label a person cites, and a ref never is.
+	it('asks which note keeps a number the two copies have on different notes', async () => {
+		await open({ preview: merging([wrote({ kind: 'address', other: OTHER, address: '1a1' })]) });
+
+		expect(screen()).toContain('1a1');
+		expect(screen()).toContain('Both copies carry this number, on a different note.');
+		expect(screen()).not.toContain('01JRZ0000000000000000000B1');
+
+		button("The file's note keeps it").click();
+		await settle();
+		button('Import').click();
+		await settle();
+
+		expect(settledWith).toEqual({
+			resolutions: [{ kind: 'address', ref: NOTE, keep: 'theirs', sections: [] }]
+		});
+	});
+
+	it('settles a note section by section, and offers no import until every one is chosen', async () => {
+		await open({
+			preview: merging([wrote({ kind: 'section', sections: [FIRST, SECOND] })])
+		});
+
+		expect(screen()).toContain('Both copies wrote into the same sections of this note.');
+		button('Choose section by section').click();
+		await settle();
+
+		expect(screen()).toContain('Section 1');
+		expect(screen()).toContain('Section 2');
+		expect(button('Import').disabled).toBe(true);
+
+		// A section is chosen between by what either side wrote into it.
+		for (const words of [FIRST.mine, FIRST.theirs, SECOND.mine, SECOND.theirs])
+			expect(screen()).toContain(words);
+
+		buttons('Keep this one')[0].click();
+		await settle();
+
+		expect(button('Import').disabled).toBe(true);
+
+		buttons("Take the file's")[1].click();
+		await settle();
+		button('Import').click();
+		await settle();
+
+		expect(settledWith).toEqual({
+			resolutions: [
+				{
+					kind: 'section',
+					ref: NOTE,
+					keep: 'mine',
+					sections: [
+						{ section: FIRST.section, keep: 'mine' },
+						{ section: SECOND.section, keep: 'theirs' }
+					]
+				}
+			]
+		});
+	});
+
+	it('never names a section by the identifier it is stored under', async () => {
+		await open({ preview: merging([wrote({ kind: 'section', sections: [FIRST] })]) });
+		button('Choose section by section').click();
+		await settle();
+
+		expect(screen()).not.toContain(FIRST.section);
+	});
+
+	it('goes back to choosing for the whole note, and forgets the sections chosen', async () => {
+		await open({ preview: merging([wrote({ kind: 'section', sections: [FIRST] })]) });
+		button('Choose section by section').click();
+		await settle();
+		button('Keep this one').click();
+		await settle();
+
+		expect(button('Import').disabled).toBe(false);
+
+		button('Choose for the whole note instead').click();
+		await settle();
+
+		expect(button('Import').disabled).toBe(true);
+		button("Take the file's").click();
+		await settle();
+		button('Import').click();
+		await settle();
+
+		expect(settledWith).toEqual({
+			resolutions: [{ kind: 'section', ref: NOTE, keep: 'theirs', sections: [] }]
+		});
+	});
+
+	it('still stops an archive whose notes are kept in another graph', async () => {
+		await open({ preview: merging([], { collisions: [`${DID}/01A`] }) });
+
+		expect(button('Import').disabled).toBe(true);
+	});
+
+	it('repeats the words a settled import came back refused with', async () => {
+		await open({ preview: merging([wrote()]), refused: 'That number is another note’s.' });
+
+		expect(screen()).toContain('That number is another note’s.');
 	});
 });

@@ -401,6 +401,40 @@ describe('a graph brought in from a file', () => {
 		expect(said.conflicts.map((one) => [one.kind, one.ref])).toEqual([['note', NOTE]]);
 	});
 
+	it('carries what a person settled in with the archive', async () => {
+		const NOTE = ref(60);
+		let settled: unknown;
+		api.on('POST /graphs/import', (url, init) => {
+			if (url.searchParams.has('preview')) return mergePreview('01JRZ0000000000000000000AA', []);
+			settled = JSON.parse(String((init?.body as FormData).get('settle')));
+			return GARDEN;
+		});
+		await graphs.load();
+
+		const brought = await graphs.importArchive(new Blob([new Uint8Array([1])]), {
+			resolutions: [{ kind: 'note', ref: NOTE, keep: 'theirs', sections: [] }]
+		});
+
+		expect(settled).toEqual({
+			resolutions: [{ kind: 'note', ref: NOTE, keep: 'theirs', sections: [] }]
+		});
+		expect(brought.ref).toBe(GARDEN.ref);
+		expect(graphs.current).toBe(GARDEN.ref);
+	});
+
+	it('sends no settlement with an import that had nothing to settle', async () => {
+		let form = false;
+		api.on('POST /graphs/import', (_url, init) => {
+			form = init?.body instanceof FormData;
+			return GARDEN;
+		});
+		await graphs.load();
+
+		await graphs.importArchive(new Blob([new Uint8Array([1])]));
+
+		expect(form).toBe(false);
+	});
+
 	it('asks for the graph a person is keeping as a file, and hands back what to call it', async () => {
 		archiving(api, {
 			exported: {

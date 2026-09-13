@@ -3196,6 +3196,157 @@ describe('a graph as a file', () => {
 		expect(graphs.current).toBe(HOME);
 	});
 
+	// docs/ARCHITECTURE.md § "A graph on disk": a copy of a graph already kept
+	// is settled note by note, and nothing of it is written until it is.
+	describe('a copy of a graph already kept', () => {
+		const NOTE = ref(61);
+		const OTHER = ref(62);
+
+		/** The archive answers a merge, and the import hands back what a person
+		 *  settled so the suite can read it. */
+		function bothCopies(conflicts: ArchivePreview['conflicts']): { settled: () => unknown } {
+			let sent: unknown;
+			api.on('POST /graphs/import', (url, init) => {
+				if (url.searchParams.has('preview'))
+					return whatArrives({ replaces: true, replacing: 4, merges: true, conflicts });
+				sent = JSON.parse(String((init?.body as FormData).get('settle')));
+				return OSMOSIS;
+			});
+			return { settled: () => sent };
+		}
+
+		it('says what the merge does and offers no import until the note is settled', async () => {
+			const sending = bothCopies([
+				{
+					kind: 'note',
+					ref: NOTE,
+					sections: [],
+					mine: 'Osmosis, as I left it',
+					theirs: 'Osmosis, as the file has it'
+				}
+			]);
+
+			await fromMore('Import a graph');
+			chooseFile();
+			await settle();
+
+			expect(screen()).toContain('You already keep this graph, so the two copies become one.');
+			expect(screen()).toContain('One note needs settling before this comes in.');
+			expect(screen()).toContain('Osmosis, as the file has it');
+			expect(button('Import').disabled).toBe(true);
+
+			button("Take the file's").click();
+			await settle();
+			button('Import').click();
+			await settle();
+
+			expect(sending.settled()).toEqual({
+				resolutions: [{ kind: 'note', ref: NOTE, keep: 'theirs', sections: [] }]
+			});
+			expect(graphs.current).toBe(OSMOSIS.ref);
+			// The graph it settled into is read again, so the canvas is what landed.
+			expect(api.calls).toContain(`GET /nodes?graph=${encodeURIComponent(OSMOSIS.ref)}`);
+			expect(screen()).not.toContain('needs settling before this comes in');
+		});
+
+		it('asks which note keeps a number the two copies have on different notes', async () => {
+			const sending = bothCopies([
+				{
+					kind: 'address',
+					ref: NOTE,
+					other: OTHER,
+					address: '1a1',
+					sections: [],
+					mine: 'Cells',
+					theirs: 'Osmosis in cells'
+				}
+			]);
+
+			await fromMore('Import a graph');
+			chooseFile();
+			await settle();
+
+			expect(screen()).toContain('Both copies carry this number, on a different note.');
+			button('The note here keeps it').click();
+			await settle();
+			button('Import').click();
+			await settle();
+
+			expect(sending.settled()).toEqual({
+				resolutions: [{ kind: 'address', ref: NOTE, keep: 'mine', sections: [] }]
+			});
+		});
+
+		it('settles a note the two copies wrote into section by section', async () => {
+			const sending = bothCopies([
+				{
+					kind: 'section',
+					ref: NOTE,
+					sections: [
+						{
+							section: '01JRZ0000000000000000000S1',
+							mine: 'Water leaves the cell',
+							theirs: 'Water crosses the wall'
+						}
+					],
+					mine: 'Cells, as I left them',
+					theirs: 'Cells, as the file has them'
+				}
+			]);
+
+			await fromMore('Import a graph');
+			chooseFile();
+			await settle();
+			button('Choose section by section').click();
+			await settle();
+
+			expect(screen()).toContain('Section 1');
+			expect(screen()).toContain('Water leaves the cell');
+			expect(screen()).toContain('Water crosses the wall');
+			expect(button('Import').disabled).toBe(true);
+
+			button("Take the file's").click();
+			await settle();
+			button('Import').click();
+			await settle();
+
+			expect(sending.settled()).toEqual({
+				resolutions: [
+					{
+						kind: 'section',
+						ref: NOTE,
+						keep: 'mine',
+						sections: [{ section: '01JRZ0000000000000000000S1', keep: 'theirs' }]
+					}
+				]
+			});
+		});
+
+		it('repeats the words a settled import came back refused with, and opens nothing', async () => {
+			api.on('POST /graphs/import', (url) =>
+				url.searchParams.has('preview')
+					? whatArrives({
+							replaces: true,
+							replacing: 4,
+							merges: true,
+							conflicts: [{ kind: 'note', ref: NOTE, sections: [], mine: 'Mine', theirs: 'Theirs' }]
+						})
+					: refuses('That number is another note’s.')
+			);
+
+			await fromMore('Import a graph');
+			chooseFile();
+			await settle();
+			button("Take the file's").click();
+			await settle();
+			button('Import').click();
+			await settle();
+
+			expect(screen()).toContain('That number is another note’s.');
+			expect(graphs.current).toBe(HOME);
+		});
+	});
+
 	it('repeats the words a file that could not be read came back with', async () => {
 		archiving(api, { preview: () => refuses("This file isn't a Sloppy graph.") });
 

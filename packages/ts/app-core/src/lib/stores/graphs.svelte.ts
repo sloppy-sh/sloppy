@@ -13,6 +13,7 @@ import {
 	type ArchivePreview,
 	type GraphView,
 	GraphViewSchema,
+	type ImportSettlement,
 	type OwnedRef,
 	type CreateGraphRequest,
 	type UpdateGraphRequest
@@ -218,10 +219,12 @@ class GraphsStore {
 	}
 
 	/** Bring the graph in, and be in it. One replacing a graph already kept
-	 *  takes its place in the listing rather than standing beside it. */
-	async importArchive(archive: Blob): Promise<GraphView> {
+	 *  takes its place in the listing rather than standing beside it.
+	 *  `settle` is what the person chose where the two copies of one graph
+	 *  disagreed; absent is an import with nothing to settle. */
+	async importArchive(archive: Blob, settle?: ImportSettlement): Promise<GraphView> {
 		const epoch = this.#epoch;
-		const brought = await api.importArchive(archive);
+		const brought = await api.importArchive(archive, settle);
 		if (epoch !== this.#epoch) return brought;
 		this.#all = this.#all.some((graph) => graph.ref === brought.ref)
 			? this.#all.map((graph) => (graph.ref === brought.ref ? brought : graph))
