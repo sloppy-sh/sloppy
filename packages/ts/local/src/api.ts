@@ -1715,7 +1715,9 @@ function under(
   note: VaultNote,
   held: ReadonlyMap<OwnedRef, VaultNote>,
 ): string {
-  if (note.parent === undefined) return "A branch";
+  if (note.parent === undefined) {
+    return note.address === undefined ? "On its own" : "A branch";
+  }
   const parent = held.get(note.parent);
   const title = parent?.title.trim();
   if (title) return `Under “${title}”`;
