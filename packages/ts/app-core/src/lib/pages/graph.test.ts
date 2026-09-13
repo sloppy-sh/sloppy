@@ -3282,7 +3282,13 @@ describe('a graph as a file', () => {
 				{
 					kind: 'section',
 					ref: NOTE,
-					sections: ['01JRZ0000000000000000000S1'],
+					sections: [
+						{
+							section: '01JRZ0000000000000000000S1',
+							mine: 'Water leaves the cell',
+							theirs: 'Water crosses the wall'
+						}
+					],
 					mine: 'Cells, as I left them',
 					theirs: 'Cells, as the file has them'
 				}
@@ -3295,6 +3301,8 @@ describe('a graph as a file', () => {
 			await settle();
 
 			expect(screen()).toContain('Section 1');
+			expect(screen()).toContain('Water leaves the cell');
+			expect(screen()).toContain('Water crosses the wall');
 			expect(button('Import').disabled).toBe(true);
 
 			button("Take the file's").click();

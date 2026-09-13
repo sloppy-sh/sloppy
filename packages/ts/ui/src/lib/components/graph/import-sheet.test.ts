@@ -245,8 +245,16 @@ describe('the preview a graph in a file opens', () => {
 describe('the two copies of one graph', () => {
 	const NOTE = `${DID}/01JRZ0000000000000000000B1` as const;
 	const OTHER = `${DID}/01JRZ0000000000000000000B2` as const;
-	const FIRST = '01JRZ0000000000000000000S1';
-	const SECOND = '01JRZ0000000000000000000S2';
+	const FIRST = {
+		section: '01JRZ0000000000000000000S1',
+		mine: 'The first, as I left it',
+		theirs: 'The first, as the file has it'
+	};
+	const SECOND = {
+		section: '01JRZ0000000000000000000S2',
+		mine: 'The second, as I left it',
+		theirs: 'The second, as the file has it'
+	};
 
 	function merging(conflicts: ImportConflict[], over: Partial<ArchivePreview> = {}) {
 		return preview({ replaces: true, replacing: 9, merges: true, conflicts, ...over });
@@ -362,6 +370,10 @@ describe('the two copies of one graph', () => {
 		expect(screen()).toContain('Section 2');
 		expect(button('Import').disabled).toBe(true);
 
+		// A section is chosen between by what either side wrote into it.
+		for (const words of [FIRST.mine, FIRST.theirs, SECOND.mine, SECOND.theirs])
+			expect(screen()).toContain(words);
+
 		buttons('Keep this one')[0].click();
 		await settle();
 
@@ -379,8 +391,8 @@ describe('the two copies of one graph', () => {
 					ref: NOTE,
 					keep: 'mine',
 					sections: [
-						{ section: FIRST, keep: 'mine' },
-						{ section: SECOND, keep: 'theirs' }
+						{ section: FIRST.section, keep: 'mine' },
+						{ section: SECOND.section, keep: 'theirs' }
 					]
 				}
 			]
@@ -392,7 +404,7 @@ describe('the two copies of one graph', () => {
 		button('Choose section by section').click();
 		await settle();
 
-		expect(screen()).not.toContain(FIRST);
+		expect(screen()).not.toContain(FIRST.section);
 	});
 
 	it('goes back to choosing for the whole note, and forgets the sections chosen', async () => {
