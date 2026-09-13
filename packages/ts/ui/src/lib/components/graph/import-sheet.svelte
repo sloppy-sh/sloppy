@@ -72,8 +72,7 @@
 
 	const landing = $derived.by(() => {
 		if (!preview || empty) return null;
-		if (merging)
-			return 'What is only in the file arrives, what is only here stays, and nothing here is thrown away.';
+		if (merging) return 'What is only in the file arrives, and what is only here stays.';
 		if (!preview.replaces) return 'It arrives as a graph of its own, beside the ones you keep.';
 		if (preview.replacing === 0)
 			return 'You already keep this graph, and there is nothing in it now. What is in the file fills it.';

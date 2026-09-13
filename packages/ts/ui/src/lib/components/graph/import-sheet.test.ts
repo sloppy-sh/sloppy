@@ -275,9 +275,7 @@ describe('the two copies of one graph', () => {
 		await open({ preview: merging([]) });
 
 		expect(screen()).toContain('You already keep this graph, so the two copies become one.');
-		expect(screen()).toContain(
-			'What is only in the file arrives, what is only here stays, and nothing here is thrown away.'
-		);
+		expect(screen()).toContain('What is only in the file arrives, and what is only here stays.');
 		expect(screen()).toContain('The two copies agree about everything in them.');
 		expect(screen()).not.toContain('make way for what is in the file');
 	});
