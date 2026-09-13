@@ -321,9 +321,18 @@ export const ImportConflictSchema = z.object({
   /** The number the two notes both carry, on an `address` conflict. Absent
    *  otherwise. */
   address: AddressSchema.optional(),
-  /** The sections both sides wrote into, on a `section` conflict. Empty on the
-   *  other two. */
-  sections: z.array(UlidSchema).default([]),
+  /** The sections both sides wrote into, on a `section` conflict, each with
+   *  what either side wrote there in words so a person can choose between
+   *  them. Empty on the other two. */
+  sections: z
+    .array(
+      z.object({
+        section: UlidSchema,
+        mine: z.string(),
+        theirs: z.string(),
+      }),
+    )
+    .default([]),
   mine: z.string(),
   theirs: z.string(),
 });
