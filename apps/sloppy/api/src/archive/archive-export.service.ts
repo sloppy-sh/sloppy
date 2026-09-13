@@ -4,6 +4,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import {
+  type Address,
   type Block,
   type BlockView,
   blockView,
@@ -51,6 +52,14 @@ interface CarriedPictures {
   files: Map<string, Uint8Array>;
 }
 
+/** One graph's rows, read once and written into a vault twice over. */
+interface GraphRows {
+  refs: OwnedRef[];
+  notes: Node[];
+  aliases: ReadonlyMap<OwnedRef, Address[]>;
+  stacks: ReadonlyMap<OwnedRef, readonly Block[]>;
+}
+
 @Injectable()
 export class ArchiveExportService {
   private readonly logger = new Logger(ArchiveExportService.name);
@@ -72,8 +81,38 @@ export class ArchiveExportService {
   ): Promise<{ bytes: Uint8Array; filename: string }> {
     await this.graphs.requireHeld(did, graph);
     const name = await this.nameOf(did, graph);
-    const vault = await this.vault(delegation, did, graph, name);
-    return { bytes: pack(vault), filename: fileName(name) };
+    const rows = await this.read(did, graph);
+    const carried = await this.carryPictures(
+      delegation,
+      rows.notes,
+      rows.stacks,
+    );
+    const written = this.write(did, graph, name, rows, carried);
+    for (const [path, bytes] of await this.carryEmoji(
+      delegation,
+      written.emoji,
+    )) {
+      written.vault.set(path, bytes);
+    }
+    return { bytes: pack(written.vault), filename: fileName(name) };
+  }
+
+  /**
+   * One graph as the vault a merge reads the copy already here out of: the
+   * files an archive of it would carry, without the pictures' bytes. Every
+   * picture is still linked by the name a vault gives it, which is what the
+   * two copies of one graph are compared by —
+   * docs/ARCHITECTURE.md § "A graph on disk".
+   */
+  async vaultOf(did: DidSyr, graph: OwnedRef): Promise<Vault> {
+    const rows = await this.read(did, graph);
+    return this.write(
+      did,
+      graph,
+      await this.nameOf(did, graph),
+      rows,
+      pictureNames(did, rows),
+    ).vault;
   }
 
   private async nameOf(did: DidSyr, graph: OwnedRef): Promise<string> {
@@ -81,18 +120,24 @@ export class ArchiveExportService {
     return held.find((one) => one.ref === graph)?.title ?? "";
   }
 
-  private async vault(
-    delegation: Delegation,
+  private async read(did: DidSyr, graph: OwnedRef): Promise<GraphRows> {
+    const refs = (await this.nodes.notesIn(did, graph)).sort();
+    return {
+      refs,
+      notes: (await this.nodes.many(did, refs)).sort(byRef),
+      aliases: await this.nodes.aliasesOf(did, graph, refs),
+      stacks: await this.blocks.listByNodes(refs),
+    };
+  }
+
+  private write(
     did: DidSyr,
     graph: OwnedRef,
     name: string,
-  ): Promise<Vault> {
-    const refs = (await this.nodes.notesIn(did, graph)).sort();
-    const notes = (await this.nodes.many(did, refs)).sort(byRef);
-    const aliases = await this.nodes.aliasesOf(did, graph, refs);
-    const stacks = await this.blocks.listByNodes(refs);
-    const carried = await this.carryPictures(delegation, notes, stacks);
-
+    rows: GraphRows,
+    carried: CarriedPictures,
+  ): { vault: Vault; emoji: ReadonlyMap<string, EmojiDrawing> } {
+    const { notes, aliases, stacks } = rows;
     const vault: Vault = new Map();
     vault.set(
       GRAPH_FILE,
@@ -125,10 +170,7 @@ export class ArchiveExportService {
     }
     for (const [path, bytes] of carried.files) vault.set(path, bytes);
     if (pictures.size > 0) vault.set(PICTURES_FILE, picturesFile(pictures));
-    for (const [path, bytes] of await this.carryEmoji(delegation, emoji)) {
-      vault.set(path, bytes);
-    }
-    return vault;
+    return { vault, emoji };
   }
 
   /**
@@ -214,6 +256,21 @@ export class ArchiveExportService {
     }
     return files;
   }
+}
+
+/** What a vault calls each picture these notes draw, with nothing read out of
+ *  the store: the names alone are what a merge compares two copies by. */
+function pictureNames(did: DidSyr, rows: GraphRows): CarriedPictures {
+  const named = new Map<string, string>();
+  for (const stack of rows.stacks.values()) {
+    for (const block of stack) {
+      for (const upload of citedUploads(block.content)) {
+        const name = vaultName(upload, did);
+        if (name !== undefined) named.set(upload, name);
+      }
+    }
+  }
+  return { named, paths: new Map(), files: new Map() };
 }
 
 /**

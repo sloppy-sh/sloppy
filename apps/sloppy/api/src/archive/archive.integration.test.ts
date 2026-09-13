@@ -14,6 +14,8 @@ import {
   ArchivePreviewSchema,
   type BlockView,
   type GraphView,
+  type ImportConflict,
+  type ImportResolution,
   type NodeView,
   type OwnedRef,
   splitOwnedRef,
@@ -48,6 +50,18 @@ const PIXEL = Buffer.from(
 );
 
 const INK = { strokes: [{ points: [1, 2, 3, 4] }], width: 600, height: 200 };
+
+/** A note and a section written into an archive by hand, which the graph the
+ *  archive is a copy of has never held. */
+const NEW_NOTE = "01JNEWNTE0000000000000AAAA";
+const NEW_SECTION = "01JNEWSCTN000000000000AAAA";
+
+function paragraph(text: string) {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -118,6 +132,15 @@ describe("a graph handed over as an archive", () => {
    *  keeps leading to it. */
   let wasAt: string | undefined;
   let archive: Uint8Array;
+  /** The person whose own graph goes out as a file, changes on both sides, and
+   *  is settled back into the one they kept. */
+  let dana: Person;
+  let orchard: GraphView;
+  let roots: NodeView;
+  let under: NodeView;
+  let alongside: NodeView;
+  let staying: NodeView;
+  let brought: Uint8Array;
 
   const scenario = (name: string, run: () => Promise<void>, timeout?: number) =>
     it(
@@ -179,6 +202,20 @@ describe("a graph handed over as an archive", () => {
   const blocksOf = (person: Person, note: OwnedRef) =>
     ok("GET", `/nodes/${at(note)}/blocks`, person) as Promise<BlockView[]>;
 
+  /** The section of one note that says these words, which is how a settlement
+   *  names the one it is about. */
+  async function sectionSaying(
+    person: Person,
+    note: OwnedRef,
+    words: string,
+  ): Promise<string> {
+    const found = (await blocksOf(person, note)).find((block) =>
+      JSON.stringify(block.content).includes(words),
+    );
+    if (!found) throw new Error(`no section saying ${words}`);
+    return splitOwnedRef(found.ref).localId;
+  }
+
   async function upload(person: Person): Promise<string> {
     const ticket = (await ok("POST", "/media/uploads", person, {
       role: "block",
@@ -202,17 +239,36 @@ describe("a graph handed over as an archive", () => {
     return ticket.upload_id;
   }
 
+  /** The archive on its own, or as a form with what the person chose between
+   *  the two copies beside it. */
   async function importing(
     person: Person,
     bytes: Uint8Array,
     preview: boolean,
+    settle?: readonly ImportResolution[],
   ): Promise<{ status: number; body: unknown }> {
+    const boundary = "sloppyintegration";
+    const sent =
+      settle === undefined
+        ? { type: "application/zip", body: Buffer.from(bytes) }
+        : {
+            type: `multipart/form-data; boundary=${boundary}`,
+            body: Buffer.concat([
+              Buffer.from(
+                `--${boundary}\r\ncontent-disposition: form-data; name="settle"\r\n\r\n${JSON.stringify(
+                  { resolutions: settle },
+                )}\r\n--${boundary}\r\ncontent-disposition: form-data; name="archive"; filename="graph.sloppy"\r\ncontent-type: application/zip\r\n\r\n`,
+              ),
+              Buffer.from(bytes),
+              Buffer.from(`\r\n--${boundary}--\r\n`),
+            ]),
+          };
     const response = await fetch(
       `${base}/api/graphs/import${preview ? "?preview=1" : ""}`,
       {
         method: "POST",
-        headers: { "content-type": "application/zip", cookie: person.cookie },
-        body: bytes as BodyInit,
+        headers: { "content-type": sent.type, cookie: person.cookie },
+        body: sent.body as BodyInit,
       },
     );
     const text = await response.text();
@@ -467,16 +523,29 @@ describe("a graph handed over as an archive", () => {
   );
 
   scenario(
-    "brought in a second time replaces what it brought the first",
+    "brought in a second time settles into the graph it opened",
     async () => {
       const preview = ArchivePreviewSchema.parse(
         (await importing(bram, archive, true)).body,
       );
       expect(preview.replaces).toBe(true);
+      expect(preview.merges).toBe(true);
       expect(preview.replacing).toBe(2);
       expect(preview.collisions).toEqual([]);
 
-      const answered = await importing(bram, archive, false);
+      // Somebody else's picture arrived under this identity's own name, so the
+      // note holding it is not the note the file has.
+      const answered = await importing(
+        bram,
+        archive,
+        false,
+        preview.conflicts.map((one) => ({
+          kind: one.kind,
+          ref: one.ref,
+          keep: "theirs" as const,
+          sections: [],
+        })),
+      );
       expect(answered.status).toBeLessThan(300);
       const landed = answered.body as GraphView;
 
@@ -575,6 +644,226 @@ describe("a graph handed over as an archive", () => {
       expect(said).toContain("“Under it”");
     },
     60_000,
+  );
+
+  scenario(
+    "answers a graph its importer already keeps with what the two copies disagree about",
+    async () => {
+      dana = await signIn(`dana${Date.now().toString(36)}`);
+      orchard = (await ok("POST", "/graphs", dana, {
+        title: "The orchard",
+      })) as GraphView;
+      roots = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: orchard.ref },
+        title: "Roots",
+      })) as NodeView;
+      under = (await ok("POST", "/nodes", dana, {
+        from: { relation: "under", note: roots.ref },
+        title: "Under it",
+      })) as NodeView;
+      alongside = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: orchard.ref },
+        title: "Alongside",
+      })) as NodeView;
+      await ok("POST", "/blocks", dana, {
+        node: roots.ref,
+        content: paragraph("as it was"),
+      });
+      const response = await fetch(
+        `${base}/api/graphs/${at(orchard.ref)}/archive`,
+        { headers: { cookie: dana.cookie } },
+      );
+      const taken = unpack(new Uint8Array(await response.arrayBuffer()));
+
+      // The file is written into where somebody else's copy of this graph
+      // would have been: a section rewritten, a note retitled and renumbered,
+      // a section added, and a note this graph has never held.
+      let copied = "";
+      for (const [path, bytes] of taken) {
+        if (noteAt(path) === undefined) continue;
+        const text = decodeText(bytes);
+        if (text.includes("title: Roots")) {
+          taken.set(
+            path,
+            encodeText(text.replace("as it was", "as the file has it")),
+          );
+        } else if (text.includes("title: Under it")) {
+          taken.set(
+            path,
+            encodeText(
+              `${text
+                .replace("title: Under it", "title: Under it, in the file")
+                .replace(
+                  `address: ${under.address}`,
+                  `address: ${alongside.address}`,
+                )}\n<!-- block ${NEW_SECTION} -->\n\nwritten in the file\n`,
+            ),
+          );
+        } else if (text.includes("title: Alongside")) {
+          copied = text;
+          taken.set(
+            path,
+            encodeText(text.replace(`\naddress: ${alongside.address}`, "")),
+          );
+        }
+      }
+      taken.set(
+        `notes/${NEW_NOTE}.md`,
+        encodeText(
+          copied
+            .replaceAll(splitOwnedRef(alongside.ref).localId, NEW_NOTE)
+            .replace("title: Alongside", "title: Only in the file")
+            .replace(`\naddress: ${alongside.address}`, ""),
+        ),
+      );
+      brought = pack(taken);
+
+      await ok("POST", "/blocks", dana, {
+        node: roots.ref,
+        content: paragraph("written since"),
+      });
+      staying = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: orchard.ref },
+        title: "Written since",
+      })) as NodeView;
+
+      const preview = ArchivePreviewSchema.parse(
+        (await importing(dana, brought, true)).body,
+      );
+
+      expect(preview.merges).toBe(true);
+      const kinds = new Map(
+        preview.conflicts.map((one) => [one.ref, one] as const),
+      );
+      expect(kinds.get(roots.ref)?.kind).toBe("section");
+      expect(kinds.get(roots.ref)?.sections).toEqual([
+        {
+          section: await sectionSaying(dana, roots.ref, "as it was"),
+          mine: "as it was",
+          theirs: "as the file has it",
+        },
+      ]);
+      expect(kinds.get(under.ref)?.kind).toBe("note");
+      expect(kinds.get(under.ref)?.theirs).toContain("“Under it, in the file”");
+      const numbering = preview.conflicts.find(
+        (one) => one.kind === "address",
+      ) as ImportConflict;
+      expect(numbering.address).toBe(alongside.address);
+      expect(numbering.ref).toBe(alongside.ref);
+      expect(numbering.other).toBe(under.ref);
+    },
+    120_000,
+  );
+
+  scenario(
+    "brings none of it in while a disagreement is unanswered, and says what is left to choose",
+    async () => {
+      const answered = await importing(dana, brought, false);
+
+      expect(answered.status).toBe(400);
+      expect((answered.body as { message: string }).message).toContain(
+        "Nothing has been brought in",
+      );
+      const stack = await blocksOf(dana, roots.ref);
+      expect(stack).toHaveLength(2);
+      expect(JSON.stringify(stack)).toContain("as it was");
+      expect(await notesOf(dana, orchard.ref)).toHaveLength(4);
+    },
+    120_000,
+  );
+
+  scenario(
+    "settles the two copies note by note, section by section, and number by number",
+    async () => {
+      const answered = await importing(dana, brought, false, [
+        {
+          kind: "section",
+          ref: roots.ref,
+          keep: "mine",
+          sections: [
+            {
+              section: await sectionSaying(dana, roots.ref, "as it was"),
+              keep: "theirs",
+            },
+          ],
+        },
+        { kind: "note", ref: under.ref, keep: "theirs", sections: [] },
+        { kind: "note", ref: alongside.ref, keep: "mine", sections: [] },
+        {
+          kind: "address",
+          ref: alongside.ref,
+          keep: "mine",
+          sections: [],
+          numbered: under.ref,
+        },
+      ]);
+
+      expect(answered.status).toBeLessThan(300);
+      expect((answered.body as GraphView).ref).toBe(orchard.ref);
+
+      const notes = await notesOf(dana, orchard.ref);
+      expect(notes.map((one) => one.title).sort()).toEqual([
+        "Alongside",
+        "Only in the file",
+        "Roots",
+        "Under it, in the file",
+        "Written since",
+      ]);
+
+      const kept = notes.find((one) => one.ref === roots.ref) as NodeView;
+      expect(kept.title).toBe("Roots");
+      const said = JSON.stringify(await blocksOf(dana, roots.ref));
+      expect(said).toContain("as the file has it");
+      expect(said).toContain("written since");
+      expect(said).not.toContain("as it was");
+
+      const took = notes.find((one) => one.ref === under.ref) as NodeView;
+      expect(took.address).toBe(alongside.address);
+      expect(took.aliases).toContain(under.address);
+      expect(JSON.stringify(await blocksOf(dana, under.ref))).toContain(
+        "written in the file",
+      );
+
+      const unnumbered = notes.find(
+        (one) => one.ref === alongside.ref,
+      ) as NodeView;
+      expect(unnumbered.address).toBeUndefined();
+      expect(unnumbered.aliases).toEqual([alongside.address]);
+
+      expect(notes.find((one) => one.ref === staying.ref)?.title).toBe(
+        "Written since",
+      );
+    },
+    120_000,
+  );
+
+  scenario(
+    "brings a graph somebody started with back into itself",
+    async () => {
+      const home = ((await ok("GET", "/graphs", dana)) as GraphView[])[0];
+      const written = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: home.ref },
+        title: "At home",
+      })) as NodeView;
+      const response = await fetch(
+        `${base}/api/graphs/${at(home.ref)}/archive`,
+        { headers: { cookie: dana.cookie } },
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+
+      const preview = ArchivePreviewSchema.parse(
+        (await importing(dana, bytes, true)).body,
+      );
+      expect(preview.merges).toBe(true);
+      expect(preview.conflicts).toEqual([]);
+
+      const landed = (await importing(dana, bytes, false)).body as GraphView;
+      expect(landed.ref).toBe(home.ref);
+      const notes = await notesOf(dana, home.ref);
+      expect(notes.map((one) => one.ref)).toEqual([written.ref]);
+      expect(notes[0].address).toBe(written.address);
+    },
+    120_000,
   );
 
   scenario(

@@ -1651,3 +1651,40 @@ describe("a graph holding a note nobody numbered", () => {
     expect(written.depth).toBe(alone.depth + 1);
   });
 });
+
+describe("two copies of one graph settled while somebody is numbering notes", () => {
+  it("settles where every other number is written, one at a time", async () => {
+    const order: string[] = [];
+    const repository = {
+      childAddresses: () => {
+        order.push("a note reads the run");
+        return Promise.resolve(["1" as Address]);
+      },
+      insert: (node: Node) => Promise.resolve(node),
+      addressLeadsTo: () => Promise.resolve(null),
+      addressTaken: () => Promise.resolve(null),
+    } as unknown as NodeRepository;
+    const service = new NodeService(
+      repository,
+      finds,
+      graphs,
+      media,
+      publications,
+    );
+
+    const settling = service.merging(DID, async () => {
+      order.push("the settling opens");
+      await new Promise((wake) => setTimeout(wake, 5));
+      order.push("the settling closes");
+    });
+    const written = service.create(DID, { title: "", tags: [] });
+    await Promise.all([settling, written]);
+
+    expect(order).toEqual([
+      "the settling opens",
+      "the settling closes",
+      "a note reads the run",
+    ]);
+    expect((await written).address).toBe("2");
+  });
+});

@@ -213,6 +213,151 @@ export function retiring(
   return rows;
 }
 
+/** The graph a merge is landing in, as it stands before anything is written. */
+export interface GraphNow {
+  /** The notes whose rows the merge writes whatever else it finds: the ones
+   *  arriving, and the ones settled between the two copies. */
+  arriving: ReadonlySet<OwnedRef>;
+  /** Every note the graph holds, the ones in the bin included. */
+  held: readonly Node[];
+  aliases: readonly NodeAlias[];
+  retired: readonly RetiredAddress[];
+}
+
+/** A merge as the rows it lands as: the notes it settles and the numbers it
+ *  moves, with everything it does not name left where it is. */
+export interface MergeWrite {
+  /** The notes whose rows and sections this write replaces. */
+  writing: OwnedRef[];
+  nodes: Node[];
+  blocks: Block[];
+  aliases: NodeAlias[];
+  /** The addresses that stop leading back, because the note they led to is at
+   *  them again. */
+  dropping: Address[];
+  /** Notes in the bin giving up a number a settled note is taking. */
+  yielding: OwnedRef[];
+}
+
+/** What a settled merge still cannot be written as. */
+export type MergeRefusal =
+  | { what: "twice"; address: Address; notes: PlacedNote[] }
+  | { what: "spent"; address: Address; note: PlacedNote };
+
+/**
+ * The first thing a settlement leaves the graph unable to hold, or absent where
+ * it can be written: two notes at one number, and a number this graph spent on
+ * a note other than the one arriving at it — AI.md § "The Genealogy Is the
+ * Protocol".
+ */
+export function mergeRefusal(
+  notes: readonly PlacedNote[],
+  retired: readonly RetiredAddress[],
+): MergeRefusal | undefined {
+  const at = new Map<Address, PlacedNote>();
+  for (const note of notes) {
+    if (note.address === undefined) continue;
+    const other = at.get(note.address);
+    if (other) {
+      return { what: "twice", address: note.address, notes: [other, note] };
+    }
+    at.set(note.address, note);
+  }
+  for (const [address, note] of at) {
+    const spent = retired.filter((row) => row.address === address);
+    if (spent.length > 0 && !spent.some((row) => row.note === note.ref)) {
+      return { what: "spent", address, note };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The rows a merge lands as. A note the merge settles or brings is written;
+ * every other note the graph keeps is written only where the merge moved it,
+ * took its number or put something above it, and left alone otherwise.
+ */
+export function mergeRows(
+  did: DidSyr,
+  graph: OwnedRef,
+  notes: readonly PlacedNote[],
+  now: GraphNow,
+  at: Timestamp = nowIso(),
+): MergeWrite {
+  const held = new Map<OwnedRef, Node>(
+    now.held.map((note) => [ownedRefFrom(note.id), note]),
+  );
+  const writing = notes.filter(
+    (note) => now.arriving.has(note.ref) || rewritten(note, held.get(note.ref)),
+  );
+  const written = new Set(writing.map((note) => note.ref));
+  const numbered = new Map<Address, OwnedRef>();
+  for (const note of notes) {
+    if (note.address !== undefined) numbered.set(note.address, note.ref);
+  }
+  const rows = rowsFor(did, graph, writing, held, at);
+  const dropping = new Set(
+    now.aliases
+      .filter((alias) => numbered.get(alias.address) === alias.note)
+      .map((alias) => alias.address),
+  );
+  const led = new Set(
+    now.aliases
+      .filter((alias) => !dropping.has(alias.address))
+      .map((alias) => alias.address),
+  );
+  const aliases: NodeAlias[] = [];
+  const lead = (address: Address, note: OwnedRef, parent?: OwnedRef): void => {
+    if (led.has(address)) return;
+    led.add(address);
+    aliases.push({
+      id: createOwnedRecordId("node_alias", did),
+      created_by: did,
+      graph,
+      ...(parent ? { parent } : {}),
+      address,
+      note,
+      created_at: at,
+      updated_at: at,
+    });
+  };
+  for (const note of writing) {
+    for (const address of note.aliases) lead(address, note.ref, note.parent);
+  }
+  const yielding = now.held.filter(
+    (note) =>
+      note.deleted_at !== undefined &&
+      note.address !== undefined &&
+      numbered.has(note.address) &&
+      numbered.get(note.address) !== ownedRefFrom(note.id) &&
+      !written.has(ownedRefFrom(note.id)),
+  );
+  for (const note of yielding) {
+    lead(note.address as Address, ownedRefFrom(note.id), note.parent);
+  }
+  return {
+    writing: [...written],
+    nodes: rows.nodes,
+    blocks: rows.blocks,
+    aliases,
+    dropping: [...dropping],
+    yielding: yielding.map((note) => ownedRefFrom(note.id)),
+  };
+}
+
+/** Whether the row this graph holds still says what the merge does about where
+ *  the note is and what it is numbered. */
+function rewritten(note: PlacedNote, row: Node | undefined): boolean {
+  return (
+    row === undefined ||
+    row.deleted_at !== undefined ||
+    row.depth !== note.depth ||
+    row.origin !== note.origin ||
+    row.parent !== note.parent ||
+    row.address !== note.address
+  );
+}
+
 /** Two files an archive holds that would land as one row. */
 export interface Repeat {
   what: "note" | "address" | "section";
