@@ -6,6 +6,7 @@ import {
   type DidSyr,
   type Node,
   type NodeAlias,
+  nowIso,
   type OwnedRef,
   ownedRefFrom,
   parseNode,
@@ -14,6 +15,7 @@ import {
 } from "@sloppy/types";
 import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
+import type { MergeWrite } from "./arriving";
 
 /** A graph as an import leaves it: the notes that were there, everything the
  *  archive brings, and the addresses the departing notes take with them. */
@@ -55,6 +57,16 @@ export class ArchiveRepository {
   async aliasesIn(did: DidSyr, graph: OwnedRef): Promise<NodeAlias[]> {
     const [rows] = await this.query<NodeAlias>(
       "SELECT * FROM node_alias WHERE created_by = $did AND graph = $graph",
+      { did, graph },
+    );
+    return rows;
+  }
+
+  /** Every number one graph has spent and retired, each with the note that
+   *  spent it where the row carries one. */
+  async retiredIn(did: DidSyr, graph: OwnedRef): Promise<RetiredAddress[]> {
+    const [rows] = await this.query<RetiredAddress>(
+      "SELECT * FROM retired_address WHERE created_by = $did AND graph = $graph",
       { did, graph },
     );
     return rows;
@@ -119,6 +131,60 @@ export class ArchiveRepository {
       going: [...write.going],
       gone,
       retired_address: [...write.retiring],
+      node: [...write.nodes],
+      block: [...write.blocks],
+      node_alias: [...write.aliases],
+    });
+  }
+
+  /**
+   * The two copies of one graph settled into one, in a transaction: only the
+   * notes the merge writes are touched, so a note the graph holds and the
+   * archive does not — the ones in the bin included — is where it was.
+   */
+  async merge(did: DidSyr, graph: OwnedRef, write: MergeWrite): Promise<void> {
+    const ids = write.writing.map((ref) => recordIdFromOwnedRef("node", ref));
+    const yielding = write.yielding.map((ref) =>
+      recordIdFromOwnedRef("node", ref),
+    );
+    const rows = [
+      ["node", write.nodes],
+      ["block", write.blocks],
+      ["node_alias", write.aliases],
+    ] as const;
+    const statements = [
+      "BEGIN TRANSACTION;",
+      ...(write.writing.length > 0
+        ? ["DELETE block WHERE created_by = $did AND node IN $writing;"]
+        : []),
+      ...(write.dropping.length > 0
+        ? [
+            `DELETE node_alias WHERE created_by = $did AND graph = $graph
+               AND address IN $dropping;`,
+          ]
+        : []),
+      ...(yielding.length > 0
+        ? [
+            `UPDATE node SET address = NONE, updated_at = $at
+               WHERE created_by = $did AND id IN $yielding RETURN NONE;`,
+          ]
+        : []),
+      ...(write.writing.length > 0
+        ? ["DELETE node WHERE created_by = $did AND id IN $ids;"]
+        : []),
+      ...rows
+        .filter(([, held]) => held.length > 0)
+        .map(([table]) => `INSERT INTO ${table} $${table};`),
+      "COMMIT TRANSACTION;",
+    ];
+    await this.db.handle.query(statements.join("\n"), {
+      did,
+      graph,
+      ids,
+      yielding,
+      at: nowIso(),
+      writing: [...write.writing],
+      dropping: [...write.dropping],
       node: [...write.nodes],
       block: [...write.blocks],
       node_alias: [...write.aliases],

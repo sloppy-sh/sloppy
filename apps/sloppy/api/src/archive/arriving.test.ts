@@ -6,12 +6,16 @@ import {
   type NodeAlias,
   nowIso,
   type OwnedRef,
+  ownedRefFrom,
 } from "@sloppy/types";
 import type { VaultNote } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import {
   addressesLedBy,
+  type GraphNow,
   type Kept,
+  mergeRefusal,
+  mergeRows,
   placed,
   repeated,
   retiring,
@@ -308,5 +312,234 @@ describe("an archive that says one thing twice", () => {
 
     expect(found?.what).toBe("section");
     expect(found?.notes.map((one) => one.title)).toEqual(["A city"]);
+  });
+});
+
+describe("the rows a merge lands as", () => {
+  const row = (over: Partial<Node> & { ref: OwnedRef }): Node => ({
+    id: createOwnedRecordId("node", DID, over.ref.slice(DID.length + 1)),
+    created_by: DID,
+    graph: GRAPH,
+    depth: 1,
+    origin: over.ref,
+    title: "",
+    tags: [],
+    links: [],
+    published: false,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+    ...over,
+  });
+
+  const alias = (address: Address, note: OwnedRef): NodeAlias => ({
+    id: createOwnedRecordId("node_alias", DID),
+    created_by: DID,
+    graph: GRAPH,
+    address,
+    note,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  });
+
+  const now = (over: Partial<GraphNow> = {}): GraphNow => ({
+    arriving: new Set(),
+    held: [],
+    aliases: [],
+    retired: [],
+    ...over,
+  });
+
+  it("writes the notes the archive carries and leaves the rest where they are", () => {
+    const notes = placed([note({ ref: ref(1) }), note({ ref: ref(2) })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ arriving: new Set([ref(1)]), held: [row({ ref: ref(2) })] }),
+    );
+
+    expect(write.writing).toEqual([ref(1)]);
+    expect(write.nodes.map((one) => ownedRefFrom(one.id))).toEqual([ref(1)]);
+  });
+
+  it("writes a note the graph keeps where the merge put something above it", () => {
+    const notes = placed([
+      note({ ref: ref(1) }),
+      note({ ref: ref(2), parent: ref(1) }),
+    ]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ arriving: new Set([ref(1)]), held: [row({ ref: ref(2) })] }),
+    );
+
+    expect(write.writing.sort()).toEqual([ref(1), ref(2)].sort());
+    expect(
+      write.nodes.find((one) => ownedRefFrom(one.id) === ref(2))?.depth,
+    ).toBe(2);
+  });
+
+  it("leaves an address leading where it already leads, and drops the lead a note takes back", () => {
+    const notes = placed([
+      note({ ref: ref(1), address: "1a" as Address }),
+      note({ ref: ref(2), aliases: ["1b" as Address] }),
+    ]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({
+        arriving: new Set([ref(1), ref(2)]),
+        held: [row({ ref: ref(1) }), row({ ref: ref(2) })],
+        aliases: [
+          alias("1a" as Address, ref(1)),
+          alias("1b" as Address, ref(3)),
+        ],
+      }),
+    );
+
+    expect(write.dropping).toEqual(["1a"]);
+    expect(write.aliases).toEqual([]);
+  });
+
+  it("takes a number off a note in the bin and leaves it leading there", () => {
+    const notes = placed([note({ ref: ref(1), address: "1a" as Address })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({
+        arriving: new Set([ref(1)]),
+        held: [
+          row({ ref: ref(1) }),
+          row({ ref: ref(2), address: "1a" as Address, deleted_at: nowIso() }),
+        ],
+      }),
+    );
+
+    expect(write.yielding).toEqual([ref(2)]);
+    expect(write.aliases.map((one) => [one.address, one.note])).toEqual([
+      ["1a", ref(2)],
+    ]);
+  });
+
+  it("refuses a settlement that would put two notes at one number", () => {
+    const found = mergeRefusal(
+      placed([
+        note({ ref: ref(1), address: "1a" as Address, title: "Here" }),
+        note({ ref: ref(2), address: "1a" as Address, title: "There" }),
+      ]),
+      now(),
+    );
+
+    expect(found?.what).toBe("twice");
+    expect(found?.address).toBe("1a");
+  });
+
+  it("lets a note take back a number it spent and refuses another one it", () => {
+    const spent = (held: OwnedRef) => ({
+      id: createOwnedRecordId("retired_address", DID),
+      created_by: DID,
+      graph: GRAPH,
+      address: "1a" as Address,
+      note: held,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    });
+    const arriving = placed([note({ ref: ref(1), address: "1a" as Address })]);
+
+    expect(
+      mergeRefusal(arriving, now({ retired: [spent(ref(1))] })),
+    ).toBeUndefined();
+    expect(
+      mergeRefusal(arriving, now({ retired: [spent(ref(2))] }))?.what,
+    ).toBe("spent");
+  });
+
+  it("refuses a number that still leads back to a note carried away from it", () => {
+    const found = mergeRefusal(
+      placed([
+        note({ ref: ref(1), address: "1a" as Address, title: "Arriving" }),
+        note({
+          ref: ref(2),
+          address: "1b" as Address,
+          aliases: ["1a" as Address],
+          title: "Moved on",
+        }),
+      ]),
+      now({
+        held: [row({ ref: ref(2), address: "1b" as Address })],
+        aliases: [alias("1a" as Address, ref(2))],
+      }),
+    );
+
+    expect(found?.what).toBe("led");
+    expect(found?.address).toBe("1a");
+  });
+
+  it("lets a note keep a number somebody is already standing at", () => {
+    const found = mergeRefusal(
+      placed([
+        note({ ref: ref(1), address: "1a" as Address }),
+        note({ ref: ref(2), aliases: ["1a" as Address] }),
+      ]),
+      now({
+        held: [
+          row({ ref: ref(1), address: "1a" as Address }),
+          row({ ref: ref(2) }),
+        ],
+        aliases: [alias("1a" as Address, ref(2))],
+      }),
+    );
+
+    expect(found).toBeUndefined();
+  });
+
+  it("lets a number lead back to a note that is no longer there", () => {
+    const found = mergeRefusal(
+      placed([note({ ref: ref(1), address: "1a" as Address })]),
+      now({ aliases: [alias("1a" as Address, ref(2))] }),
+    );
+
+    expect(found).toBeUndefined();
+  });
+
+  it("lets a note take a number that leads back to a note in the bin", () => {
+    const found = mergeRefusal(
+      placed([note({ ref: ref(1), address: "1a" as Address })]),
+      now({
+        held: [
+          row({
+            ref: ref(2),
+            address: "1b" as Address,
+            deleted_at: nowIso(),
+          }),
+        ],
+        aliases: [alias("1a" as Address, ref(2))],
+      }),
+    );
+
+    expect(found).toBeUndefined();
+  });
+
+  it("leads every address a settled note carries, not only the rewritten ones", () => {
+    const notes = placed([note({ ref: ref(1), aliases: ["1a" as Address] })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ held: [row({ ref: ref(1) })] }),
+    );
+
+    expect(write.writing).toEqual([]);
+    expect(write.aliases.map((one) => [one.address, one.note])).toEqual([
+      ["1a", ref(1)],
+    ]);
   });
 });

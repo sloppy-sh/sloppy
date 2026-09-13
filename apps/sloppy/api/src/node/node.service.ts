@@ -377,6 +377,15 @@ export class NodeService {
   }
 
   /**
+   * An import settling two copies of one graph, run where every other address
+   * write runs: it reads the numbers the graph is leading by and then writes
+   * them, so a number settled here and one written on a note cannot both land.
+   */
+  merging<T>(did: string, run: () => Promise<T>): Promise<T> {
+    return this.addressing.run(did, run);
+  }
+
+  /**
    * The label a person cites this note by, written or taken off. The address it
    * leaves keeps leading to it, and an address it has carried before is its own
    * to take back — AI.md § "The Genealogy Is the Protocol".
