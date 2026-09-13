@@ -1834,12 +1834,11 @@ never which graph is in it, so nothing there has to change.
 **The bin is the folder's and never travels.** A deleted note's file moves into
 `.sloppy/bin/` and putting it back moves it out again, while `bin.json` holds when each
 one went and every address this graph has spent and will not assign again — including the
-ones a purge retired and the ones a replaced copy of the graph was at. An archive carries
+ones a purge retired. An archive carries
 the vault without either, because a graph handed to somebody else is what was written and
-not what was thrown away. **`bin.json` records the number and not the note that spent it**,
-so a folder refuses a spent number to everyone, its own note included — the half of the
-retired-address rule the server holds and a folder cannot until the vault format carries
-the note beside the number.
+not what was thrown away. **`bin.json` records the note beside each number it retired**, so
+a retired number is the spending note's alone to take back, and one recorded before the
+folder kept that names nobody and stays refused to everyone — the same rule the server holds.
 
 **The markdown is the record, and `.sloppy/` is what markdown has no syntax for.** A
 person opens `notes/` in any editor, reads their writing, changes a word and commits it;
@@ -1908,10 +1907,9 @@ vocabulary; `ArchivePreview.conflicts` is what a person is shown before anything
 and `merges` says the archive is a copy of a graph they keep. Absent `conflicts` is none and
 absent `merges` is false — what an answer made before an import could merge says. The hosted
 app and the local app settle an import the same way, because both read the same preview.
-**The vocabulary is here and the settling is not**: both previews still answer no conflicts
-and both imports still bring a graph in whole, replacing the copy the person keeps, so this
-paragraph describes the contract the writer of that settlement implements and not yet what
-either surface does.
+**Both previews answer the conflicts and both imports settle them as chosen**, on the
+server and in a folder alike; a settlement that leaves a conflict unsettled refuses the whole
+import before anything is written.
 
 **An archive says what it holds before it is opened.** `manifest` reads `graph.json` and
 counts the entries out of the zip's own listing without inflating them, so an import
