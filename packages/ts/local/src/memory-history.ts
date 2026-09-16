@@ -402,7 +402,9 @@ export class MemoryHistory implements History {
     there.copy(this.leadingBack([mine.id]));
     there.heads.set(this.on, mine.id);
     this.followed.set(`${name}/${this.on}`, mine.id);
-    this.follows.set(this.on, `${name}/${this.on}`);
+    if (!this.follows.has(this.on)) {
+      this.follows.set(this.on, `${name}/${this.on}`);
+    }
   }
 
   async deleteBranch(name: string): Promise<void> {

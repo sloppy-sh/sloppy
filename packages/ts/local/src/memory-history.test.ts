@@ -307,6 +307,30 @@ describe("a graph kept somewhere else as well", () => {
     expect(await bo.history.status()).toMatchObject({ ahead: 0, behind: 1 });
   });
 
+  it("keeps following the first place it was kept when it is kept in a second", async () => {
+    const remotes = new MemoryRemotes();
+    const elsewhere = "https://example.test/ada/garden-elsewhere.git";
+    remotes.keep(KEPT_URL, new MemoryHistory(new MemoryFiles({ root: "/a" })));
+    remotes.keep(elsewhere, new MemoryHistory(new MemoryFiles({ root: "/b" })));
+    const files = new MemoryFiles({ root: "/ada" });
+    const history = new MemoryHistory(files, { remotes });
+    await history.addRemote("github", KEPT_URL);
+    await history.addRemote("gitlab", elsewhere);
+    await write(files, NOTE, "one");
+    await history.commit("A first note");
+
+    await history.push("github");
+    expect((await history.status()).upstream).toBe("github/main");
+
+    await history.push("gitlab");
+    expect((await history.status()).upstream).toBe("github/main");
+    expect((await history.branches()).map((one) => one.name)).toEqual([
+      "main",
+      "github/main",
+      "gitlab/main",
+    ]);
+  });
+
   it("lists the branches kept here beside the ones it last heard of", async () => {
     const { ada, bo } = together();
     await ada.history.addRemote("origin", KEPT_URL);
