@@ -1281,6 +1281,58 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     ).rejects.toThrow();
   });
 
+  it("holds one offer per person on a note, and reads a note's offers from its index", async () => {
+    const NOTE = OwnedRefSchema.parse(`${AVA}/01JOFFERNTA000000000000000`);
+    const offer = (localId: string, note: string, by: string) => ({
+      id: avaId("amendment", localId),
+      created_by: AVA,
+      note,
+      by,
+      at: "2026-02-01T00:00:00.000Z",
+      title: "As I would have it",
+      tags: ["seed"],
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    });
+    const OTHER = OwnedRefSchema.parse(`${AVA}/01JOFFERNTB000000000000000`);
+    for (const row of [
+      offer("01JOFFERA00000000000000000", NOTE, BOB),
+      offer("01JOFFERB00000000000000000", NOTE, CAI),
+      offer("01JOFFERC00000000000000000", OTHER, BOB),
+    ]) {
+      await db.create(row.id).content(row);
+    }
+
+    // A second offer by the same person on the same note is the one they
+    // already have, not a queue.
+    await expect(
+      db
+        .create(avaId("amendment", "01JOFFERD00000000000000000"))
+        .content(offer("01JOFFERD00000000000000000", NOTE, BOB)),
+    ).rejects.toThrow();
+
+    // The note and who offered it are what this row IS.
+    await expect(
+      db
+        .update(avaId("amendment", "01JOFFERA00000000000000000"))
+        .merge({ by: CAI }),
+    ).rejects.toThrow();
+
+    const OFFERS = `SELECT by FROM amendment
+       WHERE created_by = $did AND note = $note ORDER BY by`;
+    const [plan] = await db.query(`${OFFERS} EXPLAIN;`, {
+      did: AVA,
+      note: NOTE,
+    });
+    expect(JSON.stringify(plan)).toContain('"index":"amendment_owner_note_by"');
+
+    const [held] = await db.query<[{ by: string }[]]>(`${OFFERS};`, {
+      did: AVA,
+      note: NOTE,
+    });
+    expect(held.map((row) => row.by)).toEqual([BOB, CAI]);
+  });
+
   it("purges one author and leaves the other whole", async () => {
     const before = await db.select<NodeRow>(new Table("node"));
     expect(before.some((row) => row.created_by === BOB)).toBe(true);
@@ -1304,6 +1356,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       "snapshot_asset",
       "retired_address",
       "node_alias",
+      "amendment",
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }

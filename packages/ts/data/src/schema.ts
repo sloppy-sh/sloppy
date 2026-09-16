@@ -138,6 +138,7 @@ export const SCHEMA = `
   DEFINE TABLE IF NOT EXISTS refused_voice SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS retired_address SCHEMALESS;
   DEFINE TABLE IF NOT EXISTS node_alias SCHEMALESS;
+  DEFINE TABLE IF NOT EXISTS amendment SCHEMALESS;
 
 ${MIGRATIONS}
   -- Writable, because a move and a rename both rewrite them;
@@ -200,6 +201,15 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON retired_address TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON node_alias TYPE string READONLY;
+  -- On an offered change the owner is the note's OWNER: it was offered to them,
+  -- and they are the one whose purge has to reach it. Who offered it is the
+  -- column below, and their own purge reaches nothing of this row.
+  DEFINE FIELD IF NOT EXISTS created_by ON amendment TYPE string READONLY;
+  -- Which note it is offered on and who offered it. Both immutable, this row
+  -- being that pairing: a changed half is a different offer and a new row, which
+  -- is also what makes the UNIQUE index below the one-offer-per-person rule.
+  DEFINE FIELD IF NOT EXISTS note ON amendment TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS by ON amendment TYPE string READONLY;
 
   -- An address a note was at before a move, and the note it still resolves to.
   -- Every column immutable, this row being the whole of that fact: one that
@@ -285,6 +295,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_at ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON retired_address TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_at ON node_alias TYPE string READONLY;
+  DEFINE FIELD IF NOT EXISTS created_at ON amendment TYPE string READONLY;
 
   DEFINE FIELD IF NOT EXISTS updated_at ON graph TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node TYPE string;
@@ -300,6 +311,7 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS updated_at ON pulled_block TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON retired_address TYPE string;
   DEFINE FIELD IF NOT EXISTS updated_at ON node_alias TYPE string;
+  DEFINE FIELD IF NOT EXISTS updated_at ON amendment TYPE string;
 
   -- When a note, and the sections that go with it, were deleted. TYPE string
   -- for the reason the two timestamps above are; option, because absent is a
@@ -342,6 +354,12 @@ ${MIGRATIONS}
   -- retired_address_owner_graph_parent is: the run a new address follows is all
   -- of them together.
   DEFINE INDEX IF NOT EXISTS node_alias_owner_graph_parent ON node_alias FIELDS created_by, graph, parent;
+  -- What has been offered on one note, and the rule that a person has one offer
+  -- standing there rather than a queue of them: offering again writes the row
+  -- they already have. One index rather than two, because what a note's owner
+  -- reads is this one's prefix.
+  DEFINE INDEX IF NOT EXISTS amendment_owner_note_by ON amendment FIELDS created_by, note, by UNIQUE;
+
   -- Somebody's graphs, which is also the purge's reach.
   DEFINE INDEX IF NOT EXISTS graph_owner ON graph FIELDS created_by;
   -- The one they started with, which is where a note naming no graph goes. One
