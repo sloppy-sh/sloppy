@@ -3,7 +3,6 @@
 import { Injectable } from "@nestjs/common";
 import {
   type Amendment,
-  AmendmentSchema,
   type Block,
   type DidSyr,
   type Node,
@@ -75,19 +74,6 @@ export class ArchiveRepository {
       { did, graph },
     );
     return rows;
-  }
-
-  /** What is standing offered on any of these notes. */
-  async amendmentsOn(
-    did: DidSyr,
-    notes: readonly OwnedRef[],
-  ): Promise<Amendment[]> {
-    if (notes.length === 0) return [];
-    const [rows] = await this.query(
-      "SELECT * FROM amendment WHERE created_by = $did AND note IN $notes",
-      { did, notes: [...notes] },
-    );
-    return rows.map((row) => AmendmentSchema.parse(row));
   }
 
   /** Of the notes arriving, the ones this person already keeps somewhere other

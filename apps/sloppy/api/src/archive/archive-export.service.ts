@@ -133,15 +133,12 @@ export class ArchiveExportService {
 
   private async read(did: DidSyr, graph: OwnedRef): Promise<GraphRows> {
     const refs = (await this.nodes.notesIn(did, graph)).sort();
-    const offers = await Promise.all(
-      refs.map((ref) => this.offers.listFor(did, ref)),
-    );
     return {
       refs,
       notes: (await this.nodes.many(did, refs)).sort(byRef),
       aliases: await this.nodes.aliasesOf(did, graph, refs),
       stacks: await this.blocks.listByNodes(refs),
-      offers: offers.flat(),
+      offers: await this.offers.listOn(did, refs),
     };
   }
 

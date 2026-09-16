@@ -57,6 +57,18 @@ export class AmendmentRepository {
     return rows.map((row) => AmendmentSchema.parse(row));
   }
 
+  /** What is standing offered on any of these notes, in a settled order, so
+   *  two reads of one graph answer the same way. */
+  async listOn(did: DidSyr, notes: readonly OwnedRef[]): Promise<Amendment[]> {
+    if (notes.length === 0) return [];
+    const [rows] = await this.query(
+      `SELECT * FROM amendment
+         WHERE created_by = $did AND note IN $notes ORDER BY id`,
+      { did, notes: [...notes] },
+    );
+    return rows.map((row) => AmendmentSchema.parse(row));
+  }
+
   /** One offer, wherever it stands. The reference names the graph it is in, so
    *  the owner is part of the key rather than a check on what comes back. */
   async find(ref: OwnedRef): Promise<Amendment | null> {

@@ -121,7 +121,7 @@ function serving(pictures = true) {
           [UNDER, []],
         ]),
     } as never,
-    { listFor: async () => [] } as never,
+    { listOn: async () => [] } as never,
     {
       readOwnPicture: async (_delegation: unknown, uploadId: string) => {
         asked.push(uploadId);

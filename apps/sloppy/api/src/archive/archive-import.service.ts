@@ -49,6 +49,7 @@ import {
   vaultToAmendment,
   vaultToNote,
 } from "@sloppy/vault";
+import { AmendmentRepository } from "../amendment/amendment.repository";
 import { AssetLinks } from "../media/asset-link";
 import { MediaService } from "../media/media.service";
 import { GraphRepository } from "../node/graph.repository";
@@ -117,6 +118,7 @@ export class ArchiveImportService {
     private readonly graphs: GraphService,
     private readonly names: GraphRepository,
     private readonly rows: ArchiveRepository,
+    private readonly offers: AmendmentRepository,
     private readonly out: ArchiveExportService,
     private readonly notes: NodeService,
     private readonly media: MediaService,
@@ -250,7 +252,7 @@ export class ArchiveImportService {
         held,
         aliases: await this.rows.aliasesIn(did, opened.graph),
         retired: await this.rows.retiredIn(did, opened.graph),
-        offers: await this.rows.amendmentsOn(
+        offers: await this.offers.listOn(
           did,
           held.map((note) => ownedRefFrom(note.id)),
         ),
