@@ -2,12 +2,20 @@ import type {
   AmendmentSection,
   AmendmentView,
   BlockDocument,
+  BlockView,
+  NodeView,
 } from "@sloppy/types";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { amendmentToVault, vaultToAmendment } from "./amendment.js";
+import { amendmentToVault, inkOffered, vaultToAmendment } from "./amendment.js";
 import { documents } from "./documents.test-support.js";
-import { amendmentPath, decodeText, VaultFormatError } from "./layout.js";
+import {
+  amendmentPath,
+  decodeText,
+  inkPath,
+  VaultFormatError,
+} from "./layout.js";
+import { noteToVault } from "./note.js";
 
 const OWNER = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
 const BOB = "did:syr:z6MkuBobBobBobBobBobBobBobBobBob";
@@ -137,6 +145,52 @@ describe("an offered change as a file", () => {
       ),
       { numRuns: 2000 },
     );
+  });
+
+  it("writes a drawing it offers beside the note's rather than over it", () => {
+    const attrs = {
+      strokes: [{ points: [{ x: 0, y: 0, pressure: 0.5, t: 0 }], width: 2 }],
+      width: 40,
+      height: 20,
+    };
+    const drawn = { type: "doc", content: [{ type: "ink", attrs }] };
+    const note = noteToVault(
+      {
+        ref: `${OWNER}/${NOTE}`,
+        created_by: OWNER,
+        depth: 1,
+        origin: `${OWNER}/${NOTE}`,
+        title: "Seeds",
+        tags: [],
+        links: [],
+        published: false,
+        created_at: "2026-02-01T00:00:00.000Z",
+        updated_at: "2026-02-01T00:00:00.000Z",
+      } as NodeView,
+      [],
+      [
+        {
+          ref: `${OWNER}/${SECTIONS[0]}`,
+          created_by: OWNER,
+          node: `${OWNER}/${NOTE}`,
+          ord: "00000000",
+          content: drawn,
+          created_at: "2026-02-01T00:00:00.000Z",
+          updated_at: "2026-02-01T00:00:00.000Z",
+        } as BlockView,
+      ],
+    );
+    const { files } = amendmentToVault(
+      offer({ blocks: [section(SECTIONS[0], drawn as BlockDocument)] }),
+    );
+
+    const written = [...files.keys()].filter((path) =>
+      path.endsWith(".ink.json"),
+    );
+    expect(written).toEqual([inkPath(`${OFFER}-${SECTIONS[0]}-0`)]);
+    expect(written.some((path) => note.files.has(path))).toBe(false);
+    expect(inkOffered(`${OFFER}-${SECTIONS[0]}-0`, OFFER)).toBe(true);
+    expect(inkOffered(`${SECTIONS[0]}-0`, OFFER)).toBe(false);
   });
 
   it("refuses a file that names no note or nobody", () => {

@@ -15,6 +15,7 @@ import {
 } from "./snapshot";
 
 const AVA = "did:syr:z6MkuVRBZ1913zrZgc4nnA3Zs9MEEf84VUN8kgTD6QoqNiu9";
+const BOB = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBobBob";
 const BRAM = "did:syr:z6MkfLZ1t2rQKJdZ5Xp3n8Y6WvTqHc4bAe9mNs1uRvGxQpKz";
 /** Crockford base32 without I, L, O or U, which is what a ULID is. */
 const at = (did: string, tag: string) => `${did}/${tag.padEnd(26, "0")}`;
@@ -193,6 +194,36 @@ describe("a note as a version froze it", () => {
     expect(written).not.toHaveProperty("depth");
     expect(written.origin).toBe(region.root);
     expect(written.parent).toBe(at(AVA, "PARENT"));
+  });
+
+  it("carries who gates the note and whose writing it is", () => {
+    const written = publishedNodeOf(
+      note({
+        address: "1a1",
+        depth: 3,
+        owner: BOB,
+        authors: [AVA, BOB],
+        contributors: [BOB],
+      }),
+      region,
+      NOTHING,
+    );
+
+    expect(written.owner).toBe(BOB);
+    expect(written.authors).toEqual([AVA, BOB]);
+    expect(written.contributors).toEqual([BOB]);
+  });
+
+  it("leaves off an authorship that is the ref's own DID, which is what absent says", () => {
+    const written = publishedNodeOf(
+      note({ address: "1a1", depth: 3, authors: [AVA] }),
+      region,
+      NOTHING,
+    );
+
+    expect(written).not.toHaveProperty("authors");
+    expect(written).not.toHaveProperty("owner");
+    expect(written).not.toHaveProperty("contributors");
   });
 
   it("carries the shape its author gave the mark", () => {

@@ -10,9 +10,13 @@ import {
   type OwnedRef,
   ownedRefFrom,
   splitOwnedRef,
+  type UpdateGraphRequestSchema,
 } from "@sloppy/types";
+import type { z } from "zod";
 import { GraphRepository } from "./graph.repository";
 import { SerialQueue } from "./serial-queue";
+
+type UpdateRequest = z.output<typeof UpdateGraphRequestSchema>;
 
 @Injectable()
 export class GraphService {
@@ -61,9 +65,26 @@ export class GraphService {
     return entityView(await this.graphs.insert(did, title));
   }
 
-  async rename(did: DidSyr, ref: OwnedRef, title: string): Promise<GraphView> {
+  /** Rename one, and say what it gates the notes written in it by. */
+  async write(
+    did: DidSyr,
+    ref: OwnedRef,
+    changes: UpdateRequest,
+  ): Promise<GraphView> {
     await this.requireHeld(did, ref);
-    return entityView(await this.graphs.name(did, ref, title));
+    return entityView(
+      await this.graphs.name(did, ref, changes.title, changes.ownership),
+    );
+  }
+
+  /**
+   * Who gates a note written in this graph: its writer where the graph gates
+   * the notes written in it, and nobody where it does not —
+   * docs/ARCHITECTURE.md § "Whose writing a note carries".
+   */
+  async gate(did: DidSyr, graph: OwnedRef): Promise<DidSyr | undefined> {
+    const row = await this.row(did, graph);
+    return row?.ownership === "owned" ? did : undefined;
   }
 
   /**

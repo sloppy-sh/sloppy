@@ -238,7 +238,7 @@ describe("the bin, as a folder holds it", () => {
     expect((await writer.setAddress(second.ref, "1")).address).toBe("1");
     // "3" went with the note that spent it and is never assigned again.
     await expect(
-      new NoteWriter(await reread(files, did)).create({ address: "3" }),
+      new NoteWriter(await reread(files, did), did).create({ address: "3" }),
     ).rejects.toThrow("You have used 3 before");
   });
 
@@ -253,7 +253,7 @@ describe("the bin, as a folder holds it", () => {
     expect(again.all()).toEqual([]);
     expect(await read(files, BIN_FILE)).toContain('"1"');
     await expect(
-      new NoteWriter(again).create({ address: "1" }),
+      new NoteWriter(again, did).create({ address: "1" }),
     ).rejects.toThrow("You have used 1 before");
   });
 });

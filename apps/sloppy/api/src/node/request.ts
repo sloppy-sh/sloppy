@@ -106,6 +106,12 @@ export function requireRef(did: string, localId: string): OwnedRef {
   return ref;
 }
 
+export function requireAmendmentRef(did: string, localId: string): OwnedRef {
+  const ref = refOrNull(did, localId);
+  if (!ref) throw new NotFoundException("That offered change is not here.");
+  return ref;
+}
+
 export function requireGraphRef(did: string, localId: string): OwnedRef {
   const ref = refOrNull(did, localId);
   if (!ref) throw new NotFoundException("That graph is not here.");

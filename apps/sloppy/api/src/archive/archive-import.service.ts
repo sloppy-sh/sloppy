@@ -15,6 +15,7 @@ import {
   createOwnedRecordId,
   type DidSyr,
   entityView,
+  type GraphOwnership,
   type GraphView,
   type ImportConflict,
   type ImportResolution,
@@ -26,12 +27,15 @@ import {
   UNNAMED_GRAPH_ULID,
 } from "@sloppy/types";
 import {
+  amendmentAt,
   type ArchiveManifest,
   decodeText,
   type EmojiDrawing,
+  GRAPH_FILE,
   inkAt,
   manifest,
   noteAt,
+  readGraphFile,
   type PictureSize,
   PICTURES_FILE,
   readPicturesFile,
@@ -42,8 +46,10 @@ import {
   vaultDifference,
   VaultFormatError,
   type VaultNote,
+  vaultToAmendment,
   vaultToNote,
 } from "@sloppy/vault";
+import { AmendmentRepository } from "../amendment/amendment.repository";
 import { AssetLinks } from "../media/asset-link";
 import { MediaService } from "../media/media.service";
 import { GraphRepository } from "../node/graph.repository";
@@ -55,11 +61,13 @@ import { type Delegation, SyrService } from "../syr/syr.service";
 import { ArchiveExportService } from "./archive-export.service";
 import {
   addressesLedBy,
+  type ArrivingAmendment,
   type GraphNow,
   type Kept,
   type MergeRefusal,
   mergeRefusal,
   mergeRows,
+  offeredRows,
   placed,
   type Repeat,
   repeated,
@@ -86,6 +94,12 @@ interface Opened {
    *  a second import of one graph a settling of it. */
   vault: Vault;
   notes: VaultNote[];
+  /** What is standing offered on those notes, which rides in an archive the way
+   *  the notes do. */
+  offers: ArrivingAmendment[];
+  /** What the graph gates the notes written in it by, absent where the archive
+   *  does not say — which reads as open. */
+  ownership?: GraphOwnership;
   /** Where this graph lands, and whether that graph is already here — in which
    *  case the two copies are merged rather than one written over the other. */
   graph: OwnedRef;
@@ -104,6 +118,7 @@ export class ArchiveImportService {
     private readonly graphs: GraphService,
     private readonly names: GraphRepository,
     private readonly rows: ArchiveRepository,
+    private readonly offers: AmendmentRepository,
     private readonly out: ArchiveExportService,
     private readonly notes: NodeService,
     private readonly media: MediaService,
@@ -231,18 +246,29 @@ export class ArchiveImportService {
           })),
         })),
       );
+      const held = await this.rows.notesIn(did, opened.graph);
       const now: GraphNow = {
         arriving: settling(copies, conflicts),
-        held: await this.rows.notesIn(did, opened.graph),
+        held,
         aliases: await this.rows.aliasesIn(did, opened.graph),
         retired: await this.rows.retiredIn(did, opened.graph),
+        offers: await this.offers.listOn(
+          did,
+          held.map((note) => ownedRefFrom(note.id)),
+        ),
       };
       const cannot = mergeRefusal(notes, now);
       if (cannot) throw unwritable(cannot);
       await this.rows.merge(
         did,
         opened.graph,
-        mergeRows(did, opened.graph, notes, now),
+        mergeRows(
+          did,
+          opened.graph,
+          notes,
+          now,
+          offering(opened.offers, pictures),
+        ),
       );
     } catch (err) {
       await this.unsend(delegation, sent);
@@ -290,13 +316,23 @@ export class ArchiveImportService {
           led,
           addressesLedBy(notes),
         ),
+        amendments: offeredRows(
+          did,
+          offering(opened.offers, sent),
+          new Set(arriving),
+        ),
       });
     } catch (err) {
       await this.unsend(delegation, sent);
       throw refused(err);
     }
     return entityView(
-      await this.names.name(did, opened.graph, opened.said.name),
+      await this.names.name(
+        did,
+        opened.graph,
+        opened.said.name,
+        opened.ownership,
+      ),
     );
   }
 
@@ -359,10 +395,13 @@ export class ArchiveImportService {
     const twice = repeated(notes);
     if (twice) throw repeats(twice);
     const graph = await this.landing(did, said.graph);
+    const gating = gatedBy(moved);
     return {
       said,
       vault: moved,
       notes,
+      offers: readAmendments(moved, emoji),
+      ...(gating === undefined ? {} : { ownership: gating }),
       graph: graph.ref,
       replaces: graph.replaces,
     };
@@ -393,9 +432,9 @@ export class ArchiveImportService {
 
   /**
    * The pictures the archive carries, put into the importer's own store under
-   * their own identity, keyed by what the notes in the archive call them. A
-   * file nothing in the notes draws is left where it is, and so is one
-   * `already` names, which the graph being merged into is drawing already.
+   * their own identity, keyed by what the archive calls them. A file nothing
+   * the archive carries draws is left where it is, and so is one `already`
+   * names, which the graph being merged into is drawing already.
    */
   private async carryPictures(
     delegation: Delegation,
@@ -403,11 +442,7 @@ export class ArchiveImportService {
     into: Map<string, string>,
     already: ReadonlySet<string> = new Set(),
   ): Promise<void> {
-    const drawn = new Set(
-      opened.notes.flatMap((note) =>
-        note.sections.flatMap((section) => citedUploads(section.content)),
-      ),
-    );
+    const drawn = new Set(drawnIn(opened).flatMap(citedUploads));
     for (const [path, bytes] of opened.vault) {
       const name = uploadAt(path);
       if (name === undefined || !drawn.has(name) || into.has(name)) continue;
@@ -451,11 +486,12 @@ export class ArchiveImportService {
   }
 }
 
-/** Every note file the vault holds, read with the sidecars beside it. */
-export function readNotes(
-  vault: Vault,
-  emoji: ReadonlyMap<string, EmojiDrawing> = new Map(),
-): VaultNote[] {
+/** What a markdown file in a vault is read beside: the strokes of the drawings
+ *  in it, and how big each picture it draws is. */
+function beside(vault: Vault): {
+  ink: Map<string, Record<string, unknown>>;
+  pictures: ReadonlyMap<string, PictureSize>;
+} {
   const ink = new Map<string, Record<string, unknown>>();
   for (const [path, bytes] of vault) {
     const stem = inkAt(path);
@@ -471,22 +507,93 @@ export function readNotes(
     }
   }
   const held = vault.get(PICTURES_FILE);
-  const pictures: ReadonlyMap<string, PictureSize> = held
-    ? readPicturesFile(held)
-    : new Map();
+  return { ink, pictures: held ? readPicturesFile(held) : new Map() };
+}
 
+/** Every note file the vault holds, read with the sidecars beside it. */
+export function readNotes(
+  vault: Vault,
+  emoji: ReadonlyMap<string, EmojiDrawing> = new Map(),
+): VaultNote[] {
+  const sidecars = beside(vault);
   const notes: VaultNote[] = [];
   for (const [path, bytes] of vault) {
     if (noteAt(path) === undefined) continue;
     try {
       notes.push(
-        vaultToNote({ markdown: decodeText(bytes), ink, pictures, emoji }),
+        vaultToNote({ markdown: decodeText(bytes), ...sidecars, emoji }),
       );
     } catch (err) {
       throw refused(err);
     }
   }
   return notes;
+}
+
+/** Every offered change the vault holds, read the way its notes are. One whose
+ *  file cannot be read as an offer costs that offer and the import nothing. */
+export function readAmendments(
+  vault: Vault,
+  emoji: ReadonlyMap<string, EmojiDrawing> = new Map(),
+): ArrivingAmendment[] {
+  const sidecars = beside(vault);
+  const offers: ArrivingAmendment[] = [];
+  for (const [path, bytes] of vault) {
+    const ulid = amendmentAt(path);
+    if (ulid === undefined) continue;
+    try {
+      offers.push({
+        ulid,
+        ...vaultToAmendment({
+          markdown: decodeText(bytes),
+          ...sidecars,
+          emoji,
+        }),
+      });
+    } catch {
+      // A file in `amendments/` that is not one costs that offer and leaves
+      // the graph arriving whole.
+    }
+  }
+  return offers;
+}
+
+/** Every document an archive's files are drawn into: its notes' sections and
+ *  the ones standing offered on them. */
+function drawnIn(opened: Opened): BlockDocument[] {
+  return [
+    ...opened.notes.flatMap((note) =>
+      note.sections.map((section) => section.content),
+    ),
+    ...opened.offers.flatMap((offer) =>
+      offer.sections.map((section) => section.content),
+    ),
+  ];
+}
+
+/** The offers with their sections drawing the pictures this store now holds. */
+function offering(
+  offers: readonly ArrivingAmendment[],
+  pictures: ReadonlyMap<string, string>,
+): ArrivingAmendment[] {
+  return offers.map((offer) => ({
+    ...offer,
+    sections: offer.sections.map((section) => ({
+      ...section,
+      content: rewriteUploads(section.content, pictures),
+    })),
+  }));
+}
+
+/** What `graph.json` says the graph gates the notes written in it by. */
+function gatedBy(vault: Vault): GraphOwnership | undefined {
+  const said = vault.get(GRAPH_FILE);
+  if (!said) return undefined;
+  try {
+    return readGraphFile(said).ownership;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The shortcodes the arriving notes are written with that this catalog has no

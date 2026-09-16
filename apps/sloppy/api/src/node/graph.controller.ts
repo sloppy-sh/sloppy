@@ -40,17 +40,18 @@ export class GraphController {
     );
   }
 
+  /** Rename one, and say what it gates the notes written in it by. */
   @Patch(":did/:localId")
-  rename(
+  update(
     @Req() req: AuthedRequest,
     @Param("did") did: string,
     @Param("localId") localId: string,
     @Body() body: unknown,
   ): Promise<GraphView> {
-    return this.graphs.rename(
+    return this.graphs.write(
       viewerDid(req),
       requireGraphRef(did, localId),
-      parseBody(UpdateGraphRequestSchema, body).title,
+      parseBody(UpdateGraphRequestSchema, body),
     );
   }
 
