@@ -50,7 +50,7 @@ describe("what a note keeps on the way through the folder", () => {
       ],
     });
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     const back = noteIn(again, note.ref);
     expect(back.sections.map((one) => one.ulid)).toEqual([
       "01J0000000000000000000000A",
@@ -60,6 +60,23 @@ describe("what a note keeps on the way through the folder", () => {
       "00000000",
       "00000001",
     ]);
+  });
+
+  it("keeps whose writing the note carries when somebody else writes into it", async () => {
+    const files = new MemoryFiles();
+    const { graph, writer, did } = await graphOnly(files);
+    const bob = "did:syr:z6MkuBobBobBobBobBobBobBobBobBob";
+    const note = await writer.create({ title: "Seeds" });
+    const held = noteIn(graph, note.ref);
+    await graph.save({ ...held, authors: [did, bob], contributors: [bob] });
+
+    const again = await reread(files);
+    await again.save({ ...noteIn(again, note.ref), title: "Seeds again" });
+
+    const back = await reread(files);
+    const view = back.view(noteIn(back, note.ref));
+    expect(view.authors).toEqual([did, bob]);
+    expect(view.contributors).toEqual([bob]);
   });
 
   it("keeps the tags, the links and the notes its writing names", async () => {
@@ -93,7 +110,7 @@ describe("what a note keeps on the way through the folder", () => {
       ],
     });
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     const view = again.view(noteIn(again, one.ref));
     expect(view.tags).toEqual(["biology", "seed"]);
     expect(view.links).toEqual([two.ref]);
@@ -127,7 +144,7 @@ describe("what a note keeps on the way through the folder", () => {
     });
     expect(await read(files, PICTURES_FILE)).toContain(asset.upload_id);
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     expect(
       noteIn(again, note.ref).sections[0].content.content?.[0].attrs,
     ).toEqual(attrs);
@@ -146,13 +163,13 @@ describe("what a note keeps on the way through the folder", () => {
     );
     const added = await graph.addEmoji("party", "sticker", asset.upload_id);
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     expect(again.ownEmoji().map((one) => one.shortcode)).toEqual(["party"]);
     expect(again.ownEmoji()[0].kind).toBe("sticker");
     expect(again.ownEmoji()[0].src).toBe(added.src);
 
     await again.removeEmoji("party");
-    expect((await reread(files, did)).ownEmoji()).toEqual([]);
+    expect((await reread(files)).ownEmoji()).toEqual([]);
   });
 });
 
@@ -172,13 +189,13 @@ describe("the bin, as a folder holds it", () => {
     expect(await vault.exists(binPath(ulid))).toBe(true);
     expect(await read(files, BIN_FILE)).toContain(ulid);
 
-    const away = await reread(files, did);
+    const away = await reread(files);
     expect(away.live()).toEqual([]);
     expect(away.deletedBranches().map((one) => one.ref)).toEqual([root.ref]);
     expect(away.deletedBranches()[0].notes).toBe(2);
 
     await writer.restore(root.ref);
-    const back = await reread(files, did);
+    const back = await reread(files);
     expect(await vault.exists(`notes/${ulid}.md`)).toBe(true);
     expect(
       back
@@ -198,7 +215,7 @@ describe("the bin, as a folder holds it", () => {
     await writer.remove(first.ref);
     expect((await writer.setAddress(second.ref, "1")).address).toBe("1");
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     const gone = again.findDeleted(first.ref);
     expect(gone?.address).toBeUndefined();
     expect(gone?.aliases).toEqual(["1"]);
@@ -221,7 +238,7 @@ describe("the bin, as a folder holds it", () => {
     expect((await writer.setAddress(second.ref, "1")).address).toBe("1");
     // "3" went with the note that spent it and is never assigned again.
     await expect(
-      new NoteWriter(await reread(files, did)).create({ address: "3" }),
+      new NoteWriter(await reread(files), did).create({ address: "3" }),
     ).rejects.toThrow("You have used 3 before");
   });
 
@@ -232,11 +249,11 @@ describe("the bin, as a folder holds it", () => {
     await writer.remove(note.ref);
 
     await graph.sweep(Date.now() + (DELETED_KEPT_FOR_DAYS + 1) * DAY_MS);
-    const again = await reread(files, did);
+    const again = await reread(files);
     expect(again.all()).toEqual([]);
     expect(await read(files, BIN_FILE)).toContain('"1"');
     await expect(
-      new NoteWriter(again).create({ address: "1" }),
+      new NoteWriter(again, did).create({ address: "1" }),
     ).rejects.toThrow("You have used 1 before");
   });
 });
@@ -259,7 +276,7 @@ describe("opening a folder", () => {
       return read(path);
     };
 
-    const again = await LocalGraph.open(watched, did);
+    const again = await LocalGraph.open(watched);
     expect(asked.some((path) => path.startsWith("media/"))).toBe(false);
     expect(again.live().map((one) => one.title)).toEqual(["Seeds"]);
     expect((await again.listPictures("block")).length).toBe(1);
@@ -273,7 +290,7 @@ describe("a folder a hand has been in", () => {
     const note = await writer.create({ title: "Kept" });
     await files.at("/graphs/one").write("notes/README.txt", encodeText("hi"));
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     expect(again.live().map((one) => one.ref)).toEqual([note.ref]);
   });
 });

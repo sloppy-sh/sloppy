@@ -280,6 +280,19 @@ describe('the two copies of one graph', () => {
 		expect(screen()).not.toContain('make way for what is in the file');
 	});
 
+	it('says how many offered changes arrive, rather than that the two agree', async () => {
+		await open({ preview: merging([], { offers: 3 }) });
+
+		expect(screen()).toContain('3 offered changes arrive with it');
+		expect(screen()).not.toContain('agree about everything');
+	});
+
+	it('names one offered change as one', async () => {
+		await open({ preview: merging([], { offers: 1 }) });
+
+		expect(screen()).toContain('One offered change arrives with it');
+	});
+
 	it('brings a graph that agrees about everything in with nothing to settle', async () => {
 		await open({ preview: merging([]) });
 

@@ -93,12 +93,17 @@
 		emoji,
 		references,
 		drafts,
-		arranging = true
+		arranging = true,
+		offering = false
 	}: BlockStackProps & {
 		/** Whether this surface carries the handles that arrange its own sections.
 		 *  False where it is hosted in a row that arranges them itself, so one
 		 *  section has one handle and one place its order is decided. */
 		arranging?: boolean;
+		/** Whether a write here is composed into a change offered to whoever
+		 *  writes the note rather than landing on it, which is what the line under
+		 *  the writing says has happened. */
+		offering?: boolean;
 	} = $props();
 
 	const SAVE_AFTER_MS = 700;
@@ -1063,10 +1068,14 @@
 	</Button>
 
 	<p class="min-h-5 text-right text-xs text-muted-foreground" role="status">
-		{#if saveState === 'saving'}
-			Saving…
-		{:else if saveState === 'saved'}
-			Saved
+		{#if saveState !== 'idle'}
+			{#if offering}
+				Kept here until you offer it
+			{:else if saveState === 'saving'}
+				Saving…
+			{:else}
+				Saved
+			{/if}
 		{/if}
 	</p>
 

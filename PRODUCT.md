@@ -6,7 +6,7 @@ product
 
 ## Users
 
-One person thinking, and the people they let read over their shoulder.
+One person thinking, the people they let read over their shoulder, and the ones they let write beside them.
 
 - **The thinker** — someone accumulating a body of thought over years: a researcher, a
   student, a writer, an engineer keeping a design journal. They want to put a half-formed
@@ -20,11 +20,17 @@ One person thinking, and the people they let read over their shoulder.
   their own thinking off what they found. The pulled region keeps its original addresses
   and the graph they belong to, so they can cite one back and the author knows exactly
   which node they meant.
+- **The contributor** — someone writing in a graph that is not theirs: a folder a colleague
+  shared, a notebook two people keep together. They want to add a thought where it belongs
+  and have the graph say it was theirs, without taking anything away from whoever keeps it.
+  Where a note is open they write straight into it and join its authors. Where its owner has
+  reserved it, their change is offered instead, and the owner takes it in or does not — so
+  nobody has to choose between letting somebody write and keeping a note their own.
 - **The annotator** — the same two people on a tablet with a pencil. They ink over the
   canvas to think spatially, and ink inside a node when a diagram is the note.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the hosted, self-hosted and
-fully-local modes that serve all three.
+fully-local modes that serve all four.
 
 ## Product Purpose
 

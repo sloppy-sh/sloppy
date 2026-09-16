@@ -11,10 +11,12 @@
 import { MAX_FIELDS } from '@sloppy/graph';
 import {
 	type ArchivePreview,
+	type GraphOwnership,
 	type GraphView,
 	GraphViewSchema,
 	type ImportSettlement,
 	type OwnedRef,
+	splitOwnedRef,
 	type CreateGraphRequest,
 	type UpdateGraphRequest
 } from '@sloppy/types';
@@ -107,6 +109,17 @@ class GraphsStore {
 
 	titleOf(ref: OwnedRef): string {
 		return this.#all.find((graph) => graph.ref === ref)?.title ?? '';
+	}
+
+	/** Whether a graph in front of this reader is that identity's — the folder
+	 *  they have open, or one in the listing. A folder somebody shared holds its
+	 *  owner's notes and is read here like any other, so this and not who is
+	 *  reading is what says a note is somewhere else. A listing with nothing in
+	 *  it knows of nobody, and calls nothing somebody else's. */
+	keeps(did: string): boolean {
+		const folder = this.#inFolder;
+		if (folder !== null && splitOwnedRef(folder).did === did) return true;
+		return this.#all.length === 0 || this.#all.some((graph) => graph.created_by === did);
 	}
 
 	/**
@@ -242,6 +255,16 @@ class GraphsStore {
 			this.#keep();
 		}
 		return named;
+	}
+
+	/** What a graph does to a note written in it from here on; the notes already
+	 *  written in it are left as they are. The graph's own name goes beside it
+	 *  because naming a graph is the whole of `UpdateGraphRequest`, so a graph
+	 *  this store no longer holds is refused rather than named by a guess. */
+	async setOwnership(ref: OwnedRef, ownership: GraphOwnership): Promise<GraphView> {
+		const held = this.#all.find((graph) => graph.ref === ref);
+		if (!held) throw new Error('That graph is not here any more. Open your graphs again.');
+		return await this.rename(ref, { title: held.title, ownership });
 	}
 
 	/** Close a graph and everything filed in it. A reader who was in it is back

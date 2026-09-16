@@ -421,6 +421,97 @@ pub async fn pick_folder<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>
     Ok(Some(folder.to_string_lossy().into_owned()))
 }
 
+/// A file somebody chose from outside every folder this app reads — an identity
+/// another device wrote. The bytes come back with it rather than a path,
+/// because nothing grants the webview that file and nothing should.
+#[derive(Serialize)]
+pub struct PickedFile {
+    name: String,
+    /// Base64: the bridge carries JSON.
+    bytes: String,
+}
+
+#[tauri::command]
+pub async fn pick_file<R: Runtime>(
+    app: AppHandle<R>,
+    extensions: Vec<String>,
+) -> Result<Option<PickedFile>, FileError> {
+    use tauri_plugin_dialog::DialogExt;
+    use tauri_plugin_fs::FsExt;
+
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let mut asking = handle.dialog().file();
+        if !extensions.is_empty() {
+            let spelled: Vec<&str> = extensions.iter().map(String::as_str).collect();
+            asking = asking.add_filter("Files", &spelled);
+        }
+        asking.blocking_pick_file()
+    })
+    .await
+    .map_err(|_| FileError::Failed("Choosing a file did not finish.".into()))?;
+
+    let Some(path) = picked else {
+        return Ok(None);
+    };
+    let name = path
+        .to_string()
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    // A file somebody picked on Android is a content URI and not a path, which
+    // is what this reads and `std::fs` does not.
+    let bytes = app
+        .fs()
+        .read(path)
+        .map_err(|_| FileError::Failed("That file could not be read.".into()))?;
+    Ok(Some(PickedFile {
+        name,
+        bytes: BASE64.encode(bytes),
+    }))
+}
+
+/// A file the app hands a person to keep, put where they say. `false` is
+/// somebody who named nowhere, which is not a failure.
+#[tauri::command]
+pub async fn save_file<R: Runtime>(
+    app: AppHandle<R>,
+    name: String,
+    bytes: String,
+) -> Result<bool, FileError> {
+    use std::io::Write as _;
+    use tauri_plugin_dialog::DialogExt;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+
+    let body = BASE64
+        .decode(bytes)
+        .map_err(|_| FileError::Failed("That file could not be saved.".into()))?;
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_file_name(&name)
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|_| FileError::Failed("Saving did not finish.".into()))?;
+
+    let Some(path) = picked else {
+        return Ok(false);
+    };
+    let mut opening = OpenOptions::new();
+    opening.read(false).write(true).create(true).truncate(true);
+    let mut file = app
+        .fs()
+        .open(path, opening)
+        .map_err(|_| FileError::Failed("That file could not be saved there.".into()))?;
+    file.write_all(&body)
+        .map_err(|_| FileError::Failed("That file could not be saved there.".into()))?;
+    Ok(true)
+}
+
 /// What every answer at this scheme carries. The page is served from another
 /// scheme, so the webview asks before it draws a picture; nothing outside this
 /// app can reach `vault:` at all.

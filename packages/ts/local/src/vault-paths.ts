@@ -3,7 +3,13 @@
 // docs/ARCHITECTURE.md § "A graph on disk" carries the rest of the layout.
 
 import { UlidSchema } from "@sloppy/types";
-import { GRAPH_FILE, MEDIA_DIR, NOTES_DIR, SLOPPY_DIR } from "@sloppy/vault";
+import {
+  AMENDMENTS_DIR,
+  GRAPH_FILE,
+  MEDIA_DIR,
+  NOTES_DIR,
+  SLOPPY_DIR,
+} from "@sloppy/vault";
 
 /** A deleted note's file, kept where a person can still put it back. */
 export const BIN_DIR = `${SLOPPY_DIR}/bin`;
@@ -35,6 +41,7 @@ export function vaultOwned(path: string): boolean {
   return (
     path === GRAPH_FILE ||
     path.startsWith(`${NOTES_DIR}/`) ||
+    path.startsWith(`${AMENDMENTS_DIR}/`) ||
     path.startsWith(`${MEDIA_DIR}/`) ||
     path.startsWith(`${SLOPPY_DIR}/`)
   );

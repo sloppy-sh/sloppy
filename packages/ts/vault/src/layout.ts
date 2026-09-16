@@ -1,13 +1,20 @@
 // Where a graph's files sit and what each one is called —
 // docs/ARCHITECTURE.md § "A graph on disk".
 
-import { type DidSyr, DidSyrSchema, UlidSchema } from "@sloppy/types";
+import {
+  type DidSyr,
+  DidSyrSchema,
+  type GraphOwnership,
+  GraphOwnershipSchema,
+  UlidSchema,
+} from "@sloppy/types";
 
 /** The layout a vault is written in. A reader refuses one it does not know. */
 export const VAULT_FORMAT = 1;
 
 export const GRAPH_FILE = "graph.json";
 export const NOTES_DIR = "notes";
+export const AMENDMENTS_DIR = "amendments";
 export const MEDIA_DIR = "media";
 export const SLOPPY_DIR = ".sloppy";
 export const INK_DIR = `${SLOPPY_DIR}/ink`;
@@ -37,6 +44,9 @@ export interface VaultGraph {
   graph: string;
   name: string;
   owner: DidSyr;
+  /** What a note written in this graph is gated by. Absent is `open`, which is
+   *  what every graph written before the field says. */
+  ownership?: GraphOwnership;
   /** What the owner is called. Absent where they have not said. */
   owner_name?: string;
   /** Their picture, as the path of a file in this vault's `media/`, so a graph
@@ -100,7 +110,22 @@ export function notePath(ulid: string): string {
 
 /** The note a path is the file of, or absent where it is not one. */
 export function noteAt(path: string): string | undefined {
-  const name = under(NOTES_DIR, path);
+  return markdownAt(NOTES_DIR, path);
+}
+
+export function amendmentPath(ulid: string): string {
+  return `${AMENDMENTS_DIR}/${ulid}.md`;
+}
+
+/** The offered change a path is the file of, or absent where it is not one.
+ *  The file's name is the offer's own ulid: an offer is read inside the graph
+ *  that holds it, so nothing in the file repeats whose it is. */
+export function amendmentAt(path: string): string | undefined {
+  return markdownAt(AMENDMENTS_DIR, path);
+}
+
+function markdownAt(directory: string, path: string): string | undefined {
+  const name = under(directory, path);
   if (name === undefined || extensionOf(name) !== "md") return undefined;
   const ulid = stemOf(name);
   return UlidSchema.safeParse(ulid).success ? ulid : undefined;
@@ -160,6 +185,7 @@ export function graphFile(graph: VaultGraph): Uint8Array {
     graph: graph.graph,
     name: graph.name,
     owner: graph.owner,
+    ...(graph.ownership === undefined ? {} : { ownership: graph.ownership }),
     ...(graph.owner_name === undefined ? {} : { owner_name: graph.owner_name }),
     ...(graph.owner_avatar === undefined
       ? {}
@@ -191,11 +217,15 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
   if (said.format !== VAULT_FORMAT || !owner.success || !graph.success) {
     throw new VaultFormatError("This file isn't a Sloppy graph.");
   }
+  // A gate this build has never heard of leaves the graph open rather than
+  // shutting somebody out of their own notes.
+  const ownership = GraphOwnershipSchema.safeParse(said.ownership);
   return {
     format: said.format,
     graph: graph.data,
     name: said.name,
     owner: owner.data,
+    ...(ownership.success ? { ownership: ownership.data } : {}),
     ...(typeof said.owner_name === "string" && said.owner_name !== ""
       ? { owner_name: said.owner_name }
       : {}),

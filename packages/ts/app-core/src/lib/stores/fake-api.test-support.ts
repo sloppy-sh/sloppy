@@ -5,6 +5,8 @@
 
 import {
 	addressDepth,
+	AmendmentSectionSchema,
+	type AmendmentView,
 	type AnsweredNote,
 	type ArchivePreview,
 	type ImportConflict,
@@ -17,6 +19,7 @@ import {
 	type NodeView,
 	type NoteDestination,
 	type OwnedRef,
+	type ProposeAmendmentRequest,
 	type PulledNoteHit,
 	type RefusedVoiceView,
 	type RefuseVoiceRequest,
@@ -27,7 +30,7 @@ import {
 } from '@sloppy/types';
 import { resetApi } from '../api.js';
 import { graphs } from './graphs.svelte.js';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, type DeploymentMode } from '../runtime.js';
 
 export const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
@@ -269,6 +272,93 @@ export function arranging(
 	return held;
 }
 
+/** One offered change, as the routes below answer it. */
+export function amendment(
+	seed: number,
+	note: OwnedRef,
+	by: string,
+	over: Partial<AmendmentView> = {}
+): AmendmentView {
+	return {
+		ref: ref(seed),
+		created_by: DID,
+		note,
+		by,
+		at: AT,
+		title: '',
+		tags: [],
+		blocks: [],
+		created_at: AT,
+		updated_at: AT,
+		...over
+	};
+}
+
+/**
+ * Answer the routes an offered change is read and settled through, over the
+ * offers held here. The offers are handed back, so a suite reads what the
+ * writes left rather than what they said.
+ */
+export function amending(
+	api: FakeApi,
+	offers: Record<OwnedRef, readonly AmendmentView[]>,
+	approved: (offer: AmendmentView) => NodeView | Response
+): Map<OwnedRef, AmendmentView[]> {
+	const held = new Map<OwnedRef, AmendmentView[]>(
+		Object.entries(offers).map(([note, standing]) => [note as OwnedRef, [...standing]])
+	);
+	const find = (self: OwnedRef): AmendmentView | undefined =>
+		[...held.values()].flat().find((one) => one.ref === self);
+	const drop = (self: OwnedRef): void => {
+		for (const [note, standing] of held) {
+			held.set(
+				note,
+				standing.filter((one) => one.ref !== self)
+			);
+		}
+	};
+
+	/** The three routes one offer is settled through. An offer made here is
+	 *  settled the same way as one standing before the suite began. */
+	const settle = (self: OwnedRef): void => {
+		api.on(`DELETE /amendments${refPath(self)}`, () => {
+			drop(self);
+			return undefined;
+		});
+		api.on(`POST /amendments${refPath(self)}/approve`, () => {
+			const standing = find(self);
+			if (!standing) return refuses('That offer is not here.', 404);
+			const note = approved(standing);
+			if (!(note instanceof Response)) drop(self);
+			return note;
+		});
+		api.on(`POST /amendments${refPath(self)}/decline`, () => {
+			drop(self);
+			return undefined;
+		});
+	};
+
+	for (const note of held.keys()) {
+		api.on(`GET /nodes${refPath(note)}/amendments`, () => held.get(note));
+	}
+	api.on('POST /amendments', (_url, init) => {
+		const asked = JSON.parse(String(init?.body ?? '{}')) as ProposeAmendmentRequest;
+		const standing = held.get(asked.note as OwnedRef);
+		if (!standing) return refuses('That note is not here.', 404);
+		const written = amendment(9_500 + standing.length, asked.note as OwnedRef, DID, {
+			title: asked.title ?? '',
+			tags: [...(asked.tags ?? [])],
+			blocks: asked.blocks.map((one) => AmendmentSectionSchema.parse(one)),
+			...(asked.message === undefined ? {} : { message: asked.message })
+		});
+		standing.push(written);
+		settle(written.ref);
+		return written;
+	});
+	for (const offer of [...held.values()].flat()) settle(offer.ref);
+	return held;
+}
+
 export const VIEWER: Viewer = {
 	did: DID,
 	syr_instance_url: 'https://syr.test',
@@ -312,12 +402,15 @@ export class FakeApi {
 	};
 }
 
-/** Point the app at a fresh fake and hand it back. A seam a suite borrowed —
- *  the way it saves a file — goes back to its default. */
-export function useFakeApi(): FakeApi {
+/** Point the app at a fresh fake and hand it back, running as one of the
+ *  deployments — a graph served over a network unless the suite says otherwise.
+ *  A seam a suite borrowed — the way it saves a file — goes back to its
+ *  default. */
+export function useFakeApi(as: DeploymentMode = 'hosted'): FakeApi {
 	const fake = new FakeApi();
 	initRuntime({
 		apiHost: () => 'http://api.test',
+		mode: () => as,
 		fetchImpl: () => fake.fetch,
 		saveFile: undefined
 	});

@@ -16,12 +16,14 @@
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Move from '@lucide/svelte/icons/move';
+	import PenLine from '@lucide/svelte/icons/pen-line';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import {
 		alongRun,
+		authorsOf,
 		BlockViewSchema,
 		citedNotes,
 		compareOrd,
@@ -32,7 +34,11 @@
 		noteLabel,
 		parentAddress,
 		runKeyOf,
+		withAuthor,
+		writeOutcome,
 		type Address,
+		type AmendmentView,
+		type DidSyr,
 		type BlockDocument,
 		type BlockView,
 		type CommentAccess,
@@ -50,6 +56,7 @@
 		BlockStack,
 		ConfirmModal,
 		Conversation,
+		HeldStack,
 		LookControls,
 		MoveSheet,
 		nameOf,
@@ -64,6 +71,7 @@
 		TagField,
 		TemplatePicker,
 		textDocument,
+		unplacedPerson,
 		writeTemplate,
 		type MoveTarget,
 		type NestingAsk,
@@ -80,6 +88,10 @@
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import NoteAuthor from '../components/note-author.svelte';
+	import NoteOwner from '../components/note-owner.svelte';
+	import OfferChange from '../components/offer-change.svelte';
+	import OfferedChanges from '../components/offered-changes.svelte';
+	import type { WritingSide } from '../components/offer-difference.js';
 	import PersonSurface from '../components/person-surface.svelte';
 	import { api } from '../api.js';
 	import { deletionCost } from '../deletion.js';
@@ -91,6 +103,7 @@
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { offers } from '../stores/offers.svelte.js';
 	import { peers } from '../stores/peers.svelte.js';
 	import { people } from '../stores/people.svelte.js';
 	import { publications, type VersionChanges } from '../stores/publications.svelte.js';
@@ -171,6 +184,30 @@
 	const parent = $derived(node?.parent ? nodes.get(node.parent) : undefined);
 	const emoji = $derived(noteEmoji(session.viewer?.did ?? ''));
 
+	const viewerDid = $derived(session.viewer?.did ?? '');
+
+	/** Whether a write here lands on the note or does not, because somebody else
+	 *  writes it — AI.md § "The Genealogy Is the Protocol". */
+	function gatedElsewhere(of: OwnedRef): boolean {
+		const held = nodes.get(of);
+		return held !== undefined && viewerDid !== '' && writeOutcome(held, viewerDid) === 'offered';
+	}
+
+	/** Whether a write here is composed into a change offered to whoever writes
+	 *  the note. A hosted graph has one writer and takes no offers, so there a
+	 *  note somebody else writes is read — docs/ARCHITECTURE.md § "Whose writing
+	 *  a note carries". */
+	function offeredOn(of: OwnedRef): boolean {
+		return session.onDevice && gatedElsewhere(of);
+	}
+
+	const gated = $derived(node !== undefined && gatedElsewhere(ref));
+	const offering = $derived(gated && session.onDevice);
+	/** Somebody else's writing, on a graph that takes no offer of a change to it. */
+	const readOnly = $derived(gated && !offering);
+	/** The writing this person is offering on the note on screen. */
+	const offerDraft = $derived(offering ? offers.draft(ref) : undefined);
+
 	/** The notes this one is alongside, grouped the way the canvas groups them
 	 *  for the run it draws: what sprang from the same note, or the branches of
 	 *  one graph. */
@@ -225,6 +262,7 @@
 		remove?: string;
 		copy?: string;
 		address?: string;
+		owner?: string;
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
 	const refused = $derived<Refusals>(refusals.get(ref) ?? {});
@@ -251,7 +289,8 @@
 				'move',
 				'publish',
 				'copy',
-				'address'
+				'address',
+				'owner'
 			] as const) {
 				if (refusals.get(of)?.[act] !== undefined) refuse(of, act, null);
 			}
@@ -323,6 +362,9 @@
 				carrying ||
 				publishing ||
 				removing ||
+				gating ||
+				offeringChange ||
+				readingOffers ||
 				nesting !== null ||
 				shaping !== null
 		);
@@ -356,7 +398,7 @@
 	/** Titles being stored, so a blur and a walk do not both send the same one. */
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- nothing renders off this.
 	const storing = new Set<OwnedRef>();
-	const title = $derived(titles.get(ref) ?? node?.title ?? '');
+	const title = $derived(titles.get(ref) ?? offerDraft?.title ?? node?.title ?? '');
 
 	const byOrd = (a: BlockView, b: BlockView) => compareOrd(a.ord, b.ord);
 
@@ -465,8 +507,10 @@
 	}
 
 	/** Past one section the person has made their own shape, and offering one
-	 *  would be in the way rather than in time. */
-	const shapeable = $derived(blocks.length <= 1);
+	 *  would be in the way rather than in time. A shape writes the note's
+	 *  sections itself, so it is not offered where a write here does not land on
+	 *  the note. */
+	const shapeable = $derived(blocks.length <= 1 && !gated);
 
 	const suggested = $derived(offered === 'this' ? null : suggestedFor(offered));
 
@@ -718,10 +762,155 @@
 	const own = $derived(node !== undefined && node.created_by === session.viewer?.did);
 	const publishable = $derived(own && !session.onDevice);
 
-	/** Whether to name whoever wrote this: a graph on this device says who its
-	 *  owner is only once they have said it. */
+	// ── Whose writing this note carries ───────────────────────────────────────
+
+	/** The sections on screen: the ones being offered where a write here is
+	 *  offered, and the note's own everywhere else. */
+	const stack = $derived(offerDraft?.blocks ?? blocks);
+	/** A write here is offered and the writing it goes into is not open yet, so
+	 *  a section written now would go nowhere. */
+	const holdingWriting = $derived(offering && offerDraft === undefined);
+	const shownTags = $derived(offerDraft?.tags ?? node?.tags ?? []);
+	/** Every offer standing on this note, oldest first. */
+	const standing = $derived(node?.owner === undefined ? [] : offers.on(ref));
+	/** The one this person has standing here, which they may take back. */
+	const myOffer = $derived(offering ? offers.mine(ref) : undefined);
+	/** Whoever writes this note, where that is somebody else. Until their store
+	 *  has answered one way or the other there is nothing to call them by. */
+	const ownerName = $derived.by(() => {
+		const owner = node?.owner;
+		if (owner === undefined || owner === viewerDid) return '';
+		const person = people.of(owner) ?? (people.unplaced(owner) ? unplacedPerson(owner) : null);
+		return person ? nameOf(person) : 'whoever writes it';
+	});
+	/** Setting and taking off the gate is the graph's owner's act and the note's
+	 *  own owner's — a contributor cannot claim a note. */
+	const mayGate = $derived(
+		node !== undefined && viewerDid !== '' && (own || node.owner === viewerDid)
+	);
+
+	let gating = $state(false);
+	let writingOwner = $state(false);
+	let offeringChange = $state(false);
+	let readingOffers = $state(false);
+
+	const sideNow = $derived<WritingSide>({
+		title: node?.title ?? '',
+		tags: node?.tags ?? [],
+		sections: blocks.map((one) => ({ ref: one.ref, content: one.content }))
+	});
+	const sideOffered = $derived<WritingSide>({
+		title: offerDraft?.title ?? title,
+		tags: shownTags,
+		sections: stack.map((one) => ({ ref: one.ref, content: one.content }))
+	});
+
+	$effect(() => {
+		const owner = node?.owner;
+		if (owner === undefined) return;
+		void offers.read(ref);
+		if (owner !== viewerDid) people.resolve(owner);
+	});
+
+	// The writing surface opens on the offer this person already has standing
+	// here, so a note they come back to still holds what they wrote into it.
+	$effect(() => {
+		const held = node;
+		if (!offering || !held || loading || !offers.settled(ref)) return;
+		const writing = { title: held.title, tags: held.tags, blocks };
+		untrack(() => void offers.hold(ref, writing));
+	});
+
+	// A title typed before the change being offered had opened has nowhere to go
+	// yet, so it waits here for one rather than being dropped. It waits on the
+	// change opening and on nothing else: what is typed after that reaches the
+	// change when the field is left, the way it always does.
+	$effect(() => {
+		if (offerDraft === undefined) return;
+		untrack(() => void saveTitle(ref));
+	});
+
+	async function writeOwner(owner: DidSyr | null): Promise<void> {
+		const of = ref;
+		refuse(of, 'owner', null);
+		writingOwner = true;
+		try {
+			await nodes.update(of, { owner });
+			gating = false;
+			acknowledge(owner === null ? 'Anyone writing here can write this.' : 'Only you write this.');
+		} catch (error) {
+			refuse(
+				of,
+				'owner',
+				serverMessage(error) ?? 'Sloppy could not save that. Try again in a moment.'
+			);
+		} finally {
+			writingOwner = false;
+		}
+	}
+
+	async function offerChange(message: string): Promise<void> {
+		const of = ref;
+		const to = ownerName;
+		try {
+			await offers.propose(of, message);
+		} catch {
+			// The sheet stands with what the store was told in its own words.
+			return;
+		}
+		offeringChange = false;
+		acknowledge(`Offered to ${to}. It shows once they take it.`);
+	}
+
+	async function takeOfferBack(): Promise<void> {
+		const mine = myOffer;
+		if (!mine) return;
+		try {
+			await offers.withdraw(mine);
+			acknowledge('Your change is no longer offered.');
+		} catch {
+			refuse(ref, 'owner', offers.says);
+		}
+	}
+
+	async function takeOfferIn(offer: AmendmentView): Promise<void> {
+		const of = ref;
+		try {
+			await offers.approve(offer);
+		} catch {
+			return;
+		}
+		if (standing.length === 0) readingOffers = false;
+		acknowledge('Taken in.');
+		try {
+			const settled = (await api.listBlocks(of)).sort(byOrd);
+			remember(of, settled);
+			if (ref === of) {
+				shown = { of, stack: settled };
+				rebuilt += 1;
+			}
+		} catch {
+			// What the note says now is read again the next time it is opened.
+		}
+	}
+
+	async function turnOfferDown(offer: AmendmentView): Promise<void> {
+		try {
+			await offers.decline(offer);
+		} catch {
+			return;
+		}
+		if (standing.length === 0) readingOffers = false;
+		acknowledge('Turned down.');
+	}
+
+	/** Whether to name whoever wrote this. A graph on this device says who its
+	 *  owner is only once they have said it — but a note more than one identity's
+	 *  writing has reached says whose, named or not. */
 	const showsAuthor = $derived(
-		!session.onDevice || (people.of(node?.created_by ?? '')?.displayName ?? '').trim() !== ''
+		!session.onDevice ||
+			(node !== undefined && authorsOf(node).length + (node.contributors?.length ?? 0) > 1) ||
+			(people.of(node?.created_by ?? '')?.displayName ?? '').trim() !== ''
 	);
 	/** The publication rooted at this note, which is what an act here changes. */
 	const publication = $derived(node && own ? publications.at(node) : undefined);
@@ -1059,8 +1248,15 @@
 					{ label: 'Write the next note', icon: ArrowRight, onSelect: () => write('after', null) }
 				]),
 		...(own ? [{ label: 'Move this note', icon: Move, onSelect: () => (carrying = true) }] : []),
-		{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) },
-		{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) },
+		...(readOnly ? [] : [{ label: 'Tags', icon: Tag, onSelect: () => (tagging = true) }]),
+		// A contributor offers the note's writing and nothing about its place, so
+		// what an offer cannot carry is not offered while a write here is offered.
+		...(gated
+			? []
+			: [{ label: 'Link to another note', icon: Link2, onSelect: () => (linking = true) }]),
+		...(mayGate
+			? [{ label: 'Who writes this note', icon: PenLine, onSelect: () => (gating = true) }]
+			: []),
 		// The address is read up with the title, so from far enough down a note it
 		// is off screen — and it is the thing a person cites.
 		...(node?.address
@@ -1081,12 +1277,18 @@
 		...(publishable
 			? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }]
 			: []),
-		{
-			label: 'Delete this note',
-			icon: Trash2,
-			onSelect: () => (removing = true),
-			destructive: true
-		}
+		// Taking a note out of the graph is its place and not its writing, so the
+		// graph's own owner does it whatever the note's gate says.
+		...(gated && !own
+			? []
+			: [
+					{
+						label: 'Delete this note',
+						icon: Trash2,
+						onSelect: () => (removing = true),
+						destructive: true
+					}
+				])
 	]);
 
 	/** Whether this device is still holding writing for the note on screen. */
@@ -1370,6 +1572,13 @@
 	async function saveTitle(of: OwnedRef): Promise<void> {
 		const draft = titles.get(of);
 		if (draft === undefined || storing.has(of)) return;
+		if (offeredOn(of)) {
+			if (offers.draft(of) === undefined) return;
+			offers.retitle(of, draft);
+			titles.delete(of);
+			return;
+		}
+		if (gatedElsewhere(of)) return;
 		if (draft === nodes.get(of)?.title) return;
 		storing.add(of);
 		try {
@@ -1413,6 +1622,7 @@
 
 		let refusal: string | null = null;
 		let unwritten = first;
+		const joining = joinsAuthors(into);
 		try {
 			let after = read.get(into)?.at(-1)?.ref;
 			if (unwritten) {
@@ -1435,6 +1645,7 @@
 				serverMessage(error) ?? 'Sloppy could not read this note. Close it and open it again.';
 		}
 		if (stack && ref === into) shown = { of: into, stack };
+		if (joining) readNoteAgain(into);
 		refuse(into, 'shape', refusal);
 		seeding.delete(into);
 	}
@@ -1455,17 +1666,36 @@
 		write(act, shape);
 	}
 
+	/** Whether a write landing on this note now joins the writer to whose writing
+	 *  it carries — `withAuthor` in `@sloppy/types` is that rule, and the server
+	 *  runs the same one. Asked before the write, so the row that comes back is
+	 *  what ends it. */
+	function joinsAuthors(of: OwnedRef): boolean {
+		const held = nodes.get(of);
+		return held !== undefined && viewerDid !== '' && withAuthor(held, viewerDid) !== held;
+	}
+
+	function readNoteAgain(of: OwnedRef): void {
+		void nodes.refetch(of).catch(() => null);
+	}
+
 	/**
 	 * The note this write named, as the server has it now. A `[[` draws a line on
 	 * the canvas — DESIGN.md § Edges — and the server derives that line off the
 	 * writing, so a write that changed which notes are named leaves every surface
-	 * reading this row out of date. Asked for only when it did.
+	 * reading this row out of date. So does one that joined its writer to whose
+	 * writing the note carries. Asked for only when it did.
 	 */
-	function reread(of: OwnedRef, before: BlockDocument | null, after: BlockDocument | null): void {
+	function reread(
+		of: OwnedRef,
+		before: BlockDocument | null,
+		after: BlockDocument | null,
+		joining = false
+	): void {
 		const named = (content: BlockDocument | null) =>
 			content === null ? '' : citedNotes(content).sort().join(' ');
-		if (named(before) === named(after)) return;
-		void nodes.refetch(of).catch(() => null);
+		if (!joining && named(before) === named(after)) return;
+		readNoteAgain(of);
 	}
 
 	/** What a section says now, of the stacks in hand. */
@@ -1508,12 +1738,21 @@
 		return failure;
 	}
 
+	/** Which note's stack a section sits in, the writing being offered on the
+	 *  note on screen included. */
+	function noteOf(block: OwnedRef): OwnedRef | null {
+		if (offerDraft?.blocks.some((held) => held.ref === block)) return ref;
+		return holderOf(block);
+	}
+
 	async function addBlock(request: CreateBlockRequest): Promise<BlockView> {
+		if (offeredOn(request.node as OwnedRef)) return offers.addSection(request);
 		surfaceWrites += 1;
+		const joining = joinsAuthors(request.node as OwnedRef);
 		try {
 			const block = await api.createBlock(request);
 			amend(block.node, (stack) => [...stack, block]);
-			reread(block.node, null, block.content);
+			reread(block.node, null, block.content, joining);
 			return block;
 		} catch (error) {
 			throw refusedWrite(request.node, error);
@@ -1523,13 +1762,16 @@
 	}
 
 	async function editBlock(block: OwnedRef, request: UpdateBlockRequest): Promise<BlockView> {
+		const holder = noteOf(block) ?? ref;
+		if (offeredOn(holder)) return offers.writeSection(holder, block, request);
 		surfaceWrites += 1;
-		const of = holderOf(block) ?? ref;
+		const of = holder;
 		const before = sectionIn(of, block);
+		const joining = joinsAuthors(of);
 		try {
 			const saved = await api.updateBlock(block, request);
 			amend(saved.node, (stack) => stack.map((held) => (held.ref === saved.ref ? saved : held)));
-			reread(saved.node, before, saved.content);
+			reread(saved.node, before, saved.content, joining);
 			return saved;
 		} catch (error) {
 			throw refusedWrite(of, error);
@@ -1539,14 +1781,19 @@
 	}
 
 	async function dropBlock(block: OwnedRef): Promise<void> {
-		const of = holderOf(block);
+		const of = noteOf(block);
+		if (of !== null && offeredOn(of)) {
+			offers.dropSection(of, block);
+			return;
+		}
 		const before = of === null ? null : sectionIn(of, block);
+		const joining = of !== null && joinsAuthors(of);
 		surfaceWrites += 1;
 		try {
 			await api.deleteBlock(block);
 			if (of) {
 				amend(of, (stack) => stack.filter((held) => held.ref !== block));
-				reread(of, before, null);
+				reread(of, before, null, joining);
 			}
 		} catch (error) {
 			throw refusedWrite(of ?? ref, error);
@@ -1580,6 +1827,10 @@
 	async function retag(picked: TagName[]): Promise<void> {
 		const of = ref;
 		refuse(of, 'tag', null);
+		if (offeredOn(of)) {
+			offers.retag(of, picked);
+			return;
+		}
 		try {
 			await nodes.update(of, { tags: picked });
 		} catch (error) {
@@ -2043,6 +2294,7 @@
 				bind:this={titleField}
 				value={title}
 				rows="1"
+				readonly={holdingWriting || readOnly}
 				oninput={(e) => {
 					titles.set(ref, e.currentTarget.value);
 					fitTitle(e.currentTarget);
@@ -2069,7 +2321,26 @@
 
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 				{#if showsAuthor}
-					<NoteAuthor did={node.created_by} />
+					<NoteAuthor note={node} />
+				{/if}
+				{#if node.owner === viewerDid && viewerDid !== ''}
+					<button
+						type="button"
+						onclick={() => (gating = true)}
+						class="inline-flex min-h-9 items-center gap-1.5 rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						<PenLine class="size-3.5 shrink-0" />
+						Only you write this
+					</button>
+					{#if standing.length > 0}
+						<button
+							type="button"
+							onclick={() => (readingOffers = true)}
+							class="inline-flex min-h-9 items-center rounded-md px-1.5 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+						>
+							Offered changes ({standing.length})
+						</button>
+					{/if}
 				{/if}
 				{#if publishable && (publication || carriedBy)}
 					<button
@@ -2091,17 +2362,73 @@
 				{/if}
 			</div>
 
-			{#if node.tags.length > 0}
-				<button
-					type="button"
-					aria-label="Tags: {node.tags.join(', ')}"
-					onclick={() => (tagging = true)}
-					class="-mx-2 flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-				>
-					{#each node.tags as tag (tag)}
-						<Badge variant="outline" class="text-muted-foreground">{tag}</Badge>
-					{/each}
-				</button>
+			{#snippet tagBadges()}
+				{#each shownTags as tag (tag)}
+					<Badge variant="outline" class="text-muted-foreground">{tag}</Badge>
+				{/each}
+			{/snippet}
+
+			{#if shownTags.length > 0}
+				{#if readOnly}
+					<div
+						aria-label="Tags: {shownTags.join(', ')}"
+						class="flex min-h-11 w-full flex-wrap items-center gap-1.5"
+					>
+						{@render tagBadges()}
+					</div>
+				{:else}
+					<button
+						type="button"
+						aria-label="Tags: {shownTags.join(', ')}"
+						onclick={() => (tagging = true)}
+						class="-mx-2 flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-md px-2 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+					>
+						{@render tagBadges()}
+					</button>
+				{/if}
+			{/if}
+
+			{#if gated}
+				<div class="space-y-2">
+					<div class="space-y-1 text-sm text-muted-foreground">
+						<p>Only {ownerName} writes this note.</p>
+						{#if offering}
+							<p>What you write here is offered to them.</p>
+							{#if myOffer}
+								<p>Your change is offered on it now.</p>
+							{/if}
+						{:else if mayGate}
+							<p>“Who writes this note” changes that.</p>
+						{/if}
+					</div>
+					{#if offering}
+						<div class="flex flex-wrap gap-2">
+							{#if offers.changed(ref)}
+								<Button
+									variant="outline"
+									class="h-11"
+									disabled={offers.busy}
+									onclick={() => (offeringChange = true)}
+								>
+									Offer this change
+								</Button>
+							{/if}
+							{#if myOffer}
+								<Button
+									variant="ghost"
+									class="h-11 text-muted-foreground"
+									disabled={offers.busy}
+									onclick={() => void takeOfferBack()}
+								>
+									Take it back
+								</Button>
+							{/if}
+						</div>
+					{/if}
+					{#if refused.owner}
+						<p class="text-sm text-destructive" role="alert">{refused.owner}</p>
+					{/if}
+				</div>
 			{/if}
 
 			{#if refused.title}
@@ -2114,26 +2441,41 @@
 			onValueChange={(chosen: string) => (side = chosen === 'look' ? 'look' : 'note')}
 			class="gap-4"
 		>
-			<Tabs.List class="h-11 w-full p-1 sm:w-fit">
-				<Tabs.Trigger value="note" class="px-6">Note</Tabs.Trigger>
-				<Tabs.Trigger value="look" class="px-6">Look</Tabs.Trigger>
-			</Tabs.List>
+			<!-- How a mark is drawn is whoever writes the note's, so a reader of
+			     somebody else's is shown the note and nothing to switch to. -->
+			{#if !gated}
+				<Tabs.List class="h-11 w-full p-1 sm:w-fit">
+					<Tabs.Trigger value="note" class="px-6">Note</Tabs.Trigger>
+					<Tabs.Trigger value="look" class="px-6">Look</Tabs.Trigger>
+				</Tabs.List>
+			{/if}
 
 			<Tabs.Content value="note" class="flex flex-col gap-7">
-				{#if loading || seeding.has(ref)}
+				{#if loading || seeding.has(ref) || holdingWriting}
 					<Skeleton class="h-24 w-full" />
 				{:else if unreachable}
 					<p class="text-sm text-destructive" role="alert">{unreachable}</p>
+				{:else if readOnly}
+					{#key rebuilt}
+						<HeldStack
+							author={node.created_by}
+							blocks={stack}
+							pictures={noteMedia}
+							{references}
+							emoji={emoji.catalog}
+						/>
+					{/key}
 				{:else}
 					{#key rebuilt}
 						<BlockStack
 							bind:this={bodyStack}
 							{node}
-							{blocks}
+							blocks={stack}
 							{emoji}
 							{references}
 							media={noteMedia}
 							{drafts}
+							{offering}
 							onCreate={addBlock}
 							onUpdate={editBlock}
 							onRemove={dropBlock}
@@ -2314,7 +2656,7 @@
 			</Tabs.Content>
 
 			<Tabs.Content value="look">
-				{#if side === 'look'}
+				{#if side === 'look' && !gated}
 					<p class="pb-4 text-sm text-muted-foreground">How this note is drawn on the graph.</p>
 					<LookControls
 						appearance={node.appearance}
@@ -2362,11 +2704,11 @@
 			<ResponsiveModal bind:open={tagging} title="Tags" headed={false}>
 				<div bind:this={tagsSheet} class="px-2 pt-2">
 					<TagField
-						tags={node.tags}
+						tags={shownTags}
 						{suggestions}
 						onchange={retag}
 						refused={refused.tag ?? null}
-						placeholder={node.tags.length > 0 ? 'Add a tag' : 'Tag this note'}
+						placeholder={shownTags.length > 0 ? 'Add a tag' : 'Tag this note'}
 					/>
 				</div>
 			</ResponsiveModal>
@@ -2490,6 +2832,44 @@
 				onpublish={publishBranch}
 				oncomments={inviteAnswers}
 				onunpublish={takeDown}
+			/>
+		{/if}
+
+		{#if mayGate && viewerDid !== ''}
+			<NoteOwner
+				bind:open={gating}
+				{...node.owner === undefined ? {} : { owner: node.owner }}
+				me={viewerDid}
+				busy={writingOwner}
+				refused={refused.owner ?? null}
+				onchange={writeOwner}
+			/>
+		{/if}
+
+		{#if node.owner === viewerDid && viewerDid !== ''}
+			<OfferedChanges
+				bind:open={readingOffers}
+				note={node}
+				sections={blocks}
+				offers={standing}
+				busy={offers.busy}
+				says={offers.says}
+				onApprove={takeOfferIn}
+				onDecline={turnOfferDown}
+			/>
+		{/if}
+
+		{#if offering}
+			<OfferChange
+				bind:open={offeringChange}
+				note={ref}
+				{...node.address === undefined ? {} : { address: node.address }}
+				owner={ownerName}
+				now={sideNow}
+				offered={sideOffered}
+				busy={offers.busy}
+				says={offers.says}
+				onOffer={offerChange}
 			/>
 		{/if}
 

@@ -38,7 +38,8 @@ All from the monorepo-root `.env`; a shell variable of the same name wins.
 | Variable                            | Default                                                    | What it decides                                                              |
 | ----------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `PUBLIC_SLOPPY_API_URL`             | `http://localhost:8020`, `http://10.0.2.2:8020` on Android | The API's **origin**. `@sloppy/client` owns the path after it.               |
-| `SLOPPY_LOCAL_MODE`                 | off                                                        | Open a graph as a folder on the device, with no API and no sign-in.          |
+| `PUBLIC_SLOPPY_APP_ORIGIN`          | `https://sloppy.sh`                                        | Sloppy's own web origin, where an identity store sends somebody back.        |
+| `SLOPPY_LOCAL_MODE`                 | off                                                        | Open a graph as a folder on the device, with no API to reach.                |
 | `SLOPPY_DEV_TUNNEL` / `CF_TUNNEL_*` | off                                                        | Front the local API on the https origin a physical device needs to reach it. |
 
 `PUBLIC_SLOPPY_API_URL` is the web shell's variable too — one origin, set once, obeyed by

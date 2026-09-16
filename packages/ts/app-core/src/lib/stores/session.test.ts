@@ -1,7 +1,9 @@
+import { SloppyApiError } from '@sloppy/client';
+import type { IdentityAccess } from '@sloppy/local';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deviceStore } from '../device-store.js';
 import { initRuntime, runtime } from '../runtime.js';
-import { useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
+import { DID, homeOf, useFakeApi, VIEWER, type FakeApi } from './fake-api.test-support.js';
 import { session } from './session.svelte.js';
 
 describe('a session nobody has asked about', () => {
@@ -166,5 +168,125 @@ describe('a graph the device holds itself', () => {
 
 		initRuntime({ apiHost: () => 'http://api.test', mode: () => 'local' });
 		expect(session.onDevice).toBe(true);
+	});
+});
+
+describe('a sign-in the device itself began', () => {
+	let api: FakeApi;
+	let asked: unknown;
+	let folder: string | undefined;
+	/** Whose the graph in the folder says it is. */
+	let whose: string;
+
+	const ADA = 'did:syr:z6MkrAdaAdaAdaAdaAdaAdaAdaAdaAda';
+
+	const HERE = {
+		did: DID,
+		source: 'delegated' as const,
+		lapsed: false,
+		writing: true,
+		carriable: false
+	};
+
+	function shell(finish: IdentityAccess['finish']): void {
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			identities: {
+				list: async () => [HERE],
+				makeOne: async () => HERE,
+				signIn: async () => {},
+				finish,
+				bring: async () => HERE,
+				carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
+				writeAs: async () => {}
+			},
+			vault: {
+				folder: () => folder,
+				graph: async () => (folder ? homeOf(whose) : undefined),
+				asks: true,
+				open: async () => folder
+			}
+		});
+	}
+
+	beforeEach(() => {
+		session.clear();
+		asked = undefined;
+		folder = '/Users/me/garden';
+		whose = DID;
+		api = useFakeApi();
+		api.on('GET /auth/me', () => VIEWER);
+		api.on('PATCH /profile/me', (_url, init) => {
+			asked = JSON.parse(String(init?.body));
+			return {
+				did: DID,
+				username: DID,
+				display_name: 'Ada Lovelace',
+				bio: null,
+				avatar_src: null,
+				banner_src: null
+			};
+		});
+	});
+
+	afterEach(() => {
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			mode: () => 'hosted',
+			identities: undefined,
+			vault: undefined
+		});
+	});
+
+	it('leaves a launch that is not a return from one alone', async () => {
+		shell(async () => undefined);
+
+		expect(await session.finishSignInHere(new URLSearchParams('state=s'))).toBe(false);
+		expect(api.countOf('PATCH /profile/me')).toBe(0);
+	});
+
+	it('carries what the store calls a person into the graph in front of them', async () => {
+		shell(async () => ({ identity: HERE, name: 'Ada Lovelace' }));
+
+		expect(await session.finishSignInHere(new URLSearchParams('state=s&code=c'))).toBe(true);
+		expect(asked).toEqual({ display_name: 'Ada Lovelace' });
+		expect(session.signInProblem).toBeNull();
+	});
+
+	it('says what to do next where the store turned it down', async () => {
+		shell(async () => {
+			throw new SloppyApiError(400, 'Sloppy was not approved, so you are not signed in.', {
+				detail: 'Sloppy was not approved, so you are not signed in.'
+			});
+		});
+
+		expect(await session.finishSignInHere(new URLSearchParams('state=s&error=denied'))).toBe(false);
+		expect(session.signInProblem).toContain('not approved');
+		expect(api.countOf('PATCH /profile/me')).toBe(0);
+	});
+
+	it('writes nothing into a folder somebody else owns, and keeps the name to carry', async () => {
+		whose = ADA;
+		shell(async () => ({ identity: HERE, name: 'Ada Lovelace' }));
+
+		expect(await session.finishSignInHere(new URLSearchParams('state=s&code=c'))).toBe(true);
+		expect(api.countOf('PATCH /profile/me')).toBe(0);
+
+		whose = DID;
+		await session.carryProfile();
+
+		expect(asked).toEqual({ display_name: 'Ada Lovelace' });
+	});
+
+	it('keeps the name to carry until there is a graph to carry it into', async () => {
+		folder = undefined;
+		shell(async () => ({ identity: HERE, name: 'Ada Lovelace' }));
+		await session.finishSignInHere(new URLSearchParams('state=s&code=c'));
+		expect(api.countOf('PATCH /profile/me')).toBe(0);
+
+		folder = '/Users/me/garden';
+		await session.carryProfile();
+
+		expect(asked).toEqual({ display_name: 'Ada Lovelace' });
 	});
 });

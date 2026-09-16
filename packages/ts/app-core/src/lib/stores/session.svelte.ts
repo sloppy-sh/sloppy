@@ -6,11 +6,12 @@
  * `unavailable` separates it from "could not be asked".
  */
 
-import { SloppyApiError } from '@sloppy/client';
-import type { Viewer } from '@sloppy/types';
+import { SloppyApiError, uploadFile } from '@sloppy/client';
+import { splitOwnedRef, type Viewer } from '@sloppy/types';
 import { api } from '../api.js';
 import { deviceStore } from '../device-store.js';
 import { runtime } from '../runtime.js';
+import { serverMessage } from './errors.js';
 
 /** A credential the server turned down is an answer — nobody is signed in.
  *  Anything else that goes wrong is not an answer at all. */
@@ -18,12 +19,16 @@ function turnedDown(err: unknown): boolean {
 	return err instanceof SloppyApiError && err.status === 401;
 }
 
+/** What a sign-in settled and no graph here has taken yet. */
+let carrying: { name?: string; picture?: { bytes: Uint8Array; type: string } } | undefined;
+
 class SessionStore {
 	#viewer = $state<Viewer | null>(null);
 	#ready = $state(false);
 	#loading = $state(false);
 	#unavailable = $state(false);
 	#inflight: Promise<Viewer | null> | null = null;
+	#signInProblem = $state<string | null>(null);
 	// A session change that lands while `me()` is in flight must not be undone by
 	// its answer, which the server may have sent before the change reached it.
 	#epoch = 0;
@@ -94,6 +99,84 @@ class SessionStore {
 			});
 		this.#inflight = request;
 		return request;
+	}
+
+	/** What went wrong finishing a sign-in this device began, for whichever
+	 *  surface offers to start another. Null is nothing to say. */
+	get signInProblem(): string | null {
+		return this.#signInProblem;
+	}
+
+	clearSignInProblem(): void {
+		this.#signInProblem = null;
+	}
+
+	/**
+	 * Finish a sign-in this device began at somebody's identity store, from what
+	 * the return leg carried. False is a launch that is not a return from one,
+	 * so a shell may ask it of every launch — and is what one that went wrong
+	 * answers too, with {@link signInProblem} saying what to do next.
+	 */
+	async finishSignInHere(came: URLSearchParams): Promise<boolean> {
+		const identities = runtime.identities();
+		if (!identities) return false;
+		this.#signInProblem = null;
+		let settled: Awaited<ReturnType<typeof identities.finish>>;
+		try {
+			settled = await identities.finish(came);
+		} catch (error) {
+			this.#signInProblem =
+				serverMessage(error) ?? 'Sign-in did not finish. Start again from Sloppy.';
+			return false;
+		}
+		if (!settled) return false;
+		carrying = {
+			...(settled.name === undefined ? {} : { name: settled.name }),
+			...(settled.picture === undefined ? {} : { picture: settled.picture })
+		};
+		await this.refresh();
+		await this.carryProfile();
+		return true;
+	}
+
+	/**
+	 * Write what a person's identity store calls them into the graph in front of
+	 * them, where that graph is one they own. A folder somebody else owns says
+	 * who THEY are and is left alone; a device with nowhere of its own to write
+	 * it keeps it to carry once there is somewhere, which is what the first run
+	 * calls this again for.
+	 */
+	async carryProfile(): Promise<void> {
+		if (!carrying) return;
+		const vault = runtime.vault();
+		if (!vault?.folder()) return;
+		const mine = this.#viewer?.did ?? (await api.me().catch(() => null))?.did;
+		if (!mine) return;
+		const { name, picture } = carrying;
+		try {
+			const here = await vault.graph();
+			if (!here || splitOwnedRef(here).did !== mine) return;
+			const asked = {
+				...(name === undefined ? {} : { display_name: name }),
+				...(picture === undefined
+					? {}
+					: {
+							avatar_upload_id: (
+								await uploadFile(
+									api,
+									new File([picture.bytes.slice().buffer as ArrayBuffer], 'picture', {
+										type: picture.type
+									}),
+									{ role: 'avatar' }
+								).asset
+							).upload_id
+						})
+			};
+			if (Object.keys(asked).length > 0) await api.updateProfile(asked);
+			carrying = undefined;
+		} catch {
+			// No graph here to write it into yet.
+		}
 	}
 
 	/** After a shell exchanges a consent callback for a session itself. */

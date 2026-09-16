@@ -40,8 +40,8 @@ async function settle(): Promise<void> {
 	}
 }
 
-function show(did: string): void {
-	mounted = mount(NoteAuthor, { target, props: { did } });
+function show(did: string, over: { authors?: string[]; contributors?: string[] } = {}): void {
+	mounted = mount(NoteAuthor, { target, props: { note: { created_by: did, ...over } } });
 	flushSync();
 }
 
@@ -165,6 +165,77 @@ describe('who wrote the note', () => {
 		show(PEER);
 		await settle();
 		expect(api.countOf(asked(PEER))).toBe(1);
+	});
+
+	it('names one author plainly, without announcing the authorship', async () => {
+		show(PEER);
+		await settle();
+		expect(target.textContent).not.toContain('Written by');
+	});
+
+	it('says whose writing a note carries where more than one person wrote it', async () => {
+		api.on(asked(STRANGER), () => ({
+			did: STRANGER,
+			username: 'grace',
+			display_name: 'Grace Hopper',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		show(PEER, { authors: [PEER, STRANGER] });
+		await settle();
+		expect(target.textContent).toContain('Written by');
+		expect(target.textContent).toContain('Charles Babbage');
+		expect(target.textContent).toContain('Grace Hopper');
+		expect(target.textContent).not.toContain('with');
+	});
+
+	it('names whoever contributed after whoever wrote it', async () => {
+		api.on(asked(STRANGER), () => ({
+			did: STRANGER,
+			username: 'grace',
+			display_name: 'Grace Hopper',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		show(PEER, { contributors: [STRANGER] });
+		await settle();
+		expect(target.textContent).toContain('Written by');
+		expect(target.textContent).toContain('Charles Babbage');
+		expect(target.textContent).toContain('· with');
+		expect(target.textContent).toContain('Grace Hopper');
+	});
+
+	// At phone width the line wraps between whoever wrote the note and whoever
+	// helped, and a line that opens with a separator reads as a mistake.
+	it('keeps the separator with the name it follows, so it never leads a line', async () => {
+		api.on(asked(STRANGER), () => ({
+			did: STRANGER,
+			username: 'grace',
+			display_name: 'Grace Hopper',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		show(PEER, { contributors: [STRANGER] });
+		await settle();
+
+		const line = target.querySelector('div');
+		if (!line) throw new Error('Nobody is named on screen');
+		const said = [...line.children].map((one) => one.textContent?.trim() ?? '');
+		expect(said).toContain('with');
+		expect(said.some((one) => one.startsWith('·'))).toBe(false);
+		expect(said.some((one) => one.endsWith('·'))).toBe(true);
+	});
+
+	// `authors` absent, and empty, are the ref's DID alone — nothing else may
+	// spell that fallback.
+	it('reads an empty list of authors as whoever the note is filed under', async () => {
+		show(PEER, { authors: [] });
+		await settle();
+		expect(target.textContent).toContain('Charles Babbage');
+		expect(target.textContent).not.toContain('Written by');
 	});
 
 	it('names the signed-in person without asking a second time', async () => {

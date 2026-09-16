@@ -50,6 +50,8 @@ const Graph = (await import('./graph.svelte')).default;
 
 const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 const GARDEN = ref(20);
+/** Somebody else, whose folder this reader has opened. */
+const KEEPER = 'did:syr:z6MkjChhrJfLm9WGVUAnyLPnfPGmZDcyDKNsBTsAsn7RkAqB';
 
 function graph(self: OwnedRef, title: string): GraphView {
 	return { ref: self, created_by: DID, created_at: AT, updated_at: AT, title };
@@ -286,7 +288,7 @@ describe('which graph you are in', () => {
 	it('renames one in place', async () => {
 		await open();
 		await openGraphs();
-		labelled('Rename Garden').click();
+		labelled('Settings for Garden').click();
 		await settle();
 		const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Name"]');
 		if (!field) throw new Error('Nowhere to rename a graph');
@@ -296,6 +298,28 @@ describe('which graph you are in', () => {
 		button('Save').click();
 		await settle();
 		expect(inSheet()).toContain('Allotment');
+	});
+
+	// A person keeping a notebook with somebody else says it once, on the graph,
+	// rather than on every note they write in it.
+	it('says a new note here is only its writer’s, and saves that with the name', async () => {
+		let asked: unknown = null;
+		api.on(`PATCH /graphs/${encodeURIComponent(DID)}/${GARDEN.split('/')[1]}`, (_url, init) => {
+			asked = JSON.parse(String(init?.body ?? '{}'));
+			return { ...graph(GARDEN, 'Garden'), ownership: 'owned' };
+		});
+		await open();
+		await openGraphs();
+		labelled('Settings for Garden').click();
+		await settle();
+
+		const owned = document.body.querySelector<HTMLButtonElement>(`#owned-${CSS.escape(GARDEN)}`);
+		if (!owned) throw new Error('The graph offers no choice about what it does to a new note');
+		expect(inSheet()).toContain("New notes are only their writer's");
+		owned.click();
+		await settle();
+
+		expect(asked).toEqual({ title: 'Garden', ownership: 'owned' });
 	});
 
 	// A note open beside a canvas that no longer holds its graph is one surface
@@ -319,6 +343,32 @@ describe('which graph you are in', () => {
 		await open();
 
 		expect(graphs.current).toBe(GARDEN);
+		expect(reading()).toBe(true);
+	});
+
+	// A folder somebody shared holds their notes, so its refs carry their
+	// identity and not the reader's — the link to one still opens it here.
+	it('opens a note filed in a graph the reader keeps but does not own', async () => {
+		const shared = `${KEEPER}/01ARZ3NDEKTSV4RRFFQ69G5HMX` as OwnedRef;
+		const self = ref(50, KEEPER);
+		const ulid = self.split('/')[1];
+		const theirs: NodeView = {
+			...node(50, '1', { created_by: KEEPER, graph: shared, title: 'Their opening' }),
+			ref: self,
+			origin: self
+		};
+		listed = [
+			...listed,
+			{ ref: shared, created_by: KEEPER, created_at: AT, updated_at: AT, title: 'Ours' }
+		];
+		held = [...held, theirs];
+		const path = `/nodes/${encodeURIComponent(KEEPER)}/${encodeURIComponent(ulid)}`;
+		api.on(`GET ${path}`, () => theirs);
+		api.on(`GET ${path}/blocks`, () => []);
+		startAt(`/n/${encodeURIComponent(KEEPER)}/${ulid}`);
+		await open();
+
+		expect(graphs.current).toBe(shared);
 		expect(reading()).toBe(true);
 	});
 

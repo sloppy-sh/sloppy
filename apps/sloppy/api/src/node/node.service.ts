@@ -13,6 +13,7 @@ import {
   createOwnedRecordId,
   DELETED_KEPT_FOR_DAYS,
   type DeletedBranch,
+  type DidSyr,
   entityView,
   graphAsked,
   graphOf,
@@ -49,12 +50,14 @@ import {
   type Tags,
   TagsSchema,
   type UpdateNodeRequestSchema,
+  withAuthor,
 } from "@sloppy/types";
 import type { z } from "zod";
 import { MediaService } from "../media/media.service";
 import { PublicationService } from "../publication/publication.service";
 import type { Delegation } from "../syr/syr.service";
 import { FindRepository } from "./find.repository";
+import { gatedElsewhere, writable } from "./gate";
 import { GraphService } from "./graph.service";
 import type {
   AddressHold,
@@ -334,9 +337,16 @@ export class NodeService {
         );
       }
       if (from?.relation === "free") {
+        const graph = await this.graphFor(did, from);
         return entityView(
           await this.nodes.insert(
-            newNode(did, await this.graphFor(did, from), null, request),
+            newNode(
+              did,
+              graph,
+              null,
+              request,
+              await this.graphs.gate(did, graph),
+            ),
           ),
         );
       }
@@ -356,22 +366,30 @@ export class NodeService {
     return asked;
   }
 
+  /**
+   * The note's writing, changed — and who gates it, which is the graph owner's
+   * to write whatever the gate says. Handing the gate on is not writing, so a
+   * request that does only that joins nobody to what the note carries, and one
+   * that also writes is held to the gate for the writing it carries.
+   */
   async update(
     did: string,
     ref: OwnedRef,
     request: UpdateRequest,
     delegation: Delegation | undefined,
   ): Promise<NodeView> {
-    const updated = await this.nodes.patch(
-      did,
-      ref,
-      request.appearance === undefined
-        ? request
-        : {
-            ...request,
-            appearance: await this.look(request.appearance, delegation),
-          },
-    );
+    const note = await this.nodes.find(did, ref);
+    if (!note) throw new NotFoundException("That note is not here.");
+    const writes = Object.keys(request).some((field) => field !== "owner");
+    if (writes && !writable(note, did)) throw gatedElsewhere();
+    const joined = writes ? withAuthor(note, did) : note;
+    const updated = await this.nodes.patch(did, ref, {
+      ...request,
+      ...(joined === note ? {} : { authors: joined.authors }),
+      ...(request.appearance === undefined
+        ? {}
+        : { appearance: await this.look(request.appearance, delegation) }),
+    });
     if (!updated) throw new NotFoundException("That note is not here.");
     return entityView(updated);
   }
@@ -857,9 +875,11 @@ export class NodeService {
       return this.publishEach(delegation, asked.length, mine);
     }
 
+    const writing = mine.filter((note) => writable(note, did));
+    if (writing.length === 0) throw gatedElsewhere();
     const written = await this.nodes.patchAll(
       did,
-      await this.writes(mine, request.act, delegation),
+      await this.writes(did, writing, request.act, delegation),
     );
     return answer(asked.length, written.length, written.map(entityView));
   }
@@ -916,14 +936,28 @@ export class NodeService {
     return answer(asked, after.length, after.map(entityView));
   }
 
-  /** What each note the act reached is about to be set to. */
+  /** What each note the act reached is about to be set to. An act is a write,
+   *  so it joins whoever made it to what an open note carries — {@link
+   *  withAuthor} is that rule, the same one a single write runs. */
   private async writes(
+    did: string,
     notes: readonly Node[],
     act: ChangingAct,
     delegation: Delegation | undefined,
   ): Promise<Map<OwnedRef, NodeBulkPatch>> {
     const each = (of: (note: Node) => NodeBulkPatch) =>
-      new Map(notes.map((note) => [ownedRefFrom(note.id), of(note)] as const));
+      new Map(
+        notes.map((note) => {
+          const joined = withAuthor(note, did);
+          return [
+            ownedRefFrom(note.id),
+            {
+              ...of(note),
+              ...(joined === note ? {} : { authors: joined.authors }),
+            },
+          ] as const;
+        }),
+      );
 
     switch (act.act) {
       case "tag":
@@ -1006,11 +1040,12 @@ export class NodeService {
     address: Address,
     request: CreateRequest,
   ): Promise<NodeView> {
+    const gate = await this.graphs.gate(did, graph);
     const giving = await this.claimUnheld(did, graph, address);
     try {
       return entityView(
         await this.nodes.insert(
-          newNode(did, graph, null, request, address),
+          newNode(did, graph, null, request, gate, address),
           giving ? [giving] : [],
         ),
       );
@@ -1040,11 +1075,12 @@ export class NodeService {
     }
     if (impliedParent(address) !== under)
       throw springsElsewhere(address, under);
+    const gate = await this.graphs.gate(did, graph);
     const giving = await this.claimUnheld(did, graph, address);
     try {
       return entityView(
         await this.nodes.insert(
-          newNode(did, graph, parent, request, address),
+          newNode(did, graph, parent, request, gate, address),
           giving ? [giving] : [],
         ),
       );
@@ -1061,9 +1097,10 @@ export class NodeService {
     const passed: Address[] = [];
     for (let attempt = 1; ; attempt++) {
       const { graph, parent } = await this.placeFor(did, request.from);
+      const gate = await this.graphs.gate(did, graph);
       if (parent !== null && parent.address === undefined) {
         return entityView(
-          await this.nodes.insert(newNode(did, graph, parent, request)),
+          await this.nodes.insert(newNode(did, graph, parent, request, gate)),
         );
       }
       const address = nextChildAddress(parent?.address ?? null, [
@@ -1085,7 +1122,7 @@ export class NodeService {
       try {
         return entityView(
           await this.nodes.insert(
-            newNode(did, graph, parent, request, address),
+            newNode(did, graph, parent, request, gate, address),
           ),
         );
       } catch (err) {
@@ -1362,10 +1399,11 @@ function retag(note: Node, adding: boolean, named: Tags): Tags {
 }
 
 function newNode(
-  did: string,
+  did: DidSyr,
   graph: OwnedRef,
   parent: Node | null,
   request: CreateRequest,
+  gate: DidSyr | undefined,
   address?: Address,
 ): Node {
   const id = createOwnedRecordId("node", did);
@@ -1375,6 +1413,7 @@ function newNode(
     created_by: did,
     graph,
     ...(address === undefined ? {} : { address }),
+    ...(gate === undefined ? {} : { owner: gate }),
     depth: parent ? parent.depth + 1 : 1,
     ...(parent ? { parent: ownedRefFrom(parent.id) } : {}),
     origin: parent ? parent.origin : ownedRefFrom(id),

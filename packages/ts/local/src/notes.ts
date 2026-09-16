@@ -5,6 +5,7 @@
 import {
   type Address,
   type CreateNodeRequest,
+  type DidSyr,
   CreateNodeRequestSchema,
   type NodeBulkRequest,
   NodeBulkRequestSchema,
@@ -31,6 +32,7 @@ import {
   rebaseAddress,
   seriesIsWhole,
   ulid,
+  writeOutcome,
 } from "@sloppy/types";
 import type { LocalGraph, StoredNote } from "./graph.js";
 import { absent, checked, refuse } from "./refusal.js";
@@ -46,7 +48,10 @@ const ADDRESS_ATTEMPTS = 32;
 type Landing = StoredNote | null;
 
 export class NoteWriter {
-  constructor(private readonly graph: LocalGraph) {}
+  constructor(
+    private readonly graph: LocalGraph,
+    private readonly writer: DidSyr,
+  ) {}
 
   async create(asked: CreateNodeRequest): Promise<NodeView> {
     const request = checked(() => CreateNodeRequestSchema.parse(asked));
@@ -70,10 +75,15 @@ export class NoteWriter {
   async update(ref: OwnedRef, asked: UpdateNodeRequest): Promise<NodeView> {
     const request = checked(() => UpdateNodeRequestSchema.parse(asked));
     const note = this.require(ref);
+    const written = writesTheGateAlone(request) ? note : this.landed(note);
+    const writing =
+      request.owner === undefined
+        ? written
+        : gated(this.gating(written), request.owner);
     const held =
       request.appearance === undefined
-        ? note
-        : styled(note, lookWritten(request.appearance));
+        ? writing
+        : styled(writing, lookWritten(request.appearance));
     return this.put({
       ...held,
       ...(request.title === undefined ? {} : { title: request.title }),
@@ -90,6 +100,7 @@ export class NoteWriter {
    */
   async setAddress(ref: OwnedRef, address: Address | null): Promise<NodeView> {
     const note = this.require(ref);
+    this.onlyTheOwner(note, "number it");
     const giving =
       address === null ? null : this.claim(address, new Set([ref]), ref);
     const leaving =
@@ -120,6 +131,7 @@ export class NoteWriter {
   ): Promise<NodeView[]> {
     const note = this.require(ref);
     const carried = this.carried(note);
+    this.onlyTheOwnerOfEach(carried, "carry it somewhere else");
     const landing = this.landingFor(note, to, carried);
     return address === undefined
       ? this.carry(note, carried, landing)
@@ -132,10 +144,11 @@ export class NoteWriter {
     await this.graph.sweep();
     const note = this.graph.find(ref);
     if (!note) return;
-    await this.graph.bin(
-      this.carried(note).filter((one) => one.deleted_at === undefined),
-      nowIso(),
+    const going = this.carried(note).filter(
+      (one) => one.deleted_at === undefined,
     );
+    this.onlyTheOwnerOfEach(going, "delete it");
+    await this.graph.bin(going, nowIso());
   }
 
   /** One out of the bin, where it was, with the address it still holds. */
@@ -143,6 +156,7 @@ export class NoteWriter {
     await this.graph.sweep();
     const gone = this.graph.findDeleted(ref);
     if (!gone) throw absent("That branch is not here to put back.");
+    this.onlyTheOwner(gone, "put it back");
     if (gone.parent !== undefined && this.graph.findDeleted(gone.parent)) {
       throw refuse("Put the branch above this one back first.");
     }
@@ -181,9 +195,11 @@ export class NoteWriter {
       await this.graph.sweep();
       const going = new Map<OwnedRef, StoredNote>();
       for (const note of mine) {
-        for (const kin of this.carried(note)) {
-          if (kin.deleted_at === undefined) going.set(kin.ref, kin);
-        }
+        const carried = this.carried(note).filter(
+          (kin) => kin.deleted_at === undefined,
+        );
+        this.onlyTheOwnerOfEach(carried, "delete it");
+        for (const kin of carried) going.set(kin.ref, kin);
       }
       await this.graph.bin([...going.values()], nowIso());
       return {
@@ -196,8 +212,9 @@ export class NoteWriter {
       act.act === "set_appearance"
         ? this.styling(act.appearance)
         : (note) => this.acted(note, act);
+    const writing = mine.map((note) => this.landed(note));
     const done: NodeView[] = [];
-    for (const note of mine) done.push(await this.put(change(note)));
+    for (const note of writing) done.push(await this.put(change(note)));
     return {
       reached: done.length,
       missed: wanted.length - done.length,
@@ -211,6 +228,54 @@ export class NoteWriter {
   ): (note: StoredNote) => StoredNote {
     const look = lookWritten(appearance);
     return (note) => styled(note, look);
+  }
+
+  // ── Whose writing this is ────────────────────────────────────────────────
+
+  /** The note as a landed write by this writer leaves it, refused where its
+   *  writing is somebody else's to take in. */
+  private landed(note: StoredNote): StoredNote {
+    if (writeOutcome(note, this.writer) === "offered") throw offerInstead(note);
+    return this.graph.authored(note, this.writer);
+  }
+
+  /** Who writes the gate: the graph's owner, and whoever holds it. */
+  private gating(note: StoredNote): StoredNote {
+    if (this.writer === this.graph.did || this.writer === note.owner) {
+      return note;
+    }
+    throw refuse(
+      note.owner === undefined
+        ? `${noteLabel(note)} is in somebody else's graph. Only they can say who writes it.`
+        : `${noteLabel(note)} is somebody else's. Only its owner can say who writes it.`,
+    );
+  }
+
+  /**
+   * An offer carries a note's writing and never its place, so what is not the
+   * writer's to place is refused rather than offered. The graph's own owner
+   * places every note in it whatever its gate says: the genealogy and the
+   * numbers are the graph's, and handing a note's writing on does not hand
+   * those with it.
+   */
+  private onlyTheOwner(note: StoredNote, what: string): void {
+    this.onlyTheOwnerOfEach([note], what);
+  }
+
+  /** An act that carries a subtree carries every note in it, so each is held to
+   *  its own gate and the refusal names the one that stopped the act. */
+  private onlyTheOwnerOfEach(
+    carried: readonly StoredNote[],
+    what: string,
+  ): void {
+    if (this.writer === this.graph.did) return;
+    for (const one of carried) {
+      if (writeOutcome(one, this.writer) === "offered") {
+        throw refuse(
+          `${noteLabel(one)} is somebody else's. Only its owner can ${what}.`,
+        );
+      }
+    }
   }
 
   // ── Placing ──────────────────────────────────────────────────────────────
@@ -260,6 +325,10 @@ export class NoteWriter {
       ...(parent ? { parent: parent.ref } : {}),
       ...(address === undefined ? {} : { address }),
       aliases: [],
+      ...(this.graph.ownership === "owned" ? { owner: this.writer } : {}),
+      // Absent is the ref's DID alone, so only somebody else's writing is
+      // written down.
+      ...(this.writer === this.graph.did ? {} : { authors: [this.writer] }),
       tags: [...request.tags],
       links: [],
       title: request.title,
@@ -590,10 +659,40 @@ export class NoteWriter {
   }
 }
 
+/** Whether a request writes the note's gate and nothing the note carries.
+ *  Holding a note's gate is not writing in it, so such a request leaves whose
+ *  writing the note carries alone. */
+function writesTheGateAlone(request: UpdateNodeRequest): boolean {
+  return (
+    request.owner !== undefined &&
+    request.title === undefined &&
+    request.tags === undefined &&
+    request.links === undefined &&
+    request.appearance === undefined
+  );
+}
+
+/** The gate as a request writes it: `null` leaves the note open to anybody
+ *  writing in this graph. */
+function gated(note: StoredNote, owner: DidSyr | null): StoredNote {
+  const { owner: _held, ...rest } = note;
+  return owner === null ? rest : { ...rest, owner };
+}
+
+/** What a write on a note somebody else gates is answered with, wherever an
+ *  offer could carry that write instead. */
+export function offerInstead(
+  note: Pick<StoredNote, "address" | "title">,
+): Error {
+  return refuse(
+    `${noteLabel(note)} is somebody else's to write. Offer your change instead.`,
+  );
+}
+
 /** The look about to be written, or absent where it leaves the note unstyled.
  *  Every picture on this device is already this person's, so the only thing to
  *  hold a look to is its own shape. */
-function lookWritten(
+export function lookWritten(
   appearance: NodeAppearance | null,
 ): NodeAppearance | undefined {
   if (appearance === null || isUnstyled(appearance)) return undefined;

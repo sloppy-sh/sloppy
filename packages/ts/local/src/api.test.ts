@@ -323,6 +323,18 @@ describe("a graph in a folder", () => {
     expect((await reopened(held).listGraphs())[0].title).toBe("The thesis");
   });
 
+  it("keeps what a graph gates its notes by in the folder it is in", async () => {
+    const held = device();
+    const graph = await held.api.createGraph({ title: "Thesis" });
+    expect(graph.ownership).toBeUndefined();
+    const gated = await held.api.updateGraph(graph.ref, {
+      title: "Thesis",
+      ownership: "owned",
+    });
+    expect(gated.ownership).toBe("owned");
+    expect((await reopened(held).listGraphs())[0].ownership).toBe("owned");
+  });
+
   it("keeps the owner's name and picture with every graph on the device", async () => {
     const held = device(["/graphs/one", "/graphs/two"]);
     await held.api.createGraph({ title: "Thesis" });
@@ -360,6 +372,19 @@ describe("a graph in a folder", () => {
     expect(
       [...held.store.keys()].filter((path) => path.includes("/media/")),
     ).toEqual([]);
+  });
+
+  it("names whoever owns a folder to whoever else reads it", async () => {
+    const held = device(["/graphs/one"]);
+    await held.api.createGraph({ title: "Thesis" });
+    await held.api.updateProfile({ display_name: "Ada Lovelace" });
+    const owner = (await held.api.me())?.did as string;
+
+    const reading = reopened(held);
+    expect((await reading.profileOf(owner)).display_name).toBe("Ada Lovelace");
+    await expect(
+      reading.profileOf("did:syr:z6MkNobodyOnThisDevice"),
+    ).rejects.toBeInstanceOf(ServerRequiredError);
   });
 
   it("says a graph on this device holds no more of you than that", async () => {

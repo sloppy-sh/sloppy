@@ -5,6 +5,7 @@
 import { type DidSyr } from "@sloppy/types";
 import { splitNoteFile } from "./front.js";
 import {
+  amendmentAt,
   decodeText,
   encodeText,
   GRAPH_FILE,
@@ -17,9 +18,14 @@ import { rekeyMarkdown } from "./markdown.js";
 
 /**
  * The same vault under another identity: the owner, every note's own ref, its
- * parent, its links and every reference in its writing. The aliases ride the
- * note, so its ref carries them. A file this cannot read is carried through
- * untouched rather than dropped.
+ * parent, its links, every reference in its writing, and the note an offered
+ * change amends. The aliases ride the note, so its ref carries them.
+ *
+ * `authors`, `contributors` and an offer's `by` are never rewritten. A note's
+ * `owner` is rewritten where it is `from`'s and left alone where it is anybody
+ * else's — docs/ARCHITECTURE.md § "A graph on disk".
+ *
+ * A file this cannot read is carried through untouched rather than dropped.
  */
 export function rekey(vault: Vault, from: DidSyr, to: DidSyr): Vault {
   const moved: Vault = new Map();
@@ -28,7 +34,8 @@ export function rekey(vault: Vault, from: DidSyr, to: DidSyr): Vault {
       moved.set(path, rekeyGraph(bytes, from, to));
       continue;
     }
-    moved.set(path, noteAt(path) ? rekeyNote(bytes, from, to) : bytes);
+    const keyed = noteAt(path) !== undefined || amendmentAt(path) !== undefined;
+    moved.set(path, keyed ? rekeyRefs(bytes, from, to) : bytes);
   }
   return moved;
 }
@@ -42,9 +49,10 @@ function rekeyGraph(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
   }
 }
 
-const REF_FIELD = /^((?:ref|parent): | {2}- )/;
+const REF_FIELD = /^((?:ref|parent|amends): | {2}- )/;
+const GATE_FIELD = "owner: ";
 
-function rekeyNote(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
+function rekeyRefs(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
   const text = decodeText(bytes);
   let note: ReturnType<typeof splitNoteFile>;
   try {
@@ -53,6 +61,7 @@ function rekeyNote(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
     return bytes;
   }
   const front = note.frontLines.map((line) => {
+    if (line === `${GATE_FIELD}${from}`) return `${GATE_FIELD}${to}`;
     const field = REF_FIELD.exec(line);
     if (!field || !line.startsWith(`${from}/`, field[0].length)) return line;
     return `${field[0]}${to}/${line.slice(field[0].length + from.length + 1)}`;

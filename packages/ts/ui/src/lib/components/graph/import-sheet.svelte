@@ -68,12 +68,25 @@
 		return `${notes} and ${count(preview.pictures, 'picture', 'pictures')} arrive.`;
 	});
 
+	const offers = $derived(empty ? 0 : (preview?.offers ?? 0));
+
 	const settling = $derived.by(() => {
 		if (!merging) return null;
-		if (conflicts.length === 0) return 'The two copies agree about everything in them.';
-		return conflicts.length === 1
-			? 'One note needs settling before this comes in.'
-			: `${conflicts.length.toLocaleString()} notes need settling before this comes in.`;
+		if (conflicts.length > 0) {
+			return conflicts.length === 1
+				? 'One note needs settling before this comes in.'
+				: `${conflicts.length.toLocaleString()} notes need settling before this comes in.`;
+		}
+		// An offer is a change waiting on somebody, so the two copies are not
+		// agreed while one is arriving.
+		return offers > 0 ? null : 'The two copies agree about everything in them.';
+	});
+
+	const offered = $derived.by(() => {
+		if (offers === 0) return null;
+		return offers === 1
+			? 'One offered change arrives with it.'
+			: `${offers.toLocaleString()} offered changes arrive with it.`;
 	});
 
 	const landing = $derived.by(() => {
@@ -110,6 +123,10 @@
 
 			{#if settling}
 				<p class="px-2 text-sm text-muted-foreground">{settling}</p>
+			{/if}
+
+			{#if offered}
+				<p class="px-2 text-sm text-muted-foreground">{offered}</p>
 			{/if}
 
 			{#if merging && conflicts.length > 0}

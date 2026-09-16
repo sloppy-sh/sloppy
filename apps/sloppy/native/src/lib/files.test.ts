@@ -6,7 +6,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 	convertFileSrc: (path: string, scheme: string) => `${scheme}://localhost/${path}`
 }));
 
-const { tauriFiles, tauriHistory } = await import('./files.js');
+const { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } = await import('./files.js');
 
 /** The commands with the arguments they were called with, answering whatever
  *  `answers` holds for each. */
@@ -129,5 +129,41 @@ describe('the states the graph in this folder has been in', () => {
 			tauriHistory('/vault', call).resolve('../elsewhere/a.md', 'mine')
 		).rejects.toBeInstanceOf(OutsideRootError);
 		expect(asked).toEqual([]);
+	});
+});
+
+describe('a file that arrives from outside every folder this app reads', () => {
+	it('comes back as the bytes somebody picked, under the name they picked', async () => {
+		const { asked, call } = shell({
+			pick_file: { name: 'sloppy-identity.json', bytes: btoa('{"did":"did:syr:z1"}') }
+		});
+
+		const picked = await tauriOpenFile(call)('.json,application/json');
+
+		expect(picked?.name).toBe('sloppy-identity.json');
+		expect(await picked?.text()).toBe('{"did":"did:syr:z1"}');
+		// A media type is not something the system filters a file list by.
+		expect(asked).toEqual([{ command: 'pick_file', args: { extensions: ['json'] } }]);
+	});
+
+	it('is nothing where somebody picked none', async () => {
+		const { call } = shell({ pick_file: null });
+
+		expect(await tauriOpenFile(call)('.json')).toBeNull();
+	});
+});
+
+describe('a file the app hands a person to keep', () => {
+	it('crosses the bridge as bytes, with the name to offer them', async () => {
+		const { asked, call } = shell({ save_file: true });
+
+		await tauriSaveFile(call)('sloppy-identity.json', new Blob([new Uint8Array([1, 2, 3])]));
+
+		expect(asked).toEqual([
+			{
+				command: 'save_file',
+				args: { name: 'sloppy-identity.json', bytes: btoa('') }
+			}
+		]);
 	});
 });
