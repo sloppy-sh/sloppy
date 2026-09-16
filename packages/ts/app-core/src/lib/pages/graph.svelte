@@ -752,11 +752,12 @@
 	}
 
 	/** A note cited by its address is in whichever graph its author filed it in,
-	 *  so reaching one is what moves the reader into that graph. Somebody else's
-	 *  is read in the region the reader holds a copy of it in. */
+	 *  so reaching one is what moves the reader into that graph — a folder
+	 *  somebody shared opens here like any other graph of the reader's. One in a
+	 *  graph they do not keep is read in the region they hold a copy of it in. */
 	async function reachCited(cited: OwnedRef): Promise<void> {
-		const reader = session.viewer?.did;
-		if (reader !== undefined && splitOwnedRef(cited).did !== reader) {
+		await graphs.load().catch(() => {});
+		if (session.signedIn && !graphs.keeps(splitOwnedRef(cited).did)) {
 			await reachHeld(cited);
 			return;
 		}

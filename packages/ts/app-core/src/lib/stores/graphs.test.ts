@@ -538,6 +538,25 @@ describe('a graph that is a folder on this device', () => {
 		expect(graphs.current).toBe(HOME);
 	});
 
+	// A folder somebody shared is theirs, so its refs carry their identity — and
+	// it is still one of the graphs in front of this reader.
+	it('counts a folder somebody else owns among the graphs in front of the reader', async () => {
+		const keeper = 'did:syr:z6MkjChhrJfLm9WGVUAnyLPnfPGmZDcyDKNsBTsAsn7RkAqB';
+		const theirs = `${keeper}/01ARZ3NDEKTSV4RRFFQ69G5HMX` as OwnedRef;
+		serving({
+			folder: () => GARDEN_FOLDER,
+			graph: async () => theirs,
+			asks: true,
+			open: async () => GARDEN_FOLDER
+		});
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(graphs.keeps(keeper)).toBe(true);
+		expect(graphs.keeps(DID)).toBe(true);
+		expect(graphs.keeps('did:syr:z6MkuStrangerStrangerStrangerSt')).toBe(false);
+	});
+
 	it('is the one the device started with where no folder is open yet', async () => {
 		serving({
 			folder: () => undefined,
