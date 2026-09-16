@@ -19,6 +19,7 @@ import {
   type UpdateBlockRequestSchema,
 } from "@sloppy/types";
 import type { z } from "zod";
+import { gatedElsewhere, writable } from "../node/gate";
 import { NodeRepository } from "../node/node.repository";
 import { SerialQueue } from "../node/serial-queue";
 import { BlockRepository, type BlockPatch } from "./block.repository";
@@ -57,9 +58,9 @@ export class BlockService {
   }
 
   async create(did: string, request: CreateRequest): Promise<BlockView> {
-    if (!(await this.nodes.find(did, request.node))) {
-      throw new BadRequestException("That note is not here.");
-    }
+    const note = await this.nodes.find(did, request.node);
+    if (!note) throw new BadRequestException("That note is not here.");
+    if (!writable(note, did)) throw gatedElsewhere();
     const written = await this.perNote.run(request.node, async () => {
       const ord = this.place(
         await this.stack(request.node),
@@ -92,13 +93,15 @@ export class BlockService {
     // A deleted note keeps its sections so they come back with it, and a write
     // that landed in one would be neither read nor counted in what the note
     // cites.
-    if (!(await this.nodes.find(did, from))) {
-      throw new NotFoundException("That note is not here.");
-    }
+    const held = await this.nodes.find(did, from);
+    if (!held) throw new NotFoundException("That note is not here.");
+    if (!writable(held, did)) throw gatedElsewhere();
     const into = request.node ?? from;
     const carried = into !== from;
-    if (carried && !(await this.nodes.find(did, into))) {
-      throw new BadRequestException("That note is not here.");
+    if (carried) {
+      const landing = await this.nodes.find(did, into);
+      if (!landing) throw new BadRequestException("That note is not here.");
+      if (!writable(landing, did)) throw gatedElsewhere();
     }
     if (request.after === ref) {
       throw new BadRequestException("A block cannot follow itself.");
@@ -153,6 +156,8 @@ export class BlockService {
   async remove(did: string, ref: OwnedRef): Promise<void> {
     const node = await this.blocks.nodeOf(did, ref);
     if (node === null) return;
+    const inside = await this.nodes.find(did, node);
+    if (inside && !writable(inside, did)) throw gatedElsewhere();
     const moved = await this.perNote.run(node, async () => {
       const held = await this.blocks.find(did, ref);
       await this.blocks.remove(did, ref);

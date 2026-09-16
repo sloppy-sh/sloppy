@@ -4,6 +4,7 @@
 
 import {
   type Address,
+  authorsOf,
   type BlockDocument,
   type DocumentMark,
   type DocumentNode,
@@ -152,11 +153,19 @@ export function publishedNodeOf(
 ): Omit<PublishedNode, "ref"> {
   const root = ownedRefFrom(node.id) === region.root;
   const look = travellingLook(node.appearance);
+  const writers = authorsOf(node);
   return {
     ...(node.address === undefined ? {} : { address: node.address }),
     ...(carried.aliases.length === 0 ? {} : { aliases: [...carried.aliases] }),
     ...(root || node.parent === undefined ? {} : { parent: node.parent }),
     origin: region.root,
+    ...(node.owner === undefined ? {} : { owner: node.owner }),
+    ...(writers.length === 1 && writers[0] === node.created_by
+      ? {}
+      : { authors: [...writers] }),
+    ...(node.contributors?.length
+      ? { contributors: [...node.contributors] }
+      : {}),
     title: node.title,
     tags: node.tags,
     ...(look === undefined ? {} : { look }),

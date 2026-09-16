@@ -6,6 +6,7 @@ import {
   type Address,
   compareAddresses,
   createOwnedRecordId,
+  type DidSyr,
   graphOf,
   type Node,
   type NodeAlias,
@@ -24,7 +25,7 @@ import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
 import { replacement } from "./patch";
 
-const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
+const PATCHABLE = ["title", "tags", "links", "appearance", "owner"] as const;
 
 /**
  * A note its author has not deleted, and its opposite. Every read but the two
@@ -122,6 +123,8 @@ const BULK_WRITABLE = ["tags", "appearance"] as const;
  *  clears its column — see {@link replacement}. */
 export type NodePatch = Partial<Pick<Node, "title" | "tags" | "links">> & {
   appearance?: NodeAppearance | null;
+  /** Who gates the note's writing; `null` takes the gate off. */
+  owner?: DidSyr | null;
 };
 
 export type NodeBulkPatch = Partial<Pick<Node, "tags">> & {
