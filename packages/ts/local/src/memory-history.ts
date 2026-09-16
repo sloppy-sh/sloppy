@@ -31,16 +31,17 @@ interface Held {
   parents: string[];
   signature?: Commit["signature"];
   tree: Tree;
-  /** Where it sits in the order every commit anywhere was made, which is the
-   *  order a listing reads in. It is counted across all of these, so a commit
-   *  that arrives from somewhere else keeps its place among the ones here —
-   *  and what a commit springs from is always made before it, which is what
-   *  makes newest-first the order a picture of the history can be drawn in. */
   made: number;
 }
 
-/** Counted across every history in this process, so two of them never name one
- *  commit two things and never disagree about which came first. */
+/**
+ * What {@link Held.made} counts, across every history in this process: two of
+ * them never name one commit two things, and a commit that arrives from
+ * somewhere else keeps its place among the ones here.
+ *
+ * What a commit springs from is always made before it, which is what makes
+ * newest-first by this a picture nothing is drawn above its parent in.
+ */
 let made = 0;
 
 /** What a merge left in two versions, and what each side had. Absent bytes are
@@ -511,10 +512,8 @@ export class MemoryHistory implements History {
 
   private drawn(held: Held): GraphCommit {
     const refs: string[] = [];
-    for (const [name, head] of this.heads)
+    for (const [name, head] of [...this.heads, ...this.followed]) {
       if (head === held.id) refs.push(name);
-    for (const [ref, head] of this.followed) {
-      if (head === held.id) refs.push(ref);
     }
     return { ...view(held), refs: refs.sort() };
   }
@@ -522,12 +521,12 @@ export class MemoryHistory implements History {
   /** Which remote an act with none named is with: the one the branch follows,
    *  else the only one there is, else the one a first push makes. */
   private whichRemote(remote?: string): string {
+    const only = this.named.size === 1 ? [...this.named.keys()][0] : undefined;
     const name =
       remote ??
       this.follows.get(this.on)?.split("/")[0] ??
-      (this.named.size === 1
-        ? [...this.named.keys()][0]
-        : (DEFAULT_REMOTE as string));
+      only ??
+      DEFAULT_REMOTE;
     if (!this.named.has(name)) throw nothingCalled(name);
     return name;
   }
