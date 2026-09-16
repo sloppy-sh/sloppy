@@ -46,7 +46,7 @@ export async function graphOnly(
   root = "/graphs/one",
 ): Promise<{ graph: LocalGraph; writer: NoteWriter; did: DidSyr }> {
   const identity = await openLocalIdentity(files);
-  const graph = await LocalGraph.start(files.at(root), identity.did, {
+  const graph = await LocalGraph.start(files.at(root), {
     format: VAULT_FORMAT,
     graph: ulid(),
     name: "A graph",
@@ -62,10 +62,9 @@ export async function graphOnly(
 /** The same folder read again, so what a test asserts is what the files say. */
 export function reread(
   files: Files,
-  did: DidSyr,
   root = "/graphs/one",
 ): Promise<LocalGraph> {
-  return LocalGraph.open(files.at(root), did);
+  return LocalGraph.open(files.at(root));
 }
 
 /** Bytes as the body a surface hands the client — `slice()` so the blob holds a

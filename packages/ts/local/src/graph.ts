@@ -159,9 +159,15 @@ export class LocalGraph {
 
   private constructor(
     readonly files: Files,
-    readonly did: DidSyr,
     private said: VaultGraph,
   ) {}
+
+  /** Whose graph this is, which is what the folder says and never who is
+   *  reading it — a ref's DID says whose graph a note is in, so a folder
+   *  somebody else owns keeps its refs when this device writes in it. */
+  get did(): DidSyr {
+    return this.said.owner;
+  }
 
   /**
    * The graph the folder holds, with its index built. Throws where the folder
@@ -171,26 +177,22 @@ export class LocalGraph {
    * of its own here, so an archive of it settles into itself rather than into
    * somebody else's first graph — docs/ARCHITECTURE.md § "A graph on disk".
    */
-  static async open(files: Files, did: DidSyr): Promise<LocalGraph> {
+  static async open(files: Files): Promise<LocalGraph> {
     const bytes = await files.read(GRAPH_FILE);
     if (!bytes) throw absent("There is no graph in that folder.");
     const said = readGraphFile(bytes);
     const own =
       said.graph === UNNAMED_GRAPH_ULID ? { ...said, graph: ulid() } : said;
     if (own !== said) await files.write(GRAPH_FILE, graphFile(own));
-    const graph = new LocalGraph(files, did, own);
+    const graph = new LocalGraph(files, own);
     await graph.build();
     return graph;
   }
 
   /** A folder made into a vault, with nothing in it yet. */
-  static async start(
-    files: Files,
-    did: DidSyr,
-    said: VaultGraph,
-  ): Promise<LocalGraph> {
+  static async start(files: Files, said: VaultGraph): Promise<LocalGraph> {
     await files.write(GRAPH_FILE, graphFile(said));
-    const graph = new LocalGraph(files, did, said);
+    const graph = new LocalGraph(files, said);
     await graph.build();
     return graph;
   }

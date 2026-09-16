@@ -268,14 +268,14 @@ export class LocalApi implements SloppyApi {
   async createGraph(asked: CreateGraphRequest): Promise<GraphView> {
     const request = checked(() => CreateGraphRequestSchema.parse(asked));
     return this.write(async () => {
-      const did = (await this.who()).did;
+      const did = await this.writer;
       const root = await this.files.pickFolder();
       if (root === undefined) throw refuse("No folder was chosen.");
       const known = await this.vaults();
       if (known.some((one) => one.root === root)) {
         throw refuse("There is already a graph in that folder.");
       }
-      const graph = await LocalGraph.start(this.files.at(root), did, {
+      const graph = await LocalGraph.start(this.files.at(root), {
         format: VAULT_FORMAT,
         graph: ulid(),
         name: request.title,
@@ -833,7 +833,7 @@ export class LocalApi implements SloppyApi {
     }
     const files = this.files.at(root);
     for (const [path, bytes] of vault) await files.write(path, bytes);
-    const graph = await LocalGraph.open(files, (await this.who()).did);
+    const graph = await LocalGraph.open(files);
     this.opened.set(root, graph);
     await this.rememberVault(root);
     return this.graphView(graph);
@@ -934,7 +934,7 @@ export class LocalApi implements SloppyApi {
   private async reopened(into: LocalGraph): Promise<GraphView> {
     const root = this.rootOf(into);
     this.starting.delete(root);
-    const graph = await LocalGraph.open(into.files, (await this.who()).did);
+    const graph = await LocalGraph.open(into.files);
     this.opened.set(root, graph);
     return this.graphView(graph);
   }
@@ -1312,12 +1312,11 @@ export class LocalApi implements SloppyApi {
 
   // ── Profile ──────────────────────────────────────────────────────────────
 
-  /** Who this device writes under, as the graphs on it say. Every graph here
-   *  belongs to the one identity, so the first that says who owns it answers
-   *  for all of them. */
+  /** Who this device writes under, as the graphs that identity owns say. A
+   *  folder somebody else owns says who THEY are, so it is not read here. */
   async profile(): Promise<ProfileView> {
-    const did = (await this.who()).did;
-    const graphs = await this.allGraphs();
+    const did = await this.writer;
+    const graphs = await this.ownGraphs(did);
     const graph = graphs.find(
       (held) =>
         held.owner.name !== undefined || held.owner.avatar !== undefined,
@@ -1334,9 +1333,9 @@ export class LocalApi implements SloppyApi {
     };
   }
 
-  /** A name and a picture, written into every graph on this device — a graph
-   *  says whose it is wherever it is opened, so each keeps its own copy of the
-   *  picture. */
+  /** A name and a picture, written into every graph the writing identity owns
+   *  — a graph says whose it is wherever it is opened, so each keeps its own
+   *  copy of the picture. A folder somebody else owns is left alone. */
   async updateProfile(asked: UpdateProfileRequest): Promise<ProfileView> {
     const request = checked(() => UpdateProfileRequestSchema.parse(asked));
     if (request.bio != null || request.banner_upload_id != null) {
@@ -1345,10 +1344,10 @@ export class LocalApi implements SloppyApi {
       );
     }
     return this.write(async () => {
-      const graphs = await this.allGraphs();
+      const graphs = await this.ownGraphs(await this.writer);
       if (graphs.length === 0) {
         throw absent(
-          "There is no graph on this device yet. Start one to write.",
+          "There is no graph of your own on this device yet. Start one to write your name in.",
         );
       }
       const picture =
@@ -1506,6 +1505,11 @@ export class LocalApi implements SloppyApi {
     return here && !graphs.includes(here) ? [...graphs, here] : graphs;
   }
 
+  /** The graphs on this device that one identity owns. */
+  private async ownGraphs(did: DidSyr): Promise<LocalGraph[]> {
+    return (await this.allGraphs()).filter((graph) => graph.did === did);
+  }
+
   /** The graphs in the folders this device wrote down, in the order it opened
    *  them. A folder that is no longer a vault is left out rather than refused:
    *  somebody moved it, and the graphs beside it still open. */
@@ -1518,10 +1522,7 @@ export class LocalApi implements SloppyApi {
         continue;
       }
       try {
-        const graph = await LocalGraph.open(
-          this.files.at(known.root),
-          (await this.who()).did,
-        );
+        const graph = await LocalGraph.open(this.files.at(known.root));
         this.opened.set(known.root, graph);
         graphs.push(graph);
       } catch {}
@@ -1581,7 +1582,6 @@ export class LocalApi implements SloppyApi {
     opening = (async () => {
       const already = this.opened.get(root);
       if (already) return already;
-      const did = (await this.who()).did;
       const at = this.files.at(root);
       const written = (await this.vaults()).some((one) => one.root === root);
       const holds = await holdsAGraph(at);
@@ -1591,12 +1591,12 @@ export class LocalApi implements SloppyApi {
         );
       }
       const graph = holds
-        ? await LocalGraph.open(at, did)
-        : await LocalGraph.start(at, did, {
+        ? await LocalGraph.open(at)
+        : await LocalGraph.start(at, {
             format: VAULT_FORMAT,
             graph: ulid(),
             name: folderName(root),
-            owner: did,
+            owner: await this.writer,
           });
       this.opened.set(root, graph);
       if (!written) await this.rememberVault(root);

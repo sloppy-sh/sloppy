@@ -532,10 +532,12 @@ nothing local needs the token after the exchange except refreshing the name and 
 `graph.json`. Where this device holds that identity, the person writes as the owner. Where it
 does not — a folder shared through git, or one brought from somebody else — they write as a
 CONTRIBUTOR under one of the identities this device holds, chosen in Settings and defaulting
-to the one most recently used; `LocalApi`'s `writer` is that choice, and absent it is the
-graph's own owner. A folder started here is owned by the identity that was writing when it
-was started. **Switching who is writing changes nothing already written**: refs never re-key
-on a switch. What a write then does to a note is § "Whose writing a note carries", the same
+to the one most recently used; `whoWrites` settles that and `LocalApi`'s `writer` carries it,
+absent being the identity this device writes under by default. A folder started here is owned
+by the identity that was writing when it was started. **Switching who is writing changes
+nothing already written**: refs never re-key on a switch, and a folder somebody else owns
+keeps its own — a ref's DID says whose graph a note is in, so writing in their folder joins
+their notes' `authors` rather than making the notes this device's. What a write then does to a note is § "Whose writing a note carries", the same
 rule the server runs.
 
 The one thing a first run still asks is a desktop's, and it is asked once: where the graph

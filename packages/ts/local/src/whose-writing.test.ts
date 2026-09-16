@@ -23,6 +23,7 @@ import {
   textDocument,
 } from "./local.test-support.js";
 
+const ADA = "did:syr:z6MkrAdaAdaAdaAdaAdaAdaAdaAdaAda";
 const BOB = "did:syr:z6MkuBobBobBobBobBobBobBobBobBob";
 const CAI = "did:syr:z6MkvCaiCaiCaiCaiCaiCaiCaiCaiCai";
 
@@ -658,7 +659,7 @@ describe("a change offered on a note", () => {
     await graph.purge(graph.binned());
 
     expect(graph.offersOn(note.ref)).toEqual([]);
-    expect((await reread(files, did)).offersOn(note.ref)).toEqual([]);
+    expect((await reread(files)).offersOn(note.ref)).toEqual([]);
   });
 
   it("does not arrive twice when the archive is brought in again", async () => {
@@ -744,5 +745,43 @@ describe("a gate on a note, brought in with a copy of its graph", () => {
       held.did,
       BOB,
     ]);
+  });
+});
+
+describe("a folder somebody else owns", () => {
+  /** A folder whose graph and notes are ADA's, on a device writing under an
+   *  identity of its own — what a folder shared through git is. */
+  async function theirs(): Promise<{ held: Device; note: OwnedRef }> {
+    const held = device();
+    const ada = new LocalApi(held.files, { writer: ADA });
+    await ada.createGraph({ title: "Thesis" });
+    const note = await ada.createNode({ title: "Seeds" });
+    return { held, note: note.ref };
+  }
+
+  it("keeps its notes theirs and carries this device's writing into them", async () => {
+    const { held, note } = await theirs();
+    const here = reopened(held);
+    const me = (await here.me())?.did as DidSyr;
+
+    const written = await here.updateNode(note, { title: "Seeds, again" });
+
+    expect(me).not.toBe(ADA);
+    expect(note.startsWith(`${ADA}/`)).toBe(true);
+    expect(written.ref).toBe(note);
+    expect(written.authors).toEqual([ADA, me]);
+  });
+
+  it("is nobody else's to gate, and keeps this device's name out of it", async () => {
+    const { held, note } = await theirs();
+    const here = reopened(held);
+    const me = (await here.me())?.did as DidSyr;
+
+    await expect(here.updateNode(note, { owner: me })).rejects.toThrow(
+      "Only they can say who writes it",
+    );
+    await expect(here.updateProfile({ display_name: "Bo" })).rejects.toThrow(
+      "no graph of your own",
+    );
   });
 });
