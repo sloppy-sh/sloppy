@@ -250,9 +250,15 @@ export class NoteWriter {
     );
   }
 
-  /** An offer carries a note's writing and never its place, so what is the
-   *  owner's alone is refused rather than offered. */
+  /**
+   * An offer carries a note's writing and never its place, so what is not the
+   * writer's to place is refused rather than offered. The graph's own owner
+   * places every note in it whatever its gate says: the genealogy and the
+   * numbers are the graph's, and handing a note's writing on does not hand
+   * those with it.
+   */
   private onlyTheOwner(note: StoredNote, what: string): void {
+    if (this.writer === this.graph.did) return;
     if (writeOutcome(note, this.writer) === "offered") {
       throw refuse(
         `${noteLabel(note)} is somebody else's. Only its owner can ${what}.`,

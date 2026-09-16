@@ -8,7 +8,13 @@ import {
   type OwnedRef,
   ulid,
 } from "@sloppy/types";
-import { amendmentPath } from "@sloppy/vault";
+import {
+  amendmentPath,
+  decodeText,
+  encodeText,
+  pack,
+  unpack,
+} from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
 import { MemoryFiles } from "./files.js";
@@ -99,6 +105,32 @@ function drawing(description: string): BlockDocument {
 
 function offerPath(held: Folder, offer: OwnedRef): string {
   return `/graphs/one/${amendmentPath(offer.slice(offer.lastIndexOf("/") + 1))}`;
+}
+
+const EARLIER = "2020-01-01T00:00:00.000Z";
+const LATER = "2099-01-01T00:00:00.000Z";
+
+/** The archive with one offer in it written at another moment, saying something
+ *  else — which is what a second device's copy of that same offer is. */
+function writtenAgain(
+  bytes: Uint8Array,
+  offer: OwnedRef,
+  at: string,
+  title: string,
+): Blob {
+  const vault = unpack(bytes);
+  const path = amendmentPath(offer.slice(offer.lastIndexOf("/") + 1));
+  const file = vault.get(path);
+  if (!file) throw new Error(`no offer at ${path}`);
+  vault.set(
+    path,
+    encodeText(
+      decodeText(file)
+        .replace(/^at: .*$/m, `at: ${at}`)
+        .replace(/^title: .*$/m, `title: ${title}`),
+    ),
+  );
+  return body(pack(vault));
 }
 
 describe("whose writing a note carries", () => {
@@ -259,6 +291,28 @@ describe("a note somebody else writes", () => {
     await expect(
       bob.actOnNodes({ notes: [note], act: { act: "delete" } }),
     ).rejects.toThrow("Only its owner can delete it");
+  });
+
+  it("is still the graph owner's to place, and still not theirs to write", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    const beside = await held.api.createNode({ title: "Beside it" });
+    await held.api.updateNode(note.ref, { owner: BOB });
+
+    await held.api.setAddress(note.ref, "7");
+    await held.api.moveNote(note.ref, {
+      relation: "under",
+      note: beside.ref,
+    });
+    await held.api.deleteNode(note.ref);
+    await held.api.restoreBranch(note.ref);
+
+    await expect(
+      held.api.updateNode(note.ref, { title: "As I would have it" }),
+    ).rejects.toThrow("Offer your change instead");
+    const written = await read(held).getNode(note.ref);
+    expect(written?.parent).toBe(beside.ref);
+    expect(written?.title).toBe("Seeds");
   });
 
   it("is nobody else's to claim", async () => {
@@ -670,6 +724,57 @@ describe("a change offered on a note", () => {
     await owner.importArchive(body(archive.bytes));
 
     expect(await read(held).listAmendments(note)).toHaveLength(1);
+  });
+
+  it("is written again where the file's copy of it is the later one", async () => {
+    const { held, note, offer } = await offered();
+    const archive = await read(held).exportArchive(held.graph);
+
+    await read(held).importArchive(
+      writtenAgain(
+        archive.bytes,
+        offer,
+        LATER,
+        "Seeds, as I would now have it",
+      ),
+    );
+
+    const standing = await read(held).listAmendments(note);
+    expect(standing).toHaveLength(1);
+    expect(standing[0].ref).toBe(offer);
+    expect(standing[0].title).toBe("Seeds, as I would now have it");
+  });
+
+  it("stays as it is where the file's copy of it is the earlier one", async () => {
+    const { held, note, offer } = await offered();
+    const archive = await read(held).exportArchive(held.graph);
+
+    await read(held).importArchive(
+      writtenAgain(archive.bytes, offer, EARLIER, "What I first thought"),
+    );
+
+    const standing = await read(held).listAmendments(note);
+    expect(standing).toHaveLength(1);
+    expect(standing[0].title).toBe("Seeds, as I would have it");
+  });
+
+  it("is counted in what the file says it holds, before anything is written", async () => {
+    const { held } = await offered();
+    const archive = await read(held).exportArchive(held.graph);
+
+    const said = await read(held).previewArchive(body(archive.bytes));
+
+    expect(said.offers).toBe(1);
+  });
+
+  it("is absent from what a file carrying none says it holds", async () => {
+    const held = await opened();
+    await held.api.createNode({ title: "Seeds" });
+    const archive = await read(held).exportArchive(held.graph);
+
+    const said = await read(held).previewArchive(body(archive.bytes));
+
+    expect(said.offers).toBeUndefined();
   });
 });
 
