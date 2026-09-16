@@ -380,6 +380,10 @@ export const ArchivePreviewSchema = z.object({
   owner: DidSyrSchema,
   notes: z.int().nonnegative(),
   pictures: z.int().nonnegative(),
+  /** How many changes offered on those notes the archive carries. Absent is
+   *  none, which is what every archive taken out before an offer could travel
+   *  says. */
+  offers: z.int().positive().optional(),
   /** The shortcodes the notes are written with that the importer's own catalog
    *  has no picture for. Each one arrives, and renders as its shortcode. */
   missing_emoji: z.array(z.string()),

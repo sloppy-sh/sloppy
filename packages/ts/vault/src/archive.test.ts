@@ -55,6 +55,7 @@ describe("a vault as one file", () => {
       name: "The garden",
       owner: OWNER,
       notes: 2,
+      offers: 1,
       media: 1,
     });
   });

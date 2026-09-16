@@ -368,8 +368,9 @@ export class NodeService {
 
   /**
    * The note's writing, changed — and who gates it, which is the graph owner's
-   * to write and is why a request naming `owner` is not held to the gate it is
-   * taking off.
+   * to write whatever the gate says. Handing the gate on is not writing, so a
+   * request that does only that joins nobody to what the note carries, and one
+   * that also writes is held to the gate for the writing it carries.
    */
   async update(
     did: string,
@@ -379,12 +380,8 @@ export class NodeService {
   ): Promise<NodeView> {
     const note = await this.nodes.find(did, ref);
     if (!note) throw new NotFoundException("That note is not here.");
-    if (request.owner === undefined && !writable(note, did)) {
-      throw gatedElsewhere();
-    }
-    // Handing the gate on is not writing, so a request that does only that
-    // joins nobody to what the note carries.
     const writes = Object.keys(request).some((field) => field !== "owner");
+    if (writes && !writable(note, did)) throw gatedElsewhere();
     const joined = writes ? withAuthor(note, did) : note;
     const updated = await this.nodes.patch(did, ref, {
       ...request,
@@ -882,7 +879,7 @@ export class NodeService {
     if (writing.length === 0) throw gatedElsewhere();
     const written = await this.nodes.patchAll(
       did,
-      await this.writes(writing, request.act, delegation),
+      await this.writes(did, writing, request.act, delegation),
     );
     return answer(asked.length, written.length, written.map(entityView));
   }
@@ -939,14 +936,28 @@ export class NodeService {
     return answer(asked, after.length, after.map(entityView));
   }
 
-  /** What each note the act reached is about to be set to. */
+  /** What each note the act reached is about to be set to. An act is a write,
+   *  so it joins whoever made it to what an open note carries — {@link
+   *  withAuthor} is that rule, the same one a single write runs. */
   private async writes(
+    did: string,
     notes: readonly Node[],
     act: ChangingAct,
     delegation: Delegation | undefined,
   ): Promise<Map<OwnedRef, NodeBulkPatch>> {
     const each = (of: (note: Node) => NodeBulkPatch) =>
-      new Map(notes.map((note) => [ownedRefFrom(note.id), of(note)] as const));
+      new Map(
+        notes.map((note) => {
+          const joined = withAuthor(note, did);
+          return [
+            ownedRefFrom(note.id),
+            {
+              ...of(note),
+              ...(joined === note ? {} : { authors: joined.authors }),
+            },
+          ] as const;
+        }),
+      );
 
     switch (act.act) {
       case "tag":

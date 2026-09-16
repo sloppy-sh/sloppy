@@ -5,26 +5,35 @@
  * so the nav, the settings row and a note's author cannot disagree.
  */
 
-import { SloppyApiError } from '@sloppy/client';
+import { ServerRequiredError, SloppyApiError } from '@sloppy/client';
 import type { ProfileView } from '@sloppy/types';
-import type { Person } from '@sloppy/ui';
+import { unplacedPerson, type Person } from '@sloppy/ui';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { pictureSrc } from '../asset-src.js';
 
-/** Their pictures resolved for an `<img>`; the rest is the store's own answer. */
+/** Their pictures resolved for an `<img>`; the rest is the store's own answer.
+ *  Somebody with nothing to be known by but the identity itself reads the way
+ *  everyone unnamed does, rather than carrying it at full length. */
 export function personFrom(profile: ProfileView): Person {
 	return {
 		displayName: profile.display_name,
-		handle: profile.username,
+		handle:
+			profile.username === profile.did ? unplacedPerson(profile.did).handle : profile.username,
 		bio: profile.bio,
 		avatar: profile.avatar_src && pictureSrc(profile.avatar_src),
 		banner: profile.banner_src && pictureSrc(profile.banner_src)
 	};
 }
 
-function answeredWithNobody(error: unknown): boolean {
-	return error instanceof SloppyApiError && error.status === 404;
+/** Whether no name is coming: their store answered with nobody, or there is no
+ *  way from here to ask one — a graph served off this device reaches nobody's
+ *  store, and the identity itself is what a surface draws them as. */
+function noNameIsComing(error: unknown): boolean {
+	return (
+		error instanceof ServerRequiredError ||
+		(error instanceof SloppyApiError && error.status === 404)
+	);
 }
 
 class PeopleStore {
@@ -96,7 +105,7 @@ class PeopleStore {
 				if (at === this.#epoch) this.#others.set(did, profile);
 			})
 			.catch((error: unknown) => {
-				if (at === this.#epoch && answeredWithNobody(error)) this.#unplaced.add(did);
+				if (at === this.#epoch && noNameIsComing(error)) this.#unplaced.add(did);
 			})
 			.finally(() => {
 				this.#othersInflight.delete(did);

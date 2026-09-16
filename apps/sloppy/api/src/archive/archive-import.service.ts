@@ -150,6 +150,7 @@ export class ArchiveImportService {
       pictures: [...opened.vault.keys()].filter(
         (path) => uploadAt(path) !== undefined,
       ).length,
+      ...(opened.said.offers > 0 ? { offers: opened.said.offers } : {}),
       missing_emoji: missingEmoji(documents, catalog),
       collisions: await this.rows.heldOutside(
         did,

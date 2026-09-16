@@ -132,6 +132,18 @@ describe("a write on a note somebody else gates", () => {
     expect(patched).toHaveLength(1);
   });
 
+  it("is refused where the request taking the gate off also writes", async () => {
+    const patched: Node[] = [];
+    const written = service(patched).update(
+      DID,
+      ref,
+      { owner: null, title: "Not yours yet" },
+      undefined,
+    );
+    await expect(written).rejects.toBeInstanceOf(ForbiddenException);
+    expect(patched).toEqual([]);
+  });
+
   it("is refused for a set of notes where the gate covers all of them", async () => {
     const acted = service().bulk(
       DID,
@@ -205,6 +217,72 @@ describe("a write on an open note somebody else's writing is in", () => {
     const { service, written } = patching();
     await service.update(DID, ref, { owner: OTHER }, undefined);
     expect(written[0]).not.toHaveProperty("authors");
+  });
+});
+
+describe("an act over a set of open notes", () => {
+  it("joins whoever made it to each of them, as a single write does", async () => {
+    const ours = note({ authors: [OTHER] });
+    // A note whose list is the ref's DID alone is already carrying them, and
+    // spelling it out would be a second way to write the same note.
+    const mine = note();
+    const writes: Record<string, unknown>[] = [];
+    const service = new NodeService(
+      {
+        many: () => Promise.resolve([ours, mine]),
+        patchAll: (
+          _did: string,
+          changes: ReadonlyMap<OwnedRef, Record<string, unknown>>,
+        ) => {
+          writes.push(...changes.values());
+          return Promise.resolve([ours, mine]);
+        },
+      } as unknown as NodeRepository,
+      finds,
+      graphsGating(),
+      media,
+      publications,
+    );
+
+    await service.bulk(
+      DID,
+      {
+        notes: [ownedRefFrom(ours.id), ownedRefFrom(mine.id)],
+        act: { act: "tag", tags: ["seed"] },
+      },
+      undefined,
+    );
+
+    expect(writes.map((one) => one.authors)).toEqual([[OTHER, DID], undefined]);
+  });
+
+  it("joins nobody to one its own graph gates, because ownership is not writing", async () => {
+    const owned = note({ owner: DID, authors: [OTHER] });
+    const writes: Record<string, unknown>[] = [];
+    const service = new NodeService(
+      {
+        many: () => Promise.resolve([owned]),
+        patchAll: (
+          _did: string,
+          changes: ReadonlyMap<OwnedRef, Record<string, unknown>>,
+        ) => {
+          writes.push(...changes.values());
+          return Promise.resolve([owned]);
+        },
+      } as unknown as NodeRepository,
+      finds,
+      graphsGating("owned"),
+      media,
+      publications,
+    );
+
+    await service.bulk(
+      DID,
+      { notes: [ownedRefFrom(owned.id)], act: { act: "tag", tags: ["seed"] } },
+      undefined,
+    );
+
+    expect(writes[0]).not.toHaveProperty("authors");
   });
 });
 

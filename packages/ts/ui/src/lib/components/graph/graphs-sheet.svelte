@@ -1,10 +1,12 @@
 <script lang="ts" module>
-	import { noteLabel, type OwnedRef } from '@sloppy/types';
+	import { noteLabel, type GraphOwnership, type OwnedRef } from '@sloppy/types';
 
 	/** One of somebody's graphs, as this sheet lists it. */
 	export interface GraphChoice {
 		ref: OwnedRef;
 		title: string;
+		/** What it does to a note written in it from here on. Absent is `open`. */
+		ownership?: GraphOwnership;
 	}
 
 	/** A branch its author deleted and can still put back. */
@@ -35,6 +37,8 @@
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
@@ -53,6 +57,7 @@
 		onToggle,
 		onOpen,
 		onRename,
+		onOwnership,
 		onRemove,
 		onRestore,
 		onShow
@@ -82,6 +87,9 @@
 		/** Rejects with an `Error` whose `message` is already fit to show. */
 		onOpen: (title: string) => Promise<void>;
 		onRename: (ref: OwnedRef, title: string) => Promise<void>;
+		/** What a note written in this graph from here on carries. Absent leaves
+		 *  the choice off the sheet. */
+		onOwnership?: (ref: OwnedRef, ownership: GraphOwnership) => Promise<void>;
 		onRemove?: (ref: OwnedRef) => Promise<void>;
 		onRestore?: (ref: OwnedRef) => Promise<void>;
 		/** The sheet has just opened, and what it lists is worth asking for again. */
@@ -89,7 +97,7 @@
 	} = $props();
 
 	let opening = $state('');
-	let naming = $state<{ ref: OwnedRef; title: string } | null>(null);
+	let naming = $state<{ ref: OwnedRef; title: string; owned: boolean } | null>(null);
 	let refused = $state<string | null>(null);
 	let working = $state(false);
 	let putting = $state<OwnedRef | null>(null);
@@ -163,6 +171,14 @@
 		closing = null;
 	}
 
+	/** The switch shows what the graph carries, so a choice that did not save goes
+	 *  back where it was rather than standing as if it had. */
+	async function chooseOwnership(ref: OwnedRef, owned: boolean): Promise<void> {
+		if (!onOwnership) return;
+		if (await act(() => onOwnership(ref, owned ? 'owned' : 'open'))) return;
+		if (naming?.ref === ref) naming.owned = !owned;
+	}
+
 	async function renameGraph(): Promise<void> {
 		const asked = naming;
 		if (!asked || asked.title.trim() === '') return;
@@ -180,7 +196,7 @@
 			{#each graphs as graph (graph.ref)}
 				{@const here = graph.ref === current}
 				{@const up = here || alsoUp.has(graph.ref)}
-				<li class="flex items-center gap-2">
+				<li class="flex flex-wrap items-center gap-2">
 					{#if naming?.ref === graph.ref}
 						<Input
 							bind:value={naming.title}
@@ -202,6 +218,24 @@
 						>
 							Save
 						</Button>
+						{#if onOwnership}
+							<div class="flex w-full items-start gap-3 px-1 pt-1 pb-2">
+								<Switch
+									id="owned-{graph.ref}"
+									bind:checked={naming.owned}
+									disabled={working}
+									onCheckedChange={(owned) => void chooseOwnership(graph.ref, owned)}
+								/>
+								<div class="min-w-0 flex-1 space-y-1">
+									<Label for="owned-{graph.ref}" class="text-sm font-normal">
+										New notes are only their writer's
+									</Label>
+									<p class="text-xs text-muted-foreground">
+										Anyone else's change is offered to them. What is already written stays as it is.
+									</p>
+								</div>
+							</div>
+						{/if}
 					{:else}
 						<button
 							type="button"
@@ -232,10 +266,10 @@
 							variant="ghost"
 							size="icon"
 							class="size-9 shrink-0 text-muted-foreground"
-							aria-label={`Rename ${nameOf(graph)}`}
+							aria-label={onOwnership ? `Settings for ${nameOf(graph)}` : `Rename ${nameOf(graph)}`}
 							onclick={() => {
 								refused = null;
-								naming = { ref: graph.ref, title: graph.title };
+								naming = { ref: graph.ref, title: graph.title, owned: graph.ownership === 'owned' };
 							}}
 						>
 							<Pencil class="size-4" />

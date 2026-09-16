@@ -7,7 +7,7 @@
  */
 
 import { SloppyApiError, uploadFile } from '@sloppy/client';
-import type { Viewer } from '@sloppy/types';
+import { splitOwnedRef, type Viewer } from '@sloppy/types';
 import { api } from '../api.js';
 import { deviceStore } from '../device-store.js';
 import { runtime } from '../runtime.js';
@@ -134,25 +134,28 @@ class SessionStore {
 			...(settled.name === undefined ? {} : { name: settled.name }),
 			...(settled.picture === undefined ? {} : { picture: settled.picture })
 		};
-		await this.carryProfile();
 		await this.refresh();
+		await this.carryProfile();
 		return true;
 	}
 
 	/**
 	 * Write what a person's identity store calls them into the graph in front of
-	 * them. A device with no folder open yet keeps it to carry once there is
-	 * one, which is what the first run calls this again for.
+	 * them, where that graph is one they own. A folder somebody else owns says
+	 * who THEY are and is left alone; a device with nowhere of its own to write
+	 * it keeps it to carry once there is somewhere, which is what the first run
+	 * calls this again for.
 	 */
 	async carryProfile(): Promise<void> {
 		if (!carrying) return;
 		const vault = runtime.vault();
 		if (!vault?.folder()) return;
+		const mine = this.#viewer?.did ?? (await api.me().catch(() => null))?.did;
+		if (!mine) return;
 		const { name, picture } = carrying;
 		try {
-			// The folder that is open holds a graph from here on, which is what
-			// there is to write a name into.
-			await vault.graph();
+			const here = await vault.graph();
+			if (!here || splitOwnedRef(here).did !== mine) return;
 			const asked = {
 				...(name === undefined ? {} : { display_name: name }),
 				...(picture === undefined

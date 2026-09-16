@@ -7,6 +7,7 @@ import {
   BlockSchema,
   compareOrd,
   type OwnedRef,
+  ownedRefFrom,
   OwnedRefSchema,
   recordIdFromOwnedRef,
 } from "@sloppy/types";
@@ -189,6 +190,35 @@ export class BlockRepository {
     );
     const row = rows[0];
     return row === undefined ? null : BlockSchema.parse(row);
+  }
+
+  /**
+   * Of the sections named, the ones this person's store already holds a row
+   * for — whichever note each sits on now. A caller deciding between writing a
+   * row and making one asks this rather than reading one note's stack: a
+   * section that moved between notes is a row that is there.
+   */
+  async existingAmong(
+    did: string,
+    refs: readonly OwnedRef[],
+  ): Promise<Set<OwnedRef>> {
+    if (refs.length === 0) return new Set();
+    const held = new Set<OwnedRef>();
+    for (let at = 0; at < refs.length; at += PER_STATEMENT) {
+      const [rows] = await this.query(
+        "SELECT id FROM block WHERE id IN $ids AND created_by = $did",
+        {
+          ids: refs
+            .slice(at, at + PER_STATEMENT)
+            .map((ref) => recordIdFromOwnedRef("block", ref)),
+          did,
+        },
+      );
+      for (const row of rows) {
+        held.add(ownedRefFrom((row as { id: RecordId }).id));
+      }
+    }
+    return held;
   }
 
   /** The words are derived here rather than handed in, so a document and the

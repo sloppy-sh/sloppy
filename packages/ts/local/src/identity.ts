@@ -73,6 +73,10 @@ export interface DelegatedIdentity extends LocalIdentity {
   /** What the store called them when this device last asked. Absent where it
    *  says nothing. */
   name?: string;
+  /** What the store had them wearing when this device last asked: the file it
+   *  is in under {@link Files.dataPath}, and what kind of picture it is.
+   *  Absent where they have none. */
+  picture?: { file: string; mime_type: string };
 }
 
 /** One of the identities this device holds. {@link IdentitySource} is the axis:
@@ -98,6 +102,40 @@ export interface MintedIdentity {
  *  first one's. Multibase spells the public key in letters and digits only. */
 function seedFor(publicKey: string): string {
   return `${publicKey}.key`;
+}
+
+/** Where the picture a store has one identity wearing is kept, beside its key
+ *  and named the same way. */
+function pictureFor(publicKey: string): string {
+  return `${publicKey}.picture`;
+}
+
+/**
+ * What a store said an identity this device holds is called and wearing, as
+ * this device last heard it. A graph started under that identity is written in
+ * with it, so a folder started long after the sign-in still says whose it is.
+ */
+export interface HeldProfile {
+  name?: string;
+  picture?: { bytes: Uint8Array; mime_type: string };
+}
+
+export async function readHeldProfile(
+  files: Files,
+  did: DidSyr,
+): Promise<HeldProfile> {
+  const held = (await readIdentities(files)).identities.find(
+    (one) => one.did === did,
+  );
+  if (held?.source !== "delegated") return {};
+  const kept = held.picture;
+  const bytes = kept
+    ? await files.at(await files.dataPath()).read(kept.file)
+    : undefined;
+  return {
+    ...(held.name === undefined ? {} : { name: held.name }),
+    ...(kept && bytes ? { picture: { bytes, mime_type: kept.mime_type } } : {}),
+  };
 }
 
 export function makeLocalIdentity(): MintedIdentity {
@@ -153,6 +191,11 @@ function readHeld(said: unknown): HeldIdentity | undefined {
     ) {
       return undefined;
     }
+    const wearing = one.picture as Partial<DelegatedIdentity["picture"]>;
+    const picture =
+      typeof wearing?.file === "string" && typeof wearing.mime_type === "string"
+        ? { file: wearing.file, mime_type: wearing.mime_type }
+        : undefined;
     return {
       did: did.data,
       public_key: one.public_key,
@@ -166,6 +209,7 @@ function readHeld(said: unknown): HeldIdentity | undefined {
       ...(typeof one.name === "string" && one.name !== ""
         ? { name: one.name }
         : {}),
+      ...(picture === undefined ? {} : { picture }),
     };
   }
   return {
@@ -599,20 +643,25 @@ export class Identities implements IdentityAccess {
       this.options.fetching,
     ).catch(() => undefined);
     const name = profile?.display_name?.trim() || undefined;
+    const publicKey = encodePublicKey(publicKeyFromDid(opened.did));
+    const picture = profile?.avatar_url
+      ? await readPicture(profile.avatar_url, this.options.fetching)
+      : undefined;
+    const kept = picture
+      ? await this.keepPicture(publicKey, picture)
+      : undefined;
     const identity = await holdDelegatedIdentity(this.files, {
       did: opened.did,
-      public_key: encodePublicKey(publicKeyFromDid(opened.did)),
+      public_key: publicKey,
       source: "delegated",
       instance_url: asked.instance_url,
       delegate_public_key: opened.delegate_public_key,
       access_token: opened.access_token,
       expires_at: new Date(Date.now() + opened.expires_in * 1000).toISOString(),
       ...(name === undefined ? {} : { name }),
+      ...(kept === undefined ? {} : { picture: kept }),
     });
     await this.options.changed?.();
-    const picture = profile?.avatar_url
-      ? await readPicture(profile.avatar_url, this.options.fetching)
-      : undefined;
     return {
       identity: shown(identity, true),
       ...(name === undefined ? {} : { name }),
@@ -651,6 +700,24 @@ export class Identities implements IdentityAccess {
   async writeAs(did: DidSyr): Promise<void> {
     await writeAs(this.files, did);
     await this.options.changed?.();
+  }
+
+  /** The picture kept where a graph started later can still be written with
+   *  it. Answers absent where it could not be written, which costs a face and
+   *  nothing else. */
+  private async keepPicture(
+    publicKey: string,
+    picture: { bytes: Uint8Array; type: string },
+  ): Promise<DelegatedIdentity["picture"]> {
+    const file = pictureFor(publicKey);
+    try {
+      await this.files
+        .at(await this.files.dataPath())
+        .write(file, picture.bytes);
+    } catch {
+      return undefined;
+    }
+    return { file, mime_type: picture.type };
   }
 
   private async asked(): Promise<SigningIn | undefined> {

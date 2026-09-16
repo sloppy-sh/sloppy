@@ -236,6 +236,29 @@ describe('the three doors a first run offers', () => {
 		expect(opened).toEqual(['/Users/me/garden']);
 	});
 
+	it('makes none where the device would not say what it holds', async () => {
+		const makeOne = vi.fn(async () => here());
+		shell(
+			{ open: async () => '/Users/me/garden' },
+			{
+				makeOne,
+				list: async () => {
+					throw new Error(
+						"This device's identity could not be read, so nothing can be written under it."
+					);
+				}
+			}
+		);
+		show();
+
+		button().click();
+		await settle();
+
+		expect(makeOne).not.toHaveBeenCalled();
+		expect(opened).toEqual([]);
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain('could not be read');
+	});
+
 	it('says who the writing will be, once somebody has signed in', async () => {
 		shell({}, { list: async () => [here({ name: 'Ada Lovelace', source: 'delegated' })] });
 		show();

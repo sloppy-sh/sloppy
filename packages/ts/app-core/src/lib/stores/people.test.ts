@@ -1,5 +1,9 @@
+import { serverOnly, type SloppyApi } from '@sloppy/client';
 import type { ProfileView } from '@sloppy/types';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { unplacedPerson } from '@sloppy/ui';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resetApi } from '../api.js';
+import { initRuntime } from '../runtime.js';
 import { DID, useFakeApi, type FakeApi } from './fake-api.test-support.js';
 import { people } from './people.svelte.js';
 
@@ -38,6 +42,11 @@ beforeEach(() => {
 	api = useFakeApi();
 	api.on('GET /profile/me', () => ME);
 	api.on(asked(PEER), () => THEM);
+});
+
+afterEach(() => {
+	initRuntime({ apiHost: () => 'http://api.test', createApi: undefined });
+	resetApi();
 });
 
 describe('who somebody is', () => {
@@ -104,6 +113,40 @@ describe('who somebody is', () => {
 		await settle();
 
 		expect(people.of(PEER)?.handle).toBe('charles');
+	});
+
+	// A graph served off the device reaches nobody's store, so no name is coming
+	// for anybody but the reader — and that is settled, not pending.
+	it('settles somebody this device has no way to ask about, and stops asking', async () => {
+		let asks = 0;
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			createApi: () =>
+				({
+					async profileOf(): Promise<ProfileView> {
+						asks += 1;
+						serverOnly('Somebody else’s profile');
+					}
+				}) as unknown as SloppyApi
+		});
+		resetApi();
+
+		people.resolve(PEER);
+		await settle();
+		people.resolve(PEER);
+		await settle();
+
+		expect(people.unplaced(PEER)).toBe(true);
+		expect(asks).toBe(1);
+	});
+
+	// A graph on this device knows the identity and nothing else about whoever
+	// owns it, and a full one across a note's author line is not a name.
+	it('shows somebody with nothing to be known by but their identity the short way', async () => {
+		api.on('GET /profile/me', () => ({ ...ME, username: DID, display_name: null }));
+		await people.read();
+
+		expect(people.of(DID)?.handle).toBe(unplacedPerson(DID).handle);
 	});
 
 	it('holds somebody it has not asked about apart from somebody it could not place', async () => {

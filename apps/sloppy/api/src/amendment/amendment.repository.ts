@@ -22,8 +22,8 @@ export interface SettledSection {
   ref: OwnedRef;
   content: BlockDocument;
   ord: string;
-  /** Whether the note already holds this section, which decides whether the
-   *  write keeps its `created_at` or mints one. */
+  /** Whether a row for this section is already there, which decides whether the
+   *  write rewrites one or makes one. */
   standing: boolean;
 }
 
