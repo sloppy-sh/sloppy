@@ -532,7 +532,9 @@ export class SloppyClient {
   }
 
   /** Offer a change on a note somebody else owns, or write the offer already
-   *  standing there — a person has one offer per note, not a queue of them. */
+   *  standing there — a person has one offer per note, not a queue of them.
+   *  A hosted graph has one writer and answers that it takes none; the offers
+   *  it settles are the ones that arrived with an archive. */
   async proposeAmendment(
     request: ProposeAmendmentRequest,
   ): Promise<AmendmentView> {

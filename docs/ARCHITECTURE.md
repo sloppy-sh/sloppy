@@ -412,7 +412,8 @@ later theme** — there is no section-level picking, and an offer is taken or tu
 whole.
 
 The routes: `GET /nodes/:did/:ulid/amendments` lists what has been offered on one note, for
-its owner alone; `POST /amendments` offers one or writes the one already standing;
+its owner alone, **oldest offer first** — the order they arrived in, which is the order the
+owner reads them in on every surface; `POST /amendments` offers one or writes the one already standing;
 `DELETE /amendments/:did/:ulid` withdraws it; `POST /amendments/:did/:ulid/approve` and
 `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
 row here, and that DID is the graph owner's.

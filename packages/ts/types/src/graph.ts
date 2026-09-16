@@ -20,6 +20,16 @@ export const UNNAMED_GRAPH_ULID = "00000000000000000000000000";
 export const HOME_GRAPH_TITLE = "My graph";
 
 /**
+ * What a graph does to a note written in it: `open` leaves the note open to
+ * anybody writing here, `owned` stamps the writer as its owner so anybody
+ * else's change is offered rather than landed — docs/ARCHITECTURE.md § "Whose
+ * writing a note carries". A person changes a note's own owner afterwards
+ * either way.
+ */
+export const GraphOwnershipSchema = z.enum(["open", "owned"]);
+export type GraphOwnership = z.infer<typeof GraphOwnershipSchema>;
+
+/**
  * A graph somebody keeps. What a note belongs to is the ref; the row is the
  * name, and which of them its owner started with.
  *
@@ -27,15 +37,6 @@ export const HOME_GRAPH_TITLE = "My graph";
  * owner cannot close. Absent is a graph that is not it, which is what every
  * graph opened alongside it says and what a row written before the column says.
  */
-/**
- * What a graph does to a note written in it: `open` leaves the note open to
- * anybody writing here, `owned` stamps the writer as its owner so anybody
- * else's change is offered rather than landed — AI.md § "The Genealogy Is the
- * Protocol". A person changes a note's own owner afterwards either way.
- */
-export const GraphOwnershipSchema = z.enum(["open", "owned"]);
-export type GraphOwnership = z.infer<typeof GraphOwnershipSchema>;
-
 export const GraphSchema = OwnedEntitySchema.extend({
   title: z.string().min(1).max(512),
   home: z.boolean().optional(),

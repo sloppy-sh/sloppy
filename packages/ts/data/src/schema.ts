@@ -356,8 +356,9 @@ ${MIGRATIONS}
   DEFINE INDEX IF NOT EXISTS node_alias_owner_graph_parent ON node_alias FIELDS created_by, graph, parent;
   -- What has been offered on one note, and the rule that a person has one offer
   -- standing there rather than a queue of them: offering again writes the row
-  -- they already have. One index rather than two, because what a note's owner
-  -- reads is this one's prefix.
+  -- they already have. One index rather than two, because the pair a note's
+  -- owner reads by is this one's prefix — the order they read them in is the
+  -- rows' own age, oldest first, never this column.
   DEFINE INDEX IF NOT EXISTS amendment_owner_note_by ON amendment FIELDS created_by, note, by UNIQUE;
 
   -- Somebody's graphs, which is also the purge's reach.

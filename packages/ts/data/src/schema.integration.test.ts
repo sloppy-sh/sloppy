@@ -1283,22 +1283,39 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
 
   it("holds one offer per person on a note, and reads a note's offers from its index", async () => {
     const NOTE = OwnedRefSchema.parse(`${AVA}/01JOFFERNTA000000000000000`);
-    const offer = (localId: string, note: string, by: string) => ({
+    const offer = (localId: string, note: string, by: string, at: string) => ({
       id: avaId("amendment", localId),
       created_by: AVA,
       note,
       by,
-      at: "2026-02-01T00:00:00.000Z",
+      at,
       title: "As I would have it",
       tags: ["seed"],
-      created_at: "2026-02-01T00:00:00.000Z",
-      updated_at: "2026-02-01T00:00:00.000Z",
+      created_at: at,
+      updated_at: at,
     });
     const OTHER = OwnedRefSchema.parse(`${AVA}/01JOFFERNTB000000000000000`);
+    // CAI offered first, and BOB sorts first by DID, so the order below is the
+    // rows' age and could not be the column order.
     for (const row of [
-      offer("01JOFFERA00000000000000000", NOTE, BOB),
-      offer("01JOFFERB00000000000000000", NOTE, CAI),
-      offer("01JOFFERC00000000000000000", OTHER, BOB),
+      offer(
+        "01JOFFERA00000000000000000",
+        NOTE,
+        BOB,
+        "2026-02-02T00:00:00.000Z",
+      ),
+      offer(
+        "01JOFFERB00000000000000000",
+        NOTE,
+        CAI,
+        "2026-02-01T00:00:00.000Z",
+      ),
+      offer(
+        "01JOFFERC00000000000000000",
+        OTHER,
+        BOB,
+        "2026-02-01T00:00:00.000Z",
+      ),
     ]) {
       await db.create(row.id).content(row);
     }
@@ -1308,7 +1325,14 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     await expect(
       db
         .create(avaId("amendment", "01JOFFERD00000000000000000"))
-        .content(offer("01JOFFERD00000000000000000", NOTE, BOB)),
+        .content(
+          offer(
+            "01JOFFERD00000000000000000",
+            NOTE,
+            BOB,
+            "2026-02-03T00:00:00.000Z",
+          ),
+        ),
     ).rejects.toThrow();
 
     // The note and who offered it are what this row IS.
@@ -1319,7 +1343,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     ).rejects.toThrow();
 
     const OFFERS = `SELECT by FROM amendment
-       WHERE created_by = $did AND note = $note ORDER BY by`;
+       WHERE created_by = $did AND note = $note ORDER BY created_at`;
     const [plan] = await db.query(`${OFFERS} EXPLAIN;`, {
       did: AVA,
       note: NOTE,
@@ -1330,7 +1354,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       did: AVA,
       note: NOTE,
     });
-    expect(held.map((row) => row.by)).toEqual([BOB, CAI]);
+    expect(held.map((row) => row.by)).toEqual([CAI, BOB]);
   });
 
   it("purges one author and leaves the other whole", async () => {
