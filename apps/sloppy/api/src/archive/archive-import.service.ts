@@ -432,9 +432,9 @@ export class ArchiveImportService {
 
   /**
    * The pictures the archive carries, put into the importer's own store under
-   * their own identity, keyed by what the notes in the archive call them. A
-   * file nothing in the notes draws is left where it is, and so is one
-   * `already` names, which the graph being merged into is drawing already.
+   * their own identity, keyed by what the archive calls them. A file nothing
+   * the archive carries draws is left where it is, and so is one `already`
+   * names, which the graph being merged into is drawing already.
    */
   private async carryPictures(
     delegation: Delegation,
@@ -442,11 +442,7 @@ export class ArchiveImportService {
     into: Map<string, string>,
     already: ReadonlySet<string> = new Set(),
   ): Promise<void> {
-    const drawn = new Set(
-      opened.notes.flatMap((note) =>
-        note.sections.flatMap((section) => citedUploads(section.content)),
-      ),
-    );
+    const drawn = new Set(drawnIn(opened).flatMap(citedUploads));
     for (const [path, bytes] of opened.vault) {
       const name = uploadAt(path);
       if (name === undefined || !drawn.has(name) || into.has(name)) continue;
@@ -560,6 +556,19 @@ export function readAmendments(
     }
   }
   return offers;
+}
+
+/** Every document an archive's files are drawn into: its notes' sections and
+ *  the ones standing offered on them. */
+function drawnIn(opened: Opened): BlockDocument[] {
+  return [
+    ...opened.notes.flatMap((note) =>
+      note.sections.map((section) => section.content),
+    ),
+    ...opened.offers.flatMap((offer) =>
+      offer.sections.map((section) => section.content),
+    ),
+  ];
 }
 
 /** The offers with their sections drawing the pictures this store now holds. */

@@ -22,6 +22,7 @@ import {
   decodeText,
   encodeText,
   graphFile,
+  mediaPath,
   notePath,
   pack,
   unpack,
@@ -46,6 +47,16 @@ const NOTE = "01JCMMNSNTE000000000000000";
 const SECTION = "01JCMMNSSECTN0000000000000";
 const OFFER = "01JAMENDMENT00000000000000";
 const OFFERED_SECTION = "01JAMENDSECTN0000000000000";
+
+/** A picture only the offer draws, so it travels for the offer's sake or not at
+ *  all. */
+const PICTURE = "offered-picture";
+const PICTURE_BYTES = Uint8Array.from(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
 
 /** A graph as one file: a note gated by somebody who is not its author, with a
  *  change standing offered on it by that same person. */
@@ -98,10 +109,34 @@ function arriving(author: string, gate: string): Vault {
         "",
         "What the note could say instead.",
         "",
+        `![](${mediaPath(PICTURE, "png")})`,
+        "",
       ].join("\n"),
     ),
   );
+  vault.set(mediaPath(PICTURE, "png"), PICTURE_BYTES);
   return vault;
+}
+
+/** The first upload a set of sections draws, as they hold it now. */
+function pictureIn(
+  sections: readonly { content: unknown }[],
+): string | undefined {
+  let found: string | undefined;
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const held of value) walk(held);
+      return;
+    }
+    if (value === null || typeof value !== "object") return;
+    const held = value as { type?: unknown; attrs?: { upload_id?: unknown } };
+    if (held.type === "picture" && typeof held.attrs?.upload_id === "string") {
+      found ??= held.attrs.upload_id;
+    }
+    for (const inside of Object.values(value)) walk(inside);
+  };
+  walk(sections.map((section) => section.content));
+  return found;
 }
 
 function freePort(): Promise<number> {
@@ -328,6 +363,17 @@ describe("a change offered on a note a graph here holds", () => {
     90_000,
   );
 
+  scenario("draws the pictures it brought, out of this store", async () => {
+    const drawn = pictureIn(offer.blocks);
+
+    expect(drawn?.startsWith(`${ada.did}/`)).toBe(true);
+    const held = await fetch(
+      `${base}/api/media/uploads/${at(drawn as OwnedRef)}`,
+      { headers: { cookie: ada.cookie } },
+    );
+    expect(held.status).toBe(200);
+  });
+
   scenario("is not what a write on the gated note becomes", async () => {
     const refused = await call("PATCH", `/nodes/${at(note.ref)}`, ada, {
       title: "Mine after all",
@@ -438,5 +484,36 @@ describe("a change offered on a note a graph here holds", () => {
         [...vault.keys()].filter((path) => path.startsWith("amendments/")),
       ).toEqual([]);
     },
+  );
+
+  scenario(
+    "goes with the note it was offered on when that note is purged",
+    async () => {
+      const brought = await bringIn(bram, pack(arriving(bram.did, ada.did)));
+      expect(brought.status, JSON.stringify(brought.body)).toBeLessThan(300);
+      const held = (await ok(
+        "GET",
+        `/nodes?graph=${encodeURIComponent((brought.body as GraphView).ref)}`,
+        bram,
+      )) as NodeView[];
+      expect(await offersOn(bram, held[0].ref)).toHaveLength(1);
+
+      expect(
+        (await call("DELETE", `/nodes/${at(held[0].ref)}`, bram)).status,
+      ).toBe(204);
+      const { NodeRepository } = await import("../node/node.repository");
+      const { nowIso } = await import("@sloppy/types");
+      await app.get(NodeRepository).purgeExpired(bram.did, nowIso());
+
+      const { DbService } = await import("../db/db.service");
+      const [standing] = await app
+        .get(DbService)
+        .handle.query<[{ note: OwnedRef }[]]>(
+          "SELECT note FROM amendment WHERE created_by = $did",
+          { did: bram.did },
+        );
+      expect(standing).toEqual([]);
+    },
+    90_000,
   );
 });

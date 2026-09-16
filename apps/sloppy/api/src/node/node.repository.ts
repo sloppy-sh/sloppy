@@ -747,7 +747,8 @@ export class NodeRepository {
 
   /**
    * Everything of theirs deleted before `before`, gone for real: the writing,
-   * what other people left pointing at it, and the note. Each address stays
+   * what other people offered for it and left pointing at it, and the note.
+   * Each address stays
    * behind in a `retired_address` row, because the graph has assigned it and
    * nothing may assign it again — except one another note is at, which belongs
    * to that note and is still its own to take back — AI.md § "The Genealogy Is
@@ -778,6 +779,7 @@ export class NodeRepository {
        DELETE node_alias WHERE created_by = $did AND note IN $refs;
        DELETE block WHERE created_by = $did AND node IN $refs;
        DELETE comment_pointer WHERE created_by = $did AND node IN $refs;
+       DELETE amendment WHERE created_by = $did AND note IN $refs;
        DELETE node WHERE id IN $ids;`,
       {
         did,
