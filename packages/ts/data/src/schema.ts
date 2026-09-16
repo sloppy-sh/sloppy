@@ -359,7 +359,7 @@ ${MIGRATIONS}
   -- What has been offered on one note, and the rule that a person has one offer
   -- standing there rather than a queue of them: offering again writes the row
   -- they already have. One index rather than two, because the pair a note's
-  -- owner reads by is this one's prefix — the order they read them in is the
+  -- offers are read by is this one's prefix — the order they read in is the
   -- rows' own age, oldest first, never this column.
   DEFINE INDEX IF NOT EXISTS amendment_owner_note_by ON amendment FIELDS created_by, note, by UNIQUE;
 
