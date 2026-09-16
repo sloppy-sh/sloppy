@@ -62,8 +62,8 @@
 	});
 
 	function who(did: string): string {
-		const person = people.of(did);
-		return person?.displayName?.trim() || person?.handle?.trim() || 'Somebody';
+		const person = people.of(did) ?? unplacedPerson(did);
+		return person.displayName?.trim() || person.handle.trim() || 'Somebody';
 	}
 
 	function when(at: string): string {

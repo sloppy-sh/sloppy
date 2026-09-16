@@ -275,6 +275,9 @@ describe('the folder’s owner, reading it back', () => {
 		await settle();
 		button('Reads better this way').click();
 		await settle();
+		// Whoever offered it is named the same way here as on the row that led
+		// in, rather than becoming an anonymous somebody between the two.
+		expect(screen()).not.toContain('Somebody’s change');
 		button('Take it in').click();
 		await settle();
 
