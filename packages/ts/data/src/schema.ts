@@ -201,9 +201,11 @@ ${MIGRATIONS}
   DEFINE FIELD IF NOT EXISTS created_by ON pulled_block TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON retired_address TYPE string READONLY;
   DEFINE FIELD IF NOT EXISTS created_by ON node_alias TYPE string READONLY;
-  -- On an offered change the owner is the note's OWNER: it was offered to them,
-  -- and they are the one whose purge has to reach it. Who offered it is the
-  -- column below, and their own purge reaches nothing of this row.
+  -- Whose graph the note is in, which is the DID half of the note's own ref and
+  -- never whoever gates the note — a gate the graph's owner handed on is
+  -- somebody else's. It is what addresses the offer, what a note's offers are
+  -- read by, and what sweeps them away with the notes they stand on. Who
+  -- offered it is the column below, whose purge reaches nothing of this row.
   DEFINE FIELD IF NOT EXISTS created_by ON amendment TYPE string READONLY;
   -- Which note it is offered on and who offered it. Both immutable, this row
   -- being that pairing: a changed half is a different offer and a new row, which

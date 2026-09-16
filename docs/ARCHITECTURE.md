@@ -392,9 +392,12 @@ stamps nothing. Changing it reaches the notes written from then on and leaves th
 already written as they are — a person changes a note's own owner wherever its details are
 shown.
 
-**An amendment is a row and a file.** The `amendment` table's `created_by` is the note's
-OWNER, the way `comment_pointer`'s is the note's author: the offer was made to them, and
-theirs is the purge that has to reach it. `by` is who offered it. **The sections it proposes
+**An amendment is a row and a file.** The `amendment` table's `created_by` is whose graph the
+note is in — the DID half of the note's own ref, the way `comment_pointer`'s is, and never
+whoever gates the note, which a graph owner may have handed on. That is what the offer's own
+`<did>/<ulid>` is built from, what a note's offers are read by, and what carries them away
+with the notes they stand on when that identity is erased. `by` is who offered it. **The
+sections it proposes
 ride on that row**, in order, rather than in a table of their own — nothing reads one without
 the offer it belongs to, so there is no second row for the owner's purge to miss. Each is
 named by the ULID of the note section it stands for: a ref the note has is that section kept

@@ -21,12 +21,9 @@ import { rekeyMarkdown } from "./markdown.js";
  * parent, its links, every reference in its writing, and the note an offered
  * change amends. The aliases ride the note, so its ref carries them.
  *
- * **Whose writing a note carries is a PERSON and is never moved** — `authors`,
- * `contributors` and an offer's `by` are what somebody wrote, and carrying a
- * graph somewhere else does not rewrite that. A note's `owner` is a gate rather
- * than writing, and the graph owner's gate moves with the graph exactly as
- * `graph.json`'s owner does, so a person's own graph comes back writable.
- * Somebody else's gate stays theirs.
+ * `authors`, `contributors` and an offer's `by` are never rewritten. A note's
+ * `owner` is rewritten where it is `from`'s and left alone where it is anybody
+ * else's — docs/ARCHITECTURE.md § "A graph on disk".
  *
  * A file this cannot read is carried through untouched rather than dropped.
  */

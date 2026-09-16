@@ -31,7 +31,7 @@ export const STATEMENTS: readonly string[] = [
   // and reaches nothing of the voice's own.
   `DELETE refused_voice WHERE ${OWNED};`,
   // Offered ON this person's notes by other people, and theirs for the reason
-  // the pointers above are: they are the one it was offered to.
+  // the pointers above are: the notes are in their graph.
   `DELETE amendment WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
   // The addresses those notes spent, and the ones a move left resolving to

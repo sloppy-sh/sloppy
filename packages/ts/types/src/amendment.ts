@@ -29,8 +29,9 @@ export type AmendmentSection = z.infer<typeof AmendmentSectionSchema>;
  * the note's WRITING and nothing about its place: a contributor does not move,
  * renumber or re-parent a note they do not own.
  *
- * `created_by` is the note's OWNER, the way `comment_pointer`'s is — these rows
- * are theirs to read and theirs to purge — and `by` is who offered it.
+ * `created_by` is whose graph the note is in — the DID half of the note's own
+ * ref, the way `comment_pointer`'s is, and never whoever gates the note, which
+ * may be somebody else. `by` is who offered it.
  */
 export const AmendmentSchema = OwnedEntitySchema.extend({
   note: OwnedRefSchema,
@@ -44,10 +45,8 @@ export const AmendmentSchema = OwnedEntitySchema.extend({
   tags: TagsSchema.default([]),
   /** Absent is an offer that leaves the note's look alone. */
   appearance: NodeAppearanceSchema.optional(),
-  /** The sections it proposes, in the order they read. They ride on the offer
-   *  rather than in a table of their own: nothing reads one without the offer
-   *  it belongs to, and the owner's purge that takes the offer takes its
-   *  writing with it. */
+  /** The sections it proposes, in the order they read. Replaced whole with the
+   *  offer: there is no writing of an offer anywhere but here. */
   blocks: z.array(AmendmentSectionSchema).default([]),
 });
 export type Amendment = z.infer<typeof AmendmentSchema>;

@@ -142,8 +142,8 @@ export async function readLocalKey(
   return key;
 }
 
-/** The identity this device writes under, made on the spot the first time.
- *  This is the whole of "no sign-in": nothing here asks anybody anything. */
+/** The identity this device keeps, made on the spot the first time and asking
+ *  nobody anything. */
 export async function openLocalIdentity(files: Files): Promise<LocalIdentity> {
   return (
     (await readLocalIdentity(files)) ??

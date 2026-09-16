@@ -318,6 +318,26 @@ export function amending(
 		}
 	};
 
+	/** The three routes one offer is settled through. An offer made here is
+	 *  settled the same way as one standing before the suite began. */
+	const settle = (self: OwnedRef): void => {
+		api.on(`DELETE /amendments${refPath(self)}`, () => {
+			drop(self);
+			return undefined;
+		});
+		api.on(`POST /amendments${refPath(self)}/approve`, () => {
+			const standing = find(self);
+			if (!standing) return refuses('That offer is not here.', 404);
+			const note = approved(standing);
+			if (!(note instanceof Response)) drop(self);
+			return note;
+		});
+		api.on(`POST /amendments${refPath(self)}/decline`, () => {
+			drop(self);
+			return undefined;
+		});
+	};
+
 	for (const note of held.keys()) {
 		api.on(`GET /nodes${refPath(note)}/amendments`, () => held.get(note));
 	}
@@ -332,25 +352,10 @@ export function amending(
 			...(asked.message === undefined ? {} : { message: asked.message })
 		});
 		standing.push(written);
+		settle(written.ref);
 		return written;
 	});
-	for (const offer of [...held.values()].flat()) {
-		api.on(`DELETE /amendments${refPath(offer.ref)}`, () => {
-			drop(offer.ref);
-			return undefined;
-		});
-		api.on(`POST /amendments${refPath(offer.ref)}/approve`, () => {
-			const standing = find(offer.ref);
-			if (!standing) return refuses('That offer is not here.', 404);
-			const note = approved(standing);
-			if (!(note instanceof Response)) drop(offer.ref);
-			return note;
-		});
-		api.on(`POST /amendments${refPath(offer.ref)}/decline`, () => {
-			drop(offer.ref);
-			return undefined;
-		});
-	}
+	for (const offer of [...held.values()].flat()) settle(offer.ref);
 	return held;
 }
 
