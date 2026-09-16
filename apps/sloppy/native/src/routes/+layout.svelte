@@ -1,6 +1,8 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { answerBack } from '$lib/back';
 	import { forwardDeepLinks } from '$lib/deep-link';
 	import { trackKeyboardInset } from '$lib/keyboard';
@@ -25,10 +27,16 @@
 	 *  re-enters this document, so the folder is opened first and what the store
 	 *  says a person is called lands in the graph that is there. */
 	async function pickUpSignIn(): Promise<void> {
-		const came = new URLSearchParams(location.search);
+		const came = page.url.searchParams;
 		if (!came.has('state')) return;
 		await session.finishSignInHere(came);
-		history.replaceState(history.state, '', location.pathname);
+		const stripped = new URL(page.url);
+		for (const key of ['state', 'code', 'delegation_id', 'error']) {
+			stripped.searchParams.delete(key);
+		}
+		// Rewriting the address of the page already on screen, not going anywhere.
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		replaceState(stripped, page.state);
 	}
 
 	onMount(() => {
