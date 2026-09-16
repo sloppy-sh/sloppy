@@ -79,6 +79,12 @@
 	function ink(id: string): number {
 		return online.has(id) ? 1 : HALF_INK;
 	}
+
+	/** A line into a version on another lane is that lane's, so a merge does not
+	 *  draw the line it took in as though it were the one the folder is on. */
+	function inkBetween(row: number, into: { row: number }): number {
+		return ink(versions[row].id) === 1 && ink(versions[into.row].id) === 1 ? 1 : HALF_INK;
+	}
 </script>
 
 <div class="relative">
@@ -96,7 +102,7 @@
 					fill="none"
 					stroke="currentColor"
 					stroke-width="1.5"
-					opacity={ink(versions[row].id)}
+					opacity={inkBetween(row, into)}
 				/>
 			{/each}
 			{#if one.older}

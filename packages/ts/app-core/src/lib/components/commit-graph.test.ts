@@ -147,6 +147,20 @@ describe('the picture on the page', () => {
 		expect(marks()).toEqual([1, 0.45, 1]);
 	});
 
+	it('draws a line into another lane at that lane’s ink, so a merge claims nothing', () => {
+		draw(
+			[version('m', ['c', 'b']), version('c', ['a']), version('b', ['a']), version('a', [])],
+			'm'
+		);
+
+		expect([...target.querySelectorAll('path')].map((one) => one.getAttribute('opacity'))).toEqual([
+			'1',
+			'0.45',
+			'1',
+			'0.45'
+		]);
+	});
+
 	it('names the branches at a version, and opens the one somebody taps', () => {
 		draw([version('c', ['a'], { refs: ['main', 'origin/main'] }), version('a', [])]);
 
