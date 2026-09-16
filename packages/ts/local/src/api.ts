@@ -1384,8 +1384,26 @@ export class LocalApi implements SloppyApi {
     });
   }
 
-  async profileOf(_did: string): Promise<ProfileView> {
-    serverOnly("Somebody else's profile");
+  /** Somebody else, as a folder on this device says. A graph carries the name
+   *  and the picture of whoever owns it, so a folder shared with somebody names
+   *  the person who writes in it. Anybody no folder here owns is nobody this
+   *  device can name. */
+  async profileOf(did: string): Promise<ProfileView> {
+    const graph = (await this.allGraphs()).find(
+      (held) =>
+        held.did === did &&
+        (held.owner.name !== undefined || held.owner.avatar !== undefined),
+    );
+    if (!graph) serverOnly("Somebody else's profile");
+    const avatar = graph.owner.avatar;
+    return {
+      did: graph.did,
+      username: graph.did,
+      display_name: graph.owner.name ?? null,
+      bio: null,
+      avatar_src: avatar ? graph.files.url(avatar) : null,
+      banner_src: null,
+    };
   }
 
   // ── Emoji ────────────────────────────────────────────────────────────────

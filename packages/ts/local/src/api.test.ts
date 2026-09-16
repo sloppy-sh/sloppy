@@ -374,6 +374,19 @@ describe("a graph in a folder", () => {
     ).toEqual([]);
   });
 
+  it("names whoever owns a folder to whoever else reads it", async () => {
+    const held = device(["/graphs/one"]);
+    await held.api.createGraph({ title: "Thesis" });
+    await held.api.updateProfile({ display_name: "Ada Lovelace" });
+    const owner = (await held.api.me())?.did as string;
+
+    const reading = reopened(held);
+    expect((await reading.profileOf(owner)).display_name).toBe("Ada Lovelace");
+    await expect(
+      reading.profileOf("did:syr:z6MkNobodyOnThisDevice"),
+    ).rejects.toBeInstanceOf(ServerRequiredError);
+  });
+
   it("says a graph on this device holds no more of you than that", async () => {
     const held = device();
     await held.api.createGraph({ title: "Thesis" });
