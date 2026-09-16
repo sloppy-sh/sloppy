@@ -8,4 +8,6 @@ export * from "./vault-paths.js";
 export * from "./graph.js";
 export * from "./history.js";
 export * from "./memory-history.js";
+export * from "./git-defaults.js";
+export * from "./credentials.js";
 export * from "./api.js";
