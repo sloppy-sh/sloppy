@@ -8,7 +8,17 @@
  * history, and every getter here answers empty.
  */
 
-import type { Branch, ChangedBetween, Commit, ConflictSide, History } from '@sloppy/local';
+import type {
+	Branch,
+	ChangedBetween,
+	Commit,
+	ConflictSide,
+	Credential,
+	GraphCommit,
+	History,
+	MergeResult,
+	Remote
+} from '@sloppy/local';
 import type { BlockView, NodeView, OwnedRef } from '@sloppy/types';
 import { api, resetApi } from '../api.js';
 import { runtime } from '../runtime.js';
@@ -44,6 +54,21 @@ export interface NoteInTwoVersions {
 	ref: OwnedRef;
 	title: string;
 	sections: SectionInTwoVersions[];
+}
+
+/** What an act with somewhere else said: what it did, or what it would not do
+ *  and what to try instead. */
+export interface ElsewhereSaid {
+	words: string;
+	refused: boolean;
+}
+
+/** One place a folder is also kept, under the name a person reads it by. */
+export interface KeptElsewhere {
+	/** What this folder calls it, which is what an act is asked for by. */
+	name: string;
+	/** What a person calls it: the host it is at, else {@link KeptElsewhere.name}. */
+	at: string;
 }
 
 export interface SectionInTwoVersions {
@@ -92,6 +117,13 @@ class HistoryStore {
 	#changed = $state<DifferenceBetween | null>(null);
 	#dirty = $state(false);
 	#conflicts = $state<string[]>([]);
+	#picture = $state<GraphCommit[]>([]);
+	#drawnCursor = $state<string | undefined>(undefined);
+	#remotes = $state<Remote[]>([]);
+	#places = $state<KeptElsewhere[]>([]);
+	#behind = $state(0);
+	#upstream = $state<string | undefined>(undefined);
+	#elsewhere = $state<ElsewhereSaid | null>(null);
 	/** The line a merge was taking in, while any of it is still unsettled. */
 	#taking = $state<{ name: string; head: string } | null>(null);
 	/** Notes the history has already been asked to settle, while their sections
@@ -108,9 +140,24 @@ class HistoryStore {
 		return this.#busy;
 	}
 
+	/**
+	 * Whether this platform can draw the whole history rather than the one line
+	 * the folder is on, and reach the places it is also kept. False is a shell
+	 * whose history has none of it, and nothing about any of it is offered.
+	 */
+	get draws(): boolean {
+		return runtime.history()?.graph !== undefined;
+	}
+
 	/** Why the last act did not happen, in the words it gave. */
 	get says(): string | null {
 		return this.#says;
+	}
+
+	/** What the last act with somewhere else did, or would not do, in words for
+	 *  whoever asked for it. `null` before one has been taken. */
+	get elsewhereSaid(): ElsewhereSaid | null {
+		return this.#elsewhere;
 	}
 
 	/** Newest first. */
@@ -125,6 +172,35 @@ class HistoryStore {
 
 	get lines(): readonly Branch[] {
 		return this.#branches;
+	}
+
+	/** Every version across every line, newest first and never above what it
+	 *  springs from. Empty where {@link draws} is false. */
+	get picture(): readonly GraphCommit[] {
+		return this.#picture;
+	}
+
+	/** Whether the picture holds older versions than the ones read so far. */
+	get morePicture(): boolean {
+		return this.#drawnCursor !== undefined;
+	}
+
+	/** Where else this folder is kept, each under the name a person reads it by:
+	 *  the host it is at, and what this folder calls it where the address names
+	 *  no host. */
+	get places(): readonly KeptElsewhere[] {
+		return this.#places;
+	}
+
+	/** How far the line the folder is on is behind wherever it is also kept;
+	 *  `0` is a folder that is only here. */
+	get behind(): number {
+		return this.#behind;
+	}
+
+	/** The line, somewhere else, that the one the folder is on follows. */
+	get follows(): string | undefined {
+		return this.#upstream;
 	}
 
 	/** The version the folder stands on; absent before the first one is kept. */
@@ -178,8 +254,21 @@ class HistoryStore {
 		this.#changed = null;
 		this.#dirty = false;
 		this.#conflicts = [];
+		this.#picture = [];
+		this.#drawnCursor = undefined;
+		this.#remotes = [];
+		this.#places = [];
+		this.#behind = 0;
+		this.#upstream = undefined;
+		this.#elsewhere = null;
 		this.#taken.clear();
 		this.#taking = null;
+	}
+
+	/** The surface has come up: what an earlier act said no longer stands. */
+	async opened(): Promise<void> {
+		this.#elsewhere = null;
+		await this.read();
 	}
 
 	/** Everything the surface shows: the versions, the lines, and what has
@@ -191,20 +280,32 @@ class HistoryStore {
 		this.#busy = true;
 		this.#says = null;
 		try {
-			const [status, page, branches, commit] = await Promise.all([
+			const [status, page, branches, commit, picture, remotes] = await Promise.all([
 				history.status(),
 				history.log(PAGE),
 				history.branches(),
-				history.currentCommit()
+				history.currentCommit(),
+				history.graph?.(PAGE),
+				history.remotes?.()
 			]);
 			if (at !== this.#epoch) return;
 			this.#line = status.branch;
 			this.#ahead = status.ahead;
+			this.#behind = status.behind;
+			this.#upstream = status.upstream;
 			this.#dirty = status.changed.length > 0 || status.untracked.length > 0;
 			this.#commits = page.commits;
 			this.#cursor = page.cursor;
 			this.#branches = branches;
 			this.#at = commit;
+			this.#picture = picture?.commits ?? [];
+			this.#drawnCursor = picture?.cursor;
+			this.#remotes = remotes ?? [];
+			const places = await Promise.all(
+				(remotes ?? []).map(async (one) => ({ name: one.name, at: await spelled(one) }))
+			);
+			if (at !== this.#epoch) return;
+			this.#places = places;
 			const since = await this.between(commit, undefined);
 			if (at !== this.#epoch) return;
 			this.#changed = since;
@@ -226,6 +327,22 @@ class HistoryStore {
 			if (at !== this.#epoch) return;
 			this.#commits = [...this.#commits, ...page.commits];
 			this.#cursor = page.cursor;
+		} catch (err) {
+			if (at === this.#epoch) this.#says = said(err);
+		}
+	}
+
+	/** The page of the picture after the ones already read. */
+	async readOlderPicture(): Promise<void> {
+		const history = runtime.history();
+		const cursor = this.#drawnCursor;
+		if (!history?.graph || cursor === undefined) return;
+		const at = this.#epoch;
+		try {
+			const page = await history.graph(PAGE, cursor);
+			if (at !== this.#epoch) return;
+			this.#picture = [...this.#picture, ...page.commits];
+			this.#drawnCursor = page.cursor;
 		} catch (err) {
 			if (at === this.#epoch) this.#says = said(err);
 		}
@@ -262,13 +379,72 @@ class HistoryStore {
 	async bringIn(name: string): Promise<boolean> {
 		return this.act(async (history) => {
 			const result = await history.merge(name);
-			if (result.merged) return true;
-			const head = (await history.branches()).find((one) => one.name === name)?.head;
-			this.#taken.clear();
-			this.#conflicts = [...result.conflicts];
-			this.#taking = head === undefined ? null : { name, head };
-			return false;
+			return this.tookIn(history, result, name);
 		});
+	}
+
+	/** A line of work starting at a version further back than the one the folder
+	 *  stands on. The folder stays where it is. */
+	async startLineAt(name: string, version: string): Promise<boolean> {
+		return this.act(async (history) => {
+			if (!history.branchAt) return false;
+			await history.branchAt(name, version);
+			return true;
+		});
+	}
+
+	/** Let a line of work go. What it kept is still there for as long as
+	 *  something else leads back through it. */
+	async dropLine(name: string): Promise<boolean> {
+		return this.act(async (history) => {
+			if (!history.deleteBranch) return false;
+			await history.deleteBranch(name);
+			return true;
+		});
+	}
+
+	/** Take what is kept somewhere else, without touching the folder. */
+	async lookElsewhere(remote?: string): Promise<boolean> {
+		return this.withRemote(
+			remote,
+			(history, name, credential) => history.fetch?.(name, credential),
+			() => (this.#behind === 0 ? 'Nothing to take.' : waiting(this.#behind))
+		);
+	}
+
+	/** Take in what is kept somewhere else. Answers false where notes are left
+	 *  in two versions for somebody to settle. */
+	async takeIn(remote?: string): Promise<boolean> {
+		const was = this.#at;
+		let settled = true;
+		const done = await this.withRemote(
+			remote,
+			async (history, name, credential) => {
+				const result = await history.pull?.(name, credential);
+				if (!result) return;
+				settled = await this.tookIn(history, result, `${name}/${this.#line ?? ''}`);
+			},
+			(where) =>
+				!settled ? null : this.#at === was ? 'Nothing to take.' : `What is on ${where} is here too.`
+		);
+		return done && settled;
+	}
+
+	/** Put what is here where the folder is also kept. */
+	async putElsewhere(remote?: string): Promise<boolean> {
+		const where = this.chosen(remote);
+		// Nothing but a way in gets a push through, so it is asked for before the
+		// act rather than after a refusal nobody can read a next step out of.
+		const missing = where === undefined ? undefined : await this.missingWayIn(where.url);
+		if (missing !== undefined) {
+			this.#elsewhere = { words: missing, refused: true };
+			return false;
+		}
+		return this.withRemote(
+			remote,
+			(history, name, credential) => history.push?.(name, credential),
+			(place) => `Your notes are on ${place}.`
+		);
 	}
 
 	/** One note in two versions, taken whole from one side. */
@@ -401,6 +577,80 @@ class HistoryStore {
 		return graphAsItIs(api);
 	}
 
+	/** What a merge left behind, whichever line it took in. Answers whether it
+	 *  settled by itself. */
+	private async tookIn(history: History, result: MergeResult, name: string): Promise<boolean> {
+		if (result.merged) return true;
+		const head = (await history.branches()).find((one) => one.name === name)?.head;
+		this.#taken.clear();
+		this.#conflicts = [...result.conflicts];
+		this.#taking = head === undefined ? null : { name, head };
+		return false;
+	}
+
+	/** An act with a place the folder is also kept, the way in this device holds
+	 *  for it, and what it did in words. `then` answers `null` where the act has
+	 *  already put something else in front of somebody. */
+	private async withRemote(
+		remote: string | undefined,
+		what: (history: History, name: string, credential?: Credential) => Promise<unknown> | undefined,
+		then: (place: string) => string | null
+	): Promise<boolean> {
+		const history = runtime.history();
+		if (!history) return false;
+		const where = this.chosen(remote);
+		if (!where) {
+			this.#elsewhere = {
+				words: 'Say where else your notes are kept, in Settings, then try again.',
+				refused: true
+			};
+			return false;
+		}
+		const credential = await this.wayIn(where.url);
+		this.#busy = true;
+		this.#says = null;
+		this.#elsewhere = null;
+		try {
+			await what(history, where.name, credential);
+			// An act moves the folder underneath whatever is serving the graph out
+			// of it, so it is served again before anything is read back.
+			resetApi();
+			await Promise.all([this.read(), readTheGraphAgain()]);
+			const words = then(await spelled(where));
+			this.#elsewhere = words === null ? null : { words, refused: false };
+			return true;
+		} catch (err) {
+			this.#elsewhere = { words: said(err), refused: true };
+			return false;
+		} finally {
+			this.#busy = false;
+		}
+	}
+
+	/** Which of the places the folder is kept an act with none named is with:
+	 *  the one the line follows, else the only one there is. */
+	private chosen(remote?: string): Remote | undefined {
+		const following = this.#upstream?.slice(0, this.#upstream.indexOf('/'));
+		const named = remote ?? following;
+		if (named !== undefined) return this.#remotes.find((one) => one.name === named);
+		return this.#remotes.length === 1 ? this.#remotes[0] : undefined;
+	}
+
+	private async wayIn(url: string): Promise<Credential | undefined> {
+		return runtime.credentials()?.forUrl(url);
+	}
+
+	/** What to do where this device was never told how to reach that address,
+	 *  and nothing where it was or where the address is on this device. */
+	private async missingWayIn(url: string): Promise<string | undefined> {
+		const { remoteHost } = await local();
+		const host = remoteHost(url);
+		if (host === undefined) return undefined;
+		return (await this.wayIn(url)) === undefined
+			? `Add a way in for ${host} in Settings, then try again.`
+			: undefined;
+	}
+
 	/** An act, with what it refuses in the words it gave, and the surface and the
 	 *  graph both read again after it. */
 	private async act(what: (history: History) => Promise<boolean>): Promise<boolean> {
@@ -426,6 +676,17 @@ class HistoryStore {
 
 function localPart(ref: OwnedRef): string {
 	return ref.slice(ref.lastIndexOf('/') + 1);
+}
+
+/** What somebody calls a place their folder is also kept: the host it is at,
+ *  and the name they gave it where the address names no host. */
+async function spelled(where: Remote): Promise<string> {
+	const { remoteHost } = await local();
+	return remoteHost(where.url) ?? where.name;
+}
+
+function waiting(behind: number): string {
+	return behind === 1 ? 'One newer version to take in.' : `${behind} newer versions to take in.`;
 }
 
 export const graphHistory = new HistoryStore();
