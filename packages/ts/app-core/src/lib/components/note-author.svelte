@@ -1,35 +1,70 @@
 <script lang="ts">
-	// Who wrote the note on screen, and the way to meet them — DESIGN.md
-	// § "Show, don't tell".
+	// Whose writing the note on screen carries, and the way to meet them —
+	// DESIGN.md § "Whose writing" and § "Show, don't tell".
+	import { authorsOf, type NodeView } from '@sloppy/types';
 	import { PersonChip, unplacedPerson } from '@sloppy/ui';
 	import { people } from '../stores/people.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import PersonSurface from './person-surface.svelte';
 
-	let { did }: { did: string } = $props();
+	let { note }: { note: Pick<NodeView, 'created_by' | 'authors' | 'contributors'> } = $props();
 
 	let meeting = $state<string | null>(null);
 
-	const person = $derived(people.of(did));
 	/** Null until their instance has answered one way or the other. */
-	const shown = $derived(person ?? (people.unplaced(did) ? unplacedPerson(did) : null));
-	const mine = $derived(did === session.viewer?.did);
+	function shown(did: string) {
+		const person = people.of(did);
+		return person ?? (people.unplaced(did) ? unplacedPerson(did) : null);
+	}
+
+	const wrote = $derived(authorsOf(note).filter((did) => shown(did) !== null));
+	const helped = $derived((note.contributors ?? []).filter((did) => shown(did) !== null));
+	/** One person who wrote their own note is the ordinary case, and reads as it
+	 *  always has. */
+	const named = $derived(wrote.length > 1 || helped.length > 0);
 
 	$effect(() => {
-		people.resolve(did);
+		for (const did of [...authorsOf(note), ...(note.contributors ?? [])]) people.resolve(did);
 	});
 </script>
 
-{#if shown && mine}
-	<PersonChip person={shown} size={24} handle={false} class="gap-2 text-sm" />
-{:else if shown}
-	<button
-		type="button"
-		class="-mx-1 flex min-h-9 min-w-0 items-center rounded-md px-1 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
-		onclick={() => (meeting = did)}
-	>
-		<PersonChip person={shown} size={24} handle={false} class="gap-2 text-sm" />
-	</button>
+{#snippet person(did: string)}
+	{@const who = shown(did)}
+	{#if who && did === session.viewer?.did}
+		<PersonChip person={who} size={24} handle={false} class="gap-2 text-sm" />
+	{:else if who}
+		<button
+			type="button"
+			class="-mx-1 flex min-h-9 min-w-0 items-center rounded-md px-1 transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:transition-none"
+			onclick={() => (meeting = did)}
+		>
+			<PersonChip person={who} size={24} handle={false} class="gap-2 text-sm" />
+		</button>
+	{/if}
+{/snippet}
+
+{#if wrote.length > 0}
+	<div class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+		{#if named}
+			<span class="text-sm text-muted-foreground">Written by</span>
+		{/if}
+		{#each wrote as did, at (did)}
+			{#if at > 0}
+				<span class="text-sm text-muted-foreground">{at === wrote.length - 1 ? 'and' : '·'}</span>
+			{/if}
+			{@render person(did)}
+		{/each}
+		{#if helped.length > 0}
+			<span class="text-sm text-muted-foreground">· with</span>
+			{#each helped as did, at (did)}
+				{#if at > 0}
+					<span class="text-sm text-muted-foreground">{at === helped.length - 1 ? 'and' : '·'}</span
+					>
+				{/if}
+				{@render person(did)}
+			{/each}
+		{/if}
+	</div>
 
 	<PersonSurface bind:did={meeting} />
 {/if}

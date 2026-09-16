@@ -298,6 +298,28 @@ describe('which graph you are in', () => {
 		expect(inSheet()).toContain('Allotment');
 	});
 
+	// A person keeping a notebook with somebody else says it once, on the graph,
+	// rather than on every note they write in it.
+	it('says a new note here is only its writer’s, and saves that with the name', async () => {
+		let asked: unknown = null;
+		api.on(`PATCH /graphs/${encodeURIComponent(DID)}/${GARDEN.split('/')[1]}`, (_url, init) => {
+			asked = JSON.parse(String(init?.body ?? '{}'));
+			return { ...graph(GARDEN, 'Garden'), ownership: 'owned' };
+		});
+		await open();
+		await openGraphs();
+		labelled('Rename Garden').click();
+		await settle();
+
+		const owned = document.body.querySelector<HTMLButtonElement>(`#owned-${CSS.escape(GARDEN)}`);
+		if (!owned) throw new Error('The graph offers no choice about what it does to a new note');
+		expect(inSheet()).toContain("New notes are only their writer's");
+		owned.click();
+		await settle();
+
+		expect(asked).toEqual({ title: 'Garden', ownership: 'owned' });
+	});
+
 	// A note open beside a canvas that no longer holds its graph is one surface
 	// showing two.
 	it('closes a note the canvas has stopped drawing', async () => {

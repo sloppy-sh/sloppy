@@ -11,8 +11,10 @@
 import { MAX_FIELDS } from '@sloppy/graph';
 import {
 	type ArchivePreview,
+	type GraphOwnership,
 	type GraphView,
 	GraphViewSchema,
+	HOME_GRAPH_TITLE,
 	type ImportSettlement,
 	type OwnedRef,
 	type CreateGraphRequest,
@@ -242,6 +244,19 @@ class GraphsStore {
 			this.#keep();
 		}
 		return named;
+	}
+
+	/** What a graph does to a note written in it from here on; the notes already
+	 *  written in it are left as they are. The name goes beside it because
+	 *  naming a graph is the whole of `UpdateGraphRequest`. */
+	async setOwnership(ref: OwnedRef, ownership: GraphOwnership): Promise<GraphView> {
+		const held = this.#all.find((graph) => graph.ref === ref);
+		return await this.rename(ref, { title: held?.title ?? HOME_GRAPH_TITLE, ownership });
+	}
+
+	/** How a graph a person is writing in gates a note written in it. */
+	ownershipOf(ref: OwnedRef): GraphOwnership {
+		return this.#all.find((graph) => graph.ref === ref)?.ownership ?? 'open';
 	}
 
 	/** Close a graph and everything filed in it. A reader who was in it is back

@@ -2483,6 +2483,11 @@
 	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
 	onRename={(ref, title) =>
 		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
+	onOwnership={(ref, ownership) =>
+		inTheirWords(
+			() => graphs.setOwnership(ref, ownership),
+			'That could not be saved. Try again in a moment.'
+		)}
 	onRemove={(ref) =>
 		inTheirWords(async () => {
 			await graphs.close(ref);

@@ -117,6 +117,26 @@ describe('moving between them', () => {
 		expect(graphs.titleOf(GARDEN.ref)).toBe('Allotment');
 	});
 
+	// Absent is `open`, which is what every graph made before the choice says.
+	it('reads a graph that says nothing about it as one anybody writing here writes', async () => {
+		await graphs.load();
+		expect(graphs.ownershipOf(GARDEN.ref)).toBe('open');
+	});
+
+	it('says what a new note here carries, keeping the name it already has', async () => {
+		await graphs.load();
+		let asked: unknown = null;
+		api.on(`PATCH /graphs/${encodeURIComponent(DID)}/${GARDEN.ref.split('/')[1]}`, (_url, init) => {
+			asked = JSON.parse(String(init?.body ?? '{}'));
+			return { ...GARDEN, ownership: 'owned' };
+		});
+
+		await graphs.setOwnership(GARDEN.ref, 'owned');
+
+		expect(asked).toEqual({ title: GARDEN.title, ownership: 'owned' });
+		expect(graphs.ownershipOf(GARDEN.ref)).toBe('owned');
+	});
+
 	it('closes one, and takes it off the canvas the reader had it on', async () => {
 		await graphs.load();
 		graphs.enter(GARDEN.ref);

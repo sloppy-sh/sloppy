@@ -1,10 +1,12 @@
 <script lang="ts" module>
-	import { noteLabel, type OwnedRef } from '@sloppy/types';
+	import { noteLabel, type GraphOwnership, type OwnedRef } from '@sloppy/types';
 
 	/** One of somebody's graphs, as this sheet lists it. */
 	export interface GraphChoice {
 		ref: OwnedRef;
 		title: string;
+		/** What it does to a note written in it from here on. Absent is `open`. */
+		ownership?: GraphOwnership;
 	}
 
 	/** A branch its author deleted and can still put back. */
@@ -35,6 +37,8 @@
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
 	import ConfirmModal from '../confirm/confirm-modal.svelte';
 	import ResponsiveModal from '../responsive-modal.svelte';
 
@@ -53,6 +57,7 @@
 		onToggle,
 		onOpen,
 		onRename,
+		onOwnership,
 		onRemove,
 		onRestore,
 		onShow
@@ -82,6 +87,9 @@
 		/** Rejects with an `Error` whose `message` is already fit to show. */
 		onOpen: (title: string) => Promise<void>;
 		onRename: (ref: OwnedRef, title: string) => Promise<void>;
+		/** What a note written in this graph from here on carries. Absent leaves
+		 *  the choice off the sheet. */
+		onOwnership?: (ref: OwnedRef, ownership: GraphOwnership) => Promise<void>;
 		onRemove?: (ref: OwnedRef) => Promise<void>;
 		onRestore?: (ref: OwnedRef) => Promise<void>;
 		/** The sheet has just opened, and what it lists is worth asking for again. */
@@ -180,7 +188,7 @@
 			{#each graphs as graph (graph.ref)}
 				{@const here = graph.ref === current}
 				{@const up = here || alsoUp.has(graph.ref)}
-				<li class="flex items-center gap-2">
+				<li class="flex flex-wrap items-center gap-2">
 					{#if naming?.ref === graph.ref}
 						<Input
 							bind:value={naming.title}
@@ -202,6 +210,23 @@
 						>
 							Save
 						</Button>
+						{#if onOwnership}
+							<div class="flex w-full items-start gap-3 px-1 pt-1 pb-2">
+								<Switch
+									id="owned-{graph.ref}"
+									checked={graph.ownership === 'owned'}
+									disabled={working}
+									onCheckedChange={(owned) =>
+										void act(() => onOwnership(graph.ref, owned ? 'owned' : 'open'))}
+								/>
+								<Label for="owned-{graph.ref}" class="flex-1 text-sm font-normal">
+									New notes are only their writer's
+									<span class="block text-xs text-muted-foreground">
+										Anyone else's change is offered to them. What is already written stays as it is.
+									</span>
+								</Label>
+							</div>
+						{/if}
 					{:else}
 						<button
 							type="button"
