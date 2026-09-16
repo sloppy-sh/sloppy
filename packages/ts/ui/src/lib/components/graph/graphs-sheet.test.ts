@@ -304,3 +304,144 @@ describe('the graphs sheet', () => {
 		);
 	});
 });
+
+describe('the graphs sheet where a graph is a folder on this device', () => {
+	const GARDEN_FOLDER = '/Users/me/garden';
+	const THESIS_FOLDER = '/Users/me/thesis';
+	const GONE_FOLDER = '/Users/me/gone';
+
+	let opened: string[];
+	let forgotten: string[];
+	let brought: string[];
+	let started: number;
+
+	async function openFolders(over: { onClone?: boolean } = {}): Promise<void> {
+		if (mounted) unmount(mounted, { outro: false });
+		document.body.innerHTML = '';
+		target = document.createElement('div');
+		document.body.appendChild(target);
+		opened = [];
+		forgotten = [];
+		brought = [];
+		started = 0;
+		mounted = mount(GraphsSheet, {
+			target,
+			props: {
+				open: true,
+				graphs: [
+					{ ref: HOME, title: 'My graph', folder: GARDEN_FOLDER },
+					{ ref: GARDEN, title: 'The thesis', folder: THESIS_FOLDER, by: 'Ada Lovelace' },
+					{ title: 'gone', folder: GONE_FOLDER }
+				],
+				current: HOME,
+				home: HOME,
+				alsoUp: new Set<OwnedRef>(),
+				onEnter: () => {},
+				onToggle: () => {},
+				onOpen: () => Promise.resolve(),
+				onRename: () => Promise.resolve(),
+				onRemove: (ref: OwnedRef) => {
+					closed.push(ref);
+					return Promise.resolve();
+				},
+				onOpenFolder: (folder: string) => {
+					opened.push(folder);
+					return Promise.resolve();
+				},
+				onForget: (folder: string) => {
+					forgotten.push(folder);
+					return Promise.resolve();
+				},
+				onStart: () => {
+					started += 1;
+					return Promise.resolve();
+				},
+				...(over.onClone === false
+					? {}
+					: {
+							onClone: (url: string) => {
+								brought.push(url);
+								return Promise.resolve();
+							}
+						})
+			}
+		});
+		await settle();
+	}
+
+	beforeEach(() => {
+		closed = [];
+	});
+
+	it('lists every folder as a graph, with whose it is and which one has moved', async () => {
+		await openFolders();
+
+		const text = document.body.textContent ?? '';
+		expect(text).toContain('My graph');
+		expect(text).toContain('The thesis');
+		expect(text).toContain('Ada Lovelace');
+		expect(text).toContain('gone');
+		expect(text).toContain('not where it was');
+	});
+
+	it('opens the folder a graph is in rather than moving into the graph', async () => {
+		await openFolders();
+
+		[...document.querySelectorAll<HTMLButtonElement>('button')]
+			.find((one) => one.textContent?.includes('The thesis'))
+			?.click();
+		await settle();
+
+		expect(opened).toEqual([THESIS_FOLDER]);
+	});
+
+	it('forgets a folder that is not the one open, and never that one', async () => {
+		await openFolders();
+
+		expect(find('Forget My graph')).toBeNull();
+		find('Forget gone')?.click();
+		await settle();
+
+		expect(forgotten).toEqual([GONE_FOLDER]);
+	});
+
+	// Ending a graph is its owner's, and a row that says whose it is says that
+	// too rather than offering an act that will be refused.
+	it('offers no way to close a folder somebody else owns', async () => {
+		await openFolders();
+
+		expect(find('Close The thesis')).toBeNull();
+	});
+
+	it('starts a graph by asking for a folder, not by asking for a name', async () => {
+		await openFolders();
+
+		expect(document.body.textContent).not.toContain('A new graph');
+		confirm('Choose a folder')?.click();
+		await settle();
+
+		expect(started).toBe(1);
+	});
+
+	it('brings one from an address somebody types', async () => {
+		await openFolders();
+
+		const address = [...document.querySelectorAll<HTMLInputElement>('input')].find(
+			(input) => input.placeholder === 'https://…'
+		);
+		if (!address) throw new Error('There is nowhere to type an address');
+		address.value = 'https://somewhere.test/ada/garden.git';
+		address.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+		confirm('Bring it here')?.click();
+		await settle();
+
+		expect(brought).toEqual(['https://somewhere.test/ada/garden.git']);
+	});
+
+	it('says nothing about an address on a device that cannot reach one', async () => {
+		await openFolders({ onClone: false });
+
+		expect(document.body.textContent).not.toContain('Bring one from an address');
+	});
+});

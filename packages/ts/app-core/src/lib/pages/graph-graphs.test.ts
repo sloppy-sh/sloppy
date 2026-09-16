@@ -14,6 +14,7 @@ import {
 	VIEWER,
 	type FakeApi
 } from '../stores/fake-api.test-support.js';
+import { initRuntime, type VaultAccess } from '../runtime.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { peers } from '../stores/peers.svelte.js';
@@ -450,5 +451,102 @@ describe('more than one graph at once', () => {
 		);
 		await alsoShowGarden();
 		expect(tags.across(graphs.onCanvas)).toEqual([{ tag: 'seed', notes: 5 }]);
+	});
+});
+
+// docs/ARCHITECTURE.md § "Local-only mode": the folders this device knows ARE
+// its graphs, so the picker is where one is opened, started and forgotten.
+describe('the graphs a device keeps as folders', () => {
+	const GARDEN_FOLDER = '/Users/me/garden';
+	const HOME_FOLDER = '/Users/me/notes';
+	const GONE_FOLDER = '/Users/me/moved';
+
+	let opened: string[];
+	let forgotten: string[];
+	let started: number;
+
+	function keepingFolders(): VaultAccess {
+		let open = HOME_FOLDER;
+		let known = [
+			{ root: HOME_FOLDER, graph: { ref: HOME, name: 'My graph', owner: DID }, reachable: true },
+			{ root: GARDEN_FOLDER, graph: { ref: GARDEN, name: 'Garden', owner: DID }, reachable: true },
+			{ root: GONE_FOLDER, reachable: false }
+		];
+		return {
+			folder: () => open,
+			graph: async () => (open === HOME_FOLDER ? HOME : GARDEN),
+			asks: true,
+			open: async () => open,
+			known: async () => known,
+			openKnown: async (root) => {
+				opened.push(root);
+				open = root;
+			},
+			forget: async (root) => {
+				forgotten.push(root);
+				known = known.filter((one) => one.root !== root);
+			},
+			start: async () => {
+				started += 1;
+				return open;
+			}
+		};
+	}
+
+	beforeEach(() => {
+		opened = [];
+		forgotten = [];
+		started = 0;
+		initRuntime({ apiHost: () => 'http://api.test', vault: keepingFolders() });
+	});
+
+	afterEach(() => {
+		initRuntime({ apiHost: () => 'http://api.test', vault: undefined });
+	});
+
+	it('lists one row per folder, and says which one is not where it was', async () => {
+		await open();
+		await openGraphs();
+
+		const said = inSheet();
+		expect(said).toContain('My graph');
+		expect(said).toContain('Garden');
+		expect(said).toContain('moved');
+		expect(said).toContain('not where it was');
+		expect(said).toContain('Start a folder');
+	});
+
+	it('opens the folder somebody chooses, and reads the graph in it', async () => {
+		await open();
+		await openGraphs();
+
+		button('Garden').click();
+		await settle();
+
+		expect(opened).toEqual([GARDEN_FOLDER]);
+		expect(graphs.current).toBe(GARDEN);
+		expect(labelled('Your graphs').textContent).toContain('Garden');
+	});
+
+	it('forgets a folder without touching what is in it', async () => {
+		await open();
+		await openGraphs();
+
+		labelled('Forget moved').click();
+		await settle();
+
+		expect(forgotten).toEqual([GONE_FOLDER]);
+		expect(inSheet()).not.toContain('not where it was');
+	});
+
+	it('starts a graph by asking for a folder rather than for a name', async () => {
+		await open();
+		await openGraphs();
+
+		expect(inSheet()).not.toContain('A new graph');
+		button('Choose a folder').click();
+		await settle();
+
+		expect(started).toBe(1);
 	});
 });

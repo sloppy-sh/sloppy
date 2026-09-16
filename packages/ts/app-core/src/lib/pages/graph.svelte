@@ -2515,7 +2515,10 @@
 	publishedFrom={publications.state.loaded
 		? new Set(publications.all.map((one) => one.graph ?? graphs.home))
 		: undefined}
-	onShow={() => void deleted.reload().catch(() => {})}
+	onShow={() => {
+		void deleted.reload().catch(() => {});
+		void graphs.readFolders(true);
+	}}
 	onRestore={(ref) =>
 		inTheirWords(async () => {
 			const back = await deleted.restore(ref);
