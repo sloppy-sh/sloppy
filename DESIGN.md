@@ -729,8 +729,8 @@ ask.
 - **An owner's note says how many changes are offered on it**, as a count beside the note,
   and it does not move, animate, badge or grow a dot. It is a fact the person can act on when
   they like, not a thing asking to be cleared.
-- **A contributor's save on an owned note says what happened, in outcomes**: "Offered to
-  <owner>. It shows once they take it." Nothing about rows, offers standing, or what the
+- **A contributor's save on an owned note says what happened, in outcomes**: `Offered to
+<the owner>. It shows once they take it.` Nothing about rows, offers standing, or what the
   request did — the person needs to know their writing is somewhere and what has to happen
   next, and that is the whole of it.
 - **The owner reads an offer as a difference**, note against offer, section by section, in

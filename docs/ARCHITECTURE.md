@@ -396,8 +396,11 @@ shown.
 OWNER, the way `comment_pointer`'s is the note's author: the offer was made to them, and
 theirs is the purge that has to reach it. `by` is who offered it. In a vault it is
 `amendments/<ulid>.md` (§ "A graph on disk"), committed like any note, so it travels through
-the folder's history and rides in archives; the bin does not hold one. A hosted note has one
-writer, so offering a change on one is not offered at all, and the API says so plainly.
+the folder's history and rides in archives; the bin does not hold one. **A hosted graph has
+one writer**, so nothing on a hosted instance offers a change in the first place: the table
+is there so a graph arriving as an archive with offers standing on it loses none of them, and
+so its owner can settle them, and `POST /amendments` says plainly that this is not something
+to do here.
 
 **Approving replaces the note's writing with the offer, whole** — title, tags, look,
 sections — bumps `updated_at`, adds the proposer to `contributors` and removes the offer.
