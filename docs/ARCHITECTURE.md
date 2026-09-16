@@ -514,9 +514,12 @@ from the link. The app then finishes the exchange itself against the instance, w
 platform secret anywhere in the protocol — the wire shapes are `@sloppy/types`' `syr.ts`,
 and the platform half of that dialect is written once for the browser side in
 `@sloppy/local`. The API's own `SyrService` is untouched; lifting the shared half out is
-worth doing and is not required here. The deep-link return leg
-(`sloppy://auth/callback`, `src/lib/deep-link.ts`) is the same one a hosted build uses, and
-in local mode it lands on `@sloppy/local`'s exchange rather than the API's.
+worth doing and is not required here. The deep-link return leg (`src/lib/deep-link.ts`) is
+the same one a hosted build uses, and in local mode it lands on `@sloppy/local`'s exchange
+rather than the API's. It reads both ways back alike — `sloppy://auth/callback`, which the
+web page forwards into, and `/auth/return` itself where a phone opened the app from the
+link — and re-enters the document on the root with the hand-off intact, because a session is
+picked up as the app boots and only then.
 
 **Signing in locally settles which DID this device writes under, and what the person is
 called.** The name and picture come from the profile and are written into the owner block of

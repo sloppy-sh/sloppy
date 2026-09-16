@@ -21,14 +21,18 @@
 
 	const writing = $derived(held.find((one) => one.writing));
 
-	// Reading who writes here is what makes this re-read when a sign-in lands
-	// after the surface mounted, which is the ordinary case on a first run.
 	$effect(() => {
-		const asOf = session.viewer?.did;
-		void identities?.list().then((one) => {
-			if (asOf === session.viewer?.did) held = one;
-		});
+		void refresh();
 	});
+
+	/** Reading who writes here is what makes this re-read when a sign-in lands
+	 *  after the surface mounted, which is the ordinary case on a first run. */
+	async function refresh(): Promise<void> {
+		if (!identities) return;
+		const asOf = session.viewer?.did;
+		const listed = await identities.list().catch(() => held);
+		if (asOf === session.viewer?.did) held = listed;
+	}
 
 	/** The shell says what went wrong in words fit to show; anything else that
 	 *  went wrong is not in any. */
@@ -41,7 +45,10 @@
 		opening = true;
 		problem = null;
 		try {
-			if (identities && held.length === 0) held = [await identities.makeOne()];
+			if (identities) {
+				const already = await identities.list();
+				held = already.length === 0 ? [await identities.makeOne()] : already;
+			}
 			const folder = await vault.open();
 			if (!folder) return;
 			await session.carryProfile();

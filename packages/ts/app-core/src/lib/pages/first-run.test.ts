@@ -222,11 +222,12 @@ describe('the three doors a first run offers', () => {
 		expect(opened).toEqual(['/Users/me/garden']);
 	});
 
+	// Tapped before the list has answered, which is the window a fast first tap
+	// falls in on a device that already holds an identity.
 	it('does not make a second one for a device that already holds one', async () => {
 		const makeOne = vi.fn(async () => here());
 		shell({ open: async () => '/Users/me/garden' }, { makeOne, list: async () => [here()] });
 		show();
-		await settle();
 
 		button().click();
 		await settle();
@@ -276,8 +277,12 @@ describe('the three doors a first run offers', () => {
 
 describe('a first run that did not get a folder', () => {
 	it('makes one identity here, however many times the folder is turned down', async () => {
-		const makeOne = vi.fn(async () => here());
-		shell({ open: async () => undefined }, { makeOne });
+		let listed: IdentityHere[] = [];
+		const makeOne = vi.fn(async () => {
+			listed = [here()];
+			return here();
+		});
+		shell({ open: async () => undefined }, { makeOne, list: async () => listed });
 		show();
 		await settle();
 
