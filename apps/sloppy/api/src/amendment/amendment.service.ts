@@ -73,7 +73,14 @@ export class AmendmentService {
     if (!note) throw new NotFoundException("That note is not here.");
 
     const standing = await this.blocks.listByNode(offer.note);
-    const held = new Set(standing.map((block) => ownedRefFrom(block.id)));
+    const on = new Set(standing.map((block) => ownedRefFrom(block.id)));
+    // Whether the row is there, not whether it is on this note: a section
+    // carried here from another note is a row to write, and making a second one
+    // at its reference would take the whole approval down with it.
+    const rows = await this.blocks.existingAmong(
+      did,
+      offer.blocks.map((section) => section.ref),
+    );
     const sections: SettledSection[] = [];
     let ord: string | null = null;
     for (const section of offer.blocks) {
@@ -82,7 +89,7 @@ export class AmendmentService {
         ref: section.ref,
         content: section.content,
         ord,
-        standing: held.has(section.ref),
+        standing: rows.has(section.ref),
       });
     }
     const carried = new Set(sections.map((section) => section.ref));
@@ -98,7 +105,7 @@ export class AmendmentService {
       contributors: withContributor(note.contributors, offer.by),
       references: referencesOf(offer.note, sections),
       sections,
-      dropping: [...held].filter((block) => !carried.has(block)),
+      dropping: [...on].filter((block) => !carried.has(block)),
     });
 
     const written = await this.nodes.find(did, offer.note);
