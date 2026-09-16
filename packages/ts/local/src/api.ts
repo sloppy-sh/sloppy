@@ -90,9 +90,11 @@ import {
   type UploadTicket,
   type Viewer,
   type UpdatePublicationRequest,
+  authorsOf,
   graphAsked,
   namesGraph,
   nowIso,
+  splitOwnedRef,
   ulid,
   writeOutcome,
 } from "@sloppy/types";
@@ -931,11 +933,13 @@ export class LocalApi implements SloppyApi {
   /**
    * What the folder's copy of a graph and the file's copy of it disagree about,
    * note by note and section by section. `vaultDifference` in `@sloppy/vault`
-   * is what enumerates it; a note whose tags, links or look alone differ is not
-   * in that enumeration and is a disagreement all the same.
+   * is what enumerates it; a note whose tags, links, look or whose writing
+   * alone differ is not in that enumeration and is a disagreement all the
+   * same.
    */
   private async merging(into: LocalGraph, vault: Vault): Promise<Merging> {
     const here = await this.vaultOf(into);
+    const writer = await this.writer;
     const difference = vaultDifference(here, vault);
     const mine = notesIn(here, new Map());
     const theirs = notesIn(vault, new Map());
@@ -965,8 +969,8 @@ export class LocalApi implements SloppyApi {
           mine: sectionWords(was, section),
           theirs: sectionWords(now, section),
         })),
-        mine: asWords(was, mine, now),
-        theirs: asWords(now, theirs, was),
+        mine: asWords(was, mine, writer, now),
+        theirs: asWords(now, theirs, writer, was),
       });
     }
     const at = numbered(theirs);
@@ -979,8 +983,8 @@ export class LocalApi implements SloppyApi {
         other,
         address,
         sections: [],
-        mine: asWords(mine.get(ref), mine),
-        theirs: asWords(theirs.get(other), theirs),
+        mine: asWords(mine.get(ref), mine, writer),
+        theirs: asWords(theirs.get(other), theirs, writer),
       });
     }
     return { theirs, conflicts };
@@ -1863,9 +1867,36 @@ function stored(note: VaultNote, held: StoredNote | undefined): StoredNote {
  *  difference does not name. */
 function alike(a: VaultNote, b: VaultNote): boolean {
   return (
-    JSON.stringify([a.tags, a.links, a.aliases, a.appearance ?? null]) ===
-    JSON.stringify([b.tags, b.links, b.aliases, b.appearance ?? null])
+    JSON.stringify([
+      a.tags,
+      a.links,
+      a.aliases,
+      a.appearance ?? null,
+      whoseWriting(a),
+    ]) ===
+    JSON.stringify([
+      b.tags,
+      b.links,
+      b.aliases,
+      b.appearance ?? null,
+      whoseWriting(b),
+    ])
   );
+}
+
+/** Who gates the note's writing, whose writing it carries and whose offered
+ *  writing it has taken in. Both copies are of one note, so the absent
+ *  authorship reads as the same DID on each and a file that spells it out says
+ *  the same as one that leaves it. */
+function whoseWriting(note: VaultNote): unknown[] {
+  return [
+    note.owner ?? null,
+    authorsOf({
+      created_by: splitOwnedRef(note.ref).did,
+      authors: note.authors,
+    }),
+    note.contributors ?? [],
+  ];
 }
 
 /** Which note each number is on, leaving out the notes that carry none. */
@@ -1882,22 +1913,39 @@ function numbered(
 }
 
 /** What one side holds, as words a person settles a disagreement by: where the
- *  two sides put the note differently, then what it is called, what it is
- *  tagged, and its writing. */
+ *  two sides put the note differently and who each says may write it, then what
+ *  it is called, what it is tagged, and its writing. */
 function asWords(
   note: VaultNote | undefined,
   held: ReadonlyMap<OwnedRef, VaultNote>,
+  writer: DidSyr,
   other?: VaultNote,
 ): string {
   if (!note) return "";
   return [
     ...whereItSits(note, other, held),
+    ...whoMayWrite(note, other, writer),
     note.title,
     note.tags.join(", "),
     ...note.sections.flatMap((one) => wordsIn(one.content)),
   ]
     .filter((line) => line !== "")
     .join("\n");
+}
+
+/** Who a side says may write the note, said only where the other side says
+ *  somebody else: taking a gate off or putting one on changes nothing a person
+ *  would otherwise read on the page. */
+function whoMayWrite(
+  note: VaultNote,
+  other: VaultNote | undefined,
+  writer: DidSyr,
+): string[] {
+  if (!other || note.owner === other.owner) return [];
+  if (note.owner === undefined) return ["Anyone's to write"];
+  return [
+    note.owner === writer ? "Yours to write" : "Somebody else's to write",
+  ];
 }
 
 /** Where a side puts the note, said only where the other side puts it

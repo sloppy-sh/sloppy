@@ -501,10 +501,12 @@ describe("a change offered on a note", () => {
 
     const mine = device(["/graphs/arrived"]);
     const here = await mine.api.importArchive(base);
-    await mine.api.importArchive(out);
-
     const arrived =
       `${here.ref.slice(0, here.ref.lastIndexOf("/"))}/${note.ref.slice(note.ref.lastIndexOf("/") + 1)}` as OwnedRef;
+    await mine.api.importArchive(out, {
+      resolutions: [{ kind: "note", ref: arrived, keep: "theirs" }],
+    });
+
     const standing = await writingAs(mine, BOB).listAmendments(arrived);
     expect(standing).toHaveLength(1);
     expect(standing[0].blocks[0].content).toEqual(pictured(upload));
@@ -667,5 +669,80 @@ describe("a change offered on a note", () => {
     await owner.importArchive(body(archive.bytes));
 
     expect(await read(held).listAmendments(note)).toHaveLength(1);
+  });
+});
+
+describe("a gate on a note, brought in with a copy of its graph", () => {
+  /** The folder and the file left saying different things about who writes one
+   *  note, and nothing else. */
+  async function apart(): Promise<{
+    held: Folder;
+    note: OwnedRef;
+    out: Blob;
+  }> {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    await held.api.updateNode(note.ref, { owner: BOB });
+    const out = body((await held.api.exportArchive(held.graph)).bytes);
+    await held.api.updateNode(note.ref, { owner: null });
+    return { held, note: note.ref, out };
+  }
+
+  it("is a disagreement the person settles, and says which side is which", async () => {
+    const { held, note, out } = await apart();
+
+    const said = await held.api.previewArchive(out);
+
+    expect(said.conflicts).toEqual([
+      {
+        kind: "note",
+        ref: note,
+        sections: [],
+        mine: "Anyone's to write\nSeeds",
+        theirs: "Somebody else's to write\nSeeds",
+      },
+    ]);
+    await expect(held.api.importArchive(out)).rejects.toThrow(
+      "disagree about one note",
+    );
+  });
+
+  it("arrives where the person keeps the file's side", async () => {
+    const { held, note, out } = await apart();
+
+    await held.api.importArchive(out, {
+      resolutions: [{ kind: "note", ref: note, keep: "theirs" }],
+    });
+
+    expect((await read(held).getNode(note))?.owner).toBe(BOB);
+  });
+
+  it("stays off where the person keeps the folder's side", async () => {
+    const { held, note, out } = await apart();
+
+    await held.api.importArchive(out, {
+      resolutions: [{ kind: "note", ref: note, keep: "mine" }],
+    });
+
+    expect((await read(held).getNode(note))?.owner).toBeUndefined();
+  });
+
+  it("is settled the same way when only whose writing it carries differs", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    const out = body((await held.api.exportArchive(held.graph)).bytes);
+    await writingAs(held, BOB).updateNode(note.ref, { title: "Seeds, again" });
+    await read(held).updateNode(note.ref, { title: "Seeds" });
+
+    const owner = read(held);
+    expect((await owner.previewArchive(out)).conflicts).toHaveLength(1);
+
+    await owner.importArchive(out, {
+      resolutions: [{ kind: "note", ref: note.ref, keep: "mine" }],
+    });
+    expect((await read(held).getNode(note.ref))?.authors).toEqual([
+      held.did,
+      BOB,
+    ]);
   });
 });
