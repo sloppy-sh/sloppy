@@ -10,9 +10,8 @@
 	import { gitSettings, onADesktop, type PlaceKept } from '../stores/git-settings.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 
-	/** Which key signs, as the choices are offered: the three shapes of
-	 *  `SigningConfig` with the two kinds of ssh key told apart, since they are
-	 *  two different things to do. */
+	/** `SigningConfig`'s three kinds, with the two ssh keys told apart: picking
+	 *  the one this app keeps and naming a key file are two different acts. */
 	type SigningChoice = 'none' | 'kept' | 'file' | 'openpgp';
 
 	/** Which part of this surface an answer belongs under. */
@@ -90,11 +89,17 @@
 		void gitSettings.setUser({ name, email });
 	}
 
-	function choose(choice: SigningChoice): void {
+	async function choose(choice: SigningChoice): Promise<void> {
 		picked = choice;
 		began('signing');
-		if (choice === 'none') void gitSettings.signWith({ kind: 'none' });
-		if (choice === 'kept') void gitSettings.signWith({ kind: 'ssh', key: { kind: 'kept' } });
+		const now =
+			choice === 'none'
+				? ({ kind: 'none' } as const)
+				: choice === 'kept'
+					? ({ kind: 'ssh', key: { kind: 'kept' } } as const)
+					: undefined;
+		// The other two are chosen here and settled by the form under them.
+		if (now && !(await gitSettings.signWith(now))) picked = null;
 	}
 
 	function signWithAKeyFile(event: SubmitEvent): void {

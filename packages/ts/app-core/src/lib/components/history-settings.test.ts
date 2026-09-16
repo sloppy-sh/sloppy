@@ -285,6 +285,23 @@ describe('how the versions kept here are signed', () => {
 		expect(await kept.signing()).toEqual({ kind: 'openpgp' });
 	});
 
+	it('falls back to what the folder says when the key cannot be made', async () => {
+		const kept = new MemoryHistory(folder());
+		kept.setSigning = async () => {
+			throw new Error('No room left on this device.');
+		};
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		pick('signing', 'kept');
+		await settle();
+
+		expect(alerts().join(' ')).toContain('No room left on this device.');
+		const off = target.querySelector<HTMLInputElement>('input[name="signing"][value="none"]');
+		expect(off?.checked).toBe(true);
+	});
+
 	it('says an OpenPGP program takes a desktop, on a phone', async () => {
 		onDevice(PHONE);
 		shellKeeping(new MemoryHistory(folder()));
