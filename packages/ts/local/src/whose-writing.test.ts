@@ -684,6 +684,33 @@ describe("a change offered on a note", () => {
     expect(stack[0].ref).not.toBe(section);
   });
 
+  it("takes no section off another note, however it names one", async () => {
+    const { held, note } = await offered();
+    const elsewhere = await held.api.createNode({ title: "Elsewhere" });
+    const theirs = await held.api.createBlock({
+      node: elsewhere.ref,
+      content: textDocument("Where it stands"),
+    });
+
+    const offer = await writingAs(held, BOB).proposeAmendment({
+      note,
+      title: "Seeds",
+      tags: [],
+      blocks: [{ ref: theirs.ref, content: textDocument("Claimed") }],
+    });
+    await read(held).approveAmendment(offer.ref);
+
+    const again = read(held);
+    const stayed = await again.listBlocks(elsewhere.ref);
+    expect(stayed).toHaveLength(1);
+    expect(stayed[0].ref).toBe(theirs.ref);
+    expect(stayed[0].content).toEqual(textDocument("Where it stands"));
+    const taken = await again.listBlocks(note);
+    expect(taken).toHaveLength(1);
+    expect(taken[0].ref).not.toBe(theirs.ref);
+    expect(taken[0].content).toEqual(textDocument("Claimed"));
+  });
+
   it("leaves nothing behind when it is turned down", async () => {
     const { held, note, offer } = await offered();
 

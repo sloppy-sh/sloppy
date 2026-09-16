@@ -640,7 +640,7 @@ export class LocalApi implements SloppyApi {
         tags: [...request.tags],
         ...(look === undefined ? {} : { appearance: look }),
         sections: request.blocks.map((block) => ({
-          ulid: localOf(block.ref),
+          ulid: offeredSection(graph, note, localOf(block.ref)),
           content: block.content,
         })),
       };
@@ -682,6 +682,7 @@ export class LocalApi implements SloppyApi {
           const had = note.sections.find((one) => one.ulid === section.ulid);
           return {
             ...section,
+            ulid: offeredSection(graph, note, section.ulid),
             created_at: had?.created_at ?? at,
             updated_at: at,
           };
@@ -1880,6 +1881,21 @@ function asNumberedHere(
   }
   const { address: _theirs, ...rest } = note;
   return rest;
+}
+
+/**
+ * What a section an offer proposes is written under. One of the note's own is
+ * kept as it stands; one naming a section of another note is a section this
+ * offer adds, because an offer carries the note's own writing and never takes
+ * a section off somewhere else.
+ */
+function offeredSection(
+  graph: LocalGraph,
+  note: StoredNote,
+  id: string,
+): string {
+  if (note.sections.some((one) => one.ulid === id)) return id;
+  return graph.sectionAt(`${graph.did}/${id}`) ? ulid() : id;
 }
 
 /** A note this graph holds, back as the file that carries it. */

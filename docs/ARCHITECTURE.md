@@ -415,7 +415,10 @@ sections it proposes ride on that row**, in order, rather than in a table of the
 nothing reads one without the offer it belongs to, so there is no second row for the purge
 to miss. Each is named by the ULID of the note section it stands for: a ref the note has is
 that section kept or rewritten, one the note does not have is a section the offer adds, and
-a section of the note the offer does not name is one it takes out. An offer proposes the
+a section of the note the offer does not name is one it takes out. **One naming a section of
+another note is a section the offer adds too** — an offer carries the note's own writing, so
+taking it in never moves a section off the note it is on, and the section it adds is written
+under a reference of its own. An offer proposes the
 note's body whole, which is also what lets it be written as a file in the note's own shape.
 In a vault it is `amendments/<ulid>.md` (§ "A graph on disk"), committed like any note, so
 it travels through the folder's history and rides in archives; the bin does not hold one.
@@ -435,11 +438,13 @@ whole.
 
 The routes: `GET /nodes/:did/:ulid/amendments` lists what has been offered on one note,
 **oldest offer first** — the order they arrived in, and the order they are read in on every
-surface. Whoever the note's writing lands for reads every offer on it, and whoever made one
-reads their own, which is what lets a proposer see the offer standing in their name and take
-it back; `POST /amendments` offers one or writes the one already
-standing; `DELETE /amendments/:did/:ulid` withdraws it; `POST /amendments/:did/:ulid/approve`
-and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
+surface. On a hosted instance the notes are one person's rows, so what that route answers is
+that person's: the offers standing on a note in their own graph. A folder read by more than
+one identity is where the other half holds — whoever the note's writing lands for reads every
+offer on it, and whoever made one reads their own, which is what lets a proposer see the
+offer standing in their name and take it back. `POST /amendments` offers one or writes the
+one already standing; `DELETE /amendments/:did/:ulid` withdraws it;
+`POST /amendments/:did/:ulid/approve` and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
 row here, and that DID is the graph owner's.
 
 ## syr integration

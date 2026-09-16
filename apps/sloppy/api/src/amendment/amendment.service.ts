@@ -9,6 +9,7 @@ import {
 import {
   type Amendment,
   type AmendmentView,
+  createOwnedRecordId,
   type DidSyr,
   entityView,
   type NodeView,
@@ -74,9 +75,9 @@ export class AmendmentService {
 
     const standing = await this.blocks.listByNode(offer.note);
     const on = new Set(standing.map((block) => ownedRefFrom(block.id)));
-    // Whether the row is there, not whether it is on this note: a section
-    // carried here from another note is a row to write, and making a second one
-    // at its reference would take the whole approval down with it.
+    // A section naming a row that is not this note's is a section this offer
+    // adds: an offer carries the note's own writing, and writing one row onto
+    // it would take that row off the note it is on.
     const rows = await this.blocks.existingAmong(
       did,
       offer.blocks.map((section) => section.ref),
@@ -85,11 +86,15 @@ export class AmendmentService {
     let ord: string | null = null;
     for (const section of offer.blocks) {
       ord = orderKeyBetween(ord, null);
+      const own = on.has(section.ref);
       sections.push({
-        ref: section.ref,
+        ref:
+          own || !rows.has(section.ref)
+            ? section.ref
+            : ownedRefFrom(createOwnedRecordId("block", did)),
         content: section.content,
         ord,
-        standing: rows.has(section.ref),
+        standing: own,
       });
     }
     const carried = new Set(sections.map((section) => section.ref));
