@@ -52,7 +52,11 @@ export async function graphOnly(
     name: "A graph",
     owner: identity.did,
   });
-  return { graph, writer: new NoteWriter(graph), did: identity.did };
+  return {
+    graph,
+    writer: new NoteWriter(graph, identity.did),
+    did: identity.did,
+  };
 }
 
 /** The same folder read again, so what a test asserts is what the files say. */

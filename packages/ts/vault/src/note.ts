@@ -151,12 +151,18 @@ export function noteToVault(
  * The file `path` holds, its front matter already written: the sections in
  * order, each opened by its own ULID, with every drawing written beside them.
  * A note and an offered change are the same shape here — `amendment.ts`.
+ *
+ * `within` names what a drawing's own file is named after, alongside the
+ * section it is in. An offer proposes a note's sections under the note's own
+ * section ULIDs, so without it an offer holding a drawing would write over the
+ * drawing the note itself holds.
  */
 export function writeSections(
   path: string,
   front: string,
   blocks: readonly WrittenSection[],
   held: VaultSoFar = {},
+  within?: string,
 ): NoteFiles {
   const files = new Map<string, Uint8Array>();
   const pictures = new Map<string, PictureSize>(held.pictures);
@@ -166,7 +172,7 @@ export function writeSections(
   for (const block of blocks) {
     const ulid = splitOwnedRef(block.ref).localId;
     const sidecars: Sidecars = {
-      block: ulid,
+      block: within === undefined ? ulid : `${within}-${ulid}`,
       media,
       pictures,
       emoji,
