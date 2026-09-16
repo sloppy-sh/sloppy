@@ -10,8 +10,14 @@
  */
 
 import { setHost } from '@sloppy/client';
-import type { History, IdentityAccess } from '@sloppy/local';
-import type { OwnedRef } from '@sloppy/types';
+import type {
+	Credential,
+	CredentialsAccess,
+	GitDefaultsAccess,
+	History,
+	IdentityAccess
+} from '@sloppy/local';
+import type { DidSyr, OwnedRef } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
 
@@ -21,6 +27,20 @@ import { storedOrigin } from './stores/prefs.svelte.js';
  * person's writing lives reads; `createApi` below is what the api layer reads.
  */
 export type DeploymentMode = 'hosted' | 'self_hosted' | 'local';
+
+/** One of the folders this device knows, as a list of them shows it. */
+export interface KnownFolder {
+	/** As the platform spells it, which is what opening one takes. */
+	root: string;
+	/** The graph in it, as its own `graph.json` says. Absent where this device
+	 *  could not read one just now — a folder that is not there, or one holding
+	 *  none yet. */
+	graph?: { ref: OwnedRef; name: string; owner: DidSyr };
+	/** Whether the folder is where this device last saw it. A folder that is
+	 *  gone is still listed, because a person moved it and is the only one who
+	 *  can say where to. */
+	reachable: boolean;
+}
 
 /** The folder a graph on this device is kept in, and the one act that puts one
  *  there. The shell owns where a folder comes from; a page only asks. */
@@ -39,6 +59,24 @@ export interface VaultAccess {
 	 *  its graphs in one place, and the offer says so rather than promising a
 	 *  choice nobody gets. */
 	readonly asks: boolean;
+	/**
+	 * Every folder this device knows, newest first. Absent, like the four acts
+	 * below, is a shell that keeps one folder and no list of them, so nothing
+	 * about choosing between them is put in front of anybody; a shell that
+	 * defines one of them defines all of them.
+	 */
+	known?(): Promise<KnownFolder[]>;
+	/** Serve the graph in that folder from now on. */
+	openKnown?(root: string): Promise<void>;
+	/** Take it off this device's list. Nothing in the folder is touched, and a
+	 *  person opens it again by naming it again. */
+	forget?(root: string): Promise<void>;
+	/** A folder with a graph started in it, asked for where the device asks
+	 *  ({@link VaultAccess.asks}). `undefined` is somebody who named none. */
+	start?(): Promise<string | undefined>;
+	/** A copy of a graph kept somewhere else, brought onto this device.
+	 *  `undefined` is somebody who chose not to say where to put it. */
+	clone?(url: string, credential?: Credential): Promise<string | undefined>;
 }
 
 export interface AppRuntime {
@@ -104,6 +142,17 @@ export interface AppRuntime {
 	 *  anybody; `undefined` from it is a shell that keeps histories with no
 	 *  graph open. `History` in `@sloppy/local` declares every act. */
 	history?(): History | undefined;
+	/** What a folder started on this device begins with, kept beside the
+	 *  graphs rather than in one — a shell that defines it also defines
+	 *  {@link AppRuntime.vault}. Absent → nothing here can be told who its
+	 *  commits are by, and nothing about that is put in front of anybody.
+	 *  `GitDefaultsAccess` in `@sloppy/local` declares every act. */
+	gitDefaults?: GitDefaultsAccess;
+	/** What this device was given to reach the hosts a person keeps their
+	 *  folders on. Absent → this platform holds none, so nothing is offered
+	 *  that would need one. `CredentialsAccess` in `@sloppy/local` declares
+	 *  every act. */
+	credentials?: CredentialsAccess;
 	/** How a stored picture's address becomes one this page can load. Absent →
 	 *  the API's proxy, so viewing somebody else's note never reaches their
 	 *  instance from here. A shell serving a graph off the device answers with
@@ -203,6 +252,8 @@ export const runtime = {
 	vault: (): VaultAccess | undefined => current.vault,
 	identities: (): IdentityAccess | undefined => current.identities,
 	history: (): History | undefined => current.history?.(),
+	gitDefaults: (): GitDefaultsAccess | undefined => current.gitDefaults,
+	credentials: (): CredentialsAccess | undefined => current.credentials,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
 	assetSrc: (): AppRuntime['assetSrc'] => current.assetSrc
