@@ -30,8 +30,21 @@ describe("the per-user purge", () => {
 
   it("deletes by the owner column, never through a parent row", () => {
     for (const statement of STATEMENTS) {
-      expect(statement).toMatch(/^DELETE \w+ WHERE created_by = \$did;$/);
+      expect(statement).toMatch(
+        /^DELETE \w+ WHERE (?:created_by|by) = \$did;$/,
+      );
     }
+  });
+
+  it("reaches the offers this person left on other people's notes", () => {
+    // The one row a purge cannot find by the owner of the rows: it stands in
+    // somebody else's graph, and leaving it there leaves this person's writing
+    // on a note after the identity behind it is gone.
+    expect(STATEMENTS).toContain("DELETE amendment WHERE by = $did;");
+    const byOwner = STATEMENTS.filter((statement) =>
+      statement.includes("WHERE by = $did"),
+    );
+    expect(byOwner).toHaveLength(1);
   });
 
   it("has a statement for every table it claims to sweep", () => {
