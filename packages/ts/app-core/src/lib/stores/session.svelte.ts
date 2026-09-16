@@ -107,6 +107,10 @@ class SessionStore {
 		return this.#signInProblem;
 	}
 
+	clearSignInProblem(): void {
+		this.#signInProblem = null;
+	}
+
 	/**
 	 * Finish a sign-in this device began at somebody's identity store, from what
 	 * the return leg carried. False is a launch that is not a return from one,

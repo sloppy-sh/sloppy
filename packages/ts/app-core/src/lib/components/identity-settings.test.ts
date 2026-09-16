@@ -127,8 +127,26 @@ describe('the identities a device holds', () => {
 		await settle();
 
 		expect(target.textContent).toContain('Ada');
+		expect(target.textContent).toContain('keys.example');
 		expect(target.textContent).toContain('Writing here');
 		expect(offers()).toContain('Write as this one');
+	});
+
+	// Two made here read the same otherwise, and one of them is about to be
+	// handed to another device.
+	it('tells two identities made here apart', async () => {
+		shell({
+			list: async () => [
+				here({ did: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK' }),
+				here({ did: 'did:syr:z6MkjchhfUsD6mmvni8mCdXHw216Xrm9bQe2mBH1P5RDjVJG', writing: false })
+			]
+		});
+		show();
+		await settle();
+
+		expect(target.textContent).toContain('z6MkhaXg…2doK');
+		expect(target.textContent).toContain('z6Mkjchh…jVJG');
+		expect(target.textContent).toContain('Made on this device');
 	});
 
 	it('writes as the one somebody picks from then on', async () => {

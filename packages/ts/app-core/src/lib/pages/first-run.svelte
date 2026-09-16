@@ -21,8 +21,13 @@
 
 	const writing = $derived(held.find((one) => one.writing));
 
+	// Reading who writes here is what makes this re-read when a sign-in lands
+	// after the surface mounted, which is the ordinary case on a first run.
 	$effect(() => {
-		if (identities) void identities.list().then((one) => (held = one));
+		const asOf = session.viewer?.did;
+		void identities?.list().then((one) => {
+			if (asOf === session.viewer?.did) held = one;
+		});
 	});
 
 	/** The shell says what went wrong in words fit to show; anything else that

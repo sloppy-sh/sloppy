@@ -2,6 +2,7 @@
 	// The identities a device holds, and the three ways one arrives —
 	// docs/ARCHITECTURE.md § "A graph off the device".
 	import type { IdentityHere } from '@sloppy/local';
+	import { unplacedPerson } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
@@ -31,14 +32,19 @@
 		void refresh();
 	});
 
+	/** Reading who writes here is what makes this re-read when a sign-in lands
+	 *  after the surface mounted, and what tells a slower answer to stand down. */
 	async function refresh(): Promise<void> {
 		if (!identities) return;
-		held = await identities.list().catch(() => held);
+		const asOf = session.viewer?.did;
+		const listed = await identities.list().catch(() => held);
+		if (asOf === session.viewer?.did) held = listed;
 	}
 
 	async function run(what: string, act: () => Promise<void>): Promise<void> {
 		busy = what;
 		problem = null;
+		session.clearSignInProblem();
 		try {
 			await act();
 		} catch (error) {
@@ -97,7 +103,11 @@
 	}
 
 	function called(one: IdentityHere): string {
-		return one.name ?? one.instance ?? 'Made on this device';
+		return one.name ?? unplacedPerson(one.did).handle;
+	}
+
+	function kept(one: IdentityHere): string {
+		return one.instance ?? 'Made on this device';
 	}
 </script>
 
@@ -113,9 +123,7 @@
 								<span class="text-xs text-muted-foreground">Writing here</span>
 							{/if}
 						</div>
-						{#if one.name && one.instance}
-							<p class="text-sm text-muted-foreground">{one.instance}</p>
-						{/if}
+						<p class="text-sm text-muted-foreground">{kept(one)}</p>
 						{#if one.lapsed}
 							<p class="text-sm text-muted-foreground">
 								Sign in again to keep your name and picture up to date. What you have written is

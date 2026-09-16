@@ -2,6 +2,7 @@ import type { IdentityAccess, IdentityHere } from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime, type VaultAccess } from '../runtime.js';
+import { session } from '../stores/session.svelte.js';
 import FirstRun from './first-run.svelte';
 
 let target: HTMLElement;
@@ -287,5 +288,30 @@ describe('a first run that did not get a folder', () => {
 
 		expect(makeOne).toHaveBeenCalledOnce();
 		expect(opened).toEqual([]);
+	});
+});
+
+describe('a sign-in that lands while the first run is on screen', () => {
+	afterEach(() => session.clear());
+
+	it('says who the writing will be, without anybody reopening the app', async () => {
+		let listed: IdentityHere[] = [];
+		shell({}, { list: async () => listed });
+		show();
+		await settle();
+		expect(target.textContent).toContain('Starting here gives you');
+
+		listed = [here({ name: 'Ada Lovelace', source: 'delegated', instance: 'keys.example' })];
+		session.adopt(
+			{
+				did: 'did:syr:z6Mkone',
+				syr_instance_url: 'https://keys.example',
+				delegate_public_key: 'zDelegate'
+			},
+			'a-token'
+		);
+		await settle();
+
+		expect(target.textContent).toContain('writing as Ada Lovelace');
 	});
 });
