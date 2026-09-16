@@ -343,3 +343,118 @@ describe('which identity the shell serves a folder under', () => {
 		expect((await registered.identities?.list())?.map((one) => one.did)).toEqual([MINE]);
 	});
 });
+
+describe('the folders this device keeps its graphs in', () => {
+	const ADA = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
+	const GARDEN = '/Users/me/garden';
+	const THESIS = '/Users/me/thesis';
+
+	function graphIn(folder: string, name: string, graph: string): void {
+		held.set(`${folder}/graph.json`, btoa(JSON.stringify({ format: 1, graph, name, owner: ADA })));
+	}
+
+	/** Folders this device has opened before, oldest first. */
+	function knows(...folders: string[]): void {
+		held.set(
+			'/data/vaults.json',
+			btoa(
+				JSON.stringify(
+					folders.map((root, put) => ({
+						root,
+						created_at: new Date(put + 1).toISOString(),
+						updated_at: new Date(put + 1).toISOString()
+					}))
+				)
+			)
+		);
+	}
+
+	/** Two folders this device has opened, each holding its own graph. */
+	function knowsBoth(): void {
+		knows(GARDEN, THESIS);
+		graphIn(GARDEN, 'The garden', '01ARZ3NDEKTSV4RRFFQ69G5FAV');
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+	}
+
+	beforeEach(() => {
+		held.clear();
+		picks = GARDEN;
+		picking = 'answers';
+		resetApi.mockClear();
+	});
+
+	it('are listed as the graphs they hold, the one opened last first', async () => {
+		knowsBoth();
+		await launch();
+
+		const known = await registered.vault?.known?.();
+
+		expect(known?.map((one) => one.graph?.name)).toEqual(['The thesis', 'The garden']);
+		expect(known?.map((one) => one.root)).toEqual([THESIS, GARDEN]);
+		expect(known?.[0].graph?.ref).toBe(`${ADA}/01ARZ3NDEKTSV4RRFFQ69G5FAW`);
+		expect(known?.[0].graph?.owner).toBe(ADA);
+	});
+
+	it('keep one that is not where it was, with nothing in it to open', async () => {
+		knows(GARDEN);
+		await launch();
+
+		const [gone] = (await registered.vault?.known?.()) ?? [];
+
+		expect(gone.root).toBe(GARDEN);
+		expect(gone.reachable).toBe(false);
+		expect(gone.graph).toBeUndefined();
+	});
+
+	it('are opened by naming one, which is the graph in front of somebody then', async () => {
+		knowsBoth();
+		await launch();
+
+		await registered.vault?.openKnown?.(THESIS);
+
+		expect(registered.vault?.folder()).toBe(THESIS);
+		expect(servedFrom()).toBe(THESIS);
+		expect(resetApi).toHaveBeenCalled();
+		// And it is the folder the next launch opens.
+		expect(await (await launch()).openRememberedVault()).toBe(THESIS);
+	});
+
+	it('read the one opened again as the newest, wherever it was written down', async () => {
+		knowsBoth();
+		await launch();
+
+		await registered.vault?.openKnown?.(GARDEN);
+
+		expect((await registered.vault?.known?.())?.map((one) => one.root)).toEqual([GARDEN, THESIS]);
+	});
+
+	it('lose one that is forgotten, and keep everything inside it', async () => {
+		knowsBoth();
+		await launch();
+
+		await registered.vault?.forget?.(GARDEN);
+
+		expect((await registered.vault?.known?.())?.map((one) => one.root)).toEqual([THESIS]);
+		expect(held.has(`${GARDEN}/graph.json`)).toBe(true);
+	});
+
+	it('gain the one somebody starts, which is opened straight away', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = GARDEN;
+
+		expect(await registered.vault?.start?.()).toBe(GARDEN);
+		expect(servedFrom()).toBe(GARDEN);
+	});
+
+	it('are one folder and no list of them where a device keeps its graphs in one place', async () => {
+		await launch('ios');
+
+		expect(registered.vault?.known).toBeUndefined();
+		expect(registered.vault?.openKnown).toBeUndefined();
+		expect(registered.vault?.forget).toBeUndefined();
+		expect(registered.vault?.start).toBeUndefined();
+		expect(registered.vault?.clone).toBeUndefined();
+	});
+});

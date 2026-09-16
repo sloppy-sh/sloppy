@@ -3,10 +3,19 @@
 
 	/** One of somebody's graphs, as this sheet lists it. */
 	export interface GraphChoice {
-		ref: OwnedRef;
+		/** Absent where this device cannot read the graph in the folder it is
+		 *  kept in: the folder has been moved or emptied, and the row says so
+		 *  rather than offering anything but forgetting it. */
+		ref?: OwnedRef;
 		title: string;
 		/** What it does to a note written in it from here on. Absent is `open`. */
 		ownership?: GraphOwnership;
+		/** The folder it is kept in, where this device's graphs are folders.
+		 *  Absent everywhere else, and a row carrying one is chosen by opening
+		 *  that folder rather than by moving into the graph. */
+		folder?: string;
+		/** Whose graph it is, where that is somebody other than the reader. */
+		by?: string;
 	}
 
 	/** A branch its author deleted and can still put back. */
@@ -56,6 +65,10 @@
 		onEnter,
 		onToggle,
 		onOpen,
+		onOpenFolder,
+		onStart,
+		onClone,
+		onForget,
 		onRename,
 		onOwnership,
 		onRemove,
@@ -86,6 +99,17 @@
 		onToggle: (ref: OwnedRef) => void;
 		/** Rejects with an `Error` whose `message` is already fit to show. */
 		onOpen: (title: string) => Promise<void>;
+		/** Read the graph kept in that folder from now on. Absent leaves every
+		 *  row a graph to move into rather than a folder to open. */
+		onOpenFolder?: (folder: string) => Promise<void>;
+		/** Ask somebody for a folder to keep a graph in. Absent leaves a graph
+		 *  something started by naming it here. */
+		onStart?: () => Promise<void>;
+		/** Bring a copy of a graph kept somewhere else onto this device. Absent
+		 *  where this device has no way to. */
+		onClone?: (url: string) => Promise<void>;
+		/** Take a folder off this device's list, leaving everything in it. */
+		onForget?: (folder: string) => Promise<void>;
 		onRename: (ref: OwnedRef, title: string) => Promise<void>;
 		/** What a note written in this graph from here on carries. Absent leaves
 		 *  the choice off the sheet. */
@@ -97,6 +121,7 @@
 	} = $props();
 
 	let opening = $state('');
+	let bringing = $state('');
 	let naming = $state<{ ref: OwnedRef; title: string; owned: boolean } | null>(null);
 	let refused = $state<string | null>(null);
 	let working = $state(false);
@@ -110,7 +135,7 @@
 	});
 
 	const closeSays = $derived(
-		closing && publishedFrom && !publishedFrom.has(closing.ref)
+		closing?.ref !== undefined && publishedFrom && !publishedFrom.has(closing.ref)
 			? 'The notes in it go with it, and they cannot be put back.'
 			: 'The notes in it go with it, and they cannot be put back. Whoever already has a branch you published from it keeps their copy.'
 	);
@@ -158,12 +183,32 @@
 		}
 	}
 
+	async function openFolder(folder: string): Promise<void> {
+		if (!onOpenFolder) return;
+		if (await act(() => onOpenFolder(folder))) open = false;
+	}
+
+	async function startFolder(): Promise<void> {
+		if (!onStart) return;
+		if (await act(() => onStart())) open = false;
+	}
+
+	async function bringOne(): Promise<void> {
+		const url = bringing.trim();
+		if (url === '' || !onClone) return;
+		if (await act(() => onClone(url))) {
+			bringing = '';
+			open = false;
+		}
+	}
+
 	async function closeGraph(): Promise<void> {
 		const graph = closing;
-		if (!graph || !onRemove) return;
+		if (graph?.ref === undefined || !onRemove) return;
+		const ref = graph.ref;
 		closeRefused = null;
 		try {
-			await onRemove(graph.ref);
+			await onRemove(ref);
 		} catch (error) {
 			closeRefused = error instanceof Error && error.message ? error.message : 'That did not work.';
 			throw error;
@@ -193,11 +238,20 @@
 >
 	<div class="space-y-6 px-2 pt-4 pb-2">
 		<ul class="space-y-1">
-			{#each graphs as graph (graph.ref)}
-				{@const here = graph.ref === current}
-				{@const up = here || alsoUp.has(graph.ref)}
+			{#each graphs as graph (graph.folder ?? graph.ref)}
+				{@const ref = graph.ref}
+				{@const here = ref !== undefined && ref === current}
+				{@const up = here || (ref !== undefined && alsoUp.has(ref))}
 				<li class="flex flex-wrap items-center gap-2">
-					{#if naming?.ref === graph.ref}
+					{#if ref === undefined}
+						<div class="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-2 text-sm">
+							<span class="w-4 shrink-0"></span>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate">{nameOf(graph)}</span>
+								<span class="block truncate text-xs text-muted-foreground"> not where it was </span>
+							</span>
+						</div>
+					{:else if naming?.ref === ref}
 						<Input
 							bind:value={naming.title}
 							class="h-11 flex-1"
@@ -221,13 +275,13 @@
 						{#if onOwnership}
 							<div class="flex w-full items-start gap-3 px-1 pt-1 pb-2">
 								<Switch
-									id="owned-{graph.ref}"
+									id="owned-{ref}"
 									bind:checked={naming.owned}
 									disabled={working}
-									onCheckedChange={(owned) => void chooseOwnership(graph.ref, owned)}
+									onCheckedChange={(owned) => void chooseOwnership(ref, owned)}
 								/>
 								<div class="min-w-0 flex-1 space-y-1">
-									<Label for="owned-{graph.ref}" class="text-sm font-normal">
+									<Label for="owned-{ref}" class="text-sm font-normal">
 										New notes are only their writer's
 									</Label>
 									<p class="text-xs text-muted-foreground">
@@ -237,19 +291,30 @@
 							</div>
 						{/if}
 					{:else}
+						{@const folder = graph.folder}
 						<button
 							type="button"
 							aria-current={here ? 'true' : undefined}
 							class="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
+							disabled={working}
 							onclick={() => {
+								if (folder !== undefined && onOpenFolder) {
+									void openFolder(folder);
+									return;
+								}
 								open = false;
-								onEnter(graph.ref);
+								onEnter(ref);
 							}}
 						>
 							<span class="w-4 shrink-0 text-muted-foreground">
 								{#if here}<Check class="size-4" aria-hidden="true" />{/if}
 							</span>
-							<span class="min-w-0 flex-1 truncate">{nameOf(graph)}</span>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate">{nameOf(graph)}</span>
+								{#if graph.by}
+									<span class="block truncate text-xs text-muted-foreground">{graph.by}</span>
+								{/if}
+							</span>
 						</button>
 						<Button
 							variant={up ? 'secondary' : 'ghost'}
@@ -258,7 +323,7 @@
 							aria-label={up
 								? `Take ${nameOf(graph)} off the canvas`
 								: `Show ${nameOf(graph)} beside this one`}
-							onclick={() => onToggle(graph.ref)}
+							onclick={() => onToggle(ref)}
 						>
 							{up ? 'On the canvas' : 'Show it too'}
 						</Button>
@@ -269,12 +334,12 @@
 							aria-label={onOwnership ? `Settings for ${nameOf(graph)}` : `Rename ${nameOf(graph)}`}
 							onclick={() => {
 								refused = null;
-								naming = { ref: graph.ref, title: graph.title, owned: graph.ownership === 'owned' };
+								naming = { ref, title: graph.title, owned: graph.ownership === 'owned' };
 							}}
 						>
 							<Pencil class="size-4" />
 						</Button>
-						{#if onRemove && graph.ref !== home}
+						{#if onRemove && ref !== home && graph.by === undefined}
 							<Button
 								variant="ghost"
 								size="icon"
@@ -290,6 +355,18 @@
 							</Button>
 						{/if}
 					{/if}
+					{#if onForget && graph.folder !== undefined && !here}
+						{@const folder = graph.folder}
+						<Button
+							variant="ghost"
+							class="h-9 shrink-0 rounded-full text-xs text-muted-foreground"
+							disabled={working}
+							aria-label={`Forget ${nameOf(graph)}`}
+							onclick={() => void act(() => onForget(folder))}
+						>
+							Forget
+						</Button>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -300,32 +377,77 @@
 			</p>
 		{/if}
 
-		<section class="space-y-2 border-t border-border pt-4">
-			<h3 class="text-sm font-medium">A new graph</h3>
-			<div class="flex gap-2">
-				<Input
-					bind:value={opening}
-					class="h-11 flex-1"
-					autocomplete="off"
-					maxlength={512}
-					placeholder="The garden"
-					aria-label="Name the new graph"
-					onkeydown={(e) => {
-						if (e.key !== 'Enter') return;
-						e.preventDefault();
-						void openGraph();
-					}}
-				/>
-				<Button
-					class="h-11 shrink-0"
-					disabled={working || opening.trim() === ''}
-					onclick={openGraph}
-				>
+		{#if onStart}
+			<section class="space-y-2 border-t border-border pt-4">
+				<h3 class="text-sm font-medium">Start a folder</h3>
+				<p class="text-xs text-muted-foreground">
+					An empty folder becomes a graph of its own. One that already holds a graph opens it.
+				</p>
+				<Button class="h-11 w-full" disabled={working} onclick={startFolder}>
 					<Plus class="size-4" />
-					Start it
+					Choose a folder
 				</Button>
-			</div>
-		</section>
+			</section>
+			{#if onClone}
+				<section class="space-y-2 border-t border-border pt-4">
+					<h3 class="text-sm font-medium">Bring one from an address</h3>
+					<p class="text-xs text-muted-foreground">
+						A copy of a graph kept somewhere else, brought onto this device.
+					</p>
+					<div class="flex gap-2">
+						<Input
+							bind:value={bringing}
+							class="h-11 flex-1"
+							autocomplete="off"
+							autocapitalize="none"
+							spellcheck={false}
+							maxlength={2048}
+							placeholder="https://…"
+							aria-label="Where the graph is kept"
+							onkeydown={(e) => {
+								if (e.key !== 'Enter') return;
+								e.preventDefault();
+								void bringOne();
+							}}
+						/>
+						<Button
+							class="h-11 shrink-0"
+							disabled={working || bringing.trim() === ''}
+							onclick={bringOne}
+						>
+							Bring it here
+						</Button>
+					</div>
+				</section>
+			{/if}
+		{:else}
+			<section class="space-y-2 border-t border-border pt-4">
+				<h3 class="text-sm font-medium">A new graph</h3>
+				<div class="flex gap-2">
+					<Input
+						bind:value={opening}
+						class="h-11 flex-1"
+						autocomplete="off"
+						maxlength={512}
+						placeholder="The garden"
+						aria-label="Name the new graph"
+						onkeydown={(e) => {
+							if (e.key !== 'Enter') return;
+							e.preventDefault();
+							void openGraph();
+						}}
+					/>
+					<Button
+						class="h-11 shrink-0"
+						disabled={working || opening.trim() === ''}
+						onclick={openGraph}
+					>
+						<Plus class="size-4" />
+						Start it
+					</Button>
+				</div>
+			</section>
+		{/if}
 
 		{#if deleted.length > 0}
 			<section class="space-y-2 border-t border-border pt-4">

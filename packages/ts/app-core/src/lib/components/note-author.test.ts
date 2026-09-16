@@ -9,6 +9,7 @@ import NoteAuthor from './note-author.svelte';
 
 const PEER = 'did:syr:z6MkjChhrJfLm9WGVUAnyLPnfPGmZDcyDKNsBTsAsn7RkAqB';
 const STRANGER = 'did:syr:z6MkfZ3Uc1nUxUeaKvcVjNbBidsWv5tvfAv1TFuxNvcbXeaC';
+const THIRD = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
 const THEIR_BRANCH: PublishedPublication = {
 	ref: ref(3, PEER),
@@ -227,6 +228,37 @@ describe('who wrote the note', () => {
 		expect(said).toContain('with');
 		expect(said.some((one) => one.startsWith('·'))).toBe(false);
 		expect(said.some((one) => one.endsWith('·'))).toBe(true);
+	});
+
+	// Three people on one line is where it wraps between two of them.
+	it('keeps every separator with the name it follows, however many wrote it', async () => {
+		api.on(asked(STRANGER), () => ({
+			did: STRANGER,
+			username: 'grace',
+			display_name: 'Grace Hopper',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		api.on(asked(THIRD), () => ({
+			did: THIRD,
+			username: 'alan',
+			display_name: 'Alan Turing',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		show(PEER, { authors: [PEER, STRANGER, THIRD] });
+		await settle();
+
+		const line = target.querySelector('div');
+		if (!line) throw new Error('Nobody is named on screen');
+		const said = [...line.children].map((one) => one.textContent?.trim() ?? '');
+		expect(said.join(' ')).toContain('Alan Turing');
+		expect(said.some((one) => one.startsWith('·'))).toBe(false);
+		expect(said.some((one) => one.startsWith('and'))).toBe(false);
+		expect(said.some((one) => one.endsWith('·'))).toBe(true);
+		expect(said.some((one) => one.endsWith('and'))).toBe(true);
 	});
 
 	// `authors` absent, and empty, are the ref's DID alone — nothing else may
