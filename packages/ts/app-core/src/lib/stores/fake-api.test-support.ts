@@ -5,6 +5,7 @@
 
 import {
 	addressDepth,
+	AmendmentSectionSchema,
 	type AmendmentView,
 	type AnsweredNote,
 	type ArchivePreview,
@@ -327,7 +328,7 @@ export function amending(
 		const written = amendment(9_500 + standing.length, asked.note as OwnedRef, DID, {
 			title: asked.title ?? '',
 			tags: [...(asked.tags ?? [])],
-			blocks: [...asked.blocks],
+			blocks: asked.blocks.map((one) => AmendmentSectionSchema.parse(one)),
 			...(asked.message === undefined ? {} : { message: asked.message })
 		});
 		standing.push(written);
