@@ -47,11 +47,12 @@ export class AmendmentRepository {
   constructor(private readonly db: DbService) {}
 
   /** What has been offered on one note, oldest first — the order it arrived
-   *  in, which is the order every surface reads it in. */
+   *  in, which is the order every surface reads it in. The id breaks a tie:
+   *  offers that arrive together in an archive share the moment they landed. */
   async listFor(did: DidSyr, note: OwnedRef): Promise<Amendment[]> {
     const [rows] = await this.query(
       `SELECT * FROM amendment
-         WHERE created_by = $did AND note = $note ORDER BY created_at`,
+         WHERE created_by = $did AND note = $note ORDER BY created_at, id`,
       { did, note },
     );
     return rows.map((row) => AmendmentSchema.parse(row));
