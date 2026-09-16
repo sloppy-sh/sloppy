@@ -34,7 +34,9 @@ export interface KnownFolder {
 	root: string;
 	/** The graph in it, as its own `graph.json` says. Absent where this device
 	 *  could not read one just now — a folder that is not there, or one holding
-	 *  none yet. */
+	 *  none yet. `owner` is whose folder it is, which is what says whether
+	 *  closing it is this device's act; what they are called is `profileOf`'s
+	 *  answer here as everywhere else, so no list holds a second copy of it. */
 	graph?: { ref: OwnedRef; name: string; owner: DidSyr };
 	/** Whether the folder is where this device last saw it. A folder that is
 	 *  gone is still listed, because a person moved it and is the only one who
@@ -71,8 +73,10 @@ export interface VaultAccess {
 	/** Take it off this device's list. Nothing in the folder is touched, and a
 	 *  person opens it again by naming it again. */
 	forget?(root: string): Promise<void>;
-	/** A folder with a graph started in it, asked for where the device asks
-	 *  ({@link VaultAccess.asks}). `undefined` is somebody who named none. */
+	/** The same act as {@link VaultAccess.open} for a folder a person means to
+	 *  fill: what separates the two is the words the offer is made in — opening
+	 *  a folder that holds a graph, or starting one that will.
+	 *  `undefined` is somebody who named none. */
 	start?(): Promise<string | undefined>;
 	/** A copy of a graph kept somewhere else, brought onto this device.
 	 *  `undefined` is somebody who chose not to say where to put it. */

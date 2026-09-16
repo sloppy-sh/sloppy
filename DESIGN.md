@@ -771,7 +771,7 @@ than sorted again on the page.
 **Phone first, which means the lanes collapse.** Where there is no room for a lane per
 branch, the picture is one column with a merge mark where two came together, and the labels
 stay — a name at a head is what a person reads a branch by, so it is the last thing to go.
-Tapping a commit opens its details as a sheet (§ Components' one modal): the message, who
+Tapping a commit opens its details as a sheet (§ Layout, the one modal): the message, who
 made it, whether it is signed and by which key, what it springs from, the branches at it,
 and the acts — read the graph as it was, compare it with now, branch from here, switch to a
 branch at it.

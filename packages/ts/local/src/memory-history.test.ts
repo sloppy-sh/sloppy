@@ -252,6 +252,90 @@ describe("a graph kept somewhere else as well", () => {
     );
   });
 
+  it("carries a remote's branches with it when it is called something else", async () => {
+    const { ada } = together();
+    await ada.history.addRemote("origin", KEPT_URL);
+    await write(ada.files, NOTE, "one");
+    await ada.history.commit("A first note");
+    await ada.history.push();
+
+    await ada.history.renameRemote("origin", "github");
+
+    expect(await ada.history.remotes()).toEqual([
+      { name: "github", url: KEPT_URL },
+    ]);
+    expect((await ada.history.status()).upstream).toBe("github/main");
+    expect((await ada.history.branches()).map((one) => one.name)).toEqual([
+      "main",
+      "github/main",
+    ]);
+
+    await write(ada.files, OTHER, "beside it");
+    await ada.history.commit("A note beside it");
+    await ada.history.push();
+    expect((await ada.history.status()).ahead).toBe(0);
+
+    await ada.history.addRemote("origin", "https://example.test/else.git");
+    await expect(
+      ada.history.renameRemote("github", "origin"),
+    ).rejects.toBeInstanceOf(HistoryError);
+    await expect(
+      ada.history.renameRemote("nowhere", "elsewhere"),
+    ).rejects.toBeInstanceOf(HistoryError);
+  });
+
+  it("follows what a branch taken whole was taken from", async () => {
+    const { ada, bo } = together();
+    await ada.history.addRemote("origin", KEPT_URL);
+    await bo.history.addRemote("origin", KEPT_URL);
+    await write(ada.files, NOTE, "one");
+    await ada.history.commit("A first note");
+    await ada.history.push();
+
+    await bo.history.pull();
+    expect(await bo.history.status()).toMatchObject({
+      ahead: 0,
+      behind: 0,
+      upstream: "origin/main",
+    });
+
+    await write(ada.files, OTHER, "beside it");
+    await ada.history.commit("A note beside it");
+    await ada.history.push();
+    await bo.history.fetch("origin");
+
+    expect(await bo.history.status()).toMatchObject({ ahead: 0, behind: 1 });
+  });
+
+  it("lists the branches kept here beside the ones it last heard of", async () => {
+    const { ada, bo } = together();
+    await ada.history.addRemote("origin", KEPT_URL);
+    await bo.history.addRemote("origin", KEPT_URL);
+    await write(ada.files, NOTE, "one");
+    const first = await ada.history.commit("A first note");
+    await ada.history.push();
+    await bo.history.pull();
+    await write(bo.files, OTHER, "beside it");
+    const second = await bo.history.commit("A note beside it");
+
+    expect(await bo.history.branches()).toEqual([
+      {
+        name: "main",
+        head: second?.id,
+        current: true,
+        upstream: "origin/main",
+        ahead: 1,
+        behind: 0,
+      },
+      {
+        name: "origin/main",
+        head: first?.id,
+        current: false,
+        remote: "origin",
+      },
+    ]);
+  });
+
   it("reproduces every commit and every head for whoever takes them", async () => {
     const { ada, bo, kept } = together();
     await ada.history.addRemote("origin", KEPT_URL);

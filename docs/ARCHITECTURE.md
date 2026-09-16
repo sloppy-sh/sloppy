@@ -585,7 +585,10 @@ rather than dropped, because a person moved it and only they can say where to. S
 graph here is starting a folder, and a folder can arrive by being cloned from somewhere
 else. **Forgetting a folder takes it off this list and deletes nothing** — it is anybody's
 act, on any folder, and the folder is opened again by naming it again. `VaultAccess` in
-`@sloppy/app-core` is what a page asks: `known`, `openKnown`, `forget`, `start`, `clone`.
+`@sloppy/app-core` is what a page asks: the `open` it already had, and `known`, `openKnown`,
+`forget`, `start` and `clone` beside it. `open` and `start` are one act under the two words
+a person chooses it by — opening a folder that holds a graph, or starting one that will —
+and `openKnown` is a folder already on the list, named rather than picked.
 
 **A folder somebody else owns is not yours to close.** Closing or emptying a folder — every
 act that takes the graph out of it — is the owner's, the DID its `graph.json` names, and
@@ -597,7 +600,8 @@ private data holds `identities.json` and the key file each `device` entry names;
 `vaults.json`, the list of folders a graph has been put in — a folder cannot remember where
 somebody put it; `git.json`, what a folder started here begins with (§ "The vault's
 history"); `credentials.json`, what this device was given to reach the hosts a person keeps
-folders on; and `signing.key`, the private half of the key this app signs with. What a person is called is not there: a name and a picture are written into
+folders on; and `signing.key`, the private half of the key this app signs with. What a
+person is called is not there: a name and a picture are written into
 the owner block of every graph the writing identity owns (§ "A graph on disk"), so a graph
 says whose it is wherever it is opened, and there is no profile to read from anywhere else.
 
@@ -2149,16 +2153,34 @@ never need a repository on a disk.
 **A folder has remotes, and they are the person's own — not federation.** Following a DID
 and pulling a published subtree is § "Federating the graph", still pull-only and still
 nothing to do with git. A remote here is somewhere a person chose to keep their own folder:
-their host, their account somewhere, another disk. The acts are git's, and each one refuses
+their host, their account somewhere, another disk. They are kept where git keeps them, in
+the folder's own config, and a person adds one, calls it something else, points it somewhere
+else or takes it away — a rename carries the branches this folder last heard that remote had,
+and every branch following one of them, with it. The acts are git's, and each one refuses
 what it cannot do in words a person can act on. `fetch` takes what a remote has and leaves
 the folder alone. `pull` fetches and then runs the same merge a local one runs, with the
-same conflicts settled the same way; nothing to take is `{ merged: true }`. `push` puts this
+same conflicts settled the same way; nothing to take is `{ merged: true }`, and a branch with
+nothing here to merge into is taken whole and follows what it came from, which is what a
+folder that arrived as a copy is. `push` puts this
 branch's commits where the remote keeps them, follows it from then on where the branch
 followed nothing, and is refused where the remote has commits this branch has not taken in —
 "Pull first, then push again.", because writing over somebody's writing is not a thing a
 push may do quietly. `status` carries `ahead`, `behind` and the branch this one follows.
 **A `clone` is `Files`' and not `History`'s**, because a folder that is not here yet has no
 history to ask.
+
+**What a pull brings in is files; what a number names is the graph's, and a pull does not
+settle that.** Two people writing at once are offered the same next number by the same
+deterministic rule (AI.md § "The Genealogy Is the Protocol"), so two notes at `1b` in one
+graph is an ordinary Tuesday between two disks rather than an edge case, and git merges the
+two files without noticing. A merge that leaves the folder holding a pair like that is not
+finished: the folder is read again afterwards and the pair is put to the person as the same
+conflict a copy of a graph arriving in a file carries — which note keeps the number, the
+other keeping it as an alias so a citation still lands (§ "A graph on disk"). `LocalApi`
+owns that, with `ImportConflict` and `ImportResolution` as the vocabulary, and `History`
+knows nothing about numbers. **The bin travels with neither**, so the numbers a graph has
+spent are the folder's own: what a person purged on one device is not known on the other,
+exactly as it is not known to a copy carried in an archive.
 
 **Credentials never enter a folder, and the shell holds none.** What a host wants —
 a personal access token over https, or an ssh key — lives in the app's private data as
@@ -2193,12 +2215,16 @@ signers vouch for.
 **The whole history is readable as one picture.** `graph(limit, cursor)` answers commits
 across every head this folder knows — its branches and the remote-tracking ones — newest
 first and never ahead of what they spring from, each carrying the names at it (`main`,
-`origin/main`) and its signature. It is paged like `log`. DESIGN.md § "The history as a
-picture" is how it is drawn.
+`origin/main`) and its signature. It is paged like `log`. `branches` answers the same two
+kinds together — the ones kept here, each with what it follows and how far ahead and behind
+of it, and the ones this folder last heard a remote had, each saying whose it is — so a
+panel listing them is one answer rather than something assembled out of pages. DESIGN.md
+§ "The history as a picture" is how it is drawn.
 
 **The commands the shell answers**, each taking the folder's root first and, where the
 contract has one, the credential as the shape `@sloppy/local` declares: `history_graph`,
-`history_remotes`, `history_add_remote`, `history_set_remote_url`, `history_remove_remote`,
+`history_remotes`, `history_add_remote`, `history_rename_remote`, `history_set_remote_url`,
+`history_remove_remote`,
 `history_fetch`, `history_pull`, `history_push`, `history_delete_branch`,
 `history_branch_at`, `history_git_user`, `history_set_git_user`, `history_signing`,
 `history_set_signing`, and `files_clone` beside them. They join `history_status`,

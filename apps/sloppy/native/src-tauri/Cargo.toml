@@ -29,11 +29,11 @@ percent-encoding = "2"
 base64 = "0.22"
 # The history of the folder a graph is in is git's, and this is git — the two
 # transports a folder's remotes are reached over are
-# docs/ARCHITECTURE.md § "The vault's history". `ssh` is libssh2, which takes
-# its crypto from OpenSSL on every platform, so a desktop build needs one
-# installed (`brew install openssl@3` on macOS); a phone has none and builds the
-# one below.
-git2 = { version = "0.20", default-features = false, features = ["https", "ssh"] }
+# docs/ARCHITECTURE.md § "The vault's history". `ssh` is libssh2, whose crypto
+# is OpenSSL's on every platform and which a phone has none of, so the crate
+# builds its own on every target rather than making one a thing a machine has to
+# have before it can build this app.
+git2 = { version = "0.20", default-features = false, features = ["https", "ssh", "vendored-openssl"] }
 # Signing a commit happens here rather than by a program, so a phone signs too —
 # docs/ARCHITECTURE.md § "The vault's history".
 ssh-key = { version = "0.6", default-features = false, features = ["ed25519", "alloc", "std", "getrandom"] }
@@ -58,9 +58,6 @@ tauri-plugin-fs = "2"
 # DESIGN.md § "The four inset vars".
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-safe-area-insets-css = "0.2"
-# A phone has no OpenSSL to find, so these two targets build one of their own
-# and nothing else does.
-git2 = { version = "0.20", default-features = false, features = ["vendored-openssl"] }
 
 # "deep-link" is what re-emits a forwarded URL through the deep-link plugin.
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]

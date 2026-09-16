@@ -136,17 +136,11 @@ export class MemoryHistory implements History {
       else if (!sameBytes(was, bytes)) changed.push(path);
     }
     for (const path of tree.keys()) if (!now.has(path)) changed.push(path);
-    const upstream = this.follows.get(this.on);
-    const theirs =
-      upstream === undefined ? undefined : this.followed.get(upstream);
-    const mine = this.heads.get(this.on);
     return {
       changed: changed.sort(),
       untracked: untracked.sort(),
       branch: this.on,
-      ahead: this.count(mine, theirs),
-      behind: this.count(theirs, mine),
-      ...(upstream === undefined ? {} : { upstream }),
+      ...this.against(this.on),
     };
   }
 
@@ -183,11 +177,22 @@ export class MemoryHistory implements History {
   }
 
   async branches(): Promise<Branch[]> {
-    return [...this.heads].map(([name, head]) => ({
+    const here = [...this.heads].map(([name, head]) => {
+      const measured = this.against(name);
+      return {
+        name,
+        head,
+        current: name === this.on,
+        ...(measured.upstream === undefined ? {} : measured),
+      };
+    });
+    const elsewhere = [...this.followed].map(([name, head]) => ({
       name,
       head,
-      current: name === this.on,
+      current: false,
+      remote: remoteOf(name),
     }));
+    return [...here, ...elsewhere];
   }
 
   async branch(name: string): Promise<Branch> {
@@ -326,6 +331,22 @@ export class MemoryHistory implements History {
     this.named.set(name, url);
   }
 
+  async renameRemote(name: string, to: string): Promise<void> {
+    const url = this.named.get(name);
+    if (url === undefined) throw nothingCalled(name);
+    if (this.named.has(to)) throw alreadyCalled(to);
+    this.named.delete(name);
+    this.named.set(to, url);
+    for (const [ref, head] of [...this.followed]) {
+      if (remoteOf(ref) !== name) continue;
+      this.followed.delete(ref);
+      this.followed.set(under(to, ref), head);
+    }
+    for (const [branch, ref] of [...this.follows]) {
+      if (remoteOf(ref) === name) this.follows.set(branch, under(to, ref));
+    }
+  }
+
   async setRemoteUrl(name: string, url: string): Promise<void> {
     if (!this.named.has(name)) throw nothingCalled(name);
     this.named.set(name, url);
@@ -335,10 +356,10 @@ export class MemoryHistory implements History {
     if (!this.named.has(name)) throw nothingCalled(name);
     this.named.delete(name);
     for (const ref of [...this.followed.keys()]) {
-      if (ref.startsWith(`${name}/`)) this.followed.delete(ref);
+      if (remoteOf(ref) === name) this.followed.delete(ref);
     }
     for (const [branch, ref] of [...this.follows]) {
-      if (ref.startsWith(`${name}/`)) this.follows.delete(branch);
+      if (remoteOf(ref) === name) this.follows.delete(branch);
     }
   }
 
@@ -358,6 +379,7 @@ export class MemoryHistory implements History {
     if (!this.head()) {
       await this.lay(this.commits.get(theirs)?.tree ?? new Map());
       this.heads.set(this.on, theirs);
+      this.follows.set(this.on, `${name}/${this.on}`);
       return { merged: true };
     }
     if (this.unsettled) throw midMerge();
@@ -493,6 +515,22 @@ export class MemoryHistory implements History {
     return held.sort((a, b) => b.made - a.made);
   }
 
+  /** How far a branch is from the one it follows. A branch that follows none
+   *  is level with nothing rather than behind it. */
+  private against(
+    branch: string,
+  ): Pick<HistoryStatus, "ahead" | "behind" | "upstream"> {
+    const upstream = this.follows.get(branch);
+    const theirs =
+      upstream === undefined ? undefined : this.followed.get(upstream);
+    const mine = this.heads.get(branch);
+    return {
+      ahead: this.count(mine, theirs),
+      behind: this.count(theirs, mine),
+      ...(upstream === undefined ? {} : { upstream }),
+    };
+  }
+
   /** How many commits `head` leads back through that `other` does not. */
   private count(head?: string, other?: string): number {
     if (head === undefined) return 0;
@@ -521,10 +559,11 @@ export class MemoryHistory implements History {
   /** Which remote an act with none named is with: the one the branch follows,
    *  else the only one there is, else the one a first push makes. */
   private whichRemote(remote?: string): string {
+    const followed = this.follows.get(this.on);
     const only = this.named.size === 1 ? [...this.named.keys()][0] : undefined;
     const name =
       remote ??
-      this.follows.get(this.on)?.split("/")[0] ??
+      (followed === undefined ? undefined : remoteOf(followed)) ??
       only ??
       DEFAULT_REMOTE;
     if (!this.named.has(name)) throw nothingCalled(name);
@@ -564,6 +603,18 @@ function view(held: Held): Commit {
     parents: [...held.parents],
     ...(held.signature === undefined ? {} : { signature: held.signature }),
   };
+}
+
+/** Which remote a branch kept somewhere else is one of: `origin` of
+ *  `origin/main`. */
+function remoteOf(ref: string): string {
+  return ref.slice(0, ref.indexOf("/"));
+}
+
+/** The same branch under another remote's name: `origin/main` under `github`
+ *  is `github/main`. */
+function under(remote: string, ref: string): string {
+  return `${remote}/${ref.slice(ref.indexOf("/") + 1)}`;
 }
 
 function sameBytes(a: Uint8Array | undefined, b: Uint8Array | undefined) {

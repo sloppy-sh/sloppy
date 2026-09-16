@@ -79,11 +79,25 @@ export type SigningConfig =
   | { kind: "openpgp"; program?: string; keyId?: string };
 
 export interface Branch {
+  /** A branch here by its own name, one kept somewhere else as
+   *  `<remote>/<name>` — `main`, `origin/main`. */
   name: string;
   /** The commit it is at. */
   head: string;
   /** Whether the folder is on it. */
   current: boolean;
+  /** Where a branch this folder only knows about is kept. Absent is a branch
+   *  that is here, which is the only kind anything may switch to, merge or
+   *  delete. */
+  remote?: string;
+  /** The branch this one follows, spelled `origin/main`. Absent is a branch
+   *  that follows none, and every branch kept somewhere else. */
+  upstream?: string;
+  /** How many commits this branch has that the one it follows does not, and
+   *  how many that one has that it does not. Both absent where it follows
+   *  none — which is not the same as being level with something. */
+  ahead?: number;
+  behind?: number;
 }
 
 export interface HistoryStatus {
@@ -144,6 +158,8 @@ export interface History {
    * two versions.
    */
   commit(message: string): Promise<Commit | undefined>;
+  /** Every branch this folder knows: the ones kept here, and the ones it last
+   *  heard a remote had. `Branch.remote` is what tells the two apart. */
   branches(): Promise<Branch[]>;
   /** A branch at the commit the folder is on. The folder stays where it is;
    *  {@link History.switch} is what moves it. */
@@ -181,6 +197,9 @@ export interface History {
   remotes?(): Promise<Remote[]>;
   /** Refused where something here is already called that. */
   addRemote?(name: string, url: string): Promise<void>;
+  /** The branches this folder last heard that remote had, and any branch
+   *  following one of them, go with the name. */
+  renameRemote?(name: string, to: string): Promise<void>;
   setRemoteUrl?(name: string, url: string): Promise<void>;
   removeRemote?(name: string): Promise<void>;
   /** Take what that remote has without touching what is in the folder. */
@@ -190,7 +209,9 @@ export interface History {
    * the same conflicts settled the same way. `{ merged: true }` is also what
    * comes back where there was nothing to take.
    *
-   * `remote` absent is whichever one the branch follows.
+   * `remote` absent is whichever one the branch follows. A branch with nothing
+   * here to merge into is taken whole and follows what it was taken from from
+   * then on, which is what a folder that arrived as a copy is.
    */
   pull?(remote?: string, credential?: Credential): Promise<MergeResult>;
   /**
