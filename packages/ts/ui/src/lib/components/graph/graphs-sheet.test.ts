@@ -219,6 +219,53 @@ describe('the graphs sheet', () => {
 		).toBe(2);
 	});
 
+	it('offers the graph’s own settings behind one door, and puts a refused choice back', async () => {
+		let refuse = true;
+		if (mounted) unmount(mounted, { outro: false });
+		document.body.innerHTML = '';
+		target = document.createElement('div');
+		document.body.appendChild(target);
+		mounted = mount(GraphsSheet, {
+			target,
+			props: {
+				open: true,
+				graphs: [
+					{ ref: HOME, title: 'My graph' },
+					{ ref: GARDEN, title: 'Garden' }
+				],
+				current: HOME,
+				home: HOME,
+				alsoUp: new Set<OwnedRef>(),
+				onEnter: () => {},
+				onToggle: () => {},
+				onOpen: () => Promise.resolve(),
+				onRename: () => Promise.resolve(),
+				onOwnership: () =>
+					refuse ? Promise.reject(new Error('That did not save.')) : Promise.resolve()
+			}
+		});
+		await settle();
+
+		find('Settings for Garden')?.click();
+		await settle();
+
+		const owned = document.querySelector<HTMLButtonElement>('[role="switch"]');
+		if (!owned) throw new Error('The graph offers no choice about what a new note carries');
+		expect(owned.getAttribute('aria-checked')).toBe('false');
+
+		owned.click();
+		await settle();
+
+		expect(owned.getAttribute('aria-checked')).toBe('false');
+		expect(document.body.textContent).toContain('That did not save.');
+
+		refuse = false;
+		owned.click();
+		await settle();
+
+		expect(owned.getAttribute('aria-checked')).toBe('true');
+	});
+
 	it('closes it once the question is answered', async () => {
 		await open([]);
 

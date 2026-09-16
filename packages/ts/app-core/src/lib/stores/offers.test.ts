@@ -94,7 +94,7 @@ describe('the writing offered from this device', () => {
 	it('opens on the note as it stands, with nothing to offer yet', async () => {
 		amending(api, { [THEIRS]: [] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: 'The opening', tags: ['seed'], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: 'The opening', tags: ['seed'], blocks: [OPENING] });
 
 		expect(offers.draft(THEIRS)?.title).toBe('The opening');
 		expect(offers.changed(THEIRS)).toBe(false);
@@ -103,7 +103,7 @@ describe('the writing offered from this device', () => {
 	it('has something to offer once a section is written in', async () => {
 		amending(api, { [THEIRS]: [] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
 		offers.writeSection(THEIRS, OPENING.ref, { content: words('Rewritten') });
 
 		expect(offers.changed(THEIRS)).toBe(true);
@@ -113,7 +113,7 @@ describe('the writing offered from this device', () => {
 	it('adds a section the note does not have, after the one it follows', async () => {
 		amending(api, { [THEIRS]: [] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: '', tags: [], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: '', tags: [], blocks: [OPENING] });
 		const added = offers.addSection({ node: THEIRS, after: OPENING.ref });
 
 		expect(offers.draft(THEIRS)?.blocks.map((one) => one.ref)).toEqual([OPENING.ref, added.ref]);
@@ -123,7 +123,7 @@ describe('the writing offered from this device', () => {
 	it('takes a section out', async () => {
 		amending(api, { [THEIRS]: [] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: '', tags: [], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: '', tags: [], blocks: [OPENING] });
 		offers.dropSection(THEIRS, OPENING.ref);
 
 		expect(offers.draft(THEIRS)?.blocks).toEqual([]);
@@ -133,7 +133,7 @@ describe('the writing offered from this device', () => {
 	it('has nothing to offer once a title is typed and typed back', async () => {
 		amending(api, { [THEIRS]: [] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [] });
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [] });
 
 		offers.retitle(THEIRS, 'Another opening');
 		expect(offers.changed(THEIRS)).toBe(true);
@@ -144,7 +144,7 @@ describe('the writing offered from this device', () => {
 	it('offers the whole of the note’s writing, and puts the draft away', async () => {
 		amending(api, { [THEIRS]: [] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: 'The opening', tags: ['seed'], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: 'The opening', tags: ['seed'], blocks: [OPENING] });
 		offers.retitle(THEIRS, 'A clearer opening');
 
 		const offered = await offers.propose(THEIRS, 'Reads better this way');
@@ -159,7 +159,7 @@ describe('the writing offered from this device', () => {
 	it('offers nothing said where nothing was said', async () => {
 		amending(api, { [THEIRS]: [] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
 		offers.retitle(THEIRS, 'A clearer opening');
 
 		const offered = await offers.propose(THEIRS, '   ');
@@ -177,9 +177,44 @@ describe('the writing offered from this device', () => {
 			() => theirNote()
 		);
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
 
 		expect(offers.draft(THEIRS)?.title).toBe('As I would have it');
+		expect(offers.changed(THEIRS)).toBe(false);
+	});
+
+	// DESIGN.md § "Persistence": writing that has not reached Sloppy lives on the
+	// device until it does, and a change offered on somebody else's note is
+	// writing like any other.
+	it('still says what was written into it after the app comes back', async () => {
+		amending(api, { [THEIRS]: [] }, () => theirNote());
+		await offers.read(THEIRS);
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+		offers.retitle(THEIRS, 'A clearer opening');
+		offers.writeSection(THEIRS, OPENING.ref, { content: words('Rewritten') });
+
+		offers.clear();
+		await offers.read(THEIRS);
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+
+		expect(offers.draft(THEIRS)?.title).toBe('A clearer opening');
+		expect(offers.draft(THEIRS)?.blocks[0].content).toEqual(words('Rewritten'));
+		expect(offers.changed(THEIRS)).toBe(true);
+	});
+
+	it('keeps nothing of a draft once it has been offered', async () => {
+		amending(api, { [THEIRS]: [] }, () => theirNote());
+		await offers.read(THEIRS);
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+		offers.retitle(THEIRS, 'A clearer opening');
+		await offers.propose(THEIRS, '');
+
+		offers.clear();
+		api.on(`GET /nodes${notePath(THEIRS)}/amendments`, () => []);
+		await offers.read(THEIRS);
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+
+		expect(offers.draft(THEIRS)?.title).toBe('The opening');
 		expect(offers.changed(THEIRS)).toBe(false);
 	});
 
@@ -187,7 +222,7 @@ describe('the writing offered from this device', () => {
 		const standing = amendment(61, THEIRS, DID, { created_by: KEEPER });
 		amending(api, { [THEIRS]: [standing] }, () => theirNote());
 		await offers.read(THEIRS);
-		offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
+		await offers.hold(THEIRS, { title: 'The opening', tags: [], blocks: [OPENING] });
 
 		await offers.withdraw(standing);
 

@@ -11,8 +11,10 @@
 
 import {
 	BlockDocumentSchema,
+	BlockViewSchema,
 	emptyDocument,
 	splitOwnedRef,
+	TagsSchema,
 	ulid,
 	type AmendmentView,
 	type BlockView,
@@ -25,9 +27,12 @@ import {
 } from '@sloppy/types';
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
+import { deviceStore, type DeviceArea } from '../device-store.js';
 import { serverMessage } from './errors.js';
 import { nodes } from './nodes.svelte.js';
 import { session } from './session.svelte.js';
+
+const AREA = 'offers';
 
 /** A note's writing as somebody would have it. The sections stand in the order
  *  they read; nothing about the note's place is here, because an offer does not
@@ -82,10 +87,29 @@ function stackOf(offer: AmendmentView, note: OwnedRef): BlockView[] {
 	);
 }
 
+/** What this device kept for a note, or nothing where it kept none and nothing
+ *  where what it kept is no longer writing this build can read. */
+function draftFrom(held: unknown): OfferDraft | null {
+	if (typeof held !== 'object' || held === null) return null;
+	const { title, tags, blocks } = held as Record<string, unknown>;
+	const named = TagsSchema.safeParse(tags);
+	if (typeof title !== 'string' || !named.success || !Array.isArray(blocks)) return null;
+	const stack: BlockView[] = [];
+	for (const row of blocks) {
+		const block = BlockViewSchema.safeParse(row);
+		if (!block.success) return null;
+		stack.push(block.data);
+	}
+	return { title, tags: named.data, blocks: stack };
+}
+
 class OffersStore {
 	#standing = new SvelteMap<OwnedRef, AmendmentView[]>();
 	#asked = new SvelteMap<OwnedRef, 'reading' | 'settled'>();
 	#drafts = new SvelteMap<OwnedRef, { draft: OfferDraft; as: OfferDraft }>();
+	/** Notes whose draft is on its way up off the device, so two paints of one
+	 *  note do not each open one. */
+	#opening = new Set<OwnedRef>();
 	#busy = $state(false);
 	#says = $state<string | null>(null);
 	// A sign-out that lands mid-read must not be undone by the answer: nothing
@@ -95,6 +119,13 @@ class OffersStore {
 	/** Why the last act did not happen, in the words it came back with. */
 	get says(): string | null {
 		return this.#says;
+	}
+
+	/** Null with nobody signed in: a change being composed is one person's, and
+	 *  there is no identity to keep it under. */
+	#area(): DeviceArea | null {
+		const did = session.viewer?.did;
+		return did ? deviceStore.area(did, AREA) : null;
 	}
 
 	get busy(): boolean {
@@ -139,13 +170,11 @@ class OffersStore {
 			});
 	}
 
-	/** Ask again — after an act that changed what is standing there. */
 	async reread(note: OwnedRef): Promise<void> {
 		this.#asked.delete(note);
 		await this.read(note);
 	}
 
-	/** The writing being offered on this note from this device. */
 	draft(note: OwnedRef): OfferDraft | undefined {
 		return this.#drafts.get(note)?.draft;
 	}
@@ -158,27 +187,52 @@ class OffersStore {
 	}
 
 	/**
-	 * Open the writing surface on this note: on the offer the person already has
-	 * standing there, or on the note as it stands where they have none. Does
-	 * nothing where one is already open, so a note walked away from and come back
-	 * to still holds what was typed into it.
+	 * Open the writing surface on this note: on what this device is still
+	 * holding for it, on the offer the person already has standing there, or on
+	 * the note as it stands. Does nothing where one is already open, so a note
+	 * walked away from and come back to still holds what was typed into it.
 	 */
-	hold(
+	async hold(
 		note: OwnedRef,
-		writing: { title: string; tags: readonly Tag[]; blocks: BlockView[] }
-	): void {
-		if (this.#drafts.has(note)) return;
+		writing: { title: string; tags: readonly Tag[]; blocks: readonly BlockView[] }
+	): Promise<void> {
+		if (this.#drafts.has(note) || this.#opening.has(note)) return;
+		this.#opening.add(note);
+		const at = this.#epoch;
 		const standing = this.mine(note);
-		const draft: OfferDraft = standing
+		const as: OfferDraft = standing
 			? { title: standing.title, tags: [...standing.tags], blocks: stackOf(standing, note) }
 			: { title: writing.title, tags: [...writing.tags], blocks: ordered(writing.blocks) };
-		this.#drafts.set(note, { draft, as: { ...draft, tags: [...draft.tags] } });
+		const kept = draftFrom(
+			await this.#area()
+				?.get<unknown>(note)
+				.catch(() => undefined)
+		);
+		this.#opening.delete(note);
+		if (at !== this.#epoch || this.#drafts.has(note)) return;
+		this.#drafts.set(note, {
+			draft: kept ?? { ...as, tags: [...as.tags], blocks: [...as.blocks] },
+			as
+		});
 	}
 
 	#write(note: OwnedRef, change: (draft: OfferDraft) => OfferDraft): void {
 		const held = this.#drafts.get(note);
 		if (!held) return;
-		this.#drafts.set(note, { ...held, draft: change(held.draft) });
+		const draft = change(held.draft);
+		this.#drafts.set(note, { ...held, draft });
+		void this.#area()
+			?.set(note, $state.snapshot(draft))
+			.catch(() => undefined);
+	}
+
+	/** The writing has either reached Sloppy or been taken back, so the device
+	 *  stops holding it. */
+	#letGo(note: OwnedRef): void {
+		this.#drafts.delete(note);
+		void this.#area()
+			?.delete(note)
+			.catch(() => undefined);
 	}
 
 	retitle(note: OwnedRef, title: string): void {
@@ -239,11 +293,10 @@ class OffersStore {
 			return { ...draft, blocks: ordered([...rest.slice(0, at), written, ...rest.slice(at)]) };
 		});
 		const after = this.draft(note)?.blocks.find((one) => one.ref === section);
-		if (!after) throw new Error('That section is not in this note.');
+		if (!after) throw new Error('That section is no longer in the change being offered.');
 		return after;
 	}
 
-	/** A section the offer takes out. */
 	dropSection(note: OwnedRef, section: OwnedRef): void {
 		this.#write(note, (draft) => ({
 			...draft,
@@ -281,18 +334,17 @@ class OffersStore {
 			() => api.proposeAmendment(request),
 			'Sloppy could not offer that change. Try again in a moment.'
 		);
-		this.#drafts.delete(note);
+		this.#letGo(note);
 		await this.reread(note);
 		return offered;
 	}
 
-	/** Take back one you offered. */
 	async withdraw(offer: AmendmentView): Promise<void> {
 		await this.#act(
 			() => api.withdrawAmendment(offer.ref),
 			'Sloppy could not take that back. Try again in a moment.'
 		);
-		this.#drafts.delete(offer.note);
+		this.#letGo(offer.note);
 		await this.reread(offer.note);
 	}
 
@@ -317,11 +369,14 @@ class OffersStore {
 		await this.reread(offer.note);
 	}
 
+	/** What the device is holding is left where it is: somebody signing out has
+	 *  not given up writing that never reached Sloppy. */
 	clear(): void {
 		this.#epoch += 1;
 		this.#standing.clear();
 		this.#asked.clear();
 		this.#drafts.clear();
+		this.#opening.clear();
 		this.#says = null;
 		this.#busy = false;
 	}

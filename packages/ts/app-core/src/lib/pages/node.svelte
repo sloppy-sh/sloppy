@@ -751,6 +751,9 @@
 	/** The sections on screen: the ones being offered where a write here is
 	 *  offered, and the note's own everywhere else. */
 	const stack = $derived(offerDraft?.blocks ?? blocks);
+	/** A write here is offered and the writing it goes into is not open yet, so
+	 *  a section written now would go nowhere. */
+	const holdingWriting = $derived(offering && offerDraft === undefined);
 	const shownTags = $derived(offerDraft?.tags ?? node?.tags ?? []);
 	/** Every offer standing on this note, oldest first. */
 	const standing = $derived(node?.owner === undefined ? [] : offers.on(ref));
@@ -786,8 +789,10 @@
 	});
 
 	$effect(() => {
-		if (node?.owner === undefined) return;
+		const owner = node?.owner;
+		if (owner === undefined) return;
 		void offers.read(ref);
+		if (owner !== viewerDid) people.resolve(owner);
 	});
 
 	// The writing surface opens on the offer this person already has standing
@@ -796,7 +801,7 @@
 		const held = node;
 		if (!offering || !held || loading || !offers.settled(ref)) return;
 		const writing = { title: held.title, tags: held.tags, blocks };
-		untrack(() => offers.hold(ref, writing));
+		untrack(() => void offers.hold(ref, writing));
 	});
 
 	async function writeOwner(owner: DidSyr | null): Promise<void> {
@@ -2367,7 +2372,7 @@
 			{/if}
 
 			<Tabs.Content value="note" class="flex flex-col gap-7">
-				{#if loading || seeding.has(ref)}
+				{#if loading || seeding.has(ref) || holdingWriting}
 					<Skeleton class="h-24 w-full" />
 				{:else if unreachable}
 					<p class="text-sm text-destructive" role="alert">{unreachable}</p>

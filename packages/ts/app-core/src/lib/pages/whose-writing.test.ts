@@ -217,6 +217,26 @@ describe('a note somebody else writes', () => {
 		expect(screen()).toContain('Offered to Charles Babbage. It shows once they take it.');
 	});
 
+	// DESIGN.md § "Persistence": what has not reached Sloppy is on the device
+	// until it does, and a change offered on somebody else's note is no different.
+	it('still holds what was written here when the app comes back to it', async () => {
+		await open(THEIRS);
+		const field = title();
+		if (!field) throw new Error('The note has no title');
+		field.value = 'A clearer opening';
+		field.dispatchEvent(new Event('input', { bubbles: true }));
+		field.dispatchEvent(new Event('blur', { bubbles: true }));
+		await settle();
+
+		unmount(mounted!, { outro: false });
+		mounted = undefined;
+		offers.clear();
+		await open(THEIRS);
+
+		expect(title()?.value).toBe('A clearer opening');
+		expect(button('Offer this change')).toBeDefined();
+	});
+
 	it('shows the offer already standing here, and takes it back', async () => {
 		const standing = amendment(60, THEIRS, DID, {
 			created_by: KEEPER,

@@ -286,7 +286,7 @@ describe('which graph you are in', () => {
 	it('renames one in place', async () => {
 		await open();
 		await openGraphs();
-		labelled('Rename Garden').click();
+		labelled('Settings for Garden').click();
 		await settle();
 		const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Name"]');
 		if (!field) throw new Error('Nowhere to rename a graph');
@@ -308,7 +308,7 @@ describe('which graph you are in', () => {
 		});
 		await open();
 		await openGraphs();
-		labelled('Rename Garden').click();
+		labelled('Settings for Garden').click();
 		await settle();
 
 		const owned = document.body.querySelector<HTMLButtonElement>(`#owned-${CSS.escape(GARDEN)}`);

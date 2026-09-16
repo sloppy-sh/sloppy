@@ -1,13 +1,7 @@
 import type { BlockDocument, OwnedRef } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
 import { ref } from '../stores/fake-api.test-support.js';
-import {
-	offerDifference,
-	offerSaysSomething,
-	sectionsApart,
-	tagsApart,
-	type WritingSide
-} from './offer-difference.js';
+import { offerDifference, sectionsApart, tagsApart, type WritingSide } from './offer-difference.js';
 
 const NOTE: OwnedRef = ref(1);
 const ONE = ref(11);
@@ -36,8 +30,9 @@ function side(
 describe('a note against the writing offered on it', () => {
 	it('names nothing where the two say the same', () => {
 		const now = side('The opening', [[ONE, 'As it stands']]);
-		expect(offerSaysSomething(now, side('The opening', [[ONE, 'As it stands']]))).toBe(false);
-		expect(sectionsApart(now, side('The opening', [[ONE, 'As it stands']])).sections).toEqual([]);
+		const apart = sectionsApart(now, side('The opening', [[ONE, 'As it stands']]));
+		expect(apart.sections).toEqual([]);
+		expect(apart.reordered).toBe(false);
 	});
 
 	it('reads a section by the ref it stands for, not by where it stands', () => {
@@ -110,11 +105,5 @@ describe('a note against the writing offered on it', () => {
 
 		expect(apart.added).toEqual(['question']);
 		expect(apart.removed).toEqual(['biology']);
-	});
-
-	it('counts a tag on its own as something offered', () => {
-		expect(offerSaysSomething(side('', [], ['seed']), side('', [], ['seed', 'question']))).toBe(
-			true
-		);
 	});
 });

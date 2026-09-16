@@ -14,7 +14,6 @@ import {
 	type GraphOwnership,
 	type GraphView,
 	GraphViewSchema,
-	HOME_GRAPH_TITLE,
 	type ImportSettlement,
 	type OwnedRef,
 	type CreateGraphRequest,
@@ -247,16 +246,13 @@ class GraphsStore {
 	}
 
 	/** What a graph does to a note written in it from here on; the notes already
-	 *  written in it are left as they are. The name goes beside it because
-	 *  naming a graph is the whole of `UpdateGraphRequest`. */
+	 *  written in it are left as they are. The graph's own name goes beside it
+	 *  because naming a graph is the whole of `UpdateGraphRequest`, so a graph
+	 *  this store no longer holds is refused rather than named by a guess. */
 	async setOwnership(ref: OwnedRef, ownership: GraphOwnership): Promise<GraphView> {
 		const held = this.#all.find((graph) => graph.ref === ref);
-		return await this.rename(ref, { title: held?.title ?? HOME_GRAPH_TITLE, ownership });
-	}
-
-	/** How a graph a person is writing in gates a note written in it. */
-	ownershipOf(ref: OwnedRef): GraphOwnership {
-		return this.#all.find((graph) => graph.ref === ref)?.ownership ?? 'open';
+		if (!held) throw new Error('That graph is not here any more. Open your graphs again.');
+		return await this.rename(ref, { title: held.title, ownership });
 	}
 
 	/** Close a graph and everything filed in it. A reader who was in it is back

@@ -117,12 +117,6 @@ describe('moving between them', () => {
 		expect(graphs.titleOf(GARDEN.ref)).toBe('Allotment');
 	});
 
-	// Absent is `open`, which is what every graph made before the choice says.
-	it('reads a graph that says nothing about it as one anybody writing here writes', async () => {
-		await graphs.load();
-		expect(graphs.ownershipOf(GARDEN.ref)).toBe('open');
-	});
-
 	it('says what a new note here carries, keeping the name it already has', async () => {
 		await graphs.load();
 		let asked: unknown = null;
@@ -134,7 +128,13 @@ describe('moving between them', () => {
 		await graphs.setOwnership(GARDEN.ref, 'owned');
 
 		expect(asked).toEqual({ title: GARDEN.title, ownership: 'owned' });
-		expect(graphs.ownershipOf(GARDEN.ref)).toBe('owned');
+		expect(graphs.all.find((graph) => graph.ref === GARDEN.ref)?.ownership).toBe('owned');
+	});
+
+	// The name travels beside the choice, so a graph this store no longer holds
+	// would be renamed by a guess.
+	it('refuses the choice on a graph it is not holding', async () => {
+		await expect(graphs.setOwnership(GARDEN.ref, 'owned')).rejects.toThrow();
 	});
 
 	it('closes one, and takes it off the canvas the reader had it on', async () => {

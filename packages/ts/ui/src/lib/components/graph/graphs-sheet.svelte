@@ -97,7 +97,7 @@
 	} = $props();
 
 	let opening = $state('');
-	let naming = $state<{ ref: OwnedRef; title: string } | null>(null);
+	let naming = $state<{ ref: OwnedRef; title: string; owned: boolean } | null>(null);
 	let refused = $state<string | null>(null);
 	let working = $state(false);
 	let putting = $state<OwnedRef | null>(null);
@@ -171,6 +171,14 @@
 		closing = null;
 	}
 
+	/** The switch shows what the graph carries, so a choice that did not save goes
+	 *  back where it was rather than standing as if it had. */
+	async function chooseOwnership(ref: OwnedRef, owned: boolean): Promise<void> {
+		if (!onOwnership) return;
+		if (await act(() => onOwnership(ref, owned ? 'owned' : 'open'))) return;
+		if (naming?.ref === ref) naming.owned = !owned;
+	}
+
 	async function renameGraph(): Promise<void> {
 		const asked = naming;
 		if (!asked || asked.title.trim() === '') return;
@@ -214,10 +222,9 @@
 							<div class="flex w-full items-start gap-3 px-1 pt-1 pb-2">
 								<Switch
 									id="owned-{graph.ref}"
-									checked={graph.ownership === 'owned'}
+									bind:checked={naming.owned}
 									disabled={working}
-									onCheckedChange={(owned) =>
-										void act(() => onOwnership(graph.ref, owned ? 'owned' : 'open'))}
+									onCheckedChange={(owned) => void chooseOwnership(graph.ref, owned)}
 								/>
 								<div class="min-w-0 flex-1 space-y-1">
 									<Label for="owned-{graph.ref}" class="text-sm font-normal">
@@ -259,10 +266,10 @@
 							variant="ghost"
 							size="icon"
 							class="size-9 shrink-0 text-muted-foreground"
-							aria-label={`Rename ${nameOf(graph)}`}
+							aria-label={onOwnership ? `Settings for ${nameOf(graph)}` : `Rename ${nameOf(graph)}`}
 							onclick={() => {
 								refused = null;
-								naming = { ref: graph.ref, title: graph.title };
+								naming = { ref: graph.ref, title: graph.title, owned: graph.ownership === 'owned' };
 							}}
 						>
 							<Pencil class="size-4" />

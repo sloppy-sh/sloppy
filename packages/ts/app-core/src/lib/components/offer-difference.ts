@@ -86,16 +86,3 @@ export function offerDifference(
 		sections: apart.sections
 	};
 }
-
-/** Whether the two sides say anything different at all. */
-export function offerSaysSomething(now: WritingSide, offered: WritingSide): boolean {
-	const apart = sectionsApart(now, offered);
-	const tags = tagsApart(now, offered);
-	return (
-		apart.sections.length > 0 ||
-		apart.reordered ||
-		now.title !== offered.title ||
-		tags.added.length > 0 ||
-		tags.removed.length > 0
-	);
-}
