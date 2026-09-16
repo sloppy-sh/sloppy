@@ -1,6 +1,11 @@
+import type { DidSyr } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import { MemoryFiles } from "./files.js";
 import { graphOnly, reread } from "./local.test-support.js";
+import { NoteWriter } from "./notes.js";
+
+/** Somebody writing in a graph that is not theirs. */
+const GUEST = "did:syr:z6MkGuestWritingHere" as DidSyr;
 
 describe("the address the rule offers", () => {
   it("numbers a branch, its children and the notes alongside them", async () => {
@@ -169,6 +174,44 @@ describe("carrying a note somewhere else", () => {
     expect(moved?.address).toBeUndefined();
     expect(moved?.parent).toBe(one.ref);
     expect(moved?.depth).toBe(2);
+  });
+
+  it("is refused to somebody carrying a note that is not theirs", async () => {
+    const { graph, writer, did } = await graphOnly();
+    const one = await writer.create({});
+    const two = await writer.create({});
+    const under = await writer.create({
+      from: { relation: "under", note: one.ref },
+    });
+    await writer.update(under.ref, { owner: did });
+
+    const guest = new NoteWriter(graph, GUEST);
+    await expect(
+      guest.move(under.ref, { relation: "under", note: two.ref }),
+    ).rejects.toThrow("Only its owner can carry it somewhere else");
+  });
+
+  it("is not stopped by a note in the bin that somebody else wrote", async () => {
+    const { graph, writer, did } = await graphOnly();
+    const one = await writer.create({});
+    const two = await writer.create({});
+    const under = await writer.create({
+      from: { relation: "under", note: one.ref },
+    });
+    const deeper = await writer.create({
+      from: { relation: "under", note: under.ref },
+    });
+    await writer.update(deeper.ref, { owner: did });
+    await writer.remove(deeper.ref);
+
+    const guest = new NoteWriter(graph, GUEST);
+    const landed = await guest.move(under.ref, {
+      relation: "under",
+      note: two.ref,
+    });
+
+    expect(landed.find((view) => view.ref === under.ref)?.address).toBe("2a");
+    expect(graph.findDeleted(deeper.ref)?.parent).toBe(under.ref);
   });
 
   it("refuses a note carried into what sprang from it", async () => {

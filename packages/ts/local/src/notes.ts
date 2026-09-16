@@ -131,7 +131,10 @@ export class NoteWriter {
   ): Promise<NodeView[]> {
     const note = this.require(ref);
     const carried = this.carried(note);
-    this.onlyTheOwnerOfEach(carried, "carry it somewhere else");
+    this.onlyTheOwnerOfEach(
+      carried.filter((one) => one.deleted_at === undefined),
+      "carry it somewhere else",
+    );
     const landing = this.landingFor(note, to, carried);
     return address === undefined
       ? this.carry(note, carried, landing)
