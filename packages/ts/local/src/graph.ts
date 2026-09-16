@@ -432,6 +432,11 @@ export class LocalGraph {
       tags: [...note.tags],
       links: [...note.links],
       references: referencesOf(note),
+      ...(note.owner === undefined ? {} : { owner: note.owner }),
+      ...(note.authors === undefined ? {} : { authors: [...note.authors] }),
+      ...(note.contributors === undefined
+        ? {}
+        : { contributors: [...note.contributors] }),
       published: false,
       ...(note.appearance === undefined ? {} : { appearance: note.appearance }),
       ...(note.deleted_at === undefined ? {} : { deleted_at: note.deleted_at }),

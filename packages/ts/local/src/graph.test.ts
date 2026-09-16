@@ -62,6 +62,23 @@ describe("what a note keeps on the way through the folder", () => {
     ]);
   });
 
+  it("keeps whose writing the note carries when somebody else writes into it", async () => {
+    const files = new MemoryFiles();
+    const { graph, writer, did } = await graphOnly(files);
+    const bob = "did:syr:z6MkuBobBobBobBobBobBobBobBobBob";
+    const note = await writer.create({ title: "Seeds" });
+    const held = noteIn(graph, note.ref);
+    await graph.save({ ...held, authors: [did, bob], contributors: [bob] });
+
+    const again = await reread(files, did);
+    await again.save({ ...noteIn(again, note.ref), title: "Seeds again" });
+
+    const back = await reread(files, did);
+    const view = back.view(noteIn(back, note.ref));
+    expect(view.authors).toEqual([did, bob]);
+    expect(view.contributors).toEqual([bob]);
+  });
+
   it("keeps the tags, the links and the notes its writing names", async () => {
     const files = new MemoryFiles();
     const { graph, writer, did } = await graphOnly(files);
