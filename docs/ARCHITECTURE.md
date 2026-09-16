@@ -394,22 +394,21 @@ shown.
 
 **An amendment is a row and a file.** The `amendment` table's `created_by` is whose graph the
 note is in — the DID half of the note's own ref, the way `comment_pointer`'s is, and never
-whoever gates the note, which a graph owner may have handed on. That is what the offer's own
+whoever gates the note, which a graph owner may have handed on. It is what the offer's own
 `<did>/<ulid>` is built from, what a note's offers are read by, and what carries them away
 with the notes they stand on when that identity is erased. `by` is who offered it. **The
-sections it proposes
-ride on that row**, in order, rather than in a table of their own — nothing reads one without
-the offer it belongs to, so there is no second row for the owner's purge to miss. Each is
-named by the ULID of the note section it stands for: a ref the note has is that section kept
-or rewritten, one the note does not have is a section the offer adds, and a section of the
-note the offer does not name is one it takes out. An offer proposes the note's body whole,
-which is also what lets it be written as a file in the note's own shape. In a vault it is
-`amendments/<ulid>.md` (§ "A graph on disk"), committed like any note, so it travels through
-the folder's history and rides in archives; the bin does not hold one. **A hosted graph has
-one writer**, so nothing on a hosted instance offers a change in the first place: the table
-is there so a graph arriving as an archive with offers standing on it loses none of them, and
-so its owner can settle them, and `POST /amendments` says plainly that this is not something
-to do here.
+sections it proposes ride on that row**, in order, rather than in a table of their own —
+nothing reads one without the offer it belongs to, so there is no second row for the purge
+to miss. Each is named by the ULID of the note section it stands for: a ref the note has is
+that section kept or rewritten, one the note does not have is a section the offer adds, and
+a section of the note the offer does not name is one it takes out. An offer proposes the
+note's body whole, which is also what lets it be written as a file in the note's own shape.
+In a vault it is `amendments/<ulid>.md` (§ "A graph on disk"), committed like any note, so
+it travels through the folder's history and rides in archives; the bin does not hold one.
+**A hosted graph has one writer**, so nothing on a hosted instance offers a change in the
+first place: the table is there so a graph arriving as an archive with offers standing on
+it loses none of them, and so its owner can settle them, and `POST /amendments` says plainly
+that this is not something to do here.
 
 **Approving replaces the note's writing with the offer, whole** — title, tags, look,
 sections — bumps `updated_at`, adds the proposer to `contributors` and removes the offer.
