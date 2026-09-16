@@ -35,11 +35,14 @@ const NO_ADDRESS: &str = "sloppy@localhost";
 
 /// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
 /// history".
-const IGNORED: [&str; 6] = [
+const IGNORED: [&str; 9] = [
     "identity.json",
     "identity.key",
     "folders.json",
     "vaults.json",
+    "git.json",
+    "credentials.json",
+    "signing.key",
     "/.sloppy/bin.json",
     "/.sloppy/bin/",
 ];
@@ -986,6 +989,9 @@ mod tests {
         write(root, "identity.key", "a seed");
         write(root, "folders.json", "[]");
         write(root, "vaults.json", "[]");
+        write(root, "git.json", "{}");
+        write(root, "credentials.json", "[]");
+        write(root, "signing.key", "a key");
         write(root, ".sloppy/bin.json", "{}");
         write(root, ".sloppy/bin/note.md", "thrown away");
     }
@@ -1077,6 +1083,9 @@ mod tests {
             "identity.key",
             "folders.json",
             "vaults.json",
+            "git.json",
+            "credentials.json",
+            "signing.key",
             ".sloppy/bin.json",
             ".sloppy/bin/note.md",
         ] {

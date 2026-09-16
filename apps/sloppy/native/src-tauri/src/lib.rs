@@ -1,4 +1,6 @@
 mod history;
+mod remotes;
+mod signing;
 mod vault;
 
 use tauri::{Manager, Runtime};

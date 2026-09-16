@@ -27,10 +27,16 @@ serde_json = "1"
 percent-encoding = "2"
 # Bytes cross the bridge as base64, because the bridge carries JSON.
 base64 = "0.22"
-# The history of the folder a graph is in is git's, and this is git. Nothing
-# here fetches or pushes — docs/ARCHITECTURE.md § "The vault's history" — so the
-# transports, and openssl with them, are left out.
-git2 = { version = "0.20", default-features = false }
+# The history of the folder a graph is in is git's, and this is git — the two
+# transports a folder's remotes are reached over are
+# docs/ARCHITECTURE.md § "The vault's history". `ssh` is libssh2, whose crypto
+# is OpenSSL's on every platform and which a phone has none of, so the crate
+# builds its own on every target rather than making one a thing a machine has to
+# have before it can build this app.
+git2 = { version = "0.20", default-features = false, features = ["https", "ssh", "vendored-openssl"] }
+# Signing a commit happens here rather than by a program, so a phone signs too —
+# docs/ARCHITECTURE.md § "The vault's history".
+ssh-key = { version = "0.6", default-features = false, features = ["ed25519", "alloc", "std", "getrandom"] }
 # A commit's time is a count of seconds, and `Timestamp` in `@sloppy/types` is
 # ISO-8601 UTC at millisecond width.
 chrono = { version = "0.4", default-features = false, features = ["std", "now"] }
