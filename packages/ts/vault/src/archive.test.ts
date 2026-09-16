@@ -2,6 +2,7 @@ import { zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { manifest, pack, unpack } from "./archive.js";
 import {
+  amendmentPath,
   encodeText,
   graphFile,
   mediaPath,
@@ -15,6 +16,7 @@ const OWNER = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
 const GRAPH = "01J000000000000000000000GG";
 const NOTE = "01J0000000000000000000000A";
 const OTHER = "01J0000000000000000000000B";
+const OFFER = "01J0000000000000000000000F";
 
 function vault(): Vault {
   return new Map<string, Uint8Array>([
@@ -29,14 +31,17 @@ function vault(): Vault {
     ],
     [notePath(NOTE), encodeText("---\nref: x\n---\n")],
     [notePath(OTHER), encodeText("---\nref: y\n---\n")],
+    [amendmentPath(OFFER), encodeText("---\namends: x\n---\n")],
     [mediaPath("up1", "png"), new Uint8Array([1, 2, 3, 4])],
   ]);
 }
 
 describe("a vault as one file", () => {
-  it("comes back as itself", () => {
+  it("comes back as itself, the offers standing on it included", () => {
     const held = vault();
-    expect(unpack(pack(held))).toEqual(held);
+    const back = unpack(pack(held));
+    expect(back).toEqual(held);
+    expect(back.has(amendmentPath(OFFER))).toBe(true);
   });
 
   it("packs the same graph to the same bytes twice", () => {

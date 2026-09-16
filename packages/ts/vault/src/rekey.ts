@@ -5,6 +5,7 @@
 import { type DidSyr } from "@sloppy/types";
 import { splitNoteFile } from "./front.js";
 import {
+  amendmentAt,
   decodeText,
   encodeText,
   GRAPH_FILE,
@@ -17,9 +18,15 @@ import { rekeyMarkdown } from "./markdown.js";
 
 /**
  * The same vault under another identity: the owner, every note's own ref, its
- * parent, its links and every reference in its writing. The aliases ride the
- * note, so its ref carries them. A file this cannot read is carried through
- * untouched rather than dropped.
+ * parent, its links, every reference in its writing, and the note an offered
+ * change amends. The aliases ride the note, so its ref carries them.
+ *
+ * **A DID standing on its own is a PERSON and is never moved** — `owner`,
+ * `authors`, `contributors` and an offer's `by` say who wrote and who gates,
+ * and importing a graph does not change either. Only a `<did>/<ulid>` is a key
+ * into this graph, which is why nothing here rewrites a bare DID.
+ *
+ * A file this cannot read is carried through untouched rather than dropped.
  */
 export function rekey(vault: Vault, from: DidSyr, to: DidSyr): Vault {
   const moved: Vault = new Map();
@@ -28,7 +35,8 @@ export function rekey(vault: Vault, from: DidSyr, to: DidSyr): Vault {
       moved.set(path, rekeyGraph(bytes, from, to));
       continue;
     }
-    moved.set(path, noteAt(path) ? rekeyNote(bytes, from, to) : bytes);
+    const keyed = noteAt(path) !== undefined || amendmentAt(path) !== undefined;
+    moved.set(path, keyed ? rekeyRefs(bytes, from, to) : bytes);
   }
   return moved;
 }
@@ -42,9 +50,9 @@ function rekeyGraph(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
   }
 }
 
-const REF_FIELD = /^((?:ref|parent): | {2}- )/;
+const REF_FIELD = /^((?:ref|parent|amends): | {2}- )/;
 
-function rekeyNote(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
+function rekeyRefs(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
   const text = decodeText(bytes);
   let note: ReturnType<typeof splitNoteFile>;
   try {

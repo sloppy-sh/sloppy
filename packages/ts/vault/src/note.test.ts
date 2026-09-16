@@ -1,4 +1,5 @@
 import {
+  authorsOf,
   type BlockDocument,
   type BlockView,
   isUnstyled,
@@ -21,6 +22,8 @@ import type { EmojiDrawing } from "./markdown.js";
 import { noteToVault, type NoteSource, vaultToNote } from "./note.js";
 
 const OWNER = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
+const BOB = "did:syr:z6MkuBobBobBobBobBobBobBobBobBob";
+const CAI = "did:syr:z6MkvCaiCaiCaiCaiCaiCaiCaiCaiCai";
 const NOTE = "01J0000000000000000000000A";
 const PARENT = "01J0000000000000000000000B";
 const BLOCK = "01J0000000000000000000000C";
@@ -362,6 +365,80 @@ describe("a note as a file", () => {
     expect(emoji).toEqual(
       new Map([["party_parrot", { src: "https://a.example/p" }]]),
     );
+  });
+
+  it("leaves whose writing it is out where it is the author's alone", () => {
+    for (const authors of [undefined, [OWNER]]) {
+      const { files } = noteToVault(note({ authors }), [], []);
+      const text = decodeText(files.get(notePath(NOTE)) as Uint8Array);
+      expect(text).not.toContain("authors");
+      expect(text).not.toContain("owner");
+      expect(text).not.toContain("contributors");
+      const read = vaultToNote({ markdown: text });
+      expect(read.authors).toBeUndefined();
+      expect(read.owner).toBeUndefined();
+      expect(read.contributors).toBeUndefined();
+    }
+  });
+
+  it("carries whose writing a note is, and who gates it", () => {
+    fc.assert(
+      fc.property(
+        fc.record(
+          {
+            owner: fc.constantFrom(OWNER, BOB, CAI),
+            authors: fc
+              .subarray([OWNER, BOB, CAI], { minLength: 1 })
+              .filter((held) => !(held.length === 1 && held[0] === OWNER)),
+            contributors: fc.subarray([BOB, CAI], { minLength: 1 }),
+          },
+          { requiredKeys: [] },
+        ),
+        (whose) => {
+          const { files } = noteToVault(note(whose), [], []);
+          const read = vaultToNote({
+            markdown: decodeText(files.get(notePath(NOTE)) as Uint8Array),
+          });
+          expect(read.owner).toEqual(whose.owner);
+          expect(read.authors).toEqual(whose.authors);
+          expect(read.contributors).toEqual(whose.contributors);
+        },
+      ),
+      { numRuns: 2000 },
+    );
+  });
+
+  it("writes whose it is under the addresses and before the writing", () => {
+    const { files } = noteToVault(
+      note({ owner: OWNER, authors: [OWNER, BOB], contributors: [CAI] }),
+      [],
+      [],
+    );
+    expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).toContain(
+      [
+        `owner: ${OWNER}`,
+        "authors:",
+        `  - ${OWNER}`,
+        `  - ${BOB}`,
+        "contributors:",
+        `  - ${CAI}`,
+        "tags:",
+      ].join("\n"),
+    );
+  });
+
+  it("reads a note written before anybody but its author could write in it", () => {
+    // The file every note in every vault on disk today is: no owner, no
+    // authors, no contributors.
+    const read = vaultToNote({
+      markdown: `---\nref: ${OWNER}/${NOTE}\ntitle: As it was\n---\n`,
+    });
+    expect(read.owner).toBeUndefined();
+    expect(read.authors).toBeUndefined();
+    expect(read.contributors).toBeUndefined();
+    expect(authorsOf({ created_by: OWNER, authors: read.authors })).toEqual([
+      OWNER,
+    ]);
   });
 
   it("refuses a file that is not a note", () => {

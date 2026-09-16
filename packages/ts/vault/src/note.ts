@@ -5,6 +5,8 @@ import {
   AddressSchema,
   type BlockDocument,
   type BlockView,
+  type DidSyr,
+  DidSyrSchema,
   isUnstyled,
   type NodeAppearance,
   NodeAppearanceSchema,
@@ -57,6 +59,14 @@ export interface VaultNote {
   /** Absent on a note with none. */
   address?: Address;
   aliases: Address[];
+  /** Who gates the note's writing. Absent is an open note. */
+  owner?: DidSyr;
+  /** Whose writing it carries, in order of first writing. **Absent is the
+   *  ref's DID alone** — the canonical form, so that is the one case not
+   *  written down. */
+  authors?: DidSyr[];
+  /** Whose offered change its owner has taken in. Absent is none. */
+  contributors?: DidSyr[];
   tags: string[];
   links: OwnedRef[];
   title: string;
@@ -107,24 +117,45 @@ export function noteToVault(
   blocks: readonly BlockView[],
   held: VaultSoFar = {},
 ): NoteFiles {
+  const front = writeFront([
+    ["ref", note.ref],
+    ["parent", note.parent],
+    ["address", note.address],
+    ["aliases", [...aliases]],
+    ["owner", note.owner],
+    ["authors", writtenAuthors(note)],
+    ["contributors", [...(note.contributors ?? [])]],
+    ["tags", [...note.tags]],
+    ["links", [...note.links]],
+    ["title", note.title],
+    ["created", note.created_at],
+    ["updated", note.updated_at],
+    ["appearance", lookBlock(note.appearance)],
+  ]);
+  return writeSections(
+    notePath(splitOwnedRef(note.ref).localId),
+    front,
+    blocks,
+    held,
+  );
+}
+
+/**
+ * The file `path` holds, its front matter already written: the sections in
+ * order, each opened by its own ULID, with every drawing written beside them.
+ * A note and an offered change are the same shape here — `amendment.ts`.
+ */
+export function writeSections(
+  path: string,
+  front: string,
+  blocks: readonly BlockView[],
+  held: VaultSoFar = {},
+): NoteFiles {
   const files = new Map<string, Uint8Array>();
   const pictures = new Map<string, PictureSize>(held.pictures);
   const emoji = new Map<string, EmojiDrawing>(held.emoji);
   const media = new Map<string, string>(held.media);
-  const parts = [
-    writeFront([
-      ["ref", note.ref],
-      ["parent", note.parent],
-      ["address", note.address],
-      ["aliases", [...aliases]],
-      ["tags", [...note.tags]],
-      ["links", [...note.links]],
-      ["title", note.title],
-      ["created", note.created_at],
-      ["updated", note.updated_at],
-      ["appearance", lookBlock(note.appearance)],
-    ]),
-  ];
+  const parts = [front];
   for (const block of blocks) {
     const ulid = splitOwnedRef(block.ref).localId;
     const sidecars: Sidecars = {
@@ -145,10 +176,7 @@ export function noteToVault(
       files.set(inkImagePath(stem), encodeText(inkSvg(attrs)));
     }
   }
-  files.set(
-    notePath(splitOwnedRef(note.ref).localId),
-    encodeText(`${parts.join("\n\n")}\n`),
-  );
+  files.set(path, encodeText(`${parts.join("\n\n")}\n`));
   return { files, pictures, emoji };
 }
 
@@ -180,6 +208,9 @@ export function vaultToNote(files: NoteSource): VaultNote {
   const parent = OwnedRefSchema.safeParse(frontString(front, "parent"));
   const look = NodeAppearanceSchema.safeParse(frontBlock(front, "appearance"));
   const address = AddressSchema.safeParse(frontString(front, "address"));
+  const owner = DidSyrSchema.safeParse(frontString(front, "owner"));
+  const authors = dids(frontList(front, "authors"));
+  const contributors = dids(frontList(front, "contributors"));
   const stamp = (key: string): { [k: string]: Timestamp } => {
     const held = TimestampSchema.safeParse(frontString(front, key));
     return held.success ? { [key]: held.data } : {};
@@ -191,6 +222,9 @@ export function vaultToNote(files: NoteSource): VaultNote {
     aliases: frontList(front, "aliases").filter(
       (held) => AddressSchema.safeParse(held).success,
     ),
+    ...(owner.success ? { owner: owner.data } : {}),
+    ...(authors.length > 0 ? { authors } : {}),
+    ...(contributors.length > 0 ? { contributors } : {}),
     tags: frontList(front, "tags"),
     links: frontList(front, "links").filter(
       (held) => OwnedRefSchema.safeParse(held).success,
@@ -205,9 +239,24 @@ export function vaultToNote(files: NoteSource): VaultNote {
   };
 }
 
+function dids(held: readonly string[]): DidSyr[] {
+  return held.filter((one) => DidSyrSchema.safeParse(one).success);
+}
+
+/** Whose writing the note carries, where that is anything but the ref's DID
+ *  alone — the one case the file leaves out, so a note written before the list
+ *  and a note only its author has written into are the same file. */
+function writtenAuthors(note: NodeView): DidSyr[] {
+  const authors = note.authors ?? [];
+  const [first] = authors;
+  return authors.length === 1 && first === splitOwnedRef(note.ref).did
+    ? []
+    : [...authors];
+}
+
 /** The look as one block under the note's own fields. A look with every channel
  *  taken back off is not written: absent is what unstyled reads as. */
-function lookBlock(
+export function lookBlock(
   appearance: NodeAppearance | undefined,
 ): FrontBlock | undefined {
   if (appearance === undefined || isUnstyled(appearance)) return undefined;
@@ -218,7 +267,8 @@ function lookBlock(
   return channels;
 }
 
-function readSections(
+/** The sections a body holds, read back against the sidecars they draw on. */
+export function readSections(
   body: readonly string[],
   files: NoteSource,
 ): VaultSection[] {

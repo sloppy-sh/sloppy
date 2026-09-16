@@ -8,6 +8,7 @@ export const VAULT_FORMAT = 1;
 
 export const GRAPH_FILE = "graph.json";
 export const NOTES_DIR = "notes";
+export const AMENDMENTS_DIR = "amendments";
 export const MEDIA_DIR = "media";
 export const SLOPPY_DIR = ".sloppy";
 export const INK_DIR = `${SLOPPY_DIR}/ink`;
@@ -100,7 +101,22 @@ export function notePath(ulid: string): string {
 
 /** The note a path is the file of, or absent where it is not one. */
 export function noteAt(path: string): string | undefined {
-  const name = under(NOTES_DIR, path);
+  return markdownAt(NOTES_DIR, path);
+}
+
+export function amendmentPath(ulid: string): string {
+  return `${AMENDMENTS_DIR}/${ulid}.md`;
+}
+
+/** The offered change a path is the file of, or absent where it is not one.
+ *  The file's name is the offer's own ulid: an offer is read inside the graph
+ *  that holds it, so nothing in the file repeats whose it is. */
+export function amendmentAt(path: string): string | undefined {
+  return markdownAt(AMENDMENTS_DIR, path);
+}
+
+function markdownAt(directory: string, path: string): string | undefined {
+  const name = under(directory, path);
   if (name === undefined || extensionOf(name) !== "md") return undefined;
   const ulid = stemOf(name);
   return UlidSchema.safeParse(ulid).success ? ulid : undefined;
