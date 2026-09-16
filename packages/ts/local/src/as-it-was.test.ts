@@ -79,6 +79,17 @@ describe("a graph as it was", () => {
     await expect(
       then.createBlock({ node: note.ref, content: textDocument("No") }),
     ).rejects.toThrow(asItWas);
+    await expect(
+      then.proposeAmendment({
+        note: note.ref,
+        title: "Another",
+        tags: [],
+        blocks: [],
+      }),
+    ).rejects.toThrow(asItWas);
+    await expect(then.withdrawAmendment(note.ref)).rejects.toThrow(asItWas);
+    await expect(then.approveAmendment(note.ref)).rejects.toThrow(asItWas);
+    await expect(then.declineAmendment(note.ref)).rejects.toThrow(asItWas);
     await expect(then.updateProfile({ display_name: "Ada" })).rejects.toThrow(
       asItWas,
     );

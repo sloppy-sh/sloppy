@@ -7,6 +7,7 @@
 
 import {
   type Address,
+  type AmendmentView,
   type BlockDocument,
   type BlockView,
   type CustomEmoji,
@@ -28,14 +29,20 @@ import {
   orderSiblings,
   resolveAppearance,
   ulid,
+  withAuthor,
 } from "@sloppy/types";
 import {
   type EmojiDrawing,
   type PictureSize,
+  type VaultAmendment,
   type VaultGraph,
   type VaultNote,
   type VaultSection,
+  INK_DIR,
   PICTURES_FILE,
+  amendmentAt,
+  amendmentPath,
+  amendmentToVault,
   decodeText,
   emojiAt,
   emojiPath,
@@ -43,6 +50,7 @@ import {
   GRAPH_FILE,
   graphFile,
   inkAt,
+  inkOffered,
   inkPath,
   inkImagePath,
   mediaPath,
@@ -53,6 +61,7 @@ import {
   readPicturesFile,
   uploadAt,
   noteToVault,
+  vaultToAmendment,
   vaultToNote,
 } from "@sloppy/vault";
 import type { Files } from "./files.js";
@@ -88,6 +97,13 @@ export interface StoredNote extends Omit<VaultNote, "sections"> {
   /** Absent is a note that is there. */
   deleted_at?: Timestamp;
   sections: StoredSection[];
+}
+
+/** An offered change as this graph holds it. `at` is the file's own stamp,
+ *  which is when the person offering it last wrote it. */
+export interface StoredAmendment extends VaultAmendment {
+  ulid: string;
+  at: Timestamp;
 }
 
 /** A picture in this vault, as `.sloppy/media.json` remembers it. Only the
@@ -132,6 +148,7 @@ interface Place {
 
 export class LocalGraph {
   private readonly notes = new Map<OwnedRef, StoredNote>();
+  private readonly offered = new Map<string, StoredAmendment>();
   private readonly pictures = new Map<string, PictureSize>();
   private readonly media = new Map<string, StoredPicture>();
   private readonly emoji = new Map<string, CustomEmojiKind>();
@@ -262,6 +279,13 @@ export class LocalGraph {
       }
       this.notes.set(note.ref, note);
     }
+    for (const path of paths) {
+      const ulid = amendmentAt(path);
+      if (ulid === undefined) continue;
+      const bytes = await this.files.read(path);
+      const offer = bytes && this.readOffer(ulid, bytes);
+      if (offer) this.offered.set(ulid, offer);
+    }
   }
 
   private readMedia(
@@ -331,6 +355,24 @@ export class LocalGraph {
         updated_at: updated,
       })),
     };
+  }
+
+  private readOffer(
+    ulid: string,
+    bytes: Uint8Array,
+  ): StoredAmendment | undefined {
+    let read: VaultAmendment;
+    try {
+      read = vaultToAmendment({
+        markdown: decodeText(bytes),
+        ink: this.ink,
+        pictures: this.pictures,
+        emoji: this.drawings(),
+      });
+    } catch {
+      return undefined;
+    }
+    return { ...read, ulid, at: read.at ?? nowIso() };
   }
 
   /** How each shortcode this graph knows draws, which is what makes
@@ -556,6 +598,17 @@ export class LocalGraph {
 
   // ── Writing notes ────────────────────────────────────────────────────────
 
+  /** The note as a landed write by `writer` leaves its authorship. A note this
+   *  graph holds carries no `created_by` of its own: the graph is whose it
+   *  is. */
+  authored(note: StoredNote, writer: DidSyr): StoredNote {
+    const { created_by: _whose, ...held } = withAuthor(
+      { ...note, created_by: this.did },
+      writer,
+    );
+    return held;
+  }
+
   /** The note as it now stands, in the index and in the folder. */
   async save(note: StoredNote): Promise<StoredNote> {
     this.notes.set(note.ref, note);
@@ -623,6 +676,7 @@ export class LocalGraph {
         if (stillAt.has(address) || this.isRetired(address)) continue;
         this.retired.push({ address, note: note.ref });
       }
+      for (const offer of this.offersOn(note.ref)) await this.dropOffer(offer);
       this.notes.delete(note.ref);
     }
     this.places = null;
@@ -734,6 +788,90 @@ export class LocalGraph {
       ),
     };
     await this.files.write(BIN_FILE, writeJson(held));
+  }
+
+  // ── Offered changes ──────────────────────────────────────────────────────
+
+  /** What has been offered on one note, oldest offer first — a ULID sorts by
+   *  the moment it was made, and writing an offer again keeps it. */
+  offersOn(note: OwnedRef): StoredAmendment[] {
+    return [...this.offered.values()]
+      .filter((offer) => offer.amends === note)
+      .sort((a, b) => (a.ulid < b.ulid ? -1 : 1));
+  }
+
+  offer(ref: OwnedRef): StoredAmendment | undefined {
+    const held = this.offered.get(localOf(ref));
+    return held && `${this.did}/${held.ulid}` === ref ? held : undefined;
+  }
+
+  /** The one offer this person has standing on this note, which is all they may
+   *  have — docs/ARCHITECTURE.md § "Whose writing a note carries". */
+  offerBy(note: OwnedRef, by: DidSyr): StoredAmendment | undefined {
+    return this.offersOn(note).find((offer) => offer.by === by);
+  }
+
+  offerView(offer: StoredAmendment): AmendmentView {
+    return {
+      ref: `${this.did}/${offer.ulid}`,
+      created_by: this.did,
+      note: offer.amends,
+      by: offer.by,
+      at: offer.at,
+      ...(offer.message === undefined ? {} : { message: offer.message }),
+      title: offer.title,
+      tags: [...offer.tags],
+      ...(offer.appearance === undefined
+        ? {}
+        : { appearance: offer.appearance }),
+      blocks: offer.sections.map((section) => ({
+        ref: `${this.did}/${section.ulid}`,
+        content: section.content,
+      })),
+      created_at: offer.at,
+      updated_at: offer.at,
+    };
+  }
+
+  async saveOffer(offer: StoredAmendment): Promise<StoredAmendment> {
+    this.offered.set(offer.ulid, offer);
+    const written = amendmentToVault(this.offerView(offer), {
+      media: this.mediaPaths(),
+      pictures: this.pictures,
+      emoji: this.drawings(),
+    });
+    for (const [path, bytes] of written.files) {
+      await this.files.write(path, bytes);
+    }
+    await this.sweepOfferInk(offer.ulid, written.files);
+    for (const [upload, size] of written.pictures) {
+      this.pictures.set(upload, size);
+    }
+    if (this.pictures.size > 0) {
+      await this.files.write(PICTURES_FILE, picturesFile(this.pictures));
+    }
+    return offer;
+  }
+
+  async dropOffer(offer: StoredAmendment): Promise<void> {
+    this.offered.delete(offer.ulid);
+    await this.files.remove(amendmentPath(offer.ulid));
+    await this.sweepOfferInk(offer.ulid, new Map());
+  }
+
+  /** The drawings this offer's own files no longer hold. They are named from
+   *  the offer as well as from the section, so a note's own stay untouched. */
+  private async sweepOfferInk(
+    ulid: string,
+    keeping: ReadonlyMap<string, Uint8Array>,
+  ): Promise<void> {
+    for (const path of await this.files.list(INK_DIR)) {
+      const stem = inkAt(path);
+      if (stem === undefined || !inkOffered(stem, ulid)) continue;
+      if (keeping.has(path)) continue;
+      await this.files.remove(path);
+      this.ink.delete(stem);
+    }
   }
 
   // ── Pictures ─────────────────────────────────────────────────────────────
