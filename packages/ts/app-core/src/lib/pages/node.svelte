@@ -842,8 +842,6 @@
 		}
 	}
 
-	/** The note as the offer would have it, read again from the server: its
-	 *  sections are the offer's now. */
 	async function takeOfferIn(offer: AmendmentView): Promise<void> {
 		const of = ref;
 		try {
