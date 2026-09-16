@@ -109,6 +109,7 @@ import {
   decodeText,
   emojiAt,
   inkAt,
+  type ArchiveManifest,
   manifest,
   noteAt,
   graphFile,
@@ -138,6 +139,7 @@ import {
 import {
   type LocalIdentity,
   openLocalIdentity,
+  readHeldProfile,
   readIdentities,
 } from "./identity.js";
 import { lookWritten, NoteWriter, offerInstead } from "./notes.js";
@@ -281,6 +283,7 @@ export class LocalApi implements SloppyApi {
         name: request.title,
         owner: did,
       });
+      await this.nameItsOwner(graph, did);
       this.opened.set(root, graph);
       await this.rememberVault(root);
       return this.graphView(graph);
@@ -789,6 +792,7 @@ export class LocalApi implements SloppyApi {
       pictures: [...opened.vault.keys()].filter(
         (path) => uploadAt(path) !== undefined,
       ).length,
+      ...(opened.said.offers > 0 ? { offers: opened.said.offers } : {}),
       missing_emoji: opened.missing,
       collisions: held,
       replaces: false,
@@ -1000,17 +1004,23 @@ export class LocalApi implements SloppyApi {
   }
 
   /**
-   * The offers standing in the file that this graph holds none of. One it
-   * already has stays as it is, and so does the one standing from the same
-   * person on the same note: an import writes nothing over.
+   * The offers standing in the file, put beside the ones the folder holds. The
+   * same offer arriving again — the same ulid — is the same offer written
+   * twice, so the later of the two stands and the earlier one is not put back
+   * over it. A different offer from somebody who already has one standing on
+   * that note is left in the file: one person has one offer per note.
    */
   private async carryArrivingOffers(
     into: LocalGraph,
     offers: readonly StoredAmendment[],
   ): Promise<void> {
     for (const offer of offers) {
-      if (into.offer(`${into.did}/${offer.ulid}`)) continue;
       if (!into.find(offer.amends)) continue;
+      const standing = into.offer(`${into.did}/${offer.ulid}`);
+      if (standing) {
+        if (offer.at > standing.at) await into.saveOffer(offer);
+        continue;
+      }
       if (into.offerBy(offer.amends, offer.by)) continue;
       await into.saveOffer(offer);
     }
@@ -1590,20 +1600,51 @@ export class LocalApi implements SloppyApi {
           "The folder your notes are in is not there any more. Open it again, or choose another folder.",
         );
       }
+      const writer = await this.writer;
       const graph = holds
         ? await LocalGraph.open(at)
         : await LocalGraph.start(at, {
             format: VAULT_FORMAT,
             graph: ulid(),
             name: folderName(root),
-            owner: await this.writer,
+            owner: writer,
           });
+      if (!holds) await this.nameItsOwner(graph, writer);
       this.opened.set(root, graph);
       if (!written) await this.rememberVault(root);
       return graph;
     })();
     this.starting.set(root, opening);
     return opening;
+  }
+
+  /**
+   * A graph just started is written in as its owner's, with what the store that
+   * keeps that identity last said they are called and wearing. A graph says
+   * whose it is wherever it is opened, so it keeps its own copy of the picture
+   * and a folder started long after a sign-in still carries the name.
+   */
+  private async nameItsOwner(graph: LocalGraph, did: DidSyr): Promise<void> {
+    const said = await readHeldProfile(this.files, did);
+    if (said.name === undefined && said.picture === undefined) return;
+    const avatar = said.picture
+      ? graph.picturePath(
+          (
+            await graph.putPicture(
+              {
+                role: "avatar",
+                filename: "picture",
+                mime_type: said.picture.mime_type,
+              },
+              said.picture.bytes,
+            )
+          ).upload_id,
+        )
+      : undefined;
+    await graph.setOwner({
+      ...(said.name === undefined ? {} : { name: said.name }),
+      ...(avatar === undefined ? {} : { avatar }),
+    });
   }
 
   private async graphHolding(ref: OwnedRef): Promise<LocalGraph | undefined> {
@@ -1763,7 +1804,7 @@ interface DevicePicture {
 }
 
 interface Opened {
-  said: { format: number; graph: string; name: string; owner: DidSyr };
+  said: ArchiveManifest;
   vault: Vault;
   notes: VaultNote[];
   missing: string[];

@@ -16,6 +16,6 @@ export function writable(note: Pick<Node, "owner">, writer: DidSyr): boolean {
  */
 export function gatedElsewhere(): ForbiddenException {
   return new ForbiddenException(
-    "This note is somebody else's to write. Change who owns it, in the note's details, to write it here.",
+    "This note is somebody else's to write. Change who owns it in the note's details, then write it here.",
   );
 }

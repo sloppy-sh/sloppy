@@ -732,7 +732,8 @@ ask.
 - **A contributor's save on an owned note says what happened, in outcomes** — offered to
   whoever owns it, and it shows once they take it. Nothing about rows, offers standing, or
   what the request did: the person needs to know their writing is somewhere and what has to
-  happen next, and that is the whole of it.
+  happen next, and that is the whole of it. The offer standing in their name stays theirs to
+  read, write again and take back, so nobody has to remember what they proposed.
 - **The owner reads an offer as a difference**, note against offer, section by section, in
   § "A difference between two states"'s own language — no second vocabulary for the same
   question. Taking it in is one act on the whole offer; there is no picking a section out of

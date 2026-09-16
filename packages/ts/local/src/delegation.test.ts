@@ -79,6 +79,25 @@ describe("the address somebody typed", () => {
       "http://localhost:3000",
     );
   });
+
+  it("reaches a bare address on this machine the only way one answers", () => {
+    for (const typed of [
+      "localhost",
+      "localhost:4000",
+      "syr.localhost",
+      "127.0.0.1:8080",
+      "[::1]:8080",
+    ]) {
+      expect(normalizeInstanceUrl(typed)).toBe(`http://${typed}`);
+    }
+  });
+
+  it("does not read a name that merely ends in one as this machine", () => {
+    expect(normalizeInstanceUrl("notlocalhost")).toBe("https://notlocalhost");
+    expect(normalizeInstanceUrl("127.0.0.1.example")).toBe(
+      "https://127.0.0.1.example",
+    );
+  });
 });
 
 describe("reaching an identity store", () => {

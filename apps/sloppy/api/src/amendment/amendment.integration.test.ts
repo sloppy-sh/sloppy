@@ -10,12 +10,13 @@
 import { createServer } from "node:net";
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import type {
-  AmendmentView,
-  BlockView,
-  GraphView,
-  NodeView,
-  OwnedRef,
+import {
+  type AmendmentView,
+  ArchivePreviewSchema,
+  type BlockView,
+  type GraphView,
+  type NodeView,
+  type OwnedRef,
 } from "@sloppy/types";
 import {
   amendmentPath,
@@ -47,6 +48,9 @@ const NOTE = "01JCMMNSNTE000000000000000";
 const SECTION = "01JCMMNSSECTN0000000000000";
 const OFFER = "01JAMENDMENT00000000000000";
 const OFFERED_SECTION = "01JAMENDSECTN0000000000000";
+const SECOND_GRAPH = "01JCMMNSGRAPH0000000000002";
+const SECOND_NOTE = "01JCMMNSNTE000000000000002";
+const SECOND_OFFER = "01JAMENDMENT00000000000002";
 
 /** A picture only the offer draws, so it travels for the offer's sake or not at
  *  all. */
@@ -115,6 +119,55 @@ function arriving(author: string, gate: string): Vault {
     ),
   );
   vault.set(mediaPath(PICTURE, "png"), PICTURE_BYTES);
+  return vault;
+}
+
+/** A second graph, whose offer proposes a section that is already a row on a
+ *  note in the first one — what an offer written against a section its author
+ *  has since carried somewhere else looks like on arrival. */
+function offeringSectionOf(author: string, gate: string, section: string) {
+  const vault: Vault = new Map();
+  vault.set(
+    "graph.json",
+    graphFile({
+      format: VAULT_FORMAT,
+      graph: SECOND_GRAPH,
+      name: "The commons, again",
+      owner: author,
+      ownership: "owned",
+    }),
+  );
+  vault.set(
+    notePath(SECOND_NOTE),
+    encodeText(
+      [
+        "---",
+        `ref: ${author}/${SECOND_NOTE}`,
+        "address: 1",
+        `owner: ${gate}`,
+        "title: Beside it",
+        "---",
+        "",
+      ].join("\n"),
+    ),
+  );
+  vault.set(
+    amendmentPath(SECOND_OFFER),
+    encodeText(
+      [
+        "---",
+        `amends: ${author}/${SECOND_NOTE}`,
+        `by: ${gate}`,
+        "at: 2026-03-01T00:00:00.000Z",
+        "title: With that section in it",
+        "---",
+        `<!-- block ${section} -->`,
+        "",
+        "Carried over from the note beside it.",
+        "",
+      ].join("\n"),
+    ),
+  );
   return vault;
 }
 
@@ -363,6 +416,20 @@ describe("a change offered on a note a graph here holds", () => {
     90_000,
   );
 
+  scenario(
+    "is counted in what the file says it holds, before anything is written",
+    async () => {
+      const answered = await fetch(`${base}/api/graphs/import?preview=1`, {
+        method: "POST",
+        headers: { "content-type": "application/zip", cookie: ada.cookie },
+        body: Buffer.from(pack(arriving(ada.did, bram.did))) as BodyInit,
+      });
+      const said = ArchivePreviewSchema.parse(await answered.json());
+
+      expect(said.offers).toBe(1);
+    },
+  );
+
   scenario("draws the pictures it brought, out of this store", async () => {
     const drawn = pictureIn(offer.blocks);
 
@@ -484,6 +551,38 @@ describe("a change offered on a note a graph here holds", () => {
         [...vault.keys()].filter((path) => path.startsWith("amendments/")),
       ).toEqual([]);
     },
+  );
+
+  scenario(
+    "takes in a section that is already a row on another note, rather than making a second",
+    async () => {
+      const brought = await bringIn(
+        ada,
+        pack(offeringSectionOf(ada.did, bram.did, OFFERED_SECTION)),
+      );
+      expect(brought.status, JSON.stringify(brought.body)).toBeLessThan(300);
+      const held = (await ok(
+        "GET",
+        `/nodes?graph=${encodeURIComponent((brought.body as GraphView).ref)}`,
+        ada,
+      )) as NodeView[];
+      const standing = await offersOn(ada, held[0].ref);
+      expect(standing).toHaveLength(1);
+
+      const taken = (await ok(
+        "POST",
+        `/amendments/${at(standing[0].ref)}/approve`,
+        ada,
+      )) as NodeView;
+
+      expect(taken.ref).toBe(held[0].ref);
+      const sections = await blocksOf(ada, held[0].ref);
+      expect(sections.map((section) => section.ref)).toEqual([
+        `${ada.did}/${OFFERED_SECTION}`,
+      ]);
+      expect(await blocksOf(ada, note.ref)).toEqual([]);
+    },
+    90_000,
   );
 
   scenario(

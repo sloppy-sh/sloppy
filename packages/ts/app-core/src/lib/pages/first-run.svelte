@@ -18,20 +18,33 @@
 	let opening = $state(false);
 	let problem = $state<string | null>(null);
 	let held = $state<IdentityHere[]>([]);
+	/** Which ask the list on screen came from, so a slower one that started
+	 *  first cannot write over a later answer. */
+	let asked = 0;
 
 	const writing = $derived(held.find((one) => one.writing));
 
 	$effect(() => {
+		// Reading who is signed in is what makes this re-read when a sign-in lands
+		// after the surface mounted, which is the ordinary case on a first run.
+		void session.viewer;
 		void refresh();
 	});
 
-	/** Reading who writes here is what makes this re-read when a sign-in lands
-	 *  after the surface mounted, which is the ordinary case on a first run. */
-	async function refresh(): Promise<void> {
-		if (!identities) return;
-		const asOf = session.viewer?.did;
-		const listed = await identities.list().catch(() => held);
-		if (asOf === session.viewer?.did) held = listed;
+	/** Null is a device that would not say what it holds, which is never read as
+	 *  holding none — minting a second identity over one already here would
+	 *  orphan every graph written under it. */
+	async function refresh(): Promise<IdentityHere[] | null> {
+		if (!identities) return [];
+		const mine = ++asked;
+		try {
+			const listed = await identities.list();
+			if (mine === asked) held = listed;
+			return listed;
+		} catch (error) {
+			if (mine === asked) problem = said(error);
+			return null;
+		}
 	}
 
 	/** The shell says what went wrong in words fit to show; anything else that
@@ -40,14 +53,25 @@
 		return typeof error === 'string' && error.trim() ? error : null;
 	}
 
+	/** What to show for something that went wrong holding an identity, which
+	 *  says what a person can do about it where it says anything at all. */
+	function said(error: unknown): string {
+		const words = shellSaid(error) ?? (error instanceof Error ? error.message : null);
+		return words?.trim()
+			? words
+			: 'Sloppy could not read the identities on this device. Try again.';
+	}
+
 	async function begin() {
 		if (!vault) return;
 		opening = true;
 		problem = null;
 		try {
-			if (identities) {
-				const already = await identities.list();
-				held = already.length === 0 ? [await identities.makeOne()] : already;
+			const listed = await refresh();
+			if (listed === null) return;
+			if (identities && listed.length === 0) {
+				await identities.makeOne();
+				await refresh();
 			}
 			const folder = await vault.open();
 			if (!folder) return;

@@ -377,15 +377,19 @@ writer)` in `@sloppy/types`:
   where they are not in it yet.
 - `owner` is the writer → the write **lands**, and `authors` is untouched. Ownership is not
   writing.
-- `owner` is somebody else → the write is **offered**: it does not land, and it is recorded
-  as an amendment for the owner. One offer per person per note — offering again writes the
-  offer already standing rather than stacking a second, which is what
-  `amendment_owner_note_by UNIQUE` holds.
+- `owner` is somebody else → the write does not land. An ordinary write is **refused in
+  words**, and the surface that was writing composes the change and offers it instead, so
+  nothing is offered on somebody's behalf without their asking. One offer per person per
+  note — offering again writes the offer already standing rather than stacking a second,
+  which is what `amendment_owner_note_by UNIQUE` holds.
 
 Setting, changing and removing `owner` is the graph owner's act and the current owner's act.
 A contributor cannot claim a note, and an offer carries the note's **writing** — title, tags,
 look, sections — and never its place: nobody moves, renumbers or re-parents a note they do
-not own.
+not own. **The graph's own owner places every note in it whatever its gate says** — the
+genealogy and the numbers are the graph's, and handing a note's writing on does not hand
+those with it. Handing the gate on is likewise not writing, so a request that does only that
+is not held to the gate it is taking off, while one that also writes is.
 
 **A graph decides the default for the notes written in it.** `Graph.ownership` is `open` or
 `owned`, absent is `open`. `owned` stamps `owner = writer` on every note at creation; `open`
@@ -420,9 +424,11 @@ DESIGN.md § "A difference between two states" already has. **Taking part of an 
 later theme** — there is no section-level picking, and an offer is taken or turned down
 whole.
 
-The routes: `GET /nodes/:did/:ulid/amendments` lists what has been offered on one note, for
-its owner alone, **oldest offer first** — the order they arrived in, and the order the owner
-reads them in on every surface; `POST /amendments` offers one or writes the one already
+The routes: `GET /nodes/:did/:ulid/amendments` lists what has been offered on one note,
+**oldest offer first** — the order they arrived in, and the order they are read in on every
+surface. Whoever the note's writing lands for reads every offer on it, and whoever made one
+reads their own, which is what lets a proposer see the offer standing in their name and take
+it back; `POST /amendments` offers one or writes the one already
 standing; `DELETE /amendments/:did/:ulid` withdraws it; `POST /amendments/:did/:ulid/approve`
 and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
 row here, and that DID is the graph owner's.
@@ -523,7 +529,10 @@ picked up as the app boots and only then.
 
 **Signing in locally settles which DID this device writes under, and what the person is
 called.** The name and picture come from the profile and are written into the owner block of
-the graphs that identity owns. It grants nothing else: publishing, peers and pull still need
+the graphs that identity owns — and never into a folder somebody else owns, whose own owner
+block says who THEY are. They are held beside the identity as well as written into a graph,
+so a folder started under that identity later, on a run long after the sign-in, is written in
+with them too. It grants nothing else: publishing, peers and pull still need
 a server. A token that lapses leaves the identity held — the DID is a fact, not a
 permission — and marks it as signed out of its store until the person signs in again;
 nothing local needs the token after the exchange except refreshing the name and the picture.
@@ -1952,6 +1961,7 @@ a folder with. Nothing in it talks to a store: it is handed rows and hands back 
 ├── media/<uploadId>.<ext>           the pictures the notes draw
 └── .sloppy/                         what markdown cannot carry
     ├── ink/<block>-<n>.ink.json     one drawing's strokes, and an .svg of it beside
+    │                                 an offer's are <offer>-<block>-<n>
     ├── pictures.json                a picture's size, keyed by upload id
     ├── media.json                   what a picture was called and what it is
     ├── emoji/<shortcode>.<ext>      the custom emoji the notes are written with
@@ -2021,7 +2031,9 @@ by the same reader a note's are. Its own ulid is the file's name rather than a f
 read inside the graph that holds it, so the DID half of its reference is that graph's owner
 and nothing in the file repeats it. It is committed like any note, so it moves through the
 folder's history and rides in an archive — a graph handed over with offers standing on it
-loses none of them.
+loses none of them. Its drawings sit in `.sloppy/ink/` like a note's and are named for the
+offer as well as for the section they are in, so an offer proposing a section the note also
+holds writes its own drawing rather than over the note's.
 
 **What a vault carries is what a person wrote; what a renderer decided is not carried.** A
 note's `depth` and `origin` fall out of the parent chain, its `references` out of its own
@@ -2077,16 +2089,20 @@ into one note, and which note keeps the number for an address — and no note is
 with markers in it. `ImportConflict` and `ImportResolution` in `@sloppy/types` are that
 vocabulary; `ArchivePreview.conflicts` is what a person is shown before anything is written,
 and `merges` says the archive is a copy of a graph they keep. Absent `conflicts` is none and
-absent `merges` is false — what an answer made before an import could merge says. The hosted
+absent `merges` is false — what an answer made before an import could merge says.
+`ArchivePreview.offers` is how many changes offered on those notes the file carries, counted
+from `amendments/` and absent where it carries none, so a person settling two copies of one
+graph is never told they agree while an offer is landing. The hosted
 app and the local app settle an import the same way, because both read the same preview.
 **Both previews answer the conflicts and both imports settle them as chosen**, on the
 server and in a folder alike; a settlement that leaves a conflict unsettled refuses the whole
 import before anything is written.
 
 **An archive says what it holds before it is opened.** `manifest` reads `graph.json` and
-counts the entries out of the zip's own listing without inflating them, so an import
-preview can say whose graph it is, what it is called and how much of it is arriving while
-the file is still a file.
+counts the entries out of the zip's own listing without inflating them — its notes, its
+offered changes and its pictures — so an import preview can say whose graph it is, what it
+is called and how much of it is arriving while the file is still a file. One preview answers
+for a folder and one for a server, and both count the same way.
 
 ## The vault's history
 

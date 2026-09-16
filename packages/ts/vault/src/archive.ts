@@ -4,6 +4,7 @@
 import { type DidSyr } from "@sloppy/types";
 import { Unzip, UnzipInflate, unzipSync, zipSync } from "fflate";
 import {
+  amendmentAt,
   GRAPH_FILE,
   insideVault,
   MEDIA_DIR,
@@ -57,6 +58,8 @@ export interface ArchiveManifest {
   name: string;
   owner: DidSyr;
   notes: number;
+  /** How many changes offered on those notes it carries. */
+  offers: number;
   media: number;
 }
 
@@ -71,6 +74,7 @@ export function manifest(bytes: Uint8Array): ArchiveManifest {
   const reader = new Unzip();
   reader.register(UnzipInflate);
   let notes = 0;
+  let offers = 0;
   let media = 0;
   const graph: Uint8Array[] = [];
   let trouble: Error | null = null;
@@ -80,6 +84,7 @@ export function manifest(bytes: Uint8Array): ArchiveManifest {
       return;
     }
     if (noteAt(file.name)) notes++;
+    else if (amendmentAt(file.name)) offers++;
     else if (isMedia(file.name)) media++;
     if (file.name !== GRAPH_FILE) return;
     file.ondata = (failed, chunk) => {
@@ -103,6 +108,7 @@ export function manifest(bytes: Uint8Array): ArchiveManifest {
     name: said.name,
     owner: said.owner,
     notes,
+    offers,
     media,
   };
 }

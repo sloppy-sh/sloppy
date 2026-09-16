@@ -6,8 +6,10 @@ import {
 import type { DidSyr } from "@sloppy/types";
 import { encodeText } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
+import { LocalApi } from "./api.js";
 import type { Fetching } from "./delegation.js";
 import { MemoryFiles } from "./files.js";
+import { LocalGraph } from "./graph.js";
 import {
   CARRIED_FILE,
   carryIdentityOut,
@@ -356,6 +358,7 @@ describe("the three doors a person is offered", () => {
   const INSTANCE = "https://keys.example";
   const ORIGIN = "https://sloppy.sh";
   const DID = "did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK";
+  const ADA = "did:syr:z6MkrAdaAdaAdaAdaAdaAdaAdaAdaAda";
 
   const manifest = {
     name: "syr",
@@ -584,5 +587,34 @@ describe("the three doors a person is offered", () => {
     await expect(door.held.carryOut(DID as DidSyr)).rejects.toThrow(
       /kept for you somewhere else/i,
     );
+  });
+
+  it("writes what the store says into a graph started under it on a later run", async () => {
+    const files = new MemoryFiles({ data: "/data", folder: "/graphs/mine" });
+    const door = identities(files);
+    await door.held.signIn(INSTANCE);
+    await door.held.finish(cameBack(door.left[0] ?? ""));
+
+    // A later run: nothing the sign-in was holding in memory is here any more.
+    const api = new LocalApi(files);
+    await api.createGraph({ title: "Thesis" });
+
+    const said = await api.profile();
+    expect(said.did).toBe(DID);
+    expect(said.display_name).toBe("Ada Lovelace");
+    expect(said.avatar_src).not.toBeNull();
+  });
+
+  it("writes nothing of itself into a folder somebody else owns", async () => {
+    const files = new MemoryFiles({ data: "/data", folder: "/graphs/theirs" });
+    const theirs = new LocalApi(files, { writer: ADA as DidSyr });
+    await theirs.createGraph({ title: "Thesis" });
+    const door = identities(files);
+    await door.held.signIn(INSTANCE);
+    await door.held.finish(cameBack(door.left[0] ?? ""));
+
+    const here = await LocalGraph.open(files.at("/graphs/theirs"));
+    expect(here.did).toBe(ADA);
+    expect(here.owner).toEqual({});
   });
 });
