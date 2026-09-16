@@ -50,6 +50,7 @@ import {
   type Tags,
   TagsSchema,
   type UpdateNodeRequestSchema,
+  withAuthor,
 } from "@sloppy/types";
 import type { z } from "zod";
 import { MediaService } from "../media/media.service";
@@ -376,21 +377,22 @@ export class NodeService {
     request: UpdateRequest,
     delegation: Delegation | undefined,
   ): Promise<NodeView> {
-    if (request.owner === undefined) {
-      const note = await this.nodes.find(did, ref);
-      if (!note) throw new NotFoundException("That note is not here.");
-      if (!writable(note, did)) throw gatedElsewhere();
+    const note = await this.nodes.find(did, ref);
+    if (!note) throw new NotFoundException("That note is not here.");
+    if (request.owner === undefined && !writable(note, did)) {
+      throw gatedElsewhere();
     }
-    const updated = await this.nodes.patch(
-      did,
-      ref,
-      request.appearance === undefined
-        ? request
-        : {
-            ...request,
-            appearance: await this.look(request.appearance, delegation),
-          },
-    );
+    // Handing the gate on is not writing, so a request that does only that
+    // joins nobody to what the note carries.
+    const writes = Object.keys(request).some((field) => field !== "owner");
+    const joined = writes ? withAuthor(note, did) : note;
+    const updated = await this.nodes.patch(did, ref, {
+      ...request,
+      ...(joined === note ? {} : { authors: joined.authors }),
+      ...(request.appearance === undefined
+        ? {}
+        : { appearance: await this.look(request.appearance, delegation) }),
+    });
     if (!updated) throw new NotFoundException("That note is not here.");
     return entityView(updated);
   }

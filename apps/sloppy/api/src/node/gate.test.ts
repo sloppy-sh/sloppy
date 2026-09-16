@@ -169,6 +169,45 @@ describe("a write on a note its own graph gates", () => {
   });
 });
 
+describe("a write on an open note somebody else's writing is in", () => {
+  const open = note({ authors: [OTHER] });
+  const ref = ownedRefFrom(open.id);
+
+  const patching = () => {
+    const written: Record<string, unknown>[] = [];
+    const service = new NodeService(
+      {
+        find: () => Promise.resolve(open),
+        patch: (
+          _did: string,
+          _ref: OwnedRef,
+          changes: Record<string, unknown>,
+        ) => {
+          written.push(changes);
+          return Promise.resolve({ ...open, ...changes });
+        },
+      } as unknown as NodeRepository,
+      finds,
+      graphsGating(),
+      media,
+      publications,
+    );
+    return { service, written };
+  };
+
+  it("joins the writer to what the note carries", async () => {
+    const { service, written } = patching();
+    await service.update(DID, ref, { title: "Also mine" }, undefined);
+    expect(written[0].authors).toEqual([OTHER, DID]);
+  });
+
+  it("joins nobody where the request only hands the gate on", async () => {
+    const { service, written } = patching();
+    await service.update(DID, ref, { owner: OTHER }, undefined);
+    expect(written[0]).not.toHaveProperty("authors");
+  });
+});
+
 describe("a section of a note somebody else gates", () => {
   const gated = note({ owner: OTHER });
   const ref = ownedRefFrom(gated.id);

@@ -61,6 +61,7 @@ export class BlockService {
     const note = await this.nodes.find(did, request.node);
     if (!note) throw new BadRequestException("That note is not here.");
     if (!writable(note, did)) throw gatedElsewhere();
+    await this.nodes.joinAuthors(did, note);
     const written = await this.perNote.run(request.node, async () => {
       const ord = this.place(
         await this.stack(request.node),
@@ -96,12 +97,14 @@ export class BlockService {
     const held = await this.nodes.find(did, from);
     if (!held) throw new NotFoundException("That note is not here.");
     if (!writable(held, did)) throw gatedElsewhere();
+    await this.nodes.joinAuthors(did, held);
     const into = request.node ?? from;
     const carried = into !== from;
     if (carried) {
       const landing = await this.nodes.find(did, into);
       if (!landing) throw new BadRequestException("That note is not here.");
       if (!writable(landing, did)) throw gatedElsewhere();
+      await this.nodes.joinAuthors(did, landing);
     }
     if (request.after === ref) {
       throw new BadRequestException("A block cannot follow itself.");
@@ -158,6 +161,7 @@ export class BlockService {
     if (node === null) return;
     const inside = await this.nodes.find(did, node);
     if (inside && !writable(inside, did)) throw gatedElsewhere();
+    if (inside) await this.nodes.joinAuthors(did, inside);
     const moved = await this.perNote.run(node, async () => {
       const held = await this.blocks.find(did, ref);
       await this.blocks.remove(did, ref);

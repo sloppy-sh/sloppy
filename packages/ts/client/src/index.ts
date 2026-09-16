@@ -331,8 +331,9 @@ export class SloppyClient {
     return GraphViewSchema.parse(await this.send("POST", "/graphs", request));
   }
 
-  /** Rename one. Renaming the graph somebody started with is what first writes
-   *  a row for it, so it answers the same either way. */
+  /** Rename one, and say what it gates the notes written in it by. Renaming
+   *  the graph somebody started with is what first writes a row for it, so it
+   *  answers the same either way. */
   async updateGraph(
     ref: OwnedRef,
     request: UpdateGraphRequest,

@@ -20,12 +20,20 @@ import {
   recordIdFromOwnedRef,
   type TagCount,
   TagCountSchema,
+  withAuthor,
 } from "@sloppy/types";
 import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
 import { replacement } from "./patch";
 
-const PATCHABLE = ["title", "tags", "links", "appearance", "owner"] as const;
+const PATCHABLE = [
+  "title",
+  "tags",
+  "links",
+  "appearance",
+  "owner",
+  "authors",
+] as const;
 
 /**
  * A note its author has not deleted, and its opposite. Every read but the two
@@ -120,8 +128,14 @@ function retireAlias(alias: NodeAlias): RetiredAddress {
 const BULK_WRITABLE = ["tags", "appearance"] as const;
 
 /** What a PATCH may carry; the immutable columns are absent by type. A `null`
- *  clears its column — see {@link replacement}. */
-export type NodePatch = Partial<Pick<Node, "title" | "tags" | "links">> & {
+ *  clears its column — see {@link replacement}.
+ *
+ * `authors` is here for the service rather than for a request: no request
+ * names it, and what writes it is {@link withAuthor} over the note that was
+ * there. */
+export type NodePatch = Partial<
+  Pick<Node, "title" | "tags" | "links" | "authors">
+> & {
   appearance?: NodeAppearance | null;
   /** Who gates the note's writing; `null` takes the gate off. */
   owner?: DidSyr | null;
@@ -441,6 +455,25 @@ export class NodeRepository {
 
   patch(did: string, ref: OwnedRef, changes: NodePatch): Promise<Node | null> {
     return this.set(PATCHABLE, did, ref, changes);
+  }
+
+  /**
+   * The writer joined to what a note's writing carries, where the note is open
+   * and they are not in it yet — {@link withAuthor} is that rule, and this
+   * writes what it answers. `updated_at` stays where it is: the write that
+   * called this is what moved the note, and it records that itself.
+   */
+  async joinAuthors(did: DidSyr, note: Node): Promise<void> {
+    const joined = withAuthor(note, did);
+    if (joined === note) return;
+    await this.query(
+      "UPDATE $id SET authors = $authors WHERE created_by = $did RETURN NONE",
+      {
+        id: note.id,
+        did,
+        authors: [...(joined.authors ?? [])],
+      },
+    );
   }
 
   /**

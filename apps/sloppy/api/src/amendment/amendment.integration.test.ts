@@ -47,13 +47,6 @@ const SECTION = "01JCMMNSSECTN0000000000000";
 const OFFER = "01JAMENDMENT00000000000000";
 const OFFERED_SECTION = "01JAMENDSECTN0000000000000";
 
-function paragraph(text: string) {
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-  };
-}
-
 /** A graph as one file: a note gated by somebody who is not its author, with a
  *  change standing offered on it by that same person. */
 function arriving(author: string, gate: string): Vault {
