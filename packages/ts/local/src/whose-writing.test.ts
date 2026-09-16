@@ -2,7 +2,12 @@
 // somebody else's note does — docs/ARCHITECTURE.md § "Whose writing a note
 // carries".
 
-import { type DidSyr, type OwnedRef, ulid } from "@sloppy/types";
+import {
+  type BlockDocument,
+  type DidSyr,
+  type OwnedRef,
+  ulid,
+} from "@sloppy/types";
 import { amendmentPath } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
@@ -44,6 +49,26 @@ function writingAs(held: Folder, writer: DidSyr): LocalApi {
  *  index a write left behind. */
 function read(held: Folder): LocalApi {
   return reopened(held);
+}
+
+/** A section with one drawing in it, told apart by what it is described as. */
+function drawing(description: string): BlockDocument {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "ink",
+        attrs: {
+          strokes: [
+            { points: [{ x: 0, y: 0, pressure: 0.5, t: 0 }], width: 2 },
+          ],
+          width: 40,
+          height: 20,
+          description,
+        },
+      },
+    ],
+  };
 }
 
 function offerPath(held: Folder, offer: OwnedRef): string {
@@ -306,6 +331,36 @@ describe("a change offered on a note", () => {
       [offer, second.ref].sort(),
     );
     expect(standing.map((one) => one.by).sort()).toEqual([BOB, CAI].sort());
+  });
+
+  it("draws what it offers beside the note's own drawing, never over it", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    const section = await held.api.createBlock({
+      node: note.ref,
+      content: drawing("As it stands"),
+    });
+    await held.api.updateNode(note.ref, { owner: held.did });
+
+    const offer = await writingAs(held, BOB).proposeAmendment({
+      note: note.ref,
+      title: "Seeds",
+      tags: [],
+      blocks: [{ ref: section.ref, content: drawing("As I would draw it") }],
+    });
+
+    const again = read(held);
+    expect((await again.listBlocks(note.ref))[0].content).toEqual(
+      drawing("As it stands"),
+    );
+    expect((await again.listAmendments(note.ref))[0].blocks[0].content).toEqual(
+      drawing("As I would draw it"),
+    );
+
+    await writingAs(held, BOB).withdrawAmendment(offer.ref);
+    expect((await read(held).listBlocks(note.ref))[0].content).toEqual(
+      drawing("As it stands"),
+    );
   });
 
   it("is read oldest first", async () => {
