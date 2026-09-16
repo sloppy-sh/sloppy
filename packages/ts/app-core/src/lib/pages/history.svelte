@@ -16,6 +16,11 @@
 		type StatePicked
 	} from '@sloppy/ui';
 	import { SvelteMap } from 'svelte/reactivity';
+	import BranchesPanel, { type LineRow } from '../components/branches-panel.svelte';
+	import CommitDetails from '../components/commit-details.svelte';
+	import type { DrawnVersion } from '../components/commit-graph.js';
+	import CommitGraph from '../components/commit-graph.svelte';
+	import SyncControls, { type KeptAlso } from '../components/sync-controls.svelte';
 	import {
 		type DifferenceBetween,
 		graphHistory,
@@ -46,6 +51,9 @@
 	const inTwo = new SvelteMap<string, NoteInTwoVersions | null>();
 	let settling = $state<string | null>(null);
 	let settleOpen = $state(false);
+	let showing = $state<string | null>(null);
+	let showingOpen = $state(false);
+	let where = $state('');
 
 	const versions = $derived<KeptVersion[]>(
 		graphHistory.versions.map((one) => {
@@ -62,6 +70,54 @@
 
 	const lines = $derived<LineOfWork[]>(
 		graphHistory.lines.map((one) => ({ name: one.name, head: one.head, here: one.current }))
+	);
+
+	const drawnVersions = $derived<DrawnVersion[]>(
+		graphHistory.picture.map((one) => {
+			const author = named(one.author);
+			return {
+				id: one.id,
+				message: one.message,
+				...(author === undefined ? {} : { author }),
+				when: when(one.at),
+				parents: one.parents,
+				refs: one.refs,
+				...(one.signature === undefined ? {} : { signed: one.signature })
+			};
+		})
+	);
+
+	const lineRows = $derived<LineRow[]>(
+		graphHistory.lines.map((one) => ({
+			name: one.name,
+			head: one.head,
+			here: one.current,
+			elsewhere: one.remote !== undefined,
+			...(one.ahead === undefined ? {} : { ahead: one.ahead }),
+			...(one.behind === undefined ? {} : { behind: one.behind })
+		}))
+	);
+
+	const places = $derived<KeptAlso[]>(graphHistory.places.map((one) => ({ ...one })));
+
+	const opened = $derived(drawnVersions.find((one) => one.id === showing) ?? null);
+
+	/** The lines here at a version, other than the one the folder is already on. */
+	const linesAt = $derived(
+		opened === null
+			? []
+			: graphHistory.lines
+					.filter((one) => one.head === opened.id && one.remote === undefined && !one.current)
+					.map((one) => one.name)
+	);
+
+	const springsFrom = $derived(
+		opened === null
+			? []
+			: opened.parents.flatMap((parent) => {
+					const one = drawnVersions.find((held) => held.id === parent);
+					return one ? [{ id: one.id, message: one.message }] : [];
+				})
 	);
 
 	const changed = $derived(graphHistory.changed ? rows(graphHistory.changed.notes) : null);
@@ -147,9 +203,26 @@
 	async function showVersion(commit: string): Promise<void> {
 		if (!onShowVersion) return;
 		const notes = await graphHistory.notesAt(commit);
-		const version = graphHistory.versions.find((one) => one.id === commit);
+		const version =
+			graphHistory.versions.find((one) => one.id === commit) ??
+			graphHistory.picture.find((one) => one.id === commit);
 		open = false;
+		showingOpen = false;
 		onShowVersion({ commit, message: version?.message ?? '', notes });
+	}
+
+	/** A version set against the folder as it stands, drawn on the graph rather
+	 *  than under the picture: the picture is where somebody asked from. */
+	async function compareWithNow(commit: string): Promise<void> {
+		const version = drawnVersions.find((one) => one.id === commit);
+		showingOpen = false;
+		open = false;
+		await compare({ at: commit, label: version?.message || 'A version' }, { label: 'Now' });
+	}
+
+	function openVersion(commit: string): void {
+		showing = commit;
+		showingOpen = true;
 	}
 
 	async function compare(
@@ -228,7 +301,7 @@
 	taking={graphHistory.taking}
 	busy={graphHistory.busy}
 	says={graphHistory.says}
-	onShow={() => void graphHistory.read()}
+	onShow={() => void graphHistory.opened()}
 	onKeep={(message) => graphHistory.keep(message)}
 	onOlder={() => void graphHistory.readOlder()}
 	onStartLine={(name) => graphHistory.startLine(name)}
@@ -240,7 +313,65 @@
 	}}
 	onOpenVersion={onShowVersion ? (id) => void showVersion(id) : undefined}
 	onCompare={compare}
+	picture={graphHistory.draws ? theShape : undefined}
+	branches={graphHistory.draws ? theLines : undefined}
+	elsewhere={graphHistory.draws ? theOtherPlaces : undefined}
 />
+
+{#snippet theShape()}
+	<CommitGraph
+		versions={drawnVersions}
+		at={graphHistory.at}
+		older={graphHistory.morePicture}
+		busy={graphHistory.busy}
+		onOlder={() => void graphHistory.readOlderPicture()}
+		onOpen={openVersion}
+	/>
+{/snippet}
+
+{#snippet theLines()}
+	<BranchesPanel
+		lines={lineRows}
+		anyVersion={graphHistory.versions.length > 0}
+		busy={graphHistory.busy}
+		unsettled={graphHistory.inTwoVersions.length > 0}
+		onStartLine={(name) => graphHistory.startLine(name)}
+		onWorkOn={(name) => graphHistory.workOn(name)}
+		onBringIn={(name) => graphHistory.bringIn(name)}
+		onDrop={(name) => graphHistory.dropLine(name)}
+		onStartFrom={(name, head) => graphHistory.startLineAt(name, head)}
+	/>
+{/snippet}
+
+{#snippet theOtherPlaces()}
+	<SyncControls
+		{places}
+		bind:chosen={where}
+		ahead={graphHistory.ahead}
+		behind={graphHistory.behind}
+		busy={graphHistory.busy}
+		said={graphHistory.elsewhereSaid}
+		onLook={(name) => void graphHistory.lookElsewhere(name)}
+		onTakeIn={(name) => void graphHistory.takeIn(name)}
+		onPutThere={(name) => void graphHistory.putElsewhere(name)}
+	/>
+{/snippet}
+
+{#if opened !== null}
+	<CommitDetails
+		bind:open={showingOpen}
+		version={opened}
+		{springsFrom}
+		linesHere={linesAt}
+		busy={graphHistory.busy}
+		says={graphHistory.says}
+		onRead={onShowVersion ? (id) => void showVersion(id) : undefined}
+		onCompare={onShowDifference ? (id) => void compareWithNow(id) : undefined}
+		onOpen={openVersion}
+		onStartLine={(name, id) => graphHistory.startLineAt(name, id)}
+		onWorkOn={(name) => graphHistory.workOn(name)}
+	/>
+{/if}
 
 {#if settling !== null}
 	<SettleNote

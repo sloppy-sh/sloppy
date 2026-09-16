@@ -336,6 +336,8 @@ describe('a version of the graph, opened from the history', () => {
 		await settle();
 		control('A first version').click();
 		await settle();
+		control('Read your graph as it was').click();
+		await settle();
 
 		expect(screen()).toContain('Your graph as it was');
 		expect(screen()).toContain('A first version');
@@ -361,6 +363,8 @@ describe('a version of the graph, opened from the history', () => {
 		await settle();
 		control('A first version').click();
 		await settle();
+		control('Read your graph as it was').click();
+		await settle();
 
 		window.dispatchEvent(
 			new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true })
@@ -384,6 +388,8 @@ describe('a version of the graph, opened from the history', () => {
 		await settle();
 		control('A first version').click();
 		await settle();
+		control('Read your graph as it was').click();
+		await settle();
 		expect(screen()).not.toContain('Since your last version');
 
 		control('History').click();
@@ -403,6 +409,8 @@ describe('a version of the graph, opened from the history', () => {
 		item('History').click();
 		await settle();
 		control('A first version').click();
+		await settle();
+		control('Read your graph as it was').click();
 		await settle();
 
 		control('Your graph now').click();
