@@ -36,7 +36,7 @@
 		opening = true;
 		problem = null;
 		try {
-			if (identities && held.length === 0) await identities.makeOne();
+			if (identities && held.length === 0) held = [await identities.makeOne()];
 			const folder = await vault.open();
 			if (!folder) return;
 			await session.carryProfile();

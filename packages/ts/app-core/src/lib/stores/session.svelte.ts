@@ -136,14 +136,19 @@ class SessionStore {
 	}
 
 	/**
-	 * Write what a person's identity store calls them into the graphs that
-	 * identity owns. A device with no graph in front of it yet keeps it to
-	 * carry once there is one.
+	 * Write what a person's identity store calls them into the graph in front of
+	 * them. A device with no folder open yet keeps it to carry once there is
+	 * one, which is what the first run calls this again for.
 	 */
 	async carryProfile(): Promise<void> {
 		if (!carrying) return;
+		const vault = runtime.vault();
+		if (!vault?.folder()) return;
 		const { name, picture } = carrying;
 		try {
+			// The folder that is open holds a graph from here on, which is what
+			// there is to write a name into.
+			await vault.graph();
 			const asked = {
 				...(name === undefined ? {} : { display_name: name }),
 				...(picture === undefined

@@ -272,3 +272,20 @@ describe('the three doors a first run offers', () => {
 		expect(offers()).toEqual(['Choose a folder']);
 	});
 });
+
+describe('a first run that did not get a folder', () => {
+	it('makes one identity here, however many times the folder is turned down', async () => {
+		const makeOne = vi.fn(async () => here());
+		shell({ open: async () => undefined }, { makeOne });
+		show();
+		await settle();
+
+		button().click();
+		await settle();
+		button().click();
+		await settle();
+
+		expect(makeOne).toHaveBeenCalledOnce();
+		expect(opened).toEqual([]);
+	});
+});
