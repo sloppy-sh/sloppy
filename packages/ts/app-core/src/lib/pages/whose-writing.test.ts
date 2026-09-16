@@ -303,6 +303,29 @@ describe('a note the reader writes', () => {
 	});
 });
 
+describe('a note in the reader’s own graph that somebody else writes', () => {
+	beforeEach(() => {
+		serve(myNote({ owner: KEEPER }), [MY_OPENING]);
+		amending(api, { [MINE]: [] }, () => myNote({ owner: KEEPER }));
+	});
+
+	it('says whose writing it is, and offers a change like any contributor', async () => {
+		await open(MINE);
+
+		expect(screen()).toContain('Only Charles Babbage writes this note.');
+	});
+
+	it('keeps the note’s place theirs: it moves and it goes, its writing is offered', async () => {
+		await open(MINE);
+		acts()?.click();
+		await settle();
+
+		expect(button('Move this note')).toBeDefined();
+		expect(button('Delete this note')).toBeDefined();
+		expect(noButton('Link to another note')).toBe(true);
+	});
+});
+
 describe('the changes offered on the reader’s own note', () => {
 	const offered = amendment(70, MINE, KEEPER, {
 		title: 'Mine, as they would have it',

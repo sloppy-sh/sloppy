@@ -1264,7 +1264,9 @@
 		...(publishable
 			? [{ label: 'Publishing', icon: Globe, onSelect: () => (publishing = true) }]
 			: []),
-		...(offering
+		// Taking a note out of the graph is its place and not its writing, so the
+		// graph's own owner does it whatever the note's gate says.
+		...(offering && !own
 			? []
 			: [
 					{
