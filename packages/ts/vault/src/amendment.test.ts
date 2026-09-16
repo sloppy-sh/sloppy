@@ -1,4 +1,8 @@
-import type { AmendmentView, BlockDocument, BlockView } from "@sloppy/types";
+import type {
+  AmendmentSection,
+  AmendmentView,
+  BlockDocument,
+} from "@sloppy/types";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { amendmentToVault, vaultToAmendment } from "./amendment.js";
@@ -15,16 +19,8 @@ const SECTIONS = [
   "01J0000000000000000000000E",
 ];
 
-function section(ulid: string, content: unknown): BlockView {
-  return {
-    ref: `${OWNER}/${ulid}`,
-    created_by: BOB,
-    node: `${OWNER}/${NOTE}`,
-    ord: "a",
-    content,
-    created_at: "2026-01-01T00:00:00.000Z",
-    updated_at: "2026-01-01T00:00:00.000Z",
-  } as BlockView;
+function section(ulid: string, content: unknown): AmendmentSection {
+  return { ref: `${OWNER}/${ulid}`, content } as AmendmentSection;
 }
 
 function offer(over: Partial<AmendmentView> = {}): AmendmentView {

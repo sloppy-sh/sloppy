@@ -394,7 +394,13 @@ shown.
 
 **An amendment is a row and a file.** The `amendment` table's `created_by` is the note's
 OWNER, the way `comment_pointer`'s is the note's author: the offer was made to them, and
-theirs is the purge that has to reach it. `by` is who offered it. In a vault it is
+theirs is the purge that has to reach it. `by` is who offered it. **The sections it proposes
+ride on that row**, in order, rather than in a table of their own — nothing reads one without
+the offer it belongs to, so there is no second row for the owner's purge to miss. Each is
+named by the ULID of the note section it stands for: a ref the note has is that section kept
+or rewritten, one the note does not have is a section the offer adds, and a section of the
+note the offer does not name is one it takes out. An offer proposes the note's body whole,
+which is also what lets it be written as a file in the note's own shape. In a vault it is
 `amendments/<ulid>.md` (§ "A graph on disk"), committed like any note, so it travels through
 the folder's history and rides in archives; the bin does not hold one. **A hosted graph has
 one writer**, so nothing on a hosted instance offers a change in the first place: the table
@@ -2002,8 +2008,8 @@ has moved a section rather than made two.
 
 **An offered change is a file in the same shape, in `amendments/`.** Its front matter is
 `amends` — the note it is offered on — `by`, `at`, `message`, `title`, `tags` and
-`appearance`, and its body is the sections it proposes with their block ulids, read by the
-same reader a note's are. Its own ulid is the file's name rather than a field: an offer is
+`appearance`, and its body is the sections it proposes under the note's own block ulids, read
+by the same reader a note's are. Its own ulid is the file's name rather than a field: an offer is
 read inside the graph that holds it, so the DID half of its reference is that graph's owner
 and nothing in the file repeats it. It is committed like any note, so it moves through the
 folder's history and rides in an archive — a graph handed over with offers standing on it

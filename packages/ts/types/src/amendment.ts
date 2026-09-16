@@ -1,7 +1,6 @@
 // A change offered on a note somebody else owns, and never landed on it —
 // docs/ARCHITECTURE.md § "Whose writing a note carries".
 
-import { BlockViewSchema } from "./api.js";
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import {
   DidSyrSchema,
@@ -12,6 +11,18 @@ import {
 import { BlockDocumentSchema } from "./document.js";
 import { TagsSchema } from "./tag.js";
 import { z } from "zod";
+
+/**
+ * One section as the offer would have it, named by the ULID of the note section
+ * it stands for. A ref the note has is that section kept or rewritten, one it
+ * does not have is a section the offer adds, and a section of the note the offer
+ * does not name is one it takes out — an offer proposes the note's body whole.
+ */
+export const AmendmentSectionSchema = z.object({
+  ref: OwnedRefSchema,
+  content: BlockDocumentSchema,
+});
+export type AmendmentSection = z.infer<typeof AmendmentSectionSchema>;
 
 /**
  * One offer, standing until the owner takes it in or turns it down. It carries
@@ -33,13 +44,16 @@ export const AmendmentSchema = OwnedEntitySchema.extend({
   tags: TagsSchema.default([]),
   /** Absent is an offer that leaves the note's look alone. */
   appearance: NodeAppearanceSchema.optional(),
+  /** The sections it proposes, in the order they read. They ride on the offer
+   *  rather than in a table of their own: nothing reads one without the offer
+   *  it belongs to, and the owner's purge that takes the offer takes its
+   *  writing with it. */
+  blocks: z.array(AmendmentSectionSchema).default([]),
 });
 export type Amendment = z.infer<typeof AmendmentSchema>;
 
-/** The offer with the sections it proposes, in the order they read. */
 export const AmendmentViewSchema = AmendmentSchema.omit({ id: true }).extend({
   ref: OwnedRefSchema,
-  blocks: z.array(BlockViewSchema),
 });
 export type AmendmentView = z.infer<typeof AmendmentViewSchema>;
 
@@ -58,14 +72,7 @@ export const ProposeAmendmentRequestSchema = z.strictObject(
     title: z.string().max(512).default(""),
     tags: TagsSchema.default([]),
     appearance: WrittenAppearanceSchema.optional(),
-    blocks: z.array(
-      z.strictObject({
-        /** The section of the note this one stands for, kept as it is or
-         *  rewritten. Absent is a section the offer adds. */
-        ref: OwnedRefSchema.optional(),
-        document: BlockDocumentSchema,
-      }),
-    ),
+    blocks: z.array(AmendmentSectionSchema),
   },
   { error: "Sloppy is out of date. Update it and try again." },
 );

@@ -327,6 +327,7 @@ export function amending(
 		const written = amendment(9_500 + standing.length, asked.note as OwnedRef, DID, {
 			title: asked.title ?? '',
 			tags: [...(asked.tags ?? [])],
+			blocks: [...asked.blocks],
 			...(asked.message === undefined ? {} : { message: asked.message })
 		});
 		standing.push(written);

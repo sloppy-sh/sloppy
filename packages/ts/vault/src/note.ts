@@ -50,6 +50,13 @@ export interface VaultSection {
   content: BlockDocument;
 }
 
+/** A section as its file is written from: a note's stored one, or one an offer
+ *  proposes. Both are named by a ref and carry the editor's own document. */
+export interface WrittenSection {
+  ref: OwnedRef;
+  content: BlockDocument;
+}
+
 /** A note as a vault carries it. Everything a reader re-derives — the depth,
  *  the origin, the notes this one's writing names — is not here. */
 export interface VaultNote {
@@ -148,7 +155,7 @@ export function noteToVault(
 export function writeSections(
   path: string,
   front: string,
-  blocks: readonly BlockView[],
+  blocks: readonly WrittenSection[],
   held: VaultSoFar = {},
 ): NoteFiles {
   const files = new Map<string, Uint8Array>();
