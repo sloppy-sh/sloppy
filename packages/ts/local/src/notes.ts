@@ -75,13 +75,11 @@ export class NoteWriter {
   async update(ref: OwnedRef, asked: UpdateNodeRequest): Promise<NodeView> {
     const request = checked(() => UpdateNodeRequestSchema.parse(asked));
     const note = this.require(ref);
+    const written = writesTheGateAlone(request) ? note : this.landed(note);
     const writing =
       request.owner === undefined
-        ? this.landed(note)
-        : this.graph.authored(
-            gated(this.gating(note), request.owner),
-            this.writer,
-          );
+        ? written
+        : gated(this.gating(written), request.owner);
     const held =
       request.appearance === undefined
         ? writing
@@ -242,12 +240,14 @@ export class NoteWriter {
 
   /** Who writes the gate: the graph's owner, and whoever holds it. */
   private gating(note: StoredNote): StoredNote {
-    if (this.writer !== this.graph.did && this.writer !== note.owner) {
-      throw refuse(
-        `${noteLabel(note)} is somebody else's. Only its owner can say who writes it.`,
-      );
+    if (this.writer === this.graph.did || this.writer === note.owner) {
+      return note;
     }
-    return note;
+    throw refuse(
+      note.owner === undefined
+        ? `${noteLabel(note)} is in somebody else's graph. Only they can say who writes it.`
+        : `${noteLabel(note)} is somebody else's. Only its owner can say who writes it.`,
+    );
   }
 
   /** An offer carries a note's writing and never its place, so what is the
@@ -639,6 +639,19 @@ export class NoteWriter {
     }
     return { ...note, tags: [...parsed.data], updated_at: nowIso() };
   }
+}
+
+/** Whether a request writes the note's gate and nothing the note carries.
+ *  Holding a note's gate is not writing in it, so such a request leaves whose
+ *  writing the note carries alone. */
+function writesTheGateAlone(request: UpdateNodeRequest): boolean {
+  return (
+    request.owner !== undefined &&
+    request.title === undefined &&
+    request.tags === undefined &&
+    request.links === undefined &&
+    request.appearance === undefined
+  );
 }
 
 /** The gate as a request writes it: `null` leaves the note open to anybody

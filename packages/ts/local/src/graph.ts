@@ -890,9 +890,11 @@ export class LocalGraph {
     return this.media.get(upload);
   }
 
-  /** Whether a note here draws this picture — in its writing or on its mark. */
+  /** Whether a note here, or a change offered on one, draws this picture — in
+   *  its writing or on its mark. */
   draws(upload: string): boolean {
-    return this.all().some((note) => picturesDrawnBy(note).has(upload));
+    const drawn = [...this.all(), ...this.offered.values()];
+    return drawn.some((one) => picturesDrawnBy(one).has(upload));
   }
 
   /** Where the bytes of a picture this graph knows sit, or absent where it does

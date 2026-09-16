@@ -39,10 +39,35 @@ async function opened(): Promise<Folder> {
   return { ...held, did: me?.did as DidSyr, graph: graph.ref };
 }
 
-/** The same folder written in under another of the identities this device
+/** The same folders written in under another of the identities this device
  *  holds, which is what a folder shared through git is. */
-function writingAs(held: Folder, writer: DidSyr): LocalApi {
+function writingAs(held: Device, writer: DidSyr): LocalApi {
   return new LocalApi(new PickingFiles({ store: held.store }), { writer });
+}
+
+const PICTURE_BYTES = new Uint8Array([1, 2, 3]);
+
+/** A picture added on this device, which lands in the first folder it holds. */
+async function picture(api: LocalApi): Promise<string> {
+  const ticket = await api.createUpload({
+    role: "block",
+    filename: "seed.png",
+    mime_type: "image/png",
+    size: PICTURE_BYTES.byteLength,
+  });
+  await api.sendUpload(ticket, new Blob([PICTURE_BYTES]));
+  await api.completeUpload({ upload_id: ticket.upload_id });
+  return ticket.upload_id;
+}
+
+/** A section that draws one picture and nothing else. */
+function pictured(upload: string): BlockDocument {
+  return {
+    type: "doc",
+    content: [
+      { type: "picture", attrs: { upload_id: upload, width: 8, height: 6 } },
+    ],
+  };
 }
 
 /** Everything in the folder, so an assertion reads the files rather than an
@@ -157,6 +182,20 @@ describe("whose writing a note carries", () => {
     expect(written.title).toBe("Still mine");
     expect(written.authors).toBeUndefined();
   });
+
+  it("leaves whose writing it is alone when somebody lets its gate go", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    await held.api.updateNode(note.ref, { owner: BOB });
+
+    const written = await writingAs(held, BOB).updateNode(note.ref, {
+      owner: null,
+    });
+
+    expect(written.owner).toBeUndefined();
+    expect(written.authors).toBeUndefined();
+    expect((await read(held).getNode(note.ref))?.authors).toBeUndefined();
+  });
 });
 
 describe("a note somebody else writes", () => {
@@ -227,6 +266,14 @@ describe("a note somebody else writes", () => {
 
     await expect(
       writingAs(held, BOB).updateNode(note.ref, { owner: BOB }),
+    ).rejects.toThrow("is in somebody else's graph");
+  });
+
+  it("is nobody but its owner's to hand on", async () => {
+    const { held, note } = await gated();
+
+    await expect(
+      writingAs(held, BOB).updateNode(note, { owner: BOB }),
     ).rejects.toThrow("Only its owner can say who writes it");
   });
 
@@ -360,6 +407,109 @@ describe("a change offered on a note", () => {
     await writingAs(held, BOB).withdrawAmendment(offer.ref);
     expect((await read(held).listBlocks(note.ref))[0].content).toEqual(
       drawing("As it stands"),
+    );
+  });
+
+  it("brings the picture it draws into the folder the note is in", async () => {
+    const held = device(["/graphs/one", "/graphs/two"]);
+    await held.api.createGraph({ title: "Thesis" });
+    const garden = await held.api.createGraph({ title: "Garden" });
+    const note = await held.api.createNode({
+      from: { relation: "branch", graph: garden.ref },
+      title: "Beans",
+    });
+    const section = await held.api.createBlock({
+      node: note.ref,
+      content: textDocument("As it stands"),
+    });
+    const upload = await picture(held.api);
+    await held.api.updateNode(note.ref, {
+      owner: (await held.api.me())?.did as DidSyr,
+    });
+
+    await writingAs(held, BOB).proposeAmendment({
+      note: note.ref,
+      title: "Beans",
+      tags: [],
+      blocks: [{ ref: section.ref, content: pictured(upload) }],
+    });
+
+    expect(held.store.get(`/graphs/two/media/${upload}.png`)).toEqual(
+      PICTURE_BYTES,
+    );
+    const standing = await reopened(held).listAmendments(note.ref);
+    expect(standing[0].blocks[0].content).toEqual(pictured(upload));
+  });
+
+  it("keeps the picture it draws when a note elsewhere takes it up", async () => {
+    const held = await opened();
+    const note = await held.api.createNode({ title: "Seeds" });
+    const section = await held.api.createBlock({
+      node: note.ref,
+      content: textDocument("As it stands"),
+    });
+    const upload = await picture(held.api);
+    await held.api.updateNode(note.ref, { owner: held.did });
+    await writingAs(held, BOB).proposeAmendment({
+      note: note.ref,
+      title: "Seeds",
+      tags: [],
+      blocks: [{ ref: section.ref, content: pictured(upload) }],
+    });
+
+    const files = new PickingFiles({ store: held.store });
+    files.picks.push("/graphs/two");
+    const later = new LocalApi(files);
+    const garden = await later.createGraph({ title: "Garden" });
+    const theirs = await later.createNode({
+      from: { relation: "branch", graph: garden.ref },
+      title: "Beans",
+    });
+    await later.createBlock({ node: theirs.ref, content: pictured(upload) });
+
+    expect(held.store.get(`/graphs/one/media/${upload}.png`)).toEqual(
+      PICTURE_BYTES,
+    );
+    expect(held.store.get(`/graphs/two/media/${upload}.png`)).toEqual(
+      PICTURE_BYTES,
+    );
+  });
+
+  it("carries the picture it draws in an archive", async () => {
+    const theirs = device(["/graphs/theirs"]);
+    const away = await theirs.api.createGraph({ title: "Garden" });
+    const note = await theirs.api.createNode({
+      from: { relation: "branch", graph: away.ref },
+      title: "Beans",
+    });
+    const section = await theirs.api.createBlock({
+      node: note.ref,
+      content: textDocument("As it stands"),
+    });
+    const base = body((await theirs.api.exportArchive(away.ref)).bytes);
+    const upload = await picture(theirs.api);
+    await theirs.api.updateNode(note.ref, {
+      owner: (await theirs.api.me())?.did as DidSyr,
+    });
+    await writingAs(theirs, BOB).proposeAmendment({
+      note: note.ref,
+      title: "Beans",
+      tags: [],
+      blocks: [{ ref: section.ref, content: pictured(upload) }],
+    });
+    const out = body((await theirs.api.exportArchive(away.ref)).bytes);
+
+    const mine = device(["/graphs/arrived"]);
+    const here = await mine.api.importArchive(base);
+    await mine.api.importArchive(out);
+
+    const arrived =
+      `${here.ref.slice(0, here.ref.lastIndexOf("/"))}/${note.ref.slice(note.ref.lastIndexOf("/") + 1)}` as OwnedRef;
+    const standing = await writingAs(mine, BOB).listAmendments(arrived);
+    expect(standing).toHaveLength(1);
+    expect(standing[0].blocks[0].content).toEqual(pictured(upload));
+    expect(mine.store.get(`/graphs/arrived/media/${upload}.png`)).toEqual(
+      PICTURE_BYTES,
     );
   });
 

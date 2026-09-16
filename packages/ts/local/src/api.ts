@@ -616,7 +616,7 @@ export class LocalApi implements SloppyApi {
           ? undefined
           : lookWritten(request.appearance);
       const standing = graph.offerBy(request.note, writer);
-      const offer = await graph.saveOffer({
+      const offered: StoredAmendment = {
         ulid: standing?.ulid ?? ulid(),
         amends: request.note,
         by: writer,
@@ -629,8 +629,9 @@ export class LocalApi implements SloppyApi {
           ulid: localOf(block.ref),
           content: block.content,
         })),
-      });
-      return graph.offerView(offer);
+      };
+      await this.carryPictures(graph, offered);
+      return graph.offerView(await graph.saveOffer(offered));
     });
   }
 
@@ -846,11 +847,15 @@ export class LocalApi implements SloppyApi {
     if (unsettled.length > 0) throw stillContested(unsettled.length);
 
     await this.carryEmoji(into, vault);
-    await this.carryArrivingPictures(into, vault, merge.theirs);
-    const arriving = notesIn(
-      vault,
-      new Map(into.ownEmoji().map((one) => [one.shortcode, { src: one.src }])),
+    const drawings = new Map(
+      into.ownEmoji().map((one) => [one.shortcode, { src: one.src }]),
     );
+    const offers = readOffers(vault, drawings);
+    await this.carryArrivingPictures(into, vault, [
+      ...merge.theirs.values(),
+      ...offers,
+    ]);
+    const arriving = notesIn(vault, drawings);
     const contested = new Set(
       merge.conflicts.flatMap((one) =>
         one.address === undefined ? [] : [one.address],
@@ -873,7 +878,7 @@ export class LocalApi implements SloppyApi {
     for (const conflict of merge.conflicts) {
       await this.settleAddress(into, conflict, chosen.get(settling(conflict)));
     }
-    await this.carryArrivingOffers(into, vault);
+    await this.carryArrivingOffers(into, offers);
     return this.reopened(into);
   }
 
@@ -988,12 +993,9 @@ export class LocalApi implements SloppyApi {
    */
   private async carryArrivingOffers(
     into: LocalGraph,
-    vault: Vault,
+    offers: readonly StoredAmendment[],
   ): Promise<void> {
-    const drawings = new Map(
-      into.ownEmoji().map((one) => [one.shortcode, { src: one.src }]),
-    );
-    for (const offer of readOffers(vault, drawings)) {
+    for (const offer of offers) {
       if (into.offer(`${into.did}/${offer.ulid}`)) continue;
       if (!into.find(offer.amends)) continue;
       if (into.offerBy(offer.amends, offer.by)) continue;
@@ -1029,15 +1031,16 @@ export class LocalApi implements SloppyApi {
     }
   }
 
-  /** The pictures the file's notes draw that this graph does not hold yet. */
+  /** The pictures the file's notes and the offers standing on them draw that
+   *  this graph does not hold yet. */
   private async carryArrivingPictures(
     into: LocalGraph,
     vault: Vault,
-    theirs: ReadonlyMap<OwnedRef, VaultNote>,
+    arriving: readonly (VaultNote | StoredAmendment)[],
   ): Promise<void> {
     const drawn = new Set<string>();
-    for (const note of theirs.values()) {
-      for (const upload of picturesDrawnBy(note)) drawn.add(upload);
+    for (const one of arriving) {
+      for (const upload of picturesDrawnBy(one)) drawn.add(upload);
     }
     const said = readSaid(vault.get(MEDIA_FILE));
     for (const [path, bytes] of vault) {
@@ -1423,18 +1426,20 @@ export class LocalApi implements SloppyApi {
   }
 
   /**
-   * A vault holds the pictures its own notes draw. A picture is added before
-   * anybody knows which note will draw it, so one that turns out to belong to a
-   * note in another graph on this device is carried into that graph's folder —
-   * where the archive taken out of it will carry it too.
+   * A vault holds the pictures its own writing draws. A picture is added before
+   * anybody knows what will draw it, so one that turns out to belong to writing
+   * in another graph on this device is carried into that graph's folder — where
+   * the archive taken out of it will carry it too.
    */
   private async carryPictures(
     graph: LocalGraph,
-    note: StoredNote | undefined,
+    drawn: StoredNote | StoredAmendment | undefined,
   ): Promise<void> {
-    if (!note) return;
+    if (!drawn) return;
     const wanted = new Set(
-      [...picturesDrawnBy(note)].filter((upload) => !graph.picturePath(upload)),
+      [...picturesDrawnBy(drawn)].filter(
+        (upload) => !graph.picturePath(upload),
+      ),
     );
     if (wanted.size === 0) return;
     for (const other of await this.allGraphs()) {
