@@ -2,6 +2,8 @@
 
 import { Injectable } from "@nestjs/common";
 import {
+  type Amendment,
+  AmendmentSchema,
   type Block,
   type DidSyr,
   type Node,
@@ -26,6 +28,9 @@ export interface GraphWrite {
   blocks: readonly Block[];
   aliases: readonly NodeAlias[];
   retiring: readonly RetiredAddress[];
+  /** What the archive says is standing offered on the notes it brings. The
+   *  graph's own offers go with the notes they stood on. */
+  amendments: readonly Amendment[];
 }
 
 @Injectable()
@@ -72,6 +77,19 @@ export class ArchiveRepository {
     return rows;
   }
 
+  /** What is standing offered on any of these notes. */
+  async amendmentsOn(
+    did: DidSyr,
+    notes: readonly OwnedRef[],
+  ): Promise<Amendment[]> {
+    if (notes.length === 0) return [];
+    const [rows] = await this.query(
+      "SELECT * FROM amendment WHERE created_by = $did AND note IN $notes",
+      { did, notes: [...notes] },
+    );
+    return rows.map((row) => AmendmentSchema.parse(row));
+  }
+
   /** Of the notes arriving, the ones this person already keeps somewhere other
    *  than the graph the archive is landing in. */
   async heldOutside(
@@ -107,9 +125,11 @@ export class ArchiveRepository {
       ["node", write.nodes],
       ["block", write.blocks],
       ["node_alias", write.aliases],
+      ["amendment", write.amendments],
     ] as const;
     const arriving = new Set(write.nodes.map((node) => ownedRefFrom(node.id)));
     const gone = write.going.filter((ref) => !arriving.has(ref));
+    const notes = [...new Set([...write.going, ...arriving])];
     const statements = [
       "BEGIN TRANSACTION;",
       ...(write.going.length > 0
@@ -117,6 +137,9 @@ export class ArchiveRepository {
         : []),
       ...(gone.length > 0
         ? ["DELETE comment_pointer WHERE created_by = $did AND node IN $gone;"]
+        : []),
+      ...(notes.length > 0
+        ? ["DELETE amendment WHERE created_by = $did AND note IN $notes;"]
         : []),
       "DELETE node_alias WHERE created_by = $did AND graph = $graph;",
       "DELETE node WHERE created_by = $did AND graph = $graph;",
@@ -130,10 +153,12 @@ export class ArchiveRepository {
       graph,
       going: [...write.going],
       gone,
+      notes,
       retired_address: [...write.retiring],
       node: [...write.nodes],
       block: [...write.blocks],
       node_alias: [...write.aliases],
+      amendment: [...write.amendments],
     });
   }
 
@@ -151,9 +176,16 @@ export class ArchiveRepository {
       ["node", write.nodes],
       ["block", write.blocks],
       ["node_alias", write.aliases],
+      ["amendment", write.amendments],
     ] as const;
+    const unsettling = write.unsettling.map((ref) =>
+      recordIdFromOwnedRef("amendment", ref),
+    );
     const statements = [
       "BEGIN TRANSACTION;",
+      ...(unsettling.length > 0
+        ? ["DELETE amendment WHERE created_by = $did AND id IN $unsettling;"]
+        : []),
       ...(write.writing.length > 0
         ? ["DELETE block WHERE created_by = $did AND node IN $writing;"]
         : []),
@@ -182,12 +214,14 @@ export class ArchiveRepository {
       graph,
       ids,
       yielding,
+      unsettling,
       at: nowIso(),
       writing: [...write.writing],
       dropping: [...write.dropping],
       node: [...write.nodes],
       block: [...write.blocks],
       node_alias: [...write.aliases],
+      amendment: [...write.amendments],
     });
   }
 

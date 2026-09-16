@@ -346,6 +346,7 @@ describe("the rows a merge lands as", () => {
     held: [],
     aliases: [],
     retired: [],
+    offers: [],
     ...over,
   });
 

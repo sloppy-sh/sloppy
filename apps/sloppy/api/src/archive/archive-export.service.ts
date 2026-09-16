@@ -5,18 +5,23 @@
 import { Injectable, Logger } from "@nestjs/common";
 import {
   type Address,
+  type Amendment,
+  type AmendmentView,
   type Block,
+  type BlockDocument,
   type BlockView,
   blockView,
   citedUploads,
   type DidSyr,
   entityView,
+  type GraphView,
   type Node,
   type OwnedRef,
   ownedRefFrom,
   splitOwnedRef,
 } from "@sloppy/types";
 import {
+  amendmentToVault,
   type EmojiDrawing,
   emojiPath,
   GRAPH_FILE,
@@ -30,6 +35,7 @@ import {
   type Vault,
   VAULT_FORMAT,
 } from "@sloppy/vault";
+import { AmendmentRepository } from "../amendment/amendment.repository";
 import { BlockRepository } from "../block/block.repository";
 import { AppConfigService } from "../config/app-config.service";
 import { MediaService, roleLimits } from "../media/media.service";
@@ -58,6 +64,9 @@ interface GraphRows {
   notes: Node[];
   aliases: ReadonlyMap<OwnedRef, Address[]>;
   stacks: ReadonlyMap<OwnedRef, readonly Block[]>;
+  /** What is standing offered on those notes, so a graph handed over with
+   *  offers on it loses none of them. */
+  offers: Amendment[];
 }
 
 @Injectable()
@@ -68,6 +77,7 @@ export class ArchiveExportService {
     private readonly graphs: GraphService,
     private readonly nodes: NodeRepository,
     private readonly blocks: BlockRepository,
+    private readonly offers: AmendmentRepository,
     private readonly media: MediaService,
     private readonly syr: SyrService,
     private readonly config: AppConfigService,
@@ -80,21 +90,20 @@ export class ArchiveExportService {
     graph: OwnedRef,
   ): Promise<{ bytes: Uint8Array; filename: string }> {
     await this.graphs.requireHeld(did, graph);
-    const name = await this.nameOf(did, graph);
+    const held = await this.held(did, graph);
     const rows = await this.read(did, graph);
-    const carried = await this.carryPictures(
-      delegation,
-      rows.notes,
-      rows.stacks,
-    );
-    const written = this.write(did, graph, name, rows, carried);
+    const carried = await this.carryPictures(delegation, rows);
+    const written = this.write(did, graph, held, rows, carried);
     for (const [path, bytes] of await this.carryEmoji(
       delegation,
       written.emoji,
     )) {
       written.vault.set(path, bytes);
     }
-    return { bytes: pack(written.vault), filename: fileName(name) };
+    return {
+      bytes: pack(written.vault),
+      filename: fileName(held?.title ?? ""),
+    };
   }
 
   /**
@@ -109,31 +118,37 @@ export class ArchiveExportService {
     return this.write(
       did,
       graph,
-      await this.nameOf(did, graph),
+      await this.held(did, graph),
       rows,
       pictureNames(did, rows),
     ).vault;
   }
 
-  private async nameOf(did: DidSyr, graph: OwnedRef): Promise<string> {
-    const held = await this.graphs.list(did);
-    return held.find((one) => one.ref === graph)?.title ?? "";
+  private async held(
+    did: DidSyr,
+    graph: OwnedRef,
+  ): Promise<GraphView | undefined> {
+    return (await this.graphs.list(did)).find((one) => one.ref === graph);
   }
 
   private async read(did: DidSyr, graph: OwnedRef): Promise<GraphRows> {
     const refs = (await this.nodes.notesIn(did, graph)).sort();
+    const offers = await Promise.all(
+      refs.map((ref) => this.offers.listFor(did, ref)),
+    );
     return {
       refs,
       notes: (await this.nodes.many(did, refs)).sort(byRef),
       aliases: await this.nodes.aliasesOf(did, graph, refs),
       stacks: await this.blocks.listByNodes(refs),
+      offers: offers.flat(),
     };
   }
 
   private write(
     did: DidSyr,
     graph: OwnedRef,
-    name: string,
+    held: GraphView | undefined,
     rows: GraphRows,
     carried: CarriedPictures,
   ): { vault: Vault; emoji: ReadonlyMap<string, EmojiDrawing> } {
@@ -144,8 +159,9 @@ export class ArchiveExportService {
       graphFile({
         format: VAULT_FORMAT,
         graph: splitOwnedRef(graph).localId,
-        name,
+        name: held?.title ?? "",
         owner: did,
+        ...(held?.ownership === undefined ? {} : { ownership: held.ownership }),
       }),
     );
     let pictures: ReadonlyMap<string, PictureSize> = new Map();
@@ -168,6 +184,16 @@ export class ArchiveExportService {
       pictures = written.pictures;
       emoji = written.emoji;
     }
+    for (const offer of rows.offers) {
+      const written = amendmentToVault(offeredAs(offer, carried.named), {
+        media: carried.paths,
+        pictures,
+        emoji,
+      });
+      for (const [path, bytes] of written.files) vault.set(path, bytes);
+      pictures = written.pictures;
+      emoji = written.emoji;
+    }
     for (const [path, bytes] of carried.files) vault.set(path, bytes);
     if (pictures.size > 0) vault.set(PICTURES_FILE, picturesFile(pictures));
     return { vault, emoji };
@@ -183,8 +209,7 @@ export class ArchiveExportService {
    */
   private async carryPictures(
     delegation: Delegation,
-    notes: readonly Node[],
-    stacks: ReadonlyMap<OwnedRef, readonly Block[]>,
+    rows: GraphRows,
   ): Promise<CarriedPictures> {
     const carried: CarriedPictures = {
       named: new Map(),
@@ -192,10 +217,8 @@ export class ArchiveExportService {
       files: new Map(),
     };
     const wanted = new Set<string>();
-    for (const note of notes) {
-      for (const block of stacks.get(ownedRefFrom(note.id)) ?? []) {
-        for (const upload of citedUploads(block.content)) wanted.add(upload);
-      }
+    for (const document of drawnIn(rows)) {
+      for (const upload of citedUploads(document)) wanted.add(upload);
     }
     for (const upload of [...wanted].sort()) {
       const name = vaultName(upload, delegation.did);
@@ -262,15 +285,42 @@ export class ArchiveExportService {
  *  the store: the names alone are what a merge compares two copies by. */
 function pictureNames(did: DidSyr, rows: GraphRows): CarriedPictures {
   const named = new Map<string, string>();
-  for (const stack of rows.stacks.values()) {
-    for (const block of stack) {
-      for (const upload of citedUploads(block.content)) {
-        const name = vaultName(upload, did);
-        if (name !== undefined) named.set(upload, name);
-      }
+  for (const document of drawnIn(rows)) {
+    for (const upload of citedUploads(document)) {
+      const name = vaultName(upload, did);
+      if (name !== undefined) named.set(upload, name);
     }
   }
   return { named, paths: new Map(), files: new Map() };
+}
+
+/** Every document a graph's files are written from: its notes' sections and
+ *  the ones standing offered on them. */
+function drawnIn(rows: GraphRows): BlockDocument[] {
+  return [
+    ...[...rows.stacks.values()].flatMap((stack) =>
+      stack.map((block) => block.content),
+    ),
+    ...rows.offers.flatMap((offer) =>
+      offer.blocks.map((section) => section.content),
+    ),
+  ];
+}
+
+/** One offer as the vault writes it, its sections drawing the pictures the
+ *  vault carries rather than the ones the store holds. */
+function offeredAs(
+  offer: Amendment,
+  named: ReadonlyMap<string, string>,
+): AmendmentView {
+  const view = entityView(offer);
+  return {
+    ...view,
+    blocks: view.blocks.map((section) => ({
+      ...section,
+      content: rewriteUploads(section.content, named),
+    })),
+  };
 }
 
 /**

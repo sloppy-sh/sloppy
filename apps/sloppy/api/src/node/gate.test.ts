@@ -5,6 +5,7 @@
 import { ForbiddenException } from "@nestjs/common";
 import {
   type Address,
+  type BlockDocument,
   createOwnedRecordId,
   type GraphOwnership,
   type Node,
@@ -26,7 +27,7 @@ const DID = "did:syr:z6MkAda";
 const OTHER = "did:syr:z6MkBram";
 const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 const AT = "2026-01-01T00:00:00.000Z";
-const EMPTY = { type: "doc", content: [] } as const;
+const EMPTY: BlockDocument = { type: "doc", content: [] };
 
 const media = {} as MediaService;
 const publications = {} as PublicationService;
