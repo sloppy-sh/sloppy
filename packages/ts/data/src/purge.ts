@@ -30,6 +30,9 @@ export const STATEMENTS: readonly string[] = [
   // Written by this person about somebody else's voice, so it goes with them
   // and reaches nothing of the voice's own.
   `DELETE refused_voice WHERE ${OWNED};`,
+  // Offered ON this person's notes by other people, and theirs for the reason
+  // the pointers above are: the notes are in their graph.
+  `DELETE amendment WHERE ${OWNED};`,
   `DELETE node WHERE ${OWNED};`,
   // The addresses those notes spent, and the ones a move left resolving to
   // them. They outlive the notes and nothing else: there is no graph left for
@@ -70,6 +73,7 @@ export const USER_PURGE_TABLES: ReadonlySet<string> = new Set([
   "graph",
   "comment_pointer",
   "refused_voice",
+  "amendment",
   "pull_member",
   "pulled_block",
   "pulled_node",

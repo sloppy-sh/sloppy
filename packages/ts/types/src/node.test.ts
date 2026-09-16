@@ -8,13 +8,17 @@ import {
   siblingAddress,
 } from "./address.js";
 import {
+  authorsOf,
   CreateNodeRequestSchema,
   MoveNoteRequestSchema,
+  type Node,
   NodeSchema,
   noteLabel,
   parseNode,
   SetAddressRequestSchema,
   UpdateNodeRequestSchema,
+  withAuthor,
+  writeOutcome,
 } from "./node.js";
 
 const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva";
@@ -194,5 +198,43 @@ describe("the address a person names on a creation", () => {
         CreateNodeRequestSchema.parse({ from: under, address }),
       ).toThrow();
     }
+  });
+});
+
+// AI.md § "The Genealogy Is the Protocol": the ref's DID says whose graph a
+// note is in, and whose writing it is, is a list on it.
+describe("whose writing a note carries", () => {
+  const BOB = "did:syr:z6MkBobBobBobBobBobBobBobBobBobBob";
+  const CAI = "did:syr:z6MkCaiCaiCaiCaiCaiCaiCaiCaiCaiCai";
+  const open = (over: Partial<Node> = {}): Node =>
+    parseNode({ ...row("1"), ...over });
+
+  it("reads a note written before the list as its own author's", () => {
+    expect(authorsOf(open())).toEqual([DID]);
+    // Empty is the same answer: nobody's writing is nobody's note.
+    expect(authorsOf(open({ authors: [] }))).toEqual([DID]);
+  });
+
+  it("appends a new writer to an open note, once", () => {
+    const first = withAuthor(open(), BOB);
+    expect(authorsOf(first)).toEqual([DID, BOB]);
+    expect(withAuthor(first, BOB)).toBe(first);
+    expect(withAuthor(open(), DID)).toEqual(open());
+    expect(authorsOf(withAuthor(first, CAI))).toEqual([DID, BOB, CAI]);
+  });
+
+  it("lands a write on an open note, and on the owner's own", () => {
+    expect(writeOutcome(open(), BOB)).toBe("lands");
+    expect(writeOutcome(open({ owner: BOB }), BOB)).toBe("lands");
+  });
+
+  it("offers a write on a note somebody else gates, and keeps its authors", () => {
+    const owned = open({ owner: BOB, authors: [BOB] });
+    expect(writeOutcome(owned, CAI)).toBe("offered");
+    expect(writeOutcome(owned, DID)).toBe("offered");
+    // Ownership is not writing: taking an offer in adds a contributor, and
+    // `withAuthor` is not what does it.
+    expect(withAuthor(owned, CAI)).toBe(owned);
+    expect(authorsOf(owned)).toEqual([BOB]);
   });
 });

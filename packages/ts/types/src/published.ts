@@ -180,6 +180,15 @@ export const PublishedNodeSchema = z.object({
    * is.
    */
   origin: OwnedRefSchema,
+  /** Who gates the note's writing where its author set somebody. Absent is an
+   *  open note, and a reader of a held copy writes into neither. */
+  owner: DidSyrSchema.optional(),
+  /** Whose writing the note carries, in the order they first wrote into it.
+   *  Absent, and empty, read as the ref's DID alone — which is every version
+   *  published before a note could carry more than one writer. */
+  authors: z.array(DidSyrSchema).optional(),
+  /** Whose offered change its owner took in. Absent, and empty, are none. */
+  contributors: z.array(DidSyrSchema).optional(),
   title: z.string().max(512),
   tags: TagsSchema,
   /** How its author asked the mark to be drawn. Absent is a mark that draws

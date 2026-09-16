@@ -709,6 +709,39 @@ and large text.
 A figure quoted anywhere in this repo without a test behind it is a target, and should say
 so.
 
+## Whose writing
+
+A note can carry more than one person's writing, and somebody reading it should be able to
+tell whose without asking. It is said in words, in the chrome above the note, because a set
+of people is not a thing one mark can carry — the same reason a note in three selected tags
+draws in one hue. **The canvas is untouched by any of this**: no channel on a mark says who
+wrote a note, and a build that grows one has spent a channel on a question the reader did not
+ask.
+
+- **The note says who wrote it, plainly.** "Written by A and B" where more than one person
+  has, "with C" after it where somebody's offer was taken in. One person who wrote their own
+  note is the ordinary case and reads as it always has — an author's own graph does not
+  announce the author on every note.
+- **Its details say who gates it, and let the right person change that.** An open note says
+  nothing about gating: a line about something the product is not doing to you is worse than
+  silence. A note with an owner says so, and only the graph's owner and the note's own owner
+  are offered the control.
+- **An owner's note says how many changes are offered on it**, as a count beside the note,
+  and it does not move, animate, badge or grow a dot. It is a fact the person can act on when
+  they like, not a thing asking to be cleared.
+- **A contributor's save on an owned note says what happened, in outcomes** — offered to
+  whoever owns it, and it shows once they take it. Nothing about rows, offers standing, or
+  what the request did: the person needs to know their writing is somewhere and what has to
+  happen next, and that is the whole of it.
+- **The owner reads an offer as a difference**, note against offer, section by section, in
+  § "A difference between two states"'s own language — no second vocabulary for the same
+  question. Taking it in is one act on the whole offer; there is no picking a section out of
+  one, and the surface does not imply there is.
+
+Quiet throughout. Nothing here counts contributions, ranks writers, thanks anybody or marks
+an offer as waiting. A thinking tool does not nag, and it does not keep score of whose
+thinking it is.
+
 ## Typography
 
 - **UI and content face**: Inter with a system fallback (`Inter, system-ui, -apple-system,

@@ -1,10 +1,12 @@
 import {
   type OwnedRef,
   splitOwnedRef,
+  ulid,
   UNNAMED_GRAPH_ULID,
 } from "@sloppy/types";
 import {
   GRAPH_FILE,
+  amendmentToVault,
   decodeText,
   encodeText,
   pack,
@@ -38,6 +40,32 @@ async function archiveFrom(held: Device, ref: string): Promise<Blob> {
   return body((await held.api.exportArchive(ref)).bytes);
 }
 
+/** An offer standing in the folder, written the way one arriving through git or
+ *  an archive is, and answering with the file it landed at. */
+async function offering(
+  held: Device,
+  note: OwnedRef,
+  root = "/graphs/one",
+): Promise<string> {
+  const { did } = splitOwnedRef(note);
+  const at = new Date().toISOString();
+  const { files } = amendmentToVault({
+    ref: `${did}/${ulid()}`,
+    created_by: did,
+    created_at: at,
+    updated_at: at,
+    note,
+    by: "did:syr:elsewhere",
+    at,
+    title: "Seeds, as they would have it",
+    tags: [],
+    blocks: [],
+  });
+  const [path, bytes] = [...files][0] as [string, Uint8Array];
+  await held.files.at(root).write(path, bytes);
+  return path;
+}
+
 /** The same archive under a graph ulid this device does not keep, which is what
  *  makes it a graph of its own arriving. */
 function renamed(out: { bytes: Uint8Array }): Blob {
@@ -65,6 +93,24 @@ describe("a graph taken out as a file", () => {
     expect(
       [...vault.keys()].some((path) => path.includes(".sloppy/bin/")),
     ).toBe(false);
+  });
+
+  it("carries the offers standing on those notes", async () => {
+    const { held, graph, note } = await written();
+    const offer = await offering(held, note.ref);
+
+    const vault = unpack((await held.api.exportArchive(graph.ref)).bytes);
+    expect(vault.has(offer)).toBe(true);
+  });
+});
+
+describe("a graph closed", () => {
+  it("leaves no offer lying in the folder", async () => {
+    const { held, graph, note } = await written();
+    const offer = await offering(held, note.ref);
+
+    await held.api.closeGraph(graph.ref);
+    expect(await held.files.at("/graphs/one").exists(offer)).toBe(false);
   });
 });
 

@@ -323,6 +323,18 @@ describe("a graph in a folder", () => {
     expect((await reopened(held).listGraphs())[0].title).toBe("The thesis");
   });
 
+  it("keeps what a graph gates its notes by in the folder it is in", async () => {
+    const held = device();
+    const graph = await held.api.createGraph({ title: "Thesis" });
+    expect(graph.ownership).toBeUndefined();
+    const gated = await held.api.updateGraph(graph.ref, {
+      title: "Thesis",
+      ownership: "owned",
+    });
+    expect(gated.ownership).toBe("owned");
+    expect((await reopened(held).listGraphs())[0].ownership).toBe("owned");
+  });
+
   it("keeps the owner's name and picture with every graph on the device", async () => {
     const held = device(["/graphs/one", "/graphs/two"]);
     await held.api.createGraph({ title: "Thesis" });

@@ -1,6 +1,8 @@
-import type { BlockView, NodeView } from "@sloppy/types";
+import type { AmendmentView, BlockView, NodeView } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
+import { amendmentToVault, vaultToAmendment } from "./amendment.js";
 import {
+  amendmentPath,
   decodeText,
   graphFile,
   notePath,
@@ -18,6 +20,10 @@ const NOTE = "01J0000000000000000000000A";
 const PARENT = "01J0000000000000000000000B";
 const BLOCK = "01J0000000000000000000000C";
 const CITED = "01J0000000000000000000000E";
+const OFFER = "01J0000000000000000000000F";
+const WHOSE = "01J0000000000000000000000G";
+const THEIRS = "01J0000000000000000000000H";
+const PROPOSER = "did:syr:z6MkwProposerProposerProposer";
 
 function vault(): Vault {
   const note = {
@@ -122,5 +128,82 @@ describe("a graph moving into another identity", () => {
   it("leaves a graph belonging to somebody else alone", () => {
     const held = vault();
     expect(rekey(held, TO, FROM)).toEqual(held);
+  });
+
+  it("moves the note an offer amends, and the gate, and leaves the people alone", () => {
+    const held = vault();
+    const { files } = amendmentToVault({
+      ref: `${FROM}/${OFFER}`,
+      created_by: FROM,
+      note: `${FROM}/${NOTE}`,
+      by: PROPOSER,
+      at: "2026-02-01T00:00:00.000Z",
+      title: "As I would have it",
+      tags: [],
+      blocks: [],
+      created_at: "2026-02-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    } as AmendmentView);
+    for (const [path, bytes] of files) held.set(path, bytes);
+    const whose = noteToVault(
+      {
+        ref: `${FROM}/${WHOSE}`,
+        created_by: FROM,
+        depth: 1,
+        origin: `${FROM}/${WHOSE}`,
+        title: "A note somebody else has written into",
+        tags: [],
+        links: [],
+        owner: FROM,
+        authors: [FROM, PROPOSER],
+        contributors: [PROPOSER],
+        published: false,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      } as NodeView,
+      [],
+      [],
+    );
+    for (const [path, bytes] of whose.files) held.set(path, bytes);
+    const theirs = noteToVault(
+      {
+        ref: `${FROM}/${THEIRS}`,
+        created_by: FROM,
+        depth: 1,
+        origin: `${FROM}/${THEIRS}`,
+        title: "A note whose gate the graph's owner handed somebody",
+        tags: [],
+        links: [],
+        owner: PROPOSER,
+        published: false,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      } as NodeView,
+      [],
+      [],
+    );
+    for (const [path, bytes] of theirs.files) held.set(path, bytes);
+
+    const carried = rekey(held, FROM, TO);
+    const offered = vaultToAmendment({
+      markdown: decodeText(carried.get(amendmentPath(OFFER)) as Uint8Array),
+    });
+    expect(offered.amends).toBe(`${TO}/${NOTE}`);
+    // Whose writing it is, is a person. Importing a graph does not change one.
+    expect(offered.by).toBe(PROPOSER);
+
+    const written = vaultToNote({
+      markdown: decodeText(carried.get(notePath(WHOSE)) as Uint8Array),
+    });
+    // The gate the graph's owner held moves with the graph, the way
+    // graph.json's owner does; what the two of them wrote does not.
+    expect(written.owner).toBe(TO);
+    expect(written.authors).toEqual([FROM, PROPOSER]);
+    expect(written.contributors).toEqual([PROPOSER]);
+
+    const gated = vaultToNote({
+      markdown: decodeText(carried.get(notePath(THEIRS)) as Uint8Array),
+    });
+    expect(gated.owner).toBe(PROPOSER);
   });
 });

@@ -5,6 +5,7 @@ export * from "./layout.js";
 export * from "./markdown.js";
 export * from "./ink.js";
 export * from "./note.js";
+export * from "./amendment.js";
 export * from "./archive.js";
 export * from "./rekey.js";
 export * from "./difference.js";

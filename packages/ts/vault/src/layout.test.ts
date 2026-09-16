@@ -78,6 +78,52 @@ describe("where a vault keeps things", () => {
     expect(readGraphFile(graphFile(graph))).toEqual(graph);
   });
 
+  it("reads back what a note written in the graph is gated by", () => {
+    const graph = {
+      format: VAULT_FORMAT,
+      graph: NOTE,
+      name: "The thesis",
+      owner: OWNER,
+      ownership: "owned" as const,
+    };
+    expect(readGraphFile(graphFile(graph))).toEqual(graph);
+  });
+
+  it("writes the same bytes for a graph nobody has gated", () => {
+    const open = {
+      format: VAULT_FORMAT,
+      graph: NOTE,
+      name: "The thesis",
+      owner: OWNER,
+    };
+    expect(decodeText(graphFile(open))).toBe(
+      `${JSON.stringify(
+        {
+          format: VAULT_FORMAT,
+          graph: NOTE,
+          name: "The thesis",
+          owner: OWNER,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    expect(readGraphFile(graphFile(open)).ownership).toBeUndefined();
+  });
+
+  it("leaves a graph gated by something it has never heard of open", () => {
+    const bytes = encodeText(
+      JSON.stringify({
+        format: VAULT_FORMAT,
+        graph: NOTE,
+        name: "The thesis",
+        owner: OWNER,
+        ownership: "sealed",
+      }),
+    );
+    expect(readGraphFile(bytes).ownership).toBeUndefined();
+  });
+
   it("leaves out a name nobody wrote and a picture this folder does not hold", () => {
     const bytes = encodeText(
       JSON.stringify({
