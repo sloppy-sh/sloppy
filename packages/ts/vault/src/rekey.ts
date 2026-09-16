@@ -21,10 +21,12 @@ import { rekeyMarkdown } from "./markdown.js";
  * parent, its links, every reference in its writing, and the note an offered
  * change amends. The aliases ride the note, so its ref carries them.
  *
- * **A DID standing on its own is a PERSON and is never moved** — `owner`,
- * `authors`, `contributors` and an offer's `by` say who wrote and who gates,
- * and importing a graph does not change either. Only a `<did>/<ulid>` is a key
- * into this graph, which is why nothing here rewrites a bare DID.
+ * **Whose writing a note carries is a PERSON and is never moved** — `authors`,
+ * `contributors` and an offer's `by` are what somebody wrote, and carrying a
+ * graph somewhere else does not rewrite that. A note's `owner` is a gate rather
+ * than writing, and the graph owner's gate moves with the graph exactly as
+ * `graph.json`'s owner does, so a person's own graph comes back writable.
+ * Somebody else's gate stays theirs.
  *
  * A file this cannot read is carried through untouched rather than dropped.
  */
@@ -51,6 +53,7 @@ function rekeyGraph(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
 }
 
 const REF_FIELD = /^((?:ref|parent|amends): | {2}- )/;
+const GATE_FIELD = "owner: ";
 
 function rekeyRefs(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
   const text = decodeText(bytes);
@@ -61,6 +64,7 @@ function rekeyRefs(bytes: Uint8Array, from: DidSyr, to: DidSyr): Uint8Array {
     return bytes;
   }
   const front = note.frontLines.map((line) => {
+    if (line === `${GATE_FIELD}${from}`) return `${GATE_FIELD}${to}`;
     const field = REF_FIELD.exec(line);
     if (!field || !line.startsWith(`${from}/`, field[0].length)) return line;
     return `${field[0]}${to}/${line.slice(field[0].length + from.length + 1)}`;

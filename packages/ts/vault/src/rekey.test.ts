@@ -22,6 +22,7 @@ const BLOCK = "01J0000000000000000000000C";
 const CITED = "01J0000000000000000000000E";
 const OFFER = "01J0000000000000000000000F";
 const WHOSE = "01J0000000000000000000000G";
+const THEIRS = "01J0000000000000000000000H";
 const PROPOSER = "did:syr:z6MkwProposerProposerProposer";
 
 function vault(): Vault {
@@ -129,7 +130,7 @@ describe("a graph moving into another identity", () => {
     expect(rekey(held, TO, FROM)).toEqual(held);
   });
 
-  it("moves the note an offer amends and leaves the people alone", () => {
+  it("moves the note an offer amends, and the gate, and leaves the people alone", () => {
     const held = vault();
     const { files } = amendmentToVault({
       ref: `${FROM}/${OFFER}`,
@@ -164,6 +165,24 @@ describe("a graph moving into another identity", () => {
       [],
     );
     for (const [path, bytes] of whose.files) held.set(path, bytes);
+    const theirs = noteToVault(
+      {
+        ref: `${FROM}/${THEIRS}`,
+        created_by: FROM,
+        depth: 1,
+        origin: `${FROM}/${THEIRS}`,
+        title: "A note whose gate the graph's owner handed somebody",
+        tags: [],
+        links: [],
+        owner: PROPOSER,
+        published: false,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      } as NodeView,
+      [],
+      [],
+    );
+    for (const [path, bytes] of theirs.files) held.set(path, bytes);
 
     const carried = rekey(held, FROM, TO);
     const offered = vaultToAmendment({
@@ -176,8 +195,15 @@ describe("a graph moving into another identity", () => {
     const written = vaultToNote({
       markdown: decodeText(carried.get(notePath(WHOSE)) as Uint8Array),
     });
-    expect(written.owner).toBe(FROM);
+    // The gate the graph's owner held moves with the graph, the way
+    // graph.json's owner does; what the two of them wrote does not.
+    expect(written.owner).toBe(TO);
     expect(written.authors).toEqual([FROM, PROPOSER]);
     expect(written.contributors).toEqual([PROPOSER]);
+
+    const gated = vaultToNote({
+      markdown: decodeText(carried.get(notePath(THEIRS)) as Uint8Array),
+    });
+    expect(gated.owner).toBe(PROPOSER);
   });
 });

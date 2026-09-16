@@ -412,10 +412,10 @@ later theme** — there is no section-level picking, and an offer is taken or tu
 whole.
 
 The routes: `GET /nodes/:did/:ulid/amendments` lists what has been offered on one note, for
-its owner alone, **oldest offer first** — the order they arrived in, which is the order the
-owner reads them in on every surface; `POST /amendments` offers one or writes the one already standing;
-`DELETE /amendments/:did/:ulid` withdraws it; `POST /amendments/:did/:ulid/approve` and
-`/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
+its owner alone, **oldest offer first** — the order they arrived in, and the order the owner
+reads them in on every surface; `POST /amendments` offers one or writes the one already
+standing; `DELETE /amendments/:did/:ulid` withdraws it; `POST /amendments/:did/:ulid/approve`
+and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
 row here, and that DID is the graph owner's.
 
 ## syr integration
@@ -564,10 +564,10 @@ conversation, following, somebody else's profile and somebody else's emoji all n
 another machine to exist; `LocalApi` answers each with `serverOnly`, naming the feature,
 and the surfaces do not put them in front of anybody in the first place. Signing in is not
 among them: it is the app talking to an identity store, which needs nothing of Sloppy's own,
-and what it settles is which DID this device writes under and nothing more.
-A hosted Sloppy is a **separate mode** — a hosted graph and a local one
-are two graphs, and the only way one becomes the other is by exporting it as an archive and
-importing it, which re-keys its refs under the receiving identity (§ "A graph on disk").
+and what it settles is which DID this device writes under and nothing more. A hosted Sloppy
+is a **separate mode** — a hosted graph and a local one are two graphs, and the only way one
+becomes the other is by exporting it as an archive and importing it, which re-keys its refs
+under the receiving identity (§ "A graph on disk").
 
 #### An API that serves identities itself
 
@@ -2028,17 +2028,23 @@ made, so `unpack` refuses one carrying a path that climbs out of the folder or n
 place of its own — nothing downstream has to remember the rule before writing a vault to
 disk.
 
-**Refs are re-keyed on import; ulids are kept; people are not re-keyed at all.** An archive
-carries refs under the DID that exported it. Importing into an identity rewrites
-`<sourceDid>/<ulid>` to `<targetDid>/<ulid>`
-through the note's own ref, its parent, its links, every reference in its writing and the
-note an offer amends — the
-aliases ride the note, so its ref carries them. **A DID standing on its own is a person and
-is never rewritten**: `owner`, `authors`, `contributors` and an offer's `by` say who gates
-and who wrote, which carrying a graph somewhere else does not change. The ulid half never changes, which is what
-lets a graph be recognised on the way back in. An import is refused where the target already
-holds one of the ulids arriving in another of its graphs. Addresses arrive as the labels
-they are, and are held unique inside the graph by the same rule that writes one.
+**Refs are re-keyed on import; ulids are kept; what somebody wrote stays theirs.** An
+archive carries refs under the DID that exported it. Importing into an identity rewrites
+`<sourceDid>/<ulid>` to `<targetDid>/<ulid>` through the note's own ref, its parent, its
+links, every reference in its writing and the note an offer amends — the aliases ride the
+note, so its ref carries them. The ulid half never changes, which is what lets a graph be
+recognised on the way back in. An import is refused where the target already holds one of
+the ulids arriving in another of its graphs. Addresses arrive as the labels they are, and
+are held unique inside the graph by the same rule that writes one.
+
+**Whose writing a note carries is never rewritten; the gate on it moves with the graph.**
+`authors`, `contributors` and an offer's `by` are what somebody wrote, and carrying a graph
+somewhere else does not make it somebody else's writing. A note's `owner` is a gate rather
+than writing, so the one the graph's own owner held moves to the identity importing it,
+exactly as `graph.json`'s owner does — a person's own graph comes back writable, and one
+carried between a folder and a hosted instance arrives writable by whoever brought it. A
+gate somebody else holds stays theirs; the graph's owner clears it wherever the note's
+details are shown.
 
 **Importing a graph you already hold is a merge, not a replace.** The graph's own ulid says
 which, and where it is one the importer keeps, the two copies are settled note by note: a
