@@ -291,6 +291,46 @@ describe("a change offered on a note", () => {
     expect(await writingAs(held, CAI).listAmendments(note)).toEqual([]);
   });
 
+  it("stands beside what somebody else offered on the same note", async () => {
+    const { held, note, section, offer } = await offered();
+
+    const second = await writingAs(held, CAI).proposeAmendment({
+      note,
+      title: "Seeds, otherwise",
+      tags: [],
+      blocks: [{ ref: section, content: textDocument("Otherwise") }],
+    });
+
+    const standing = await read(held).listAmendments(note);
+    expect(standing.map((one) => one.ref).sort()).toEqual(
+      [offer, second.ref].sort(),
+    );
+    expect(standing.map((one) => one.by).sort()).toEqual([BOB, CAI].sort());
+  });
+
+  it("is read oldest first", async () => {
+    const files = new MemoryFiles();
+    const { graph, writer } = await graphOnly(files);
+    const note = await writer.create({ title: "Seeds" });
+    const at = new Date().toISOString();
+    for (const [made, by] of [
+      ["01J0000000000000000000000B", CAI],
+      ["01J0000000000000000000000A", BOB],
+    ] as const) {
+      await graph.saveOffer({
+        ulid: made,
+        amends: note.ref,
+        by,
+        at,
+        title: "As I would have it",
+        tags: [],
+        sections: [],
+      });
+    }
+
+    expect(graph.offersOn(note.ref).map((one) => one.by)).toEqual([BOB, CAI]);
+  });
+
   it("is not something to make on a note you write yourself", async () => {
     const held = await opened();
     const note = await held.api.createNode({ title: "Seeds" });
