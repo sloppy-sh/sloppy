@@ -32,6 +32,8 @@ const REMOVE = 'files_remove';
 const EXISTS = 'files_exists';
 const MKDIR = 'files_mkdir';
 const PICK_FOLDER = 'pick_folder';
+const PICK_FILE = 'pick_file';
+const SAVE_FILE = 'save_file';
 const DATA_PATH = 'app_data_path';
 const HISTORY_STATUS = 'history_status';
 const HISTORY_LOG = 'history_log';
@@ -186,6 +188,36 @@ class TauriHistory implements History {
 	async currentCommit(): Promise<string | undefined> {
 		return (await this.asked<string | null>(HISTORY_HEAD, { root: this.root })) ?? undefined;
 	}
+}
+
+/**
+ * `openFile` in `@sloppy/app-core`'s runtime, which says what its answer means.
+ * `accept` is a file input's list; the media types in it are dropped, because
+ * what the system offers is filtered by extension. The bytes come back with the
+ * file rather than a path: nothing grants this webview a file outside the
+ * folders somebody picked.
+ */
+export function tauriOpenFile(call: Invoke = invoke): (accept: string) => Promise<File | null> {
+	return async (accept) => {
+		const extensions = accept
+			.split(',')
+			.map((one) => one.trim())
+			.filter((one) => one.startsWith('.'))
+			.map((one) => one.slice(1));
+		const picked = await call<{ name: string; bytes: string } | null>(PICK_FILE, { extensions });
+		if (!picked) return null;
+		return new File([decodeBase64(picked.bytes).slice().buffer as ArrayBuffer], picked.name);
+	};
+}
+
+/** `saveFile` in `@sloppy/app-core`'s runtime, which says what its answer
+ *  means. A webview has no download of its own, so the file is handed to the
+ *  app and put where a person says. */
+export function tauriSaveFile(call: Invoke = invoke): (name: string, body: Blob) => Promise<void> {
+	return async (name, body) => {
+		const bytes = encodeBase64(new Uint8Array(await body.arrayBuffer()));
+		await call<boolean>(SAVE_FILE, { name, bytes });
+	};
 }
 
 /** The states of the graph in the folder at `root`. */

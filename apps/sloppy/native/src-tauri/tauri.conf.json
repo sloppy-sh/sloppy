@@ -39,7 +39,7 @@
 				{
 					"scheme": ["https"],
 					"host": "sloppy.sh",
-					"pathPrefix": ["/n"],
+					"pathPrefix": ["/n", "/auth/return"],
 					"appLink": true
 				}
 			]

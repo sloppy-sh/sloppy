@@ -37,6 +37,15 @@ chrono = { version = "0.4", default-features = false, features = ["std", "now"] 
 # The sign-in round trip: out through opener, back through deep-link.
 tauri-plugin-deep-link = "2"
 tauri-plugin-opener = "2"
+# An identity store answers only the origins it was set up for, and a webview is
+# never one of them, so what this app asks of one is asked from out here.
+tauri-plugin-http = "2"
+# Where a graph lives is a folder somebody picks, and an identity another device
+# wrote is a file they pick.
+tauri-plugin-dialog = "2"
+# What somebody picked on Android is not a path, so reading it is this rather
+# than std::fs.
+tauri-plugin-fs = "2"
 
 # Android's WebView reports env(safe-area-inset-bottom) as 0 for the 3-button nav
 # bar, so the real WindowInsets are read natively and published as CSS vars.
@@ -47,7 +56,3 @@ tauri-plugin-safe-area-insets-css = "0.2"
 # "deep-link" is what re-emits a forwarded URL through the deep-link plugin.
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-# Where a graph lives is a folder somebody picks. A phone and a tablet keep
-# theirs in the app's own documents folder with nobody asked, so the folder
-# dialog ships to a desktop only.
-tauri-plugin-dialog = "2"

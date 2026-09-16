@@ -255,3 +255,91 @@ describe('the native shell in local mode', () => {
 		expect(registered.vault?.folder()).toBeUndefined();
 	});
 });
+
+describe('which identity the shell serves a folder under', () => {
+	const MINE = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
+	const THEIRS = 'did:syr:z6MkjchhfUsD6mmvni8mCdXHw216Xrm9bQe2mBH1P5RDjVJG';
+	const NOBODY_HERE = 'did:syr:z6MkfZ6S4NSVCRNSg8pcwn9jrWbCNoFejYHqJVFYnfChiFga';
+
+	function graphIn(folder: string, owner: string): void {
+		held.set(
+			`${folder}/graph.json`,
+			btoa(
+				JSON.stringify({
+					format: 1,
+					graph: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+					name: 'A graph',
+					owner
+				})
+			)
+		);
+	}
+
+	function holds(dids: string[], writing: string): void {
+		held.set(
+			'/data/identities.json',
+			btoa(
+				JSON.stringify({
+					identities: dids.map((did) => ({
+						did,
+						public_key: 'zPublic',
+						source: 'device',
+						seed: `${did}.key`
+					})),
+					writing
+				})
+			)
+		);
+	}
+
+	/** Whose writing the api serves this folder under. */
+	function writingAs(): Promise<string> {
+		return (registered.createApi?.() as unknown as { writer: Promise<string> }).writer;
+	}
+
+	beforeEach(() => {
+		held.clear();
+		picks = '/Users/me/garden';
+		picking = 'answers';
+	});
+
+	it('writes as the folder owner where this device holds that identity', async () => {
+		holds([MINE, THEIRS], MINE);
+		graphIn('/Users/me/garden', THEIRS);
+		await launch();
+
+		await registered.vault?.open();
+
+		expect(await writingAs()).toBe(THEIRS);
+	});
+
+	it('writes as the one chosen here in a folder belonging to somebody else', async () => {
+		holds([MINE], MINE);
+		graphIn('/Users/me/garden', THEIRS);
+		await launch();
+
+		await registered.vault?.open();
+
+		expect(await writingAs()).toBe(MINE);
+	});
+
+	it('settles it again when the identities on the device change', async () => {
+		holds([MINE], MINE);
+		graphIn('/Users/me/garden', NOBODY_HERE);
+		await launch();
+		await registered.vault?.open();
+		expect(await writingAs()).toBe(MINE);
+
+		holds([MINE, THEIRS], MINE);
+		await registered.identities?.writeAs(THEIRS);
+
+		expect(await writingAs()).toBe(THEIRS);
+	});
+
+	it('offers the identities this device holds', async () => {
+		holds([MINE], MINE);
+		await launch();
+
+		expect((await registered.identities?.list())?.map((one) => one.did)).toEqual([MINE]);
+	});
+});
