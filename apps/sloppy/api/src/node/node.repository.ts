@@ -123,9 +123,11 @@ function retireAlias(alias: NodeAlias): RetiredAddress {
 
 /**
  * What a bulk act may write. A title is not one of them: an act says what a set
- * of notes have in common, and no two notes share a title.
+ * of notes have in common, and no two notes share a title. `authors` is here
+ * for the service rather than for a request, exactly as it is on
+ * {@link NodePatch}: an act is a write, and a write joins whoever made it.
  */
-const BULK_WRITABLE = ["tags", "appearance"] as const;
+const BULK_WRITABLE = ["tags", "appearance", "authors"] as const;
 
 /** What a PATCH may carry; the immutable columns are absent by type. A `null`
  *  clears its column — see {@link replacement}.
@@ -141,7 +143,7 @@ export type NodePatch = Partial<
   owner?: DidSyr | null;
 };
 
-export type NodeBulkPatch = Partial<Pick<Node, "tags">> & {
+export type NodeBulkPatch = Partial<Pick<Node, "tags" | "authors">> & {
   appearance?: NodeAppearance | null;
 };
 
