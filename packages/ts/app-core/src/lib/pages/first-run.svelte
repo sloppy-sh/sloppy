@@ -39,7 +39,10 @@
 		const mine = ++asked;
 		try {
 			const listed = await identities.list();
-			if (mine === asked) held = listed;
+			if (mine === asked) {
+				held = listed;
+				problem = null;
+			}
 			return listed;
 		} catch (error) {
 			if (mine === asked) problem = said(error);
