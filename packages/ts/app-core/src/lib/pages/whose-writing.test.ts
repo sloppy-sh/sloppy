@@ -361,8 +361,14 @@ describe('a note in the reader’s own hosted graph that somebody else writes', 
 		await open(MINE);
 
 		expect(title()?.readOnly).toBe(true);
+		// Their writing, on a surface nobody types into.
+		expect(document.body.querySelector('.sloppy-reading')).not.toBeNull();
+		expect(document.body.querySelector('.sloppy-prose')?.getAttribute('contenteditable')).toBe(
+			'false'
+		);
+		expect(screen()).toContain('What I think');
 		expect(noButton('Offer this change')).toBe(true);
-		expect(screen()).not.toContain('Kept here until you offer it');
+		expect(noButton('Add a section')).toBe(true);
 	});
 
 	it('keeps a write off the note without asking the server first', async () => {
