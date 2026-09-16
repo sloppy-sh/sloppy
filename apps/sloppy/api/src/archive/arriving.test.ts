@@ -12,10 +12,12 @@ import type { VaultNote } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import {
   addressesLedBy,
+  type ArrivingAmendment,
   type GraphNow,
   type Kept,
   mergeRefusal,
   mergeRows,
+  offeredRows,
   placed,
   repeated,
   retiring,
@@ -542,5 +544,113 @@ describe("the rows a merge lands as", () => {
     expect(write.aliases.map((one) => [one.address, one.note])).toEqual([
       ["1a", ref(1)],
     ]);
+  });
+});
+
+describe("the offers an archive carries", () => {
+  const BRAM = "did:syr:z6MkBramBramBramBramBramBramBram" as DidSyr;
+  const offer = (
+    over: Partial<ArrivingAmendment> & { ulid: string; amends: OwnedRef },
+  ): ArrivingAmendment => ({
+    by: BRAM,
+    title: "As I would have it",
+    tags: [],
+    sections: [],
+    ...over,
+  });
+
+  it("names the offer under the identity taking it in and leaves who offered it alone", () => {
+    const [row] = offeredRows(
+      DID,
+      [offer({ ulid: "01JAMENDA00000000000000000", amends: ref(1) })],
+      new Set([ref(1)]),
+    );
+
+    expect(ownedRefFrom(row.id)).toBe(`${DID}/01JAMENDA00000000000000000`);
+    expect(row.created_by).toBe(DID);
+    expect(row.by).toBe(BRAM);
+    expect(row.note).toBe(ref(1));
+  });
+
+  it("names each proposed section by the ULID the note's own section has", () => {
+    const [row] = offeredRows(
+      DID,
+      [
+        offer({
+          ulid: "01JAMENDA00000000000000000",
+          amends: ref(1),
+          sections: [
+            {
+              ulid: "01JSECTA000000000000000000",
+              content: { type: "doc", content: [] },
+            },
+          ],
+        }),
+      ],
+      new Set([ref(1)]),
+    );
+
+    expect(row.blocks.map((one) => one.ref)).toEqual([
+      `${DID}/01JSECTA000000000000000000`,
+    ]);
+  });
+
+  it("drops one offered on a note the archive does not carry", () => {
+    expect(
+      offeredRows(
+        DID,
+        [offer({ ulid: "01JAMENDA00000000000000000", amends: ref(9) })],
+        new Set([ref(1)]),
+      ),
+    ).toEqual([]);
+  });
+
+  it("lands one offer per person per note, whatever the folder says", () => {
+    const rows = offeredRows(
+      DID,
+      [
+        offer({ ulid: "01JAMENDA00000000000000000", amends: ref(1) }),
+        offer({ ulid: "01JAMENDB00000000000000000", amends: ref(1) }),
+      ],
+      new Set([ref(1)]),
+    );
+
+    expect(rows.map((one) => ownedRefFrom(one.id))).toEqual([
+      `${DID}/01JAMENDA00000000000000000`,
+    ]);
+  });
+
+  it("writes over the one that person already had standing on that note", () => {
+    const standing = {
+      id: createOwnedRecordId("amendment", DID, "01JAMENDZ00000000000000000"),
+      created_by: DID,
+      note: ref(1),
+      by: BRAM,
+      at: nowIso(),
+      title: "",
+      tags: [],
+      blocks: [],
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    };
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      placed([note({ ref: ref(1) })]),
+      {
+        arriving: new Set(),
+        held: [],
+        aliases: [],
+        retired: [],
+        offers: [standing],
+      },
+      [offer({ ulid: "01JAMENDA00000000000000000", amends: ref(1) })],
+    );
+
+    expect(write.amendments.map((one) => ownedRefFrom(one.id))).toEqual([
+      `${DID}/01JAMENDA00000000000000000`,
+    ]);
+    expect(write.unsettling).toEqual([`${DID}/01JAMENDZ00000000000000000`]);
   });
 });

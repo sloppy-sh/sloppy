@@ -85,6 +85,11 @@ export interface ArrivingRows {
  * The rows one graph's worth of arriving notes lands as. `held` is what the
  * graph already keeps at each of those refs, whose styling and publication
  * state ride through the write.
+ *
+ * Whose writing each note carries arrives as the archive has it: `authors` and
+ * `contributors` are somebody's writing rather than this graph's to say, and the
+ * gate on a note has already been moved to the identity taking the graph in
+ * where it was the exporting graph owner's — `rekey` in `@sloppy/vault`.
  */
 export function rowsFor(
   did: DidSyr,
@@ -111,6 +116,11 @@ export function rowsFor(
         depth: note.depth,
         ...(note.parent ? { parent: note.parent } : {}),
         origin: note.origin,
+        ...(note.owner ? { owner: note.owner } : {}),
+        ...(note.authors?.length ? { authors: note.authors } : {}),
+        ...(note.contributors?.length
+          ? { contributors: note.contributors }
+          : {}),
         title: note.title,
         tags: TagsSchema.catch([]).parse(note.tags),
         links: note.links,
