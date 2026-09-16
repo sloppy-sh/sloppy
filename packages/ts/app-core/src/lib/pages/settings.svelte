@@ -9,6 +9,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
 	import { api } from '../api.js';
+	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
 	import { repointRuntime, runtime } from '../runtime.js';
 	import { saveHere, savesFiles } from '../save-file.js';
@@ -292,6 +293,7 @@
 					<Button variant="outline" class="h-11" onclick={() => (showingHistory = true)}>
 						Open the history
 					</Button>
+					<HistorySettings />
 				</div>
 			{/if}
 		{:else}
