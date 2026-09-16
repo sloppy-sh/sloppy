@@ -43,13 +43,33 @@ export const LOCAL_SCOPES: readonly SyrScope[] = [
   "profile:read",
 ];
 
-/** A person typed this; take a bare hostname and give back an origin. */
+/**
+ * A person typed this; take a bare hostname and give back an origin. One naming
+ * this machine is reached over http: nothing running here holds a certificate,
+ * so https would take a person straight to a failure they cannot fix.
+ */
 export function normalizeInstanceUrl(value: string): string {
   const trimmed = value.trim();
   const withScheme = /^https?:\/\//i.test(trimmed)
     ? trimmed
-    : `https://${trimmed}`;
+    : `${onThisMachine(trimmed) ? "http" : "https"}://${trimmed}`;
   return withScheme.replace(/\/+$/, "");
+}
+
+/** Whether a bare address names this machine, port and path aside. */
+function onThisMachine(address: string): boolean {
+  const authority = address.split("/")[0];
+  const host = (
+    authority.startsWith("[")
+      ? authority.slice(0, authority.indexOf("]") + 1)
+      : authority.split(":")[0]
+  ).toLowerCase();
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "[::1]" ||
+    /^127(\.\d{1,3}){3}$/.test(host)
+  );
 }
 
 async function readJson(

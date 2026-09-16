@@ -175,6 +175,10 @@ describe('a sign-in the device itself began', () => {
 	let api: FakeApi;
 	let asked: unknown;
 	let folder: string | undefined;
+	/** Whose the graph in the folder says it is. */
+	let whose: string;
+
+	const ADA = 'did:syr:z6MkrAdaAdaAdaAdaAdaAdaAdaAdaAda';
 
 	const HERE = {
 		did: DID,
@@ -198,7 +202,7 @@ describe('a sign-in the device itself began', () => {
 			},
 			vault: {
 				folder: () => folder,
-				graph: async () => (folder ? homeOf(DID) : undefined),
+				graph: async () => (folder ? homeOf(whose) : undefined),
 				asks: true,
 				open: async () => folder
 			}
@@ -209,6 +213,7 @@ describe('a sign-in the device itself began', () => {
 		session.clear();
 		asked = undefined;
 		folder = '/Users/me/garden';
+		whose = DID;
 		api = useFakeApi();
 		api.on('GET /auth/me', () => VIEWER);
 		api.on('PATCH /profile/me', (_url, init) => {
@@ -258,6 +263,19 @@ describe('a sign-in the device itself began', () => {
 		expect(await session.finishSignInHere(new URLSearchParams('state=s&error=denied'))).toBe(false);
 		expect(session.signInProblem).toContain('not approved');
 		expect(api.countOf('PATCH /profile/me')).toBe(0);
+	});
+
+	it('writes nothing into a folder somebody else owns, and keeps the name to carry', async () => {
+		whose = ADA;
+		shell(async () => ({ identity: HERE, name: 'Ada Lovelace' }));
+
+		expect(await session.finishSignInHere(new URLSearchParams('state=s&code=c'))).toBe(true);
+		expect(api.countOf('PATCH /profile/me')).toBe(0);
+
+		whose = DID;
+		await session.carryProfile();
+
+		expect(asked).toEqual({ display_name: 'Ada Lovelace' });
 	});
 
 	it('keeps the name to carry until there is a graph to carry it into', async () => {
