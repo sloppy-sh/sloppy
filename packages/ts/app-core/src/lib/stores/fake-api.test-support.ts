@@ -5,6 +5,7 @@
 
 import {
 	addressDepth,
+	type AmendmentView,
 	type AnsweredNote,
 	type ArchivePreview,
 	type ImportConflict,
@@ -17,6 +18,7 @@ import {
 	type NodeView,
 	type NoteDestination,
 	type OwnedRef,
+	type ProposeAmendmentRequest,
 	type PulledNoteHit,
 	type RefusedVoiceView,
 	type RefuseVoiceRequest,
@@ -265,6 +267,87 @@ export function arranging(
 				write(one.ref, String(init?.body ?? '{}'))
 			);
 		}
+	}
+	return held;
+}
+
+/** One offered change, as the routes below answer it. */
+export function amendment(
+	seed: number,
+	note: OwnedRef,
+	by: string,
+	over: Partial<AmendmentView> = {}
+): AmendmentView {
+	return {
+		ref: ref(seed),
+		created_by: DID,
+		note,
+		by,
+		at: AT,
+		title: '',
+		tags: [],
+		blocks: [],
+		created_at: AT,
+		updated_at: AT,
+		...over
+	};
+}
+
+/**
+ * Answer the routes an offered change is read and settled through, over the
+ * offers held here. The offers are handed back, so a suite reads what the
+ * writes left rather than what they said.
+ */
+export function amending(
+	api: FakeApi,
+	offers: Record<OwnedRef, readonly AmendmentView[]>,
+	approved: (offer: AmendmentView) => NodeView | Response
+): Map<OwnedRef, AmendmentView[]> {
+	const held = new Map<OwnedRef, AmendmentView[]>(
+		Object.entries(offers).map(([note, standing]) => [note as OwnedRef, [...standing]])
+	);
+	const find = (self: OwnedRef): AmendmentView | undefined =>
+		[...held.values()].flat().find((one) => one.ref === self);
+	const drop = (self: OwnedRef): void => {
+		for (const [note, standing] of held) {
+			held.set(
+				note,
+				standing.filter((one) => one.ref !== self)
+			);
+		}
+	};
+
+	for (const note of held.keys()) {
+		api.on(`GET /nodes${refPath(note)}/amendments`, () => held.get(note));
+	}
+	api.on('POST /amendments', (_url, init) => {
+		const asked = JSON.parse(String(init?.body ?? '{}')) as ProposeAmendmentRequest;
+		const standing = held.get(asked.note as OwnedRef);
+		if (!standing) return refuses('That note is not here.', 404);
+		const written = amendment(9_500 + standing.length, asked.note as OwnedRef, DID, {
+			title: asked.title ?? '',
+			tags: [...(asked.tags ?? [])],
+			...(asked.message === undefined ? {} : { message: asked.message })
+		});
+		standing.push(written);
+		return written;
+	});
+	for (const offer of [...held.values()].flat()) {
+		api.on(`DELETE /amendments${refPath(offer.ref)}`, () => {
+			drop(offer.ref);
+			return undefined;
+		});
+		api.on(`POST /amendments${refPath(offer.ref)}/approve`, () => {
+			const standing = find(offer.ref);
+			if (!standing) return refuses('That offer is not here.', 404);
+			const note = approved(standing);
+			if (!(note instanceof Response)) drop(offer.ref);
+			return note;
+		});
+		api.on(`POST /amendments${refPath(offer.ref)}/decline`, () => {
+			drop(offer.ref);
+			return undefined;
+		});
 	}
 	return held;
 }

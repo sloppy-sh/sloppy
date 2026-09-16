@@ -5,6 +5,8 @@
 
 import {
   type Address,
+  type AmendmentView,
+  AmendmentViewSchema,
   type AnsweredNote,
   AnsweredNoteSchema,
   type ArchivePreview,
@@ -62,6 +64,7 @@ import {
   PeerOriginSchema,
   type ProfileView,
   ProfileViewSchema,
+  type ProposeAmendmentRequest,
   type PublicationView,
   PublicationViewSchema,
   type PublishedBlock,
@@ -515,6 +518,45 @@ export class SloppyClient {
 
   async deleteBlock(ref: OwnedRef): Promise<void> {
     await this.del(`/blocks${refPath(ref)}`);
+  }
+
+  // ── Offered changes ──────────────────────────────────────────────────────
+
+  /** What has been offered on one note, oldest offer first. Only the note's
+   *  owner reads these. */
+  async listAmendments(note: OwnedRef): Promise<AmendmentView[]> {
+    const body = await this.json(`/nodes${refPath(note)}/amendments`, {
+      method: "GET",
+    });
+    return (body as unknown[]).map((one) => AmendmentViewSchema.parse(one));
+  }
+
+  /** Offer a change on a note somebody else owns, or write the offer already
+   *  standing there — a person has one offer per note, not a queue of them. */
+  async proposeAmendment(
+    request: ProposeAmendmentRequest,
+  ): Promise<AmendmentView> {
+    return AmendmentViewSchema.parse(
+      await this.send("POST", "/amendments", request),
+    );
+  }
+
+  /** Take back one you offered. */
+  async withdrawAmendment(ref: OwnedRef): Promise<void> {
+    await this.del(`/amendments${refPath(ref)}`);
+  }
+
+  /** Take an offer in: the note's writing becomes the offer's, whole, and the
+   *  person who offered it joins its contributors. Answers the note. */
+  async approveAmendment(ref: OwnedRef): Promise<NodeView> {
+    return parseNodeView(
+      await this.send("POST", `/amendments${refPath(ref)}/approve`, {}),
+    );
+  }
+
+  /** Turn one down. Nothing of it is kept. */
+  async declineAmendment(ref: OwnedRef): Promise<void> {
+    await this.send("POST", `/amendments${refPath(ref)}/decline`, {});
   }
 
   // ── A copy of everything ─────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import { encodePublicKey, publicKeyFromDid } from "@sloppy/idp/crypto";
 import {
   type Address,
   AddressSchema,
+  type AmendmentView,
   type AnsweredNote,
   type ArchivePreview,
   type BlockDocument,
@@ -61,6 +62,7 @@ import {
   type OwnedRef,
   type PeerIdentity,
   type ProfileView,
+  type ProposeAmendmentRequest,
   type PublicationView,
   type PublishedChangesPage,
   type PublishedIndex,
@@ -144,6 +146,11 @@ import {
   vaultOwned,
 } from "./vault-paths.js";
 
+/** A graph on this device does not carry offered changes yet. */
+function notYet(): Error {
+  return refuse("Offered changes are not here yet.");
+}
+
 /** Whether a folder holds a graph. A shell asks this of a folder it wrote down
  *  before serving it, so that both sides read a folder that has been moved or
  *  emptied the same way. */
@@ -168,14 +175,29 @@ export class LocalApi implements SloppyApi {
    *  there, and two would each land where the other had already left. */
   private queue: Promise<unknown> = Promise.resolve();
 
-  /** `as` is whose graph this is reading, for a folder that is not this
-   *  device's own to write in; absent is the identity this device writes
-   *  under. */
+  private readonly writingAs?: DidSyr;
+
+  /**
+   * `as` is whose graph this is reading, for a folder that is not this device's
+   * own to write in; absent is the identity this device writes under.
+   *
+   * `writer` is which of the identities this device holds is doing the writing.
+   * Absent is the graph's own owner, which is every device holding one
+   * identity — docs/ARCHITECTURE.md § "A graph off the device".
+   */
   constructor(
     readonly files: Files,
-    options: { as?: LocalIdentity } = {},
+    options: { as?: LocalIdentity; writer?: DidSyr } = {},
   ) {
     this.identity = options.as;
+    this.writingAs = options.writer;
+  }
+
+  /** Whose writing a note written here carries. */
+  get writer(): Promise<DidSyr> {
+    return this.writingAs !== undefined
+      ? Promise.resolve(this.writingAs)
+      : this.who().then((identity) => identity.did);
   }
 
   // ── Service ──────────────────────────────────────────────────────────────
@@ -538,6 +560,30 @@ export class LocalApi implements SloppyApi {
         updated_at: nowIso(),
       });
     });
+  }
+
+  // ── Offered changes ──────────────────────────────────────────────────────
+
+  async listAmendments(_note: OwnedRef): Promise<AmendmentView[]> {
+    throw notYet();
+  }
+
+  async proposeAmendment(
+    _request: ProposeAmendmentRequest,
+  ): Promise<AmendmentView> {
+    throw notYet();
+  }
+
+  async withdrawAmendment(_ref: OwnedRef): Promise<void> {
+    throw notYet();
+  }
+
+  async approveAmendment(_ref: OwnedRef): Promise<NodeView> {
+    throw notYet();
+  }
+
+  async declineAmendment(_ref: OwnedRef): Promise<void> {
+    throw notYet();
   }
 
   // ── Archives ─────────────────────────────────────────────────────────────
