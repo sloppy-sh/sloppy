@@ -391,6 +391,15 @@ genealogy and the numbers are the graph's, and handing a note's writing on does 
 those with it. Handing the gate on is likewise not writing, so a request that does only that
 is not held to the gate it is taking off, while one that also writes is.
 
+**An act that carries a subtree is held to the gate on every note it carries.** Deleting,
+moving and renumbering by moving take everything that sprang from a note with it, so a note
+in that subtree somebody else gates stops the act, and the refusal names that note rather
+than the one the person acted on — a gate a person cannot reach through the note above it is
+the whole of what a gate is. The graph's own owner is exempt here as everywhere: what they
+place is theirs to place. In a folder on a device that is `NoteWriter`'s own rule; on a
+hosted instance every row an act reaches is scoped by `created_by`, so the only person who
+can carry a subtree there is the graph's owner.
+
 **A graph decides the default for the notes written in it.** `Graph.ownership` is `open` or
 `owned`, absent is `open`. `owned` stamps `owner = writer` on every note at creation; `open`
 stamps nothing. Changing it reaches the notes written from then on and leaves the ones

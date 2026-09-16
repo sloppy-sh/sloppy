@@ -293,6 +293,45 @@ describe("a note somebody else writes", () => {
     ).rejects.toThrow("Only its owner can delete it");
   });
 
+  it("keeps its place out of anybody else's hands through the note above it", async () => {
+    const { held, note } = await gated();
+    const above = await held.api.createNode({ title: "The branch" });
+    await held.api.moveNote(note, { relation: "under", note: above.ref });
+    const beside = await held.api.createNode({ title: "Beside it" });
+    const bob = writingAs(held, BOB);
+
+    await expect(bob.deleteNode(above.ref)).rejects.toThrow(
+      "2a is somebody else's. Only its owner can delete it.",
+    );
+    await expect(
+      bob.actOnNodes({ notes: [above.ref], act: { act: "delete" } }),
+    ).rejects.toThrow("2a is somebody else's. Only its owner can delete it.");
+    await expect(
+      bob.moveNote(above.ref, { relation: "under", note: beside.ref }),
+    ).rejects.toThrow(
+      "2a is somebody else's. Only its owner can carry it somewhere else.",
+    );
+    await expect(
+      bob.moveNote(above.ref, { relation: "under", note: beside.ref }, "1a"),
+    ).rejects.toThrow(
+      "2a is somebody else's. Only its owner can carry it somewhere else.",
+    );
+
+    const again = read(held);
+    expect((await again.getNode(note))?.parent).toBe(above.ref);
+    expect((await again.getNode(above.ref))?.parent).toBeUndefined();
+  });
+
+  it("goes with the branch above it when the graph's own owner takes that out", async () => {
+    const { held, note } = await gated();
+    const above = await held.api.createNode({ title: "The branch" });
+    await held.api.moveNote(note, { relation: "under", note: above.ref });
+
+    await held.api.deleteNode(above.ref);
+
+    expect(await read(held).getNode(note)).toBeNull();
+  });
+
   it("is still the graph owner's to place, and still not theirs to write", async () => {
     const held = await opened();
     const note = await held.api.createNode({ title: "Seeds" });
