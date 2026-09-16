@@ -23,6 +23,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import {
 		alongRun,
+		authorsOf,
 		BlockViewSchema,
 		citedNotes,
 		compareOrd,
@@ -68,6 +69,7 @@
 		TagField,
 		TemplatePicker,
 		textDocument,
+		unplacedPerson,
 		writeTemplate,
 		type MoveTarget,
 		type NestingAsk,
@@ -759,11 +761,12 @@
 	const standing = $derived(node?.owner === undefined ? [] : offers.on(ref));
 	/** The one this person has standing here, which they may take back. */
 	const myOffer = $derived(offering ? offers.mine(ref) : undefined);
-	/** Whoever writes this note, where that is somebody else. */
+	/** Whoever writes this note, where that is somebody else. Until their store
+	 *  has answered one way or the other there is nothing to call them by. */
 	const ownerName = $derived.by(() => {
 		const owner = node?.owner;
 		if (owner === undefined || owner === viewerDid) return '';
-		const person = people.of(owner);
+		const person = people.of(owner) ?? (people.unplaced(owner) ? unplacedPerson(owner) : null);
 		return person ? nameOf(person) : 'whoever writes it';
 	});
 	/** Setting and taking off the gate is the graph's owner's act and the note's
@@ -802,6 +805,16 @@
 		if (!offering || !held || loading || !offers.settled(ref)) return;
 		const writing = { title: held.title, tags: held.tags, blocks };
 		untrack(() => void offers.hold(ref, writing));
+	});
+
+	// A title typed before the change being offered had opened has nowhere to go
+	// yet, so it waits here for one rather than being dropped.
+	$effect(() => {
+		const waiting = [...titles.keys()].filter((of) => offers.draft(of) !== undefined);
+		if (waiting.length === 0) return;
+		untrack(() => {
+			for (const of of waiting) void saveTitle(of);
+		});
 	});
 
 	async function writeOwner(owner: DidSyr | null): Promise<void> {
@@ -878,10 +891,13 @@
 		acknowledge('Turned down.');
 	}
 
-	/** Whether to name whoever wrote this: a graph on this device says who its
-	 *  owner is only once they have said it. */
+	/** Whether to name whoever wrote this. A graph on this device says who its
+	 *  owner is only once they have said it — but a note more than one identity's
+	 *  writing has reached says whose, named or not. */
 	const showsAuthor = $derived(
-		!session.onDevice || (people.of(node?.created_by ?? '')?.displayName ?? '').trim() !== ''
+		!session.onDevice ||
+			(node !== undefined && authorsOf(node).length + (node.contributors?.length ?? 0) > 1) ||
+			(people.of(node?.created_by ?? '')?.displayName ?? '').trim() !== ''
 	);
 	/** The publication rooted at this note, which is what an act here changes. */
 	const publication = $derived(node && own ? publications.at(node) : undefined);
@@ -2238,6 +2254,7 @@
 				bind:this={titleField}
 				value={title}
 				rows="1"
+				readonly={holdingWriting}
 				oninput={(e) => {
 					titles.set(ref, e.currentTarget.value);
 					fitTitle(e.currentTarget);
