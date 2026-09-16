@@ -71,6 +71,7 @@ function store(
   const nodes = {
     find: (_did: string, ref: OwnedRef) =>
       Promise.resolve(reachable.includes(ref) ? ({} as Node) : null),
+    joinAuthors: () => Promise.resolve(),
   } as unknown as NodeRepository;
   return new BlockService(blocks, nodes);
 }

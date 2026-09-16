@@ -3,6 +3,8 @@
 
 import {
   type Address,
+  type Amendment,
+  AmendmentSchema,
   type Block,
   createOwnedRecordId,
   type DidSyr,
@@ -17,7 +19,7 @@ import {
   TagsSchema,
   type Timestamp,
 } from "@sloppy/types";
-import type { VaultNote } from "@sloppy/vault";
+import type { VaultAmendment, VaultNote } from "@sloppy/vault";
 import { orderKeyBetween } from "../block/fractional-index";
 import { referencesOf } from "../block/references";
 
@@ -83,6 +85,11 @@ export interface ArrivingRows {
  * The rows one graph's worth of arriving notes lands as. `held` is what the
  * graph already keeps at each of those refs, whose styling and publication
  * state ride through the write.
+ *
+ * Whose writing each note carries arrives as the archive has it: `authors` and
+ * `contributors` are somebody's writing rather than this graph's to say, and the
+ * gate on a note has already been moved to the identity taking the graph in
+ * where it was the exporting graph owner's — `rekey` in `@sloppy/vault`.
  */
 export function rowsFor(
   did: DidSyr,
@@ -109,6 +116,11 @@ export function rowsFor(
         depth: note.depth,
         ...(note.parent ? { parent: note.parent } : {}),
         origin: note.origin,
+        ...(note.owner ? { owner: note.owner } : {}),
+        ...(note.authors?.length ? { authors: note.authors } : {}),
+        ...(note.contributors?.length
+          ? { contributors: note.contributors }
+          : {}),
         title: note.title,
         tags: TagsSchema.catch([]).parse(note.tags),
         links: note.links,
@@ -148,6 +160,63 @@ export function rowsFor(
     }
   }
   return rows;
+}
+
+/** One offered change as the archive carries it: the file's own name is its
+ *  ULID, and the graph it is read in is whose the offer's reference is. */
+export interface ArrivingAmendment extends VaultAmendment {
+  ulid: string;
+}
+
+/**
+ * The offers the archive brings, as rows under the identity taking them in.
+ * One whose note the archive does not carry is dropped: an offer with no note
+ * under it is nothing anybody can settle.
+ *
+ * `by` is never re-keyed — an offer is somebody's writing, and carrying a graph
+ * somewhere else does not make it somebody else's.
+ */
+export function offeredRows(
+  did: DidSyr,
+  offers: readonly ArrivingAmendment[],
+  notes: ReadonlySet<OwnedRef>,
+  at: Timestamp = nowIso(),
+): Amendment[] {
+  const rows: Amendment[] = [];
+  const standing = new Set<string>();
+  for (const offer of offers) {
+    if (!notes.has(offer.amends)) continue;
+    // The store holds one offer per person per note; a folder somebody edited
+    // by hand can say otherwise, and the first of them is the one that lands.
+    const place = offeredOn(offer.amends, offer.by);
+    if (standing.has(place)) continue;
+    standing.add(place);
+    rows.push(
+      AmendmentSchema.parse({
+        id: createOwnedRecordId("amendment", did, offer.ulid),
+        created_by: did,
+        note: offer.amends,
+        by: offer.by,
+        at: offer.at ?? at,
+        ...(offer.message === undefined ? {} : { message: offer.message }),
+        title: offer.title,
+        tags: TagsSchema.catch([]).parse(offer.tags),
+        ...(offer.appearance ? { appearance: offer.appearance } : {}),
+        blocks: offer.sections.map((section) => ({
+          ref: ownedRefFrom(createOwnedRecordId("block", did, section.ulid)),
+          content: section.content,
+        })),
+        created_at: at,
+        updated_at: at,
+      }),
+    );
+  }
+  return rows;
+}
+
+/** The one offer a person has standing on a note, as a key. */
+export function offeredOn(note: OwnedRef, by: DidSyr): string {
+  return `${note}\u0000${by}`;
 }
 
 /** Every address these notes lead by: the one each is at, and the ones each was
@@ -222,6 +291,8 @@ export interface GraphNow {
   held: readonly Node[];
   aliases: readonly NodeAlias[];
   retired: readonly RetiredAddress[];
+  /** What is standing offered on the notes it holds. */
+  offers: readonly Amendment[];
 }
 
 /** A merge as the rows it lands as: the notes it settles and the numbers it
@@ -237,6 +308,11 @@ export interface MergeWrite {
   dropping: Address[];
   /** Notes in the bin giving up a number a settled note is taking. */
   yielding: OwnedRef[];
+  /** The offers the archive brings. */
+  amendments: Amendment[];
+  /** The offers already standing that these arrive in place of: one person has
+   *  one offer on a note, whichever file it arrived in. */
+  unsettling: OwnedRef[];
 }
 
 /** What a settled merge still cannot be written as. */
@@ -301,6 +377,7 @@ export function mergeRows(
   graph: OwnedRef,
   notes: readonly PlacedNote[],
   now: GraphNow,
+  offers: readonly ArrivingAmendment[] = [],
   at: Timestamp = nowIso(),
 ): MergeWrite {
   const held = new Map<OwnedRef, Node>(
@@ -356,6 +433,15 @@ export function mergeRows(
   for (const note of yielding) {
     lead(note.address as Address, ownedRefFrom(note.id), note.parent);
   }
+  const amendments = offeredRows(
+    did,
+    offers,
+    new Set(notes.map((note) => note.ref)),
+    at,
+  );
+  const offering = new Set(
+    amendments.map((row) => offeredOn(row.note, row.by)),
+  );
   return {
     writing: [...written],
     nodes: rows.nodes,
@@ -363,6 +449,10 @@ export function mergeRows(
     aliases,
     dropping: [...dropping],
     yielding: yielding.map((note) => ownedRefFrom(note.id)),
+    amendments,
+    unsettling: now.offers
+      .filter((row) => offering.has(offeredOn(row.note, row.by)))
+      .map((row) => ownedRefFrom(row.id)),
   };
 }
 

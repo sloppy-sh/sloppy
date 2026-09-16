@@ -6,6 +6,7 @@ import {
   type Address,
   compareAddresses,
   createOwnedRecordId,
+  type DidSyr,
   graphOf,
   type Node,
   type NodeAlias,
@@ -19,12 +20,20 @@ import {
   recordIdFromOwnedRef,
   type TagCount,
   TagCountSchema,
+  withAuthor,
 } from "@sloppy/types";
 import type { RecordId } from "surrealdb";
 import { DbService } from "../db/db.service";
 import { replacement } from "./patch";
 
-const PATCHABLE = ["title", "tags", "links", "appearance"] as const;
+const PATCHABLE = [
+  "title",
+  "tags",
+  "links",
+  "appearance",
+  "owner",
+  "authors",
+] as const;
 
 /**
  * A note its author has not deleted, and its opposite. Every read but the two
@@ -119,9 +128,17 @@ function retireAlias(alias: NodeAlias): RetiredAddress {
 const BULK_WRITABLE = ["tags", "appearance"] as const;
 
 /** What a PATCH may carry; the immutable columns are absent by type. A `null`
- *  clears its column — see {@link replacement}. */
-export type NodePatch = Partial<Pick<Node, "title" | "tags" | "links">> & {
+ *  clears its column — see {@link replacement}.
+ *
+ * `authors` is here for the service rather than for a request: no request
+ * names it, and what writes it is {@link withAuthor} over the note that was
+ * there. */
+export type NodePatch = Partial<
+  Pick<Node, "title" | "tags" | "links" | "authors">
+> & {
   appearance?: NodeAppearance | null;
+  /** Who gates the note's writing; `null` takes the gate off. */
+  owner?: DidSyr | null;
 };
 
 export type NodeBulkPatch = Partial<Pick<Node, "tags">> & {
@@ -441,6 +458,25 @@ export class NodeRepository {
   }
 
   /**
+   * The writer joined to what a note's writing carries, where the note is open
+   * and they are not in it yet — {@link withAuthor} is that rule, and this
+   * writes what it answers. `updated_at` stays where it is: the write that
+   * called this is what moved the note, and it records that itself.
+   */
+  async joinAuthors(did: DidSyr, note: Node): Promise<void> {
+    const joined = withAuthor(note, did);
+    if (joined === note) return;
+    await this.query(
+      "UPDATE $id SET authors = $authors WHERE created_by = $did RETURN NONE",
+      {
+        id: note.id,
+        did,
+        authors: [...(joined.authors ?? [])],
+      },
+    );
+  }
+
+  /**
    * The notes a note's own writing names, as the server derived them — never
    * through {@link patch}, whose columns a request can name.
    *
@@ -711,7 +747,8 @@ export class NodeRepository {
 
   /**
    * Everything of theirs deleted before `before`, gone for real: the writing,
-   * what other people left pointing at it, and the note. Each address stays
+   * what other people offered for it and left pointing at it, and the note.
+   * Each address stays
    * behind in a `retired_address` row, because the graph has assigned it and
    * nothing may assign it again — except one another note is at, which belongs
    * to that note and is still its own to take back — AI.md § "The Genealogy Is
@@ -742,6 +779,7 @@ export class NodeRepository {
        DELETE node_alias WHERE created_by = $did AND note IN $refs;
        DELETE block WHERE created_by = $did AND node IN $refs;
        DELETE comment_pointer WHERE created_by = $did AND node IN $refs;
+       DELETE amendment WHERE created_by = $did AND note IN $refs;
        DELETE node WHERE id IN $ids;`,
       {
         did,

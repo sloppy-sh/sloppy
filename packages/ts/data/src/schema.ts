@@ -362,6 +362,11 @@ ${MIGRATIONS}
   -- offers are read by is this one's prefix — the order they read in is the
   -- rows' own age, oldest first, never this column.
   DEFINE INDEX IF NOT EXISTS amendment_owner_note_by ON amendment FIELDS created_by, note, by UNIQUE;
+  -- Everything one person has offered, wherever it stands. The only read here
+  -- that does not lead with the owner of the rows, because this one is not
+  -- about them: it is how erasing an identity reaches the writing it left on
+  -- other people's notes, which no other column can find.
+  DEFINE INDEX IF NOT EXISTS amendment_by ON amendment FIELDS by;
 
   -- Somebody's graphs, which is also the purge's reach.
   DEFINE INDEX IF NOT EXISTS graph_owner ON graph FIELDS created_by;
