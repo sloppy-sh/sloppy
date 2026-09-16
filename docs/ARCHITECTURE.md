@@ -391,6 +391,15 @@ genealogy and the numbers are the graph's, and handing a note's writing on does 
 those with it. Handing the gate on is likewise not writing, so a request that does only that
 is not held to the gate it is taking off, while one that also writes is.
 
+**An act that carries a subtree is held to the gate on every note it carries.** Deleting,
+moving and renumbering by moving take everything that sprang from a note with it, so a note
+in that subtree somebody else gates stops the act, and the refusal names that note rather
+than the one the person acted on — a gate a person cannot reach through the note above it is
+the whole of what a gate is. The graph's own owner is exempt here as everywhere: what they
+place is theirs to place. In a folder on a device that is `NoteWriter`'s own rule; on a
+hosted instance every row an act reaches is scoped by `created_by`, so the only person who
+can carry a subtree there is the graph's owner.
+
 **A graph decides the default for the notes written in it.** `Graph.ownership` is `open` or
 `owned`, absent is `open`. `owned` stamps `owner = writer` on every note at creation; `open`
 stamps nothing. Changing it reaches the notes written from then on and leaves the ones
@@ -406,7 +415,10 @@ sections it proposes ride on that row**, in order, rather than in a table of the
 nothing reads one without the offer it belongs to, so there is no second row for the purge
 to miss. Each is named by the ULID of the note section it stands for: a ref the note has is
 that section kept or rewritten, one the note does not have is a section the offer adds, and
-a section of the note the offer does not name is one it takes out. An offer proposes the
+a section of the note the offer does not name is one it takes out. **One naming a section of
+another note is a section the offer adds too** — an offer carries the note's own writing, so
+taking it in never moves a section off the note it is on, and the section it adds is written
+under a reference of its own. An offer proposes the
 note's body whole, which is also what lets it be written as a file in the note's own shape.
 In a vault it is `amendments/<ulid>.md` (§ "A graph on disk"), committed like any note, so
 it travels through the folder's history and rides in archives; the bin does not hold one.
@@ -426,11 +438,13 @@ whole.
 
 The routes: `GET /nodes/:did/:ulid/amendments` lists what has been offered on one note,
 **oldest offer first** — the order they arrived in, and the order they are read in on every
-surface. Whoever the note's writing lands for reads every offer on it, and whoever made one
-reads their own, which is what lets a proposer see the offer standing in their name and take
-it back; `POST /amendments` offers one or writes the one already
-standing; `DELETE /amendments/:did/:ulid` withdraws it; `POST /amendments/:did/:ulid/approve`
-and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
+surface. On a hosted instance the notes are one person's rows, so what that route answers is
+that person's: the offers standing on a note in their own graph. A folder read by more than
+one identity is where the other half holds — whoever the note's writing lands for reads every
+offer on it, and whoever made one reads their own, which is what lets a proposer see the
+offer standing in their name and take it back. `POST /amendments` offers one or writes the
+one already standing; `DELETE /amendments/:did/:ulid` withdraws it;
+`POST /amendments/:did/:ulid/approve` and `/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
 row here, and that DID is the graph owner's.
 
 ## syr integration

@@ -130,8 +130,8 @@ export class NoteWriter {
     address?: Address,
   ): Promise<NodeView[]> {
     const note = this.require(ref);
-    this.onlyTheOwner(note, "carry it somewhere else");
     const carried = this.carried(note);
+    this.onlyTheOwnerOfEach(carried, "carry it somewhere else");
     const landing = this.landingFor(note, to, carried);
     return address === undefined
       ? this.carry(note, carried, landing)
@@ -144,11 +144,11 @@ export class NoteWriter {
     await this.graph.sweep();
     const note = this.graph.find(ref);
     if (!note) return;
-    this.onlyTheOwner(note, "delete it");
-    await this.graph.bin(
-      this.carried(note).filter((one) => one.deleted_at === undefined),
-      nowIso(),
+    const going = this.carried(note).filter(
+      (one) => one.deleted_at === undefined,
     );
+    this.onlyTheOwnerOfEach(going, "delete it");
+    await this.graph.bin(going, nowIso());
   }
 
   /** One out of the bin, where it was, with the address it still holds. */
@@ -192,13 +192,14 @@ export class NoteWriter {
       );
     }
     if (act.act === "delete") {
-      for (const note of mine) this.onlyTheOwner(note, "delete it");
       await this.graph.sweep();
       const going = new Map<OwnedRef, StoredNote>();
       for (const note of mine) {
-        for (const kin of this.carried(note)) {
-          if (kin.deleted_at === undefined) going.set(kin.ref, kin);
-        }
+        const carried = this.carried(note).filter(
+          (kin) => kin.deleted_at === undefined,
+        );
+        this.onlyTheOwnerOfEach(carried, "delete it");
+        for (const kin of carried) going.set(kin.ref, kin);
       }
       await this.graph.bin([...going.values()], nowIso());
       return {
@@ -258,11 +259,22 @@ export class NoteWriter {
    * those with it.
    */
   private onlyTheOwner(note: StoredNote, what: string): void {
+    this.onlyTheOwnerOfEach([note], what);
+  }
+
+  /** An act that carries a subtree carries every note in it, so each is held to
+   *  its own gate and the refusal names the one that stopped the act. */
+  private onlyTheOwnerOfEach(
+    carried: readonly StoredNote[],
+    what: string,
+  ): void {
     if (this.writer === this.graph.did) return;
-    if (writeOutcome(note, this.writer) === "offered") {
-      throw refuse(
-        `${noteLabel(note)} is somebody else's. Only its owner can ${what}.`,
-      );
+    for (const one of carried) {
+      if (writeOutcome(one, this.writer) === "offered") {
+        throw refuse(
+          `${noteLabel(one)} is somebody else's. Only its owner can ${what}.`,
+        );
+      }
     }
   }
 

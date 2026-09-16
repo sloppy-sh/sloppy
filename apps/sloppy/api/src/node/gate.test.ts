@@ -154,6 +154,37 @@ describe("a write on a note somebody else gates", () => {
   });
 });
 
+/** Every row an act here reaches is scoped by `created_by`, so the person
+ *  carrying a subtree is the graph's own owner, whose place acts every note in
+ *  it is held to whatever its gate says. */
+describe("a branch holding a note somebody else gates", () => {
+  const branch = note();
+  const beneath = note({ owner: OTHER, depth: 2 });
+
+  it("is taken out by the graph's own owner, gated note and all", async () => {
+    const removed: Node[][] = [];
+    const service = new NodeService(
+      {
+        purgeExpired: () => Promise.resolve(),
+        find: () => Promise.resolve(branch),
+        subtree: () => Promise.resolve([branch, beneath]),
+        remove: (_did: string, going: Node[]) => {
+          removed.push(going);
+          return Promise.resolve();
+        },
+      } as unknown as NodeRepository,
+      finds,
+      graphsGating(),
+      media,
+      { rootedIn: () => Promise.resolve([]) } as unknown as PublicationService,
+    );
+
+    await service.remove(DID, ownedRefFrom(branch.id), undefined);
+
+    expect(removed[0]).toEqual([branch, beneath]);
+  });
+});
+
 describe("a write on a note its own graph gates", () => {
   it("lands, because ownership is not writing", async () => {
     const mine = note({ owner: DID });

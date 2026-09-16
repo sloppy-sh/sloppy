@@ -10,6 +10,7 @@ import {
   type Node,
   type OwnedRef,
   ownedRefFrom,
+  recordIdFromOwnedRef,
 } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
 import type { BlockRepository } from "../block/block.repository";
@@ -58,9 +59,15 @@ function offer(): Amendment {
 }
 
 /** The service over an offer standing on one note, with `elsewhere` naming the
- *  sections that are rows somewhere other than that note's own stack. */
-function approving(elsewhere: readonly OwnedRef[] = []) {
-  const standing: Block[] = [];
+ *  sections that are rows somewhere other than that note's own stack and
+ *  `its own` the sections that are on the note itself. */
+function approving(
+  elsewhere: readonly OwnedRef[] = [],
+  itsOwn: readonly OwnedRef[] = [],
+) {
+  const standing: Block[] = itsOwn.map(
+    (ref) => ({ id: recordIdFromOwnedRef("block", ref) }) as Block,
+  );
   const taken: Approval[] = [];
   const one = offer();
   const service = new AmendmentService(
@@ -81,13 +88,13 @@ function approving(elsewhere: readonly OwnedRef[] = []) {
   return { service, taken, ref: ownedRefFrom(one.id) };
 }
 
-describe("taking in an offer whose section is not on the note", () => {
-  it("writes the row that is there rather than making a second at its reference", async () => {
-    const { service, taken, ref } = approving([section]);
+describe("taking in an offer", () => {
+  it("writes the note's own section where the offer names one", async () => {
+    const { service, taken, ref } = approving([], [section]);
 
     await service.approve(DID, ref);
 
-    expect(taken[0].sections.map((one) => one.standing)).toEqual([true]);
+    expect(taken[0].sections).toMatchObject([{ ref: section, standing: true }]);
   });
 
   it("makes one where no row carries that reference at all", async () => {
@@ -95,6 +102,17 @@ describe("taking in an offer whose section is not on the note", () => {
 
     await service.approve(DID, ref);
 
-    expect(taken[0].sections.map((one) => one.standing)).toEqual([false]);
+    expect(taken[0].sections).toMatchObject([
+      { ref: section, standing: false },
+    ]);
+  });
+
+  it("adds a section of this note rather than taking a row off another", async () => {
+    const { service, taken, ref } = approving([section]);
+
+    await service.approve(DID, ref);
+
+    expect(taken[0].sections[0].standing).toBe(false);
+    expect(taken[0].sections[0].ref).not.toBe(section);
   });
 });

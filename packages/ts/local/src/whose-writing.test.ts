@@ -293,6 +293,45 @@ describe("a note somebody else writes", () => {
     ).rejects.toThrow("Only its owner can delete it");
   });
 
+  it("keeps its place out of anybody else's hands through the note above it", async () => {
+    const { held, note } = await gated();
+    const above = await held.api.createNode({ title: "The branch" });
+    await held.api.moveNote(note, { relation: "under", note: above.ref });
+    const beside = await held.api.createNode({ title: "Beside it" });
+    const bob = writingAs(held, BOB);
+
+    await expect(bob.deleteNode(above.ref)).rejects.toThrow(
+      "2a is somebody else's. Only its owner can delete it.",
+    );
+    await expect(
+      bob.actOnNodes({ notes: [above.ref], act: { act: "delete" } }),
+    ).rejects.toThrow("2a is somebody else's. Only its owner can delete it.");
+    await expect(
+      bob.moveNote(above.ref, { relation: "under", note: beside.ref }),
+    ).rejects.toThrow(
+      "2a is somebody else's. Only its owner can carry it somewhere else.",
+    );
+    await expect(
+      bob.moveNote(above.ref, { relation: "under", note: beside.ref }, "1a"),
+    ).rejects.toThrow(
+      "2a is somebody else's. Only its owner can carry it somewhere else.",
+    );
+
+    const again = read(held);
+    expect((await again.getNode(note))?.parent).toBe(above.ref);
+    expect((await again.getNode(above.ref))?.parent).toBeUndefined();
+  });
+
+  it("goes with the branch above it when the graph's own owner takes that out", async () => {
+    const { held, note } = await gated();
+    const above = await held.api.createNode({ title: "The branch" });
+    await held.api.moveNote(note, { relation: "under", note: above.ref });
+
+    await held.api.deleteNode(above.ref);
+
+    expect(await read(held).getNode(note)).toBeNull();
+  });
+
   it("is still the graph owner's to place, and still not theirs to write", async () => {
     const held = await opened();
     const note = await held.api.createNode({ title: "Seeds" });
@@ -643,6 +682,33 @@ describe("a change offered on a note", () => {
     expect(stack).toHaveLength(1);
     expect(stack[0].ref).toBe(added);
     expect(stack[0].ref).not.toBe(section);
+  });
+
+  it("takes no section off another note, however it names one", async () => {
+    const { held, note } = await offered();
+    const elsewhere = await held.api.createNode({ title: "Elsewhere" });
+    const theirs = await held.api.createBlock({
+      node: elsewhere.ref,
+      content: textDocument("Where it stands"),
+    });
+
+    const offer = await writingAs(held, BOB).proposeAmendment({
+      note,
+      title: "Seeds",
+      tags: [],
+      blocks: [{ ref: theirs.ref, content: textDocument("Claimed") }],
+    });
+    await read(held).approveAmendment(offer.ref);
+
+    const again = read(held);
+    const stayed = await again.listBlocks(elsewhere.ref);
+    expect(stayed).toHaveLength(1);
+    expect(stayed[0].ref).toBe(theirs.ref);
+    expect(stayed[0].content).toEqual(textDocument("Where it stands"));
+    const taken = await again.listBlocks(note);
+    expect(taken).toHaveLength(1);
+    expect(taken[0].ref).not.toBe(theirs.ref);
+    expect(taken[0].content).toEqual(textDocument("Claimed"));
   });
 
   it("leaves nothing behind when it is turned down", async () => {

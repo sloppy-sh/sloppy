@@ -605,6 +605,41 @@ describe("the three doors a person is offered", () => {
     expect(said.avatar_src).not.toBeNull();
   });
 
+  it("keeps one picture of whoever owns a folder started on the run they signed in on", async () => {
+    const files = new MemoryFiles({ data: "/data", folder: "/graphs/mine" });
+    const door = identities(files);
+    await door.held.signIn(INSTANCE);
+    const signedIn = await door.held.finish(cameBack(door.left[0] ?? ""));
+    const wearing = signedIn?.picture as { bytes: Uint8Array; type: string };
+
+    const api = new LocalApi(files.at("/graphs/mine"));
+    await api.graphHere();
+    // What the sign-in was holding, carried in after the folder is there.
+    const ticket = await api.createUpload({
+      role: "avatar",
+      filename: "picture",
+      mime_type: wearing.type,
+      size: wearing.bytes.byteLength,
+    });
+    await api.sendUpload(
+      ticket,
+      new Blob([wearing.bytes.slice().buffer as ArrayBuffer]),
+    );
+    const asset = await api.completeUpload({ upload_id: ticket.upload_id });
+    await api.updateProfile({
+      display_name: signedIn?.name as string,
+      avatar_upload_id: asset.upload_id,
+    });
+
+    const here = files.at("/graphs/mine");
+    expect(
+      (await here.list("")).filter((path) => path.startsWith("media/")),
+    ).toHaveLength(1);
+    const said = await api.profile();
+    expect(said.display_name).toBe("Ada Lovelace");
+    expect(said.avatar_src).not.toBeNull();
+  });
+
   it("writes nothing of itself into a folder somebody else owns", async () => {
     const files = new MemoryFiles({ data: "/data", folder: "/graphs/theirs" });
     const theirs = new LocalApi(files, { writer: ADA as DidSyr });

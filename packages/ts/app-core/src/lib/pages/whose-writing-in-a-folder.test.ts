@@ -206,7 +206,7 @@ describe('a folder opened under an identity that does not own it', () => {
 		await readingAs(client(held.store, held.helperDid));
 		await open(held.owned);
 
-		expect(screen()).toContain('writes this note');
+		expect(screen()).toContain('Only Ada Lovelace writes this note.');
 		expect(screen()).toContain('What you write here is offered to them.');
 
 		await retitle('The argument, as I would have it');
@@ -214,10 +214,11 @@ describe('a folder opened under an identity that does not own it', () => {
 
 		button('Offer this change').click();
 		await settle();
+		expect(screen()).toContain('Ada Lovelace');
 		button('Offer it').click();
 		await settle();
 
-		expect(screen()).toContain('It shows once they take it.');
+		expect(screen()).toContain('Offered to Ada Lovelace. It shows once they take it.');
 		const standing = await client(held.store).listAmendments(held.owned);
 		expect(standing).toHaveLength(1);
 		expect(standing[0].by).toBe(held.helperDid);

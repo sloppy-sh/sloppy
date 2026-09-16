@@ -56,14 +56,16 @@ export function normalizeInstanceUrl(value: string): string {
   return withScheme.replace(/\/+$/, "");
 }
 
-/** Whether a bare address names this machine, port and path aside. */
+/** Whether a bare address names this machine. The host is read off a parsed
+ *  URL, so what a query, a fragment or a name before an `@` says is not mistaken
+ *  for where the address leads. */
 function onThisMachine(address: string): boolean {
-  const authority = address.split("/")[0];
-  const host = (
-    authority.startsWith("[")
-      ? authority.slice(0, authority.indexOf("]") + 1)
-      : authority.split(":")[0]
-  ).toLowerCase();
+  let host: string;
+  try {
+    host = new URL(`http://${address}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
   return (
     host === "localhost" ||
     host.endsWith(".localhost") ||

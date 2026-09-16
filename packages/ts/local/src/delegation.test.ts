@@ -98,6 +98,17 @@ describe("the address somebody typed", () => {
       "https://127.0.0.1.example",
     );
   });
+
+  it("reads where an address leads rather than what it says after it", () => {
+    for (const typed of [
+      "keys.example#.localhost",
+      "keys.example?at=.localhost",
+      "localhost@keys.example",
+      "keys.example/.localhost",
+    ]) {
+      expect(normalizeInstanceUrl(typed)).toBe(`https://${typed}`);
+    }
+  });
 });
 
 describe("reaching an identity store", () => {

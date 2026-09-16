@@ -554,7 +554,7 @@ describe("a change offered on a note a graph here holds", () => {
   );
 
   scenario(
-    "takes in a section that is already a row on another note, rather than making a second",
+    "adds a section of its own rather than taking a row off another note",
     async () => {
       const brought = await bringIn(
         ada,
@@ -577,10 +577,14 @@ describe("a change offered on a note a graph here holds", () => {
 
       expect(taken.ref).toBe(held[0].ref);
       const sections = await blocksOf(ada, held[0].ref);
-      expect(sections.map((section) => section.ref)).toEqual([
-        `${ada.did}/${OFFERED_SECTION}`,
-      ]);
-      expect(await blocksOf(ada, note.ref)).toEqual([]);
+      expect(sections).toHaveLength(1);
+      expect(sections[0].ref).not.toBe(`${ada.did}/${OFFERED_SECTION}`);
+      expect(JSON.stringify(sections[0].content)).toContain(
+        "Carried over from the note beside it.",
+      );
+      expect(
+        (await blocksOf(ada, note.ref)).map((section) => section.ref),
+      ).toEqual([`${ada.did}/${OFFERED_SECTION}`]);
     },
     90_000,
   );

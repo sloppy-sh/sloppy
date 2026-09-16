@@ -342,4 +342,34 @@ describe('a sign-in that lands while the first run is on screen', () => {
 
 		expect(target.textContent).toContain('writing as Ada Lovelace');
 	});
+
+	it('stops saying the device would not answer once it has', async () => {
+		let answering = false;
+		shell(
+			{},
+			{
+				list: async () => {
+					if (!answering) throw new Error('This device’s identities could not be read.');
+					return [here({ name: 'Ada Lovelace', source: 'delegated' })];
+				}
+			}
+		);
+		show();
+		await settle();
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain('could not be read');
+
+		answering = true;
+		session.adopt(
+			{
+				did: 'did:syr:z6Mkone',
+				syr_instance_url: 'https://keys.example',
+				delegate_public_key: 'zDelegate'
+			},
+			'a-token'
+		);
+		await settle();
+
+		expect(target.querySelector('[role="alert"]')).toBeNull();
+		expect(target.textContent).toContain('writing as Ada Lovelace');
+	});
 });

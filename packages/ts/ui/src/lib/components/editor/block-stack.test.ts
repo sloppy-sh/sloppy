@@ -133,6 +133,9 @@ function open(
 		drafts?: DraftStore;
 		/** What the API refuses this write with, or nothing to let it land. */
 		refuse?: () => unknown;
+		/** Whether a write here is composed into a change offered to whoever
+		 *  writes the note rather than landing on it. */
+		offering?: boolean;
 	} = {}
 ) {
 	const refused = () => {
@@ -148,6 +151,7 @@ function open(
 			drafts: able.drafts ?? noDrafts(),
 			node: NOTE,
 			blocks,
+			offering: able.offering ?? false,
 			onCreate: async (request: CreateBlockRequest) => {
 				written.created.push(request);
 				if (answering) await answering;
@@ -886,6 +890,28 @@ describe('writing that has not reached the server', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(device.forgotten).toEqual([]);
 		expect(device.holds(NOTE.ref)).toBe(true);
+	});
+});
+
+describe('what the line under the writing says', () => {
+	const status = () => target.querySelector('[role="status"]')?.textContent?.trim() ?? '';
+
+	async function write(able: { offering?: boolean } = {}) {
+		open([prose('a thought')], able);
+		writingIn().commands.insertContentAt(2, 'more of ');
+		await vi.advanceTimersByTimeAsync(1000);
+		flushSync();
+	}
+
+	it('says the writing is saved where it lands on the note', async () => {
+		await write();
+		expect(status()).toBe('Saved');
+	});
+
+	it('says the writing is kept here where it is going into a change offered', async () => {
+		await write({ offering: true });
+		expect(status()).toBe('Kept here until you offer it');
+		expect(status()).not.toContain('Saved');
 	});
 });
 
