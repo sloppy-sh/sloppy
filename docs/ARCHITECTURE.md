@@ -577,10 +577,27 @@ one of its own. A folder a graph was written into and that is no longer there is
 than started over: the app offers a folder to open instead of writing a fresh empty graph
 where a graph somebody moved used to be.
 
+**The folders this device knows ARE its graphs.** `listGraphs` answers one graph per known
+folder, read from each folder's own `graph.json`, so the picker a person already chooses a
+graph in is the same place they choose which folder is open — one list, not two names for
+one thing. A folder that is not where this device last saw it is listed as unreachable
+rather than dropped, because a person moved it and only they can say where to. Starting a
+graph here is starting a folder, and a folder can arrive by being cloned from somewhere
+else. **Forgetting a folder takes it off this list and deletes nothing** — it is anybody's
+act, on any folder, and the folder is opened again by naming it again. `VaultAccess` in
+`@sloppy/app-core` is what a page asks: `known`, `openKnown`, `forget`, `start`, `clone`.
+
+**A folder somebody else owns is not yours to close.** Closing or emptying a folder — every
+act that takes the graph out of it — is the owner's, the DID its `graph.json` names, and
+anybody else is refused with a sentence that says whose it is. Writing in a folder somebody
+shared is a contributor's to do (§ "Whose writing a note carries"); ending it is not.
+
 **What only this device knows sits beside the graphs rather than inside one.** The app's
-private data holds `identities.json` and the key file each `device` entry names, and
+private data holds `identities.json` and the key file each `device` entry names;
 `vaults.json`, the list of folders a graph has been put in — a folder cannot remember where
-somebody put it. What a person is called is not there: a name and a picture are written into
+somebody put it; `git.json`, what a folder started here begins with (§ "The vault's
+history"); `credentials.json`, what this device was given to reach the hosts a person keeps
+folders on; and `signing.key`, the private half of the key this app signs with. What a person is called is not there: a name and a picture are written into
 the owner block of every graph the writing identity owns (§ "A graph on disk"), so a graph
 says whose it is wherever it is opened, and there is no profile to read from anywhere else.
 
@@ -2129,17 +2146,72 @@ should own. `History` in `@sloppy/local` declares every one of them and what its
 means, and `MemoryHistory` beside it is that surface over `MemoryFiles`, so a page's tests
 never need a repository on a disk.
 
-**The app commits, branches, switches and merges, and nothing else.** There is no remote in
-this — syr federation is pull-only and has nothing to do with git (§ "Federating the graph")
-— so the app never pushes and never fetches. A folder is a person's, so one they have given
-a remote of their own keeps it: `status` says how far ahead the branch is of whatever it
-tracks, and what to do about that is theirs.
+**A folder has remotes, and they are the person's own — not federation.** Following a DID
+and pulling a published subtree is § "Federating the graph", still pull-only and still
+nothing to do with git. A remote here is somewhere a person chose to keep their own folder:
+their host, their account somewhere, another disk. The acts are git's, and each one refuses
+what it cannot do in words a person can act on. `fetch` takes what a remote has and leaves
+the folder alone. `pull` fetches and then runs the same merge a local one runs, with the
+same conflicts settled the same way; nothing to take is `{ merged: true }`. `push` puts this
+branch's commits where the remote keeps them, follows it from then on where the branch
+followed nothing, and is refused where the remote has commits this branch has not taken in —
+"Pull first, then push again.", because writing over somebody's writing is not a thing a
+push may do quietly. `status` carries `ahead`, `behind` and the branch this one follows.
+**A `clone` is `Files`' and not `History`'s**, because a folder that is not here yet has no
+history to ask.
+
+**Credentials never enter a folder, and the shell holds none.** What a host wants —
+a personal access token over https, or an ssh key — lives in the app's private data as
+`credentials.json`, an entry per host, keyed by kind so another kind of credential is a
+value and not a field (`Credential` in `@sloppy/local`). The TypeScript side reads the one
+entry whose host the remote's address is at and passes it with the call that needs it, so
+nothing in `src-tauri` remembers a secret between two acts. The bin, the identity and the
+credentials stay out of every push exactly as they stay out of every commit.
+
+**Commits are by the configured git user, and that is not who owns the graph.** The author
+comes from git config the way git reads it: the folder's own `user.name` / `user.email`
+first, then the person's global config. Settings writes the folder's pair, and `git.json`
+in private data is the device default a new folder inherits, so somebody who has said once
+does not say again. Where nothing anywhere says, the fallback is the graph's owner and their
+DID. **The DID on a note and the author of a commit are two different facts** — whose
+writing a note carries is § "Whose writing a note carries", and a commit is who saved this
+state of the folder.
+
+**Signing is keyed by kind — `none`, `ssh`, `openpgp`.** An ssh signature is made in this
+process, in SSHSIG, with either the ed25519 key this app made (its private half in private
+data as `signing.key`, its public half shown for a person to paste where their host wants
+it) or a key file they named; in-process is what lets a phone sign at all. An openpgp
+signature is made by the program git config names (`gpg.program`, `gpg` by default), which
+is a desktop's alone, and a phone says so rather than offering it. The app writes what git
+needs so a person's own git agrees with what this one did — `gpg.format`,
+`user.signingkey`, `commit.gpgsign`, and for ssh an allowed signers file under `.sloppy/`
+(`gpg.ssh.allowedSignersFile`) — and a commit is made as `commit_create_buffer` → sign →
+`commit_signed`. A listing says which commits carry a signature and which key made it, and
+calls one **verified** where that key is one this app keeps or one the folder's allowed
+signers vouch for.
+
+**The whole history is readable as one picture.** `graph(limit, cursor)` answers commits
+across every head this folder knows — its branches and the remote-tracking ones — newest
+first and never ahead of what they spring from, each carrying the names at it (`main`,
+`origin/main`) and its signature. It is paged like `log`. DESIGN.md § "The history as a
+picture" is how it is drawn.
+
+**The commands the shell answers**, each taking the folder's root first and, where the
+contract has one, the credential as the shape `@sloppy/local` declares: `history_graph`,
+`history_remotes`, `history_add_remote`, `history_set_remote_url`, `history_remove_remote`,
+`history_fetch`, `history_pull`, `history_push`, `history_delete_branch`,
+`history_branch_at`, `history_git_user`, `history_set_git_user`, `history_signing`,
+`history_set_signing`, and `files_clone` beside them. They join `history_status`,
+`history_log`, `history_commit`, `history_branches`, `history_branch`, `history_switch`,
+`history_merge`, `history_resolve`, `history_read_at` and `history_head`; the page's half of
+every one of them is `tauriHistory`.
 
 **What the history holds is the graph; what this device knows about itself stays out.** The
 repository the app initialises writes a `.gitignore`, and two things are in it. The
-identity's key and the record of which folders hold graphs live in the app's own private
-data rather than in any vault (§ "Local-only mode"), and the ignore names them so a folder
-that also holds one never commits it. The bin is the second, and its reason is the protocol:
+identity's key, the record of which folders hold graphs, this device's git defaults, its
+credentials and the private half of the key it signs with live in the app's own private data
+rather than in any vault (§ "Local-only mode"), and the ignore names every one of them so a
+folder that also holds one never commits it. The bin is the second, and its reason is the protocol:
 `.sloppy/bin.json` carries every address this graph has spent and will not assign again, and
 that ledger only ever grows — a switch to an older commit that handed those addresses back
 would let a second note be written at one, which AI.md § "The Genealogy Is the Protocol"

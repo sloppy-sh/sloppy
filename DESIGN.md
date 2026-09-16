@@ -750,6 +750,38 @@ Quiet throughout. Nothing here counts contributions, ranks writers, thanks anybo
 an offer as waiting. A thinking tool does not nag, and it does not keep score of whose
 thinking it is.
 
+## The history as a picture
+
+A person who keeps their graph in more than one place has a second shape to read: not the
+graph, but the states it has been in and the lines they run along. It is drawn on the
+History surface, and it is a picture rather than a list because branches are a shape — where
+one left another and where they came back together is not a thing a column of rows can say.
+
+**It is drawn in ink, never in hue.** Colour belongs to the tag question and stays there
+(§ "The graph's colour language"), so a lane is `--graph-ink`: the branch the folder is on
+at full ink, every other lane at half. **A branch's identity is its label at its head, not a
+colour** — a lane picked out in blue teaches a reader a legend they have to hold, and the
+name is already the answer. Merge lines join at the commit that carried both, in the same
+ink, and a commit nobody is at is a mark on its lane and nothing more.
+
+**Newest at the top, paged, and a commit never above what it springs from.** That order is
+the contract `graph()` answers on, so the picture is drawn from what it is handed rather
+than sorted again on the page.
+
+**Phone first, which means the lanes collapse.** Where there is no room for a lane per
+branch, the picture is one column with a merge mark where two came together, and the labels
+stay — a name at a head is what a person reads a branch by, so it is the last thing to go.
+Tapping a commit opens its details as a sheet (§ Components' one modal): the message, who
+made it, whether it is signed and by which key, what it springs from, the branches at it,
+and the acts — read the graph as it was, compare it with now, branch from here, switch to a
+branch at it.
+
+**The branches panel is a list, because a branch is a name and a number.** Local and remote
+ones together, the current one said plainly, how far each is ahead and behind, and merge or
+delete beside it — deleting the one the folder is on is refused, and the refusal says which
+one that is. Nothing here is decorated: a history is read to answer a question, and the
+answer is words and lines.
+
 ## Typography
 
 - **UI and content face**: Inter with a system fallback (`Inter, system-ui, -apple-system,
