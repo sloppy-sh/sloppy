@@ -219,12 +219,14 @@
 									onCheckedChange={(owned) =>
 										void act(() => onOwnership(graph.ref, owned ? 'owned' : 'open'))}
 								/>
-								<Label for="owned-{graph.ref}" class="flex-1 text-sm font-normal">
-									New notes are only their writer's
-									<span class="block text-xs text-muted-foreground">
+								<div class="min-w-0 flex-1 space-y-1">
+									<Label for="owned-{graph.ref}" class="text-sm font-normal">
+										New notes are only their writer's
+									</Label>
+									<p class="text-xs text-muted-foreground">
 										Anyone else's change is offered to them. What is already written stays as it is.
-									</span>
-								</Label>
+									</p>
+								</div>
 							</div>
 						{/if}
 					{:else}

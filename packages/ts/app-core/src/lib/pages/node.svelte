@@ -2359,12 +2359,14 @@
 			onValueChange={(chosen: string) => (side = chosen === 'look' ? 'look' : 'note')}
 			class="gap-4"
 		>
-			<Tabs.List class="h-11 w-full p-1 sm:w-fit">
-				<Tabs.Trigger value="note" class="px-6">Note</Tabs.Trigger>
-				{#if !offering}
+			<!-- How a mark is drawn is whoever writes the note's, so a contributor is
+			     shown the note and nothing to switch to. -->
+			{#if !offering}
+				<Tabs.List class="h-11 w-full p-1 sm:w-fit">
+					<Tabs.Trigger value="note" class="px-6">Note</Tabs.Trigger>
 					<Tabs.Trigger value="look" class="px-6">Look</Tabs.Trigger>
-				{/if}
-			</Tabs.List>
+				</Tabs.List>
+			{/if}
 
 			<Tabs.Content value="note" class="flex flex-col gap-7">
 				{#if loading || seeding.has(ref)}
