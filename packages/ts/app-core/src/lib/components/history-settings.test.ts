@@ -11,13 +11,16 @@ import {
 	type History,
 	type SigningConfig
 } from '@sloppy/local';
+import type { OwnedRef } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { gitSettings } from '../stores/git-settings.svelte.js';
+import { graphs } from '../stores/graphs.svelte.js';
 import HistorySettings from './history-settings.svelte';
 
 const ROOT = '/Users/me/garden';
+const ELSEWHERE = '/Users/me/thesis';
 const DATA = '/data';
 
 const DESKTOP = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15';
@@ -27,8 +30,8 @@ let store: Map<string, Uint8Array>;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 
-function folder(): MemoryFiles {
-	return new MemoryFiles({ root: ROOT, store, data: DATA });
+function folder(root = ROOT): MemoryFiles {
+	return new MemoryFiles({ root, store, data: DATA });
 }
 
 function privately(): MemoryFiles {
@@ -140,6 +143,7 @@ afterEach(() => {
 	if (mounted) unmount(mounted, { outro: false });
 	mounted = undefined;
 	gitSettings.clear();
+	graphs.clear();
 	target.remove();
 	document.body.innerHTML = '';
 	initRuntime({
@@ -233,6 +237,19 @@ describe('how the versions kept here are signed', () => {
 		expect(offers('Copy the key')).toBe(true);
 	});
 
+	it('says a key is kept where the shell has not handed over its public half', async () => {
+		const kept = new MemoryHistory(folder());
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		pick('signing', 'kept');
+		await settle();
+
+		expect(screen()).toContain('Sloppy is keeping a key for this folder.');
+		expect(offers('Copy the key')).toBe(false);
+	});
+
 	it('signs with a key somebody names, and asks where it is first', async () => {
 		const kept = new MemoryHistory(folder());
 		shellKeeping(kept);
@@ -271,7 +288,7 @@ describe('how the versions kept here are signed', () => {
 		expect(offers('Copy the key')).toBe(false);
 	});
 
-	it('leaves the program and the key to their own git where neither is named', async () => {
+	it('leaves the program and the key to this device where neither is named', async () => {
 		const kept = new MemoryHistory(folder());
 		shellKeeping(kept);
 		show();
@@ -409,6 +426,29 @@ describe('where else the graph is kept', () => {
 		await settle();
 
 		expect(await kept.remotes()).toEqual([]);
+	});
+
+	it('asks to stop keeping it there with nothing of an earlier refusal in the question', async () => {
+		const kept = new MemoryHistory(folder());
+		await kept.addRemote('origin', 'https://example.com/ada/notes.git');
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		press('Add somewhere else');
+		await settle();
+		type('history-new-place-name', 'origin');
+		type('history-new-place-url', 'https://elsewhere.example/ada.git');
+		press('Keep it there too');
+		await settle();
+		expect(alerts().join(' ')).toContain('There is already one called origin.');
+
+		press('Remove it');
+		await settle();
+
+		const question = document.body.querySelector('[role="dialog"]')?.textContent ?? '';
+		expect(question).toContain('Stop keeping it at origin?');
+		expect(question).not.toContain('There is already one called origin.');
 	});
 
 	it('says there is nowhere else yet before one is named', async () => {
@@ -550,5 +590,75 @@ describe('the way in this device holds', () => {
 		await settle();
 
 		expect(offers('Add a way in')).toBe(false);
+	});
+});
+
+describe('another folder opening', () => {
+	/** As the shell does when somebody opens a second folder: the history in
+	 *  front of them is that folder's, and so is the graph. */
+	function opening(first: History): (next: History, graph: OwnedRef) => Promise<void> {
+		let open = first;
+		let here = 'did:plc:one/01AAAAAAAAAAAAAAAAAAAAAAAA' as OwnedRef;
+		initRuntime({
+			apiHost: () => '',
+			mode: () => 'local',
+			history: () => open,
+			vault: {
+				folder: () => ROOT,
+				graph: async () => here,
+				open: async () => ROOT,
+				asks: true
+			},
+			gitDefaults: new DeviceGitDefaults(folder()),
+			credentials: new DeviceCredentials(folder())
+		});
+		return async (next, graph) => {
+			open = next;
+			here = graph;
+			await graphs.readOpenFolder(true);
+		};
+	}
+
+	it('leaves nothing typed for the folder before in front of the next one', async () => {
+		const openAnother = opening(new MemoryHistory(folder()));
+		show();
+		await settle();
+
+		type('history-git-name', 'Ada Lovelace');
+		type('history-git-email', 'ada@example.com');
+		pick('signing', 'file');
+		await settle();
+		type('history-key-file', '~/.ssh/id_ed25519');
+		await settle();
+
+		await openAnother(
+			new MemoryHistory(folder(ELSEWHERE)),
+			'did:plc:two/01BBBBBBBBBBBBBBBBBBBBBBBB' as OwnedRef
+		);
+		await settle();
+
+		expect(target.querySelector<HTMLInputElement>('#history-git-name')?.value).toBe('');
+		expect(target.querySelector<HTMLInputElement>('#history-git-email')?.value).toBe('');
+		expect(screen()).toContain("it is your graph's owner");
+		const off = target.querySelector<HTMLInputElement>('input[name="signing"][value="none"]');
+		expect(off?.checked).toBe(true);
+		expect(target.querySelector('#history-key-file')).toBeNull();
+	});
+
+	it('shows the next folder its own way of signing', async () => {
+		const signed = new MemoryHistory(folder(ELSEWHERE));
+		await signed.setSigning({ kind: 'ssh', key: { kind: 'file', path: '~/.ssh/thesis' } });
+		const openAnother = opening(new MemoryHistory(folder()));
+		show();
+		await settle();
+
+		await openAnother(signed, 'did:plc:two/01BBBBBBBBBBBBBBBBBBBBBBBB' as OwnedRef);
+		await settle();
+
+		const file = target.querySelector<HTMLInputElement>('input[name="signing"][value="file"]');
+		expect(file?.checked).toBe(true);
+		expect(target.querySelector<HTMLInputElement>('#history-key-file')?.value).toBe(
+			'~/.ssh/thesis'
+		);
 	});
 });

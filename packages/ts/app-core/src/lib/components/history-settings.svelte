@@ -35,6 +35,7 @@
 
 	let asking = $state(false);
 	let removing = $state('');
+	let refusedRemoval = $state<string | null>(null);
 
 	let wayFor = $state<string | null>(null);
 	let wayKind = $state<Credential['kind']>('token');
@@ -64,8 +65,34 @@
 		// The graph in front of somebody is the folder that is open, so another
 		// one opening is another folder's settings.
 		void graphs.current;
+		forgetWhatWasTyped();
 		void gitSettings.read();
 	});
+
+	function forgetWhatWasTyped(): void {
+		typedUser = null;
+		picked = null;
+		keyPath = null;
+		program = null;
+		keyId = null;
+		adding = false;
+		newName = '';
+		newUrl = '';
+		editing = null;
+		editName = '';
+		editUrl = '';
+		asking = false;
+		removing = '';
+		refusedRemoval = null;
+		wayFor = null;
+		wayKind = 'token';
+		token = '';
+		username = '';
+		sshKept = true;
+		sshPath = '';
+		where = null;
+		problem = null;
+	}
 
 	function began(section: Section): void {
 		where = section;
@@ -163,13 +190,16 @@
 
 	function askToRemove(place: PlaceKept): void {
 		removing = place.name;
+		refusedRemoval = null;
 		asking = true;
 	}
 
 	/** Refusing leaves the question standing, with what the history said in it. */
 	async function removeThePlace(): Promise<void> {
 		began('places');
-		if (!(await gitSettings.removePlace(removing))) throw new Error(gitSettings.says ?? '');
+		if (await gitSettings.removePlace(removing)) return;
+		refusedRemoval = gitSettings.says;
+		throw new Error(refusedRemoval ?? '');
 	}
 
 	function openWayIn(place: PlaceKept): void {
@@ -301,8 +331,7 @@
 		<section class="space-y-3">
 			<h3 class="text-sm font-medium">How they're signed</h3>
 			<p class="text-sm text-muted-foreground">
-				A signature says a version came from you, and a host shows it beside your writing. What you
-				keep from a terminal in this folder is signed the same way.
+				A signature says a version came from you, and a host shows it beside your writing.
 			</p>
 			<fieldset class="space-y-3">
 				<legend class="sr-only">How your versions are signed</legend>
@@ -331,17 +360,21 @@
 				</p>
 			{/if}
 
-			{#if chosen === 'kept' && gitSettings.keptKey}
-				<p class="text-sm text-muted-foreground">
-					Paste this into GitHub or GitLab as a signing key, and what you keep here shows there as
-					yours.
-				</p>
-				<p
-					class="rounded-md border border-border bg-card p-3 font-mono text-xs break-all select-text"
-				>
-					{gitSettings.keptKey}
-				</p>
-				<CopyButton value={gitSettings.keptKey} label="Copy the key" />
+			{#if chosen === 'kept'}
+				{#if gitSettings.keptKey}
+					<p class="text-sm text-muted-foreground">
+						Paste this into GitHub or GitLab as a signing key, and what you keep here shows there as
+						yours.
+					</p>
+					<p
+						class="rounded-md border border-border bg-card p-3 font-mono text-xs break-all select-text"
+					>
+						{gitSettings.keptKey}
+					</p>
+					<CopyButton value={gitSettings.keptKey} label="Copy the key" />
+				{:else}
+					<p class="text-sm text-muted-foreground">Sloppy is keeping a key for this folder.</p>
+				{/if}
 			{/if}
 
 			{#if chosen === 'file'}
@@ -393,7 +426,7 @@
 						/>
 					</div>
 					<p class="text-sm text-muted-foreground">
-						Leave either empty and what your own git is set to decides.
+						Leave either empty and Sloppy uses what this device is already set up with.
 					</p>
 					<Button type="submit" variant="outline" class="h-11" disabled={gitSettings.busy}>
 						Sign with this program
@@ -661,7 +694,7 @@
 		title="Stop keeping it at {removing}?"
 		description="This folder forgets where that is. What is kept there stays there, and what is here stays here."
 		confirmLabel="Stop keeping it there"
-		refused={where === 'places' ? gitSettings.says : null}
+		refused={refusedRemoval}
 		onconfirm={removeThePlace}
 	/>
 {/if}
