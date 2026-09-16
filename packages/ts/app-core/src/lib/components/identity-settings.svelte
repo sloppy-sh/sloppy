@@ -206,8 +206,8 @@
 			</p>
 		{/if}
 
-		{#if problem}
-			<p class="text-sm text-destructive" role="alert">{problem}</p>
+		{#if problem ?? session.signInProblem}
+			<p class="text-sm text-destructive" role="alert">{problem ?? session.signInProblem}</p>
 		{/if}
 	</div>
 {/if}

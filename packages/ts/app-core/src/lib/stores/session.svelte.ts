@@ -11,6 +11,7 @@ import type { Viewer } from '@sloppy/types';
 import { api } from '../api.js';
 import { deviceStore } from '../device-store.js';
 import { runtime } from '../runtime.js';
+import { serverMessage } from './errors.js';
 
 /** A credential the server turned down is an answer — nobody is signed in.
  *  Anything else that goes wrong is not an answer at all. */
@@ -27,6 +28,7 @@ class SessionStore {
 	#loading = $state(false);
 	#unavailable = $state(false);
 	#inflight: Promise<Viewer | null> | null = null;
+	#signInProblem = $state<string | null>(null);
 	// A session change that lands while `me()` is in flight must not be undone by
 	// its answer, which the server may have sent before the change reached it.
 	#epoch = 0;
@@ -99,15 +101,30 @@ class SessionStore {
 		return request;
 	}
 
+	/** What went wrong finishing a sign-in this device began, for whichever
+	 *  surface offers to start another. Null is nothing to say. */
+	get signInProblem(): string | null {
+		return this.#signInProblem;
+	}
+
 	/**
 	 * Finish a sign-in this device began at somebody's identity store, from what
 	 * the return leg carried. False is a launch that is not a return from one,
-	 * so a shell may ask it of every launch.
+	 * so a shell may ask it of every launch — and is what one that went wrong
+	 * answers too, with {@link signInProblem} saying what to do next.
 	 */
 	async finishSignInHere(came: URLSearchParams): Promise<boolean> {
 		const identities = runtime.identities();
 		if (!identities) return false;
-		const settled = await identities.finish(came);
+		this.#signInProblem = null;
+		let settled: Awaited<ReturnType<typeof identities.finish>>;
+		try {
+			settled = await identities.finish(came);
+		} catch (error) {
+			this.#signInProblem =
+				serverMessage(error) ?? 'Sign-in did not finish. Start again from Sloppy.';
+			return false;
+		}
 		if (!settled) return false;
 		carrying = {
 			...(settled.name === undefined ? {} : { name: settled.name }),

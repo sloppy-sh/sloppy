@@ -4,7 +4,12 @@
 	"tasks": {
 		"build": {
 			"dependsOn": ["^build"],
-			"env": ["PUBLIC_SLOPPY_API_URL", "PUBLIC_ENABLE_LOCAL_MODE", "TAURI_ENV_PLATFORM"],
+			"env": [
+				"PUBLIC_SLOPPY_API_URL",
+				"PUBLIC_SLOPPY_APP_ORIGIN",
+				"PUBLIC_ENABLE_LOCAL_MODE",
+				"TAURI_ENV_PLATFORM"
+			],
 			"outputs": ["build/**"]
 		},
 		"dev": {

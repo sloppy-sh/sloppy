@@ -7,6 +7,7 @@
 	import { LOCAL_MODE } from '$lib/local-mode';
 	import { IS_MOBILE, TAURI_PLATFORM } from '$lib/platform';
 	import { initNativeRuntime, openRememberedVault, vaultIsMissing } from '$lib/runtime';
+	import { session } from '@sloppy/app-core';
 	import FirstRun from '@sloppy/app-core/pages/first-run';
 	import Frame from '@sloppy/app-core/pages/frame';
 
@@ -20,12 +21,23 @@
 	let opened = $state<boolean | undefined>(LOCAL_MODE ? undefined : true);
 	let missing = $state(false);
 
+	/** Consent at somebody's identity store comes back through the web app and
+	 *  re-enters this document, so the folder is opened first and what the store
+	 *  says a person is called lands in the graph that is there. */
+	async function pickUpSignIn(): Promise<void> {
+		const came = new URLSearchParams(location.search);
+		if (!came.has('state')) return;
+		await session.finishSignInHere(came);
+		history.replaceState(history.state, '', location.pathname);
+	}
+
 	onMount(() => {
 		if (LOCAL_MODE)
 			void openRememberedVault().then(
-				(folder) => {
+				async (folder) => {
 					opened = Boolean(folder);
 					missing = vaultIsMissing();
+					await pickUpSignIn();
 				},
 				() => (opened = false)
 			);

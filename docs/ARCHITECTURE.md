@@ -18,11 +18,12 @@ backend-agnostic; the same app serves all three.
   interoperate with it exactly as it would with the default. Settings holds that origin
   per device, so an installed app is re-pointed rather than rebuilt; `AppRuntime.apiHost`
   is the origin the build shipped with, and returning to the default returns to it.
-- **Local-only** — no network at all. The native app opens a folder on the device and the
-  vault in it is the whole store (§ "A graph on disk"); the identity that owns it is made
-  on first run, so there is nothing to sign in to. What genuinely needs a server —
-  publishing, peers, pulling, conversation — is not offered there, and a graph crosses
-  between this mode and a hosted one as an archive. See "Local-only mode" below.
+- **Local-only** — no Sloppy anywhere. The native app opens a folder on the device and the
+  vault in it is the whole store (§ "A graph on disk"); the identity that owns it is made on
+  first run with nothing asked, or is one the person already keeps at an identity store and
+  signs in to, which settles who they write as and nothing else. What genuinely needs a
+  server — publishing, peers, pulling, conversation — is not offered there, and a graph
+  crosses between this mode and a hosted one as an archive. See "Local-only mode" below.
 
 ## Monorepo layout
 

@@ -5,6 +5,9 @@ declare global {
 	interface ImportMetaEnv {
 		/** The API's origin, shared with the web shell through the root `.env`. */
 		readonly PUBLIC_SLOPPY_API_URL?: string;
+		/** This app's own public web origin, where an identity store is asked to
+		 *  delegate and where it puts somebody down — `src/lib/runtime.ts`. */
+		readonly PUBLIC_SLOPPY_APP_ORIGIN?: string;
 		/** Written only by `scripts/tauri.sh` — `src/lib/local-mode.ts`. */
 		readonly PUBLIC_ENABLE_LOCAL_MODE?: string;
 		/** Set by the Tauri CLI for a platform build — `src/lib/platform.ts`. */

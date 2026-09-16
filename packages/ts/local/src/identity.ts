@@ -518,8 +518,9 @@ export interface IdentitiesOptions {
   /** Who owns the graph in front of somebody, so a folder of their own is
    *  written in as its owner. Absent is a device with no graph open. */
   graphOwner?(): DidSyr | undefined;
-  /** Called whenever which identity writes here changes. */
-  changed?(): void;
+  /** Called whenever which identity writes here changes, and awaited: what
+   *  serves the graph is re-pointed before the caller is told it is done. */
+  changed?(): Promise<void> | void;
 }
 
 /** {@link IdentityAccess} over this device's private data. */
@@ -543,7 +544,7 @@ export class Identities implements IdentityAccess {
 
   async makeOne(): Promise<IdentityHere> {
     const made = await holdDeviceIdentity(this.files, makeLocalIdentity());
-    this.options.changed?.();
+    await this.options.changed?.();
     return shown(made, true);
   }
 
@@ -608,7 +609,7 @@ export class Identities implements IdentityAccess {
       expires_at: new Date(Date.now() + opened.expires_in * 1000).toISOString(),
       ...(name === undefined ? {} : { name }),
     });
-    this.options.changed?.();
+    await this.options.changed?.();
     const picture = profile?.avatar_url
       ? await readPicture(profile.avatar_url, this.options.fetching)
       : undefined;
@@ -624,7 +625,7 @@ export class Identities implements IdentityAccess {
       this.files,
       readCarriedIdentity(file),
     );
-    this.options.changed?.();
+    await this.options.changed?.();
     return shown(made, true);
   }
 
@@ -649,7 +650,7 @@ export class Identities implements IdentityAccess {
 
   async writeAs(did: DidSyr): Promise<void> {
     await writeAs(this.files, did);
-    this.options.changed?.();
+    await this.options.changed?.();
   }
 
   private async asked(): Promise<SigningIn | undefined> {
