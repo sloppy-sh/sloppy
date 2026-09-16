@@ -76,20 +76,12 @@ fn turned_away() -> HistoryError {
 /// call failed and what the library called it is this file's business; what
 /// they can do about it is theirs.
 fn tripped(error: git2::Error) -> HistoryError {
-    match error.code() {
-        ErrorCode::Auth | ErrorCode::Certificate => turned_away(),
-        ErrorCode::NotFastForward => pull_first(),
-        _ => match error.class() {
-            ErrorClass::Net | ErrorClass::Os | ErrorClass::Ssh | ErrorClass::Http => {
-                if error.code() == ErrorCode::GenericError && error.class() == ErrorClass::Http {
-                    turned_away()
-                } else {
-                    nowhere()
-                }
-            }
-            _ if error.code() == ErrorCode::NotFound => nowhere(),
-            _ => error.into(),
-        },
+    match (error.code(), error.class()) {
+        (ErrorCode::Auth | ErrorCode::Certificate, _) => turned_away(),
+        (ErrorCode::NotFastForward, _) => pull_first(),
+        (ErrorCode::NotFound, _)
+        | (_, ErrorClass::Net | ErrorClass::Os | ErrorClass::Ssh | ErrorClass::Http) => nowhere(),
+        _ => error.into(),
     }
 }
 
@@ -99,8 +91,9 @@ fn asked_for<'a>(credential: Option<&'a Credential>, data: &'a Path) -> RemoteCa
     let mut callbacks = RemoteCallbacks::new();
     let offered = Cell::new(0u8);
     callbacks.credentials(move |_url, from_url, allowed| {
-        // A host that refuses what it was given asks again, and giving it the
-        // same thing a second time is a loop rather than a sign-in.
+        // A handful of these is a host asking for a name and then for a key.
+        // Past that it is turning down what it was given, and offering the same
+        // thing again is a loop rather than a way in.
         if offered.get() > 4 {
             return Err(git2::Error::from_str("nothing else to offer"));
         }
@@ -130,10 +123,10 @@ fn asked_for<'a>(credential: Option<&'a Credential>, data: &'a Path) -> RemoteCa
 /// keeps, or one already on the device that a person named.
 fn key_files(key: &SshKey, data: &Path) -> (PathBuf, Option<PathBuf>) {
     match key {
-        SshKey::Kept => (
-            data.join("signing.key"),
-            Some(data.join(crate::signing::KEPT_KEY_PUBLIC)),
-        ),
+        SshKey::Kept => {
+            let (private, public) = crate::signing::kept_at(data);
+            (private, Some(public))
+        }
         SshKey::File { path } => {
             let at = PathBuf::from(path);
             let beside = PathBuf::from(format!("{}.pub", at.to_string_lossy()));
@@ -242,16 +235,16 @@ pub fn pull(
         let Some(theirs) = head_of(&repo, &tracking) else {
             return Ok(Merged::whole());
         };
-        let branch = tracking[name.len() + 1..].to_owned();
+        let taken = tracking[name.len() + 1..].to_owned();
         history::lay(&repo, root, theirs)?;
         repo.reference(
-            &format!("refs/heads/{branch}"),
+            &format!("refs/heads/{taken}"),
             theirs,
             true,
             &format!("pull {tracking}"),
         )?;
-        repo.set_head(&format!("refs/heads/{branch}"))?;
-        follow(&repo, &branch, &tracking)?;
+        repo.set_head(&format!("refs/heads/{taken}"))?;
+        follow(&repo, &taken, &tracking)?;
         return Ok(Merged::whole());
     }
 
@@ -315,7 +308,8 @@ pub fn clone_into(
     data: &Path,
     credential: Option<&Credential>,
 ) -> Result<(), HistoryError> {
-    if fs::read_dir(into).into_iter().flatten().flatten().count() > 0 {
+    let holding = fs::read_dir(into).map(Iterator::count).unwrap_or(0);
+    if holding > 0 {
         return Err(HistoryError::new(
             "There is already something in that folder. Choose an empty one.",
         ));
@@ -332,27 +326,15 @@ pub fn clone_into(
 
 /// A remote that would not take a push. The one thing every host refuses for
 /// the same reason is a branch it has commits on that this one has not taken
-/// in; anything else is that host's own rule and its own words.
+/// in; anything else is that host's own rule, said in that host's own words.
 fn turned_down(said: &str) -> HistoryError {
     if said.contains("fast") || said.contains("behind") {
         return pull_first();
     }
     HistoryError::new(format!(
-        "That address would not take this. {}",
-        one_sentence(said)
+        "That address would not take this — {}",
+        said.trim()
     ))
-}
-
-fn one_sentence(said: &str) -> String {
-    let said = said.trim();
-    let mut held: String = said.chars().take(120).collect();
-    if let Some(first) = held.get(0..1) {
-        held.replace_range(0..1, &first.to_uppercase());
-    }
-    if !held.ends_with('.') {
-        held.push('.');
-    }
-    held
 }
 
 fn off_a_branch() -> HistoryError {

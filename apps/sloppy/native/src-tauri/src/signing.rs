@@ -75,7 +75,7 @@ fn said(config: &Config, key: &str) -> Option<String> {
 }
 
 /// The private half, and the public half beside it.
-fn kept_at(data: &Path) -> (PathBuf, PathBuf) {
+pub(crate) fn kept_at(data: &Path) -> (PathBuf, PathBuf) {
     (data.join(KEPT_KEY), data.join(KEPT_KEY_PUBLIC))
 }
 

@@ -660,9 +660,6 @@ fn record(
     parents: &[&git2::Commit<'_>],
 ) -> Result<Oid, HistoryError> {
     let by = signature(repo, root)?;
-    if matches!(crate::signing::read(repo, data)?, SigningConfig::None) {
-        return Ok(repo.commit(Some("HEAD"), &by, &by, message, tree, parents)?);
-    }
     let held = repo.commit_create_buffer(&by, &by, message, tree, parents)?;
     let content = std::str::from_utf8(&held)
         .map_err(|_| HistoryError::new("That did not work. Try again."))?;
