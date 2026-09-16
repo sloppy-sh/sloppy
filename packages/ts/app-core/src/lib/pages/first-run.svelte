@@ -1,6 +1,9 @@
 <script lang="ts">
+	import type { IdentityHere } from '@sloppy/local';
 	import { Button } from '@sloppy/ui/button';
+	import IdentitySettings from '../components/identity-settings.svelte';
 	import { runtime } from '../runtime.js';
+	import { session } from '../stores/session.svelte.js';
 
 	let {
 		onopened,
@@ -10,9 +13,17 @@
 	}: { onopened: (folder: string) => void; missing?: boolean } = $props();
 
 	const vault = runtime.vault();
+	const identities = runtime.identities();
 
 	let opening = $state(false);
 	let problem = $state<string | null>(null);
+	let held = $state<IdentityHere[]>([]);
+
+	const writing = $derived(held.find((one) => one.writing));
+
+	$effect(() => {
+		if (identities) void identities.list().then((one) => (held = one));
+	});
 
 	/** The shell says what went wrong in words fit to show; anything else that
 	 *  went wrong is not in any. */
@@ -25,8 +36,11 @@
 		opening = true;
 		problem = null;
 		try {
+			if (identities && held.length === 0) await identities.makeOne();
 			const folder = await vault.open();
-			if (folder) onopened(folder);
+			if (!folder) return;
+			await session.carryProfile();
+			onopened(folder);
 		} catch (error) {
 			problem =
 				shellSaid(error) ??
@@ -62,7 +76,7 @@
 				{/if}
 			</p>
 			<p class="text-sm text-muted-foreground">
-				Nothing here leaves the device, and there is nobody to sign in to.
+				What you write stays on this device.
 				{#if vault?.asks}
 					The folder is yours — move it or back it up like any other.
 				{/if}
@@ -88,5 +102,25 @@
 				{/if}
 			</Button>
 		</div>
+
+		{#if identities}
+			<div class="space-y-4 border-t border-border pt-8">
+				{#if writing}
+					<p class="text-sm text-muted-foreground">
+						{#if writing.name}
+							You'll be writing as {writing.name}.
+						{:else}
+							You'll be writing as the identity on this device.
+						{/if}
+					</p>
+				{:else}
+					<p class="text-sm text-muted-foreground">
+						Starting here gives you an identity of your own, with nothing asked. Or use one you
+						already keep somewhere.
+					</p>
+				{/if}
+				<IdentitySettings mints={false} />
+			</div>
+		{/if}
 	</div>
 </div>

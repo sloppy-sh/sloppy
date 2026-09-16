@@ -6,7 +6,7 @@
  * `unavailable` separates it from "could not be asked".
  */
 
-import { SloppyApiError } from '@sloppy/client';
+import { SloppyApiError, uploadFile } from '@sloppy/client';
 import type { Viewer } from '@sloppy/types';
 import { api } from '../api.js';
 import { deviceStore } from '../device-store.js';
@@ -17,6 +17,9 @@ import { runtime } from '../runtime.js';
 function turnedDown(err: unknown): boolean {
 	return err instanceof SloppyApiError && err.status === 401;
 }
+
+/** What a sign-in settled and no graph here has taken yet. */
+let carrying: { name?: string; picture?: { bytes: Uint8Array; type: string } } | undefined;
 
 class SessionStore {
 	#viewer = $state<Viewer | null>(null);
@@ -94,6 +97,57 @@ class SessionStore {
 			});
 		this.#inflight = request;
 		return request;
+	}
+
+	/**
+	 * Finish a sign-in this device began at somebody's identity store, from what
+	 * the return leg carried. False is a launch that is not a return from one,
+	 * so a shell may ask it of every launch.
+	 */
+	async finishSignInHere(came: URLSearchParams): Promise<boolean> {
+		const identities = runtime.identities();
+		if (!identities) return false;
+		const settled = await identities.finish(came);
+		if (!settled) return false;
+		carrying = {
+			...(settled.name === undefined ? {} : { name: settled.name }),
+			...(settled.picture === undefined ? {} : { picture: settled.picture })
+		};
+		await this.carryProfile();
+		await this.refresh();
+		return true;
+	}
+
+	/**
+	 * Write what a person's identity store calls them into the graphs that
+	 * identity owns. A device with no graph in front of it yet keeps it to
+	 * carry once there is one.
+	 */
+	async carryProfile(): Promise<void> {
+		if (!carrying) return;
+		const { name, picture } = carrying;
+		try {
+			const asked = {
+				...(name === undefined ? {} : { display_name: name }),
+				...(picture === undefined
+					? {}
+					: {
+							avatar_upload_id: (
+								await uploadFile(
+									api,
+									new File([picture.bytes.slice().buffer as ArrayBuffer], 'picture', {
+										type: picture.type
+									}),
+									{ role: 'avatar' }
+								).asset
+							).upload_id
+						})
+			};
+			if (Object.keys(asked).length > 0) await api.updateProfile(asked);
+			carrying = undefined;
+		} catch {
+			// No graph here to write it into yet.
+		}
 	}
 
 	/** After a shell exchanges a consent callback for a session itself. */

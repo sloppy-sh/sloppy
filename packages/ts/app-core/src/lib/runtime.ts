@@ -10,7 +10,7 @@
  */
 
 import { setHost } from '@sloppy/client';
-import type { History } from '@sloppy/local';
+import type { History, IdentityAccess } from '@sloppy/local';
 import type { OwnedRef } from '@sloppy/types';
 import type { SloppyApi } from './api.js';
 import { storedOrigin } from './stores/prefs.svelte.js';
@@ -92,6 +92,12 @@ export interface AppRuntime {
 	 *  {@link createApi}. It is what the first-run surface asks for a folder
 	 *  with, so no page spells a platform's way of finding one. */
 	vault?: VaultAccess;
+	/** The identities this device holds, and the three ways one arrives —
+	 *  a shell that defines it also defines {@link AppRuntime.vault}. Absent →
+	 *  this platform keeps no identity of its own, so nothing about holding,
+	 *  choosing or carrying one is put in front of anybody. `IdentityAccess` in
+	 *  `@sloppy/local` declares every act. */
+	identities?: IdentityAccess;
 	/** The states the graph in front of somebody has been in — a shell that
 	 *  defines it also defines {@link AppRuntime.vault}. Absent → this platform
 	 *  keeps no history of a graph, and nothing about one is put in front of
@@ -195,6 +201,7 @@ export const runtime = {
 	createApi: (): SloppyApi | undefined => current.createApi?.(),
 	webOrigin: (): string | undefined => current.webOrigin?.(),
 	vault: (): VaultAccess | undefined => current.vault,
+	identities: (): IdentityAccess | undefined => current.identities,
 	history: (): History | undefined => current.history?.(),
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
 	openFile: (): AppRuntime['openFile'] => current.openFile,
