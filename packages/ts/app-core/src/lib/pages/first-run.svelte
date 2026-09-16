@@ -69,8 +69,8 @@
 		try {
 			const listed = await refresh();
 			if (listed === null) return;
-			if (listed.length === 0) {
-				await identities?.makeOne();
+			if (identities && listed.length === 0) {
+				await identities.makeOne();
 				await refresh();
 			}
 			const folder = await vault.open();
