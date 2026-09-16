@@ -85,8 +85,8 @@
 	const offered = $derived.by(() => {
 		if (offers === 0) return null;
 		return offers === 1
-			? 'One offered change arrives with it, for whoever the note is waiting on.'
-			: `${offers.toLocaleString()} offered changes arrive with it, for whoever the notes are waiting on.`;
+			? 'One offered change arrives with it.'
+			: `${offers.toLocaleString()} offered changes arrive with it.`;
 	});
 
 	const landing = $derived.by(() => {

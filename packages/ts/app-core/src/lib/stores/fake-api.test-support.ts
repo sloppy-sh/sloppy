@@ -30,7 +30,7 @@ import {
 } from '@sloppy/types';
 import { resetApi } from '../api.js';
 import { graphs } from './graphs.svelte.js';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, type DeploymentMode } from '../runtime.js';
 
 export const DID = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 
@@ -402,12 +402,15 @@ export class FakeApi {
 	};
 }
 
-/** Point the app at a fresh fake and hand it back. A seam a suite borrowed —
- *  the way it saves a file — goes back to its default. */
-export function useFakeApi(): FakeApi {
+/** Point the app at a fresh fake and hand it back, running as one of the
+ *  deployments — a graph served over a network unless the suite says otherwise.
+ *  A seam a suite borrowed — the way it saves a file — goes back to its
+ *  default. */
+export function useFakeApi(as: DeploymentMode = 'hosted'): FakeApi {
 	const fake = new FakeApi();
 	initRuntime({
 		apiHost: () => 'http://api.test',
+		mode: () => as,
 		fetchImpl: () => fake.fetch,
 		saveFile: undefined
 	});
