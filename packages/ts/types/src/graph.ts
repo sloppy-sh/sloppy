@@ -27,9 +27,20 @@ export const HOME_GRAPH_TITLE = "My graph";
  * owner cannot close. Absent is a graph that is not it, which is what every
  * graph opened alongside it says and what a row written before the column says.
  */
+/**
+ * What a graph does to a note written in it: `open` leaves the note open to
+ * anybody writing here, `owned` stamps the writer as its owner so anybody
+ * else's change is offered rather than landed — AI.md § "The Genealogy Is the
+ * Protocol". A person changes a note's own owner afterwards either way.
+ */
+export const GraphOwnershipSchema = z.enum(["open", "owned"]);
+export type GraphOwnership = z.infer<typeof GraphOwnershipSchema>;
+
 export const GraphSchema = OwnedEntitySchema.extend({
   title: z.string().min(1).max(512),
   home: z.boolean().optional(),
+  /** Absent is `open`, which is what every graph made before the field says. */
+  ownership: GraphOwnershipSchema.optional(),
 });
 export type Graph = z.infer<typeof GraphSchema>;
 
@@ -84,11 +95,14 @@ export const CreateGraphRequestSchema = z.strictObject(
 );
 export type CreateGraphRequest = z.input<typeof CreateGraphRequestSchema>;
 
-/** Rename one. */
+/** Rename one, and say what it does to the notes written in it. */
 export const UpdateGraphRequestSchema = z.object({
   title: z
     .string()
     .min(1, "Name this graph.")
     .max(512, "That name is longer than a graph name can be. Trim it."),
+  /** Absent leaves it as it is; it reaches notes written from here on and
+   *  leaves the ones already written as they are. */
+  ownership: GraphOwnershipSchema.optional(),
 });
 export type UpdateGraphRequest = z.input<typeof UpdateGraphRequestSchema>;

@@ -6,6 +6,8 @@ import { z } from "zod";
 import { AddressSchema, RootAddressSchema } from "./address.js";
 import { NodeAppearanceSchema, WrittenAppearanceSchema } from "./appearance.js";
 import {
+  type DidSyr,
+  DidSyrSchema,
   OwnedEntitySchema,
   type OwnedRef,
   OwnedRefSchema,
@@ -39,6 +41,25 @@ export const NodeSchema = OwnedEntitySchema.extend({
   parent: OwnedRefSchema.optional(),
   /** The root of this node's tree; a root node is its own origin. */
   origin: OwnedRefSchema,
+  /**
+   * Who gates this note's writing. Absent is an OPEN note — anybody writing in
+   * this graph writes straight into it — and is what every note written before
+   * the rule says. Present, a write by anybody else is offered rather than
+   * landed; {@link writeOutcome} is that rule.
+   */
+  owner: DidSyrSchema.optional(),
+  /**
+   * Whose writing this note carries, in the order they first wrote into it.
+   * **Absent, and empty, read as the ref's DID alone** — the author, which is
+   * what every note written before the list carries. {@link authorsOf} is the
+   * one reader of it, so no surface spells that fallback twice.
+   */
+  authors: z.array(DidSyrSchema).optional(),
+  /**
+   * Whose offered change this note's owner has taken in, in the order they were
+   * taken. Absent, and empty, are none.
+   */
+  contributors: z.array(DidSyrSchema).optional(),
   title: z.string().max(512).default(""),
   tags: TagsSchema.default([]),
   /**
@@ -128,6 +149,43 @@ export function noteLabel(note: Pick<Node, "address" | "title">): string {
 /** The graph a note is in, as a ref. */
 export function graphOf(node: Pick<Node, "created_by" | "graph">): OwnedRef {
   return graphRef(node.created_by, node.graph);
+}
+
+/** Whose writing a note carries, in the order they first wrote into it. */
+export function authorsOf(
+  note: Pick<Node, "created_by" | "authors">,
+): readonly DidSyr[] {
+  return note.authors?.length ? note.authors : [note.created_by];
+}
+
+/**
+ * What a write by `writer` does to this note: it `lands`, or it is `offered` to
+ * the owner as an amendment. AI.md § "The Genealogy Is the Protocol".
+ */
+export type WriteOutcome = "lands" | "offered";
+
+export function writeOutcome(
+  note: Pick<Node, "owner">,
+  writer: DidSyr,
+): WriteOutcome {
+  return note.owner === undefined || note.owner === writer
+    ? "lands"
+    : "offered";
+}
+
+/**
+ * The note as a landed write by `writer` leaves its authorship: appended where
+ * the note is open and the writer is not in the list yet, untouched where it
+ * has an owner — an owned note's authorship is the owner's, and taking an
+ * offer in adds a contributor rather than an author.
+ */
+export function withAuthor<
+  T extends Pick<Node, "created_by" | "owner" | "authors">,
+>(note: T, writer: DidSyr): T {
+  if (note.owner !== undefined) return note;
+  const authors = authorsOf(note);
+  if (authors.includes(writer)) return note;
+  return { ...note, authors: [...authors, writer] };
 }
 
 /**
@@ -301,6 +359,13 @@ export const UpdateNodeRequestSchema = z.object({
   /** The WHOLE set, never a delta: a tag absent from it is a tag removed. */
   tags: TagsSchema.optional(),
   links: z.array(OwnedRefSchema).optional(),
+  /**
+   * Who gates this note's writing. `null` takes the gate off and leaves the
+   * note open; absent leaves it as it is. Writing it is the graph owner's and
+   * the current owner's act — a contributor cannot claim a note — and no other
+   * field on this request is a contributor's to write either.
+   */
+  owner: DidSyrSchema.nullable().optional(),
   /** `null` takes the look back off and leaves the note unstyled; absent leaves
    *  whatever look it has alone. */
   appearance: WrittenAppearanceSchema.nullable().optional(),
