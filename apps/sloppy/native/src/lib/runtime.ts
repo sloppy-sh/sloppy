@@ -5,10 +5,19 @@
  */
 
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
-import { holdsAGraph, LocalApi, type Files } from '@sloppy/local';
+import {
+	holdsAGraph,
+	LocalApi,
+	readIdentities,
+	whoWrites,
+	type Files,
+	type IdentityAccess
+} from '@sloppy/local';
+import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SIGN_IN_CALLBACK } from './deep-link';
-import { tauriFiles, tauriHistory } from './files';
+import { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } from './files';
+import { tauriIdentities } from './identity';
 import { LOCAL_MODE, rememberedVault, rememberVault } from './local-mode';
 import { IS_MOBILE, TAURI_PLATFORM } from './platform';
 
@@ -21,6 +30,14 @@ const DEV_API_ORIGIN =
  *  hosted Sloppy exists yet, so the fallback is the API's own dev default
  *  (`AppConfigService`) and a fresh clone runs with no .env at all. */
 const API_HOST = (import.meta.env.PUBLIC_SLOPPY_API_URL || DEV_API_ORIGIN).replace(/\/+$/, '');
+
+/** This app's own public web origin. An identity store is asked to delegate to
+ *  it and to put somebody down on it, so it is a place a browser can reach and
+ *  never this webview's own address. */
+const APP_ORIGIN = (import.meta.env.PUBLIC_SLOPPY_APP_ORIGIN || 'https://sloppy.sh').replace(
+	/\/+$/,
+	''
+);
 
 const device = LOCAL_MODE ? tauriFiles() : undefined;
 
@@ -36,12 +53,20 @@ let missing = false;
 
 let served: LocalApi | undefined;
 
+/** Who the graph in the folder that is open belongs to, and which of the
+ *  identities this device holds writes in it. */
+let ownerHere: ReturnType<typeof whoWrites>;
+let writing: ReturnType<typeof whoWrites>;
+
 /** A reader and writer over the folder that is open. app-core asks for one
  *  again only after `resetApi`, and by then the folder is at a state the last
  *  one's index is not — a commit switched, a merge landed — so every ask is
  *  answered with its own. */
 function fresh(files: Files): LocalApi {
-	return (served = new LocalApi(opened ? files.at(opened) : files));
+	return (served = new LocalApi(
+		opened ? files.at(opened) : files,
+		writing === undefined ? {} : { writer: writing }
+	));
 }
 
 /** The one the app is reading, so the graph the app is in and the graph a page
@@ -50,10 +75,33 @@ function serving(files: Files): LocalApi {
 	return served ?? fresh(files);
 }
 
-function serve(folder: string): void {
-	opened = folder;
+async function ownerOf(files: Files, folder: string): Promise<ReturnType<typeof whoWrites>> {
+	try {
+		const bytes = await files.at(folder).read(GRAPH_FILE);
+		return bytes ? readGraphFile(bytes).owner : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Settle who writes in the folder that is open and serve it under them. A list
+ * this device cannot read leaves nobody named, so the refusal reaches somebody
+ * where they write rather than being turned into a fresh identity here.
+ */
+async function repoint(files: Files): Promise<void> {
+	ownerHere = opened ? await ownerOf(files, opened) : undefined;
+	writing = await readIdentities(files).then(
+		(held) => whoWrites(held, ownerHere),
+		() => undefined
+	);
 	served = undefined;
 	resetApi();
+}
+
+async function serve(files: Files, folder: string): Promise<void> {
+	opened = folder;
+	await repoint(files);
 }
 
 async function openFolder(files: Files): Promise<string | undefined> {
@@ -64,7 +112,7 @@ async function openFolder(files: Files): Promise<string | undefined> {
 	// launch instead: it moves with the app, and a path written down before it
 	// moved leads nowhere.
 	if (ASKS_WHERE) await rememberVault(files, folder);
-	serve(folder);
+	await serve(files, folder);
 	return folder;
 }
 
@@ -94,8 +142,16 @@ export async function openRememberedVault(): Promise<string | undefined> {
 	if (!remembered) return undefined;
 	missing = !(await stillHoldsIt(device, remembered).catch(() => false));
 	if (missing) return undefined;
-	serve(remembered);
+	await serve(device, remembered);
 	return remembered;
+}
+
+function identitiesHere(files: Files): IdentityAccess {
+	return tauriIdentities(files, {
+		origin: APP_ORIGIN,
+		graphOwner: () => ownerHere,
+		changed: () => repoint(files)
+	});
 }
 
 export function initNativeRuntime(): void {
@@ -108,11 +164,12 @@ export function initNativeRuntime(): void {
 		// A webview origin is not an address the system browser can navigate to,
 		// so consent comes back over the scheme this app is registered for.
 		signInRedirect: () => SIGN_IN_CALLBACK,
-		// Nothing in this shell writes a file yet.
-		saveFile: null,
+		saveFile: tauriSaveFile(),
 		...(device
 			? {
 					createApi: () => fresh(device),
+					openFile: tauriOpenFile(),
+					identities: identitiesHere(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,

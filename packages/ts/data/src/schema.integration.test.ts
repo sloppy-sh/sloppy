@@ -1282,7 +1282,7 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
   });
 
   it("holds one offer per person on a note, and reads a note's offers from its index", async () => {
-    const NOTE = OwnedRefSchema.parse(`${AVA}/01JOFFERNTA000000000000000`);
+    const NOTE = OwnedRefSchema.parse(`${AVA}/01J0FFERNTA000000000000000`);
     const offer = (localId: string, note: string, by: string, at: string) => ({
       id: avaId("amendment", localId),
       created_by: AVA,
@@ -1294,24 +1294,24 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       created_at: at,
       updated_at: at,
     });
-    const OTHER = OwnedRefSchema.parse(`${AVA}/01JOFFERNTB000000000000000`);
+    const OTHER = OwnedRefSchema.parse(`${AVA}/01J0FFERNTB000000000000000`);
     // CAI offered first, and BOB sorts first by DID, so the order below is the
     // rows' age and could not be the column order.
     for (const row of [
       offer(
-        "01JOFFERA00000000000000000",
+        "01J0FFERA00000000000000000",
         NOTE,
         BOB,
         "2026-02-02T00:00:00.000Z",
       ),
       offer(
-        "01JOFFERB00000000000000000",
+        "01J0FFERB00000000000000000",
         NOTE,
         CAI,
         "2026-02-01T00:00:00.000Z",
       ),
       offer(
-        "01JOFFERC00000000000000000",
+        "01J0FFERC00000000000000000",
         OTHER,
         BOB,
         "2026-02-01T00:00:00.000Z",
@@ -1324,10 +1324,10 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     // already have, not a queue.
     await expect(
       db
-        .create(avaId("amendment", "01JOFFERD00000000000000000"))
+        .create(avaId("amendment", "01J0FFERD00000000000000000"))
         .content(
           offer(
-            "01JOFFERD00000000000000000",
+            "01J0FFERD00000000000000000",
             NOTE,
             BOB,
             "2026-02-03T00:00:00.000Z",
@@ -1338,11 +1338,12 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
     // The note and who offered it are what this row IS.
     await expect(
       db
-        .update(avaId("amendment", "01JOFFERA00000000000000000"))
+        .update(avaId("amendment", "01J0FFERA00000000000000000"))
         .merge({ by: CAI }),
     ).rejects.toThrow();
 
-    const OFFERS = `SELECT by FROM amendment
+    // created_at is selected because SurrealDB orders on the projection.
+    const OFFERS = `SELECT by, created_at FROM amendment
        WHERE created_by = $did AND note = $note ORDER BY created_at`;
     const [plan] = await db.query(`${OFFERS} EXPLAIN;`, {
       did: AVA,
@@ -1355,6 +1356,33 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       note: NOTE,
     });
     expect(held.map((row) => row.by)).toEqual([CAI, BOB]);
+  });
+
+  it("finds everything one person has offered, wherever it stands", async () => {
+    const NOTE = OwnedRefSchema.parse(`${BOB}/01J0FFERNTC000000000000000`);
+    const offered = (localId: string, by: string) => ({
+      id: new RecordId("amendment", { created_by: BOB, id: localId }),
+      created_by: BOB,
+      note: NOTE,
+      by,
+      at: "2026-02-04T00:00:00.000Z",
+      title: "As I would have it",
+      tags: [],
+      created_at: "2026-02-04T00:00:00.000Z",
+      updated_at: "2026-02-04T00:00:00.000Z",
+    });
+    for (const row of [
+      offered("01J0FFERE00000000000000000", AVA),
+      offered("01J0FFERF00000000000000000", CAI),
+    ]) {
+      await db.create(row.id).content(row);
+    }
+
+    const [plan] = await db.query(
+      "SELECT by FROM amendment WHERE by = $did EXPLAIN;",
+      { did: AVA },
+    );
+    expect(JSON.stringify(plan)).toContain('"index":"amendment_by"');
   });
 
   it("purges one author and leaves the other whole", async () => {
@@ -1380,10 +1408,16 @@ describe.skipIf(!runs)(`the schema against ${ENDPOINT.href}`, () => {
       "snapshot_asset",
       "retired_address",
       "node_alias",
-      "amendment",
     ]) {
       expect(await db.select(new Table(table))).toHaveLength(0);
     }
+
+    // An offer is swept both ways: the ones standing on AVA's notes go with the
+    // graph they stand in, and the one she left on BOB's note goes with her.
+    const offers = await db.select<{ created_by: string; by: string }>(
+      new Table("amendment"),
+    );
+    expect(offers.map((row) => [row.created_by, row.by])).toEqual([[BOB, CAI]]);
     const refusals = await db.select<{ created_by: string }>(
       new Table("refused_voice"),
     );

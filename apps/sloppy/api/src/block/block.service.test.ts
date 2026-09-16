@@ -28,10 +28,11 @@ const prose = (line: string): BlockDocument => ({
 });
 
 /** Nothing here names another note, so no derivation is reached. The note's own
- *  row is read only to answer that it has not been deleted out from under the
- *  write. */
+ *  row is read to answer that it has not been deleted out from under the write,
+ *  and to join the writer to what it carries. */
 const nodes = {
   find: () => Promise.resolve({} as Node),
+  joinAuthors: () => Promise.resolve(),
 } as unknown as NodeRepository;
 
 function sectionOn(updatedAt: string) {

@@ -13,6 +13,7 @@ vi.stubGlobal('location', { assign });
 const { routeOf, SIGN_IN_CALLBACK } = await import('./deep-link.js');
 
 const CALLBACK = `${SIGN_IN_CALLBACK}?sloppy_code=c&sloppy_state=s`;
+const APP_LINK_RETURN = 'https://sloppy.sh/auth/return?state=s&code=c&delegation_id=d';
 const NOTE = 'sloppy://n/did:plc:abc/01J';
 
 /** A fresh document: the module runs again, `sessionStorage` survives. Answers
@@ -42,6 +43,10 @@ describe('routeOf', () => {
 		);
 	});
 
+	it('lands the page consent comes back to on the root, hand-off intact', () => {
+		expect(routeOf(APP_LINK_RETURN)).toBe('/?state=s&code=c&delegation_id=d');
+	});
+
 	it('answers nothing for what is not a URL', () => {
 		expect(routeOf('not a url')).toBeUndefined();
 	});
@@ -67,6 +72,13 @@ describe('forwardDeepLinks', () => {
 		await boot([CALLBACK]);
 		await boot([CALLBACK]);
 		expect(assign.mock.calls).toEqual([['/?sloppy_code=c&sloppy_state=s']]);
+	});
+
+	it('finishes a sign-in a phone opened straight from the link, the once', async () => {
+		await boot([APP_LINK_RETURN]);
+		await boot([APP_LINK_RETURN]);
+		expect(assign.mock.calls).toEqual([['/?state=s&code=c&delegation_id=d']]);
+		expect(goto).not.toHaveBeenCalled();
 	});
 
 	it('opens a note the app was launched by without leaving the router', async () => {

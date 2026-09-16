@@ -25,7 +25,7 @@ export function navRoutes(person: Person | null): NavItem[] {
 }
 
 /** Reachable with no account — DESIGN.md § Persistence, on appearance. */
-export const OPEN_ROUTES = ['/sign-in', '/settings'];
+export const OPEN_ROUTES = ['/sign-in', '/settings', '/auth/return'];
 
 /** Whether a path stands without an account. A cited note is one of them and is
  *  not in the list above, because its path carries the note it names. */

@@ -63,6 +63,7 @@ import {
   type PeerIdentity,
   type ProfileView,
   type ProposeAmendmentRequest,
+  ProposeAmendmentRequestSchema,
   type PublicationView,
   type PublishedChangesPage,
   type PublishedIndex,
@@ -89,18 +90,22 @@ import {
   type UploadTicket,
   type Viewer,
   type UpdatePublicationRequest,
+  authorsOf,
   graphAsked,
   namesGraph,
   nowIso,
+  splitOwnedRef,
   ulid,
+  writeOutcome,
 } from "@sloppy/types";
 import {
   type EmojiDrawing,
-  type PictureSize,
+  type NoteSource,
   type Vault,
   VAULT_FORMAT,
   GRAPH_FILE,
   PICTURES_FILE,
+  amendmentAt,
   decodeText,
   emojiAt,
   inkAt,
@@ -117,6 +122,7 @@ import {
   vaultDifference,
   type VaultGraph,
   type VaultNote,
+  vaultToAmendment,
   vaultToNote,
   VaultFormatError,
 } from "@sloppy/vault";
@@ -125,15 +131,16 @@ import {
   LocalGraph,
   localOf,
   picturesDrawnBy,
+  type StoredAmendment,
   type StoredNote,
   type StoredPicture,
 } from "./graph.js";
 import {
   type LocalIdentity,
   openLocalIdentity,
-  SEED_FILE,
+  readIdentities,
 } from "./identity.js";
-import { NoteWriter } from "./notes.js";
+import { lookWritten, NoteWriter, offerInstead } from "./notes.js";
 import { absent, checked, contested, refuse } from "./refusal.js";
 import { recent, search } from "./search.js";
 import { type KnownVault, readVaults, writeVaults } from "./vaults.js";
@@ -145,11 +152,6 @@ import {
   mimeForExtension,
   vaultOwned,
 } from "./vault-paths.js";
-
-/** A graph on this device does not carry offered changes yet. */
-function notYet(): Error {
-  return refuse("Offered changes are not here yet.");
-}
 
 /** Whether a folder holds a graph. A shell asks this of a folder it wrote down
  *  before serving it, so that both sides read a folder that has been moved or
@@ -208,8 +210,10 @@ export class LocalApi implements SloppyApi {
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
+  /** There is no identity store here to offer anybody, which is an answer and
+   *  not a refusal: a person signs in to one they already keep somewhere. */
   async ownInstance(): Promise<string | undefined> {
-    serverOnly("Making an identity somewhere else");
+    return undefined;
   }
 
   async instanceHome(): Promise<OwnInstance> {
@@ -228,14 +232,21 @@ export class LocalApi implements SloppyApi {
     serverOnly("Signing out");
   }
 
-  /** The identity this device writes under — `identity.ts` makes it on first
-   *  run, so this never answers `null`. */
+  /** The identity a write here carries — `identity.ts` makes one on first run,
+   *  so this never answers `null`. An empty `syr_instance_url` is an identity
+   *  no store somewhere else keeps. */
   async me(): Promise<Viewer | null> {
     const identity = await this.who();
+    const held = (await readIdentities(this.files)).identities.find(
+      (one) => one.did === identity.did,
+    );
     return {
       did: identity.did,
-      syr_instance_url: "",
-      delegate_public_key: identity.public_key,
+      syr_instance_url: held?.source === "delegated" ? held.instance_url : "",
+      delegate_public_key:
+        held?.source === "delegated"
+          ? held.delegate_public_key
+          : identity.public_key,
     };
   }
 
@@ -257,14 +268,14 @@ export class LocalApi implements SloppyApi {
   async createGraph(asked: CreateGraphRequest): Promise<GraphView> {
     const request = checked(() => CreateGraphRequestSchema.parse(asked));
     return this.write(async () => {
-      const did = (await this.who()).did;
+      const did = await this.writer;
       const root = await this.files.pickFolder();
       if (root === undefined) throw refuse("No folder was chosen.");
       const known = await this.vaults();
       if (known.some((one) => one.root === root)) {
         throw refuse("There is already a graph in that folder.");
       }
-      const graph = await LocalGraph.start(this.files.at(root), did, {
+      const graph = await LocalGraph.start(this.files.at(root), {
         format: VAULT_FORMAT,
         graph: ulid(),
         name: request.title,
@@ -340,7 +351,10 @@ export class LocalApi implements SloppyApi {
   async createNode(asked: CreateNodeRequest): Promise<NodeView> {
     const request = checked(() => CreateNodeRequestSchema.parse(asked));
     return this.write(async () =>
-      new NoteWriter(await this.landingGraph(request.from)).create(request),
+      new NoteWriter(
+        await this.landingGraph(request.from),
+        await this.writer,
+      ).create(request),
     );
   }
 
@@ -350,7 +364,10 @@ export class LocalApi implements SloppyApi {
   ): Promise<NodeView> {
     return this.write(async () => {
       const graph = await this.holder(ref);
-      const written = await new NoteWriter(graph).update(ref, request);
+      const written = await new NoteWriter(graph, await this.writer).update(
+        ref,
+        request,
+      );
       await this.carryPictures(graph, graph.find(ref));
       return written;
     });
@@ -360,7 +377,10 @@ export class LocalApi implements SloppyApi {
     const label =
       address === null ? null : checked(() => AddressSchema.parse(address));
     return this.write(async () =>
-      new NoteWriter(await this.holder(ref)).setAddress(ref, label),
+      new NoteWriter(await this.holder(ref), await this.writer).setAddress(
+        ref,
+        label,
+      ),
     );
   }
 
@@ -375,14 +395,18 @@ export class LocalApi implements SloppyApi {
         ? undefined
         : checked(() => AddressSchema.parse(address));
     return this.write(async () =>
-      new NoteWriter(await this.holder(ref)).move(ref, destination, label),
+      new NoteWriter(await this.holder(ref), await this.writer).move(
+        ref,
+        destination,
+        label,
+      ),
     );
   }
 
   async deleteNode(ref: OwnedRef): Promise<void> {
     await this.write(async () => {
       const graph = await this.graphHolding(ref);
-      if (graph) await new NoteWriter(graph).remove(ref);
+      if (graph) await new NoteWriter(graph, await this.writer).remove(ref);
     });
   }
 
@@ -390,7 +414,7 @@ export class LocalApi implements SloppyApi {
     return this.write(async () => {
       const first = request.notes?.[0];
       const graph = first ? await this.holder(first) : await this.graphAt();
-      const done = await new NoteWriter(graph).bulk(request);
+      const done = await new NoteWriter(graph, await this.writer).bulk(request);
       for (const note of done.notes) {
         await this.carryPictures(graph, graph.find(note.ref));
       }
@@ -411,7 +435,9 @@ export class LocalApi implements SloppyApi {
 
   async restoreBranch(ref: OwnedRef): Promise<NodeView> {
     return this.write(async () =>
-      new NoteWriter(await this.holder(ref, true)).restore(ref),
+      new NoteWriter(await this.holder(ref, true), await this.writer).restore(
+        ref,
+      ),
     );
   }
 
@@ -461,6 +487,7 @@ export class LocalApi implements SloppyApi {
       const graph = await this.holder(request.node);
       const note = graph.find(request.node);
       if (!note) throw absent("That note is not here.");
+      const writing = await this.writing(graph, note);
       const at =
         request.after === undefined
           ? 0
@@ -475,10 +502,10 @@ export class LocalApi implements SloppyApi {
         created_at: nowIso(),
         updated_at: nowIso(),
       };
-      const sections = [...note.sections];
+      const sections = [...writing.sections];
       sections.splice(at, 0, section);
       const written = await graph.save({
-        ...note,
+        ...writing,
         sections,
         updated_at: nowIso(),
       });
@@ -515,13 +542,15 @@ export class LocalApi implements SloppyApi {
       };
       const into = request.node ?? held.note.ref;
       const stays = into === held.note.ref;
-      const target = stays ? held.note : graph.find(into);
+      const from = await this.writing(graph, held.note);
+      const target = stays ? from : graph.find(into);
       if (!target) throw refuse("That note is not here.");
+      const landing = stays ? target : await this.writing(graph, target);
 
       const left = held.note.sections.filter(
         (one) => one.ulid !== written.ulid,
       );
-      const stack = stays ? left : [...target.sections];
+      const stack = stays ? left : [...landing.sections];
       const at =
         stays && request.after === undefined
           ? Math.min(held.at, stack.length)
@@ -534,14 +563,10 @@ export class LocalApi implements SloppyApi {
               );
       stack.splice(at, 0, written);
       if (!stays) {
-        await graph.save({
-          ...held.note,
-          sections: left,
-          updated_at: nowIso(),
-        });
+        await graph.save({ ...from, sections: left, updated_at: nowIso() });
       }
       const saved = await graph.save({
-        ...target,
+        ...landing,
         sections: stack,
         updated_at: nowIso(),
       });
@@ -555,9 +580,10 @@ export class LocalApi implements SloppyApi {
       const graph = await this.graphHoldingSection(ref);
       const held = graph?.sectionAt(ref);
       if (!graph || !held) return;
+      const writing = await this.writing(graph, held.note);
       await graph.save({
-        ...held.note,
-        sections: held.note.sections.filter((one) => one.ulid !== localOf(ref)),
+        ...writing,
+        sections: writing.sections.filter((one) => one.ulid !== localOf(ref)),
         updated_at: nowIso(),
       });
     });
@@ -565,26 +591,142 @@ export class LocalApi implements SloppyApi {
 
   // ── Offered changes ──────────────────────────────────────────────────────
 
-  async listAmendments(_note: OwnedRef): Promise<AmendmentView[]> {
-    throw notYet();
+  /** What has been offered on one note, oldest offer first. Whoever the note's
+   *  writing lands for reads every offer on it; anybody else reads the one they
+   *  made. */
+  async listAmendments(note: OwnedRef): Promise<AmendmentView[]> {
+    const graph = await this.graphHolding(note);
+    const held = graph?.find(note);
+    if (!graph || !held) return [];
+    const writer = await this.writer;
+    const settles = writeOutcome(held, writer) === "lands";
+    return graph
+      .offersOn(note)
+      .filter((offer) => settles || offer.by === writer)
+      .map((offer) => graph.offerView(offer));
   }
 
+  /** A change offered on a note somebody else writes, or the offer already
+   *  standing there written again. */
   async proposeAmendment(
-    _request: ProposeAmendmentRequest,
+    asked: ProposeAmendmentRequest,
   ): Promise<AmendmentView> {
-    throw notYet();
+    const request = checked(() => ProposeAmendmentRequestSchema.parse(asked));
+    return this.write(async () => {
+      const graph = await this.holder(request.note);
+      const note = graph.find(request.note);
+      if (!note) throw absent("That note is not here.");
+      const writer = await this.writer;
+      if (writeOutcome(note, writer) === "lands") {
+        throw refuse(
+          "You can write in this note. Change it rather than offering a change.",
+        );
+      }
+      const look =
+        request.appearance === undefined
+          ? undefined
+          : lookWritten(request.appearance);
+      const standing = graph.offerBy(request.note, writer);
+      const offered: StoredAmendment = {
+        ulid: standing?.ulid ?? ulid(),
+        amends: request.note,
+        by: writer,
+        at: nowIso(),
+        ...(request.message === undefined ? {} : { message: request.message }),
+        title: request.title,
+        tags: [...request.tags],
+        ...(look === undefined ? {} : { appearance: look }),
+        sections: request.blocks.map((block) => ({
+          ulid: localOf(block.ref),
+          content: block.content,
+        })),
+      };
+      await this.carryPictures(graph, offered);
+      return graph.offerView(await graph.saveOffer(offered));
+    });
   }
 
-  async withdrawAmendment(_ref: OwnedRef): Promise<void> {
-    throw notYet();
+  async withdrawAmendment(ref: OwnedRef): Promise<void> {
+    await this.write(async () => {
+      const { graph, offer } = await this.offerAt(ref);
+      if (offer.by !== (await this.writer)) {
+        throw refuse(
+          "Only the person who offered this change can take it back.",
+        );
+      }
+      await graph.dropOffer(offer);
+    });
   }
 
-  async approveAmendment(_ref: OwnedRef): Promise<NodeView> {
-    throw notYet();
+  /** The note's writing becomes the offer's, whole, and the person who offered
+   *  it joins its contributors. Whose writing the note carries is untouched. */
+  async approveAmendment(ref: OwnedRef): Promise<NodeView> {
+    return this.write(async () => {
+      const { graph, offer } = await this.offerAt(ref);
+      const note = graph.find(offer.amends);
+      if (!note) throw absent("That note is not here.");
+      await this.settling(note);
+      const at = nowIso();
+      const written = await graph.save({
+        ...note,
+        title: offer.title,
+        tags: [...offer.tags],
+        ...(offer.appearance === undefined
+          ? {}
+          : { appearance: offer.appearance }),
+        contributors: [...new Set([...(note.contributors ?? []), offer.by])],
+        sections: offer.sections.map((section) => {
+          const had = note.sections.find((one) => one.ulid === section.ulid);
+          return {
+            ...section,
+            created_at: had?.created_at ?? at,
+            updated_at: at,
+          };
+        }),
+        updated_at: at,
+      });
+      await graph.dropOffer(offer);
+      await this.carryPictures(graph, written);
+      return graph.view(written);
+    });
   }
 
-  async declineAmendment(_ref: OwnedRef): Promise<void> {
-    throw notYet();
+  async declineAmendment(ref: OwnedRef): Promise<void> {
+    await this.write(async () => {
+      const { graph, offer } = await this.offerAt(ref);
+      const note = graph.find(offer.amends);
+      if (note) await this.settling(note);
+      await graph.dropOffer(offer);
+    });
+  }
+
+  private async offerAt(
+    ref: OwnedRef,
+  ): Promise<{ graph: LocalGraph; offer: StoredAmendment }> {
+    for (const graph of await this.allGraphs()) {
+      const offer = graph.offer(ref);
+      if (offer) return { graph, offer };
+    }
+    throw absent("That change is not here.");
+  }
+
+  /** Whoever the note's writing lands for is who takes in what is offered on
+   *  it and who turns it down. */
+  private async settling(note: StoredNote): Promise<void> {
+    if (writeOutcome(note, await this.writer) === "offered") {
+      throw refuse("This change is for the person who writes that note.");
+    }
+  }
+
+  /** The note as a landed write leaves it, refused where its writing is
+   *  somebody else's to take in — `NoteWriter` holds the same rule. */
+  private async writing(
+    graph: LocalGraph,
+    note: StoredNote,
+  ): Promise<StoredNote> {
+    const writer = await this.writer;
+    if (writeOutcome(note, writer) === "offered") throw offerInstead(note);
+    return graph.authored(note, writer);
   }
 
   // ── Archives ─────────────────────────────────────────────────────────────
@@ -691,7 +833,7 @@ export class LocalApi implements SloppyApi {
     }
     const files = this.files.at(root);
     for (const [path, bytes] of vault) await files.write(path, bytes);
-    const graph = await LocalGraph.open(files, (await this.who()).did);
+    const graph = await LocalGraph.open(files);
     this.opened.set(root, graph);
     await this.rememberVault(root);
     return this.graphView(graph);
@@ -716,11 +858,15 @@ export class LocalApi implements SloppyApi {
     if (unsettled.length > 0) throw stillContested(unsettled.length);
 
     await this.carryEmoji(into, vault);
-    await this.carryArrivingPictures(into, vault, merge.theirs);
-    const arriving = notesIn(
-      vault,
-      new Map(into.ownEmoji().map((one) => [one.shortcode, { src: one.src }])),
+    const drawings = new Map(
+      into.ownEmoji().map((one) => [one.shortcode, { src: one.src }]),
     );
+    const offers = readOffers(vault, drawings);
+    await this.carryArrivingPictures(into, vault, [
+      ...merge.theirs.values(),
+      ...offers,
+    ]);
+    const arriving = notesIn(vault, drawings);
     const contested = new Set(
       merge.conflicts.flatMap((one) =>
         one.address === undefined ? [] : [one.address],
@@ -743,6 +889,7 @@ export class LocalApi implements SloppyApi {
     for (const conflict of merge.conflicts) {
       await this.settleAddress(into, conflict, chosen.get(settling(conflict)));
     }
+    await this.carryArrivingOffers(into, offers);
     return this.reopened(into);
   }
 
@@ -787,7 +934,7 @@ export class LocalApi implements SloppyApi {
   private async reopened(into: LocalGraph): Promise<GraphView> {
     const root = this.rootOf(into);
     this.starting.delete(root);
-    const graph = await LocalGraph.open(into.files, (await this.who()).did);
+    const graph = await LocalGraph.open(into.files);
     this.opened.set(root, graph);
     return this.graphView(graph);
   }
@@ -795,11 +942,13 @@ export class LocalApi implements SloppyApi {
   /**
    * What the folder's copy of a graph and the file's copy of it disagree about,
    * note by note and section by section. `vaultDifference` in `@sloppy/vault`
-   * is what enumerates it; a note whose tags, links or look alone differ is not
-   * in that enumeration and is a disagreement all the same.
+   * is what enumerates it; a note whose tags, links, look or whose writing
+   * alone differ is not in that enumeration and is a disagreement all the
+   * same.
    */
   private async merging(into: LocalGraph, vault: Vault): Promise<Merging> {
     const here = await this.vaultOf(into);
+    const writer = await this.writer;
     const difference = vaultDifference(here, vault);
     const mine = notesIn(here, new Map());
     const theirs = notesIn(vault, new Map());
@@ -829,8 +978,8 @@ export class LocalApi implements SloppyApi {
           mine: sectionWords(was, section),
           theirs: sectionWords(now, section),
         })),
-        mine: asWords(was, mine, now),
-        theirs: asWords(now, theirs, was),
+        mine: asWords(was, mine, writer, now),
+        theirs: asWords(now, theirs, writer, was),
       });
     }
     const at = numbered(theirs);
@@ -843,11 +992,28 @@ export class LocalApi implements SloppyApi {
         other,
         address,
         sections: [],
-        mine: asWords(mine.get(ref), mine),
-        theirs: asWords(theirs.get(other), theirs),
+        mine: asWords(mine.get(ref), mine, writer),
+        theirs: asWords(theirs.get(other), theirs, writer),
       });
     }
     return { theirs, conflicts };
+  }
+
+  /**
+   * The offers standing in the file that this graph holds none of. One it
+   * already has stays as it is, and so does the one standing from the same
+   * person on the same note: an import writes nothing over.
+   */
+  private async carryArrivingOffers(
+    into: LocalGraph,
+    offers: readonly StoredAmendment[],
+  ): Promise<void> {
+    for (const offer of offers) {
+      if (into.offer(`${into.did}/${offer.ulid}`)) continue;
+      if (!into.find(offer.amends)) continue;
+      if (into.offerBy(offer.amends, offer.by)) continue;
+      await into.saveOffer(offer);
+    }
   }
 
   /** The emoji the file was written with that this graph has no picture for,
@@ -878,15 +1044,16 @@ export class LocalApi implements SloppyApi {
     }
   }
 
-  /** The pictures the file's notes draw that this graph does not hold yet. */
+  /** The pictures the file's notes and the offers standing on them draw that
+   *  this graph does not hold yet. */
   private async carryArrivingPictures(
     into: LocalGraph,
     vault: Vault,
-    theirs: ReadonlyMap<OwnedRef, VaultNote>,
+    arriving: readonly (VaultNote | StoredAmendment)[],
   ): Promise<void> {
     const drawn = new Set<string>();
-    for (const note of theirs.values()) {
-      for (const upload of picturesDrawnBy(note)) drawn.add(upload);
+    for (const one of arriving) {
+      for (const upload of picturesDrawnBy(one)) drawn.add(upload);
     }
     const said = readSaid(vault.get(MEDIA_FILE));
     for (const [path, bytes] of vault) {
@@ -1145,12 +1312,11 @@ export class LocalApi implements SloppyApi {
 
   // ── Profile ──────────────────────────────────────────────────────────────
 
-  /** Who this device writes under, as the graphs on it say. Every graph here
-   *  belongs to the one identity, so the first that says who owns it answers
-   *  for all of them. */
+  /** Who this device writes under, as the graphs that identity owns say. A
+   *  folder somebody else owns says who THEY are, so it is not read here. */
   async profile(): Promise<ProfileView> {
-    const did = (await this.who()).did;
-    const graphs = await this.allGraphs();
+    const did = await this.writer;
+    const graphs = await this.ownGraphs(did);
     const graph = graphs.find(
       (held) =>
         held.owner.name !== undefined || held.owner.avatar !== undefined,
@@ -1167,9 +1333,9 @@ export class LocalApi implements SloppyApi {
     };
   }
 
-  /** A name and a picture, written into every graph on this device — a graph
-   *  says whose it is wherever it is opened, so each keeps its own copy of the
-   *  picture. */
+  /** A name and a picture, written into every graph the writing identity owns
+   *  — a graph says whose it is wherever it is opened, so each keeps its own
+   *  copy of the picture. A folder somebody else owns is left alone. */
   async updateProfile(asked: UpdateProfileRequest): Promise<ProfileView> {
     const request = checked(() => UpdateProfileRequestSchema.parse(asked));
     if (request.bio != null || request.banner_upload_id != null) {
@@ -1178,10 +1344,10 @@ export class LocalApi implements SloppyApi {
       );
     }
     return this.write(async () => {
-      const graphs = await this.allGraphs();
+      const graphs = await this.ownGraphs(await this.writer);
       if (graphs.length === 0) {
         throw absent(
-          "There is no graph on this device yet. Start one to write.",
+          "There is no graph of your own on this device yet. Start one to write your name in.",
         );
       }
       const picture =
@@ -1272,18 +1438,20 @@ export class LocalApi implements SloppyApi {
   }
 
   /**
-   * A vault holds the pictures its own notes draw. A picture is added before
-   * anybody knows which note will draw it, so one that turns out to belong to a
-   * note in another graph on this device is carried into that graph's folder —
-   * where the archive taken out of it will carry it too.
+   * A vault holds the pictures its own writing draws. A picture is added before
+   * anybody knows what will draw it, so one that turns out to belong to writing
+   * in another graph on this device is carried into that graph's folder — where
+   * the archive taken out of it will carry it too.
    */
   private async carryPictures(
     graph: LocalGraph,
-    note: StoredNote | undefined,
+    drawn: StoredNote | StoredAmendment | undefined,
   ): Promise<void> {
-    if (!note) return;
+    if (!drawn) return;
     const wanted = new Set(
-      [...picturesDrawnBy(note)].filter((upload) => !graph.picturePath(upload)),
+      [...picturesDrawnBy(drawn)].filter(
+        (upload) => !graph.picturePath(upload),
+      ),
     );
     if (wanted.size === 0) return;
     for (const other of await this.allGraphs()) {
@@ -1301,7 +1469,7 @@ export class LocalApi implements SloppyApi {
   }
 
   private async who(): Promise<LocalIdentity> {
-    this.identity ??= await openLocalIdentity(this.files);
+    this.identity ??= await openLocalIdentity(this.files, this.writingAs);
     return this.identity;
   }
 
@@ -1337,6 +1505,11 @@ export class LocalApi implements SloppyApi {
     return here && !graphs.includes(here) ? [...graphs, here] : graphs;
   }
 
+  /** The graphs on this device that one identity owns. */
+  private async ownGraphs(did: DidSyr): Promise<LocalGraph[]> {
+    return (await this.allGraphs()).filter((graph) => graph.did === did);
+  }
+
   /** The graphs in the folders this device wrote down, in the order it opened
    *  them. A folder that is no longer a vault is left out rather than refused:
    *  somebody moved it, and the graphs beside it still open. */
@@ -1349,10 +1522,7 @@ export class LocalApi implements SloppyApi {
         continue;
       }
       try {
-        const graph = await LocalGraph.open(
-          this.files.at(known.root),
-          (await this.who()).did,
-        );
+        const graph = await LocalGraph.open(this.files.at(known.root));
         this.opened.set(known.root, graph);
         graphs.push(graph);
       } catch {}
@@ -1412,7 +1582,6 @@ export class LocalApi implements SloppyApi {
     opening = (async () => {
       const already = this.opened.get(root);
       if (already) return already;
-      const did = (await this.who()).did;
       const at = this.files.at(root);
       const written = (await this.vaults()).some((one) => one.root === root);
       const holds = await holdsAGraph(at);
@@ -1422,12 +1591,12 @@ export class LocalApi implements SloppyApi {
         );
       }
       const graph = holds
-        ? await LocalGraph.open(at, did)
-        : await LocalGraph.start(at, did, {
+        ? await LocalGraph.open(at)
+        : await LocalGraph.start(at, {
             format: VAULT_FORMAT,
             graph: ulid(),
             name: folderName(root),
-            owner: did,
+            owner: await this.writer,
           });
       this.opened.set(root, graph);
       if (!written) await this.rememberVault(root);
@@ -1707,9 +1876,36 @@ function stored(note: VaultNote, held: StoredNote | undefined): StoredNote {
  *  difference does not name. */
 function alike(a: VaultNote, b: VaultNote): boolean {
   return (
-    JSON.stringify([a.tags, a.links, a.aliases, a.appearance ?? null]) ===
-    JSON.stringify([b.tags, b.links, b.aliases, b.appearance ?? null])
+    JSON.stringify([
+      a.tags,
+      a.links,
+      a.aliases,
+      a.appearance ?? null,
+      whoseWriting(a),
+    ]) ===
+    JSON.stringify([
+      b.tags,
+      b.links,
+      b.aliases,
+      b.appearance ?? null,
+      whoseWriting(b),
+    ])
   );
+}
+
+/** Who gates the note's writing, whose writing it carries and whose offered
+ *  writing it has taken in. Both copies are of one note, so the absent
+ *  authorship reads as the same DID on each and a file that spells it out says
+ *  the same as one that leaves it. */
+function whoseWriting(note: VaultNote): unknown[] {
+  return [
+    note.owner ?? null,
+    authorsOf({
+      created_by: splitOwnedRef(note.ref).did,
+      authors: note.authors,
+    }),
+    note.contributors ?? [],
+  ];
 }
 
 /** Which note each number is on, leaving out the notes that carry none. */
@@ -1726,22 +1922,39 @@ function numbered(
 }
 
 /** What one side holds, as words a person settles a disagreement by: where the
- *  two sides put the note differently, then what it is called, what it is
- *  tagged, and its writing. */
+ *  two sides put the note differently and who each says may write it, then what
+ *  it is called, what it is tagged, and its writing. */
 function asWords(
   note: VaultNote | undefined,
   held: ReadonlyMap<OwnedRef, VaultNote>,
+  writer: DidSyr,
   other?: VaultNote,
 ): string {
   if (!note) return "";
   return [
     ...whereItSits(note, other, held),
+    ...whoMayWrite(note, other, writer),
     note.title,
     note.tags.join(", "),
     ...note.sections.flatMap((one) => wordsIn(one.content)),
   ]
     .filter((line) => line !== "")
     .join("\n");
+}
+
+/** Who a side says may write the note, said only where the other side says
+ *  somebody else: taking a gate off or putting one on changes nothing a person
+ *  would otherwise read on the page. */
+function whoMayWrite(
+  note: VaultNote,
+  other: VaultNote | undefined,
+  writer: DidSyr,
+): string[] {
+  if (!other || note.owner === other.owner) return [];
+  if (note.owner === undefined) return ["Anyone's to write"];
+  return [
+    note.owner === writer ? "Yours to write" : "Somebody else's to write",
+  ];
 }
 
 /** Where a side puts the note, said only where the other side puts it
@@ -1891,11 +2104,12 @@ function placeAfter(
   return at + 1;
 }
 
-/** Every note file the vault holds, read with the sidecars beside it. */
-function readNotes(
+/** The drawings and the picture sizes a vault's own files draw on, which a note
+ *  and an offered change in it are both read against. */
+function sidecarsIn(
   vault: Vault,
   emoji: ReadonlyMap<string, EmojiDrawing>,
-): VaultNote[] {
+): Omit<NoteSource, "markdown"> {
   const ink = new Map<string, Record<string, unknown>>();
   for (const [path, bytes] of vault) {
     const stem = inkAt(path);
@@ -1904,17 +2118,47 @@ function readNotes(
     if (attrs) ink.set(stem, attrs);
   }
   const sizes = vault.get(PICTURES_FILE);
-  const pictures: ReadonlyMap<string, PictureSize> = sizes
-    ? readPicturesFile(sizes)
-    : new Map();
+  return {
+    ink,
+    pictures: sizes ? readPicturesFile(sizes) : new Map(),
+    emoji,
+  };
+}
+
+/** Every note file the vault holds, read with the sidecars beside it. */
+function readNotes(
+  vault: Vault,
+  emoji: ReadonlyMap<string, EmojiDrawing>,
+): VaultNote[] {
+  const sidecars = sidecarsIn(vault, emoji);
   const notes: VaultNote[] = [];
   for (const [path, bytes] of vault) {
     if (noteAt(path) === undefined) continue;
-    notes.push(
-      vaultToNote({ markdown: decodeText(bytes), ink, pictures, emoji }),
-    );
+    notes.push(vaultToNote({ ...sidecars, markdown: decodeText(bytes) }));
   }
   return notes;
+}
+
+/** Every offered change the vault holds, read the same way. A file that is not
+ *  one is left where it is rather than refused. */
+function readOffers(
+  vault: Vault,
+  emoji: ReadonlyMap<string, EmojiDrawing>,
+): StoredAmendment[] {
+  const sidecars = sidecarsIn(vault, emoji);
+  const offers: StoredAmendment[] = [];
+  for (const [path, bytes] of vault) {
+    const ulid = amendmentAt(path);
+    if (ulid === undefined) continue;
+    try {
+      const said = vaultToAmendment({
+        ...sidecars,
+        markdown: decodeText(bytes),
+      });
+      offers.push({ ...said, ulid, at: said.at ?? nowIso() });
+    } catch {}
+  }
+  return offers;
 }
 
 /** The same, keyed by the ref that identifies each note. */
@@ -2093,6 +2337,24 @@ export class GraphAsItWas extends LocalApi {
     this.refused();
   }
 
+  async proposeAmendment(
+    _request: ProposeAmendmentRequest,
+  ): Promise<AmendmentView> {
+    this.refused();
+  }
+
+  async withdrawAmendment(_ref: OwnedRef): Promise<void> {
+    this.refused();
+  }
+
+  async approveAmendment(_ref: OwnedRef): Promise<NodeView> {
+    this.refused();
+  }
+
+  async declineAmendment(_ref: OwnedRef): Promise<void> {
+    this.refused();
+  }
+
   async createUpload(_asked: CreateUploadRequest): Promise<UploadTicket> {
     this.refused();
   }
@@ -2138,7 +2400,6 @@ export async function graphAsItWas(vault: Vault): Promise<GraphAsItWas> {
     as: {
       did: said.owner,
       public_key: encodePublicKey(publicKeyFromDid(said.owner)),
-      seed: SEED_FILE,
     },
   });
 }

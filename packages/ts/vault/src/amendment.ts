@@ -66,12 +66,20 @@ export function amendmentToVault(
     ["tags", [...amendment.tags]],
     ["appearance", lookBlock(amendment.appearance)],
   ]);
+  const ulid = splitOwnedRef(amendment.ref).localId;
   return writeSections(
-    amendmentPath(splitOwnedRef(amendment.ref).localId),
+    amendmentPath(ulid),
     front,
     amendment.blocks,
     held,
+    ulid,
   );
+}
+
+/** Whether a drawing's file belongs to this offer rather than to the note it is
+ *  offered on — the two name their sections alike. */
+export function inkOffered(stem: string, ulid: string): boolean {
+  return stem.startsWith(`${ulid}-`);
 }
 
 /**

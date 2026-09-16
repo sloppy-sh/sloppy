@@ -18,11 +18,12 @@ backend-agnostic; the same app serves all three.
   interoperate with it exactly as it would with the default. Settings holds that origin
   per device, so an installed app is re-pointed rather than rebuilt; `AppRuntime.apiHost`
   is the origin the build shipped with, and returning to the default returns to it.
-- **Local-only** — no network at all. The native app opens a folder on the device and the
-  vault in it is the whole store (§ "A graph on disk"); the identity that owns it is made
-  on first run, so there is nothing to sign in to. What genuinely needs a server —
-  publishing, peers, pulling, conversation — is not offered there, and a graph crosses
-  between this mode and a hosted one as an archive. See "Local-only mode" below.
+- **Local-only** — no Sloppy anywhere. The native app opens a folder on the device and the
+  vault in it is the whole store (§ "A graph on disk"); the identity that owns it is made on
+  first run with nothing asked, or is one the person already keeps at an identity store and
+  signs in to, which settles who they write as and nothing else. What genuinely needs a
+  server — publishing, peers, pulling, conversation — is not offered there, and a graph
+  crosses between this mode and a hosted one as an archive. See "Local-only mode" below.
 
 ## Monorepo layout
 
@@ -513,9 +514,12 @@ from the link. The app then finishes the exchange itself against the instance, w
 platform secret anywhere in the protocol — the wire shapes are `@sloppy/types`' `syr.ts`,
 and the platform half of that dialect is written once for the browser side in
 `@sloppy/local`. The API's own `SyrService` is untouched; lifting the shared half out is
-worth doing and is not required here. The deep-link return leg
-(`sloppy://auth/callback`, `src/lib/deep-link.ts`) is the same one a hosted build uses, and
-in local mode it lands on `@sloppy/local`'s exchange rather than the API's.
+worth doing and is not required here. The deep-link return leg (`src/lib/deep-link.ts`) is
+the same one a hosted build uses, and in local mode it lands on `@sloppy/local`'s exchange
+rather than the API's. It reads both ways back alike — `sloppy://auth/callback`, which the
+web page forwards into, and `/auth/return` itself where a phone opened the app from the
+link — and re-enters the document on the root with the hand-off intact, because a session is
+picked up as the app boots and only then.
 
 **Signing in locally settles which DID this device writes under, and what the person is
 called.** The name and picture come from the profile and are written into the owner block of
@@ -528,11 +532,13 @@ nothing local needs the token after the exchange except refreshing the name and 
 `graph.json`. Where this device holds that identity, the person writes as the owner. Where it
 does not — a folder shared through git, or one brought from somebody else — they write as a
 CONTRIBUTOR under one of the identities this device holds, chosen in Settings and defaulting
-to the one most recently used; `LocalApi`'s `writer` is that choice, and absent it is the
-graph's own owner. A folder started here is owned by the identity that was writing when it
-was started. **Switching who is writing changes nothing already written**: refs never re-key
-on a switch. What a write then does to a note is § "Whose writing a note carries", the same
-rule the server runs.
+to the one most recently used; `whoWrites` settles that and `LocalApi`'s `writer` carries it,
+absent being the identity this device writes under by default. A folder started here is owned
+by the identity that was writing when it was started. **Switching who is writing changes
+nothing already written**: refs never re-key on a switch, and a folder somebody else owns
+keeps its own — a ref's DID says whose graph a note is in, so writing in their folder joins
+their notes' `authors` rather than making the notes this device's. What a write then does to
+a note is § "Whose writing a note carries", the same rule the server runs.
 
 The one thing a first run still asks is a desktop's, and it is asked once: where the graph
 should live, because a folder there is a person's to put anywhere. A phone and a tablet keep

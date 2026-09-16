@@ -86,7 +86,7 @@ describe("a label a person writes on a note", () => {
     expect(renamed.address).toBe("4");
     expect(renamed.aliases).toEqual(["1"]);
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     expect(again.leadsTo("1")).toEqual({ hold: "moved", note: note.ref });
     expect(again.leadsTo("4")).toEqual({ hold: "live", note: note.ref });
   });
@@ -133,7 +133,7 @@ describe("carrying a note somewhere else", () => {
     expect(at.get(deeper.ref)?.parent).toBe(under.ref);
     expect(at.get(deeper.ref)?.depth).toBe(3);
 
-    const again = await reread(files, did);
+    const again = await reread(files);
     expect(again.leadsTo("1a1")).toEqual({ hold: "moved", note: deeper.ref });
     expect(again.view(again.find(under.ref)!).origin).toBe(two.ref);
   });
@@ -236,7 +236,7 @@ describe("one act over the notes somebody chose", () => {
 
     const styled = await writer.update(one.ref, { appearance: look });
     expect(styled.appearance).toEqual(look);
-    expect((await reread(files, did)).find(one.ref)?.appearance).toEqual(look);
+    expect((await reread(files)).find(one.ref)?.appearance).toEqual(look);
 
     const off = await writer.update(one.ref, {
       title: "Seeds and clocks",
@@ -244,9 +244,7 @@ describe("one act over the notes somebody chose", () => {
     });
     expect(off.title).toBe("Seeds and clocks");
     expect(off.appearance).toBeUndefined();
-    expect(
-      (await reread(files, did)).find(one.ref)?.appearance,
-    ).toBeUndefined();
+    expect((await reread(files)).find(one.ref)?.appearance).toBeUndefined();
   });
 
   it("puts one look on however many notes were chosen", async () => {
@@ -260,7 +258,7 @@ describe("one act over the notes somebody chose", () => {
     });
 
     expect(done.reached).toBe(2);
-    const again = await reread(files, did);
+    const again = await reread(files);
     for (const note of [one, two]) {
       expect(again.find(note.ref)?.appearance).toEqual({
         ring_style: "dashed",

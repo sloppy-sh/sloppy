@@ -1,7 +1,9 @@
 /**
  * Erasing one person's graph. Every statement binds `$did`, their syr DID, and
  * deletes BY `created_by` rather than by walking down from a parent row;
- * docs/ARCHITECTURE.md § "Data model" says why that is the only safe sweep.
+ * docs/ARCHITECTURE.md § "Data model" says why that is the only safe sweep. The
+ * one column that is not `created_by` is `amendment.by`, and the statement that
+ * reads it says why.
  *
  * Caller-owned and deliberately NOT here:
  *
@@ -33,6 +35,11 @@ export const STATEMENTS: readonly string[] = [
   // Offered ON this person's notes by other people, and theirs for the reason
   // the pointers above are: the notes are in their graph.
   `DELETE amendment WHERE ${OWNED};`,
+  // And what this person offered on somebody ELSE's notes, which is the one
+  // sweep here that does not go by the owner of the rows: an offer is writing,
+  // so it goes with the person who wrote it rather than standing on a note
+  // after the identity behind it is gone.
+  `DELETE amendment WHERE by = $did;`,
   `DELETE node WHERE ${OWNED};`,
   // The addresses those notes spent, and the ones a move left resolving to
   // them. They outlive the notes and nothing else: there is no graph left for
