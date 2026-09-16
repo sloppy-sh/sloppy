@@ -207,6 +207,28 @@ describe('who wrote the note', () => {
 		expect(target.textContent).toContain('Grace Hopper');
 	});
 
+	// At phone width the line wraps between whoever wrote the note and whoever
+	// helped, and a line that opens with a separator reads as a mistake.
+	it('keeps the separator with the name it follows, so it never leads a line', async () => {
+		api.on(asked(STRANGER), () => ({
+			did: STRANGER,
+			username: 'grace',
+			display_name: 'Grace Hopper',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		show(PEER, { contributors: [STRANGER] });
+		await settle();
+
+		const line = target.querySelector('div');
+		if (!line) throw new Error('Nobody is named on screen');
+		const said = [...line.children].map((one) => one.textContent?.trim() ?? '');
+		expect(said).toContain('with');
+		expect(said.some((one) => one.startsWith('·'))).toBe(false);
+		expect(said.some((one) => one.endsWith('·'))).toBe(true);
+	});
+
 	// `authors` absent, and empty, are the ref's DID alone — nothing else may
 	// spell that fallback.
 	it('reads an empty list of authors as whoever the note is filed under', async () => {

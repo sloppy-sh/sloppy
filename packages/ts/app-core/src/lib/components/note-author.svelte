@@ -52,10 +52,19 @@
 			{#if at > 0}
 				<span class="text-sm text-muted-foreground">{at === wrote.length - 1 ? 'and' : '·'}</span>
 			{/if}
-			{@render person(did)}
+			{#if helped.length > 0 && at === wrote.length - 1}
+				<!-- The separator rides the name it follows, so a line that wraps
+				     here begins with "with" and never with the dot. -->
+				<span class="flex min-w-0 items-center gap-x-1.5">
+					{@render person(did)}
+					<span class="text-sm text-muted-foreground">·</span>
+				</span>
+			{:else}
+				{@render person(did)}
+			{/if}
 		{/each}
 		{#if helped.length > 0}
-			<span class="text-sm text-muted-foreground">· with</span>
+			<span class="text-sm text-muted-foreground">with</span>
 			{#each helped as did, at (did)}
 				{#if at > 0}
 					<span class="text-sm text-muted-foreground">{at === helped.length - 1 ? 'and' : '·'}</span
