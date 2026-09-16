@@ -350,6 +350,70 @@ orders and cursors a version is `snapshot_node.ord`, the place the genealogy's o
 gives each note. The label a person cites is carried beside the ref that identifies the
 region — never instead of it.
 
+### Whose writing a note carries
+
+**The ref's DID says whose graph a note is in. Whose writing it is, is a list on the
+note.** Three fields on `NodeSchema` carry it, and every one of them travels — the hosted
+row, the vault's front matter, the archive, a published snapshot and a pulled copy:
+
+- `owner` — who gates the note's writing. Absent is an **open** note, which is every note
+  written before this rule.
+- `authors` — every DID whose writing the note carries, in the order they first wrote into
+  it. **Absent, and empty, read as the ref's DID alone**; `authorsOf` in `@sloppy/types` is
+  the one reader of that fallback, so no surface spells it twice. The writer writes the list
+  out whenever it is anything else, which is the canonical form the vault round trip is
+  lossless up to.
+- `contributors` — every DID whose offered change the owner has taken in, in the order they
+  were taken. Absent, and empty, are none.
+
+`created_by` keeps meaning what it always meant: whose rows these are, and what the purge
+sweeps by.
+
+**One function decides what a write does, and every surface calls it.** `writeOutcome(note,
+writer)` in `@sloppy/types`:
+
+- `owner` absent → the write **lands**, and `withAuthor` appends the writer to `authors`
+  where they are not in it yet.
+- `owner` is the writer → the write **lands**, and `authors` is untouched. Ownership is not
+  writing.
+- `owner` is somebody else → the write is **offered**: it does not land, and it is recorded
+  as an amendment for the owner. One offer per person per note — offering again writes the
+  offer already standing rather than stacking a second, which is what
+  `amendment_owner_note_by UNIQUE` holds.
+
+Setting, changing and removing `owner` is the graph owner's act and the current owner's act.
+A contributor cannot claim a note, and an offer carries the note's **writing** — title, tags,
+look, sections — and never its place: nobody moves, renumbers or re-parents a note they do
+not own.
+
+**A graph decides the default for the notes written in it.** `Graph.ownership` is `open` or
+`owned`, absent is `open`. `owned` stamps `owner = writer` on every note at creation; `open`
+stamps nothing. Changing it reaches the notes written from then on and leaves the ones
+already written as they are — a person changes a note's own owner wherever its details are
+shown.
+
+**An amendment is a row and a file.** The `amendment` table's `created_by` is the note's
+OWNER, the way `comment_pointer`'s is the note's author: the offer was made to them, and
+theirs is the purge that has to reach it. `by` is who offered it. In a vault it is
+`amendments/<ulid>.md` (§ "A graph on disk"), committed like any note, so it travels through
+the folder's history and rides in archives; the bin does not hold one. A hosted note has one
+writer, so offering a change on one is not offered at all, and the API says so plainly.
+
+**Approving replaces the note's writing with the offer, whole** — title, tags, look,
+sections — bumps `updated_at`, adds the proposer to `contributors` and removes the offer.
+`authors` is untouched: an owned note's authorship stays the owner's. Declining removes the
+offer and records nothing; a proposer may withdraw their own. The owner is shown the
+difference between the note as it stands and the offer, section by section, in the language
+DESIGN.md § "A difference between two states" already has. **Taking part of an offer is a
+later theme** — there is no section-level picking, and an offer is taken or turned down
+whole.
+
+The routes: `GET /nodes/:did/:ulid/amendments` lists what has been offered on one note, for
+its owner alone; `POST /amendments` offers one or writes the one already standing;
+`DELETE /amendments/:did/:ulid` withdraws it; `POST /amendments/:did/:ulid/approve` and
+`/decline` settle it. An amendment is addressed by its own `<did>/<ulid>` like every other
+row here, and that DID is the graph owner's.
+
 ## syr integration
 
 ### The constraint that shapes everything
@@ -402,16 +466,67 @@ step on every write, and search reads that index. The address rules are the same
 from `@sloppy/types` the API runs: a suggestion made here and a suggestion made on a
 server are the same suggestion, which is what lets a graph cross between them.
 
-**There is no sign-in, because there is nobody to sign in to.** The app mints an Ed25519
-identity through `@sloppy/idp`'s crypto with nothing asked, writes the DID into
-`graph.json` and opens the graph. The one thing a first run does ask is a desktop's, and it
-is asked once: where the graph should live, because a folder there is a person's to put
-anywhere. A phone and a tablet keep their graphs in the app's own documents folder, so
-there is nothing to ask and the app opens straight into the graph — and because that folder
-moves with the app, where it is is asked of the system each launch rather than written
-down. The key is a file in the app's own private data and it never leaves the device —
-there is no password over it because there is nothing a password would protect it from that
-reaching the file would not already have defeated.
+**A device holds identities, plural, and each one says where it came from.** The app's
+private data holds `identities.json`: a list, each entry a DID, its public key and a
+`source` — `IdentitySourceSchema` in `@sloppy/types`, keyed on **where the key is** and
+never on which product keeps it, so a key manager nobody has written yet is a value here and
+not a field. Two values today:
+
+- **`device`** — made here with nothing asked, the key in a file in the app's own private
+  data. There is no password over it, because there is nothing a password would protect it
+  from that reaching the file would not already have defeated. A lone `identity.json` from
+  before the list reads as one `device` identity, and the list is written back.
+- **`delegated`** — an identity an identity store somewhere else keeps, reached through
+  Platform Delegation. The entry carries where that store is, the delegate's public key and
+  the token the exchange returned. **No private key is on the device**, which is the same
+  delegation model the hosted API runs under.
+
+**The first run offers three doors, and Settings offers the same three.** "Start here" mints
+a `device` identity and opens the graph — one tap, nothing asked, and still the default.
+"Sign in with your identity" takes an instance URL and runs the exchange below. "Bring an
+identity from another device" reads an identity file another device exported. Settings
+exports a `device` identity as one file — the DID, the public key and the key — with the
+consequence stated where the person chooses: whoever has that file writes as them. One
+brought in is a `device` identity like any other.
+
+**The app is its own platform.** There is no Sloppy API here to hold the delegation, so the
+native app performs Platform Delegation itself. `platform_origin` is the app's public web
+origin (`PUBLIC_SLOPPY_APP_ORIGIN`, `https://sloppy.sh` by default and the web app's origin
+in development) and the callback is `<origin>/auth/return`, because syr requires an http(s)
+callback on the platform's own origin and a custom scheme cannot be one. `apps/sloppy/web`
+serves `/auth/return` as a page with no server logic: it forwards its query string into
+`sloppy://auth/callback` and offers a way back into the app where the app did not open by
+itself. That path is declared as an app link beside `/n`, so a phone opens the app straight
+from the link. The app then finishes the exchange itself against the instance, with no
+platform secret anywhere in the protocol — the wire shapes are `@sloppy/types`' `syr.ts`,
+and the platform half of that dialect is written once for the browser side in
+`@sloppy/local`. The API's own `SyrService` is untouched; lifting the shared half out is
+worth doing and is not required here. The deep-link return leg
+(`sloppy://auth/callback`, `src/lib/deep-link.ts`) is the same one a hosted build uses, and
+in local mode it lands on `@sloppy/local`'s exchange rather than the API's.
+
+**Signing in locally settles which DID this device writes under, and what the person is
+called.** The name and picture come from the profile and are written into the owner block of
+the graphs that identity owns. It grants nothing else: publishing, peers and pull still need
+a server. A token that lapses leaves the identity held — the DID is a fact, not a
+permission — and marks it as signed out of its store until the person signs in again;
+nothing local needs the token after the exchange except refreshing the name and the picture.
+
+**Which identity writes.** The graph in front of somebody is owned by the DID in its
+`graph.json`. Where this device holds that identity, the person writes as the owner. Where it
+does not — a folder shared through git, or one brought from somebody else — they write as a
+CONTRIBUTOR under one of the identities this device holds, chosen in Settings and defaulting
+to the one most recently used; `LocalApi`'s `writer` is that choice, and absent it is the
+graph's own owner. A folder started here is owned by the identity that was writing when it
+was started. **Switching who is writing changes nothing already written**: refs never re-key
+on a switch. What a write then does to a note is § "Whose writing a note carries", the same
+rule the server runs.
+
+The one thing a first run still asks is a desktop's, and it is asked once: where the graph
+should live, because a folder there is a person's to put anywhere. A phone and a tablet keep
+their graphs in the app's own documents folder, so there is nothing to ask and the app opens
+straight into the graph — and because that folder moves with the app, where it is is asked of
+the system each launch rather than written down.
 
 **The folder that is open is the graph in front of somebody.** Opening another one from
 Settings serves the graph in that folder, starting one there where it holds none, and every
@@ -422,11 +537,11 @@ than started over: the app offers a folder to open instead of writing a fresh em
 where a graph somebody moved used to be.
 
 **What only this device knows sits beside the graphs rather than inside one.** The app's
-private data holds `identity.json` and the key file it names, and `vaults.json`, the list
-of folders a graph has been put in — a folder cannot remember where somebody put it. What
-a person is called is not there: a name and a picture are written into the owner block of
-every graph on the device (§ "A graph on disk"), so a graph says whose it is wherever it is
-opened, and there is no profile to read from anywhere else.
+private data holds `identities.json` and the key file each `device` entry names, and
+`vaults.json`, the list of folders a graph has been put in — a folder cannot remember where
+somebody put it. What a person is called is not there: a name and a picture are written into
+the owner block of every graph the writing identity owns (§ "A graph on disk"), so a graph
+says whose it is wherever it is opened, and there is no profile to read from anywhere else.
 
 **A vault holds the pictures its own notes draw.** A picture is added before anybody knows
 which note will draw it, so one that turns out to belong to a note in another graph on the
@@ -444,9 +559,9 @@ write crosses; a store across a network is still sent them.
 conversation, following, somebody else's profile and somebody else's emoji all need
 another machine to exist; `LocalApi` answers each with `serverOnly`, naming the feature,
 and the surfaces do not put them in front of anybody in the first place. Signing in is not
-among them either: `SLOPPY_LOCAL_MODE` is decided when the app is built, so a build that
-serves a graph off the device offers no sign-in anywhere, and Settings names the folder the
-graph is in instead. A hosted Sloppy is a **separate mode** — a hosted graph and a local one
+among them: it is the app talking to an identity store, which needs nothing of Sloppy's own,
+and what it settles is which DID this device writes under and nothing more.
+A hosted Sloppy is a **separate mode** — a hosted graph and a local one
 are two graphs, and the only way one becomes the other is by exporting it as an archive and
 importing it, which re-keys its refs under the receiving identity (§ "A graph on disk").
 
@@ -577,6 +692,14 @@ weight, ring style and size are plain shape and go in `PublishedNode.look`, abse
 as unstyled, so every version published before one could travel is unchanged; a picture is
 an upload in the author's own store and stays there (§ "Pictures"). DESIGN.md § "A note's
 look never uses colour" carries the ruling.
+
+**Whose writing a note carries travels with it.** `owner`, `authors` and `contributors` ride
+`PublishedNode`, so a snapshot and the copy a peer pulls both say who wrote what, and a
+reader of a held region is shown it exactly as its author's own graph shows it. Absent
+`authors` is the ref's DID alone here too — which is every version published before a note
+could carry more than one writer — and absent `contributors` is none (§ "Whose writing a note
+carries"). A reader writes into neither: what they hold is a copy, and `owner` is a fact
+about the author's graph rather than a permission on the reader's.
 
 **Publishing several notes at once is one act, and it puts each of them out once.** `POST
 /api/nodes/bulk` carries a `publish` act beside `tag`, `set_appearance` and `delete`, and
@@ -1807,6 +1930,7 @@ a folder with. Nothing in it talks to a store: it is handed rows and hands back 
 <vault>/
 ├── graph.json                       format, the graph's ulid, its name, and whose it is
 ├── notes/<ulid>.md                  one note: front matter, then its sections
+├── amendments/<ulid>.md             one change offered on a note, in the same shape
 ├── media/<uploadId>.<ext>           the pictures the notes draw
 └── .sloppy/                         what markdown cannot carry
     ├── ink/<block>-<n>.ink.json     one drawing's strokes, and an .svg of it beside
@@ -1851,15 +1975,28 @@ written twice — its strokes as `.ink.json`, and an `.svg` drawn from them — 
 strokes are the record and the SVG is what a viewer that has never heard of Sloppy shows.
 
 **One note is one file, and its sections are marked in the body.** The front matter is the
-note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `tags`, `links`,
-`title`, `created`, `updated`, `appearance`. Absent `parent` is a branch or an independent
-note; absent `address` is a note with none; absent `aliases`, `tags` or `links` is none of
-them. `appearance` is a block of its own — the channels the author set on the mark, each
+note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `owner`, `authors`,
+`contributors`, `tags`, `links`, `title`, `created`, `updated`, `appearance`. Absent `parent`
+is a branch or an independent note; absent `address` is a note with none; absent `aliases`,
+`tags`, `links` or `contributors` is none of them; absent `owner` is an open note. **Absent
+`authors` is the ref's DID alone**, and that is the one case the file leaves out — a note
+only its own author has written into and a note written before anybody else could write into
+one are the same bytes, which is what keeps the round trip lossless (§ "Whose writing a note
+carries"). `appearance` is a block of its own — the channels the author set on the mark, each
 on its own line — and absent is a note nobody styled, which is not itself a look: a
 channel that says nothing is not written down, exactly as `isUnstyled` reads one. The
 body is the note's stack of sections, each opened by `<!-- block <ulid> -->` — so a section
 keeps its identity across an export and an import, and a person who moves one in the file
 has moved a section rather than made two.
+
+**An offered change is a file in the same shape, in `amendments/`.** Its front matter is
+`amends` — the note it is offered on — `by`, `at`, `message`, `title`, `tags` and
+`appearance`, and its body is the sections it proposes with their block ulids, read by the
+same reader a note's are. Its own ulid is the file's name rather than a field: an offer is
+read inside the graph that holds it, so the DID half of its reference is that graph's owner
+and nothing in the file repeats it. It is committed like any note, so it moves through the
+folder's history and rides in an archive — a graph handed over with offers standing on it
+loses none of them.
 
 **What a vault carries is what a person wrote; what a renderer decided is not carried.** A
 note's `depth` and `origin` fall out of the parent chain, its `references` out of its own
@@ -1887,10 +2024,14 @@ made, so `unpack` refuses one carrying a path that climbs out of the folder or n
 place of its own — nothing downstream has to remember the rule before writing a vault to
 disk.
 
-**Refs are re-keyed on import; ulids are kept.** An archive carries refs under the DID that
-exported it. Importing into an identity rewrites `<sourceDid>/<ulid>` to `<targetDid>/<ulid>`
-through the note's own ref, its parent, its links and every reference in its writing — the
-aliases ride the note, so its ref carries them. The ulid half never changes, which is what
+**Refs are re-keyed on import; ulids are kept; people are not re-keyed at all.** An archive
+carries refs under the DID that exported it. Importing into an identity rewrites
+`<sourceDid>/<ulid>` to `<targetDid>/<ulid>`
+through the note's own ref, its parent, its links, every reference in its writing and the
+note an offer amends — the
+aliases ride the note, so its ref carries them. **A DID standing on its own is a person and
+is never rewritten**: `owner`, `authors`, `contributors` and an offer's `by` say who gates
+and who wrote, which carrying a graph somewhere else does not change. The ulid half never changes, which is what
 lets a graph be recognised on the way back in. An import is refused where the target already
 holds one of the ulids arriving in another of its graphs. Addresses arrive as the labels
 they are, and are held unique inside the graph by the same rule that writes one.

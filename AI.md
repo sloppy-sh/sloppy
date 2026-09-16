@@ -53,6 +53,16 @@ we do not control and cannot migrate.
 link holds, what a publication is rooted at, what a pulled region is a copy of, and what
 every lookup on the wire and in the store keys on. Nothing keys a note by its address.
 
+**The ref's DID says whose GRAPH a note is in. Whose WRITING it is, is a list on the note.**
+`authors` names every DID whose writing the note carries, in the order they first wrote into
+it, and absent it is the ref's DID alone — every note written before this rule. `owner` is
+who gates the writing, and absent is an open note. The rule, one function, every surface: a
+write by the owner, or on a note with no owner, LANDS — appending the writer to `authors`
+where the note is open and they are not in it yet. A write by anybody else on an owned note
+does NOT land; it is offered to the owner, who takes it in whole or turns it down, and taking
+it in adds a `contributor` and leaves `authors` alone, because ownership is not writing.
+docs/ARCHITECTURE.md § "Whose writing a note carries" is the mechanism.
+
 **The genealogy is the agreement.** A note's parent — absent on a branch and on an
 independent note — and its order among the notes alongside it are the whole of what every
 peer reads the same way. Position on the canvas, depth, folding and what a subtree carries
