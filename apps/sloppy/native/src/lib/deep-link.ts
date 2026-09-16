@@ -3,7 +3,8 @@
  * sent opens here. Both arrive as a URL whose path is a route in the very same
  * SvelteKit app a browser would have run — so the shell re-enters it and knows
  * nothing about where it leads. `tauri.conf.json` declares what the OS hands
- * over: the `sloppy` scheme, and the notes on Sloppy's own domain.
+ * over: the `sloppy` scheme, and the note and sign-in-return links on Sloppy's
+ * own domain.
  */
 
 import { goto } from '$app/navigation';
@@ -13,12 +14,19 @@ import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
  *  only to a target it recognises. */
 export const SIGN_IN_CALLBACK = 'sloppy://auth/callback';
 
-const CALLBACK_ROUTE = '/auth/callback';
+/** Both ways consent comes back: the web page it lands on forwards into the
+ *  custom scheme, and on a phone that page is an app link the OS hands over
+ *  whole. Either arrives carrying the hand-off and belongs on the root. */
+const RETURN_PATHS = new Set(['/auth/callback', '/auth/return']);
 
-/** `sloppy://n/<did>/<ulid>` and `https://<host>/n/<did>/<ulid>` both →
- *  `/n/<did>/<ulid>`: a custom scheme has no host, so its first path segment is
- *  parsed as one and has to be put back. */
-export function routeOf(raw: string): string | undefined {
+type Entry = {
+	route: string;
+	/** A session is picked up as the app boots and only then, so a return from
+	 *  consent re-enters the document rather than going through the router. */
+	reenters: boolean;
+};
+
+function entryOf(raw: string): Entry | undefined {
 	let url: URL;
 	try {
 		url = new URL(raw);
@@ -29,8 +37,15 @@ export function routeOf(raw: string): string | undefined {
 	const path = (web ? url.pathname : `/${url.host}${url.pathname}`)
 		.replace(/\/{2,}/g, '/')
 		.replace(/(.)\/+$/, '$1');
-	const route = path === CALLBACK_ROUTE ? '/' : path;
-	return `${route}${url.search}${url.hash}`;
+	const reenters = RETURN_PATHS.has(path);
+	return { route: `${reenters ? '/' : path}${url.search}${url.hash}`, reenters };
+}
+
+/** `sloppy://n/<did>/<ulid>` and `https://<host>/n/<did>/<ulid>` both →
+ *  `/n/<did>/<ulid>`: a custom scheme has no host, so its first path segment is
+ *  parsed as one and has to be put back. */
+export function routeOf(raw: string): string | undefined {
+	return entryOf(raw)?.route;
 }
 
 const ENTERED_LINKS = 'sloppy.entered-links';
@@ -47,12 +62,11 @@ function markEntered(raw: string): void {
 
 function enter(urls: string[]): void {
 	for (const raw of urls) {
-		const route = routeOf(raw);
-		if (!route) continue;
+		const entry = entryOf(raw);
+		if (!entry) continue;
+		const { route } = entry;
 		markEntered(raw);
-		if (raw.startsWith(SIGN_IN_CALLBACK)) {
-			// A session is opened as the app boots and only then, so consent re-enters
-			// the document rather than the router.
+		if (entry.reenters) {
 			location.assign(route);
 		} else {
 			// `resolve()` takes a route id known at build time; this one arrives from

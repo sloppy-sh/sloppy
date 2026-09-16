@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AmendmentModule } from "./amendment/amendment.module";
 import { AuthModule } from "./auth/auth.module";
 import { BlockModule } from "./block/block.module";
 import { AppConfigModule } from "./config/config.module";
@@ -28,6 +29,7 @@ import { SocialModule } from "./social/social.module";
     IdpModule.forRoot(),
     NodeModule,
     BlockModule,
+    AmendmentModule,
     PublicationModule,
     MediaModule,
     ProfileModule,

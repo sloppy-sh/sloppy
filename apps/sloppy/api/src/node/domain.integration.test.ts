@@ -1556,6 +1556,52 @@ describe("the domain routes", () => {
       ).toContain(his.ref);
     });
 
+    scenario(
+      "gates the notes written in it from the moment it says so",
+      async () => {
+        const shared = await newGraph(ada, "The commons");
+        const open = (await newNode(ada, {
+          from: { relation: "free", graph: shared.ref },
+          title: "Anybody's",
+        })) as NodeView;
+        expect(open.owner).toBeUndefined();
+
+        const gating = (await ok("PATCH", `/graphs/${at(shared.ref)}`, ada, {
+          title: "The commons",
+          ownership: "owned",
+        })) as GraphView;
+        expect(gating.ownership).toBe("owned");
+
+        const gated = await newNode(ada, {
+          from: { relation: "free", graph: shared.ref },
+          title: "Hers",
+        });
+        expect(gated.owner).toBe(ada.did);
+
+        // What was written before it said so is left where it was.
+        const held = (await ok(
+          "GET",
+          `/nodes/${at(open.ref)}`,
+          ada,
+        )) as NodeView;
+        expect(held.owner).toBeUndefined();
+      },
+    );
+
+    scenario("hands a note's gate on, and takes it back off", async () => {
+      const held = await newNode(ada, { title: "Mine to say" });
+
+      const handed = (await ok("PATCH", `/nodes/${at(held.ref)}`, ada, {
+        owner: bram.did,
+      })) as NodeView;
+      expect(handed.owner).toBe(bram.did);
+
+      const back = (await ok("PATCH", `/nodes/${at(held.ref)}`, ada, {
+        owner: null,
+      })) as NodeView;
+      expect(back.owner).toBeUndefined();
+    });
+
     scenario("refuses to name one, or to rename somebody else's", async () => {
       expect((await call("POST", "/graphs", ada, { title: "" })).status).toBe(
         400,

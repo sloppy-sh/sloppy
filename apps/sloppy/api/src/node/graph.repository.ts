@@ -5,6 +5,7 @@ import { Injectable } from "@nestjs/common";
 import {
   createOwnedRecordId,
   type Graph,
+  type GraphOwnership,
   GraphSchema,
   nowIso,
   type OwnedRef,
@@ -71,12 +72,36 @@ export class GraphRepository {
   }
 
   /**
-   * Name a graph, whether or not it has a row yet. One statement rather than a
-   * read and a write, because `created_at` is immutable and a whole-row save
-   * would have to re-send it as a different moment.
+   * Name a graph and say what it gates the notes written in it by, whether or
+   * not it has a row yet. One statement rather than a read and a write, because
+   * `created_at` is immutable and a whole-row save would have to re-send it as a
+   * different moment.
+   *
+   * An absent `ownership` leaves whatever the graph gates by alone.
    */
-  async name(did: string, ref: OwnedRef, title: string): Promise<Graph> {
-    return this.upsert(did, ref, title, "title = $title, updated_at = $now");
+  async name(
+    did: string,
+    ref: OwnedRef,
+    title: string,
+    ownership?: GraphOwnership,
+  ): Promise<Graph> {
+    const written = ownership === undefined ? "" : ", ownership: $ownership";
+    const rewritten = ownership === undefined ? "" : ", ownership = $ownership";
+    const now = nowIso();
+    const [rows] = await this.query(
+      `INSERT INTO graph {
+         id: $id, created_by: $did, title: $title${written},
+         created_at: $now, updated_at: $now
+       } ON DUPLICATE KEY UPDATE title = $title${rewritten}, updated_at = $now`,
+      {
+        id: recordIdFromOwnedRef("graph", ref),
+        did,
+        title,
+        ownership,
+        now,
+      },
+    );
+    return GraphSchema.parse(rows[0]);
   }
 
   /** The name of a graph its owner has closed, gone. A note carries the ref
@@ -86,23 +111,6 @@ export class GraphRepository {
       id: recordIdFromOwnedRef("graph", ref),
       did,
     });
-  }
-
-  private async upsert(
-    did: string,
-    ref: OwnedRef,
-    title: string,
-    onDuplicate: string,
-  ): Promise<Graph> {
-    const now = nowIso();
-    const [rows] = await this.query(
-      `INSERT INTO graph {
-         id: $id, created_by: $did, title: $title,
-         created_at: $now, updated_at: $now
-       } ON DUPLICATE KEY UPDATE ${onDuplicate}`,
-      { id: recordIdFromOwnedRef("graph", ref), did, title, now },
-    );
-    return GraphSchema.parse(rows[0]);
   }
 
   private query<T = unknown>(

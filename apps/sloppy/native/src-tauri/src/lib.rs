@@ -16,6 +16,8 @@ pub(crate) fn commands<R: Runtime>(
         vault::files_mkdir,
         vault::app_data_path,
         vault::pick_folder,
+        vault::pick_file,
+        vault::save_file,
         history::history_status,
         history::history_log,
         history::history_commit,
@@ -42,14 +44,15 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {}));
     }
 
+    // Asking for a folder or a file happens in `vault.rs` rather than on the
+    // page, so the webview is never handed the dialog itself; `fs` is there for
+    // what a person picks on Android, which is a content URI and not a path.
     let builder = builder
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_opener::init());
-
-    // Asking for a folder happens in `vault.rs` rather than on the page, so the
-    // webview is never handed the dialog itself.
-    #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_dialog::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_http::init());
 
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_safe_area_insets_css::init());

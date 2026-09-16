@@ -9,6 +9,7 @@
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
 	import { api } from '../api.js';
+	import IdentitySettings from '../components/identity-settings.svelte';
 	import { repointRuntime, runtime } from '../runtime.js';
 	import { saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -272,6 +273,13 @@
 					{/if}
 				{/if}
 			</div>
+
+			{#if runtime.identities()}
+				<div class="space-y-3 border-t border-border pt-8">
+					<h2 class="text-sm font-medium">Who you write as</h2>
+					<IdentitySettings />
+				</div>
+			{/if}
 
 			{#if graphHistory.keeps}
 				<div class="space-y-3 border-t border-border pt-8">
