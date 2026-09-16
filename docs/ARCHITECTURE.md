@@ -537,8 +537,8 @@ absent being the identity this device writes under by default. A folder started 
 by the identity that was writing when it was started. **Switching who is writing changes
 nothing already written**: refs never re-key on a switch, and a folder somebody else owns
 keeps its own — a ref's DID says whose graph a note is in, so writing in their folder joins
-their notes' `authors` rather than making the notes this device's. What a write then does to a note is § "Whose writing a note carries", the same
-rule the server runs.
+their notes' `authors` rather than making the notes this device's. What a write then does to
+a note is § "Whose writing a note carries", the same rule the server runs.
 
 The one thing a first run still asks is a desktop's, and it is asked once: where the graph
 should live, because a folder there is a person's to put anywhere. A phone and a tablet keep
