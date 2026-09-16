@@ -14,6 +14,7 @@ import {
   type DidSyr,
   type DeletedBranch,
   DELETED_KEPT_FOR_DAYS,
+  type GraphOwnership,
   type MediaAsset,
   type MediaRole,
   type NodeAppearance,
@@ -187,6 +188,15 @@ export class LocalGraph {
 
   async rename(title: string): Promise<void> {
     this.said = { ...this.said, name: title };
+    await this.files.write(GRAPH_FILE, graphFile(this.said));
+  }
+
+  get ownership(): GraphOwnership | undefined {
+    return this.said.ownership;
+  }
+
+  async gate(ownership: GraphOwnership): Promise<void> {
+    this.said = { ...this.said, ownership };
     await this.files.write(GRAPH_FILE, graphFile(this.said));
   }
 

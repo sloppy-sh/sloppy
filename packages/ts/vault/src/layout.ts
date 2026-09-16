@@ -1,7 +1,13 @@
 // Where a graph's files sit and what each one is called —
 // docs/ARCHITECTURE.md § "A graph on disk".
 
-import { type DidSyr, DidSyrSchema, UlidSchema } from "@sloppy/types";
+import {
+  type DidSyr,
+  DidSyrSchema,
+  type GraphOwnership,
+  GraphOwnershipSchema,
+  UlidSchema,
+} from "@sloppy/types";
 
 /** The layout a vault is written in. A reader refuses one it does not know. */
 export const VAULT_FORMAT = 1;
@@ -38,6 +44,9 @@ export interface VaultGraph {
   graph: string;
   name: string;
   owner: DidSyr;
+  /** What a note written in this graph is gated by. Absent is `open`, which is
+   *  what every graph written before the field says. */
+  ownership?: GraphOwnership;
   /** What the owner is called. Absent where they have not said. */
   owner_name?: string;
   /** Their picture, as the path of a file in this vault's `media/`, so a graph
@@ -176,6 +185,7 @@ export function graphFile(graph: VaultGraph): Uint8Array {
     graph: graph.graph,
     name: graph.name,
     owner: graph.owner,
+    ...(graph.ownership === undefined ? {} : { ownership: graph.ownership }),
     ...(graph.owner_name === undefined ? {} : { owner_name: graph.owner_name }),
     ...(graph.owner_avatar === undefined
       ? {}
@@ -207,11 +217,15 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
   if (said.format !== VAULT_FORMAT || !owner.success || !graph.success) {
     throw new VaultFormatError("This file isn't a Sloppy graph.");
   }
+  // A gate this build has never heard of leaves the graph open rather than
+  // shutting somebody out of their own notes.
+  const ownership = GraphOwnershipSchema.safeParse(said.ownership);
   return {
     format: said.format,
     graph: graph.data,
     name: said.name,
     owner: owner.data,
+    ...(ownership.success ? { ownership: ownership.data } : {}),
     ...(typeof said.owner_name === "string" && said.owner_name !== ""
       ? { owner_name: said.owner_name }
       : {}),

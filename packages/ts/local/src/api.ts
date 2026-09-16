@@ -284,6 +284,7 @@ export class LocalApi implements SloppyApi {
     return this.write(async () => {
       const graph = await this.graphAt(ref);
       await graph.rename(request.title);
+      if (request.ownership !== undefined) await graph.gate(request.ownership);
       return this.graphView(graph);
     });
   }
@@ -1503,6 +1504,7 @@ export class LocalApi implements SloppyApi {
       ref: graph.ref,
       created_by: graph.did,
       title: graph.title,
+      ...(graph.ownership === undefined ? {} : { ownership: graph.ownership }),
       // The folder this device opened first is the one it started with.
       ...(written[0]?.root === root ? { home: true } : {}),
       created_at: at,
@@ -1545,7 +1547,9 @@ export class LocalApi implements SloppyApi {
     }
     // Whose it is now is whoever imported it, so somebody else's name does not
     // come with their graph; a person's own archive still carries theirs back.
-    const owned = said.owner === did ? readGraph(vault) : undefined;
+    // What the graph gates its notes by is the graph's and rides in either way.
+    const carried = readGraph(vault);
+    const owned = said.owner === did ? carried : undefined;
     vault.set(
       GRAPH_FILE,
       graphFile({
@@ -1553,6 +1557,9 @@ export class LocalApi implements SloppyApi {
         graph: said.graph,
         name: said.name,
         owner: did,
+        ...(carried?.ownership === undefined
+          ? {}
+          : { ownership: carried.ownership }),
         ...(owned?.owner_name === undefined
           ? {}
           : { owner_name: owned.owner_name }),

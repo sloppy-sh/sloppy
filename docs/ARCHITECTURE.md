@@ -1932,7 +1932,7 @@ a folder with. Nothing in it talks to a store: it is handed rows and hands back 
 
 ```
 <vault>/
-├── graph.json                       format, the graph's ulid, its name, and whose it is
+├── graph.json                       format, the graph's ulid, its name, whose it is, what it gates
 ├── notes/<ulid>.md                  one note: front matter, then its sections
 ├── amendments/<ulid>.md             one change offered on a note, in the same shape
 ├── media/<uploadId>.<ext>           the pictures the notes draw
@@ -1951,6 +1951,13 @@ a folder with. Nothing in it talks to a store: it is handed rows and hands back 
 the person who keeps it, so one opened on another device is not anonymous. Both are
 optional, and absent is somebody who has not said. Importing somebody else's graph leaves
 their name behind with them; a person's own archive brings theirs back.
+
+**`ownership` is what the graph gates the notes written in it by** (§ "Whose writing a note
+carries"), and absent is `open` — every graph written before the field. It rides in an
+archive rather than being left behind, because it is the graph's own and not a person's: a
+folder two people share through git says there that a note written in it is its writer's,
+and it says the same on the next device that opens it. A value this build has never heard of
+leaves the graph open rather than shutting somebody out of their own notes.
 
 **Every folder's graph has a ulid of its own**, minted when the folder is started, so two
 devices' first folders are two graphs and an archive of either settles into itself.
