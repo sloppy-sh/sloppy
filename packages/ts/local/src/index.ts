@@ -2,6 +2,7 @@
 // line here would be a second copy of it.
 
 export * from "./files.js";
+export * from "./delegation.js";
 export * from "./identity.js";
 export * from "./vault-paths.js";
 export * from "./graph.js";

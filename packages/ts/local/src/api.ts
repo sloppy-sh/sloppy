@@ -131,7 +131,7 @@ import {
 import {
   type LocalIdentity,
   openLocalIdentity,
-  SEED_FILE,
+  readIdentities,
 } from "./identity.js";
 import { NoteWriter } from "./notes.js";
 import { absent, checked, contested, refuse } from "./refusal.js";
@@ -208,8 +208,10 @@ export class LocalApi implements SloppyApi {
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
+  /** There is no identity store here to offer anybody, which is an answer and
+   *  not a refusal: a person signs in to one they already keep somewhere. */
   async ownInstance(): Promise<string | undefined> {
-    serverOnly("Making an identity somewhere else");
+    return undefined;
   }
 
   async instanceHome(): Promise<OwnInstance> {
@@ -228,14 +230,21 @@ export class LocalApi implements SloppyApi {
     serverOnly("Signing out");
   }
 
-  /** The identity this device writes under — `identity.ts` makes it on first
-   *  run, so this never answers `null`. */
+  /** The identity a write here carries — `identity.ts` makes one on first run,
+   *  so this never answers `null`. An empty `syr_instance_url` is an identity
+   *  no store somewhere else keeps. */
   async me(): Promise<Viewer | null> {
     const identity = await this.who();
+    const held = (await readIdentities(this.files)).identities.find(
+      (one) => one.did === identity.did,
+    );
     return {
       did: identity.did,
-      syr_instance_url: "",
-      delegate_public_key: identity.public_key,
+      syr_instance_url: held?.source === "delegated" ? held.instance_url : "",
+      delegate_public_key:
+        held?.source === "delegated"
+          ? held.delegate_public_key
+          : identity.public_key,
     };
   }
 
@@ -1301,7 +1310,7 @@ export class LocalApi implements SloppyApi {
   }
 
   private async who(): Promise<LocalIdentity> {
-    this.identity ??= await openLocalIdentity(this.files);
+    this.identity ??= await openLocalIdentity(this.files, this.writingAs);
     return this.identity;
   }
 
@@ -2138,7 +2147,6 @@ export async function graphAsItWas(vault: Vault): Promise<GraphAsItWas> {
     as: {
       did: said.owner,
       public_key: encodePublicKey(publicKeyFromDid(said.owner)),
-      seed: SEED_FILE,
     },
   });
 }
