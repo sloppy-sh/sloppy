@@ -354,6 +354,7 @@
 					return {
 						...(folder.graph ? { ref: folder.graph.ref } : {}),
 						folder: folder.root,
+						folderName: folderName(folder.root),
 						title: held?.title ?? folder.graph?.name ?? folderName(folder.root),
 						...(held?.ownership === undefined ? {} : { ownership: held.ownership }),
 						...(by === undefined ? {} : { by })
@@ -2508,6 +2509,7 @@
 	graphs={graphChoices}
 	current={graphs.current}
 	home={graphs.home}
+	openFolder={graphs.openFolder}
 	alsoUp={new Set(onCanvas.slice(1))}
 	full={graphs.canvasFull}
 	busy={graphs.state.loading}

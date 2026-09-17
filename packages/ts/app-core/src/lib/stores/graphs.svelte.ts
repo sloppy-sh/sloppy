@@ -58,6 +58,7 @@ class GraphsStore {
 	#epoch = 0;
 	#restored: Promise<void> | null = null;
 	#inFolder = $state<OwnedRef | null>(null);
+	#folderRoot = $state<string | undefined>(undefined);
 	#openFolder: Promise<void> | null = null;
 	#folders = $state<KnownFolder[]>([]);
 	#knownFolders: Promise<void> | null = null;
@@ -160,6 +161,7 @@ class GraphsStore {
 			const ref = await vault.graph().catch(() => undefined);
 			if (epoch !== this.#epoch || ref === undefined) return;
 			this.#inFolder = ref;
+			this.#folderRoot = vault.folder();
 			if (prefs.current.graph !== null && prefs.current.graph !== ref) prefs.set('graph', null);
 		})();
 		return this.#openFolder;
@@ -173,6 +175,13 @@ class GraphsStore {
 	 */
 	get folders(): KnownFolder[] {
 		return this.#folders;
+	}
+
+	/** The folder in front of somebody, by its root — what says which of the
+	 *  folders listed is the one open, since two of them may hold one graph.
+	 *  `undefined` where this device keeps no folder. */
+	get openFolder(): string | undefined {
+		return this.#folderRoot;
 	}
 
 	/** Whether this device's graphs are the folders it keeps them in, which is
@@ -405,6 +414,7 @@ class GraphsStore {
 		this.#inflight = null;
 		this.#restored = null;
 		this.#inFolder = null;
+		this.#folderRoot = undefined;
 		this.#openFolder = null;
 		this.#folders = [];
 		this.#knownFolders = null;

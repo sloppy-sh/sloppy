@@ -315,7 +315,7 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 	let brought: string[];
 	let started: number;
 
-	async function openFolders(over: { onClone?: boolean } = {}): Promise<void> {
+	async function openFolders(over: { onClone?: boolean; open?: string } = {}): Promise<void> {
 		if (mounted) unmount(mounted, { outro: false });
 		document.body.innerHTML = '';
 		target = document.createElement('div');
@@ -335,6 +335,7 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 				],
 				current: HOME,
 				home: HOME,
+				openFolder: over.open ?? GARDEN_FOLDER,
 				alsoUp: new Set<OwnedRef>(),
 				onEnter: () => {},
 				onToggle: () => {},
@@ -453,5 +454,110 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 		await openFolders({ onClone: false });
 
 		expect(document.body.textContent).not.toContain('Bring one from an address');
+	});
+
+	it('is in the folder that is open rather than the first row holding its graph', async () => {
+		await openFolders({ open: THESIS_FOLDER });
+
+		const rows = [...document.querySelectorAll('li button[aria-current="true"]')];
+		expect(rows).toHaveLength(1);
+		expect(rows[0].textContent).toContain('The thesis');
+		expect(find('Forget My graph')).not.toBeNull();
+		expect(find('Forget The thesis')).toBeNull();
+	});
+
+	it('offers one removal on a row, and it is the one that leaves the folder alone', async () => {
+		await openFolders();
+
+		expect(find('Close The thesis')).toBeNull();
+		expect(find('Close gone')).toBeNull();
+		expect(find('Forget The thesis')).not.toBeNull();
+		expect(document.body.textContent).toContain(
+			'Forgetting a folder takes it off this list and leaves everything in it where it is.'
+		);
+	});
+});
+
+describe('two folders holding one graph', () => {
+	const ONE = '/Users/me/garden';
+	const COPY = '/Users/me/garden-copy';
+
+	let opened: string[];
+	let forgotten: string[];
+
+	async function openBoth(): Promise<void> {
+		if (mounted) unmount(mounted, { outro: false });
+		document.body.innerHTML = '';
+		target = document.createElement('div');
+		document.body.appendChild(target);
+		opened = [];
+		forgotten = [];
+		mounted = mount(GraphsSheet, {
+			target,
+			props: {
+				open: true,
+				graphs: [
+					{ ref: HOME, title: 'Garden', folder: ONE, folderName: 'garden' },
+					{ ref: HOME, title: 'Garden', folder: COPY, folderName: 'garden-copy' }
+				],
+				current: HOME,
+				home: HOME,
+				openFolder: COPY,
+				alsoUp: new Set<OwnedRef>(),
+				onEnter: () => {},
+				onToggle: () => {},
+				onOpen: () => Promise.resolve(),
+				onRename: () => Promise.resolve(),
+				onOpenFolder: (folder: string) => {
+					opened.push(folder);
+					return Promise.resolve();
+				},
+				onForget: (folder: string) => {
+					forgotten.push(folder);
+					return Promise.resolve();
+				}
+			}
+		});
+		await settle();
+	}
+
+	it('tells the two rows apart by the folder each one is', async () => {
+		await openBoth();
+
+		const rows = [...document.querySelectorAll('li')].map((one) => one.textContent ?? '');
+		expect(rows[0]).toContain('garden');
+		expect(rows[1]).toContain('garden-copy');
+	});
+
+	it('is in the one folder that is open', async () => {
+		await openBoth();
+
+		const here = [...document.querySelectorAll('li button[aria-current="true"]')];
+		expect(here).toHaveLength(1);
+		expect(here[0].textContent).toContain('garden-copy');
+	});
+
+	it('forgets the folder that is not open, and opens it by its own row', async () => {
+		await openBoth();
+
+		expect(find('Forget Garden')).not.toBeNull();
+		find('Forget Garden')?.click();
+		await settle();
+		expect(forgotten).toEqual([ONE]);
+
+		[...document.querySelectorAll<HTMLButtonElement>('li button')]
+			.find((one) => one.textContent?.includes('garden') && !one.textContent?.includes('copy'))
+			?.click();
+		await settle();
+		expect(opened).toEqual([ONE]);
+	});
+
+	it('offers no act that cannot say which of the two folders it means', async () => {
+		await openBoth();
+
+		expect(find('Rename Garden')).toBeNull();
+		expect(find('Settings for Garden')).toBeNull();
+		expect(find('Show Garden beside this one')).toBeNull();
+		expect(find('Close Garden')).toBeNull();
 	});
 });
