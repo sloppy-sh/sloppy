@@ -5,13 +5,22 @@ import { MemoryFiles, MemoryHistory } from '@sloppy/local';
 import type { BlockView, NodeView, OwnedRef, UpdateNodeRequest } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { initRuntime } from '../runtime.js';
+import { initRuntime, type DeploymentMode } from '../runtime.js';
 import { graphs } from '../stores/graphs.svelte.js';
 import { nodes } from '../stores/nodes.svelte.js';
 import { peers } from '../stores/peers.svelte.js';
 import { people } from '../stores/people.svelte.js';
 import { session } from '../stores/session.svelte.js';
-import { AT, DID, node, ref, useFakeApi, type FakeApi } from '../stores/fake-api.test-support.js';
+import {
+	AT,
+	amending,
+	node,
+	ref,
+	useFakeApi,
+	VIEWER,
+	type FakeApi
+} from '../stores/fake-api.test-support.js';
+import { offers } from '../stores/offers.svelte.js';
 import NoteOnSurface from './note-in-panel.test-support.svelte';
 
 const NOTE = ref(1);
@@ -75,11 +84,12 @@ async function openActs(): Promise<void> {
 
 /** One section pointing at a place in the code, under the words it was cited
  *  by. */
-function anchored(href: string): BlockView {
+function anchored(href: string, of: OwnedRef = NOTE): BlockView {
+	const wrote = of.slice(0, of.lastIndexOf('/'));
 	return {
-		ref: ref(50),
-		node: NOTE,
-		created_by: DID,
+		ref: ref(50, wrote),
+		node: of,
+		created_by: wrote,
 		created_at: AT,
 		updated_at: AT,
 		ord: 'a0',
@@ -110,9 +120,10 @@ let store: Map<string, Uint8Array>;
 
 /** The folder as somebody's project, with the code in it and its history over
  *  it; `false` is a graph that is nobody's project. */
-function shellOver(project: boolean): void {
+function shellOver(project: boolean, mode: DeploymentMode = 'hosted'): void {
 	initRuntime({
 		apiHost: () => 'http://api.test',
+		mode: () => mode,
 		project: project ? async () => files : undefined,
 		history: () => (project ? kept : undefined)
 	});
@@ -146,6 +157,7 @@ beforeEach(() => {
 	nodes.clear();
 	peers.clear();
 	graphs.clear();
+	offers.clear();
 	people.hold(null);
 	written = [];
 	store = new Map();
@@ -262,6 +274,69 @@ describe('saying a note’s reasoning still holds', () => {
 		await keepFile('src/parser.ts', PARSER);
 		await openNote({}, [anchored('https://example.com/')]);
 
+		await openActs();
+		expect(named('Still true')).toBeUndefined();
+	});
+});
+
+// One container in one repository is read by everybody who works in it, so a
+// path is the project's and not its author's — ruling 2 gates code on the
+// graph. What the reader may not do is say somebody else's reading still holds.
+describe('a note a colleague writes, in the same project', () => {
+	const COLLEAGUE = 'did:syr:z6MkjChhrJfLm9WGVUAnyLPnfPGmZDcyDKNsBTsAsn7RkAqB';
+	const THEIRS = ref(2, COLLEAGUE);
+
+	async function openTheirNote(over: Partial<NodeView> = {}): Promise<void> {
+		const held: NodeView = {
+			...node(2, '1', { created_by: COLLEAGUE, owner: COLLEAGUE }),
+			ref: THEIRS,
+			title: 'What the parser does',
+			...over
+		};
+		api.on(`GET ${path(THEIRS)}`, () => held);
+		api.on(`GET ${path(THEIRS)}/blocks`, () => [anchored('code:src/parser.ts', THEIRS)]);
+		api.on(`GET /profile/${encodeURIComponent(COLLEAGUE)}`, () => ({
+			did: COLLEAGUE,
+			username: 'charles',
+			display_name: 'Charles Babbage',
+			bio: null,
+			avatar_src: null,
+			banner_src: null
+		}));
+		amending(api, { [THEIRS]: [] }, () => held);
+		mounted = mount(NoteOnSurface, { target, props: { opened: THEIRS, fresh: false } });
+		flushSync();
+		await settle();
+	}
+
+	beforeEach(() => {
+		shellOver(true, 'local');
+		session.adopt(VIEWER, 'a-session');
+	});
+
+	it('opens the code it points at, and offers a place for the change being written', async () => {
+		await keepFile('src/parser.ts', PARSER);
+		await openTheirNote();
+
+		const chip = document.body.querySelector('.sloppy-prose a') as HTMLAnchorElement;
+		chip.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		await settle();
+
+		expect(document.body.querySelector('code')?.textContent).toContain('export function discover');
+
+		document.body
+			.querySelector('.sloppy-prose')
+			?.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+		flushSync();
+		expect(labelled('Cite code')).not.toBeNull();
+	});
+
+	it('leaves saying it still holds to whoever writes it', async () => {
+		const read = await keepFile('src/parser.ts', PARSER);
+		await keepFile('src/parser.ts', `${PARSER}// and more\n`);
+		await openTheirNote({ checked: read });
+
+		expect(screen()).not.toContain('has changed since you last read it');
 		await openActs();
 		expect(named('Still true')).toBeUndefined();
 	});

@@ -1270,10 +1270,8 @@
 	let shownAnchor = $state.raw<CodeAnchor | null>(null);
 	let showingCode = $state(false);
 
-	// A note pulled from somebody else is written in their project, not in the
-	// reader's, so a path from this folder would mean nothing to its author.
 	const code = $derived<NoteCode | undefined>(
-		project && !gated
+		project
 			? {
 					cite: () =>
 						new Promise<CodeAnchor | undefined>((named) => {
@@ -1341,9 +1339,9 @@
 		};
 	});
 
-	/** Whether the reader may say this note's reasoning still holds: their own
-	 *  note, in a project, pointing at code, with a version to record. A note
-	 *  pulled from somebody else names a version this device has not got. */
+	/** Whether the reader may say this note's reasoning still holds: a note a
+	 *  write here lands on, in a project, pointing at code, with a version to
+	 *  record. Where the writing is somebody else's, the reading is theirs. */
 	const mayConfirm = $derived(
 		!readOnly && !offering && !!project && anchors.length > 0 && versionHere !== undefined
 	);
