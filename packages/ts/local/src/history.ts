@@ -203,6 +203,19 @@ export interface History {
    * them, and a surface that finds them missing offers none of it.
    */
   graph?(limit: number, cursor?: string): Promise<CommitGraphPage>;
+  /**
+   * Which of `paths` a commit made after `commit` has touched, on the branch
+   * the folder is on: a subset of what it was given, in the order it was given
+   * them, and empty where none of them has moved. A path naming a folder is
+   * everything under it, as a history spells one.
+   *
+   * **These paths alone are not from the vault root.** They are from the root
+   * of what the history is keeping — the vault root for a folder that is its
+   * own repository, and the PROJECT root for a vault kept inside one, which is
+   * where an anchor into code is spelled from. docs/ARCHITECTURE.md § "The
+   * vault's history" carries the prefix rule the shell holds.
+   */
+  changedSince?(commit: string, paths: readonly string[]): Promise<string[]>;
   remotes?(): Promise<Remote[]>;
   /** Refused where something here is already called that. */
   addRemote?(name: string, url: string): Promise<void>;

@@ -579,3 +579,69 @@ describe("who the commits here are by", () => {
     expect((await history.log(1)).commits[0].signature).toBeUndefined();
   });
 });
+
+describe("what has moved since a note was read against it", () => {
+  const A = "src/a.ts";
+  const B = "src/b.ts";
+  const C = "docs/c.md";
+
+  it("names only the paths a later commit touched, as it was asked for them", async () => {
+    const { files, history } = graph();
+    for (const path of [A, B, C]) await write(files, path, "first");
+    const read = await history.commit("The first of it");
+    expect(read).toBeDefined();
+
+    expect(await history.changedSince(read?.id as string, [A, B, C])).toEqual(
+      [],
+    );
+
+    await write(files, B, "second");
+    await history.commit("B again");
+    await write(files, C, "second");
+    await history.commit("C again");
+
+    expect(await history.changedSince(read?.id as string, [C, B, A])).toEqual([
+      C,
+      B,
+    ]);
+    expect(await history.changedSince(read?.id as string, [A])).toEqual([]);
+  });
+
+  it("counts a file written and then a folder's own", async () => {
+    const { files, history } = graph();
+    await write(files, A, "first");
+    const read = await history.commit("The first of it");
+    await write(files, B, "new");
+    await history.commit("B for the first time");
+
+    expect(await history.changedSince(read?.id as string, ["src"])).toEqual([
+      "src",
+    ]);
+    expect(await history.changedSince(read?.id as string, ["docs"])).toEqual(
+      [],
+    );
+  });
+
+  it("counts a file taken away, and reads a path nothing has as unmoved", async () => {
+    const { files, history } = graph();
+    for (const path of [A, B]) await write(files, path, "first");
+    const read = await history.commit("The first of it");
+    await files.remove(B);
+    await history.commit("B taken away");
+
+    expect(await history.changedSince(read?.id as string, [A, B])).toEqual([B]);
+    expect(await history.changedSince(read?.id as string, ["nowhere"])).toEqual(
+      [],
+    );
+  });
+
+  it("refuses a commit this history has never been at", async () => {
+    const { files, history } = graph();
+    await write(files, A, "first");
+    await history.commit("The first of it");
+
+    await expect(history.changedSince("nope", [A])).rejects.toThrow(
+      HistoryError,
+    );
+  });
+});
