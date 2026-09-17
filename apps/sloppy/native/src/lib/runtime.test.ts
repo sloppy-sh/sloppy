@@ -448,6 +448,28 @@ describe('the folders this device keeps its graphs in', () => {
 		expect(servedFrom()).toBe(GARDEN);
 	});
 
+	// The one act that needs a credential is the one it is handed to, and what a
+	// person keeps their folders on is nowhere near the folders themselves.
+	it('reach the hosts this device was given something for', async () => {
+		held.set(
+			'/data/credentials.json',
+			btoa(
+				JSON.stringify([
+					{ host: 'somewhere.test', credential: { kind: 'token', token: 'a-token' } }
+				])
+			)
+		);
+		await launch();
+
+		expect(await registered.credentials?.forUrl('https://somewhere.test/ada/garden.git')).toEqual({
+			kind: 'token',
+			token: 'a-token'
+		});
+		expect(
+			await registered.credentials?.forUrl('https://elsewhere.test/ada/garden.git')
+		).toBeUndefined();
+	});
+
 	it('are one folder and no list of them where a device keeps its graphs in one place', async () => {
 		await launch('ios');
 

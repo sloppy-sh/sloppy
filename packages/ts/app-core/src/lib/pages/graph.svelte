@@ -131,7 +131,6 @@
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
 	import { saveHere, savesFiles } from '../save-file.js';
-	import { runtime } from '../runtime.js';
 	import { canvasInk } from '../stores/canvas-ink.svelte.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
@@ -338,15 +337,10 @@
 		}
 	};
 
-	/** Whether this device's graphs are the folders it keeps them in, which is
-	 *  what makes the picker the place a folder is opened, started and
-	 *  forgotten. */
-	const keepsFolders = $derived(graphs.folders.length > 0);
-
 	/** The graphs the picker lists: one per folder where a graph is a folder on
 	 *  this device, and the listing everywhere else. */
 	const graphChoices = $derived(
-		keepsFolders
+		graphs.keepsFolders
 			? graphs.folders.map((folder) => {
 					const held = graphs.all.find((one) => one.ref === folder.graph?.ref);
 					const owner = folder.graph?.owner;
@@ -2536,26 +2530,26 @@
 		closeUndrawn();
 	}}
 	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
-	onOpenFolder={keepsFolders
+	onOpenFolder={graphs.keepsFolders
 		? (folder) =>
 				inTheirWords(async () => {
 					await graphs.enterFolder(folder);
 					letGoOfTheFolderThatWas();
 				}, 'That folder could not be opened.')
 		: undefined}
-	onStart={keepsFolders
+	onStart={graphs.keepsFolders
 		? () =>
 				inTheirWords(async () => {
 					if (await graphs.startFolder()) letGoOfTheFolderThatWas();
 				}, 'That folder could not be opened.')
 		: undefined}
-	onClone={keepsFolders && runtime.vault()?.clone
+	onClone={graphs.keepsFolders && graphs.bringsFolders
 		? (address) =>
 				inTheirWords(async () => {
 					if (await graphs.cloneFolder(address)) letGoOfTheFolderThatWas();
 				}, 'That graph could not be brought here. Check the address and try again.')
 		: undefined}
-	onForget={keepsFolders
+	onForget={graphs.keepsFolders
 		? (folder) =>
 				inTheirWords(() => graphs.forgetFolder(folder), 'That folder could not be forgotten.')
 		: undefined}

@@ -175,6 +175,19 @@ class GraphsStore {
 		return this.#folders;
 	}
 
+	/** Whether this device's graphs are the folders it keeps them in, which is
+	 *  what makes the picker the place a folder is opened, started and
+	 *  forgotten. */
+	get keepsFolders(): boolean {
+		return runtime.vault()?.known !== undefined;
+	}
+
+	/** Whether a copy of a graph kept somewhere else can be brought onto this
+	 *  device at all. */
+	get bringsFolders(): boolean {
+		return runtime.vault()?.clone !== undefined;
+	}
+
 	/** Deduped like {@link load}; `again` is a list that has just changed. */
 	readFolders(again = false): Promise<void> {
 		if (again) this.#knownFolders = null;
@@ -350,6 +363,8 @@ class GraphsStore {
 			'alsoOnCanvas',
 			prefs.current.alsoOnCanvas.filter((also) => also !== ref)
 		);
+		// A graph that was a folder took the folder off this device's list with it.
+		await this.readFolders(true);
 	}
 
 	/** Move into a graph. One that was standing beside the graph being read
