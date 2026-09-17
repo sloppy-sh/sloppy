@@ -1,4 +1,5 @@
 import type { AppRuntime } from '@sloppy/app-core';
+import type { Credential } from '@sloppy/local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
@@ -15,6 +16,35 @@ vi.mock('@sloppy/app-core', () => ({
 
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
 vi.mock('./deep-link', () => ({ SIGN_IN_CALLBACK: 'sloppy://auth/callback' }));
+
+/** What the device's files were asked to bring over, and from where. */
+const broughtOver: { url: string; into: string; credential?: Credential }[] = [];
+
+/** A device that can bring a folder over. The act itself puts the graph that
+ *  was kept at the address into the folder it was given. */
+vi.mock('./files', async (importOriginal) => {
+	const real = await importOriginal<typeof import('./files')>();
+	return {
+		...real,
+		tauriFiles: (...args: Parameters<typeof real.tauriFiles>) =>
+			Object.assign(real.tauriFiles(...args), {
+				clone: async (url: string, into: string, credential?: Credential) => {
+					broughtOver.push({ url, into, ...(credential ? { credential } : {}) });
+					held.set(
+						`${into}/graph.json`,
+						btoa(
+							JSON.stringify({
+								format: 1,
+								graph: '01ARZ3NDEKTSV4RRFFQ69G5FAX',
+								name: 'The garden',
+								owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK'
+							})
+						)
+					);
+				}
+			})
+	};
+});
 
 /** The device's files, as `src-tauri` answers for them: one store keyed by the
  *  absolute path, and a folder somebody would pick. */
@@ -348,6 +378,7 @@ describe('the folders this device keeps its graphs in', () => {
 	const ADA = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
 	const GARDEN = '/Users/me/garden';
 	const THESIS = '/Users/me/thesis';
+	const BROUGHT = '/Users/me/brought';
 
 	function graphIn(folder: string, name: string, graph: string): void {
 		held.set(`${folder}/graph.json`, btoa(JSON.stringify({ format: 1, graph, name, owner: ADA })));
@@ -380,6 +411,7 @@ describe('the folders this device keeps its graphs in', () => {
 		held.clear();
 		picks = GARDEN;
 		picking = 'answers';
+		broughtOver.length = 0;
 		resetApi.mockClear();
 	});
 
@@ -468,6 +500,44 @@ describe('the folders this device keeps its graphs in', () => {
 		expect(
 			await registered.credentials?.forUrl('https://elsewhere.test/ada/garden.git')
 		).toBeUndefined();
+	});
+
+	it('gain the one brought from an address, into a folder somebody names', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = BROUGHT;
+
+		const into = await registered.vault?.clone?.('https://somewhere.test/ada/garden.git', {
+			kind: 'token',
+			token: 'a-token'
+		});
+
+		expect(into).toBe(BROUGHT);
+		expect(broughtOver).toEqual([
+			{
+				url: 'https://somewhere.test/ada/garden.git',
+				into: BROUGHT,
+				credential: { kind: 'token', token: 'a-token' }
+			}
+		]);
+		expect(servedFrom()).toBe(BROUGHT);
+		expect((await registered.vault?.known?.())?.map((one) => one.graph?.name)).toEqual([
+			'The garden',
+			'The thesis'
+		]);
+	});
+
+	it('gain nothing where nobody says where to put what is brought over', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = null;
+
+		expect(
+			await registered.vault?.clone?.('https://somewhere.test/ada/garden.git')
+		).toBeUndefined();
+		expect(broughtOver).toEqual([]);
 	});
 
 	it('are one folder and no list of them where a device keeps its graphs in one place', async () => {

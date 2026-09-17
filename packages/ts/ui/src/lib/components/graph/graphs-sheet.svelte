@@ -355,7 +355,7 @@
 							</Button>
 						{/if}
 					{/if}
-					{#if onForget && graph.folder !== undefined && !here}
+					{#if onForget && graph.folder !== undefined && !here && (naming === null || naming.ref !== ref)}
 						{@const folder = graph.folder}
 						<Button
 							variant="ghost"

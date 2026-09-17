@@ -405,6 +405,16 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 		expect(forgotten).toEqual([GONE_FOLDER]);
 	});
 
+	it('offers no way to forget the folder whose name is being typed', async () => {
+		await openFolders();
+
+		find('Rename The thesis')?.click();
+		await settle();
+
+		expect(find('Forget The thesis')).toBeNull();
+		expect(find('Forget gone')).not.toBeNull();
+	});
+
 	// Ending a graph is its owner's, and a row that says whose it is says that
 	// too rather than offering an act that will be refused.
 	it('offers no way to close a folder somebody else owns', async () => {
