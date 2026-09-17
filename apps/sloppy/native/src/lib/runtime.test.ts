@@ -246,6 +246,32 @@ describe('the native shell in local mode', () => {
 		expect(historyAsked).toContainEqual(['history_head', '/Users/me/garden']);
 	});
 
+	it('serves a project by the notes inside it, and reads their states there', async () => {
+		await launch();
+		picks = '/Users/me/compiler';
+		held.set(
+			'/Users/me/compiler/.sloppy/graph.json',
+			btoa(
+				JSON.stringify({
+					format: 1,
+					graph: '01ARZ3NDEKTSV4RRFFQ69G5FAY',
+					name: 'The compiler',
+					owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK',
+					project: '..'
+				})
+			)
+		);
+
+		await registered.vault?.open();
+
+		// The folder on the list is the project's own root, and the states read
+		// are the notes' — the project's history, as the notes are in it.
+		expect(registered.vault?.folder()).toBe('/Users/me/compiler');
+		expect(servedFrom()).toBe('/Users/me/compiler');
+		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
+		expect(historyAsked).toContainEqual(['history_head', '/Users/me/compiler/.sloppy']);
+	});
+
 	it('asks where a desktop can ask', async () => {
 		await launch();
 

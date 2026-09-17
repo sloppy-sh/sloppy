@@ -4,7 +4,7 @@
  */
 
 import type { KnownFolder } from '@sloppy/app-core';
-import { forgetVault, readVaults, vaultOpened, type Files } from '@sloppy/local';
+import { containerOf, forgetVault, readVaults, vaultOpened, type Files } from '@sloppy/local';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 
 /**
@@ -77,7 +77,8 @@ async function folderAt(files: Files, root: string): Promise<KnownFolder> {
 
 async function graphIn(files: Files, root: string): Promise<KnownFolder['graph']> {
 	try {
-		const bytes = await files.at(root).read(GRAPH_FILE);
+		const at = files.at(root);
+		const bytes = (await at.read(GRAPH_FILE)) ?? (await (await containerOf(at))?.read(GRAPH_FILE));
 		if (!bytes) return undefined;
 		const said = readGraphFile(bytes);
 		return { ref: `${said.owner}/${said.graph}`, name: said.name, owner: said.owner };

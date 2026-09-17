@@ -50,6 +50,7 @@ const HISTORY_MERGE = 'history_merge';
 const HISTORY_RESOLVE = 'history_resolve';
 const HISTORY_READ_AT = 'history_read_at';
 const HISTORY_HEAD = 'history_head';
+const HISTORY_CHANGED_SINCE = 'history_changed_since';
 const HISTORY_GRAPH = 'history_graph';
 const HISTORY_BRANCH_AT = 'history_branch_at';
 const HISTORY_DELETE_BRANCH = 'history_delete_branch';
@@ -216,6 +217,14 @@ class TauriHistory implements History {
 
 	async currentCommit(): Promise<string | undefined> {
 		return (await this.asked<string | null>(HISTORY_HEAD, { root: this.root })) ?? undefined;
+	}
+
+	async changedSince(commit: string, paths: readonly string[]): Promise<string[]> {
+		return this.asked<string[]>(HISTORY_CHANGED_SINCE, {
+			root: this.root,
+			commit,
+			paths: [...paths]
+		});
 	}
 
 	async graph(limit: number, cursor?: string): Promise<CommitGraphPage> {

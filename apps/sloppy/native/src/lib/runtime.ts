@@ -6,6 +6,7 @@
 
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import {
+	containerOf,
 	DeviceCredentials,
 	DeviceGitDefaults,
 	holdsAGraph,
@@ -59,6 +60,12 @@ const ASKS_WHERE = !IS_MOBILE;
  *  time it is asked, so opening a folder re-points a running app. */
 let opened: string | undefined;
 
+/** Where that graph's own files are: the folder itself, or the container inside
+ *  a project's root — docs/ARCHITECTURE.md § "A project's container". The
+ *  history is the vault's, so it is asked of this and never of the folder on
+ *  the list. */
+let vaultRoot: string | undefined;
+
 let missing = false;
 
 let served: LocalApi | undefined;
@@ -100,7 +107,7 @@ async function ownerOf(files: Files, folder: string): Promise<ReturnType<typeof 
  * where they write rather than being turned into a fresh identity here.
  */
 async function repoint(files: Files): Promise<void> {
-	ownerHere = opened ? await ownerOf(files, opened) : undefined;
+	ownerHere = vaultRoot ? await ownerOf(files, vaultRoot) : undefined;
 	writing = await readIdentities(files).then(
 		(held) => whoWrites(held, ownerHere),
 		() => undefined
@@ -111,6 +118,7 @@ async function repoint(files: Files): Promise<void> {
 
 async function serve(files: Files, folder: string): Promise<void> {
 	opened = folder;
+	vaultRoot = (await containerOf(files.at(folder)).catch(() => undefined))?.root ?? folder;
 	await repoint(files);
 }
 
@@ -235,7 +243,7 @@ export function initNativeRuntime(): void {
 								}
 							: {})
 					},
-					history: () => (opened ? tauriHistory(opened) : undefined)
+					history: () => (vaultRoot ? tauriHistory(vaultRoot) : undefined)
 				}
 			: {})
 	});

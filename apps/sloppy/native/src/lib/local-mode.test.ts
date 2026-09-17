@@ -126,6 +126,26 @@ describe('the folders this device knows', () => {
 		expect(known[0].graph?.ref).toBe(known[1].graph?.ref);
 	});
 
+	it('read a project by the notes inside it, and list the project itself', async () => {
+		const files = await device([{ root: '/Users/me/compiler' }]);
+		await files.at('/Users/me/compiler/.sloppy').write(
+			'graph.json',
+			graphFile({
+				format: VAULT_FORMAT,
+				graph: `${GRAPH.slice(0, 25)}9`,
+				name: 'The compiler',
+				owner: ADA,
+				project: '..'
+			})
+		);
+
+		const [project] = await knownFolders(files);
+
+		expect(project.root).toBe('/Users/me/compiler');
+		expect(project.reachable).toBe(true);
+		expect(project.graph?.name).toBe('The compiler');
+	});
+
 	it('keep a folder that is not where it was, with nothing to open in it', async () => {
 		const files = await device([{ root: '/Users/me/garden' }]);
 
