@@ -516,7 +516,9 @@ not a field. Two values today:
 
 **The first run offers three doors, and Settings offers the same three.** "Start here" mints
 a `device` identity and opens the graph — one tap, nothing asked, and still the default.
-"Sign in with your identity" takes an instance URL and runs the exchange below. "Bring an
+"Sign in with your identity" takes an instance URL and runs the exchange below — an identity
+a person holds in Syner comes in through that same door, because Syner is what the instance's
+consent page offers to sign with, and it lands here `delegated` like any other. "Bring an
 identity from another device" reads an identity file another device exported. Settings
 exports a `device` identity as one file — the DID, the public key and the key — with the
 consequence stated where the person chooses: whoever has that file writes as them. One

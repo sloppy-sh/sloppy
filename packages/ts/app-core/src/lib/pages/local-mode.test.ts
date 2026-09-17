@@ -2,7 +2,13 @@
 // need another machine to finish, and say where the writing is instead.
 // docs/ARCHITECTURE.md § "Local-only mode".
 
-import { type History, MemoryFiles, MemoryHistory } from '@sloppy/local';
+import {
+	type History,
+	type IdentityAccess,
+	type IdentityHere,
+	MemoryFiles,
+	MemoryHistory
+} from '@sloppy/local';
 import type { NodeView, OwnedRef, ProfileView } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -106,21 +112,37 @@ async function settle(): Promise<void> {
 }
 
 /** Which of the two deployments the app is running as, for the mount that
- *  follows, what the shell around it can do with a file, and where it keeps the
- *  graph. `afterEach` puts it back. */
+ *  follows, what the shell around it can do with a file, where it keeps the
+ *  graph, and which identities it holds. `afterEach` puts it back. */
 function running(
 	mode: 'hosted' | 'local',
 	saveFile?: AppRuntime['saveFile'],
 	vault?: VaultAccess,
-	keeping?: History
+	keeping?: History,
+	identities?: IdentityAccess
 ): void {
 	initRuntime({
 		apiHost: () => 'http://api.test',
 		mode: () => mode,
 		saveFile,
 		vault,
-		history: () => keeping
+		history: () => keeping,
+		identities
 	});
+}
+
+/** A shell holding exactly these identities and nothing else to say about
+ *  them. */
+function holding(...these: IdentityHere[]): IdentityAccess {
+	return {
+		list: async () => these,
+		makeOne: async () => these[0],
+		signIn: async () => {},
+		finish: async () => undefined,
+		bring: async () => these[0],
+		carryOut: async () => ({ name: 'sloppy-identity.json', body: new Uint8Array() }),
+		writeAs: async () => {}
+	};
 }
 
 /** A shell that keeps the states the graph has been in. */
@@ -578,6 +600,56 @@ describe('the page about you, on a device holding its own graph', () => {
 		expect(screen()).not.toContain('What you publish');
 		expect(api.countOf('GET /profile/me')).toBe(0);
 		expect(api.countOf('GET /publications')).toBe(0);
+	});
+
+	it('says whose an identity kept somewhere else is, and where it lives', async () => {
+		running(
+			'local',
+			undefined,
+			undefined,
+			undefined,
+			holding({
+				did: DID,
+				source: 'delegated',
+				name: 'Syner Proof',
+				instance: 'localhost:5173',
+				lapsed: false,
+				writing: true,
+				carriable: false
+			})
+		);
+		session.adopt(VIEWER, 'a-session');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		expect(screen()).toContain('Syner Proof');
+		expect(screen()).toContain('localhost:5173');
+		// The one identifier somebody may need to hand over stays on the page.
+		expect(screen()).toContain(DID);
+	});
+
+	it('says an identity made here was, and puts no name on it', async () => {
+		running(
+			'local',
+			undefined,
+			undefined,
+			undefined,
+			holding({
+				did: DID,
+				source: 'device',
+				lapsed: false,
+				writing: true,
+				carriable: true
+			})
+		);
+		session.adopt(VIEWER, 'a-session');
+		mounted = mount(Profile, { target });
+		flushSync();
+		await settle();
+
+		expect(screen()).toContain('Made on this device');
+		expect(screen()).toContain(DID);
 	});
 
 	it('draws no identity to copy before the graph has opened', async () => {

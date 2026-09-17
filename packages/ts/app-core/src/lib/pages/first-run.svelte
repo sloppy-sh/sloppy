@@ -154,8 +154,8 @@
 					</p>
 				{:else}
 					<p class="text-sm text-muted-foreground">
-						Starting here gives you an identity of your own, with nothing asked. Or use one you
-						already keep somewhere.
+						Starting here gives you an identity of your own, with nothing asked. Or sign in with one
+						you already keep, in Syner or elsewhere.
 					</p>
 				{/if}
 				<IdentitySettings mints={false} />

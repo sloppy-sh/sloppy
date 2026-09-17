@@ -161,6 +161,17 @@ describe('the identities a device holds', () => {
 		expect(writeAs).toHaveBeenCalledWith('did:syr:z6Mktwo');
 	});
 
+	it('says an identity held in Syner comes in this way', async () => {
+		shell({});
+		show();
+		await settle();
+
+		press('Sign in with your identity');
+		await settle();
+
+		expect(target.textContent).toContain('Syner');
+	});
+
 	it('takes somebody to where their identity lives', async () => {
 		const signIn = vi.fn(async () => {});
 		shell({ signIn });

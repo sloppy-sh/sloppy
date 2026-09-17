@@ -267,6 +267,14 @@ describe('the three doors a first run offers', () => {
 		expect(target.textContent).toContain('writing as Ada Lovelace');
 	});
 
+	it('says an identity held in Syner is one of the ones you can use', async () => {
+		shell({}, {});
+		show();
+		await settle();
+
+		expect(target.textContent).toContain('Syner');
+	});
+
 	it('takes somebody to where their identity lives', async () => {
 		const signIn = vi.fn(async () => {});
 		shell({}, { signIn });

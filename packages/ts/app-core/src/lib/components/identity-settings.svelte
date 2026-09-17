@@ -2,10 +2,10 @@
 	// The identities a device holds, and the three ways one arrives —
 	// docs/ARCHITECTURE.md § "A graph off the device".
 	import type { IdentityHere } from '@sloppy/local';
-	import { unplacedPerson } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
+	import { called, kept } from '../held-identity.js';
 	import { runtime } from '../runtime.js';
 	import { openHere, opensFiles, saveHere, savesFiles } from '../save-file.js';
 	import { serverMessage } from '../stores/errors.js';
@@ -101,14 +101,6 @@
 			await session.refresh();
 		});
 	}
-
-	function called(one: IdentityHere): string {
-		return one.name ?? unplacedPerson(one.did).handle;
-	}
-
-	function kept(one: IdentityHere): string {
-		return one.instance ?? 'Made on this device';
-	}
 </script>
 
 {#if identities}
@@ -184,6 +176,9 @@
 		</div>
 
 		{#if asking}
+			<p class="text-sm text-muted-foreground">
+				An identity you keep in Syner, or anywhere else of your own, signs in here.
+			</p>
 			<form class="flex flex-col gap-2 sm:flex-row" onsubmit={signIn}>
 				<Label for="identity-home" class="sr-only">Where your identity lives</Label>
 				<Input
