@@ -30,9 +30,16 @@ One person thinking, the people they let read over their shoulder, and the ones 
   nobody has to choose between letting somebody write and keeping a note their own.
 - **The annotator** — the same two people on a tablet with a pencil. They ink over the
   canvas to think spatially, and ink inside a node when a diagram is the note.
+- **The maintainer** — someone keeping a codebase, writing down why it is the way it is next
+  to the code itself: the notes live in the project, they point at the files and the names
+  they are about, and they are saved in the same commit as the change that prompted them.
+  They want to be told when the code under a piece of reasoning has moved since they last
+  read it, and never to be nagged about the ones they have not got to. Their colleagues read
+  the same notes out of the same repository, and a colleague who disagrees offers a change
+  the way any contributor does.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the hosted, self-hosted and
-fully-local modes that serve all four.
+fully-local modes that serve all five.
 
 ## Product Purpose
 

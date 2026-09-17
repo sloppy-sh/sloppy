@@ -2056,7 +2056,7 @@ a folder with. Nothing in it talks to a store: it is handed rows and hands back 
 
 ```
 <vault>/
-├── graph.json                       format, the graph's ulid, its name, whose it is, what it gates
+├── graph.json                       format, the graph's ulid, its name, whose it is, what it gates, whose project it is
 ├── notes/<ulid>.md                  one note: front matter, then its sections
 ├── amendments/<ulid>.md             one change offered on a note, in the same shape
 ├── media/<uploadId>.<ext>           the pictures the notes draw
@@ -2112,9 +2112,11 @@ strokes are the record and the SVG is what a viewer that has never heard of Slop
 
 **One note is one file, and its sections are marked in the body.** The front matter is the
 note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `owner`, `authors`,
-`contributors`, `tags`, `links`, `title`, `created`, `updated`, `appearance`. Absent `parent`
+`contributors`, `tags`, `links`, `title`, `created`, `updated`, `checked`, `appearance`.
+Absent `parent`
 is a branch or an independent note; absent `address` is a note with none; absent `aliases`,
-`tags`, `links` or `contributors` is none of them; absent `owner` is an open note. **Absent
+`tags`, `links` or `contributors` is none of them; absent `owner` is an open note; absent
+`checked` is a note nobody has confirmed against the code (§ "A project's container"). **Absent
 `authors` is the ref's DID alone**, and that is the one case the file leaves out — a note
 only its own author has written into and a note written before anybody else could write into
 one are the same bytes, which is what keeps the round trip lossless (§ "Whose writing a note
@@ -2205,16 +2207,95 @@ offered changes and its pictures — so an import preview can say whose graph it
 is called and how much of it is arriving while the file is still a file. One preview answers
 for a folder and one for a server, and both count the same way.
 
+## A project's container
+
+**A project's notes are an ordinary vault at `<project>/.sloppy/`.** It is a folder with a
+`graph.json` in it like any other (§ "A graph on disk"), so the archive, the history, offered
+changes, the picker and publishing all work on it unchanged, and there is no second kind of
+graph anywhere in the code. The vault keeps its own sidecar folder, so a container reads
+`<project>/.sloppy/.sloppy/` one level down; accepted as it is, because renaming it would
+move every path in a layout other people's folders are already written in.
+
+```
+<project>/                           the folder somebody picks
+├── src/…                            their code, which Sloppy reads and never writes
+└── .sloppy/                         the container: an ordinary vault
+    ├── graph.json                   … with `project: ".."` in it
+    ├── notes/<ulid>.md
+    └── .sloppy/                     the vault's own sidecars, one level down
+```
+
+**Opening a project means picking its ROOT.** The known folder on the list is the project
+root, and `containerOf` in `@sloppy/local` answers with the vault at `.sloppy/` inside it —
+absent where that folder holds no graph, which is a folder nobody has started a container in
+rather than a failure. Everything the app reads, the code included, is under the picked
+folder; `projectRootOf` resolves `graph.json`'s `project` from the vault and **refuses a path
+that would land outside it**, so a graph file a hand has been in cannot point the app at
+somebody's home directory.
+
+**`graph.json` gains `project`: where the code is, as a path from the vault root**, `..` in
+the ordinary case. **Absent is a graph that is nobody's project** — an anchor into code in it
+draws as an ordinary link and nothing offers to review it, which is every graph written
+before the field. `graphFile` and `readGraphFile` both carry it so no build drops it on a
+rewrite, and it is the FOLDER's own fact: a graph brought in from an archive arrives without
+one, the way somebody else's name does, until the folder it lands in is a project.
+
+**A note points at code with an ordinary link.** `code:<path from the project root>`, with
+`#L12`, `#L12-L20` or `#<symbol>` after it; an absent fragment is the whole file. It is a
+markdown link the vault already carries losslessly, beside the `sloppy:` scheme a citation
+uses, so a note pointing at code is still a file somebody reads on a forge.
+`parseCodeAnchor` in `@sloppy/types` is the one reader of one — a path climbing out of the
+project or starting at the top of a disk is not an anchor at all — and `anchorsOf` derives
+every anchor a section holds from its link marks, exactly as `citedNotes` derives a citation.
+A fragment that is not a run of lines is a NAME, found by searching the file for it: there is
+no language server behind this, two functions of one name resolve to the first, and a name
+that stops matching is itself worth saying. A path this checkout does not have draws as its
+label and never as an error. Nothing pins a commit inside the href — `checked` is where that
+lives.
+
+**`checked` on a note says when its reasoning was last read against the code.** It holds a
+commit, spelled as the folder's history spells one. **Absent is a note nobody has confirmed,
+which reads as UNREAD and never as out of date** — every note written before the field, and
+every note somebody has not got to yet. It rides in the note's front matter beside `updated`,
+on `Node`, through `UpdateNodeRequest`, and out with a published version. Confirming a note
+writes `checked` and nothing else: no section changes, no author joins, nothing moves in the
+genealogy.
+
+**The genealogy, refs, addresses, aliases, retired numbers and the section opener are
+untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is
+a link inside a section.
+
 ## The vault's history
 
 **The folder is a git repository, and that is the whole of the history.** A folder of
 markdown files is a folder git can keep (§ "A graph on disk"), so the app writes no history
-of its own: opening a folder that is not a repository initialises one, and everything below
-is git doing what git does. The commands run in `src-tauri` over `git2`, because a webview
+of its own: opening a folder no repository is already keeping initialises one, and everything
+below is git doing what git does. The commands run in `src-tauri` over `git2`, because a webview
 cannot reach a disk and a second implementation of git in TypeScript is not a thing anybody
 should own. `History` in `@sloppy/local` declares every one of them and what its answer
 means, and `MemoryHistory` beside it is that surface over `MemoryFiles`, so a page's tests
 never need a repository on a disk.
+
+**A vault inside a repository uses that repository, and is a PREFIX inside it.** A
+container sits in a project whose history already exists (§ "A project's container"), and
+reasoning that moves with the code it is about has to land in the same commit as the code. So
+the shell no longer initialises a repository at the vault root wherever it finds one above:
+it discovers the enclosing repository, bounded by the folder the person picked so the search
+can never wander into whatever is above that, and takes the vault root's path relative to
+that repository's workdir as a prefix. `status`, `log`, `readAt` and the staging a commit does
+are all read and written under the prefix — so a listing shows the notes changing and never
+the person's code, and **a commit Sloppy makes stages only paths under the prefix**. The lines
+the folder keeps out move with it too: `<prefix>/.sloppy/bin.json`, `<prefix>/.sloppy/bin/`,
+the identities, the signing keys and the saved identity copy. **The commands still take the
+VAULT root**, and `History` in `@sloppy/local` is unchanged: its paths are from the vault root
+exactly as they were. **A vault that is not inside a repository initialises one at its own
+root, exactly as today.**
+
+**`changedSince` is the one act whose paths are not the vault's.** It answers which of the
+paths it is given a commit after some commit has touched, and those paths are spelled from
+the root of what the history is keeping — the project root for a container, the vault root for
+a folder that is its own repository — because that is how an anchor into code is written. It
+is what tells somebody the code under a note has moved since the note was last confirmed.
 
 **A folder has remotes, and they are the person's own — not federation.** Following a DID
 and pulling a published subtree is § "Federating the graph", still pull-only and still
