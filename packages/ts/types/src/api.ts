@@ -160,6 +160,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
     title: node.title,
     tags: node.tags,
     links: node.links,
+    checked: node.checked,
     appearance: node.look,
     published: true,
     created_at: node.created_at,

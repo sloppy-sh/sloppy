@@ -14,6 +14,7 @@ export * from "./edge.js";
 export * from "./identity.js";
 export * from "./node.js";
 export * from "./document.js";
+export * from "./code-anchor.js";
 export * from "./block.js";
 export * from "./amendment.js";
 export * from "./published.js";

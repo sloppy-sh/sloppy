@@ -19,6 +19,7 @@ import {
   TimestampSchema,
 } from "./common.js";
 import { unnamedGraphRef } from "./graph.js";
+import { CommitIdSchema } from "./node.js";
 import { TagsSchema } from "./tag.js";
 
 /**
@@ -194,6 +195,10 @@ export const PublishedNodeSchema = z.object({
   /** How its author asked the mark to be drawn. Absent is a mark that draws
    *  unstyled, which is every version published before a look could travel. */
   look: PublishedLookSchema.optional(),
+  /** The commit its author last read the note's reasoning against, in a
+   *  history the reader may well not have. Absent is a note nobody confirmed,
+   *  which is every version published before one could be. */
+  checked: CommitIdSchema.optional(),
   /** Only targets the same author had published when this version was made. A
    *  link to a note nobody published is dropped rather than named. */
   links: z.array(OwnedRefSchema),

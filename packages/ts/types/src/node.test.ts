@@ -238,3 +238,27 @@ describe("whose writing a note carries", () => {
     expect(authorsOf(owned)).toEqual([BOB]);
   });
 });
+
+describe("when a note's reasoning was last read against the code", () => {
+  it("leaves a note nobody has confirmed carrying nothing", () => {
+    expect(parseNode(row("1")).checked).toBeUndefined();
+    expect(UpdateNodeRequestSchema.parse({}).checked).toBeUndefined();
+  });
+
+  it("keeps the commit it was read against, as that history spells it", () => {
+    const commit = "8e52d1a4c0b3f1e2d9a7c6b5a4938271605f4e3d";
+    expect(parseNode({ ...row("1"), checked: commit }).checked).toBe(commit);
+    expect(UpdateNodeRequestSchema.parse({ checked: commit }).checked).toBe(
+      commit,
+    );
+  });
+
+  it("refuses a commit that names nothing", () => {
+    expect(NodeSchema.safeParse({ ...row("1"), checked: "" }).success).toBe(
+      false,
+    );
+    expect(UpdateNodeRequestSchema.safeParse({ checked: 7 }).success).toBe(
+      false,
+    );
+  });
+});
