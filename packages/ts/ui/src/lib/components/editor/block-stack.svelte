@@ -9,6 +9,7 @@
 	import Bold from '@lucide/svelte/icons/bold';
 	import Brackets from '@lucide/svelte/icons/brackets';
 	import Code from '@lucide/svelte/icons/code';
+	import FileCode from '@lucide/svelte/icons/file-code';
 	import Heading1 from '@lucide/svelte/icons/heading-1';
 	import Heading2 from '@lucide/svelte/icons/heading-2';
 	import ImageIcon from '@lucide/svelte/icons/image';
@@ -37,6 +38,7 @@
 	import NoteMenu, { type NoteMenuItem } from '../note-menu.svelte';
 	import { BlockHandles, type SectionActs, type SectionHolds } from './block-handles.js';
 	import { CARET_MENU, caretOptionId } from './caret-menu.svelte';
+	import { anchorLabel, CODE_PROTOCOL, CodeAnchors, codeHref } from './code-anchor.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
@@ -92,6 +94,7 @@
 		media,
 		emoji,
 		references,
+		code,
 		drafts,
 		arranging = true,
 		offering = false
@@ -709,7 +712,10 @@
 				extensions: [
 					// A link in one's own writing is text to put the caret in, not
 					// somewhere to be sent from mid-sentence.
-					StarterKit.configure({ document: false, link: { openOnClick: false } }),
+					StarterKit.configure({
+						document: false,
+						link: { openOnClick: false, protocols: [CODE_PROTOCOL] }
+					}),
 					NoteDocument,
 					SectionNode,
 					TaskList,
@@ -719,6 +725,7 @@
 					EmojiSuggestion(completions, () => ownCatalog),
 					ReferenceNode(() => references),
 					ReferenceSuggestion(noteCompletions, () => references),
+					CodeAnchors(() => code),
 					InkNode,
 					PictureNode(() => media),
 					...DRAWN_ELEMENTS
@@ -950,6 +957,25 @@
 		editor?.chain().focus().insertContent('[[').run();
 	}
 
+	/** A place in the code, put down as the link it is, with the caret left
+	 *  after it rather than inside it. */
+	async function citeCode(): Promise<void> {
+		const anchor = await code?.cite();
+		if (!anchor || !editor || editor.isDestroyed) return;
+		editor
+			.chain()
+			.focus()
+			.insertContent([
+				{
+					type: 'text',
+					text: anchorLabel(anchor),
+					marks: [{ type: 'link', attrs: { href: codeHref(anchor) } }]
+				},
+				{ type: 'text', text: ' ' }
+			])
+			.run();
+	}
+
 	const formatting = $derived<EditorAction[]>([
 		{
 			id: 'bold',
@@ -1018,6 +1044,9 @@
 
 	const inserts = $derived<EditorAction[]>([
 		{ id: 'cite', label: 'Cite a note', icon: Brackets, run: citeNote },
+		...(code
+			? [{ id: 'code', label: 'Cite code', icon: FileCode, run: () => void citeCode() }]
+			: []),
 		{ id: 'picture', label: 'Picture', icon: ImageIcon, run: () => (mediaOpen = true) },
 		{ id: 'emoji', label: 'Emoji', icon: Smile, run: () => (pickerOpen = true) },
 		{ id: 'draw', label: 'Draw', icon: PenLine, run: startDrawing },
@@ -1041,7 +1070,11 @@
 <svelte:window onresize={viewMoved} onpagehide={flush} />
 <svelte:document onvisibilitychange={whenHidden} />
 
-<div class="note-body space-y-2" class:no-gutter={!arranging}>
+<div
+	class="note-body space-y-2"
+	class:no-gutter={!arranging}
+	data-code-anchors={code ? '' : undefined}
+>
 	<div class="block-gutter">
 		<div bind:this={surface} class="relative">
 			<div bind:this={host}></div>
@@ -1315,6 +1348,37 @@
 	}
 	:global(.sloppy-reference) {
 		cursor: pointer;
+	}
+	/* An anchor into code is a chip in the sentence rather than a link to a
+	   page, and carries the mark that says so — DESIGN.md § "An anchor into
+	   code". It is drawn only where there is code beside the graph; anywhere
+	   else it is the ordinary link it has always been. */
+	:global([data-code-anchors] .sloppy-prose a[href^='code:']) {
+		color: inherit;
+		text-decoration: none;
+		cursor: pointer;
+		border-radius: calc(var(--radius) - 6px);
+		background: var(--muted);
+		padding-inline: 0.3em 0.4em;
+		/* The chip wraps inside the paragraph rather than truncating the sentence
+		   around it, and keeps its ends on both lines when it does. */
+		box-decoration-break: clone;
+		-webkit-box-decoration-break: clone;
+	}
+	:global([data-code-anchors] .sloppy-prose a[href^='code:'])::before {
+		content: '';
+		display: inline-block;
+		width: 0.85em;
+		height: 0.85em;
+		margin-right: 0.3em;
+		vertical-align: -0.09em;
+		background: currentColor;
+		opacity: 0.65;
+		mask: var(--code-anchor-mark) center / contain no-repeat;
+		-webkit-mask: var(--code-anchor-mark) center / contain no-repeat;
+	}
+	.note-body {
+		--code-anchor-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6 3 12l6 6M15 6l6 6-6 6'/%3E%3C/svg%3E");
 	}
 	:global(.sloppy-reference.is-gone) {
 		color: var(--muted-foreground);

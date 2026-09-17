@@ -3,6 +3,7 @@
 	// DESIGN.md § Layout.
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -23,6 +24,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import {
 		alongRun,
+		anchorsOf,
 		authorsOf,
 		BlockViewSchema,
 		citedNotes,
@@ -38,6 +40,7 @@
 		writeOutcome,
 		type Address,
 		type AmendmentView,
+		type CodeAnchor,
 		type DidSyr,
 		type BlockDocument,
 		type BlockView,
@@ -75,6 +78,7 @@
 		writeTemplate,
 		type MoveTarget,
 		type NestingAsk,
+		type NoteCode,
 		type NoteMenuItem,
 		type NoteReferences,
 		type NoteTemplate,
@@ -87,6 +91,8 @@
 	import * as Tabs from '@sloppy/ui/tabs';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import CiteCode from '../components/cite-code.svelte';
+	import CodePreview from '../components/code-preview.svelte';
 	import NoteAuthor from '../components/note-author.svelte';
 	import NoteOwner from '../components/note-owner.svelte';
 	import OfferChange from '../components/offer-change.svelte';
@@ -98,9 +104,12 @@
 	import { deviceStore, type DeviceArea } from '../device-store.js';
 	import { carries, movedFrom, reachEveryGraph, type Reach } from '../note-find.js';
 	import { noteEmoji, noteMedia, saveFailure } from '../note-surface.js';
+	import { fileAddress, filesIn, textIn } from '../project-code.js';
+	import { runtime } from '../runtime.js';
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { drafts } from '../stores/drafts.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
+	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { offers } from '../stores/offers.svelte.js';
@@ -263,6 +272,7 @@
 		copy?: string;
 		address?: string;
 		owner?: string;
+		checked?: string;
 	}
 	const refusals = new SvelteMap<OwnedRef, Refusals>();
 	const refused = $derived<Refusals>(refusals.get(ref) ?? {});
@@ -1231,6 +1241,136 @@
 		}
 	}
 
+	// ── The code this note points at ─────────────────────────────────────────
+	/** The project's own files, `undefined` where this graph is nobody's project
+	 *  and `null` before the platform has answered. */
+	let project = $state.raw<Awaited<ReturnType<typeof runtime.project>> | null>(null);
+
+	$effect(() => {
+		let asking = true;
+		void runtime.project().then(
+			(found) => {
+				if (asking) project = found;
+			},
+			() => {
+				if (asking) project = undefined;
+			}
+		);
+		return () => {
+			asking = false;
+		};
+	});
+
+	/** Every place in the code this note's writing points at, in the order it
+	 *  names them. */
+	const anchors = $derived(blocks.flatMap((section) => anchorsOf(section.content)));
+
+	let citingCode = $state(false);
+	let citedPlace: ((anchor: CodeAnchor | undefined) => void) | null = null;
+	let shownAnchor = $state.raw<CodeAnchor | null>(null);
+	let showingCode = $state(false);
+
+	const code = $derived<NoteCode | undefined>(
+		project
+			? {
+					cite: () =>
+						new Promise<CodeAnchor | undefined>((named) => {
+							citedPlace = named;
+							citingCode = true;
+						}),
+					show: (anchor) => {
+						shownAnchor = anchor;
+						showingCode = true;
+					}
+				}
+			: undefined
+	);
+
+	const openWhereFilesOpen = $derived.by(() => {
+		const folder = project;
+		const opens = runtime.openExternal();
+		if (!folder || !opens) return undefined;
+		return async (path: string) => {
+			await opens(fileAddress(folder.root, path));
+		};
+	});
+
+	/** The anchors of this note a version kept since it was confirmed has
+	 *  touched. Empty is a note nothing has moved under, which says nothing. */
+	let movedUnder = $state.raw<string[]>([]);
+	/** The version the folder stands on, so the act is offered only where there
+	 *  is one to record. */
+	let versionHere = $state.raw<string | undefined>(undefined);
+	let confirming = $state(false);
+
+	$effect(() => {
+		const drawn = graphHistory.at;
+		if (!project) {
+			versionHere = undefined;
+			return;
+		}
+		if (drawn !== undefined) {
+			versionHere = drawn;
+			return;
+		}
+		let reading = true;
+		void graphHistory.versionNow().then((at) => {
+			if (reading) versionHere = at;
+		});
+		return () => {
+			reading = false;
+		};
+	});
+
+	$effect(() => {
+		const confirmed = node?.checked;
+		const folder = project;
+		const paths = [...new Set(anchors.map((anchor) => anchor.path))];
+		if (confirmed === undefined || !folder || paths.length === 0) {
+			movedUnder = [];
+			return;
+		}
+		let reading = true;
+		void graphHistory.changedSince(confirmed, paths).then((since: string[]) => {
+			if (reading) movedUnder = since;
+		});
+		return () => {
+			reading = false;
+		};
+	});
+
+	/** Whether the reader may say this note's reasoning still holds: a note a
+	 *  write here lands on, in a project, pointing at code, with a version to
+	 *  record. Where the writing is somebody else's, the reading is theirs. */
+	const mayConfirm = $derived(
+		!readOnly && !offering && !!project && anchors.length > 0 && versionHere !== undefined
+	);
+
+	/** Whether a version kept since this note was last read against has touched
+	 *  the code it points at. */
+	const codeMoved = $derived(!readOnly && !offering && movedUnder.length > 0);
+
+	async function stillTrue(): Promise<void> {
+		const of = ref;
+		confirming = true;
+		refuse(of, 'checked', null);
+		try {
+			const at = (await graphHistory.versionNow()) ?? versionHere;
+			if (at === undefined) return;
+			versionHere = at;
+			await nodes.update(of, { checked: at });
+			movedUnder = [];
+		} catch (error) {
+			refuse(
+				of,
+				'checked',
+				serverMessage(error) ?? 'Sloppy could not note that. Try again in a moment.'
+			);
+		} finally {
+			confirming = false;
+		}
+	}
+
 	/** What a reader DOES to a note, as against what they read off it. Delete
 	 *  comes last and apart — DESIGN.md § Layout. */
 	let actsFrom = $state<HTMLElement | null>(null);
@@ -1257,6 +1397,9 @@
 		...(mayGate
 			? [{ label: 'Who writes this note', icon: PenLine, onSelect: () => (gating = true) }]
 			: []),
+		// Saying a note still holds is the reader's own to take at any time; the
+		// line under the title offers it only once the code has moved.
+		...(mayConfirm ? [{ label: 'Still true', icon: Check, onSelect: () => void stillTrue() }] : []),
 		// The address is read up with the title, so from far enough down a note it
 		// is off screen — and it is the thing a person cites.
 		...(node?.address
@@ -2319,6 +2462,31 @@
 				class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-semibold tracking-tight placeholder:text-muted-foreground/60 focus-visible:outline-none"
 			></textarea>
 
+			<!-- One quiet line where the code has moved, and nothing at all where it
+			     has not — DESIGN.md § "An anchor into code". -->
+			{#if codeMoved}
+				<div class="@container">
+					<div class="flex flex-col items-start gap-1 @md:flex-row @md:items-center @md:gap-3">
+						<p class="text-sm text-muted-foreground">
+							The code under this has changed since you last read it.
+						</p>
+						{#if mayConfirm}
+							<Button
+								variant="ghost"
+								class="-ml-2 h-11 shrink-0 text-muted-foreground"
+								disabled={confirming}
+								onclick={() => void stillTrue()}
+							>
+								Still true
+							</Button>
+						{/if}
+					</div>
+				</div>
+			{/if}
+			{#if refused.checked}
+				<p class="text-sm text-destructive" role="alert">{refused.checked}</p>
+			{/if}
+
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 				{#if showsAuthor}
 					<NoteAuthor note={node} />
@@ -2473,6 +2641,7 @@
 							blocks={stack}
 							{emoji}
 							{references}
+							{code}
 							media={noteMedia}
 							{drafts}
 							{offering}
@@ -2870,6 +3039,24 @@
 				busy={offers.busy}
 				says={offers.says}
 				onOffer={offerChange}
+			/>
+		{/if}
+
+		{#if project}
+			{@const folder = project}
+			<CiteCode
+				bind:open={citingCode}
+				files={() => filesIn(folder)}
+				onCite={(anchor) => {
+					citedPlace?.(anchor);
+					citedPlace = null;
+				}}
+			/>
+			<CodePreview
+				bind:open={showingCode}
+				anchor={shownAnchor}
+				read={(path) => textIn(folder, path)}
+				{...openWhereFilesOpen === undefined ? {} : { openWhereFilesOpen }}
 			/>
 		{/if}
 
