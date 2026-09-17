@@ -15,6 +15,11 @@ export const GIT_DEFAULTS_FILE = "git.json";
  *  keeps it. */
 export const KEPT_KEY_FILE = "signing.key";
 
+/** The public half of that key, beside it under {@link Files.dataPath}. It is
+ *  written when the key is made, and it is the half a person gives a host so
+ *  that host takes what this device signs. */
+export const KEPT_KEY_PUBLIC_FILE = "signing.key.pub";
+
 /**
  * What a folder started on this device begins with. A folder's own settings
  * are the folder's from then on, so changing these changes nothing already

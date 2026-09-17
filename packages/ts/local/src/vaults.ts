@@ -51,3 +51,31 @@ export async function writeVaults(
     encodeText(`${JSON.stringify(vaults, null, 2)}\n`),
   );
 }
+
+/**
+ * Say a folder on the list has just been opened. A folder nobody has written
+ * down yet is left alone rather than added: it is a folder somebody is about to
+ * put a graph in, and one on the list holding none is one that has gone.
+ *
+ * The list stays in the order it was written, because the folder at the front
+ * of it is the one this device started with.
+ */
+export async function vaultOpened(data: Files, root: string): Promise<void> {
+  const known = await readVaults(data);
+  if (!known.some((one) => one.root === root)) return;
+  const at = nowIso();
+  await writeVaults(
+    data,
+    known.map((one) => (one.root === root ? { ...one, updated_at: at } : one)),
+  );
+}
+
+/** Take a folder off the list. Nothing in the folder is touched. */
+export async function forgetVault(data: Files, root: string): Promise<void> {
+  const known = await readVaults(data);
+  if (!known.some((one) => one.root === root)) return;
+  await writeVaults(
+    data,
+    known.filter((one) => one.root !== root),
+  );
+}

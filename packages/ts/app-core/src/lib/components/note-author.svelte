@@ -43,35 +43,31 @@
 	{/if}
 {/snippet}
 
+{#snippet chain(dids: string[], last: string | null)}
+	{#each dids as did, at (did)}
+		{@const after = at < dids.length - 1 ? (at === dids.length - 2 ? 'and' : '·') : last}
+		{#if after === null}
+			{@render person(did)}
+		{:else}
+			<!-- Every separator rides the name it follows, so a line that wraps here
+			     begins with a name and never with the word joining two. -->
+			<span class="flex min-w-0 items-center gap-x-1.5">
+				{@render person(did)}
+				<span class="text-sm text-muted-foreground">{after}</span>
+			</span>
+		{/if}
+	{/each}
+{/snippet}
+
 {#if wrote.length > 0}
 	<div class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
 		{#if named}
 			<span class="text-sm text-muted-foreground">Written by</span>
 		{/if}
-		{#each wrote as did, at (did)}
-			{#if at > 0}
-				<span class="text-sm text-muted-foreground">{at === wrote.length - 1 ? 'and' : '·'}</span>
-			{/if}
-			{#if helped.length > 0 && at === wrote.length - 1}
-				<!-- The separator rides the name it follows, so a line that wraps
-				     here begins with "with" and never with the dot. -->
-				<span class="flex min-w-0 items-center gap-x-1.5">
-					{@render person(did)}
-					<span class="text-sm text-muted-foreground">·</span>
-				</span>
-			{:else}
-				{@render person(did)}
-			{/if}
-		{/each}
+		{@render chain(wrote, helped.length > 0 ? '·' : null)}
 		{#if helped.length > 0}
 			<span class="text-sm text-muted-foreground">with</span>
-			{#each helped as did, at (did)}
-				{#if at > 0}
-					<span class="text-sm text-muted-foreground">{at === helped.length - 1 ? 'and' : '·'}</span
-					>
-				{/if}
-				{@render person(did)}
-			{/each}
+			{@render chain(helped, null)}
 		{/if}
 	</div>
 

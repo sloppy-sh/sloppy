@@ -1,10 +1,19 @@
 import { ServerRequiredError, type SloppyApi } from "@sloppy/client";
-import { UNNAMED_GRAPH_ULID, splitOwnedRef } from "@sloppy/types";
+import { type DidSyr, UNNAMED_GRAPH_ULID, splitOwnedRef } from "@sloppy/types";
 import { GRAPH_FILE, decodeText, encodeText, notePath } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
 import { LocalApi } from "./api.js";
 import { MemoryFiles } from "./files.js";
-import { device, reopened, textDocument } from "./local.test-support.js";
+import {
+  PickingFiles,
+  body,
+  device,
+  reopened,
+  textDocument,
+} from "./local.test-support.js";
+
+/** Somebody writing in a folder that is not theirs. */
+const GUEST = "did:syr:z6MkGuestWritingHere" as DidSyr;
 
 /** True only where every public member of the client is answered here, by
  *  shape. A missing method makes it false, so the port cannot drift away from
@@ -153,6 +162,26 @@ describe("the folder a shell opened", () => {
     );
     expect(again.store.has(`/Users/me/garden/${GRAPH_FILE}`)).toBe(false);
     expect(await again.api.listGraphs()).toEqual([]);
+  });
+
+  it("is one graph in the listing, and so is a copy of it opened beside it", async () => {
+    const first = opened("/Users/me/garden");
+    await first.api.createNode({ title: "A first thought" });
+    for (const [path, bytes] of [...first.store]) {
+      if (!path.startsWith("/Users/me/garden/")) continue;
+      first.store.set(
+        path.replace("/Users/me/garden/", "/Users/me/backup/"),
+        bytes,
+      );
+    }
+
+    const again = opened("/Users/me/backup", first.store);
+    const [listed, here] = await Promise.all([
+      again.api.listGraphs(),
+      again.api.graphHere(),
+    ]);
+
+    expect(listed.map((one) => one.ref)).toEqual([here]);
   });
 
   it("starts one graph between two reads that land together", async () => {
@@ -394,6 +423,64 @@ describe("a graph in a folder", () => {
       held.api.updateProfile({ bio: "I count things." }),
     ).rejects.toThrow("nothing else about you");
     expect((await held.api.profile()).did).toMatch(/^did:syr:/);
+  });
+
+  it("is not closed by somebody who only writes in it", async () => {
+    const held = device();
+    const graph = await held.api.createGraph({ title: "Thesis" });
+    await held.api.updateProfile({ display_name: "Ada Lovelace" });
+    const guest = new LocalApi(new PickingFiles({ store: held.store }), {
+      writer: GUEST,
+    });
+
+    await expect(guest.closeGraph(graph.ref)).rejects.toThrow(
+      "This graph is Ada Lovelace's. Only they can close it.",
+    );
+    expect(held.store.has(`/graphs/one/${GRAPH_FILE}`)).toBe(true);
+  });
+
+  it("says a folder is somebody else's even where it does not say who", async () => {
+    const held = device();
+    const graph = await held.api.createGraph({ title: "Thesis" });
+    const guest = new LocalApi(new PickingFiles({ store: held.store }), {
+      writer: GUEST,
+    });
+
+    await expect(guest.closeGraph(graph.ref)).rejects.toThrow(
+      "This graph is somebody else's. Only its owner can close it.",
+    );
+  });
+
+  it("leaves the picture a folder already carries where it is", async () => {
+    const held = device();
+    await held.api.createGraph({ title: "Thesis" });
+    const wearing = new Uint8Array([7, 7, 7]);
+    const worn = async () => {
+      const ticket = await held.api.createUpload({
+        role: "avatar",
+        filename: "picture",
+        mime_type: "image/png",
+        size: wearing.byteLength,
+      });
+      await held.api.sendUpload(ticket, body(wearing));
+      await held.api.completeUpload({ upload_id: ticket.upload_id });
+      await held.api.updateProfile({
+        display_name: "Ada Lovelace",
+        avatar_upload_id: ticket.upload_id,
+      });
+      return JSON.parse(
+        decodeText(
+          held.store.get(`/graphs/one/${GRAPH_FILE}`) ?? new Uint8Array(),
+        ),
+      ).owner_avatar as string;
+    };
+
+    const first = await worn();
+    // The same picture carried in again, as a second sign-in carries it.
+    expect(await worn()).toBe(first);
+    expect(
+      [...held.store.keys()].filter((path) => path.includes("/media/")),
+    ).toEqual([`/graphs/one/${first}`]);
   });
 
   it("takes its own files out of a folder it is closed in, and leaves the rest", async () => {

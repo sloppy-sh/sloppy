@@ -6,10 +6,13 @@
 
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import {
+	DeviceCredentials,
+	DeviceGitDefaults,
 	holdsAGraph,
 	LocalApi,
 	readIdentities,
 	whoWrites,
+	type Credential,
 	type Files,
 	type IdentityAccess
 } from '@sloppy/local';
@@ -18,7 +21,14 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { SIGN_IN_CALLBACK } from './deep-link';
 import { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } from './files';
 import { tauriIdentities } from './identity';
-import { LOCAL_MODE, rememberedVault, rememberVault } from './local-mode';
+import {
+	forgetFolder,
+	knownFolders,
+	LOCAL_MODE,
+	openedFolder,
+	rememberedVault,
+	rememberVault
+} from './local-mode';
 import { IS_MOBILE, TAURI_PLATFORM } from './platform';
 
 /** An Android emulator's loopback is the emulated device itself; 10.0.2.2 is
@@ -107,13 +117,39 @@ async function serve(files: Files, folder: string): Promise<void> {
 async function openFolder(files: Files): Promise<string | undefined> {
 	const folder = await files.pickFolder();
 	if (!folder) return undefined;
+	await open(files, folder);
+	return folder;
+}
+
+async function open(files: Files, folder: string): Promise<void> {
 	// A folder somebody chose is theirs and may be anywhere, so where it is is
 	// written down. The one a phone keeps its graphs in is asked for again each
 	// launch instead: it moves with the app, and a path written down before it
 	// moved leads nowhere.
-	if (ASKS_WHERE) await rememberVault(files, folder);
+	if (ASKS_WHERE) {
+		await rememberVault(files, folder);
+		await openedFolder(files, folder);
+	}
 	await serve(files, folder);
-	return folder;
+}
+
+/** Take a folder off this device's list and serve what is open from a client
+ *  that has not read the list as it was. */
+async function forget(files: Files, folder: string): Promise<void> {
+	await forgetFolder(files, folder);
+	await repoint(files);
+}
+
+async function cloneFolder(
+	files: Files,
+	url: string,
+	credential?: Credential
+): Promise<string | undefined> {
+	const into = await files.pickFolder();
+	if (!into) return undefined;
+	await files.clone?.(url, into, credential);
+	await open(files, into);
+	return into;
 }
 
 /** Whether the folder this device had a graph in is not where it was. The first
@@ -170,6 +206,8 @@ export function initNativeRuntime(): void {
 					createApi: () => fresh(device),
 					openFile: tauriOpenFile(),
 					identities: identitiesHere(device),
+					gitDefaults: new DeviceGitDefaults(device),
+					credentials: new DeviceCredentials(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,
@@ -177,7 +215,25 @@ export function initNativeRuntime(): void {
 						folder: () => opened,
 						graph: async () => (opened ? serving(device).graphHere() : undefined),
 						asks: ASKS_WHERE,
-						open: () => openFolder(device)
+						open: () => openFolder(device),
+						// A device that keeps its graphs in one place has one folder and no
+						// list of them, so nothing about choosing between them is offered
+						// there.
+						...(ASKS_WHERE
+							? {
+									known: () => knownFolders(device, opened),
+									openKnown: (root: string) => open(device, root),
+									forget: (root: string) => forget(device, root),
+									start: () => openFolder(device),
+									// Absent where this shell has no way to bring a folder over.
+									...(device.clone
+										? {
+												clone: (url: string, credential?: Credential) =>
+													cloneFolder(device, url, credential)
+											}
+										: {})
+								}
+							: {})
 					},
 					history: () => (opened ? tauriHistory(opened) : undefined)
 				}

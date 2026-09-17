@@ -17,6 +17,7 @@ export { default as ResponsiveModal } from './components/responsive-modal.svelte
 export { default as ReadingPanel } from './components/reading-panel.svelte';
 export { default as NoteMenu, type NoteMenuItem } from './components/note-menu.svelte';
 export { default as ConfirmModal } from './components/confirm/confirm-modal.svelte';
+export { default as CopyButton } from './components/copy-button.svelte';
 export { default as AppShell } from './components/app-shell.svelte';
 export { default as NavPill, type NavAction, type NavItem } from './components/nav-pill.svelte';
 

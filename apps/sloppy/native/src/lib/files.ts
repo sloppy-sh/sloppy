@@ -10,13 +10,18 @@ import {
 	joinPath,
 	type Branch,
 	type Commit,
+	type CommitGraphPage,
 	type CommitPage,
 	type ConflictSide,
+	type Credential,
 	type Files,
+	type GitUser,
 	type History,
 	HistoryError,
 	type HistoryStatus,
-	type MergeResult
+	type MergeResult,
+	type Remote,
+	type SigningConfig
 } from '@sloppy/local';
 import type { Vault } from '@sloppy/vault';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
@@ -45,6 +50,22 @@ const HISTORY_MERGE = 'history_merge';
 const HISTORY_RESOLVE = 'history_resolve';
 const HISTORY_READ_AT = 'history_read_at';
 const HISTORY_HEAD = 'history_head';
+const HISTORY_GRAPH = 'history_graph';
+const HISTORY_BRANCH_AT = 'history_branch_at';
+const HISTORY_DELETE_BRANCH = 'history_delete_branch';
+const HISTORY_GIT_USER = 'history_git_user';
+const HISTORY_SET_GIT_USER = 'history_set_git_user';
+const HISTORY_SIGNING = 'history_signing';
+const HISTORY_SET_SIGNING = 'history_set_signing';
+const HISTORY_REMOTES = 'history_remotes';
+const HISTORY_ADD_REMOTE = 'history_add_remote';
+const HISTORY_RENAME_REMOTE = 'history_rename_remote';
+const HISTORY_SET_REMOTE_URL = 'history_set_remote_url';
+const HISTORY_REMOVE_REMOTE = 'history_remove_remote';
+const HISTORY_FETCH = 'history_fetch';
+const HISTORY_PULL = 'history_pull';
+const HISTORY_PUSH = 'history_push';
+const CLONE = 'files_clone';
 
 /** The scheme `src-tauri/src/vault.rs` answers a picture at. */
 const VAULT_SCHEME = 'vault';
@@ -109,6 +130,14 @@ class TauriFiles implements Files {
 
 	async pickFolder(): Promise<string | undefined> {
 		return (await this.call<string | null>(PICK_FOLDER)) ?? undefined;
+	}
+
+	async clone(url: string, into: string, credential?: Credential): Promise<void> {
+		try {
+			await this.call<void>(CLONE, { url, into, credential: credential ?? null });
+		} catch (reason) {
+			throw refusal(reason);
+		}
 	}
 
 	async dataPath(): Promise<string> {
@@ -187,6 +216,82 @@ class TauriHistory implements History {
 
 	async currentCommit(): Promise<string | undefined> {
 		return (await this.asked<string | null>(HISTORY_HEAD, { root: this.root })) ?? undefined;
+	}
+
+	async graph(limit: number, cursor?: string): Promise<CommitGraphPage> {
+		return this.asked<CommitGraphPage>(HISTORY_GRAPH, {
+			root: this.root,
+			limit,
+			cursor: cursor ?? null
+		});
+	}
+
+	async branchAt(name: string, commit: string): Promise<Branch> {
+		return this.asked<Branch>(HISTORY_BRANCH_AT, { root: this.root, name, commit });
+	}
+
+	async deleteBranch(name: string): Promise<void> {
+		await this.asked<void>(HISTORY_DELETE_BRANCH, { root: this.root, name });
+	}
+
+	async gitUser(): Promise<GitUser | undefined> {
+		return (await this.asked<GitUser | null>(HISTORY_GIT_USER, { root: this.root })) ?? undefined;
+	}
+
+	async setGitUser(user: GitUser): Promise<void> {
+		await this.asked<void>(HISTORY_SET_GIT_USER, { root: this.root, user });
+	}
+
+	async signing(): Promise<SigningConfig> {
+		return this.asked<SigningConfig>(HISTORY_SIGNING, { root: this.root });
+	}
+
+	async setSigning(config: SigningConfig): Promise<void> {
+		await this.asked<void>(HISTORY_SET_SIGNING, { root: this.root, signing: config });
+	}
+
+	async remotes(): Promise<Remote[]> {
+		return this.asked<Remote[]>(HISTORY_REMOTES, { root: this.root });
+	}
+
+	async addRemote(name: string, url: string): Promise<void> {
+		await this.asked<void>(HISTORY_ADD_REMOTE, { root: this.root, name, url });
+	}
+
+	async renameRemote(name: string, to: string): Promise<void> {
+		await this.asked<void>(HISTORY_RENAME_REMOTE, { root: this.root, name, to });
+	}
+
+	async setRemoteUrl(name: string, url: string): Promise<void> {
+		await this.asked<void>(HISTORY_SET_REMOTE_URL, { root: this.root, name, url });
+	}
+
+	async removeRemote(name: string): Promise<void> {
+		await this.asked<void>(HISTORY_REMOVE_REMOTE, { root: this.root, name });
+	}
+
+	async fetch(remote: string, credential?: Credential): Promise<void> {
+		await this.asked<void>(HISTORY_FETCH, {
+			root: this.root,
+			remote,
+			credential: credential ?? null
+		});
+	}
+
+	async pull(remote?: string, credential?: Credential): Promise<MergeResult> {
+		return this.asked<MergeResult>(HISTORY_PULL, {
+			root: this.root,
+			remote: remote ?? null,
+			credential: credential ?? null
+		});
+	}
+
+	async push(remote?: string, credential?: Credential): Promise<void> {
+		await this.asked<void>(HISTORY_PUSH, {
+			root: this.root,
+			remote: remote ?? null,
+			credential: credential ?? null
+		});
 	}
 }
 

@@ -580,8 +580,9 @@ where a graph somebody moved used to be.
 **The folders this device knows ARE its graphs.** `listGraphs` answers one graph per known
 folder, read from each folder's own `graph.json`, so the picker a person already chooses a
 graph in is the same place they choose which folder is open — one list, not two names for
-one thing. A folder that is not where this device last saw it is listed as unreachable
-rather than dropped, because a person moved it and only they can say where to. Starting a
+one thing. A folder that is not where this device last saw it has no graph to answer with,
+so `VaultAccess.known` is what lists it as unreachable rather than dropping it, because a
+person moved it and only they can say where to. Starting a
 graph here is starting a folder, and a folder can arrive by being cloned from somewhere
 else. **Forgetting a folder takes it off this list and deletes nothing** — it is anybody's
 act, on any folder, and the folder is opened again by naming it again. `VaultAccess` in
@@ -600,7 +601,9 @@ private data holds `identities.json` and the key file each `device` entry names;
 `vaults.json`, the list of folders a graph has been put in — a folder cannot remember where
 somebody put it; `git.json`, what a folder started here begins with (§ "The vault's
 history"); `credentials.json`, what this device was given to reach the hosts a person keeps
-folders on; and `signing.key`, the private half of the key this app signs with. What a
+folders on; and `signing.key` with `signing.key.pub` beside it, the two halves of the key
+this app signs with — both of them out of every folder, because the half a host is given is
+this device's to hand over rather than a graph's to carry. What a
 person is called is not there: a name and a picture are written into
 the owner block of every graph the writing identity owns (§ "A graph on disk"), so a graph
 says whose it is wherever it is opened, and there is no profile to read from anywhere else.

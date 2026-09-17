@@ -135,6 +135,7 @@
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
+	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
@@ -336,6 +337,52 @@
 			if (heldNotes.some((held) => held.ref === note)) void readHeld(note);
 		}
 	};
+
+	/** The graphs the picker lists: one per folder where a graph is a folder on
+	 *  this device, and the listing everywhere else. */
+	const graphChoices = $derived(
+		graphs.keepsFolders
+			? graphs.folders.map((folder) => {
+					const held = graphs.all.find((one) => one.ref === folder.graph?.ref);
+					const owner = folder.graph?.owner;
+					// Whose it is, never what they travel by: a graph on this device
+					// knows somebody by the name in the folder they own or by nothing.
+					const by =
+						owner !== undefined && owner !== session.viewer?.did
+							? (people.of(owner)?.displayName ?? 'Somebody else')
+							: undefined;
+					return {
+						...(folder.graph ? { ref: folder.graph.ref } : {}),
+						folder: folder.root,
+						title: held?.title ?? folder.graph?.name ?? folderName(folder.root),
+						...(held?.ownership === undefined ? {} : { ownership: held.ownership }),
+						...(by === undefined ? {} : { by })
+					};
+				})
+			: graphs.all
+	);
+
+	$effect(() => {
+		for (const folder of graphs.folders) {
+			if (folder.graph) people.resolve(folder.graph.owner);
+		}
+	});
+
+	/** What a person called the folder, for one this device cannot read a graph
+	 *  out of to be named by. */
+	function folderName(root: string): string {
+		return root.split(/[\\/]/).filter(Boolean).at(-1) ?? root;
+	}
+
+	/** Another folder is another graph, and what was read out of the last one is
+	 *  not a copy of anything in this one. */
+	function letGoOfTheFolderThatWas(): void {
+		graphHistory.clear();
+		gitSettings.clear();
+		find.clear();
+		deleted.clear();
+		closeUndrawn();
+	}
 
 	/** The graphs on the canvas, in the order the reader put them there. */
 	const onCanvas = $derived(graphs.onCanvas);
@@ -1596,6 +1643,22 @@
 		}
 	}
 
+	/** The same, for an act this device takes on its own folders. Its refusal
+	 *  crosses the shell's bridge as a string, and arrives carried on an error
+	 *  where something between here and there typed it. */
+	async function inTheDevicesWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
+		try {
+			await act();
+		} catch (error) {
+			throw new Error(whatTheDeviceSaid(error) ?? otherwise, { cause: error });
+		}
+	}
+
+	function whatTheDeviceSaid(error: unknown): string | undefined {
+		const said = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+		return said.trim() || undefined;
+	}
+
 	// Whoever the sheet was raised about is who it was raised about that once:
 	// the next reader to open it opened it themselves.
 	$effect(() => {
@@ -2442,7 +2505,7 @@
 
 <GraphsSheet
 	bind:open={switching}
-	graphs={graphs.all}
+	graphs={graphChoices}
 	current={graphs.current}
 	home={graphs.home}
 	alsoUp={new Set(onCanvas.slice(1))}
@@ -2464,7 +2527,10 @@
 	publishedFrom={publications.state.loaded
 		? new Set(publications.all.map((one) => one.graph ?? graphs.home))
 		: undefined}
-	onShow={() => void deleted.reload().catch(() => {})}
+	onShow={() => {
+		void deleted.reload().catch(() => {});
+		void graphs.readFolders(true);
+	}}
 	onRestore={(ref) =>
 		inTheirWords(async () => {
 			const back = await deleted.restore(ref);
@@ -2482,6 +2548,33 @@
 		closeUndrawn();
 	}}
 	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
+	onOpenFolder={graphs.keepsFolders
+		? (folder) =>
+				inTheDevicesWords(async () => {
+					await graphs.enterFolder(folder);
+					letGoOfTheFolderThatWas();
+				}, 'That folder could not be opened.')
+		: undefined}
+	onStart={graphs.keepsFolders
+		? () =>
+				inTheDevicesWords(async () => {
+					if (!(await graphs.startFolder())) return;
+					letGoOfTheFolderThatWas();
+					await gitSettings.beginFolder();
+				}, 'That folder could not be opened.')
+		: undefined}
+	onClone={graphs.keepsFolders && graphs.bringsFolders
+		? (address) =>
+				inTheDevicesWords(async () => {
+					if (!(await graphs.cloneFolder(address))) return;
+					letGoOfTheFolderThatWas();
+					await gitSettings.beginFolder();
+				}, 'That graph could not be brought here. Check the address and try again.')
+		: undefined}
+	onForget={graphs.keepsFolders
+		? (folder) =>
+				inTheDevicesWords(() => graphs.forgetFolder(folder), 'That folder could not be forgotten.')
+		: undefined}
 	onRename={(ref, title) =>
 		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
 	onOwnership={(ref, ownership) =>

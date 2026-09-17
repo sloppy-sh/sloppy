@@ -778,9 +778,10 @@ branch at it.
 
 **The branches panel is a list, because a branch is a name and a number.** Local and remote
 ones together, the current one said plainly, how far each is ahead and behind, and merge or
-delete beside it — deleting the one the folder is on is refused, and the refusal says which
-one that is. Nothing here is decorated: a history is read to answer a question, and the
-answer is words and lines.
+delete beside every one except the one the folder is on: that one says it is the one being
+worked on and is offered neither, because an act that could only be refused is not an act to
+offer. Nothing here is decorated: a history is read to answer a question, and the answer is
+words and lines.
 
 ## Typography
 
