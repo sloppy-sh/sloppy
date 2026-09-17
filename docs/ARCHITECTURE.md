@@ -1607,9 +1607,8 @@ what they wrote last.** A search names its hits by `SearchHit` — the note, the
 graph that address is read in, the title, and the writing around what matched — and reaches
 the caller's own notes and what they hold of somebody else's, `held` saying which. Recent is
 ordered by when a note's SECTIONS were last written, never by `node.updated_at`: that column
-moves when a title, tags, links, a look or a confirmation are written and not when the
-writing is, so a note somebody spent an afternoon writing into would otherwise rank as
-untouched since the day it was made.
+moves only when a title, tags, links or a look change, so a note somebody spent an afternoon
+writing into would otherwise rank as untouched since the day it was made.
 
 **What a document counts as a citation is a key, not a list of element kinds.** `citedNotes`
 in `@sloppy/types` reads an `attrs` key named `note` holding a `<did>/<ulid>`, wherever it
@@ -2274,10 +2273,16 @@ genealogy.
 /nodes/:did/:localId` like any other field on a note and by nothing else: there is no route
 for confirming, because confirming is a write on the note. It is held to the note's gate —
 whoever may write the note is who may confirm it — and it joins nobody to the note's authors,
-which is the one way that write differs from every other. It goes out with an archive and
-comes back with one, so a graph carried between a server and a folder keeps what its author
-has read. A merge between two copies of one graph settles on neither: a note the person was
-not asked about keeps the `checked` the copy they are keeping has, the way its look does.
+which is one of the two ways that write differs from every other. The other is
+`node.updated_at`, which a confirmation leaves where it was: the note surface reads that
+column to ask whether a published branch has changed since it went out, and nothing a
+confirmation writes reaches a reader.
+
+It goes out with an archive and comes back with one, so a graph carried between a server and
+a folder keeps what its author has read — including into a copy of that graph the server
+already holds, where the note is written back for its confirmation alone. Nobody is asked
+about one: the copy the person keeps says what the note was last read against, and a copy
+that has none takes the other's, because absent is unread rather than a reading of nothing.
 
 **The genealogy, refs, addresses, aliases, retired numbers and the section opener are
 untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is

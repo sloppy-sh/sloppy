@@ -36,6 +36,12 @@ const PATCHABLE = [
   "checked",
 ] as const;
 
+/** A column whose write records that somebody READ the note rather than changed
+ *  it, so the row keeps the `updated_at` it had — the note surface reads that
+ *  column to say whether a published branch has changed, and a confirmation
+ *  never reaches a reader. */
+const UNMOVING = ["checked"] as const;
+
 /**
  * A note its author has not deleted, and its opposite. Every read but the two
  * that assign an address is scoped by the first: a deleted note keeps its row so
@@ -457,7 +463,7 @@ export class NodeRepository {
   }
 
   patch(did: string, ref: OwnedRef, changes: NodePatch): Promise<Node | null> {
-    return this.set(PATCHABLE, did, ref, changes);
+    return this.set(PATCHABLE, did, ref, changes, UNMOVING);
   }
 
   /**
@@ -578,8 +584,9 @@ export class NodeRepository {
     did: string,
     ref: OwnedRef,
     changes: T,
+    unmoving: readonly Extract<keyof T, string>[] = [],
   ): Promise<Node | null> {
-    const set = replacement(columns, changes);
+    const set = replacement(columns, changes, unmoving);
     // The owner is part of the statement, not a check on what comes back: a
     // reference names its owner, so anybody could otherwise write a row by
     // asking for it by name.

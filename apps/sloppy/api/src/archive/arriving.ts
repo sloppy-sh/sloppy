@@ -458,7 +458,7 @@ export function mergeRows(
 }
 
 /** Whether the row this graph holds still says what the merge does about where
- *  the note is and what it is numbered. */
+ *  the note is, what it is numbered, and what it was last read against. */
 function rewritten(note: PlacedNote, row: Node | undefined): boolean {
   return (
     row === undefined ||
@@ -466,7 +466,8 @@ function rewritten(note: PlacedNote, row: Node | undefined): boolean {
     row.depth !== note.depth ||
     row.origin !== note.origin ||
     row.parent !== note.parent ||
-    row.address !== note.address
+    row.address !== note.address ||
+    row.checked !== note.checked
   );
 }
 

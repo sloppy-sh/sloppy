@@ -26,6 +26,7 @@ import {
 
 const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva" as DidSyr;
 const GRAPH: OwnedRef = `${DID}/01JGRAPH2ND000000000000000`;
+const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
 
 function ref(nth: number): OwnedRef {
   return `${DID}/01JNKTE${String(nth).padStart(19, "0")}`;
@@ -384,6 +385,33 @@ describe("the rows a merge lands as", () => {
 
     expect(write.writing).toEqual([ref(1)]);
     expect(write.nodes.map((one) => ownedRefFrom(one.id))).toEqual([ref(1)]);
+  });
+
+  it("writes a note the graph keeps to say what it was last read against", () => {
+    const notes = placed([note({ ref: ref(1), checked: COMMIT })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ held: [row({ ref: ref(1) })] }),
+    );
+
+    expect(write.writing).toEqual([ref(1)]);
+    expect(write.nodes[0].checked).toBe(COMMIT);
+  });
+
+  it("leaves a note the graph keeps where the two say the same reading", () => {
+    const notes = placed([note({ ref: ref(1), checked: COMMIT })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ held: [row({ ref: ref(1), checked: COMMIT })] }),
+    );
+
+    expect(write.writing).toEqual([]);
   });
 
   it("writes a note the graph keeps where the merge put something above it", () => {

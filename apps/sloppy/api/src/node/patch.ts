@@ -12,10 +12,14 @@ import { nowIso } from "@sloppy/types";
  *
  * Only `columns` can name a column, so nothing a request smuggled past its
  * schema reaches the statement.
+ *
+ * `unmoving` names the columns whose write is not the row changing: a patch
+ * writing nothing else leaves `updated_at` where it was.
  */
 export function replacement<T extends object>(
   columns: readonly Extract<keyof T, string>[],
   changes: T,
+  unmoving: readonly Extract<keyof T, string>[] = [],
 ): {
   clause: string;
   vars: { changes: Record<string, unknown>; now: string };
@@ -23,12 +27,14 @@ export function replacement<T extends object>(
   const written = columns.filter((column) => changes[column] !== undefined);
   const cleared = (column: (typeof written)[number]) =>
     changes[column] === null;
+  const unmoved =
+    written.length > 0 && written.every((column) => unmoving.includes(column));
   return {
     clause: [
       ...written.map((column) =>
         cleared(column) ? `${column} = NONE` : `${column} = $changes.${column}`,
       ),
-      "updated_at = $now",
+      ...(unmoved ? [] : ["updated_at = $now"]),
     ].join(", "),
     vars: {
       changes: Object.fromEntries(

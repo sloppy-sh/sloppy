@@ -1273,6 +1273,21 @@ describe("the domain routes", () => {
       expect(retitled.checked).toBe(COMMIT);
     });
 
+    scenario("leaves the note itself untouched by the reading", async () => {
+      const note = await newNode(ada, { title: "Read, not written", tags: [] });
+
+      const confirmed = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        checked: COMMIT,
+      })) as NodeView;
+      expect(confirmed.updated_at).toBe(note.updated_at);
+
+      const written = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        title: "Read, and written",
+        checked: LATER,
+      })) as NodeView;
+      expect(written.updated_at > note.updated_at).toBe(true);
+    });
+
     scenario("refuses a commit that names nothing", async () => {
       const note = await newNode(ada, { title: "Never confirmed", tags: [] });
 

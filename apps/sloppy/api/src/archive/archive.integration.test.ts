@@ -567,6 +567,7 @@ describe("a graph handed over as an archive", () => {
       expect(notes.find((one) => one.address === "1b")?.aliases).toEqual([
         wasAt,
       ]);
+      expect(notes.find((one) => one.address === "1b")?.checked).toBe(COMMIT);
       expect(
         (await blocksOf(bram, notes.sort((a, b) => a.depth - b.depth)[0].ref))
           .length,
