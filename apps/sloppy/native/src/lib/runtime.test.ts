@@ -17,34 +17,8 @@ vi.mock('@sloppy/app-core', () => ({
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
 vi.mock('./deep-link', () => ({ SIGN_IN_CALLBACK: 'sloppy://auth/callback' }));
 
-/** What the device's files were asked to bring over, and from where. */
+/** What the device was asked to bring over, and from where. */
 const broughtOver: { url: string; into: string; credential?: Credential }[] = [];
-
-/** A device that can bring a folder over. The act itself puts the graph that
- *  was kept at the address into the folder it was given. */
-vi.mock('./files', async (importOriginal) => {
-	const real = await importOriginal<typeof import('./files')>();
-	return {
-		...real,
-		tauriFiles: (...args: Parameters<typeof real.tauriFiles>) =>
-			Object.assign(real.tauriFiles(...args), {
-				clone: async (url: string, into: string, credential?: Credential) => {
-					broughtOver.push({ url, into, ...(credential ? { credential } : {}) });
-					held.set(
-						`${into}/graph.json`,
-						btoa(
-							JSON.stringify({
-								format: 1,
-								graph: '01ARZ3NDEKTSV4RRFFQ69G5FAX',
-								name: 'The garden',
-								owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK'
-							})
-						)
-					);
-				}
-			})
-	};
-});
 
 /** The device's files, as `src-tauri` answers for them: one store keyed by the
  *  absolute path, and a folder somebody would pick. */
@@ -74,6 +48,23 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'history_head':
 				historyAsked.push([command, args?.root as string]);
 				return 'a1b2c3';
+			case 'files_clone': {
+				const into = args?.into as string;
+				const credential = args?.credential as Credential | null;
+				broughtOver.push({ url: args?.url as string, into, ...(credential ? { credential } : {}) });
+				held.set(
+					`${into}/graph.json`,
+					btoa(
+						JSON.stringify({
+							format: 1,
+							graph: '01ARZ3NDEKTSV4RRFFQ69G5FAX',
+							name: 'The garden',
+							owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK'
+						})
+					)
+				);
+				return null;
+			}
 			case 'files_list': {
 				const under = `${args?.root as string}/`;
 				return [...held.keys()]

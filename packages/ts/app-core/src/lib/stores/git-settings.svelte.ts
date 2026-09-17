@@ -204,6 +204,28 @@ class GitSettingsStore {
 		});
 	}
 
+	/**
+	 * Begin a folder started or brought onto this device with what the last one
+	 * was told, for a folder that names nobody and signs with nothing of its
+	 * own. Nobody asked for it, so it says nothing either way: Settings is
+	 * where a person sees what it left and changes it.
+	 */
+	async beginFolder(): Promise<void> {
+		const history = told();
+		if (!history) return;
+		try {
+			const defaults = await runtime.gitDefaults()?.read();
+			if (!defaults) return;
+			if (defaults.user && !(await history.gitUser())) await history.setGitUser(defaults.user);
+			if (defaults.signing && (await history.signing()).kind === 'none') {
+				await history.setSigning(defaults.signing);
+			}
+		} catch {
+			return;
+		}
+		await this.read();
+	}
+
 	/** How the versions kept here are signed, for this folder and for the next
 	 *  one started on this device. */
 	async signWith(config: SigningConfig): Promise<boolean> {

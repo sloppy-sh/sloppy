@@ -7,6 +7,7 @@
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import {
 	DeviceCredentials,
+	DeviceGitDefaults,
 	holdsAGraph,
 	LocalApi,
 	readIdentities,
@@ -205,6 +206,7 @@ export function initNativeRuntime(): void {
 					createApi: () => fresh(device),
 					openFile: tauriOpenFile(),
 					identities: identitiesHere(device),
+					gitDefaults: new DeviceGitDefaults(device),
 					credentials: new DeviceCredentials(device),
 					// A graph on this device holds no address of anybody else's, so
 					// there is nothing here the proxy would be keeping off them.

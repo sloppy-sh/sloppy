@@ -464,8 +464,10 @@ describe('the graphs a device keeps as folders', () => {
 	let opened: string[];
 	let forgotten: string[];
 	let started: number;
-	/** What this device says when it will not bring a folder from an address. */
-	let cloneRefusal: string | null;
+	/** What this device says when it will not bring a folder from an address,
+	 *  and how it says it: bare across the shell's bridge, or typed by the time
+	 *  it reaches the page. */
+	let cloneRefusal: { said: string; as: 'bare' | 'typed' } | null;
 
 	function keepingFolders(): VaultAccess {
 		let open = HOME_FOLDER;
@@ -493,9 +495,8 @@ describe('the graphs a device keeps as folders', () => {
 				return open;
 			},
 			clone: async () => {
-				// The shell refuses in its own sentence, not in an Error.
-				if (cloneRefusal !== null) throw cloneRefusal;
-				return open;
+				if (cloneRefusal === null) return open;
+				throw cloneRefusal.as === 'bare' ? cloneRefusal.said : new Error(cloneRefusal.said);
 			}
 		};
 	}
@@ -547,23 +548,47 @@ describe('the graphs a device keeps as folders', () => {
 		expect(inSheet()).not.toContain('not where it was');
 	});
 
-	it('says what this device said when it would not bring a folder from an address', async () => {
-		cloneRefusal = 'There is nothing at that address. Check it and try again.';
-		await open();
-		await openGraphs();
-
-		const address = [...document.body.querySelectorAll<HTMLInputElement>('input')].find(
+	async function askForTheOneAt(address: string): Promise<void> {
+		const field = [...document.body.querySelectorAll<HTMLInputElement>('input')].find(
 			(one) => one.getAttribute('aria-label') === 'Where the graph is kept'
 		);
-		if (!address) throw new Error('There is nowhere to type an address');
-		address.value = 'https://somewhere.test/ada/garden.git';
-		address.dispatchEvent(new Event('input', { bubbles: true }));
+		if (!field) throw new Error('There is nowhere to type an address');
+		field.value = address;
+		field.dispatchEvent(new Event('input', { bubbles: true }));
 		await settle();
 		button('Bring it here').click();
 		await settle();
+	}
+
+	it('says what this device said when it would not bring a folder from an address', async () => {
+		cloneRefusal = {
+			said: 'There is nothing at that address. Check it and try again.',
+			as: 'bare'
+		};
+		await open();
+		await openGraphs();
+
+		await askForTheOneAt('https://somewhere.test/ada/garden.git');
 
 		expect(inSheet()).toContain('There is nothing at that address. Check it and try again.');
 		expect(inSheet()).not.toContain('That graph could not be brought here');
+	});
+
+	// The native shell types its own refusals on the way up, so the sentence
+	// about the folder somebody picked must survive that and not be swapped for
+	// advice about the address.
+	it('says what this device said about the folder, however the refusal arrives', async () => {
+		cloneRefusal = {
+			said: 'There is already something in that folder. Choose an empty one.',
+			as: 'typed'
+		};
+		await open();
+		await openGraphs();
+
+		await askForTheOneAt('https://somewhere.test/ada/garden.git');
+
+		expect(inSheet()).toContain('There is already something in that folder. Choose an empty one.');
+		expect(inSheet()).not.toContain('Check the address');
 	});
 
 	it('starts a graph by asking for a folder rather than for a name', async () => {

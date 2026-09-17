@@ -197,6 +197,49 @@ describe('how they are signed', () => {
 	});
 });
 
+describe('what a folder started or brought here begins with', () => {
+	async function thisDeviceWasTold(): Promise<void> {
+		shellKeeping(new MemoryHistory(folder()));
+		await gitSettings.setUser({ name: 'Ada', email: 'ada@example.com' });
+		await gitSettings.signWith({ kind: 'openpgp', program: 'gpg2' });
+	}
+
+	it('takes what this device was last told, where it says nothing itself', async () => {
+		await thisDeviceWasTold();
+		const started = new MemoryHistory(folder());
+		shellKeeping(started);
+
+		await gitSettings.beginFolder();
+
+		expect(await started.gitUser()).toEqual({ name: 'Ada', email: 'ada@example.com' });
+		expect(await started.signing()).toEqual({ kind: 'openpgp', program: 'gpg2' });
+		expect(gitSettings.user).toEqual({ name: 'Ada', email: 'ada@example.com' });
+	});
+
+	it('leaves a folder that already says for itself alone', async () => {
+		await thisDeviceWasTold();
+		const brought = new MemoryHistory(folder());
+		await brought.setGitUser({ name: 'Grace', email: 'grace@example.com' });
+		await brought.setSigning({ kind: 'ssh', key: { kind: 'kept' } });
+		shellKeeping(brought);
+
+		await gitSettings.beginFolder();
+
+		expect(await brought.gitUser()).toEqual({ name: 'Grace', email: 'grace@example.com' });
+		expect(await brought.signing()).toEqual({ kind: 'ssh', key: { kind: 'kept' } });
+	});
+
+	it('leaves it saying nothing where this device was never told', async () => {
+		const started = new MemoryHistory(folder());
+		shellKeeping(started);
+
+		await gitSettings.beginFolder();
+
+		expect(await started.gitUser()).toBeUndefined();
+		expect(await started.signing()).toEqual({ kind: 'none' });
+	});
+});
+
 describe('where else the graph is kept', () => {
 	it('is nowhere until one is named', async () => {
 		shellKeeping(new MemoryHistory(folder()));

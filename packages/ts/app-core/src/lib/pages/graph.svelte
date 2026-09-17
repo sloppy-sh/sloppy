@@ -135,6 +135,7 @@
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
+	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
@@ -377,6 +378,7 @@
 	 *  not a copy of anything in this one. */
 	function letGoOfTheFolderThatWas(): void {
 		graphHistory.clear();
+		gitSettings.clear();
 		find.clear();
 		deleted.clear();
 		closeUndrawn();
@@ -1632,18 +1634,29 @@
 	});
 
 	/** Thrown on so the surface that asked shows the answer where it was asked,
-	 *  in the words of whoever refused, where they wrote any. */
+	 *  in the server's own words where it gave any. */
 	async function inTheirWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
 		try {
 			await act();
 		} catch (error) {
-			throw new Error(whoeverRefused(error) ?? otherwise, { cause: error });
+			throw new Error(serverMessage(error) ?? otherwise, { cause: error });
 		}
 	}
 
-	function whoeverRefused(error: unknown): string | undefined {
-		const theDeviceItself = typeof error === 'string' ? error.trim() : '';
-		return theDeviceItself || serverMessage(error);
+	/** The same, for an act this device takes on its own folders. Its refusal
+	 *  crosses the shell's bridge as a string, and arrives carried on an error
+	 *  where something between here and there typed it. */
+	async function inTheDevicesWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
+		try {
+			await act();
+		} catch (error) {
+			throw new Error(whatTheDeviceSaid(error) ?? otherwise, { cause: error });
+		}
+	}
+
+	function whatTheDeviceSaid(error: unknown): string | undefined {
+		const said = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+		return said.trim() || undefined;
 	}
 
 	// Whoever the sheet was raised about is who it was raised about that once:
@@ -2537,26 +2550,30 @@
 	onOpen={(title) => inTheirWords(() => graphs.open({ title }), 'That graph could not be started.')}
 	onOpenFolder={graphs.keepsFolders
 		? (folder) =>
-				inTheirWords(async () => {
+				inTheDevicesWords(async () => {
 					await graphs.enterFolder(folder);
 					letGoOfTheFolderThatWas();
 				}, 'That folder could not be opened.')
 		: undefined}
 	onStart={graphs.keepsFolders
 		? () =>
-				inTheirWords(async () => {
-					if (await graphs.startFolder()) letGoOfTheFolderThatWas();
+				inTheDevicesWords(async () => {
+					if (!(await graphs.startFolder())) return;
+					letGoOfTheFolderThatWas();
+					await gitSettings.beginFolder();
 				}, 'That folder could not be opened.')
 		: undefined}
 	onClone={graphs.keepsFolders && graphs.bringsFolders
 		? (address) =>
-				inTheirWords(async () => {
-					if (await graphs.cloneFolder(address)) letGoOfTheFolderThatWas();
+				inTheDevicesWords(async () => {
+					if (!(await graphs.cloneFolder(address))) return;
+					letGoOfTheFolderThatWas();
+					await gitSettings.beginFolder();
 				}, 'That graph could not be brought here. Check the address and try again.')
 		: undefined}
 	onForget={graphs.keepsFolders
 		? (folder) =>
-				inTheirWords(() => graphs.forgetFolder(folder), 'That folder could not be forgotten.')
+				inTheDevicesWords(() => graphs.forgetFolder(folder), 'That folder could not be forgotten.')
 		: undefined}
 	onRename={(ref, title) =>
 		inTheirWords(() => graphs.rename(ref, { title }), 'That name could not be saved.')}
