@@ -100,6 +100,12 @@ function press(label: string): void {
 	one.click();
 }
 
+/** A control named rather than worded: an icon carries the act and the name is
+ *  what says it. */
+function called(label: string): boolean {
+	return document.body.querySelector(`button[aria-label="${label}"]`) !== null;
+}
+
 function offers(label: string): boolean {
 	return [...document.body.querySelectorAll('button')].some(
 		(button) => button.textContent?.trim() === label
@@ -181,8 +187,8 @@ describe('who the versions kept here are by', () => {
 		show();
 		await settle();
 
-		type('history-git-name', 'Ada Lovelace');
-		type('history-git-email', 'ada@example.com');
+		type('history-by-name', 'Ada Lovelace');
+		type('history-by-email', 'ada@example.com');
 		press("Save who they're by");
 		await settle();
 
@@ -200,7 +206,7 @@ describe('who the versions kept here are by', () => {
 		show();
 		await settle();
 
-		type('history-git-name', 'Ada Lovelace');
+		type('history-by-name', 'Ada Lovelace');
 		press("Save who they're by");
 		await settle();
 
@@ -215,8 +221,8 @@ describe('who the versions kept here are by', () => {
 		show();
 		await settle();
 
-		expect(target.querySelector<HTMLInputElement>('#history-git-name')?.value).toBe('Ada Lovelace');
-		expect(target.querySelector<HTMLInputElement>('#history-git-email')?.value).toBe(
+		expect(target.querySelector<HTMLInputElement>('#history-by-name')?.value).toBe('Ada Lovelace');
+		expect(target.querySelector<HTMLInputElement>('#history-by-email')?.value).toBe(
 			'ada@example.com'
 		);
 	});
@@ -235,10 +241,10 @@ describe('how the versions kept here are signed', () => {
 		expect(await kept.signing()).toMatchObject({ kind: 'ssh', key: { kind: 'kept' } });
 		expect(screen()).toContain('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 sloppy');
 		expect(screen()).toContain('GitHub or GitLab');
-		expect(offers('Copy the key')).toBe(true);
+		expect(called('Copy the key')).toBe(true);
 	});
 
-	it('says a key is kept where the shell has not handed over its public half', async () => {
+	it('says a key is being made where the shell has not handed over its public half', async () => {
 		const kept = new MemoryHistory(folder());
 		shellKeeping(kept);
 		show();
@@ -247,8 +253,8 @@ describe('how the versions kept here are signed', () => {
 		pick('signing', 'kept');
 		await settle();
 
-		expect(screen()).toContain('Sloppy is keeping a key for this folder.');
-		expect(offers('Copy the key')).toBe(false);
+		expect(screen()).toContain('Sloppy is making a key for this folder.');
+		expect(called('Copy the key')).toBe(false);
 	});
 
 	it('signs with a key somebody names, and asks where it is first', async () => {
@@ -286,7 +292,7 @@ describe('how the versions kept here are signed', () => {
 		await settle();
 
 		expect(await kept.signing()).toEqual({ kind: 'none' });
-		expect(offers('Copy the key')).toBe(false);
+		expect(called('Copy the key')).toBe(false);
 	});
 
 	it('leaves the program and the key to this device where neither is named', async () => {
@@ -450,6 +456,82 @@ describe('where else the graph is kept', () => {
 		const question = document.body.querySelector('[role="dialog"]')?.textContent ?? '';
 		expect(question).toContain('Stop keeping it at origin?');
 		expect(question).not.toContain('There is already one called origin.');
+	});
+
+	it('asks about it without dressing it as something that cannot be undone', async () => {
+		const kept = new MemoryHistory(folder());
+		await kept.addRemote('origin', 'https://example.com/ada/notes.git');
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		press('Remove it');
+		await settle();
+
+		const yes = [...document.body.querySelectorAll('button')].find(
+			(one) => one.textContent?.trim() === 'Stop keeping it there'
+		);
+		expect(yes).toBeDefined();
+		expect(yes?.className).not.toContain('bg-destructive');
+	});
+
+	it('offers to let go of the way into a host once nothing is kept there', async () => {
+		const kept = new MemoryHistory(folder());
+		await kept.addRemote('origin', 'https://example.com/ada/notes.git');
+		shellKeeping(kept);
+		show();
+		await settle();
+		press('Add a way in');
+		await settle();
+		type('history-token-origin', 'abc123');
+		press('Save the way in');
+		await settle();
+
+		press('Remove it');
+		await settle();
+		press('Stop keeping it there');
+		await settle();
+
+		expect(screen()).toContain('Forget the way into example.com?');
+
+		press('Forget it');
+		await settle();
+
+		expect(await readCredentials(privately())).toEqual([]);
+	});
+
+	it('holds on to it where the person says so, and where a second place is still there', async () => {
+		const kept = new MemoryHistory(folder());
+		await kept.addRemote('origin', 'https://example.com/ada/notes.git');
+		await kept.addRemote('thesis', 'https://example.com/ada/thesis.git');
+		shellKeeping(kept);
+		show();
+		await settle();
+		press('Add a way in');
+		await settle();
+		type('history-token-origin', 'abc123');
+		press('Save the way in');
+		await settle();
+
+		press('Remove it');
+		await settle();
+		press('Stop keeping it there');
+		await settle();
+
+		expect(screen()).not.toContain('Forget the way into example.com?');
+
+		press('Remove it');
+		await settle();
+		press('Stop keeping it there');
+		await settle();
+		expect(screen()).toContain('Forget the way into example.com?');
+
+		press('Hold on to it');
+		await settle();
+
+		expect(await readCredentials(privately())).toEqual([
+			{ host: 'example.com', credential: { kind: 'token', token: 'abc123' } }
+		]);
 	});
 
 	it('says there is nowhere else yet before one is named', async () => {
@@ -625,8 +707,8 @@ describe('another folder opening', () => {
 		show();
 		await settle();
 
-		type('history-git-name', 'Ada Lovelace');
-		type('history-git-email', 'ada@example.com');
+		type('history-by-name', 'Ada Lovelace');
+		type('history-by-email', 'ada@example.com');
 		pick('signing', 'file');
 		await settle();
 		type('history-key-file', '~/.ssh/id_ed25519');
@@ -638,8 +720,8 @@ describe('another folder opening', () => {
 		);
 		await settle();
 
-		expect(target.querySelector<HTMLInputElement>('#history-git-name')?.value).toBe('');
-		expect(target.querySelector<HTMLInputElement>('#history-git-email')?.value).toBe('');
+		expect(target.querySelector<HTMLInputElement>('#history-by-name')?.value).toBe('');
+		expect(target.querySelector<HTMLInputElement>('#history-by-email')?.value).toBe('');
 		expect(screen()).toContain("it is your graph's owner");
 		const off = target.querySelector<HTMLInputElement>('input[name="signing"][value="none"]');
 		expect(off?.checked).toBe(true);
@@ -653,8 +735,8 @@ describe('another folder opening', () => {
 		show();
 		await settle();
 
-		type('history-git-name', 'Ada Lovelace');
-		type('history-git-email', 'ada@example.com');
+		type('history-by-name', 'Ada Lovelace');
+		type('history-by-email', 'ada@example.com');
 		press('Add a way in');
 		await settle();
 		type('history-token-origin', 'a-token');
@@ -662,8 +744,8 @@ describe('another folder opening', () => {
 		prefs.set('theme', prefs.current.theme === 'paper' ? 'graphite' : 'paper');
 		await settle();
 
-		expect(target.querySelector<HTMLInputElement>('#history-git-name')?.value).toBe('Ada Lovelace');
-		expect(target.querySelector<HTMLInputElement>('#history-git-email')?.value).toBe(
+		expect(target.querySelector<HTMLInputElement>('#history-by-name')?.value).toBe('Ada Lovelace');
+		expect(target.querySelector<HTMLInputElement>('#history-by-email')?.value).toBe(
 			'ada@example.com'
 		);
 		expect(target.querySelector<HTMLInputElement>('#history-token-origin')?.value).toBe('a-token');

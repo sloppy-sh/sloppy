@@ -565,6 +565,14 @@ beside the last rather than over it.
 - **A pulled region is still one graph at a time.** § Form's rule holds — a peer's `1a`
   seeds where the reader's own does — and a held region is never one of these fields,
   because a field is a graph the reader themselves keeps.
+- **Where a graph is a folder on the device, the picker's rows are folders.** A person can
+  hold one graph in two folders — a copy brought from their own host beside the original —
+  so a row is the folder it is: the folder's own name sits under the graph's name wherever
+  two rows share a graph, and the row marked as the one you are in is the folder that is
+  open rather than whichever row carries its ref. A row that cannot say which of the two
+  folders it means offers none of the acts a graph is named by; opening it and forgetting it
+  are still offered, because those are the folder's own. **Forgetting is that row's one
+  removal**, and it deletes nothing: the folder stays where it is with everything in it.
 
 ### A note's look never uses colour
 
@@ -775,6 +783,15 @@ Tapping a commit opens its details as a sheet (§ Layout, the one modal): the me
 made it, whether it is signed and by which key, what it springs from, the branches at it,
 and the acts — read the graph as it was, compare it with now, branch from here, switch to a
 branch at it.
+
+**Every number is the distance from the place in front of you.** Where a folder is kept in
+more than one place, the picker over those acts opens on the one the line the folder is on
+follows, and ahead, behind and what an act comes back saying are all measured against the
+place that is picked — against the line it follows there, which need not share its name. A
+place this device has not heard from is left unsaid rather than drawn as a zero: nothing
+waiting and nothing known are two different answers and only one of them is safe to act on.
+**The picture is the folder's, not the line's** — it draws every head, so it stands wherever
+any line holds a version, including where the one in front of you holds none yet.
 
 **The branches panel is a list, because a branch is a name and a number.** Local and remote
 ones together, the current one said plainly, how far each is ahead and behind, and merge or

@@ -60,6 +60,7 @@
 		pictures,
 		anythingToKeep = false,
 		versions,
+		anyKept,
 		older = false,
 		lines,
 		conflicts = [],
@@ -88,8 +89,12 @@
 		/** Whether there is anything to keep at all: a picture put in the graph
 		 *  changes it without changing a note. */
 		anythingToKeep?: boolean;
-		/** Newest first. */
+		/** Newest first, along the line the folder is on. */
 		versions: readonly KeptVersion[];
+		/** Whether a version is kept anywhere in the folder, across every line —
+		 *  what the picture draws. Absent → the line's own versions are the whole
+		 *  of what there is to show. */
+		anyKept?: boolean;
 		/** Whether there are older ones than these. */
 		older?: boolean;
 		lines: readonly LineOfWork[];
@@ -277,7 +282,7 @@
 
 		<section class="space-y-2 border-t border-border pt-6">
 			<h3 class="text-sm font-medium">Versions</h3>
-			{#if versions.length === 0}
+			{#if !(anyKept ?? kept)}
 				<p class="text-sm text-muted-foreground">You have not kept one yet.</p>
 			{:else if picture}
 				{@render picture()}
