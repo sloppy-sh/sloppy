@@ -767,9 +767,9 @@ one left another and where they came back together is not a thing a column of ro
 
 **It is a table, one dense row per version.** The lanes, then the message with the branches
 at it beside it, then when it was kept, who kept it, and the short name it is cited by. A
-branch kept here is a chip with a border; one kept somewhere else is spelled `origin/main`
-and drawn dashed, so where a branch lives is read from form rather than from a second colour
-(§ "The graph's colour language"). The version the folder stands on is an open mark on its
+branch kept here is a chip with a border; one kept somewhere else, which the history spells
+`origin/main`, is drawn dashed, so where a branch lives is read from form rather than from a
+second colour (§ "The graph's colour language"). The version the folder stands on is an open mark on its
 lane, and a version nobody is at is a filled one and nothing more.
 
 **Lanes are drawn in hue, and this is the one surface outside the canvas that spends it.**

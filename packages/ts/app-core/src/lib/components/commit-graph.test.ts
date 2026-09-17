@@ -29,7 +29,7 @@ function room(wide: boolean): void {
 
 function draw(
 	versions: DrawnVersion[],
-	over: { at?: string; on?: string; signs?: boolean } = {}
+	over: { at?: string; on?: string; elsewhere?: string[]; signs?: boolean } = {}
 ): void {
 	mounted = mount(CommitGraph, {
 		target,
@@ -104,10 +104,21 @@ describe('a row per version', () => {
 	});
 
 	it('draws a branch kept somewhere else apart from one kept here', () => {
-		draw([version('c', [], { refs: ['main', 'origin/main'] })]);
+		draw([version('c', [], { refs: ['main', 'origin/main'] })], { elsewhere: ['origin/main'] });
 
 		const chips = [...rows()[0].querySelectorAll('span')].filter((one) =>
 			['main', 'origin/main'].includes(said(one))
+		);
+		expect(chips.map((one) => one.className.includes('border-dashed'))).toEqual([false, true]);
+	});
+
+	it('draws a branch kept here whose name has a slash in it as kept here', () => {
+		draw([version('c', [], { refs: ['theme/git-graph', 'origin/theme/git-graph'] })], {
+			elsewhere: ['origin/theme/git-graph']
+		});
+
+		const chips = [...rows()[0].querySelectorAll('span')].filter((one) =>
+			['theme/git-graph', 'origin/theme/git-graph'].includes(said(one))
 		);
 		expect(chips.map((one) => one.className.includes('border-dashed'))).toEqual([false, true]);
 	});

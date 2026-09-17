@@ -61,6 +61,7 @@
 		versions,
 		at,
 		on,
+		elsewhere = [],
 		signs = false,
 		older = false,
 		busy = false,
@@ -73,6 +74,10 @@
 		at?: string;
 		/** The line the folder is on, marked where a version carries it. */
 		on?: string;
+		/** The lines kept somewhere else, spelled as a row spells them —
+		 *  `origin/main`. A line a row names that is not one of these is kept
+		 *  here, whatever its name has in it. */
+		elsewhere?: readonly string[];
 		/** Whether this folder signs what it keeps, which is what makes a version
 		 *  with no signature worth marking. */
 		signs?: boolean;
@@ -133,7 +138,7 @@
 	 *  picture"). */
 	function chip(ref: string): string {
 		if (ref === on) return 'border-foreground font-medium';
-		return ref.includes('/')
+		return elsewhere.includes(ref)
 			? 'border-dashed border-border text-muted-foreground'
 			: 'border-border';
 	}

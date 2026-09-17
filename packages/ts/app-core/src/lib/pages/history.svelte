@@ -87,6 +87,12 @@
 		})
 	);
 
+	/** The lines this folder only knows about, so the picture can draw where a
+	 *  line is kept rather than read it out of its name. */
+	const linesElsewhere = $derived(
+		graphHistory.lines.filter((one) => one.remote !== undefined).map((one) => one.name)
+	);
+
 	const lineRows = $derived<LineRow[]>(
 		graphHistory.lines.map((one) => ({
 			name: one.name,
@@ -334,6 +340,7 @@
 		versions={drawnVersions}
 		at={graphHistory.at}
 		on={graphHistory.line}
+		elsewhere={linesElsewhere}
 		signs={graphHistory.signs}
 		older={graphHistory.morePicture}
 		busy={graphHistory.busy}
