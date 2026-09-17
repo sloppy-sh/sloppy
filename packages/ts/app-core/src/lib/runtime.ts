@@ -13,6 +13,7 @@ import { setHost } from '@sloppy/client';
 import type {
 	Credential,
 	CredentialsAccess,
+	Files,
 	GitDefaultsAccess,
 	History,
 	IdentityAccess
@@ -146,6 +147,13 @@ export interface AppRuntime {
 	 *  anybody; `undefined` from it is a shell that keeps histories with no
 	 *  graph open. `History` in `@sloppy/local` declares every act. */
 	history?(): History | undefined;
+	/** The code the graph in front of somebody is written about, rooted at the
+	 *  project — a shell that defines it also defines {@link AppRuntime.vault}.
+	 *  Absent → this platform reads no folder. `undefined` from it is a graph
+	 *  that is nobody's project, where an anchor into code is the ordinary link
+	 *  it is and nothing is offered to point at one; docs/ARCHITECTURE.md § "A
+	 *  project's container" is what decides which. */
+	project?(): Promise<Files | undefined>;
 	/** What a folder started on this device begins with, kept beside the
 	 *  graphs rather than in one — a shell that defines it also defines
 	 *  {@link AppRuntime.vault}. Absent → nothing here can be told who its
@@ -256,6 +264,7 @@ export const runtime = {
 	vault: (): VaultAccess | undefined => current.vault,
 	identities: (): IdentityAccess | undefined => current.identities,
 	history: (): History | undefined => current.history?.(),
+	project: async (): Promise<Files | undefined> => current.project?.(),
 	gitDefaults: (): GitDefaultsAccess | undefined => current.gitDefaults,
 	credentials: (): CredentialsAccess | undefined => current.credentials,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,
