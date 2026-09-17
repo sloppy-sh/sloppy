@@ -7,12 +7,15 @@
 	// place they change it.
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import { uploadFile } from '@sloppy/client';
+	import type { IdentityHere } from '@sloppy/local';
 	import { type CommentAccess, graphRef, splitOwnedRef } from '@sloppy/types';
 	import { IdentityLine, PersonEditor, PersonHeader, type PictureRole } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { onMount } from 'svelte';
 	import { api } from '../api.js';
+	import { kept } from '../held-identity.js';
+	import { runtime } from '../runtime.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { graphs } from '../stores/graphs.svelte.js';
 	import { nodes } from '../stores/nodes.svelte.js';
@@ -40,6 +43,26 @@
 	const shown = $derived.by(() => {
 		const profile = people.me;
 		return profile && { profile, person: personFrom(profile) };
+	});
+
+	const identities = runtime.identities();
+	let held = $state<IdentityHere[]>([]);
+	/** The one the writing here carries, as this device holds it. Undefined is a
+	 *  device that holds none of its own, which is every deployment but local. */
+	const writingAs = $derived(held.find((one) => one.did === session.viewer?.did));
+
+	$effect(() => {
+		if (!identities) return;
+		const asOf = session.viewer?.did;
+		void identities.list().then(
+			(listed) => {
+				if (asOf === session.viewer?.did) held = listed;
+			},
+			() => {
+				// The identity is on screen either way; only what it is called and
+				// where it lives are missing.
+			}
+		);
 	});
 
 	/** The branches a peer can read, each named the way the reader would find it
@@ -151,6 +174,12 @@
 			<section class="space-y-2 border-t border-border pt-6">
 				<h2 class="text-sm font-medium">Your identity</h2>
 				{#if session.viewer}
+					{#if writingAs}
+						{#if writingAs.name}
+							<p class="text-base font-medium">{writingAs.name}</p>
+						{/if}
+						<p class="text-sm text-muted-foreground">{kept(writingAs)}</p>
+					{/if}
 					<IdentityLine identity={session.viewer.did} label="Copy your identity" />
 					<p class="text-sm text-muted-foreground">
 						Everything you write here is written under this, and none of it leaves this device.
