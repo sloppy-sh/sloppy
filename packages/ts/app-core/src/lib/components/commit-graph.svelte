@@ -88,7 +88,7 @@
 		onOpen: (id: string) => void;
 	} = $props();
 
-	const folded = new MediaQuery('(max-width: 639px)');
+	const folded = new MediaQuery('(max-width: 39.99rem)');
 
 	const tall = $derived(folded.current ? FOLDED : DENSE);
 	const laid = $derived(lanes(versions));
