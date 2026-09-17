@@ -22,10 +22,12 @@ import {
 } from '@sloppy/types';
 import { api } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
-import { runtime } from '../runtime.js';
+import { type KnownFolder, runtime } from '../runtime.js';
 import { serverMessage } from './errors.js';
+import { nodes } from './nodes.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
+import { tags } from './tags.svelte.js';
 
 /** How many graphs may stand on one canvas at once. Past a handful the fields
  *  are further apart than a reader can hold in their head. */
@@ -58,7 +60,10 @@ class GraphsStore {
 	#epoch = 0;
 	#restored: Promise<void> | null = null;
 	#inFolder = $state<OwnedRef | null>(null);
+	#folderRoot = $state<string | undefined>(undefined);
 	#openFolder: Promise<void> | null = null;
+	#folders = $state<KnownFolder[]>([]);
+	#knownFolders: Promise<void> | null = null;
 	/** The listing standing is the one this device kept, so an ask that will not
 	 *  answer has nothing to report over it. */
 	#asLastRead = false;
@@ -158,15 +163,110 @@ class GraphsStore {
 			const ref = await vault.graph().catch(() => undefined);
 			if (epoch !== this.#epoch || ref === undefined) return;
 			this.#inFolder = ref;
+			this.#folderRoot = vault.folder();
 			if (prefs.current.graph !== null && prefs.current.graph !== ref) prefs.set('graph', null);
 		})();
 		return this.#openFolder;
+	}
+
+	/**
+	 * The folders this device keeps its graphs in, the one opened most recently
+	 * first — every one of them is a graph, and one that is not where it was is
+	 * here too. Empty where a graph is not a folder on the device, and the
+	 * listing is then the whole answer.
+	 */
+	get folders(): KnownFolder[] {
+		return this.#folders;
+	}
+
+	/** The folder in front of somebody, by its root — what says which of the
+	 *  folders listed is the one open, since two of them may hold one graph.
+	 *  `undefined` where this device keeps no folder. */
+	get openFolder(): string | undefined {
+		return this.#folderRoot;
+	}
+
+	/** Whether this device's graphs are the folders it keeps them in, which is
+	 *  what makes the picker the place a folder is opened, started and
+	 *  forgotten. */
+	get keepsFolders(): boolean {
+		return runtime.vault()?.known !== undefined;
+	}
+
+	/** Whether a copy of a graph kept somewhere else can be brought onto this
+	 *  device at all. */
+	get bringsFolders(): boolean {
+		return runtime.vault()?.clone !== undefined;
+	}
+
+	/** Deduped like {@link load}; `again` is a list that has just changed. */
+	readFolders(again = false): Promise<void> {
+		if (again) this.#knownFolders = null;
+		this.#knownFolders ??= (async () => {
+			const known = runtime.vault()?.known;
+			if (!known) return;
+			const epoch = this.#epoch;
+			const listed = await known().catch(() => undefined);
+			if (listed && epoch === this.#epoch) this.#folders = listed;
+		})();
+		return this.#knownFolders;
+	}
+
+	/** Serve the graph in one of this device's folders from now on. */
+	async enterFolder(root: string): Promise<void> {
+		const vault = runtime.vault();
+		if (!vault?.openKnown) return;
+		await vault.openKnown(root);
+		await this.folderChanged();
+	}
+
+	/** Begin a graph in a folder somebody names. False is somebody who named
+	 *  none, which is not a failure. */
+	async startFolder(): Promise<boolean> {
+		const vault = runtime.vault();
+		if (!vault?.start) return false;
+		if ((await vault.start()) === undefined) return false;
+		await this.folderChanged();
+		return true;
+	}
+
+	/** Bring a copy of a graph kept somewhere else onto this device, with
+	 *  whatever this device was given to reach where it is kept. */
+	async cloneFolder(url: string): Promise<boolean> {
+		const vault = runtime.vault();
+		if (!vault?.clone) return false;
+		const credential = await runtime.credentials()?.forUrl(url);
+		if ((await vault.clone(url, credential)) === undefined) return false;
+		await this.folderChanged();
+		return true;
+	}
+
+	/** Take a folder off this device's list. Nothing in it is touched, and a
+	 *  person opens it again by naming it again. */
+	async forgetFolder(root: string): Promise<void> {
+		const vault = runtime.vault();
+		if (!vault?.forget) return;
+		await vault.forget(root);
+		await this.readFolders(true);
+		await this.reload().catch(() => []);
+	}
+
+	/** Two folders may hold one graph, so nothing read out of the last one is a
+	 *  copy of anything in this one — however the refs compare. */
+	private async folderChanged(): Promise<void> {
+		await this.readOpenFolder(true);
+		await Promise.all([this.readFolders(true), this.reload().catch(() => [])]);
+		await Promise.all([
+			nodes.readAgain(),
+			...this.onCanvas.map((graph) => tags.reload(graph).catch(() => {}))
+		]);
 	}
 
 	/** Deduped and idempotent: every surface may call it on mount. */
 	load(): Promise<GraphView[]> {
 		void this.restore();
 		void this.readOpenFolder();
+		void this.readFolders();
 		if (this.#inflight) return this.#inflight;
 		if (this.#state.loaded) return Promise.resolve(this.#all);
 		return this.reload();
@@ -280,6 +380,8 @@ class GraphsStore {
 			'alsoOnCanvas',
 			prefs.current.alsoOnCanvas.filter((also) => also !== ref)
 		);
+		// A graph that was a folder took the folder off this device's list with it.
+		await this.readFolders(true);
 	}
 
 	/** Move into a graph. One that was standing beside the graph being read
@@ -320,7 +422,10 @@ class GraphsStore {
 		this.#inflight = null;
 		this.#restored = null;
 		this.#inFolder = null;
+		this.#folderRoot = undefined;
 		this.#openFolder = null;
+		this.#folders = [];
+		this.#knownFolders = null;
 		this.#asLastRead = false;
 		prefs.set('graph', null);
 		prefs.set('alsoOnCanvas', []);

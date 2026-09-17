@@ -2,6 +2,7 @@
 // docs/ARCHITECTURE.md § "The two files that carry the platform seam".
 
 import { insideVault } from "@sloppy/vault";
+import type { Credential } from "./history.js";
 
 /**
  * File access, rooted at one folder. Every path is relative to {@link root} and
@@ -36,6 +37,17 @@ export interface Files {
   url(path: string): string;
   /** Ask a person for a folder. `undefined` is somebody who chose none. */
   pickFolder(): Promise<string | undefined>;
+  /**
+   * Put a copy of a folder kept somewhere else at `into`, which must be empty
+   * or not there yet: one holding anything at all is refused here, so a caller
+   * has nothing of its own to check. A folder has no history until it is here,
+   * so this is the one act of the kind that is not `History`'s.
+   *
+   * Absent is a platform that cannot bring one over, and the offer of it is
+   * not put in front of anybody there. `credential` is read per call
+   * ({@link Credential}) and never held.
+   */
+  clone?(url: string, into: string, credential?: Credential): Promise<void>;
   /** Where this app may keep what is nobody else's business — the identity's
    *  key, and what graph was open last. Absolute. */
   dataPath(): Promise<string>;

@@ -1,4 +1,5 @@
 import type { AppRuntime } from '@sloppy/app-core';
+import type { Credential } from '@sloppy/local';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.stubEnv('PUBLIC_ENABLE_LOCAL_MODE', 'true');
@@ -15,6 +16,9 @@ vi.mock('@sloppy/app-core', () => ({
 
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
 vi.mock('./deep-link', () => ({ SIGN_IN_CALLBACK: 'sloppy://auth/callback' }));
+
+/** What the device was asked to bring over, and from where. */
+const broughtOver: { url: string; into: string; credential?: Credential }[] = [];
 
 /** The device's files, as `src-tauri` answers for them: one store keyed by the
  *  absolute path, and a folder somebody would pick. */
@@ -44,6 +48,28 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'history_head':
 				historyAsked.push([command, args?.root as string]);
 				return 'a1b2c3';
+			case 'files_clone': {
+				const into = args?.into as string;
+				const credential = args?.credential as Credential | null;
+				// The copy is what refuses a folder somebody already keeps things in,
+				// and it does so before it writes anything (`remotes.rs`).
+				if ([...held.keys()].some((path) => path.startsWith(`${into}/`))) {
+					throw 'There is already something in that folder. Choose an empty one.';
+				}
+				broughtOver.push({ url: args?.url as string, into, ...(credential ? { credential } : {}) });
+				held.set(
+					`${into}/graph.json`,
+					btoa(
+						JSON.stringify({
+							format: 1,
+							graph: '01ARZ3NDEKTSV4RRFFQ69G5FAX',
+							name: 'The garden',
+							owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK'
+						})
+					)
+				);
+				return null;
+			}
 			case 'files_list': {
 				const under = `${args?.root as string}/`;
 				return [...held.keys()]
@@ -341,5 +367,198 @@ describe('which identity the shell serves a folder under', () => {
 		await launch();
 
 		expect((await registered.identities?.list())?.map((one) => one.did)).toEqual([MINE]);
+	});
+});
+
+describe('the folders this device keeps its graphs in', () => {
+	const ADA = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
+	const GARDEN = '/Users/me/garden';
+	const THESIS = '/Users/me/thesis';
+	const BROUGHT = '/Users/me/brought';
+
+	function graphIn(folder: string, name: string, graph: string): void {
+		held.set(`${folder}/graph.json`, btoa(JSON.stringify({ format: 1, graph, name, owner: ADA })));
+	}
+
+	/** Folders this device has opened before, oldest first. */
+	function knows(...folders: string[]): void {
+		held.set(
+			'/data/vaults.json',
+			btoa(
+				JSON.stringify(
+					folders.map((root, put) => ({
+						root,
+						created_at: new Date(put + 1).toISOString(),
+						updated_at: new Date(put + 1).toISOString()
+					}))
+				)
+			)
+		);
+	}
+
+	/** Two folders this device has opened, each holding its own graph. */
+	function knowsBoth(): void {
+		knows(GARDEN, THESIS);
+		graphIn(GARDEN, 'The garden', '01ARZ3NDEKTSV4RRFFQ69G5FAV');
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+	}
+
+	beforeEach(() => {
+		held.clear();
+		picks = GARDEN;
+		picking = 'answers';
+		broughtOver.length = 0;
+		historyAsked.length = 0;
+		resetApi.mockClear();
+	});
+
+	it('are listed as the graphs they hold, the one opened last first', async () => {
+		knowsBoth();
+		await launch();
+
+		const known = await registered.vault?.known?.();
+
+		expect(known?.map((one) => one.graph?.name)).toEqual(['The thesis', 'The garden']);
+		expect(known?.map((one) => one.root)).toEqual([THESIS, GARDEN]);
+		expect(known?.[0].graph?.ref).toBe(`${ADA}/01ARZ3NDEKTSV4RRFFQ69G5FAW`);
+		expect(known?.[0].graph?.owner).toBe(ADA);
+	});
+
+	it('keep one that is not where it was, with nothing in it to open', async () => {
+		knows(GARDEN);
+		await launch();
+
+		const [gone] = (await registered.vault?.known?.()) ?? [];
+
+		expect(gone.root).toBe(GARDEN);
+		expect(gone.reachable).toBe(false);
+		expect(gone.graph).toBeUndefined();
+	});
+
+	it('are opened by naming one, which is the graph in front of somebody then', async () => {
+		knowsBoth();
+		await launch();
+
+		await registered.vault?.openKnown?.(THESIS);
+
+		expect(registered.vault?.folder()).toBe(THESIS);
+		expect(servedFrom()).toBe(THESIS);
+		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
+		expect(historyAsked).toEqual([['history_head', THESIS]]);
+		expect(resetApi).toHaveBeenCalled();
+		// And it is the folder the next launch opens.
+		expect(await (await launch()).openRememberedVault()).toBe(THESIS);
+	});
+
+	it('read the one opened again as the newest, wherever it was written down', async () => {
+		knowsBoth();
+		await launch();
+
+		await registered.vault?.openKnown?.(GARDEN);
+
+		expect((await registered.vault?.known?.())?.map((one) => one.root)).toEqual([GARDEN, THESIS]);
+	});
+
+	it('lose one that is forgotten, and keep everything inside it', async () => {
+		knowsBoth();
+		await launch();
+
+		await registered.vault?.forget?.(GARDEN);
+
+		expect((await registered.vault?.known?.())?.map((one) => one.root)).toEqual([THESIS]);
+		expect(held.has(`${GARDEN}/graph.json`)).toBe(true);
+	});
+
+	it('gain the one somebody starts, which is opened straight away', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = GARDEN;
+
+		expect(await registered.vault?.start?.()).toBe(GARDEN);
+		expect(servedFrom()).toBe(GARDEN);
+	});
+
+	// The one act that needs a credential is the one it is handed to, and what a
+	// person keeps their folders on is nowhere near the folders themselves.
+	it('reach the hosts this device was given something for', async () => {
+		held.set(
+			'/data/credentials.json',
+			btoa(
+				JSON.stringify([
+					{ host: 'somewhere.test', credential: { kind: 'token', token: 'a-token' } }
+				])
+			)
+		);
+		await launch();
+
+		expect(await registered.credentials?.forUrl('https://somewhere.test/ada/garden.git')).toEqual({
+			kind: 'token',
+			token: 'a-token'
+		});
+		expect(
+			await registered.credentials?.forUrl('https://elsewhere.test/ada/garden.git')
+		).toBeUndefined();
+	});
+
+	it('gain the one brought from an address, into a folder somebody names', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = BROUGHT;
+
+		const into = await registered.vault?.clone?.('https://somewhere.test/ada/garden.git', {
+			kind: 'token',
+			token: 'a-token'
+		});
+
+		expect(into).toBe(BROUGHT);
+		expect(broughtOver).toEqual([
+			{
+				url: 'https://somewhere.test/ada/garden.git',
+				into: BROUGHT,
+				credential: { kind: 'token', token: 'a-token' }
+			}
+		]);
+		expect(servedFrom()).toBe(BROUGHT);
+		expect((await registered.vault?.known?.())?.map((one) => one.graph?.name)).toEqual([
+			'The garden',
+			'The thesis'
+		]);
+	});
+
+	it('are not the folder somebody already keeps things in', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = THESIS;
+
+		await expect(
+			registered.vault?.clone?.('https://somewhere.test/ada/garden.git')
+		).rejects.toThrow('There is already something in that folder. Choose an empty one.');
+		expect(broughtOver).toEqual([]);
+		expect(servedFrom()).not.toBe(THESIS);
+	});
+
+	it('gain nothing where nobody says where to put what is brought over', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = null;
+
+		expect(
+			await registered.vault?.clone?.('https://somewhere.test/ada/garden.git')
+		).toBeUndefined();
+		expect(broughtOver).toEqual([]);
+	});
+
+	it('are one folder and no list of them where a device keeps its graphs in one place', async () => {
+		await launch('ios');
+
+		expect(registered.vault?.known).toBeUndefined();
+		expect(registered.vault?.openKnown).toBeUndefined();
+		expect(registered.vault?.forget).toBeUndefined();
+		expect(registered.vault?.start).toBeUndefined();
+		expect(registered.vault?.clone).toBeUndefined();
 	});
 });

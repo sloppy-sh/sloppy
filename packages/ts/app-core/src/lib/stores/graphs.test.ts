@@ -2,15 +2,19 @@ import 'fake-indexeddb/auto';
 import type { GraphView, OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deviceStore } from '../device-store.js';
+import type { Credential, CredentialsAccess } from '@sloppy/local';
 import { initRuntime, type VaultAccess } from '../runtime.js';
 import { graphs, MOST_ON_CANVAS } from './graphs.svelte.js';
+import { nodes } from './nodes.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
+import { tags } from './tags.svelte.js';
 import {
 	archiving,
 	AT,
 	mergePreview,
 	DID,
+	node,
 	ref,
 	useFakeApi,
 	VIEWER,
@@ -569,5 +573,227 @@ describe('a graph that is a folder on this device', () => {
 		await graphs.readOpenFolder();
 
 		expect(graphs.current).toBe(HOME);
+	});
+});
+
+describe('the folders this device keeps its graphs in', () => {
+	const GARDEN_FOLDER = '/Users/me/garden';
+	const THESIS_FOLDER = '/Users/me/thesis';
+	const GONE_FOLDER = '/Users/me/gone';
+
+	/** A shell whose graphs are the folders it knows, with what each act it is
+	 *  asked for was asked about. */
+	function keeping(): VaultAccess & {
+		opened: string[];
+		forgotten: string[];
+		cloned: { url: string; credential?: Credential }[];
+		started: number;
+	} {
+		let open = GARDEN_FOLDER;
+		const known = [
+			{
+				root: GARDEN_FOLDER,
+				graph: { ref: GARDEN.ref, name: 'Garden', owner: DID },
+				reachable: true
+			},
+			{
+				root: THESIS_FOLDER,
+				graph: { ref: COMPANY.ref, name: 'Company', owner: DID },
+				reachable: true
+			},
+			{ root: GONE_FOLDER, reachable: false }
+		];
+		return {
+			opened: [],
+			forgotten: [],
+			cloned: [],
+			started: 0,
+			folder: () => open,
+			graph: async () => (open === GARDEN_FOLDER ? GARDEN.ref : COMPANY.ref),
+			asks: true,
+			open: async () => open,
+			known: async () => known.filter((one) => one.root !== undefined),
+			async openKnown(root: string) {
+				this.opened.push(root);
+				open = root;
+			},
+			async forget(root: string) {
+				this.forgotten.push(root);
+				const at = known.findIndex((one) => one.root === root);
+				if (at >= 0) known.splice(at, 1);
+			},
+			async start() {
+				this.started += 1;
+				open = THESIS_FOLDER;
+				return open;
+			},
+			async clone(url: string, credential?: Credential) {
+				this.cloned.push({ url, ...(credential ? { credential } : {}) });
+				open = THESIS_FOLDER;
+				return open;
+			}
+		};
+	}
+
+	function serving(vault: VaultAccess, credentials?: CredentialsAccess): void {
+		initRuntime({ apiHost: () => 'http://api.test', vault, credentials });
+	}
+
+	it('are read as one graph each, the one that is gone among them', async () => {
+		serving(keeping());
+
+		await graphs.load();
+		await graphs.readFolders();
+
+		expect(graphs.folders.map((one) => one.root)).toEqual([
+			GARDEN_FOLDER,
+			THESIS_FOLDER,
+			GONE_FOLDER
+		]);
+		expect(graphs.folders[2].reachable).toBe(false);
+		expect(graphs.folders[0].graph?.name).toBe('Garden');
+	});
+
+	it('are nothing at all where a graph is not a folder on the device', async () => {
+		initRuntime({ apiHost: () => 'http://api.test', vault: undefined });
+
+		await graphs.load();
+		await graphs.readFolders();
+
+		expect(graphs.folders).toEqual([]);
+	});
+
+	it('serve the graph in the one opened, which is the one in front of the reader', async () => {
+		const vault = keeping();
+		serving(vault);
+		await graphs.load();
+		await graphs.readOpenFolder();
+		expect(graphs.current).toBe(GARDEN.ref);
+
+		await graphs.enterFolder(THESIS_FOLDER);
+
+		expect(vault.opened).toEqual([THESIS_FOLDER]);
+		expect(graphs.current).toBe(COMPANY.ref);
+	});
+
+	it('say which folder is open by its root, which two of them holding one graph share', async () => {
+		const vault = keeping();
+		serving(vault);
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(graphs.openFolder).toBe(GARDEN_FOLDER);
+
+		await graphs.enterFolder(THESIS_FOLDER);
+
+		expect(graphs.openFolder).toBe(THESIS_FOLDER);
+	});
+
+	it('lose one that is forgotten, and nothing else about it', async () => {
+		const vault = keeping();
+		serving(vault);
+		await graphs.load();
+		await graphs.readFolders();
+
+		await graphs.forgetFolder(GONE_FOLDER);
+
+		expect(vault.forgotten).toEqual([GONE_FOLDER]);
+		expect(graphs.folders.map((one) => one.root)).toEqual([GARDEN_FOLDER, THESIS_FOLDER]);
+	});
+
+	it('gain the one somebody starts, which is then the graph in front of them', async () => {
+		const vault = keeping();
+		serving(vault);
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(await graphs.startFolder()).toBe(true);
+
+		expect(vault.started).toBe(1);
+		expect(graphs.current).toBe(COMPANY.ref);
+	});
+
+	it('bring one from an address with what this device holds for that host', async () => {
+		const vault = keeping();
+		const token: Credential = { kind: 'token', token: 'a-token' };
+		serving(vault, {
+			list: async () => [],
+			forUrl: async (url) => (url.includes('somewhere.test') ? token : undefined),
+			hold: async () => {},
+			forget: async () => {}
+		});
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(await graphs.cloneFolder('https://somewhere.test/ada/garden.git')).toBe(true);
+
+		expect(vault.cloned).toEqual([
+			{ url: 'https://somewhere.test/ada/garden.git', credential: token }
+		]);
+		expect(graphs.current).toBe(COMPANY.ref);
+	});
+
+	it('are let go of with everything else the last person read', async () => {
+		serving(keeping());
+		await graphs.load();
+		await graphs.readFolders();
+
+		graphs.clear();
+
+		expect(graphs.folders).toEqual([]);
+	});
+});
+
+describe('two folders holding one graph', () => {
+	const ONE = '/Users/me/garden';
+	const COPY = '/Users/me/garden-copy';
+
+	/** A shell keeping one graph in two folders — a copy of it beside the
+	 *  original — where only the root tells the two apart. */
+	function bothAt(): VaultAccess & { opened(): string } {
+		let open = ONE;
+		const held = { ref: GARDEN.ref, name: 'Garden', owner: DID };
+		return {
+			folder: () => open,
+			graph: async () => GARDEN.ref,
+			asks: true,
+			open: async () => open,
+			opened: () => open,
+			async openKnown(root: string) {
+				open = root;
+			},
+			known: async () => [
+				{ root: ONE, graph: held, reachable: true },
+				{ root: COPY, graph: held, reachable: true }
+			]
+		};
+	}
+
+	beforeEach(() => {
+		nodes.clear();
+		tags.clear();
+	});
+
+	it('draw the notes in the folder now open, not the ones read out of the last', async () => {
+		const vault = bothAt();
+		initRuntime({ apiHost: () => 'http://api.test', vault });
+		const inCopy = [node(1, '1', { graph: GARDEN.ref }), node(2, '2', { graph: GARDEN.ref })];
+		api.on('GET /nodes', () => (vault.opened() === ONE ? inCopy.slice(0, 1) : inCopy));
+		api.on('GET /nodes/tags', () => [{ tag: 'seed', notes: vault.opened() === ONE ? 1 : 2 }]);
+		await graphs.load();
+		await graphs.readOpenFolder();
+		await nodes.load({ graph: GARDEN.ref });
+		await tags.load(GARDEN.ref);
+		expect(nodes.region({ graph: GARDEN.ref })).toHaveLength(1);
+
+		await graphs.enterFolder(COPY);
+
+		expect(nodes.region({ graph: GARDEN.ref })).toHaveLength(2);
+		expect(tags.of(GARDEN.ref)).toEqual([{ tag: 'seed', notes: 2 }]);
+
+		await graphs.enterFolder(ONE);
+
+		expect(nodes.region({ graph: GARDEN.ref })).toHaveLength(1);
+		expect(tags.of(GARDEN.ref)).toEqual([{ tag: 'seed', notes: 1 }]);
 	});
 });

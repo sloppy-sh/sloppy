@@ -47,7 +47,7 @@
 	// on, and what is different between any two — docs/ARCHITECTURE.md § "The
 	// vault's history".
 	import Check from '@lucide/svelte/icons/check';
-	import { untrack } from 'svelte';
+	import { type Snippet, untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
@@ -60,6 +60,7 @@
 		pictures,
 		anythingToKeep = false,
 		versions,
+		anyKept,
 		older = false,
 		lines,
 		conflicts = [],
@@ -74,7 +75,10 @@
 		onBringIn,
 		onSettle,
 		onOpenVersion,
-		onCompare
+		onCompare,
+		picture,
+		branches,
+		elsewhere
 	}: {
 		open?: boolean;
 		/** What has changed since the version the folder stands on; `null` where
@@ -85,8 +89,12 @@
 		/** Whether there is anything to keep at all: a picture put in the graph
 		 *  changes it without changing a note. */
 		anythingToKeep?: boolean;
-		/** Newest first. */
+		/** Newest first, along the line the folder is on. */
 		versions: readonly KeptVersion[];
+		/** Whether a version is kept anywhere in the folder, across every line —
+		 *  what the picture draws. Absent → the line's own versions are the whole
+		 *  of what there is to show. */
+		anyKept?: boolean;
 		/** Whether there are older ones than these. */
 		older?: boolean;
 		lines: readonly LineOfWork[];
@@ -110,6 +118,16 @@
 			before: StatePicked,
 			after: StatePicked
 		) => Promise<{ notes: readonly ChangedNote[]; pictures: ChangedPictures } | null>;
+		/** The versions drawn as the shape they make. Absent → the list of them,
+		 *  which is what a platform whose history cannot say what shape it is in
+		 *  gets. */
+		picture?: Snippet;
+		/** The lines of work with how far each is from where it is also kept.
+		 *  Absent → the lines by name alone. */
+		branches?: Snippet;
+		/** Where else the folder is kept, and what moves between here and there.
+		 *  Absent → nothing about anywhere else. */
+		elsewhere?: Snippet;
 	} = $props();
 
 	/** What the pickers hold for the folder as it stands, kept apart from the
@@ -255,10 +273,19 @@
 			</Button>
 		</section>
 
+		{#if elsewhere}
+			<section class="space-y-3 border-t border-border pt-6">
+				<h3 class="text-sm font-medium">Where else your notes are</h3>
+				{@render elsewhere()}
+			</section>
+		{/if}
+
 		<section class="space-y-2 border-t border-border pt-6">
 			<h3 class="text-sm font-medium">Versions</h3>
-			{#if versions.length === 0}
+			{#if !(anyKept ?? kept)}
 				<p class="text-sm text-muted-foreground">You have not kept one yet.</p>
+			{:else if picture}
+				{@render picture()}
 			{:else}
 				<ul class="space-y-1">
 					{#each versions as version (version.id)}
@@ -302,64 +329,68 @@
 
 		<section class="space-y-3 border-t border-border pt-6">
 			<h3 class="text-sm font-medium">Lines of work</h3>
-			<p class="text-sm text-muted-foreground">
-				A line of your own to try something on, and the way to bring it back in when it works.
-			</p>
-			<ul class="space-y-1">
-				{#each lines as one (one.name)}
-					<li class="flex items-center gap-2">
-						<span class="w-4 shrink-0 text-muted-foreground">
-							{#if one.here}<Check class="size-4" aria-hidden="true" />{/if}
-						</span>
-						<span class="min-w-0 flex-1 truncate text-sm">{one.name}</span>
-						{#if !one.here}
-							<Button
-								variant="ghost"
-								class="h-9 shrink-0 rounded-full text-xs"
-								disabled={busy}
-								onclick={() => void moveLine(() => onWorkOn(one.name))}
-							>
-								Work on it
-							</Button>
-							<Button
-								variant="outline"
-								class="h-9 shrink-0 rounded-full text-xs"
-								disabled={busy || unsettled}
-								onclick={() => void moveLine(() => onBringIn(one.name))}
-							>
-								Bring it in
-							</Button>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-			<div class="flex gap-2">
-				<Input
-					bind:value={naming}
-					class="h-11 flex-1"
-					autocomplete="off"
-					maxlength={128}
-					placeholder="another-way"
-					aria-label="Name a new line of work"
-					onkeydown={(e) => {
-						if (e.key !== 'Enter') return;
-						e.preventDefault();
-						void startLine();
-					}}
-				/>
-				<Button
-					variant="outline"
-					class="h-11 shrink-0"
-					disabled={busy || !kept || naming.trim() === ''}
-					onclick={startLine}
-				>
-					Start it here
-				</Button>
-			</div>
-			{#if !kept}
-				<p class="text-xs text-muted-foreground">
-					Keep a version first, and a line can start from it.
+			{#if branches}
+				{@render branches()}
+			{:else}
+				<p class="text-sm text-muted-foreground">
+					A line of your own to try something on, and the way to bring it back in when it works.
 				</p>
+				<ul class="space-y-1">
+					{#each lines as one (one.name)}
+						<li class="flex items-center gap-2">
+							<span class="w-4 shrink-0 text-muted-foreground">
+								{#if one.here}<Check class="size-4" aria-hidden="true" />{/if}
+							</span>
+							<span class="min-w-0 flex-1 truncate text-sm">{one.name}</span>
+							{#if !one.here}
+								<Button
+									variant="ghost"
+									class="h-9 shrink-0 rounded-full text-xs"
+									disabled={busy}
+									onclick={() => void moveLine(() => onWorkOn(one.name))}
+								>
+									Work on it
+								</Button>
+								<Button
+									variant="outline"
+									class="h-9 shrink-0 rounded-full text-xs"
+									disabled={busy || unsettled}
+									onclick={() => void moveLine(() => onBringIn(one.name))}
+								>
+									Bring it in
+								</Button>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+				<div class="flex gap-2">
+					<Input
+						bind:value={naming}
+						class="h-11 flex-1"
+						autocomplete="off"
+						maxlength={128}
+						placeholder="another-way"
+						aria-label="Name a new line of work"
+						onkeydown={(e) => {
+							if (e.key !== 'Enter') return;
+							e.preventDefault();
+							void startLine();
+						}}
+					/>
+					<Button
+						variant="outline"
+						class="h-11 shrink-0"
+						disabled={busy || !kept || naming.trim() === ''}
+						onclick={startLine}
+					>
+						Start it here
+					</Button>
+				</div>
+				{#if !kept}
+					<p class="text-xs text-muted-foreground">
+						Keep a version first, and a line can start from it.
+					</p>
+				{/if}
 			{/if}
 		</section>
 

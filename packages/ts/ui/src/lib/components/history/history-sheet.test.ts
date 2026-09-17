@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { BlockDocument } from '@sloppy/types';
-import { flushSync, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import type { ChangedNote } from './changed-notes.svelte';
@@ -193,6 +193,22 @@ describe('the history of a graph', () => {
 		await settle();
 
 		expect(kept).toEqual(['A first version']);
+	});
+
+	it('says nothing has been kept yet', () => {
+		open({ versions: [] });
+
+		expect(screen()).toContain('You have not kept one yet.');
+	});
+
+	it('says it where the versions would be drawn as well as listed', () => {
+		open({
+			versions: [],
+			picture: createRawSnippet(() => ({ render: () => '<p>The shape of it</p>' }))
+		});
+
+		expect(screen()).toContain('You have not kept one yet.');
+		expect(screen()).not.toContain('The shape of it');
 	});
 
 	it('offers nothing to keep where nothing has changed', () => {

@@ -254,9 +254,12 @@ export class LocalApi implements SloppyApi {
 
   // ── Graphs ───────────────────────────────────────────────────────────────
 
+  /** The graphs this device keeps, one row each. Two folders may hold one
+   *  graph, and the row is then the open folder's copy of it; which FOLDERS
+   *  this device keeps is `VaultAccess.known()`, and that is what the picker
+   *  lists. */
   async listGraphs(): Promise<GraphView[]> {
-    const graphs = await this.allGraphs();
-    return graphs.map((graph) => this.graphView(graph));
+    return (await this.allGraphs()).map((graph) => this.graphView(graph));
   }
 
   /** The graph in the folder this device has open, which is the one somebody
@@ -306,11 +309,12 @@ export class LocalApi implements SloppyApi {
   /**
    * The graph's own files go, and the folder stays: what else somebody keeps in
    * it — a README, the history git holds — is theirs and was never Sloppy's to
-   * take.
+   * take. Ending a graph is its owner's act, whoever has been writing in it.
    */
   async closeGraph(ref: OwnedRef): Promise<void> {
     await this.write(async () => {
       const graph = await this.graphAt(ref);
+      await this.onlyItsOwner(graph);
       const root = this.rootOf(graph);
       await emptyVault(graph.files);
       this.opened.delete(root);
@@ -1456,10 +1460,21 @@ export class LocalApi implements SloppyApi {
     throw refuse("That picture is not here. Add it again.");
   }
 
+  /** The picture this graph now wears. One it is already wearing stays where it
+   *  is: a sign-in carries the same picture in again, and a second copy of it
+   *  under a new name is a folder rewritten for nothing. */
   private async avatarIn(
     graph: LocalGraph,
     picture: DevicePicture,
   ): Promise<string> {
+    const worn = graph.owner.avatar;
+    if (worn !== undefined && (await sameBytes(graph, worn, picture.bytes))) {
+      const copy = graph.picturePath(picture.upload);
+      if (copy !== undefined && copy !== worn && !graph.draws(picture.upload)) {
+        await graph.removePicture(picture.upload);
+      }
+      return worn;
+    }
     return (
       graph.picturePath(picture.upload) ??
       (await graph.keepPicture(picture.upload, picture.said, picture.bytes))
@@ -1522,41 +1537,29 @@ export class LocalApi implements SloppyApi {
     await this.remember([...known, { root, created_at: at, updated_at: at }]);
   }
 
-  /** Every graph this device keeps: the folders it has written down, and the
-   *  folder it has open, which holds a graph whether or not it has been written
-   *  down yet. One that cannot be opened is left out here and said where
-   *  somebody writes, so the graphs beside it still read. */
+  /** Every graph this device keeps, one per graph, in the order it opened the
+   *  folders: those it has written down, and the folder it has open, which
+   *  holds a graph whether or not it has been written down yet. Two folders may
+   *  hold one graph, and the open folder's is the copy every lookup here gets,
+   *  so a surface asking about a graph is never handed the other folder's. One
+   *  that cannot be opened is left out and said where somebody writes, so the
+   *  graphs beside it still read. */
   private async allGraphs(): Promise<LocalGraph[]> {
-    const graphs = await this.writtenDownGraphs();
     const open = this.files.root;
-    if (!open) return graphs;
-    const here = await this.graphInTheOpenFolder(open).catch(() => undefined);
-    return here && !graphs.includes(here) ? [...graphs, here] : graphs;
+    const roots = (await this.vaults()).map((known) => known.root);
+    if (open && !roots.includes(open)) roots.push(open);
+    const held = new Map<OwnedRef, LocalGraph>();
+    for (const root of roots) {
+      const graph = await this.graphInFolder(root).catch(() => undefined);
+      if (!graph) continue;
+      if (!held.has(graph.ref) || root === open) held.set(graph.ref, graph);
+    }
+    return [...held.values()];
   }
 
   /** The graphs on this device that one identity owns. */
   private async ownGraphs(did: DidSyr): Promise<LocalGraph[]> {
     return (await this.allGraphs()).filter((graph) => graph.did === did);
-  }
-
-  /** The graphs in the folders this device wrote down, in the order it opened
-   *  them. A folder that is no longer a vault is left out rather than refused:
-   *  somebody moved it, and the graphs beside it still open. */
-  private async writtenDownGraphs(): Promise<LocalGraph[]> {
-    const graphs: LocalGraph[] = [];
-    for (const known of await this.vaults()) {
-      const already = this.opened.get(known.root);
-      if (already) {
-        graphs.push(already);
-        continue;
-      }
-      try {
-        const graph = await LocalGraph.open(this.files.at(known.root));
-        this.opened.set(known.root, graph);
-        graphs.push(graph);
-      } catch {}
-    }
-    return graphs;
   }
 
   /** The graph a new note lands in: the one holding the note it is placed
@@ -1582,7 +1585,7 @@ export class LocalApi implements SloppyApi {
    *  and where it has none, the one it started with. */
   private async graphAt(ref?: OwnedRef): Promise<LocalGraph> {
     const open = this.files.root;
-    if (ref === undefined && open) return this.graphInTheOpenFolder(open);
+    if (ref === undefined && open) return this.graphInFolder(open);
     const graphs = await this.allGraphs();
     if (graphs.length === 0) {
       throw absent("There is no graph on this device yet. Start one to write.");
@@ -1594,18 +1597,19 @@ export class LocalApi implements SloppyApi {
   }
 
   /**
-   * The graph in the folder a shell opened: opening a folder is how somebody
+   * The graph in one of this device's folders: opening a folder is how somebody
    * says a graph is in it, so one that holds a graph is read and one that does
    * not becomes it. The name is the folder's, which is what they called the
    * place; it is renamed like any other. A folder this device wrote a graph
    * into and that now holds none has been moved or emptied, and is said rather
    * than started over.
    *
-   * Held as the promise rather than the graph, one per folder, so two reads
-   * landing together start one graph between them and a second folder opened in
-   * the same session still starts.
+   * Held as the promise rather than the graph, one per folder, so every read of
+   * a folder answers with the one graph it holds — two landing together start
+   * one graph between them, and a folder that is both written down and open is
+   * not opened twice into two graphs at one ref.
    */
-  private graphInTheOpenFolder(root: string): Promise<LocalGraph> {
+  private graphInFolder(root: string): Promise<LocalGraph> {
     let opening = this.starting.get(root);
     if (opening) return opening;
     opening = (async () => {
@@ -1619,22 +1623,27 @@ export class LocalApi implements SloppyApi {
           "The folder your notes are in is not there any more. Open it again, or choose another folder.",
         );
       }
-      const writer = await this.writer;
       const graph = holds
         ? await LocalGraph.open(at)
-        : await LocalGraph.start(at, {
-            format: VAULT_FORMAT,
-            graph: ulid(),
-            name: folderName(root),
-            owner: writer,
-          });
-      if (!holds) await this.nameItsOwner(graph, writer);
+        : await this.startGraphIn(at, root);
       this.opened.set(root, graph);
       if (!written) await this.rememberVault(root);
       return graph;
     })();
     this.starting.set(root, opening);
     return opening;
+  }
+
+  private async startGraphIn(at: Files, root: string): Promise<LocalGraph> {
+    const writer = await this.writer;
+    const graph = await LocalGraph.start(at, {
+      format: VAULT_FORMAT,
+      graph: ulid(),
+      name: folderName(root),
+      owner: writer,
+    });
+    await this.nameItsOwner(graph, writer);
+    return graph;
   }
 
   /**
@@ -1715,6 +1724,18 @@ export class LocalApi implements SloppyApi {
       }
     }
     return found;
+  }
+
+  /** Writing in a folder somebody shared is a contributor's to do; taking the
+   *  graph out of it is not. */
+  private async onlyItsOwner(graph: LocalGraph): Promise<void> {
+    if (graph.did === (await this.writer)) return;
+    const name = graph.owner.name;
+    throw refuse(
+      name === undefined
+        ? "This graph is somebody else's. Only its owner can close it."
+        : `This graph is ${name}'s. Only they can close it.`,
+    );
   }
 
   private rootOf(graph: LocalGraph): string {
@@ -2274,6 +2295,19 @@ export function archiveName(name: string, at: Date = new Date()): string {
     .replace(/\s+/g, " ")
     .trim();
   return `${called === "" ? "graph" : called} ${at.toISOString().slice(0, 10)}.sloppy`;
+}
+
+async function sameBytes(
+  graph: LocalGraph,
+  path: string,
+  bytes: Uint8Array,
+): Promise<boolean> {
+  const held = await graph.files.read(path);
+  return (
+    held !== undefined &&
+    held.byteLength === bytes.byteLength &&
+    held.every((byte, at) => byte === bytes[at])
+  );
 }
 
 /** What a person called the folder, which is what a graph in it is called

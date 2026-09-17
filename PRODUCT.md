@@ -14,7 +14,9 @@ One person thinking, the people they let read over their shoulder, and the ones 
   folder it belongs in. They come back a year later and need the graph to have kept its
   shape. They keep a graph per body of thought where the bodies are genuinely separate —
   the thesis, the garden, the company — and each one numbers its own thinking from `1`.
-  They may never publish a single node.
+  They may never publish a single node. A graph they keep on this device is theirs to keep
+  on GitHub or GitLab as well, so what they have written is on more than one disk and moves
+  between the machines they think on.
 - **The peer** — someone who follows a thinker's DID and pulls a published subtree into
   their own graph as a foreign, read-only region. They read, they comment, they branch
   their own thinking off what they found. The pulled region keeps its original addresses

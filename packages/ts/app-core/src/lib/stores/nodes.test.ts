@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { nodes } from './nodes.svelte.js';
 import type { NodeView, OwnedRef } from '@sloppy/types';
 import { deviceStore } from '../device-store.js';
+import { initRuntime } from '../runtime.js';
 import { session } from './session.svelte.js';
 import {
 	DID,
@@ -41,9 +42,10 @@ let api: FakeApi;
  *  the cache waits out the answers before it writes. */
 async function keptNotes(
 	graph: OwnedRef,
-	until: (held: NodeView[]) => boolean = (held) => held.length > 0
+	until: (held: NodeView[]) => boolean = (held) => held.length > 0,
+	corner = 'notes'
 ): Promise<NodeView[]> {
-	const area = deviceStore.area(DID, 'notes');
+	const area = deviceStore.area(DID, corner);
 	let held: NodeView[] = [];
 	for (let turn = 0; turn < 40; turn += 1) {
 		held = (await area.get<NodeView[]>(graph)) ?? [];
@@ -268,6 +270,36 @@ describe('a note asked for', () => {
 
 describe('the graph this device kept', () => {
 	const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
+	const ONE = '/Users/me/garden';
+	const COPY = '/Users/me/garden-copy';
+
+	/** A shell serving the graph out of that folder, the way the native one
+	 *  does. */
+	function inFolder(root: string): void {
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			fetchImpl: () => api.fetch,
+			vault: {
+				folder: () => root,
+				graph: async () => HOME,
+				asks: true,
+				open: async () => root
+			}
+		});
+	}
+
+	/** The cache emptied and painted back from what the folder that is open
+	 *  kept. */
+	async function paintedBackIn(root: string): Promise<NodeView[]> {
+		nodes.clear();
+		inFolder(root);
+		await nodes.restore();
+		return nodes.region();
+	}
+
+	afterEach(() => {
+		initRuntime({ apiHost: () => 'http://api.test', vault: undefined });
+	});
 
 	it('draws again with nothing to ask', async () => {
 		await nodes.load();
@@ -329,6 +361,17 @@ describe('the graph this device kept', () => {
 		await nodes.remove(ref(9));
 		const after = await keptNotes(HOME, (held) => held.every((n) => n.address !== '3'));
 		expect(after.map((n) => n.address)).not.toContain('3');
+	});
+
+	// Two folders on this device may hold one graph — a copy of it beside the
+	// original — and neither one's notes are the other's.
+	it('is the folder that is open, and another folder at one graph is painted with none of it', async () => {
+		inFolder(ONE);
+		await nodes.load();
+		await keptNotes(HOME, undefined, `notes ${ONE}`);
+
+		expect((await paintedBackIn(ONE)).map((n) => n.address)).toEqual(['1', '2']);
+		expect(await paintedBackIn(COPY)).toEqual([]);
 	});
 
 	// The kept copy is the older one either way round, so which of the two lands

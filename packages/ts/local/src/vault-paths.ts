@@ -10,6 +10,7 @@ import {
   NOTES_DIR,
   SLOPPY_DIR,
 } from "@sloppy/vault";
+import { carriedIdentityFile } from "./identity.js";
 
 /** A deleted note's file, kept where a person can still put it back. */
 export const BIN_DIR = `${SLOPPY_DIR}/bin`;
@@ -38,6 +39,7 @@ export function binAt(path: string): string | undefined {
  *  history git keeps — so anything else in it is theirs and is neither carried
  *  out of the graph nor taken away with it. */
 export function vaultOwned(path: string): boolean {
+  if (carriedIdentityFile(path)) return false;
   return (
     path === GRAPH_FILE ||
     path.startsWith(`${NOTES_DIR}/`) ||

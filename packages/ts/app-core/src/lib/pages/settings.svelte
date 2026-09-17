@@ -4,11 +4,12 @@
 	   against. */
 
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { PersonChip } from '@sloppy/ui';
+	import { ChoicePill, PersonChip } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
 	import { api } from '../api.js';
+	import HistorySettings from '../components/history-settings.svelte';
 	import IdentitySettings from '../components/identity-settings.svelte';
 	import { repointRuntime, runtime } from '../runtime.js';
 	import { saveHere, savesFiles } from '../save-file.js';
@@ -16,6 +17,7 @@
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
+	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
@@ -117,6 +119,7 @@
 
 	function letGoOfWhatWasRead() {
 		graphHistory.clear();
+		gitSettings.clear();
 		nodes.clear();
 		offers.clear();
 		outlineSections.clear();
@@ -169,24 +172,6 @@
 	}
 </script>
 
-{#snippet choice(group: string, value: string, label: string, chosen: boolean, choose: () => void)}
-	<label class="cursor-pointer">
-		<input
-			type="radio"
-			name={group}
-			{value}
-			checked={chosen}
-			onchange={choose}
-			class="peer sr-only"
-		/>
-		<span
-			class="inline-flex h-11 items-center rounded-md border border-border bg-card px-4 text-sm text-muted-foreground transition-colors duration-150 ease-out peer-checked:border-primary peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background motion-reduce:transition-none"
-		>
-			{label}
-		</span>
-	</label>
-{/snippet}
-
 <svelte:head><title>Settings · Sloppy</title></svelte:head>
 
 <div class="clear-sysnav">
@@ -199,9 +184,13 @@
 			<legend class="text-sm font-medium">Theme</legend>
 			<div class="flex flex-wrap gap-2">
 				{#each THEMES as theme (theme)}
-					{@render choice('theme', theme, THEME_LABELS[theme], prefs.current.theme === theme, () =>
-						prefs.set('theme', theme)
-					)}
+					<ChoicePill
+						group="theme"
+						value={theme}
+						label={THEME_LABELS[theme]}
+						checked={prefs.current.theme === theme}
+						onpick={() => prefs.set('theme', theme)}
+					/>
 				{/each}
 			</div>
 		</fieldset>
@@ -210,13 +199,13 @@
 			<legend class="text-sm font-medium">Accent</legend>
 			<div class="flex flex-wrap gap-2">
 				{#each ACCENTS as accent (accent)}
-					{@render choice(
-						'accent',
-						accent,
-						ACCENT_LABELS[accent],
-						prefs.current.accent === accent,
-						() => prefs.set('accent', accent)
-					)}
+					<ChoicePill
+						group="accent"
+						value={accent}
+						label={ACCENT_LABELS[accent]}
+						checked={prefs.current.accent === accent}
+						onpick={() => prefs.set('accent', accent)}
+					/>
 				{/each}
 			</div>
 		</fieldset>
@@ -225,9 +214,13 @@
 			<legend class="text-sm font-medium">Style</legend>
 			<div class="flex flex-wrap gap-2">
 				{#each STYLES as style (style)}
-					{@render choice('style', style, STYLE_LABELS[style], prefs.current.style === style, () =>
-						prefs.set('style', style)
-					)}
+					<ChoicePill
+						group="style"
+						value={style}
+						label={STYLE_LABELS[style]}
+						checked={prefs.current.style === style}
+						onpick={() => prefs.set('style', style)}
+					/>
 				{/each}
 			</div>
 		</fieldset>
@@ -236,9 +229,13 @@
 			<legend class="text-sm font-medium">Font</legend>
 			<div class="flex flex-wrap gap-2">
 				{#each FONTS as font (font)}
-					{@render choice('font', font, FONT_LABELS[font], prefs.current.font === font, () =>
-						prefs.set('font', font)
-					)}
+					<ChoicePill
+						group="font"
+						value={font}
+						label={FONT_LABELS[font]}
+						checked={prefs.current.font === font}
+						onpick={() => prefs.set('font', font)}
+					/>
 				{/each}
 			</div>
 		</fieldset>
@@ -292,6 +289,7 @@
 					<Button variant="outline" class="h-11" onclick={() => (showingHistory = true)}>
 						Open the history
 					</Button>
+					<HistorySettings />
 				</div>
 			{/if}
 		{:else}
