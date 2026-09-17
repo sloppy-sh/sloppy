@@ -71,6 +71,7 @@
 		type ArchivePreview,
 		type CreateNodeRequest,
 		type FollowedIdentity,
+		type GraphView,
 		type ImportSettlement,
 		type NodeAppearance,
 		type NodeBulkAct,
@@ -128,6 +129,7 @@
 	import { page } from '$app/state';
 	import PersonSurface from '../components/person-surface.svelte';
 	import { api } from '../api.js';
+	import type { KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
 	import { saveHere, savesFiles } from '../save-file.js';
@@ -343,7 +345,7 @@
 	const graphChoices = $derived(
 		graphs.keepsFolders
 			? graphs.folders.map((folder) => {
-					const held = graphs.all.find((one) => one.ref === folder.graph?.ref);
+					const held = asListed(folder);
 					const owner = folder.graph?.owner;
 					// Whose it is, never what they travel by: a graph on this device
 					// knows somebody by the name in the folder they own or by nothing.
@@ -354,6 +356,7 @@
 					return {
 						...(folder.graph ? { ref: folder.graph.ref } : {}),
 						folder: folder.root,
+						folderName: folderName(folder.root),
 						title: held?.title ?? folder.graph?.name ?? folderName(folder.root),
 						...(held?.ownership === undefined ? {} : { ownership: held.ownership }),
 						...(by === undefined ? {} : { by })
@@ -367,6 +370,17 @@
 			if (folder.graph) people.resolve(folder.graph.owner);
 		}
 	});
+
+	/** What the listing says about the graph in a folder. Two folders holding
+	 *  one graph get one row between them and it is the open folder's, so
+	 *  another folder at that graph is named by what its own folder says. */
+	function asListed(folder: KnownFolder): GraphView | undefined {
+		const ref = folder.graph?.ref;
+		if (ref === undefined) return undefined;
+		const alone = graphs.folders.filter((one) => one.graph?.ref === ref).length === 1;
+		if (!alone && folder.root !== graphs.openFolder) return undefined;
+		return graphs.all.find((one) => one.ref === ref);
+	}
 
 	/** What a person called the folder, for one this device cannot read a graph
 	 *  out of to be named by. */
@@ -2508,6 +2522,7 @@
 	graphs={graphChoices}
 	current={graphs.current}
 	home={graphs.home}
+	openFolder={graphs.openFolder}
 	alsoUp={new Set(onCanvas.slice(1))}
 	full={graphs.canvasFull}
 	busy={graphs.state.loading}

@@ -71,6 +71,13 @@ export interface KeptElsewhere {
 	at: string;
 }
 
+/** How far the line the folder is on is from where it stands at one place: what
+ *  a put would send there, and what a take would bring back. */
+export interface Standing {
+	ahead: number;
+	behind: number;
+}
+
 export interface SectionInTwoVersions {
 	ulid: string;
 	/** The section as it stands in the folder, which is this line's. */
@@ -209,6 +216,30 @@ class HistoryStore {
 	get followsPlace(): string | undefined {
 		const at = this.#upstream?.indexOf('/') ?? -1;
 		return at > 0 ? this.#upstream?.slice(0, at) : undefined;
+	}
+
+	/**
+	 * How far the line the folder is on is from where it stands at one of the
+	 * places it is kept — the line it follows there, which is the one a put and
+	 * a take are with. `undefined` where this device has not heard what that
+	 * place holds, or has not read far enough back to say, and nothing is said
+	 * of a distance nobody can stand behind.
+	 */
+	standingAt(place: string): Standing | undefined {
+		if (place === this.followsPlace) return { ahead: this.#ahead, behind: this.#behind };
+		const here = this.#at;
+		const line = this.#line;
+		if (here === undefined || line === undefined) return undefined;
+		const there = this.#branches.find((one) => one.name === `${place}/${this.followedLine(line)}`);
+		return there === undefined ? undefined : apart(here, there.head, this.#picture);
+	}
+
+	/** The line, wherever the folder is kept, that the one it is on is the same
+	 *  line as: the one it follows by name, which need not be its own. */
+	private followedLine(line: string): string {
+		const named = this.#upstream;
+		const at = named?.indexOf('/') ?? -1;
+		return at > 0 && named !== undefined ? named.slice(at + 1) : line;
 	}
 
 	/** The version the folder stands on; absent before the first one is kept. */
@@ -416,12 +447,11 @@ class HistoryStore {
 		return this.withRemote(
 			remote,
 			(history, name, credential) => history.fetch?.(name, credential),
-			(place, where) =>
-				where.name !== this.followsPlace
-					? `The lines kept on ${place} are in the list below.`
-					: this.#behind === 0
-						? 'Nothing to take.'
-						: waiting(this.#behind)
+			(place, where) => {
+				const stood = this.standingAt(where.name);
+				if (stood === undefined) return `The lines kept on ${place} are in the list below.`;
+				return stood.behind === 0 ? 'Nothing to take.' : waiting(stood.behind);
+			}
 		);
 	}
 
@@ -684,6 +714,48 @@ class HistoryStore {
 			this.#busy = false;
 		}
 	}
+}
+
+/**
+ * How many versions each of two lines has that the other does not, out of the
+ * picture as far as it has been read. `undefined` where a version either line
+ * leads back through is older than the page in hand and is not one both of
+ * them lead back through, which is a distance this page cannot answer.
+ */
+function apart(here: string, there: string, drawn: readonly GraphCommit[]): Standing | undefined {
+	const springsFrom = new Map(drawn.map((one) => [one.id, one.parents]));
+	const MINE = 1;
+	const THEIRS = 2;
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local to this call and thrown away with it.
+	const sides = new Map<string, number>();
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- as above.
+	const unread = new Set<string>();
+	const walk: [string, number][] = [
+		[here, MINE],
+		[there, THEIRS]
+	];
+	while (walk.length > 0) {
+		const step = walk.pop();
+		if (step === undefined) continue;
+		const [id, side] = step;
+		const had = sides.get(id) ?? 0;
+		if ((had & side) === side) continue;
+		sides.set(id, had | side);
+		const parents = springsFrom.get(id);
+		if (parents === undefined) {
+			unread.add(id);
+			continue;
+		}
+		for (const parent of parents) walk.push([parent, side]);
+	}
+	for (const id of unread) if (sides.get(id) !== (MINE | THEIRS)) return undefined;
+	let ahead = 0;
+	let behind = 0;
+	for (const side of sides.values()) {
+		if (side === MINE) ahead += 1;
+		if (side === THEIRS) behind += 1;
+	}
+	return { ahead, behind };
 }
 
 function localPart(ref: OwnedRef): string {

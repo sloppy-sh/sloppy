@@ -673,6 +673,19 @@ describe('the folders this device keeps its graphs in', () => {
 		expect(graphs.current).toBe(COMPANY.ref);
 	});
 
+	it('say which folder is open by its root, which two of them holding one graph share', async () => {
+		const vault = keeping();
+		serving(vault);
+		await graphs.load();
+		await graphs.readOpenFolder();
+
+		expect(graphs.openFolder).toBe(GARDEN_FOLDER);
+
+		await graphs.enterFolder(THESIS_FOLDER);
+
+		expect(graphs.openFolder).toBe(THESIS_FOLDER);
+	});
+
 	it('lose one that is forgotten, and nothing else about it', async () => {
 		const vault = keeping();
 		serving(vault);

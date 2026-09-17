@@ -56,8 +56,11 @@
 			{#if version.signed}
 				<p class="text-sm text-muted-foreground">
 					{version.signed.verified
-						? `Signed with ${version.signed.by}, which this device knows.`
-						: `Signed with ${version.signed.by}. Nothing here can tell it is that key.`}
+						? 'Signed with a key this device knows:'
+						: 'Signed with a key nothing here can vouch for:'}
+				</p>
+				<p class="font-mono text-xs break-all text-muted-foreground select-text">
+					{version.signed.by}
 				</p>
 			{/if}
 			{#if version.refs.length > 0}

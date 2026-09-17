@@ -4,6 +4,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery } from '../dom.test-support.js';
 import Avatar from './avatar.svelte';
+import IdentityLine from './identity-line.svelte';
 import PersonEditor from './person-editor.svelte';
 import PersonHeader from './person-header.svelte';
 import { nameOr, personOr, type Person, type PictureRole } from './person.js';
@@ -279,5 +280,35 @@ describe('what to call somebody', () => {
 		expect(nameOr(personOr({ identity: did, person: SOMEBODY, unplaced: true }))).toBe(
 			'Ada Lovelace'
 		);
+	});
+});
+
+describe('the identifier somebody hands out', () => {
+	it('is selectable, and is copied by the one control the product copies with', async () => {
+		const written: string[] = [];
+		Object.defineProperty(globalThis.navigator, 'clipboard', {
+			configurable: true,
+			value: {
+				writeText: async (value: string) => {
+					written.push(value);
+				}
+			}
+		});
+		mounted = mount(IdentityLine, {
+			target,
+			props: { identity: 'did:syr:z6MkAda', label: 'Copy your identity' }
+		});
+		flushSync();
+
+		const line = target.querySelector('p');
+		expect(line?.className).toContain('select-text');
+
+		const copy = target.querySelector<HTMLButtonElement>('button[aria-label="Copy your identity"]');
+		copy?.click();
+		for (let turn = 0; turn < 4; turn += 1) await new Promise((done) => setTimeout(done, 0));
+		flushSync();
+
+		expect(written).toEqual(['did:syr:z6MkAda']);
+		expect(copy?.getAttribute('aria-label')).toBe('Copied');
 	});
 });

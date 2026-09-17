@@ -14,6 +14,10 @@
 		 *  Absent everywhere else, and a row carrying one is chosen by opening
 		 *  that folder rather than by moving into the graph. */
 		folder?: string;
+		/** What the person calls that folder, shown under the graph's name where
+		 *  a second folder holds the same graph and the name alone tells nobody
+		 *  which row is which. */
+		folderName?: string;
 		/** Whose graph it is, where that is somebody other than the reader. */
 		by?: string;
 	}
@@ -56,6 +60,7 @@
 		graphs,
 		current,
 		home,
+		openFolder,
 		alsoUp,
 		full = false,
 		busy = false,
@@ -82,6 +87,11 @@
 		/** The one they started with. It is where a note that names no graph
 		 *  goes, so it is the one graph that cannot be closed. */
 		home: OwnedRef;
+		/** The folder that is open, by its root, where the rows are folders: the
+		 *  row at it is the one in front of the reader, and two folders holding
+		 *  one graph are still two rows. Absent → the row carrying
+		 *  {@link current}. */
+		openFolder?: string;
 		/** The others standing on the canvas beside it. */
 		alsoUp: ReadonlySet<OwnedRef>;
 		/** No more will fit on the canvas, so putting one up means taking one down. */
@@ -137,9 +147,6 @@
 	const closeSays = $derived(
 		[
 			'The notes in it go with it, and they cannot be put back.',
-			...(closing?.folder === undefined
-				? []
-				: ['The folder stays where it is, with anything else you keep in it.']),
 			...(closing?.ref !== undefined && publishedFrom && !publishedFrom.has(closing.ref)
 				? []
 				: ['Whoever already has a branch you published from it keeps their copy.'])
@@ -148,6 +155,20 @@
 
 	function nameOf(graph: GraphChoice | DeletedChoice): string {
 		return graph.title || 'Untitled';
+	}
+
+	/** The row the reader is in. Where the rows are folders it is the folder
+	 *  that is open: two of them can hold one graph, and the ref cannot tell
+	 *  those apart. */
+	function openHere(graph: GraphChoice): boolean {
+		if (openFolder !== undefined && graph.folder !== undefined) return graph.folder === openFolder;
+		return graph.ref !== undefined && graph.ref === current;
+	}
+
+	/** Whether another row holds the same graph, which is what makes the name on
+	 *  its own no longer say which folder a row means. */
+	function alsoElsewhere(graph: GraphChoice): boolean {
+		return graphs.filter((one) => one.ref !== undefined && one.ref === graph.ref).length > 1;
 	}
 
 	function graphHolding(branch: DeletedChoice): string {
@@ -189,7 +210,7 @@
 		}
 	}
 
-	async function openFolder(folder: string): Promise<void> {
+	async function serveFolder(folder: string): Promise<void> {
 		if (!onOpenFolder) return;
 		if (await act(() => onOpenFolder(folder))) open = false;
 	}
@@ -246,7 +267,8 @@
 		<ul class="space-y-1">
 			{#each graphs as graph (graph.folder ?? graph.ref)}
 				{@const ref = graph.ref}
-				{@const here = ref !== undefined && ref === current}
+				{@const here = openHere(graph)}
+				{@const twice = alsoElsewhere(graph)}
 				{@const up = here || (ref !== undefined && alsoUp.has(ref))}
 				<li class="flex flex-wrap items-center gap-2">
 					{#if ref === undefined}
@@ -305,7 +327,7 @@
 							disabled={working}
 							onclick={() => {
 								if (folder !== undefined && onOpenFolder) {
-									void openFolder(folder);
+									void serveFolder(folder);
 									return;
 								}
 								open = false;
@@ -317,48 +339,57 @@
 							</span>
 							<span class="min-w-0 flex-1">
 								<span class="block truncate">{nameOf(graph)}</span>
+								{#if twice && graph.folderName}
+									<span class="block truncate text-xs text-muted-foreground">
+										{graph.folderName}
+									</span>
+								{/if}
 								{#if graph.by}
 									<span class="block truncate text-xs text-muted-foreground">{graph.by}</span>
 								{/if}
 							</span>
 						</button>
-						<Button
-							variant={up ? 'secondary' : 'ghost'}
-							class="h-9 shrink-0 rounded-full text-xs"
-							disabled={here || busy || (full && !up)}
-							aria-label={up
-								? `Take ${nameOf(graph)} off the canvas`
-								: `Show ${nameOf(graph)} beside this one`}
-							onclick={() => onToggle(ref)}
-						>
-							{up ? 'On the canvas' : 'Show it too'}
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							class="size-9 shrink-0 text-muted-foreground"
-							aria-label={onOwnership ? `Settings for ${nameOf(graph)}` : `Rename ${nameOf(graph)}`}
-							onclick={() => {
-								refused = null;
-								naming = { ref, title: graph.title, owned: graph.ownership === 'owned' };
-							}}
-						>
-							<Pencil class="size-4" />
-						</Button>
-						{#if onRemove && ref !== home && graph.by === undefined}
+						{#if !twice}
+							<Button
+								variant={up ? 'secondary' : 'ghost'}
+								class="h-9 shrink-0 rounded-full text-xs"
+								disabled={here || busy || (full && !up)}
+								aria-label={up
+									? `Take ${nameOf(graph)} off the canvas`
+									: `Show ${nameOf(graph)} beside this one`}
+								onclick={() => onToggle(ref)}
+							>
+								{up ? 'On the canvas' : 'Show it too'}
+							</Button>
 							<Button
 								variant="ghost"
 								size="icon"
 								class="size-9 shrink-0 text-muted-foreground"
-								aria-label={`Close ${nameOf(graph)}`}
+								aria-label={onOwnership
+									? `Settings for ${nameOf(graph)}`
+									: `Rename ${nameOf(graph)}`}
 								onclick={() => {
-									closeRefused = null;
-									closing = graph;
-									confirming = true;
+									refused = null;
+									naming = { ref, title: graph.title, owned: graph.ownership === 'owned' };
 								}}
 							>
-								<Trash2 class="size-4" />
+								<Pencil class="size-4" />
 							</Button>
+							{#if onRemove && graph.folder === undefined && ref !== home && graph.by === undefined}
+								<Button
+									variant="ghost"
+									size="icon"
+									class="size-9 shrink-0 text-muted-foreground"
+									aria-label={`Close ${nameOf(graph)}`}
+									onclick={() => {
+										closeRefused = null;
+										closing = graph;
+										confirming = true;
+									}}
+								>
+									<Trash2 class="size-4" />
+								</Button>
+							{/if}
 						{/if}
 					{/if}
 					{#if onForget && graph.folder !== undefined && !here && (naming === null || naming.ref !== ref)}
