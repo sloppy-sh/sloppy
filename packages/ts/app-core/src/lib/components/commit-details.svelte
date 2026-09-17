@@ -27,8 +27,8 @@
 		/** The branches at it that are kept here and are not the one the folder is
 		 *  already on, which are the ones it can be put on. */
 		linesHere?: readonly string[];
-		/** Whether this folder signs what it keeps: a version with no signature
-		 *  is then one nothing here could sign, and says so. */
+		/** Whether this folder signs what it keeps, which is what makes a version
+		 *  with no signature worth marking. */
 		signs?: boolean;
 		busy?: boolean;
 		says?: string | null;
@@ -67,9 +67,7 @@
 					{version.signed.by}
 				</p>
 			{:else if signs}
-				<p class="text-sm text-muted-foreground">
-					Kept unsigned: nothing on this device could sign it.
-				</p>
+				<p class="text-sm text-muted-foreground">Kept unsigned.</p>
 			{/if}
 			{#if version.refs.length > 0}
 				<p class="flex flex-wrap items-center gap-1.5 pt-1">

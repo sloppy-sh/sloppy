@@ -1,5 +1,4 @@
-// One version opened out of the picture: what signed it, or that nothing here
-// could.
+// One version opened out of the picture: what signed it, or that nothing did.
 
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -71,7 +70,7 @@ afterEach(() => {
 });
 
 describe('a version somebody opened', () => {
-	it('says it was kept unsigned where the folder signs and nothing could', () => {
+	it('marks it unsigned where the folder signs and this version is not', () => {
 		show({ signs: true });
 
 		expect(screen()).toContain('Kept unsigned');

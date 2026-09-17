@@ -100,7 +100,7 @@ class GitSettingsStore {
 	#user = $state<GitUser | undefined>(undefined);
 	#signing = $state<SigningConfig>({ kind: 'none' });
 	#places = $state<PlaceKept[]>([]);
-	#unsigned = $state(false);
+	#newestUnsigned = $state(false);
 	#busy = $state(false);
 	#says = $state<string | null>(null);
 	#epoch = 0;
@@ -147,10 +147,10 @@ class GitSettingsStore {
 		return this.#places;
 	}
 
-	/** Whether the last version kept here went unsigned though this folder signs
-	 *  with a program — one this device could not run. */
-	get couldNotSign(): boolean {
-		return this.#signing.kind === 'openpgp' && this.#unsigned;
+	/** Whether the newest version in this folder carries no signature though the
+	 *  folder is set to sign. */
+	get newestUnsigned(): boolean {
+		return this.#signing.kind !== 'none' && this.#newestUnsigned;
 	}
 
 	/** How many of the places kept are reached at that host, which is how many a
@@ -164,7 +164,7 @@ class GitSettingsStore {
 		this.#user = undefined;
 		this.#signing = { kind: 'none' };
 		this.#places = [];
-		this.#unsigned = false;
+		this.#newestUnsigned = false;
 		this.#busy = false;
 		this.#says = null;
 	}
@@ -189,7 +189,7 @@ class GitSettingsStore {
 			if (at !== this.#epoch) return;
 			this.#user = user;
 			this.#signing = signing;
-			this.#unsigned = kept.commits.length > 0 && kept.commits[0].signature === undefined;
+			this.#newestUnsigned = kept.commits.length > 0 && kept.commits[0].signature === undefined;
 			this.#places = remotes.map((remote) => {
 				const host = remoteHost(remote.url);
 				const credential = credentialFor(held, remote.url);

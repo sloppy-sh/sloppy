@@ -162,8 +162,6 @@ describe('the picture on the page', () => {
 		]);
 	});
 
-	// A folder that signs and a version with no signature is a signature that
-	// could not be made, and the version is where that is said.
 	it('says a version went unsigned where the folder signs', () => {
 		draw([version('c', [])], undefined, true);
 

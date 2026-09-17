@@ -363,10 +363,9 @@
 					instead.
 				</p>
 			{/if}
-			{#if gitSettings.couldNotSign}
+			{#if gitSettings.newestUnsigned}
 				<p class="text-sm text-muted-foreground">
-					Sloppy could not run your OpenPGP program here, so what you last kept in this folder was
-					kept unsigned. The choice stays for a device that can run it.
+					The newest version in this folder was kept unsigned.
 				</p>
 			{/if}
 

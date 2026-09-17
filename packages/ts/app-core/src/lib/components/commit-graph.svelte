@@ -31,8 +31,8 @@
 		versions: readonly DrawnVersion[];
 		/** The version the folder stands on, whose lane is drawn at full ink. */
 		at?: string;
-		/** Whether this folder signs what it keeps: a version with no signature
-		 *  is then one nothing here could sign, and says so. */
+		/** Whether this folder signs what it keeps, which is what makes a version
+		 *  with no signature worth marking. */
 		signs?: boolean;
 		/** Whether there are older ones than these. */
 		older?: boolean;

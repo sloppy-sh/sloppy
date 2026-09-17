@@ -194,8 +194,7 @@ class HistoryStore {
 	}
 
 	/** Whether this folder signs what it keeps, which is what makes a version
-	 *  with no signature one that could not be signed rather than one nobody
-	 *  meant to sign. */
+	 *  with no signature worth marking. */
 	get signs(): boolean {
 		return this.#signs;
 	}
