@@ -151,7 +151,8 @@ export class HistoryError extends Error {
  *
  * Every act that cannot be taken throws {@link HistoryError}, whose message is
  * what a person is told. Every path is from the vault root and uses `/`,
- * exactly as `Files` spells one.
+ * exactly as `Files` spells one — {@link History.changedSince} alone excepted,
+ * and it says so.
  */
 export interface History {
   status(): Promise<HistoryStatus>;

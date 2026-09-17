@@ -2229,9 +2229,10 @@ move every path in a layout other people's folders are already written in.
 root, and `containerOf` in `@sloppy/local` answers with the vault at `.sloppy/` inside it —
 absent where that folder holds no graph, which is a folder nobody has started a container in
 rather than a failure. Everything the app reads, the code included, is under the picked
-folder; `projectRootOf` resolves `graph.json`'s `project` from the vault and **refuses a path
-that would land outside it**, so a graph file a hand has been in cannot point the app at
-somebody's home directory.
+folder, and `projectRootOf` holds `graph.json`'s `project` to that: **only a vault at
+`<project>/.sloppy` has a project around it**, and the path it names must land in the folder
+that vault sits in or under it. So a graph file a hand has been in cannot point the app above
+the folder somebody picked, and `project` written into an ordinary vault names nothing.
 
 **`graph.json` gains `project`: where the code is, as a path from the vault root**, `..` in
 the ordinary case. **Absent is a graph that is nobody's project** — an anchor into code in it
@@ -2257,7 +2258,9 @@ lives.
 commit, spelled as the folder's history spells one. **Absent is a note nobody has confirmed,
 which reads as UNREAD and never as out of date** — every note written before the field, and
 every note somebody has not got to yet. It rides in the note's front matter beside `updated`,
-on `Node`, through `UpdateNodeRequest`, and out with a published version. Confirming a note
+on `Node` and through `UpdateNodeRequest`. **It does not travel with a published version**: it
+names a commit in a history the reader does not have, and nothing a held copy could do
+resolves one. Confirming a note
 writes `checked` and nothing else: no section changes, no author joins, nothing moves in the
 genealogy.
 

@@ -90,4 +90,18 @@ describe("a project's container", () => {
       expect(projectRootOf(vault, graph(leaving))).toBeUndefined();
     }
   });
+
+  it("names nothing from a vault that is not a container", async () => {
+    const notes = new MemoryFiles({ root: "/Users/me/notes" });
+    expect(projectRootOf(notes, graph(".."))).toBeUndefined();
+    expect(projectRootOf(notes, graph("."))).toBeUndefined();
+    const relative = new MemoryFiles({ root: "compiler/.sloppy" });
+    expect(projectRootOf(relative, graph(".."))).toBeUndefined();
+  });
+
+  it("reads a root spelled with a trailing separator the same way", () => {
+    const vault = new MemoryFiles({ root: "/work/compiler/.sloppy/" });
+    expect(projectRootOf(vault, graph(".."))?.root).toBe("/work/compiler");
+    expect(projectRootOf(vault, graph("../.."))).toBeUndefined();
+  });
 });

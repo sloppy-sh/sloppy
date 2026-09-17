@@ -8,10 +8,8 @@ export const CODE_SCHEME = "code:";
 
 /**
  * Where in a project a note is pointing. `path` is from the PROJECT root and
- * is spelled with `/`; an absent `fragment` is the whole file.
- *
- * A `symbol` is a name to find by searching the file — there is no language
- * server behind it, and a name that stops matching is itself worth saying.
+ * is spelled with `/`; an absent `fragment` is the whole file, and a `symbol`
+ * is a name to find by searching that file.
  */
 export interface CodeAnchor {
   path: string;
@@ -22,11 +20,8 @@ export interface CodeAnchor {
 
 const LINES = /^L(\d+)(?:-L(\d+))?$/;
 
-/**
- * The anchor an href holds, or absent where it is not one. A path that climbs
- * out of the project or starts at the top of a disk names something the project
- * does not own, and is refused here rather than resolved and then regretted.
- */
+/** The anchor an href holds, or absent where it is not one — which a path
+ *  climbing out of the project, or starting at the top of a disk, is not. */
 export function parseCodeAnchor(href: string): CodeAnchor | undefined {
   if (!href.startsWith(CODE_SCHEME)) return undefined;
   const held = href.slice(CODE_SCHEME.length);
@@ -57,20 +52,13 @@ function insideProject(path: string): boolean {
     .every((segment) => segment !== "" && segment !== "." && segment !== "..");
 }
 
-/** What tells one anchor from another, whichever href each was written as. */
 function sameness(anchor: CodeAnchor): string {
   return JSON.stringify([anchor.path, anchor.fragment ?? null]);
 }
 
-/**
- * Every place in the code a section's document points at, in the order it names
- * them and without repeats.
- *
- * An anchor is an `href` like any other link's, which is a convention across
- * elements rather than a list of them — exactly as `citedNotes` in
- * `document.ts` reads a citation, so an element kind this build has no renderer
- * for is walked like any other and a link inside it still counts.
- */
+/** Every place in the code a section's document points at, in the order it
+ *  names them and without repeats — read off every `href` in it, the way
+ *  `citedNotes` in `document.ts` reads a citation. */
 export function anchorsOf(content: BlockDocument): CodeAnchor[] {
   const found = new Map<string, CodeAnchor>();
   const walk = (value: unknown): void => {
