@@ -1632,13 +1632,18 @@
 	});
 
 	/** Thrown on so the surface that asked shows the answer where it was asked,
-	 *  in the server's own words where it gave any. */
+	 *  in the words of whoever refused, where they wrote any. */
 	async function inTheirWords(act: () => Promise<unknown>, otherwise: string): Promise<void> {
 		try {
 			await act();
 		} catch (error) {
-			throw new Error(serverMessage(error) ?? otherwise, { cause: error });
+			throw new Error(whoeverRefused(error) ?? otherwise, { cause: error });
 		}
+	}
+
+	function whoeverRefused(error: unknown): string | undefined {
+		const theDeviceItself = typeof error === 'string' ? error.trim() : '';
+		return theDeviceItself || serverMessage(error);
 	}
 
 	// Whoever the sheet was raised about is who it was raised about that once:

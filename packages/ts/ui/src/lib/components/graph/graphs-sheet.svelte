@@ -135,9 +135,15 @@
 	});
 
 	const closeSays = $derived(
-		closing?.ref !== undefined && publishedFrom && !publishedFrom.has(closing.ref)
-			? 'The notes in it go with it, and they cannot be put back.'
-			: 'The notes in it go with it, and they cannot be put back. Whoever already has a branch you published from it keeps their copy.'
+		[
+			'The notes in it go with it, and they cannot be put back.',
+			...(closing?.folder === undefined
+				? []
+				: ['The folder stays where it is, with anything else you keep in it.']),
+			...(closing?.ref !== undefined && publishedFrom && !publishedFrom.has(closing.ref)
+				? []
+				: ['Whoever already has a branch you published from it keeps their copy.'])
+		].join(' ')
 	);
 
 	function nameOf(graph: GraphChoice | DeletedChoice): string {
@@ -370,6 +376,13 @@
 				</li>
 			{/each}
 		</ul>
+
+		{#if onForget}
+			<p class="px-2 text-xs text-muted-foreground">
+				Forgetting a folder takes it off this list and leaves everything in it where it is. Choose
+				the folder again to open it again.
+			</p>
+		{/if}
 
 		{#if full}
 			<p class="px-2 text-xs text-muted-foreground">

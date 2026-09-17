@@ -580,8 +580,9 @@ where a graph somebody moved used to be.
 **The folders this device knows ARE its graphs.** `listGraphs` answers one graph per known
 folder, read from each folder's own `graph.json`, so the picker a person already chooses a
 graph in is the same place they choose which folder is open — one list, not two names for
-one thing. A folder that is not where this device last saw it is listed as unreachable
-rather than dropped, because a person moved it and only they can say where to. Starting a
+one thing. A folder that is not where this device last saw it has no graph to answer with,
+so `VaultAccess.known` is what lists it as unreachable rather than dropping it, because a
+person moved it and only they can say where to. Starting a
 graph here is starting a folder, and a folder can arrive by being cloned from somewhere
 else. **Forgetting a folder takes it off this list and deletes nothing** — it is anybody's
 act, on any folder, and the folder is opened again by naming it again. `VaultAccess` in

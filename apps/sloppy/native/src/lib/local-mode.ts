@@ -70,8 +70,6 @@ export async function forgetFolder(files: Files, root: string): Promise<void> {
 	await forgetVault(files.at(await files.dataPath()), root);
 }
 
-/** A folder that answers with no graph is one that has been moved or emptied,
- *  which is a folder a person is the only one who can say where to find. */
 async function folderAt(files: Files, root: string): Promise<KnownFolder> {
 	const graph = await graphIn(files, root);
 	return graph ? { root, graph, reachable: true } : { root, reachable: false };

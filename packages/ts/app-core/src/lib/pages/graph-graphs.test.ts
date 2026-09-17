@@ -464,6 +464,8 @@ describe('the graphs a device keeps as folders', () => {
 	let opened: string[];
 	let forgotten: string[];
 	let started: number;
+	/** What this device says when it will not bring a folder from an address. */
+	let cloneRefusal: string | null;
 
 	function keepingFolders(): VaultAccess {
 		let open = HOME_FOLDER;
@@ -489,6 +491,11 @@ describe('the graphs a device keeps as folders', () => {
 			start: async () => {
 				started += 1;
 				return open;
+			},
+			clone: async () => {
+				// The shell refuses in its own sentence, not in an Error.
+				if (cloneRefusal !== null) throw cloneRefusal;
+				return open;
 			}
 		};
 	}
@@ -497,6 +504,7 @@ describe('the graphs a device keeps as folders', () => {
 		opened = [];
 		forgotten = [];
 		started = 0;
+		cloneRefusal = null;
 		initRuntime({ apiHost: () => 'http://api.test', vault: keepingFolders() });
 	});
 
@@ -537,6 +545,25 @@ describe('the graphs a device keeps as folders', () => {
 
 		expect(forgotten).toEqual([GONE_FOLDER]);
 		expect(inSheet()).not.toContain('not where it was');
+	});
+
+	it('says what this device said when it would not bring a folder from an address', async () => {
+		cloneRefusal = 'There is nothing at that address. Check it and try again.';
+		await open();
+		await openGraphs();
+
+		const address = [...document.body.querySelectorAll<HTMLInputElement>('input')].find(
+			(one) => one.getAttribute('aria-label') === 'Where the graph is kept'
+		);
+		if (!address) throw new Error('There is nowhere to type an address');
+		address.value = 'https://somewhere.test/ada/garden.git';
+		address.dispatchEvent(new Event('input', { bubbles: true }));
+		await settle();
+		button('Bring it here').click();
+		await settle();
+
+		expect(inSheet()).toContain('There is nothing at that address. Check it and try again.');
+		expect(inSheet()).not.toContain('That graph could not be brought here');
 	});
 
 	it('starts a graph by asking for a folder rather than for a name', async () => {
