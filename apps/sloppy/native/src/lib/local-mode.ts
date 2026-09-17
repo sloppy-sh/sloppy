@@ -4,15 +4,7 @@
  */
 
 import type { KnownFolder } from '@sloppy/app-core';
-import {
-	CONTAINER_DIR,
-	containerOf,
-	forgetVault,
-	holdsAGraph,
-	readVaults,
-	vaultOpened,
-	type Files
-} from '@sloppy/local';
+import { containerOf, forgetVault, readVaults, vaultOpened, type Files } from '@sloppy/local';
 import { GRAPH_FILE, readGraphFile } from '@sloppy/vault';
 
 /**
@@ -54,29 +46,8 @@ export async function rememberVault(files: Files, folder: string): Promise<void>
 }
 
 /**
- * The vault a folder holds: the folder itself where it is a graph, and
- * otherwise the container a project keeps its notes in —
- * docs/ARCHITECTURE.md § "A project's container".
- */
-export async function vaultIn(files: Files, folder: string): Promise<string> {
-	const at = files.at(folder);
-	if (await holdsAGraph(at)) return folder;
-	return (await containerOf(at))?.root ?? folder;
-}
-
-/**
- * The folder somebody picked for a vault: a project's own root where the vault
- * is the container inside it, and otherwise the vault. What this device writes
- * down and reads is the vault; what it lists and takes back is the folder.
- */
-export function folderOf(vault: string): string {
-	const at = Math.max(vault.lastIndexOf('/'), vault.lastIndexOf('\\'));
-	return at > 0 && vault.slice(at + 1) === CONTAINER_DIR ? vault.slice(0, at) : vault;
-}
-
-/**
  * Every folder this device knows, the one opened most recently first. `open` is
- * the vault being served, which belongs on the list whether or not anything
+ * the folder being served, which belongs on the list whether or not anything
  * has written it down yet — a folder becomes a graph the first time it is read.
  */
 export async function knownFolders(files: Files, open?: string): Promise<KnownFolder[]> {
@@ -96,22 +67,18 @@ export async function openedFolder(files: Files, root: string): Promise<void> {
 
 /** Take a folder off this device's list. Nothing in the folder is touched. */
 export async function forgetFolder(files: Files, root: string): Promise<void> {
-	const own = files.at(await files.dataPath());
-	await forgetVault(own, root);
-	// A project's notes are listed under the project's own folder, so letting go
-	// of the project lets go of the container they are in.
-	await forgetVault(own, files.at(root).at(CONTAINER_DIR).root);
+	await forgetVault(files.at(await files.dataPath()), root);
 }
 
-async function folderAt(files: Files, vault: string): Promise<KnownFolder> {
-	const root = folderOf(vault);
-	const graph = await graphIn(files, vault);
+async function folderAt(files: Files, root: string): Promise<KnownFolder> {
+	const graph = await graphIn(files, root);
 	return graph ? { root, graph, reachable: true } : { root, reachable: false };
 }
 
 async function graphIn(files: Files, root: string): Promise<KnownFolder['graph']> {
 	try {
-		const bytes = await files.at(root).read(GRAPH_FILE);
+		const at = files.at(root);
+		const bytes = (await at.read(GRAPH_FILE)) ?? (await (await containerOf(at))?.read(GRAPH_FILE));
 		if (!bytes) return undefined;
 		const said = readGraphFile(bytes);
 		return {

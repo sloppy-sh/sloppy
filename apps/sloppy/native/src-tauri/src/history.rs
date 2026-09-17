@@ -1,9 +1,11 @@
 //! The commands behind `History` in `@sloppy/local`, which declares every act
 //! and what its answer means — docs/ARCHITECTURE.md § "The vault's history".
 //!
-//! Each one opens the repository at the folder that was picked and never one
-//! above it, so a graph kept inside somebody else's repository is still its own
-//! history, and a folder that is not a repository yet becomes one.
+//! Each one takes the vault root and opens the repository keeping it: the one
+//! the vault is inside, searched for no further up than the folder somebody
+//! picked, and one made at the vault root where nothing there is keeping it.
+//! The vault's path inside that repository is a prefix, and everything a person
+//! is shown or commits here is under it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -14,15 +16,15 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use chrono::{DateTime, SecondsFormat};
 use git2::{
-    build::CheckoutBuilder, BranchType, Config, ConfigLevel, ErrorCode, Index, IndexAddOption,
-    ObjectType, Oid, Repository, RepositoryInitOptions, RepositoryOpenFlags, Signature, Sort,
-    StatusOptions, TreeWalkMode, TreeWalkResult,
+    build::CheckoutBuilder, BranchType, Config, ConfigLevel, DiffOptions, ErrorCode, Index,
+    IndexAddOption, ObjectType, Oid, Repository, RepositoryInitOptions, RepositoryOpenFlags,
+    RepositoryState, Signature, Sort, StatusOptions, TreeWalkMode, TreeWalkResult,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::signing::{Signed, SigningConfig, Trust};
-use crate::vault::{FileError, Folders};
+use crate::vault::{settled, FileError, Folders, Opened};
 
 /// What a folder the app makes a repository is on.
 const DEFAULT_BRANCH: &str = "main";
@@ -37,6 +39,18 @@ const NO_ADDRESS: &str = "sloppy@localhost";
 /// What this device begins a folder with — `GIT_DEFAULTS_FILE` in
 /// `@sloppy/local`, in the same private data.
 const GIT_DEFAULTS: &str = "git.json";
+
+/// Where a container is told who its versions are by and how they are signed,
+/// beside the repository rather than in its config: the repository is the
+/// project's, and git reads its config for every commit the person makes on
+/// their own code. A name or a signing key given to Sloppy here would sign
+/// those too.
+const TOLD: &str = "sloppy/config";
+
+/// Where a container writes down the commit a merge it began is taking in. The
+/// repository is the project's, so a merge in it is the person's own unless
+/// this app says it began that one.
+const MERGING: &str = "sloppy/merging";
 
 /// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
 /// history".
@@ -113,6 +127,20 @@ fn mid_merge() -> HistoryError {
 
 fn uncommitted() -> HistoryError {
     HistoryError::new("Commit what you have written here first, or put it back the way it was.")
+}
+
+/// The project's own files are settled where the person writes them, so a
+/// refusal over one names that and not an act this app offers.
+fn their_code_uncommitted() -> HistoryError {
+    HistoryError::new(
+        "This project has changes outside your notes. Keep or undo those where you write the code, then try again.",
+    )
+}
+
+fn their_project_unfinished() -> HistoryError {
+    HistoryError::new(
+        "This project is in the middle of something else. Finish or stop it where you work on the code, then try again.",
+    )
 }
 
 /// `Commit` in `@sloppy/local`. Every listing fills `signature` the same way,
@@ -237,17 +265,206 @@ pub enum ConflictSide {
     Theirs,
 }
 
-/// The repository the folder is, made into one where it is not one yet, and
-/// keeping none of `IGNORED` either way.
-pub(crate) fn at(root: &Path) -> Result<Repository, HistoryError> {
-    let ceiling: [&Path; 0] = [];
-    let repo = match Repository::open_ext(root, RepositoryOpenFlags::NO_SEARCH, ceiling) {
-        Ok(repo) => repo,
-        Err(error) if error.code() == ErrorCode::NotFound => start(root)?,
-        Err(error) => return Err(error.into()),
+/// The repository keeping a vault, and where the vault is inside it. Every path
+/// git spells — an index entry, a tree entry, a status — is from
+/// {@link Kept::work}, and every path `History` in `@sloppy/local` spells is
+/// from the vault root; `in_vault` and `from_vault` are the two ways across.
+pub(crate) struct Kept {
+    repo: Repository,
+    /// The vault's path inside the working folder, spelled with `/` and with no
+    /// slash at either end. Empty is a vault that is the working folder.
+    prefix: String,
+    work: PathBuf,
+}
+
+impl Kept {
+    /// The whole of a repository, which is a vault that is its own.
+    pub(crate) fn whole(repo: Repository, root: &Path) -> Self {
+        Kept {
+            repo,
+            prefix: String::new(),
+            work: root.to_path_buf(),
+        }
+    }
+
+    /// The vault at `root` inside the repository found at `here`. Nothing where
+    /// the repository keeps a folder the vault is not in.
+    fn of(repo: Repository, root: &Path, here: &Path) -> Option<Self> {
+        let Some(work) = repo.workdir() else {
+            // A repository with no folder of its own is one a host keeps, and
+            // there is nothing inside it for a vault to be a part of.
+            return (here == root).then(|| Kept::whole(repo, root));
+        };
+        let work = settled(work);
+        let prefix = root
+            .strip_prefix(&work)
+            .ok()?
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        Some(Kept { repo, prefix, work })
+    }
+
+    pub(crate) fn repo(&self) -> &Repository {
+        &self.repo
+    }
+
+    /// Whether the history holds more than the vault — the project's own code
+    /// beside its notes, on the same branches and in the same commits.
+    pub(crate) fn keeps_more_than_the_vault(&self) -> bool {
+        !self.prefix.is_empty()
+    }
+
+    /// Where a file the repository spells as `path` is on the disk.
+    fn file(&self, path: &str) -> PathBuf {
+        self.work.join(path)
+    }
+
+    /// `path` as the vault spells it, and nothing where it is outside the
+    /// vault — which is the person's own code, and none of this app's business.
+    fn in_vault<'a>(&self, path: &'a str) -> Option<&'a str> {
+        if self.prefix.is_empty() {
+            return Some(path);
+        }
+        path.strip_prefix(&self.prefix)?.strip_prefix('/')
+    }
+
+    /// A path from the vault root as the repository spells it.
+    fn spelled_here(&self, path: &str) -> String {
+        if self.prefix.is_empty() {
+            path.to_owned()
+        } else {
+            format!("{}/{path}", self.prefix)
+        }
+    }
+
+    /// Where what this app is told about the folder is written, and nothing
+    /// where that is the repository's own config.
+    fn told_at(&self) -> Option<PathBuf> {
+        self.keeps_more_than_the_vault()
+            .then(|| self.repo.commondir().join(TOLD))
+    }
+
+    /// Where a merge this app began is written down, and nothing where the
+    /// vault is the whole repository — there, every merge in it is this app's.
+    fn ours_at(&self) -> Option<PathBuf> {
+        self.keeps_more_than_the_vault()
+            .then(|| self.repo.commondir().join(MERGING))
+    }
+
+    /// What the folder is set to, as every act here reads it.
+    pub(crate) fn told(&self) -> Result<Told, HistoryError> {
+        let ours = match self.told_at() {
+            Some(at) if at.exists() => Some(Config::open(&at)?),
+            _ => None,
+        };
+        Ok(Told {
+            ours,
+            git: self.repo.config()?,
+        })
+    }
+
+    /// Where to write what somebody tells this app about the folder.
+    pub(crate) fn tell(&self) -> Result<Config, HistoryError> {
+        let Some(at) = self.told_at() else {
+            return Ok(self.repo.config()?.open_level(ConfigLevel::Local)?);
+        };
+        if let Some(folder) = at.parent() {
+            fs::create_dir_all(folder)?;
+        }
+        Ok(Config::open(&at)?)
+    }
+
+    /// What every act here is limited to, as git matches a path against one.
+    fn only_the_vault(&self) -> String {
+        if self.prefix.is_empty() {
+            "*".to_owned()
+        } else {
+            format!("{}/*", self.prefix)
+        }
+    }
+
+    /// Whether a path the repository spells is one the folder is told not to
+    /// keep. The person's own code is never one of them.
+    fn kept_out(&self, path: &str) -> bool {
+        self.in_vault(path).is_some_and(kept_out)
+    }
+
+    /// The `IGNORED` lines as this repository reads them: pinned under the
+    /// vault where the vault is a part of a bigger folder, so nothing named
+    /// like one of ours in the person's own code is quietly dropped.
+    fn ignored(&self) -> Vec<String> {
+        if self.prefix.is_empty() {
+            return IGNORED.iter().map(|line| (*line).to_owned()).collect();
+        }
+        IGNORED
+            .iter()
+            .map(|line| match line.strip_prefix('/') {
+                Some(pinned) => format!("/{}/{pinned}", self.prefix),
+                None => format!("/{}/**/{line}", self.prefix),
+            })
+            .collect()
+    }
+}
+
+/// What a folder is set to: what somebody has told this app about it, and what
+/// git says where they have told it nothing.
+pub(crate) struct Told {
+    ours: Option<Config>,
+    git: Config,
+}
+
+impl Told {
+    pub(crate) fn said(&self, key: &str) -> Option<String> {
+        self.ours
+            .as_ref()
+            .and_then(|held| said(held, key))
+            .or_else(|| said(&self.git, key))
+    }
+
+    pub(crate) fn on(&self, key: &str) -> bool {
+        self.ours
+            .as_ref()
+            .and_then(|held| held.get_bool(key).ok())
+            .or_else(|| self.git.get_bool(key).ok())
+            .unwrap_or(false)
+    }
+}
+
+/// The repository keeping the vault, made at the vault root where nothing above
+/// it is keeping one, and keeping none of `IGNORED` either way.
+pub(crate) fn at(vault: &Opened) -> Result<Kept, HistoryError> {
+    let kept = match enclosing(vault) {
+        Some(kept) => kept,
+        None => Kept::whole(start(vault)?, vault),
     };
-    keep_out(&repo)?;
-    Ok(repo)
+    keep_out(&kept)?;
+    Ok(kept)
+}
+
+/// The repository the vault is inside, searched for from the vault root and no
+/// further up than the folder somebody picked — so a graph inside a repository
+/// nobody opened is still its own history.
+fn enclosing(vault: &Opened) -> Option<Kept> {
+    let root = settled(vault);
+    let bound = settled(vault.within());
+    let mut here: &Path = &root;
+    loop {
+        let ceiling: [&Path; 0] = [];
+        if let Ok(repo) = Repository::open_ext(here, RepositoryOpenFlags::NO_SEARCH, ceiling) {
+            if let Some(kept) = Kept::of(repo, &root, here) {
+                return Some(kept);
+            }
+        }
+        if here == bound {
+            return None;
+        }
+        here = match here.parent() {
+            Some(up) if up.starts_with(&bound) => up,
+            _ => return None,
+        };
+    }
 }
 
 fn start(root: &Path) -> Result<Repository, HistoryError> {
@@ -264,13 +481,13 @@ fn start(root: &Path) -> Result<Repository, HistoryError> {
 /// What the repository excludes for itself, so nothing untracked here is ever
 /// offered to a commit. A `.gitignore` is a file the person wrote, and stays
 /// theirs.
-pub(crate) fn keep_out(repo: &Repository) -> Result<(), HistoryError> {
-    let exclude = repo.commondir().join("info").join("exclude");
+pub(crate) fn keep_out(kept: &Kept) -> Result<(), HistoryError> {
+    let exclude = kept.repo().commondir().join("info").join("exclude");
     let held = fs::read_to_string(&exclude).unwrap_or_default();
-    let missing: Vec<&str> = IGNORED
+    let lines = kept.ignored();
+    let missing: Vec<&String> = lines
         .iter()
-        .copied()
-        .filter(|line| !held.lines().any(|one| one.trim() == *line))
+        .filter(|line| !held.lines().any(|one| one.trim() == line.as_str()))
         .collect();
     if missing.is_empty() {
         return Ok(());
@@ -290,9 +507,10 @@ pub(crate) fn keep_out(repo: &Repository) -> Result<(), HistoryError> {
     Ok(())
 }
 
-/// Whether a path in the index is one of `IGNORED`, matched the way git matches
-/// the lines these are written as: a bare name wherever it is, a leading slash
-/// pinned to the folder, a trailing one covering everything under it.
+/// Whether a path from the VAULT root is one of `IGNORED`, matched the way git
+/// matches the lines these are written as: a bare name wherever it is, a
+/// leading slash pinned to the vault root, a trailing one covering everything
+/// under it.
 fn kept_out(path: &str) -> bool {
     IGNORED.iter().any(|line| match line.strip_prefix('/') {
         Some(pinned) => match pinned.strip_suffix('/') {
@@ -322,11 +540,11 @@ fn line_names(name: &str, line: &str) -> bool {
 /// What an exclude cannot do: a folder that was a repository before the app
 /// opened it can already be tracking these, and nothing untracks a file by
 /// ignoring it. The files stay where they are; only the history lets go.
-fn let_go(index: &mut Index) -> Result<(), HistoryError> {
+fn let_go(kept: &Kept, index: &mut Index) -> Result<(), HistoryError> {
     let held: Vec<PathBuf> = index
         .iter()
         .filter_map(|entry| String::from_utf8(entry.path).ok())
-        .filter(|path| kept_out(path))
+        .filter(|path| kept.kept_out(path))
         .map(PathBuf::from)
         .collect();
     for path in held {
@@ -389,6 +607,56 @@ fn merging(repo: &mut Repository) -> Result<Option<Oid>, HistoryError> {
     }
 }
 
+/// A container's repository is the project's, and a rebase, a cherry-pick, a
+/// revert or a bisect the person began is held in the repository itself: an act
+/// that moves the folder would walk through what they are in the middle of, and
+/// finishing one clears it away. So every such act is refused for as long as the
+/// repository is in the middle of anything but a merge this app began. A vault
+/// that is the whole repository is this app's alone and is never refused here.
+fn theirs_unfinished(kept: &Kept, with: Option<Oid>) -> Option<HistoryError> {
+    if !kept.keeps_more_than_the_vault() {
+        return None;
+    }
+    match kept.repo().state() {
+        RepositoryState::Clean => None,
+        RepositoryState::Merge if with.is_some_and(|head| ours_to_finish(kept, head)) => None,
+        _ => Some(their_project_unfinished()),
+    }
+}
+
+/// Whether the merge the folder is in the middle of is the one this app began:
+/// the commit it took in is what it wrote down.
+fn ours_to_finish(kept: &Kept, head: Oid) -> bool {
+    let Some(at) = kept.ours_at() else {
+        return true;
+    };
+    fs::read_to_string(at).is_ok_and(|held| held.trim() == head.to_string())
+}
+
+fn began_a_merge(kept: &Kept, head: Oid) -> Result<(), HistoryError> {
+    let Some(at) = kept.ours_at() else {
+        return Ok(());
+    };
+    if let Some(folder) = at.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    fs::write(at, head.to_string())?;
+    Ok(())
+}
+
+/// What a merge this app began leaves behind, cleared once it is settled and
+/// never for what the person is in the middle of themselves.
+fn finished_the_merge(kept: &Kept) -> Result<(), HistoryError> {
+    if let Some(at) = kept.ours_at() {
+        match fs::remove_file(at) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            other => other?,
+        }
+    }
+    kept.repo().cleanup_state()?;
+    Ok(())
+}
+
 /// Git refuses a name or an address with an angle bracket or a newline in it,
 /// and every one of these is somebody's own words.
 fn spelled(held: Option<&serde_json::Value>, key: &str) -> Option<String> {
@@ -421,15 +689,14 @@ fn said(config: &Config, key: &str) -> Option<String> {
         .filter(|held| !held.is_empty())
 }
 
-/// Who the commits made here are by, read the way git reads it: this folder's
-/// own config, then the person's own. Nothing where neither says.
-pub fn git_user(root: &Path) -> Result<Option<GitUser>, HistoryError> {
-    Ok(named(&at(root)?).map(|(name, email)| GitUser { name, email }))
+/// Who the commits made here are by, read the way git reads it: what this
+/// folder is set to, then the person's own. Nothing where neither says.
+pub fn git_user(vault: &Opened) -> Result<Option<GitUser>, HistoryError> {
+    Ok(named(&at(vault)?.told()?).map(|(name, email)| GitUser { name, email }))
 }
 
-fn named(repo: &Repository) -> Option<(String, String)> {
-    let config = repo.config().ok()?;
-    Some((said(&config, "user.name")?, said(&config, "user.email")?))
+fn named(told: &Told) -> Option<(String, String)> {
+    Some((told.said("user.name")?, told.said("user.email")?))
 }
 
 /// Who this device says its commits are by, where it has been told at all.
@@ -446,22 +713,22 @@ fn device_user(data: &Path) -> Option<GitUser> {
 
 /// A folder nobody has named an author in takes this device's default the first
 /// time it commits — docs/ARCHITECTURE.md § "The vault's history".
-fn begun(repo: &Repository, data: &Path) -> Result<(), HistoryError> {
-    if named(repo).is_some() {
+fn begun(kept: &Kept, data: &Path) -> Result<(), HistoryError> {
+    if named(&kept.told()?).is_some() {
         return Ok(());
     }
     let Some(user) = device_user(data) else {
         return Ok(());
     };
-    let mut config = repo.config()?.open_level(ConfigLevel::Local)?;
+    let mut config = kept.tell()?;
     config.set_str("user.name", &user.name)?;
     config.set_str("user.email", &user.email)?;
     Ok(())
 }
 
-pub fn set_git_user(root: &Path, user: &GitUser) -> Result<(), HistoryError> {
-    let repo = at(root)?;
-    let mut config = repo.config()?.open_level(ConfigLevel::Local)?;
+pub fn set_git_user(vault: &Opened, user: &GitUser) -> Result<(), HistoryError> {
+    let kept = at(vault)?;
+    let mut config = kept.tell()?;
     config
         .set_str("user.name", user.name.trim())
         .and_then(|()| config.set_str("user.email", user.email.trim()))
@@ -471,8 +738,8 @@ pub fn set_git_user(root: &Path, user: &GitUser) -> Result<(), HistoryError> {
     Ok(())
 }
 
-fn signature<'a>(repo: &Repository, root: &Path) -> Result<Signature<'a>, HistoryError> {
-    let (name, address) = named(repo).unwrap_or_else(|| owner(root));
+fn signature<'a>(kept: &Kept, root: &Path) -> Result<Signature<'a>, HistoryError> {
+    let (name, address) = named(&kept.told()?).unwrap_or_else(|| owner(root));
     Signature::now(&name, &address)
         .map_err(|_| HistoryError::new("That will not work as a name and an address. Try another."))
 }
@@ -500,7 +767,10 @@ fn view(repo: &Repository, commit: &git2::Commit<'_>, trust: &Trust) -> Commit {
     }
 }
 
-fn standing(repo: &Repository) -> Result<Status, HistoryError> {
+/// What a person is shown of the folder: the vault and nothing else, so a
+/// listing in a project's container never shows the person's own code.
+fn standing(kept: &Kept) -> Result<Status, HistoryError> {
+    let repo = kept.repo();
     let mut how = StatusOptions::new();
     how.include_untracked(true)
         .recurse_untracked_dirs(true)
@@ -511,6 +781,9 @@ fn standing(repo: &Repository) -> Result<Status, HistoryError> {
     let mut untracked = Vec::new();
     for entry in held.iter() {
         let Some(path) = entry.path() else { continue };
+        let Some(path) = kept.in_vault(path) else {
+            continue;
+        };
         if kept_out(path) {
             continue;
         }
@@ -538,20 +811,89 @@ fn standing(repo: &Repository) -> Result<Status, HistoryError> {
     })
 }
 
-pub fn status(root: &Path) -> Result<Status, HistoryError> {
-    standing(&at(root)?)
+/// What has been written since the commit the folder is on, and so what an act
+/// that lays a commit down would write over. The whole folder is looked at
+/// rather than the vault, because a checkout lays down every path a commit
+/// carries.
+enum Unsettled {
+    Nothing,
+    Notes,
+    TheirCode,
+}
+
+impl Unsettled {
+    fn refusal(self) -> Option<HistoryError> {
+        match self {
+            Unsettled::Nothing => None,
+            Unsettled::Notes => Some(uncommitted()),
+            Unsettled::TheirCode => Some(their_code_uncommitted()),
+        }
+    }
+}
+
+fn unsettled(kept: &Kept) -> Result<Unsettled, HistoryError> {
+    let mut how = StatusOptions::new();
+    how.include_untracked(false)
+        .include_ignored(false)
+        .include_unmodified(false);
+    let held = kept.repo().statuses(Some(&mut how))?;
+    let mut found = Unsettled::Nothing;
+    for entry in held.iter() {
+        let Some(path) = entry.path() else { continue };
+        if entry.status().is_empty() || kept.kept_out(path) {
+            continue;
+        }
+        if kept.in_vault(path).is_none() {
+            return Ok(Unsettled::TheirCode);
+        }
+        found = Unsettled::Notes;
+    }
+    Ok(found)
+}
+
+pub fn status(vault: &Opened) -> Result<Status, HistoryError> {
+    standing(&at(vault)?)
+}
+
+/// Whether a commit carries the vault at a state none of what it springs from
+/// had it at — what a listing of the vault's own versions is limited to.
+fn touched(kept: &Kept, commit: &git2::Commit<'_>) -> Result<bool, HistoryError> {
+    if kept.prefix.is_empty() {
+        return Ok(true);
+    }
+    let held = at_prefix(kept, commit)?;
+    if commit.parent_count() == 0 {
+        return Ok(held.is_some());
+    }
+    for parent in commit.parents() {
+        if at_prefix(kept, &parent)? == held {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// What the vault is, as one id, in the state a commit carries — nothing where
+/// that commit carries no vault at all.
+fn at_prefix(kept: &Kept, commit: &git2::Commit<'_>) -> Result<Option<Oid>, HistoryError> {
+    match commit.tree()?.get_path(Path::new(&kept.prefix)) {
+        Ok(entry) => Ok(Some(entry.id())),
+        Err(error) if error.code() == ErrorCode::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub fn log(
-    root: &Path,
+    vault: &Opened,
     data: &Path,
     limit: i64,
     cursor: Option<&str>,
 ) -> Result<CommitPage, HistoryError> {
-    let repo = at(root)?;
-    let trust = Trust::of(root, data);
+    let kept = at(vault)?;
+    let repo = kept.repo();
+    let trust = Trust::of(vault, data);
     let limit = limit.max(0) as usize;
-    if head_commit(&repo)?.is_none() {
+    if head_commit(repo)?.is_none() {
         return Ok(CommitPage {
             commits: Vec::new(),
             cursor: None,
@@ -566,6 +908,10 @@ pub fn log(
     let mut next = None;
     for id in walk {
         let id = id?;
+        let held = repo.find_commit(id)?;
+        if !touched(&kept, &held)? {
+            continue;
+        }
         if !reached {
             if Some(id.to_string().as_str()) != cursor {
                 continue;
@@ -576,7 +922,7 @@ pub fn log(
             next = Some(id.to_string());
             break;
         }
-        commits.push(view(&repo, &repo.find_commit(id)?, &trust));
+        commits.push(view(repo, &held, &trust));
     }
     if !reached {
         return Err(not_here());
@@ -589,16 +935,22 @@ pub fn log(
 
 /// Every commit this folder knows, across its branches and the ones it last
 /// heard a remote had, with the names at each — `graph` in `@sloppy/local`.
+///
+/// This is the folder's whole picture, where {@link log} is the vault's own
+/// line: a branch is at a commit whether or not that commit wrote in the vault,
+/// and a picture missing the commit a branch is at would draw a branch at
+/// nothing.
 pub fn graph(
-    root: &Path,
+    vault: &Opened,
     data: &Path,
     limit: i64,
     cursor: Option<&str>,
 ) -> Result<CommitGraphPage, HistoryError> {
-    let repo = at(root)?;
-    let trust = Trust::of(root, data);
+    let kept = at(vault)?;
+    let repo = kept.repo();
+    let trust = Trust::of(vault, data);
     let limit = limit.max(0) as usize;
-    let named = names_at(&repo)?;
+    let named = names_at(repo)?;
 
     let mut walk = repo.revwalk()?;
     walk.set_sorting(Sort::TIME | Sort::TOPOLOGICAL)?;
@@ -622,7 +974,7 @@ pub fn graph(
             break;
         }
         commits.push(GraphCommit {
-            commit: view(&repo, &repo.find_commit(id)?, &trust),
+            commit: view(repo, &repo.find_commit(id)?, &trust),
             refs: named.get(&id).cloned().unwrap_or_default(),
         });
     }
@@ -658,21 +1010,31 @@ fn names_at(repo: &Repository) -> Result<BTreeMap<Oid, Vec<String>>, HistoryErro
     Ok(held)
 }
 
-pub fn commit(root: &Path, data: &Path, message: &str) -> Result<Option<Commit>, HistoryError> {
-    let mut repo = at(root)?;
-    let with = merging(&mut repo)?;
+pub fn commit(vault: &Opened, data: &Path, message: &str) -> Result<Option<Commit>, HistoryError> {
+    let mut kept = at(vault)?;
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
+    let repo = kept.repo();
     let mut index = repo.index()?;
     if index.has_conflicts() {
         return Err(HistoryError::new(
             "Some of these are still here in two versions. Choose one of each and try again.",
         ));
     }
-    let_go(&mut index)?;
-    index.update_all(["*"], None)?;
-    index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
+    let_go(&kept, &mut index)?;
+    let only = kept.only_the_vault();
+    index.update_all([&only], None)?;
+    index.add_all([&only], IndexAddOption::DEFAULT, None)?;
     index.write()?;
-    let written = index.write_tree()?;
-    let head = head_commit(&repo)?;
+    let head = head_commit(repo)?;
+    // A merge is settled whole or not at all, so the commit that finishes one
+    // carries everything it merged; anything else carries the vault alone.
+    let written = match with {
+        Some(_) => index.write_tree()?,
+        None => the_vault_alone(&kept, &mut index, head.as_ref())?,
+    };
     if with.is_none() {
         if let Some(at) = &head {
             if at.tree_id() == written {
@@ -692,10 +1054,41 @@ pub fn commit(root: &Path, data: &Path, message: &str) -> Result<Option<Commit>,
     if let Some(one) = taken.as_ref() {
         parents.push(one);
     }
-    let made = record(&repo, root, data, message, &tree, &parents)?;
-    repo.cleanup_state()?;
-    let held = view(&repo, &repo.find_commit(made)?, &Trust::of(root, data));
+    let made = record(&kept, vault, data, message, &tree, &parents)?;
+    if with.is_some() {
+        finished_the_merge(&kept)?;
+    }
+    let held = view(repo, &repo.find_commit(made)?, &Trust::of(vault, data));
     Ok(Some(held))
+}
+
+/// The state a commit of the vault carries: everything the folder is on, with
+/// the vault as it is now written over it. **A commit Sloppy makes stages only
+/// paths under the vault** — docs/ARCHITECTURE.md § "The vault's history" — so
+/// code the person has staged themselves is not carried off in a commit of
+/// their notes.
+fn the_vault_alone(
+    kept: &Kept,
+    index: &mut Index,
+    head: Option<&git2::Commit<'_>>,
+) -> Result<Oid, HistoryError> {
+    if kept.prefix.is_empty() {
+        return Ok(index.write_tree()?);
+    }
+    let mut building = Index::new()?;
+    if let Some(at) = head {
+        building.read_tree(&at.tree()?)?;
+        building.remove_dir(Path::new(&kept.prefix), 0)?;
+    }
+    for entry in index.iter() {
+        let Ok(path) = String::from_utf8(entry.path.clone()) else {
+            continue;
+        };
+        if kept.in_vault(&path).is_some() {
+            building.add(&entry)?;
+        }
+    }
+    Ok(building.write_tree_to(kept.repo())?)
 }
 
 /// One commit, carrying a signature where this folder signs. A signed one is
@@ -706,19 +1099,20 @@ pub fn commit(root: &Path, data: &Path, message: &str) -> Result<Option<Commit>,
 /// key it cannot open — leaves the commit unsigned rather than losing what
 /// somebody wrote, and a listing says which commits carry one.
 fn record(
-    repo: &Repository,
+    kept: &Kept,
     root: &Path,
     data: &Path,
     message: &str,
     tree: &git2::Tree<'_>,
     parents: &[&git2::Commit<'_>],
 ) -> Result<Oid, HistoryError> {
-    begun(repo, data)?;
-    let by = signature(repo, root)?;
+    begun(kept, data)?;
+    let repo = kept.repo();
+    let by = signature(kept, root)?;
     let held = repo.commit_create_buffer(&by, &by, message, tree, parents)?;
     let content = std::str::from_utf8(&held)
         .map_err(|_| HistoryError::new("That did not work. Try again."))?;
-    let Some(armour) = crate::signing::sign(repo, data, content).unwrap_or(None) else {
+    let Some(armour) = crate::signing::sign(kept, data, content).unwrap_or(None) else {
         return Ok(repo.commit(Some("HEAD"), &by, &by, message, tree, parents)?);
     };
     let made = repo.commit_signed(content, &armour, None)?;
@@ -732,8 +1126,9 @@ fn record(
     Ok(made)
 }
 
-pub fn branches(root: &Path) -> Result<Vec<Branch>, HistoryError> {
-    let repo = at(root)?;
+pub fn branches(vault: &Opened) -> Result<Vec<Branch>, HistoryError> {
+    let kept = at(vault)?;
+    let repo = kept.repo();
     let mut held = Vec::new();
     for found in repo.branches(Some(BranchType::Local))? {
         let (branch, _) = found?;
@@ -741,7 +1136,7 @@ pub fn branches(root: &Path) -> Result<Vec<Branch>, HistoryError> {
             continue;
         };
         let mut one = Branch::here(name, head, branch.is_head());
-        if let Some((ahead, behind, upstream)) = against(&repo, name) {
+        if let Some((ahead, behind, upstream)) = against(repo, name) {
             one.upstream = Some(upstream);
             one.ahead = Some(ahead);
             one.behind = Some(behind);
@@ -763,12 +1158,13 @@ pub fn branches(root: &Path) -> Result<Vec<Branch>, HistoryError> {
     Ok(held)
 }
 
-pub fn branch(root: &Path, name: &str) -> Result<Branch, HistoryError> {
-    let repo = at(root)?;
+pub fn branch(vault: &Opened, name: &str) -> Result<Branch, HistoryError> {
+    let kept = at(vault)?;
+    let repo = kept.repo();
     if repo.find_branch(name, BranchType::Local).is_ok() {
         return Err(already_called(name));
     }
-    let Some(head) = head_commit(&repo)? else {
+    let Some(head) = head_commit(repo)? else {
         return Err(HistoryError::new(
             "There is nothing here to branch off yet. Commit what is in this folder first.",
         ));
@@ -781,8 +1177,9 @@ pub fn branch(root: &Path, name: &str) -> Result<Branch, HistoryError> {
 
 /// A branch at a commit somewhere back in the history. The folder stays where
 /// it is.
-pub fn branch_at(root: &Path, name: &str, commit: &str) -> Result<Branch, HistoryError> {
-    let repo = at(root)?;
+pub fn branch_at(vault: &Opened, name: &str, commit: &str) -> Result<Branch, HistoryError> {
+    let kept = at(vault)?;
+    let repo = kept.repo();
     if repo.find_branch(name, BranchType::Local).is_ok() {
         return Err(already_called(name));
     }
@@ -796,8 +1193,9 @@ pub fn branch_at(root: &Path, name: &str, commit: &str) -> Result<Branch, Histor
     Ok(Branch::here(name, held.id(), made.is_head()))
 }
 
-pub fn delete_branch(root: &Path, name: &str) -> Result<(), HistoryError> {
-    let repo = at(root)?;
+pub fn delete_branch(vault: &Opened, name: &str) -> Result<(), HistoryError> {
+    let kept = at(vault)?;
+    let repo = kept.repo();
     let mut held = repo
         .find_branch(name, BranchType::Local)
         .map_err(|_| no_branch(name))?;
@@ -808,12 +1206,16 @@ pub fn delete_branch(root: &Path, name: &str) -> Result<(), HistoryError> {
     Ok(())
 }
 
-pub fn signing(root: &Path, data: &Path) -> Result<SigningConfig, HistoryError> {
-    crate::signing::read(&at(root)?, data)
+pub fn signing(vault: &Opened, data: &Path) -> Result<SigningConfig, HistoryError> {
+    crate::signing::read(&at(vault)?.told()?, data)
 }
 
-pub fn set_signing(root: &Path, data: &Path, signing: &SigningConfig) -> Result<(), HistoryError> {
-    crate::signing::write(&at(root)?, root, data, signing)
+pub fn set_signing(
+    vault: &Opened,
+    data: &Path,
+    signing: &SigningConfig,
+) -> Result<(), HistoryError> {
+    crate::signing::write(&at(vault)?, vault, data, signing)
 }
 
 /// What a checkout would have written over. The folder is somebody's own, so
@@ -828,12 +1230,16 @@ fn in_the_way(error: git2::Error) -> HistoryError {
     }
 }
 
-fn kept_out_in(tree: &git2::Tree<'_>, held: &mut BTreeSet<String>) -> Result<(), HistoryError> {
+fn kept_out_in(
+    kept: &Kept,
+    tree: &git2::Tree<'_>,
+    held: &mut BTreeSet<String>,
+) -> Result<(), HistoryError> {
     tree.walk(TreeWalkMode::PreOrder, |folder, entry| {
         if entry.kind() == Some(ObjectType::Blob) {
             if let Some(name) = entry.name() {
                 let path = format!("{folder}{name}");
-                if kept_out(&path) {
+                if kept.kept_out(&path) {
                     held.insert(path);
                 }
             }
@@ -846,15 +1252,16 @@ fn kept_out_in(tree: &git2::Tree<'_>, held: &mut BTreeSet<String>) -> Result<(),
 /// Every path a checkout could write or take away that the history has let go
 /// of: what the state being laid down carries, what the folder is on now, and
 /// what it is still tracking.
-fn kept_out_of(repo: &Repository, onto: Oid) -> Result<BTreeSet<String>, HistoryError> {
+fn kept_out_of(kept: &Kept, onto: Oid) -> Result<BTreeSet<String>, HistoryError> {
+    let repo = kept.repo();
     let mut held = BTreeSet::new();
-    kept_out_in(&repo.find_commit(onto)?.tree()?, &mut held)?;
+    kept_out_in(kept, &repo.find_commit(onto)?.tree()?, &mut held)?;
     if let Some(at) = head_commit(repo)? {
-        kept_out_in(&at.tree()?, &mut held)?;
+        kept_out_in(kept, &at.tree()?, &mut held)?;
     }
     for entry in repo.index()?.iter() {
         if let Ok(path) = String::from_utf8(entry.path) {
-            if kept_out(&path) {
+            if kept.kept_out(&path) {
                 held.insert(path);
             }
         }
@@ -870,10 +1277,10 @@ type Aside = (String, Option<Vec<u8>>);
 /// as they are now. A state somebody committed themselves can carry an older
 /// bin, and laying that one over the live one hands back addresses this graph
 /// has spent — docs/ARCHITECTURE.md § "The vault's history".
-fn set_aside(repo: &Repository, root: &Path, onto: Oid) -> Result<Vec<Aside>, HistoryError> {
+fn set_aside(kept: &Kept, onto: Oid) -> Result<Vec<Aside>, HistoryError> {
     let mut held = Vec::new();
-    for path in kept_out_of(repo, onto)? {
-        let file = root.join(&path);
+    for path in kept_out_of(kept, onto)? {
+        let file = kept.file(&path);
         let was = match fs::read(&file) {
             Ok(bytes) => {
                 fs::remove_file(&file)?;
@@ -889,12 +1296,12 @@ fn set_aside(repo: &Repository, root: &Path, onto: Oid) -> Result<Vec<Aside>, Hi
 
 /// The folder back the way it was, whether the checkout went through or not,
 /// and the index let go of these again so nothing it laid down is tracked here.
-fn put_back(repo: &Repository, root: &Path, held: Vec<Aside>) -> Result<(), HistoryError> {
+fn put_back(kept: &Kept, held: Vec<Aside>) -> Result<(), HistoryError> {
     if held.is_empty() {
         return Ok(());
     }
     for (path, was) in held {
-        let file = root.join(&path);
+        let file = kept.file(&path);
         match was {
             Some(bytes) => {
                 if let Some(folder) = file.parent() {
@@ -908,8 +1315,8 @@ fn put_back(repo: &Repository, root: &Path, held: Vec<Aside>) -> Result<(), Hist
             },
         }
     }
-    let mut index = repo.index()?;
-    let_go(&mut index)?;
+    let mut index = kept.repo().index()?;
+    let_go(kept, &mut index)?;
     index.write()?;
     Ok(())
 }
@@ -919,7 +1326,8 @@ fn put_back(repo: &Repository, root: &Path, held: Vec<Aside>) -> Result<(), Hist
 /// history is not already keeping is let go of this way, so nothing a checkout
 /// would leave alone is lost; what is kept out of the history is `set_aside`'s.
 /// The bytes come back as they were, for a checkout that is refused after all.
-fn already_the_same(repo: &Repository, root: &Path, onto: Oid) -> Result<Vec<Aside>, HistoryError> {
+fn already_the_same(kept: &Kept, onto: Oid) -> Result<Vec<Aside>, HistoryError> {
+    let repo = kept.repo();
     let tracked: BTreeSet<String> = repo
         .index()?
         .iter()
@@ -937,10 +1345,10 @@ fn already_the_same(repo: &Repository, root: &Path, onto: Oid) -> Result<Vec<Asi
                 return TreeWalkResult::Ok;
             };
             let path = format!("{folder}{name}");
-            if tracked.contains(&path) || kept_out(&path) {
+            if tracked.contains(&path) || kept.kept_out(&path) {
                 return TreeWalkResult::Ok;
             }
-            match (fs::read(root.join(&path)), repo.find_blob(entry.id())) {
+            match (fs::read(kept.file(&path)), repo.find_blob(entry.id())) {
                 (Ok(here), Ok(blob)) if here == blob.content() => same.push((path, here)),
                 (_, Err(error)) => {
                     failed = Some(error);
@@ -955,26 +1363,27 @@ fn already_the_same(repo: &Repository, root: &Path, onto: Oid) -> Result<Vec<Asi
     }
     let mut held = Vec::new();
     for (path, was) in same {
-        fs::remove_file(root.join(&path))?;
+        fs::remove_file(kept.file(&path))?;
         held.push((path, Some(was)));
     }
     Ok(held)
 }
 
-pub(crate) fn lay(repo: &Repository, root: &Path, onto: Oid) -> Result<(), HistoryError> {
+pub(crate) fn lay(kept: &Kept, onto: Oid) -> Result<(), HistoryError> {
+    let repo = kept.repo();
     let tree = repo.find_object(onto, Some(ObjectType::Commit))?;
-    let same = already_the_same(repo, root, onto)?;
-    let held = set_aside(repo, root, onto)?;
+    let same = already_the_same(kept, onto)?;
+    let held = set_aside(kept, onto)?;
     let mut how = CheckoutBuilder::new();
     how.safe();
     let laid = repo
         .checkout_tree(&tree, Some(&mut how))
         .map_err(in_the_way);
-    put_back(repo, root, held)?;
+    put_back(kept, held)?;
     // A checkout that wrote them is a checkout that went through; one that was
     // refused leaves the folder holding everything it held before.
     if laid.is_err() {
-        put_back(repo, root, same)?;
+        put_back(kept, same)?;
     }
     laid
 }
@@ -986,34 +1395,33 @@ fn branch_head(repo: &Repository, name: &str) -> Option<Oid> {
         .and_then(|branch| branch.get().target())
 }
 
-pub fn switch_to(root: &Path, name: &str) -> Result<(), HistoryError> {
-    let mut repo = at(root)?;
-    let Some(head) = branch_head(&repo, name) else {
+pub fn switch_to(vault: &Opened, name: &str) -> Result<(), HistoryError> {
+    let mut kept = at(vault)?;
+    let Some(head) = branch_head(kept.repo(), name) else {
         return Err(no_branch(name));
     };
-    if merging(&mut repo)?.is_some() {
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
+    if with.is_some() {
         return Err(mid_merge());
     }
-    let held = standing(&repo)?;
-    if held.branch.as_deref() == Some(name) {
+    if on(kept.repo())?.as_deref() == Some(name) {
         return Ok(());
     }
-    if !held.changed.is_empty() {
-        return Err(uncommitted());
+    if let Some(why) = unsettled(&kept)?.refusal() {
+        return Err(why);
     }
-    lay(&repo, root, head)?;
-    repo.set_head(&format!("refs/heads/{name}"))?;
+    lay(&kept, head)?;
+    kept.repo().set_head(&format!("refs/heads/{name}"))?;
     Ok(())
 }
 
 /// Every path a merge left in two versions, with this branch's own version of
 /// each one written into the folder — docs/ARCHITECTURE.md § "The vault's
 /// history".
-fn one_version_each(
-    repo: &Repository,
-    root: &Path,
-    index: &Index,
-) -> Result<Vec<String>, HistoryError> {
+fn one_version_each(kept: &Kept, index: &Index) -> Result<Vec<String>, HistoryError> {
     let mut held = Vec::new();
     for found in index.conflicts()? {
         let found = found?;
@@ -1024,61 +1432,67 @@ fn one_version_each(
             .or(found.ancestor.as_ref())
             .and_then(|entry| String::from_utf8(entry.path.clone()).ok());
         let Some(path) = spelled else { continue };
-        let file = root.join(&path);
+        let file = kept.file(&path);
         match &found.our {
             Some(ours) => {
                 if let Some(folder) = file.parent() {
                     fs::create_dir_all(folder)?;
                 }
-                fs::write(&file, repo.find_blob(ours.id)?.content())?;
+                fs::write(&file, kept.repo().find_blob(ours.id)?.content())?;
             }
             None => match fs::remove_file(&file) {
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                 other => other?,
             },
         }
-        held.push(path);
+        if let Some(inside) = kept.in_vault(&path) {
+            held.push(inside.to_owned());
+        }
     }
     held.sort();
     Ok(held)
 }
 
-pub fn merge_in(root: &Path, data: &Path, name: &str) -> Result<Merged, HistoryError> {
-    let mut repo = at(root)?;
-    let Some(head) = branch_head(&repo, name) else {
+pub fn merge_in(vault: &Opened, data: &Path, name: &str) -> Result<Merged, HistoryError> {
+    let mut kept = at(vault)?;
+    let Some(head) = branch_head(kept.repo(), name) else {
         return Err(no_branch(name));
     };
-    if on(&repo)? == Some(name.to_owned()) {
+    if on(kept.repo())? == Some(name.to_owned()) {
         return Err(HistoryError::new("That is the one you are working on."));
     }
-    merge_commit(&mut repo, root, data, head, name)
+    merge_commit(&mut kept, vault, data, head, name)
 }
 
 /// Take a commit into the one the folder is on, whether it is a branch here or
 /// what a remote had when this folder last heard — `name` is what the commit a
 /// settled merge makes says it took in.
 pub(crate) fn merge_commit(
-    repo: &mut Repository,
-    root: &Path,
+    kept: &mut Kept,
+    vault: &Opened,
     data: &Path,
     head: Oid,
     name: &str,
 ) -> Result<Merged, HistoryError> {
-    if merging(repo)?.is_some() {
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(kept, with) {
+        return Err(why);
+    }
+    if with.is_some() {
         return Err(mid_merge());
     }
-    let repo = &*repo;
+    let kept = &*kept;
+    let repo = kept.repo();
     let theirs = repo.find_annotated_commit(head)?;
-    let held = standing(repo)?;
     let Some(mine) = head_commit(repo)? else {
         return Err(HistoryError::new(
             "There is nothing here to merge into yet. Commit what is in this folder first.",
         ));
     };
-    if !held.changed.is_empty() {
-        return Err(uncommitted());
+    if let Some(why) = unsettled(kept)?.refusal() {
+        return Err(why);
     }
-    let Some(on) = held.branch else {
+    let Some(branch) = on(repo)? else {
         return Err(HistoryError::new(
             "This folder is not on a branch, so there is nowhere to merge into.",
         ));
@@ -1089,47 +1503,83 @@ pub(crate) fn merge_commit(
         return Ok(Merged::whole());
     }
     if reading.is_fast_forward() {
-        lay(repo, root, theirs.id())?;
+        lay(kept, theirs.id())?;
         repo.reference(
-            &format!("refs/heads/{on}"),
+            &format!("refs/heads/{branch}"),
             theirs.id(),
             true,
             &format!("merge {name}"),
         )?;
         return Ok(Merged::whole());
     }
+    settleable(kept, &mine, head)?;
 
-    let held = set_aside(repo, root, theirs.id())?;
+    let held = set_aside(kept, theirs.id())?;
     let mut how = CheckoutBuilder::new();
     how.safe();
     let taken = repo
         .merge(&[&theirs], None, Some(&mut how))
         .map_err(in_the_way);
-    put_back(repo, root, held)?;
+    put_back(kept, held)?;
     taken?;
+    began_a_merge(kept, theirs.id())?;
     let mut index = repo.index()?;
     if index.has_conflicts() {
-        return Ok(Merged::in_two_versions(one_version_each(
-            repo, root, &index,
-        )?));
+        return Ok(Merged::in_two_versions(one_version_each(kept, &index)?));
     }
     let tree = repo.find_tree(index.write_tree()?)?;
     index.write()?;
     let taken = repo.find_commit(theirs.id())?;
     record(
-        repo,
-        root,
+        kept,
+        vault,
         data,
         &format!("Merge {name}"),
         &tree,
         &[&mine, &taken],
     )?;
-    repo.cleanup_state()?;
+    finished_the_merge(kept)?;
     Ok(Merged::whole())
 }
 
-pub fn settle(root: &Path, path: &str, side: ConflictSide) -> Result<(), HistoryError> {
-    let repo = at(root)?;
+/// A merge is refused BEFORE the folder is touched where it would leave the
+/// person's own code in two versions: settling those is work they do where they
+/// write the code, and a surface showing the vault alone could not even tell
+/// them what is waiting. Worked out on the two states rather than in the folder,
+/// so a merge refused this way leaves nothing half done.
+fn settleable(kept: &Kept, mine: &git2::Commit<'_>, theirs: Oid) -> Result<(), HistoryError> {
+    if kept.prefix.is_empty() {
+        return Ok(());
+    }
+    let repo = kept.repo();
+    let merged = repo.merge_commits(mine, &repo.find_commit(theirs)?, None)?;
+    if !merged.has_conflicts() {
+        return Ok(());
+    }
+    let outside = merged.conflicts()?.flatten().any(|found| {
+        [&found.our, &found.their, &found.ancestor]
+            .iter()
+            .filter_map(|entry| entry.as_ref())
+            .filter_map(|entry| String::from_utf8(entry.path.clone()).ok())
+            .any(|path| kept.in_vault(&path).is_none())
+    });
+    if outside {
+        return Err(HistoryError::new(
+            "These two versions of the project disagree about files outside your notes. Settle those where you work on the code, then try again.",
+        ));
+    }
+    Ok(())
+}
+
+pub fn settle(vault: &Opened, path: &str, side: ConflictSide) -> Result<(), HistoryError> {
+    let mut kept = at(vault)?;
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
+    let repo = kept.repo();
+    let spelled = kept.spelled_here(path);
+    let at = Path::new(&spelled);
     let mut index = repo.index()?;
     let held = index
         .conflicts()?
@@ -1138,42 +1588,43 @@ pub fn settle(root: &Path, path: &str, side: ConflictSide) -> Result<(), History
             [&found.our, &found.their, &found.ancestor]
                 .iter()
                 .filter_map(|entry| entry.as_ref())
-                .any(|entry| entry.path == path.as_bytes())
+                .any(|entry| entry.path == spelled.as_bytes())
         })
         .ok_or_else(|| HistoryError::new("That is not one of the ones in two versions."))?;
     let chosen = match side {
         ConflictSide::Mine => held.our,
         ConflictSide::Theirs => held.their,
     };
-    let file = root.join(path);
+    let file = kept.file(&spelled);
     match chosen {
         Some(entry) => {
             if let Some(folder) = file.parent() {
                 fs::create_dir_all(folder)?;
             }
             fs::write(&file, repo.find_blob(entry.id)?.content())?;
-            index.remove_path(Path::new(path))?;
-            index.add_path(Path::new(path))?;
+            index.remove_path(at)?;
+            index.add_path(at)?;
         }
         None => {
             match fs::remove_file(&file) {
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                 other => other?,
             }
-            index.remove_path(Path::new(path))?;
+            index.remove_path(at)?;
         }
     }
     index.write()?;
     Ok(())
 }
 
-pub fn read_at(root: &Path, commit: &str) -> Result<BTreeMap<String, String>, HistoryError> {
-    let repo = at(root)?;
+pub fn read_at(vault: &Opened, commit: &str) -> Result<BTreeMap<String, String>, HistoryError> {
+    let kept = at(vault)?;
+    let repo = kept.repo();
     let held = repo
         .revparse_single(commit)
         .and_then(|found| found.peel_to_commit())
         .map_err(|_| not_here())?;
-    let mut vault = BTreeMap::new();
+    let mut inside = BTreeMap::new();
     let mut failed = None;
     held.tree()?.walk(TreeWalkMode::PreOrder, |folder, entry| {
         if entry.kind() != Some(ObjectType::Blob) {
@@ -1182,9 +1633,13 @@ pub fn read_at(root: &Path, commit: &str) -> Result<BTreeMap<String, String>, Hi
         let Some(name) = entry.name() else {
             return TreeWalkResult::Ok;
         };
+        let path = format!("{folder}{name}");
+        let Some(at) = kept.in_vault(&path) else {
+            return TreeWalkResult::Ok;
+        };
         match repo.find_blob(entry.id()) {
             Ok(blob) => {
-                vault.insert(format!("{folder}{name}"), BASE64.encode(blob.content()));
+                inside.insert(at.to_owned(), BASE64.encode(blob.content()));
                 TreeWalkResult::Ok
             }
             Err(error) => {
@@ -1195,15 +1650,78 @@ pub fn read_at(root: &Path, commit: &str) -> Result<BTreeMap<String, String>, Hi
     })?;
     match failed {
         Some(error) => Err(error.into()),
-        None => Ok(vault),
+        None => Ok(inside),
     }
 }
 
-pub fn head(root: &Path) -> Result<Option<String>, HistoryError> {
-    Ok(head_commit(&at(root)?)?.map(|held| held.id().to_string()))
+pub fn head(vault: &Opened) -> Result<Option<String>, HistoryError> {
+    Ok(head_commit(at(vault)?.repo())?.map(|held| held.id().to_string()))
 }
 
-fn opened(folders: &State<'_, Folders>, root: &str) -> Result<PathBuf, HistoryError> {
+/// Which of `paths` a commit made after `commit` has touched, on the branch the
+/// folder is on. **These paths are from the root of what the history is
+/// keeping** — the project root for a container, the vault root for a folder
+/// that is its own repository — which is where an anchor into code is spelled
+/// from; `History.changedSince` in `@sloppy/local` says the same.
+pub fn changed_since(
+    vault: &Opened,
+    commit: &str,
+    paths: &[String],
+) -> Result<Vec<String>, HistoryError> {
+    let kept = at(vault)?;
+    let repo = kept.repo();
+    let since = repo
+        .revparse_single(commit)
+        .and_then(|found| found.peel_to_commit())
+        .map_err(|_| not_here())?;
+    let mut asked: Vec<&str> = Vec::new();
+    for path in paths {
+        if !asked.contains(&path.as_str()) {
+            asked.push(path);
+        }
+    }
+    if asked.is_empty() || head_commit(repo)?.is_none() {
+        return Ok(Vec::new());
+    }
+    let mut walk = repo.revwalk()?;
+    walk.push_head()?;
+    walk.hide(since.id())?;
+    let mut moved: BTreeSet<&str> = BTreeSet::new();
+    for id in walk {
+        if moved.len() == asked.len() {
+            break;
+        }
+        let held = repo.find_commit(id?)?;
+        let was = match held.parent(0) {
+            Ok(parent) => Some(parent.tree()?),
+            Err(_) => None,
+        };
+        let mut how = DiffOptions::new();
+        for path in &asked {
+            how.pathspec(*path);
+        }
+        let diff = repo.diff_tree_to_tree(was.as_ref(), Some(&held.tree()?), Some(&mut how))?;
+        for change in diff.deltas() {
+            for file in [change.old_file().path(), change.new_file().path()] {
+                let Some(file) = file.and_then(Path::to_str) else {
+                    continue;
+                };
+                for path in &asked {
+                    if file == *path || file.starts_with(&format!("{path}/")) {
+                        moved.insert(path);
+                    }
+                }
+            }
+        }
+    }
+    Ok(asked
+        .into_iter()
+        .filter(|path| moved.contains(path))
+        .map(str::to_owned)
+        .collect())
+}
+
+fn opened(folders: &State<'_, Folders>, root: &str) -> Result<Opened, HistoryError> {
     Ok(folders.opened(root)?)
 }
 
@@ -1374,6 +1892,16 @@ pub fn history_head(
     head(&opened(&folders, &root)?)
 }
 
+#[tauri::command]
+pub fn history_changed_since(
+    folders: State<'_, Folders>,
+    root: String,
+    commit: String,
+    paths: Vec<String>,
+) -> Result<Vec<String>, HistoryError> {
+    changed_since(&opened(&folders, &root)?, &commit, &paths)
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -1414,7 +1942,11 @@ pub(crate) mod tests {
         at
     }
 
-    pub(crate) fn scratch(name: &str) -> PathBuf {
+    /// What the vault inside a project's root folder is called —
+    /// `CONTAINER_DIR` in `@sloppy/local`.
+    pub(crate) const CONTAINER: &str = ".sloppy";
+
+    pub(crate) fn scratch(name: &str) -> Opened {
         on_its_own();
         let at = std::env::temp_dir().join(format!(
             "sloppy-history-{name}-{}-{}",
@@ -1423,11 +1955,11 @@ pub(crate) mod tests {
         ));
         let _ = fs::remove_dir_all(&at);
         fs::create_dir_all(&at).expect("a scratch folder");
-        crate::vault::settled(&at)
+        Opened::own(&settled(&at))
     }
 
     /// A folder with a graph in it, as the app writes one.
-    pub(crate) fn vault() -> PathBuf {
+    pub(crate) fn vault() -> Opened {
         let root = scratch("vault");
         write(
             &root,
@@ -1435,6 +1967,20 @@ pub(crate) mod tests {
             r#"{"format":1,"graph":"G","name":"Notes","owner":"did:syr:zOwner","owner_name":"Ada"}"#,
         );
         root
+    }
+
+    /// A project's container: the vault at `.sloppy/` inside the folder
+    /// somebody picked, which is the project's own root.
+    pub(crate) fn container(project: &Path) -> Opened {
+        let root = project.join(CONTAINER);
+        fs::create_dir_all(&root).expect("the container");
+        let held = Opened::inside(&root, project);
+        write(
+            &held,
+            GRAPH_FILE,
+            r#"{"format":1,"graph":"G","name":"Notes","owner":"did:syr:zOwner","project":".."}"#,
+        );
+        held
     }
 
     pub(crate) fn write(root: &Path, path: &str, held: &str) {
@@ -1449,7 +1995,7 @@ pub(crate) mod tests {
         fs::read_to_string(root.join(path)).expect("the file")
     }
 
-    pub(crate) fn made(root: &Path, message: &str) -> Commit {
+    pub(crate) fn made(root: &Opened, message: &str) -> Commit {
         commit(root, &private_for(root), message)
             .expect("the commit")
             .expect("a commit")
@@ -1469,7 +2015,7 @@ pub(crate) mod tests {
         write(root, ".sloppy/bin/note.md", "thrown away");
     }
 
-    fn kept(root: &Path) -> Vec<String> {
+    fn kept(root: &Opened) -> Vec<String> {
         read_at(root, "HEAD")
             .expect("the commit's vault")
             .into_keys()
@@ -1683,7 +2229,7 @@ pub(crate) mod tests {
     fn a_folder_inside_somebody_elses_repository_is_still_its_own_history() {
         let around = scratch("around");
         Repository::init(&around).expect("their repository");
-        let root = around.join("graph");
+        let root = Opened::own(&around.join("graph"));
         fs::create_dir_all(&root).expect("the folder");
         write(&root, GRAPH_FILE, "{}");
 
@@ -1771,8 +2317,9 @@ pub(crate) mod tests {
         let data = private_for(&root);
         let missing = root.join("not-a-program");
         {
-            let repo = at(&root).expect("the repository");
-            let mut config = repo
+            let kept = at(&root).expect("the repository");
+            let mut config = kept
+                .repo()
                 .config()
                 .expect("the config")
                 .open_level(ConfigLevel::Local)
@@ -2227,8 +2774,10 @@ pub(crate) mod tests {
         use tauri::Manager as _;
 
         let root = vault();
-        let folders = Folders::new(scratch("data")).expect("the private data");
-        folders.pick(root.clone()).expect("picking the folder");
+        let folders = Folders::new(scratch("data").to_path_buf()).expect("the private data");
+        folders
+            .pick(root.to_path_buf())
+            .expect("picking the folder");
         let spelled = root.to_string_lossy().into_owned();
 
         let app = mock_builder()
@@ -2451,7 +3000,7 @@ pub(crate) mod tests {
 
         let arriving = scratch("arriving");
         app.state::<Folders>()
-            .pick(arriving.clone())
+            .pick(arriving.to_path_buf())
             .expect("picking the folder");
         assert!(ask(
             "files_clone",
@@ -2639,8 +3188,9 @@ pub(crate) mod tests {
         .expect("the choice");
         let signed = made(&root, "A graph");
 
-        let repo = at(&root).expect("the repository");
-        let (armour, content) = repo
+        let kept = at(&root).expect("the repository");
+        let (armour, content) = kept
+            .repo()
             .extract_signature(&Oid::from_str(&signed.id).expect("an id"), None)
             .expect("a signature");
         let beside = scratch("checked");
@@ -2771,11 +3321,483 @@ pub(crate) mod tests {
             .all(|one| one.name != "from-then"));
     }
 
+    // ── A project's container ────────────────────────────────────────────────
+
+    /// A project with a repository of its own, and the container inside it:
+    /// what the app opens when somebody opens the project's root folder.
+    pub(crate) fn project(name: &str) -> (Opened, Opened) {
+        let root = scratch(name);
+        let mut how = RepositoryInitOptions::new();
+        how.initial_head(DEFAULT_BRANCH);
+        Repository::init_opts(&root, &how).expect("their repository");
+        write(&root, "src/a.ts", "one");
+        let held = container(&root);
+        (root, held)
+    }
+
+    /// A commit the person makes themselves, of the paths they name — the
+    /// history a project already has, which Sloppy did not write.
+    pub(crate) fn their_commit(root: &Path, paths: &[&str], message: &str) -> String {
+        let repo = Repository::open(root).expect("their repository");
+        let mut index = repo.index().expect("the index");
+        for path in paths {
+            index.add_path(Path::new(path)).expect("what they staged");
+        }
+        index.write().expect("their index");
+        let tree = repo
+            .find_tree(index.write_tree().expect("a tree"))
+            .expect("the tree");
+        let by = Signature::now("Ada", "ada@example.com").expect("a name");
+        let was = head_commit(&repo).expect("the head");
+        let parents: Vec<&git2::Commit<'_>> = was.iter().collect();
+        repo.commit(Some("HEAD"), &by, &by, message, &tree, &parents)
+            .expect("their commit")
+            .to_string()
+    }
+
+    /// What the person does in their own repository with their own git, which
+    /// is how a state this app never begins gets into a test. The levels above
+    /// the folder are pointed at nothing, as they are for every other test.
+    fn their_git(root: &Path, args: &[&str]) -> std::process::Output {
+        std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=Ada",
+                "-c",
+                "user.email=ada@example.com",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .current_dir(root)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .expect("their git")
+    }
+
+    /// Where git holds what a rebase the person is in the middle of still has
+    /// to do, whichever way their git goes about one.
+    fn mid_rebase_at(root: &Path) -> PathBuf {
+        [".git/rebase-merge", ".git/rebase-apply"]
+            .iter()
+            .map(|at| root.join(at))
+            .find(|at| at.exists())
+            .expect("a rebase in the middle")
+    }
+
+    /// Two versions of the project's own code, with the second stopped part way
+    /// through a rebase onto the first and the folder settled — what an act
+    /// that lays a commit down would otherwise walk straight past.
+    fn their_rebase(root: &Path) -> PathBuf {
+        their_git(root, &["branch", "theirs"]);
+        write(root, "src/b.ts", "mine");
+        their_commit(root, &["src/b.ts"], "My code");
+        their_git(root, &["checkout", "theirs"]);
+        write(root, "src/c.ts", "theirs");
+        their_commit(root, &["src/c.ts"], "Their code");
+        their_git(root, &["rebase", "--exec", "false", DEFAULT_BRANCH]);
+        mid_rebase_at(root)
+    }
+
+    /// The repository is the project's, and what it is in the middle of is the
+    /// person's own work, held in the repository itself.
+    #[test]
+    fn a_project_in_the_middle_of_a_rebase_is_left_alone() {
+        let (root, held) = project("mid-rebase");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+        branch(&held, "later").expect("a branch");
+        let rebase = their_rebase(&root);
+
+        write(&held, "notes/b.md", "two");
+        assert_eq!(
+            commit(&held, &private_for(&held), "Another note")
+                .unwrap_err()
+                .said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+        assert_eq!(
+            switch_to(&held, "later").unwrap_err().said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+
+        // What the rebase still has to do is where git left it, and the note
+        // nobody could commit is still here to commit later.
+        assert!(rebase.exists());
+        let repo = Repository::open(&root).expect("their repository");
+        assert_ne!(repo.state(), RepositoryState::Clean);
+        assert_eq!(read(&held, "notes/b.md"), "two");
+    }
+
+    /// A merge in a container is the person's own unless this app began it, and
+    /// finishing one is not something this app does to somebody's repository.
+    #[test]
+    fn a_merge_the_person_began_themselves_is_not_one_a_commit_finishes() {
+        let (root, held) = project("their-merge");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+
+        their_git(&root, &["branch", "theirs"]);
+        write(&root, "src/b.ts", "mine");
+        their_commit(&root, &["src/b.ts"], "My code");
+        their_git(&root, &["checkout", "theirs"]);
+        write(&root, "src/c.ts", "theirs");
+        their_commit(&root, &["src/c.ts"], "Their code");
+        their_git(&root, &["checkout", DEFAULT_BRANCH]);
+        their_git(&root, &["merge", "--no-commit", "--no-ff", "theirs"]);
+        assert!(root.join(".git").join("MERGE_HEAD").exists());
+
+        write(&held, "notes/b.md", "two");
+        assert_eq!(
+            commit(&held, &private_for(&held), "Another note")
+                .unwrap_err()
+                .said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+        assert!(root.join(".git").join("MERGE_HEAD").exists());
+    }
+
+    #[test]
+    fn a_container_uses_the_projects_repository_and_commits_only_the_notes() {
+        let (root, held) = project("container");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "why it is like this");
+        write(&root, "src/b.ts", "two");
+
+        // What a person is shown of the folder is the vault and nothing else.
+        let standing = status(&held).expect("the status");
+        assert_eq!(standing.untracked, vec![GRAPH_FILE, "notes/a.md"]);
+        assert!(standing.changed.is_empty());
+
+        made(&held, "The notes");
+        assert!(!root.join(CONTAINER).join(".git").exists());
+        assert_eq!(kept(&held), [GRAPH_FILE, "notes/a.md"]);
+
+        // The person's own code is neither carried off nor left behind.
+        let whole = read_at(&Opened::own(&root), "HEAD").expect("the whole commit");
+        assert!(whole.contains_key("src/a.ts"));
+        assert!(!whole.contains_key("src/b.ts"));
+        assert_eq!(read(&root, "src/b.ts"), "two");
+    }
+
+    #[test]
+    fn a_commit_of_the_notes_leaves_what_the_person_staged_where_it_was() {
+        let (root, held) = project("staged");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&root, "src/a.ts", "rewritten");
+        let repo = Repository::open(&root).expect("their repository");
+        let mut index = repo.index().expect("the index");
+        index
+            .add_path(Path::new("src/a.ts"))
+            .expect("what they staged");
+        index.write().expect("their index");
+
+        write(&held, "notes/a.md", "why it is like this");
+        made(&held, "The notes");
+
+        let whole = read_at(&Opened::own(&root), "HEAD").expect("the whole commit");
+        assert_eq!(
+            whole.get("src/a.ts").map(String::as_str),
+            Some(BASE64.encode("one").as_str())
+        );
+        // And it is still staged, for the person to commit themselves.
+        let standing = status(&Opened::own(&root)).expect("the whole status");
+        assert_eq!(standing.changed, vec!["src/a.ts"]);
+    }
+
+    #[test]
+    fn the_versions_listed_are_the_ones_that_wrote_in_the_vault() {
+        let (root, held) = project("listing");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+        write(&root, "src/b.ts", "two");
+        their_commit(&root, &["src/b.ts"], "More code");
+
+        let listed = log(&held, &private_for(&held), 10, None).expect("the versions");
+        let said: Vec<&str> = listed
+            .commits
+            .iter()
+            .map(|one| one.message.as_str())
+            .collect();
+        assert_eq!(said, ["A note"]);
+
+        // The picture of the whole history is the folder's, so a branch is
+        // never drawn at a commit that is not in it.
+        let drawn = graph(&held, &private_for(&held), 10, None).expect("the picture");
+        assert_eq!(drawn.commits.len(), 3);
+    }
+
+    #[test]
+    fn what_the_folder_keeps_out_is_pinned_under_the_container() {
+        let (root, held) = project("kept-out");
+        beside_the_graph(&held);
+        write(&held, "notes/a.md", "one");
+        write(&root, "credentials.json", "the project's own");
+        made(&held, "The notes");
+
+        assert_eq!(kept(&held), [GRAPH_FILE, "notes/a.md"]);
+        let repo = Repository::open(&root).expect("their repository");
+        assert!(repo
+            .status_should_ignore(Path::new(".sloppy/credentials.json"))
+            .expect("what it keeps out"));
+        assert!(repo
+            .status_should_ignore(Path::new(".sloppy/notes/identity.json"))
+            .expect("what it keeps out"));
+        // What the person calls their own files is theirs, whatever we call
+        // ours.
+        assert!(!repo
+            .status_should_ignore(Path::new("credentials.json"))
+            .expect("what it keeps out"));
+    }
+
+    #[test]
+    fn a_vault_nobody_opened_the_project_for_is_its_own_repository() {
+        let root = scratch("unpicked");
+        Repository::init(&root).expect("their repository");
+        write(&root, "src/a.ts", "one");
+        let inside = container(&root);
+        // The folder somebody picked is the vault itself, so nothing above it
+        // is even looked at.
+        let alone = Opened::own(&inside);
+
+        write(&alone, "notes/a.md", "one");
+        made(&alone, "A graph");
+        assert!(inside.join(".git").exists());
+        assert_eq!(kept(&alone), [".gitignore", GRAPH_FILE, "notes/a.md"]);
+        let whole = read_at(&Opened::own(&root), "HEAD");
+        assert!(whole.is_err(), "the project has no commits of its own");
+    }
+
+    #[test]
+    fn what_has_moved_under_a_note_is_answered_in_the_projects_own_paths() {
+        let (root, held) = project("moved");
+        let before = their_commit(&root, &["src/a.ts"], "The code");
+        write(&root, "src/deep/c.ts", "three");
+        write(&root, "docs/why.md", "because");
+        their_commit(&root, &["src/deep/c.ts", "docs/why.md"], "More code");
+
+        let asked = [
+            "src/a.ts".to_owned(),
+            "src/deep/c.ts".to_owned(),
+            "src".to_owned(),
+            "README.md".to_owned(),
+            "src/a.ts".to_owned(),
+        ];
+        assert_eq!(
+            changed_since(&held, &before, &asked).expect("what has moved"),
+            ["src/deep/c.ts", "src"]
+        );
+
+        let now = head(&held).expect("the head").expect("a commit");
+        assert!(changed_since(&held, &now, &asked)
+            .expect("what has moved")
+            .is_empty());
+        assert_eq!(
+            changed_since(&held, "0000000000000000000000000000000000000000", &asked)
+                .unwrap_err()
+                .said(),
+            "That is not one of the states this graph has been in."
+        );
+    }
+
+    #[test]
+    fn a_merge_the_project_cannot_settle_inside_the_notes_is_refused_whole() {
+        let (root, held) = project("two-versions");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+        branch(&held, "theirs").expect("a branch");
+
+        switch_to(&held, "theirs").expect("onto it");
+        write(&root, "src/a.ts", "their way");
+        their_commit(&root, &["src/a.ts"], "Their code");
+        switch_to(&held, DEFAULT_BRANCH).expect("back");
+        write(&root, "src/a.ts", "my way");
+        their_commit(&root, &["src/a.ts"], "My code");
+
+        assert_eq!(
+            merge_in(&held, &private_for(&held), "theirs")
+                .unwrap_err()
+                .said(),
+            "These two versions of the project disagree about files outside your notes. Settle those where you work on the code, then try again."
+        );
+        // Refused before the folder was touched: nothing is half merged.
+        assert_eq!(read(&root, "src/a.ts"), "my way");
+        assert!(!root.join(".git").join("MERGE_HEAD").exists());
+    }
+
+    /// What the person is told has to be something they can go and do. In a
+    /// project, settling the code is not one of the acts this app offers.
+    #[test]
+    fn an_act_refused_over_the_projects_own_files_says_where_they_are_settled() {
+        let (root, held) = project("in-the-way");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+        branch(&held, "later").expect("a branch");
+
+        write(&root, "src/a.ts", "rewritten");
+        assert_eq!(
+            switch_to(&held, "later").unwrap_err().said(),
+            "This project has changes outside your notes. Keep or undo those where you write the code, then try again."
+        );
+        assert_eq!(
+            merge_in(&held, &private_for(&held), "later")
+                .unwrap_err()
+                .said(),
+            "This project has changes outside your notes. Keep or undo those where you write the code, then try again."
+        );
+
+        // A note written since the last version is settled here, so that is
+        // what the person is asked for.
+        their_commit(&root, &["src/a.ts"], "Their rewrite");
+        write(&held, "notes/a.md", "two");
+        assert_eq!(
+            switch_to(&held, "later").unwrap_err().said(),
+            "Commit what you have written here first, or put it back the way it was."
+        );
+    }
+
+    /// The repository is the project's, and git reads its config for every
+    /// commit the person makes on their own code.
+    #[test]
+    fn what_a_container_is_told_never_reaches_the_projects_own_config() {
+        let (root, held) = project("told");
+        let data = private_for(&held);
+        their_commit(&root, &["src/a.ts"], "The code");
+
+        set_git_user(
+            &held,
+            &GitUser {
+                name: "Ada".to_owned(),
+                email: "ada@example.com".to_owned(),
+            },
+        )
+        .expect("who its versions are by");
+        set_signing(
+            &held,
+            &data,
+            &SigningConfig::Ssh {
+                key: crate::signing::SshKey::Kept,
+                public_key: None,
+            },
+        )
+        .expect("how it signs");
+
+        let theirs = Config::open(&root.join(".git").join("config")).expect("their config");
+        for key in [
+            "user.name",
+            "user.email",
+            "commit.gpgsign",
+            "gpg.format",
+            "user.signingkey",
+            "gpg.ssh.allowedSignersFile",
+        ] {
+            assert!(
+                theirs.get_string(key).is_err(),
+                "the project's own config says {key}"
+            );
+        }
+
+        // And the container still signs and names its own versions.
+        write(&held, "notes/a.md", "one");
+        let made = made(&held, "A note");
+        assert_eq!(made.author, "Ada");
+        assert!(made.signature.expect("a signature").verified);
+        assert_eq!(
+            git_user(&held).expect("the user").expect("somebody").name,
+            "Ada"
+        );
+    }
+
+    /// A vault of its own is the only folder in a repository, so what it is
+    /// told is what the repository says.
+    #[test]
+    fn a_vault_of_its_own_is_still_told_in_the_repositorys_config() {
+        let root = vault();
+        set_git_user(
+            &root,
+            &GitUser {
+                name: "Ada".to_owned(),
+                email: "ada@example.com".to_owned(),
+            },
+        )
+        .expect("who its versions are by");
+
+        let held = Config::open(&root.join(".git").join("config")).expect("its config");
+        assert_eq!(held.get_string("user.name").expect("a name"), "Ada");
+    }
+
+    /// Nobody has to tell Sloppy twice what git already knows about the person.
+    #[test]
+    fn a_container_nobody_has_named_takes_the_name_the_project_is_committed_under() {
+        let (root, held) = project("their-name");
+        {
+            let repo = Repository::open(&root).expect("their repository");
+            let mut config = repo
+                .config()
+                .expect("their config")
+                .open_level(ConfigLevel::Local)
+                .expect("their own");
+            config.set_str("user.name", "Grace").expect("their name");
+            config
+                .set_str("user.email", "grace@example.com")
+                .expect("their address");
+        }
+
+        assert_eq!(
+            git_user(&held).expect("the user").expect("somebody").name,
+            "Grace"
+        );
+        write(&held, "notes/a.md", "one");
+        assert_eq!(made(&held, "A note").author, "Grace");
+    }
+
+    #[test]
+    fn two_versions_of_a_note_in_a_container_are_settled_by_its_own_path() {
+        let (root, held) = project("settling");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+        branch(&held, "theirs").expect("a branch");
+
+        switch_to(&held, "theirs").expect("onto it");
+        write(&held, "notes/a.md", "their way");
+        made(&held, "Their note");
+        switch_to(&held, DEFAULT_BRANCH).expect("back");
+        write(&held, "notes/a.md", "my way");
+        made(&held, "My note");
+
+        let two = merge_in(&held, &private_for(&held), "theirs").expect("the merge");
+        assert_eq!(
+            two.conflicts.as_deref(),
+            Some(["notes/a.md".to_owned()].as_slice())
+        );
+        assert_eq!(read(&held, "notes/a.md"), "my way");
+        settle(&held, "notes/a.md", ConflictSide::Theirs).expect("their version");
+        assert_eq!(read(&held, "notes/a.md"), "their way");
+        made(&held, "Merge theirs");
+        assert_eq!(kept(&held), [GRAPH_FILE, "notes/a.md"]);
+
+        // A merge this app began and settled leaves the repository holding
+        // nothing about it, and the folder moves again.
+        let repo = Repository::open(&root).expect("their repository");
+        assert_eq!(repo.state(), RepositoryState::Clean);
+        assert!(!repo.commondir().join(MERGING).exists());
+        switch_to(&held, "theirs").expect("onto it");
+    }
+
     #[test]
     fn a_file_outside_the_folder_is_not_one_a_conflict_can_be_settled_over() {
         let root = vault();
-        let folders = Folders::new(scratch("data")).expect("the private data");
-        folders.pick(root.clone()).expect("picking the folder");
+        let folders = Folders::new(scratch("data").to_path_buf()).expect("the private data");
+        folders
+            .pick(root.to_path_buf())
+            .expect("picking the folder");
 
         assert!(matches!(
             folders.within(&root.to_string_lossy(), "../elsewhere.md"),

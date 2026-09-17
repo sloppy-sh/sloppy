@@ -64,6 +64,7 @@ import {
   vaultToAmendment,
   vaultToNote,
 } from "@sloppy/vault";
+import { projectRootOf } from "./container.js";
 import type { Files } from "./files.js";
 import { absent, refuse } from "./refusal.js";
 import {
@@ -212,6 +213,13 @@ export class LocalGraph {
 
   get ownership(): GraphOwnership | undefined {
     return this.said.ownership;
+  }
+
+  /** The folder holding the code these notes are about. Absent is a graph that
+   *  is nobody's project, where an anchor into code is an ordinary link —
+   *  `projectRootOf` says what else is refused. */
+  get projectRoot(): Files | undefined {
+    return projectRootOf(this.files, this.said);
   }
 
   async gate(ownership: GraphOwnership): Promise<void> {
@@ -482,6 +490,7 @@ export class LocalGraph {
         ? {}
         : { contributors: [...note.contributors] }),
       published: false,
+      ...(note.checked === undefined ? {} : { checked: note.checked }),
       ...(note.appearance === undefined ? {} : { appearance: note.appearance }),
       ...(note.deleted_at === undefined ? {} : { deleted_at: note.deleted_at }),
       created_at: note.created_at,

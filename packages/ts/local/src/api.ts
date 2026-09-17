@@ -127,6 +127,7 @@ import {
   vaultToNote,
   VaultFormatError,
 } from "@sloppy/vault";
+import { CONTAINER_DIR, containerOf } from "./container.js";
 import { type Files, MemoryFiles } from "./files.js";
 import {
   LocalGraph,
@@ -155,11 +156,16 @@ import {
   vaultOwned,
 } from "./vault-paths.js";
 
-/** Whether a folder holds a graph. A shell asks this of a folder it wrote down
- *  before serving it, so that both sides read a folder that has been moved or
- *  emptied the same way. */
-export function holdsAGraph(files: Files): Promise<boolean> {
-  return files.exists(GRAPH_FILE);
+/** Where the code is, from a container at `<project>/.sloppy`. */
+const PROJECT_FROM_CONTAINER = "..";
+
+/** Whether a folder holds a graph — its own, or a project's container inside
+ *  it. A shell asks this of a folder it wrote down before serving it, so that
+ *  both sides read a folder that has been moved or emptied the same way. */
+export async function holdsAGraph(files: Files): Promise<boolean> {
+  return (
+    (await files.exists(GRAPH_FILE)) || (await containerOf(files)) !== undefined
+  );
 }
 
 /**
@@ -267,6 +273,31 @@ export class LocalApi implements SloppyApi {
    *  it does. */
   async graphHere(): Promise<OwnedRef> {
     return (await this.graphAt()).ref;
+  }
+
+  /**
+   * The notes for the project in `root`, which is the project's own root
+   * folder: the container inside it, started there with the code beside it
+   * where the folder holds none yet. The folder on this device's list is the
+   * project's root either way, so opening the project is what opens the notes.
+   * `root` absent asks for the folder.
+   */
+  async openProject(root?: string): Promise<GraphView> {
+    return this.write(async () => {
+      const at = root ?? (await this.files.pickFolder("project"));
+      if (at === undefined) throw refuse("No folder was chosen.");
+      return this.graphView(await this.graphInFolder(at, true));
+    });
+  }
+
+  /**
+   * The folder holding the code these notes are about, which an anchor into
+   * code spells its paths from. Absent is a graph that is nobody's project,
+   * where an anchor is the ordinary link it is — `projectRootOf` in
+   * `container.ts` says what else is refused.
+   */
+  async projectFolder(graph?: OwnedRef): Promise<Files | undefined> {
+    return (await this.graphAt(graph)).projectRoot;
   }
 
   /** A graph is a folder, so starting one asks for the folder to keep it in. */
@@ -1609,7 +1640,7 @@ export class LocalApi implements SloppyApi {
    * one graph between them, and a folder that is both written down and open is
    * not opened twice into two graphs at one ref.
    */
-  private graphInFolder(root: string): Promise<LocalGraph> {
+  private graphInFolder(root: string, project = false): Promise<LocalGraph> {
     let opening = this.starting.get(root);
     if (opening) return opening;
     opening = (async () => {
@@ -1617,15 +1648,19 @@ export class LocalApi implements SloppyApi {
       if (already) return already;
       const at = this.files.at(root);
       const written = (await this.vaults()).some((one) => one.root === root);
-      const holds = await holdsAGraph(at);
-      if (!holds && written) {
+      const own = await at.exists(GRAPH_FILE);
+      const inside = own ? undefined : await containerOf(at);
+      if (!own && inside === undefined && written) {
         throw absent(
           "The folder your notes are in is not there any more. Open it again, or choose another folder.",
         );
       }
-      const graph = holds
-        ? await LocalGraph.open(at)
-        : await this.startGraphIn(at, root);
+      const graph =
+        inside !== undefined
+          ? await LocalGraph.open(inside)
+          : own
+            ? await LocalGraph.open(at)
+            : await this.startGraphIn(at, root, project);
       this.opened.set(root, graph);
       if (!written) await this.rememberVault(root);
       return graph;
@@ -1634,13 +1669,20 @@ export class LocalApi implements SloppyApi {
     return opening;
   }
 
-  private async startGraphIn(at: Files, root: string): Promise<LocalGraph> {
+  /** A folder made into a graph: the project's notes go in the container
+   *  inside it, and anything else is the folder itself. */
+  private async startGraphIn(
+    at: Files,
+    root: string,
+    project: boolean,
+  ): Promise<LocalGraph> {
     const writer = await this.writer;
-    const graph = await LocalGraph.start(at, {
+    const graph = await LocalGraph.start(project ? at.at(CONTAINER_DIR) : at, {
       format: VAULT_FORMAT,
       graph: ulid(),
       name: folderName(root),
       owner: writer,
+      ...(project ? { project: PROJECT_FROM_CONTAINER } : {}),
     });
     await this.nameItsOwner(graph, writer);
     return graph;

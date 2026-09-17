@@ -2238,6 +2238,13 @@ folder, and `projectRootOf` holds `graph.json`'s `project` to that: **only a vau
 that vault sits in or under it. So a graph file a hand has been in cannot point the app above
 the folder somebody picked, and `project` written into an ordinary vault names nothing.
 
+**The project root is what the device writes down, and the container is what it serves.** The
+shell hands `LocalApi` the folder somebody picked, so the list of folders, the one remembered
+across launches and the one the picker shows are all the project's own root, and the graph
+read out of it is the container inside. `LocalApi.projectFolder` is the one answer to where
+the code is — `AppRuntime.project` is it, and `runtime.history()` is asked of the container,
+because the notes are what a version of them is a version of.
+
 **`graph.json` gains `project`: where the code is, as a path from the vault root**, `..` in
 the ordinary case. **Absent is a graph that is nobody's project** — an anchor into code in it
 draws as an ordinary link and nothing offers to review it, which is every graph written
@@ -2315,6 +2322,17 @@ the identities, the signing keys and the saved identity copy. **The commands sti
 VAULT root**, and `History` in `@sloppy/local` is unchanged: its paths are from the vault root
 exactly as they were. **A vault that is not inside a repository initialises one at its own
 root, exactly as today.**
+
+**A container's repository is the person's, so what it is in the middle of is theirs.** A
+rebase, a cherry-pick, a revert or a bisect they began is held in the repository itself, and
+an act that moves the folder — committing, switching, merging, settling one of two versions —
+would walk through it, or clear it away when it finished. So in a container all four are
+refused for as long as the repository is in the middle of anything but a merge this app
+began, and the person is told to finish or stop it where they work on the code. **A merge
+this app began is written down beside the repository** as it begins, naming the commit it is
+taking in, so settling one is told apart from finishing the person's own; that, and only
+that, is what clears the state afterwards. A vault that is the whole repository is this app's
+alone and behaves exactly as today.
 
 **`changedSince` is the one act whose paths are not the vault's.** It answers which of the
 paths it is given a commit after some commit has touched, and those paths are spelled from

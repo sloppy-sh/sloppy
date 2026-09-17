@@ -4,13 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 const {
 	OPEN_VAULT_FILE,
-	folderOf,
 	forgetFolder,
 	knownFolders,
 	openedFolder,
 	rememberedVault,
-	rememberVault,
-	vaultIn
+	rememberVault
 } = await import('./local-mode.js');
 
 const ADA = 'did:syr:z6MkAdaWritesHere';
@@ -128,6 +126,26 @@ describe('the folders this device knows', () => {
 		expect(known[0].graph?.ref).toBe(known[1].graph?.ref);
 	});
 
+	it('read a project by the notes inside it, and list the project itself', async () => {
+		const files = await device([{ root: '/Users/me/compiler' }]);
+		await files.at('/Users/me/compiler/.sloppy').write(
+			'graph.json',
+			graphFile({
+				format: VAULT_FORMAT,
+				graph: `${GRAPH.slice(0, 25)}9`,
+				name: 'The compiler',
+				owner: ADA,
+				project: '..'
+			})
+		);
+
+		const [project] = await knownFolders(files);
+
+		expect(project.root).toBe('/Users/me/compiler');
+		expect(project.reachable).toBe(true);
+		expect(project.graph?.name).toBe('The compiler');
+	});
+
 	it('keep a folder that is not where it was, with nothing to open in it', async () => {
 		const files = await device([{ root: '/Users/me/garden' }]);
 
@@ -197,13 +215,12 @@ describe('the folders this device knows', () => {
 describe("a project's notes", () => {
 	const ENGINE = '/Users/me/engine';
 
-	/** A project at `ENGINE` whose notes are the container inside it. */
+	/** A project at `ENGINE` whose notes are the container inside it. The folder
+	 *  this device knows is the project's own root. */
 	async function project(name?: string): Promise<MemoryFiles> {
 		const files = new MemoryFiles({ root: '/', data: '/data' });
 		const at = new Date(0).toISOString();
-		await writeVaults(files.at('/data'), [
-			{ root: `${ENGINE}/.sloppy`, created_at: at, updated_at: at }
-		]);
+		await writeVaults(files.at('/data'), [{ root: ENGINE, created_at: at, updated_at: at }]);
 		if (name !== undefined) {
 			await files
 				.at(`${ENGINE}/.sloppy`)
@@ -239,7 +256,7 @@ describe("a project's notes", () => {
 		expect(await files.at(`${ENGINE}/.sloppy`).exists('graph.json')).toBe(true);
 	});
 
-	it('are what a project opens, and a folder opens its own', async () => {
+	it('are the project’s own, and a folder keeps reading its own graph', async () => {
 		const files = await project('Engine');
 		await files
 			.at('/Users/me/garden')
@@ -247,16 +264,10 @@ describe("a project's notes", () => {
 				'graph.json',
 				graphFile({ format: VAULT_FORMAT, graph: GRAPH, name: 'The garden', owner: ADA })
 			);
+		const [garden, engine] = await knownFolders(files, '/Users/me/garden');
 
-		expect(await vaultIn(files, ENGINE)).toBe(`${ENGINE}/.sloppy`);
-		expect(await vaultIn(files, '/Users/me/garden')).toBe('/Users/me/garden');
-		expect(await vaultIn(files, '/Users/me/empty')).toBe('/Users/me/empty');
-	});
-
-	it('are read as the project they sit in, and a folder as itself', () => {
-		expect(folderOf(`${ENGINE}/.sloppy`)).toBe(ENGINE);
-		expect(folderOf('C:\\Users\\me\\engine\\.sloppy')).toBe('C:\\Users\\me\\engine');
-		expect(folderOf('/Users/me/garden')).toBe('/Users/me/garden');
-		expect(folderOf('/.sloppy')).toBe('/.sloppy');
+		expect(garden.graph?.name).toBe('The garden');
+		expect(garden.graph?.project).toBeUndefined();
+		expect(engine.graph?.project).toBe('..');
 	});
 });

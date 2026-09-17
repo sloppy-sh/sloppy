@@ -166,6 +166,14 @@
 		return graph.title || 'Untitled';
 	}
 
+	/** What a row says under the name where the notes are a project's. A project
+	 *  is named after its own folder by default, so saying only the folder would
+	 *  leave the commonest row saying nothing at all. */
+	function projectLine(graph: GraphChoice): string | undefined {
+		if (graph.project === undefined) return undefined;
+		return graph.project === nameOf(graph) ? 'Project' : `Project · ${graph.project}`;
+	}
+
 	/** The row the reader is in. Where the rows are folders it is the folder
 	 *  that is open: two of them can hold one graph, and the ref cannot tell
 	 *  those apart. */
@@ -363,9 +371,9 @@
 							</span>
 							<span class="min-w-0 flex-1">
 								<span class="block truncate">{nameOf(graph)}</span>
-								{#if graph.project && graph.project !== nameOf(graph)}
+								{#if projectLine(graph)}
 									<span class="block truncate text-xs text-muted-foreground">
-										{graph.project}
+										{projectLine(graph)}
 									</span>
 								{:else if twice && graph.folderName}
 									<span class="block truncate text-xs text-muted-foreground">
