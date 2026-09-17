@@ -30,6 +30,22 @@ pub(crate) fn commands<R: Runtime>(
         history::history_resolve,
         history::history_read_at,
         history::history_head,
+        history::history_graph,
+        history::history_branch_at,
+        history::history_delete_branch,
+        history::history_git_user,
+        history::history_set_git_user,
+        history::history_signing,
+        history::history_set_signing,
+        remotes::history_remotes,
+        remotes::history_add_remote,
+        remotes::history_rename_remote,
+        remotes::history_set_remote_url,
+        remotes::history_remove_remote,
+        remotes::history_fetch,
+        remotes::history_pull,
+        remotes::history_push,
+        remotes::files_clone,
     ]
 }
 

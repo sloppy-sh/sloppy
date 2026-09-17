@@ -136,13 +136,13 @@ fn inside(root: &Path, path: &str, allow_root: bool) -> Result<PathBuf, FileErro
 /// The identity's key is in the private data, and nothing but this app has any
 /// business reading that folder.
 #[cfg(unix)]
-fn own_only(path: &Path, mode: u32) -> io::Result<()> {
+pub(crate) fn own_only(path: &Path, mode: u32) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(mode))
 }
 
 #[cfg(not(unix))]
-fn own_only(_path: &Path, _mode: u32) -> io::Result<()> {
+pub(crate) fn own_only(_path: &Path, _mode: u32) -> io::Result<()> {
     Ok(())
 }
 
