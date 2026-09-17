@@ -288,14 +288,14 @@ describe("the two copies settled into one graph", () => {
     );
   });
 
-  it("keeps the confirmation of the copy the person kept", () => {
+  it("takes the archive's confirmation whichever copy the person kept", () => {
     const two = copies(
       [{ ...osmosis, tags: ["biology"], checked: COMMIT }],
       [{ ...osmosis, tags: ["seed"], checked: LATER }],
     );
     const conflicts = conflictsBetween(two);
 
-    expect(held(settled(two, conflicts, []), FIRST).checked).toBe(COMMIT);
+    expect(held(settled(two, conflicts, []), FIRST).checked).toBe(LATER);
     expect(
       held(
         settled(two, conflicts, [
@@ -304,6 +304,14 @@ describe("the two copies settled into one graph", () => {
         FIRST,
       ).checked,
     ).toBe(LATER);
+  });
+
+  it("keeps this graph's confirmation where the archive carries none", () => {
+    const two = copies([{ ...osmosis, checked: COMMIT }], [osmosis]);
+
+    expect(held(settled(two, conflictsBetween(two), []), FIRST).checked).toBe(
+      COMMIT,
+    );
   });
 
   it("takes the tags of the copy the person kept", () => {

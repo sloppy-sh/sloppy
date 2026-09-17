@@ -2268,21 +2268,23 @@ resolves one. Confirming a note
 writes `checked` and nothing else: no section changes, no author joins, nothing moves in the
 genealogy.
 
-**The hosted store keeps it and never reads it.** `checked` is a column on `node`
+**The hosted store keeps it and never interprets it.** `checked` is a column on `node`
 (§ "Data model") holding whatever the folder's history calls a commit, written by `PATCH
-/nodes/:did/:localId` like any other field on a note and by nothing else: there is no route
-for confirming, because confirming is a write on the note. It is held to the note's gate —
-whoever may write the note is who may confirm it — and it joins nobody to the note's authors,
-which is one of the two ways that write differs from every other. The other is
-`node.updated_at`, which a confirmation leaves where it was: the note surface reads that
-column to ask whether a published branch has changed since it went out, and nothing a
-confirmation writes reaches a reader.
+/nodes/:did/:localId` like any other field on a note: there is no route for confirming,
+because confirming is a write on the note. It is held to the note's gate — whoever may write
+the note is who may confirm it — and it joins nobody to the note's authors, which is one of
+the two ways that write differs from every other. The other is `node.updated_at`, which a
+confirmation leaves where it was: the note surface reads that column to ask whether a
+published branch has changed since it went out, and nothing a confirmation writes reaches a
+reader.
 
 It goes out with an archive and comes back with one, so a graph carried between a server and
-a folder keeps what its author has read — including into a copy of that graph the server
-already holds, where the note is written back for its confirmation alone. Nobody is asked
-about one: the copy the person keeps says what the note was last read against, and a copy
-that has none takes the other's, because absent is unread rather than a reading of nothing.
+a folder keeps what its author has read. Settling an archive against a copy of that graph the
+server already holds takes the ARRIVING reading — the folder is the copy that sits beside the
+code, and a reading the server holds stands only where the archive carries none, because
+absent is unread rather than a reading of nothing. Nobody is asked about one, and a note whose
+reading alone arrived is confirmed rather than written: its sections stay where they are, and
+so does its timestamp.
 
 **The genealogy, refs, addresses, aliases, retired numbers and the section opener are
 untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is

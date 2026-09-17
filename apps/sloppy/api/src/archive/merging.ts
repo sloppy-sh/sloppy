@@ -162,9 +162,10 @@ function number(
 /** One note settled between the two copies of it. Absent `chose` is a note
  *  nobody was asked about, which stays as this graph has it.
  *
- *  A copy with no `checked` takes the other's: absent is a note nobody has read
- *  against the code rather than a reading of nothing, so there is nothing there
- *  to prefer. */
+ *  What a note was last read against is not one of the things a person chooses
+ *  between: the reading comes in with the archive, which is the copy that sits
+ *  beside the code, and this graph's stands where the archive carries none —
+ *  absent is a note nobody has read rather than a reading of nothing. */
 function between(
   mine: VaultNote,
   theirs: VaultNote,
@@ -177,7 +178,7 @@ function between(
     (chose?.sections ?? []).map((one) => [one.section, one.keep]),
   );
   const held = new Map(other.sections.map((one) => [one.ulid, one]));
-  const checked = base.checked ?? other.checked;
+  const checked = theirs.checked ?? mine.checked;
   return {
     ...base,
     ...(checked === undefined ? {} : { checked }),

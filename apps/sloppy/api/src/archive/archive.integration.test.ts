@@ -121,6 +121,8 @@ function pictureIn(blocks: readonly BlockView[]): string | undefined {
 
 /** A commit, spelled the way the folder's history spells one. */
 const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
+/** The commit a second reading, made in the folder, was made against. */
+const LATER = "a78dc8213b4c5d6e7f8091a2b3c4d5e6f7089abc";
 
 describe("a graph handed over as an archive", () => {
   let runs = false;
@@ -1058,6 +1060,61 @@ describe("a graph handed over as an archive", () => {
       const notes = await notesOf(dana, home.ref);
       expect(notes.map((one) => one.ref)).toEqual([written.ref]);
       expect(notes[0].address).toBe(written.address);
+    },
+    120_000,
+  );
+
+  scenario(
+    "takes a reading made in the folder onto the note, and writes nothing else",
+    async () => {
+      const workshop = (await ok("POST", "/graphs", dana, {
+        title: "The workshop",
+      })) as GraphView;
+      let bench = (await ok("POST", "/nodes", dana, {
+        from: { relation: "branch", graph: workshop.ref },
+        title: "The bench",
+      })) as NodeView;
+      await ok("POST", "/blocks", dana, {
+        node: bench.ref,
+        content: paragraph("why the bench is where it is"),
+      });
+      bench = (await ok("PATCH", `/nodes/${at(bench.ref)}`, dana, {
+        checked: COMMIT,
+      })) as NodeView;
+
+      const response = await fetch(
+        `${base}/api/graphs/${at(workshop.ref)}/archive`,
+        { headers: { cookie: dana.cookie } },
+      );
+      const taken = unpack(new Uint8Array(await response.arrayBuffer()));
+      // The person reads the note against the code again, in the folder.
+      for (const [path, bytes] of taken) {
+        if (noteAt(path) === undefined) continue;
+        taken.set(
+          path,
+          encodeText(
+            decodeText(bytes).replace(
+              `checked: ${COMMIT}`,
+              `checked: ${LATER}`,
+            ),
+          ),
+        );
+      }
+      const stack = await blocksOf(dana, bench.ref);
+
+      const preview = ArchivePreviewSchema.parse(
+        (await importing(dana, pack(taken), true)).body,
+      );
+      expect(preview.conflicts).toEqual([]);
+      const landed = await importing(dana, pack(taken), false);
+
+      expect(landed.status).toBeLessThan(300);
+      const after = (await notesOf(dana, workshop.ref)).find(
+        (one) => one.ref === bench.ref,
+      ) as NodeView;
+      expect(after.checked).toBe(LATER);
+      expect(after.updated_at).toBe(bench.updated_at);
+      expect(await blocksOf(dana, bench.ref)).toEqual(stack);
     },
     120_000,
   );

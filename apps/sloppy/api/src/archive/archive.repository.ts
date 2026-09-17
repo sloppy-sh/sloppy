@@ -151,7 +151,8 @@ export class ArchiveRepository {
   /**
    * The two copies of one graph settled into one, in a transaction: only the
    * notes the merge writes are touched, so a note the graph holds and the
-   * archive does not — the ones in the bin included — is where it was.
+   * archive does not — the ones in the bin included — is where it was. A note
+   * the merge only confirms keeps the sections and the timestamp it has.
    */
   async merge(did: DidSyr, graph: OwnedRef, write: MergeWrite): Promise<void> {
     const ids = write.writing.map((ref) => recordIdFromOwnedRef("node", ref));
@@ -167,6 +168,11 @@ export class ArchiveRepository {
     const unsettling = write.unsettling.map((ref) =>
       recordIdFromOwnedRef("amendment", ref),
     );
+    const confirming = write.confirming.map((one, at) => ({
+      at,
+      id: recordIdFromOwnedRef("node", one.note),
+      checked: one.checked,
+    }));
     const statements = [
       "BEGIN TRANSACTION;",
       ...(unsettling.length > 0
@@ -190,6 +196,11 @@ export class ArchiveRepository {
       ...(write.writing.length > 0
         ? ["DELETE node WHERE created_by = $did AND id IN $ids;"]
         : []),
+      ...confirming.map(
+        ({ at }) =>
+          `UPDATE $confirming${at} SET checked = $checked${at}
+             WHERE created_by = $did RETURN NONE;`,
+      ),
       ...rows
         .filter(([, held]) => held.length > 0)
         .map(([table]) => `INSERT INTO ${table} $${table};`),
@@ -201,6 +212,12 @@ export class ArchiveRepository {
       ids,
       yielding,
       unsettling,
+      ...Object.fromEntries(
+        confirming.flatMap(({ at, id, checked }) => [
+          [`confirming${at}`, id],
+          [`checked${at}`, checked],
+        ]),
+      ),
       at: nowIso(),
       writing: [...write.writing],
       dropping: [...write.dropping],

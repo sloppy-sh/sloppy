@@ -372,8 +372,8 @@ export class NodeService {
    * request that does only that joins nobody to what the note carries, and one
    * that also writes is held to the gate for the writing it carries.
    *
-   * Confirming is not writing either: `checked` records that the note was READ
-   * against a commit, so it is held to the gate and joins nobody —
+   * A confirmation records a READING of the note, so it is held to the gate
+   * like any write on the row and joins nobody to the writing —
    * docs/ARCHITECTURE.md § "A project's container".
    */
   async update(

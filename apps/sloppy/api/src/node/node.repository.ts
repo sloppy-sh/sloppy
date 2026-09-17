@@ -37,9 +37,8 @@ const PATCHABLE = [
 ] as const;
 
 /** A column whose write records that somebody READ the note rather than changed
- *  it, so the row keeps the `updated_at` it had — the note surface reads that
- *  column to say whether a published branch has changed, and a confirmation
- *  never reaches a reader. */
+ *  it, so the row keeps the `updated_at` it had — docs/ARCHITECTURE.md
+ *  § "A project's container". */
 const UNMOVING = ["checked"] as const;
 
 /**
