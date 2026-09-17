@@ -40,6 +40,13 @@ const NO_ADDRESS: &str = "sloppy@localhost";
 /// `@sloppy/local`, in the same private data.
 const GIT_DEFAULTS: &str = "git.json";
 
+/// Where a container is told who its versions are by and how they are signed,
+/// beside the repository rather than in its config: the repository is the
+/// project's, and git reads its config for every commit the person makes on
+/// their own code. A name or a signing key given to Sloppy here would sign
+/// those too.
+const TOLD: &str = "sloppy/config";
+
 /// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
 /// history".
 const IGNORED: [&str; 12] = [
@@ -115,6 +122,14 @@ fn mid_merge() -> HistoryError {
 
 fn uncommitted() -> HistoryError {
     HistoryError::new("Commit what you have written here first, or put it back the way it was.")
+}
+
+/// The project's own files are settled where the person writes them, so a
+/// refusal over one names that and not an act this app offers.
+fn their_code_uncommitted() -> HistoryError {
+    HistoryError::new(
+        "This project has changes outside your notes. Keep or undo those where you write the code, then try again.",
+    )
 }
 
 /// `Commit` in `@sloppy/local`. Every listing fills `signature` the same way,
@@ -307,6 +322,35 @@ impl Kept {
         }
     }
 
+    /// Where what this app is told about the folder is written, and nothing
+    /// where that is the repository's own config.
+    fn told_at(&self) -> Option<PathBuf> {
+        (!self.prefix.is_empty()).then(|| self.repo.commondir().join(TOLD))
+    }
+
+    /// What the folder is set to, as every act here reads it.
+    pub(crate) fn told(&self) -> Result<Told, HistoryError> {
+        let ours = match self.told_at() {
+            Some(at) if at.exists() => Some(Config::open(&at)?),
+            _ => None,
+        };
+        Ok(Told {
+            ours,
+            git: self.repo.config()?,
+        })
+    }
+
+    /// Where to write what somebody tells this app about the folder.
+    pub(crate) fn tell(&self) -> Result<Config, HistoryError> {
+        let Some(at) = self.told_at() else {
+            return Ok(self.repo.config()?.open_level(ConfigLevel::Local)?);
+        };
+        if let Some(folder) = at.parent() {
+            fs::create_dir_all(folder)?;
+        }
+        Ok(Config::open(&at)?)
+    }
+
     /// What every act here is limited to, as git matches a path against one.
     fn only_the_vault(&self) -> String {
         if self.prefix.is_empty() {
@@ -336,6 +380,30 @@ impl Kept {
                 None => format!("/{}/**/{line}", self.prefix),
             })
             .collect()
+    }
+}
+
+/// What a folder is set to: what somebody has told this app about it, and what
+/// git says where they have told it nothing.
+pub(crate) struct Told {
+    ours: Option<Config>,
+    git: Config,
+}
+
+impl Told {
+    pub(crate) fn said(&self, key: &str) -> Option<String> {
+        self.ours
+            .as_ref()
+            .and_then(|held| said(held, key))
+            .or_else(|| said(&self.git, key))
+    }
+
+    pub(crate) fn on(&self, key: &str) -> bool {
+        self.ours
+            .as_ref()
+            .and_then(|held| held.get_bool(key).ok())
+            .or_else(|| self.git.get_bool(key).ok())
+            .unwrap_or(false)
     }
 }
 
@@ -546,15 +614,14 @@ fn said(config: &Config, key: &str) -> Option<String> {
         .filter(|held| !held.is_empty())
 }
 
-/// Who the commits made here are by, read the way git reads it: this folder's
-/// own config, then the person's own. Nothing where neither says.
+/// Who the commits made here are by, read the way git reads it: what this
+/// folder is set to, then the person's own. Nothing where neither says.
 pub fn git_user(vault: &Opened) -> Result<Option<GitUser>, HistoryError> {
-    Ok(named(at(vault)?.repo()).map(|(name, email)| GitUser { name, email }))
+    Ok(named(&at(vault)?.told()?).map(|(name, email)| GitUser { name, email }))
 }
 
-fn named(repo: &Repository) -> Option<(String, String)> {
-    let config = repo.config().ok()?;
-    Some((said(&config, "user.name")?, said(&config, "user.email")?))
+fn named(told: &Told) -> Option<(String, String)> {
+    Some((told.said("user.name")?, told.said("user.email")?))
 }
 
 /// Who this device says its commits are by, where it has been told at all.
@@ -571,14 +638,14 @@ fn device_user(data: &Path) -> Option<GitUser> {
 
 /// A folder nobody has named an author in takes this device's default the first
 /// time it commits — docs/ARCHITECTURE.md § "The vault's history".
-fn begun(repo: &Repository, data: &Path) -> Result<(), HistoryError> {
-    if named(repo).is_some() {
+fn begun(kept: &Kept, data: &Path) -> Result<(), HistoryError> {
+    if named(&kept.told()?).is_some() {
         return Ok(());
     }
     let Some(user) = device_user(data) else {
         return Ok(());
     };
-    let mut config = repo.config()?.open_level(ConfigLevel::Local)?;
+    let mut config = kept.tell()?;
     config.set_str("user.name", &user.name)?;
     config.set_str("user.email", &user.email)?;
     Ok(())
@@ -586,7 +653,7 @@ fn begun(repo: &Repository, data: &Path) -> Result<(), HistoryError> {
 
 pub fn set_git_user(vault: &Opened, user: &GitUser) -> Result<(), HistoryError> {
     let kept = at(vault)?;
-    let mut config = kept.repo().config()?.open_level(ConfigLevel::Local)?;
+    let mut config = kept.tell()?;
     config
         .set_str("user.name", user.name.trim())
         .and_then(|()| config.set_str("user.email", user.email.trim()))
@@ -596,8 +663,8 @@ pub fn set_git_user(vault: &Opened, user: &GitUser) -> Result<(), HistoryError> 
     Ok(())
 }
 
-fn signature<'a>(repo: &Repository, root: &Path) -> Result<Signature<'a>, HistoryError> {
-    let (name, address) = named(repo).unwrap_or_else(|| owner(root));
+fn signature<'a>(kept: &Kept, root: &Path) -> Result<Signature<'a>, HistoryError> {
+    let (name, address) = named(&kept.told()?).unwrap_or_else(|| owner(root));
     Signature::now(&name, &address)
         .map_err(|_| HistoryError::new("That will not work as a name and an address. Try another."))
 }
@@ -669,18 +736,44 @@ fn standing(kept: &Kept) -> Result<Status, HistoryError> {
     })
 }
 
-/// Whether anything the history is keeping has been written since the commit
-/// the folder is on. This is the WHOLE folder rather than the vault: a checkout
-/// lays down every path a commit carries, so what it would write over is the
-/// person's own code as much as their notes.
-fn unsettled(kept: &Kept) -> Result<bool, HistoryError> {
+/// What has been written since the commit the folder is on, and so what an act
+/// that lays a commit down would write over. The whole folder is looked at
+/// rather than the vault, because a checkout lays down every path a commit
+/// carries.
+enum Unsettled {
+    Nothing,
+    Notes,
+    TheirCode,
+}
+
+impl Unsettled {
+    fn refusal(self) -> Option<HistoryError> {
+        match self {
+            Unsettled::Nothing => None,
+            Unsettled::Notes => Some(uncommitted()),
+            Unsettled::TheirCode => Some(their_code_uncommitted()),
+        }
+    }
+}
+
+fn unsettled(kept: &Kept) -> Result<Unsettled, HistoryError> {
     let mut how = StatusOptions::new();
     how.include_untracked(false)
         .include_ignored(false)
         .include_unmodified(false);
-    Ok(kept.repo().statuses(Some(&mut how))?.iter().any(|entry| {
-        !entry.status().is_empty() && entry.path().is_some_and(|path| !kept.kept_out(path))
-    }))
+    let held = kept.repo().statuses(Some(&mut how))?;
+    let mut found = Unsettled::Nothing;
+    for entry in held.iter() {
+        let Some(path) = entry.path() else { continue };
+        if entry.status().is_empty() || kept.kept_out(path) {
+            continue;
+        }
+        if kept.in_vault(path).is_none() {
+            return Ok(Unsettled::TheirCode);
+        }
+        found = Unsettled::Notes;
+    }
+    Ok(found)
 }
 
 pub fn status(vault: &Opened) -> Result<Status, HistoryError> {
@@ -883,7 +976,7 @@ pub fn commit(vault: &Opened, data: &Path, message: &str) -> Result<Option<Commi
     if let Some(one) = taken.as_ref() {
         parents.push(one);
     }
-    let made = record(repo, vault, data, message, &tree, &parents)?;
+    let made = record(&kept, vault, data, message, &tree, &parents)?;
     repo.cleanup_state()?;
     let held = view(repo, &repo.find_commit(made)?, &Trust::of(vault, data));
     Ok(Some(held))
@@ -926,19 +1019,20 @@ fn the_vault_alone(
 /// key it cannot open — leaves the commit unsigned rather than losing what
 /// somebody wrote, and a listing says which commits carry one.
 fn record(
-    repo: &Repository,
+    kept: &Kept,
     root: &Path,
     data: &Path,
     message: &str,
     tree: &git2::Tree<'_>,
     parents: &[&git2::Commit<'_>],
 ) -> Result<Oid, HistoryError> {
-    begun(repo, data)?;
-    let by = signature(repo, root)?;
+    begun(kept, data)?;
+    let repo = kept.repo();
+    let by = signature(kept, root)?;
     let held = repo.commit_create_buffer(&by, &by, message, tree, parents)?;
     let content = std::str::from_utf8(&held)
         .map_err(|_| HistoryError::new("That did not work. Try again."))?;
-    let Some(armour) = crate::signing::sign(repo, data, content).unwrap_or(None) else {
+    let Some(armour) = crate::signing::sign(kept, data, content).unwrap_or(None) else {
         return Ok(repo.commit(Some("HEAD"), &by, &by, message, tree, parents)?);
     };
     let made = repo.commit_signed(content, &armour, None)?;
@@ -1033,7 +1127,7 @@ pub fn delete_branch(vault: &Opened, name: &str) -> Result<(), HistoryError> {
 }
 
 pub fn signing(vault: &Opened, data: &Path) -> Result<SigningConfig, HistoryError> {
-    crate::signing::read(at(vault)?.repo(), data)
+    crate::signing::read(&at(vault)?.told()?, data)
 }
 
 pub fn set_signing(
@@ -1041,7 +1135,7 @@ pub fn set_signing(
     data: &Path,
     signing: &SigningConfig,
 ) -> Result<(), HistoryError> {
-    crate::signing::write(at(vault)?.repo(), vault, data, signing)
+    crate::signing::write(&at(vault)?, vault, data, signing)
 }
 
 /// What a checkout would have written over. The folder is somebody's own, so
@@ -1232,8 +1326,8 @@ pub fn switch_to(vault: &Opened, name: &str) -> Result<(), HistoryError> {
     if on(kept.repo())?.as_deref() == Some(name) {
         return Ok(());
     }
-    if unsettled(&kept)? {
-        return Err(uncommitted());
+    if let Some(why) = unsettled(&kept)?.refusal() {
+        return Err(why);
     }
     lay(&kept, head)?;
     kept.repo().set_head(&format!("refs/heads/{name}"))?;
@@ -1307,8 +1401,8 @@ pub(crate) fn merge_commit(
             "There is nothing here to merge into yet. Commit what is in this folder first.",
         ));
     };
-    if unsettled(kept)? {
-        return Err(uncommitted());
+    if let Some(why) = unsettled(kept)?.refusal() {
+        return Err(why);
     }
     let Some(branch) = on(repo)? else {
         return Err(HistoryError::new(
@@ -1348,7 +1442,7 @@ pub(crate) fn merge_commit(
     index.write()?;
     let taken = repo.find_commit(theirs.id())?;
     record(
-        repo,
+        kept,
         vault,
         data,
         &format!("Merge {name}"),
@@ -3336,6 +3430,133 @@ pub(crate) mod tests {
         // Refused before the folder was touched: nothing is half merged.
         assert_eq!(read(&root, "src/a.ts"), "my way");
         assert!(!root.join(".git").join("MERGE_HEAD").exists());
+    }
+
+    /// What the person is told has to be something they can go and do. In a
+    /// project, settling the code is not one of the acts this app offers.
+    #[test]
+    fn an_act_refused_over_the_projects_own_files_says_where_they_are_settled() {
+        let (root, held) = project("in-the-way");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+        branch(&held, "later").expect("a branch");
+
+        write(&root, "src/a.ts", "rewritten");
+        assert_eq!(
+            switch_to(&held, "later").unwrap_err().said(),
+            "This project has changes outside your notes. Keep or undo those where you write the code, then try again."
+        );
+        assert_eq!(
+            merge_in(&held, &private_for(&held), "later")
+                .unwrap_err()
+                .said(),
+            "This project has changes outside your notes. Keep or undo those where you write the code, then try again."
+        );
+
+        // A note written since the last version is settled here, so that is
+        // what the person is asked for.
+        their_commit(&root, &["src/a.ts"], "Their rewrite");
+        write(&held, "notes/a.md", "two");
+        assert_eq!(
+            switch_to(&held, "later").unwrap_err().said(),
+            "Commit what you have written here first, or put it back the way it was."
+        );
+    }
+
+    /// The repository is the project's, and git reads its config for every
+    /// commit the person makes on their own code.
+    #[test]
+    fn what_a_container_is_told_never_reaches_the_projects_own_config() {
+        let (root, held) = project("told");
+        let data = private_for(&held);
+        their_commit(&root, &["src/a.ts"], "The code");
+
+        set_git_user(
+            &held,
+            &GitUser {
+                name: "Ada".to_owned(),
+                email: "ada@example.com".to_owned(),
+            },
+        )
+        .expect("who its versions are by");
+        set_signing(
+            &held,
+            &data,
+            &SigningConfig::Ssh {
+                key: crate::signing::SshKey::Kept,
+                public_key: None,
+            },
+        )
+        .expect("how it signs");
+
+        let theirs = Config::open(&root.join(".git").join("config")).expect("their config");
+        for key in [
+            "user.name",
+            "user.email",
+            "commit.gpgsign",
+            "gpg.format",
+            "user.signingkey",
+            "gpg.ssh.allowedSignersFile",
+        ] {
+            assert!(
+                theirs.get_string(key).is_err(),
+                "the project's own config says {key}"
+            );
+        }
+
+        // And the container still signs and names its own versions.
+        write(&held, "notes/a.md", "one");
+        let made = made(&held, "A note");
+        assert_eq!(made.author, "Ada");
+        assert!(made.signature.expect("a signature").verified);
+        assert_eq!(
+            git_user(&held).expect("the user").expect("somebody").name,
+            "Ada"
+        );
+    }
+
+    /// A vault of its own is the only folder in a repository, so what it is
+    /// told is what the repository says.
+    #[test]
+    fn a_vault_of_its_own_is_still_told_in_the_repositorys_config() {
+        let root = vault();
+        set_git_user(
+            &root,
+            &GitUser {
+                name: "Ada".to_owned(),
+                email: "ada@example.com".to_owned(),
+            },
+        )
+        .expect("who its versions are by");
+
+        let held = Config::open(&root.join(".git").join("config")).expect("its config");
+        assert_eq!(held.get_string("user.name").expect("a name"), "Ada");
+    }
+
+    /// Nobody has to tell Sloppy twice what git already knows about the person.
+    #[test]
+    fn a_container_nobody_has_named_takes_the_name_the_project_is_committed_under() {
+        let (root, held) = project("their-name");
+        {
+            let repo = Repository::open(&root).expect("their repository");
+            let mut config = repo
+                .config()
+                .expect("their config")
+                .open_level(ConfigLevel::Local)
+                .expect("their own");
+            config.set_str("user.name", "Grace").expect("their name");
+            config
+                .set_str("user.email", "grace@example.com")
+                .expect("their address");
+        }
+
+        assert_eq!(
+            git_user(&held).expect("the user").expect("somebody").name,
+            "Grace"
+        );
+        write(&held, "notes/a.md", "one");
+        assert_eq!(made(&held, "A note").author, "Grace");
     }
 
     #[test]

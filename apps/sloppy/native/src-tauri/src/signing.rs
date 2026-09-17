@@ -10,12 +10,12 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use git2::{Config, ConfigLevel, Oid, Repository};
+use git2::{Oid, Repository};
 use serde::{Deserialize, Serialize};
 use ssh_key::rand_core::OsRng;
 use ssh_key::{Algorithm, Fingerprint, HashAlg, LineEnding, PrivateKey, PublicKey, SshSig};
 
-use crate::history::HistoryError;
+use crate::history::{HistoryError, Kept, Told};
 use crate::vault::own_only;
 
 /// The two halves of the key this app makes — `KEPT_KEY_FILE` and
@@ -70,14 +70,6 @@ pub struct Signed {
     pub(crate) verified: bool,
 }
 
-fn said(config: &Config, key: &str) -> Option<String> {
-    config
-        .get_string(key)
-        .ok()
-        .map(|held| held.trim().to_owned())
-        .filter(|held| !held.is_empty())
-}
-
 /// The one line a host takes the kept key in, and nothing where this device
 /// has not made one yet.
 fn shown(data: &Path) -> Option<String> {
@@ -93,15 +85,14 @@ pub(crate) fn kept_at(data: &Path) -> (PathBuf, PathBuf) {
     (data.join(KEPT_KEY), data.join(KEPT_KEY_PUBLIC))
 }
 
-/// How this folder is signed, as git config has it. Signing turned on with no
+/// How this folder is signed, as what it is set to has it. Signing turned on with no
 /// key named is nothing signed, because there is nothing to sign with.
-pub fn read(repo: &Repository, data: &Path) -> Result<SigningConfig, HistoryError> {
-    let config = repo.config()?;
-    if !config.get_bool("commit.gpgsign").unwrap_or(false) {
+pub fn read(told: &Told, data: &Path) -> Result<SigningConfig, HistoryError> {
+    if !told.on("commit.gpgsign") {
         return Ok(SigningConfig::None);
     }
-    let named = said(&config, "user.signingkey");
-    if said(&config, "gpg.format").as_deref() == Some("ssh") {
+    let named = told.said("user.signingkey");
+    if told.said("gpg.format").as_deref() == Some("ssh") {
         return Ok(match named {
             Some(path) => {
                 let key = which_key(&path, data);
@@ -112,7 +103,7 @@ pub fn read(repo: &Repository, data: &Path) -> Result<SigningConfig, HistoryErro
         });
     }
     Ok(SigningConfig::Openpgp {
-        program: said(&config, "gpg.program"),
+        program: told.said("gpg.program"),
         key_id: named,
     })
 }
@@ -133,12 +124,12 @@ fn which_key(path: &str, data: &Path) -> SshKey {
 /// device can sign with, and while somebody is choosing is the only place that
 /// is said — docs/ARCHITECTURE.md § "The vault's history".
 pub fn write(
-    repo: &Repository,
+    kept: &Kept,
     root: &Path,
     data: &Path,
     signing: &SigningConfig,
 ) -> Result<(), HistoryError> {
-    let mut config = repo.config()?.open_level(ConfigLevel::Local)?;
+    let mut config = kept.tell()?;
     match signing {
         SigningConfig::None => {
             config.set_bool("commit.gpgsign", false)?;
@@ -396,8 +387,8 @@ pub fn signature_of(repo: &Repository, id: Oid, trust: &Trust) -> Option<Signed>
 }
 
 /// The signature over a commit, and nothing where this folder signs none.
-pub fn sign(repo: &Repository, data: &Path, content: &str) -> Result<Option<String>, HistoryError> {
-    match read(repo, data)? {
+pub fn sign(kept: &Kept, data: &Path, content: &str) -> Result<Option<String>, HistoryError> {
+    match read(&kept.told()?, data)? {
         SigningConfig::None => Ok(None),
         SigningConfig::Ssh { key, .. } => {
             let held = match key {
@@ -682,10 +673,9 @@ TOIB
             public_key: None,
         };
         let kept = crate::history::at(&root).expect("the repository");
-        let repo = kept.repo();
-        write(repo, &root, &data, &named).expect("the choice");
+        write(&kept, &root, &data, &named).expect("the choice");
         assert!(matches!(
-            read(repo, &data).expect("how it signs"),
+            read(&kept.told().expect("what it is set to"), &data).expect("how it signs"),
             SigningConfig::Ssh {
                 key: SshKey::File { .. },
                 ..
@@ -709,10 +699,9 @@ TOIB
             Ok(held) => assert!(held.status.success()),
         }
         let kept = crate::history::at(&root).expect("the repository");
-        let repo = kept.repo();
         assert_eq!(
             write(
-                repo,
+                &kept,
                 &root,
                 &data,
                 &SigningConfig::Ssh {
@@ -728,7 +717,7 @@ TOIB
         );
         // And the folder goes on signing with what it was already signing with.
         assert!(matches!(
-            read(repo, &data).expect("how it signs"),
+            read(&kept.told().expect("what it is set to"), &data).expect("how it signs"),
             SigningConfig::Ssh {
                 key: SshKey::File { .. },
                 ..
@@ -755,9 +744,8 @@ TOIB
             let root = vault();
             let data = private_for(&root);
             let kept = crate::history::at(&root).expect("the repository");
-            let repo = kept.repo();
             write(
-                repo,
+                &kept,
                 &root,
                 &data,
                 &SigningConfig::Ssh {
@@ -818,9 +806,8 @@ TOIB
         let root = vault();
         let data = private_for(&root);
         let kept = crate::history::at(&root).expect("the repository");
-        let repo = kept.repo();
         write(
-            repo,
+            &kept,
             &root,
             &data,
             &SigningConfig::Openpgp {
