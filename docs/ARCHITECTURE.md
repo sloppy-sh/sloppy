@@ -577,7 +577,7 @@ one of its own. A folder a graph was written into and that is no longer there is
 than started over: the app offers a folder to open instead of writing a fresh empty graph
 where a graph somebody moved used to be.
 
-**The folders this device knows ARE its graphs.** `listGraphs` answers one graph per known
+**The folders this device knows ARE its graphs.** `listGraphs` answers one row per known
 folder, read from each folder's own `graph.json`, so the picker a person already chooses a
 graph in is the same place they choose which folder is open — one list, not two names for
 one thing. A folder that is not where this device last saw it has no graph to answer with,
@@ -590,6 +590,15 @@ act, on any folder, and the folder is opened again by naming it again. `VaultAcc
 `forget`, `start` and `clone` beside it. `open` and `start` are one act under the two words
 a person chooses it by — opening a folder that holds a graph, or starting one that will —
 and `openKnown` is a folder already on the list, named rather than picked.
+
+**Two folders may hold one graph, and a folder is what is open.** Cloning your own remote
+beside the original, or bringing an archive of a graph into a second folder, leaves this
+device with two folders at one graph ulid, and that is allowed: a row is a FOLDER, told
+apart by its root and never by the graph in it. So every act — the canvas, the writing, the
+history, Settings — reads and writes the folder that is open and nothing else. `LocalApi`
+holds that line for the store: what it keeps per folder is keyed by that folder's root, and
+where two folders answer to one ref the open one is the one a lookup gets, so no surface is
+ever handed the other copy.
 
 **A folder somebody else owns is not yours to close.** Closing or emptying a folder — every
 act that takes the graph out of it — is the owner's, the DID its `graph.json` names, and
