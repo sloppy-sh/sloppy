@@ -33,7 +33,13 @@ const PATCHABLE = [
   "appearance",
   "owner",
   "authors",
+  "checked",
 ] as const;
+
+/** A column whose write records that somebody READ the note rather than changed
+ *  it, so the row keeps the `updated_at` it had — docs/ARCHITECTURE.md
+ *  § "A project's container". */
+const UNMOVING = ["checked"] as const;
 
 /**
  * A note its author has not deleted, and its opposite. Every read but the two
@@ -136,7 +142,7 @@ const BULK_WRITABLE = ["tags", "appearance", "authors"] as const;
  * names it, and what writes it is {@link withAuthor} over the note that was
  * there. */
 export type NodePatch = Partial<
-  Pick<Node, "title" | "tags" | "links" | "authors">
+  Pick<Node, "title" | "tags" | "links" | "authors" | "checked">
 > & {
   appearance?: NodeAppearance | null;
   /** Who gates the note's writing; `null` takes the gate off. */
@@ -456,7 +462,7 @@ export class NodeRepository {
   }
 
   patch(did: string, ref: OwnedRef, changes: NodePatch): Promise<Node | null> {
-    return this.set(PATCHABLE, did, ref, changes);
+    return this.set(PATCHABLE, did, ref, changes, UNMOVING);
   }
 
   /**
@@ -577,8 +583,9 @@ export class NodeRepository {
     did: string,
     ref: OwnedRef,
     changes: T,
+    unmoving: readonly Extract<keyof T, string>[] = [],
   ): Promise<Node | null> {
-    const set = replacement(columns, changes);
+    const set = replacement(columns, changes, unmoving);
     // The owner is part of the statement, not a check on what comes back: a
     // reference names its owner, so anybody could otherwise write a row by
     // asking for it by name.
