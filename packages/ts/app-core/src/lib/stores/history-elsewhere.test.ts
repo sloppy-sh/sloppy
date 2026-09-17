@@ -208,6 +208,34 @@ describe('the places a folder is also kept', () => {
 		]);
 	});
 
+	it('counts what is waiting at the place its line follows, and at no other', async () => {
+		held = [{ host: 'github.test', credential: { kind: 'token', token: 'a-token' } }];
+		const backup = new MemoryHistory(
+			new MemoryFiles({ root: '/Users/me/backup', store: new Map(), data: '/backup-data' }),
+			{ remotes: places }
+		);
+		places.keep('/Users/me/backup', backup);
+		await kept.addRemote('backup', '/Users/me/backup');
+		await kept.addRemote('origin', AT);
+		await graphHistory.keep('A first version');
+		await graphHistory.putElsewhere('origin');
+		await graphHistory.putElsewhere('backup');
+		await writtenOverThere('Written over there');
+
+		expect(graphHistory.followsPlace).toBe('origin');
+		expect(await graphHistory.lookElsewhere('origin')).toBe(true);
+		expect(graphHistory.elsewhereSaid).toEqual({
+			words: 'One newer version to take in.',
+			refused: false
+		});
+
+		expect(await graphHistory.lookElsewhere('backup')).toBe(true);
+		expect(graphHistory.elsewhereSaid).toEqual({
+			words: 'The lines kept on backup are in the list below.',
+			refused: false
+		});
+	});
+
 	it('puts a folder where it is also kept, and has nothing to take back', async () => {
 		held = [{ host: 'github.test', credential: { kind: 'token', token: 'a-token' } }];
 		await kept.addRemote('origin', AT);

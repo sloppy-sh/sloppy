@@ -17,6 +17,7 @@
 	let {
 		places,
 		chosen = $bindable(''),
+		follows,
 		ahead = 0,
 		behind = 0,
 		busy = false,
@@ -28,6 +29,9 @@
 		places: readonly KeptAlso[];
 		/** Which one the acts are with; the first where nobody has picked. */
 		chosen?: string;
+		/** The one the line the folder is on follows, which {@link ahead} and
+		 *  {@link behind} are the distance from. */
+		follows?: string;
 		ahead?: number;
 		behind?: number;
 		busy?: boolean;
@@ -41,13 +45,15 @@
 	const at = $derived(places.find((one) => one.name === chosen) ?? places[0]);
 
 	const standing = $derived(
-		behind > 0 && ahead > 0
-			? `${behind} to take in, ${ahead} to put there.`
-			: behind > 0
-				? `${behind} to take in.`
-				: ahead > 0
-					? `${ahead} to put there.`
-					: ''
+		at?.name !== follows
+			? ''
+			: behind > 0 && ahead > 0
+				? `${behind} to take in, ${ahead} to put there.`
+				: behind > 0
+					? `${behind} to take in.`
+					: ahead > 0
+						? `${ahead} to put there.`
+						: ''
 	);
 </script>
 

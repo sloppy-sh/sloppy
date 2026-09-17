@@ -347,6 +347,7 @@
 	<SyncControls
 		{places}
 		bind:chosen={where}
+		follows={graphHistory.followsPlace}
 		ahead={graphHistory.ahead}
 		behind={graphHistory.behind}
 		busy={graphHistory.busy}

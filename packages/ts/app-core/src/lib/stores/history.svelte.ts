@@ -203,6 +203,14 @@ class HistoryStore {
 		return this.#upstream;
 	}
 
+	/** Which of the places the folder is kept the line it is on follows; absent
+	 *  where it follows none. {@link ahead} and {@link behind} are measured from
+	 *  there and say nothing about any other place. */
+	get followsPlace(): string | undefined {
+		const at = this.#upstream?.indexOf('/') ?? -1;
+		return at > 0 ? this.#upstream?.slice(0, at) : undefined;
+	}
+
 	/** The version the folder stands on; absent before the first one is kept. */
 	get at(): string | undefined {
 		return this.#at;
@@ -408,7 +416,12 @@ class HistoryStore {
 		return this.withRemote(
 			remote,
 			(history, name, credential) => history.fetch?.(name, credential),
-			() => (this.#behind === 0 ? 'Nothing to take.' : waiting(this.#behind))
+			(place, where) =>
+				where.name !== this.followsPlace
+					? `The lines kept on ${place} are in the list below.`
+					: this.#behind === 0
+						? 'Nothing to take.'
+						: waiting(this.#behind)
 		);
 	}
 
@@ -594,7 +607,7 @@ class HistoryStore {
 	private async withRemote(
 		remote: string | undefined,
 		what: (history: History, name: string, credential?: Credential) => Promise<unknown> | undefined,
-		then: (place: string) => string | null
+		then: (place: string, where: Remote) => string | null
 	): Promise<boolean> {
 		const history = runtime.history();
 		if (!history) return false;
@@ -616,7 +629,7 @@ class HistoryStore {
 			// of it, so it is served again before anything is read back.
 			resetApi();
 			await Promise.all([this.read(), readTheGraphAgain()]);
-			const words = then(await spelled(where));
+			const words = then(await spelled(where), where);
 			this.#elsewhere = words === null ? null : { words, refused: false };
 			return true;
 		} catch (err) {
@@ -630,8 +643,7 @@ class HistoryStore {
 	/** Which of the places the folder is kept an act with none named is with:
 	 *  the one the line follows, else the only one there is. */
 	private chosen(remote?: string): Remote | undefined {
-		const following = this.#upstream?.slice(0, this.#upstream.indexOf('/'));
-		const named = remote ?? following;
+		const named = remote ?? this.followsPlace;
 		if (named !== undefined) return this.#remotes.find((one) => one.name === named);
 		return this.#remotes.length === 1 ? this.#remotes[0] : undefined;
 	}
