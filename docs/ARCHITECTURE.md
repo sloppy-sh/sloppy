@@ -481,7 +481,9 @@ so a reader resolves a kind and verifies signed bytes rather than asking a parti
 host. Today Sloppy reaches all of it through one instance URL per DID —
 `SyrService.identityManifest()` in `apps/sloppy/api/src/syr/syr.service.ts` reads
 `/.well-known/syr/{did}` from the instance a person signed in against — because that is
-what syr serves; nothing in the reading path changes when a second agent appears.
+what syr serves. When a second agent appears, fetch-then-verify is unchanged — what changes
+is that the host every one of those methods takes becomes a choice per kind, read off the
+record, instead of the one URL threaded through them today.
 
 ### Auth: Platform Delegation v0.1
 

@@ -223,7 +223,11 @@ split is not a preference we could revisit; it is the shape syr enforces:
   identities rather than consuming them, so it holds what a syr instance holds: today a
   root seed in an Aegis bundle and a root signature on each delegation
   (`packages/ts/idp/src/aegis.ts`, `packages/ts/idp/src/delegation.ts`), at the target an
-  agent key under a mandate and no root at all. Nothing outside that package holds a key.
+  agent key under a mandate and no root at all. `@sloppy/local` holds one too, and for the
+  same reason: a `device` identity is minted on the machine and its key written to the app's
+  own private data (`makeLocalIdentity()` and `holdDeviceIdentity()` in
+  `packages/ts/local/src/identity.ts`), because there is no instance behind it to ask. Those
+  two are identity stores. Everything that CONSUMES an identity signs through the delegation.
 - **Every remote asset goes through our proxy** (`proxied()`). Viewing a federated node
   must never leak the viewer's IP to the author's instance — a graph you can pull from
   strangers makes this more important, not less. A raw remote URL rendered into an
