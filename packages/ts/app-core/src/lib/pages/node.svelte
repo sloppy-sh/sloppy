@@ -2147,8 +2147,13 @@
 	let confirming = $state(false);
 
 	$effect(() => {
+		const drawn = graphHistory.at;
 		if (!project) {
 			versionHere = undefined;
+			return;
+		}
+		if (drawn !== undefined) {
+			versionHere = drawn;
 			return;
 		}
 		let reading = true;
