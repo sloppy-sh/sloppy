@@ -17,8 +17,10 @@
 	const DOT = 3.5;
 	/** A row carrying the message over a line of date, author and hash, against
 	 *  one carrying all four side by side. */
-	const FOLDED = 46;
-	const DENSE = 30;
+	/** Row heights in rem, so a reader who raises the root font size gets rows that
+	 *  grow with the text they hold. */
+	const FOLDED = 2.875;
+	const DENSE = 1.875;
 	const SHORT_NAME = 8;
 
 	type Point = [number, number];
@@ -90,7 +92,17 @@
 
 	const folded = new MediaQuery('(max-width: 39.99rem)');
 
-	const tall = $derived(folded.current ? FOLDED : DENSE);
+	let rootPx = $state(16);
+	function readRootPx(): void {
+		const said = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+		rootPx = Number.isFinite(said) && said > 0 ? said : 16;
+	}
+	$effect(() => {
+		readRootPx();
+		window.addEventListener('resize', readRootPx);
+		return () => window.removeEventListener('resize', readRootPx);
+	});
+	const tall = $derived(Math.round((folded.current ? FOLDED : DENSE) * rootPx));
 	const laid = $derived(lanes(versions));
 	const width = $derived(EDGE * 2 + LANE * (laid.width - 1));
 	const drawn = $derived(rows(laid, tall));
