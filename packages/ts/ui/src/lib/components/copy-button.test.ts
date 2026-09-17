@@ -40,10 +40,12 @@ afterEach(() => {
 });
 
 describe('handing somebody a line of text', () => {
-	it('offers what the caller calls it', () => {
+	it('is called what the caller calls it', () => {
 		clipboard(async () => {});
 
-		expect(render('ssh-ed25519 AAAA', 'Copy the key').textContent?.trim()).toBe('Copy the key');
+		expect(render('ssh-ed25519 AAAA', 'Copy the key').getAttribute('aria-label')).toBe(
+			'Copy the key'
+		);
 	});
 
 	it('copies the whole line and says so', async () => {
@@ -57,7 +59,7 @@ describe('handing somebody a line of text', () => {
 		await settle();
 
 		expect(written).toEqual(['ssh-ed25519 AAAA sloppy']);
-		expect(button.textContent?.trim()).toBe('Copied');
+		expect(button.getAttribute('aria-label')).toBe('Copied');
 	});
 
 	it('says to select it where the clipboard is refused', async () => {
@@ -69,7 +71,7 @@ describe('handing somebody a line of text', () => {
 		button.click();
 		await settle();
 
-		expect(button.textContent?.trim()).toBe('Select it to copy');
+		expect(button.getAttribute('aria-label')).toBe('Select it to copy');
 	});
 
 	it('says to select it where there is no clipboard at all', async () => {
@@ -82,7 +84,7 @@ describe('handing somebody a line of text', () => {
 		button.click();
 		await settle();
 
-		expect(button.textContent?.trim()).toBe('Select it to copy');
+		expect(button.getAttribute('aria-label')).toBe('Select it to copy');
 	});
 
 	it('offers the copy again once the answer has stood a moment', async () => {
@@ -93,11 +95,11 @@ describe('handing somebody a line of text', () => {
 		button.click();
 		await vi.advanceTimersByTimeAsync(0);
 		flushSync();
-		expect(button.textContent?.trim()).toBe('Copied');
+		expect(button.getAttribute('aria-label')).toBe('Copied');
 
 		await vi.advanceTimersByTimeAsync(3000);
 		flushSync();
 
-		expect(button.textContent?.trim()).toBe('Copy');
+		expect(button.getAttribute('aria-label')).toBe('Copy');
 	});
 });

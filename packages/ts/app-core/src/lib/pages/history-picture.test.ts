@@ -202,6 +202,29 @@ describe('the history as a picture', () => {
 		expect(screen()).toContain('You have not kept one yet.');
 	});
 
+	it('draws what another line holds where the one the folder is on holds none', async () => {
+		const away = new Map<string, Uint8Array>();
+		const elsewhere = new MemoryFiles({
+			root: '/Users/me/backup',
+			store: away,
+			data: '/backup-data'
+		});
+		const backup = new MemoryHistory(elsewhere, { author: 'Cy', remotes: places });
+		places.keep('/Users/me/backup', backup);
+		await elsewhere.write('theirs.md', new TextEncoder().encode('Kept on the other disk\n'));
+		await backup.commit('Kept on the other disk');
+		await kept.addRemote('backup', '/Users/me/backup');
+		await graphHistory.read();
+		await graphHistory.lookElsewhere('backup');
+
+		await open();
+
+		expect(graphHistory.versions).toEqual([]);
+		expect(drawn()).toHaveLength(1);
+		expect(drawn()[0]).toContain('Kept on the other disk');
+		expect(screen()).not.toContain('You have not kept one yet.');
+	});
+
 	it('says what a version springs from, and starts a line at that one and no other', async () => {
 		await graphHistory.keep('A first version');
 		const first = graphHistory.at as string;
@@ -234,7 +257,13 @@ describe('the history as a picture', () => {
 		control('A first version').click();
 		await settle();
 
-		expect(screen()).toContain('Signed with SHA256:kept, which this device knows.');
+		expect(screen()).toContain('Signed with a key this device knows:');
+		const key = [...document.body.querySelectorAll('p')].find(
+			(one) => one.textContent?.trim() === 'SHA256:kept'
+		);
+		// A fingerprint is longer than a phone is wide, so it stands on its own
+		// line and breaks rather than running off the edge.
+		expect(key?.className).toContain('break-all');
 	});
 
 	it('says where the history starts', async () => {
@@ -319,6 +348,27 @@ describe('the places the folder is also kept', () => {
 		expect(document.body.querySelector('[role="status"]')?.textContent?.trim()).toBe(
 			'Your notes are on github.test.'
 		);
+	});
+
+	it('asks after the place the line follows before any other, and counts against it', async () => {
+		held = [{ host: 'github.test', credential: { kind: 'token', token: 'a-token' } }];
+		const backup = new MemoryHistory(
+			new MemoryFiles({ root: '/Users/me/backup', store: new Map(), data: '/backup-data' }),
+			{ author: 'Cy', remotes: places }
+		);
+		places.keep('/Users/me/backup', backup);
+		await kept.addRemote('backup', '/Users/me/backup');
+		await kept.addRemote('origin', AT);
+		await graphHistory.keep('A first version');
+		await graphHistory.putElsewhere('origin');
+		await api.createNode({ title: 'A second thought' });
+		await graphHistory.keep('And the second');
+
+		await open();
+
+		const picker = document.body.querySelector('[aria-label="Where to"]');
+		expect(picker?.textContent?.trim()).toBe('github.test');
+		expect(screen()).toContain('1 to put there.');
 	});
 
 	it('asks for a way in where this device holds none', async () => {

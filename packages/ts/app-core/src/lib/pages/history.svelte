@@ -100,6 +100,16 @@
 
 	const places = $derived<KeptAlso[]>(graphHistory.places.map((one) => ({ ...one })));
 
+	/** The place the acts are with: the one somebody picked, and the one the
+	 *  line the folder is on follows until they do. */
+	const there = $derived(
+		places.some((one) => one.name === where)
+			? where
+			: (graphHistory.followsPlace ?? places[0]?.name ?? '')
+	);
+
+	const standing = $derived(there === '' ? undefined : graphHistory.standingAt(there));
+
 	const opened = $derived(drawnVersions.find((one) => one.id === showing) ?? null);
 
 	/** The lines here at a version, other than the one the folder is already on. */
@@ -295,6 +305,7 @@
 	pictures={graphHistory.changed?.pictures}
 	anythingToKeep={graphHistory.unkept}
 	{versions}
+	anyKept={graphHistory.draws ? graphHistory.picture.length > 0 : undefined}
 	older={graphHistory.older}
 	{lines}
 	{conflicts}
@@ -346,12 +357,12 @@
 {#snippet theOtherPlaces()}
 	<SyncControls
 		{places}
-		bind:chosen={where}
-		follows={graphHistory.followsPlace}
-		ahead={graphHistory.ahead}
-		behind={graphHistory.behind}
+		chosen={there}
+		ahead={standing?.ahead}
+		behind={standing?.behind}
 		busy={graphHistory.busy}
 		said={graphHistory.elsewhereSaid}
+		onPick={(name) => (where = name)}
 		onLook={(name) => void graphHistory.lookElsewhere(name)}
 		onTakeIn={(name) => void graphHistory.takeIn(name)}
 		onPutThere={(name) => void graphHistory.putElsewhere(name)}

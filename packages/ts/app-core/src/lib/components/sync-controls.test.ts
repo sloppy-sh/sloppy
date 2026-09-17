@@ -12,6 +12,7 @@ const PLACES: KeptAlso[] = [
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
+let picked: string[];
 
 const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
 
@@ -21,9 +22,9 @@ function show(over: Record<string, unknown> = {}): void {
 		props: {
 			places: PLACES,
 			chosen: 'origin',
-			follows: 'origin',
 			ahead: 1,
 			behind: 2,
+			onPick: (name: string) => picked.push(name),
 			onLook: () => {},
 			onTakeIn: () => {},
 			onPutThere: () => {},
@@ -57,6 +58,7 @@ beforeEach(() => {
 			disconnect() {}
 		}
 	});
+	picked = [];
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -69,17 +71,42 @@ afterEach(() => {
 });
 
 describe('the places a folder is also kept', () => {
-	it('says how far it is from the place its line follows', () => {
+	it('says how far it is from the place in front of somebody', () => {
 		show();
 
 		expect(screen()).toContain('2 to take in, 1 to put there.');
 	});
 
-	it('says nothing of the distance to any other place', () => {
-		show({ chosen: 'backup' });
+	it('says how far it is from another place once that is the one picked', () => {
+		show({ chosen: 'backup', ahead: 3, behind: 0 });
 
 		expect(screen()).toContain('backup');
+		expect(screen()).toContain('3 to put there.');
+	});
+
+	it('says nothing of a distance to a place it has not heard from', () => {
+		show({ chosen: 'backup', ahead: undefined, behind: undefined });
+
 		expect(screen()).not.toContain('to take in');
 		expect(screen()).not.toContain('to put there');
+		expect(screen()).not.toContain('Everything here is there too');
+	});
+
+	it('says there is nothing waiting either way where the two are level', () => {
+		show({ ahead: 0, behind: 0 });
+
+		expect(screen()).toContain('Everything here is there too.');
+	});
+
+	it('takes every act to the place that is picked', () => {
+		const asked: string[] = [];
+		show({ chosen: 'backup', onTakeIn: (name: string) => asked.push(name) });
+
+		[...document.querySelectorAll('button')]
+			.find((one) => one.textContent?.trim() === 'Take them in')
+			?.click();
+		flushSync();
+
+		expect(asked).toEqual(['backup']);
 	});
 });

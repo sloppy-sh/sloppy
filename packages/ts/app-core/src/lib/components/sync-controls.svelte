@@ -16,27 +16,28 @@
 
 	let {
 		places,
-		chosen = $bindable(''),
-		follows,
-		ahead = 0,
-		behind = 0,
+		chosen,
+		ahead,
+		behind,
 		busy = false,
 		said = null,
+		onPick,
 		onLook,
 		onTakeIn,
 		onPutThere
 	}: {
 		places: readonly KeptAlso[];
-		/** Which one the acts are with; the first where nobody has picked. */
-		chosen?: string;
-		/** The one the line the folder is on follows, which {@link ahead} and
-		 *  {@link behind} are the distance from. */
-		follows?: string;
+		/** Which one the acts are with, and which one the distances are from. */
+		chosen: string;
+		/** How far this folder is from where it stands at {@link chosen}. Both
+		 *  absent is a place this device has not heard from, and the distance is
+		 *  left unsaid rather than shown as nothing. */
 		ahead?: number;
 		behind?: number;
 		busy?: boolean;
 		/** What the last of these acts did, or would not do. */
 		said?: { words: string; refused: boolean } | null;
+		onPick: (name: string) => void;
 		onLook: (name: string) => void;
 		onTakeIn: (name: string) => void;
 		onPutThere: (name: string) => void;
@@ -45,7 +46,7 @@
 	const at = $derived(places.find((one) => one.name === chosen) ?? places[0]);
 
 	const standing = $derived(
-		at?.name !== follows
+		ahead === undefined || behind === undefined
 			? ''
 			: behind > 0 && ahead > 0
 				? `${behind} to take in, ${ahead} to put there.`
@@ -53,7 +54,7 @@
 					? `${behind} to take in.`
 					: ahead > 0
 						? `${ahead} to put there.`
-						: ''
+						: 'Everything here is there too.'
 	);
 </script>
 
@@ -65,7 +66,7 @@
 {:else if at}
 	<div class="space-y-3">
 		{#if places.length > 1}
-			<Select.Root type="single" bind:value={chosen}>
+			<Select.Root type="single" value={at.name} onValueChange={onPick}>
 				<Select.Trigger class="h-11 w-full" aria-label="Where to">{at.at}</Select.Trigger>
 				<Select.Content>
 					{#each places as one (one.name)}

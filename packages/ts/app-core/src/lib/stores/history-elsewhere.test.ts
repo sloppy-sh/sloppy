@@ -208,12 +208,15 @@ describe('the places a folder is also kept', () => {
 		]);
 	});
 
-	it('counts what is waiting at the place its line follows, and at no other', async () => {
+	it('counts what is waiting at whichever place it is asked about', async () => {
 		held = [{ host: 'github.test', credential: { kind: 'token', token: 'a-token' } }];
-		const backup = new MemoryHistory(
-			new MemoryFiles({ root: '/Users/me/backup', store: new Map(), data: '/backup-data' }),
-			{ remotes: places }
-		);
+		const store = new Map<string, Uint8Array>();
+		const elsewhere = new MemoryFiles({
+			root: '/Users/me/backup',
+			store,
+			data: '/backup-data'
+		});
+		const backup = new MemoryHistory(elsewhere, { author: 'Cy', remotes: places });
 		places.keep('/Users/me/backup', backup);
 		await kept.addRemote('backup', '/Users/me/backup');
 		await kept.addRemote('origin', AT);
@@ -228,12 +231,36 @@ describe('the places a folder is also kept', () => {
 			words: 'One newer version to take in.',
 			refused: false
 		});
+		expect(graphHistory.standingAt('origin')).toEqual({ ahead: 0, behind: 1 });
+
+		expect(await graphHistory.lookElsewhere('backup')).toBe(true);
+		expect(graphHistory.elsewhereSaid).toEqual({ words: 'Nothing to take.', refused: false });
+		expect(graphHistory.standingAt('backup')).toEqual({ ahead: 0, behind: 0 });
+
+		await elsewhere.write('theirs.md', new TextEncoder().encode('Kept on the other disk\n'));
+		await backup.commit('Kept on the other disk');
 
 		expect(await graphHistory.lookElsewhere('backup')).toBe(true);
 		expect(graphHistory.elsewhereSaid).toEqual({
-			words: 'The lines kept on backup are in the list below.',
+			words: 'One newer version to take in.',
 			refused: false
 		});
+		expect(graphHistory.standingAt('backup')).toEqual({ ahead: 0, behind: 1 });
+		expect(graphHistory.standingAt('origin')).toEqual({ ahead: 0, behind: 1 });
+	});
+
+	it('says nothing of the distance to a place it has not heard from', async () => {
+		const backup = new MemoryHistory(
+			new MemoryFiles({ root: '/Users/me/backup', store: new Map(), data: '/backup-data' }),
+			{ remotes: places }
+		);
+		places.keep('/Users/me/backup', backup);
+		await kept.addRemote('backup', '/Users/me/backup');
+		await graphHistory.keep('A first version');
+
+		await graphHistory.read();
+
+		expect(graphHistory.standingAt('backup')).toBeUndefined();
 	});
 
 	it('puts a folder where it is also kept, and has nothing to take back', async () => {

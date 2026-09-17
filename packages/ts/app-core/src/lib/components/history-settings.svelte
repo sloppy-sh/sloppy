@@ -4,7 +4,7 @@
 	// docs/ARCHITECTURE.md § "The vault's history".
 	import type { Credential } from '@sloppy/local';
 	import type { OwnedRef } from '@sloppy/types';
-	import { ConfirmModal, CopyButton } from '@sloppy/ui';
+	import { ChoicePill, ConfirmModal, CopyButton } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import { Label } from '@sloppy/ui/label';
@@ -37,6 +37,9 @@
 	let asking = $state(false);
 	let removing = $state('');
 	let refusedRemoval = $state<string | null>(null);
+
+	let askingWayIn = $state(false);
+	let letting = $state('');
 
 	let wayFor = $state<string | null>(null);
 	let wayKind = $state<Credential['kind']>('token');
@@ -89,6 +92,8 @@
 		asking = false;
 		removing = '';
 		refusedRemoval = null;
+		askingWayIn = false;
+		letting = '';
 		wayFor = null;
 		wayKind = 'token';
 		token = '';
@@ -201,10 +206,17 @@
 
 	/** Refusing leaves the question standing, with what the history said in it. */
 	async function removeThePlace(): Promise<void> {
+		const place = gitSettings.places.find((one) => one.name === removing);
 		began('places');
-		if (await gitSettings.removePlace(removing)) return;
-		refusedRemoval = gitSettings.says;
-		throw new Error(refusedRemoval ?? '');
+		if (!(await gitSettings.removePlace(removing))) {
+			refusedRemoval = gitSettings.says;
+			throw new Error(refusedRemoval ?? '');
+		}
+		const host = place?.host;
+		if (host !== undefined && place?.credential && gitSettings.placesAt(host) === 0) {
+			letting = host;
+			askingWayIn = true;
+		}
 	}
 
 	function openWayIn(place: PlaceKept): void {
@@ -252,32 +264,6 @@
 	}
 </script>
 
-{#snippet pill(
-	group: string,
-	value: string,
-	label: string,
-	checked: boolean,
-	pick: () => void,
-	off = false
-)}
-	<label class={off ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}>
-		<input
-			type="radio"
-			name={group}
-			{value}
-			{checked}
-			disabled={off}
-			onchange={pick}
-			class="peer sr-only"
-		/>
-		<span
-			class="inline-flex h-11 items-center rounded-md border border-border bg-card px-4 text-sm text-muted-foreground transition-colors duration-150 ease-out peer-checked:border-primary peer-checked:text-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background motion-reduce:transition-none"
-		>
-			{label}
-		</span>
-	</label>
-{/snippet}
-
 {#snippet trouble(section: Section)}
 	{#if where === section && (problem ?? gitSettings.says)}
 		<p class="text-sm text-destructive" role="alert">{problem ?? gitSettings.says}</p>
@@ -301,10 +287,10 @@
 			</p>
 			<form class="space-y-3" onsubmit={saveUser}>
 				<div class="space-y-1">
-					<Label for="history-git-name">Your name</Label>
+					<Label for="history-by-name">Your name</Label>
 					<Input
-						id="history-git-name"
-						name="git-name"
+						id="history-by-name"
+						name="by-name"
 						autocomplete="name"
 						value={user.name}
 						oninput={(event) => (typedUser = { ...user, name: event.currentTarget.value })}
@@ -312,10 +298,10 @@
 					/>
 				</div>
 				<div class="space-y-1">
-					<Label for="history-git-email">Your email</Label>
+					<Label for="history-by-email">Your email</Label>
 					<Input
-						id="history-git-email"
-						name="git-email"
+						id="history-by-email"
+						name="by-email"
 						type="email"
 						inputmode="email"
 						autocomplete="email"
@@ -341,21 +327,35 @@
 			<fieldset class="space-y-3">
 				<legend class="sr-only">How your versions are signed</legend>
 				<div class="flex flex-wrap gap-2">
-					{@render pill('signing', 'none', 'Not signed', chosen === 'none', () => choose('none'))}
-					{@render pill('signing', 'kept', 'With a key Sloppy keeps', chosen === 'kept', () =>
-						choose('kept')
-					)}
-					{@render pill('signing', 'file', 'With a key on this device', chosen === 'file', () =>
-						choose('file')
-					)}
-					{@render pill(
-						'signing',
-						'openpgp',
-						'With your OpenPGP program',
-						chosen === 'openpgp',
-						() => choose('openpgp'),
-						!desktop
-					)}
+					<ChoicePill
+						group="signing"
+						value="none"
+						label="Not signed"
+						checked={chosen === 'none'}
+						onpick={() => choose('none')}
+					/>
+					<ChoicePill
+						group="signing"
+						value="kept"
+						label="With a key Sloppy keeps"
+						checked={chosen === 'kept'}
+						onpick={() => choose('kept')}
+					/>
+					<ChoicePill
+						group="signing"
+						value="file"
+						label="With a key on this device"
+						checked={chosen === 'file'}
+						onpick={() => choose('file')}
+					/>
+					<ChoicePill
+						group="signing"
+						value="openpgp"
+						label="With your OpenPGP program"
+						checked={chosen === 'openpgp'}
+						disabled={!desktop}
+						onpick={() => choose('openpgp')}
+					/>
 				</div>
 			</fieldset>
 			{#if !desktop}
@@ -371,14 +371,18 @@
 						Paste this into GitHub or GitLab as a signing key, and what you keep here shows there as
 						yours.
 					</p>
-					<p
-						class="rounded-md border border-border bg-card p-3 font-mono text-xs break-all select-text"
-					>
-						{gitSettings.keptKey}
-					</p>
-					<CopyButton value={gitSettings.keptKey} label="Copy the key" />
+					<div class="flex items-start gap-2">
+						<p
+							class="min-w-0 flex-1 rounded-md border border-border bg-card p-3 font-mono text-xs break-all select-text"
+						>
+							{gitSettings.keptKey}
+						</p>
+						<CopyButton value={gitSettings.keptKey} label="Copy the key" />
+					</div>
 				{:else}
-					<p class="text-sm text-muted-foreground">Sloppy is keeping a key for this folder.</p>
+					<p class="text-sm text-muted-foreground">
+						Sloppy is making a key for this folder. It will be here to copy once it is ready.
+					</p>
 				{/if}
 			{/if}
 
@@ -523,20 +527,20 @@
 									<fieldset class="space-y-3">
 										<legend class="text-sm font-medium">How Sloppy gets into {host}</legend>
 										<div class="flex flex-wrap gap-2">
-											{@render pill(
-												`way-${place.name}`,
-												'token',
-												'With a token',
-												wayKind === 'token',
-												() => (wayKind = 'token')
-											)}
-											{@render pill(
-												`way-${place.name}`,
-												'ssh',
-												'With an ssh key',
-												wayKind === 'ssh',
-												() => (wayKind = 'ssh')
-											)}
+											<ChoicePill
+												group="way-{place.name}"
+												value="token"
+												label="With a token"
+												checked={wayKind === 'token'}
+												onpick={() => (wayKind = 'token')}
+											/>
+											<ChoicePill
+												group="way-{place.name}"
+												value="ssh"
+												label="With an ssh key"
+												checked={wayKind === 'ssh'}
+												onpick={() => (wayKind = 'ssh')}
+											/>
 										</div>
 									</fieldset>
 
@@ -576,20 +580,20 @@
 										<fieldset class="space-y-3">
 											<legend class="sr-only">Which key</legend>
 											<div class="flex flex-wrap gap-2">
-												{@render pill(
-													`key-${place.name}`,
-													'kept',
-													'The key Sloppy keeps',
-													sshKept,
-													() => (sshKept = true)
-												)}
-												{@render pill(
-													`key-${place.name}`,
-													'file',
-													'A key on this device',
-													!sshKept,
-													() => (sshKept = false)
-												)}
+												<ChoicePill
+													group="key-{place.name}"
+													value="kept"
+													label="The key Sloppy keeps"
+													checked={sshKept}
+													onpick={() => (sshKept = true)}
+												/>
+												<ChoicePill
+													group="key-{place.name}"
+													value="file"
+													label="A key on this device"
+													checked={!sshKept}
+													onpick={() => (sshKept = false)}
+												/>
 											</div>
 										</fieldset>
 										{#if !sshKept}
@@ -700,7 +704,18 @@
 		title="Stop keeping it at {removing}?"
 		description="This folder forgets where that is. What is kept there stays there, and what is here stays here."
 		confirmLabel="Stop keeping it there"
+		destructive={false}
 		refused={refusedRemoval}
 		onconfirm={removeThePlace}
+	/>
+
+	<ConfirmModal
+		bind:open={askingWayIn}
+		title="Forget the way into {letting}?"
+		description="You keep nothing at {letting} any more. Sloppy can let go of what you gave it to get in there, or hold on to it for the next time."
+		confirmLabel="Forget it"
+		cancelLabel="Hold on to it"
+		destructive={false}
+		onconfirm={() => forgetWayIn(letting)}
 	/>
 {/if}
