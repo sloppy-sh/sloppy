@@ -33,6 +33,23 @@ import { tags } from './tags.svelte.js';
  *  are further apart than a reader can hold in their head. */
 export const MOST_ON_CANVAS = MAX_FIELDS;
 
+/**
+ * What a person calls the project a folder holds the notes of, walking the
+ * graph's own path to the code from the folder the notes are in. Absent where
+ * the graph is nobody's project, and where the path climbs past the top.
+ */
+export function projectOf(folder: KnownFolder): string | undefined {
+	const toTheCode = folder.graph?.project;
+	if (toTheCode === undefined) return undefined;
+	const at = folder.root.split(/[\\/]/).filter(Boolean);
+	for (const step of toTheCode.split(/[\\/]/)) {
+		if (step === '' || step === '.') continue;
+		if (step !== '..') at.push(step);
+		else if (at.pop() === undefined) return undefined;
+	}
+	return at.at(-1);
+}
+
 export interface GraphsState {
 	loading: boolean;
 	/** True once a load has succeeded; stays true while a reload is in flight. */
@@ -218,6 +235,21 @@ class GraphsStore {
 		if (!vault?.openKnown) return;
 		await vault.openKnown(root);
 		await this.folderChanged();
+	}
+
+	/** Whether a project's own folder can be opened as a graph at all. */
+	get opensProjects(): boolean {
+		return runtime.vault()?.openProject !== undefined;
+	}
+
+	/** Open a project somebody names and read the notes kept in it. False is
+	 *  somebody who named none, which is not a failure. */
+	async openProject(): Promise<boolean> {
+		const vault = runtime.vault();
+		if (!vault?.openProject) return false;
+		if ((await vault.openProject()) === undefined) return false;
+		await this.folderChanged();
+		return true;
 	}
 
 	/** Begin a graph in a folder somebody names. False is somebody who named

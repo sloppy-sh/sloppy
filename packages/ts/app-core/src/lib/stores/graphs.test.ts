@@ -3,8 +3,8 @@ import type { GraphView, OwnedRef } from '@sloppy/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deviceStore } from '../device-store.js';
 import type { Credential, CredentialsAccess } from '@sloppy/local';
-import { initRuntime, type VaultAccess } from '../runtime.js';
-import { graphs, MOST_ON_CANVAS } from './graphs.svelte.js';
+import { initRuntime, type KnownFolder, type VaultAccess } from '../runtime.js';
+import { graphs, MOST_ON_CANVAS, projectOf } from './graphs.svelte.js';
 import { nodes } from './nodes.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
@@ -795,5 +795,91 @@ describe('two folders holding one graph', () => {
 
 		expect(nodes.region({ graph: GARDEN.ref })).toHaveLength(1);
 		expect(tags.of(GARDEN.ref)).toEqual([{ tag: 'seed', notes: 1 }]);
+	});
+});
+
+describe("a folder that is a project's own", () => {
+	const PROJECT = '/Users/me/sloppy/.sloppy';
+
+	function folder(project?: string): KnownFolder {
+		return {
+			root: PROJECT,
+			graph: { ref: GARDEN.ref, name: 'sloppy', owner: DID, ...(project ? { project } : {}) },
+			reachable: true
+		};
+	}
+
+	it('is named by the project whose code it sits beside', () => {
+		expect(projectOf(folder('..'))).toBe('sloppy');
+	});
+
+	it("is named by nothing where the graph is nobody's project", () => {
+		expect(projectOf(folder())).toBeUndefined();
+	});
+
+	it('walks the whole path the graph names, not one step of it', () => {
+		expect(projectOf({ ...folder('../..'), root: '/Users/me/sloppy/notes/.sloppy' })).toBe(
+			'sloppy'
+		);
+		expect(projectOf({ ...folder('../code'), root: '/Users/me/sloppy/.sloppy' })).toBe('code');
+	});
+
+	it('is named by nothing where the path climbs past the top', () => {
+		expect(projectOf({ ...folder('../../../../..'), root: '/one/.sloppy' })).toBeUndefined();
+	});
+
+	it('is opened by asking the shell for the project, and read from then on', async () => {
+		let picked = 0;
+		const vault: VaultAccess = {
+			folder: () => PROJECT,
+			graph: async () => GARDEN.ref,
+			asks: true,
+			open: async () => PROJECT,
+			known: async () => [folder('..')],
+			openKnown: async () => {},
+			forget: async () => {},
+			start: async () => PROJECT,
+			openProject: async () => {
+				picked += 1;
+				return PROJECT;
+			}
+		};
+		initRuntime({ apiHost: () => 'http://api.test', vault });
+		await graphs.load();
+
+		expect(graphs.opensProjects).toBe(true);
+		expect(await graphs.openProject()).toBe(true);
+		expect(picked).toBe(1);
+		expect(graphs.folders.map((one) => one.root)).toEqual([PROJECT]);
+	});
+
+	it('is not offered where the shell cannot reach a project', async () => {
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			vault: {
+				folder: () => undefined,
+				graph: async () => undefined,
+				asks: true,
+				open: async () => undefined
+			}
+		});
+
+		expect(graphs.opensProjects).toBe(false);
+		expect(await graphs.openProject()).toBe(false);
+	});
+
+	it("is nobody's folder where the person named none", async () => {
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			vault: {
+				folder: () => undefined,
+				graph: async () => undefined,
+				asks: true,
+				open: async () => undefined,
+				openProject: async () => undefined
+			}
+		});
+
+		expect(await graphs.openProject()).toBe(false);
 	});
 });

@@ -80,7 +80,12 @@ async function graphIn(files: Files, root: string): Promise<KnownFolder['graph']
 		const bytes = await files.at(root).read(GRAPH_FILE);
 		if (!bytes) return undefined;
 		const said = readGraphFile(bytes);
-		return { ref: `${said.owner}/${said.graph}`, name: said.name, owner: said.owner };
+		return {
+			ref: `${said.owner}/${said.graph}`,
+			name: said.name,
+			owner: said.owner,
+			...(said.project === undefined ? {} : { project: said.project })
+		};
 	} catch {
 		return undefined;
 	}

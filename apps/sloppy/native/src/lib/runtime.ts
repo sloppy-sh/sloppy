@@ -6,6 +6,8 @@
 
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import {
+	CONTAINER_DIR,
+	containerOf,
 	DeviceCredentials,
 	DeviceGitDefaults,
 	holdsAGraph,
@@ -121,6 +123,31 @@ async function openFolder(files: Files): Promise<string | undefined> {
 	return folder;
 }
 
+/**
+ * The folder somebody picks for a project is the project's ROOT; its notes are
+ * the ordinary vault inside it, started there where the project has none —
+ * docs/ARCHITECTURE.md § "A project's container".
+ */
+async function openProject(files: Files): Promise<string | undefined> {
+	const root = await files.pickFolder();
+	if (!root) return undefined;
+	const project = files.at(root);
+	const held = await containerOf(project);
+	const container = held ?? project.at(CONTAINER_DIR);
+	await open(files, container.root);
+	// A container is named for the project whose notes it holds, and never for
+	// the folder the notes sit in, which every project spells the same way.
+	if (!held) {
+		const api = serving(files);
+		await api.updateGraph(await api.graphHere(), { title: folderName(root) });
+	}
+	return container.root;
+}
+
+function folderName(root: string): string {
+	return root.split(/[\\/]/).filter(Boolean).at(-1) ?? root;
+}
+
 async function open(files: Files, folder: string): Promise<void> {
 	// A folder somebody chose is theirs and may be anywhere, so where it is is
 	// written down. The one a phone keeps its graphs in is asked for again each
@@ -226,6 +253,7 @@ export function initNativeRuntime(): void {
 									forget: (root: string) => forget(device, root),
 									start: () => openFolder(device),
 									// Absent where this shell has no way to bring a folder over.
+									openProject: () => openProject(device),
 									...(device.clone
 										? {
 												clone: (url: string, credential?: Credential) =>
