@@ -445,7 +445,8 @@
 			<h3 class="text-sm font-medium">Where else your graph is kept</h3>
 			<p class="text-sm text-muted-foreground">
 				Somewhere you can reach this folder from another device — your own host, or an account on
-				GitHub or GitLab. Naming one here sends nothing; the history is where you push and pull.
+				GitHub or GitLab. Naming one here sends nothing; the history is where you put yours there
+				and take newer ones in.
 			</p>
 
 			{#if gitSettings.places.length > 0}

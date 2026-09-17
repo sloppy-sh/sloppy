@@ -17,6 +17,7 @@
 	import { conversation } from '../stores/conversation.svelte.js';
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
+	import { gitSettings } from '../stores/git-settings.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { graphs } from '../stores/graphs.svelte.js';
@@ -118,6 +119,7 @@
 
 	function letGoOfWhatWasRead() {
 		graphHistory.clear();
+		gitSettings.clear();
 		nodes.clear();
 		offers.clear();
 		outlineSections.clear();
