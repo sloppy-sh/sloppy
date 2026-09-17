@@ -75,7 +75,16 @@ export type Credential =
  *  person leaving both to whatever their own git config says. */
 export type SigningConfig =
   | { kind: "none" }
-  | { kind: "ssh"; key: SshKey }
+  | {
+      kind: "ssh";
+      key: SshKey;
+      /** The public half of that key, as the one line a host takes it in —
+       *  what {@link History.signing} answers about a key this app keeps, so
+       *  somebody can paste it where their host wants it. Absent is a device
+       *  with no key to show yet, and nothing reads it on
+       *  {@link History.setSigning}. */
+      publicKey?: string;
+    }
   | { kind: "openpgp"; program?: string; keyId?: string };
 
 export interface Branch {

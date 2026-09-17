@@ -601,7 +601,9 @@ private data holds `identities.json` and the key file each `device` entry names;
 `vaults.json`, the list of folders a graph has been put in — a folder cannot remember where
 somebody put it; `git.json`, what a folder started here begins with (§ "The vault's
 history"); `credentials.json`, what this device was given to reach the hosts a person keeps
-folders on; and `signing.key`, the private half of the key this app signs with. What a
+folders on; and `signing.key` with `signing.key.pub` beside it, the two halves of the key
+this app signs with — both of them out of every folder, because the half a host is given is
+this device's to hand over rather than a graph's to carry. What a
 person is called is not there: a name and a picture are written into
 the owner block of every graph the writing identity owns (§ "A graph on disk"), so a graph
 says whose it is wherever it is opened, and there is no profile to read from anywhere else.
