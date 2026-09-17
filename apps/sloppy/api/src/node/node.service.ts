@@ -371,6 +371,10 @@ export class NodeService {
    * to write whatever the gate says. Handing the gate on is not writing, so a
    * request that does only that joins nobody to what the note carries, and one
    * that also writes is held to the gate for the writing it carries.
+   *
+   * Confirming is not writing either: `checked` records that the note was READ
+   * against a commit, so it is held to the gate and joins nobody —
+   * docs/ARCHITECTURE.md § "A project's container".
    */
   async update(
     did: string,
@@ -380,8 +384,9 @@ export class NodeService {
   ): Promise<NodeView> {
     const note = await this.nodes.find(did, ref);
     if (!note) throw new NotFoundException("That note is not here.");
-    const writes = Object.keys(request).some((field) => field !== "owner");
-    if (writes && !writable(note, did)) throw gatedElsewhere();
+    const fields = Object.keys(request).filter((field) => field !== "owner");
+    if (fields.length > 0 && !writable(note, did)) throw gatedElsewhere();
+    const writes = fields.some((field) => field !== "checked");
     const joined = writes ? withAuthor(note, did) : note;
     const updated = await this.nodes.patch(did, ref, {
       ...request,

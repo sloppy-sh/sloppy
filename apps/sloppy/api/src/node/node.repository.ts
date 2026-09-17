@@ -33,6 +33,7 @@ const PATCHABLE = [
   "appearance",
   "owner",
   "authors",
+  "checked",
 ] as const;
 
 /**
@@ -136,7 +137,7 @@ const BULK_WRITABLE = ["tags", "appearance", "authors"] as const;
  * names it, and what writes it is {@link withAuthor} over the note that was
  * there. */
 export type NodePatch = Partial<
-  Pick<Node, "title" | "tags" | "links" | "authors">
+  Pick<Node, "title" | "tags" | "links" | "authors" | "checked">
 > & {
   appearance?: NodeAppearance | null;
   /** Who gates the note's writing; `null` takes the gate off. */

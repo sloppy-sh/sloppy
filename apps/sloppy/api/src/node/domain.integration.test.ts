@@ -1220,6 +1220,72 @@ describe("the domain routes", () => {
     });
   });
 
+  describe("a note read against the code it is about", () => {
+    const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
+    const LATER = "a78dc8213b4c5d6e7f8091a2b3c4d5e6f7089abc";
+
+    scenario("is unconfirmed until its author says otherwise", async () => {
+      const note = await newNode(ada, {
+        title: "Nobody has read it",
+        tags: [],
+      });
+      expect(note.checked).toBeUndefined();
+    });
+
+    scenario("keeps the commit it was last read against", async () => {
+      const note = await newNode(ada, {
+        title: "Why the parser forks",
+        tags: [],
+      });
+
+      const confirmed = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        checked: COMMIT,
+      })) as NodeView;
+      expect(confirmed.checked).toBe(COMMIT);
+
+      const read = (await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView;
+      expect(read.checked).toBe(COMMIT);
+    });
+
+    scenario("changes nothing else about the note", async () => {
+      const note = await newNode(ada, {
+        title: "Still the same words",
+        tags: ["biology"],
+      });
+      await ok("PATCH", `/nodes/${at(note.ref)}`, ada, { checked: COMMIT });
+
+      const again = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        checked: LATER,
+      })) as NodeView;
+      expect(again.checked).toBe(LATER);
+      expect(again.title).toBe("Still the same words");
+      expect(again.tags).toEqual(["biology"]);
+      expect(again.address).toBe(note.address);
+    });
+
+    scenario("keeps it when a later write says nothing about it", async () => {
+      const note = await newNode(ada, { title: "Confirmed once", tags: [] });
+      await ok("PATCH", `/nodes/${at(note.ref)}`, ada, { checked: COMMIT });
+
+      const retitled = (await ok("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        title: "Confirmed once, renamed twice",
+      })) as NodeView;
+      expect(retitled.checked).toBe(COMMIT);
+    });
+
+    scenario("refuses a commit that names nothing", async () => {
+      const note = await newNode(ada, { title: "Never confirmed", tags: [] });
+
+      const answered = await call("PATCH", `/nodes/${at(note.ref)}`, ada, {
+        checked: "",
+      });
+      expect(answered.status).toBe(400);
+      expect(
+        ((await ok("GET", `/nodes/${at(note.ref)}`, ada)) as NodeView).checked,
+      ).toBeUndefined();
+    });
+  });
+
   describe("finding a note again", () => {
     /** A section of plain prose, one paragraph per line. */
     const prose = (...lines: string[]) => ({
