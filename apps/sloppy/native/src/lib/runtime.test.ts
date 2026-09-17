@@ -403,6 +403,7 @@ describe('the folders this device keeps its graphs in', () => {
 		picks = GARDEN;
 		picking = 'answers';
 		broughtOver.length = 0;
+		historyAsked.length = 0;
 		resetApi.mockClear();
 	});
 
@@ -437,6 +438,8 @@ describe('the folders this device keeps its graphs in', () => {
 
 		expect(registered.vault?.folder()).toBe(THESIS);
 		expect(servedFrom()).toBe(THESIS);
+		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
+		expect(historyAsked).toEqual([['history_head', THESIS]]);
 		expect(resetApi).toHaveBeenCalled();
 		// And it is the folder the next launch opens.
 		expect(await (await launch()).openRememberedVault()).toBe(THESIS);
