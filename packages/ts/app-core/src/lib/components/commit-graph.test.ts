@@ -26,12 +26,13 @@ function room(wide: boolean): void {
 	});
 }
 
-function draw(versions: DrawnVersion[], at?: string): void {
+function draw(versions: DrawnVersion[], at?: string, signs = false): void {
 	mounted = mount(CommitGraph, {
 		target,
 		props: {
 			versions,
 			...(at === undefined ? {} : { at }),
+			signs,
 			onOlder: () => {},
 			onOpen: (id: string) => opened.push(id)
 		}
@@ -159,6 +160,25 @@ describe('the picture on the page', () => {
 			'1',
 			'0.45'
 		]);
+	});
+
+	it('says a version went unsigned where the folder signs', () => {
+		draw([version('c', [])], undefined, true);
+
+		expect(target.textContent).toContain('Kept unsigned');
+	});
+
+	it('says nothing of a signature where the folder signs with none', () => {
+		draw([version('c', [])]);
+
+		expect(target.textContent).not.toContain('Kept unsigned');
+	});
+
+	it('says nothing of a signature on a version that carries one', () => {
+		draw([version('c', [], { signed: { by: 'a key', verified: true } })], undefined, true);
+
+		expect(target.textContent).not.toContain('Kept unsigned');
+		expect(target.textContent).toContain('Signed.');
 	});
 
 	it('names the branches at a version, and opens the one somebody taps', () => {

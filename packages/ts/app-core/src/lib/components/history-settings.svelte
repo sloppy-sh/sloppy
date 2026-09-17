@@ -3,7 +3,6 @@
 	// else the folder is kept and how this device gets in there —
 	// docs/ARCHITECTURE.md § "The vault's history".
 	import type { Credential } from '@sloppy/local';
-	import type { OwnedRef } from '@sloppy/types';
 	import { ChoicePill, ConfirmModal, CopyButton } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -65,14 +64,14 @@
 	);
 	const keyNamed = $derived(keyId ?? (signing.kind === 'openpgp' ? (signing.keyId ?? '') : ''));
 
-	let openFolder: OwnedRef | undefined;
+	let showing: string | undefined;
 
 	$effect(() => {
-		// The graph in front of somebody is the folder that is open, so another
-		// one opening is another folder's settings.
-		const folder = graphs.current;
-		if (folder === openFolder) return;
-		openFolder = folder;
+		// These are the open folder's, and two folders may hold one graph, so the
+		// root is what says another one has opened.
+		const folder = graphs.openFolder ?? graphs.current;
+		if (folder === showing) return;
+		showing = folder;
 		forgetWhatWasTyped();
 		void gitSettings.read();
 	});
@@ -362,6 +361,11 @@
 				<p class="text-sm text-muted-foreground">
 					Signing with an OpenPGP program takes a desktop. Sloppy can keep a key for you here
 					instead.
+				</p>
+			{/if}
+			{#if gitSettings.newestUnsigned}
+				<p class="text-sm text-muted-foreground">
+					The newest version in this folder was kept unsigned.
 				</p>
 			{/if}
 

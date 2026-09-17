@@ -26,6 +26,7 @@ import {
 import { SvelteMap } from 'svelte/reactivity';
 import { api } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
+import { runtime } from '../runtime.js';
 import { serverMessage } from './errors.js';
 import { session } from './session.svelte.js';
 
@@ -79,10 +80,14 @@ function inRegion(node: NodeView, { origin, maxDepth, graph }: NodeRegion): bool
 const WRITE_AFTER = 200;
 
 /** Kept under the graph each note is in, so one field's notes are read and
- *  written on their own. */
+ *  written on their own — and under the folder they were read out of, since two
+ *  folders on this device may hold one graph and neither one's notes are the
+ *  other's. */
 function kept(): DeviceArea | null {
 	const did = session.viewer?.did;
-	return did ? deviceStore.area(did, 'notes') : null;
+	if (!did) return null;
+	const folder = runtime.vault()?.folder();
+	return deviceStore.area(did, folder === undefined ? 'notes' : `notes ${folder}`);
 }
 
 class NodesStore {

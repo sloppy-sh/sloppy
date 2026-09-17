@@ -21,6 +21,7 @@
 	let {
 		versions,
 		at,
+		signs = false,
 		older = false,
 		busy = false,
 		onOlder,
@@ -30,6 +31,9 @@
 		versions: readonly DrawnVersion[];
 		/** The version the folder stands on, whose lane is drawn at full ink. */
 		at?: string;
+		/** Whether this folder signs what it keeps, which is what makes a version
+		 *  with no signature worth marking. */
+		signs?: boolean;
 		/** Whether there are older ones than these. */
 		older?: boolean;
 		busy?: boolean;
@@ -159,6 +163,8 @@
 						{#if version.signed}
 							<Check class="size-3 shrink-0" aria-hidden="true" />
 							<span class="sr-only">Signed.</span>
+						{:else if signs}
+							<span class="shrink-0">Kept unsigned ·</span>
 						{/if}
 						{version.when}{version.author ? ` · ${version.author}` : ''}
 					</span>

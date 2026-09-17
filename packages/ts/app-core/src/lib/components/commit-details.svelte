@@ -11,6 +11,7 @@
 		version,
 		springsFrom = [],
 		linesHere = [],
+		signs = false,
 		busy = false,
 		says = null,
 		onRead,
@@ -26,6 +27,9 @@
 		/** The branches at it that are kept here and are not the one the folder is
 		 *  already on, which are the ones it can be put on. */
 		linesHere?: readonly string[];
+		/** Whether this folder signs what it keeps, which is what makes a version
+		 *  with no signature worth marking. */
+		signs?: boolean;
 		busy?: boolean;
 		says?: string | null;
 		/** Absent where the graph is not in front of anybody to draw it on. */
@@ -62,6 +66,8 @@
 				<p class="font-mono text-xs break-all text-muted-foreground select-text">
 					{version.signed.by}
 				</p>
+			{:else if signs}
+				<p class="text-sm text-muted-foreground">Kept unsigned.</p>
 			{/if}
 			{#if version.refs.length > 0}
 				<p class="flex flex-wrap items-center gap-1.5 pt-1">

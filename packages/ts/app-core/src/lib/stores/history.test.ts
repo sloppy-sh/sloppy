@@ -314,6 +314,21 @@ describe('a version of the graph', () => {
 	});
 });
 
+describe('a folder that signs what it keeps', () => {
+	// What makes a version with no signature one that could not be signed rather
+	// than one nobody meant to sign.
+	it('says so, and says nothing where it signs with nothing', async () => {
+		await graphHistory.keep('A first version');
+		await graphHistory.read();
+		expect(graphHistory.signs).toBe(false);
+
+		await kept.setSigning({ kind: 'openpgp', program: 'gpg' });
+		await graphHistory.read();
+
+		expect(graphHistory.signs).toBe(true);
+	});
+});
+
 describe('the graph an act leaves in front of somebody', () => {
 	it('is read again, so the notes drawn are the line the folder is on', async () => {
 		const under = await api.createNode({ title: 'Where it starts' });
