@@ -1472,6 +1472,9 @@ node:{ created_by: <did>, id: <ulid> }
   tags        string[]  normalized, deduplicated, sorted — @sloppy/types' TagsSchema
   links       ref[]     non-genealogical associative links, drawn by hand
   references  ref[]?    the notes its own blocks cite, derived; absent is none derived
+  checked     string?   the commit its author last read its reasoning against, opaque
+                        here; absent is a note nobody has confirmed (§ "A project's
+                        container")
   published   bool
   appearance  object?   the look its author gave the mark; absent is unstyled
   deleted_at  iso?      when its author deleted it; absent is a note that is there
@@ -1604,8 +1607,9 @@ what they wrote last.** A search names its hits by `SearchHit` — the note, the
 graph that address is read in, the title, and the writing around what matched — and reaches
 the caller's own notes and what they hold of somebody else's, `held` saying which. Recent is
 ordered by when a note's SECTIONS were last written, never by `node.updated_at`: that column
-moves only when a title, tags, links or a look change, so a note somebody spent an afternoon
-writing into would otherwise rank as untouched since the day it was made.
+moves when a title, tags, links, a look or a confirmation are written and not when the
+writing is, so a note somebody spent an afternoon writing into would otherwise rank as
+untouched since the day it was made.
 
 **What a document counts as a citation is a key, not a list of element kinds.** `citedNotes`
 in `@sloppy/types` reads an `attrs` key named `note` holding a `<did>/<ulid>`, wherever it
@@ -1618,7 +1622,8 @@ two answers cannot drift: one function, in `@sloppy/types`, and `snapshot.ts` sh
 receives and has no field for them, so a pulled copy draws its `links` alone — fewer lines
 than the writing it carries. DESIGN.md § Edges states that as the gap it is; closing it is
 the publishing milestone's, and costs deciding what a peer may be told about a note they
-cannot follow.
+cannot follow. It carries no `checked` either, for a plainer reason: the commit it names is
+in a history the reader has not got (§ "A project's container").
 
 publication:{ created_by: <did>, id: <ulid> }
   created_by    did
@@ -2263,6 +2268,16 @@ names a commit in a history the reader does not have, and nothing a held copy co
 resolves one. Confirming a note
 writes `checked` and nothing else: no section changes, no author joins, nothing moves in the
 genealogy.
+
+**The hosted store keeps it and never reads it.** `checked` is a column on `node`
+(§ "Data model") holding whatever the folder's history calls a commit, written by `PATCH
+/nodes/:did/:localId` like any other field on a note and by nothing else: there is no route
+for confirming, because confirming is a write on the note. It is held to the note's gate —
+whoever may write the note is who may confirm it — and it joins nobody to the note's authors,
+which is the one way that write differs from every other. It goes out with an archive and
+comes back with one, so a graph carried between a server and a folder keeps what its author
+has read. A merge between two copies of one graph settles on neither: a note the person was
+not asked about keeps the `checked` the copy they are keeping has, the way its look does.
 
 **The genealogy, refs, addresses, aliases, retired numbers and the section opener are
 untouched by all of this.** A container is a vault, a note in it is a note, and an anchor is
