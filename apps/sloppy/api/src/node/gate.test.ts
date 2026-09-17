@@ -27,6 +27,7 @@ const DID = "did:syr:z6MkAda";
 const OTHER = "did:syr:z6MkBram";
 const HOME = `${DID}/01ARZ3NDEKTSV4RRFFQ69G5HMM` as OwnedRef;
 const AT = "2026-01-01T00:00:00.000Z";
+const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
 const EMPTY: BlockDocument = { type: "doc", content: [] };
 
 const media = {} as MediaService;
@@ -130,6 +131,18 @@ describe("a write on a note somebody else gates", () => {
     const patched: Node[] = [];
     await service(patched).update(DID, ref, { owner: null }, undefined);
     expect(patched).toHaveLength(1);
+  });
+
+  it("is refused a confirmation too, which is a write on its row", async () => {
+    const patched: Node[] = [];
+    const written = service(patched).update(
+      DID,
+      ref,
+      { checked: COMMIT },
+      undefined,
+    );
+    await expect(written).rejects.toBeInstanceOf(ForbiddenException);
+    expect(patched).toEqual([]);
   });
 
   it("is refused where the request taking the gate off also writes", async () => {
@@ -248,6 +261,24 @@ describe("a write on an open note somebody else's writing is in", () => {
     const { service, written } = patching();
     await service.update(DID, ref, { owner: OTHER }, undefined);
     expect(written[0]).not.toHaveProperty("authors");
+  });
+
+  it("joins nobody where the request only confirms it still holds", async () => {
+    const { service, written } = patching();
+    await service.update(DID, ref, { checked: COMMIT }, undefined);
+    expect(written[0].checked).toBe(COMMIT);
+    expect(written[0]).not.toHaveProperty("authors");
+  });
+
+  it("joins the writer where the same request also writes", async () => {
+    const { service, written } = patching();
+    await service.update(
+      DID,
+      ref,
+      { checked: COMMIT, title: "Confirmed and renamed" },
+      undefined,
+    );
+    expect(written[0].authors).toEqual([OTHER, DID]);
   });
 });
 

@@ -36,6 +36,7 @@ interface Written {
   aliases?: Address[];
   title: string;
   tags?: string[];
+  checked?: string;
   sections?: { ulid: string; text: string }[];
 }
 
@@ -62,6 +63,7 @@ function vaultOf(notes: readonly Written[]): Vault {
       title: note.title,
       tags: note.tags ?? [],
       links: [],
+      ...(note.checked === undefined ? {} : { checked: note.checked }),
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
     } as unknown as NodeView;
@@ -102,6 +104,9 @@ function byRef(notes: readonly VaultNote[]): Map<OwnedRef, VaultNote> {
 function held(notes: readonly VaultNote[], of: string): VaultNote {
   return notes.find((note) => note.ref === ref(of)) as VaultNote;
 }
+
+const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
+const LATER = "a78dc8213b4c5d6e7f8091a2b3c4d5e6f7089abc";
 
 const osmosis: Written = {
   ulid: FIRST,
@@ -273,6 +278,40 @@ describe("the two copies settled into one graph", () => {
     expect(held(settled(two, conflictsBetween(two), []), FIRST).tags).toEqual([
       "biology",
     ]);
+  });
+
+  it("takes the archive's confirmation for a note this graph has none on", () => {
+    const two = copies([osmosis], [{ ...osmosis, checked: COMMIT }]);
+
+    expect(held(settled(two, conflictsBetween(two), []), FIRST).checked).toBe(
+      COMMIT,
+    );
+  });
+
+  it("takes the archive's confirmation whichever copy the person kept", () => {
+    const two = copies(
+      [{ ...osmosis, tags: ["biology"], checked: COMMIT }],
+      [{ ...osmosis, tags: ["seed"], checked: LATER }],
+    );
+    const conflicts = conflictsBetween(two);
+
+    expect(held(settled(two, conflicts, []), FIRST).checked).toBe(LATER);
+    expect(
+      held(
+        settled(two, conflicts, [
+          { kind: "note", ref: ref(FIRST), keep: "theirs", sections: [] },
+        ]),
+        FIRST,
+      ).checked,
+    ).toBe(LATER);
+  });
+
+  it("keeps this graph's confirmation where the archive carries none", () => {
+    const two = copies([{ ...osmosis, checked: COMMIT }], [osmosis]);
+
+    expect(held(settled(two, conflictsBetween(two), []), FIRST).checked).toBe(
+      COMMIT,
+    );
   });
 
   it("takes the tags of the copy the person kept", () => {

@@ -55,6 +55,34 @@ describe('the shapes on offer', () => {
 		}
 	});
 
+	it('names every shape once, and leaves no two at one id', () => {
+		const ids = NOTE_TEMPLATES.map((template) => template.id);
+		expect(new Set(ids).size).toBe(ids.length);
+		expect(new Set(NOTE_TEMPLATES.map((one) => one.name)).size).toBe(ids.length);
+	});
+
+	it('offers the three shapes a project is reasoned in, each asking three things', () => {
+		expect(shape('qec').sections.map((one) => one.heading)).toEqual([
+			'The question',
+			'The evidence',
+			'The conclusion'
+		]);
+		expect(shape('aji').sections.map((one) => one.heading)).toEqual([
+			'The assumption',
+			'The justification',
+			'The implication'
+		]);
+		expect(shape('walkthrough').sections).toHaveLength(3);
+	});
+
+	// A shape leaves no trace of itself: the sections are the whole of it, so
+	// nothing a template writes says which template anybody reached for.
+	it('leaves nothing behind but the sections', () => {
+		for (const template of NOTE_TEMPLATES) {
+			expect(Object.keys(template).sort()).toEqual(['id', 'name', 'sections']);
+		}
+	});
+
 	it('opens the sketch on a drawing surface with nothing drawn on it', () => {
 		const sketch = templateSections(shape('claim')).at(-1)?.content[1];
 		expect(sketch?.type).toBe('ink');

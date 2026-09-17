@@ -272,6 +272,23 @@ describe("a note as a version froze it", () => {
     expect(JSON.stringify(written)).not.toContain("PICTURE");
   });
 
+  // docs/ARCHITECTURE.md § "A project's container": a confirmation names a
+  // commit in a history the reader has not got.
+  it("keeps the commit its author confirmed it against at home", () => {
+    const written = publishedNodeOf(
+      note({
+        address: "1a1",
+        depth: 3,
+        checked: "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708",
+      }),
+      region,
+      NOTHING,
+    );
+
+    expect(written).not.toHaveProperty("checked");
+    expect(JSON.stringify(written)).not.toContain("9c6eb7e");
+  });
+
   it("sends no look for a mark nobody shaped", () => {
     expect(
       publishedNodeOf(note({ address: "1a1", depth: 3 }), region, NOTHING),

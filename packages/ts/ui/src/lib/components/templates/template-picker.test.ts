@@ -3,7 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import TemplatePicker from './template-picker.svelte';
-import type { NoteTemplate, TemplateId } from './templates.js';
+import { NOTE_TEMPLATES, type NoteTemplate, type TemplateId } from './templates.js';
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
@@ -53,7 +53,7 @@ describe('offering a note a shape', () => {
 	it('puts the shape that fits this note above the rest, and keeps the rest', () => {
 		open({ suggested: 'synthesis' });
 		expect(rows()[1]).toBe('Synthesis');
-		expect(rows()).toHaveLength(6);
+		expect(rows()).toHaveLength(NOTE_TEMPLATES.length + 1);
 	});
 
 	// The note on screen may hold writing that has not been saved yet, so the copy

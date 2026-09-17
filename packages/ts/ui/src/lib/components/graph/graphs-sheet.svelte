@@ -18,6 +18,9 @@
 		 *  a second folder holds the same graph and the name alone tells nobody
 		 *  which row is which. */
 		folderName?: string;
+		/** The project whose notes it is, as a person calls the project's own
+		 *  folder. Absent where the graph is nobody's project. */
+		project?: string;
 		/** Whose graph it is, where that is somebody other than the reader. */
 		by?: string;
 	}
@@ -43,6 +46,7 @@
 	// on the canvas, and the way to open another. DESIGN.md § "Several graphs on
 	// one canvas".
 	import Check from '@lucide/svelte/icons/check';
+	import FolderCode from '@lucide/svelte/icons/folder-code';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -72,6 +76,7 @@
 		onOpen,
 		onOpenFolder,
 		onStart,
+		onOpenProject,
 		onClone,
 		onForget,
 		onRename,
@@ -115,6 +120,10 @@
 		/** Ask somebody for a folder to keep a graph in. Absent leaves a graph
 		 *  something started by naming it here. */
 		onStart?: () => Promise<void>;
+		/** Ask somebody for a project's own folder and read the notes kept in it.
+		 *  Absent where this device cannot reach a project's folder, and nothing
+		 *  about opening one is offered. */
+		onOpenProject?: () => Promise<void>;
 		/** Bring a copy of a graph kept somewhere else onto this device. Absent
 		 *  where this device has no way to. */
 		onClone?: (url: string) => Promise<void>;
@@ -228,6 +237,11 @@
 	async function startFolder(): Promise<void> {
 		if (!onStart) return;
 		if (await act(() => onStart())) open = false;
+	}
+
+	async function openProject(): Promise<void> {
+		if (!onOpenProject) return;
+		if (await act(() => onOpenProject())) open = false;
 	}
 
 	async function bringOne(): Promise<void> {
@@ -349,7 +363,11 @@
 							</span>
 							<span class="min-w-0 flex-1">
 								<span class="block truncate">{nameOf(graph)}</span>
-								{#if twice && graph.folderName}
+								{#if graph.project && graph.project !== nameOf(graph)}
+									<span class="block truncate text-xs text-muted-foreground">
+										{graph.project}
+									</span>
+								{:else if twice && graph.folderName}
 									<span class="block truncate text-xs text-muted-foreground">
 										{graph.folderName}
 									</span>
@@ -444,6 +462,18 @@
 					Choose a folder
 				</Button>
 			</section>
+			{#if onOpenProject}
+				<section class="space-y-2 border-t border-border pt-4">
+					<h3 class="text-sm font-medium">Open a project</h3>
+					<p class="text-xs text-muted-foreground">
+						Notes that sit with the code they are about. Choose the project's own folder.
+					</p>
+					<Button variant="outline" class="h-11 w-full" disabled={working} onclick={openProject}>
+						<FolderCode class="size-4" />
+						Choose a project
+					</Button>
+				</section>
+			{/if}
 			{#if onClone}
 				<section class="space-y-2 border-t border-border pt-4">
 					<h3 class="text-sm font-medium">Bring one from an address</h3>

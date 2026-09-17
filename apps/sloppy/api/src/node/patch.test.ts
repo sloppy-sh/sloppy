@@ -5,6 +5,7 @@ interface Row {
   title?: string;
   tags?: string[];
   appearance?: { ring_weight?: string } | null;
+  checked?: string;
 }
 
 describe("the SET clause a patch writes", () => {
@@ -45,6 +46,25 @@ describe("the SET clause a patch writes", () => {
     const set = replacement<Row>(["title", "tags"], {});
     expect(set.clause).toBe("updated_at = $now");
     expect(set.vars.now).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("leaves the time where it was where the patch only writes an unmoving column", () => {
+    const set = replacement<Row>(["title", "checked"], { checked: "9c6eb7e" }, [
+      "checked",
+    ]);
+    expect(set.clause).toBe("checked = $changes.checked");
+    expect(set.vars.changes).toEqual({ checked: "9c6eb7e" });
+  });
+
+  it("stamps the time where the same patch also writes a column that moves", () => {
+    const set = replacement<Row>(
+      ["title", "checked"],
+      { title: "Read again", checked: "9c6eb7e" },
+      ["checked"],
+    );
+    expect(set.clause).toBe(
+      "title = $changes.title, checked = $changes.checked, updated_at = $now",
+    );
   });
 
   it("names no column outside the ones it was handed", () => {

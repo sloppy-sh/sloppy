@@ -26,6 +26,8 @@ import {
 
 const DID = "did:syr:z6MkAvaAvaAvaAvaAvaAvaAvaAvaAvaAva" as DidSyr;
 const GRAPH: OwnedRef = `${DID}/01JGRAPH2ND000000000000000`;
+const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
+const LATER = "a78dc8213b4c5d6e7f8091a2b3c4d5e6f7089abc";
 
 function ref(nth: number): OwnedRef {
   return `${DID}/01JNKTE${String(nth).padStart(19, "0")}`;
@@ -118,6 +120,26 @@ describe("the rows an archive's notes land as", () => {
     expect(written.nodes[0].links).toEqual([ref(2)]);
     expect(written.aliases.map((one) => one.address)).toEqual(["1b"]);
     expect(written.aliases[0].note).toBe(ref(1));
+  });
+
+  it("keeps the commit a note was confirmed against, and none where it says none", () => {
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({
+          ref: ref(1),
+          checked: "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708",
+        }),
+        note({ ref: ref(2) }),
+      ]),
+      new Map(),
+    );
+
+    expect(written.nodes[0].checked).toBe(
+      "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708",
+    );
+    expect(written.nodes[1]).not.toHaveProperty("checked");
   });
 
   it("drops an alias at an address a note arriving is actually at", () => {
@@ -364,6 +386,63 @@ describe("the rows a merge lands as", () => {
 
     expect(write.writing).toEqual([ref(1)]);
     expect(write.nodes.map((one) => ownedRefFrom(one.id))).toEqual([ref(1)]);
+  });
+
+  it("confirms a note the graph keeps without writing the note", () => {
+    const notes = placed([note({ ref: ref(1), checked: COMMIT })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ held: [row({ ref: ref(1) })] }),
+    );
+
+    expect(write.writing).toEqual([]);
+    expect(write.blocks).toEqual([]);
+    expect(write.confirming).toEqual([{ note: ref(1), checked: COMMIT }]);
+  });
+
+  it("confirms a note the graph keeps a reading of its own on", () => {
+    const notes = placed([note({ ref: ref(1), checked: LATER })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ held: [row({ ref: ref(1), checked: COMMIT })] }),
+    );
+
+    expect(write.writing).toEqual([]);
+    expect(write.confirming).toEqual([{ note: ref(1), checked: LATER }]);
+  });
+
+  it("leaves a note the graph keeps where the two say the same reading", () => {
+    const notes = placed([note({ ref: ref(1), checked: COMMIT })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ held: [row({ ref: ref(1), checked: COMMIT })] }),
+    );
+
+    expect(write.writing).toEqual([]);
+    expect(write.confirming).toEqual([]);
+  });
+
+  it("says the reading of a note it is writing on the row itself", () => {
+    const notes = placed([note({ ref: ref(1), checked: COMMIT })]);
+
+    const write = mergeRows(
+      DID,
+      GRAPH,
+      notes,
+      now({ arriving: new Set([ref(1)]) }),
+    );
+
+    expect(write.confirming).toEqual([]);
+    expect(write.nodes[0].checked).toBe(COMMIT);
   });
 
   it("writes a note the graph keeps where the merge put something above it", () => {

@@ -33,6 +33,16 @@ import { tags } from './tags.svelte.js';
  *  are further apart than a reader can hold in their head. */
 export const MOST_ON_CANVAS = MAX_FIELDS;
 
+/**
+ * What a person calls the project a folder holds the notes of. The folder on
+ * the list is the project's own root, so it is what that folder is called;
+ * absent where the graph says it is nobody's project.
+ */
+export function projectOf(folder: KnownFolder): string | undefined {
+	if (folder.graph?.project === undefined) return undefined;
+	return folder.root.split(/[\\/]/).filter(Boolean).at(-1);
+}
+
 export interface GraphsState {
 	loading: boolean;
 	/** True once a load has succeeded; stays true while a reload is in flight. */
@@ -218,6 +228,21 @@ class GraphsStore {
 		if (!vault?.openKnown) return;
 		await vault.openKnown(root);
 		await this.folderChanged();
+	}
+
+	/** Whether a project's own folder can be opened as a graph at all. */
+	get opensProjects(): boolean {
+		return runtime.vault()?.openProject !== undefined;
+	}
+
+	/** Open a project somebody names and read the notes kept in it. False is
+	 *  somebody who named none, which is not a failure. */
+	async openProject(): Promise<boolean> {
+		const vault = runtime.vault();
+		if (!vault?.openProject) return false;
+		if ((await vault.openProject()) === undefined) return false;
+		await this.folderChanged();
+		return true;
 	}
 
 	/** Begin a graph in a folder somebody names. False is somebody who named
