@@ -185,16 +185,28 @@ fn ssh_key_of(key: &SshKey, data: &Path) -> Result<(PathBuf, PublicKey), History
     }
 }
 
+/// Both halves of a key somebody named by either of them. `user.signingkey` is
+/// as often the public half as the private one — it is what a host asks a
+/// person to paste — and the other half is the file beside it under the same
+/// name.
+pub(crate) fn halves(at: &Path) -> (PathBuf, PathBuf) {
+    let named = at.to_string_lossy().into_owned();
+    match named.strip_suffix(".pub") {
+        Some(private) => (PathBuf::from(private), at.to_path_buf()),
+        None => (at.to_path_buf(), PathBuf::from(format!("{named}.pub"))),
+    }
+}
+
 /// The public half of a key somebody named, whichever half they named.
 fn public_half(at: &Path) -> Result<PublicKey, HistoryError> {
-    let beside = PathBuf::from(format!("{}.pub", at.to_string_lossy()));
-    for path in [at.to_path_buf(), beside] {
+    let (private, public) = halves(at);
+    for path in [public, private] {
         if let Ok(held) = fs::read_to_string(&path) {
             if let Ok(public) = PublicKey::from_openssh(&held) {
                 return Ok(public);
             }
-            if let Ok(private) = PrivateKey::from_openssh(held.as_bytes()) {
-                return Ok(private.public_key().clone());
+            if let Ok(key) = PrivateKey::from_openssh(held.as_bytes()) {
+                return Ok(key.public_key().clone());
             }
         }
     }
@@ -369,8 +381,10 @@ pub fn sign(repo: &Repository, data: &Path, content: &str) -> Result<Option<Stri
     }
 }
 
+/// The half that signs, of the key somebody named by either half.
 fn read_private(at: &Path) -> Result<PrivateKey, HistoryError> {
-    let held = fs::read(at).map_err(|_| no_such_key())?;
+    let (private, _) = halves(at);
+    let held = fs::read(&private).map_err(|_| no_such_key())?;
     let key = PrivateKey::from_openssh(&held).map_err(|_| no_such_key())?;
     if key.is_encrypted() {
         return Err(HistoryError::new(
@@ -656,6 +670,44 @@ TOIB
             read_private(&theirs.join("locked")).unwrap_err().said(),
             "That key is locked with a passphrase, which Sloppy cannot ask for yet. Choose one without it, or let Sloppy keep a key for you."
         );
+    }
+
+    /// A host asks a person for the public half, so that is the half their git
+    /// config names as often as not — and a folder set up either way signs.
+    #[test]
+    fn a_key_named_by_either_half_signs_with_the_half_that_signs() {
+        let theirs = scratch("their-public-half");
+        let key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).expect("a key");
+        let at = theirs.join("id_ed25519");
+        fs::write(
+            &at,
+            key.to_openssh(LineEnding::LF).expect("the key").as_bytes(),
+        )
+        .expect("their key file");
+        let public = theirs.join("id_ed25519.pub");
+        write_public(&public, key.public_key()).expect("the half a host is given");
+
+        for named in [public, at] {
+            let root = vault();
+            let data = private_for(&root);
+            let repo = crate::history::at(&root).expect("the repository");
+            write(
+                &repo,
+                &root,
+                &data,
+                &SigningConfig::Ssh {
+                    key: SshKey::File {
+                        path: named.to_string_lossy().into_owned(),
+                    },
+                },
+            )
+            .expect("the choice");
+            drop(repo);
+
+            let signed = made(&root, "A graph").signature.expect("a signature");
+            assert_eq!(signed.by, key.fingerprint(HashAlg::Sha256).to_string());
+            assert!(signed.verified);
+        }
     }
 
     /// The claim is that the program a person's git config names is the one

@@ -9,6 +9,7 @@
 use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use git2::build::RepoBuilder;
 use git2::{
@@ -75,34 +76,79 @@ fn turned_away() -> HistoryError {
 /// What a person is told when an act over the wire did not go through. Which
 /// call failed and what the library called it is this file's business; what
 /// they can do about it is theirs.
-fn tripped(error: git2::Error) -> HistoryError {
+fn tripped(error: git2::Error, asked: &Asked) -> HistoryError {
     match (error.code(), error.class()) {
         (ErrorCode::Auth | ErrorCode::Certificate, _) => turned_away(),
         (ErrorCode::NotFastForward, _) => pull_first(),
+        // A host that asked this device who it was is a host that is there. So
+        // where the way in ran out, or where what went wrong after the asking
+        // was the host's own answer, the credential is what to look at and the
+        // address is not.
+        _ if asked.ran_out() => turned_away(),
+        (_, ErrorClass::Http | ErrorClass::Ssh) if asked.happened() => turned_away(),
         (ErrorCode::NotFound, _)
         | (_, ErrorClass::Net | ErrorClass::Os | ErrorClass::Ssh | ErrorClass::Http) => nowhere(),
         _ => error.into(),
     }
 }
 
+/// How far a host's asking who is there got. A callback's own refusal reaches
+/// the caller as a library error with no class on it, so what the asking came
+/// to is kept here rather than read back off that error.
+#[derive(Clone, Copy, Default, PartialEq)]
+enum Asking {
+    #[default]
+    Never,
+    Answered,
+    RanOut,
+}
+
+#[derive(Clone, Default)]
+struct Asked(Rc<Cell<Asking>>);
+
+impl Asked {
+    fn happened(&self) -> bool {
+        self.0.get() != Asking::Never
+    }
+
+    fn ran_out(&self) -> bool {
+        self.0.get() == Asking::RanOut
+    }
+
+    fn answered(&self) {
+        self.0.set(Asking::Answered);
+    }
+
+    /// Nothing more to offer, and the sentence libgit2 carries back for it —
+    /// which a person never sees, because `tripped` says it in their words.
+    fn ran_dry(&self, said: &str) -> git2::Error {
+        self.0.set(Asking::RanOut);
+        git2::Error::from_str(said)
+    }
+}
+
 /// How this device answers a host that asks who is there. Nothing is
 /// remembered between two acts: what is here came in with the call.
-fn asked_for<'a>(credential: Option<&'a Credential>, data: &'a Path) -> RemoteCallbacks<'a> {
+fn asked_for<'a>(
+    credential: Option<&'a Credential>,
+    data: &'a Path,
+    asked: &Asked,
+) -> RemoteCallbacks<'a> {
     let mut callbacks = RemoteCallbacks::new();
-    let offered = Cell::new(0u8);
+    let asked = asked.clone();
     callbacks.credentials(move |_url, from_url, allowed| {
-        // A handful of these is a host asking for a name and then for a key.
-        // Past that it is turning down what it was given, and offering the same
-        // thing again is a loop rather than a way in.
-        if offered.get() > 4 {
-            return Err(git2::Error::from_str("nothing else to offer"));
-        }
-        offered.set(offered.get() + 1);
         let user = from_url.unwrap_or(DEFAULT_USER);
+        // A host takes the name on its own first, which is not yet it asking
+        // for a way in.
         if allowed.contains(CredentialType::USERNAME) {
             return Cred::username(user);
         }
-        match credential {
+        if asked.happened() {
+            // Asking again for what it was just given is a host turning that
+            // down, and the same answer twice is a loop rather than a way in.
+            return Err(asked.ran_dry("what this was given was turned down"));
+        }
+        let offer = match credential {
             Some(Credential::Token { username, token })
                 if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) =>
             {
@@ -113,8 +159,10 @@ fn asked_for<'a>(credential: Option<&'a Credential>, data: &'a Path) -> RemoteCa
                 Cred::ssh_key(user, public.as_deref(), &private, None)
             }
             _ if allowed.contains(CredentialType::DEFAULT) => Cred::default(),
-            _ => Err(git2::Error::from_str("nothing to offer")),
-        }
+            _ => return Err(asked.ran_dry("nothing to offer")),
+        };
+        asked.answered();
+        offer
     });
     callbacks
 }
@@ -128,10 +176,8 @@ fn key_files(key: &SshKey, data: &Path) -> (PathBuf, Option<PathBuf>) {
             (private, Some(public))
         }
         SshKey::File { path } => {
-            let at = PathBuf::from(path);
-            let beside = PathBuf::from(format!("{}.pub", at.to_string_lossy()));
-            let public = beside.exists().then_some(beside);
-            (at, public)
+            let (private, public) = crate::signing::halves(Path::new(path));
+            (private, public.exists().then_some(public))
         }
     }
 }
@@ -209,12 +255,13 @@ fn take_from(
     credential: Option<&Credential>,
 ) -> Result<(), HistoryError> {
     let mut remote = repo.find_remote(name).map_err(|_| nothing_called(name))?;
+    let asked = Asked::default();
     let mut how = FetchOptions::new();
-    how.remote_callbacks(asked_for(credential, data));
+    how.remote_callbacks(asked_for(credential, data, &asked));
     let nothing: [&str; 0] = [];
     remote
         .fetch(&nothing, Some(&mut how), None)
-        .map_err(tripped)
+        .map_err(|error| tripped(error, &asked))
 }
 
 pub fn pull(
@@ -235,7 +282,7 @@ pub fn pull(
         let Some(theirs) = head_of(&repo, &tracking) else {
             return Ok(Merged::whole());
         };
-        let taken = tracking[name.len() + 1..].to_owned();
+        let taken = theirs_in(&tracking, &name).to_owned();
         history::lay(&repo, root, theirs)?;
         repo.reference(
             &format!("refs/heads/{taken}"),
@@ -248,7 +295,7 @@ pub fn pull(
         return Ok(Merged::whole());
     }
 
-    let tracking = format!("{name}/{branch}");
+    let tracking = tracked(&repo, &branch, &name);
     let Some(theirs) = head_of(&repo, &tracking) else {
         return Ok(Merged::whole());
     };
@@ -274,22 +321,24 @@ pub fn push(
     // What the remote has that this branch has not taken in would be written
     // over, and the side holding it is the side that says so.
     let refused: Cell<Option<String>> = Cell::new(None);
+    let tracking = tracked(&repo, &branch, &name);
     let want = format!("refs/heads/{branch}");
+    let onto = format!("refs/heads/{}", theirs_in(&tracking, &name));
+    let asked = Asked::default();
     let mut how = PushOptions::new();
-    let mut callbacks = asked_for(credential, data);
+    let mut callbacks = asked_for(credential, data, &asked);
     callbacks.push_update_reference(|_reference, status| {
         refused.set(status.map(str::to_owned));
         Ok(())
     });
     how.remote_callbacks(callbacks);
     remote
-        .push(&[format!("{want}:{want}")], Some(&mut how))
-        .map_err(tripped)?;
+        .push(&[format!("{want}:{onto}")], Some(&mut how))
+        .map_err(|error| tripped(error, &asked))?;
     if let Some(said) = refused.take() {
         return Err(turned_down(&said));
     }
 
-    let tracking = format!("{name}/{branch}");
     repo.reference(
         &format!("refs/remotes/{tracking}"),
         mine,
@@ -314,12 +363,13 @@ pub fn clone_into(
             "There is already something in that folder. Choose an empty one.",
         ));
     }
+    let asked = Asked::default();
     let mut how = FetchOptions::new();
-    how.remote_callbacks(asked_for(credential, data));
+    how.remote_callbacks(asked_for(credential, data, &asked));
     let repo = RepoBuilder::new()
         .fetch_options(how)
         .clone(url, into)
-        .map_err(tripped)?;
+        .map_err(|error| tripped(error, &asked))?;
     history::keep_out(&repo)?;
     Ok(())
 }
@@ -364,6 +414,25 @@ fn which(repo: &Repository, branch: &str, named: Option<&str>) -> Result<String,
         return Err(nothing_called(&name));
     }
     Ok(name)
+}
+
+/// The branch on a remote that a local one takes from and writes back to: the
+/// one it follows where it follows one of that remote's, else the one there of
+/// the same name. Somebody else's git points a branch wherever they like, and
+/// this folder is as often one of theirs as one this app started.
+fn tracked(repo: &Repository, branch: &str, remote: &str) -> String {
+    let here = format!("{remote}/");
+    repo.branch_upstream_name(&format!("refs/heads/{branch}"))
+        .ok()
+        .and_then(|held| std::str::from_utf8(&held).map(str::to_owned).ok())
+        .and_then(|followed| followed.strip_prefix("refs/remotes/").map(str::to_owned))
+        .filter(|followed| followed.starts_with(&here))
+        .unwrap_or_else(|| format!("{here}{branch}"))
+}
+
+/// What the remote calls the branch, out of what this folder calls it there.
+fn theirs_in<'a>(tracking: &'a str, remote: &str) -> &'a str {
+    &tracking[remote.len() + 1..]
 }
 
 fn head_of(repo: &Repository, tracking: &str) -> Option<Oid> {
@@ -785,6 +854,118 @@ mod tests {
             .find(|one| one.commit.id == theirs.id)
             .expect("what the remote had");
         assert_eq!(held.refs, vec!["origin/main".to_owned()]);
+    }
+
+    /// Somebody else's git points a branch at whichever of a host's branches
+    /// they like, and a folder set up that way is one this app opens.
+    #[test]
+    fn a_branch_following_one_of_another_name_takes_from_it_and_writes_back_to_it() {
+        let root = vault();
+        let data = private_for(&root);
+        write(&root, "notes/a.md", "one");
+        made(&root, "A graph");
+        let (there, url) = elsewhere("host");
+        add(&root, "origin", &url).expect("the remote");
+        push(&root, &data, None, None).expect("the push");
+
+        let copy = scratch("copy");
+        clone_into(&url, &copy, &data, None).expect("the copy");
+        {
+            let repo = Repository::open(&copy).expect("the repository");
+            let at = repo
+                .head()
+                .expect("the branch")
+                .peel_to_commit()
+                .expect("a commit");
+            repo.branch("my-notes", &at, false)
+                .expect("their branch")
+                .set_upstream(Some("origin/main"))
+                .expect("what it follows");
+            repo.set_head("refs/heads/my-notes").expect("what it is on");
+        }
+
+        write(&root, "notes/b.md", "two");
+        made(&root, "My note");
+        push(&root, &data, None, None).expect("the push");
+
+        assert!(
+            pull(&copy, &private_for(&copy), None, None)
+                .expect("the pull")
+                .merged
+        );
+        assert_eq!(read(&copy, "notes/b.md"), "two");
+        assert_eq!(crate::history::status(&copy).expect("the status").behind, 0);
+
+        write(&copy, "notes/c.md", "three");
+        let theirs = made(&copy, "Their note");
+        push(&copy, &private_for(&copy), None, None).expect("their push");
+        assert_eq!(
+            head_there(&there, "main").as_deref(),
+            Some(theirs.id.as_str())
+        );
+        assert!(head_there(&there, "my-notes").is_none());
+    }
+
+    /// A host that answers every request by asking who is there — which is
+    /// what one taking a name and a token does until it is given the right
+    /// one.
+    fn asking_who_is_there() -> String {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+
+        let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let at = listening.local_addr().expect("the port").to_string();
+        std::thread::spawn(move || {
+            for held in listening.incoming() {
+                let Ok(mut stream) = held else { continue };
+                let Ok(same) = stream.try_clone() else {
+                    continue;
+                };
+                let mut asking = BufReader::new(same);
+                let mut line = String::new();
+                while asking.read_line(&mut line).unwrap_or(0) > 0 {
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                    line.clear();
+                }
+                let _ = stream.write_all(
+                    b"HTTP/1.1 401 Unauthorized\r\n\
+                      WWW-Authenticate: Basic realm=\"notes\"\r\n\
+                      Content-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+            }
+        });
+        at
+    }
+
+    /// A host that is there and will not take what it was given is a different
+    /// thing from an address with nothing at it, and a person is told which.
+    #[test]
+    fn a_host_that_turns_this_away_says_to_look_at_what_it_was_given() {
+        let root = vault();
+        let data = private_for(&root);
+        made(&root, "A graph");
+        let url = format!("http://{}/notes.git", asking_who_is_there());
+        add(&root, "origin", &url).expect("the remote");
+
+        let wrong = Credential::Token {
+            username: Some("ada".to_owned()),
+            token: "not the one".to_owned(),
+        };
+        for said in [
+            fetch(&root, &data, "origin", None).unwrap_err(),
+            fetch(&root, &data, "origin", Some(&wrong)).unwrap_err(),
+            push(&root, &data, None, None).unwrap_err(),
+            push(&root, &data, None, Some(&wrong)).unwrap_err(),
+            pull(&root, &data, None, Some(&wrong)).unwrap_err(),
+            clone_into(&url, &scratch("hopeful"), &data, Some(&wrong)).unwrap_err(),
+        ] {
+            assert_eq!(
+                said.said(),
+                "That address would not let Sloppy in. Check what it was given and try again."
+            );
+        }
     }
 
     #[test]

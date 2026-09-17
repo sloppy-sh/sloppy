@@ -992,8 +992,8 @@ pub fn merge_in(root: &Path, data: &Path, name: &str) -> Result<Merged, HistoryE
 }
 
 /// Take a commit into the one the folder is on, whether it is a branch here or
-/// what a remote had when this folder last heard — `called` is what the commit
-/// a settled merge makes says it took in.
+/// what a remote had when this folder last heard — `name` is what the commit a
+/// settled merge makes says it took in.
 pub(crate) fn merge_commit(
     repo: &mut Repository,
     root: &Path,
