@@ -8,6 +8,7 @@ import {
 	MemoryHistory,
 	readCredentials,
 	readGitDefaults,
+	type CommitPage,
 	type History,
 	type SigningConfig
 } from '@sloppy/local';
@@ -57,6 +58,27 @@ class KeepsAKey extends MemoryHistory {
 		}
 		return { ...config, publicKey: this.held };
 	}
+}
+
+/** A shell whose folder is set to sign but signs nothing: the program it names
+ *  is not one this device can run, and a version is kept unsigned. */
+class KeptUnsigned extends MemoryHistory {
+	override async log(limit: number, cursor?: string): Promise<CommitPage> {
+		const page = await super.log(limit, cursor);
+		return {
+			...page,
+			commits: page.commits.map((one) => {
+				const unsigned = { ...one };
+				delete unsigned.signature;
+				return unsigned;
+			})
+		};
+	}
+}
+
+/** Something in the folder for a version to be kept of. */
+async function write(path: string, said: string): Promise<void> {
+	await folder().write(path, new TextEncoder().encode(said));
 }
 
 function shellKeeping(over: History | undefined, holds = true): void {
@@ -345,6 +367,44 @@ describe('how the versions kept here are signed', () => {
 		expect(screen()).not.toContain('takes a desktop');
 		const openpgp = target.querySelector<HTMLInputElement>('input[type="radio"][value="openpgp"]');
 		expect(openpgp?.disabled).toBe(false);
+	});
+
+	// A folder set up on a computer, opened where its program is not: what it
+	// keeps here is kept unsigned rather than refused, and the setting stays.
+	it('says the program could not be run where a version went unsigned', async () => {
+		const kept = new KeptUnsigned(folder());
+		await kept.setSigning({ kind: 'openpgp', program: 'gpg' });
+		await write('notes/1.md', 'A first note');
+		await kept.commit('A first version');
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		expect(screen()).toContain('could not run your OpenPGP program');
+	});
+
+	it('says nothing about a program where what was kept here was signed', async () => {
+		const kept = new MemoryHistory(folder());
+		await kept.setSigning({ kind: 'openpgp', program: 'gpg' });
+		await write('notes/1.md', 'A first note');
+		await kept.commit('A first version');
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		expect(screen()).not.toContain('could not run your OpenPGP program');
+	});
+
+	it('says nothing about a program where the folder signs with a key', async () => {
+		const kept = new KeptUnsigned(folder());
+		await kept.setSigning({ kind: 'ssh', key: { kind: 'kept' } });
+		await write('notes/1.md', 'A first note');
+		await kept.commit('A first version');
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		expect(screen()).not.toContain('could not run your OpenPGP program');
 	});
 });
 

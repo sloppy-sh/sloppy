@@ -165,6 +165,16 @@
 		return graph.ref !== undefined && graph.ref === current;
 	}
 
+	/** What forgetting this row is called, folder and all: two rows may hold one
+	 *  graph, and the graph's name alone would name them both. */
+	function forgetting(graph: GraphChoice): string {
+		const folder = graph.folderName;
+		const name = nameOf(graph);
+		return folder === undefined || folder === name
+			? `Forget ${name}`
+			: `Forget ${name} in ${folder}`;
+	}
+
 	/** Whether another row holds the same graph, which is what makes the name on
 	 *  its own no longer say which folder a row means. */
 	function alsoElsewhere(graph: GraphChoice): boolean {
@@ -361,6 +371,8 @@
 							>
 								{up ? 'On the canvas' : 'Show it too'}
 							</Button>
+						{/if}
+						{#if here || !twice}
 							<Button
 								variant="ghost"
 								size="icon"
@@ -375,21 +387,21 @@
 							>
 								<Pencil class="size-4" />
 							</Button>
-							{#if onRemove && graph.folder === undefined && ref !== home && graph.by === undefined}
-								<Button
-									variant="ghost"
-									size="icon"
-									class="size-9 shrink-0 text-muted-foreground"
-									aria-label={`Close ${nameOf(graph)}`}
-									onclick={() => {
-										closeRefused = null;
-										closing = graph;
-										confirming = true;
-									}}
-								>
-									<Trash2 class="size-4" />
-								</Button>
-							{/if}
+						{/if}
+						{#if onRemove && (folder !== undefined ? here : ref !== home && graph.by === undefined)}
+							<Button
+								variant="ghost"
+								size="icon"
+								class="size-9 shrink-0 text-muted-foreground"
+								aria-label={`Close ${nameOf(graph)}`}
+								onclick={() => {
+									closeRefused = null;
+									closing = graph;
+									confirming = true;
+								}}
+							>
+								<Trash2 class="size-4" />
+							</Button>
 						{/if}
 					{/if}
 					{#if onForget && graph.folder !== undefined && !here && (naming === null || naming.ref !== ref)}
@@ -398,7 +410,7 @@
 							variant="ghost"
 							class="h-9 shrink-0 rounded-full text-xs text-muted-foreground"
 							disabled={working}
-							aria-label={`Forget ${nameOf(graph)}`}
+							aria-label={forgetting(graph)}
 							onclick={() => void act(() => onForget(folder))}
 						>
 							Forget

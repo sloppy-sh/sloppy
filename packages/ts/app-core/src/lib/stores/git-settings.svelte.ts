@@ -29,21 +29,23 @@ export interface PlaceKept extends Remote {
 	credential?: Credential;
 }
 
-/** The acts a shell that can be told any of this has. */
-type HistoryTold = Required<
-	Pick<
-		History,
-		| 'gitUser'
-		| 'setGitUser'
-		| 'signing'
-		| 'setSigning'
-		| 'remotes'
-		| 'addRemote'
-		| 'renameRemote'
-		| 'setRemoteUrl'
-		| 'removeRemote'
-	>
->;
+/** The acts a shell that can be told any of this has, beside the ones every
+ *  history has. */
+type HistoryTold = History &
+	Required<
+		Pick<
+			History,
+			| 'gitUser'
+			| 'setGitUser'
+			| 'signing'
+			| 'setSigning'
+			| 'remotes'
+			| 'addRemote'
+			| 'renameRemote'
+			| 'setRemoteUrl'
+			| 'removeRemote'
+		>
+	>;
 
 /** The history in front of somebody where it answers all of these, and nothing
  *  where it answers none — the interface says a shell that defines one of them
@@ -98,6 +100,7 @@ class GitSettingsStore {
 	#user = $state<GitUser | undefined>(undefined);
 	#signing = $state<SigningConfig>({ kind: 'none' });
 	#places = $state<PlaceKept[]>([]);
+	#unsigned = $state(false);
 	#busy = $state(false);
 	#says = $state<string | null>(null);
 	#epoch = 0;
@@ -144,6 +147,12 @@ class GitSettingsStore {
 		return this.#places;
 	}
 
+	/** Whether the last version kept here went unsigned though this folder signs
+	 *  with a program — one this device could not run. */
+	get couldNotSign(): boolean {
+		return this.#signing.kind === 'openpgp' && this.#unsigned;
+	}
+
 	/** How many of the places kept are reached at that host, which is how many a
 	 *  way in serves. */
 	placesAt(host: string): number {
@@ -155,6 +164,7 @@ class GitSettingsStore {
 		this.#user = undefined;
 		this.#signing = { kind: 'none' };
 		this.#places = [];
+		this.#unsigned = false;
 		this.#busy = false;
 		this.#says = null;
 	}
@@ -168,16 +178,18 @@ class GitSettingsStore {
 		this.#busy = true;
 		this.#says = null;
 		try {
-			const [user, signing, remotes, held] = await Promise.all([
+			const [user, signing, remotes, kept, held] = await Promise.all([
 				history.gitUser(),
 				history.signing(),
 				history.remotes(),
+				history.log(1),
 				runtime.credentials()?.list() ?? Promise.resolve<HeldCredential[]>([])
 			]);
 			const { credentialFor, remoteHost } = await local();
 			if (at !== this.#epoch) return;
 			this.#user = user;
 			this.#signing = signing;
+			this.#unsigned = kept.commits.length > 0 && kept.commits[0].signature === undefined;
 			this.#places = remotes.map((remote) => {
 				const host = remoteHost(remote.url);
 				const credential = credentialFor(held, remote.url);

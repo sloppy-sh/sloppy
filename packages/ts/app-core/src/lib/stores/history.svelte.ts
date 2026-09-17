@@ -131,6 +131,7 @@ class HistoryStore {
 	#behind = $state(0);
 	#upstream = $state<string | undefined>(undefined);
 	#elsewhere = $state<ElsewhereSaid | null>(null);
+	#signs = $state(false);
 	/** The line a merge was taking in, while any of it is still unsettled. */
 	#taking = $state<{ name: string; head: string } | null>(null);
 	/** Notes the history has already been asked to settle, while their sections
@@ -190,6 +191,13 @@ class HistoryStore {
 	/** Whether the picture holds older versions than the ones read so far. */
 	get morePicture(): boolean {
 		return this.#drawnCursor !== undefined;
+	}
+
+	/** Whether this folder signs what it keeps, which is what makes a version
+	 *  with no signature one that could not be signed rather than one nobody
+	 *  meant to sign. */
+	get signs(): boolean {
+		return this.#signs;
 	}
 
 	/** Where else this folder is kept, each under the name a person reads it by:
@@ -300,6 +308,7 @@ class HistoryStore {
 		this.#behind = 0;
 		this.#upstream = undefined;
 		this.#elsewhere = null;
+		this.#signs = false;
 		this.#taken.clear();
 		this.#taking = null;
 	}
@@ -319,13 +328,14 @@ class HistoryStore {
 		this.#busy = true;
 		this.#says = null;
 		try {
-			const [status, page, branches, commit, picture, remotes] = await Promise.all([
+			const [status, page, branches, commit, picture, remotes, signing] = await Promise.all([
 				history.status(),
 				history.log(PAGE),
 				history.branches(),
 				history.currentCommit(),
 				history.graph?.(PAGE),
-				history.remotes?.()
+				history.remotes?.(),
+				history.signing?.()
 			]);
 			if (at !== this.#epoch) return;
 			this.#line = status.branch;
@@ -340,6 +350,7 @@ class HistoryStore {
 			this.#picture = picture?.commits ?? [];
 			this.#drawnCursor = picture?.cursor;
 			this.#remotes = remotes ?? [];
+			this.#signs = signing !== undefined && signing.kind !== 'none';
 			const places = await Promise.all(
 				(remotes ?? []).map(async (one) => ({ name: one.name, at: await spelled(one) }))
 			);

@@ -82,7 +82,7 @@
 		{/if}
 		<div class="flex flex-col gap-2 sm:flex-row">
 			<Button
-				variant="ghost"
+				variant="outline"
 				class="h-11 sm:flex-1"
 				disabled={busy}
 				onclick={() => onLook(at.name)}

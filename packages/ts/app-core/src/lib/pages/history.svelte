@@ -333,6 +333,7 @@
 	<CommitGraph
 		versions={drawnVersions}
 		at={graphHistory.at}
+		signs={graphHistory.signs}
 		older={graphHistory.morePicture}
 		busy={graphHistory.busy}
 		onOlder={() => void graphHistory.readOlderPicture()}
@@ -375,6 +376,7 @@
 		version={opened}
 		{springsFrom}
 		linesHere={linesAt}
+		signs={graphHistory.signs}
 		busy={graphHistory.busy}
 		says={graphHistory.says}
 		onRead={onShowVersion ? (id) => void showVersion(id) : undefined}

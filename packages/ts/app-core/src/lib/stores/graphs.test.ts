@@ -5,13 +5,16 @@ import { deviceStore } from '../device-store.js';
 import type { Credential, CredentialsAccess } from '@sloppy/local';
 import { initRuntime, type VaultAccess } from '../runtime.js';
 import { graphs, MOST_ON_CANVAS } from './graphs.svelte.js';
+import { nodes } from './nodes.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
+import { tags } from './tags.svelte.js';
 import {
 	archiving,
 	AT,
 	mergePreview,
 	DID,
+	node,
 	ref,
 	useFakeApi,
 	VIEWER,
@@ -738,5 +741,59 @@ describe('the folders this device keeps its graphs in', () => {
 		graphs.clear();
 
 		expect(graphs.folders).toEqual([]);
+	});
+});
+
+describe('two folders holding one graph', () => {
+	const ONE = '/Users/me/garden';
+	const COPY = '/Users/me/garden-copy';
+
+	/** A shell keeping one graph in two folders — a copy of it beside the
+	 *  original — where only the root tells the two apart. */
+	function bothAt(): VaultAccess & { opened(): string } {
+		let open = ONE;
+		const held = { ref: GARDEN.ref, name: 'Garden', owner: DID };
+		return {
+			folder: () => open,
+			graph: async () => GARDEN.ref,
+			asks: true,
+			open: async () => open,
+			opened: () => open,
+			async openKnown(root: string) {
+				open = root;
+			},
+			known: async () => [
+				{ root: ONE, graph: held, reachable: true },
+				{ root: COPY, graph: held, reachable: true }
+			]
+		};
+	}
+
+	beforeEach(() => {
+		nodes.clear();
+		tags.clear();
+	});
+
+	it('draw the notes in the folder now open, not the ones read out of the last', async () => {
+		const vault = bothAt();
+		initRuntime({ apiHost: () => 'http://api.test', vault });
+		const inCopy = [node(1, '1', { graph: GARDEN.ref }), node(2, '2', { graph: GARDEN.ref })];
+		api.on('GET /nodes', () => (vault.opened() === ONE ? inCopy.slice(0, 1) : inCopy));
+		api.on('GET /nodes/tags', () => [{ tag: 'seed', notes: vault.opened() === ONE ? 1 : 2 }]);
+		await graphs.load();
+		await graphs.readOpenFolder();
+		await nodes.load({ graph: GARDEN.ref });
+		await tags.load(GARDEN.ref);
+		expect(nodes.region({ graph: GARDEN.ref })).toHaveLength(1);
+
+		await graphs.enterFolder(COPY);
+
+		expect(nodes.region({ graph: GARDEN.ref })).toHaveLength(2);
+		expect(tags.of(GARDEN.ref)).toEqual([{ tag: 'seed', notes: 2 }]);
+
+		await graphs.enterFolder(ONE);
+
+		expect(nodes.region({ graph: GARDEN.ref })).toHaveLength(1);
+		expect(tags.of(GARDEN.ref)).toEqual([{ tag: 'seed', notes: 1 }]);
 	});
 });

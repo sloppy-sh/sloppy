@@ -315,7 +315,9 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 	let brought: string[];
 	let started: number;
 
-	async function openFolders(over: { onClone?: boolean; open?: string } = {}): Promise<void> {
+	async function openFolders(
+		over: { onClone?: boolean; open?: string; refuse?: string } = {}
+	): Promise<void> {
 		if (mounted) unmount(mounted, { outro: false });
 		document.body.innerHTML = '';
 		target = document.createElement('div');
@@ -343,7 +345,9 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 				onRename: () => Promise.resolve(),
 				onRemove: (ref: OwnedRef) => {
 					closed.push(ref);
-					return Promise.resolve();
+					return over.refuse === undefined
+						? Promise.resolve()
+						: Promise.reject(new Error(over.refuse));
 				},
 				onOpenFolder: (folder: string) => {
 					opened.push(folder);
@@ -416,12 +420,29 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 		expect(find('Forget gone')).not.toBeNull();
 	});
 
-	// Ending a graph is its owner's, and a row that says whose it is says that
-	// too rather than offering an act that will be refused.
-	it('offers no way to close a folder somebody else owns', async () => {
+	// Emptying a folder is an act in the folder that is open, so that is the one
+	// row it is offered on.
+	it('offers to close the folder that is open, and no other', async () => {
 		await openFolders();
 
+		expect(find('Close My graph')).not.toBeNull();
 		expect(find('Close The thesis')).toBeNull();
+		expect(find('Close gone')).toBeNull();
+	});
+
+	// Ending a graph is its owner's, and the folder is what says whose it is.
+	it('says whose a folder is where somebody else asks to close it', async () => {
+		await openFolders({
+			open: THESIS_FOLDER,
+			refuse: "This graph is Ada Lovelace's. Only they can close it."
+		});
+
+		find('Close The thesis')?.click();
+		await settle();
+		confirm('Close it')?.click();
+		await settle();
+
+		expect(document.body.textContent).toContain("This graph is Ada Lovelace's.");
 	});
 
 	it('starts a graph by asking for a folder, not by asking for a name', async () => {
@@ -466,7 +487,7 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 		expect(find('Forget The thesis')).toBeNull();
 	});
 
-	it('offers one removal on a row, and it is the one that leaves the folder alone', async () => {
+	it('offers one removal on a row that is not open, and it leaves the folder alone', async () => {
 		await openFolders();
 
 		expect(find('Close The thesis')).toBeNull();
@@ -515,11 +536,19 @@ describe('two folders holding one graph', () => {
 				onForget: (folder: string) => {
 					forgotten.push(folder);
 					return Promise.resolve();
+				},
+				onRemove: (ref: OwnedRef) => {
+					closed.push(ref);
+					return Promise.resolve();
 				}
 			}
 		});
 		await settle();
 	}
+
+	beforeEach(() => {
+		closed = [];
+	});
 
 	it('tells the two rows apart by the folder each one is', async () => {
 		await openBoth();
@@ -540,8 +569,9 @@ describe('two folders holding one graph', () => {
 	it('forgets the folder that is not open, and opens it by its own row', async () => {
 		await openBoth();
 
-		expect(find('Forget Garden')).not.toBeNull();
-		find('Forget Garden')?.click();
+		expect(find('Forget Garden in garden')).not.toBeNull();
+		expect(find('Forget Garden in garden-copy')).toBeNull();
+		find('Forget Garden in garden')?.click();
 		await settle();
 		expect(forgotten).toEqual([ONE]);
 
@@ -552,12 +582,33 @@ describe('two folders holding one graph', () => {
 		expect(opened).toEqual([ONE]);
 	});
 
-	it('offers no act that cannot say which of the two folders it means', async () => {
+	// Naming a graph and emptying it are acts in the folder that is open, so
+	// they are that row's; nothing is offered on a row that cannot say which of
+	// the two it would reach.
+	it('keeps the acts on the row of the folder that is open', async () => {
 		await openBoth();
 
-		expect(find('Rename Garden')).toBeNull();
-		expect(find('Settings for Garden')).toBeNull();
+		const rows = [...document.querySelectorAll('li')];
+		expect(rows[1].querySelector('[aria-label="Rename Garden"]')).not.toBeNull();
+		expect(rows[1].querySelector('[aria-label="Close Garden"]')).not.toBeNull();
+		expect(rows[0].querySelector('[aria-label="Rename Garden"]')).toBeNull();
+		expect(rows[0].querySelector('[aria-label="Close Garden"]')).toBeNull();
+	});
+
+	it('puts neither of them up beside the other, which one canvas cannot tell apart', async () => {
+		await openBoth();
+
 		expect(find('Show Garden beside this one')).toBeNull();
-		expect(find('Close Garden')).toBeNull();
+	});
+
+	it('closes the folder that is open', async () => {
+		await openBoth();
+
+		find('Close Garden')?.click();
+		await settle();
+		confirm('Close it')?.click();
+		await settle();
+
+		expect(closed).toEqual([HOME]);
 	});
 });

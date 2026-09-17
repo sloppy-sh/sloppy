@@ -16,6 +16,16 @@ let picked: string[];
 
 const screen = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
 
+/** Whether the act is drawn as a button: a ground of its own or an edge, rather
+ *  than bare words. */
+function drawnAsAButton(words: string): boolean {
+	const one = [...document.querySelectorAll('button')].find(
+		(button) => button.textContent?.trim() === words
+	);
+	const drawn = (one?.className ?? '').split(/\s+/);
+	return drawn.includes('border') || drawn.some((held) => /^bg-/.test(held));
+}
+
 function show(over: Record<string, unknown> = {}): void {
 	mounted = mount(SyncControls, {
 		target,
@@ -96,6 +106,16 @@ describe('the places a folder is also kept', () => {
 		show({ ahead: 0, behind: 0 });
 
 		expect(screen()).toContain('Everything here is there too.');
+	});
+
+	// At phone width the three stack, and one drawn without an edge reads as a
+	// heading over the two under it.
+	it('draws each act as a button rather than as words over the others', () => {
+		show();
+
+		for (const words of ['Look for newer versions', 'Take them in', 'Put yours there']) {
+			expect(drawnAsAButton(words)).toBe(true);
+		}
 	});
 
 	it('takes every act to the place that is picked', () => {

@@ -24,8 +24,10 @@ import { api } from '../api.js';
 import { type DeviceArea, deviceStore } from '../device-store.js';
 import { type KnownFolder, runtime } from '../runtime.js';
 import { serverMessage } from './errors.js';
+import { nodes } from './nodes.svelte.js';
 import { prefs } from './prefs.svelte.js';
 import { session } from './session.svelte.js';
+import { tags } from './tags.svelte.js';
 
 /** How many graphs may stand on one canvas at once. Past a handful the fields
  *  are further apart than a reader can hold in their head. */
@@ -249,9 +251,15 @@ class GraphsStore {
 		await this.reload().catch(() => []);
 	}
 
+	/** Two folders may hold one graph, so nothing read out of the last one is a
+	 *  copy of anything in this one — however the refs compare. */
 	private async folderChanged(): Promise<void> {
 		await this.readOpenFolder(true);
 		await Promise.all([this.readFolders(true), this.reload().catch(() => [])]);
+		await Promise.all([
+			nodes.readAgain(),
+			...this.onCanvas.map((graph) => tags.reload(graph).catch(() => {}))
+		]);
 	}
 
 	/** Deduped and idempotent: every surface may call it on mount. */
