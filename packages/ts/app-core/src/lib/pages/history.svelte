@@ -333,6 +333,7 @@
 	<CommitGraph
 		versions={drawnVersions}
 		at={graphHistory.at}
+		on={graphHistory.line}
 		signs={graphHistory.signs}
 		older={graphHistory.morePicture}
 		busy={graphHistory.busy}

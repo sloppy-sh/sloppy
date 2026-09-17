@@ -765,20 +765,35 @@ graph, but the states it has been in and the lines they run along. It is drawn o
 History surface, and it is a picture rather than a list because branches are a shape — where
 one left another and where they came back together is not a thing a column of rows can say.
 
-**It is drawn in ink, never in hue.** Colour belongs to the tag question and stays there
-(§ "The graph's colour language"), so a lane is `--graph-ink`: the branch the folder is on
-at full ink, every other lane at half. **A branch's identity is its label at its head, not a
-colour** — a lane picked out in blue teaches a reader a legend they have to hold, and the
-name is already the answer. Merge lines join at the commit that carried both, in the same
-ink, and a commit nobody is at is a mark on its lane and nothing more.
+**It is a table, one dense row per version.** The lanes, then the message with the branches
+at it beside it, then when it was kept, who kept it, and the short name it is cited by. A
+branch kept here is a chip with a border; one kept somewhere else is spelled `origin/main`
+and drawn dashed, so where a branch lives is read from form rather than from a second colour
+(§ "The graph's colour language"). The version the folder stands on is an open mark on its
+lane, and a version nobody is at is a filled one and nothing more.
+
+**Lanes are drawn in hue, and this is the one surface outside the canvas that spends it.**
+Which of a dozen lines a row belongs to is the question this picture exists to answer, and
+over hundreds of rows ink weight cannot carry it — a reader following one line down the page
+has to be able to see where it went. So a lane borrows a slot from the same eight the canvas
+lends a selected tag (§ "Hue — the tags you selected, and only those"), taken by lane rather
+than by branch, wrapping onto the first once a page runs past eight. Each slot is measured to
+3:1 against every surface on every theme in `token-contrast.test.ts`, because a lane carries
+its meaning alone. **A branch's identity is still its label at its head, not its hue** — the
+hue says which lane, which is why spending it teaches nobody a legend to hold, and a line
+that ends hands its hue back to the next one that starts. Nothing about the canvas changes:
+there, still, nothing is coloured until the reader selects a tag.
 
 **Newest at the top, paged, and a commit never above what it springs from.** That order is
 the contract `graph()` answers on, so the picture is drawn from what it is handed rather
-than sorted again on the page.
+than sorted again on the page. Which lane a version falls into, and the curves that fork out
+of it and come back together at it, are Git Graph's (mhutchie/vscode-git-graph, MIT),
+reimplemented in `commit-lanes.ts`.
 
-**Phone first, which means the lanes collapse.** Where there is no room for a lane per
-branch, the picture is one column with a merge mark where two came together, and the labels
-stay — a name at a head is what a person reads a branch by, so it is the last thing to go.
+**Phone first, which means the trailing columns fold and the lanes stay.** Where there is no
+room for four columns beside the lanes, when it was kept, who kept it and its short name drop
+to a second, quieter line under the message. The lanes and the labels never drop: the shape
+and the name at a head are the two things somebody opened this to read.
 Tapping a commit opens its details as a sheet (§ Layout, the one modal): the message, who
 made it, whether it is signed and by which key, what it springs from, the branches at it,
 and the acts — read the graph as it was, compare it with now, branch from here, switch to a

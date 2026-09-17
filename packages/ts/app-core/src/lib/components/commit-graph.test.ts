@@ -1,9 +1,10 @@
-// The lanes a page of versions falls into, and what the picture draws them as.
+// The table the history is drawn as.
 
+import { TAG_HUE_SLOTS } from '@sloppy/types';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type DrawnVersion, placed } from './commit-graph.js';
-import CommitGraph from './commit-graph.svelte';
+import type { DrawnVersion } from './commit-graph.js';
+import CommitGraph, { HUES } from './commit-graph.svelte';
 
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
@@ -13,7 +14,7 @@ function version(id: string, parents: string[], over: Partial<DrawnVersion> = {}
 	return { id, message: id, when: '1 Jan 2026', parents, refs: [], ...over };
 }
 
-/** Whether the surface has room for a lane per line. */
+/** Whether the surface has room for date, author and name beside the message. */
 function room(wide: boolean): void {
 	Object.defineProperty(globalThis, 'matchMedia', {
 		configurable: true,
@@ -26,13 +27,16 @@ function room(wide: boolean): void {
 	});
 }
 
-function draw(versions: DrawnVersion[], at?: string, signs = false): void {
+function draw(
+	versions: DrawnVersion[],
+	over: { at?: string; on?: string; signs?: boolean } = {}
+): void {
 	mounted = mount(CommitGraph, {
 		target,
 		props: {
 			versions,
-			...(at === undefined ? {} : { at }),
-			signs,
+			signs: false,
+			...over,
 			onOlder: () => {},
 			onOpen: (id: string) => opened.push(id)
 		}
@@ -40,18 +44,25 @@ function draw(versions: DrawnVersion[], at?: string, signs = false): void {
 	flushSync();
 }
 
+function rows(): HTMLLIElement[] {
+	return [...target.querySelectorAll('li')];
+}
+
+/** Which lane each version was drawn in, by the version it stands for. */
 function lanes(): [string, string][] {
-	return [...target.querySelectorAll('li')].map((one) => [
+	return rows().map((one) => [
 		one.getAttribute('data-version') ?? '',
 		one.getAttribute('data-lane') ?? ''
 	]);
 }
 
-/** How dark each mark is drawn, by the version it stands for. */
-function marks(): number[] {
-	return [...target.querySelectorAll('circle')].map((one) =>
-		Number(one.getAttribute('opacity') ?? '1')
-	);
+/** The hue each version's own mark draws in, by row. */
+function hues(): (string | null)[] {
+	return rows().map((one) => one.querySelector('circle')?.getAttribute('class') ?? null);
+}
+
+function said(one: Element): string {
+	return (one.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
 beforeEach(() => {
@@ -68,62 +79,79 @@ afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-describe('the lanes a page of versions falls into', () => {
-	it('keeps one line in one lane', () => {
-		const laid = placed([
-			{ id: 'c', parents: ['b'] },
-			{ id: 'b', parents: ['a'] },
-			{ id: 'a', parents: [] }
-		]);
+describe('a row per version', () => {
+	it('carries the message, when it was kept, who kept it and its short name', () => {
+		draw([version('9f3c1a2b4d', ['a'], { message: 'A first version', author: 'Ada' })]);
 
-		expect(laid.map((one) => one.lane)).toEqual([0, 0, 0]);
-		expect(laid.map((one) => one.springs)).toEqual([
-			[{ row: 1, lane: 0 }],
-			[{ row: 2, lane: 0 }],
-			[]
-		]);
-		expect(laid.map((one) => one.older)).toEqual([false, false, false]);
+		const row = said(rows()[0]);
+		expect(row).toContain('A first version');
+		expect(row).toContain('1 Jan 2026');
+		expect(row).toContain('Ada');
+		expect(row).toContain('9f3c1a2b');
+		expect(row).not.toContain('9f3c1a2b4d');
 	});
 
-	it('gives a line that left another its own lane, and takes it back at the fork', () => {
-		const laid = placed([
-			{ id: 'c', parents: ['a'] },
-			{ id: 'b', parents: ['a'] },
-			{ id: 'a', parents: [] }
-		]);
+	it('names the branches at a version, and opens the one somebody taps', () => {
+		draw([version('c', ['a'], { refs: ['main', 'origin/main'] }), version('a', [])]);
 
-		expect(laid.map((one) => one.lane)).toEqual([0, 1, 0]);
-		expect(laid[1].springs).toEqual([{ row: 2, lane: 0 }]);
+		expect(said(rows()[0])).toContain('main');
+		expect(said(rows()[0])).toContain('origin/main');
+
+		rows()[0].querySelector('button')?.click();
+		flushSync();
+
+		expect(opened).toEqual(['c']);
 	});
 
-	it('draws a merge as two lines coming into one version', () => {
-		const laid = placed([
-			{ id: 'm', parents: ['c', 'b'] },
-			{ id: 'c', parents: ['a'] },
-			{ id: 'b', parents: ['a'] },
-			{ id: 'a', parents: [] }
-		]);
+	it('draws a branch kept somewhere else apart from one kept here', () => {
+		draw([version('c', [], { refs: ['main', 'origin/main'] })]);
 
-		expect(laid.map((one) => one.lane)).toEqual([0, 0, 1, 0]);
-		expect(laid[0].springs).toEqual([
-			{ row: 1, lane: 0 },
-			{ row: 2, lane: 1 }
-		]);
+		const chips = [...rows()[0].querySelectorAll('span')].filter((one) =>
+			['main', 'origin/main'].includes(said(one))
+		);
+		expect(chips.map((one) => one.className.includes('border-dashed'))).toEqual([false, true]);
 	});
 
-	it('says where a line leaves the bottom of the page', () => {
-		const laid = placed([
-			{ id: 'b', parents: ['a'] },
-			{ id: 'a', parents: ['older'] }
-		]);
+	it('marks the line the folder is on', () => {
+		draw([version('c', [], { refs: ['main', 'an-argument'] })], { on: 'an-argument' });
 
-		expect(laid[1].older).toBe(true);
-		expect(laid[1].springs).toEqual([]);
+		const chips = [...rows()[0].querySelectorAll('span')].filter((one) =>
+			['main', 'an-argument'].includes(said(one))
+		);
+		expect(chips.map((one) => one.className.includes('border-foreground'))).toEqual([false, true]);
+	});
+
+	it('draws the version the folder stands on as an open mark', () => {
+		draw([version('c', ['a']), version('a', [])], { at: 'c' });
+
+		const marks = [...target.querySelectorAll('li circle')];
+		expect(marks[0].getAttribute('fill')).not.toBe('currentColor');
+		expect(marks[0].getAttribute('stroke')).toBe('currentColor');
+		expect(marks[1].getAttribute('fill')).toBe('currentColor');
+	});
+
+	it('says a version went unsigned where the folder signs', () => {
+		draw([version('c', [])], { signs: true });
+
+		expect(said(rows()[0])).toContain('Kept unsigned');
+	});
+
+	it('says nothing of a signature where the folder signs with none', () => {
+		draw([version('c', [])]);
+
+		expect(said(rows()[0])).not.toContain('Kept unsigned');
+	});
+
+	it('says nothing of a signature on a version that carries one', () => {
+		draw([version('c', [], { signed: { by: 'a key', verified: true } })], { signs: true });
+
+		expect(said(rows()[0])).not.toContain('Kept unsigned');
+		expect(said(rows()[0])).toContain('Signed.');
 	});
 });
 
-describe('the picture on the page', () => {
-	it('draws every line in its own lane where there is room', () => {
+describe('the lanes beside the rows', () => {
+	it('gives a line that left another a lane of its own', () => {
 		draw([version('c', ['a']), version('b', ['a']), version('a', [])]);
 
 		expect(lanes()).toEqual([
@@ -133,63 +161,42 @@ describe('the picture on the page', () => {
 		]);
 	});
 
-	it('collapses to one column at phone width, and marks where two came together', () => {
+	it('keeps them where there is no room for the other columns', () => {
 		room(false);
 
-		draw([version('m', ['c', 'b']), version('c', ['a']), version('b', ['a']), version('a', [])]);
+		draw([version('c', ['a']), version('b', ['a']), version('a', [])]);
 
-		expect(lanes().map(([, lane]) => lane)).toEqual(['0', '0', '0', '0']);
-		expect(target.querySelectorAll('circle[fill="none"]')).toHaveLength(1);
+		expect(lanes().map(([, lane]) => lane)).toEqual(['0', '1', '0']);
 	});
 
-	it('draws the line the folder is on at full ink and every other at half', () => {
-		draw([version('c', ['a']), version('b', ['a']), version('a', [])], 'c');
+	it('draws each lane in its own hue, from the ramp the canvas lends a tag', () => {
+		draw([version('c', ['a']), version('b', ['a']), version('a', [])]);
 
-		expect(marks()).toEqual([1, 0.45, 1]);
+		expect(hues()).toEqual(['text-facet-1', 'text-facet-2', 'text-facet-1']);
 	});
 
-	it('draws a line into another lane at that lane’s ink, so a merge claims nothing', () => {
-		draw(
-			[version('m', ['c', 'b']), version('c', ['a']), version('b', ['a']), version('a', [])],
-			'm'
+	it('spends no more hues than the ramp holds', () => {
+		expect(HUES).toHaveLength(TAG_HUE_SLOTS.length);
+
+		// Nine lines that never end, so the ninth can only wrap onto the first.
+		const many = Array.from({ length: HUES.length + 1 }, (_, one) =>
+			version(`tip-${one}`, ['root'])
 		);
+		draw([...many, version('root', [])]);
 
-		expect([...target.querySelectorAll('path')].map((one) => one.getAttribute('opacity'))).toEqual([
-			'1',
-			'0.45',
-			'1',
-			'0.45'
-		]);
+		expect(hues().slice(0, HUES.length + 1)).toEqual([...HUES, HUES[0]]);
 	});
 
-	it('says a version went unsigned where the folder signs', () => {
-		draw([version('c', [])], undefined, true);
+	it('draws a line down to the row under it, and the rest of it on that row', () => {
+		draw([version('b', ['a']), version('a', [])]);
 
-		expect(target.textContent).toContain('Kept unsigned');
+		expect(rows()[0].querySelectorAll('path')).toHaveLength(1);
+		expect(rows()[1].querySelectorAll('path')).toHaveLength(1);
 	});
 
-	it('says nothing of a signature where the folder signs with none', () => {
-		draw([version('c', [])]);
+	it('draws no line under a version that springs from nothing', () => {
+		draw([version('a', []), version('b', ['nothing here'])]);
 
-		expect(target.textContent).not.toContain('Kept unsigned');
-	});
-
-	it('says nothing of a signature on a version that carries one', () => {
-		draw([version('c', [], { signed: { by: 'a key', verified: true } })], undefined, true);
-
-		expect(target.textContent).not.toContain('Kept unsigned');
-		expect(target.textContent).toContain('Signed.');
-	});
-
-	it('names the branches at a version, and opens the one somebody taps', () => {
-		draw([version('c', ['a'], { refs: ['main', 'origin/main'] }), version('a', [])]);
-
-		expect(target.textContent).toContain('main');
-		expect(target.textContent).toContain('origin/main');
-
-		target.querySelector<HTMLButtonElement>('li button')?.click();
-		flushSync();
-
-		expect(opened).toEqual(['c']);
+		expect(target.querySelectorAll('path')).toHaveLength(0);
 	});
 });
