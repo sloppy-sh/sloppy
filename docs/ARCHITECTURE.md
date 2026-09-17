@@ -2294,6 +2294,17 @@ VAULT root**, and `History` in `@sloppy/local` is unchanged: its paths are from 
 exactly as they were. **A vault that is not inside a repository initialises one at its own
 root, exactly as today.**
 
+**A container's repository is the person's, so what it is in the middle of is theirs.** A
+rebase, a cherry-pick, a revert or a bisect they began is held in the repository itself, and
+an act that moves the folder — committing, switching, merging, settling one of two versions —
+would walk through it, or clear it away when it finished. So in a container all four are
+refused for as long as the repository is in the middle of anything but a merge this app
+began, and the person is told to finish or stop it where they work on the code. **A merge
+this app began is written down beside the repository** as it begins, naming the commit it is
+taking in, so settling one is told apart from finishing the person's own; that, and only
+that, is what clears the state afterwards. A vault that is the whole repository is this app's
+alone and behaves exactly as today.
+
 **`changedSince` is the one act whose paths are not the vault's.** It answers which of the
 paths it is given a commit after some commit has touched, and those paths are spelled from
 the root of what the history is keeping — the project root for a container, the vault root for

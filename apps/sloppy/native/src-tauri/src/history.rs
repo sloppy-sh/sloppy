@@ -18,7 +18,7 @@ use chrono::{DateTime, SecondsFormat};
 use git2::{
     build::CheckoutBuilder, BranchType, Config, ConfigLevel, DiffOptions, ErrorCode, Index,
     IndexAddOption, ObjectType, Oid, Repository, RepositoryInitOptions, RepositoryOpenFlags,
-    Signature, Sort, StatusOptions, TreeWalkMode, TreeWalkResult,
+    RepositoryState, Signature, Sort, StatusOptions, TreeWalkMode, TreeWalkResult,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -46,6 +46,11 @@ const GIT_DEFAULTS: &str = "git.json";
 /// their own code. A name or a signing key given to Sloppy here would sign
 /// those too.
 const TOLD: &str = "sloppy/config";
+
+/// Where a container writes down the commit a merge it began is taking in. The
+/// repository is the project's, so a merge in it is the person's own unless
+/// this app says it began that one.
+const MERGING: &str = "sloppy/merging";
 
 /// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
 /// history".
@@ -129,6 +134,12 @@ fn uncommitted() -> HistoryError {
 fn their_code_uncommitted() -> HistoryError {
     HistoryError::new(
         "This project has changes outside your notes. Keep or undo those where you write the code, then try again.",
+    )
+}
+
+fn their_project_unfinished() -> HistoryError {
+    HistoryError::new(
+        "This project is in the middle of something else. Finish or stop it where you work on the code, then try again.",
     )
 }
 
@@ -333,6 +344,13 @@ impl Kept {
     fn told_at(&self) -> Option<PathBuf> {
         self.keeps_more_than_the_vault()
             .then(|| self.repo.commondir().join(TOLD))
+    }
+
+    /// Where a merge this app began is written down, and nothing where the
+    /// vault is the whole repository — there, every merge in it is this app's.
+    fn ours_at(&self) -> Option<PathBuf> {
+        self.keeps_more_than_the_vault()
+            .then(|| self.repo.commondir().join(MERGING))
     }
 
     /// What the folder is set to, as every act here reads it.
@@ -587,6 +605,56 @@ fn merging(repo: &mut Repository) -> Result<Option<Oid>, HistoryError> {
         Err(error) if error.code() == ErrorCode::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
+}
+
+/// A container's repository is the project's, and a rebase, a cherry-pick, a
+/// revert or a bisect the person began is held in the repository itself: an act
+/// that moves the folder would walk through what they are in the middle of, and
+/// finishing one clears it away. So every such act is refused for as long as the
+/// repository is in the middle of anything but a merge this app began. A vault
+/// that is the whole repository is this app's alone and is never refused here.
+fn theirs_unfinished(kept: &Kept, with: Option<Oid>) -> Option<HistoryError> {
+    if !kept.keeps_more_than_the_vault() {
+        return None;
+    }
+    match kept.repo().state() {
+        RepositoryState::Clean => None,
+        RepositoryState::Merge if with.is_some_and(|head| ours_to_finish(kept, head)) => None,
+        _ => Some(their_project_unfinished()),
+    }
+}
+
+/// Whether the merge the folder is in the middle of is the one this app began:
+/// the commit it took in is what it wrote down.
+fn ours_to_finish(kept: &Kept, head: Oid) -> bool {
+    let Some(at) = kept.ours_at() else {
+        return true;
+    };
+    fs::read_to_string(at).is_ok_and(|held| held.trim() == head.to_string())
+}
+
+fn began_a_merge(kept: &Kept, head: Oid) -> Result<(), HistoryError> {
+    let Some(at) = kept.ours_at() else {
+        return Ok(());
+    };
+    if let Some(folder) = at.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    fs::write(at, head.to_string())?;
+    Ok(())
+}
+
+/// What a merge this app began leaves behind, cleared once it is settled and
+/// never for what the person is in the middle of themselves.
+fn finished_the_merge(kept: &Kept) -> Result<(), HistoryError> {
+    if let Some(at) = kept.ours_at() {
+        match fs::remove_file(at) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            other => other?,
+        }
+    }
+    kept.repo().cleanup_state()?;
+    Ok(())
 }
 
 /// Git refuses a name or an address with an angle bracket or a newline in it,
@@ -945,6 +1013,9 @@ fn names_at(repo: &Repository) -> Result<BTreeMap<Oid, Vec<String>>, HistoryErro
 pub fn commit(vault: &Opened, data: &Path, message: &str) -> Result<Option<Commit>, HistoryError> {
     let mut kept = at(vault)?;
     let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
     let repo = kept.repo();
     let mut index = repo.index()?;
     if index.has_conflicts() {
@@ -984,7 +1055,9 @@ pub fn commit(vault: &Opened, data: &Path, message: &str) -> Result<Option<Commi
         parents.push(one);
     }
     let made = record(&kept, vault, data, message, &tree, &parents)?;
-    repo.cleanup_state()?;
+    if with.is_some() {
+        finished_the_merge(&kept)?;
+    }
     let held = view(repo, &repo.find_commit(made)?, &Trust::of(vault, data));
     Ok(Some(held))
 }
@@ -1327,7 +1400,11 @@ pub fn switch_to(vault: &Opened, name: &str) -> Result<(), HistoryError> {
     let Some(head) = branch_head(kept.repo(), name) else {
         return Err(no_branch(name));
     };
-    if merging(&mut kept.repo)?.is_some() {
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
+    if with.is_some() {
         return Err(mid_merge());
     }
     if on(kept.repo())?.as_deref() == Some(name) {
@@ -1397,7 +1474,11 @@ pub(crate) fn merge_commit(
     head: Oid,
     name: &str,
 ) -> Result<Merged, HistoryError> {
-    if merging(&mut kept.repo)?.is_some() {
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(kept, with) {
+        return Err(why);
+    }
+    if with.is_some() {
         return Err(mid_merge());
     }
     let kept = &*kept;
@@ -1441,6 +1522,7 @@ pub(crate) fn merge_commit(
         .map_err(in_the_way);
     put_back(kept, held)?;
     taken?;
+    began_a_merge(kept, theirs.id())?;
     let mut index = repo.index()?;
     if index.has_conflicts() {
         return Ok(Merged::in_two_versions(one_version_each(kept, &index)?));
@@ -1456,7 +1538,7 @@ pub(crate) fn merge_commit(
         &tree,
         &[&mine, &taken],
     )?;
-    repo.cleanup_state()?;
+    finished_the_merge(kept)?;
     Ok(Merged::whole())
 }
 
@@ -1490,7 +1572,11 @@ fn settleable(kept: &Kept, mine: &git2::Commit<'_>, theirs: Oid) -> Result<(), H
 }
 
 pub fn settle(vault: &Opened, path: &str, side: ConflictSide) -> Result<(), HistoryError> {
-    let kept = at(vault)?;
+    let mut kept = at(vault)?;
+    let with = merging(&mut kept.repo)?;
+    if let Some(why) = theirs_unfinished(&kept, with) {
+        return Err(why);
+    }
     let repo = kept.repo();
     let spelled = kept.spelled_here(path);
     let at = Path::new(&spelled);
@@ -3269,6 +3355,111 @@ pub(crate) mod tests {
             .to_string()
     }
 
+    /// What the person does in their own repository with their own git, which
+    /// is how a state this app never begins gets into a test. The levels above
+    /// the folder are pointed at nothing, as they are for every other test.
+    fn their_git(root: &Path, args: &[&str]) -> std::process::Output {
+        std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=Ada",
+                "-c",
+                "user.email=ada@example.com",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .current_dir(root)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .expect("their git")
+    }
+
+    /// Where git holds what a rebase the person is in the middle of still has
+    /// to do, whichever way their git goes about one.
+    fn mid_rebase_at(root: &Path) -> PathBuf {
+        [".git/rebase-merge", ".git/rebase-apply"]
+            .iter()
+            .map(|at| root.join(at))
+            .find(|at| at.exists())
+            .expect("a rebase in the middle")
+    }
+
+    /// Two versions of the project's own code, with the second stopped part way
+    /// through a rebase onto the first and the folder settled — what an act
+    /// that lays a commit down would otherwise walk straight past.
+    fn their_rebase(root: &Path) -> PathBuf {
+        their_git(root, &["branch", "theirs"]);
+        write(root, "src/b.ts", "mine");
+        their_commit(root, &["src/b.ts"], "My code");
+        their_git(root, &["checkout", "theirs"]);
+        write(root, "src/c.ts", "theirs");
+        their_commit(root, &["src/c.ts"], "Their code");
+        their_git(root, &["rebase", "--exec", "false", DEFAULT_BRANCH]);
+        mid_rebase_at(root)
+    }
+
+    /// The repository is the project's, and what it is in the middle of is the
+    /// person's own work, held in the repository itself.
+    #[test]
+    fn a_project_in_the_middle_of_a_rebase_is_left_alone() {
+        let (root, held) = project("mid-rebase");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+        branch(&held, "later").expect("a branch");
+        let rebase = their_rebase(&root);
+
+        write(&held, "notes/b.md", "two");
+        assert_eq!(
+            commit(&held, &private_for(&held), "Another note")
+                .unwrap_err()
+                .said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+        assert_eq!(
+            switch_to(&held, "later").unwrap_err().said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+
+        // What the rebase still has to do is where git left it, and the note
+        // nobody could commit is still here to commit later.
+        assert!(rebase.exists());
+        let repo = Repository::open(&root).expect("their repository");
+        assert_ne!(repo.state(), RepositoryState::Clean);
+        assert_eq!(read(&held, "notes/b.md"), "two");
+    }
+
+    /// A merge in a container is the person's own unless this app began it, and
+    /// finishing one is not something this app does to somebody's repository.
+    #[test]
+    fn a_merge_the_person_began_themselves_is_not_one_a_commit_finishes() {
+        let (root, held) = project("their-merge");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "one");
+        made(&held, "A note");
+
+        their_git(&root, &["branch", "theirs"]);
+        write(&root, "src/b.ts", "mine");
+        their_commit(&root, &["src/b.ts"], "My code");
+        their_git(&root, &["checkout", "theirs"]);
+        write(&root, "src/c.ts", "theirs");
+        their_commit(&root, &["src/c.ts"], "Their code");
+        their_git(&root, &["checkout", DEFAULT_BRANCH]);
+        their_git(&root, &["merge", "--no-commit", "--no-ff", "theirs"]);
+        assert!(root.join(".git").join("MERGE_HEAD").exists());
+
+        write(&held, "notes/b.md", "two");
+        assert_eq!(
+            commit(&held, &private_for(&held), "Another note")
+                .unwrap_err()
+                .said(),
+            "This project is in the middle of something else. Finish or stop it where you work on the code, then try again."
+        );
+        assert!(root.join(".git").join("MERGE_HEAD").exists());
+    }
+
     #[test]
     fn a_container_uses_the_projects_repository_and_commits_only_the_notes() {
         let (root, held) = project("container");
@@ -3591,6 +3782,13 @@ pub(crate) mod tests {
         assert_eq!(read(&held, "notes/a.md"), "their way");
         made(&held, "Merge theirs");
         assert_eq!(kept(&held), [GRAPH_FILE, "notes/a.md"]);
+
+        // A merge this app began and settled leaves the repository holding
+        // nothing about it, and the folder moves again.
+        let repo = Repository::open(&root).expect("their repository");
+        assert_eq!(repo.state(), RepositoryState::Clean);
+        assert!(!repo.commondir().join(MERGING).exists());
+        switch_to(&held, "theirs").expect("onto it");
     }
 
     #[test]
