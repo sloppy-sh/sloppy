@@ -138,7 +138,7 @@
 	import { deleted } from '../stores/deleted.svelte.js';
 	import { find } from '../stores/find.svelte.js';
 	import { gitSettings } from '../stores/git-settings.svelte.js';
-	import { graphs } from '../stores/graphs.svelte.js';
+	import { graphs, projectOf } from '../stores/graphs.svelte.js';
 	import { graphHistory } from '../stores/history.svelte.js';
 	import { identity } from '../stores/identity.svelte.js';
 	import { nodes, type WritingNote } from '../stores/nodes.svelte.js';
@@ -353,10 +353,12 @@
 						owner !== undefined && owner !== session.viewer?.did
 							? (people.of(owner)?.displayName ?? 'Somebody else')
 							: undefined;
+					const project = projectOf(folder);
 					return {
 						...(folder.graph ? { ref: folder.graph.ref } : {}),
 						folder: folder.root,
 						folderName: folderName(folder.root),
+						...(project === undefined ? {} : { project }),
 						title: held?.title ?? folder.graph?.name ?? folderName(folder.root),
 						...(held?.ownership === undefined ? {} : { ownership: held.ownership }),
 						...(by === undefined ? {} : { by })
@@ -2577,6 +2579,14 @@
 					letGoOfTheFolderThatWas();
 					await gitSettings.beginFolder();
 				}, 'That folder could not be opened.')
+		: undefined}
+	onOpenProject={graphs.keepsFolders && graphs.opensProjects
+		? () =>
+				inTheDevicesWords(async () => {
+					if (!(await graphs.openProject())) return;
+					letGoOfTheFolderThatWas();
+					await gitSettings.beginFolder();
+				}, 'That project could not be opened.')
 		: undefined}
 	onClone={graphs.keepsFolders && graphs.bringsFolders
 		? (address) =>

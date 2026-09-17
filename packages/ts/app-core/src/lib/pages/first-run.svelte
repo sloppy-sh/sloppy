@@ -14,6 +14,7 @@
 
 	const vault = runtime.vault();
 	const identities = runtime.identities();
+	const openProject = vault?.openProject?.bind(vault);
 
 	let opening = $state(false);
 	let problem = $state<string | null>(null);
@@ -65,8 +66,11 @@
 			: 'Sloppy could not read the identities on this device. Try again.';
 	}
 
-	async function begin() {
+	/** Absent is the folder this shell offers by default, which is the whole of
+	 *  a first run on a device that keeps no project. */
+	async function begin(where: (() => Promise<string | undefined>) | null = null) {
 		if (!vault) return;
+		const ask = where ?? vault.open.bind(vault);
 		opening = true;
 		problem = null;
 		try {
@@ -76,7 +80,7 @@
 				await identities.makeOne();
 				await refresh();
 			}
-			const folder = await vault.open();
+			const folder = await ask();
 			if (!folder) return;
 			await session.carryProfile();
 			onopened(folder);
@@ -140,6 +144,23 @@
 					Start writing
 				{/if}
 			</Button>
+
+			{#if openProject}
+				<div class="space-y-2 pt-1">
+					<Button
+						type="button"
+						variant="outline"
+						disabled={opening}
+						class="h-11 w-full"
+						onclick={() => void begin(openProject)}
+					>
+						Open a project
+					</Button>
+					<p class="text-xs text-muted-foreground">
+						Notes that sit with the code they are about. Choose the project's own folder.
+					</p>
+				</div>
+			{/if}
 		</div>
 
 		{#if identities}

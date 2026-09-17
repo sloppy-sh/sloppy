@@ -194,6 +194,74 @@ describe('the first run of a graph on this device', () => {
 	});
 });
 
+describe('opening a project on the first run', () => {
+	function offer(words: string): HTMLButtonElement | null {
+		return (
+			[...target.querySelectorAll('button')].find((one) => one.textContent?.trim() === words) ??
+			null
+		);
+	}
+
+	it('is not offered where this device cannot reach a project', () => {
+		shell({});
+		show();
+
+		expect(offer('Open a project')).toBeNull();
+	});
+
+	it('hands the project somebody names to the shell, and not the other folder', async () => {
+		const open = vi.fn(async () => '/Users/me/garden');
+		const openProject = vi.fn(async () => '/Users/me/sloppy/.sloppy');
+		shell({ open, openProject });
+		show();
+
+		offer('Open a project')?.click();
+		await settle();
+
+		expect(openProject).toHaveBeenCalledOnce();
+		expect(open).not.toHaveBeenCalled();
+		expect(opened).toEqual(['/Users/me/sloppy/.sloppy']);
+	});
+
+	it('makes an identity here first, exactly as choosing a folder does', async () => {
+		const makeOne = vi.fn(async () => here());
+		shell({ openProject: async () => '/Users/me/sloppy/.sloppy' }, { makeOne });
+		show();
+
+		offer('Open a project')?.click();
+		await settle();
+
+		expect(makeOne).toHaveBeenCalledOnce();
+	});
+
+	it('stays where it is for somebody who names none', async () => {
+		shell({ openProject: async () => undefined });
+		show();
+
+		offer('Open a project')?.click();
+		await settle();
+
+		expect(opened).toEqual([]);
+		expect(offer('Open a project')?.disabled).toBe(false);
+	});
+
+	it('says what to do next when the project cannot be written in', async () => {
+		shell({
+			openProject: async () => {
+				throw new Error('EACCES');
+			}
+		});
+		show();
+
+		offer('Open a project')?.click();
+		await settle();
+
+		const said = target.querySelector('[role="alert"]');
+		expect(said?.textContent).toContain('Try another one');
+		expect(said?.textContent).not.toContain('EACCES');
+	});
+});
+
 describe('the three doors a first run offers', () => {
 	function offers(): string[] {
 		return [...target.querySelectorAll('button')].map((one) => one.textContent?.trim() ?? '');
