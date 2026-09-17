@@ -456,22 +456,57 @@ comparison document names this as a feature: "third-party repo pollution: struct
 prevented; apps don't write into your identity store." So "use syr for account and content
 management" resolves into a split — the same one Slyng made:
 
-| Concern                                    | Owner                                                                 |
-| ------------------------------------------ | --------------------------------------------------------------------- |
-| Identity, DID, keys, signing               | **syr** — Platform Delegation                                         |
-| Profile data                               | **syr** — never stored locally, resolved from the manifest and cached |
-| Media blobs (block images, ink rasters)    | **syr** — presign → PUT → complete                                    |
-| Emoji, stickers, GIFs, reactions, comments | **syr** — per-DID catalogs, federated                                 |
-| Who somebody follows                       | **syr** — kept with the identity, served per-DID                      |
-| **Nodes, addresses, tags, blocks, ink**    | **Sloppy's own API + SurrealDB**                                      |
+| Concern                                    | Owner                                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| Identity, DID, keys, signing               | **syr** — Sloppy is a platform holding a grant; it holds no key of the person |
+| Profile data                               | **syr** — never stored locally, resolved from the identity and cached         |
+| Media blobs (block images, ink rasters)    | **syr** — presign → PUT → complete                                            |
+| Emoji, stickers, GIFs, reactions, comments | **syr** — per-DID catalogs, federated                                         |
+| Who somebody follows                       | **syr** — kept with the identity, served per-DID                              |
+| **Nodes, addresses, tags, blocks, ink**    | **Sloppy's own API + SurrealDB**                                              |
+
+**A platform holds an agent, not an identity.** A person's root key lives on their own
+devices — carried as a Sigil, managed by Syner — and a platform that needs to act on
+their behalf holds an **agent** key under a **mandate**: a root-signed statement in the
+identity record naming that key, the **powers** it carries, its expiry and what it may
+appoint beneath itself. What Sloppy holds is one step further down: a **grant**, signed by
+that agent, short-lived, carrying its mandate inline, never published. So Sloppy verifies
+a chain — root → agent → Sloppy — rather than trusting whichever host served the token.
+syr's own specification is the document of record: `architecture/mandates` and
+`architecture/authority-model` in the syr docs site.
+
+**And no instance is a home.** Where profile bytes, media and catalogs come from is one
+**service** entry per kind in the identity record, each naming the agent that serves it,
+so a reader resolves a kind and verifies signed bytes rather than asking a particular
+host. Today Sloppy reaches all of it through one instance URL per DID —
+`SyrService.identityManifest()` in `apps/sloppy/api/src/syr/syr.service.ts` reads
+`/.well-known/syr/{did}` from the instance a person signed in against — because that is
+what syr serves. When a second agent appears, fetch-then-verify is unchanged — what changes
+is that the host every one of those methods takes becomes a choice per kind, read off the
+record, instead of the one URL threaded through them today.
 
 ### Auth: Platform Delegation v0.1
 
 `GET /.well-known/syr` → read `manifest.platform.*` → redirect to `platform.consent` →
 callback yields `code` + `delegation_id` → `POST platform.token` →
 `{ access_token, did, delegate_public_key, scopes }`. Content is signed via
-`POST platform.sign`; the syr instance holds the delegate key, so **Sloppy never touches a
+`POST platform.sign`; the identity store holds the delegate key, so **Sloppy never touches a
 private key.**
+
+**What changes when syr lands the authority model, and what does not.** The wire shapes
+above are what syr serves today, and the delegation Sloppy receives is signed by the
+person's root. At the target the same delegation is a **grant** signed by an agent key
+holding the `delegate` power, carrying that agent's root-signed mandate inline — so
+verifying it becomes: read the DID's identity record for the root key, check the mandate
+under that root, check the grant under the agent's key, check that `delegate` is among the
+mandate's powers and that neither has expired, check that the record does not dismiss that
+agent at or after the mandate, and check the grant against the agent's own status list or a
+freshness staple. Those last two are the withdrawal channels, and a verifier that skips them
+accepts a grant from an agent the root has already dismissed. `scopes` become powers from a
+closed enum.
+Sloppy still holds no private key and still signs by calling `platform.sign`. This is a
+syr change, not a Sloppy one; nothing here moves until it lands, and
+`architecture/mandates` in the syr docs site is the specification.
 
 Port the implementation, not the spec, from Slyng's `auth.controller.ts` /
 `auth.service.ts`. It carries an HMAC-signed `state` holding the instance URL specifically
@@ -512,7 +547,13 @@ not a field. Two values today:
 - **`delegated`** — an identity an identity store somewhere else keeps, reached through
   Platform Delegation. The entry carries where that store is, the delegate's public key and
   the token the exchange returned. **No private key is on the device**, which is the same
-  delegation model the hosted API runs under.
+  delegation model the hosted API runs under. What the app holds is a **grant**: at the target
+  an agent under a root-signed mandate issues it, and the app verifies that chain the way the
+  API does (§ "Auth: Platform Delegation v0.1"). Where the person's own root key sits is the
+  instance's business, not the device's: at the target it is on their own devices and the
+  instance holds only an agent, while today an instance may hold the root itself in an Aegis
+  bundle — which is what Sloppy's own embedded provider does (§ "An API that serves
+  identities itself").
 
 **The first run offers three doors, and Settings offers the same three.** "Start here" mints
 a `device` identity and opens the graph — one tap, nothing asked, and still the default.
@@ -645,6 +686,14 @@ becomes the other is by exporting it as an archive and importing it, which re-ke
 under the receiving identity (§ "A graph on disk").
 
 #### An API that serves identities itself
+
+**What the embedded provider holds, and what it will hold.** It keeps a root seed in an
+Aegis bundle and root-signs each delegation (`packages/ts/idp/src/aegis.ts`,
+`packages/ts/idp/src/delegation.ts`), because that is what syr's wire contracts ask for
+today. **At the target it holds an agent key under a mandate instead** — a server that
+holds somebody's root is exactly what the authority model removes, and an embedded
+identity provider is a platform like any other. The contracts here follow syr's and do
+not lead them, so that is a change to make when syr's own record lands.
 
 **The embedded provider holds files, emoji and a profile, because a provider that does not
 is not one.** Avatars, banners, emoji and block pictures are syr's to keep (the table

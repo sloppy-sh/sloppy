@@ -197,27 +197,46 @@ lexicon system and no extension point for third-party record types — its own c
 doc names "third-party repo pollution: structurally prevented" as a feature. So the
 split is not a preference we could revisit; it is the shape syr enforces:
 
-| Concern                                         | Owner                                           |
-| ----------------------------------------------- | ----------------------------------------------- |
-| Identity, DID, keys, signing                    | **syr** — Platform Delegation                   |
-| Profile data                                    | **syr** — resolved from the manifest and cached |
-| Media blobs (block images, ink rasters)         | **syr** — presign → PUT → complete              |
-| Emoji, stickers, reactions, comments            | **syr** — per-DID catalogs, federated           |
-| **Graphs, nodes, addresses, tags, blocks, ink** | **Sloppy's own API + SurrealDB**                |
+| Concern                                         | Owner                                                    |
+| ----------------------------------------------- | -------------------------------------------------------- |
+| Identity, DID, keys, signing                    | **syr** — Sloppy holds a grant, and no key of the person |
+| Profile data                                    | **syr** — resolved from the identity and cached          |
+| Media blobs (block images, ink rasters)         | **syr** — presign → PUT → complete                       |
+| Emoji, stickers, reactions, comments            | **syr** — per-DID catalogs, federated                    |
+| **Graphs, nodes, addresses, tags, blocks, ink** | **Sloppy's own API + SurrealDB**                         |
 
 - **`graph`, `node` and `block` are Sloppy's vocabulary.** Putting them in someone's
   identity store is precisely what syr is built to prevent. If a feature seems to need a
   new record type in syr, it needs a table in Sloppy instead.
+- **Sloppy is a platform, and a platform holds no identity.** A person's root key lives on
+  their own devices. The instance serving that identity holds an **agent** key under a
+  **mandate**, a root-signed statement naming its **powers** and its expiry, and what
+  Sloppy receives is one step further down: a **grant** that agent signs with its mandate
+  carried inline. So Sloppy VERIFIES a chain — root → agent → Sloppy — instead of trusting
+  whichever host served the token. syr's `architecture/mandates` and
+  `architecture/authority-model` are the specification; syr has not landed it, and the
+  delegation Sloppy receives today is root-signed. docs/ARCHITECTURE.md § "syr integration"
+  carries what changes and what does not.
 - **Sloppy never holds a private key.** Content is signed through `platform.sign`; the
-  syr instance holds the delegate key. Code that wants to sign locally has misread the
-  delegation model.
+  identity store holds the delegate key. Code that wants to sign locally has misread the
+  delegation model. The exception is `@sloppy/idp`, which IS an identity store — it serves
+  identities rather than consuming them, so it holds what a syr instance holds: today a
+  root seed in an Aegis bundle and a root signature on each delegation
+  (`packages/ts/idp/src/aegis.ts`, `packages/ts/idp/src/delegation.ts`), at the target an
+  agent key under a mandate and no root at all. `@sloppy/local` holds one too, and for the
+  same reason: a `device` identity is minted on the machine and its key written to the app's
+  own private data (`makeLocalIdentity()` and `holdDeviceIdentity()` in
+  `packages/ts/local/src/identity.ts`), because there is no instance behind it to ask. Those
+  two are identity stores. Everything that CONSUMES an identity signs through the delegation.
 - **Every remote asset goes through our proxy** (`proxied()`). Viewing a federated node
   must never leak the viewer's IP to the author's instance — a graph you can pull from
   strangers makes this more important, not less. A raw remote URL rendered into an
   `<img>` or a `fetch` is a privacy bug, not a shortcut.
-- **Federation is pull-only.** syr has no relay and no firehose: follow a DID → resolve
-  DID→provider → fetch that identity's public endpoints directly. Anything designed
-  around a push feed is designed against the platform.
+- **Federation is pull-only, and no instance is a home.** syr has no relay and no
+  firehose: follow a DID → resolve the DID → fetch the kind you want from the agent that
+  serves it. Anything designed around a push feed is designed against the platform, and
+  anything that treats one host as the identity's home has assumed something the protocol
+  never promises.
 
 ## Provider-Agnostic Data Shapes (required)
 
