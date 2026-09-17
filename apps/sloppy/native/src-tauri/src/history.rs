@@ -427,8 +427,7 @@ fn device_user(data: &Path) -> Option<GitUser> {
 }
 
 /// A folder nobody has named an author in takes this device's default the first
-/// time it commits, so somebody who has said once does not say again and their
-/// own git agrees with what this one did.
+/// time it commits — docs/ARCHITECTURE.md § "The vault's history".
 fn begun(repo: &Repository, data: &Path) -> Result<(), HistoryError> {
     if named(repo).is_some() {
         return Ok(());
@@ -1747,6 +1746,31 @@ pub(crate) mod tests {
             format!(
                 "Sloppy could not run {}. Check that it is installed.",
                 missing.to_string_lossy()
+            )
+        );
+        assert!(matches!(
+            signing(&root, &data).expect("how it signs"),
+            SigningConfig::None
+        ));
+
+        // A path with something at it this machine still cannot run is the same
+        // answer: a folder, or a file without the bit that makes it a program.
+        let folder = root.join("not-a-program-either");
+        fs::create_dir_all(&folder).expect("the folder");
+        assert_eq!(
+            set_signing(
+                &root,
+                &data,
+                &SigningConfig::Openpgp {
+                    program: Some(folder.to_string_lossy().into_owned()),
+                    key_id: None,
+                },
+            )
+            .unwrap_err()
+            .said(),
+            format!(
+                "Sloppy could not run {}. Check that it is installed.",
+                folder.to_string_lossy()
             )
         );
         assert!(matches!(

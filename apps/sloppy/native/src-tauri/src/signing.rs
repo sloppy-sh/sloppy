@@ -130,8 +130,8 @@ fn which_key(path: &str, data: &Path) -> SshKey {
 }
 
 /// How this folder signs from now on. What it is given has to be something this
-/// device can sign with, and that is said here — while somebody is choosing —
-/// because a save is never refused over a signature afterwards.
+/// device can sign with, and while somebody is choosing is the only place that
+/// is said — docs/ARCHITECTURE.md § "The vault's history".
 pub fn write(
     repo: &Repository,
     root: &Path,
@@ -188,7 +188,9 @@ fn only_on_a_desktop() -> Result<(), HistoryError> {
     ))
 }
 
-/// Whether the program that would sign is one this machine has.
+/// Whether the program that would sign is one this machine can run: a name it
+/// has nothing under, a folder and a file it may not execute are all the same
+/// answer to somebody choosing.
 fn runs_here(program: &str) -> Result<(), HistoryError> {
     use std::process::{Command, Stdio};
 
@@ -199,8 +201,8 @@ fn runs_here(program: &str) -> Result<(), HistoryError> {
         .stderr(Stdio::null())
         .status()
     {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(no_program(program)),
-        _ => Ok(()),
+        Err(_) => Err(no_program(program)),
+        Ok(_) => Ok(()),
     }
 }
 

@@ -39,10 +39,9 @@ export interface Files {
   pickFolder(): Promise<string | undefined>;
   /**
    * Put a copy of a folder kept somewhere else at `into`, which must be empty
-   * or not there yet — one holding anything at all is refused, because what is
-   * in it is somebody's and a copy is not what it would become. A folder has no
-   * history until it is here, so this is the one act of the kind that is not
-   * `History`'s.
+   * or not there yet: one holding anything at all is refused here, so a caller
+   * has nothing of its own to check. A folder has no history until it is here,
+   * so this is the one act of the kind that is not `History`'s.
    *
    * Absent is a platform that cannot bring one over, and the offer of it is
    * not put in front of anybody there. `credential` is read per call

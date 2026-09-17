@@ -51,6 +51,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'files_clone': {
 				const into = args?.into as string;
 				const credential = args?.credential as Credential | null;
+				// The copy is what refuses a folder somebody already keeps things in,
+				// and it does so before it writes anything (`remotes.rs`).
+				if ([...held.keys()].some((path) => path.startsWith(`${into}/`))) {
+					throw 'There is already something in that folder. Choose an empty one.';
+				}
 				broughtOver.push({ url: args?.url as string, into, ...(credential ? { credential } : {}) });
 				held.set(
 					`${into}/graph.json`,

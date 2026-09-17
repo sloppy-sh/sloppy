@@ -577,10 +577,10 @@ one of its own. A folder a graph was written into and that is no longer there is
 than started over: the app offers a folder to open instead of writing a fresh empty graph
 where a graph somebody moved used to be.
 
-**The folders this device knows ARE its graphs.** `listGraphs` answers one row per known
-folder, read from each folder's own `graph.json`, so the picker a person already chooses a
-graph in is the same place they choose which folder is open — one list, not two names for
-one thing. A folder that is not where this device last saw it has no graph to answer with,
+**The folders this device knows ARE its graphs.** `VaultAccess.known` answers one row per
+known folder, read from each folder's own `graph.json`, so the picker a person already
+chooses a graph in is the same place they choose which folder is open — one list, not two
+names for one thing. A folder that is not where this device last saw it has no graph to answer with,
 so `VaultAccess.known` is what lists it as unreachable rather than dropping it, because a
 person moved it and only they can say where to. Starting a
 graph here is starting a folder, and a folder can arrive by being cloned from somewhere
@@ -593,12 +593,15 @@ and `openKnown` is a folder already on the list, named rather than picked.
 
 **Two folders may hold one graph, and a folder is what is open.** Cloning your own remote
 beside the original, or bringing an archive of a graph into a second folder, leaves this
-device with two folders at one graph ulid, and that is allowed: a row is a FOLDER, told
-apart by its root and never by the graph in it. So every act — the canvas, the writing, the
-history, Settings — reads and writes the folder that is open and nothing else. `LocalApi`
-holds that line for the store: what it keeps per folder is keyed by that folder's root, and
-where two folders answer to one ref the open one is the one a lookup gets, so no surface is
-ever handed the other copy.
+device with two folders at one graph ulid, and that is allowed: a picker row is a FOLDER,
+told apart by its root and never by the graph in it, which is why the rows come from
+`known` and not from `listGraphs`. So every act — the canvas, the writing, the history,
+Settings — reads and writes the folder that is open and nothing else. `LocalApi` holds that
+line for the store: what it keeps per folder is keyed by that folder's root, and where two
+folders answer to one ref the open one is the copy every lookup gets, `listGraphs`
+included, so no surface is ever handed the other. `listGraphs` therefore stays one row per
+GRAPH, and a count of it is a count of the notebooks somebody keeps rather than of the
+folders they keep them in.
 
 **A folder somebody else owns is not yours to close.** Closing or emptying a folder — every
 act that takes the graph out of it — is the owner's, the DID its `graph.json` names, and
@@ -2182,9 +2185,10 @@ read out of the config git keeps it in (`branch.<name>.merge`) rather than match
 name, because somebody's own git points a branch at whichever of a host's branches they
 like and a folder set up that way is one this app opens. `status` carries `ahead`, `behind`
 and the branch this one follows. **A `clone` is `Files`' and not `History`'s**, because a
-folder that is not here yet has no history to ask; it is refused a folder that already
-holds something, said there and again in the shell, so a folder somebody keeps their own
-things in is never opened as the copy it was meant to be.
+folder that is not here yet has no history to ask. It refuses a folder that already holds
+something, before it writes a byte and in the one place that can tell in a single read, so
+a folder somebody keeps their own things in is never opened as the copy it was meant to be
+and nothing above it walks the folder to ask the same question again.
 
 **What a host says about a refusal is not what a person reads.** Its status line is written
 for somebody at a terminal, so the shell answers with what to check instead: a way in that
@@ -2237,9 +2241,11 @@ needs so a person's own git agrees with what this one did — `gpg.format`,
 calls one **verified** where that key is one this app keeps or one the folder's allowed
 signers vouch for. **A save is never refused because a signature could not be made**: a
 folder set up to sign with a program this machine has not got keeps the commit unsigned and
-the setting for wherever that program is, and what a listing says beside that version is
-what says so. Choosing is where a person can do something about it, so that is where a key
-this device cannot open and a program it has not got are refused.
+the setting for wherever that program is. How a folder signs is `signing()`, which a
+listing reads beside the versions, so a folder that signs is what makes an unsigned version
+worth saying anything about — an unsigned version in a folder that signs nothing is
+ordinary. Choosing is where a person can do something about it, so that is where a key this
+device cannot open and a program it has not got are refused.
 
 **The whole history is readable as one picture.** `graph(limit, cursor)` answers commits
 across every head this folder knows — its branches and the remote-tracking ones — newest

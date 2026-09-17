@@ -164,7 +164,7 @@ describe("the folder a shell opened", () => {
     expect(await again.api.listGraphs()).toEqual([]);
   });
 
-  it("is a row of its own beside a second folder holding the same graph", async () => {
+  it("is the one row a graph gets where a second folder holds it too", async () => {
     const first = opened("/Users/me/garden");
     await first.api.createNode({ title: "A first thought" });
     for (const [path, bytes] of [...first.store]) {
@@ -176,13 +176,18 @@ describe("the folder a shell opened", () => {
     }
 
     const again = opened("/Users/me/backup", first.store);
-    const [listed, here] = await Promise.all([
-      again.api.listGraphs(),
-      again.api.graphHere(),
-    ]);
+    const here = await again.api.graphHere();
+    await again.api.updateGraph(here, { title: "The backup" });
 
-    expect(listed.map((one) => one.ref)).toEqual([here, here]);
-    expect(listed.map((one) => one.home)).toEqual([true, undefined]);
+    const listed = await again.api.listGraphs();
+
+    expect(listed.map((one) => one.ref)).toEqual([here]);
+    expect(listed[0].title).toBe("The backup");
+    expect(
+      decodeText(
+        again.store.get(`/Users/me/garden/${GRAPH_FILE}`) as Uint8Array,
+      ),
+    ).not.toContain("The backup");
   });
 
   it("is the folder a note is read out of and written back into", async () => {
