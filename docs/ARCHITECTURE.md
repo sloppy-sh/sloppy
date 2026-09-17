@@ -2268,11 +2268,17 @@ contract has one, the credential as the shape `@sloppy/local` declares: `history
 every one of them is `tauriHistory`.
 
 **What the history holds is the graph; what this device knows about itself stays out.** The
-repository the app initialises writes a `.gitignore`, and two things are in it. The
+repository the app initialises writes a `.gitignore`, and three things are in it. The
 identity's key, the record of which folders hold graphs, this device's git defaults, its
 credentials and the private half of the key it signs with live in the app's own private data
 rather than in any vault (§ "Local-only mode"), and the ignore names every one of them so a
-folder that also holds one never commits it. The bin is the second, and its reason is the protocol:
+folder that also holds one never commits it. **A copy of an identity saved out of the app is
+the second** — `sloppy-identity*.json`, and the bare name a panel can write without the
+extension. That file carries the key. A save offers the person's downloads rather than
+whichever folder the app was last in, but where they put it afterwards is theirs, and a
+folder with a remote must not turn one they left here into something pushed. It is not the
+vault's either (`vaultOwned` in `@sloppy/local`), so no copy of a graph carries it out. The
+bin is the third, and its reason is the protocol:
 `.sloppy/bin.json` carries every address this graph has spent and will not assign again, and
 that ledger only ever grows — a switch to an older commit that handed those addresses back
 would let a second note be written at one, which AI.md § "The Genealogy Is the Protocol"

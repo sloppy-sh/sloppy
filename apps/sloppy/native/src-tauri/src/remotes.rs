@@ -725,6 +725,7 @@ mod tests {
         for one in [
             "identity.json",
             "identity.key",
+            "sloppy-identity.json",
             "credentials.json",
             "git.json",
             "signing.key",

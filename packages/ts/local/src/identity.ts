@@ -405,6 +405,20 @@ interface CarriedIdentity {
 /** What a file carrying an identity is called on the way out. */
 export const CARRIED_FILE = "sloppy-identity.json";
 
+const CARRIED_NAME = "sloppy-identity";
+
+/** Whether a path is a copy of an identity saved out of the app: {@link
+ *  CARRIED_FILE}, and whatever a save panel numbered or unsuffixed beside it.
+ *  Such a file holds the key, so one left in a graph's folder is still the
+ *  person's own and never the vault's — no copy of the graph carries it. */
+export function carriedIdentityFile(path: string): boolean {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return (
+    name === CARRIED_NAME ||
+    (name.startsWith(CARRIED_NAME) && name.endsWith(".json"))
+  );
+}
+
 export function carryIdentityOut(
   identity: LocalIdentity,
   key: Uint8Array,

@@ -487,13 +487,21 @@ pub async fn save_file<R: Runtime>(
     let body = BASE64
         .decode(bytes)
         .map_err(|_| FileError::Failed("That file could not be saved.".into()))?;
+    // Left to itself the panel opens wherever the app last was, which is the
+    // folder a graph is open in. A file this app hands over can hold a key, and
+    // one of those must never land in somebody's notes by accepting a default.
+    let start = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().home_dir())
+        .ok();
     let handle = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        handle
-            .dialog()
-            .file()
-            .set_file_name(&name)
-            .blocking_save_file()
+        let mut panel = handle.dialog().file().set_file_name(&name);
+        if let Some(folder) = start {
+            panel = panel.set_directory(folder);
+        }
+        panel.blocking_save_file()
     })
     .await
     .map_err(|_| FileError::Failed("Saving did not finish.".into()))?;

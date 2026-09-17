@@ -40,9 +40,11 @@ const GIT_DEFAULTS: &str = "git.json";
 
 /// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
 /// history".
-const IGNORED: [&str; 10] = [
+const IGNORED: [&str; 12] = [
     "identity.json",
     "identity.key",
+    "sloppy-identity",
+    "sloppy-identity*.json",
     "folders.json",
     "vaults.json",
     "git.json",
@@ -297,8 +299,24 @@ fn kept_out(path: &str) -> bool {
             Some(folder) => path.starts_with(&format!("{folder}/")),
             None => path == pinned,
         },
-        None => path.rsplit('/').next() == Some(*line),
+        None => path
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| line_names(name, line)),
     })
+}
+
+/// Whether a name is the one an `IGNORED` line names, with `*` standing for any
+/// run of characters as git's does. The lines carry at most one.
+fn line_names(name: &str, line: &str) -> bool {
+    match line.split_once('*') {
+        Some((before, after)) => {
+            name.len() >= before.len() + after.len()
+                && name.starts_with(before)
+                && name.ends_with(after)
+        }
+        None => name == line,
+    }
 }
 
 /// What an exclude cannot do: a folder that was a repository before the app
@@ -1441,6 +1459,7 @@ pub(crate) mod tests {
     pub(crate) fn beside_the_graph(root: &Path) {
         write(root, "identity.json", "{}");
         write(root, "identity.key", "a seed");
+        write(root, "sloppy-identity.json", "{}");
         write(root, "folders.json", "[]");
         write(root, "vaults.json", "[]");
         write(root, "git.json", "{}");
@@ -1535,6 +1554,7 @@ pub(crate) mod tests {
         for one in [
             "identity.json",
             "identity.key",
+            "sloppy-identity.json",
             "folders.json",
             "vaults.json",
             "git.json",
@@ -1545,6 +1565,59 @@ pub(crate) mod tests {
         ] {
             assert!(root.join(one).exists(), "{one} is still in the folder");
         }
+    }
+
+    #[test]
+    fn a_copy_of_an_identity_saved_into_the_folder_never_reaches_a_commit() {
+        let root = scratch("carried");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        write(&root, "notes/a.md", "one");
+        let copies = [
+            "sloppy-identity.json",
+            "sloppy-identity 2.json",
+            "sloppy-identity",
+            "notes/sloppy-identity.json",
+        ];
+        for one in copies {
+            write(&root, one, "{\"key\":\"a key\"}");
+        }
+        theirs(&root, "Everything I had");
+        assert!(kept(&root).contains(&"sloppy-identity.json".to_owned()));
+
+        write(&root, "notes/a.md", "one, changed");
+        made(&root, "A note");
+
+        assert_eq!(kept(&root), [GRAPH_FILE, "notes/a.md"]);
+        let held = status(&root).expect("the status");
+        assert!(held.changed.is_empty() && held.untracked.is_empty());
+        for one in copies {
+            assert!(root.join(one).exists(), "{one} is gone from the folder");
+        }
+    }
+
+    #[test]
+    fn a_switch_lays_down_no_copy_of_an_identity_a_state_was_keeping() {
+        let root = scratch("carried-switch");
+        Repository::init(&root).expect("their repository");
+        write(&root, GRAPH_FILE, "{}");
+        write(&root, "notes/a.md", "one");
+        write(&root, "sloppy-identity.json", "the copy by then");
+        theirs(&root, "Everything I had");
+        let on = status(&root)
+            .expect("the status")
+            .branch
+            .expect("the branch they were on");
+        branch(&root, "later").expect("the branch");
+
+        write(&root, "notes/a.md", "one, changed");
+        made(&root, "A note");
+        write(&root, "sloppy-identity.json", "the copy now");
+
+        switch_to(&root, "later").expect("the switch");
+        assert_eq!(read(&root, "sloppy-identity.json"), "the copy now");
+        switch_to(&root, &on).expect("back");
+        assert_eq!(read(&root, "sloppy-identity.json"), "the copy now");
     }
 
     #[test]

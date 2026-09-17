@@ -1,4 +1,4 @@
-import type { IdentityAccess, IdentityHere } from '@sloppy/local';
+import { CARRIED_FILE, type IdentityAccess, type IdentityHere } from '@sloppy/local';
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initRuntime } from '../runtime.js';
@@ -32,10 +32,7 @@ function doors(said: Partial<IdentityAccess>): IdentityAccess {
 		signIn: async () => {},
 		finish: async () => undefined,
 		bring: async () => here(),
-		carryOut: async () => ({
-			name: 'sloppy-identity.json',
-			body: new Uint8Array([1, 2, 3])
-		}),
+		carryOut: async () => ({ name: CARRIED_FILE, body: new Uint8Array([1, 2, 3]) }),
 		writeAs: async () => {},
 		...said
 	};
@@ -221,7 +218,7 @@ describe('the identities a device holds', () => {
 		expect(target.querySelector('[role="alert"]')).not.toBeNull();
 	});
 
-	it('hands over a copy of an identity made here, and says what having it means', async () => {
+	it('hands over a copy of an identity made here, named so a person knows what it is', async () => {
 		shell({ list: async () => [here()] });
 		show();
 		await settle();
