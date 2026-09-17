@@ -265,6 +265,34 @@ describe("a note as a file", () => {
     );
   });
 
+  it("writes the commit the note was read against beside when it changed", () => {
+    const commit = "8e52d1a4c0b3f1e2d9a7c6b5a4938271605f4e3d";
+    const { files } = noteToVault(note({ checked: commit }), [], []);
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array);
+    expect(text).toContain(
+      ["updated: 2026-01-02T00:00:00.000Z", `checked: ${commit}`].join("\n"),
+    );
+    expect(read(files).checked).toBe(commit);
+  });
+
+  it("leaves a note nobody has confirmed carrying no commit", () => {
+    const { files } = noteToVault(note(), [], []);
+    expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).not.toContain(
+      "checked",
+    );
+    expect(read(files).checked).toBeUndefined();
+  });
+
+  it("carries the commit back however that history spells one", () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1, maxLength: 128 }), (commit) => {
+        const { files } = noteToVault(note({ checked: commit }), [], []);
+        expect(read(files).checked).toBe(commit);
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
   it("carries the look its author gave the mark, whatever it says", () => {
     fc.assert(
       fc.property(looks, (look) => {

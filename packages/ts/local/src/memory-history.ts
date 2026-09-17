@@ -322,6 +322,29 @@ export class MemoryHistory implements History {
     };
   }
 
+  async changedSince(
+    commit: string,
+    paths: readonly string[],
+  ): Promise<string[]> {
+    if (!this.commits.has(commit)) throw notHere();
+    const before = new Set(this.reachable(commit).map((one) => one.id));
+    const wanted = [...new Set(paths)];
+    const moved = new Set<string>();
+    for (const held of this.reachable(this.heads.get(this.on))) {
+      if (before.has(held.id)) continue;
+      const was = this.treeOf(held.parents[0]);
+      for (const path of wanted) {
+        if (
+          !moved.has(path) &&
+          !sameTree(filesAt(held.tree, path), filesAt(was, path))
+        ) {
+          moved.add(path);
+        }
+      }
+    }
+    return wanted.filter((path) => moved.has(path));
+  }
+
   async remotes(): Promise<Remote[]> {
     return [...this.named].map(([name, url]) => ({ name, url }));
   }
@@ -437,6 +460,13 @@ export class MemoryHistory implements History {
 
   async setSigning(config: SigningConfig): Promise<void> {
     this.signs = config;
+  }
+
+  /** What a commit left the folder holding; nothing, for the commit before a
+   *  first one. */
+  private treeOf(commit: string | undefined): Tree {
+    const held = commit === undefined ? undefined : this.commits.get(commit);
+    return held?.tree ?? new Map();
   }
 
   private head(): Held | undefined {
@@ -622,6 +652,17 @@ function under(remote: string, ref: string): string {
 function sameBytes(a: Uint8Array | undefined, b: Uint8Array | undefined) {
   if (a === undefined || b === undefined) return a === b;
   return a.length === b.length && a.every((byte, at) => byte === b[at]);
+}
+
+/** What a tree holds at `path`: the file it names, or every file under it
+ *  where it names a folder. */
+function filesAt(tree: Tree, path: string): Tree {
+  const held: Tree = new Map();
+  const prefix = `${path}/`;
+  for (const [at, bytes] of tree) {
+    if (at === path || at.startsWith(prefix)) held.set(at, bytes);
+  }
+  return held;
 }
 
 function sameTree(a: Tree, b: Tree): boolean {

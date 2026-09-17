@@ -7,6 +7,7 @@ import {
   graphFile,
   mediaPath,
   notePath,
+  readGraphFile,
   type Vault,
   VAULT_FORMAT,
   VaultFormatError,
@@ -42,6 +43,25 @@ describe("a vault as one file", () => {
     const back = unpack(pack(held));
     expect(back).toEqual(held);
     expect(back.has(amendmentPath(OFFER))).toBe(true);
+  });
+
+  it("carries where the code the graph is about is", () => {
+    const held = vault();
+    held.set(
+      "graph.json",
+      graphFile({
+        format: VAULT_FORMAT,
+        graph: GRAPH,
+        name: "The compiler",
+        owner: OWNER,
+        project: "..",
+      }),
+    );
+    const back = unpack(pack(held));
+    expect(back).toEqual(held);
+    expect(readGraphFile(back.get("graph.json") as Uint8Array).project).toBe(
+      "..",
+    );
   });
 
   it("packs the same graph to the same bytes twice", () => {

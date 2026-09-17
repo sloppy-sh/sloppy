@@ -5,6 +5,7 @@ import {
   AddressSchema,
   type BlockDocument,
   type BlockView,
+  CommitIdSchema,
   type DidSyr,
   DidSyrSchema,
   isUnstyled,
@@ -83,6 +84,9 @@ export interface VaultNote {
   /** Absent where the file did not say, which is a file a hand has been in. */
   created?: Timestamp;
   updated?: Timestamp;
+  /** The commit its author last read the note's reasoning against. Absent is a
+   *  note nobody has confirmed, which is UNREAD and never out of date. */
+  checked?: string;
   sections: VaultSection[];
 }
 
@@ -137,6 +141,7 @@ export function noteToVault(
     ["title", note.title],
     ["created", note.created_at],
     ["updated", note.updated_at],
+    ["checked", note.checked],
     ["appearance", lookBlock(note.appearance)],
   ]);
   return writeSections(
@@ -222,6 +227,7 @@ export function vaultToNote(files: NoteSource): VaultNote {
   const look = NodeAppearanceSchema.safeParse(frontBlock(front, "appearance"));
   const address = AddressSchema.safeParse(frontString(front, "address"));
   const owner = DidSyrSchema.safeParse(frontString(front, "owner"));
+  const checked = CommitIdSchema.safeParse(frontString(front, "checked"));
   const authors = dids(frontList(front, "authors"));
   const contributors = dids(frontList(front, "contributors"));
   const stamp = (key: string): { [k: string]: Timestamp } => {
@@ -248,6 +254,7 @@ export function vaultToNote(files: NoteSource): VaultNote {
       : {}),
     ...stamp("created"),
     ...stamp("updated"),
+    ...(checked.success ? { checked: checked.data } : {}),
     sections: readSections(body, files),
   };
 }

@@ -6,6 +6,7 @@ export * from "./delegation.js";
 export * from "./identity.js";
 export * from "./vault-paths.js";
 export * from "./vaults.js";
+export * from "./container.js";
 export * from "./graph.js";
 export * from "./history.js";
 export * from "./memory-history.js";

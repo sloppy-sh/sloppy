@@ -148,6 +148,28 @@ describe("what markdown carries", () => {
     expect(readBack(link({ href }))).toEqual(link({ href }));
   });
 
+  it("writes an anchor into code as the path somebody wrote", () => {
+    const anchor = (href: string): BlockDocument =>
+      doc({
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: "the parser",
+            marks: [{ type: "link", attrs: { href } }],
+          },
+        ],
+      });
+    for (const href of [
+      "code:src/api.ts",
+      "code:src/api.ts#L12-L20",
+      "code:packages/ts/vault/src/markdown.ts#fromMarkdown",
+    ]) {
+      expect(written(anchor(href)).text).toBe(`[the parser](${href})`);
+      expect(readBack(anchor(href))).toEqual(anchor(href));
+    }
+  });
+
   it("writes a link to a note as itself, so a citation stays a citation", () => {
     const ref =
       "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01J0000000000000000000000A";
