@@ -195,6 +195,13 @@ describe('the history as a picture', () => {
 		expect(drawn()[1]).toContain('A first version');
 	});
 
+	it('says nothing has been kept yet where there is nothing to draw', async () => {
+		await open();
+
+		expect(drawn()).toEqual([]);
+		expect(screen()).toContain('You have not kept one yet.');
+	});
+
 	it('says what a version springs from, and starts a line at that one and no other', async () => {
 		await graphHistory.keep('A first version');
 		const first = graphHistory.at as string;

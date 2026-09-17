@@ -277,10 +277,10 @@
 
 		<section class="space-y-2 border-t border-border pt-6">
 			<h3 class="text-sm font-medium">Versions</h3>
-			{#if picture}
-				{@render picture()}
-			{:else if versions.length === 0}
+			{#if versions.length === 0}
 				<p class="text-sm text-muted-foreground">You have not kept one yet.</p>
+			{:else if picture}
+				{@render picture()}
 			{:else}
 				<ul class="space-y-1">
 					{#each versions as version (version.id)}
