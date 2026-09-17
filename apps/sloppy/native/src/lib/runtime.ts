@@ -8,6 +8,7 @@ import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import {
 	DeviceCredentials,
 	DeviceGitDefaults,
+	HistoryError,
 	holdsAGraph,
 	LocalApi,
 	readIdentities,
@@ -147,6 +148,11 @@ async function cloneFolder(
 ): Promise<string | undefined> {
 	const into = await files.pickFolder();
 	if (!into) return undefined;
+	// Said here as well as where the copy is made, so a folder somebody already
+	// keeps things in is never opened as the graph a copy was meant to be.
+	if ((await files.at(into).list('')).length > 0) {
+		throw new HistoryError('There is already something in that folder. Choose an empty one.');
+	}
 	await files.clone?.(url, into, credential);
 	await open(files, into);
 	return into;

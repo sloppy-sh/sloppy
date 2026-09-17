@@ -69,7 +69,7 @@ fn nowhere() -> HistoryError {
 
 fn turned_away() -> HistoryError {
     HistoryError::new(
-        "That address would not let Sloppy in. Check what it was given and try again.",
+        "That address would not let Sloppy in. Check the token or key it was given and try again.",
     )
 }
 
@@ -376,15 +376,15 @@ pub fn clone_into(
 
 /// A remote that would not take a push. The one thing every host refuses for
 /// the same reason is a branch it has commits on that this one has not taken
-/// in; anything else is that host's own rule, said in that host's own words.
+/// in; anything else is that host's own rule, and what it said about it is
+/// written for somebody reading a terminal rather than for the person here.
 fn turned_down(said: &str) -> HistoryError {
     if said.contains("fast") || said.contains("behind") {
         return pull_first();
     }
-    HistoryError::new(format!(
-        "That address would not take this — {}",
-        said.trim()
-    ))
+    HistoryError::new(
+        "That address would not take these versions. Check that what Sloppy was given may write there.",
+    )
 }
 
 fn off_a_branch() -> HistoryError {
@@ -939,10 +939,84 @@ mod tests {
         at
     }
 
+    /// A branch follows one of another name because a config says so, whoever
+    /// wrote that config — nothing here matches them up by name.
+    #[test]
+    fn a_branch_that_follows_by_config_writes_back_to_what_it_follows_and_takes_from_it() {
+        let root = vault();
+        let data = private_for(&root);
+        write(&root, "notes/a.md", "one");
+        let first = made(&root, "A graph");
+        let (there, url) = elsewhere("host");
+        add(&root, "origin", &url).expect("the remote");
+        push(&root, &data, None, None).expect("the push");
+        {
+            let kept = Repository::open_bare(&there).expect("what is kept there");
+            kept.reference(
+                "refs/heads/trunk",
+                Oid::from_str(&first.id).unwrap(),
+                true,
+                "theirs",
+            )
+            .expect("the branch they keep beside it");
+        }
+
+        let sender = follows_trunk("sender", &url);
+        write(&sender, "notes/b.md", "two");
+        let theirs = made(&sender, "Their note");
+        push(&sender, &private_for(&sender), None, None).expect("their push");
+        assert_eq!(
+            head_there(&there, "trunk").as_deref(),
+            Some(theirs.id.as_str())
+        );
+        assert_eq!(
+            head_there(&there, "main").as_deref(),
+            Some(first.id.as_str())
+        );
+
+        let taker = follows_trunk("taker", &url);
+        assert!(
+            pull(&taker, &private_for(&taker), None, None)
+                .expect("the pull")
+                .merged
+        );
+        assert_eq!(read(&taker, "notes/b.md"), "two");
+    }
+
+    /// A copy whose branch is pointed at the one the host calls `trunk`, the
+    /// way somebody's own git would write it.
+    fn follows_trunk(name: &str, url: &str) -> PathBuf {
+        let at = scratch(name);
+        clone_into(url, &at, &private_for(&at), None).expect("the copy");
+        let repo = Repository::open(&at).expect("the repository");
+        repo.config()
+            .expect("the config")
+            .open_level(git2::ConfigLevel::Local)
+            .expect("its own")
+            .set_str("branch.main.merge", "refs/heads/trunk")
+            .expect("what it follows");
+        at
+    }
+
+    /// What a host would not take is said in words a person can act on, and
+    /// never in the host's own — those are written for a terminal.
+    #[test]
+    fn a_push_a_host_refuses_says_what_to_do_rather_than_what_it_said() {
+        assert_eq!(
+            turned_down("non-fast-forward").said(),
+            "Pull first, then push again."
+        );
+        let said = turned_down("pre-receive hook declined: refs/heads/main is protected");
+        assert_eq!(
+            said.said(),
+            "That address would not take these versions. Check that what Sloppy was given may write there."
+        );
+    }
+
     /// A host that is there and will not take what it was given is a different
     /// thing from an address with nothing at it, and a person is told which.
     #[test]
-    fn a_host_that_turns_this_away_says_to_look_at_what_it_was_given() {
+    fn a_host_that_turns_this_away_says_to_look_at_the_token_or_key() {
         let root = vault();
         let data = private_for(&root);
         made(&root, "A graph");
@@ -963,7 +1037,7 @@ mod tests {
         ] {
             assert_eq!(
                 said.said(),
-                "That address would not let Sloppy in. Check what it was given and try again."
+                "That address would not let Sloppy in. Check the token or key it was given and try again."
             );
         }
     }

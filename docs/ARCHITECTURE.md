@@ -2177,9 +2177,20 @@ folder that arrived as a copy is. `push` puts this
 branch's commits where the remote keeps them, follows it from then on where the branch
 followed nothing, and is refused where the remote has commits this branch has not taken in —
 "Pull first, then push again.", because writing over somebody's writing is not a thing a
-push may do quietly. `status` carries `ahead`, `behind` and the branch this one follows.
-**A `clone` is `Files`' and not `History`'s**, because a folder that is not here yet has no
-history to ask.
+push may do quietly. **What a branch takes from and writes back to is the one it follows**,
+read out of the config git keeps it in (`branch.<name>.merge`) rather than matched up by
+name, because somebody's own git points a branch at whichever of a host's branches they
+like and a folder set up that way is one this app opens. `status` carries `ahead`, `behind`
+and the branch this one follows. **A `clone` is `Files`' and not `History`'s**, because a
+folder that is not here yet has no history to ask; it is refused a folder that already
+holds something, said there and again in the shell, so a folder somebody keeps their own
+things in is never opened as the copy it was meant to be.
+
+**What a host says about a refusal is not what a person reads.** Its status line is written
+for somebody at a terminal, so the shell answers with what to check instead: a way in that
+was turned down says to look at the token or key, an address nothing answers at says to
+check the address, and a push a host would not take says to check that what this device was
+given may write there.
 
 **What a pull brings in is files; what a number names is the graph's, and a pull does not
 settle that.** Two people writing at once are offered the same next number by the same

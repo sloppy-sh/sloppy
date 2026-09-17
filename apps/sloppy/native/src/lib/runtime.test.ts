@@ -519,6 +519,19 @@ describe('the folders this device keeps its graphs in', () => {
 		]);
 	});
 
+	it('are not the folder somebody already keeps things in', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = THESIS;
+
+		await expect(
+			registered.vault?.clone?.('https://somewhere.test/ada/garden.git')
+		).rejects.toThrow('There is already something in that folder. Choose an empty one.');
+		expect(broughtOver).toEqual([]);
+		expect(servedFrom()).not.toBe(THESIS);
+	});
+
 	it('gain nothing where nobody says where to put what is brought over', async () => {
 		knows(THESIS);
 		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
