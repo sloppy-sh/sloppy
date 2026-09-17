@@ -146,6 +146,55 @@ pub(crate) fn own_only(_path: &Path, _mode: u32) -> io::Result<()> {
     Ok(())
 }
 
+/// A vault a history command works in: the folder the graph's files are in,
+/// which is what this reads as, and the folder somebody picked that holds it.
+/// The pick is how far up the search for the repository keeping the vault may
+/// go — docs/ARCHITECTURE.md § "The vault's history".
+#[derive(Clone, Debug)]
+pub struct Opened {
+    root: PathBuf,
+    within: PathBuf,
+}
+
+impl Opened {
+    /// A vault nothing above it was picked for, which is its own repository or
+    /// becomes one.
+    pub fn own(root: &Path) -> Self {
+        Opened {
+            root: root.to_path_buf(),
+            within: root.to_path_buf(),
+        }
+    }
+
+    /// A vault inside a folder somebody picked — a project's container inside
+    /// the project's root.
+    pub fn inside(root: &Path, within: &Path) -> Self {
+        Opened {
+            root: root.to_path_buf(),
+            within: within.to_path_buf(),
+        }
+    }
+
+    /// How far up a search for the repository keeping this vault may go.
+    pub fn within(&self) -> &Path {
+        &self.within
+    }
+}
+
+impl std::ops::Deref for Opened {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.root
+    }
+}
+
+impl AsRef<Path> for Opened {
+    fn as_ref(&self) -> &Path {
+        &self.root
+    }
+}
+
 /// The folders this app may reach: its own private data, and every folder a
 /// person has picked. A pick is written down, so a graph opened yesterday opens
 /// today without anybody being asked again.
@@ -214,13 +263,28 @@ impl Folders {
 
     /// The folder a history command works in, refused where nobody opened it.
     /// Everything that command then reaches is under what this answers.
-    pub fn opened(&self, root: &str) -> Result<PathBuf, FileError> {
+    pub fn opened(&self, root: &str) -> Result<Opened, FileError> {
         let root = PathBuf::from(root);
-        if self.allows(&root) {
-            Ok(settled(&root))
-        } else {
-            Err(FileError::NoFolder)
+        if !self.allows(&root) {
+            return Err(FileError::NoFolder);
         }
+        let root = settled(&root);
+        Ok(match self.holding(&root) {
+            Some(folder) => Opened::inside(&root, &folder),
+            None => Opened::own(&root),
+        })
+    }
+
+    /// The picked folder a path is in, the innermost where it is in several.
+    /// Nothing for this app's own private data, which nobody picked.
+    fn holding(&self, at: &Path) -> Option<PathBuf> {
+        self.picked
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|folder| at.starts_with(folder))
+            .max_by_key(|folder| folder.as_os_str().len())
+            .cloned()
     }
 
     /// Where a file the page named lands, refused where it would leave the

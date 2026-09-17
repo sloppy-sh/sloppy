@@ -681,16 +681,17 @@ TOIB
             },
             public_key: None,
         };
-        let repo = crate::history::at(&root).expect("the repository");
-        write(&repo, &root, &data, &named).expect("the choice");
+        let kept = crate::history::at(&root).expect("the repository");
+        let repo = kept.repo();
+        write(repo, &root, &data, &named).expect("the choice");
         assert!(matches!(
-            read(&repo, &data).expect("how it signs"),
+            read(repo, &data).expect("how it signs"),
             SigningConfig::Ssh {
                 key: SshKey::File { .. },
                 ..
             }
         ));
-        drop(repo);
+        drop(kept);
 
         let signed = made(&root, "A graph").signature.expect("a signature");
         assert_eq!(signed.by, key.fingerprint(HashAlg::Sha256).to_string());
@@ -707,10 +708,11 @@ TOIB
             Err(error) => panic!("ssh-keygen: {error}"),
             Ok(held) => assert!(held.status.success()),
         }
-        let repo = crate::history::at(&root).expect("the repository");
+        let kept = crate::history::at(&root).expect("the repository");
+        let repo = kept.repo();
         assert_eq!(
             write(
-                &repo,
+                repo,
                 &root,
                 &data,
                 &SigningConfig::Ssh {
@@ -726,7 +728,7 @@ TOIB
         );
         // And the folder goes on signing with what it was already signing with.
         assert!(matches!(
-            read(&repo, &data).expect("how it signs"),
+            read(repo, &data).expect("how it signs"),
             SigningConfig::Ssh {
                 key: SshKey::File { .. },
                 ..
@@ -752,9 +754,10 @@ TOIB
         for named in [public, at] {
             let root = vault();
             let data = private_for(&root);
-            let repo = crate::history::at(&root).expect("the repository");
+            let kept = crate::history::at(&root).expect("the repository");
+            let repo = kept.repo();
             write(
-                &repo,
+                repo,
                 &root,
                 &data,
                 &SigningConfig::Ssh {
@@ -765,7 +768,7 @@ TOIB
                 },
             )
             .expect("the choice");
-            drop(repo);
+            drop(kept);
 
             let signed = made(&root, "A graph").signature.expect("a signature");
             assert_eq!(signed.by, key.fingerprint(HashAlg::Sha256).to_string());
@@ -814,9 +817,10 @@ TOIB
 
         let root = vault();
         let data = private_for(&root);
-        let repo = crate::history::at(&root).expect("the repository");
+        let kept = crate::history::at(&root).expect("the repository");
+        let repo = kept.repo();
         write(
-            &repo,
+            repo,
             &root,
             &data,
             &SigningConfig::Openpgp {
@@ -825,7 +829,7 @@ TOIB
             },
         )
         .expect("the choice");
-        drop(repo);
+        drop(kept);
 
         let signed = made(&root, "A graph").signature.expect("a signature");
         assert_eq!(signed.by.len(), 16);

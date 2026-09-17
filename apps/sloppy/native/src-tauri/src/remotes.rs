@@ -19,9 +19,9 @@ use git2::{
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::history::{self, HistoryError, Merged};
+use crate::history::{self, HistoryError, Kept, Merged};
 use crate::signing::SshKey;
-use crate::vault::Folders;
+use crate::vault::{Folders, Opened};
 
 /// The remote an act with none named is with, where the branch follows nothing
 /// and this folder has more than one.
@@ -182,8 +182,9 @@ fn key_files(key: &SshKey, data: &Path) -> (PathBuf, Option<PathBuf>) {
     }
 }
 
-pub fn list(root: &Path) -> Result<Vec<Remote>, HistoryError> {
-    let repo = history::at(root)?;
+pub fn list(vault: &Opened) -> Result<Vec<Remote>, HistoryError> {
+    let kept = history::at(vault)?;
+    let repo = kept.repo();
     let mut held = Vec::new();
     for name in repo.remotes()?.iter().flatten() {
         let Ok(remote) = repo.find_remote(name) else {
@@ -197,8 +198,9 @@ pub fn list(root: &Path) -> Result<Vec<Remote>, HistoryError> {
     Ok(held)
 }
 
-pub fn add(root: &Path, name: &str, url: &str) -> Result<(), HistoryError> {
-    let repo = history::at(root)?;
+pub fn add(vault: &Opened, name: &str, url: &str) -> Result<(), HistoryError> {
+    let kept = history::at(vault)?;
+    let repo = kept.repo();
     if repo.find_remote(name).is_ok() {
         return Err(already_called(name));
     }
@@ -207,8 +209,9 @@ pub fn add(root: &Path, name: &str, url: &str) -> Result<(), HistoryError> {
     Ok(())
 }
 
-pub fn rename(root: &Path, name: &str, to: &str) -> Result<(), HistoryError> {
-    let repo = history::at(root)?;
+pub fn rename(vault: &Opened, name: &str, to: &str) -> Result<(), HistoryError> {
+    let kept = history::at(vault)?;
+    let repo = kept.repo();
     if repo.find_remote(name).is_err() {
         return Err(nothing_called(name));
     }
@@ -220,8 +223,9 @@ pub fn rename(root: &Path, name: &str, to: &str) -> Result<(), HistoryError> {
     Ok(())
 }
 
-pub fn set_url(root: &Path, name: &str, url: &str) -> Result<(), HistoryError> {
-    let repo = history::at(root)?;
+pub fn set_url(vault: &Opened, name: &str, url: &str) -> Result<(), HistoryError> {
+    let kept = history::at(vault)?;
+    let repo = kept.repo();
     if repo.find_remote(name).is_err() {
         return Err(nothing_called(name));
     }
@@ -229,8 +233,9 @@ pub fn set_url(root: &Path, name: &str, url: &str) -> Result<(), HistoryError> {
     Ok(())
 }
 
-pub fn remove(root: &Path, name: &str) -> Result<(), HistoryError> {
-    let repo = history::at(root)?;
+pub fn remove(vault: &Opened, name: &str) -> Result<(), HistoryError> {
+    let kept = history::at(vault)?;
+    let repo = kept.repo();
     if repo.find_remote(name).is_err() {
         return Err(nothing_called(name));
     }
@@ -239,13 +244,12 @@ pub fn remove(root: &Path, name: &str) -> Result<(), HistoryError> {
 }
 
 pub fn fetch(
-    root: &Path,
+    vault: &Opened,
     data: &Path,
     name: &str,
     credential: Option<&Credential>,
 ) -> Result<(), HistoryError> {
-    let repo = history::at(root)?;
-    take_from(&repo, name, data, credential)
+    take_from(history::at(vault)?.repo(), name, data, credential)
 }
 
 fn take_from(
@@ -265,25 +269,26 @@ fn take_from(
 }
 
 pub fn pull(
-    root: &Path,
+    vault: &Opened,
     data: &Path,
     named: Option<&str>,
     credential: Option<&Credential>,
 ) -> Result<Merged, HistoryError> {
-    let mut repo = history::at(root)?;
-    let branch = history::on(&repo)?.ok_or_else(off_a_branch)?;
-    let name = which(&repo, &branch, named)?;
-    take_from(&repo, &name, data, credential)?;
+    let mut kept = history::at(vault)?;
+    let repo = kept.repo();
+    let branch = history::on(repo)?.ok_or_else(off_a_branch)?;
+    let name = which(repo, &branch, named)?;
+    take_from(repo, &name, data, credential)?;
 
-    if history::head_commit(&repo)?.is_none() {
-        let Some(tracking) = arriving(&repo, &name, &branch) else {
+    if history::head_commit(repo)?.is_none() {
+        let Some(tracking) = arriving(repo, &name, &branch) else {
             return Ok(Merged::whole());
         };
-        let Some(theirs) = head_of(&repo, &tracking) else {
+        let Some(theirs) = head_of(repo, &tracking) else {
             return Ok(Merged::whole());
         };
         let taken = theirs_in(&tracking, &name).to_owned();
-        history::lay(&repo, root, theirs)?;
+        history::lay(&kept, theirs)?;
         repo.reference(
             &format!("refs/heads/{taken}"),
             theirs,
@@ -291,37 +296,38 @@ pub fn pull(
             &format!("pull {tracking}"),
         )?;
         repo.set_head(&format!("refs/heads/{taken}"))?;
-        follow(&repo, &taken, &tracking)?;
+        follow(repo, &taken, &tracking)?;
         return Ok(Merged::whole());
     }
 
-    let tracking = tracked(&repo, &branch, &name);
-    let Some(theirs) = head_of(&repo, &tracking) else {
+    let tracking = tracked(repo, &branch, &name);
+    let Some(theirs) = head_of(repo, &tracking) else {
         return Ok(Merged::whole());
     };
-    history::merge_commit(&mut repo, root, data, theirs, &tracking)
+    history::merge_commit(&mut kept, vault, data, theirs, &tracking)
 }
 
 pub fn push(
-    root: &Path,
+    vault: &Opened,
     data: &Path,
     named: Option<&str>,
     credential: Option<&Credential>,
 ) -> Result<(), HistoryError> {
-    let repo = history::at(root)?;
-    let branch = history::on(&repo)?.ok_or_else(off_a_branch)?;
-    let Some(mine) = history::head_commit(&repo)?.map(|held| held.id()) else {
+    let kept = history::at(vault)?;
+    let repo = kept.repo();
+    let branch = history::on(repo)?.ok_or_else(off_a_branch)?;
+    let Some(mine) = history::head_commit(repo)?.map(|held| held.id()) else {
         return Err(HistoryError::new(
             "There is nothing here to keep somewhere else yet. Commit what is in this folder first.",
         ));
     };
-    let name = which(&repo, &branch, named)?;
+    let name = which(repo, &branch, named)?;
     let mut remote = repo.find_remote(&name).map_err(|_| nothing_called(&name))?;
 
     // What the remote has that this branch has not taken in would be written
     // over, and the side holding it is the side that says so.
     let refused: Cell<Option<String>> = Cell::new(None);
-    let tracking = tracked(&repo, &branch, &name);
+    let tracking = tracked(repo, &branch, &name);
     let want = format!("refs/heads/{branch}");
     let onto = format!("refs/heads/{}", theirs_in(&tracking, &name));
     let asked = Asked::default();
@@ -345,7 +351,7 @@ pub fn push(
         true,
         &format!("push {tracking}"),
     )?;
-    follow(&repo, &branch, &tracking)?;
+    follow(repo, &branch, &tracking)?;
     Ok(())
 }
 
@@ -370,7 +376,7 @@ pub fn clone_into(
         .fetch_options(how)
         .clone(url, into)
         .map_err(|error| tripped(error, &asked))?;
-    history::keep_out(&repo)?;
+    history::keep_out(&Kept::whole(repo, into))?;
     Ok(())
 }
 
@@ -479,7 +485,7 @@ fn follow(repo: &Repository, branch: &str, tracking: &str) -> Result<(), History
     Ok(())
 }
 
-fn opened(folders: &State<'_, Folders>, root: &str) -> Result<PathBuf, HistoryError> {
+fn opened(folders: &State<'_, Folders>, root: &str) -> Result<Opened, HistoryError> {
     Ok(folders.opened(root)?)
 }
 
@@ -601,7 +607,7 @@ mod tests {
 
     /// Somewhere else a folder is kept: a repository with no folder of its own,
     /// which is what a host holds.
-    fn elsewhere(name: &str) -> (PathBuf, String) {
+    fn elsewhere(name: &str) -> (Opened, String) {
         let at = scratch(name);
         let held = Repository::init_bare(&at).expect("a place to keep it");
         // What a host answers with when somebody asks it for a copy, and what
@@ -716,7 +722,7 @@ mod tests {
         add(&root, "origin", &url).expect("the remote");
         push(&root, &data, None, None).expect("the push");
 
-        let kept: Vec<String> = crate::history::read_at(&there, "refs/heads/main")
+        let kept: Vec<String> = crate::history::read_at(&Opened::own(&there), "refs/heads/main")
             .expect("what is kept there")
             .keys()
             .cloned()
@@ -986,7 +992,7 @@ mod tests {
 
     /// A copy whose branch is pointed at the one the host calls `trunk`, the
     /// way somebody's own git would write it.
-    fn follows_trunk(name: &str, url: &str) -> PathBuf {
+    fn follows_trunk(name: &str, url: &str) -> Opened {
         let at = scratch(name);
         clone_into(url, &at, &private_for(&at), None).expect("the copy");
         let repo = Repository::open(&at).expect("the repository");
