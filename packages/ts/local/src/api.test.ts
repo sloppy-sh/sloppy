@@ -164,7 +164,7 @@ describe("the folder a shell opened", () => {
     expect(await again.api.listGraphs()).toEqual([]);
   });
 
-  it("is one graph in the listing, and so is a copy of it opened beside it", async () => {
+  it("is the one row a graph gets where a second folder holds it too", async () => {
     const first = opened("/Users/me/garden");
     await first.api.createNode({ title: "A first thought" });
     for (const [path, bytes] of [...first.store]) {
@@ -176,12 +176,42 @@ describe("the folder a shell opened", () => {
     }
 
     const again = opened("/Users/me/backup", first.store);
-    const [listed, here] = await Promise.all([
-      again.api.listGraphs(),
-      again.api.graphHere(),
-    ]);
+    const here = await again.api.graphHere();
+    await again.api.updateGraph(here, { title: "The backup" });
+
+    const listed = await again.api.listGraphs();
 
     expect(listed.map((one) => one.ref)).toEqual([here]);
+    expect(listed[0].title).toBe("The backup");
+    expect(
+      decodeText(
+        again.store.get(`/Users/me/garden/${GRAPH_FILE}`) as Uint8Array,
+      ),
+    ).not.toContain("The backup");
+  });
+
+  it("is the folder a note is read out of and written back into", async () => {
+    const first = opened("/Users/me/garden");
+    const note = await first.api.createNode({ title: "A first thought" });
+    for (const [path, bytes] of [...first.store]) {
+      if (!path.startsWith("/Users/me/garden/")) continue;
+      first.store.set(
+        path.replace("/Users/me/garden/", "/Users/me/backup/"),
+        bytes,
+      );
+    }
+
+    const again = opened("/Users/me/backup", first.store);
+    await again.api.updateNode(note.ref, { title: "Written here" });
+
+    const file = notePath(splitOwnedRef(note.ref).localId);
+    expect(
+      decodeText(again.store.get(`/Users/me/backup/${file}`) as Uint8Array),
+    ).toContain("Written here");
+    expect(
+      decodeText(again.store.get(`/Users/me/garden/${file}`) as Uint8Array),
+    ).toContain("A first thought");
+    expect((await again.api.getNode(note.ref))?.title).toBe("Written here");
   });
 
   it("starts one graph between two reads that land together", async () => {

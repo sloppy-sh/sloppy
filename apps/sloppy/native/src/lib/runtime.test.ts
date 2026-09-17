@@ -51,6 +51,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'files_clone': {
 				const into = args?.into as string;
 				const credential = args?.credential as Credential | null;
+				// The copy is what refuses a folder somebody already keeps things in,
+				// and it does so before it writes anything (`remotes.rs`).
+				if ([...held.keys()].some((path) => path.startsWith(`${into}/`))) {
+					throw 'There is already something in that folder. Choose an empty one.';
+				}
 				broughtOver.push({ url: args?.url as string, into, ...(credential ? { credential } : {}) });
 				held.set(
 					`${into}/graph.json`,
@@ -403,6 +408,7 @@ describe('the folders this device keeps its graphs in', () => {
 		picks = GARDEN;
 		picking = 'answers';
 		broughtOver.length = 0;
+		historyAsked.length = 0;
 		resetApi.mockClear();
 	});
 
@@ -437,6 +443,8 @@ describe('the folders this device keeps its graphs in', () => {
 
 		expect(registered.vault?.folder()).toBe(THESIS);
 		expect(servedFrom()).toBe(THESIS);
+		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
+		expect(historyAsked).toEqual([['history_head', THESIS]]);
 		expect(resetApi).toHaveBeenCalled();
 		// And it is the folder the next launch opens.
 		expect(await (await launch()).openRememberedVault()).toBe(THESIS);
@@ -517,6 +525,19 @@ describe('the folders this device keeps its graphs in', () => {
 			'The garden',
 			'The thesis'
 		]);
+	});
+
+	it('are not the folder somebody already keeps things in', async () => {
+		knows(THESIS);
+		graphIn(THESIS, 'The thesis', '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+		await launch();
+		picks = THESIS;
+
+		await expect(
+			registered.vault?.clone?.('https://somewhere.test/ada/garden.git')
+		).rejects.toThrow('There is already something in that folder. Choose an empty one.');
+		expect(broughtOver).toEqual([]);
+		expect(servedFrom()).not.toBe(THESIS);
 	});
 
 	it('gain nothing where nobody says where to put what is brought over', async () => {

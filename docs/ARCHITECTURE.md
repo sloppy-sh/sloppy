@@ -577,10 +577,10 @@ one of its own. A folder a graph was written into and that is no longer there is
 than started over: the app offers a folder to open instead of writing a fresh empty graph
 where a graph somebody moved used to be.
 
-**The folders this device knows ARE its graphs.** `listGraphs` answers one graph per known
-folder, read from each folder's own `graph.json`, so the picker a person already chooses a
-graph in is the same place they choose which folder is open — one list, not two names for
-one thing. A folder that is not where this device last saw it has no graph to answer with,
+**The folders this device knows ARE its graphs.** `VaultAccess.known` answers one row per
+known folder, read from each folder's own `graph.json`, so the picker a person already
+chooses a graph in is the same place they choose which folder is open — one list, not two
+names for one thing. A folder that is not where this device last saw it has no graph to answer with,
 so `VaultAccess.known` is what lists it as unreachable rather than dropping it, because a
 person moved it and only they can say where to. Starting a
 graph here is starting a folder, and a folder can arrive by being cloned from somewhere
@@ -590,6 +590,18 @@ act, on any folder, and the folder is opened again by naming it again. `VaultAcc
 `forget`, `start` and `clone` beside it. `open` and `start` are one act under the two words
 a person chooses it by — opening a folder that holds a graph, or starting one that will —
 and `openKnown` is a folder already on the list, named rather than picked.
+
+**Two folders may hold one graph, and a folder is what is open.** Cloning your own remote
+beside the original, or bringing an archive of a graph into a second folder, leaves this
+device with two folders at one graph ulid, and that is allowed: a picker row is a FOLDER,
+told apart by its root and never by the graph in it, which is why the rows come from
+`known` and not from `listGraphs`. So every act — the canvas, the writing, the history,
+Settings — reads and writes the folder that is open and nothing else. `LocalApi` holds that
+line for the store: what it keeps per folder is keyed by that folder's root, and where two
+folders answer to one ref the open one is the copy every lookup gets, `listGraphs`
+included, so no surface is ever handed the other. `listGraphs` therefore stays one row per
+GRAPH, and a count of it is a count of the notebooks somebody keeps rather than of the
+folders they keep them in.
 
 **A folder somebody else owns is not yours to close.** Closing or emptying a folder — every
 act that takes the graph out of it — is the owner's, the DID its `graph.json` names, and
@@ -2168,9 +2180,21 @@ folder that arrived as a copy is. `push` puts this
 branch's commits where the remote keeps them, follows it from then on where the branch
 followed nothing, and is refused where the remote has commits this branch has not taken in —
 "Pull first, then push again.", because writing over somebody's writing is not a thing a
-push may do quietly. `status` carries `ahead`, `behind` and the branch this one follows.
-**A `clone` is `Files`' and not `History`'s**, because a folder that is not here yet has no
-history to ask.
+push may do quietly. **What a branch takes from and writes back to is the one it follows**,
+read out of the config git keeps it in (`branch.<name>.merge`) rather than matched up by
+name, because somebody's own git points a branch at whichever of a host's branches they
+like and a folder set up that way is one this app opens. `status` carries `ahead`, `behind`
+and the branch this one follows. **A `clone` is `Files`' and not `History`'s**, because a
+folder that is not here yet has no history to ask. It refuses a folder that already holds
+something, before it writes a byte and in the one place that can tell in a single read, so
+a folder somebody keeps their own things in is never opened as the copy it was meant to be
+and nothing above it walks the folder to ask the same question again.
+
+**What a host says about a refusal is not what a person reads.** Its status line is written
+for somebody at a terminal, so the shell answers with what to check instead: a way in that
+was turned down says to look at the token or key, an address nothing answers at says to
+check the address, and a push a host would not take says to check that what this device was
+given may write there.
 
 **What a pull brings in is files; what a number names is the graph's, and a pull does not
 settle that.** Two people writing at once are offered the same next number by the same
@@ -2196,9 +2220,11 @@ credentials stay out of every push exactly as they stay out of every commit.
 **Commits are by the configured git user, and that is not who owns the graph.** The author
 comes from git config the way git reads it: the folder's own `user.name` / `user.email`
 first, then the person's global config. Settings writes the folder's pair, and `git.json`
-in private data is the device default a new folder inherits, so somebody who has said once
-does not say again. Where nothing anywhere says, the fallback is the graph's owner and their
-DID. **The DID on a note and the author of a commit are two different facts** — whose
+in private data is the device default a new folder inherits — the shell writes it into a
+folder that names nobody the first time it commits there, so it holds for every folder a
+person opens rather than only the ones they started from the picker, and a folder that
+names somebody keeps them. Where nothing anywhere says, the fallback is the graph's owner
+and their DID. **The DID on a note and the author of a commit are two different facts** — whose
 writing a note carries is § "Whose writing a note carries", and a commit is who saved this
 state of the folder.
 
@@ -2213,7 +2239,13 @@ needs so a person's own git agrees with what this one did — `gpg.format`,
 (`gpg.ssh.allowedSignersFile`) — and a commit is made as `commit_create_buffer` → sign →
 `commit_signed`. A listing says which commits carry a signature and which key made it, and
 calls one **verified** where that key is one this app keeps or one the folder's allowed
-signers vouch for.
+signers vouch for. **A save is never refused because a signature could not be made**: a
+folder set up to sign with a program this machine has not got keeps the commit unsigned and
+the setting for wherever that program is. How a folder signs is `signing()`, which a
+listing reads beside the versions, so a folder that signs is what makes an unsigned version
+worth saying anything about — an unsigned version in a folder that signs nothing is
+ordinary. Choosing is where a person can do something about it, so that is where a key this
+device cannot open and a program it has not got are refused.
 
 **The whole history is readable as one picture.** `graph(limit, cursor)` answers commits
 across every head this folder knows — its branches and the remote-tracking ones — newest
@@ -2249,7 +2281,9 @@ history. An ignore alone cannot hold that line, so three things do: the reposito
 excludes them for itself, a commit lets go of any a folder was already tracking before
 the app opened it, and a checkout keeps the folder's own aside and puts them back, so no
 switch or merge writes an older bin or identity over the live one. The files themselves
-stay where they are throughout — only the history lets go of them.
+stay where they are throughout — only the history lets go of them. **A checkout that is
+refused leaves the folder exactly as it was**, including whatever it moved out of the way
+to make room, so a switch nothing could take costs nobody a file.
 
 **Any commit's vault is readable, and reading one moves nothing.** `readAt` answers the
 whole vault as it was at a commit — the same `Vault` a folder and an archive already are, so

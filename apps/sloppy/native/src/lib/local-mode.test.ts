@@ -114,6 +114,18 @@ describe('the folders this device knows', () => {
 		expect(known.every((one) => one.reachable)).toBe(true);
 	});
 
+	it('are two where two of them hold one graph', async () => {
+		const files = await device([{ root: '/Users/me/garden', name: 'The garden' }]);
+		const copy = await files.at('/Users/me/garden').read('graph.json');
+		await files.at('/Users/me/backup').write('graph.json', copy as Uint8Array);
+		await openedFolder(files, '/Users/me/backup');
+
+		const known = await knownFolders(files, '/Users/me/backup');
+
+		expect(known.map((one) => one.root)).toEqual(['/Users/me/backup', '/Users/me/garden']);
+		expect(known[0].graph?.ref).toBe(known[1].graph?.ref);
+	});
+
 	it('keep a folder that is not where it was, with nothing to open in it', async () => {
 		const files = await device([{ root: '/Users/me/garden' }]);
 
