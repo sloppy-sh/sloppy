@@ -18,9 +18,8 @@ use ssh_key::{Algorithm, Fingerprint, HashAlg, LineEnding, PrivateKey, PublicKey
 use crate::history::HistoryError;
 use crate::vault::own_only;
 
-/// The private half of the key this app makes — `KEPT_KEY_FILE` in
-/// `@sloppy/local`, in the same private data, and the public half beside it
-/// under the same name so a person can paste it where their host wants it.
+/// The two halves of the key this app makes — `KEPT_KEY_FILE` and
+/// `KEPT_KEY_PUBLIC_FILE` in `@sloppy/local`, in the same private data.
 const KEPT_KEY: &str = "signing.key";
 pub const KEPT_KEY_PUBLIC: &str = "signing.key.pub";
 
@@ -130,6 +129,9 @@ fn which_key(path: &str, data: &Path) -> SshKey {
     }
 }
 
+/// How this folder signs from now on. What it is given has to be something this
+/// device can sign with, and that is said here — while somebody is choosing —
+/// because a save is never refused over a signature afterwards.
 pub fn write(
     repo: &Repository,
     root: &Path,
@@ -154,6 +156,7 @@ pub fn write(
         }
         SigningConfig::Openpgp { program, key_id } => {
             only_on_a_desktop()?;
+            runs_here(program.as_deref().unwrap_or(DEFAULT_PROGRAM))?;
             config.set_str("gpg.format", "openpgp")?;
             match program {
                 Some(program) => config.set_str("gpg.program", program)?,
@@ -185,6 +188,22 @@ fn only_on_a_desktop() -> Result<(), HistoryError> {
     ))
 }
 
+/// Whether the program that would sign is one this machine has.
+fn runs_here(program: &str) -> Result<(), HistoryError> {
+    use std::process::{Command, Stdio};
+
+    match Command::new(program)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(no_program(program)),
+        _ => Ok(()),
+    }
+}
+
 /// Where the key is and what its public half says, the key made where it is the
 /// one this app keeps and there is none yet.
 fn ssh_key_of(key: &SshKey, data: &Path) -> Result<(PathBuf, PublicKey), HistoryError> {
@@ -197,6 +216,7 @@ fn ssh_key_of(key: &SshKey, data: &Path) -> Result<(PathBuf, PublicKey), History
         SshKey::File { path } => {
             let at = PathBuf::from(path);
             let public = public_half(&at)?;
+            read_private(&at)?;
             Ok((at, public))
         }
     }
@@ -685,10 +705,31 @@ TOIB
             Err(error) => panic!("ssh-keygen: {error}"),
             Ok(held) => assert!(held.status.success()),
         }
+        let repo = crate::history::at(&root).expect("the repository");
         assert_eq!(
-            read_private(&theirs.join("locked")).unwrap_err().said(),
+            write(
+                &repo,
+                &root,
+                &data,
+                &SigningConfig::Ssh {
+                    key: SshKey::File {
+                        path: theirs.join("locked").to_string_lossy().into_owned(),
+                    },
+                    public_key: None,
+                },
+            )
+            .unwrap_err()
+            .said(),
             "That key is locked with a passphrase, which Sloppy cannot ask for yet. Choose one without it, or let Sloppy keep a key for you."
         );
+        // And the folder goes on signing with what it was already signing with.
+        assert!(matches!(
+            read(&repo, &data).expect("how it signs"),
+            SigningConfig::Ssh {
+                key: SshKey::File { .. },
+                ..
+            }
+        ));
     }
 
     /// A host asks a person for the public half, so that is the half their git

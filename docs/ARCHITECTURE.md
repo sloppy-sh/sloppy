@@ -2205,9 +2205,11 @@ credentials stay out of every push exactly as they stay out of every commit.
 **Commits are by the configured git user, and that is not who owns the graph.** The author
 comes from git config the way git reads it: the folder's own `user.name` / `user.email`
 first, then the person's global config. Settings writes the folder's pair, and `git.json`
-in private data is the device default a new folder inherits, so somebody who has said once
-does not say again. Where nothing anywhere says, the fallback is the graph's owner and their
-DID. **The DID on a note and the author of a commit are two different facts** — whose
+in private data is the device default a new folder inherits — the shell writes it into a
+folder that names nobody the first time it commits there, so it holds for every folder a
+person opens rather than only the ones they started from the picker, and a folder that
+names somebody keeps them. Where nothing anywhere says, the fallback is the graph's owner
+and their DID. **The DID on a note and the author of a commit are two different facts** — whose
 writing a note carries is § "Whose writing a note carries", and a commit is who saved this
 state of the folder.
 
@@ -2222,7 +2224,11 @@ needs so a person's own git agrees with what this one did — `gpg.format`,
 (`gpg.ssh.allowedSignersFile`) — and a commit is made as `commit_create_buffer` → sign →
 `commit_signed`. A listing says which commits carry a signature and which key made it, and
 calls one **verified** where that key is one this app keeps or one the folder's allowed
-signers vouch for.
+signers vouch for. **A save is never refused because a signature could not be made**: a
+folder set up to sign with a program this machine has not got keeps the commit unsigned and
+the setting for wherever that program is, and what a listing says beside that version is
+what says so. Choosing is where a person can do something about it, so that is where a key
+this device cannot open and a program it has not got are refused.
 
 **The whole history is readable as one picture.** `graph(limit, cursor)` answers commits
 across every head this folder knows — its branches and the remote-tracking ones — newest
@@ -2258,7 +2264,9 @@ history. An ignore alone cannot hold that line, so three things do: the reposito
 excludes them for itself, a commit lets go of any a folder was already tracking before
 the app opened it, and a checkout keeps the folder's own aside and puts them back, so no
 switch or merge writes an older bin or identity over the live one. The files themselves
-stay where they are throughout — only the history lets go of them.
+stay where they are throughout — only the history lets go of them. **A checkout that is
+refused leaves the folder exactly as it was**, including whatever it moved out of the way
+to make room, so a switch nothing could take costs nobody a file.
 
 **Any commit's vault is readable, and reading one moves nothing.** `readAt` answers the
 whole vault as it was at a commit — the same `Vault` a folder and an archive already are, so

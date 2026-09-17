@@ -34,6 +34,10 @@ const GRAPH_FILE: &str = "graph.json";
 /// name without one.
 const NO_ADDRESS: &str = "sloppy@localhost";
 
+/// What this device begins a folder with — `GIT_DEFAULTS_FILE` in
+/// `@sloppy/local`, in the same private data.
+const GIT_DEFAULTS: &str = "git.json";
+
 /// What the folder is told not to keep — docs/ARCHITECTURE.md § "The vault's
 /// history".
 const IGNORED: [&str; 10] = [
@@ -140,7 +144,7 @@ pub struct CommitGraphPage {
 }
 
 /// `GitUser` in `@sloppy/local`.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct GitUser {
     name: String,
     email: String,
@@ -367,22 +371,23 @@ fn merging(repo: &mut Repository) -> Result<Option<Oid>, HistoryError> {
     }
 }
 
+/// Git refuses a name or an address with an angle bracket or a newline in it,
+/// and every one of these is somebody's own words.
+fn spelled(held: Option<&serde_json::Value>, key: &str) -> Option<String> {
+    held.and_then(|held| held.get(key))
+        .and_then(|held| held.as_str())
+        .map(str::trim)
+        .filter(|held| !held.is_empty() && !held.contains(['<', '>', '\n']))
+        .map(str::to_owned)
+}
+
 /// Who a commit is by where nothing in git config says: what the graph says
 /// its owner is called, and the identity it belongs to.
 fn owner(root: &Path) -> (String, String) {
     let held = fs::read(root.join(GRAPH_FILE))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
-    // Git refuses a name or an address with an angle bracket or a newline in
-    // it, and both of these are somebody's own words.
-    let said = |key: &str| {
-        held.as_ref()
-            .and_then(|held| held.get(key))
-            .and_then(|held| held.as_str())
-            .map(str::trim)
-            .filter(|held| !held.is_empty() && !held.contains(['<', '>', '\n']))
-            .map(str::to_owned)
-    };
+    let said = |key: &str| spelled(held.as_ref(), key);
     let did = said("owner");
     let name = said("owner_name")
         .or_else(|| did.clone())
@@ -407,6 +412,34 @@ pub fn git_user(root: &Path) -> Result<Option<GitUser>, HistoryError> {
 fn named(repo: &Repository) -> Option<(String, String)> {
     let config = repo.config().ok()?;
     Some((said(&config, "user.name")?, said(&config, "user.email")?))
+}
+
+/// Who this device says its commits are by, where it has been told at all.
+fn device_user(data: &Path) -> Option<GitUser> {
+    let held: serde_json::Value = fs::read(data.join(GIT_DEFAULTS))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())?;
+    let user = held.get("user");
+    Some(GitUser {
+        name: spelled(user, "name")?,
+        email: spelled(user, "email")?,
+    })
+}
+
+/// A folder nobody has named an author in takes this device's default the first
+/// time it commits, so somebody who has said once does not say again and their
+/// own git agrees with what this one did.
+fn begun(repo: &Repository, data: &Path) -> Result<(), HistoryError> {
+    if named(repo).is_some() {
+        return Ok(());
+    }
+    let Some(user) = device_user(data) else {
+        return Ok(());
+    };
+    let mut config = repo.config()?.open_level(ConfigLevel::Local)?;
+    config.set_str("user.name", &user.name)?;
+    config.set_str("user.email", &user.email)?;
+    Ok(())
 }
 
 pub fn set_git_user(root: &Path, user: &GitUser) -> Result<(), HistoryError> {
@@ -651,6 +684,10 @@ pub fn commit(root: &Path, data: &Path, message: &str) -> Result<Option<Commit>,
 /// One commit, carrying a signature where this folder signs. A signed one is
 /// written straight to the branch, because signing it is what makes the commit
 /// rather than something done to one that is already there.
+///
+/// A signature that cannot be made here — a program this machine has not got, a
+/// key it cannot open — leaves the commit unsigned rather than losing what
+/// somebody wrote, and a listing says which commits carry one.
 fn record(
     repo: &Repository,
     root: &Path,
@@ -659,11 +696,12 @@ fn record(
     tree: &git2::Tree<'_>,
     parents: &[&git2::Commit<'_>],
 ) -> Result<Oid, HistoryError> {
+    begun(repo, data)?;
     let by = signature(repo, root)?;
     let held = repo.commit_create_buffer(&by, &by, message, tree, parents)?;
     let content = std::str::from_utf8(&held)
         .map_err(|_| HistoryError::new("That did not work. Try again."))?;
-    let Some(armour) = crate::signing::sign(repo, data, content)? else {
+    let Some(armour) = crate::signing::sign(repo, data, content).unwrap_or(None) else {
         return Ok(repo.commit(Some("HEAD"), &by, &by, message, tree, parents)?);
     };
     let made = repo.commit_signed(content, &armour, None)?;
@@ -862,8 +900,9 @@ fn put_back(repo: &Repository, root: &Path, held: Vec<Aside>) -> Result<(), Hist
 /// A file the folder holds that the state being laid down holds byte for byte
 /// is not a file a checkout writes over — the bytes do not change. Only one the
 /// history is not already keeping is let go of this way, so nothing a checkout
-/// would leave alone is lost.
-fn already_the_same(repo: &Repository, root: &Path, onto: Oid) -> Result<(), HistoryError> {
+/// would leave alone is lost; what is kept out of the history is `set_aside`'s.
+/// The bytes come back as they were, for a checkout that is refused after all.
+fn already_the_same(repo: &Repository, root: &Path, onto: Oid) -> Result<Vec<Aside>, HistoryError> {
     let tracked: BTreeSet<String> = repo
         .index()?
         .iter()
@@ -881,11 +920,11 @@ fn already_the_same(repo: &Repository, root: &Path, onto: Oid) -> Result<(), His
                 return TreeWalkResult::Ok;
             };
             let path = format!("{folder}{name}");
-            if tracked.contains(&path) {
+            if tracked.contains(&path) || kept_out(&path) {
                 return TreeWalkResult::Ok;
             }
             match (fs::read(root.join(&path)), repo.find_blob(entry.id())) {
-                (Ok(here), Ok(blob)) if here == blob.content() => same.push(path),
+                (Ok(here), Ok(blob)) if here == blob.content() => same.push((path, here)),
                 (_, Err(error)) => {
                     failed = Some(error);
                     return TreeWalkResult::Abort;
@@ -897,15 +936,17 @@ fn already_the_same(repo: &Repository, root: &Path, onto: Oid) -> Result<(), His
     if let Some(error) = failed {
         return Err(error.into());
     }
-    for path in same {
-        fs::remove_file(root.join(path))?;
+    let mut held = Vec::new();
+    for (path, was) in same {
+        fs::remove_file(root.join(&path))?;
+        held.push((path, Some(was)));
     }
-    Ok(())
+    Ok(held)
 }
 
 pub(crate) fn lay(repo: &Repository, root: &Path, onto: Oid) -> Result<(), HistoryError> {
     let tree = repo.find_object(onto, Some(ObjectType::Commit))?;
-    already_the_same(repo, root, onto)?;
+    let same = already_the_same(repo, root, onto)?;
     let held = set_aside(repo, root, onto)?;
     let mut how = CheckoutBuilder::new();
     how.safe();
@@ -913,6 +954,11 @@ pub(crate) fn lay(repo: &Repository, root: &Path, onto: Oid) -> Result<(), Histo
         .checkout_tree(&tree, Some(&mut how))
         .map_err(in_the_way);
     put_back(repo, root, held)?;
+    // A checkout that wrote them is a checkout that went through; one that was
+    // refused leaves the folder holding everything it held before.
+    if laid.is_err() {
+        put_back(repo, root, same)?;
+    }
     laid
 }
 
@@ -1596,6 +1642,145 @@ pub(crate) mod tests {
         let held = status(&root).expect("the status");
         assert_eq!(held.changed, vec![GRAPH_FILE, "notes/a.md"]);
         assert_eq!(held.untracked, vec!["notes/b.md"]);
+    }
+
+    /// What this device was told to begin a folder with, as `@sloppy/local`
+    /// writes it into the private data.
+    fn device_was_told(data: &Path, name: &str, email: &str) {
+        fs::create_dir_all(data).expect("the private data");
+        fs::write(
+            data.join(GIT_DEFAULTS),
+            format!(r#"{{"user":{{"name":"{name}","email":"{email}"}}}}"#),
+        )
+        .expect("what this device was told");
+    }
+
+    #[test]
+    fn a_folder_that_names_nobody_takes_this_devices_default_when_it_first_commits() {
+        let root = vault();
+        device_was_told(&private_for(&root), "Grace Hopper", "grace@example.com");
+
+        assert_eq!(made(&root, "A graph").author, "Grace Hopper");
+        assert_eq!(
+            git_user(&root).expect("who this folder's versions are by"),
+            Some(GitUser {
+                name: "Grace Hopper".to_owned(),
+                email: "grace@example.com".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_folder_that_names_somebody_keeps_them_and_one_told_nothing_falls_back_to_the_owner() {
+        let named = vault();
+        device_was_told(&private_for(&named), "Grace Hopper", "grace@example.com");
+        set_git_user(
+            &named,
+            &GitUser {
+                name: "Bee Kirkwood".to_owned(),
+                email: "bee@example.com".to_owned(),
+            },
+        )
+        .expect("who this folder's versions are by");
+        assert_eq!(made(&named, "A graph").author, "Bee Kirkwood");
+
+        let untold = vault();
+        assert_eq!(made(&untold, "A graph").author, "Ada");
+        assert!(git_user(&untold)
+            .expect("who its versions are by")
+            .is_none());
+    }
+
+    /// A folder set up on a computer that has the program, opened on one that
+    /// has not, is still a folder somebody is writing in.
+    #[test]
+    fn a_version_that_cannot_be_signed_is_kept_unsigned_rather_than_refused() {
+        let root = vault();
+        let data = private_for(&root);
+        let missing = root.join("not-a-program");
+        {
+            let repo = at(&root).expect("the repository");
+            let mut config = repo
+                .config()
+                .expect("the config")
+                .open_level(ConfigLevel::Local)
+                .expect("its own");
+            config.set_str("gpg.format", "openpgp").expect("how");
+            config
+                .set_str("gpg.program", &missing.to_string_lossy())
+                .expect("what signs");
+            config
+                .set_bool("commit.gpgsign", true)
+                .expect("that it does");
+        }
+
+        write(&root, "notes/a.md", "one");
+        let held = made(&root, "A note");
+        assert!(held.signature.is_none());
+        assert!(kept(&root).contains(&"notes/a.md".to_owned()));
+        // The setting is the folder's and stays for wherever that program is.
+        assert!(matches!(
+            signing(&root, &data).expect("how it signs"),
+            SigningConfig::Openpgp { .. }
+        ));
+    }
+
+    /// Choosing is where a person can do something about it, so that is where
+    /// a program this machine has not got is refused.
+    #[test]
+    fn a_program_this_machine_has_not_got_is_refused_while_it_is_being_chosen() {
+        let root = vault();
+        let data = private_for(&root);
+        let missing = root.join("not-a-program");
+
+        assert_eq!(
+            set_signing(
+                &root,
+                &data,
+                &SigningConfig::Openpgp {
+                    program: Some(missing.to_string_lossy().into_owned()),
+                    key_id: None,
+                },
+            )
+            .unwrap_err()
+            .said(),
+            format!(
+                "Sloppy could not run {}. Check that it is installed.",
+                missing.to_string_lossy()
+            )
+        );
+        assert!(matches!(
+            signing(&root, &data).expect("how it signs"),
+            SigningConfig::None
+        ));
+    }
+
+    /// A checkout the folder refuses leaves nothing of somebody's behind: what
+    /// was moved out of its way is where it was.
+    #[test]
+    fn a_refused_checkout_puts_back_what_it_moved() {
+        let root = vault();
+        made(&root, "A graph");
+        branch(&root, "later").expect("the branch");
+        switch_to(&root, "later").expect("the switch");
+        write(&root, "notes/a.md", "theirs");
+        write(&root, "notes/b.md", "two");
+        made(&root, "Their notes");
+        switch_to(&root, "main").expect("back");
+
+        write(&root, "notes/a.md", "mine");
+        write(&root, "notes/b.md", "two");
+
+        assert_eq!(
+            switch_to(&root, "later").unwrap_err().said(),
+            "Something here that the history is not keeping would be written over. Move it out of this folder first."
+        );
+        assert_eq!(read(&root, "notes/a.md"), "mine");
+        assert_eq!(read(&root, "notes/b.md"), "two");
+        assert_eq!(
+            status(&root).expect("the status").branch.as_deref(),
+            Some("main")
+        );
     }
 
     #[test]
