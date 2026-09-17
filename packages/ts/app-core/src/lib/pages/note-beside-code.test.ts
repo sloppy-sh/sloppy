@@ -65,6 +65,14 @@ const named = (words: string): HTMLButtonElement | undefined =>
 const labelled = (label: string) =>
 	document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 
+/** Raises what a reader may do to the note being read. */
+async function openActs(): Promise<void> {
+	const acts = labelled('What to do with this note');
+	if (!acts) throw new Error('The note carries no acts control');
+	acts.click();
+	await settle();
+}
+
 /** One section pointing at a place in the code, under the words it was cited
  *  by. */
 function anchored(href: string): BlockView {
@@ -199,17 +207,24 @@ describe('a graph that is nobody’s project', () => {
 		flushSync();
 
 		expect(labelled('Cite code')).toBeNull();
-		expect(named('Still true')).toBeUndefined();
 		expect(document.body.querySelector('[data-code-anchors]')).toBeNull();
+
+		await openActs();
+		expect(named('Still true')).toBeUndefined();
 	});
 });
 
 describe('saying a note’s reasoning still holds', () => {
-	it('says nothing about a note nobody has confirmed, and offers the act', async () => {
+	// Unread is not stale: a note nobody has confirmed says nothing at all, and
+	// the act waits with the note's other acts.
+	it('says nothing about a note nobody has confirmed, and stands nothing under its title', async () => {
 		await keepFile('src/parser.ts', PARSER);
 		await openNote();
 
 		expect(screen()).not.toContain('has changed since you last read it');
+		expect(named('Still true')).toBeUndefined();
+
+		await openActs();
 		expect(named('Still true')).toBeDefined();
 	});
 
@@ -217,6 +232,7 @@ describe('saying a note’s reasoning still holds', () => {
 		const at = await keepFile('src/parser.ts', PARSER);
 		await openNote();
 
+		await openActs();
 		named('Still true')?.click();
 		await settle();
 
@@ -233,7 +249,7 @@ describe('saying a note’s reasoning still holds', () => {
 	});
 
 	// Silence is the ordinary state of a note that is fine.
-	it('says nothing, and offers nothing, where nothing has moved', async () => {
+	it('says nothing, and stands nothing under the title, where nothing has moved', async () => {
 		const read = await keepFile('src/parser.ts', PARSER);
 		await keepFile('src/history.rs', 'fn discover() {}\n');
 		await openNote({ checked: read });
@@ -246,6 +262,7 @@ describe('saying a note’s reasoning still holds', () => {
 		await keepFile('src/parser.ts', PARSER);
 		await openNote({}, [anchored('https://example.com/')]);
 
+		await openActs();
 		expect(named('Still true')).toBeUndefined();
 	});
 });
