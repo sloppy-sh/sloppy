@@ -1,7 +1,10 @@
 <script lang="ts">
 	// Handing somebody a line of text they need somewhere else. A webview can
-	// refuse the clipboard outright, so the text stays on the page to select by
-	// hand and the control says so rather than appearing to have worked.
+	// refuse the clipboard outright, so the line beside it stays selectable and
+	// this says to select it rather than appearing to have worked.
+	import Check from '@lucide/svelte/icons/check';
+	import Copy from '@lucide/svelte/icons/copy';
+	import CopyX from '@lucide/svelte/icons/copy-x';
 	import { onDestroy } from 'svelte';
 	import { cn } from '$lib/utils.js';
 	import { Button } from './ui/button/index.js';
@@ -12,7 +15,7 @@
 		class: className
 	}: {
 		value: string;
-		/** What it says before it is pressed. */
+		/** What it is called, in the voice of the surface it is on. */
 		label?: string;
 		class?: string;
 	} = $props();
@@ -41,6 +44,19 @@
 	onDestroy(() => clearTimeout(clearing));
 </script>
 
-<Button variant="outline" class={cn('h-11', className)} onclick={copy} aria-live="polite">
-	{says}
+<Button
+	variant="ghost"
+	size="icon"
+	class={cn('size-9 shrink-0 text-muted-foreground', className)}
+	aria-label={says}
+	aria-live="polite"
+	onclick={copy}
+>
+	{#if went === 'copied'}
+		<Check class="size-4" />
+	{:else if went === 'refused'}
+		<CopyX class="size-4" />
+	{:else}
+		<Copy class="size-4" />
+	{/if}
 </Button>
