@@ -2,7 +2,7 @@
 // reaches no folder, so `NoteCode` is built from these —
 // docs/ARCHITECTURE.md § "A project's container".
 
-import type { Files } from '@sloppy/local';
+import { CONTAINER_DIR, type Files } from '@sloppy/local';
 
 const READ_AS_TEXT = new TextDecoder();
 
@@ -13,7 +13,7 @@ const READ_AS_TEXT = new TextDecoder();
  */
 const NOT_WRITTEN_BY_HAND = new Set([
 	'.git',
-	'.sloppy',
+	CONTAINER_DIR,
 	'.svelte-kit',
 	'.turbo',
 	'node_modules',
