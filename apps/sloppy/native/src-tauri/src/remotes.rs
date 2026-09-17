@@ -63,6 +63,25 @@ fn pull_first() -> HistoryError {
     HistoryError::new("Pull first, then push again.")
 }
 
+/// What a person is told where the folder's history is the project's own. A
+/// place holds a branch, and a branch holds everything on it, so keeping the
+/// notes somewhere else here would be keeping the project's code there too.
+fn kept_with_the_project() -> HistoryError {
+    HistoryError::new(
+        "These notes are kept with the project, so they go wherever you keep the project itself.",
+    )
+}
+
+/// The repository a remote act works in, and nothing where that repository is
+/// the project's rather than this folder's own.
+fn its_own(vault: &Opened) -> Result<Kept, HistoryError> {
+    let kept = history::at(vault)?;
+    if kept.keeps_more_than_the_vault() {
+        return Err(kept_with_the_project());
+    }
+    Ok(kept)
+}
+
 fn nowhere() -> HistoryError {
     HistoryError::new("There is nothing at that address. Check it and try again.")
 }
@@ -184,6 +203,12 @@ fn key_files(key: &SshKey, data: &Path) -> (PathBuf, Option<PathBuf>) {
 
 pub fn list(vault: &Opened) -> Result<Vec<Remote>, HistoryError> {
     let kept = history::at(vault)?;
+    // The places a project is kept are the project's own, and a person keeps
+    // them where they keep the code. None of them is this folder's to show, to
+    // point elsewhere or to take away.
+    if kept.keeps_more_than_the_vault() {
+        return Ok(Vec::new());
+    }
     let repo = kept.repo();
     let mut held = Vec::new();
     for name in repo.remotes()?.iter().flatten() {
@@ -199,7 +224,7 @@ pub fn list(vault: &Opened) -> Result<Vec<Remote>, HistoryError> {
 }
 
 pub fn add(vault: &Opened, name: &str, url: &str) -> Result<(), HistoryError> {
-    let kept = history::at(vault)?;
+    let kept = its_own(vault)?;
     let repo = kept.repo();
     if repo.find_remote(name).is_ok() {
         return Err(already_called(name));
@@ -210,7 +235,7 @@ pub fn add(vault: &Opened, name: &str, url: &str) -> Result<(), HistoryError> {
 }
 
 pub fn rename(vault: &Opened, name: &str, to: &str) -> Result<(), HistoryError> {
-    let kept = history::at(vault)?;
+    let kept = its_own(vault)?;
     let repo = kept.repo();
     if repo.find_remote(name).is_err() {
         return Err(nothing_called(name));
@@ -224,7 +249,7 @@ pub fn rename(vault: &Opened, name: &str, to: &str) -> Result<(), HistoryError> 
 }
 
 pub fn set_url(vault: &Opened, name: &str, url: &str) -> Result<(), HistoryError> {
-    let kept = history::at(vault)?;
+    let kept = its_own(vault)?;
     let repo = kept.repo();
     if repo.find_remote(name).is_err() {
         return Err(nothing_called(name));
@@ -234,7 +259,7 @@ pub fn set_url(vault: &Opened, name: &str, url: &str) -> Result<(), HistoryError
 }
 
 pub fn remove(vault: &Opened, name: &str) -> Result<(), HistoryError> {
-    let kept = history::at(vault)?;
+    let kept = its_own(vault)?;
     let repo = kept.repo();
     if repo.find_remote(name).is_err() {
         return Err(nothing_called(name));
@@ -249,7 +274,7 @@ pub fn fetch(
     name: &str,
     credential: Option<&Credential>,
 ) -> Result<(), HistoryError> {
-    take_from(history::at(vault)?.repo(), name, data, credential)
+    take_from(its_own(vault)?.repo(), name, data, credential)
 }
 
 fn take_from(
@@ -274,7 +299,7 @@ pub fn pull(
     named: Option<&str>,
     credential: Option<&Credential>,
 ) -> Result<Merged, HistoryError> {
-    let mut kept = history::at(vault)?;
+    let mut kept = its_own(vault)?;
     let repo = kept.repo();
     let branch = history::on(repo)?.ok_or_else(off_a_branch)?;
     let name = which(repo, &branch, named)?;
@@ -313,7 +338,7 @@ pub fn push(
     named: Option<&str>,
     credential: Option<&Credential>,
 ) -> Result<(), HistoryError> {
-    let kept = history::at(vault)?;
+    let kept = its_own(vault)?;
     let repo = kept.repo();
     let branch = history::on(repo)?.ok_or_else(off_a_branch)?;
     let Some(mine) = history::head_commit(repo)?.map(|held| held.id()) else {
@@ -603,7 +628,9 @@ pub fn files_clone(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::history::tests::{beside_the_graph, made, private_for, read, scratch, vault, write};
+    use crate::history::tests::{
+        beside_the_graph, made, private_for, project, read, scratch, their_commit, vault, write,
+    };
 
     /// Somewhere else a folder is kept: a repository with no folder of its own,
     /// which is what a host holds.
@@ -1076,5 +1103,55 @@ mod tests {
                 .said(),
             "There is nothing at that address. Check it and try again."
         );
+    }
+
+    /// A project's notes are on the project's own branches, and a branch is
+    /// kept somewhere else whole. So this folder has no place of its own to
+    /// show, to change or to send anything to.
+    #[test]
+    fn a_projects_container_keeps_the_projects_own_places_out_of_reach() {
+        let (root, held) = project("places");
+        let data = private_for(&held);
+        let (there, url) = elsewhere("host");
+        Repository::open(&root)
+            .expect("their repository")
+            .remote("origin", &url)
+            .expect("their place");
+        their_commit(&root, &["src/a.ts"], "The code");
+        write(&held, "notes/a.md", "why it is like this");
+        made(&held, "The notes");
+
+        assert!(list(&held).expect("the places").is_empty());
+        for said in [
+            add(&held, "mine", &url).unwrap_err(),
+            rename(&held, "origin", "mine").unwrap_err(),
+            set_url(&held, "origin", &url).unwrap_err(),
+            remove(&held, "origin").unwrap_err(),
+            fetch(&held, &data, "origin", None).unwrap_err(),
+            pull(&held, &data, None, None).unwrap_err(),
+            push(&held, &data, None, None).unwrap_err(),
+        ] {
+            assert_eq!(
+                said.said(),
+                "These notes are kept with the project, so they go wherever you keep the project itself."
+            );
+        }
+
+        // What the project was set to is as the person left it, and nothing of
+        // theirs went anywhere.
+        let theirs = Repository::open(&root).expect("their repository");
+        let names: Vec<String> = theirs
+            .remotes()
+            .expect("their places")
+            .iter()
+            .flatten()
+            .map(str::to_owned)
+            .collect();
+        assert_eq!(names, ["origin"]);
+        assert_eq!(
+            theirs.find_remote("origin").expect("their place").url(),
+            Some(url.as_str())
+        );
+        assert!(head_there(&there, "main").is_none());
     }
 }

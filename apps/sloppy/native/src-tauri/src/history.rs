@@ -299,6 +299,12 @@ impl Kept {
         &self.repo
     }
 
+    /// Whether the history holds more than the vault — the project's own code
+    /// beside its notes, on the same branches and in the same commits.
+    pub(crate) fn keeps_more_than_the_vault(&self) -> bool {
+        !self.prefix.is_empty()
+    }
+
     /// Where a file the repository spells as `path` is on the disk.
     fn file(&self, path: &str) -> PathBuf {
         self.work.join(path)
@@ -325,7 +331,8 @@ impl Kept {
     /// Where what this app is told about the folder is written, and nothing
     /// where that is the repository's own config.
     fn told_at(&self) -> Option<PathBuf> {
-        (!self.prefix.is_empty()).then(|| self.repo.commondir().join(TOLD))
+        self.keeps_more_than_the_vault()
+            .then(|| self.repo.commondir().join(TOLD))
     }
 
     /// What the folder is set to, as every act here reads it.
@@ -3232,7 +3239,7 @@ pub(crate) mod tests {
 
     /// A project with a repository of its own, and the container inside it:
     /// what the app opens when somebody opens the project's root folder.
-    fn project(name: &str) -> (Opened, Opened) {
+    pub(crate) fn project(name: &str) -> (Opened, Opened) {
         let root = scratch(name);
         let mut how = RepositoryInitOptions::new();
         how.initial_head(DEFAULT_BRANCH);
@@ -3244,7 +3251,7 @@ pub(crate) mod tests {
 
     /// A commit the person makes themselves, of the paths they name — the
     /// history a project already has, which Sloppy did not write.
-    fn their_commit(root: &Path, paths: &[&str], message: &str) -> String {
+    pub(crate) fn their_commit(root: &Path, paths: &[&str], message: &str) -> String {
         let repo = Repository::open(root).expect("their repository");
         let mut index = repo.index().expect("the index");
         for path in paths {
