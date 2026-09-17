@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { gitSettings } from '../stores/git-settings.svelte.js';
 import { graphs } from '../stores/graphs.svelte.js';
+import { prefs } from '../stores/prefs.svelte.js';
 import HistorySettings from './history-settings.svelte';
 
 const ROOT = '/Users/me/garden';
@@ -643,6 +644,29 @@ describe('another folder opening', () => {
 		const off = target.querySelector<HTMLInputElement>('input[name="signing"][value="none"]');
 		expect(off?.checked).toBe(true);
 		expect(target.querySelector('#history-key-file')).toBeNull();
+	});
+
+	it('leaves what is being typed alone when the rest of Settings changes', async () => {
+		const kept = new MemoryHistory(folder());
+		await kept.addRemote('origin', 'https://example.com/ada/notes.git');
+		shellKeeping(kept);
+		show();
+		await settle();
+
+		type('history-git-name', 'Ada Lovelace');
+		type('history-git-email', 'ada@example.com');
+		press('Add a way in');
+		await settle();
+		type('history-token-origin', 'a-token');
+
+		prefs.set('theme', prefs.current.theme === 'paper' ? 'graphite' : 'paper');
+		await settle();
+
+		expect(target.querySelector<HTMLInputElement>('#history-git-name')?.value).toBe('Ada Lovelace');
+		expect(target.querySelector<HTMLInputElement>('#history-git-email')?.value).toBe(
+			'ada@example.com'
+		);
+		expect(target.querySelector<HTMLInputElement>('#history-token-origin')?.value).toBe('a-token');
 	});
 
 	it('shows the next folder its own way of signing', async () => {

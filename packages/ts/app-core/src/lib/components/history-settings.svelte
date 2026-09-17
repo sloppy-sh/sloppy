@@ -3,6 +3,7 @@
 	// else the folder is kept and how this device gets in there —
 	// docs/ARCHITECTURE.md § "The vault's history".
 	import type { Credential } from '@sloppy/local';
+	import type { OwnedRef } from '@sloppy/types';
 	import { ConfirmModal, CopyButton } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
@@ -61,10 +62,14 @@
 	);
 	const keyNamed = $derived(keyId ?? (signing.kind === 'openpgp' ? (signing.keyId ?? '') : ''));
 
+	let openFolder: OwnedRef | undefined;
+
 	$effect(() => {
 		// The graph in front of somebody is the folder that is open, so another
 		// one opening is another folder's settings.
-		void graphs.current;
+		const folder = graphs.current;
+		if (folder === openFolder) return;
+		openFolder = folder;
 		forgetWhatWasTyped();
 		void gitSettings.read();
 	});
@@ -282,8 +287,8 @@
 {#if gitSettings.offers}
 	<div class="space-y-8 pt-2" data-surface="history-settings">
 		<p class="text-sm text-muted-foreground">
-			What you set here is this folder's. The next folder you start on this device begins the same
-			way.
+			What you set here is this folder's. The name on your versions and the way they are signed also
+			start off the next folder you begin on this device.
 		</p>
 
 		<section class="space-y-3">
