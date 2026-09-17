@@ -52,6 +52,14 @@ export interface VaultGraph {
   /** Their picture, as the path of a file in this vault's `media/`, so a graph
    *  carries the picture it names. Absent where they have none. */
   owner_avatar?: string;
+  /**
+   * Where the code this graph is about is, as a path from the vault root —
+   * `..` for a container inside the project it belongs to. **Absent is a graph
+   * that is nobody's project**: an anchor into code in it is an ordinary link
+   * and nothing offers to review it. docs/ARCHITECTURE.md § "A project's
+   * container" says what a path here is held to and where that is checked.
+   */
+  project?: string;
 }
 
 /** A vault that cannot be read as one. `message` is fit to show somebody. */
@@ -190,6 +198,7 @@ export function graphFile(graph: VaultGraph): Uint8Array {
     ...(graph.owner_avatar === undefined
       ? {}
       : { owner_avatar: graph.owner_avatar }),
+    ...(graph.project === undefined ? {} : { project: graph.project }),
   };
   return encodeText(`${JSON.stringify(held, null, 2)}\n`);
 }
@@ -234,6 +243,11 @@ export function readGraphFile(bytes: Uint8Array): VaultGraph {
     ...(typeof said.owner_avatar === "string" &&
     uploadAt(said.owner_avatar) !== undefined
       ? { owner_avatar: said.owner_avatar }
+      : {}),
+    // Where the path lands is the device's question, not this file's, so it is
+    // `projectRootOf` in `@sloppy/local` that refuses one leaving the folder.
+    ...(typeof said.project === "string" && said.project !== ""
+      ? { project: said.project }
       : {}),
   };
 }

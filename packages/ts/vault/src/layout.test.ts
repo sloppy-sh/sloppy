@@ -140,6 +140,30 @@ describe("where a vault keeps things", () => {
     expect(read.owner_avatar).toBeUndefined();
   });
 
+  it("reads back where the code this graph is about is", () => {
+    const graph = {
+      format: VAULT_FORMAT,
+      graph: NOTE,
+      name: "The compiler",
+      owner: OWNER,
+      project: "..",
+    };
+    expect(readGraphFile(graphFile(graph))).toEqual(graph);
+  });
+
+  it("leaves a graph that is nobody's project carrying no path", () => {
+    const alone = {
+      format: VAULT_FORMAT,
+      graph: NOTE,
+      name: "The thesis",
+      owner: OWNER,
+    };
+    expect(decodeText(graphFile(alone))).not.toContain("project");
+    expect(readGraphFile(graphFile(alone)).project).toBeUndefined();
+    const empty = encodeText(JSON.stringify({ ...alone, project: "" }));
+    expect(readGraphFile(empty).project).toBeUndefined();
+  });
+
   it("says a file written by a newer Sloppy needs a newer Sloppy", () => {
     const bytes = encodeText(
       JSON.stringify({ format: 99, graph: NOTE, name: "x", owner: OWNER }),
