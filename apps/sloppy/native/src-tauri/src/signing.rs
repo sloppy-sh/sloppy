@@ -47,8 +47,13 @@ pub enum SshKey {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SigningConfig {
     None,
+    #[serde(rename_all = "camelCase")]
     Ssh {
         key: SshKey,
+        /// Answered about the key this app keeps, and never read back: what
+        /// a folder signs with is the key, not the half a host is given.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        public_key: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     Openpgp {
@@ -74,6 +79,16 @@ fn said(config: &Config, key: &str) -> Option<String> {
         .filter(|held| !held.is_empty())
 }
 
+/// The one line a host takes the kept key in, and nothing where this device
+/// has not made one yet.
+fn shown(data: &Path) -> Option<String> {
+    let (_, public) = kept_at(data);
+    fs::read_to_string(public)
+        .ok()
+        .map(|held| held.trim().to_owned())
+        .filter(|held| !held.is_empty())
+}
+
 /// The private half, and the public half beside it.
 pub(crate) fn kept_at(data: &Path) -> (PathBuf, PathBuf) {
     (data.join(KEPT_KEY), data.join(KEPT_KEY_PUBLIC))
@@ -89,9 +104,11 @@ pub fn read(repo: &Repository, data: &Path) -> Result<SigningConfig, HistoryErro
     let named = said(&config, "user.signingkey");
     if said(&config, "gpg.format").as_deref() == Some("ssh") {
         return Ok(match named {
-            Some(path) => SigningConfig::Ssh {
-                key: which_key(&path, data),
-            },
+            Some(path) => {
+                let key = which_key(&path, data);
+                let public_key = matches!(key, SshKey::Kept).then(|| shown(data)).flatten();
+                SigningConfig::Ssh { key, public_key }
+            }
             None => SigningConfig::None,
         });
     }
@@ -124,7 +141,7 @@ pub fn write(
         SigningConfig::None => {
             config.set_bool("commit.gpgsign", false)?;
         }
-        SigningConfig::Ssh { key } => {
+        SigningConfig::Ssh { key, .. } => {
             let (path, public) = ssh_key_of(key, data)?;
             vouch_for(root, &public)?;
             config.set_str("gpg.format", "ssh")?;
@@ -360,7 +377,7 @@ pub fn signature_of(repo: &Repository, id: Oid, trust: &Trust) -> Option<Signed>
 pub fn sign(repo: &Repository, data: &Path, content: &str) -> Result<Option<String>, HistoryError> {
     match read(repo, data)? {
         SigningConfig::None => Ok(None),
-        SigningConfig::Ssh { key } => {
+        SigningConfig::Ssh { key, .. } => {
             let held = match key {
                 SshKey::Kept => keep(data)?,
                 SshKey::File { path } => read_private(Path::new(&path))?,
@@ -640,13 +657,15 @@ TOIB
             key: SshKey::File {
                 path: at.to_string_lossy().into_owned(),
             },
+            public_key: None,
         };
         let repo = crate::history::at(&root).expect("the repository");
         write(&repo, &root, &data, &named).expect("the choice");
         assert!(matches!(
             read(&repo, &data).expect("how it signs"),
             SigningConfig::Ssh {
-                key: SshKey::File { .. }
+                key: SshKey::File { .. },
+                ..
             }
         ));
         drop(repo);
@@ -699,6 +718,7 @@ TOIB
                     key: SshKey::File {
                         path: named.to_string_lossy().into_owned(),
                     },
+                    public_key: None,
                 },
             )
             .expect("the choice");

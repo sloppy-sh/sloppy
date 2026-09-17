@@ -2086,13 +2086,18 @@ pub(crate) mod tests {
             serde_json::json!({ "root": spelled, "signing": { "kind": "ssh", "key": { "kind": "kept" } } })
         )
         .is_ok());
-        assert_eq!(
-            ask("history_signing", serde_json::json!({ "root": spelled }))
-                .expect("how it signs")
-                .deserialize::<serde_json::Value>()
-                .expect("what the page is handed"),
-            serde_json::json!({ "kind": "ssh", "key": { "kind": "kept" } })
-        );
+        let signs = ask("history_signing", serde_json::json!({ "root": spelled }))
+            .expect("how it signs")
+            .deserialize::<serde_json::Value>()
+            .expect("what the page is handed");
+        assert_eq!(signs["kind"], "ssh");
+        assert_eq!(signs["key"], serde_json::json!({ "kind": "kept" }));
+        // Settings offers this to copy, so it crosses under the name the page
+        // reads it by.
+        assert!(signs["publicKey"]
+            .as_str()
+            .expect("the half a host is given")
+            .starts_with("ssh-ed25519 "));
 
         let first = first["id"].as_str().expect("an id").to_owned();
         assert!(ask(
@@ -2225,6 +2230,54 @@ pub(crate) mod tests {
         assert_eq!(made(&root, "A note").author, "Grace");
     }
 
+    /// Settings shows the kept key's public half for a person to paste where
+    /// their host wants it, and the only place it can come from is here.
+    #[test]
+    fn the_kept_key_comes_back_with_the_half_a_host_is_given() {
+        let root = vault();
+        let data = private_for(&root);
+        set_signing(
+            &root,
+            &data,
+            &SigningConfig::Ssh {
+                key: crate::signing::SshKey::Kept,
+                public_key: None,
+            },
+        )
+        .expect("the choice");
+
+        let SigningConfig::Ssh { key, public_key } = signing(&root, &data).expect("how it signs")
+        else {
+            panic!("the key this app keeps");
+        };
+        assert!(matches!(key, crate::signing::SshKey::Kept));
+        let shown = public_key.expect("the half a host is given");
+        assert!(shown.starts_with("ssh-ed25519 "));
+        assert_eq!(shown.lines().count(), 1);
+
+        // A key somebody else named is a key this app has no half to hand out.
+        let theirs = scratch("a-named-key").join("id_ed25519");
+        fs::copy(data.join("signing.key"), &theirs).expect("their key");
+        set_signing(
+            &root,
+            &data,
+            &SigningConfig::Ssh {
+                key: crate::signing::SshKey::File {
+                    path: theirs.to_string_lossy().into_owned(),
+                },
+                public_key: None,
+            },
+        )
+        .expect("the choice");
+        assert!(matches!(
+            signing(&root, &data).expect("how it signs"),
+            SigningConfig::Ssh {
+                key: crate::signing::SshKey::File { .. },
+                public_key: None
+            }
+        ));
+    }
+
     #[test]
     fn a_commit_signed_with_the_key_this_app_keeps_says_so_in_every_listing() {
         let root = vault();
@@ -2240,13 +2293,15 @@ pub(crate) mod tests {
             &data,
             &SigningConfig::Ssh {
                 key: crate::signing::SshKey::Kept,
+                public_key: None,
             },
         )
         .expect("the choice");
         assert!(matches!(
             signing(&root, &data).expect("how it signs"),
             SigningConfig::Ssh {
-                key: crate::signing::SshKey::Kept
+                key: crate::signing::SshKey::Kept,
+                ..
             }
         ));
         write(&root, "notes/a.md", "one");
@@ -2296,6 +2351,7 @@ pub(crate) mod tests {
             &data,
             &SigningConfig::Ssh {
                 key: crate::signing::SshKey::Kept,
+                public_key: None,
             },
         )
         .expect("the choice");

@@ -324,4 +324,44 @@ describe('who the commits made in this folder are by, and how they are signed', 
 			}
 		]);
 	});
+
+	it('hands over the half of the kept key a host is given', async () => {
+		const shown = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample sloppy';
+		const { call } = shell({
+			history_signing: { kind: 'ssh', key: { kind: 'kept' }, publicKey: shown }
+		});
+		expect(await tauriHistory('/vault', call).signing?.()).toEqual({
+			kind: 'ssh',
+			key: { kind: 'kept' },
+			publicKey: shown
+		});
+	});
+});
+
+describe('what this shell tells the surfaces that read a folder it can do', () => {
+	/** Settings › History offers nothing unless the whole set is there, and the
+	 *  commit picture is drawn off `graph` — `History` in `@sloppy/local` says a
+	 *  shell that defines one of these defines all of them. */
+	it('defines every act those surfaces look for, together', () => {
+		const history = tauriHistory('/vault', shell().call);
+		for (const act of [
+			'graph',
+			'branchAt',
+			'deleteBranch',
+			'gitUser',
+			'setGitUser',
+			'signing',
+			'setSigning',
+			'remotes',
+			'addRemote',
+			'renameRemote',
+			'setRemoteUrl',
+			'removeRemote',
+			'fetch',
+			'pull',
+			'push'
+		] as const) {
+			expect(typeof history[act]).toBe('function');
+		}
+	});
 });
