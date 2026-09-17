@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 const {
 	OPEN_VAULT_FILE,
+	folderOf,
 	forgetFolder,
 	knownFolders,
 	openedFolder,
 	rememberedVault,
-	rememberVault
+	rememberVault,
+	vaultIn
 } = await import('./local-mode.js');
 
 const ADA = 'did:syr:z6MkAdaWritesHere';
@@ -189,5 +191,72 @@ describe('the folders this device knows', () => {
 
 		expect((await knownFolders(files)).map((one) => one.root)).toEqual(['/Users/me/thesis']);
 		expect(await files.at('/Users/me/garden').exists('graph.json')).toBe(true);
+	});
+});
+
+describe("a project's notes", () => {
+	const ENGINE = '/Users/me/engine';
+
+	/** A project at `ENGINE` whose notes are the container inside it. */
+	async function project(name?: string): Promise<MemoryFiles> {
+		const files = new MemoryFiles({ root: '/', data: '/data' });
+		const at = new Date(0).toISOString();
+		await writeVaults(files.at('/data'), [
+			{ root: `${ENGINE}/.sloppy`, created_at: at, updated_at: at }
+		]);
+		if (name !== undefined) {
+			await files
+				.at(`${ENGINE}/.sloppy`)
+				.write(
+					'graph.json',
+					graphFile({ format: VAULT_FORMAT, graph: GRAPH, name, owner: ADA, project: '..' })
+				);
+		}
+		return files;
+	}
+
+	it('are listed under the project, and say which project it is', async () => {
+		const [listed] = await knownFolders(await project('Engine'));
+
+		expect(listed.root).toBe(ENGINE);
+		expect(listed.graph?.name).toBe('Engine');
+		expect(listed.graph?.project).toBe('..');
+	});
+
+	it('name the project even where it is not where it was', async () => {
+		const [gone] = await knownFolders(await project());
+
+		expect(gone.root).toBe(ENGINE);
+		expect(gone.reachable).toBe(false);
+	});
+
+	it('are let go of by the project, and stay in its folder', async () => {
+		const files = await project('Engine');
+
+		await forgetFolder(files, ENGINE);
+
+		expect(await knownFolders(files)).toEqual([]);
+		expect(await files.at(`${ENGINE}/.sloppy`).exists('graph.json')).toBe(true);
+	});
+
+	it('are what a project opens, and a folder opens its own', async () => {
+		const files = await project('Engine');
+		await files
+			.at('/Users/me/garden')
+			.write(
+				'graph.json',
+				graphFile({ format: VAULT_FORMAT, graph: GRAPH, name: 'The garden', owner: ADA })
+			);
+
+		expect(await vaultIn(files, ENGINE)).toBe(`${ENGINE}/.sloppy`);
+		expect(await vaultIn(files, '/Users/me/garden')).toBe('/Users/me/garden');
+		expect(await vaultIn(files, '/Users/me/empty')).toBe('/Users/me/empty');
+	});
+
+	it('are read as the project they sit in, and a folder as itself', () => {
+		expect(folderOf(`${ENGINE}/.sloppy`)).toBe(ENGINE);
+		expect(folderOf('C:\\Users\\me\\engine\\.sloppy')).toBe('C:\\Users\\me\\engine');
+		expect(folderOf('/Users/me/garden')).toBe('/Users/me/garden');
+		expect(folderOf('/.sloppy')).toBe('/.sloppy');
 	});
 });

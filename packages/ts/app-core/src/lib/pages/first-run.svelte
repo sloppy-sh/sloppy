@@ -16,7 +16,9 @@
 	const identities = runtime.identities();
 	const openProject = vault?.openProject?.bind(vault);
 
-	let opening = $state(false);
+	/** Which folder somebody is being asked for, so the one they pressed is the
+	 *  button that says it is working. Null is nobody being asked anything. */
+	let opening = $state<'folder' | 'project' | null>(null);
 	let problem = $state<string | null>(null);
 	let held = $state<IdentityHere[]>([]);
 	/** Which ask the list on screen came from, so a slower one that started
@@ -66,12 +68,11 @@
 			: 'Sloppy could not read the identities on this device. Try again.';
 	}
 
-	/** Absent is the folder this shell offers by default, which is the whole of
-	 *  a first run on a device that keeps no project. */
-	async function begin(where: (() => Promise<string | undefined>) | null = null) {
+	async function begin(where: 'folder' | 'project' = 'folder') {
 		if (!vault) return;
-		const ask = where ?? vault.open.bind(vault);
-		opening = true;
+		const ask = where === 'project' ? openProject : vault.open.bind(vault);
+		if (!ask) return;
+		opening = where;
 		problem = null;
 		try {
 			const listed = await refresh();
@@ -91,7 +92,7 @@
 					? 'Sloppy could not write in that folder. Try another one.'
 					: 'Sloppy could not make a place for your notes on this device.');
 		} finally {
-			opening = false;
+			opening = null;
 		}
 	}
 </script>
@@ -131,12 +132,12 @@
 
 			<Button
 				type="button"
-				disabled={opening}
-				aria-busy={opening}
+				disabled={opening !== null}
+				aria-busy={opening === 'folder'}
 				class="h-11 w-full"
 				onclick={() => void begin()}
 			>
-				{#if opening}
+				{#if opening === 'folder'}
 					One moment…
 				{:else if vault?.asks}
 					Choose a folder
@@ -147,18 +148,23 @@
 
 			{#if openProject}
 				<div class="space-y-2 pt-1">
-					<Button
-						type="button"
-						variant="outline"
-						disabled={opening}
-						class="h-11 w-full"
-						onclick={() => void begin(openProject)}
-					>
-						Open a project
-					</Button>
 					<p class="text-xs text-muted-foreground">
 						Notes that sit with the code they are about. Choose the project's own folder.
 					</p>
+					<Button
+						type="button"
+						variant="outline"
+						disabled={opening !== null}
+						aria-busy={opening === 'project'}
+						class="h-11 w-full"
+						onclick={() => void begin('project')}
+					>
+						{#if opening === 'project'}
+							One moment…
+						{:else}
+							Open a project
+						{/if}
+					</Button>
 				</div>
 			{/if}
 		</div>

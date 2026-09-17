@@ -211,7 +211,7 @@ describe('opening a project on the first run', () => {
 
 	it('hands the project somebody names to the shell, and not the other folder', async () => {
 		const open = vi.fn(async () => '/Users/me/garden');
-		const openProject = vi.fn(async () => '/Users/me/sloppy/.sloppy');
+		const openProject = vi.fn(async () => '/Users/me/sloppy');
 		shell({ open, openProject });
 		show();
 
@@ -220,12 +220,12 @@ describe('opening a project on the first run', () => {
 
 		expect(openProject).toHaveBeenCalledOnce();
 		expect(open).not.toHaveBeenCalled();
-		expect(opened).toEqual(['/Users/me/sloppy/.sloppy']);
+		expect(opened).toEqual(['/Users/me/sloppy']);
 	});
 
 	it('makes an identity here first, exactly as choosing a folder does', async () => {
 		const makeOne = vi.fn(async () => here());
-		shell({ openProject: async () => '/Users/me/sloppy/.sloppy' }, { makeOne });
+		shell({ openProject: async () => '/Users/me/sloppy' }, { makeOne });
 		show();
 
 		offer('Open a project')?.click();
@@ -243,6 +243,21 @@ describe('opening a project on the first run', () => {
 
 		expect(opened).toEqual([]);
 		expect(offer('Open a project')?.disabled).toBe(false);
+	});
+
+	it('is the offer that says it is working, and the other one only waits', async () => {
+		let named: ((root: string) => void) | undefined;
+		shell({ openProject: () => new Promise<string>((settled) => (named = settled)) });
+		show();
+
+		offer('Open a project')?.click();
+		await settle();
+
+		expect(offer('Open a project')).toBeNull();
+		expect(offer('One moment…')?.getAttribute('aria-busy')).toBe('true');
+		expect(offer('Choose a folder')?.disabled).toBe(true);
+		named?.('/Users/me/engine');
+		await settle();
 	});
 
 	it('says what to do next when the project cannot be written in', async () => {

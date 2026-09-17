@@ -34,20 +34,13 @@ import { tags } from './tags.svelte.js';
 export const MOST_ON_CANVAS = MAX_FIELDS;
 
 /**
- * What a person calls the project a folder holds the notes of, walking the
- * graph's own path to the code from the folder the notes are in. Absent where
- * the graph is nobody's project, and where the path climbs past the top.
+ * What a person calls the project a folder holds the notes of. The folder on
+ * the list is the project's own root, so it is what that folder is called;
+ * absent where the graph says it is nobody's project.
  */
 export function projectOf(folder: KnownFolder): string | undefined {
-	const toTheCode = folder.graph?.project;
-	if (toTheCode === undefined) return undefined;
-	const at = folder.root.split(/[\\/]/).filter(Boolean);
-	for (const step of toTheCode.split(/[\\/]/)) {
-		if (step === '' || step === '.') continue;
-		if (step !== '..') at.push(step);
-		else if (at.pop() === undefined) return undefined;
-	}
-	return at.at(-1);
+	if (folder.graph?.project === undefined) return undefined;
+	return folder.root.split(/[\\/]/).filter(Boolean).at(-1);
 }
 
 export interface GraphsState {

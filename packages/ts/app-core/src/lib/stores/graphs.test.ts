@@ -799,12 +799,12 @@ describe('two folders holding one graph', () => {
 });
 
 describe("a folder that is a project's own", () => {
-	const PROJECT = '/Users/me/sloppy/.sloppy';
+	const PROJECT = '/Users/me/sloppy';
 
 	function folder(project?: string): KnownFolder {
 		return {
 			root: PROJECT,
-			graph: { ref: GARDEN.ref, name: 'sloppy', owner: DID, ...(project ? { project } : {}) },
+			graph: { ref: GARDEN.ref, name: 'The notes', owner: DID, ...(project ? { project } : {}) },
 			reachable: true
 		};
 	}
@@ -817,15 +817,9 @@ describe("a folder that is a project's own", () => {
 		expect(projectOf(folder())).toBeUndefined();
 	});
 
-	it('walks the whole path the graph names, not one step of it', () => {
-		expect(projectOf({ ...folder('../..'), root: '/Users/me/sloppy/notes/.sloppy' })).toBe(
-			'sloppy'
-		);
-		expect(projectOf({ ...folder('../code'), root: '/Users/me/sloppy/.sloppy' })).toBe('code');
-	});
-
-	it('is named by nothing where the path climbs past the top', () => {
-		expect(projectOf({ ...folder('../../../../..'), root: '/one/.sloppy' })).toBeUndefined();
+	it('is named whatever the folder somebody picked is called', () => {
+		expect(projectOf({ ...folder('..'), root: '/srv/code/engine/' })).toBe('engine');
+		expect(projectOf({ ...folder('..'), root: 'C:\\Users\\me\\thesis' })).toBe('thesis');
 	});
 
 	it('is opened by asking the shell for the project, and read from then on', async () => {
