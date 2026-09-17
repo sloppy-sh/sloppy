@@ -208,19 +208,22 @@ split is not a preference we could revisit; it is the shape syr enforces:
 - **`graph`, `node` and `block` are Sloppy's vocabulary.** Putting them in someone's
   identity store is precisely what syr is built to prevent. If a feature seems to need a
   new record type in syr, it needs a table in Sloppy instead.
-- **Sloppy is a platform, and a platform holds an agent — never an identity.** A person's
-  root key lives on their own devices. A platform that acts for them holds an **agent**
-  key under a **mandate**, a root-signed statement naming its **powers** and its expiry;
-  what Sloppy receives is one step further down, a **grant** that agent signs with its
-  mandate carried inline. So Sloppy VERIFIES a chain — root → agent → Sloppy — instead of
-  trusting whichever host served the token. syr's `architecture/mandates` and
+- **Sloppy is a platform, and a platform holds no identity.** A person's root key lives on
+  their own devices. The instance serving that identity holds an **agent** key under a
+  **mandate**, a root-signed statement naming its **powers** and its expiry, and what
+  Sloppy receives is one step further down: a **grant** that agent signs with its mandate
+  carried inline. So Sloppy VERIFIES a chain — root → agent → Sloppy — instead of trusting
+  whichever host served the token. syr's `architecture/mandates` and
   `architecture/authority-model` are the specification; syr has not landed it, and the
   delegation Sloppy receives today is root-signed. docs/ARCHITECTURE.md § "syr integration"
   carries what changes and what does not.
 - **Sloppy never holds a private key.** Content is signed through `platform.sign`; the
   identity store holds the delegate key. Code that wants to sign locally has misread the
-  delegation model. This holds for the embedded identity provider too: it is a platform,
-  not a vault for somebody's root.
+  delegation model. The exception is `@sloppy/idp`, which IS an identity store — it serves
+  identities rather than consuming them, so it holds what a syr instance holds: today a
+  root seed in an Aegis bundle and a root signature on each delegation
+  (`packages/ts/idp/src/aegis.ts`, `packages/ts/idp/src/delegation.ts`), at the target an
+  agent key under a mandate and no root at all. Nothing outside that package holds a key.
 - **Every remote asset goes through our proxy** (`proxied()`). Viewing a federated node
   must never leak the viewer's IP to the author's instance — a graph you can pull from
   strangers makes this more important, not less. A raw remote URL rendered into an

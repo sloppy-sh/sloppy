@@ -497,7 +497,11 @@ person's root. At the target the same delegation is a **grant** signed by an age
 holding the `delegate` power, carrying that agent's root-signed mandate inline — so
 verifying it becomes: read the DID's identity record for the root key, check the mandate
 under that root, check the grant under the agent's key, check that `delegate` is among the
-mandate's powers and that neither has expired. `scopes` become powers from a closed enum.
+mandate's powers and that neither has expired, check that the record does not dismiss that
+agent at or after the mandate, and check the grant against the agent's own status list or a
+freshness staple. Those last two are the withdrawal channels, and a verifier that skips them
+accepts a grant from an agent the root has already dismissed. `scopes` become powers from a
+closed enum.
 Sloppy still holds no private key and still signs by calling `platform.sign`. This is a
 syr change, not a Sloppy one; nothing here moves until it lands, and
 `architecture/mandates` in the syr docs site is the specification.
@@ -543,8 +547,11 @@ not a field. Two values today:
   the token the exchange returned. **No private key is on the device**, which is the same
   delegation model the hosted API runs under. What the app holds is a **grant**: at the target
   an agent under a root-signed mandate issues it, and the app verifies that chain the way the
-  API does (§ "Auth: Platform Delegation v0.1"). The person's root key stays on their own
-  devices either way.
+  API does (§ "Auth: Platform Delegation v0.1"). Where the person's own root key sits is the
+  instance's business, not the device's: at the target it is on their own devices and the
+  instance holds only an agent, while today an instance may hold the root itself in an Aegis
+  bundle — which is what Sloppy's own embedded provider does (§ "An API that serves
+  identities itself").
 
 **The first run offers three doors, and Settings offers the same three.** "Start here" mints
 a `device` identity and opens the graph — one tap, nothing asked, and still the default.
