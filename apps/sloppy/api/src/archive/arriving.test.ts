@@ -120,6 +120,26 @@ describe("the rows an archive's notes land as", () => {
     expect(written.aliases[0].note).toBe(ref(1));
   });
 
+  it("keeps the commit a note was confirmed against, and none where it says none", () => {
+    const written = rowsFor(
+      DID,
+      GRAPH,
+      placed([
+        note({
+          ref: ref(1),
+          checked: "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708",
+        }),
+        note({ ref: ref(2) }),
+      ]),
+      new Map(),
+    );
+
+    expect(written.nodes[0].checked).toBe(
+      "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708",
+    );
+    expect(written.nodes[1]).not.toHaveProperty("checked");
+  });
+
   it("drops an alias at an address a note arriving is actually at", () => {
     const written = rowsFor(
       DID,

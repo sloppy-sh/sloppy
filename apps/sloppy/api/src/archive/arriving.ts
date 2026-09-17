@@ -125,6 +125,7 @@ export function rowsFor(
         tags: TagsSchema.catch([]).parse(note.tags),
         links: note.links,
         references: referencesOf(note.ref, sections),
+        ...(note.checked ? { checked: note.checked } : {}),
         published: keeping?.published ?? false,
         ...(keeping?.appearance ? { appearance: keeping.appearance } : {}),
         created_at: note.created ?? keeping?.created_at ?? at,

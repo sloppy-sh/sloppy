@@ -119,6 +119,9 @@ function pictureIn(blocks: readonly BlockView[]): string | undefined {
   return found;
 }
 
+/** A commit, spelled the way the folder's history spells one. */
+const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
+
 describe("a graph handed over as an archive", () => {
   let runs = false;
   let app: INestApplication;
@@ -382,6 +385,9 @@ describe("a graph handed over as an archive", () => {
     second = (await ok("PUT", `/nodes/${at(second.ref)}/address`, ada, {
       address: "1b",
     })) as NodeView;
+    second = (await ok("PATCH", `/nodes/${at(second.ref)}`, ada, {
+      checked: COMMIT,
+    })) as NodeView;
 
     const picture = await upload(ada);
     await ok("POST", "/blocks", ada, {
@@ -500,6 +506,8 @@ describe("a graph handed over as an archive", () => {
       expect(under.address).toBe("1b");
       expect(under.aliases).toEqual([wasAt]);
       expect(under.links).toEqual([root.ref]);
+      expect(under.checked).toBe(COMMIT);
+      expect(root.checked).toBeUndefined();
 
       const stack = await blocksOf(bram, root.ref);
       expect(stack).toHaveLength(1);
