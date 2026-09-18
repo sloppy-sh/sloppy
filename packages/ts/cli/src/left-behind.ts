@@ -3,6 +3,7 @@
 // behind it. The signals themselves are `review()` in `@sloppy/vault`, which
 // is what stops the app and the CLI saying different things.
 
+import { relative } from "node:path";
 import type { Files } from "@sloppy/local";
 import type { CompassDirection, OwnedRef } from "@sloppy/types";
 import { review, type ReviewSignal } from "@sloppy/vault";
@@ -20,12 +21,13 @@ export interface LeftBehindRow {
   said: string;
 }
 
-/** What an empty slot asks, the same question the note itself shows under it. */
+/** What an empty slot asks, the same question the note itself shows under it —
+ *  DESIGN.md § "The compass card". */
 const SLOT: Record<CompassDirection, string> = {
-  north: "Nothing says what this is part of.",
-  south: "Nothing says what this is made of.",
-  east: "Nothing says what this is like.",
-  west: "Nothing says what was chosen instead.",
+  north: "What larger pattern is this part of?",
+  south: "What is this made of?",
+  east: "What else works like this?",
+  west: "What was chosen instead?",
 };
 
 export interface LeftBehindAsked {
@@ -33,8 +35,9 @@ export interface LeftBehindAsked {
   /** Absent is a graph that is nobody's project: nothing has moved under it,
    *  and there is no code it has not been written about. */
   project?: Files;
-  /** Where a note's file is, said from the folder somebody is standing in. */
-  notesAt?: string;
+  /** The folder somebody is standing in, which every path is said from.
+   *  Absent says them from the container and the project instead. */
+  standing?: string;
 }
 
 export async function leftBehind(
@@ -48,22 +51,38 @@ export async function leftBehind(
     changed: asked.project ? movedSince(asked.project.root) : async () => [],
   });
   const at = new Map(notes.map((held) => [held.note.ref, held]));
-  return signals.map((signal) => row(signal, at, asked.notesAt ?? ""));
+  const notesAt = from(asked.standing, asked.container.root);
+  const codeAt = from(asked.standing, asked.project?.root);
+  return signals.map((signal) => row(signal, at, { notesAt, codeAt }));
+}
+
+/** A folder said from where somebody is standing, ready to put a path after. */
+function from(
+  standing: string | undefined,
+  folder: string | undefined,
+): string {
+  if (standing === undefined || folder === undefined) return "";
+  const said = relative(standing, folder).split("\\").join("/");
+  return said === "" ? "" : `${said}/`;
 }
 
 function row(
   signal: ReviewSignal,
   notes: ReadonlyMap<OwnedRef, HeldNote>,
-  notesAt: string,
+  at: { notesAt: string; codeAt: string },
 ): LeftBehindRow {
   const said = saying(signal);
   if (signal.note === undefined) {
-    return { signal, where: signal.path ?? "", said };
+    return {
+      signal,
+      where: signal.path === undefined ? "" : `${at.codeAt}${signal.path}`,
+      said,
+    };
   }
   const held = notes.get(signal.note);
   return {
     signal,
-    where: held ? `${notesAt}${held.file}` : signal.note,
+    where: held ? `${at.notesAt}${held.file}` : signal.note,
     ...(held?.note.title ? { title: held.note.title } : {}),
     said,
   };

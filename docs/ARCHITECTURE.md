@@ -2368,12 +2368,13 @@ sloppy check [dir]     read every note and say what doesn't hold
 Each prints lines, answers JSON with `--json`, and says what it did in its exit code: **0**
 nothing to fix, **1** something to fix and listed, **2** nothing done. `init` starts the
 container where there is none and writes the BASIC documentation the tree can be read for —
-a note per top-level package or folder the workspace declares, each anchored to its entry
-points and pointing north at the project's own note. `draft` writes the DETAILED kind for
-the paths it is named: what a module imports and exports, an anchor per exported symbol, and
-what a compass MIGHT hold written as candidates in the note's own writing. `review` is the
-signals below. **The CLI never writes a "west" and never writes a "Why"** — what was decided
-against, and why, is the author's thinking and not a tool's to supply.
+a note per top-level package or folder the workspace declares, each anchored at its own
+folder and at its entry points, and pointing north at the project's own note. `draft` writes
+the DETAILED kind for the paths it is named: what a module imports and exports, an anchor
+per exported symbol, and what a compass MIGHT hold written as candidates in the note's own
+writing. `review` is the signals below. **The CLI never writes a "west" and never writes a
+"Why"** — what was decided against, and why, is the author's thinking and not a tool's to
+supply.
 
 **`check` is the one that says no.** Every file in `notes/` spelled the way a note file is
 spelled reads as one — anything else in the folder is the person's and is left alone —
@@ -2383,23 +2384,30 @@ somebody else's note is left alone — this folder is not where that note lives,
 absence here says nothing — a note in the bin is still there, and a graph that is nobody's
 project has nowhere to look for an anchor and is not asked to.
 
-**A note the CLI did not write is changed by offering, never by writing over.** A container
-is `owned` — `sloppy init` sets that where it starts one, and leaves a container that was
-already there as its owner set it — so `draft` on a path that already has a note proposes an
-amendment the way any other contributor does (§ "Whose writing a note carries"); a path with
-no note yet gets one written outright.
+**A note somebody else has written in is never written over.** `draft` on a path that
+already has a note offers an amendment where that note is somebody's to keep (§ "Whose
+writing a note carries"), and where the note is open to everybody and carries writing that
+is not the CLI's, it leaves it alone and says so — an open note is one the store would let
+anybody land a write on, and a machine takes nobody's writing away. A path with no note yet
+gets one written outright.
+
+**Nothing the CLI does gates somebody's graph.** Ownership is the person's setting, made
+where every other graph's is, and `init` leaves it exactly as it finds it. The alternative
+is the trap: `init` mints an identity for the machine it runs on, so a container gated in
+its name is one the person who later opens the project cannot write a word in.
 
 **`init` writes under an identity of the container's own.** The key goes in the container's
 sidecar (`<project>/.sloppy/.sloppy/`) rather than in an app's private data, because there is
 no app here — which puts it inside somebody's repository, so `init` also writes
-`<project>/.sloppy/.gitignore` naming what the history must not keep: the same list
-§ "The vault's history" carries, spelled from the container. A file somebody wrote themselves
-stays theirs — the lines that are missing are added and nothing else is touched. `--identity
-<file>` writes under an identity carried from another device instead, and the graph is then
-that person's rather than the machine's.
+`<project>/.sloppy/.gitignore` telling the history to pass over that sidecar whole: it is
+this device's own folder, and a key committed is a key pushed. A file somebody wrote
+themselves stays theirs — the line is added where it is missing and nothing else is touched.
+`--identity <file>` writes under an identity carried from another device instead, and the
+graph is then that person's rather than the machine's.
 
-**The notes `init` writes are marked by tag**: `project` on the one note the project's own
-writing starts at, `walkthrough` on the way into each part. That is what a second run reads to
+**The notes `init` writes are told apart by what they point at, never by a tag** — a tag is
+the person's own vocabulary, and a shape leaves no trace of itself. The note about a part of the project is the one anchored at that part's own folder,
+and the project's own note is the one those hang under. That is what a second run reads to
 know it has already written them, and what `draft` reads to know that a note pointing at a
 package's entry point is about the PACKAGE — so a detailed note about that file is written
 under it rather than into it.

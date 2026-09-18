@@ -12,7 +12,7 @@ import {
   readCarriedIdentity,
 } from "@sloppy/local";
 import type { BlockDocument, OwnedRef } from "@sloppy/types";
-import { decodeText, encodeText, GRAPH_FILE } from "@sloppy/vault";
+import { decodeText, encodeText, GRAPH_FILE, SLOPPY_DIR } from "@sloppy/vault";
 import { AGENT_MD } from "./agent-md.js";
 import { type HeldNote, noteForProject, notesIn, reaches } from "./folder.js";
 import {
@@ -24,34 +24,16 @@ import {
 import { fileOf, type WrittenNote, writeNote } from "./writer.js";
 import { anchor, bullets, compass, paragraph, section } from "./writing.js";
 
-/** What marks the note a project's own writing starts at, and what marks a way
- *  into one part of it. */
-export const PROJECT_TAG = "project";
-export const WALKTHROUGH_TAG = "walkthrough";
-
 /** Where an agent working in this project finds how to write in it. */
 export const AGENT_FILE = "AGENT.md";
 
 /**
  * What this device keeps to itself, as the project's history is told to pass
- * over it. The container sits inside somebody's repository, so the identity
- * the CLI writes under lands in a folder that is about to be committed unless
- * the ignore is there first — and a key committed is a key pushed.
+ * over it: the whole sidecar folder, which is this device's own and holds the
+ * key the CLI writes under. The container sits inside somebody's repository, so
+ * without this a key is committed, and a key committed is a key pushed.
  */
-const KEPT_OUT = [
-  "/.sloppy/identities.json",
-  "/.sloppy/identity.json",
-  "/.sloppy/*.key",
-  "/.sloppy/*.key.pub",
-  "/.sloppy/vaults.json",
-  "/.sloppy/git.json",
-  "/.sloppy/credentials.json",
-  "/.sloppy/signing-in.json",
-  "/.sloppy/bin.json",
-  "/.sloppy/bin/",
-  "sloppy-identity",
-  "sloppy-identity*.json",
-];
+const KEPT_OUT = [`/${SLOPPY_DIR}/`];
 
 const IGNORE_FILE = ".gitignore";
 
@@ -88,16 +70,6 @@ export async function init(asked: InitAsked): Promise<InitResult> {
   const started = (await containerOf(files)) === undefined;
   const api = new LocalApi(files);
   const graph = await api.openProject(root);
-  // A container is owned, so a note the person writes is theirs and a machine
-  // changes it by offering — docs/ARCHITECTURE.md § "Tooling and the review".
-  // A container that was already here keeps whatever it was set to.
-  if (started) {
-    await api.updateGraph(graph.ref, {
-      title: graph.title,
-      ownership: "owned",
-    });
-  }
-
   const container = await containerOf(files);
   const project = await api.projectFolder(graph.ref);
   if (!container || !project) {
@@ -109,26 +81,30 @@ export async function init(asked: InitAsked): Promise<InitResult> {
   }
 
   const parts = await projectParts(project);
+  const openings = await projectOpenings(project);
+  if (parts.length === 0 && openings.length === 0) {
+    return { started, notes: [] };
+  }
   const notes = await notesIn(container);
   const written: WrittenNote[] = [];
   const top = await forProject(
     api,
     notes,
     (await projectName(project)) ?? graph.title,
-    {
-      openings: await projectOpenings(project),
-      written,
-    },
+    { parts: parts.map((part) => part.path), openings, written },
   );
   for (const part of parts) {
     if (reaches(notes, part.path)) continue;
     const note = await writeNote(api, {
       from: { relation: "under", note: top },
       title: part.name,
-      tags: [WALKTHROUGH_TAG],
       sections: partSections(part, top),
     });
-    written.push({ title: note.title, file: fileOf(note.ref), offered: false });
+    written.push({
+      title: note.title,
+      file: fileOf(note.ref),
+      done: "written",
+    });
   }
   return { started, notes: written };
 }
@@ -143,14 +119,17 @@ async function forProject(
   api: LocalApi,
   notes: readonly HeldNote[],
   title: string,
-  asked: { openings: readonly string[]; written: WrittenNote[] },
+  asked: {
+    parts: readonly string[];
+    openings: readonly string[];
+    written: WrittenNote[];
+  },
 ): Promise<OwnedRef> {
-  const held = noteForProject(notes, PROJECT_TAG);
+  const held = noteForProject(notes, asked);
   if (held) return held;
   const note = await writeNote(api, {
     from: { relation: "free" },
     title,
-    tags: [PROJECT_TAG],
     sections: [
       section(
         "Start here",
@@ -163,29 +142,31 @@ async function forProject(
   asked.written.push({
     title: note.title,
     file: fileOf(note.ref),
-    offered: false,
+    done: "written",
   });
   return note.ref;
 }
 
-/** A way into one part: what it is part of, and where somebody starts reading
- *  it. */
+/** A way into one part: what it is part of, where it is, and where somebody
+ *  starts reading it. */
 function partSections(part: ProjectPart, top: OwnedRef): BlockDocument[] {
+  const openings = part.entries.filter((at) => at !== part.path);
   return [
     { type: "doc", content: [compass({ north: [top] })] },
-    section(
-      "Start here",
-      bullets(
-        part.entries.map((at) => [anchor(shortly(part, at), { path: at })]),
-      ),
-    ),
+    section("The folder", paragraph(anchor(part.path, { path: part.path }))),
+    ...(openings.length === 0
+      ? []
+      : [
+          section(
+            "Start here",
+            bullets(
+              openings.map((at) => [
+                anchor(at.slice(part.path.length + 1), { path: at }),
+              ]),
+            ),
+          ),
+        ]),
   ];
-}
-
-/** An opening under the part it is in, said as the part's own reader would say
- *  it. */
-function shortly(part: ProjectPart, at: string): string {
-  return at === part.path ? at : at.slice(part.path.length + 1);
 }
 
 /** The project's history told to pass over what is this device's alone. A file

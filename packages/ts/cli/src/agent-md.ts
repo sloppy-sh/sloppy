@@ -18,7 +18,7 @@ write one that the app, the other people here and the next agent all read the sa
     parent: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y
     title: What the markdown reader does
     tags:
-      - walkthrough
+      - parsing
     links:
       - did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z
     created: 2026-09-18T10:00:00.000Z
@@ -71,9 +71,10 @@ sentence is.
 
 ## Changing a note somebody already wrote
 
-Don't write over it. \`sloppy draft\` writes your version as an offer, and whoever keeps
-the note takes it in or does not. A note you write where there was none is yours to
-write outright.
+Don't write over it. Where the note is somebody's to keep, \`sloppy draft\` writes your
+version as an offer and they take it in or do not; where it is open to everybody and
+somebody else has written in it, \`draft\` leaves it alone and says so. A note you write
+where there was none is yours to write outright.
 
 ## Never write
 

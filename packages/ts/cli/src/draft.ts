@@ -8,10 +8,9 @@
 import { type Files, LocalApi } from "@sloppy/local";
 import type { BlockDocument, DocumentNode, OwnedRef } from "@sloppy/types";
 import { decodeText } from "@sloppy/vault";
-import { noteForProject, noteReaching, notesIn } from "./folder.js";
-import { PROJECT_TAG, WALKTHROUGH_TAG } from "./init.js";
+import { noteAbout, noteForProject, noteReaching, notesIn } from "./folder.js";
 import { type ModuleFacts, readModule } from "./modules.js";
-import { type ProjectPart, projectParts } from "./tree.js";
+import { type ProjectPart, projectOpenings, projectParts } from "./tree.js";
 import { fileOf, type WrittenNote, writeNote, writeOnto } from "./writer.js";
 import {
   anchor,
@@ -52,22 +51,25 @@ export interface DraftAsked {
 
 export async function draft(asked: DraftAsked): Promise<DraftResult> {
   const notes = await notesIn(asked.container);
+  const parts = await projectParts(asked.project);
+  const top = noteForProject(notes, {
+    parts: parts.map((part) => part.path),
+    openings: await projectOpenings(asked.project),
+  });
   // A way INTO a part of the project points at its openings, and is not the
   // note about the file it opens at: a detailed note about that file goes
   // under it rather than into it.
+  const ways = new Set(
+    parts.map((part) => noteAbout(notes, part.path)?.note.ref),
+  );
+  ways.add(top);
   const about: Cited[] = notes
-    .filter(
-      (held) =>
-        !held.note.tags.includes(WALKTHROUGH_TAG) &&
-        !held.note.tags.includes(PROJECT_TAG),
-    )
+    .filter((held) => !ways.has(held.note.ref))
     .map((held) => ({
       ref: held.note.ref,
       title: held.note.title,
       anchors: held.anchors,
     }));
-  const parts = await projectParts(asked.project);
-  const top = noteForProject(notes, PROJECT_TAG);
   const written: DraftedNote[] = [];
   const missed: DraftResult["missed"] = [];
   for (const path of asked.paths) {
@@ -115,7 +117,7 @@ export async function draft(asked: DraftAsked): Promise<DraftResult> {
       path,
       title: note.title,
       file: fileOf(note.ref),
-      offered: false,
+      done: "written",
     });
   }
   return { notes: written, missed };

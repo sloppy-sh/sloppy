@@ -2,7 +2,7 @@
 // review". One dispatcher, given where it is and somewhere to write, so the
 // same run is exercised by a test and by the bin beside this file.
 
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { SloppyApiError } from "@sloppy/client";
 import {
   CONTAINER_DIR,
@@ -17,6 +17,7 @@ import { draft } from "./draft.js";
 import { init, InitRefused } from "./init.js";
 import { leftBehind } from "./left-behind.js";
 import { NodeFiles } from "./node-files.js";
+import type { WriteDone } from "./writer.js";
 
 export const COMMANDS = ["init", "draft", "review", "check"] as const;
 export type Command = (typeof COMMANDS)[number];
@@ -195,6 +196,13 @@ async function projectAbove(
 
 const NO_NOTES = "There are no notes in that folder yet.";
 
+/** What `draft` says it did with each file it was named. */
+const DRAFTED: Record<WriteDone, string> = {
+  written: "written.",
+  offered: "offered. The note about it is somebody else's to take in.",
+  left: "left alone. Somebody else has written in the note about it.",
+};
+
 /** The container a command works in: the one in the folder named, and where
  *  none was named, the nearest one at or above where the command was run. */
 async function containerFrom(
@@ -252,10 +260,7 @@ async function starting(
   let identity: Uint8Array | undefined;
   if (named !== undefined) {
     const file = resolve(context.cwd, named);
-    const folder = dirname(file);
-    identity = await filesFor(context, folder).read(
-      file.slice(folder.length + 1),
-    );
+    identity = await filesFor(context, dirname(file)).read(basename(file));
     if (!identity) {
       return nothingDone("init", context.told, json, "That file isn't there.");
     }
@@ -271,7 +276,11 @@ async function starting(
   }
   if (done.started) context.told.out("Notes started in this project.");
   if (done.notes.length === 0) {
-    context.told.out("Everything here already has a note.");
+    context.told.out(
+      done.started
+        ? "Nothing here to write about yet."
+        : "Everything here already has a note.",
+    );
     return FINE;
   }
   context.told.out(
@@ -334,11 +343,7 @@ async function drafting(
     return missed.length === 0 ? FINE : TO_FIX;
   }
   for (const note of done.notes) {
-    context.told.out(
-      note.offered
-        ? `${note.path}: offered. The note about it is somebody else's to take in.`
-        : `${note.path}: written.`,
-    );
+    context.told.out(`${note.path}: ${DRAFTED[note.done]}`);
   }
   for (const one of missed) context.told.out(`${one.path}: ${one.said}`);
   return missed.length === 0 ? FINE : TO_FIX;
@@ -355,9 +360,7 @@ async function reviewing(
   const rows = await leftBehind({
     container: found,
     ...(held.project ? { project: held.project } : {}),
-    notesAt: held.project
-      ? `${relative(held.project.root, found.root).split("\\").join("/")}/`
-      : "",
+    standing: context.cwd,
   });
   if (json) {
     context.told.out(

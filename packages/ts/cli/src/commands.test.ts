@@ -143,14 +143,18 @@ describe("sloppy init", () => {
     expect(out.slice(2)).toEqual(["  thing", "  docs", "  @thing/one"]);
 
     const graph = JSON.parse(await read(".sloppy/graph.json"));
-    expect(graph).toMatchObject({ project: "..", ownership: "owned" });
+    expect(graph).toMatchObject({ project: ".." });
+    // Gating a graph is the person's own act, and the identity `init` writes
+    // under is this machine's: a container owned in its name is one nobody
+    // else can write in.
+    expect(graph.ownership).toBeUndefined();
     expect(await there(".sloppy/AGENT.md")).toBe(true);
 
     const walkthrough = await noteSaying("title: docs");
-    expect(walkthrough).toContain("tags:\n  - walkthrough");
+    expect(walkthrough).not.toContain("tags:");
     expect(walkthrough).toContain("[docs](code:docs)");
 
-    const project = await noteSaying("  - project");
+    const project = await noteSaying("title: thing");
     const ref = /^ref: (.+)$/m.exec(project)?.[1];
     expect(ref).toBeTruthy();
     expect(project).toContain("[README.md](code:README.md)");
@@ -163,22 +167,24 @@ describe("sloppy init", () => {
     });
   });
 
-  it("keeps this device's own business out of the project's history", async () => {
-    await aProject();
-    await ran(["init"]);
-    const ignore = (await read(".sloppy/.gitignore")).split("\n");
-    const own = await readdir(join(root, ".sloppy/.sloppy"));
-    expect(own.length).toBeGreaterThan(0);
-    for (const file of own) {
-      const kept = ignore.some((line) => {
-        const said = line.replace(/^\/\.sloppy\//, "");
-        return said.startsWith("*")
-          ? file.endsWith(said.slice(1))
-          : said === file;
-      });
-      expect(kept, `${file} is not kept out`).toBe(true);
-    }
-  });
+  it.skipIf(!historyHere)(
+    "keeps this device's own business out of the project's history",
+    async () => {
+      await aProject();
+      await ranIt("git", ["init", "-q"], { cwd: root });
+      await ran(["init"]);
+      expect(
+        (await readdir(join(root, ".sloppy/.sloppy"))).length,
+      ).toBeGreaterThan(0);
+      const { stdout } = await ranIt(
+        "git",
+        ["status", "--porcelain", "--untracked-files=all"],
+        { cwd: root },
+      );
+      expect(stdout).toContain(".sloppy/notes/");
+      expect(stdout).not.toContain(".sloppy/.sloppy/");
+    },
+  );
 
   it("leaves an ignore somebody wrote alone, and adds what is missing", async () => {
     await aProject();
@@ -186,7 +192,7 @@ describe("sloppy init", () => {
     await ran(["init"]);
     const ignore = await read(".sloppy/.gitignore");
     expect(ignore.startsWith("drafts/\n")).toBe(true);
-    expect(ignore).toContain("/.sloppy/*.key");
+    expect(ignore).toContain("/.sloppy/");
   });
 
   it("writes nothing the second time", async () => {
@@ -223,6 +229,16 @@ describe("sloppy init", () => {
       err: ["That file isn't there."],
     });
     expect(await there(".sloppy/graph.json")).toBe(false);
+  });
+
+  it("says so where there is nothing in the folder to write about", async () => {
+    const { code, out } = await ran(["init"]);
+    expect(code).toBe(FINE);
+    expect(out).toEqual([
+      "Notes started in this project.",
+      "Nothing here to write about yet.",
+    ]);
+    expect(await notes().catch(() => [])).toEqual([]);
   });
 
   it("will not start a project's notes inside a graph of its own", async () => {
@@ -275,19 +291,23 @@ describe("sloppy draft", () => {
     expect(note.match(/## What it exports/g)).toHaveLength(1);
   });
 
+  /** The note about that file, with a line written into its front matter, as
+   *  the note of somebody who was here before this run. */
+  async function asSomebodyElses(line: string): Promise<string> {
+    const path = "packages/one/src/index.ts";
+    for (const held of await everyNote()) {
+      if (!held.said.includes(`title: ${path}`)) continue;
+      await wrote(held.at, held.said.replace(/^ref: .*$/m, `$&\n${line}`));
+    }
+    return noteSaying(`title: ${path}`);
+  }
+
   it("offers a change to a note somebody else keeps", async () => {
     await aProject();
     await ran(["init"]);
     await ran(["draft", "packages/one/src/index.ts"]);
     const someoneElse = makeLocalIdentity().identity.did;
-    for (const held of await everyNote()) {
-      if (!held.said.includes("title: packages/one/src/index.ts")) continue;
-      await wrote(
-        held.at,
-        held.said.replace(/^owner: .*$/m, `owner: ${someoneElse}`),
-      );
-    }
-    const was = await noteSaying("title: packages/one/src/index.ts");
+    const was = await asSomebodyElses(`owner: ${someoneElse}`);
 
     const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
     expect(code).toBe(FINE);
@@ -300,6 +320,24 @@ describe("sloppy draft", () => {
     expect(await read(`.sloppy/amendments/${offers[0]}`)).toContain(
       "## What it exports",
     );
+  });
+
+  it("leaves alone a note open to everybody that somebody else wrote in", async () => {
+    await aProject();
+    await ran(["init"]);
+    await ran(["draft", "packages/one/src/index.ts"]);
+    const someoneElse = makeLocalIdentity().identity.did;
+    const was = await asSomebodyElses(`authors:\n  - ${someoneElse}`);
+
+    const { code, out } = await ran(["draft", "packages/one/src/index.ts"]);
+    expect(code).toBe(FINE);
+    expect(out).toEqual([
+      "packages/one/src/index.ts: left alone. Somebody else has written in the note about it.",
+    ]);
+    expect(await noteSaying("title: packages/one/src/index.ts")).toBe(was);
+    expect(
+      await readdir(join(root, ".sloppy/amendments")).catch(() => []),
+    ).toEqual([]);
   });
 
   it("says which of the files named it could not write about", async () => {
@@ -344,9 +382,9 @@ describe("sloppy review", () => {
     const { code, out } = await ran(["review"]);
     expect(code).toBe(FINE);
     expect(out).toContain("later: No note is about this yet.");
-    expect(
-      out.some((line) => line.includes("Nothing says what this is made of.")),
-    ).toBe(true);
+    expect(out.some((line) => line.includes("What is this made of?"))).toBe(
+      true,
+    );
     expect(out.some((line) => line.includes("(@thing/one)"))).toBe(true);
 
     expect((await ran(["review", "--strict"])).code).toBe(TO_FIX);
@@ -418,6 +456,42 @@ describe("sloppy review", () => {
       ).toBe(true);
     },
   );
+
+  it.skipIf(!historyHere)(
+    "reads a note's `checked` as a commit and never as an argument to git",
+    async () => {
+      await aProject();
+      await ran(["init"]);
+      await committed();
+      const pwned = join(root, "PWNED");
+      for (const held of await everyNote()) {
+        await wrote(
+          held.at,
+          held.said.replace(/^ref: .*$/m, `$&\nchecked: --output=${pwned}`),
+        );
+      }
+      const { code } = await ran(["review"]);
+      expect(code).toBe(FINE);
+      expect(
+        await readFile(pwned).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("says the notes and the code from where somebody is standing", async () => {
+    await aProject();
+    await ran(["init"]);
+    await wrote("later/a.ts", "export const a = 1;");
+    const { out } = await ran(["review"], join(root, "packages/one/src"));
+    expect(out).toContain("../../../later: No note is about this yet.");
+    expect(out.every((line) => !line.startsWith(".sloppy/notes/"))).toBe(true);
+    expect(out.some((line) => line.startsWith("../../../.sloppy/notes/"))).toBe(
+      true,
+    );
+  });
 
   it("says a folder with no notes in it has none", async () => {
     await aProject();

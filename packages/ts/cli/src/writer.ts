@@ -1,10 +1,9 @@
 // Writing a note from the terminal, through the same client the app writes
-// through — docs/ARCHITECTURE.md § "Tooling and the review". Nothing here
-// decides whether a write lands or is offered; `writeOutcome` does, exactly as
-// it does for a person.
+// through — docs/ARCHITECTURE.md § "Tooling and the review".
 
 import type { LocalApi } from "@sloppy/local";
 import {
+  authorsOf,
   type BlockDocument,
   type BlockView,
   type NodePlacement,
@@ -17,13 +16,19 @@ import {
 import { notePath } from "@sloppy/vault";
 import { headingOf } from "./writing.js";
 
-/** What one act of writing came to. `offered` is a note somebody else keeps,
- *  whose owner decides. */
+/**
+ * What one act of writing came to: written outright, `offered` to the owner of
+ * a note somebody else keeps, or `left` — a note open to everybody that
+ * somebody else has already written in, which there is nothing to offer
+ * against and nothing worth taking away.
+ */
+export type WriteDone = "written" | "offered" | "left";
+
 export interface WrittenNote {
   title: string;
   /** The note's file, from the container. */
   file: string;
-  offered: boolean;
+  done: WriteDone;
 }
 
 export function fileOf(ref: OwnedRef): string {
@@ -62,24 +67,29 @@ export async function writeNote(
  * the section the CLI wrote under that heading before, and the rest after
  * whatever the note holds. So a second run leaves one copy rather than two.
  *
- * Whose note it is decides how: one the writer may write lands, and one
- * somebody else keeps is offered, standing until they take it in.
+ * Whose note it is decides how: one somebody else keeps is offered, standing
+ * until they take it in; one open to everybody that somebody else has written
+ * in is left as it is, because a machine takes nobody's writing away.
  */
 export async function writeOnto(
   api: LocalApi,
   note: NodeView,
   sections: readonly BlockDocument[],
 ): Promise<WrittenNote> {
+  const writer = await api.writer;
   const held = await api.listBlocks(note.ref);
   const written = { title: note.title, file: fileOf(note.ref) };
-  if (writeOutcome(note, await api.writer) === "offered") {
+  if (writeOutcome(note, writer) === "offered") {
     await api.proposeAmendment({
       note: note.ref,
       title: note.title,
       tags: [...note.tags],
       blocks: offered(note.ref, held, sections),
     });
-    return { ...written, offered: true };
+    return { ...written, done: "offered" };
+  }
+  if (authorsOf(note).some((did) => did !== writer)) {
+    return { ...written, done: "left" };
   }
   let after = held[held.length - 1]?.ref;
   for (const content of sections) {
@@ -97,7 +107,7 @@ export async function writeOnto(
     });
     after = block.ref;
   }
-  return { ...written, offered: false };
+  return { ...written, done: "written" };
 }
 
 /** The note's body as the offer would have it, whole: an offer proposes every

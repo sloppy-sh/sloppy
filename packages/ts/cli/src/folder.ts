@@ -93,13 +93,33 @@ export function reaches(notes: readonly HeldNote[], path: string): boolean {
   return noteReaching(notes, path) !== undefined;
 }
 
-/** The note a graph's own writing about the project itself is on, which every
- *  note the CLI writes points north at. */
+/** The note about one part of the project: the one pointing at the part's own
+ *  folder, which is what `init` writes and what tells a way INTO a part from a
+ *  note about a file inside it. */
+export function noteAbout(
+  notes: readonly HeldNote[],
+  path: string,
+): HeldNote | undefined {
+  return notes.find((held) => held.anchors.includes(path));
+}
+
+/**
+ * The note a graph's own writing about the project itself is on, which every
+ * note the CLI writes points north at: the one the notes about the project's
+ * parts hang under, or — before any of those are written — a note of its own
+ * pointing at the files at the top of the project.
+ */
 export function noteForProject(
   notes: readonly HeldNote[],
-  tag: string,
+  project: { parts: readonly string[]; openings: readonly string[] },
 ): OwnedRef | undefined {
+  for (const path of project.parts) {
+    const parent = noteAbout(notes, path)?.note.parent;
+    if (parent) return parent;
+  }
   return notes.find(
-    (held) => held.note.parent === undefined && held.note.tags.includes(tag),
+    (held) =>
+      held.note.parent === undefined &&
+      held.anchors.some((at) => project.openings.includes(at)),
   )?.note.ref;
 }
