@@ -15,6 +15,59 @@ import {
   type OwnedRef,
 } from "@sloppy/types";
 
+/** A file at a folder saying the tree declares a package there. */
+export const PROJECT_MANIFESTS = [
+  "package.json",
+  "Cargo.toml",
+  "pyproject.toml",
+  "go.mod",
+];
+
+/** Folders a project keeps that are nobody's reading: what a build or a tool
+ *  put there, and anything kept behind a dot. */
+const PASSED_OVER = new Set([
+  "node_modules",
+  "target",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  "vendor",
+  "__pycache__",
+]);
+
+/** Whether a folder of this name is a place somebody reads the project
+ *  through, rather than one a tool filled in. */
+export function folderWorthReading(name: string): boolean {
+  return !name.startsWith(".") && !PASSED_OVER.has(name);
+}
+
+/**
+ * The places in a project a note could be about: its top-level folders, and
+ * every package the tree declares under them, from a listing of the project's
+ * files. A path a note anchors at or inside answers for the whole entry, so
+ * the two granularities sit together — one anchor anywhere in `apps/` answers
+ * for `apps`, and each package under it still asks for itself. This is what
+ * {@link ReviewInput.projectTop} is worked out from.
+ */
+export function placesIn(paths: readonly string[]): string[] {
+  const places = new Set<string>();
+  for (const path of paths) {
+    const segments = path.split("/");
+    const file = segments.pop();
+    if (!segments.every(folderWorthReading)) continue;
+    if (segments.length > 0) places.add(segments[0]);
+    if (
+      segments.length > 0 &&
+      file !== undefined &&
+      PROJECT_MANIFESTS.includes(file)
+    ) {
+      places.add(segments.join("/"));
+    }
+  }
+  return [...places].sort();
+}
+
 /** The four things the review can say. */
 export const REVIEW_SIGNALS = [
   "anchor-changed",

@@ -4,7 +4,11 @@
 // reaches.
 
 import type { Files } from "@sloppy/local";
-import { decodeText } from "@sloppy/vault";
+import {
+  decodeText,
+  folderWorthReading,
+  PROJECT_MANIFESTS,
+} from "@sloppy/vault";
 
 /** One top-level part of a project: a package it declares, or a folder at the
  *  top of it. */
@@ -17,21 +21,6 @@ export interface ProjectPart {
    *  it says. */
   entries: string[];
 }
-
-/** Folders a project keeps that are nobody's reading: what a build or a tool
- *  put there, and this graph's own container. */
-const PASSED_OVER = new Set([
-  "node_modules",
-  "target",
-  "dist",
-  "build",
-  "out",
-  "coverage",
-  "vendor",
-  "__pycache__",
-]);
-
-const MANIFESTS = ["package.json", "Cargo.toml", "pyproject.toml", "go.mod"];
 
 /** How many openings a note is given before the list stops being a way in. */
 const MOST_OPENINGS = 6;
@@ -62,7 +51,7 @@ const OPENINGS = [
  *  what a folder held in memory can afford. */
 async function foldersIn(files: Files, path: string): Promise<string[]> {
   const own = files as Partial<{ folders(path: string): Promise<string[]> }>;
-  if (own.folders) return (await own.folders(path)).filter(worthReading);
+  if (own.folders) return (await own.folders(path)).filter(folderWorthReading);
   const prefix = path === "" ? "" : `${path}/`;
   const found = new Set<string>();
   for (const held of await files.list(path)) {
@@ -70,11 +59,7 @@ async function foldersIn(files: Files, path: string): Promise<string[]> {
     const at = under.indexOf("/");
     if (at > 0) found.add(under.slice(0, at));
   }
-  return [...found].filter(worthReading);
-}
-
-function worthReading(name: string): boolean {
-  return !name.startsWith(".") && !PASSED_OVER.has(name);
+  return [...found].filter(folderWorthReading);
 }
 
 /** A file inside a part, or at the top of the project where the part is it. */
@@ -246,7 +231,7 @@ async function openingsOf(project: Files, path: string): Promise<string[]> {
       for (const held of leaves(said[key])) named.push(held);
     }
   }
-  const wanted = [...named, ...OPENINGS, ...MANIFESTS]
+  const wanted = [...named, ...OPENINGS, ...PROJECT_MANIFESTS]
     .filter((one) => !one.startsWith("/") && !one.includes(".."))
     .map((one) => `${path}/${one.replace(/^\.\//, "")}`);
   const found = await thoseThatAreThere(project, wanted);

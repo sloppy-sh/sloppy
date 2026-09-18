@@ -16,6 +16,7 @@ import {
 } from '@sloppy/types';
 import { NOTE_TEMPLATES, writeTemplate } from '@sloppy/ui';
 import {
+	placesIn,
 	review as signalsOf,
 	REVIEW_SIGNALS,
 	type ReviewSignal,
@@ -34,31 +35,6 @@ const UNWRITTEN = 'Sloppy could not start that note. Try again in a moment.';
 /** Notes read at once. Enough to keep a folder's worth moving, few enough that
  *  the question does not take the app's every connection with it. */
 const AT_ONCE = 6;
-
-/** What a manifest at a folder says: this is a package the tree declares, and
- *  so a place of its own to have been written about. */
-const MANIFESTS = ['package.json', 'Cargo.toml', 'pyproject.toml', 'go.mod'];
-
-/**
- * The places in a project a note could be about: its top-level folders, and
- * every package the tree declares under them. A path a note anchors at or
- * inside answers for the whole entry, so the two granularities sit together —
- * one anchor anywhere in `apps/` answers for `apps`, and each package under it
- * still asks for itself.
- */
-export function placesIn(paths: readonly string[]): string[] {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- a pure function's scratch, dropped before it returns.
-	const places = new Set<string>();
-	for (const path of paths) {
-		const segments = path.split('/');
-		if (segments.length > 1) places.add(segments[0]);
-		const manifest = segments.pop();
-		if (manifest !== undefined && segments.length > 0 && MANIFESTS.includes(manifest)) {
-			places.add(segments.join('/'));
-		}
-	}
-	return [...places].sort();
-}
 
 /** One signal, told from every other: a signal names a note, a path or both,
  *  and two of one kind on one note are told apart by the slot they are about. */

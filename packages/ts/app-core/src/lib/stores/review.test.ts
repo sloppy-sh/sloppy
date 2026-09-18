@@ -12,10 +12,11 @@ import {
 	type OwnedRef,
 	type UpdateNodeRequest
 } from '@sloppy/types';
+import { NOTE_TEMPLATES, writeTemplate } from '@sloppy/ui';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initRuntime } from '../runtime.js';
 import { nodes } from './nodes.svelte.js';
-import { placesIn, review } from './review.svelte.js';
+import { review } from './review.svelte.js';
 import { session } from './session.svelte.js';
 import {
 	AT,
@@ -146,22 +147,33 @@ afterEach(() => {
 	initRuntime({ apiHost: () => '', project: undefined, history: () => undefined });
 });
 
-describe('the places a project keeps its code', () => {
-	it('names its top-level folders and every package the tree declares', () => {
-		expect(
-			placesIn([
-				'README.md',
-				'src/parser.ts',
-				'docs/guide.md',
-				'packages/ui/package.json',
-				'packages/ui/src/one.ts',
-				'crates/engine/Cargo.toml'
-			])
-		).toEqual(['crates', 'crates/engine', 'docs', 'packages', 'packages/ui', 'src']);
-	});
+// The Decision shape and the two signals about it are written in different
+// packages and meet only at the heading and the compass element. A note
+// somebody has just started from that shape is where they have to agree.
+describe('a note started from the Decision shape', () => {
+	it('asks for its why and for every slot nobody has cited into', async () => {
+		const shape = NOTE_TEMPLATES.find((one) => one.id === 'decision');
+		if (!shape) throw new Error('No Decision shape to start from.');
+		const stack: BlockView[] = [];
+		await writeTemplate(shape, { node: DECISION }, async ({ content }) => {
+			const block = section(DECISION, { type: 'doc', content: content?.content ?? [] });
+			stack.push(block);
+			return block;
+		});
 
-	it('leaves a file at the top out: a project is not a note about its own README', () => {
-		expect(placesIn(['README.md', 'package.json'])).toEqual([]);
+		const held = graphOf();
+		api.on('GET /nodes', () => held.filter((one) => one.ref === one.origin));
+		stacks({ [PARSER]: [], [DECISION]: stack, [LOOSE]: [] });
+		await nodes.load({ graph: HOME });
+		await review.ask(HOME, held, files);
+
+		expect(review.under('compass-gap').map((one) => one.direction)).toEqual([
+			'north',
+			'south',
+			'east',
+			'west'
+		]);
+		expect(review.under('decision-without-why').map((one) => one.note)).toEqual([DECISION]);
 	});
 });
 

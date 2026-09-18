@@ -1,15 +1,4 @@
 <script lang="ts" module>
-	import type { CompassDirection } from '@sloppy/types';
-
-	/** What each slot is called on a note, and what an empty one asks — DESIGN.md
-	 *  § "The compass card". */
-	export const SLOTS: Record<CompassDirection, { heading: string; asks: string }> = {
-		north: { heading: 'Part of', asks: 'What larger pattern is this part of?' },
-		south: { heading: 'Made of', asks: 'What is this made of?' },
-		east: { heading: 'Like', asks: 'What else works like this?' },
-		west: { heading: 'Instead of', asks: 'What was chosen instead?' }
-	};
-
 	/** The four questions, as somebody chooses between them. */
 	export const SIGNALS: Record<ReviewSignalKind, string> = {
 		'anchor-changed': 'The code moved',
@@ -24,7 +13,7 @@
 	// code left behind". One signal at a time, and the canvas answers underneath.
 	import type { OwnedRef } from '@sloppy/types';
 	import type { ReviewSignal, ReviewSignalKind } from '@sloppy/vault';
-	import { ResponsiveModal } from '@sloppy/ui';
+	import { COMPASS_WORDS, ResponsiveModal } from '@sloppy/ui';
 	import { Skeleton } from '@sloppy/ui/skeleton';
 	import { nodes } from '../stores/nodes.svelte.js';
 	import { actKey, review, signalKey } from '../stores/review.svelte.js';
@@ -72,13 +61,13 @@
 					actAt: actKey(signal)
 				};
 			}
-			const slot = signal.direction ? SLOTS[signal.direction] : undefined;
+			const slot = signal.direction ? COMPASS_WORDS[signal.direction] : undefined;
 			return {
 				key: signalKey(signal),
 				...(signal.note === undefined ? {} : { note: signal.note }),
 				...(note?.address === undefined ? {} : { address: note.address }),
 				title: note?.title ?? 'Untitled',
-				...(slot === undefined ? {} : { said: slot.heading }),
+				...(slot === undefined ? {} : { said: slot.word }),
 				act: slot?.asks ?? 'Say why',
 				actAt: actKey(signal)
 			};

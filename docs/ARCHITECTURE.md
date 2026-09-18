@@ -2436,7 +2436,10 @@ no signals table, no cached count and nothing to migrate.
   stale.**
 - **`code-without-note`** — a top-level folder or declared package no anchor in the graph
   names or reaches into. It is a signal about the PROJECT, so it carries a `path` and no
-  note.
+  note. **Which places those are is `placesIn` beside it**, so a surface asking the question
+  and the terminal writing the notes read one list: what a build wrote into, what a tool
+  keeps, and anything behind a dot is nobody's reading, and is neither written about nor
+  asked after.
 - **`compass-gap`** — a slot left empty on a note that holds a compass. A note with no
   compass is not missing one.
 - **`decision-without-why`** — a decision whose "Why" holds nothing under its heading. A

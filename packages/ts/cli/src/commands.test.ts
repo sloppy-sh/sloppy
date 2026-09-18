@@ -12,7 +12,13 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { carryIdentityOut, makeLocalIdentity } from "@sloppy/local";
 import { compassOf } from "@sloppy/types";
-import { INK_DIR, PICTURES_FILE } from "@sloppy/vault";
+import {
+  INK_DIR,
+  PICTURES_FILE,
+  placesIn,
+  review,
+  type ReviewSignal,
+} from "@sloppy/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { notesIn } from "./folder.js";
 import { NodeFiles } from "./node-files.js";
@@ -527,5 +533,48 @@ describe("sloppy review", () => {
       code: NOTHING_DONE,
       err: ["There are no notes in that folder yet."],
     });
+  });
+});
+
+// The terminal writes a note per part of a project; the app asks `review()`
+// which of the project's places no note reaches. The two meet at one list of
+// places, and a project the terminal has just started is where they have to
+// agree exactly.
+describe("what the terminal starts and what the app asks of it", () => {
+  async function asked(): Promise<ReviewSignal[]> {
+    const project = new NodeFiles({ root });
+    const held = await notesIn(new NodeFiles({ root: join(root, ".sloppy") }));
+    return review({
+      notes: held.map((one) => one.note),
+      projectTop: placesIn(await project.list("")),
+      changed: async () => [],
+    });
+  }
+
+  const unwritten = (signals: ReviewSignal[]): (string | undefined)[] =>
+    signals
+      .filter((one) => one.kind === "code-without-note")
+      .map((one) => one.path);
+
+  /** What a tool wrote or keeps, alongside the parts somebody reads. */
+  async function alsoBuilt(): Promise<void> {
+    await wrote("dist/thing.js", "export const built = 1;");
+    await wrote(".github/workflows/check.yml", "on: push\n");
+    await wrote("node_modules/left-pad/package.json", '{"name":"left-pad"}');
+  }
+
+  it("leaves no place unwritten that `init` was willing to write about", async () => {
+    await aProject();
+    await alsoBuilt();
+    await ran(["init"]);
+    expect(unwritten(await asked())).toEqual([]);
+  });
+
+  it("asks about a place written since, and about that one only", async () => {
+    await aProject();
+    await ran(["init"]);
+    await alsoBuilt();
+    await wrote("later/a.ts", "export const a = 1;");
+    expect(unwritten(await asked())).toEqual(["later"]);
   });
 });
