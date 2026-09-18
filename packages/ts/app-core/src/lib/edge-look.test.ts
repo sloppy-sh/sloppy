@@ -5,7 +5,7 @@
 import type { NodeView } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
 import { lineBetween, looksOnCanvas } from './edge-look.js';
-import { AT, node, ref } from './stores/fake-api.test-support.js';
+import { AT, DID, node, ref } from './stores/fake-api.test-support.js';
 
 const ELSE = 'did:syr:z6MkjRaGkPWv9pTYo1fkaJc34mW1Sev5T3g3kjDtiUsPFGFh';
 const ONE = node(1, '1');
@@ -59,7 +59,7 @@ describe('the looks a canvas is handed', () => {
 
 describe('the note a look is written on', () => {
 	it('is the note the reader came from where neither end carries one', () => {
-		const line = lineBetween(TWO, ONE);
+		const line = lineBetween(TWO, ONE, DID);
 		expect(line.on.ref).toBe(TWO.ref);
 		expect(line.other.ref).toBe(ONE.ref);
 		expect(line.look).toBeUndefined();
@@ -69,9 +69,30 @@ describe('the note a look is written on', () => {
 	// whichever end the reader reached it from.
 	it('is whichever end already carries the look on that pair', () => {
 		const held = looking(ONE, { edges: [{ to: TWO.ref, stroke: 'dotted' }], updated_at: AT });
-		const line = lineBetween(TWO, held);
+		const line = lineBetween(TWO, held, DID);
 		expect(line.on.ref).toBe(held.ref);
 		expect(line.other.ref).toBe(TWO.ref);
 		expect(line.look).toEqual({ to: TWO.ref, stroke: 'dotted' });
+	});
+
+	// A look on a note somebody else gates is that person's writing: the reader
+	// says their own thing on their own note, and reads theirs beside it.
+	it("is the reader's own note where the end carrying the look is gated by somebody else", () => {
+		const held = looking(ONE, {
+			owner: ELSE,
+			edges: [{ to: TWO.ref, label: 'theirs' }],
+			updated_at: AT
+		});
+		const line = lineBetween(TWO, held, DID);
+		expect(line.on.ref).toBe(TWO.ref);
+		expect(line.other.ref).toBe(held.ref);
+		expect(line.look).toEqual({ to: TWO.ref, label: 'theirs' });
+	});
+
+	it('is the other end where the note the reader came from is gated by somebody else', () => {
+		const gated = looking(TWO, { owner: ELSE });
+		const line = lineBetween(gated, ONE, DID);
+		expect(line.on.ref).toBe(ONE.ref);
+		expect(line.other.ref).toBe(gated.ref);
 	});
 });

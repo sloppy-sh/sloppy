@@ -19,6 +19,7 @@ import {
 import EdgeSheet from './edge-sheet.svelte';
 
 const HOME = homeOf(DID);
+const ELSE = 'did:syr:z6MkjRaGkPWv9pTYo1fkaJc34mW1Sev5T3g3kjDtiUsPFGFh';
 const ONE = node(1, '1', { title: 'Wheat rust' });
 const TWO = node(2, '1a', {
 	title: 'Spore counts',
@@ -222,6 +223,36 @@ describe('a line already drawn under a look', () => {
 		await settle();
 
 		expect(written).toEqual([{ edges: [{ to: OTHER.ref, label: 'beside' }] }]);
+		expect(closed).toBe(true);
+	});
+});
+
+describe('a line whose look is on a note somebody else gates', () => {
+	const THEIRS = node(4, '3', {
+		title: 'Theirs',
+		owner: ELSE,
+		edges: [{ to: ONE.ref, label: 'theirs' }]
+	});
+
+	beforeEach(async () => {
+		await graphOf([ONE, THEIRS]);
+		api.on(`PATCH ${pathOf(THEIRS.ref)}`, () => {
+			throw new Error('a person writes their own note');
+		});
+	});
+
+	it("opens on what the line carries and writes the answer onto the reader's note", async () => {
+		show(nodes.get(ONE.ref) as NodeView, THEIRS);
+		await settle();
+		expect(field().value).toBe('theirs');
+
+		const words = field();
+		words.value = 'mine';
+		words.dispatchEvent(new Event('input', { bubbles: true }));
+		named('Save')?.click();
+		await settle();
+
+		expect(written).toEqual([{ edges: [{ to: THEIRS.ref, label: 'mine' }] }]);
 		expect(closed).toBe(true);
 	});
 });

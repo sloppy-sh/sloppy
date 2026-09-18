@@ -1,7 +1,6 @@
 <script lang="ts">
 	// The look on one line, as a person sets it — DESIGN.md § Edges, "A look a
-	// person set". Three channels and nothing else: the words on the line, which
-	// end the arrowhead is at, and how the line is broken.
+	// person set".
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
@@ -20,6 +19,7 @@
 	import { lineBetween } from '../edge-look.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { nodes } from '../stores/nodes.svelte.js';
+	import { session } from '../stores/session.svelte.js';
 
 	let {
 		open = false,
@@ -29,15 +29,14 @@
 	}: {
 		open?: boolean;
 		onOpenChange?: (open: boolean) => void;
-		/** The note the reader came from — the one a look set here is written on,
-		 *  unless the other end is already carrying the pair's look. */
+		/** The note the reader came from. */
 		from: NodeView;
 		to: NodeView;
 	} = $props();
 
 	// Read once: a sheet is opened on one line, and the graph moving underneath
 	// it must not rewrite what the person is in the middle of saying.
-	const line = untrack(() => lineBetween(from, to));
+	const line = untrack(() => lineBetween(from, to, session.viewer?.did ?? ''));
 	const here = noteLabel(line.on);
 	const there = noteLabel(line.other);
 
