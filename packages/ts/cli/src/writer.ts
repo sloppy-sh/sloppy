@@ -41,14 +41,13 @@ export async function writeNote(
   asked: {
     from?: NodePlacement;
     title: string;
-    tags?: readonly string[];
     sections: readonly BlockDocument[];
   },
 ): Promise<NodeView> {
   const note = await api.createNode({
     ...(asked.from === undefined ? {} : { from: asked.from }),
     title: asked.title,
-    tags: [...(asked.tags ?? [])],
+    tags: [],
   });
   let after: OwnedRef | undefined;
   for (const content of asked.sections) {

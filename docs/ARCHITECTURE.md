@@ -2360,7 +2360,7 @@ reaches for, so the notes a project keeps are writable from where the code is wo
 
 ```
 sloppy init [dir]      start the notes in a project, and write what the tree can tell
-sloppy draft [paths…]  a note in detail per file named, written as an offer
+sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
 sloppy review [dir]    what the code has left behind
 sloppy check [dir]     read every note and say what doesn't hold
 ```
@@ -2389,7 +2389,10 @@ already has a note offers an amendment where that note is somebody's to keep (§
 writing a note carries"), and where the note is open to everybody and carries writing that
 is not the CLI's, it leaves it alone and says so — an open note is one the store would let
 anybody land a write on, and a machine takes nobody's writing away. A path with no note yet
-gets one written outright.
+gets one written outright. **A run nobody is watching is held to the same rule and no other**:
+there is no person behind a job on a runner, so `init` there mints an identity for the machine
+it is on, and what an unattended `draft` writes lands or is offered by exactly that rule. What
+comes back is a branch somebody reads before it is merged.
 
 **Nothing the CLI does gates somebody's graph.** Ownership is the person's setting, made
 where every other graph's is, and `init` leaves it exactly as it finds it. The alternative
@@ -2399,18 +2402,22 @@ its name is one the person who later opens the project cannot write a word in.
 **`init` writes under an identity of the container's own.** The key goes in the container's
 sidecar (`<project>/.sloppy/.sloppy/`) rather than in an app's private data, because there is
 no app here — which puts it inside somebody's repository, so `init` also writes
-`<project>/.sloppy/.gitignore` telling the history to pass over that sidecar whole: it is
-this device's own folder, and a key committed is a key pushed. A file somebody wrote
-themselves stays theirs — the line is added where it is missing and nothing else is touched.
+`<project>/.sloppy/.gitignore` telling the history to pass over what is this device's: the
+keys, the identities, what this device was told about the folder, and the bin — the list
+§ "The vault's history" keeps out of a folder the app opened, and the key files a device's
+own store writes beside them. A key committed is a key pushed. **The rest of that sidecar is
+the graph's own** — a note's ink, what each picture was called — and commits with the notes,
+or a teammate who clones gets the writing with the drawings missing. A file somebody wrote
+themselves stays theirs: the lines that are not there are added, and nothing else is touched.
 `--identity <file>` writes under an identity carried from another device instead, and the
 graph is then that person's rather than the machine's.
 
 **The notes `init` writes are told apart by what they point at, never by a tag** — a tag is
-the person's own vocabulary, and a shape leaves no trace of itself. The note about a part of the project is the one anchored at that part's own folder,
-and the project's own note is the one those hang under. That is what a second run reads to
-know it has already written them, and what `draft` reads to know that a note pointing at a
-package's entry point is about the PACKAGE — so a detailed note about that file is written
-under it rather than into it.
+the person's own vocabulary, and a shape leaves no trace of itself. The note about a part of
+the project is the one anchored at that part's own folder, and the project's own note is the
+one those hang under. That is what a second run reads to know it has already written them,
+and what `draft` reads to know that a note pointing at a package's entry point is about the
+PACKAGE — so a detailed note about that file is written under it rather than into it.
 
 **`.sloppy/AGENT.md` is what an agent finds where it already looks.** `sloppy init` commits
 it, and it says the file shapes — one note per file, the front matter, the sections, the

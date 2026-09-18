@@ -92,7 +92,7 @@ where there was none is yours to write outright.
 ## Commands
 
     sloppy init [dir]      start the notes in a project, and write what the tree can tell
-    sloppy draft [paths…]  a note in detail per file named, written as an offer
+    sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
     sloppy review          what the code has left behind
     sloppy check           read every note and say what doesn't hold
 

@@ -5,14 +5,21 @@
 // and why are the person's to write, and nothing here writes a word of them.
 
 import {
+  BIN_DIR,
+  BIN_FILE,
   containerOf,
+  CREDENTIALS_FILE,
   type Files,
+  GIT_DEFAULTS_FILE,
   holdDeviceIdentity,
+  IDENTITIES_FILE,
+  IDENTITY_FILE,
   LocalApi,
   readCarriedIdentity,
+  VAULTS_FILE,
 } from "@sloppy/local";
 import type { BlockDocument, OwnedRef } from "@sloppy/types";
-import { decodeText, encodeText, GRAPH_FILE, SLOPPY_DIR } from "@sloppy/vault";
+import { decodeText, encodeText, GRAPH_FILE } from "@sloppy/vault";
 import { AGENT_MD } from "./agent-md.js";
 import { type HeldNote, noteForProject, notesIn, reaches } from "./folder.js";
 import {
@@ -29,11 +36,27 @@ export const AGENT_FILE = "AGENT.md";
 
 /**
  * What this device keeps to itself, as the project's history is told to pass
- * over it: the whole sidecar folder, which is this device's own and holds the
- * key the CLI writes under. The container sits inside somebody's repository, so
- * without this a key is committed, and a key committed is a key pushed.
+ * over it — the same list docs/ARCHITECTURE.md § "The vault's history" names,
+ * and the files this device's own store writes beside them. The container sits
+ * inside somebody's repository, so without these a key is committed, and a key
+ * committed is a key pushed. `*.key` covers every key rather than the two
+ * named ones: a key this build has not named yet is the one mistake with no
+ * way back. A note's ink and what each picture was called sit in the same
+ * folder and are the graph's own — they belong in the history with the notes.
  */
-const KEPT_OUT = [`/${SLOPPY_DIR}/`];
+const KEPT_OUT = [
+  "*.key",
+  "*.key.pub",
+  "*.picture",
+  IDENTITIES_FILE,
+  IDENTITY_FILE,
+  VAULTS_FILE,
+  CREDENTIALS_FILE,
+  GIT_DEFAULTS_FILE,
+  "sloppy-identity*",
+  `/${BIN_FILE}`,
+  `/${BIN_DIR}/`,
+];
 
 const IGNORE_FILE = ".gitignore";
 

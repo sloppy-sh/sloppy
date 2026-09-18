@@ -10,7 +10,7 @@ this disk.
 
 ```
 sloppy init [dir]      start the notes in a project, and write what the tree can tell
-sloppy draft [paths…]  a note in detail per file named, written as an offer
+sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
 sloppy review [dir]    what the code has left behind
 sloppy check [dir]     read every note and say what doesn't hold
 ```

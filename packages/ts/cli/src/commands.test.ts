@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { carryIdentityOut, makeLocalIdentity } from "@sloppy/local";
+import { INK_DIR, PICTURES_FILE } from "@sloppy/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FINE, NOTHING_DONE, run, TO_FIX } from "./run.js";
 
@@ -168,21 +169,25 @@ describe("sloppy init", () => {
   });
 
   it.skipIf(!historyHere)(
-    "keeps this device's own business out of the project's history",
+    "keeps this device's own business out of the project's history, and the graph's own in it",
     async () => {
       await aProject();
       await ranIt("git", ["init", "-q"], { cwd: root });
       await ran(["init"]);
-      expect(
-        (await readdir(join(root, ".sloppy/.sloppy"))).length,
-      ).toBeGreaterThan(0);
+      const own = await readdir(join(root, ".sloppy/.sloppy"));
+      expect(own.filter((file) => file.endsWith(".key"))).toHaveLength(1);
+      await wrote(`.sloppy/${INK_DIR}/01JA.json`, "{}");
+      await wrote(`.sloppy/${PICTURES_FILE}`, "{}");
+
       const { stdout } = await ranIt(
         "git",
         ["status", "--porcelain", "--untracked-files=all"],
         { cwd: root },
       );
       expect(stdout).toContain(".sloppy/notes/");
-      expect(stdout).not.toContain(".sloppy/.sloppy/");
+      expect(stdout).toContain(`.sloppy/${INK_DIR}/01JA.json`);
+      expect(stdout).toContain(`.sloppy/${PICTURES_FILE}`);
+      for (const file of own) expect(stdout).not.toContain(file);
     },
   );
 
@@ -192,7 +197,7 @@ describe("sloppy init", () => {
     await ran(["init"]);
     const ignore = await read(".sloppy/.gitignore");
     expect(ignore.startsWith("drafts/\n")).toBe(true);
-    expect(ignore).toContain("/.sloppy/");
+    expect(ignore).toContain("*.key");
   });
 
   it("writes nothing the second time", async () => {
