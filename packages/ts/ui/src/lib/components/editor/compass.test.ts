@@ -88,6 +88,18 @@ function stored() {
 
 const card = (): HTMLElement => document.querySelector('.sloppy-compass') as HTMLElement;
 
+/** The compass's slots exactly as the writing holds them, entries this build
+ *  cannot read included. */
+function kept(): Record<string, unknown> {
+	let attrs: Record<string, unknown> = {};
+	writingIn().state.doc.descendants((child) => {
+		if (child.type.name !== 'compass') return true;
+		attrs = child.attrs;
+		return false;
+	});
+	return attrs;
+}
+
 const slot = (direction: string): HTMLElement =>
 	card().querySelector(`[data-direction="${direction}"]`) as HTMLElement;
 
@@ -257,6 +269,36 @@ describe('a compass in the writing', () => {
 		expect(words(slot('north').querySelector('.sloppy-compass-asks'))).toBe(
 			COMPASS_WORDS.north.asks
 		);
+	});
+
+	// The card is the note in the middle and four slots around it — DESIGN.md
+	// § "The compass card" — and it is the only drawing of the four.
+	it('stands the note it is on in the middle of the card', () => {
+		open(graph([]));
+		put();
+
+		expect(words(card().querySelector('.sloppy-compass-title'))).toBe(NOTE.title);
+		expect(words(card().querySelector('.sloppy-compass-address'))).toBe(NOTE.address);
+	});
+
+	// A slot entry this build cannot read is still the author's: citing into one
+	// slot is not a chance to normalise the other three.
+	it('keeps what a slot holds that it cannot read when another slot is cited into', async () => {
+		const seed = note('1b', 'Seed banks');
+		open(graph([seed]));
+		writingIn().commands.insertContent({
+			type: 'compass',
+			attrs: { north: [], south: [{ note: 'later', how: 'a key this build has never seen' }] }
+		});
+		flushSync();
+
+		tap(act('north', 'Cite a note'));
+		type('seed');
+		tap(menu()[0]);
+		await settled();
+
+		expect(stored()?.north).toEqual([seed.ref]);
+		expect(kept().south).toEqual([{ note: 'later', how: 'a key this build has never seen' }]);
 	});
 
 	it('offers nothing a slot already points at', async () => {

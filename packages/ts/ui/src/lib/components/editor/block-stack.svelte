@@ -727,7 +727,10 @@
 					EmojiSuggestion(completions, () => ownCatalog),
 					ReferenceNode(() => references),
 					ReferenceSuggestion(noteCompletions, () => references),
-					CompassNode(() => references),
+					CompassNode(
+						() => references,
+						() => node
+					),
 					CodeAnchors(() => code),
 					InkNode,
 					PictureNode(() => media),
@@ -1635,9 +1638,47 @@
 		grid-template-columns: 1fr;
 		gap: 0.75rem;
 	}
+	:global(.sloppy-compass-note) {
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) - 2px);
+		padding: 0.4rem 0.6rem;
+	}
+	:global(.sloppy-compass-address) {
+		font-size: 0.875rem;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-title) {
+		margin: 0;
+		font-weight: 500;
+		overflow-wrap: anywhere;
+	}
+	/* The note in the middle and the four slots around it — DESIGN.md § "The
+	   compass card". Below this the four stack into one column, north to west. */
 	@container (min-width: 30rem) {
 		:global(.sloppy-compass-slots) {
-			grid-template-columns: 1fr 1fr;
+			grid-template-columns: 1fr 1fr 1fr;
+			align-items: start;
+		}
+		:global(.sloppy-compass-note) {
+			grid-column: 2;
+			grid-row: 2;
+			text-align: center;
+		}
+		:global(.sloppy-compass-slot[data-direction='north']) {
+			grid-column: 2;
+			grid-row: 1;
+		}
+		:global(.sloppy-compass-slot[data-direction='west']) {
+			grid-column: 1;
+			grid-row: 2;
+		}
+		:global(.sloppy-compass-slot[data-direction='east']) {
+			grid-column: 3;
+			grid-row: 2;
+		}
+		:global(.sloppy-compass-slot[data-direction='south']) {
+			grid-column: 2;
+			grid-row: 3;
 		}
 	}
 	:global(.sloppy-compass-word) {
@@ -1662,17 +1703,27 @@
 	}
 	:global(.sloppy-compass-asks) {
 		margin: 0.2rem 0 0;
-		color: var(--muted-foreground);
 	}
 	:global(.sloppy-compass-act),
 	:global(.sloppy-compass-off) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 2.25rem;
 		border-radius: calc(var(--radius) - 2px);
 		padding: 0.25rem 0.55rem;
 		font-size: 0.75rem;
 		color: var(--muted-foreground);
 	}
+	:global(.sloppy-compass-off) {
+		min-width: 2.25rem;
+	}
+	:global(.sloppy-compass-off svg) {
+		width: 0.875rem;
+		height: 0.875rem;
+	}
 	:global(.sloppy-compass-act) {
-		margin-top: 0.3rem;
+		margin-top: 0.1rem;
 		margin-left: -0.55rem;
 	}
 	:global(.sloppy-compass-act:hover),

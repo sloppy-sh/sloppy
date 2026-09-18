@@ -1,12 +1,14 @@
-// A note's compass, as one element of a section: four slots, each holding the
-// notes it points at. What is STORED is `compassNode` in `@sloppy/types` and
-// nothing else — DESIGN.md § "The compass card" rules on what is drawn.
+// A note's compass card, as one element of a section: the note in the middle
+// and four slots around it, each holding the notes it points at. What is
+// STORED is `compassNode` in `@sloppy/types` and nothing else — DESIGN.md
+// § "The compass card" rules on what is drawn.
 
 import {
 	COMPASS_DIRECTIONS,
 	COMPASS_TYPE,
 	compassNode,
 	compassOf,
+	REFERENCE_NOTE_ATTR,
 	type Compass,
 	type CompassDirection,
 	type DocumentNode,
@@ -43,6 +45,9 @@ export interface CompassNotes extends ReferenceReader {
 	write?: NoteReferences['write'];
 }
 
+/** The note the compass is on, which is what stands in the middle of the card. */
+export type CompassCentre = Pick<NodeView, 'title' | 'address'>;
+
 declare module '@tiptap/core' {
 	interface Commands<ReturnType> {
 		compass: {
@@ -56,6 +61,12 @@ declare module '@tiptap/core' {
 const SHOWN = 6;
 const SHOWN_ELSEWHERE = 4;
 const COULD_NOT_WRITE = 'That note could not be added. Try again in a moment.';
+
+/** lucide's `x`, written out: nothing here renders through Svelte. */
+const CROSS =
+	'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+	'stroke-linecap="round" aria-hidden="true" focusable="false">' +
+	'<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 
 /** The slots a stored node holds, read by the one reader of a compass. */
 export function slotsIn(node: DocumentNode): Compass {
@@ -86,7 +97,10 @@ function readCitations(raw: string | null): unknown[] {
 
 type Choice = { kind: 'note'; note: NodeView; graph?: string } | { kind: 'stub'; name: string };
 
-export function CompassNode(references: () => CompassNotes | undefined) {
+export function CompassNode(
+	references: () => CompassNotes | undefined,
+	centre: () => CompassCentre | undefined = () => undefined
+) {
 	return Node.create({
 		name: COMPASS_NODE,
 		group: 'block',
@@ -116,15 +130,6 @@ export function CompassNode(references: () => CompassNotes | undefined) {
 			return ['div', mergeAttributes(HTMLAttributes, { 'data-compass': 'true' })];
 		},
 
-		renderText({ node }) {
-			const slots = slotsIn(node.toJSON() as DocumentNode);
-			return COMPASS_DIRECTIONS.filter((direction) => slots[direction].length > 0)
-				.map(
-					(direction) => `${direction}: ${slots[direction].map((note) => `[[${note}]]`).join(' ')}`
-				)
-				.join('\n');
-		},
-
 		addNodeView() {
 			return ({ node, editor, getPos }) => {
 				let current = node;
@@ -149,6 +154,15 @@ export function CompassNode(references: () => CompassNotes | undefined) {
 				const rows = document.createElement('div');
 				rows.className = 'sloppy-compass-slots';
 				dom.append(rows);
+
+				const middle = document.createElement('div');
+				middle.className = 'sloppy-compass-note';
+				const standing = document.createElement('span');
+				standing.className = 'address sloppy-compass-address';
+				const called = document.createElement('p');
+				called.className = 'sloppy-compass-title';
+				middle.append(standing, called);
+				rows.append(middle);
 
 				const finder = document.createElement('div');
 				finder.className = 'sloppy-compass-finder';
@@ -212,24 +226,38 @@ export function CompassNode(references: () => CompassNotes | undefined) {
 
 				const held = (): Compass => slotsIn(current.toJSON() as DocumentNode);
 
-				function keep(slots: Compass): void {
+				/** A slot exactly as it stands, entries this build cannot read
+				 *  included: citing into one slot is not a chance to normalise the
+				 *  other three (AI.md § "Provider-Agnostic Data Shapes"). */
+				const entries = (direction: CompassDirection): unknown[] => {
+					const standing: unknown = current.attrs[direction];
+					return Array.isArray(standing) ? [...standing] : [];
+				};
+
+				const citing = (entry: unknown): unknown =>
+					entry === null || typeof entry !== 'object'
+						? undefined
+						: (entry as Record<string, unknown>)[REFERENCE_NOTE_ATTR];
+
+				function keep(direction: CompassDirection, slot: unknown[]): void {
 					const pos = at();
 					if (pos === undefined || editor.isDestroyed) return;
 					editor.view.dispatch(
-						editor.state.tr.setNodeMarkup(pos, undefined, compassNode(slots).attrs)
+						editor.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, [direction]: slot })
 					);
 				}
 
 				function cite(direction: CompassDirection, note: OwnedRef): void {
-					const slots = held();
-					if (slots[direction].includes(note)) return closeFinder();
-					keep({ ...slots, [direction]: [...slots[direction], note] });
+					if (held()[direction].includes(note)) return closeFinder();
+					keep(direction, [...entries(direction), { [REFERENCE_NOTE_ATTR]: note }]);
 					closeFinder();
 				}
 
 				function drop(direction: CompassDirection, note: OwnedRef): void {
-					const slots = held();
-					keep({ ...slots, [direction]: slots[direction].filter((one) => one !== note) });
+					keep(
+						direction,
+						entries(direction).filter((one) => citing(one) !== note)
+					);
 				}
 
 				function openFinder(direction: CompassDirection): void {
@@ -373,7 +401,7 @@ export function CompassNode(references: () => CompassNotes | undefined) {
 						const off = document.createElement('button');
 						off.type = 'button';
 						off.className = 'sloppy-compass-off';
-						off.textContent = '×';
+						off.innerHTML = CROSS;
 						off.setAttribute(
 							'aria-label',
 							`Take ${link.textContent} out of ${COMPASS_WORDS[direction].word}`
@@ -412,6 +440,11 @@ export function CompassNode(references: () => CompassNotes | undefined) {
 				function draw(): void {
 					const slots = held();
 					const canFill = fillable();
+					const own = centre();
+					middle.hidden = own === undefined;
+					standing.textContent = own?.address ?? '';
+					standing.hidden = !own?.address;
+					called.textContent = own ? own.title || 'Untitled' : '';
 					for (const direction of COMPASS_DIRECTIONS) {
 						const cites = slots[direction];
 						const { list, asks, add } = drawn[direction];
