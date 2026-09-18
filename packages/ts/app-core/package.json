@@ -19,6 +19,11 @@
 			"svelte": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
+		"./graph-here": {
+			"types": "./dist/graph-here.svelte.d.ts",
+			"svelte": "./dist/graph-here.svelte.js",
+			"default": "./dist/graph-here.svelte.js"
+		},
 		"./pages/*": {
 			"types": "./dist/pages/*.svelte.d.ts",
 			"svelte": "./dist/pages/*.svelte",

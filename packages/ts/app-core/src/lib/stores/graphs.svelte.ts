@@ -56,9 +56,14 @@ const IDLE: GraphsState = { loading: false, loaded: false, failed: false };
 
 const LISTING = 'listing';
 
+/** Kept under the folder the listing was read out of, since a graph opened on
+ *  this device and the one a Sloppy serves are two listings and neither one's
+ *  rows are the other's. */
 function kept(): DeviceArea | null {
 	const did = session.viewer?.did;
-	return did ? deviceStore.area(did, 'graphs') : null;
+	if (!did) return null;
+	const folder = runtime.vault()?.folder();
+	return deviceStore.area(did, folder === undefined ? 'graphs' : `graphs ${folder}`);
 }
 
 class GraphsStore {
