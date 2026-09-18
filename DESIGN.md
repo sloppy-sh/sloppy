@@ -914,9 +914,9 @@ there is one, and the act, in the note's own ink:
 - **Write a note** — for code nothing has been written about. It opens a walkthrough under
   the project's own note, already anchored at the path.
 - **the slot's own question** — for an empty slot, which is the same line the card shows,
-  and tapping it opens the note at its compass.
-- **Say why instead** — for a decision whose "Why" is still empty. It opens that section
-  with the cursor in it, and it never writes a word there.
+  and tapping it opens the note.
+- **Say why** — for a decision whose "Why" is still empty. Taking it opens the note, and it
+  never writes a word there.
 
 **Where nothing is left behind, the sheet says so in one line and offers nothing.** "Nothing
 the code has left behind." That is the ordinary state of a project somebody is keeping up
