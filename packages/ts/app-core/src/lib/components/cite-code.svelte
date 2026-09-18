@@ -116,7 +116,15 @@
 >
 	<div class="flex flex-col gap-3">
 		{#if chosen === null}
-			<Input class="h-11" placeholder="Find a file" aria-label="Find a file" bind:value={query} />
+			<Input
+				class="h-11"
+				placeholder="Find a file"
+				aria-label="Find a file"
+				autocapitalize="off"
+				autocorrect="off"
+				spellcheck={false}
+				bind:value={query}
+			/>
 			{#if held === null}
 				<Skeleton class="h-40 w-full" />
 			{:else if listed.length === 0}
@@ -161,6 +169,9 @@
 				<Input
 					class="h-11"
 					placeholder="12-20, or a name — leave this for the whole file"
+					autocapitalize="off"
+					autocorrect="off"
+					spellcheck={false}
 					bind:value={within}
 				/>
 			</label>
