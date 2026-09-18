@@ -165,7 +165,7 @@
 			<p class="py-8 text-center text-muted-foreground">There is nothing written in this note.</p>
 		{:else}
 			{#key note.ref}
-				<HeldStack author={note.created_by} {blocks} {pictures} {references} {emoji} />
+				<HeldStack {note} author={note.created_by} {blocks} {pictures} {references} {emoji} />
 			{/key}
 		{/if}
 

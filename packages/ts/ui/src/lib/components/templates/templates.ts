@@ -1,13 +1,17 @@
 // The shapes a note can start from, and what writing one onto a note does —
 // docs/ARCHITECTURE.md § "Blocks and ink".
 
-import type {
-	BlockDocument,
-	BlockView,
-	CreateBlockRequest,
-	NodePlacement,
-	OwnedRef
+import {
+	compassNode,
+	DECISION_WHY_HEADING,
+	type BlockDocument,
+	type BlockView,
+	type CreateBlockRequest,
+	type DocumentNode,
+	type NodePlacement,
+	type OwnedRef
 } from '@sloppy/types';
+import { EMPTY_COMPASS } from '../editor/compass-node.js';
 
 export type TemplateId =
 	| 'claim'
@@ -17,10 +21,11 @@ export type TemplateId =
 	| 'synthesis'
 	| 'qec'
 	| 'aji'
-	| 'walkthrough';
+	| 'walkthrough'
+	| 'decision';
 
 /** What a seeded section opens on. Absent is somewhere to write. */
-export type SectionOpening = 'writing' | 'drawing';
+export type SectionOpening = 'writing' | 'drawing' | 'compass';
 
 export interface TemplateSection {
 	heading: string;
@@ -106,8 +111,20 @@ export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
 			{ heading: 'The path it takes' },
 			{ heading: 'Where it can go wrong' }
 		]
+	},
+	{
+		id: 'decision',
+		name: 'Decision',
+		sections: [{ heading: 'Where this sits', opens: 'compass' }, { heading: DECISION_WHY_HEADING }]
 	}
 ];
+
+/** What a section opens with under its name. */
+function opening(opens: SectionOpening | undefined): DocumentNode {
+	if (opens === 'drawing') return { type: 'ink', attrs: { strokes: [], ...SKETCH } };
+	if (opens === 'compass') return compassNode(EMPTY_COMPASS);
+	return { type: 'paragraph' };
+}
 
 /** The documents a shape's sections open as: a name, and room under it. */
 export function templateSections(template: NoteTemplate): BlockDocument[] {
@@ -115,9 +132,7 @@ export function templateSections(template: NoteTemplate): BlockDocument[] {
 		type: 'doc',
 		content: [
 			{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: section.heading }] },
-			section.opens === 'drawing'
-				? { type: 'ink', attrs: { strokes: [], ...SKETCH } }
-				: { type: 'paragraph' }
+			opening(section.opens)
 		]
 	}));
 }

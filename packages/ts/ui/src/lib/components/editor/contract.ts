@@ -98,11 +98,13 @@ export interface NoteReferences {
 	 *  note. A rejection says nothing about whether it is there. */
 	read(note: OwnedRef): Promise<NodeView | null>;
 	/**
-	 * Writes a note nobody has written yet, and answers with it. Rejects with an
-	 * `Error` whose `message` is already fit to show somebody — this package
-	 * cannot tell a server's words for a person from its words for a log.
+	 * Writes a note nobody has written yet, and answers with it. `free` springs
+	 * it from nothing, in the graph the note being written is read in. Rejects
+	 * with an `Error` whose `message` is already fit to show somebody — this
+	 * package cannot tell a server's words for a person from its words for a
+	 * log.
 	 */
-	write(title: string, relation: 'under' | 'after'): Promise<NodeView>;
+	write(title: string, relation: 'under' | 'after' | 'free'): Promise<NodeView>;
 	/** Take the reader to a note. */
 	open(note: OwnedRef): void;
 }
