@@ -7,6 +7,7 @@ import {
   compareAddresses,
   createOwnedRecordId,
   type DidSyr,
+  type EdgeLook,
   graphOf,
   type Node,
   type NodeAlias,
@@ -30,6 +31,7 @@ const PATCHABLE = [
   "title",
   "tags",
   "links",
+  "edges",
   "appearance",
   "owner",
   "authors",
@@ -144,6 +146,8 @@ const BULK_WRITABLE = ["tags", "appearance", "authors"] as const;
 export type NodePatch = Partial<
   Pick<Node, "title" | "tags" | "links" | "authors" | "checked">
 > & {
+  /** The looks on this note's lines, whole; `null` leaves it carrying none. */
+  edges?: EdgeLook[] | null;
   appearance?: NodeAppearance | null;
   /** Who gates the note's writing; `null` takes the gate off. */
   owner?: DidSyr | null;

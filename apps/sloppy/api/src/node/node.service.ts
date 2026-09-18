@@ -14,6 +14,7 @@ import {
   DELETED_KEPT_FOR_DAYS,
   type DeletedBranch,
   type DidSyr,
+  type EdgeLook,
   entityView,
   graphAsked,
   graphOf,
@@ -21,6 +22,8 @@ import {
   isAncestorAddress,
   isRootAddress,
   isUnstyled,
+  looksAreOnePerTarget,
+  looksWritten,
   nextChildAddress,
   resolveAppearance,
   seriesIsWhole,
@@ -391,6 +394,9 @@ export class NodeService {
     const updated = await this.nodes.patch(did, ref, {
       ...request,
       ...(joined === note ? {} : { authors: joined.authors }),
+      ...(request.edges === undefined
+        ? {}
+        : { edges: linesWritten(request.edges) }),
       ...(request.appearance === undefined
         ? {}
         : { appearance: await this.look(request.appearance, delegation) }),
@@ -1401,6 +1407,19 @@ function retag(note: Node, adding: boolean, named: Tags): Tags {
     );
   }
   return parsed.data;
+}
+
+/** The looks a write leaves on a note, or `null` where it leaves it carrying
+ *  none. Two looks naming one note at the other end would be one line drawn two
+ *  ways, and the person is told rather than having one of them dropped. */
+function linesWritten(edges: readonly EdgeLook[]): EdgeLook[] | null {
+  const written = looksWritten(edges);
+  if (!looksAreOnePerTarget(written)) {
+    throw new BadRequestException(
+      "A line between two notes carries one look. Set just one.",
+    );
+  }
+  return written ?? null;
 }
 
 function newNode(
