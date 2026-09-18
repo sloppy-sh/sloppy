@@ -315,6 +315,10 @@ describe("a compass in a section", () => {
   const TIDES = `${DID}/01J0000000000000000000000A`;
   const MOON = `${DID}/01J0000000000000000000000E`;
 
+  /** The places one slot holds, as the editor writes them: a citation under the
+   *  same key a sentence cites a note under. */
+  const cite = (...refs: string[]) => refs.map((note) => ({ note }));
+
   const compass = (slots: Record<string, unknown> = {}) =>
     doc({
       type: "compass",
@@ -322,14 +326,14 @@ describe("a compass in a section", () => {
     });
 
   it("is a line per filled slot, in the order the slots are written", () => {
-    expect(written(compass({ west: [MOON], north: [TIDES, MOON] })).text).toBe(
-      `north: [[${TIDES}]] [[${MOON}]]\nwest: [[${MOON}]]`,
-    );
+    expect(
+      written(compass({ west: cite(MOON), north: cite(TIDES, MOON) })).text,
+    ).toBe(`north: [[${TIDES}]] [[${MOON}]]\nwest: [[${MOON}]]`);
   });
 
   it("comes back as itself", () => {
-    expect(readBack(compass({ south: [TIDES] }))).toEqual(
-      compass({ south: [TIDES] }),
+    expect(readBack(compass({ south: cite(TIDES) }))).toEqual(
+      compass({ south: cite(TIDES) }),
     );
   });
 
@@ -339,15 +343,21 @@ describe("a compass in a section", () => {
     expect(readBack(held)).toEqual(held);
   });
 
+  it("writes a slot carrying more than the citation as JSON", () => {
+    const held = compass({ north: [{ note: TIDES, label: "the tides" }] });
+    expect(written(held).text.startsWith("<!-- sloppy:node ")).toBe(true);
+    expect(readBack(held)).toEqual(held);
+  });
+
   it("is two compasses where a person wrote two", () => {
     const held = doc(
       {
         type: "compass",
-        attrs: { north: [TIDES], south: [], east: [], west: [] },
+        attrs: { north: cite(TIDES), south: [], east: [], west: [] },
       },
       {
         type: "compass",
-        attrs: { north: [MOON], south: [], east: [], west: [] },
+        attrs: { north: cite(MOON), south: [], east: [], west: [] },
       },
     );
     expect(written(held).text).toBe(

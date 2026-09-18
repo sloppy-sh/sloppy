@@ -865,8 +865,9 @@ the first one already says.
 
 **The card is the note in the middle and four slots around it**, each headed by its word —
 **Part of**, **Made of**, **Like**, **Instead of** — with the notes it holds listed under
-it. It is a section of the note like any other, so it sits in the reading order the author
-put it in and is reordered by the same handle.
+it. It is an element inside a section, like a list or a picture, so it sits where the
+author wrote it and travels with the section the handle reorders — never a block of its
+own, and never something typing conjures (AI.md § "A Block Is a Section").
 
 **An empty slot asks rather than complains.** Under a slot with nothing in it sits the
 question it answers — "What larger pattern is this part of?", "What is this made of?",
@@ -899,7 +900,7 @@ nothing that goes red on its own — a note nobody has confirmed says nothing at
 unread is not stale (§ "An anchor into code").
 
 **Asking is choosing one signal, and the canvas answers by highlighting.** The four —
-_the code moved_, _nothing written here_, _an empty slot_, _no "instead of"_ — behave exactly
+_the code moved_, _nothing written here_, _an empty slot_, _no why written_ — behave exactly
 as tags do: the notes that carry the chosen one stay in ink and the rest dim, so the shape
 of the graph survives the question. Never a filter, never a colour of its own, and never
 two signals at once: the question is one at a time, the way a person asks one.
@@ -914,8 +915,8 @@ there is one, and the act, in the note's own ink:
   the project's own note, already anchored at the path.
 - **the slot's own question** — for an empty slot, which is the same line the card shows,
   and tapping it opens the note at its compass.
-- **Say why instead** — for a decision that has not said what it turned down. It opens the
-  slot, and it never fills one in.
+- **Say why instead** — for a decision whose "Why" is still empty. It opens that section
+  with the cursor in it, and it never writes a word there.
 
 **Where nothing is left behind, the sheet says so in one line and offers nothing.** "Nothing
 the code has left behind." That is the ordinary state of a project somebody is keeping up

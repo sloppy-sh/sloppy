@@ -108,20 +108,41 @@ function element(
   return made;
 }
 
-const slot = fc.array(fc.constantFrom(REF, OTHER_REF), { maxLength: 2 });
+const slot = fc.array(fc.constantFrom({ note: REF }, { note: OTHER_REF }), {
+  maxLength: 2,
+});
 
 /** The four slots the editor writes, and the shapes a hand or a later build
- *  leaves behind — a slot missing, a slot naming no note — which the vault
- *  carries as JSON rather than as lines. */
+ *  leaves behind — a slot missing, a slot holding something that cites no note,
+ *  a place carrying more than the citation — which the vault carries as JSON
+ *  rather than as lines. */
 const compasses: fc.Arbitrary<DocumentNode> = fc.oneof(
   fc.tuple(slot, slot, slot, slot).map(([north, south, east, west]) => ({
     type: "compass",
     attrs: { north, south, east, west },
   })),
-  fc.constant({ type: "compass", attrs: { north: [REF] } }),
+  fc.constant({ type: "compass", attrs: { north: [{ note: REF }] } }),
   fc.constant({
     type: "compass",
-    attrs: { north: ["not-a-ref"], south: [], east: [], west: [] },
+    attrs: { north: [REF], south: [], east: [], west: [] },
+  }),
+  fc.constant({
+    type: "compass",
+    attrs: {
+      north: [{ note: "not-a-ref" }],
+      south: [],
+      east: [],
+      west: [],
+    },
+  }),
+  fc.constant({
+    type: "compass",
+    attrs: {
+      north: [{ note: REF, label: "the tides" }],
+      south: [],
+      east: [],
+      west: [],
+    },
   }),
   fc.constant({
     type: "compass",

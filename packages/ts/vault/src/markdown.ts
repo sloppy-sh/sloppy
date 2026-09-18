@@ -5,14 +5,18 @@
 
 import {
   type BlockDocument,
+  type Compass,
   COMPASS_DIRECTIONS,
   COMPASS_TYPE,
   type CompassDirection,
+  compassNode,
   type DocumentMark,
   type DocumentNode,
   EMOJI_SHORTCODE_PATTERN,
   opensDiagram,
+  type OwnedRef,
   OwnedRefSchema,
+  REFERENCE_NOTE_ATTR,
 } from "@sloppy/types";
 import {
   INK_DIR,
@@ -375,13 +379,24 @@ function writeCompass(attrs: Record<string, unknown>): string | null {
   for (const direction of COMPASS_DIRECTIONS) {
     const held = attrs[direction];
     if (!Array.isArray(held)) return null;
-    if (held.some((ref) => !OwnedRefSchema.safeParse(ref).success)) return null;
-    if (held.length === 0) continue;
-    lines.push(`${direction}: ${held.map((ref) => `[[${ref}]]`).join(" ")}`);
+    const refs = held.map(citedRef);
+    if (refs.some((ref) => ref === null)) return null;
+    if (refs.length === 0) continue;
+    lines.push(`${direction}: ${refs.map((ref) => `[[${ref}]]`).join(" ")}`);
   }
   // A compass with every slot empty has no lines, and a blank block reads back
   // as nothing at all.
   return lines.length === 0 ? null : lines.join("\n");
+}
+
+/** The note one place in a slot cites, or null where the place holds anything
+ *  besides that — which the caller answers by writing the node's JSON. */
+function citedRef(place: unknown): OwnedRef | null {
+  if (place === null || typeof place !== "object") return null;
+  const held = place as Record<string, unknown>;
+  if (!only(held, [REFERENCE_NOTE_ATTR])) return null;
+  const ref = OwnedRefSchema.safeParse(held[REFERENCE_NOTE_ATTR]);
+  return ref.success ? ref.data : null;
 }
 
 function writePicture(
@@ -658,15 +673,14 @@ function readBlock(
  *  sentence and a citation of a note is written as a link. */
 function compassLine(
   line: string,
-): { direction: CompassDirection; refs: string[] } | null {
+): { direction: CompassDirection; refs: OwnedRef[] } | null {
   const held = COMPASS_LINE.exec(line);
   if (!held) return null;
-  const refs: string[] = [];
+  const refs: OwnedRef[] = [];
   for (const cited of held[2].split(" ")) {
-    const ref = COMPASS_CITE.exec(cited)?.[1];
-    if (ref === undefined || !OwnedRefSchema.safeParse(ref).success)
-      return null;
-    refs.push(ref);
+    const ref = OwnedRefSchema.safeParse(COMPASS_CITE.exec(cited)?.[1]);
+    if (!ref.success) return null;
+    refs.push(ref.data);
   }
   return { direction: held[1] as CompassDirection, refs };
 }
@@ -675,7 +689,7 @@ function compassLine(
  *  twice ends the run: the second line opens a compass of its own rather than
  *  taking the first one's slot away. */
 function readCompass(lines: readonly string[], at: number): Read {
-  const slots: Record<string, string[]> = {};
+  const slots = {} as Compass;
   for (const direction of COMPASS_DIRECTIONS) slots[direction] = [];
   const filled = new Set<CompassDirection>();
   let cursor = at;
@@ -686,7 +700,7 @@ function readCompass(lines: readonly string[], at: number): Read {
     slots[held.direction] = held.refs;
     cursor++;
   }
-  return { node: { type: COMPASS_TYPE, attrs: slots }, next: cursor };
+  return { node: compassNode(slots), next: cursor };
 }
 
 function heldJson(line: string, tag: string): DocumentNode | null {

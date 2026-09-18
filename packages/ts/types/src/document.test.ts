@@ -5,6 +5,7 @@ import {
   citedNotes,
   citedUploads,
   COMPASS_TYPE,
+  compassNode,
   compassOf,
   EMOJI_UPLOAD_ATTR,
   MAX_DOCUMENT_NESTING,
@@ -368,6 +369,10 @@ describe("the compass a section holds", () => {
   const doc = (content: unknown[]) =>
     BlockDocumentSchema.parse({ type: "doc", content });
 
+  /** One slot's places, as the editor writes them: a citation under the same
+   *  key a sentence cites a note under. */
+  const slot = (...refs: unknown[]) => refs.map((note) => ({ note }));
+
   const compass = (slots: Record<string, unknown>) => ({
     type: COMPASS_TYPE,
     attrs: { north: [], south: [], east: [], west: [], ...slots },
@@ -382,14 +387,43 @@ describe("the compass a section holds", () => {
   });
 
   it("is the four slots, in the order they are written", () => {
-    expect(compassOf(doc([compass({ north: [TIDES], west: [MOON] })]))).toEqual(
-      {
-        north: [TIDES],
+    expect(
+      compassOf(doc([compass({ north: slot(TIDES), west: slot(MOON) })])),
+    ).toEqual({
+      north: [TIDES],
+      south: [],
+      east: [],
+      west: [MOON],
+    });
+  });
+
+  it("writes a slot as the citation a sentence would carry", () => {
+    expect(
+      compassNode({ north: [TIDES], south: [], east: [], west: [MOON] }),
+    ).toEqual({
+      type: COMPASS_TYPE,
+      attrs: {
+        north: [{ [REFERENCE_NOTE_ATTR]: TIDES }],
         south: [],
         east: [],
-        west: [MOON],
+        west: [{ [REFERENCE_NOTE_ATTR]: MOON }],
       },
-    );
+    });
+  });
+
+  it("reads a slot publishing has withheld as one the reader cannot follow", () => {
+    expect(
+      compassOf(
+        doc([
+          compass({
+            north: [
+              { [REFERENCE_NOTE_ATTR]: "" },
+              { [REFERENCE_NOTE_ATTR]: TIDES },
+            ],
+          }),
+        ]),
+      ),
+    ).toEqual({ north: [TIDES], south: [], east: [], west: [] });
   });
 
   it("reads an absent slot as one nobody has filled", () => {
@@ -403,19 +437,27 @@ describe("the compass a section holds", () => {
 
   it("leaves out whatever a slot holds that names no note", () => {
     expect(
-      compassOf(doc([compass({ north: [TIDES, "", 7, "not-a-ref"] })])),
+      compassOf(
+        doc([
+          compass({ north: [...slot(TIDES, "", 7, "not-a-ref"), TIDES, null] }),
+        ]),
+      ),
     ).toEqual({ north: [TIDES], south: [], east: [], west: [] });
   });
 
   it("is the first one where a hand has left two in the file", () => {
     expect(
-      compassOf(doc([compass({ north: [TIDES] }), compass({ north: [MOON] })])),
+      compassOf(
+        doc([compass({ north: slot(TIDES) }), compass({ north: slot(MOON) })]),
+      ),
     ).toEqual({ north: [TIDES], south: [], east: [], west: [] });
   });
 
   it("is cited exactly as a citation in a sentence is", () => {
     expect(
-      citedNotes(doc([compass({ north: [TIDES], south: [MOON, EBB] })])),
+      citedNotes(
+        doc([compass({ north: slot(TIDES), south: slot(MOON, EBB) })]),
+      ),
     ).toEqual([TIDES, MOON, EBB]);
   });
 
@@ -424,7 +466,7 @@ describe("the compass a section holds", () => {
       citedNotes(
         doc([
           { type: "paragraph", content: [{ type: "text", text: "a thought" }] },
-          compass({ east: [EBB] }),
+          compass({ east: slot(EBB) }),
         ]),
       ),
     ).toEqual([EBB]);
@@ -434,7 +476,7 @@ describe("the compass a section holds", () => {
     expect(
       citedNotes(
         doc([
-          compass({ north: [TIDES] }),
+          compass({ north: slot(TIDES) }),
           {
             type: "paragraph",
             content: [

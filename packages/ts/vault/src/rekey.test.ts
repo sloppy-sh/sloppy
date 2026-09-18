@@ -75,7 +75,7 @@ function vault(): Vault {
         {
           type: "compass",
           attrs: {
-            north: [`${FROM}/${CITED}`],
+            north: [{ note: `${FROM}/${CITED}` }],
             south: [],
             east: [],
             west: [],
@@ -132,7 +132,7 @@ describe("a graph moving into another identity", () => {
       `sloppy:${TO}/${CITED}`,
     );
     expect(unheard.attrs?.note).toBe(`${TO}/${CITED}`);
-    expect(compass.attrs?.north).toEqual([`${TO}/${CITED}`]);
+    expect(compass.attrs?.north).toEqual([{ note: `${TO}/${CITED}` }]);
   });
 
   it("leaves a graph belonging to somebody else alone", () => {

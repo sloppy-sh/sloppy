@@ -2055,8 +2055,9 @@ out of a note on its own is still the row going, and no timestamp.
 ## The compass
 
 **A compass is an element inside a section, and four lists of citations is all of it.**
-`{ type: "compass", attrs: { north, south, east, west } }`, each direction holding refs;
-an empty list is a slot nobody has filled, which is what an absent one reads as.
+`{ type: "compass", attrs: { north, south, east, west } }`, each direction a list of
+places, and a place is `{ note: "<did>/<ulid>" }` — the same key a sentence cites a note
+under. An empty list is a slot nobody has filled, which is what an absent one reads as.
 `COMPASS_DIRECTIONS` in `@sloppy/types` is the order it is written and read in, and
 `compassOf` is the one reader — the FIRST compass a document holds is the answer, because
 a note points one way and a second one is a hand in the file rather than a second heading.
@@ -2077,11 +2078,12 @@ cannot say. The round trip is held to the strong form by the vault's property te
 graph read out of a folder is the graph that was written into it.
 
 **A slot is a citation, and nothing else changes.** `citedNotes` counts a compass ref
-exactly as it counts a note named in a sentence, so the canvas draws the line it already
-draws for a reference, at the same weight, and no mark moves: the genealogy, the addresses
-and `node.links` are untouched, and no column is added anywhere. Where direction is drawn
-at all is the compass card on the note (DESIGN.md § "The compass card") — the canvas has
-one shape and the compass is not part of it.
+exactly as it counts a note named in a sentence — because it IS that key, rather than a
+second convention beside it — so the canvas draws the line it already draws for a
+reference, at the same weight, and no mark moves: the genealogy, the addresses and
+`node.links` are untouched, and no column is added anywhere. Where direction is drawn at
+all is the compass card on the note (DESIGN.md § "The compass card") — the canvas has one
+shape and the compass is not part of it.
 
 **Filling somebody else's slot is an offer, because it is writing.** A compass lives in a
 section, so a change to one on an owned note travels the amendment path every other change
@@ -2090,12 +2092,17 @@ which is the slot that gained a note rather than a diff of a block.
 
 **The hosted graph carries it with the block.** There is no compass route, no compass
 column and nothing for the API to learn: a section holding one is a section, and it is
-written, published, pulled and purged as one.
+written, published, pulled and purged as one. That includes what a publication withholds
+— a slot pointing at a note outside it is blanked by the rule that blanks a citation in a
+sentence, and reads back as a slot nobody filled, which is the whole reason a place is
+written under the citation's own key.
 
-**A Decision is a note holding a compass and a "Why".** It joins the templates a new note
-can be started from, and nothing marks it: what makes a note a decision is the compass in
-it. That is also what `review` reads — a compass whose `west` is empty is a decision whose
-author has not said what they did instead (§ "Tooling and the review").
+**A Decision is a note holding a compass and a section headed "Why".** It joins the
+templates a new note can be started from, and nothing marks it: those two together are
+what makes a note a decision, and `DECISION_WHY_HEADING` in `@sloppy/types` is the one
+copy of the word, so the template that writes the section and the review that reads it
+cannot drift apart. A note holding a compass and no such section is an ordinary note and
+is never asked to explain itself (§ "Tooling and the review").
 
 ## A graph on disk
 
@@ -2400,8 +2407,9 @@ no signals table, no cached count and nothing to migrate.
   note.
 - **`compass-gap`** — a slot left empty on a note that holds a compass. A note with no
   compass is not missing one.
-- **`no-instead-of`** — a compass whose `west` is empty. A decision is a note holding a
-  compass, and nothing marks one, so this is that and nothing more.
+- **`decision-without-why`** — a decision whose "Why" holds nothing under its heading. A
+  note that is not the Decision shape — a compass and that section — is not a decision and
+  yields this never.
 
 A signal names a note, a path, or both: **an absent `note` is a signal about the project,
 and an absent `path` a signal about a note.** DESIGN.md § "What the code left behind" is how

@@ -12,7 +12,8 @@ const COMMIT = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 function note(said: {
   n: number;
   checked?: string;
-  body: string;
+  /** One per section, in the order the note reads. */
+  body: string | string[];
 }): ReturnType<typeof vaultToNote> {
   const front = [
     "---",
@@ -21,9 +22,13 @@ function note(said: {
     ...(said.checked === undefined ? [] : [`checked: ${said.checked}`]),
     "---",
   ].join("\n");
-  return vaultToNote({
-    markdown: `${front}\n\n<!-- block ${ulid(said.n)} -->\n\n${said.body}\n`,
-  });
+  const sections = (Array.isArray(said.body) ? said.body : [said.body])
+    .map(
+      (text, at) =>
+        `<!-- block 01J00000000000000000000${at}${said.n}A -->\n\n${text}\n`,
+    )
+    .join("\n");
+  return vaultToNote({ markdown: `${front}\n\n${sections}` });
 }
 
 function compass(slots: Partial<Record<string, string[]>>): string {
@@ -113,16 +118,76 @@ describe("what the code has left behind", () => {
     ]);
   });
 
-  it("says a decision with nothing to the west has not said what instead", async () => {
+  it("says a decision nobody has given the reason for", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          body: [compass({ north: [ref(2)], west: [ref(3)] }), "## Why"],
+        }),
+      ],
+      projectTop: [],
+      changed: nothingMoved,
+    });
+    expect(signals).toContainEqual<ReviewSignal>({
+      kind: "decision-without-why",
+      note: ref(1),
+    });
+  });
+
+  it("says a decision whose why is still an empty paragraph", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          body: [
+            compass({ north: [ref(2)], west: [ref(3)] }),
+            "## Why\n\n<!-- -->",
+          ],
+        }),
+      ],
+      projectTop: [],
+      changed: nothingMoved,
+    });
+    expect(signals).toContainEqual<ReviewSignal>({
+      kind: "decision-without-why",
+      note: ref(1),
+    });
+  });
+
+  it("says nothing about a decision whose why is written", async () => {
+    const signals = await review({
+      notes: [
+        note({
+          n: 1,
+          body: [
+            compass({
+              north: [ref(2)],
+              south: [ref(3)],
+              east: [ref(4)],
+              west: [ref(5)],
+            }),
+            "## Why\n\nThe other one cost more to keep.",
+          ],
+        }),
+      ],
+      projectTop: [],
+      changed: nothingMoved,
+    });
+    expect(signals).toEqual([]);
+  });
+
+  it("asks nothing of a note that holds a compass and is no decision", async () => {
     const signals = await review({
       notes: [note({ n: 1, body: compass({ north: [ref(2)] }) })],
       projectTop: [],
       changed: nothingMoved,
     });
-    expect(signals).toContainEqual<ReviewSignal>({
-      kind: "no-instead-of",
-      note: ref(1),
-    });
+    expect(signals.map((signal) => signal.kind)).toEqual([
+      "compass-gap",
+      "compass-gap",
+      "compass-gap",
+    ]);
   });
 
   it("says nothing about the compass on a note that holds none", async () => {

@@ -10,6 +10,8 @@ import {
   type Compass,
   type CompassDirection,
   compassOf,
+  DECISION_WHY_HEADING,
+  type DocumentNode,
   type OwnedRef,
 } from "@sloppy/types";
 
@@ -18,7 +20,7 @@ export const REVIEW_SIGNALS = [
   "anchor-changed",
   "code-without-note",
   "compass-gap",
-  "no-instead-of",
+  "decision-without-why",
 ] as const;
 export type ReviewSignalKind = (typeof REVIEW_SIGNALS)[number];
 
@@ -94,10 +96,8 @@ export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
         signals.push({ kind: "compass-gap", note: note.ref, direction });
       }
     }
-    // A decision is a note holding a compass, so the one with nothing to the
-    // west is one whose author has not said what they did instead.
-    if (compass.west.length === 0) {
-      signals.push({ kind: "no-instead-of", note: note.ref });
+    if (whyUnwritten(note)) {
+      signals.push({ kind: "decision-without-why", note: note.ref });
     }
   }
   for (const top of input.projectTop) {
@@ -106,6 +106,41 @@ export async function review(input: ReviewInput): Promise<ReviewSignal[]> {
     }
   }
   return signals;
+}
+
+/**
+ * Whether this is a decision nobody has given the reason for. The Decision
+ * shape is a compass and a section headed {@link DECISION_WHY_HEADING} — a note
+ * without that section is not a decision and is never asked to explain itself.
+ */
+function whyUnwritten(note: ReviewedNote): boolean {
+  const why = note.sections.find((section) => headsWhy(section.content));
+  return why !== undefined && !holdsWriting(why.content);
+}
+
+function headsWhy(content: BlockDocument): boolean {
+  const opener = (content.content ?? [])[0];
+  if (!opener || opener.type !== "heading") return false;
+  return (
+    said(opener).trim().toLowerCase() === DECISION_WHY_HEADING.toLowerCase()
+  );
+}
+
+/** Whether a section holds anything under its heading: a word, a drawing, a
+ *  picture. The empty paragraph a section opens with is not writing. */
+function holdsWriting(content: BlockDocument): boolean {
+  const written = (held: DocumentNode): boolean => {
+    if (held.type === "text") return (held.text ?? "").trim() !== "";
+    if (held.content) return held.content.some(written);
+    return held.type !== "paragraph" && held.type !== "heading";
+  };
+  return (content.content ?? []).slice(1).some(written);
+}
+
+function said(held: DocumentNode): string {
+  return (held.content ?? [])
+    .map((child) => child.text ?? said(child))
+    .join("");
 }
 
 function compassIn(note: ReviewedNote): Compass | undefined {
