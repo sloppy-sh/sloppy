@@ -308,6 +308,7 @@ export function mountGraph(
 
     const model = buildModel(drawnNodes(nodes, lod.collapsed), {
       selection: props.selection,
+      ...(props.lit === undefined ? {} : { lit: props.lit }),
       palette,
       viewer: props.viewer,
       keep: scene.snapshot(),
@@ -315,8 +316,9 @@ export function mountGraph(
       difference: props.difference,
     });
 
-    if (recolour) scene.setTints(model, props.selection.length > 0);
-    else scene.setModel(model, props.selection.length > 0);
+    const questioned = props.selection.length > 0 || props.lit !== undefined;
+    if (recolour) scene.setTints(model, questioned);
+    else scene.setModel(model, questioned);
     drawnFrom = {
       nodes: props.nodes,
       collapsed: props.collapsed,

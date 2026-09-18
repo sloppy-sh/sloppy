@@ -246,6 +246,16 @@ export interface GraphSurfaceProps {
    */
   selection: readonly Tag[];
   /**
+   * The notes another question about this graph names — the review's chosen
+   * signal, DESIGN.md § "What the code left behind". They stay in ink and every
+   * other note dims, exactly as a tag question dims what carries none of its
+   * tags; a note has to answer both to stay lit while both are being asked.
+   *
+   * Absent is a canvas nobody has asked this of, which is not the same as an
+   * empty set — that is a question nothing answered, and dims the field.
+   */
+  lit?: ReadonlySet<OwnedRef>;
+  /**
    * Re-initialises the scene when it changes, and only then: a pan, a zoom or a
    * drag must never remount, or the viewport is lost on every gesture.
    */
