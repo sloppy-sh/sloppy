@@ -13,6 +13,7 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
+import { EdgeLookSchema, looksAreOnePerTarget } from "./edge.js";
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -73,6 +74,17 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * a miss rather than treat it as corruption.
    */
   links: z.array(OwnedRefSchema).default([]),
+  /**
+   * The looks its author set on the lines out of this note, one entry per note
+   * at the other end. Absent is a note nobody has set a look on, and so is an
+   * empty list — a line's look is read off both ends, `lookBetween`, and a look
+   * draws on the line that is already there rather than making one.
+   *
+   * At most one entry per `to`: `looksAreOnePerTarget` is that rule, held by
+   * {@link requireNodeConsistent} rather than by this schema, which stays plain
+   * so the requests built off it may still `.omit()` and `.partial()`.
+   */
+  edges: z.array(EdgeLookSchema).optional(),
   /**
    * The notes this one's own writing names, derived from its blocks and
    * rewritten whenever they change — so the words going takes the line with
@@ -229,11 +241,15 @@ export function runKeyOf(
   return node.parent ?? `graph/${graphOf(node)}`;
 }
 
-/** What `NodeSchema` cannot refuse: a `graph` belonging to somebody else. */
+/** What `NodeSchema` cannot refuse: a `graph` belonging to somebody else, and a
+ *  second look on one note at the other end. */
 export function requireNodeConsistent(
-  node: Pick<Node, "created_by" | "graph">,
+  node: Pick<Node, "created_by" | "graph" | "edges">,
 ): void {
   requireOwnGraph(node.created_by, node.graph);
+  if (!looksAreOnePerTarget(node.edges)) {
+    throw new Error("A note carries one look per note it is joined to");
+  }
 }
 
 /**
@@ -387,6 +403,12 @@ export const UpdateNodeRequestSchema = z.object({
   /** The WHOLE set, never a delta: a tag absent from it is a tag removed. */
   tags: TagsSchema.optional(),
   links: z.array(OwnedRefSchema).optional(),
+  /**
+   * The WHOLE list of looks this note sets on its lines, never a delta: one
+   * absent from it is one taken off, and an empty list takes them all off.
+   * Absent leaves whatever looks the note carries alone.
+   */
+  edges: z.array(EdgeLookSchema).optional(),
   /**
    * Who gates this note's writing. `null` takes the gate off and leaves the
    * note open; absent leaves it as it is. Writing it is the graph owner's and

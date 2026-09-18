@@ -9,6 +9,7 @@ import {
   TimestampSchema,
 } from "./common.js";
 import { BlockDocumentSchema } from "./document.js";
+import { EdgeLookSchema } from "./edge.js";
 import { TagsSchema } from "./tag.js";
 import { z } from "zod";
 
@@ -45,6 +46,9 @@ export const AmendmentSchema = OwnedEntitySchema.extend({
   tags: TagsSchema.default([]),
   /** Absent is an offer that leaves the note's look alone. */
   appearance: NodeAppearanceSchema.optional(),
+  /** The looks it proposes on the note's lines, whole. Absent is an offer that
+   *  leaves the note's looks alone; an empty list takes them all off. */
+  edges: z.array(EdgeLookSchema).optional(),
   /** The sections it proposes, in the order they read. Replaced whole with the
    *  offer: there is no writing of an offer anywhere but here. */
   blocks: z.array(AmendmentSectionSchema).default([]),
@@ -71,6 +75,8 @@ export const ProposeAmendmentRequestSchema = z.strictObject(
     title: z.string().max(512).default(""),
     tags: TagsSchema.default([]),
     appearance: WrittenAppearanceSchema.optional(),
+    /** Absent leaves the note's looks alone; present replaces them whole. */
+    edges: z.array(EdgeLookSchema).optional(),
     blocks: z.array(AmendmentSectionSchema),
   },
   { error: "Sloppy is out of date. Update it and try again." },

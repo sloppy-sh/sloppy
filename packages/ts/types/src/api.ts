@@ -141,7 +141,8 @@ export type PulledNoteHit = z.infer<typeof PulledNoteHitSchema>;
  * a foreign node, and whether the author still publishes it is not something a
  * reader can learn, so this says what was true when the copy arrived. There are
  * no references, a published node travelling without them; the look is the
- * shape its author gave the mark, which does travel.
+ * shape its author gave the mark, and the edge looks are the ones it set on its
+ * lines, both of which do travel.
  */
 export function pulledNodeView(row: PulledNode): NodeView {
   const { node } = row;
@@ -160,6 +161,7 @@ export function pulledNodeView(row: PulledNode): NodeView {
     title: node.title,
     tags: node.tags,
     links: node.links,
+    ...(node.edges ? { edges: node.edges } : {}),
     appearance: node.look,
     published: true,
     created_at: node.created_at,
