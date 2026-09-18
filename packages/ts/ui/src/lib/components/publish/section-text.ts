@@ -2,7 +2,7 @@
 // the elements that have none — and how much of a difference between two of them
 // those lines can carry.
 
-import type { BlockDocument, DocumentNode } from '@sloppy/types';
+import { COMPASS_TYPE, type BlockDocument, type DocumentNode } from '@sloppy/types';
 import { DIAGRAM_NODE } from '../editor/diagram-node.js';
 import { INK_NODE } from '../editor/ink-node.js';
 import { MATH_BLOCK_NODE, MATH_NODE } from '../editor/math-node.js';
@@ -16,7 +16,8 @@ const NAMED: Partial<Record<string, string>> = {
 	[INK_NODE]: 'A drawing',
 	[MATH_NODE]: 'A formula',
 	[MATH_BLOCK_NODE]: 'A formula',
-	[DIAGRAM_NODE]: 'A diagram'
+	[DIAGRAM_NODE]: 'A diagram',
+	[COMPASS_TYPE]: 'A compass'
 };
 
 /** One line per element of a section, in the order they are written. Empty

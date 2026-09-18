@@ -83,6 +83,25 @@ export class NodeFiles implements Files {
     return found;
   }
 
+  /**
+   * The folders directly inside `path`, without walking what is under them —
+   * which is what reading a project's shape needs and what {@link list} must
+   * not be asked for: a repository's `node_modules` is not a thing to walk.
+   */
+  async folders(path: string): Promise<string[]> {
+    let held: Dirent<string>[];
+    try {
+      held = await readdir(this.full(path, true), { withFileTypes: true });
+    } catch (thrown) {
+      const said = code(thrown);
+      if (said === "ENOENT" || said === "ENOTDIR") return [];
+      throw thrown;
+    }
+    return held
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  }
+
   async remove(path: string): Promise<void> {
     await rm(this.full(path), { recursive: true, force: true });
   }

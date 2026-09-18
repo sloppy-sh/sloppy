@@ -18,7 +18,7 @@ write one that the app, the other people here and the next agent all read the sa
     parent: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y
     title: What the markdown reader does
     tags:
-      - walkthrough
+      - parsing
     links:
       - did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z
     created: 2026-09-18T10:00:00.000Z
@@ -71,9 +71,10 @@ sentence is.
 
 ## Changing a note somebody already wrote
 
-Don't write over it. \`sloppy draft\` writes your version as an offer, and whoever keeps
-the note takes it in or does not. A note you write where there was none is yours to
-write outright.
+Don't write over it. Where the note is somebody's to keep, \`sloppy draft\` writes your
+version as an offer and they take it in or do not; where it is open to everybody and
+somebody else has written in it, \`draft\` leaves it alone and says so. A note you write
+where there was none is yours to write outright.
 
 ## Never write
 
@@ -91,9 +92,13 @@ write outright.
 ## Commands
 
     sloppy init [dir]      start the notes in a project, and write what the tree can tell
-    sloppy draft [paths…]  a note in detail per file named, written as an offer
+    sloppy draft [paths…]  a note in detail per file named, never over somebody's writing
     sloppy review          what the code has left behind
     sloppy check           read every note and say what doesn't hold
 
 Each takes \`--json\` and answers in JSON instead of lines.
+
+\`draft\` reads a TypeScript or JavaScript file by the line for what it imports and what
+it hands out, and anchors each name it finds. A file in any other language gets an anchor
+to the file and none inside it, so the names in it are yours to write.
 `;
