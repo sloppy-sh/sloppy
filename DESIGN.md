@@ -815,6 +815,45 @@ worked on and is offered neither, because an act that could only be refused is n
 offer. Nothing here is decorated: a history is read to answer a question, and the answer is
 words and lines.
 
+## An anchor into code
+
+A note that explains a piece of code is read next to it, and the whole point of writing one
+is that somebody comes back to it later and can tell whether it still holds. Two things carry
+that, and neither of them is a badge: a link that goes somewhere, and one quiet line when the
+code under it has moved.
+
+**An anchor is a chip in the writing, not a panel beside it.** It sits inline where the
+sentence names the file, reads as the path's last part with the line or the name after it —
+`parser.ts · L12-20`, `history.rs · discover` — and carries a small leading mark so it is not
+mistaken for a link to a page. It draws in the body face at the body size, in ink and not in
+hue: the graph is where colour lives (§ "The graph's colour language"), and a note that
+points at four files must not read as a control panel. A path this checkout has not got draws
+exactly the same, because what a person wrote is still what they meant.
+
+**Tapping one opens the code as a sheet** (§ Layout, the one modal): the path along the top,
+the lines or the run around the name, and the acts — copy the path, and open the file where
+the person opens files. It is a reading surface, so it is monospaced, scrolls in one
+direction and offers no editing: Sloppy does not write in somebody's repository.
+
+**"Still true" is one act, and it says only what it does.** It sits on the note, not on each
+anchor, and taking it records that the note's reasoning has been read against the code as it
+stands now. Nothing else happens: no section changes, nobody joins the note's authors,
+nothing moves. A note nobody has confirmed says nothing at all — **unread is not stale**, and
+a product that nags somebody about a note they wrote this morning has made a chore out of
+thinking.
+
+**When the code has moved, one quiet line, in the note.** "The code under this has changed
+since you last read it" with the act beside it, in the note's own ink under the title — never
+a badge on the mark, never a count in the chrome, never a colour on the canvas. The graph's
+shape is what the canvas draws and this is not part of it. Where nothing has moved, there is
+no line: silence is the ordinary state of a note that is fine.
+
+**Phone first.** The chip wraps inside the paragraph rather than truncating the sentence
+around it; the sheet is the full-width bottom sheet every modal is, with the path pinned at
+the top and the code scrolling under it; the line about moved code is one line at phone width
+and stays one line with the act under it rather than beside it. Nothing here is a hover: an
+anchor says what it is in the words it is drawn with.
+
 ## Typography
 
 - **UI and content face**: Inter with a system fallback (`Inter, system-ui, -apple-system,

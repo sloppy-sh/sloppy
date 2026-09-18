@@ -4,6 +4,10 @@
 import { insideVault } from "@sloppy/vault";
 import type { Credential } from "./history.js";
 
+/** What a folder is being asked for: somewhere to keep a graph, or the project
+ *  whose notes it holds — docs/ARCHITECTURE.md § "A project's container". */
+export type FolderAsked = "graph" | "project";
+
 /**
  * File access, rooted at one folder. Every path is relative to {@link root} and
  * uses `/`, whatever the platform spells a separator as; a path that climbs out
@@ -35,8 +39,10 @@ export interface Files {
   /** An address an `<img>`, `<video>` or `fetch` on the page can load the file
    *  at `path` from. */
   url(path: string): string;
-  /** Ask a person for a folder. `undefined` is somebody who chose none. */
-  pickFolder(): Promise<string | undefined>;
+  /** Ask a person for a folder. `asking` is what it is wanted for, which is
+   *  what the ask says; absent is a folder to keep a graph in. `undefined` is
+   *  somebody who chose none. */
+  pickFolder(asking?: FolderAsked): Promise<string | undefined>;
   /**
    * Put a copy of a folder kept somewhere else at `into`, which must be empty
    * or not there yet: one holding anything at all is refused here, so a caller

@@ -9,7 +9,15 @@ import type {
 	OwnedRef
 } from '@sloppy/types';
 
-export type TemplateId = 'claim' | 'question' | 'source' | 'objection' | 'synthesis';
+export type TemplateId =
+	| 'claim'
+	| 'question'
+	| 'source'
+	| 'objection'
+	| 'synthesis'
+	| 'qec'
+	| 'aji'
+	| 'walkthrough';
 
 /** What a seeded section opens on. Absent is somewhere to write. */
 export type SectionOpening = 'writing' | 'drawing';
@@ -70,6 +78,33 @@ export const NOTE_TEMPLATES: readonly NoteTemplate[] = [
 			{ heading: 'What the run establishes' },
 			{ heading: 'What it does not' },
 			{ heading: 'Where next' }
+		]
+	},
+	{
+		id: 'qec',
+		name: 'QEC',
+		sections: [
+			{ heading: 'The question' },
+			{ heading: 'The evidence' },
+			{ heading: 'The conclusion' }
+		]
+	},
+	{
+		id: 'aji',
+		name: 'AJI',
+		sections: [
+			{ heading: 'The assumption' },
+			{ heading: 'The justification' },
+			{ heading: 'The implication' }
+		]
+	},
+	{
+		id: 'walkthrough',
+		name: 'Walkthrough',
+		sections: [
+			{ heading: 'Start here' },
+			{ heading: 'The path it takes' },
+			{ heading: 'Where it can go wrong' }
 		]
 	}
 ];

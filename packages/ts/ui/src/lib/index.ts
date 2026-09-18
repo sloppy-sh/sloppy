@@ -61,9 +61,11 @@ export { sectionLines } from './components/publish/section-text.js';
 export { default as TagField } from './components/tags/tag-field.svelte';
 export { default as TagRail } from './components/tags/tag-rail.svelte';
 export { default as BlockStack } from './components/editor/block-stack.svelte';
+export { anchorLabel, codeHref } from './components/editor/code-anchor.js';
 export type {
 	BlockStackProps,
 	HeldPicture,
+	NoteCode,
 	NoteEmoji,
 	NoteMedia,
 	NoteReferences,

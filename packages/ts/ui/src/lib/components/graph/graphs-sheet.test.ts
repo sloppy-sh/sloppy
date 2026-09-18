@@ -314,9 +314,16 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 	let forgotten: string[];
 	let brought: string[];
 	let started: number;
+	let projects: number;
 
 	async function openFolders(
-		over: { onClone?: boolean; open?: string; refuse?: string } = {}
+		over: {
+			onClone?: boolean;
+			open?: string;
+			refuse?: string;
+			project?: string;
+			opensProjects?: boolean;
+		} = {}
 	): Promise<void> {
 		if (mounted) unmount(mounted, { outro: false });
 		document.body.innerHTML = '';
@@ -326,12 +333,18 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 		forgotten = [];
 		brought = [];
 		started = 0;
+		projects = 0;
 		mounted = mount(GraphsSheet, {
 			target,
 			props: {
 				open: true,
 				graphs: [
-					{ ref: HOME, title: 'My graph', folder: GARDEN_FOLDER },
+					{
+						ref: HOME,
+						title: 'My graph',
+						folder: GARDEN_FOLDER,
+						...(over.project === undefined ? {} : { project: over.project })
+					},
 					{ ref: GARDEN, title: 'The thesis', folder: THESIS_FOLDER, by: 'Ada Lovelace' },
 					{ title: 'gone', folder: GONE_FOLDER }
 				],
@@ -361,6 +374,14 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 					started += 1;
 					return Promise.resolve();
 				},
+				...(over.opensProjects === false
+					? {}
+					: {
+							onOpenProject: () => {
+								projects += 1;
+								return Promise.resolve();
+							}
+						}),
 				...(over.onClone === false
 					? {}
 					: {
@@ -453,6 +474,53 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 		await settle();
 
 		expect(started).toBe(1);
+	});
+
+	it("opens a project by asking for the project's own folder", async () => {
+		await openFolders();
+
+		confirm('Choose a project')?.click();
+		await settle();
+
+		expect(projects).toBe(1);
+		expect(started).toBe(0);
+	});
+
+	it('offers no project where this device cannot reach one', async () => {
+		await openFolders({ opensProjects: false });
+
+		expect(confirm('Choose a project')).toBeNull();
+		expect(document.body.textContent).not.toContain('Open a project');
+	});
+
+	it('names the project a row holds the notes of, beside the graph', async () => {
+		await openFolders({ project: 'sloppy' });
+
+		const row = [...document.querySelectorAll<HTMLElement>('button')].find((one) =>
+			one.textContent?.includes('My graph')
+		);
+		expect(row?.textContent).toContain('sloppy');
+	});
+
+	// A project's notes are named after its folder, so a row that said only the
+	// folder would be the commonest row saying nothing.
+	it('still says a row is a project where the graph carries the same name', async () => {
+		await openFolders({ project: 'My graph' });
+
+		const row = [...document.querySelectorAll<HTMLElement>('button')].find((one) =>
+			one.textContent?.includes('My graph')
+		);
+		expect(row?.textContent).toContain('Project');
+		expect(row?.textContent).not.toContain('Project ·');
+	});
+
+	it("names no project on a row that is nobody's", async () => {
+		await openFolders();
+
+		const row = [...document.querySelectorAll<HTMLElement>('button')].find((one) =>
+			one.textContent?.includes('My graph')
+		);
+		expect(row?.textContent?.trim()).toBe('My graph');
 	});
 
 	it('brings one from an address somebody types', async () => {

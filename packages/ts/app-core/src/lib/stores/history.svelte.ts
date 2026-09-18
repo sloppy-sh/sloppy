@@ -259,6 +259,40 @@ class HistoryStore {
 		return this.#line;
 	}
 
+	/**
+	 * The version the folder stands on, asked for now rather than read off what
+	 * a page last drew. `undefined` where this platform keeps no history, where
+	 * nothing has been kept yet, and where the folder cannot say — a surface
+	 * that records a version cannot record one it is not sure of.
+	 */
+	async versionNow(): Promise<string | undefined> {
+		try {
+			return await runtime.history()?.currentCommit();
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Which of `paths` a version kept after `commit` has touched, in the order
+	 * they were given. They are spelled from the root of what the history keeps,
+	 * which is where an anchor into code is written from.
+	 *
+	 * Empty is nothing to say: a platform that keeps no history, one whose
+	 * history cannot answer this, and a version this folder has never been on —
+	 * which is a note confirmed somewhere else, and not something to tell
+	 * anybody the code has moved over.
+	 */
+	async changedSince(commit: string, paths: readonly string[]): Promise<string[]> {
+		const keeping = runtime.history();
+		if (!keeping?.changedSince || paths.length === 0) return [];
+		try {
+			return await keeping.changedSince(commit, paths);
+		} catch {
+			return [];
+		}
+	}
+
 	/** How far this line is ahead of wherever it is also kept; `0` is a folder
 	 *  that is only here. */
 	get ahead(): number {

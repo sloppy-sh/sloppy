@@ -6,7 +6,8 @@ import { Editor } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import StarterKit from '@tiptap/starter-kit';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
-import type { NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
+import { CODE_PROTOCOL } from './code-anchor.js';
+import type { NoteCode, NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
 import { docBlocks, openBlocks, type DraftStore, type SavedBlock } from './document.js';
 import { DRAWN_ELEMENTS } from './elements.js';
 import { EmojiNode } from './emoji-node.js';
@@ -90,6 +91,11 @@ export function noNotes(): NoteReferences {
 	};
 }
 
+/** A project whose code is never asked after, for a test about something else. */
+export function noCode(over: Partial<NoteCode> = {}): NoteCode {
+	return { cite: async () => undefined, show: () => {}, ...over };
+}
+
 /** A device that holds nothing and keeps nothing, for a test about something else. */
 export function noDrafts(): DraftStore {
 	return {
@@ -145,7 +151,10 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 	const editor = new Editor({
 		element,
 		extensions: [
-			StarterKit.configure({ document: false }),
+			StarterKit.configure({
+				document: false,
+				link: { openOnClick: false, protocols: [CODE_PROTOCOL] }
+			}),
 			NoteDocument,
 			SectionNode,
 			TaskList,

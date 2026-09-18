@@ -6,6 +6,7 @@
 
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import {
+	containerOf,
 	DeviceCredentials,
 	DeviceGitDefaults,
 	holdsAGraph,
@@ -55,9 +56,17 @@ const device = LOCAL_MODE ? tauriFiles() : undefined;
  *  answers with that place rather than asking. */
 const ASKS_WHERE = !IS_MOBILE;
 
-/** The folder the graph in front of somebody is in. `createApi` reads it each
- *  time it is asked, so opening a folder re-points a running app. */
+/** The folder somebody picked, which for a project is its own root rather than
+ *  the container the notes are in — docs/ARCHITECTURE.md § "A project's
+ *  container". It is what this device lists and what the api reads the graph
+ *  through; `createApi` reads it each time it is asked, so opening a folder
+ *  re-points a running app. */
 let opened: string | undefined;
+
+/** Where the graph's own files are: that folder, or the container inside it.
+ *  The history is the vault's, so it is asked of this and never of the folder
+ *  on the list. */
+let vaultRoot: string | undefined;
 
 let missing = false;
 
@@ -94,23 +103,31 @@ async function ownerOf(files: Files, folder: string): Promise<ReturnType<typeof 
 	}
 }
 
-/**
- * Settle who writes in the folder that is open and serve it under them. A list
- * this device cannot read leaves nobody named, so the refusal reaches somebody
- * where they write rather than being turned into a fresh identity here.
- */
+/** Settle who writes in the folder that is open and serve it under them. */
 async function repoint(files: Files): Promise<void> {
-	ownerHere = opened ? await ownerOf(files, opened) : undefined;
-	writing = await readIdentities(files).then(
-		(held) => whoWrites(held, ownerHere),
-		() => undefined
-	);
+	ownerHere = vaultRoot ? await ownerOf(files, vaultRoot) : undefined;
+	writing = await writerFor(files, ownerHere);
 	served = undefined;
 	resetApi();
 }
 
+/** Which of the identities this device holds writes in a graph `owner` owns. A
+ *  list this device cannot read leaves nobody named, so the refusal reaches
+ *  somebody where they write rather than being turned into a fresh identity
+ *  here. */
+function writerFor(
+	files: Files,
+	owner?: ReturnType<typeof whoWrites>
+): Promise<ReturnType<typeof whoWrites>> {
+	return readIdentities(files).then(
+		(held) => whoWrites(held, owner),
+		() => undefined
+	);
+}
+
 async function serve(files: Files, folder: string): Promise<void> {
 	opened = folder;
+	vaultRoot = (await containerOf(files.at(folder)).catch(() => undefined))?.root ?? folder;
 	await repoint(files);
 }
 
@@ -119,6 +136,21 @@ async function openFolder(files: Files): Promise<string | undefined> {
 	if (!folder) return undefined;
 	await open(files, folder);
 	return folder;
+}
+
+/**
+ * The folder somebody picks for a project is the project's ROOT, and that is
+ * the folder this device lists — docs/ARCHITECTURE.md § "A project's container".
+ * `LocalApi` is what settles where the notes go inside it, so nothing is served
+ * and nothing is written down until it has.
+ */
+async function openProject(files: Files): Promise<string | undefined> {
+	const root = await files.pickFolder('project');
+	if (!root) return undefined;
+	const writer = await writerFor(files);
+	await new LocalApi(files, writer === undefined ? {} : { writer }).openProject(root);
+	await open(files, root);
+	return root;
 }
 
 async function open(files: Files, folder: string): Promise<void> {
@@ -225,6 +257,7 @@ export function initNativeRuntime(): void {
 									openKnown: (root: string) => open(device, root),
 									forget: (root: string) => forget(device, root),
 									start: () => openFolder(device),
+									openProject: () => openProject(device),
 									// Absent where this shell has no way to bring a folder over.
 									...(device.clone
 										? {
@@ -235,7 +268,11 @@ export function initNativeRuntime(): void {
 								}
 							: {})
 					},
-					history: () => (opened ? tauriHistory(opened) : undefined)
+					history: () => (vaultRoot ? tauriHistory(vaultRoot) : undefined),
+					project: () =>
+						serving(device)
+							.projectFolder()
+							.catch(() => undefined)
 				}
 			: {})
 	});

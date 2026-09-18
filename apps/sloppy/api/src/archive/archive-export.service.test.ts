@@ -29,6 +29,7 @@ const GRAPH: OwnedRef = `${DID}/01JGRAPH2ND000000000000000`;
 const HOME: OwnedRef = `${DID}/01JNKTE0000000000000000001`;
 const UNDER: OwnedRef = `${DID}/01JNKTE0000000000000000002`;
 const UPLOAD = `${DID}/01JPICTURE00000000000000AB`;
+const COMMIT = "9c6eb7e0f1a24c3b5d6e7f8091a2b3c4d5e6f708";
 const PIXEL = new Uint8Array([137, 80, 78, 71]);
 
 function node(ref: OwnedRef, over: Partial<Node> = {}): Node {
@@ -110,6 +111,7 @@ function serving(pictures = true) {
           title: "Under it",
           tags: ["biology"],
           links: [HOME],
+          checked: COMMIT,
         }),
       ],
       aliasesOf: async () => new Map([[UNDER, ["1b" as Address]]]),
@@ -201,6 +203,8 @@ describe("a graph written out as an archive", () => {
     expect(second.parent).toBe(HOME);
     expect(second.tags).toEqual(["biology"]);
     expect(second.links).toEqual([HOME]);
+    expect(second.checked).toBe(COMMIT);
+    expect(first.checked).toBeUndefined();
   });
 
   it("keeps the note whole when a picture's bytes are no longer there", async () => {

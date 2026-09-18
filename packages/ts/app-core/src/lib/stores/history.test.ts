@@ -428,3 +428,43 @@ describe('another folder opened, or the session ended', () => {
 		expect(graphHistory.taking).toBe(null);
 	});
 });
+
+describe('what has moved under a note since it was confirmed', () => {
+	/** A file in the folder, kept as its own version. */
+	async function keepFile(path: string, said: string): Promise<string> {
+		await folder().write(path, new TextEncoder().encode(said));
+		await graphHistory.keep(`Wrote ${path}`);
+		return graphHistory.at as string;
+	}
+
+	it('names the anchors a version kept since then has touched', async () => {
+		await keepFile('src/parser.ts', 'a');
+		const read = await keepFile('src/history.rs', 'a');
+		await keepFile('src/parser.ts', 'b');
+
+		expect(await graphHistory.changedSince(read, ['src/parser.ts', 'src/history.rs'])).toEqual([
+			'src/parser.ts'
+		]);
+	});
+
+	it('says nothing where nothing has moved', async () => {
+		const read = await keepFile('src/parser.ts', 'a');
+
+		expect(await graphHistory.changedSince(read, ['src/parser.ts'])).toEqual([]);
+	});
+
+	// A note confirmed on somebody else's device names a version this folder has
+	// never been on, which is no reason to tell anybody the code has moved.
+	it('says nothing of a version this folder has never been on', async () => {
+		await keepFile('src/parser.ts', 'a');
+
+		expect(await graphHistory.changedSince('nowhere', ['src/parser.ts'])).toEqual([]);
+	});
+
+	it('says nothing where this platform keeps no history', async () => {
+		const read = await keepFile('src/parser.ts', 'a');
+		shellKeeping(undefined);
+
+		expect(await graphHistory.changedSince(read, ['src/parser.ts'])).toEqual([]);
+	});
+});

@@ -16,6 +16,11 @@ import {
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
+/** What a history calls one of its commits, spelled as that history spells
+ *  it. Nothing here reads one: it is a name handed back to the history it came
+ *  from. */
+export const CommitIdSchema = z.string().min(1).max(128);
+
 export const NodeSchema = OwnedEntitySchema.extend({
   /**
    * Which of its author's graphs this note is in, and so which context its
@@ -76,6 +81,12 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * means the server alone writes it: docs/ARCHITECTURE.md § "Data model".
    */
   references: z.array(OwnedRefSchema).optional(),
+  /**
+   * The commit its author last read this note's reasoning against. **Absent is
+   * a note nobody has confirmed, which reads as UNREAD and never as out of
+   * date** — docs/ARCHITECTURE.md § "A project's container".
+   */
+  checked: CommitIdSchema.optional(),
   /** Whether a published version carries this note, maintained from the
    *  snapshot rows and never from a publication rooted above it; docs/ARCHITECTURE.md
    *  § "Data model" carries the ruling. Absent is false. */
@@ -369,6 +380,9 @@ export const UpdateNodeRequestSchema = z.object({
   /** `null` takes the look back off and leaves the note unstyled; absent leaves
    *  whatever look it has alone. */
   appearance: WrittenAppearanceSchema.nullable().optional(),
+  /** The commit this note's reasoning has now been read against. Absent leaves
+   *  whatever it says alone. */
+  checked: CommitIdSchema.optional(),
 });
 export type UpdateNodeRequest = z.input<typeof UpdateNodeRequestSchema>;
 

@@ -13,6 +13,7 @@ import { setHost } from '@sloppy/client';
 import type {
 	Credential,
 	CredentialsAccess,
+	Files,
 	GitDefaultsAccess,
 	History,
 	IdentityAccess
@@ -36,8 +37,10 @@ export interface KnownFolder {
 	 *  could not read one just now — a folder that is not there, or one holding
 	 *  none yet. `owner` is whose folder it is, which is what says whether
 	 *  closing it is this device's act; what they are called is `profileOf`'s
-	 *  answer here as everywhere else, so no list holds a second copy of it. */
-	graph?: { ref: OwnedRef; name: string; owner: DidSyr };
+	 *  answer here as everywhere else, so no list holds a second copy of it.
+	 *  `project` is where the code the graph is about is, as the graph says it;
+	 *  absent is a graph that is nobody's project. */
+	graph?: { ref: OwnedRef; name: string; owner: DidSyr; project?: string };
 	/** Whether the folder is where this device last saw it. A folder that is
 	 *  gone is still listed, because a person moved it and is the only one who
 	 *  can say where to. */
@@ -81,6 +84,12 @@ export interface VaultAccess {
 	/** A copy of a graph kept somewhere else, brought onto this device.
 	 *  `undefined` is somebody who chose not to say where to put it. */
 	clone?(url: string, credential?: Credential): Promise<string | undefined>;
+	/** Ask somebody for a project's root folder and serve the notes kept inside
+	 *  it from now on, starting them where the project has none yet. Resolves
+	 *  with the folder now open, or `undefined` where nobody named one. Absent
+	 *  is a shell that cannot reach a project's own folder, and nothing about
+	 *  opening one is put in front of anybody. */
+	openProject?(): Promise<string | undefined>;
 }
 
 export interface AppRuntime {
@@ -146,6 +155,13 @@ export interface AppRuntime {
 	 *  anybody; `undefined` from it is a shell that keeps histories with no
 	 *  graph open. `History` in `@sloppy/local` declares every act. */
 	history?(): History | undefined;
+	/** The code the graph in front of somebody is written about, rooted at the
+	 *  project — a shell that defines it also defines {@link AppRuntime.vault}.
+	 *  Absent → this platform reads no folder. `undefined` from it is a graph
+	 *  that is nobody's project, where an anchor into code is the ordinary link
+	 *  it is and nothing is offered to point at one; docs/ARCHITECTURE.md § "A
+	 *  project's container" is what decides which. */
+	project?(): Promise<Files | undefined>;
 	/** What a folder started on this device begins with, kept beside the
 	 *  graphs rather than in one — a shell that defines it also defines
 	 *  {@link AppRuntime.vault}. Absent → nothing here can be told who its
@@ -256,6 +272,7 @@ export const runtime = {
 	vault: (): VaultAccess | undefined => current.vault,
 	identities: (): IdentityAccess | undefined => current.identities,
 	history: (): History | undefined => current.history?.(),
+	project: async (): Promise<Files | undefined> => current.project?.(),
 	gitDefaults: (): GitDefaultsAccess | undefined => current.gitDefaults,
 	credentials: (): CredentialsAccess | undefined => current.credentials,
 	saveFile: (): AppRuntime['saveFile'] => current.saveFile,

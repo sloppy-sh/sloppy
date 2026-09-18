@@ -4,10 +4,13 @@
 // This package reaches no API, so everything that talks to one arrives as a
 // capability. Every one of them is required: a surface somebody writes in can
 // send a picture and use the emoji they have, and an optional capability is a
-// feature a shell can leave out without anything saying so.
+// feature a shell can leave out without anything saying so. {@link NoteCode} is
+// the exception, and its absence is a fact about the graph rather than a
+// shell's choice.
 
 import type {
 	BlockView,
+	CodeAnchor,
 	CreateBlockRequest,
 	CustomEmojiKind,
 	MediaAsset,
@@ -104,6 +107,20 @@ export interface NoteReferences {
 	open(note: OwnedRef): void;
 }
 
+/**
+ * How the writing reaches the code it is about. **Absent is a graph with no
+ * code beside it**, where an anchor is drawn and followed as the ordinary link
+ * it is and nothing is offered to point at one — docs/ARCHITECTURE.md § "A
+ * project's container".
+ */
+export interface NoteCode {
+	/** Ask the writer where in the code to point. `undefined` is somebody who
+	 *  named nowhere, and is not a failure. */
+	cite(): Promise<CodeAnchor | undefined>;
+	/** Show what is at an anchor. */
+	show(anchor: CodeAnchor): void;
+}
+
 export interface BlockStackProps {
 	/** The node whose interior this is. */
 	node: NodeView;
@@ -117,6 +134,7 @@ export interface BlockStackProps {
 	media: NoteMedia;
 	emoji: NoteEmoji;
 	references: NoteReferences;
+	code?: NoteCode;
 	/** Where this note's writing waits while the API does not have it. */
 	drafts: DraftStore;
 }

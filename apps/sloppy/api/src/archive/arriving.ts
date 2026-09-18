@@ -125,6 +125,7 @@ export function rowsFor(
         tags: TagsSchema.catch([]).parse(note.tags),
         links: note.links,
         references: referencesOf(note.ref, sections),
+        ...(note.checked ? { checked: note.checked } : {}),
         published: keeping?.published ?? false,
         ...(keeping?.appearance ? { appearance: keeping.appearance } : {}),
         created_at: note.created ?? keeping?.created_at ?? at,
@@ -300,6 +301,9 @@ export interface GraphNow {
 export interface MergeWrite {
   /** The notes whose rows and sections this write replaces. */
   writing: OwnedRef[];
+  /** Notes the merge writes nothing else on: a reading is not a change to the
+   *  note, so the sections under it are left where they are. */
+  confirming: Confirmation[];
   nodes: Node[];
   blocks: Block[];
   aliases: NodeAlias[];
@@ -313,6 +317,12 @@ export interface MergeWrite {
   /** The offers already standing that these arrive in place of: one person has
    *  one offer on a note, whichever file it arrived in. */
   unsettling: OwnedRef[];
+}
+
+/** What a note the merge leaves alone now says it was last read against. */
+export interface Confirmation {
+  note: OwnedRef;
+  checked: string;
 }
 
 /** What a settled merge still cannot be written as. */
@@ -370,7 +380,8 @@ export function mergeRefusal(
 /**
  * The rows a merge lands as. A note the merge settles or brings is written;
  * every other note the graph keeps is written only where the merge moved it,
- * took its number or put something above it, and left alone otherwise.
+ * took its number or put something above it, and left alone otherwise. One
+ * whose reading alone arrived is confirmed rather than written.
  */
 export function mergeRows(
   did: DidSyr,
@@ -387,6 +398,12 @@ export function mergeRows(
     (note) => now.arriving.has(note.ref) || rewritten(note, held.get(note.ref)),
   );
   const written = new Set(writing.map((note) => note.ref));
+  const confirming = notes.flatMap((note) => {
+    const row = held.get(note.ref);
+    return row === undefined || written.has(note.ref)
+      ? []
+      : confirms(note, row);
+  });
   const numbered = new Map<Address, OwnedRef>();
   for (const note of notes) {
     if (note.address !== undefined) numbered.set(note.address, note.ref);
@@ -444,6 +461,7 @@ export function mergeRows(
   );
   return {
     writing: [...written],
+    confirming,
     nodes: rows.nodes,
     blocks: rows.blocks,
     aliases,
@@ -467,6 +485,14 @@ function rewritten(note: PlacedNote, row: Node | undefined): boolean {
     row.parent !== note.parent ||
     row.address !== note.address
   );
+}
+
+/** The reading to write on a note the merge leaves otherwise alone, or absent
+ *  where the row already says it: nothing takes a reading back off. */
+function confirms(note: PlacedNote, row: Node): Confirmation[] {
+  return note.checked === undefined || note.checked === row.checked
+    ? []
+    : [{ note: note.ref, checked: note.checked }];
 }
 
 /** Two files an archive holds that would land as one row. */

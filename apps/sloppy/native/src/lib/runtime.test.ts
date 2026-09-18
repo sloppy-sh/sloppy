@@ -25,6 +25,8 @@ const broughtOver: { url: string; into: string; credential?: Credential }[] = []
 const held = new Map<string, string>();
 let picks: string | null = '/Users/me/garden';
 let picking: 'answers' | 'fails' = 'answers';
+/** What each ask for a folder said it was for. */
+const askedFor: (string | undefined)[] = [];
 /** Each act asked of the history, with the folder it was asked about. */
 const historyAsked: [string, string][] = [];
 
@@ -36,6 +38,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 			case 'app_data_path':
 				return '/data';
 			case 'pick_folder':
+				askedFor.push(args?.asking as string | undefined);
 				if (picking === 'fails') throw new Error('the folder could not be opened');
 				return picks;
 			case 'files_read':
@@ -244,6 +247,32 @@ describe('the native shell in local mode', () => {
 
 		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
 		expect(historyAsked).toContainEqual(['history_head', '/Users/me/garden']);
+	});
+
+	it('serves a project by the notes inside it, and reads their states there', async () => {
+		await launch();
+		picks = '/Users/me/compiler';
+		held.set(
+			'/Users/me/compiler/.sloppy/graph.json',
+			btoa(
+				JSON.stringify({
+					format: 1,
+					graph: '01ARZ3NDEKTSV4RRFFQ69G5FAY',
+					name: 'The compiler',
+					owner: 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK',
+					project: '..'
+				})
+			)
+		);
+
+		await registered.vault?.open();
+
+		// The folder on the list is the project's own root, and the states read
+		// are the notes' — the project's history, as the notes are in it.
+		expect(registered.vault?.folder()).toBe('/Users/me/compiler');
+		expect(servedFrom()).toBe('/Users/me/compiler');
+		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
+		expect(historyAsked).toContainEqual(['history_head', '/Users/me/compiler/.sloppy']);
 	});
 
 	it('asks where a desktop can ask', async () => {
@@ -560,5 +589,142 @@ describe('the folders this device keeps its graphs in', () => {
 		expect(registered.vault?.forget).toBeUndefined();
 		expect(registered.vault?.start).toBeUndefined();
 		expect(registered.vault?.clone).toBeUndefined();
+	});
+});
+
+describe('the project whose notes this device opens', () => {
+	const ADA = 'did:syr:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK';
+	const PROJECT = '/Users/me/engine';
+	const CONTAINER = `${PROJECT}/.sloppy`;
+
+	/** A graph in `folder`, as a vault holds one. */
+	function graphIn(folder: string, name: string, project?: string): void {
+		held.set(
+			`${folder}/graph.json`,
+			btoa(
+				JSON.stringify({
+					format: 1,
+					graph: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+					name,
+					owner: ADA,
+					...(project === undefined ? {} : { project })
+				})
+			)
+		);
+	}
+
+	/** What the graph in `folder` is called, read back off the device. */
+	function named(folder: string): string | undefined {
+		const bytes = held.get(`${folder}/graph.json`);
+		return bytes ? (JSON.parse(atob(bytes)) as { name?: string }).name : undefined;
+	}
+
+	beforeEach(() => {
+		held.clear();
+		picks = PROJECT;
+		picking = 'answers';
+		historyAsked.length = 0;
+		askedFor.length = 0;
+		resetApi.mockClear();
+	});
+
+	it('is asked for as a project, and a folder for a graph as one', async () => {
+		await launch();
+
+		await registered.vault?.openProject?.();
+		await registered.vault?.open?.();
+
+		expect(askedFor).toEqual(['project', 'graph']);
+	});
+
+	it('is the folder somebody picked, and its notes are the ones kept inside it', async () => {
+		graphIn(CONTAINER, 'Engine', '..');
+		await launch();
+
+		expect(await registered.vault?.openProject?.()).toBe(PROJECT);
+		expect(servedFrom()).toBe(PROJECT);
+		expect(registered.vault?.folder()).toBe(PROJECT);
+		// The states read are the notes' own, which are the project's.
+		expect(await registered.history?.()?.currentCommit()).toBe('a1b2c3');
+		expect(historyAsked).toContainEqual(['history_head', CONTAINER]);
+	});
+
+	it('is the code a note in it points at', async () => {
+		graphIn(CONTAINER, 'Engine', '..');
+		await launch();
+		await registered.vault?.openProject?.();
+
+		expect((await registered.project?.())?.root).toBe(PROJECT);
+	});
+
+	it('is no code to point at where the folder is a graph of its own', async () => {
+		graphIn(PROJECT, 'The garden');
+		await launch();
+		await registered.vault?.open?.();
+
+		expect(await registered.project?.()).toBeUndefined();
+	});
+
+	it('is listed under its own folder, with the notes it keeps', async () => {
+		graphIn(CONTAINER, 'Engine', '..');
+		await launch();
+		await registered.vault?.openProject?.();
+
+		const [listed] = (await registered.vault?.known?.()) ?? [];
+
+		expect(listed.root).toBe(PROJECT);
+		expect(listed.graph?.name).toBe('Engine');
+		expect(listed.graph?.project).toBe('..');
+	});
+
+	it('is opened again by its own folder', async () => {
+		graphIn(CONTAINER, 'Engine', '..');
+		await launch();
+		await registered.vault?.openProject?.();
+
+		await registered.vault?.openKnown?.(PROJECT);
+
+		expect(servedFrom()).toBe(PROJECT);
+	});
+
+	it('is let go of by its own folder, and keeps the notes inside it', async () => {
+		graphIn(CONTAINER, 'Engine', '..');
+		await launch();
+		await registered.vault?.openProject?.();
+
+		await registered.vault?.forget?.(PROJECT);
+		await launch();
+
+		expect(await registered.vault?.known?.()).toEqual([]);
+		expect(held.has(`${CONTAINER}/graph.json`)).toBe(true);
+	});
+
+	it('is where its notes are started, named for the project and not for them', async () => {
+		await launch();
+
+		expect(await registered.vault?.openProject?.()).toBe(PROJECT);
+		expect(servedFrom()).toBe(PROJECT);
+		expect(named(CONTAINER)).toBe('engine');
+		expect(held.has(`${PROJECT}/graph.json`)).toBe(false);
+	});
+
+	// A folder somebody already keeps notes in is that folder's graph: starting a
+	// second one in the sidecar beside its drawings and keys is not what "open a
+	// project" means.
+	it('is never a folder that already holds notes', async () => {
+		graphIn(PROJECT, 'The garden');
+		await launch();
+
+		expect(await registered.vault?.openProject?.()).toBe(PROJECT);
+		expect(servedFrom()).toBe(PROJECT);
+		expect(held.has(`${CONTAINER}/graph.json`)).toBe(false);
+	});
+
+	it('is nothing where nobody names a folder', async () => {
+		await launch();
+		picks = null;
+
+		expect(await registered.vault?.openProject?.()).toBeUndefined();
+		expect(registered.vault?.folder()).toBeUndefined();
 	});
 });

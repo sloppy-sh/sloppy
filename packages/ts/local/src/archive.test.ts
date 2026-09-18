@@ -1,4 +1,5 @@
 import {
+  type GraphView,
   type OwnedRef,
   splitOwnedRef,
   ulid,
@@ -10,6 +11,7 @@ import {
   decodeText,
   encodeText,
   pack,
+  readGraphFile,
   unpack,
 } from "@sloppy/vault";
 import { describe, expect, it } from "vitest";
@@ -905,5 +907,55 @@ describe("a graph of this device's own brought back in", () => {
     await expect(
       held.api.previewArchive(body(new Uint8Array([1, 2, 3, 4]))),
     ).rejects.toThrow("isn't a Sloppy graph");
+  });
+});
+
+describe("a project's container taken out as a file", () => {
+  const CONTAINER = "/code/engine/.sloppy";
+
+  /** A container with a graph in it, saying where the code beside it is. */
+  async function project(): Promise<{ held: Device; graph: GraphView }> {
+    const held = device([CONTAINER]);
+    const graph = await held.api.createGraph({ title: "The engine" });
+    await held.api.createNode({ title: "Why the parser forks" });
+    const files = held.files.at(CONTAINER);
+    const said = readGraphFile((await files.read(GRAPH_FILE)) as Uint8Array);
+    await files.write(
+      GRAPH_FILE,
+      encodeText(`${JSON.stringify({ ...said, project: ".." })}\n`),
+    );
+    return { held, graph };
+  }
+
+  async function codeBeside(
+    held: Device,
+    root: string,
+  ): Promise<string | undefined> {
+    const bytes = await held.files.at(root).read(GRAPH_FILE);
+    return readGraphFile(bytes as Uint8Array).project;
+  }
+
+  it("arrives in a folder that is nobody's project as an ordinary graph", async () => {
+    const theirs = await project();
+    const mine = device(["/graphs/one", "/graphs/arrived"]);
+    await mine.api.createGraph({ title: "Mine" });
+
+    const taken = await theirs.held.api.exportArchive(theirs.graph.ref);
+    expect(
+      readGraphFile(unpack(taken.bytes).get(GRAPH_FILE) as Uint8Array).project,
+    ).toBe("..");
+    await mine.api.importArchive(body(taken.bytes));
+
+    expect(await codeBeside(mine, "/graphs/arrived")).toBeUndefined();
+  });
+
+  it("comes home to the container still saying where the code is", async () => {
+    const theirs = await project();
+
+    await theirs.held.api.importArchive(
+      await archiveFrom(theirs.held, theirs.graph.ref),
+    );
+
+    expect(await codeBeside(theirs.held, CONTAINER)).toBe("..");
   });
 });

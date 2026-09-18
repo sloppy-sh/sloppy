@@ -30,6 +30,7 @@ pub(crate) fn commands<R: Runtime>(
         history::history_resolve,
         history::history_read_at,
         history::history_head,
+        history::history_changed_since,
         history::history_graph,
         history::history_branch_at,
         history::history_delete_branch,

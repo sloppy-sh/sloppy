@@ -8,6 +8,7 @@
 	import StarterKit from '@tiptap/starter-kit';
 	import { untrack } from 'svelte';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
+	import { CODE_PROTOCOL } from '../editor/code-anchor.js';
 	import type { NoteEmoji } from '../editor/contract.js';
 	import { openBlocks } from '../editor/document.js';
 	import { DRAWN_ELEMENTS } from '../editor/elements.js';
@@ -47,7 +48,7 @@
 				element,
 				editable: false,
 				extensions: [
-					StarterKit.configure({ document: false }),
+					StarterKit.configure({ document: false, link: { protocols: [CODE_PROTOCOL] } }),
 					NoteDocument,
 					SectionNode,
 					TaskList,
