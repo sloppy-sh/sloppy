@@ -6,7 +6,6 @@
 
 import { initRuntime, resetApi, session } from '@sloppy/app-core';
 import {
-	CONTAINER_DIR,
 	containerOf,
 	DeviceCredentials,
 	DeviceGitDefaults,
@@ -24,14 +23,12 @@ import { SIGN_IN_CALLBACK } from './deep-link';
 import { tauriFiles, tauriHistory, tauriOpenFile, tauriSaveFile } from './files';
 import { tauriIdentities } from './identity';
 import {
-	folderOf,
 	forgetFolder,
 	knownFolders,
 	LOCAL_MODE,
 	openedFolder,
 	rememberedVault,
-	rememberVault,
-	vaultIn
+	rememberVault
 } from './local-mode';
 import { IS_MOBILE, TAURI_PLATFORM } from './platform';
 
@@ -59,10 +56,17 @@ const device = LOCAL_MODE ? tauriFiles() : undefined;
  *  answers with that place rather than asking. */
 const ASKS_WHERE = !IS_MOBILE;
 
-/** The vault the graph in front of somebody is in — a project's container where
- *  the folder somebody picked is a project. `createApi` reads it each time it is
- *  asked, so opening a folder re-points a running app. */
+/** The folder somebody picked, which for a project is its own root rather than
+ *  the container the notes are in — docs/ARCHITECTURE.md § "A project's
+ *  container". It is what this device lists and what the api reads the graph
+ *  through; `createApi` reads it each time it is asked, so opening a folder
+ *  re-points a running app. */
 let opened: string | undefined;
+
+/** Where the graph's own files are: that folder, or the container inside it.
+ *  The history is the vault's, so it is asked of this and never of the folder
+ *  on the list. */
+let vaultRoot: string | undefined;
 
 let missing = false;
 
@@ -101,7 +105,7 @@ async function ownerOf(files: Files, folder: string): Promise<ReturnType<typeof 
 
 /** Settle who writes in the folder that is open and serve it under them. */
 async function repoint(files: Files): Promise<void> {
-	ownerHere = opened ? await ownerOf(files, opened) : undefined;
+	ownerHere = vaultRoot ? await ownerOf(files, vaultRoot) : undefined;
 	writing = await writerFor(files, ownerHere);
 	served = undefined;
 	resetApi();
@@ -123,6 +127,7 @@ function writerFor(
 
 async function serve(files: Files, folder: string): Promise<void> {
 	opened = folder;
+	vaultRoot = (await containerOf(files.at(folder)).catch(() => undefined))?.root ?? folder;
 	await repoint(files);
 }
 
@@ -136,39 +141,28 @@ async function openFolder(files: Files): Promise<string | undefined> {
 /**
  * The folder somebody picks for a project is the project's ROOT, and that is
  * the folder this device lists — docs/ARCHITECTURE.md § "A project's container".
- * A folder that already holds a graph is that graph rather than a project to
- * start a second one inside.
+ * `LocalApi` is what settles where the notes go inside it, so nothing is served
+ * and nothing is written down until it has.
  */
 async function openProject(files: Files): Promise<string | undefined> {
-	const root = await files.pickFolder();
+	const root = await files.pickFolder('project');
 	if (!root) return undefined;
-	const project = files.at(root);
-	if (!(await holdsAGraph(project)) && !(await containerOf(project))) {
-		const writer = await writerFor(files);
-		const api = new LocalApi(project.at(CONTAINER_DIR), writer === undefined ? {} : { writer });
-		// Notes a project has just been given carry the project's name, never the
-		// folder's, which every project spells the same way.
-		await api.updateGraph(await api.graphHere(), { title: folderName(root) });
-	}
+	const writer = await writerFor(files);
+	await new LocalApi(files, writer === undefined ? {} : { writer }).openProject(root);
 	await open(files, root);
 	return root;
 }
 
-function folderName(root: string): string {
-	return root.split(/[\\/]/).filter(Boolean).at(-1) ?? root;
-}
-
 async function open(files: Files, folder: string): Promise<void> {
-	const vault = await vaultIn(files, folder);
 	// A folder somebody chose is theirs and may be anywhere, so where it is is
 	// written down. The one a phone keeps its graphs in is asked for again each
 	// launch instead: it moves with the app, and a path written down before it
 	// moved leads nowhere.
 	if (ASKS_WHERE) {
-		await rememberVault(files, vault);
-		await openedFolder(files, vault);
+		await rememberVault(files, folder);
+		await openedFolder(files, folder);
 	}
-	await serve(files, vault);
+	await serve(files, folder);
 }
 
 /** Take a folder off this device's list and serve what is open from a client
@@ -250,7 +244,7 @@ export function initNativeRuntime(): void {
 					// there is nothing here the proxy would be keeping off them.
 					assetSrc: (src: string) => src,
 					vault: {
-						folder: () => (opened === undefined ? undefined : folderOf(opened)),
+						folder: () => opened,
 						graph: async () => (opened ? serving(device).graphHere() : undefined),
 						asks: ASKS_WHERE,
 						open: () => openFolder(device),
@@ -274,7 +268,11 @@ export function initNativeRuntime(): void {
 								}
 							: {})
 					},
-					history: () => (opened ? tauriHistory(opened) : undefined)
+					history: () => (vaultRoot ? tauriHistory(vaultRoot) : undefined),
+					project: () =>
+						serving(device)
+							.projectFolder()
+							.catch(() => undefined)
 				}
 			: {})
 	});

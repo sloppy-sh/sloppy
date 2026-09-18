@@ -502,15 +502,16 @@ describe('the graphs sheet where a graph is a folder on this device', () => {
 		expect(row?.textContent).toContain('sloppy');
 	});
 
-	// The name under a row is there to tell it from another row, so a project
-	// whose notes carry its own name has nothing to add.
-	it('names the project only where the graph is called something else', async () => {
+	// A project's notes are named after its folder, so a row that said only the
+	// folder would be the commonest row saying nothing.
+	it('still says a row is a project where the graph carries the same name', async () => {
 		await openFolders({ project: 'My graph' });
 
 		const row = [...document.querySelectorAll<HTMLElement>('button')].find((one) =>
 			one.textContent?.includes('My graph')
 		);
-		expect(row?.textContent?.trim()).toBe('My graph');
+		expect(row?.textContent).toContain('Project');
+		expect(row?.textContent).not.toContain('Project ·');
 	});
 
 	it("names no project on a row that is nobody's", async () => {

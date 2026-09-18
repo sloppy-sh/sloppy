@@ -120,6 +120,18 @@ describe('the states the graph in this folder has been in', () => {
 		});
 	});
 
+	it('asks which of the paths under a note have moved since a commit', async () => {
+		const { asked, call } = shell({ history_changed_since: ['src/a.ts'] });
+
+		expect(
+			await tauriHistory('/vault', call).changedSince?.('abc', ['src/a.ts', 'src/b.ts'])
+		).toEqual(['src/a.ts']);
+		expect(asked[0]).toEqual({
+			command: 'history_changed_since',
+			args: { root: '/vault', commit: 'abc', paths: ['src/a.ts', 'src/b.ts'] }
+		});
+	});
+
 	it('hands on what an act it would not take was refused with', async () => {
 		const call = async <T>(): Promise<T> => {
 			throw 'Finish the merge you are in the middle of first.';

@@ -27,10 +27,13 @@ export async function filesIn(project: Files): Promise<string[]> {
 	return held.filter((path) => !path.split('/').some((part) => NOT_WRITTEN_BY_HAND.has(part)));
 }
 
-/** What the file says; `undefined` where this checkout has not got it. */
+/** What the file says; `undefined` where this checkout has not got it, and
+ *  where what is there is not text — a note pointing at a picture is still a
+ *  link, and never an error. */
 export async function textIn(project: Files, path: string): Promise<string | undefined> {
 	const bytes = await project.read(path).catch(() => undefined);
-	return bytes === undefined ? undefined : READ_AS_TEXT.decode(bytes);
+	// What git itself reads as binary, and what nobody would draw as lines.
+	return bytes === undefined || bytes.includes(0) ? undefined : READ_AS_TEXT.decode(bytes);
 }
 
 /** Where the file is, as an address the platform opens a file from. `root` is

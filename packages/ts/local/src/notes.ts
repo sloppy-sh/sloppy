@@ -75,7 +75,12 @@ export class NoteWriter {
   async update(ref: OwnedRef, asked: UpdateNodeRequest): Promise<NodeView> {
     const request = checked(() => UpdateNodeRequestSchema.parse(asked));
     const note = this.require(ref);
-    const written = writesTheGateAlone(request) ? note : this.landed(note);
+    const confirms = confirmsAlone(request);
+    const written = writesTheGateAlone(request)
+      ? note
+      : confirms
+        ? this.theirsToWrite(note)
+        : this.landed(note);
     const writing =
       request.owner === undefined
         ? written
@@ -89,7 +94,8 @@ export class NoteWriter {
       ...(request.title === undefined ? {} : { title: request.title }),
       ...(request.tags === undefined ? {} : { tags: [...request.tags] }),
       ...(request.links === undefined ? {} : { links: [...request.links] }),
-      updated_at: nowIso(),
+      ...(request.checked === undefined ? {} : { checked: request.checked }),
+      updated_at: confirms ? note.updated_at : nowIso(),
     });
   }
 
@@ -238,8 +244,14 @@ export class NoteWriter {
   /** The note as a landed write by this writer leaves it, refused where its
    *  writing is somebody else's to take in. */
   private landed(note: StoredNote): StoredNote {
+    return this.graph.authored(this.theirsToWrite(note), this.writer);
+  }
+
+  /** The note, where this writer may write it at all — what a write that
+   *  leaves whose writing it carries alone is still held to. */
+  private theirsToWrite(note: StoredNote): StoredNote {
     if (writeOutcome(note, this.writer) === "offered") throw offerInstead(note);
-    return this.graph.authored(note, this.writer);
+    return note;
   }
 
   /** Who writes the gate: the graph's owner, and whoever holds it. */
@@ -668,6 +680,21 @@ export class NoteWriter {
 function writesTheGateAlone(request: UpdateNodeRequest): boolean {
   return (
     request.owner !== undefined &&
+    request.title === undefined &&
+    request.tags === undefined &&
+    request.links === undefined &&
+    request.appearance === undefined &&
+    request.checked === undefined
+  );
+}
+
+/** Whether a request says the note's reasoning still holds against the code,
+ *  and says nothing else. Reading a note is not writing in it, so nobody joins
+ *  its writing and nothing about it has just been written. */
+function confirmsAlone(request: UpdateNodeRequest): boolean {
+  return (
+    request.checked !== undefined &&
+    request.owner === undefined &&
     request.title === undefined &&
     request.tags === undefined &&
     request.links === undefined &&
