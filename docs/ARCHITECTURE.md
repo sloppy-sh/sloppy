@@ -2384,9 +2384,25 @@ absence here says nothing — a note in the bin is still there, and a graph that
 project has nowhere to look for an anchor and is not asked to.
 
 **A note the CLI did not write is changed by offering, never by writing over.** A container
-is `owned`, so `draft` on a path that already has a note proposes an amendment the way any
-other contributor does (§ "Whose writing a note carries"); a path with no note yet gets one
-written outright.
+is `owned` — `sloppy init` sets that where it starts one, and leaves a container that was
+already there as its owner set it — so `draft` on a path that already has a note proposes an
+amendment the way any other contributor does (§ "Whose writing a note carries"); a path with
+no note yet gets one written outright.
+
+**`init` writes under an identity of the container's own.** The key goes in the container's
+sidecar (`<project>/.sloppy/.sloppy/`) rather than in an app's private data, because there is
+no app here — which puts it inside somebody's repository, so `init` also writes
+`<project>/.sloppy/.gitignore` naming what the history must not keep: the same list
+§ "The vault's history" carries, spelled from the container. A file somebody wrote themselves
+stays theirs — the lines that are missing are added and nothing else is touched. `--identity
+<file>` writes under an identity carried from another device instead, and the graph is then
+that person's rather than the machine's.
+
+**The notes `init` writes are marked by tag**: `project` on the one note the project's own
+writing starts at, `walkthrough` on the way into each part. That is what a second run reads to
+know it has already written them, and what `draft` reads to know that a note pointing at a
+package's entry point is about the PACKAGE — so a detailed note about that file is written
+under it rather than into it.
 
 **`.sloppy/AGENT.md` is what an agent finds where it already looks.** `sloppy init` commits
 it, and it says the file shapes — one note per file, the front matter, the sections, the

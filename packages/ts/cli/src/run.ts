@@ -2,9 +2,20 @@
 // review". One dispatcher, given where it is and somewhere to write, so the
 // same run is exercised by a test and by the bin beside this file.
 
-import { containerOf, type Files } from "@sloppy/local";
-import { GRAPH_FILE, VaultFormatError } from "@sloppy/vault";
+import { dirname, relative, resolve } from "node:path";
+import { SloppyApiError } from "@sloppy/client";
+import {
+  CONTAINER_DIR,
+  containerOf,
+  type Files,
+  LocalApi,
+} from "@sloppy/local";
+import { SLOPPY_DIR, VaultFormatError } from "@sloppy/vault";
 import { check } from "./check.js";
+import { containerAt, heldAt } from "./folder.js";
+import { draft } from "./draft.js";
+import { init, InitRefused } from "./init.js";
+import { leftBehind } from "./left-behind.js";
 import { NodeFiles } from "./node-files.js";
 
 export const COMMANDS = ["init", "draft", "review", "check"] as const;
@@ -17,6 +28,9 @@ export const TO_FIX = 1;
 /** Nothing done: a command that is not here yet, or one nobody has. */
 export const NOTHING_DONE = 2;
 
+/** The options that take the word after them as their value. */
+const VALUED = new Set(["identity"]);
+
 export interface Told {
   out(line: string): void;
   err(line: string): void;
@@ -26,11 +40,12 @@ export interface CliContext {
   /** The folder the command was run in. */
   cwd: string;
   told: Told;
-  /** Where a folder is reached; absent is this disk. */
-  filesAt?: (root: string) => Files;
+  /** Where a folder is reached, and where what is nobody else's business goes
+   *  for it; absent is this disk. */
+  filesAt?: (root: string, data: string) => Files;
 }
 
-/** `--name` is `true`, `--name=value` is the value. */
+/** `--name` is `true`, `--name=value` and `--name value` are the value. */
 export interface Asked {
   command?: string;
   paths: string[];
@@ -40,15 +55,25 @@ export interface Asked {
 export function parse(argv: readonly string[]): Asked {
   const paths: string[] = [];
   const options = new Map<string, string | true>();
-  for (const held of argv) {
+  for (let at = 0; at < argv.length; at++) {
+    const held = argv[at];
     if (!held.startsWith("-")) {
       paths.push(held);
       continue;
     }
     const name = held.replace(/^--?/, "");
-    const at = name.indexOf("=");
-    if (at === -1) options.set(name, true);
-    else options.set(name.slice(0, at), name.slice(at + 1));
+    const equals = name.indexOf("=");
+    if (equals !== -1) {
+      options.set(name.slice(0, equals), name.slice(equals + 1));
+      continue;
+    }
+    const next = argv[at + 1];
+    if (VALUED.has(name) && next !== undefined && !next.startsWith("-")) {
+      options.set(name, next);
+      at++;
+      continue;
+    }
+    options.set(name, true);
   }
   return {
     ...(paths.length > 0 ? { command: paths[0] } : {}),
@@ -65,6 +90,8 @@ const USAGE = [
   "  sloppy review [dir]    what the code has left behind",
   "  sloppy check [dir]     read every note and say what doesn't hold",
   "",
+  "  --identity <file>      write as the identity in that file, rather than one made here",
+  "  --strict               let a review say there is something to fix",
   "  --json                 answer in JSON instead of lines",
   "  --help                 this",
 ];
@@ -86,13 +113,31 @@ export async function run(
     return NOTHING_DONE;
   }
   const json = asked.options.has("json");
-  if (command !== "check") {
-    // The tracks that write these replace the answer; until then it says so
-    // rather than doing half of one.
-    told.out(json ? said(command, "Not here yet.") : "Not here yet.");
-    return NOTHING_DONE;
+  try {
+    switch (command) {
+      case "check":
+        return await checking(asked, context, json);
+      case "init":
+        return await starting(asked, context, json);
+      case "draft":
+        return await drafting(asked, context, json);
+      case "review":
+        return await reviewing(asked, context, json);
+    }
+  } catch (thrown) {
+    return nothingDone(command, told, json, whyStopped(thrown));
   }
-  return await checking(asked, context, json);
+}
+
+/** A run that stopped, in words a person can act on. A refusal and a folder
+ *  this build cannot read both say what they are already; anything else is
+ *  this machine's own trouble, and its words are not for anybody. */
+function whyStopped(thrown: unknown): string {
+  if (thrown instanceof VaultFormatError || thrown instanceof InitRefused) {
+    return thrown.message;
+  }
+  if (thrown instanceof SloppyApiError) return thrown.message;
+  return "That didn't work. Check the folder is there and is yours, and try again.";
 }
 
 function said(command: Command, line: string): string {
@@ -101,21 +146,66 @@ function said(command: Command, line: string): string {
 
 /** A run with nothing read and so nothing listed, in whichever answer was asked
  *  for. */
-function nothingDone(told: Told, json: boolean, line: string): number {
-  if (json) told.out(said("check", line));
+function nothingDone(
+  command: Command,
+  told: Told,
+  json: boolean,
+  line: string,
+): number {
+  if (json) told.out(said(command, line));
   else told.err(line);
   return NOTHING_DONE;
 }
 
-/** The container a command works in: the one inside the folder named, or that
- *  folder itself where it is already a vault. */
-async function containerAt(
-  root: Files,
-): Promise<{ container: Files } | { said: string }> {
-  const inside = await containerOf(root);
-  if (inside) return { container: inside };
-  if (await root.exists(GRAPH_FILE)) return { container: root };
-  return { said: "There are no notes in that folder yet." };
+/** Where what is nobody else's business goes for a project: inside the
+ *  container's own sidecar folder, which is the one place in a repository that
+ *  is Sloppy's rather than the person's. */
+function dataFor(root: string): string {
+  return `${root}/${CONTAINER_DIR}/${SLOPPY_DIR}`;
+}
+
+function filesFor(context: CliContext, root: string): Files {
+  return (context.filesAt ?? ((at, data) => new NodeFiles({ root: at, data })))(
+    root,
+    dataFor(root),
+  );
+}
+
+/** The folder named, from wherever the command was run. */
+function folderNamed(context: CliContext, named?: string): string {
+  return resolve(context.cwd, named ?? ".");
+}
+
+/** The project whose notes a command works on: the nearest folder at or above
+ *  this one holding a container. A folder that is itself a graph is that
+ *  graph, and has no code beside it. */
+async function projectAbove(
+  context: CliContext,
+  from: string,
+): Promise<{ root: string; files: Files } | undefined> {
+  let at = from;
+  for (;;) {
+    const files = filesFor(context, at);
+    if ((await containerOf(files)) !== undefined) return { root: at, files };
+    const up = dirname(at);
+    if (up === at) return undefined;
+    at = up;
+  }
+}
+
+const NO_NOTES = "There are no notes in that folder yet.";
+
+/** The container a command works in: the one in the folder named, and where
+ *  none was named, the nearest one at or above where the command was run. */
+async function containerFrom(
+  context: CliContext,
+  named?: string,
+): Promise<Files | undefined> {
+  if (named !== undefined) {
+    return containerAt(filesFor(context, folderNamed(context, named)));
+  }
+  const found = await projectAbove(context, folderNamed(context));
+  return found ? containerAt(found.files) : undefined;
 }
 
 async function checking(
@@ -123,24 +213,11 @@ async function checking(
   context: CliContext,
   json: boolean,
 ): Promise<number> {
-  const at = asked.paths[0] ?? context.cwd;
-  const files = (context.filesAt ?? ((root) => new NodeFiles({ root })))(at);
-  const held = await containerAt(files);
-  if ("said" in held) return nothingDone(context.told, json, held.said);
-  let result: Awaited<ReturnType<typeof check>>;
-  try {
-    result = await check(held.container);
-  } catch (thrown) {
-    // A VaultFormatError says which folder this is in words already meant for a
-    // person; anything else is this machine's own trouble, and its words are not.
-    return nothingDone(
-      context.told,
-      json,
-      thrown instanceof VaultFormatError
-        ? thrown.message
-        : "That folder wouldn't open. Check the path, and that it's yours to read.",
-    );
-  }
+  const at = folderNamed(context, asked.paths[0]);
+  const files = filesFor(context, at);
+  const container = await containerAt(files);
+  if (!container) return nothingDone("check", context.told, json, NO_NOTES);
+  const result = await check(container);
   if (json) {
     context.told.out(JSON.stringify({ command: "check", ...result }));
     return result.defects.length === 0 ? FINE : TO_FIX;
@@ -154,4 +231,155 @@ async function checking(
     return FINE;
   }
   return TO_FIX;
+}
+
+async function starting(
+  asked: Asked,
+  context: CliContext,
+  json: boolean,
+): Promise<number> {
+  const at = folderNamed(context, asked.paths[0]);
+  const files = filesFor(context, at);
+  const named = asked.options.get("identity");
+  if (named === true) {
+    return nothingDone(
+      "init",
+      context.told,
+      json,
+      "Name the file your identity is in.",
+    );
+  }
+  let identity: Uint8Array | undefined;
+  if (named !== undefined) {
+    const file = resolve(context.cwd, named);
+    const folder = dirname(file);
+    identity = await filesFor(context, folder).read(
+      file.slice(folder.length + 1),
+    );
+    if (!identity) {
+      return nothingDone("init", context.told, json, "That file isn't there.");
+    }
+  }
+  const done = await init({
+    files,
+    root: at,
+    ...(identity === undefined ? {} : { identity }),
+  });
+  if (json) {
+    context.told.out(JSON.stringify({ command: "init", ...done }));
+    return FINE;
+  }
+  if (done.started) context.told.out("Notes started in this project.");
+  if (done.notes.length === 0) {
+    context.told.out("Everything here already has a note.");
+    return FINE;
+  }
+  context.told.out(
+    done.notes.length === 1
+      ? "Wrote a note about:"
+      : "Wrote a note about each:",
+  );
+  for (const note of done.notes) context.told.out(`  ${note.title}`);
+  return FINE;
+}
+
+async function drafting(
+  asked: Asked,
+  context: CliContext,
+  json: boolean,
+): Promise<number> {
+  if (asked.paths.length === 0) {
+    return nothingDone(
+      "draft",
+      context.told,
+      json,
+      "Name the files to write about.",
+    );
+  }
+  const found = await projectAbove(context, folderNamed(context));
+  if (!found) return nothingDone("draft", context.told, json, NO_NOTES);
+  const container = await containerAt(found.files);
+  if (!container) return nothingDone("draft", context.told, json, NO_NOTES);
+  const held = await heldAt(container);
+  if (!held.project) {
+    return nothingDone(
+      "draft",
+      context.told,
+      json,
+      "These notes are not about any code.",
+    );
+  }
+  const project = held.project;
+  const inside: string[] = [];
+  const outside: { path: string; said: string }[] = [];
+  for (const named of asked.paths) {
+    const path = relative(project.root, resolve(context.cwd, named));
+    if (path === "" || path.startsWith("..")) {
+      outside.push({ path: named, said: "That isn't a file in this project." });
+      continue;
+    }
+    inside.push(path.split("\\").join("/"));
+  }
+  const done = await draft({
+    container,
+    project,
+    api: new LocalApi(found.files),
+    paths: inside,
+  });
+  const missed = [...outside, ...done.missed];
+  if (json) {
+    context.told.out(
+      JSON.stringify({ command: "draft", notes: done.notes, missed }),
+    );
+    return missed.length === 0 ? FINE : TO_FIX;
+  }
+  for (const note of done.notes) {
+    context.told.out(
+      note.offered
+        ? `${note.path}: offered. The note about it is somebody else's to take in.`
+        : `${note.path}: written.`,
+    );
+  }
+  for (const one of missed) context.told.out(`${one.path}: ${one.said}`);
+  return missed.length === 0 ? FINE : TO_FIX;
+}
+
+async function reviewing(
+  asked: Asked,
+  context: CliContext,
+  json: boolean,
+): Promise<number> {
+  const found = await containerFrom(context, asked.paths[0]);
+  if (!found) return nothingDone("review", context.told, json, NO_NOTES);
+  const held = await heldAt(found);
+  const rows = await leftBehind({
+    container: found,
+    ...(held.project ? { project: held.project } : {}),
+    notesAt: held.project
+      ? `${relative(held.project.root, found.root).split("\\").join("/")}/`
+      : "",
+  });
+  if (json) {
+    context.told.out(
+      JSON.stringify({
+        command: "review",
+        signals: rows.map((row) => row.signal),
+      }),
+    );
+    return strictly(asked, rows.length);
+  }
+  for (const row of rows) {
+    const named = row.title === undefined ? "" : ` (${row.title})`;
+    context.told.out(`${row.where}${named}: ${row.said}`);
+  }
+  if (rows.length === 0) {
+    context.told.out("Nothing the code has left behind.");
+  }
+  return strictly(asked, rows.length);
+}
+
+/** A review says what it found and lets a build carry on, unless somebody
+ *  asked it to stand in the way. */
+function strictly(asked: Asked, found: number): number {
+  return asked.options.has("strict") && found > 0 ? TO_FIX : FINE;
 }

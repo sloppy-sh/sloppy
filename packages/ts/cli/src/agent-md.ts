@@ -96,4 +96,8 @@ write outright.
     sloppy check           read every note and say what doesn't hold
 
 Each takes \`--json\` and answers in JSON instead of lines.
+
+\`draft\` reads a TypeScript or JavaScript file by the line for what it imports and what
+it hands out, and anchors each name it finds. A file in any other language gets an anchor
+to the file and none inside it, so the names in it are yours to write.
 `;
