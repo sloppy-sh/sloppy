@@ -103,7 +103,7 @@
 				maxlength={EDGE_LABEL_MAX}
 				autocomplete="off"
 				placeholder="Nothing written on it"
-				aria-label="Words on this line"
+				aria-labelledby="edge-words"
 				onkeydown={(event: KeyboardEvent) => {
 					if (event.key !== 'Enter') return;
 					event.preventDefault();

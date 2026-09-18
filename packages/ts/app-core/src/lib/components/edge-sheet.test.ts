@@ -59,7 +59,7 @@ const named = (words: string): HTMLButtonElement | undefined =>
 	[...document.body.querySelectorAll('button')].find((one) => one.textContent?.trim() === words);
 
 const field = (): HTMLInputElement =>
-	document.body.querySelector('input[aria-label="Words on this line"]') as HTMLInputElement;
+	document.body.querySelector('input[placeholder="Nothing written on it"]') as HTMLInputElement;
 
 let api: FakeApi;
 let target: HTMLElement;

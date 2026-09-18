@@ -22,7 +22,7 @@ vi.mock("pixi.js", async () => {
   return fakePixi();
 });
 
-const { GraphScene } = await import("./scene.js");
+const { GraphScene, LABEL_LINE } = await import("./scene.js");
 
 const OWNER = "did:syr:someone";
 const palette = buildPalette({
@@ -91,6 +91,37 @@ async function canvasOn(
     (child): child is FakeGraphics => child instanceof FakeGraphics,
   );
   return { scene, app, passes: { genealogy, runs, connections } as Passes };
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+const endsOnScreen = (
+  scene: Awaited<ReturnType<typeof canvasOn>>["scene"],
+  from: OwnedRef,
+  to: OwnedRef,
+): [Point, Point] =>
+  [from, to].map((of) => {
+    const at = scene.positionOf(scene.indexOf(of) as number);
+    return scene.viewport.toScreen(at.x, at.y);
+  }) as [Point, Point];
+
+/** Does the line between two points on screen run through the box the words
+ *  fill? Walked rather than solved: the box is the words' width by one line. */
+function crossed(words: FakeText, [from, to]: [Point, Point]): boolean {
+  const wide = words.width / 2;
+  const tall = LABEL_LINE / 2;
+  for (let step = 0; step <= 400; step++) {
+    const along = step / 400;
+    const x = from.x + (to.x - from.x) * along;
+    const y = from.y + (to.y - from.y) * along;
+    if (Math.abs(x - words.x) <= wide && Math.abs(y - words.y) <= tall) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Every word written over the field, whatever is holding it up. */
@@ -287,31 +318,58 @@ describe("the words a look puts on a line", () => {
       (text) => text.text === "grew out of",
     );
     expect(written).toBeDefined();
-    const from = looked.scene.positionOf(
-      looked.scene.indexOf(parent.ref) as number,
-    );
-    const to = looked.scene.positionOf(
-      looked.scene.indexOf(child.ref) as number,
-    );
-    const middle = looked.scene.viewport.toScreen(
-      (from.x + to.x) / 2,
-      (from.y + to.y) / 2,
-    );
-    const ends = [from, to].map((at) =>
-      looked.scene.viewport.toScreen(at.x, at.y),
-    );
-    const off = Math.hypot(
-      (written?.x ?? 0) - middle.x,
-      (written?.y ?? 0) - middle.y,
-    );
-    // Beside the middle, and square to the line: as far from one end as from
-    // the other, which is what "at the middle" means once it is held clear.
-    expect(off).toBeGreaterThan(0);
-    expect(off).toBeLessThan(20);
+    const ends = endsOnScreen(looked.scene, parent.ref, child.ref);
+    const middle = {
+      x: (ends[0].x + ends[1].x) / 2,
+      y: (ends[0].y + ends[1].y) / 2,
+    };
+    expect(crossed(written as FakeText, ends)).toBe(false);
+    // Square to the line: as far from one end as from the other, which is what
+    // "at the middle" means once the words are held clear of it.
     const away = ends.map((end) =>
       Math.hypot((written?.x ?? 0) - end.x, (written?.y ?? 0) - end.y),
     );
     expect(away[0]).toBeCloseTo(away[1], 5);
+    expect(
+      Math.hypot((written?.x ?? 0) - middle.x, (written?.y ?? 0) - middle.y),
+    ).toBeGreaterThan(0);
+    looked.scene.destroy();
+  });
+
+  // A line runs in whatever direction the field puts it in, and the words stand
+  // off a steep one as far as they stand off a flat one.
+  it("clears the line at every angle a field draws one at", async () => {
+    const fan = ["a", "b", "c", "d", "e", "f", "g", "h"].map((letter) =>
+      note(`1${letter}`, { parent: parent.ref, origin: parent.ref }),
+    );
+    const looked = await canvasOn(
+      [parent, ...fan],
+      fan.map((kid) => ({
+        from: parent.ref,
+        to: kid.ref,
+        label: `grew out of ${kid.address}`,
+      })),
+    );
+    const written = writtenOn(looked.app).filter((text) =>
+      text.text.startsWith("grew out of"),
+    );
+    expect(written.length).toBeGreaterThan(1);
+
+    let steepest = 0;
+    for (const words of written) {
+      const kid = fan.find((one) =>
+        words.text.endsWith(one.address as string),
+      ) as NodeView;
+      const ends = endsOnScreen(looked.scene, parent.ref, kid.ref);
+      expect(crossed(words, ends), words.text).toBe(false);
+      steepest = Math.max(
+        steepest,
+        Math.abs(ends[1].y - ends[0].y) / Math.abs(ends[1].x - ends[0].x),
+      );
+    }
+    // Only worth the fan if one of its lines runs steeply: words centred a fixed
+    // step off a steep line are the ones its stroke runs through.
+    expect(steepest).toBeGreaterThan(1);
     looked.scene.destroy();
   });
 

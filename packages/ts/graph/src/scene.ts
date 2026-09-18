@@ -135,7 +135,8 @@ const LABEL_HYSTERESIS = 0.75;
 /** Slots that may change hands in one frame. */
 const LABEL_RETEXT_BUDGET = 6;
 const LABEL_GAP = 6;
-const LABEL_LINE = 15;
+/** The height one line of words fills, in CSS pixels. */
+export const LABEL_LINE = 15;
 /** A title long enough to crowd its neighbours off the canvas is not a title. */
 const TITLE_CHARS = 32;
 
@@ -220,9 +221,9 @@ const EDGE_LABEL_MIN_SPAN = 56;
 /** Words long enough to cross the field they are written over are not a
  *  caption. */
 const EDGE_LABEL_CHARS = 24;
-/** How far off its line the words sit, in CSS pixels: a caption stands beside
- *  what it names, the way a mark's does, rather than being struck through by
- *  it. */
+/** How much bare paper stands between the words and the line they are on, in
+ *  CSS pixels: measured from the edge of the box the words fill, so no line is
+ *  ever struck through them. */
 const EDGE_LABEL_GAP = 13;
 
 /** The band a difference lays in the orbit, at the weight choosing takes: a
@@ -1933,8 +1934,13 @@ export class GraphScene {
     const leave = enter * LABEL_HYSTERESIS;
     const receding = this.selecting || this.comparing;
 
-    const wanted: { key: string; line: LookedLine; at: Point; span: number }[] =
-      [];
+    const wanted: {
+      key: string;
+      line: LookedLine;
+      middle: Point;
+      ends: [Point, Point];
+      span: number;
+    }[] = [];
     for (const line of this.lookedLines) {
       const words = line.look.label;
       if (words === undefined || words === "") continue;
@@ -1944,15 +1950,28 @@ export class GraphScene {
         Math.hypot(to.x - from.x, to.y - from.y) * this.viewport.scale;
       const key = edgeLookKey(line.look.from, line.look.to);
       if (span < (held.has(key) ? leave : enter)) continue;
-      const at = beside(
-        this.viewport.toScreen((from.x + to.x) / 2, (from.y + to.y) / 2),
-        this.viewport.toScreen(from.x, from.y),
-        this.viewport.toScreen(to.x, to.y),
+      const middle = this.viewport.toScreen(
+        (from.x + to.x) / 2,
+        (from.y + to.y) / 2,
       );
-      if (at.x < 0 || at.x > this.width || at.y < 0 || at.y > this.height) {
+      if (
+        middle.x < 0 ||
+        middle.x > this.width ||
+        middle.y < 0 ||
+        middle.y > this.height
+      ) {
         continue;
       }
-      wanted.push({ key, line, at, span });
+      wanted.push({
+        key,
+        line,
+        middle,
+        ends: [
+          this.viewport.toScreen(from.x, from.y),
+          this.viewport.toScreen(to.x, to.y),
+        ],
+        span,
+      });
     }
     wanted.sort((a, b) => b.span - a.span);
     wanted.length = Math.min(wanted.length, this.edgeLabelPool.length);
@@ -1980,13 +1999,19 @@ export class GraphScene {
       const text = this.edgeLabelPool[at];
       const words = shorten(entry.line.look.label ?? "", EDGE_LABEL_CHARS);
       if (text.text !== words) text.text = words;
-      const left = entry.at.x - text.width / 2;
-      if (overlaps(placed, left, entry.at.y, text.width)) {
+      const where = beside(
+        entry.middle,
+        entry.ends[0],
+        entry.ends[1],
+        text.width,
+      );
+      const left = where.x - text.width / 2;
+      if (overlaps(placed, left, where.y, text.width)) {
         text.visible = false;
         continue;
       }
-      placed.push(left, entry.at.y, text.width);
-      text.position.set(entry.at.x, entry.at.y);
+      placed.push(left, where.y, text.width);
+      text.position.set(where.x, where.y);
       text.tint = this.options.palette.ink;
       text.alpha = this.lineInk(
         entry.line.kind,
@@ -2437,19 +2462,22 @@ function dashLine(
   );
 }
 
-/** A point held {@link EDGE_LABEL_GAP} clear of the line through `from` and
- *  `to`, on the upper side of it — where the words stand beside their line
- *  rather than under it. */
-function beside(at: Point, from: Point, to: Point): Point {
+/** Where to centre a `width` × {@link LABEL_LINE} box of words so that the whole
+ *  box stands {@link EDGE_LABEL_GAP} clear of the line through `from` and `to`,
+ *  on the upper side of it: the box's own reach across the line is what the gap
+ *  is measured from, so a steep line stands off its words as far as a flat one
+ *  does. */
+function beside(at: Point, from: Point, to: Point, width: number): Point {
   const span = Math.hypot(to.x - from.x, to.y - from.y);
   if (span === 0) return at;
   const nx = -(to.y - from.y) / span;
   const ny = (to.x - from.x) / span;
   const up = ny > 0 ? -1 : 1;
-  return {
-    x: at.x + nx * up * EDGE_LABEL_GAP,
-    y: at.y + ny * up * EDGE_LABEL_GAP,
-  };
+  const off =
+    EDGE_LABEL_GAP +
+    Math.abs(nx) * (width / 2) +
+    Math.abs(ny) * (LABEL_LINE / 2);
+  return { x: at.x + nx * up * off, y: at.y + ny * up * off };
 }
 
 /** How far a point lies off the segment between two others, which is what a tap

@@ -559,14 +559,19 @@
 	/** The looks on the lines between the notes on the canvas, one per pair. */
 	const edgeLooks = $derived(looksOnCanvas(visible));
 
-	/** The line whose look is being set, and the note the reader reached it
-	 *  from. Null while no sheet is up. */
+	/** The line whose look is being set. It outlives the sheet's closing, so the
+	 *  sheet is still there to slide away, and each opening keys a fresh one. */
 	let lineAt = $state<{ from: NodeView; to: NodeView } | null>(null);
+	let lineShowing = $state(false);
+	let opening = $state(0);
 
 	function setLookOn(from: OwnedRef, to: OwnedRef): void {
 		const one = nodes.get(from);
 		const other = nodes.get(to);
-		if (one && other) lineAt = { from: one, to: other };
+		if (!one || !other) return;
+		lineAt = { from: one, to: other };
+		opening += 1;
+		lineShowing = true;
 	}
 
 	const selection = $derived(tags.selected);
@@ -2813,15 +2818,11 @@
 	onWrote={(ref) => show(ref, { from: null, shape: null })}
 />
 
-<!-- Opened on one line and read once, so the sheet for the next line is a fresh
-     one rather than this one's fields moved under somebody's hands. -->
 {#if lineAt}
-	{#key `${lineAt.from.ref} ${lineAt.to.ref}`}
+	{#key opening}
 		<EdgeSheet
-			open
-			onOpenChange={(showing) => {
-				if (!showing) lineAt = null;
-			}}
+			open={lineShowing}
+			onOpenChange={(showing) => (lineShowing = showing)}
 			from={lineAt.from}
 			to={lineAt.to}
 		/>
