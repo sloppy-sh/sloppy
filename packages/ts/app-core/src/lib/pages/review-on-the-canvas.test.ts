@@ -154,6 +154,9 @@ function litOnCanvas(): Record<string, string | undefined> {
 
 let api: FakeApi;
 let files: MemoryFiles;
+/** The project this device is serving right now, which opening a folder
+ *  changes the way the shell does. */
+let serving: MemoryFiles | undefined;
 let kept: MemoryHistory;
 let store: Map<string, Uint8Array>;
 let target: HTMLElement;
@@ -231,9 +234,10 @@ beforeEach(async () => {
 	canvasInk.rubOut(HOME);
 	await keepFile('src/parser.ts', 'export const one = 1;\n');
 	await keepFile('docs/guide.md', '# Guide\n');
+	serving = files;
 	initRuntime({
 		apiHost: () => 'http://api.test',
-		project: async () => files,
+		project: async () => serving,
 		history: () => kept
 	});
 	target = document.createElement('div');
@@ -245,7 +249,12 @@ afterEach(() => {
 	mounted = undefined;
 	review.clear();
 	session.clear();
-	initRuntime({ apiHost: () => '', project: undefined, history: () => undefined });
+	initRuntime({
+		apiHost: () => '',
+		project: undefined,
+		history: () => undefined,
+		vault: undefined
+	});
 	target.remove();
 	document.body.innerHTML = '';
 });
@@ -280,9 +289,120 @@ describe('asking what the code left behind', () => {
 		expect(litOnCanvas()).toEqual({ '1': 'no', '1a': 'yes' });
 	});
 
+	// A field missing notes is a field missing the anchors that say the code was
+	// written about, so there is no answer to offer about it.
+	it('is not offered about a field that could not be read whole', async () => {
+		const held: NodeView[] = [node(1, '1', { title: 'The parser' })];
+		api.on('GET /nodes', (url) => {
+			const origin = url.searchParams.get('origin');
+			if (origin && !url.searchParams.get('max_depth')) {
+				return new Response('{"message":"That branch could not be read."}', { status: 500 });
+			}
+			return held.filter((one) => (origin ? one.origin === origin : one.ref === one.origin));
+		});
+
+		await open();
+		labelled('More').click();
+		await settle();
+
+		expect(screen()).toContain('Some notes could not be read');
+		expect(offered()).not.toContain('What the code left behind');
+	});
+
 	it('leaves the canvas alone until one is chosen', async () => {
 		await open();
 
 		expect(litOnCanvas()).toEqual({ '1': undefined, '1a': undefined });
+	});
+});
+
+// A folder is opened while the page stands, so what the question is about is
+// asked again for it rather than left over from the folder that was.
+describe('another folder in front of somebody', () => {
+	/** A shell whose folders can be opened, where opening a project serves one
+	 *  and starting a folder serves none. */
+	let root = PROJECT;
+
+	function keepsFolders(): void {
+		root = serving === undefined ? '/home/ada/notes' : PROJECT;
+		initRuntime({
+			apiHost: () => 'http://api.test',
+			project: async () => serving,
+			history: () => kept,
+			vault: {
+				folder: () => root,
+				graph: async () => HOME,
+				open: async () => PROJECT,
+				asks: true,
+				known: async () => [],
+				openKnown: async () => {},
+				forget: async () => {},
+				start: async () => {
+					serving = undefined;
+					root = '/home/ada/notes';
+					return root;
+				},
+				openProject: async () => {
+					serving = files;
+					root = PROJECT;
+					return root;
+				}
+			}
+		});
+	}
+
+	async function choose(words: string): Promise<void> {
+		labelled('Your graphs').click();
+		await settle();
+		const button = named(words);
+		if (!button) throw new Error(`Nothing on screen says "${words}"`);
+		button.click();
+		await settle();
+	}
+
+	async function moreOffers(): Promise<string[]> {
+		labelled('More').click();
+		await settle();
+		const offers = offered();
+		document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await settle();
+		return offers;
+	}
+
+	it('offers the question once a project is the folder being served', async () => {
+		serving = undefined;
+		keepsFolders();
+		await open();
+		expect(await moreOffers()).not.toContain('What the code left behind');
+
+		await choose('Choose a project');
+
+		expect(await moreOffers()).toContain('What the code left behind');
+	});
+
+	it('takes the question away with the project it was about', async () => {
+		serving = files;
+		keepsFolders();
+		await open();
+		expect(await moreOffers()).toContain('What the code left behind');
+
+		await choose('Choose a folder');
+
+		expect(await moreOffers()).not.toContain('What the code left behind');
+	});
+
+	it('closes an answer that was about the folder that was', async () => {
+		serving = files;
+		keepsFolders();
+		await open();
+		labelled('More').click();
+		await settle();
+		menuItem('What the code left behind').click();
+		await settle();
+		expect(screen()).toContain('Choose one to see it on the graph.');
+
+		await choose('Choose a folder');
+
+		expect(screen()).not.toContain('Choose one to see it on the graph.');
 	});
 });

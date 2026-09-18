@@ -88,11 +88,6 @@ class ReviewStore {
 		return this.#of;
 	}
 
-	/** Whether an answer is in hand, which is what the sheet has to show. */
-	get answered(): boolean {
-		return this.#of !== null && !this.#reading;
-	}
-
 	get reading(): boolean {
 		return this.#reading;
 	}

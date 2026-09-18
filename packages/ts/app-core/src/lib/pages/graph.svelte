@@ -401,6 +401,8 @@
 		find.clear();
 		deleted.clear();
 		review.clear();
+		reviewing = false;
+		readProjectFiles();
 		closeUndrawn();
 	}
 
@@ -409,18 +411,28 @@
 	let projectFiles = $state.raw<Awaited<ReturnType<typeof runtime.project>> | null>(null);
 	let reviewing = $state(false);
 
-	$effect(() => {
-		let asking = true;
+	/** An answer about the folder that was is not about the folder that is. */
+	let askedFor = 0;
+
+	/** Ask the shell where the project this graph is about is kept. Asked again
+	 *  for every folder opened: another folder is another project, or none. */
+	function readProjectFiles(): void {
+		const asking = ++askedFor;
+		projectFiles = null;
 		void runtime.project().then(
 			(found) => {
-				if (asking) projectFiles = found;
+				if (asking === askedFor) projectFiles = found;
 			},
 			() => {
-				if (asking) projectFiles = undefined;
+				if (asking === askedFor) projectFiles = undefined;
 			}
 		);
+	}
+
+	$effect(() => {
+		readProjectFiles();
 		return () => {
-			asking = false;
+			askedFor++;
 		};
 	});
 
@@ -431,10 +443,12 @@
 	});
 
 	/** What the code has left behind, asked for the graph on screen — DESIGN.md
-	 *  § "What the code left behind". */
+	 *  § "What the code left behind". A field that could not be read whole has no
+	 *  answer to this: the notes missing from it are the ones that would say the
+	 *  code was written about. */
 	function askWhatIsLeft(): void {
 		const project = projectFiles;
-		if (!project) return;
+		if (!project || shortField) return;
 		reviewing = true;
 		void review.ask(graphs.current, visible, project);
 	}
@@ -2387,7 +2401,7 @@
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
 								</DropdownMenu.Item>
-								{#if projectFiles}
+								{#if projectFiles && !shortField}
 									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={askWhatIsLeft}>
 										<Footprints class="size-4 text-muted-foreground" />
 										What the code left behind
