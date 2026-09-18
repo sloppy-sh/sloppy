@@ -11,8 +11,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { carryIdentityOut, makeLocalIdentity } from "@sloppy/local";
+import { compassOf } from "@sloppy/types";
 import { INK_DIR, PICTURES_FILE } from "@sloppy/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { notesIn } from "./folder.js";
+import { NodeFiles } from "./node-files.js";
 import { FINE, NOTHING_DONE, run, TO_FIX } from "./run.js";
 
 interface Ran {
@@ -165,6 +168,26 @@ describe("sloppy init", () => {
     expect(await ran(["check"])).toMatchObject({
       code: FINE,
       out: ["3 notes read. Nothing to fix."],
+    });
+  });
+
+  // What the note file says is one thing; what a compass card draws off it is
+  // another, and the card reads `compassOf` on the section.
+  it("leaves a part's note pointing north at the project's own", async () => {
+    await aProject();
+    await ran(["init"]);
+    const held = await notesIn(new NodeFiles({ root: join(root, ".sloppy") }));
+    const project = held.find((one) => one.note.title === "thing");
+    const part = held.find((one) => one.note.title === "docs");
+    expect(project && part).toBeTruthy();
+    const pointed = part?.note.sections
+      .map((one) => compassOf(one.content))
+      .find((one) => one !== undefined);
+    expect(pointed).toEqual({
+      north: [project?.note.ref],
+      south: [],
+      east: [],
+      west: [],
     });
   });
 

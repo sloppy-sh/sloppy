@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {
 	citedNotes,
+	compassNode,
 	compassOf,
 	type BlockDocument,
 	type CreateBlockRequest,
@@ -53,7 +54,7 @@ function graph(held: NodeView[], writing?: (title: string) => Promise<NodeView>)
 	};
 }
 
-function open(references: NoteReferences) {
+function open(references: NoteReferences, blocks = [block({ content: section() })]) {
 	mounted = mount(BlockStack, {
 		target,
 		props: {
@@ -62,7 +63,7 @@ function open(references: NoteReferences) {
 			drafts: noDrafts(),
 			references,
 			node: NOTE,
-			blocks: [block({ content: section() })],
+			blocks,
 			onCreate: async (request: CreateBlockRequest) =>
 				block({ content: request.content as BlockDocument }),
 			onUpdate: async () => block(),
@@ -299,6 +300,26 @@ describe('a compass in the writing', () => {
 
 		expect(stored()?.north).toEqual([seed.ref]);
 		expect(kept().south).toEqual([{ note: 'later', how: 'a key this build has never seen' }]);
+	});
+
+	// A note written outside the app — `sloppy init` writes one per part of a
+	// project, pointing north at the project's own note — arrives with its
+	// compass already in the writing.
+	it('draws a compass the note was already carrying when it opened', async () => {
+		const project = note('1', 'thing');
+		const carried = block({
+			content: section(compassNode({ north: [project.ref], south: [], east: [], west: [] }))
+		});
+		open(graph([project]), [carried]);
+		await settled();
+
+		expect(stored()).toEqual({ north: [project.ref], south: [], east: [], west: [] });
+		expect(words(slot('north').querySelector('.sloppy-reference'))).toBe('thing');
+		for (const direction of ['south', 'east', 'west'] as const) {
+			expect(words(slot(direction).querySelector('.sloppy-compass-asks'))).toBe(
+				COMPASS_WORDS[direction].asks
+			);
+		}
 	});
 
 	it('offers nothing a slot already points at', async () => {

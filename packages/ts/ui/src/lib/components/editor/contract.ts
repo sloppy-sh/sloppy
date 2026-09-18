@@ -85,7 +85,7 @@ export interface NoteElsewhere {
  * both.
  *
  * `find` and `write` are both answered against the note being written in, which
- * is the shell's to know: a relation is `under` this note or `after` it.
+ * is the shell's to know.
  */
 export interface NoteReferences {
 	/** Notes in THIS note's graph whose address or title carries `query`; all of
