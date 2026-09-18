@@ -2774,7 +2774,11 @@
 
 <PersonSurface bind:did={meeting} />
 
-<ReviewSheet bind:open={reviewing} onOpen={show} />
+<ReviewSheet
+	bind:open={reviewing}
+	onOpen={show}
+	onWrote={(ref) => show(ref, { from: null, shape: null })}
+/>
 
 <ResponsiveModal
 	bind:open={numbering}

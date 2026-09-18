@@ -102,6 +102,7 @@ let store: Map<string, Uint8Array>;
 let target: HTMLElement;
 let mounted: ReturnType<typeof mount> | undefined;
 let opened: OwnedRef[];
+let justWrote: OwnedRef[];
 let written: UpdateNodeRequest[];
 let blocks: CreateBlockRequest[];
 
@@ -125,7 +126,11 @@ async function askAbout(notes: NodeView[], stacks: Record<OwnedRef, BlockView[]>
 function show(): void {
 	mounted = mount(ReviewSheet, {
 		target,
-		props: { open: true, onOpen: (note: OwnedRef) => opened.push(note) }
+		props: {
+			open: true,
+			onOpen: (note: OwnedRef) => opened.push(note),
+			onWrote: (note: OwnedRef) => justWrote.push(note)
+		}
 	});
 	flushSync();
 }
@@ -134,6 +139,7 @@ beforeEach(async () => {
 	nodes.clear();
 	review.clear();
 	opened = [];
+	justWrote = [];
 	written = [];
 	blocks = [];
 	store = new Map();
@@ -214,6 +220,10 @@ describe('a project with something left behind', () => {
 		expect(screen()).toContain('1 The parser');
 		expect(screen()).toContain('src/parser.ts');
 		expect(named('Still true')).toBeDefined();
+		const shown = [...document.body.querySelectorAll('span')].find(
+			(span) => span.textContent === '1'
+		);
+		expect(shown?.classList.contains('address')).toBe(true);
 	});
 
 	it('records the reading and takes the row away', async () => {
@@ -272,7 +282,8 @@ describe('a project with something left behind', () => {
 		await settle();
 
 		expect(JSON.stringify(blocks[0]?.content)).toContain('code:docs');
-		expect(opened).toEqual([fresh.ref]);
+		expect(justWrote).toEqual([fresh.ref]);
+		expect(opened).toEqual([]);
 	});
 });
 
@@ -285,6 +296,7 @@ describe('a project somebody is keeping up with', () => {
 		await settle();
 
 		expect(screen()).toContain('Nothing the code has left behind.');
+		expect(screen()).not.toContain('Choose one to see it on the graph.');
 		expect(named('Still true')).toBeUndefined();
 		expect(named('Write a note')).toBeUndefined();
 	});

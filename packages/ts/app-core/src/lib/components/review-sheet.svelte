@@ -31,11 +31,14 @@
 
 	let {
 		open = $bindable(false),
-		onOpen
+		onOpen,
+		onWrote
 	}: {
 		open?: boolean;
 		/** Read a note the answer named. */
 		onOpen: (note: OwnedRef) => void;
+		/** Read a note an act has just written, so its address is said once. */
+		onWrote: (note: OwnedRef) => void;
 	} = $props();
 
 	interface Row {
@@ -121,6 +124,11 @@
 		onOpen(note);
 	}
 
+	function readWritten(note: OwnedRef): void {
+		open = false;
+		onWrote(note);
+	}
+
 	async function take(row: Row): Promise<void> {
 		if (chosen === 'anchor-changed' && row.note) {
 			await review.stillTrue(row.note);
@@ -128,7 +136,7 @@
 		}
 		if (chosen === 'code-without-note' && row.path !== undefined) {
 			const written = await review.writeAbout(row.path);
-			if (written) read(written);
+			if (written) readWritten(written);
 			return;
 		}
 		if (row.note) read(row.note);
@@ -141,7 +149,7 @@
 <ResponsiveModal
 	bind:open
 	title="What the code left behind"
-	description="Choose one to see it on the graph."
+	description={review.kinds.length > 0 ? 'Choose one to see it on the graph.' : undefined}
 >
 	<div class="space-y-4 px-2 pt-4 pb-2">
 		{#if review.kinds.length > 0}
@@ -190,7 +198,8 @@
 							>
 								<span class="flex w-full min-w-0 items-baseline gap-2">
 									{#if row.address}
-										<span class="shrink-0 text-xs text-muted-foreground">{row.address}</span>
+										<span class="address shrink-0 text-xs text-muted-foreground">{row.address}</span
+										>
 									{/if}
 									<span class="min-w-0 break-words">{row.title}</span>
 								</span>
