@@ -24,6 +24,12 @@ export function contested(words: string): SloppyApiError {
   return said(409, words);
 }
 
+/** A section the note no longer holds, told apart from a note that is not here
+ *  so a writing surface can offer its writing back rather than refuse it. */
+export function sectionGone(words: string): SloppyApiError {
+  return said(410, words);
+}
+
 /**
  * A request read through the schema that states what it may say, so a graph on
  * this device refuses a shape in the same words a hosted one refuses it in.

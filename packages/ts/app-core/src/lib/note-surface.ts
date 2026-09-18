@@ -27,6 +27,7 @@ const BUSY = new Set([408, 425, 429]);
 export function saveFailure(error: unknown): SaveFailure {
 	if (!(error instanceof SloppyApiError)) return new SaveFailure('transient');
 	if (error.status === 409) return new SaveFailure('elsewhere');
+	if (error.status === 410) return new SaveFailure('gone');
 	if (error.status === 401) return new SaveFailure('refused', 'Sign in again to keep this note.');
 	if (error.status >= 500 || BUSY.has(error.status)) return new SaveFailure('transient');
 	return new SaveFailure(

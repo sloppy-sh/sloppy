@@ -9,6 +9,7 @@ import {
 	openDraft,
 	planSave,
 	runSave,
+	SaveFailure,
 	textSection,
 	type DocBlock,
 	type NoteDraft,
@@ -63,6 +64,11 @@ function stack(initial: BlockView[]) {
 		elsewhere: (ref: OwnedRef, says: string) => {
 			held[at(ref)] = { ...held[at(ref)], content: one(says), updated_at: stamped() };
 		},
+		/** A section taken away from somewhere else, as a file rewritten in the
+		 *  terminal takes one away. */
+		took: (ref: OwnedRef) => {
+			held.splice(at(ref), 1);
+		},
 		writer: {
 			create: async (request: { after: OwnedRef | null; content: BlockDocument }) => {
 				const made = block({ content: request.content, updated_at: stamped() });
@@ -71,6 +77,7 @@ function stack(initial: BlockView[]) {
 			},
 			update: async (ref: OwnedRef, content: BlockDocument, expects: string | undefined) => {
 				const row = held[at(ref)];
+				if (!row) throw new SaveFailure('gone', 'That section is no longer in this note.');
 				if (expects !== undefined && expects !== row.updated_at) {
 					throw new Error('That section was written somewhere else.');
 				}
@@ -545,6 +552,33 @@ describe('a note this device is still holding writing for', () => {
 		]);
 	});
 
+	// A note kept in a folder stamps its sections with the file's own time, so
+	// somebody adding a section anywhere in it moves the stamp on every one.
+	it('keeps one version of a section whose stamp moved without its words', () => {
+		const reopened = reopen(
+			draftOf([measured('u1', 'a/A', 'as it was', FIRST)], [doc('u1', 'a/A', 'as it was, mine')]),
+			[stamped('a/A', 'as it was', SINCE), stamped('a/B', 'theirs, added since', SINCE)]
+		);
+		expect(reopened.says).toEqual(['as it was, mine', 'theirs, added since']);
+		expect(reopened.plan).toEqual([
+			{ kind: 'update', ref: 'a/A', content: one('as it was, mine') }
+		]);
+	});
+
+	it('offers back the writing done in a section taken away somewhere else', () => {
+		const reopened = reopen(
+			draftOf(
+				[measured('u1', 'a/A', 'the first', FIRST), measured('u2', 'a/B', 'the second', FIRST)],
+				[doc('u1', 'a/A', 'the first'), doc('u2', 'a/B', 'the second, mine')]
+			),
+			[stamped('a/A', 'the first', FIRST)]
+		);
+		expect(reopened.says).toEqual(['the first', 'the second, mine']);
+		expect(reopened.plan).toEqual([
+			expect.objectContaining({ kind: 'create', content: one('the second, mine') })
+		]);
+	});
+
 	it('keeps both versions of a section written in two places, and writes over neither', () => {
 		const reopened = reopen(
 			draftOf([measured('u1', 'a/A', 'as it was', FIRST)], [doc('u1', 'a/A', 'what I wrote here')]),
@@ -727,6 +761,24 @@ describe('a section written in two places at once', () => {
 		const after = docBlocks(made.editor.state.doc);
 		await runSave(planSave(made.saved, after), made.saved, after, of.writer);
 		expect(of.read()).toEqual([['and again, mine over as it was']]);
+		made.editor.destroy();
+	});
+});
+
+describe('a section the note no longer holds', () => {
+	it('is written back as one new section, where it stood, and only once', async () => {
+		const of = stack([block({ content: one('as it was') }), block({ content: one('and more') })]);
+		const made = makeEditor(of.held);
+		made.editor.commands.insertContentAt(2, 'mine over ');
+		const next = docBlocks(made.editor.state.doc);
+		of.took(of.held[0].ref);
+
+		await runSave(planSave(made.saved, next), made.saved, next, of.writer);
+		expect(of.read()).toEqual([['mine over as it was'], ['and more']]);
+
+		// Nothing is left to write, so a second pass offers it no second time.
+		const again = docBlocks(made.editor.state.doc);
+		expect(planSave(made.saved, again)).toEqual([]);
 		made.editor.destroy();
 	});
 });

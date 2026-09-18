@@ -331,6 +331,7 @@
 	let bodyStack = $state<{
 		focusBody: (at?: 'start' | 'end') => void;
 		carry: (text: string) => void;
+		holdUnsaved: () => boolean;
 	} | null>(null);
 	/** Writing this note arrived with, until the surface it goes into is up. */
 	let carried = $state<{ ref: OwnedRef; body: string } | null>(null);
@@ -1904,33 +1905,48 @@
 	const rereading = new SvelteSet<OwnedRef>();
 
 	/**
-	 * The note as it stands now, after a write was refused because the section
-	 * had been written somewhere else. The surface is built again from it, and
-	 * opens on what this device is still holding beside what came in.
+	 * The note as it stands now, and the surface built again from it. After a
+	 * refusal it is built whatever the read says, since the stamps the next write
+	 * is conditioned on have moved; after a folder read only where the note has
+	 * changed, and writing this surface has not saved is put down first so the
+	 * surface replacing it settles it section by section rather than adding it.
 	 */
-	async function reopen(of: OwnedRef): Promise<void> {
-		if (rereading.has(of)) return;
+	async function readTheNoteAgain(
+		of: OwnedRef,
+		after: 'a refusal' | 'a folder read'
+	): Promise<void> {
+		if (rereading.has(of) || seeding.has(of)) return;
 		rereading.add(of);
 		try {
 			const stack = (await api.listBlocks(of)).sort(byOrd);
+			const held = of === ref ? blocks : (read.get(of) ?? []);
+			if (after === 'a folder read' && !differs(held, stack)) return;
+			const waiting = after === 'a refusal' || (of === ref && (bodyStack?.holdUnsaved() ?? false));
 			remember(of, stack);
-			refuse(of, 'writing', 'This note was also written somewhere else. Both versions are here.');
+			if (waiting) {
+				refuse(of, 'writing', 'This note was also written somewhere else. Both versions are here.');
+			}
 			if (of !== ref) return;
 			shown = { of, stack };
 			rebuilt += 1;
 		} catch {
-			// The surface is holding the writing and says so; a read that will not
-			// answer takes nothing away from it.
+			// What is on screen is still the note; a read that will not answer says
+			// nothing about it.
 		} finally {
 			rereading.delete(of);
 		}
 	}
 
+	$effect(() => {
+		if (graphs.folderReads === 0) return;
+		untrack(() => void readTheNoteAgain(ref, 'a folder read'));
+	});
+
 	/** What the writing surface is told when a write does not land, which decides
 	 *  whether it keeps trying and what it says. */
 	function refusedWrite(of: OwnedRef, error: unknown): Error {
 		const failure = saveFailure(error);
-		if (failure.trouble === 'elsewhere') void reopen(of);
+		if (failure.trouble === 'elsewhere') void readTheNoteAgain(of, 'a refusal');
 		return failure;
 	}
 
