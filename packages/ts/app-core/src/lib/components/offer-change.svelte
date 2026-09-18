@@ -5,7 +5,14 @@
 	import { ChangedNotes, ResponsiveModal } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
-	import { offerDifference, tagsApart, type WritingSide } from './offer-difference.js';
+	import CompassDifference from './compass-difference.svelte';
+	import {
+		compassApart,
+		offerDifference,
+		saysAnything,
+		tagsApart,
+		type WritingSide
+	} from './offer-difference.js';
 
 	let {
 		open = $bindable(false),
@@ -38,6 +45,7 @@
 		offerDifference({ ref: note, ...(address === undefined ? {} : { address }) }, now, offered)
 	);
 	const tags = $derived(tagsApart(now, offered));
+	const compass = $derived(compassApart(now, offered));
 </script>
 
 <ResponsiveModal
@@ -46,7 +54,13 @@
 	description="It goes to {owner}, and shows on the note once they take it in."
 >
 	<div class="space-y-4 px-2 pt-4 pb-2">
-		<ChangedNotes notes={[apart]} nothing="You have not changed anything yet." />
+		{#if saysAnything(apart)}
+			<ChangedNotes notes={[apart]} />
+		{:else if compass.length === 0}
+			<p class="px-1 py-2 text-sm text-muted-foreground">You have not changed anything yet.</p>
+		{/if}
+
+		<CompassDifference apart={compass} />
 
 		{#if tags.added.length > 0 || tags.removed.length > 0}
 			<p class="px-1 text-xs text-muted-foreground">

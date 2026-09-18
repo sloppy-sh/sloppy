@@ -1,7 +1,14 @@
-import type { BlockDocument, OwnedRef } from '@sloppy/types';
+import { compassNode, type BlockDocument, type Compass, type OwnedRef } from '@sloppy/types';
 import { describe, expect, it } from 'vitest';
 import { ref } from '../stores/fake-api.test-support.js';
-import { offerDifference, sectionsApart, tagsApart, type WritingSide } from './offer-difference.js';
+import {
+	compassApart,
+	offerDifference,
+	saysAnything,
+	sectionsApart,
+	tagsApart,
+	type WritingSide
+} from './offer-difference.js';
 
 const NOTE: OwnedRef = ref(1);
 const ONE = ref(11);
@@ -105,5 +112,74 @@ describe('a note against the writing offered on it', () => {
 
 		expect(apart.added).toEqual(['question']);
 		expect(apart.removed).toEqual(['biology']);
+	});
+});
+
+const NOWHERE: Compass = { north: [], south: [], east: [], west: [] };
+
+/** One section holding a compass, under a line of writing. */
+function pointing(at: OwnedRef, slots: Partial<Compass>, said = 'The decision'): WritingSide {
+	return {
+		title: '',
+		tags: [],
+		sections: [
+			{
+				ref: at,
+				content: {
+					type: 'doc',
+					content: [
+						{ type: 'paragraph', content: [{ type: 'text', text: said }] },
+						compassNode({ ...NOWHERE, ...slots })
+					]
+				}
+			}
+		]
+	};
+}
+
+describe('where an offer would have the note point', () => {
+	it('names nothing where neither side points anywhere', () => {
+		expect(
+			compassApart(side('', [[ONE, 'As it stands']]), side('', [[ONE, 'As it stands']]))
+		).toEqual([]);
+	});
+
+	it('names the slot that gained a note, and no other', () => {
+		const apart = compassApart(pointing(ONE, {}), pointing(ONE, { north: [TWO] }));
+
+		expect(apart).toEqual([{ direction: 'north', gained: [TWO], lost: [] }]);
+	});
+
+	it('names a note a slot no longer points at', () => {
+		const apart = compassApart(pointing(ONE, { west: [TWO] }), pointing(ONE, { west: [] }));
+
+		expect(apart).toEqual([{ direction: 'west', gained: [], lost: [TWO] }]);
+	});
+
+	it('reads the slots in the order a compass is read in', () => {
+		const apart = compassApart(
+			pointing(ONE, {}),
+			pointing(ONE, { west: [TWO], north: [THREE], east: [TWO] })
+		);
+
+		expect(apart.map((slot) => slot.direction)).toEqual(['north', 'east', 'west']);
+	});
+
+	// A slot that gained a note is read as the slot it is, not as a block of
+	// changed markup — DESIGN.md § "The compass card".
+	it('leaves a section that changed only in its compass out of the difference', () => {
+		const now = pointing(ONE, {});
+		const offered = pointing(ONE, { north: [TWO] });
+
+		expect(sectionsApart(now, offered).sections).toEqual([]);
+		expect(saysAnything(offerDifference({ ref: NOTE }, now, offered))).toBe(false);
+	});
+
+	it('still shows the writing where the section changed around the compass', () => {
+		const now = pointing(ONE, {}, 'The decision');
+		const offered = pointing(ONE, { north: [TWO] }, 'The decision, sharpened');
+
+		expect(sectionsApart(now, offered).sections).toHaveLength(1);
+		expect(compassApart(now, offered)).toHaveLength(1);
 	});
 });

@@ -5,7 +5,14 @@
 	import { ChangedNotes, PersonChip, ResponsiveModal, unplacedPerson } from '@sloppy/ui';
 	import { Button } from '@sloppy/ui/button';
 	import { people } from '../stores/people.svelte.js';
-	import { offerDifference, tagsApart, type WritingSide } from './offer-difference.js';
+	import CompassDifference from './compass-difference.svelte';
+	import {
+		compassApart,
+		offerDifference,
+		saysAnything,
+		tagsApart,
+		type WritingSide
+	} from './offer-difference.js';
 
 	let {
 		open = $bindable(false),
@@ -51,6 +58,7 @@
 			: null
 	);
 	const tags = $derived(offered ? tagsApart(now, offered) : null);
+	const compass = $derived(offered ? compassApart(now, offered) : []);
 
 	$effect(() => {
 		for (const one of offers) people.resolve(one.by);
@@ -118,9 +126,13 @@
 				<p class="px-1 text-sm break-words">{shown.message}</p>
 			{/if}
 
-			{#if apart}
-				<ChangedNotes notes={[apart]} nothing="This offer says the same as the note." />
+			{#if apart && saysAnything(apart)}
+				<ChangedNotes notes={[apart]} />
+			{:else if compass.length === 0}
+				<p class="px-1 py-2 text-sm text-muted-foreground">This offer says the same as the note.</p>
 			{/if}
+
+			<CompassDifference apart={compass} />
 
 			{#if tags && (tags.added.length > 0 || tags.removed.length > 0)}
 				<p class="px-1 text-xs text-muted-foreground">

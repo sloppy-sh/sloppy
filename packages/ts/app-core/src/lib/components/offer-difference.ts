@@ -2,7 +2,18 @@
 // difference between two states is already read in — DESIGN.md § "Whose
 // writing" and § "A difference between two states".
 
-import { splitOwnedRef, type BlockDocument, type OwnedRef, type Tag } from '@sloppy/types';
+import {
+	COMPASS_DIRECTIONS,
+	COMPASS_TYPE,
+	compassOf,
+	splitOwnedRef,
+	type BlockDocument,
+	type Compass,
+	type CompassDirection,
+	type DocumentNode,
+	type OwnedRef,
+	type Tag
+} from '@sloppy/types';
 import type { ChangedNote, ChangedSection } from '@sloppy/ui';
 
 /** One side of the comparison: a note's own writing, or an offer's. Sections
@@ -18,6 +29,52 @@ function same(a: BlockDocument, b: BlockDocument): boolean {
 	return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** What a slot gained and what it no longer holds. */
+export interface CompassApart {
+	direction: CompassDirection;
+	gained: OwnedRef[];
+	lost: OwnedRef[];
+}
+
+/** The note's compass, wherever in its writing it stands. */
+function compassIn(side: WritingSide): Compass | undefined {
+	for (const one of side.sections) {
+		const held = compassOf(one.content);
+		if (held) return held;
+	}
+	return undefined;
+}
+
+/** The same section with every compass taken out of it, so two sections that
+ *  differ only in where the note points read as the same writing. */
+function withoutCompass(content: BlockDocument): BlockDocument {
+	const strip = (nodes: readonly DocumentNode[]): DocumentNode[] =>
+		nodes
+			.filter((one) => one.type !== COMPASS_TYPE)
+			.map((one) => (one.content ? { ...one, content: strip(one.content) } : one));
+	return { ...content, content: strip(content.content ?? []) };
+}
+
+/**
+ * The slots the offer would change, in the order a compass is read in. A change
+ * to where a note points is shown as the slot it moved rather than as a section
+ * of changed markup — DESIGN.md § "The compass card".
+ */
+export function compassApart(now: WritingSide, offered: WritingSide): CompassApart[] {
+	const before = compassIn(now);
+	const after = compassIn(offered);
+	if (!before && !after) return [];
+	const apart: CompassApart[] = [];
+	for (const direction of COMPASS_DIRECTIONS) {
+		const was = before?.[direction] ?? [];
+		const is = after?.[direction] ?? [];
+		const gained = is.filter((note) => !was.includes(note));
+		const lost = was.filter((note) => !is.includes(note));
+		if (gained.length > 0 || lost.length > 0) apart.push({ direction, gained, lost });
+	}
+	return apart;
+}
+
 /** The sections the two sides do not share, and whether the ones they do share
  *  stand in another order. */
 export function sectionsApart(
@@ -30,6 +87,7 @@ export function sectionsApart(
 	for (const one of offered.sections) {
 		const was = before.get(one.ref);
 		if (was !== undefined && same(was, one.content)) continue;
+		if (was !== undefined && same(withoutCompass(was), withoutCompass(one.content))) continue;
 		sections.push({
 			ulid: splitOwnedRef(one.ref).localId,
 			...(was === undefined ? {} : { before: was }),
@@ -63,6 +121,12 @@ export function tagsApart(
 		added: offered.tags.filter((tag) => !before.has(tag)),
 		removed: now.tags.filter((tag) => !after.has(tag))
 	};
+}
+
+/** Whether the difference has anything to draw. A compass stands outside the
+ *  difference language, and is read slot by slot instead. */
+export function saysAnything(apart: ChangedNote): boolean {
+	return apart.sections.length > 0 || apart.reordered || apart.retitled !== undefined;
 }
 
 /**
