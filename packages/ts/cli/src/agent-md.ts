@@ -14,14 +14,13 @@ write one that the app, the other people here and the next agent all read the sa
 \`notes/<ULID>.md\`, opening with front matter fenced by \`---\`:
 
     ---
-    ref: did:syr:z6Mk.../01JABCDEF0123456789ABCDEF
-    parent: did:syr:z6Mk.../01JZZZZZZZZZZZZZZZZZZZZZZZ
-    address: 1a1
+    ref: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W0X
+    parent: did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W1Y
     title: What the markdown reader does
     tags:
       - walkthrough
     links:
-      - did:syr:z6Mk.../01JYYYYYYYYYYYYYYYYYYYYYYY
+      - did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ7X3K9M2N4P5R6S7T8V9W2Z
     created: 2026-09-18T10:00:00.000Z
     updated: 2026-09-18T10:00:00.000Z
     checked: 9f1c0f2e4b6a8d0c2e4f6a8b0d2c4e6f8a0b2c4d
@@ -29,11 +28,11 @@ write one that the app, the other people here and the next agent all read the sa
 
 \`ref\` is the note, and the only thing that identifies it: it is what every link holds
 and what a reader elsewhere resolves. \`parent\` is what the note sprang out of — leave it
-off on a note that starts a line of thought of its own. \`address\` is a label a person
-cites the note by, and a note is allowed to have none: write one only where you are
-starting the numbering off a parent that has one, and never change the numbers on notes
-around it. \`checked\` names the commit the note's reasoning was last read against, and is
-written by the person who read it.
+off on a note that starts a line of thought of its own. \`checked\` names the commit the
+note's reasoning was last read against, and is written by the person who read it.
+
+There is no \`address\` above, and you never write one: a number like \`1a1\` is the label its
+author cites the note by, theirs to give and theirs to change.
 
 ## A note is a stack of sections
 
@@ -56,12 +55,14 @@ A name after \`#\` is found by searching that file for it; a run of lines is \`#
 
 ## The compass
 
-A section of its own, one line per direction, each naming notes by ref:
+Four slots inside a section, written as a line per direction, each naming notes by ref.
+Write it in a section of its own or under the writing it belongs to — it is an element
+like a list or a picture, and a section can hold one along with everything else:
 
-    north: [[did:syr:z6Mk.../01JAAAAAAAAAAAAAAAAAAAAAAA]]
-    south: [[did:syr:z6Mk.../01JBBBBBBBBBBBBBBBBBBBBBBB]] [[did:syr:z6Mk.../01JCCCCCCCCCCCCCCCCCCCCCCC]]
-    east: [[did:syr:z6Mk.../01JDDDDDDDDDDDDDDDDDDDDDDD]]
-    west: [[did:syr:z6Mk.../01JEEEEEEEEEEEEEEEEEEEEEEE]]
+    north: [[did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P3Q]]
+    south: [[did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P4R]] [[did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P5S]]
+    east: [[did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P6T]]
+    west: [[did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE/01JQ8B4D5F6G7H8J9K0M1N2P7V]]
 
 North is the larger thing this is part of, south what it is made of, east what it is
 like, west what was chosen instead. A direction with nothing in it is left out

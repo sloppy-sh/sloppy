@@ -88,10 +88,31 @@ describe("sloppy", () => {
     });
   });
 
-  it("says a folder with no notes in it has none", async () => {
+  it("says a folder with no notes in it has none, and does nothing", async () => {
     const { code, err } = await ran(["check"], new MemoryFiles({ root: "/" }));
-    expect(code).toBe(TO_FIX);
+    expect(code).toBe(NOTHING_DONE);
     expect(err).toEqual(["There are no notes in that folder yet."]);
+  });
+
+  it("answers in JSON where a run read nothing", async () => {
+    const { code, out, err } = await ran(
+      ["check", "--json"],
+      new MemoryFiles({ root: "/" }),
+    );
+    expect(code).toBe(NOTHING_DONE);
+    expect(err).toEqual([]);
+    expect(JSON.parse(out[0])).toEqual({
+      command: "check",
+      said: "There are no notes in that folder yet.",
+    });
+  });
+
+  it("says a folder it cannot read in words a person can act on", async () => {
+    const files = new MemoryFiles({ root: "/" });
+    await files.at("/project/.sloppy").write("graph.json", encodeText("{"));
+    const { code, err } = await ran(["check"], files);
+    expect(code).toBe(NOTHING_DONE);
+    expect(err).toEqual(["This file isn't a Sloppy graph."]);
   });
 
   it("says the commands that are not here yet are not here yet", async () => {

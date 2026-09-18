@@ -2375,9 +2375,10 @@ what a compass MIGHT hold written as candidates in the note's own writing. `revi
 signals below. **The CLI never writes a "west" and never writes a "Why"** — what was decided
 against, and why, is the author's thinking and not a tool's to supply.
 
-**`check` is the one that says no.** Every file in `notes/` reads as a note, every front
-matter field holds to the schema the rest of Sloppy holds it to, every citation of a note in
-THIS graph lands on one, and every anchor lands on a path the project has. A citation of
+**`check` is the one that says no.** Every file in `notes/` spelled the way a note file is
+spelled reads as one — anything else in the folder is the person's and is left alone —
+every front matter field holds to the schema the rest of Sloppy holds it to, every citation
+of a note in THIS graph lands on one, and every anchor lands on a path the project has. A citation of
 somebody else's note is left alone — this folder is not where that note lives, so its
 absence here says nothing — a note in the bin is still there, and a graph that is nobody's
 project has nowhere to look for an anchor and is not asked to.

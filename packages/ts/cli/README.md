@@ -17,7 +17,8 @@ sloppy check [dir]     read every note and say what doesn't hold
 
 `--json` answers in JSON instead of lines. The exit code is **0** where there is nothing
 to fix, **1** where there is and it has been listed, and **2** where the command did
-nothing at all — one that is not here yet, or one nobody has.
+nothing at all — one that is not here yet, one nobody has, or a folder with no notes in
+it to read.
 
 ## Driving it from somewhere else
 

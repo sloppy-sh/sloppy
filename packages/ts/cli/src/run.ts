@@ -3,7 +3,7 @@
 // same run is exercised by a test and by the bin beside this file.
 
 import { containerOf, type Files } from "@sloppy/local";
-import { GRAPH_FILE } from "@sloppy/vault";
+import { GRAPH_FILE, VaultFormatError } from "@sloppy/vault";
 import { check } from "./check.js";
 import { NodeFiles } from "./node-files.js";
 
@@ -99,6 +99,14 @@ function said(command: Command, line: string): string {
   return JSON.stringify({ command, said: line });
 }
 
+/** A run with nothing read and so nothing listed, in whichever answer was asked
+ *  for. */
+function nothingDone(told: Told, json: boolean, line: string): number {
+  if (json) told.out(said("check", line));
+  else told.err(line);
+  return NOTHING_DONE;
+}
+
 /** The container a command works in: the one inside the folder named, or that
  *  folder itself where it is already a vault. */
 async function containerAt(
@@ -118,18 +126,20 @@ async function checking(
   const at = asked.paths[0] ?? context.cwd;
   const files = (context.filesAt ?? ((root) => new NodeFiles({ root })))(at);
   const held = await containerAt(files);
-  if ("said" in held) {
-    context.told.err(held.said);
-    return TO_FIX;
-  }
+  if ("said" in held) return nothingDone(context.told, json, held.said);
   let result: Awaited<ReturnType<typeof check>>;
   try {
     result = await check(held.container);
   } catch (thrown) {
-    context.told.err(
-      thrown instanceof Error ? thrown.message : "That folder didn't read.",
+    // A VaultFormatError says which folder this is in words already meant for a
+    // person; anything else is this machine's own trouble, and its words are not.
+    return nothingDone(
+      context.told,
+      json,
+      thrown instanceof VaultFormatError
+        ? thrown.message
+        : "That folder wouldn't open. Check the path, and that it's yours to read.",
     );
-    return TO_FIX;
   }
   if (json) {
     context.told.out(JSON.stringify({ command: "check", ...result }));
