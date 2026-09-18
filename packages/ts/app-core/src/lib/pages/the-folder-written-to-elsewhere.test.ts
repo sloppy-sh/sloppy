@@ -105,8 +105,8 @@ async function readingTheFolder(): Promise<void> {
 		}
 	});
 	resetApi();
-	for (const store of [nodes, outlineSections, peers, tags, publications, find, graphs, review]) {
-		store.clear();
+	for (const held of [nodes, outlineSections, peers, tags, publications, find, graphs, review]) {
+		held.clear();
 	}
 	people.hold(null);
 	session.clear();
