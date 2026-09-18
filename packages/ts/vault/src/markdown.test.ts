@@ -306,3 +306,63 @@ describe("what markdown carries", () => {
     expect(readBack(held)).toEqual(held);
   });
 });
+
+describe("a compass in a section", () => {
+  const doc = (...content: unknown[]): BlockDocument =>
+    ({ type: "doc", content }) as BlockDocument;
+
+  const DID = "did:syr:z6MktEXAMPLEEXAMPLEEXAMPLEEXAMPLE";
+  const TIDES = `${DID}/01J0000000000000000000000A`;
+  const MOON = `${DID}/01J0000000000000000000000E`;
+
+  const compass = (slots: Record<string, unknown> = {}) =>
+    doc({
+      type: "compass",
+      attrs: { north: [], south: [], east: [], west: [], ...slots },
+    });
+
+  it("is a line per filled slot, in the order the slots are written", () => {
+    expect(written(compass({ west: [MOON], north: [TIDES, MOON] })).text).toBe(
+      `north: [[${TIDES}]] [[${MOON}]]\nwest: [[${MOON}]]`,
+    );
+  });
+
+  it("comes back as itself", () => {
+    expect(readBack(compass({ south: [TIDES] }))).toEqual(
+      compass({ south: [TIDES] }),
+    );
+  });
+
+  it("writes an empty one as itself, because it has no lines", () => {
+    const held = compass();
+    expect(written(held).text.startsWith("<!-- sloppy:node ")).toBe(true);
+    expect(readBack(held)).toEqual(held);
+  });
+
+  it("is two compasses where a person wrote two", () => {
+    const held = doc(
+      {
+        type: "compass",
+        attrs: { north: [TIDES], south: [], east: [], west: [] },
+      },
+      {
+        type: "compass",
+        attrs: { north: [MOON], south: [], east: [], west: [] },
+      },
+    );
+    expect(written(held).text).toBe(
+      `north: [[${TIDES}]]\n\nnorth: [[${MOON}]]`,
+    );
+    expect(readBack(held)).toEqual(held);
+  });
+
+  it("leaves prose that reads like a slot as prose", () => {
+    const held = doc({
+      type: "paragraph",
+      content: [{ type: "text", text: `north: [[${TIDES}]]` }],
+    });
+    const { text } = written(held);
+    expect(text).not.toContain("[[");
+    expect(readBack(held)).toEqual(held);
+  });
+});

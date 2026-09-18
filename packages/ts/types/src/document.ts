@@ -149,6 +149,58 @@ export function citedUploads(content: BlockDocument): string[] {
  */
 export const REFERENCE_NOTE_ATTR = "note";
 
+/** The element kind a compass is written as: a block inside a section, holding
+ *  four slots of citations. docs/ARCHITECTURE.md § "The compass". */
+export const COMPASS_TYPE = "compass";
+
+/**
+ * The four slots, in the order a compass is written and read in. **These
+ * tokens are the wire**; the words a surface draws beside them — "Part of",
+ * "Made of", "Like", "Instead of" — are copy, and may change or be translated
+ * without moving anything a peer holds.
+ */
+export const COMPASS_DIRECTIONS = ["north", "south", "east", "west"] as const;
+export type CompassDirection = (typeof COMPASS_DIRECTIONS)[number];
+
+/** What each slot points at. An empty list is a slot nobody has filled, which
+ *  is what an absent one reads as. */
+export type Compass = Record<CompassDirection, OwnedRef[]>;
+
+/** The slots a node holds where it is a compass, absent where it is not. */
+function compassAt(held: unknown): Compass | undefined {
+  if (held === null || typeof held !== "object") return undefined;
+  const node = held as DocumentNode;
+  if (node.type !== COMPASS_TYPE) return undefined;
+  const attrs = node.attrs ?? {};
+  const slots = {} as Compass;
+  for (const direction of COMPASS_DIRECTIONS) {
+    const named = attrs[direction];
+    slots[direction] = (Array.isArray(named) ? named : []).flatMap((one) => {
+      const ref = OwnedRefSchema.safeParse(one);
+      return ref.success ? [ref.data] : [];
+    });
+  }
+  return slots;
+}
+
+/**
+ * The compass a section holds, or absent where it holds none. Where a document
+ * carries two, the first one in it is the answer: a note points one way, and a
+ * second compass is a hand in the file rather than a second heading.
+ */
+export function compassOf(content: BlockDocument): Compass | undefined {
+  const find = (nodes: readonly DocumentNode[]): Compass | undefined => {
+    for (const held of nodes) {
+      const slots = compassAt(held);
+      if (slots) return slots;
+      const deeper = held.content && find(held.content);
+      if (deeper) return deeper;
+    }
+    return undefined;
+  };
+  return find(content.content ?? []);
+}
+
 /**
  * Every note a section's document cites, in the order it cites them and
  * without repeats — which is what a note's `references` are derived from, and
@@ -161,11 +213,20 @@ export const REFERENCE_NOTE_ATTR = "note";
  * than by removing the element, so a stored document is also whatever some
  * client wrote — anything held there that is not a `<did>/<ulid>` names no note
  * and is skipped, because an edge to nowhere must not be drawn.
+ *
+ * A compass slot is one of these: filling one is citing the note it names, so
+ * the line it draws is the line the same note named in a sentence would draw.
  */
 export function citedNotes(content: BlockDocument): OwnedRef[] {
   const cited = new Set<OwnedRef>();
   const walk = (value: unknown): void => {
     if (value === null || typeof value !== "object") return;
+    const slots = compassAt(value);
+    if (slots) {
+      for (const direction of COMPASS_DIRECTIONS) {
+        for (const ref of slots[direction]) cited.add(ref);
+      }
+    }
     for (const [key, held] of Object.entries(value)) {
       if (key === REFERENCE_NOTE_ATTR) {
         const named = OwnedRefSchema.safeParse(held);

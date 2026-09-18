@@ -72,6 +72,15 @@ function vault(): Vault {
           type: "unheardOf",
           attrs: { note: `${FROM}/${CITED}` },
         },
+        {
+          type: "compass",
+          attrs: {
+            north: [`${FROM}/${CITED}`],
+            south: [],
+            east: [],
+            west: [],
+          },
+        },
       ],
     },
     created_at: "2026-01-01T00:00:00.000Z",
@@ -107,7 +116,7 @@ describe("a graph moving into another identity", () => {
   });
 
   it("moves what a section names, and leaves the writing alone", () => {
-    const [prose, unheard] = read.sections[0].content.content as {
+    const [prose, unheard, compass] = read.sections[0].content.content as {
       type: string;
       attrs?: Record<string, unknown>;
       content?: {
@@ -123,6 +132,7 @@ describe("a graph moving into another identity", () => {
       `sloppy:${TO}/${CITED}`,
     );
     expect(unheard.attrs?.note).toBe(`${TO}/${CITED}`);
+    expect(compass.attrs?.north).toEqual([`${TO}/${CITED}`]);
   });
 
   it("leaves a graph belonging to somebody else alone", () => {
