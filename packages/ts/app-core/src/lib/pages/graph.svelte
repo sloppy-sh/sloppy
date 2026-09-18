@@ -33,6 +33,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Files from '@lucide/svelte/icons/files';
 	import FoldVertical from '@lucide/svelte/icons/fold-vertical';
+	import Footprints from '@lucide/svelte/icons/footprints';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Hash from '@lucide/svelte/icons/hash';
 	import HistoryIcon from '@lucide/svelte/icons/history';
@@ -128,8 +129,9 @@
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import PersonSurface from '../components/person-surface.svelte';
+	import ReviewSheet from '../components/review-sheet.svelte';
 	import { api } from '../api.js';
-	import type { KnownFolder } from '../runtime.js';
+	import { runtime, type KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
 	import { saveHere, savesFiles } from '../save-file.js';
@@ -147,6 +149,7 @@
 	import { people } from '../stores/people.svelte.js';
 	import { prefs } from '../stores/prefs.svelte.js';
 	import { publications } from '../stores/publications.svelte.js';
+	import { review } from '../stores/review.svelte.js';
 	import { session } from '../stores/session.svelte.js';
 	import { serverMessage } from '../stores/errors.js';
 	import { tags } from '../stores/tags.svelte.js';
@@ -397,7 +400,43 @@
 		gitSettings.clear();
 		find.clear();
 		deleted.clear();
+		review.clear();
 		closeUndrawn();
+	}
+
+	/** The project's own files, `undefined` where this graph is nobody's project
+	 *  and `null` before the shell has answered. */
+	let projectFiles = $state.raw<Awaited<ReturnType<typeof runtime.project>> | null>(null);
+	let reviewing = $state(false);
+
+	$effect(() => {
+		let asking = true;
+		void runtime.project().then(
+			(found) => {
+				if (asking) projectFiles = found;
+			},
+			() => {
+				if (asking) projectFiles = undefined;
+			}
+		);
+		return () => {
+			asking = false;
+		};
+	});
+
+	/** A question is asked of one graph; another one in front of somebody has not
+	 *  been asked it. */
+	$effect(() => {
+		review.forget(graphs.current);
+	});
+
+	/** What the code has left behind, asked for the graph on screen — DESIGN.md
+	 *  § "What the code left behind". */
+	function askWhatIsLeft(): void {
+		const project = projectFiles;
+		if (!project) return;
+		reviewing = true;
+		void review.ask(graphs.current, visible, project);
 	}
 
 	/** The graphs on the canvas, in the order the reader put them there. */
@@ -1999,6 +2038,7 @@
 					nodes={visible}
 					{collapsed}
 					{selection}
+					lit={foreign || notNow ? undefined : review.lit}
 					fields={foreign || asWas ? undefined : graphs.fields}
 					viewer={session.viewer?.did}
 					remountKey={asWas ? asWas.commit : foreign?.ref}
@@ -2347,6 +2387,12 @@
 									<ListChecks class="size-4 text-muted-foreground" />
 									Choose notes
 								</DropdownMenu.Item>
+								{#if projectFiles}
+									<DropdownMenu.Item class="min-h-11 gap-2" onSelect={askWhatIsLeft}>
+										<Footprints class="size-4 text-muted-foreground" />
+										What the code left behind
+									</DropdownMenu.Item>
+								{/if}
 								{#if graphHistory.keeps}
 									<DropdownMenu.Item
 										class="min-h-11 gap-2"
@@ -2713,6 +2759,8 @@
 {/if}
 
 <PersonSurface bind:did={meeting} />
+
+<ReviewSheet bind:open={reviewing} onOpen={show} />
 
 <ResponsiveModal
 	bind:open={numbering}
