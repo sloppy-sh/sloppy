@@ -124,6 +124,20 @@ describe("the seeded graph", () => {
     }
   });
 
+  it("puts a look on some of the lines and leaves most of them plain", () => {
+    const looked = all.filter((node) => node.look !== undefined);
+
+    expect(looked.length).toBe(plan.looks);
+    expect(looked.length).toBeGreaterThan(50);
+    // Over this the canvas reads as a wall of words rather than as a graph.
+    expect(looked.length / all.length).toBeLessThan(0.2);
+    for (const node of looked) {
+      expect(node.look?.label?.length, node.title).toBeGreaterThan(0);
+    }
+    // A branch has no line above it for a look to draw on.
+    for (const root of plan.roots) expect(root.look).toBeUndefined();
+  });
+
   it("is the same graph on every run", () => {
     const again = planGraph(2400);
     expect(JSON.stringify(again)).toBe(JSON.stringify(plan));
