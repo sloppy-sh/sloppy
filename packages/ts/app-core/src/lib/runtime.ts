@@ -237,6 +237,17 @@ function host(): string {
  * their defaults, and it is idempotent.
  */
 export function initRuntime(rt: Partial<AppRuntime> & Pick<AppRuntime, 'apiHost'>): void {
+	updateRuntime(rt);
+}
+
+/**
+ * Settle a member again while the app is running, for a shell that serves the
+ * graph from one place and then from another. A field passed as `undefined`
+ * becomes absent, which is what puts its documented absence back; a field left
+ * out is untouched. The caller swaps what serves the app, so it calls
+ * {@link resetApi} as well.
+ */
+export function updateRuntime(rt: Partial<AppRuntime>): void {
 	current = { ...current, ...rt };
 	setHost(host());
 }
