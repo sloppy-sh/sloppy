@@ -105,9 +105,6 @@ export function isBlankLook(look: EdgeLook): boolean {
  * taken off, and the whole list absent where none of them says anything.
  * `undefined` in is `undefined` out, so a caller still tells "no looks" from
  * "leave the looks alone" by whether it had a list at all.
- *
- * One function, so a hosted graph and a folder store the same thing for the
- * same act.
  */
 export function looksWritten(
   edges: readonly EdgeLook[] | undefined,
