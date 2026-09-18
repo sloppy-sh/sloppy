@@ -453,6 +453,9 @@ importers:
 
   packages/ts/cli:
     dependencies:
+      '@sloppy/client':
+        specifier: workspace:*
+        version: link:../client
       '@sloppy/local':
         specifier: workspace:*
         version: link:../local

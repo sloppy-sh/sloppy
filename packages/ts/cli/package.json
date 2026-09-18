@@ -30,6 +30,7 @@
     "lint": "biome ci --formatter-enabled=false --assist-enabled=false ."
   },
   "dependencies": {
+    "@sloppy/client": "workspace:*",
     "@sloppy/local": "workspace:*",
     "@sloppy/types": "workspace:*",
     "@sloppy/vault": "workspace:*"
