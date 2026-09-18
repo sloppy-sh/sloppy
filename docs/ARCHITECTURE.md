@@ -686,6 +686,47 @@ is a **separate mode** — a hosted graph and a local one are two graphs, and th
 becomes the other is by exporting it as an archive and importing it, which re-keys its refs
 under the receiving identity (§ "A graph on disk").
 
+#### A graph on this device, in the browser
+
+The native app is not the only place a folder can be a graph. **The hosted web app opens a
+graph kept on the reader's own machine, and nothing about it touches their account.**
+
+**Two doors, and neither of them signs anybody in or out.** "Open a folder on this device"
+uses `showDirectoryPicker`, so a `Files` over a `FileSystemDirectoryHandle` reads and
+writes the folder in place; the browser asks for permission once and the handle is kept for
+as long as the browser lets it, so a reader is not asked again every act. "Open an archive"
+takes a `.sloppy` file, unpacks it into a `MemoryFiles`, and keeps the changes in memory —
+what a reader does with them is "Save a copy", which hands back a new archive. Both doors
+serve the graph through `LocalApi`, the same implementation the native app runs, so every
+page, store and component reaches it through the `api` they already reach a hosted graph
+through, and `runtime.mode()` answers `local` for as long as one is open. `AppRuntime.createApi`
+is where that swap happens, and closing the graph puts the hosted one back in front of the
+reader.
+
+**The web shell stays a shell.** The doors, the `Files` over a directory handle and the
+archive unpacking live in `@sloppy/app-core` (or a browser module beside it), not in
+`apps/sloppy/web` — a route added to a shell is a route in the wrong package.
+
+**Nothing leaves the device.** No byte read from the folder or the archive is sent to the
+API, and a picture in one of these graphs is drawn from the handle or from memory as a blob
+URL rather than through the proxy — there is no remote origin to keep from the viewer,
+because the bytes never left. The door's own copy says that as a consequence, once, and
+nowhere else.
+
+**What a tab cannot do is absent, and Settings says so where a person would look.** There
+is no git in a browser, so the History surface is not there and Settings says the folder's
+history is kept by the desktop app. Publishing, peers and pulling need a server and are
+answered the way the native app's local mode answers them (§ "A graph off the device").
+Signing in and out is not offered while one of these graphs is open, so the identity a
+reader writes as is settled when they open it: the signed-in account's DID where somebody is
+signed in, and otherwise a device identity minted into the browser's own storage — the
+graph's owner block is where a reader is told which of the two they are writing as. Closing
+the graph hands the sign-in control back.
+
+**A browser without the directory picker sees only the archive door.** Feature-detected on
+`showDirectoryPicker`, never sniffed from a user agent, so a browser that gains it gains the
+door on its own.
+
 #### An API that serves identities itself
 
 **What the embedded provider holds, and what it will hold.** It keeps a root seed in an
@@ -1472,6 +1513,9 @@ node:{ created_by: <did>, id: <ulid> }
   title       string
   tags        string[]  normalized, deduplicated, sorted — @sloppy/types' TagsSchema
   links       ref[]     non-genealogical associative links, drawn by hand
+  edges       object[]? the looks it sets on its lines, one per note at the other
+                        end; absent is a note nobody set one on (§ "A look a
+                        person set on a line")
   references  ref[]?    the notes its own blocks cite, derived; absent is none derived
   checked     string?   the commit its author last read its reasoning against, opaque
                         here; absent is a note nobody has confirmed (§ "A project's
@@ -1931,6 +1975,66 @@ The ownership line between Svelte and pixi, and level-of-detail as the perf stra
 in [`DESIGN.md`](../DESIGN.md) § "The canvas" — they are design contracts, not just
 implementation notes.
 
+## A look a person set on a line
+
+**A look is a note's, and it is a look rather than a fact.** `node.edges` is a list of
+`EdgeLook` — `to`, and the three channels `label`, `direction` and `stroke` (`edge.ts` in
+`@sloppy/types`). `to` names the note at the other end. What the look does is change how
+the line ALREADY between the two is drawn — genealogy, run, reference or link, whichever
+one DESIGN.md § Edges says that pair draws — and where the pair draws no line it draws
+nothing. It makes no line: carrying one joins two notes to nothing.
+
+**It moves no mark and changes no distance.** The sector a subtree radiates into and the
+spacing between two marks are the genealogy's, derived from the ref and the parent chain;
+nothing here is an input to either. A look is on the same footing as `appearance`: how a
+thing is drawn, never where.
+
+**Absent means the design's own.** An absent `edges` is a note nobody has set a look on,
+and an empty list is the same note — `looksWritten` is what collapses the two, so a
+person who cleared every channel leaves the note carrying nothing rather than carrying an
+empty look. Inside a look, an absent channel is the default for that channel alone: no
+arrowhead, the break the line already has, no words on it. The three channels are enums
+(`EDGE_DIRECTIONS`, `EDGE_STROKES`) rather than open tokens, so a value this build has
+never heard of is refused on the way in rather than stored and ignored.
+
+**One note stores it, and a pair resolves off both ends.** The look is written on the
+note the person opened the sheet from — an owned note's look is the owner's, and a
+contributor's change to it is an offer, the same rule every other field is held to
+(§ "Whose writing a note carries"). The other note may carry one for the same pair, which
+is what happens when two people each set one. `lookBetween(a, b)` is the whole answer:
+the one end that has a look, or — where both do — the note with the later `updated_at`,
+with the smaller ref settling a tie so two peers reading one pair read one look. The
+answer is the winning note's own entry, and its `to` is what says which way round
+`direction` points. **The app writes only one**: a person editing a line writes their own
+note and never somebody else's.
+
+**At most one look per `to`, and a second one costs that look alone.** Two entries naming
+one note would be a line drawn two ways. A WRITER is refused: `looksAreOnePerTarget` on
+every request, so a person who said two things about one line is told rather than having
+one of them quietly dropped. A READER keeps the first: `looksRead`, on every node row
+coming back, on a note read out of the vault, and on the looks a canvas is handed, because
+the rows a reader meets include a peer's and a hand-edited file's, and refusing one would
+cost a whole page of somebody else's notes over a word written on a line. Both are free
+predicates rather than a `.refine()`, because a refinement on `NodeSchema` would take
+`.omit()` and `.partial()` away from every request built off it.
+
+**It travels, bounded the way `links` is.** The vault writes `edges` in a note's front
+matter and an archive carries it (§ "A graph on disk"); `NodeView`, a published snapshot
+and a pulled copy all carry it; an offer may carry it, and an offer that names no look
+leaves the note's looks alone — a list with nothing in it says no more than no list
+does, which is the one thing an offer cannot say that a write can. The bound on a published node is `links`': every
+ref on `PublishedNodeSchema` names a note the caller may read, so a look whose `to` the
+author has not published is dropped from the snapshot rather than named — `looksReaching`
+is that filter. An archive carries the looks both ways: an import writes back the `edges`
+a note's file holds, the way it writes back its links.
+
+**The renderer is handed looks, never rows.** `GraphSurfaceProps.edgeLooks` in
+`@sloppy/graph` is one resolved look per pair, `from` the note it is stored on and `to`
+the other end; the host resolves each through `lookBetween` because which end wins is a
+fact about two rows and that package reaches no store. `onEdge` is the answer to a tap
+that landed on a line rather than on a mark. DESIGN.md § Edges — "A look a person set" —
+is what each channel draws as.
+
 ## Blocks and ink
 
 **A block is a section, and it holds a whole document.** AI.md § "A Block Is a Section"
@@ -2169,7 +2273,8 @@ strokes are the record and the SVG is what a viewer that has never heard of Slop
 
 **One note is one file, and its sections are marked in the body.** The front matter is the
 note as the protocol holds it: `ref`, `parent`, `address`, `aliases`, `owner`, `authors`,
-`contributors`, `tags`, `links`, `title`, `created`, `updated`, `checked`, `appearance`.
+`contributors`, `tags`, `links`, `edges`, `title`, `created`, `updated`, `checked`,
+`appearance`.
 Absent `parent`
 is a branch or an independent note; absent `address` is a note with none; absent `aliases`,
 `tags`, `links` or `contributors` is none of them; absent `owner` is an open note; absent
@@ -2179,14 +2284,21 @@ only its own author has written into and a note written before anybody else coul
 one are the same bytes, which is what keeps the round trip lossless (§ "Whose writing a note
 carries"). `appearance` is a block of its own — the channels the author set on the mark, each
 on its own line — and absent is a note nobody styled, which is not itself a look: a
-channel that says nothing is not written down, exactly as `isUnstyled` reads one. The
+channel that says nothing is not written down, exactly as `isUnstyled` reads one.
+`edges` is a list of blocks, one entry per look the note sets on a line, its fields
+written `to`, `label`, `direction`, `stroke` and an empty one left out; absent is a note
+nobody set a look on (§ "A look a person set on a line"). An item under a dash is kept as
+the text it was typed as AND, where it opens a `name: value`, as the fields under it — so a
+field is read as a list or as looks by whoever reads it, one item at a time. A colon a hand
+typed into a tag costs neither that tag nor the tags beside it, and an item a hand left the
+`to:` off costs that look alone. The
 body is the note's stack of sections, each opened by `<!-- block <ulid> -->` — so a section
 keeps its identity across an export and an import, and a person who moves one in the file
 has moved a section rather than made two.
 
 **An offered change is a file in the same shape, in `amendments/`.** Its front matter is
-`amends` — the note it is offered on — `by`, `at`, `message`, `title`, `tags` and
-`appearance`, and its body is the sections it proposes under the note's own block ulids, read
+`amends` — the note it is offered on — `by`, `at`, `message`, `title`, `tags`, `edges`
+and `appearance`, and its body is the sections it proposes under the note's own block ulids, read
 by the same reader a note's are. Its own ulid is the file's name rather than a field: an offer is
 read inside the graph that holds it, so the DID half of its reference is that graph's owner
 and nothing in the file repeats it. It is committed like any note, so it moves through the

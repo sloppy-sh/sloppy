@@ -1,6 +1,13 @@
 import type { NodeView, OwnedRef, Tag } from "@sloppy/types";
 import { describe, expect, it } from "vitest";
-import { drawnLit, drawnNodes, drawnReading } from "./contract.js";
+import {
+  drawnLit,
+  drawnNodes,
+  drawnReading,
+  edgeLookKey,
+  edgeLooksByPair,
+  type GraphEdgeLook,
+} from "./contract.js";
 
 const DID = "did:syr:z6MkwSiAvviKsS8dvXsScr4ipdeZwusLQY92cWWBisnvpJLc";
 
@@ -206,5 +213,47 @@ describe("drawnLit", () => {
     expect(drawnLit(every, new Set([root.ref]), new Set([away.ref]))).toEqual(
       new Set([away.ref]),
     );
+  });
+});
+
+describe("the looks a canvas was handed", () => {
+  const cited: GraphEdgeLook = {
+    from: child.ref,
+    to: root.ref,
+    label: "answers",
+  };
+
+  it("finds a pair's look whichever end it is asked from", () => {
+    const byPair = edgeLooksByPair([cited]);
+    expect(byPair.get(edgeLookKey(child.ref, root.ref))).toBe(cited);
+    expect(byPair.get(edgeLookKey(root.ref, child.ref))).toBe(cited);
+  });
+
+  it("keeps each pair apart", () => {
+    expect(edgeLookKey(root.ref, child.ref)).not.toBe(
+      edgeLookKey(root.ref, sibling.ref),
+    );
+    const byPair = edgeLooksByPair([
+      cited,
+      { from: root.ref, to: sibling.ref, stroke: "dotted" },
+    ]);
+    expect(byPair.size).toBe(2);
+    expect(byPair.get(edgeLookKey(root.ref, sibling.ref))?.stroke).toBe(
+      "dotted",
+    );
+  });
+
+  it("draws the first of two on one pair, the look a note answers with", () => {
+    const byPair = edgeLooksByPair([
+      cited,
+      { from: root.ref, to: child.ref, label: "and again" },
+    ]);
+    expect(byPair.size).toBe(1);
+    expect(byPair.get(edgeLookKey(child.ref, root.ref))).toBe(cited);
+  });
+
+  it("is empty where the host handed none", () => {
+    expect(edgeLooksByPair(undefined).size).toBe(0);
+    expect(edgeLooksByPair([]).size).toBe(0);
   });
 });

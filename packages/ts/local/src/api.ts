@@ -144,7 +144,12 @@ import {
   readHeldProfile,
   readIdentities,
 } from "./identity.js";
-import { lookWritten, NoteWriter, offerInstead } from "./notes.js";
+import {
+  edgeLooksWritten,
+  lookWritten,
+  NoteWriter,
+  offerInstead,
+} from "./notes.js";
 import { absent, checked, contested, refuse, sectionGone } from "./refusal.js";
 import { recent, search } from "./search.js";
 import { type KnownVault, readVaults, writeVaults } from "./vaults.js";
@@ -678,6 +683,10 @@ export class LocalApi implements SloppyApi {
         request.appearance === undefined
           ? undefined
           : lookWritten(request.appearance);
+      const lines =
+        request.edges === undefined
+          ? undefined
+          : edgeLooksWritten(request.edges);
       const standing = graph.offerBy(request.note, writer);
       const offered: StoredAmendment = {
         ulid: standing?.ulid ?? ulid(),
@@ -687,6 +696,7 @@ export class LocalApi implements SloppyApi {
         ...(request.message === undefined ? {} : { message: request.message }),
         title: request.title,
         tags: [...request.tags],
+        ...(lines === undefined ? {} : { edges: lines }),
         ...(look === undefined ? {} : { appearance: look }),
         sections: request.blocks.map((block) => ({
           ulid: offeredSection(graph, note, localOf(block.ref)),
@@ -723,6 +733,7 @@ export class LocalApi implements SloppyApi {
         ...note,
         title: offer.title,
         tags: [...offer.tags],
+        ...(offer.edges === undefined ? {} : { edges: [...offer.edges] }),
         ...(offer.appearance === undefined
           ? {}
           : { appearance: offer.appearance }),
@@ -2025,6 +2036,7 @@ function alike(a: VaultNote, b: VaultNote): boolean {
     JSON.stringify([
       a.tags,
       a.links,
+      a.edges ?? null,
       a.aliases,
       a.appearance ?? null,
       whoseWriting(a),
@@ -2032,6 +2044,7 @@ function alike(a: VaultNote, b: VaultNote): boolean {
     JSON.stringify([
       b.tags,
       b.links,
+      b.edges ?? null,
       b.aliases,
       b.appearance ?? null,
       whoseWriting(b),

@@ -2,7 +2,10 @@ import {
   authorsOf,
   type BlockDocument,
   type BlockView,
+  type EdgeLook,
+  EdgeLookSchema,
   isUnstyled,
+  looksWritten,
   MARK_SCALE_MAX,
   MARK_SCALE_MIN,
   type NodeAppearance,
@@ -11,6 +14,7 @@ import {
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { documents } from "./documents.test-support.js";
+import { frontEntries, frontList, splitNoteFile } from "./front.js";
 import {
   decodeText,
   inkPath,
@@ -476,5 +480,245 @@ describe("a note as a file", () => {
     expect(() => vaultToNote({ markdown: "---\ntitle: x\n---\n" })).toThrow(
       VaultFormatError,
     );
+  });
+});
+
+/** Words a person might write on a line, the ones that read back as something
+ *  other than themselves included. */
+const labels = fc.oneof(
+  fc.constantFrom(
+    "answers",
+    "17",
+    "1e5",
+    " x ",
+    '"q"',
+    "a: b",
+    "a #b",
+    "- x",
+    "to: y",
+    "over\ntwo lines",
+    "",
+  ),
+  fc.string({ maxLength: 12 }),
+);
+
+const TARGETS = [
+  `${OWNER}/01J0000000000000000000000E`,
+  `${OWNER}/01J0000000000000000000000F`,
+  `${BOB}/01J0000000000000000000000G`,
+];
+
+const edges: fc.Arbitrary<EdgeLook[]> = fc
+  .uniqueArray(
+    fc.record(
+      {
+        to: fc.constantFrom(...TARGETS),
+        label: labels,
+        direction: fc.constantFrom("to", "from", "both"),
+        stroke: fc.constantFrom("solid", "dashed", "dotted"),
+      },
+      { requiredKeys: ["to"] },
+    ),
+    { selector: (look) => look.to, maxLength: TARGETS.length },
+  )
+  .map((looks) => looks.map((look) => EdgeLookSchema.parse(look)));
+
+/** Looks a file holds, with one of them picked out for a hand to get wrong. */
+const looksWithOneWrong = fc
+  .tuple(edges, fc.nat())
+  .map(([looks, pick]) => ({ looks: looksWritten(looks) ?? [], pick }))
+  .filter(({ looks }) => looks.length >= 2)
+  .map(({ looks, pick }) => ({ looks, wrong: pick % looks.length }));
+
+/** The file the note writes, with the dash line of one look typed as the ref
+ *  alone — the lines under it left where a hand would have left them. */
+function edgesWithOneWrong(looks: EdgeLook[], wrong: number): string {
+  const { files } = noteToVault(note({ edges: looks }), [], []);
+  return decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+    `  - to: ${looks[wrong].to}`,
+    `  - ${looks[wrong].to}`,
+  );
+}
+
+describe("a list a hand wrote an item with a colon into", () => {
+  it("reads back as the items it was typed as, not as nothing", () => {
+    const { files } = noteToVault(note({ tags: ["seed"] }), [], []);
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      "  - seed",
+      "  - todo: later\n  - seed",
+    );
+    expect(vaultToNote({ markdown: text }).tags).toEqual([
+      "todo: later",
+      "seed",
+    ]);
+  });
+
+  it("reads each item as the text it was typed as, spelling and all", () => {
+    const { files } = noteToVault(note({ tags: ["seed"] }), [], []);
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      "  - seed",
+      "  - version: 1.0\n  - budget: 07\n  - seed",
+    );
+    expect(vaultToNote({ markdown: text }).tags).toEqual([
+      "version: 1.0",
+      "budget: 07",
+      "seed",
+    ]);
+  });
+});
+
+describe("the looks a note sets on its lines", () => {
+  it("writes each one as an entry, its fields in one order", () => {
+    const { files } = noteToVault(
+      note({
+        edges: [
+          {
+            to: TARGETS[0],
+            label: "grew out of",
+            direction: "to",
+            stroke: "dotted",
+          },
+          { to: TARGETS[1], stroke: "solid" },
+        ],
+      }),
+      [],
+      [],
+    );
+    expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).toContain(
+      [
+        "edges:",
+        `  - to: ${TARGETS[0]}`,
+        "    label: grew out of",
+        "    direction: to",
+        "    stroke: dotted",
+        `  - to: ${TARGETS[1]}`,
+        "    stroke: solid",
+      ].join("\n"),
+    );
+  });
+
+  it("writes none for a note nobody set one on, and none for a look that says nothing", () => {
+    for (const held of [undefined, [], [{ to: TARGETS[0] }]] as (
+      | EdgeLook[]
+      | undefined
+    )[]) {
+      const { files } = noteToVault(note({ edges: held }), [], []);
+      expect(decodeText(files.get(notePath(NOTE)) as Uint8Array)).not.toContain(
+        "edges",
+      );
+      expect(read(files).edges).toBeUndefined();
+    }
+  });
+
+  it("carries every look back, whatever a person wrote on the line", () => {
+    fc.assert(
+      fc.property(edges, (looks) => {
+        const { files } = noteToVault(note({ edges: looks }), [], []);
+        expect(read(files).edges).toEqual(looksWritten(looks));
+      }),
+      { numRuns: 5000 },
+    );
+  });
+
+  it("leaves the rest of the note alone beside them", () => {
+    const { files } = noteToVault(
+      note({ edges: [{ to: TARGETS[0], label: "cites" }] }),
+      ["1a"],
+      [block(BLOCK, paragraph("First"))],
+    );
+    const held = read(files);
+    expect(held.links).toEqual([`${OWNER}/${PARENT}`]);
+    expect(held.aliases).toEqual(["1a"]);
+    expect(held.title).toBe("What I meant: a note");
+    expect(held.sections).toEqual([
+      { ulid: BLOCK, content: paragraph("First") },
+    ]);
+  });
+
+  it("keeps the first where a hand wrote two on one line", () => {
+    const { files } = noteToVault(
+      note({ edges: [{ to: TARGETS[0], label: "cites" }] }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      "    label: cites",
+      `    label: cites\n  - to: ${TARGETS[0]}\n    label: and again`,
+    );
+    expect(vaultToNote({ markdown: text }).edges).toEqual([
+      { to: TARGETS[0], label: "cites" },
+    ]);
+  });
+
+  it("costs the look and not the looks beside it where a hand got one wrong", () => {
+    const { files } = noteToVault(
+      note({
+        edges: [
+          { to: TARGETS[0], label: "cites" },
+          { to: TARGETS[1], stroke: "solid" },
+        ],
+      }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      `  - to: ${TARGETS[1]}`,
+      `  - ${TARGETS[1]}`,
+    );
+    expect(vaultToNote({ markdown: text }).edges).toEqual([
+      { to: TARGETS[0], label: "cites" },
+    ]);
+  });
+
+  it("keeps the looks after one a hand got wrong, the lines under it and all", () => {
+    const text = edgesWithOneWrong(
+      [
+        { to: TARGETS[0], label: "cites" },
+        { to: TARGETS[1], label: "answers", stroke: "dashed" },
+        { to: TARGETS[2], direction: "both" },
+      ],
+      1,
+    );
+    expect(vaultToNote({ markdown: text }).edges).toEqual([
+      { to: TARGETS[0], label: "cites" },
+      { to: TARGETS[2], direction: "both" },
+    ]);
+    const { front } = splitNoteFile(text);
+    expect(frontList(front, "edges")).toEqual([
+      `to: ${TARGETS[0]}`,
+      TARGETS[1],
+      `to: ${TARGETS[2]}`,
+    ]);
+    expect(frontEntries(front, "edges")).toEqual([
+      { to: TARGETS[0], label: "cites" },
+      { to: TARGETS[2], direction: "both" },
+    ]);
+  });
+
+  it("costs whichever one a hand got wrong and none of the rest", () => {
+    fc.assert(
+      fc.property(looksWithOneWrong, ({ looks, wrong }) => {
+        const kept = looks.filter((_, at) => at !== wrong);
+        expect(
+          vaultToNote({ markdown: edgesWithOneWrong(looks, wrong) }).edges,
+        ).toEqual(kept.length === 0 ? undefined : kept);
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
+  it("costs the look and not the note where a hand got one wrong", () => {
+    const { files } = noteToVault(
+      note({ edges: [{ to: TARGETS[0], label: "cites" }] }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      `  - to: ${TARGETS[0]}`,
+      "  - to: 1a",
+    );
+    const held = vaultToNote({ markdown: text });
+    expect(held.edges).toBeUndefined();
+    expect(held.title).toBe("What I meant: a note");
   });
 });

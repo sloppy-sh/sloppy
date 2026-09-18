@@ -349,6 +349,7 @@ export function amending(
 			title: asked.title ?? '',
 			tags: [...(asked.tags ?? [])],
 			blocks: asked.blocks.map((one) => AmendmentSectionSchema.parse(one)),
+			...(asked.edges === undefined ? {} : { edges: [...asked.edges] }),
 			...(asked.message === undefined ? {} : { message: asked.message })
 		});
 		standing.push(written);
