@@ -161,12 +161,12 @@ class GraphHereStore {
 	private async serveFolder(handle: FolderHandle): Promise<void> {
 		const folder = new DirectoryFiles(handle);
 		await folder.warm();
-		this.#folder?.release();
-		this.#folder = folder;
 		await this.serve({ how: 'folder', name: handle.name }, folder);
 	}
 
 	private async serve(opened: Pick<OpenedHere, 'how' | 'name'>, files: Files): Promise<void> {
+		if (this.#folder && this.#folder !== files) this.#folder.release();
+		this.#folder = files instanceof DirectoryFiles ? files : undefined;
 		// Who is signed in here settles before the swap: after it, asking reaches
 		// the graph on this device rather than the Sloppy that knows.
 		const signedIn = (await session.load().catch(() => null))?.did;
