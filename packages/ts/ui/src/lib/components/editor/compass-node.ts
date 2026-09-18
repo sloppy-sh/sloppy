@@ -170,6 +170,9 @@ export function CompassNode(
 				field.type = 'text';
 				field.className = 'sloppy-compass-field';
 				field.autocomplete = 'off';
+				field.autocapitalize = 'off';
+				field.spellcheck = false;
+				field.setAttribute('autocorrect', 'off');
 				field.setAttribute('role', 'combobox');
 				field.setAttribute('aria-expanded', 'false');
 				field.setAttribute('aria-autocomplete', 'list');
