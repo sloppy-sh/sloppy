@@ -6,8 +6,10 @@
 	import { Button } from '@sloppy/ui/button';
 	import { Input } from '@sloppy/ui/input';
 	import CompassDifference from './compass-difference.svelte';
+	import LineDifference from './line-difference.svelte';
 	import {
 		compassApart,
+		looksApart,
 		offerDifference,
 		saysAnything,
 		saysNothing,
@@ -47,6 +49,7 @@
 	);
 	const tags = $derived(tagsApart(now, offered));
 	const compass = $derived(compassApart(now, offered));
+	const lines = $derived(looksApart(now, offered));
 </script>
 
 <ResponsiveModal
@@ -57,11 +60,13 @@
 	<div class="space-y-4 px-2 pt-4 pb-2">
 		{#if saysAnything(apart)}
 			<ChangedNotes notes={[apart]} />
-		{:else if saysNothing(apart, compass, tags)}
+		{:else if saysNothing(apart, compass, tags, lines)}
 			<p class="px-1 py-2 text-sm text-muted-foreground">You have not changed anything yet.</p>
 		{/if}
 
 		<CompassDifference apart={compass} />
+
+		<LineDifference apart={lines} />
 
 		{#if tags.added.length > 0 || tags.removed.length > 0}
 			<p class="px-1 text-xs text-muted-foreground">
