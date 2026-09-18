@@ -59,6 +59,11 @@ it lands in a shape they can read.
 It is a thinking tool that happens to be social, not a social network that happens to
 hold notes.
 
+A person can write on a line between two notes — a word for what it is, an arrow for which
+way it runs, a heavier or quieter stroke — without any of it moving a mark or changing what
+sprang from what. And a graph kept in a folder on somebody's own machine opens in the web
+app as it stands, without any of it being uploaded.
+
 ## Brand Personality
 
 Quiet, exacting, and unbothered. Ink on good paper. The name is the promise: **the input
