@@ -46,8 +46,8 @@ export const AmendmentSchema = OwnedEntitySchema.extend({
   tags: TagsSchema.default([]),
   /** Absent is an offer that leaves the note's look alone. */
   appearance: NodeAppearanceSchema.optional(),
-  /** The looks it proposes on the note's lines, whole. Absent is an offer that
-   *  leaves the note's looks alone; an empty list takes them all off. */
+  /** The looks it proposes on the note's lines, whole. An offer that names none
+   *  of them leaves the note's looks alone, list or no list. */
   edges: z.array(EdgeLookSchema).optional(),
   /** The sections it proposes, in the order they read. Replaced whole with the
    *  offer: there is no writing of an offer anywhere but here. */
@@ -75,7 +75,8 @@ export const ProposeAmendmentRequestSchema = z.strictObject(
     title: z.string().max(512).default(""),
     tags: TagsSchema.default([]),
     appearance: WrittenAppearanceSchema.optional(),
-    /** Absent leaves the note's looks alone; present replaces them whole. */
+    /** Naming none of them leaves the note's looks alone; naming any replaces
+     *  them whole. */
     edges: z.array(EdgeLookSchema).optional(),
     blocks: z.array(AmendmentSectionSchema),
   },

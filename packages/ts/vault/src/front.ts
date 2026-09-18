@@ -18,7 +18,19 @@ export type FrontBlock = ReadonlyMap<string, FrontLeaf>;
  *  entry's first field on the `-` line. The entries keep the order given. */
 export type FrontEntries = readonly FrontBlock[];
 
-export type FrontValue = string | string[] | FrontBlock | FrontEntries;
+/** One item of a list, held as it was typed and — where it opens `name: value`
+ *  — as the fields under its dash. Both readings stand until a caller takes
+ *  one, so what one item is read as costs the items beside it nothing. */
+export interface FrontItem {
+  plain: string;
+  fields?: FrontBlock;
+}
+
+/** What a field is written as. */
+export type FrontWritten = string | string[] | FrontBlock | FrontEntries;
+
+/** What a field reads back as. */
+export type FrontValue = string | FrontBlock | readonly FrontItem[];
 
 /** Text that reads back as a number rather than as itself. */
 const NUMERIC = /^-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$/;
@@ -54,18 +66,18 @@ function readLeaf(value: string): string | number {
   return NUMERIC.test(value) ? Number(value) : readScalar(value);
 }
 
-function isBlock(value: FrontValue): value is FrontBlock {
+function isBlock(value: FrontValue | FrontWritten): value is FrontBlock {
   return value instanceof Map;
 }
 
-function isEntries(value: FrontValue): value is FrontEntries {
+function isEntries(value: FrontWritten): value is FrontEntries {
   return Array.isArray(value) && value.every(isBlock);
 }
 
 /** The fenced block, in the order the fields are given. A field with nothing in
  *  it is left out, which is what its absence means when it is read back. */
 export function writeFront(
-  fields: readonly (readonly [string, FrontValue | undefined])[],
+  fields: readonly (readonly [string, FrontWritten | undefined])[],
 ): string {
   const lines = [FENCE];
   for (const [key, value] of fields) {
@@ -143,25 +155,21 @@ export function splitNoteFile(text: string): NoteFile {
   };
 }
 
-/** A field with nothing after its colon opens a list, a block or a list of
- *  blocks; which one it is, is what the lines under it say. Dashes make it a
- *  list of blocks only where every one of them carries a `name: value`, so one
- *  plain item is a plain list and a hand that typed a colon into one loses
- *  neither it nor the items beside it. */
+/** A field with nothing after its colon opens either a list or a block; which
+ *  one it is, is what the first line under it says. */
 function readFront(lines: readonly string[]): Map<string, FrontValue> {
   const front = new Map<string, FrontValue>();
   let opened: string | null = null;
   let block: Map<string, FrontLeaf> | null = null;
   let inner: string[] | null = null;
-  let items: DashItem[] | null = null;
+  let items: FrontItem[] | null = null;
+  let fields: Map<string, FrontLeaf> | null = null;
   const close = (): void => {
-    if (opened !== null && items !== null && items.length > 0) {
-      front.set(opened, dashed(items));
-    }
     opened = null;
     block = null;
     inner = null;
     items = null;
+    fields = null;
   };
   for (const line of lines) {
     if (opened !== null) {
@@ -171,15 +179,22 @@ function readFront(lines: readonly string[]): Map<string, FrontValue> {
         continue;
       }
       const within = /^ {4}([A-Za-z0-9_]+): (.*)$/.exec(line);
-      const under = items?.[items.length - 1]?.fields;
-      if (within && under) {
-        under.set(within[1], readLeaf(within[2]));
+      if (within && fields) {
+        fields.set(within[1], readLeaf(within[2]));
         continue;
       }
       const item = /^ {2}- (.*)$/.exec(line);
       if (item && !block) {
-        if (!items) items = [];
-        items.push(dashItem(item[1]));
+        if (!items) {
+          items = [];
+          front.set(opened, items);
+        }
+        const opens = /^([A-Za-z0-9_]+): (.*)$/.exec(item[1]);
+        fields = opens ? new Map([[opens[1], readLeaf(opens[2])]]) : null;
+        items.push({
+          plain: readScalar(item[1]),
+          ...(fields ? { fields } : {}),
+        });
         continue;
       }
       const field = /^ {2}([A-Za-z0-9_]+):(?: (.*))?$/.exec(line);
@@ -209,30 +224,11 @@ function readFront(lines: readonly string[]): Map<string, FrontValue> {
     }
     front.set(field[1], readScalar(field[2]));
   }
-  close();
   return front;
 }
 
-/** One dashed item, read both ways until the field it is in is finished: as the
- *  item somebody typed, and — where it opens `name: value` — as an entry. */
-interface DashItem {
-  plain: string;
-  fields: Map<string, FrontLeaf> | null;
-}
-
-function dashItem(text: string): DashItem {
-  const opens = /^([A-Za-z0-9_]+): (.*)$/.exec(text);
-  return {
-    plain: readScalar(text),
-    fields: opens ? new Map([[opens[1], readLeaf(opens[2])]]) : null,
-  };
-}
-
-function dashed(items: readonly DashItem[]): FrontValue {
-  const entries = items.flatMap((item) => (item.fields ? [item.fields] : []));
-  return entries.length === items.length
-    ? entries
-    : items.map((item) => item.plain);
+function itemsOf(held: FrontValue | undefined): readonly FrontItem[] {
+  return typeof held === "object" && !isBlock(held) ? held : [];
 }
 
 export function frontString(
@@ -247,32 +243,18 @@ export function frontList(
   front: ReadonlyMap<string, FrontValue>,
   key: string,
 ): string[] {
-  const held = front.get(key);
-  if (!Array.isArray(held)) return [];
-  return held.flatMap((one) =>
-    typeof one === "string" ? [one] : itemOfEntry(one),
-  );
+  return itemsOf(front.get(key)).map((item) => item.plain);
 }
 
-/** A list item a hand wrote as `- name: value` is read as an entry; to a field
- *  that holds plain items it is the item it was typed as. More than one field
- *  under the dash is no item at all. */
-function itemOfEntry(entry: FrontBlock): string[] {
-  if (entry.size !== 1) return [];
-  const [name, held] = [...entry][0];
-  return Array.isArray(held) ? [] : [`${name}: ${String(held)}`];
-}
-
-/** The entries under a list of blocks, for a caller that parses each one into
- *  something. */
+/** The `name: value` groups under a list, for a caller that parses each one
+ *  into something. An item that opens no field is not one of them. */
 export function frontEntries(
   front: ReadonlyMap<string, FrontValue>,
   key: string,
 ): Record<string, FrontLeaf>[] {
-  const held = front.get(key);
-  return held !== undefined && isEntries(held) && held.length > 0
-    ? held.map((entry) => Object.fromEntries(entry))
-    : [];
+  return itemsOf(front.get(key)).flatMap((item) =>
+    item.fields ? [Object.fromEntries(item.fields)] : [],
+  );
 }
 
 /** The fields under a block, for a caller that parses them into something. */

@@ -717,9 +717,11 @@ nowhere else.
 is no git in a browser, so the History surface is not there and Settings says the folder's
 history is kept by the desktop app. Publishing, peers and pulling need a server and are
 answered the way the native app's local mode answers them (§ "A graph off the device").
-Signing in is untouched: the writing identity is the signed-in account's DID where somebody
-is signed in, and otherwise a device identity minted into the browser's own storage — the
-graph's owner block is where a reader is told which of the two they are writing as.
+Signing in and out is not offered while one of these graphs is open, so the identity a
+reader writes as is settled when they open it: the signed-in account's DID where somebody is
+signed in, and otherwise a device identity minted into the browser's own storage — the
+graph's owner block is where a reader is told which of the two they are writing as. Closing
+the graph hands the sign-in control back.
 
 **A browser without the directory picker sees only the archive door.** Feature-detected on
 `showDirectoryPicker`, never sniffed from a user agent, so a browser that gains it gains the
@@ -2018,8 +2020,9 @@ predicates rather than a `.refine()`, because a refinement on `NodeSchema` would
 
 **It travels, bounded the way `links` is.** The vault writes `edges` in a note's front
 matter and an archive carries it (§ "A graph on disk"); `NodeView`, a published snapshot
-and a pulled copy all carry it; an offer may carry it, and an offer with no `edges` is
-one that leaves the note's looks alone. The bound on a published node is `links`': every
+and a pulled copy all carry it; an offer may carry it, and an offer that names no look
+leaves the note's looks alone — a list with nothing in it says no more than no list
+does, which is the one thing an offer cannot say that a write can. The bound on a published node is `links`': every
 ref on `PublishedNodeSchema` names a note the caller may read, so a look whose `to` the
 author has not published is dropped from the snapshot rather than named — `looksReaching`
 is that filter. An archive carries the looks both ways: an import writes back the `edges`
@@ -2284,10 +2287,11 @@ on its own line — and absent is a note nobody styled, which is not itself a lo
 channel that says nothing is not written down, exactly as `isUnstyled` reads one.
 `edges` is a list of blocks, one entry per look the note sets on a line, its fields
 written `to`, `label`, `direction`, `stroke` and an empty one left out; absent is a note
-nobody set a look on (§ "A look a person set on a line"). A dashed field is a list of
-blocks only where EVERY item under it carries a `name: value`, so one plain item makes the
-whole field the plain list it looks like — a colon a hand typed into a tag costs neither
-that tag nor the ones beside it. The
+nobody set a look on (§ "A look a person set on a line"). An item under a dash is kept as
+the text it was typed as AND, where it opens a `name: value`, as the fields under it — so a
+field is read as a list or as looks by whoever reads it, one item at a time. A colon a hand
+typed into a tag costs neither that tag nor the tags beside it, and an item a hand left the
+`to:` off costs that look alone. The
 body is the note's stack of sections, each opened by `<!-- block <ulid> -->` — so a section
 keeps its identity across an export and an import, and a person who moves one in the file
 has moved a section rather than made two.

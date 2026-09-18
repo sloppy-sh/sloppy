@@ -26,16 +26,9 @@ export interface GraphField {
 /**
  * A look a person set on the line between two notes, oriented: `from` is the
  * note the look is stored on and `to` the note at the other end, which is what
- * `direction` is read against. The canvas draws it on whatever line it already
- * draws between the pair, and on nothing at all where it draws none — a look
- * makes no line, moves no mark and changes no distance.
- *
- * An absent channel is DESIGN.md § Edges' own value for that channel: no
- * arrowhead, the break the line already has, no words on it.
- *
- * The host resolves one per pair through `lookBetween` in `@sloppy/types`,
- * because which end's look wins is a fact about two rows and this package reads
- * no store.
+ * `direction` is read against. The host hands one per pair, resolved through
+ * `lookBetween` in `@sloppy/types`. An absent channel is DESIGN.md § Edges' own
+ * value for that channel.
  */
 export interface GraphEdgeLook {
   from: OwnedRef;
@@ -288,8 +281,8 @@ export interface GraphSurfaceProps {
    * pair. Absent, and empty, are a canvas where every line draws as DESIGN.md
    * § Edges alone says it should.
    *
-   * A look naming a pair this canvas draws no line between draws nothing: the
-   * look is a look and never a line.
+   * A look naming a pair this canvas draws no line between draws nothing: a
+   * look makes no line, moves no mark and changes no distance.
    */
   edgeLooks?: readonly GraphEdgeLook[];
   /**

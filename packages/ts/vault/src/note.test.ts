@@ -534,6 +534,19 @@ describe("a list a hand wrote an item with a colon into", () => {
       "seed",
     ]);
   });
+
+  it("reads each item as the text it was typed as, spelling and all", () => {
+    const { files } = noteToVault(note({ tags: ["seed"] }), [], []);
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      "  - seed",
+      "  - version: 1.0\n  - budget: 07\n  - seed",
+    );
+    expect(vaultToNote({ markdown: text }).tags).toEqual([
+      "version: 1.0",
+      "budget: 07",
+      "seed",
+    ]);
+  });
 });
 
 describe("the looks a note sets on its lines", () => {
@@ -613,6 +626,26 @@ describe("the looks a note sets on its lines", () => {
     const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
       "    label: cites",
       `    label: cites\n  - to: ${TARGETS[0]}\n    label: and again`,
+    );
+    expect(vaultToNote({ markdown: text }).edges).toEqual([
+      { to: TARGETS[0], label: "cites" },
+    ]);
+  });
+
+  it("costs the look and not the looks beside it where a hand got one wrong", () => {
+    const { files } = noteToVault(
+      note({
+        edges: [
+          { to: TARGETS[0], label: "cites" },
+          { to: TARGETS[1], stroke: "solid" },
+        ],
+      }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      `  - to: ${TARGETS[1]}`,
+      `  - ${TARGETS[1]}`,
     );
     expect(vaultToNote({ markdown: text }).edges).toEqual([
       { to: TARGETS[0], label: "cites" },
