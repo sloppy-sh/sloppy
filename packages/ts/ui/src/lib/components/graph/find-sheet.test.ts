@@ -4,6 +4,7 @@ import { flushSync, mount, unmount, type ComponentProps } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stubMediaQuery, stubResizeObserver } from '../dom.test-support.js';
 import FindSheet, { type FoundNote } from './find-sheet.svelte';
+import FindSheetInPage from './find-sheet.test-support.svelte';
 
 const ORIGINS = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAV' as OwnedRef;
 const CELLS = 'did:syr:z6MkAda/01ARZ3NDEKTSV4RRFFQ69G5FAW' as OwnedRef;
@@ -82,6 +83,37 @@ describe('the find sheet', () => {
 
 		expect(document.activeElement).toBe(field());
 		expect(field().getAttribute('aria-label')).toContain('Find a note');
+	});
+
+	// A word is typed faster than whatever is looking through the notes answers
+	// for it, and every character of it belongs to the person who typed it.
+	it('keeps every character typed the instant it opens', async () => {
+		if (mounted) unmount(mounted, { outro: false });
+		document.body.innerHTML = '';
+		target = document.createElement('div');
+		document.body.appendChild(target);
+		const said: string[] = [];
+		mounted = mount(FindSheetInPage, {
+			target,
+			props: { onsaid: (words: string) => said.push(words), answersAfter: 2 }
+		});
+		flushSync();
+
+		const press = (letter: string) => {
+			field().value += letter;
+			field().dispatchEvent(new Event('input', { bubbles: true }));
+			flushSync();
+		};
+		for (const letter of '1a3') press(letter);
+		// The caller answers here, carrying the word as it was at the first
+		// keystroke; the rest of it is still the person's.
+		await settle();
+		expect(field().value).toBe('1a3');
+
+		press('b');
+		await settle();
+		expect(field().value).toBe('1a3b');
+		expect(said.at(-1)).toBe('1a3b');
 	});
 
 	it('passes on what is typed', async () => {
