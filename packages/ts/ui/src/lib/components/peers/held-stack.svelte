@@ -9,6 +9,7 @@
 	import { untrack } from 'svelte';
 	import { emojiCatalogs } from '../../emoji/catalogs.svelte.js';
 	import { CODE_PROTOCOL } from '../editor/code-anchor.js';
+	import { CompassNode } from '../editor/compass-node.js';
 	import type { NoteEmoji } from '../editor/contract.js';
 	import { openBlocks } from '../editor/document.js';
 	import { DRAWN_ELEMENTS } from '../editor/elements.js';
@@ -55,6 +56,7 @@
 					TaskItem.configure({ nested: true }),
 					EmojiNode(() => catalog),
 					ReferenceNode(() => references),
+					CompassNode(() => references),
 					InkNode,
 					PictureNode(() => pictures),
 					...DRAWN_ELEMENTS

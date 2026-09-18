@@ -724,9 +724,15 @@
 		},
 		read: async (target: OwnedRef) =>
 			nodes.get(target) ?? heldNotes.get(target)?.note ?? (await nodes.fetch(target)),
-		write: async (name: string, relation: 'under' | 'after') => {
+		write: async (name: string, relation: 'under' | 'after' | 'free') => {
 			try {
-				return await nodes.create({ from: { relation, note: ref }, title: name });
+				return await nodes.create({
+					from:
+						relation === 'free'
+							? { relation, ...(inGraph ? { graph: inGraph } : {}) }
+							: { relation, note: ref },
+					title: name
+				});
 			} catch (error) {
 				throw new Error(
 					serverMessage(error) ?? 'Sloppy could not add that note. Try again in a moment.',

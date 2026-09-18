@@ -9,6 +9,7 @@
 	import Bold from '@lucide/svelte/icons/bold';
 	import Brackets from '@lucide/svelte/icons/brackets';
 	import Code from '@lucide/svelte/icons/code';
+	import Compass from '@lucide/svelte/icons/compass';
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import Heading1 from '@lucide/svelte/icons/heading-1';
 	import Heading2 from '@lucide/svelte/icons/heading-2';
@@ -39,6 +40,7 @@
 	import { BlockHandles, type SectionActs, type SectionHolds } from './block-handles.js';
 	import { CARET_MENU, caretOptionId } from './caret-menu.svelte';
 	import { anchorLabel, CODE_PROTOCOL, CodeAnchors, codeHref } from './code-anchor.js';
+	import { CompassNode } from './compass-node.js';
 	import type { BlockStackProps, HeldPicture } from './contract.js';
 	import {
 		docBlocks,
@@ -725,6 +727,7 @@
 					EmojiSuggestion(completions, () => ownCatalog),
 					ReferenceNode(() => references),
 					ReferenceSuggestion(noteCompletions, () => references),
+					CompassNode(() => references),
 					CodeAnchors(() => code),
 					InkNode,
 					PictureNode(() => media),
@@ -1063,6 +1066,12 @@
 			label: 'Diagram',
 			icon: Workflow,
 			run: () => editor?.commands.insertDiagram()
+		},
+		{
+			id: 'compass',
+			label: 'Compass',
+			icon: Compass,
+			run: () => editor?.commands.insertCompass()
 		}
 	]);
 </script>
@@ -1608,6 +1617,105 @@
 		margin-top: 0.5rem;
 		width: 100%;
 		resize: vertical;
+	}
+	:global(.sloppy-compass) {
+		margin: 0.85em 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--card);
+		padding: 0.6rem 0.75rem;
+		container-type: inline-size;
+	}
+	:global(.sloppy-compass.is-selected) {
+		outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+		outline-offset: 2px;
+	}
+	:global(.sloppy-compass-slots) {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
+	}
+	@container (min-width: 30rem) {
+		:global(.sloppy-compass-slots) {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+	:global(.sloppy-compass-word) {
+		margin: 0;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-notes) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.15rem 0.75rem;
+		margin: 0.2rem 0 0;
+		padding: 0;
+		list-style: none;
+	}
+	:global(.sloppy-compass-notes li) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.15rem;
+		margin: 0;
+	}
+	:global(.sloppy-compass-asks) {
+		margin: 0.2rem 0 0;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-act),
+	:global(.sloppy-compass-off) {
+		border-radius: calc(var(--radius) - 2px);
+		padding: 0.25rem 0.55rem;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+	:global(.sloppy-compass-act) {
+		margin-top: 0.3rem;
+		margin-left: -0.55rem;
+	}
+	:global(.sloppy-compass-act:hover),
+	:global(.sloppy-compass-off:hover) {
+		background: var(--muted);
+		color: var(--foreground);
+	}
+	:global(.sloppy-compass-finder) {
+		margin-top: 0.35rem;
+	}
+	:global(.sloppy-compass-field) {
+		width: 100%;
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) - 2px);
+		background: var(--background);
+		padding: 0.4rem 0.55rem;
+		font-size: 0.875rem;
+		color: var(--foreground);
+		outline: none;
+	}
+	:global(.sloppy-compass-field:focus-visible) {
+		border-color: var(--ring);
+	}
+	:global(.sloppy-compass-menu) {
+		margin: 0.25rem 0 0;
+		padding: 0;
+		list-style: none;
+		max-height: 12rem;
+		overflow-y: auto;
+	}
+	:global(.sloppy-compass-choice) {
+		border-radius: calc(var(--radius) - 2px);
+		padding: 0.4rem 0.55rem;
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+	:global(.sloppy-compass-choice[aria-selected='true']) {
+		background: var(--muted);
+	}
+	:global(.sloppy-compass-said) {
+		margin: 0.25rem 0 0;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
 	}
 	:global(.sloppy-diagram) {
 		margin: 0.85em 0;

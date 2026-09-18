@@ -7,6 +7,7 @@ import { TaskItem, TaskList } from '@tiptap/extension-list';
 import StarterKit from '@tiptap/starter-kit';
 import type { CustomEmojiEntry } from '../../emoji/catalog.js';
 import { CODE_PROTOCOL } from './code-anchor.js';
+import { CompassNode } from './compass-node.js';
 import type { NoteCode, NoteEmoji, NoteMedia, NoteReferences } from './contract.js';
 import { docBlocks, openBlocks, type DraftStore, type SavedBlock } from './document.js';
 import { DRAWN_ELEMENTS } from './elements.js';
@@ -163,6 +164,7 @@ export function makeEditor(blocks: readonly BlockView[] = []): {
 			InkNode,
 			PictureNode(() => undefined),
 			ReferenceNode(() => undefined),
+			CompassNode(() => undefined),
 			...DRAWN_ELEMENTS
 		]
 	});
