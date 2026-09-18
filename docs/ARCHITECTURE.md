@@ -2006,18 +2006,24 @@ answer is the winning note's own entry, and its `to` is what says which way roun
 `direction` points. **The app writes only one**: a person editing a line writes their own
 note and never somebody else's.
 
-**At most one look per `to`.** Two entries naming one note would be a line drawn two
-ways. `looksAreOnePerTarget` is that rule, held by `requireNodeConsistent` on every node
-row in both directions and by the writers on every request — a free predicate rather than
-a `.refine()`, because a refinement on `NodeSchema` would take `.omit()` and `.partial()`
-away from every request built off it.
+**At most one look per `to`, and a second one costs that look alone.** Two entries naming
+one note would be a line drawn two ways. A WRITER is refused: `looksAreOnePerTarget` on
+every request, so a person who said two things about one line is told rather than having
+one of them quietly dropped. A READER keeps the first: `looksRead`, on every node row
+coming back, on a note read out of the vault, and on the looks a canvas is handed, because
+the rows a reader meets include a peer's and a hand-edited file's, and refusing one would
+cost a whole page of somebody else's notes over a word written on a line. Both are free
+predicates rather than a `.refine()`, because a refinement on `NodeSchema` would take
+`.omit()` and `.partial()` away from every request built off it.
 
 **It travels, bounded the way `links` is.** The vault writes `edges` in a note's front
 matter and an archive carries it (§ "A graph on disk"); `NodeView`, a published snapshot
 and a pulled copy all carry it; an offer may carry it, and an offer with no `edges` is
 one that leaves the note's looks alone. The bound on a published node is `links`': every
 ref on `PublishedNodeSchema` names a note the caller may read, so a look whose `to` the
-author has not published is dropped from the snapshot rather than named.
+author has not published is dropped from the snapshot rather than named — `looksReaching`
+is that filter. An archive carries the looks both ways: an import writes back the `edges`
+a note's file holds, the way it writes back its links.
 
 **The renderer is handed looks, never rows.** `GraphSurfaceProps.edgeLooks` in
 `@sloppy/graph` is one resolved look per pair, `from` the note it is stored on and `to`
@@ -2278,7 +2284,10 @@ on its own line — and absent is a note nobody styled, which is not itself a lo
 channel that says nothing is not written down, exactly as `isUnstyled` reads one.
 `edges` is a list of blocks, one entry per look the note sets on a line, its fields
 written `to`, `label`, `direction`, `stroke` and an empty one left out; absent is a note
-nobody set a look on (§ "A look a person set on a line"). The
+nobody set a look on (§ "A look a person set on a line"). A dashed field is a list of
+blocks only where EVERY item under it carries a `name: value`, so one plain item makes the
+whole field the plain list it looks like — a colon a hand typed into a tag costs neither
+that tag nor the ones beside it. The
 body is the note's stack of sections, each opened by `<!-- block <ulid> -->` — so a section
 keeps its identity across an export and an import, and a person who moves one in the file
 has moved a section rather than made two.

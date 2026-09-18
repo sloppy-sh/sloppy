@@ -144,24 +144,24 @@ export function splitNoteFile(text: string): NoteFile {
 }
 
 /** A field with nothing after its colon opens a list, a block or a list of
- *  blocks; which one it is, is what the first line under it says. A dash
- *  carrying a `name: value` opens an entry — a plain item that would read that
- *  way is written quoted, so the two cannot be confused. */
+ *  blocks; which one it is, is what the lines under it say. Dashes make it a
+ *  list of blocks only where every one of them carries a `name: value`, so one
+ *  plain item is a plain list and a hand that typed a colon into one loses
+ *  neither it nor the items beside it. */
 function readFront(lines: readonly string[]): Map<string, FrontValue> {
   const front = new Map<string, FrontValue>();
   let opened: string | null = null;
-  let list: string[] | null = null;
   let block: Map<string, FrontLeaf> | null = null;
   let inner: string[] | null = null;
-  let entries: Map<string, FrontLeaf>[] | null = null;
-  let entry: Map<string, FrontLeaf> | null = null;
+  let items: DashItem[] | null = null;
   const close = (): void => {
+    if (opened !== null && items !== null && items.length > 0) {
+      front.set(opened, dashed(items));
+    }
     opened = null;
-    list = null;
     block = null;
     inner = null;
-    entries = null;
-    entry = null;
+    items = null;
   };
   for (const line of lines) {
     if (opened !== null) {
@@ -171,42 +171,30 @@ function readFront(lines: readonly string[]): Map<string, FrontValue> {
         continue;
       }
       const within = /^ {4}([A-Za-z0-9_]+): (.*)$/.exec(line);
-      if (within && entry) {
-        entry.set(within[1], readLeaf(within[2]));
-        continue;
-      }
-      const opens = /^ {2}- ([A-Za-z0-9_]+): (.*)$/.exec(line);
-      if (opens && !block && !list) {
-        if (!entries) {
-          entries = [];
-          front.set(opened, entries);
-        }
-        entry = new Map([[opens[1], readLeaf(opens[2])]]);
-        entries.push(entry);
+      const under = items?.[items.length - 1]?.fields;
+      if (within && under) {
+        under.set(within[1], readLeaf(within[2]));
         continue;
       }
       const item = /^ {2}- (.*)$/.exec(line);
-      if (item && !block && !entries) {
-        if (!list) {
-          list = [];
-          front.set(opened, list);
-        }
-        list.push(readScalar(item[1]));
+      if (item && !block) {
+        if (!items) items = [];
+        items.push(dashItem(item[1]));
         continue;
       }
-      const under = /^ {2}([A-Za-z0-9_]+):(?: (.*))?$/.exec(line);
-      if (under && !list && !entries) {
+      const field = /^ {2}([A-Za-z0-9_]+):(?: (.*))?$/.exec(line);
+      if (field && !items) {
         if (!block) {
           block = new Map();
           front.set(opened, block);
         }
-        const said = under[2];
+        const said = field[2];
         if (said === undefined) {
           inner = [];
-          block.set(under[1], inner);
+          block.set(field[1], inner);
         } else {
           inner = null;
-          block.set(under[1], readLeaf(said));
+          block.set(field[1], readLeaf(said));
         }
         continue;
       }
@@ -221,7 +209,30 @@ function readFront(lines: readonly string[]): Map<string, FrontValue> {
     }
     front.set(field[1], readScalar(field[2]));
   }
+  close();
   return front;
+}
+
+/** One dashed item, read both ways until the field it is in is finished: as the
+ *  item somebody typed, and — where it opens `name: value` — as an entry. */
+interface DashItem {
+  plain: string;
+  fields: Map<string, FrontLeaf> | null;
+}
+
+function dashItem(text: string): DashItem {
+  const opens = /^([A-Za-z0-9_]+): (.*)$/.exec(text);
+  return {
+    plain: readScalar(text),
+    fields: opens ? new Map([[opens[1], readLeaf(opens[2])]]) : null,
+  };
+}
+
+function dashed(items: readonly DashItem[]): FrontValue {
+  const entries = items.flatMap((item) => (item.fields ? [item.fields] : []));
+  return entries.length === items.length
+    ? entries
+    : items.map((item) => item.plain);
 }
 
 export function frontString(
@@ -237,9 +248,19 @@ export function frontList(
   key: string,
 ): string[] {
   const held = front.get(key);
-  return Array.isArray(held)
-    ? held.filter((one): one is string => typeof one === "string")
-    : [];
+  if (!Array.isArray(held)) return [];
+  return held.flatMap((one) =>
+    typeof one === "string" ? [one] : itemOfEntry(one),
+  );
+}
+
+/** A list item a hand wrote as `- name: value` is read as an entry; to a field
+ *  that holds plain items it is the item it was typed as. More than one field
+ *  under the dash is no item at all. */
+function itemOfEntry(entry: FrontBlock): string[] {
+  if (entry.size !== 1) return [];
+  const [name, held] = [...entry][0];
+  return Array.isArray(held) ? [] : [`${name}: ${String(held)}`];
 }
 
 /** The entries under a list of blocks, for a caller that parses each one into

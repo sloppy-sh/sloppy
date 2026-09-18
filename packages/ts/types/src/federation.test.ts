@@ -220,6 +220,28 @@ describe("the look a held node arrived wearing", () => {
       resolveAppearance(undefined),
     );
   });
+
+  it("keeps the first of two looks a peer wrote on one line", () => {
+    // A second look on one pair costs that look; a reader who refused the note
+    // would lose the whole page a peer served over words somebody else wrote.
+    const row = heldNode("1a");
+    const view = parseNodeView(
+      pulledNodeView(
+        parsePulledNode({
+          ...row,
+          node: {
+            ...row.node,
+            edges: [
+              { to: `${AUTHOR}/${ROOT}`, label: "answers" },
+              { to: `${AUTHOR}/${ROOT}`, label: "and again" },
+            ],
+          },
+        }),
+      ),
+    );
+
+    expect(view.edges).toEqual([{ to: `${AUTHOR}/${ROOT}`, label: "answers" }]);
+  });
 });
 
 describe("a held block", () => {

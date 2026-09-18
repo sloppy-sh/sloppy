@@ -14,6 +14,7 @@ import {
   UlidSchema,
 } from "./common.js";
 import { RefusedVoiceSchema } from "./conversation.js";
+import { looksRead } from "./edge.js";
 import { GraphSchema } from "./graph.js";
 import { requireNodeConsistent } from "./node.js";
 import { NodeSchema } from "./node.js";
@@ -192,7 +193,8 @@ export function pulledBlockView(row: PulledBlock): BlockView {
 export function parseNodeView(value: unknown): NodeView {
   const view = NodeViewSchema.parse(value);
   requireNodeConsistent(view);
-  return view;
+  if (view.edges === undefined) return view;
+  return { ...view, edges: looksRead(view.edges) };
 }
 
 /**

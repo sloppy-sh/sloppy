@@ -522,6 +522,20 @@ const edges: fc.Arbitrary<EdgeLook[]> = fc
   )
   .map((looks) => looks.map((look) => EdgeLookSchema.parse(look)));
 
+describe("a list a hand wrote an item with a colon into", () => {
+  it("reads back as the items it was typed as, not as nothing", () => {
+    const { files } = noteToVault(note({ tags: ["seed"] }), [], []);
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      "  - seed",
+      "  - todo: later\n  - seed",
+    );
+    expect(vaultToNote({ markdown: text }).tags).toEqual([
+      "todo: later",
+      "seed",
+    ]);
+  });
+});
+
 describe("the looks a note sets on its lines", () => {
   it("writes each one as an entry, its fields in one order", () => {
     const { files } = noteToVault(
@@ -587,6 +601,21 @@ describe("the looks a note sets on its lines", () => {
     expect(held.title).toBe("What I meant: a note");
     expect(held.sections).toEqual([
       { ulid: BLOCK, content: paragraph("First") },
+    ]);
+  });
+
+  it("keeps the first where a hand wrote two on one line", () => {
+    const { files } = noteToVault(
+      note({ edges: [{ to: TARGETS[0], label: "cites" }] }),
+      [],
+      [],
+    );
+    const text = decodeText(files.get(notePath(NOTE)) as Uint8Array).replace(
+      "    label: cites",
+      `    label: cites\n  - to: ${TARGETS[0]}\n    label: and again`,
+    );
+    expect(vaultToNote({ markdown: text }).edges).toEqual([
+      { to: TARGETS[0], label: "cites" },
     ]);
   });
 

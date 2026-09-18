@@ -13,7 +13,7 @@ import {
   OwnedRefSchema,
   TimestampSchema,
 } from "./common.js";
-import { EdgeLookSchema, looksAreOnePerTarget } from "./edge.js";
+import { EdgeLookSchema, looksRead } from "./edge.js";
 import { graphRef, requireOwnGraph } from "./graph.js";
 import { TagsSchema } from "./tag.js";
 
@@ -80,9 +80,10 @@ export const NodeSchema = OwnedEntitySchema.extend({
    * empty list — a line's look is read off both ends, `lookBetween`, and a look
    * draws on the line that is already there rather than making one.
    *
-   * At most one entry per `to`: `looksAreOnePerTarget` is that rule, held by
-   * {@link requireNodeConsistent} rather than by this schema, which stays plain
-   * so the requests built off it may still `.omit()` and `.partial()`.
+   * At most one entry per `to`. A writer meets that rule as
+   * `looksAreOnePerTarget`, which refuses; a reader meets it as `looksRead`,
+   * which keeps the first — docs/ARCHITECTURE.md § "A look a person set on a
+   * line".
    */
   edges: z.array(EdgeLookSchema).optional(),
   /**
@@ -241,15 +242,11 @@ export function runKeyOf(
   return node.parent ?? `graph/${graphOf(node)}`;
 }
 
-/** What `NodeSchema` cannot refuse: a `graph` belonging to somebody else, and a
- *  second look on one note at the other end. */
+/** What `NodeSchema` cannot refuse: a `graph` belonging to somebody else. */
 export function requireNodeConsistent(
-  node: Pick<Node, "created_by" | "graph" | "edges">,
+  node: Pick<Node, "created_by" | "graph">,
 ): void {
   requireOwnGraph(node.created_by, node.graph);
-  if (!looksAreOnePerTarget(node.edges)) {
-    throw new Error("A note carries one look per note it is joined to");
-  }
 }
 
 /**
@@ -260,7 +257,8 @@ export function requireNodeConsistent(
 export function parseNode(row: unknown): Node {
   const node = NodeSchema.parse(row);
   requireNodeConsistent(node);
-  return node;
+  if (node.edges === undefined) return node;
+  return { ...node, edges: looksRead(node.edges) };
 }
 
 /**

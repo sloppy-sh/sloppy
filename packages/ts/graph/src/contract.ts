@@ -54,17 +54,16 @@ export function edgeLookKey(a: OwnedRef, b: OwnedRef): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-/**
- * The looks a canvas was handed, keyed for lookup. A second look on one pair is
- * the caller's to avoid — `lookBetween` answers one — and the last of them
- * wins here rather than drawing twice.
- */
+/** The looks a canvas was handed, keyed for lookup. A pair draws one line, so
+ *  the first look on a pair is the one it draws — `looksRead` and `lookOn` in
+ *  `@sloppy/types` keep the first too. */
 export function edgeLooksByPair(
   looks: readonly GraphEdgeLook[] | undefined,
 ): GraphEdgeLooks {
   const byPair = new Map<string, GraphEdgeLook>();
   for (const look of looks ?? []) {
-    byPair.set(edgeLookKey(look.from, look.to), look);
+    const key = edgeLookKey(look.from, look.to);
+    if (!byPair.has(key)) byPair.set(key, look);
   }
   return byPair;
 }

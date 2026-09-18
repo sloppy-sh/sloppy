@@ -71,19 +71,24 @@ export const EdgeLookSchema = z.object({
 });
 export type EdgeLook = z.infer<typeof EdgeLookSchema>;
 
-/**
- * One look per note at the other end. Two looks naming one note would be a line
- * drawn two ways, and a pair draws one line.
- *
- * A free predicate rather than a refinement on the schema: `NodeSchema` stays a
- * plain object so the DTOs built off it may still `.omit()` and `.partial()`,
- * which a `.refine()` takes away. Every writer of a list calls this.
- */
+/** At most one entry per `to`, which is what a WRITER is refused for. A reader
+ *  takes {@link looksRead} instead — docs/ARCHITECTURE.md § "A look a person
+ *  set on a line". */
 export function looksAreOnePerTarget(
   edges: readonly EdgeLook[] | undefined,
 ): boolean {
   if (edges === undefined) return true;
   return new Set(edges.map((look) => look.to)).size === edges.length;
+}
+
+/** The looks a reader takes off a list: the first of two naming one note at the
+ *  other end, since a pair draws one line. */
+export function looksRead(edges: readonly EdgeLook[]): EdgeLook[] {
+  const byTarget = new Map<OwnedRef, EdgeLook>();
+  for (const look of edges) {
+    if (!byTarget.has(look.to)) byTarget.set(look.to, look);
+  }
+  return [...byTarget.values()];
 }
 
 /** A look that names no channel — what "Clear the look" leaves behind. */
@@ -118,6 +123,16 @@ function saidLook(look: EdgeLook): EdgeLook {
   if (look.label !== "") return look;
   const { label: _cleared, ...rest } = look;
   return rest;
+}
+
+/** The looks that stay when only some of the notes at the other end can be
+ *  reached — the bound a published snapshot holds `links` to, so a look never
+ *  names a note the reader may not read. */
+export function looksReaching(
+  edges: readonly EdgeLook[] | undefined,
+  reaches: (to: OwnedRef) => boolean,
+): EdgeLook[] | undefined {
+  return looksWritten(edges?.filter((look) => reaches(look.to)));
 }
 
 /**

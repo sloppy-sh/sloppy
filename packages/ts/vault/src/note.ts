@@ -11,6 +11,7 @@ import {
   type EdgeLook,
   EdgeLookSchema,
   isUnstyled,
+  looksRead,
   looksWritten,
   type NodeAppearance,
   NodeAppearanceSchema,
@@ -322,10 +323,12 @@ function lookFields(look: EdgeLook): FrontBlock {
 export function edgesRead(
   front: ReadonlyMap<string, FrontValue>,
 ): Pick<VaultNote, "edges"> {
-  const edges = frontEntries(front, "edges").flatMap((entry) => {
-    const look = EdgeLookSchema.safeParse(entry);
-    return look.success ? [look.data] : [];
-  });
+  const edges = looksRead(
+    frontEntries(front, "edges").flatMap((entry) => {
+      const look = EdgeLookSchema.safeParse(entry);
+      return look.success ? [look.data] : [];
+    }),
+  );
   return edges.length === 0 ? {} : { edges };
 }
 

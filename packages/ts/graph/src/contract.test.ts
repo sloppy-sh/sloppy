@@ -243,6 +243,15 @@ describe("the looks a canvas was handed", () => {
     );
   });
 
+  it("draws the first of two on one pair, the look a note answers with", () => {
+    const byPair = edgeLooksByPair([
+      cited,
+      { from: root.ref, to: child.ref, label: "and again" },
+    ]);
+    expect(byPair.size).toBe(1);
+    expect(byPair.get(edgeLookKey(child.ref, root.ref))).toBe(cited);
+  });
+
   it("is empty where the host handed none", () => {
     expect(edgeLooksByPair(undefined).size).toBe(0);
     expect(edgeLooksByPair([]).size).toBe(0);

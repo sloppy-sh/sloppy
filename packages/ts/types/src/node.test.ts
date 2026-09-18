@@ -169,9 +169,11 @@ describe("the looks a note sets on its lines", () => {
     ).toEqual([{ to: OTHER, stroke: "dotted" }]);
   });
 
-  it("are refused a second look on one note at the other end", () => {
+  it("cost a note nothing where a row carries a second one", () => {
     const twice = [{ to: OTHER, label: "one" }, { to: OTHER }];
-    expect(() => parseNode({ ...row("1"), edges: twice })).toThrow();
+    expect(parseNode({ ...row("1"), edges: twice }).edges).toEqual([
+      { to: OTHER, label: "one" },
+    ]);
     expect(
       parseNode({ ...row("1"), edges: [{ to: OTHER, label: "one" }] }).edges,
     ).toEqual([{ to: OTHER, label: "one" }]);

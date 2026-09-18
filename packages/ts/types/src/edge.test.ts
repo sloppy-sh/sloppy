@@ -13,6 +13,8 @@ import {
   type LookingNote,
   lookOn,
   looksAreOnePerTarget,
+  looksRead,
+  looksReaching,
   looksWritten,
   strongestEdge,
 } from "./edge.js";
@@ -137,6 +139,49 @@ describe("what a note may carry", () => {
     expect(looksAreOnePerTarget([{ to: B, label: "one" }, { to: B }])).toBe(
       false,
     );
+  });
+
+  it("is what a reader keeps the first of, rather than refusing the note", () => {
+    expect(
+      looksRead([
+        { to: B, label: "one" },
+        { to: C, stroke: "dotted" },
+        { to: B, label: "two" },
+      ]),
+    ).toEqual([
+      { to: B, label: "one" },
+      { to: C, stroke: "dotted" },
+    ]);
+    expect(looksRead([])).toEqual([]);
+  });
+
+  it("reads the same look as the one a note answers with", () => {
+    const edges: EdgeLook[] = [
+      { to: B, label: "one" },
+      { to: B, label: "two" },
+    ];
+    expect(looksRead(edges)[0]).toEqual(lookOn(end(A, EARLY, edges), B));
+  });
+});
+
+describe("the looks that travel to somebody who may not read every note", () => {
+  it("are the ones whose other end the reader reaches", () => {
+    expect(
+      looksReaching(
+        [
+          { to: B, label: "answers" },
+          { to: C, label: "unpublished" },
+        ],
+        (to) => to === B,
+      ),
+    ).toEqual([{ to: B, label: "answers" }]);
+  });
+
+  it("are absent where none of them is reached, and where there are none", () => {
+    expect(
+      looksReaching([{ to: C, label: "unpublished" }], (to) => to === B),
+    ).toBeUndefined();
+    expect(looksReaching(undefined, () => true)).toBeUndefined();
   });
 });
 
