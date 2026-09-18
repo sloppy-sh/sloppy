@@ -51,7 +51,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -83,7 +83,8 @@
 		onOwnership,
 		onRemove,
 		onRestore,
-		onShow
+		onShow,
+		alsoOffer
 	}: {
 		open?: boolean;
 		graphs: readonly GraphChoice[];
@@ -137,6 +138,10 @@
 		onRestore?: (ref: OwnedRef) => Promise<void>;
 		/** The sheet has just opened, and what it lists is worth asking for again. */
 		onShow?: () => void;
+		/** Where else a graph can be opened from, for an app that reaches more
+		 *  than the one it is served by. Absent leaves the sheet the graphs it
+		 *  lists and nothing else. */
+		alsoOffer?: Snippet;
 	} = $props();
 
 	let opening = $state('');
@@ -540,6 +545,12 @@
 						Start it
 					</Button>
 				</div>
+			</section>
+		{/if}
+
+		{#if alsoOffer}
+			<section class="space-y-2 border-t border-border pt-4">
+				{@render alsoOffer()}
 			</section>
 		{/if}
 

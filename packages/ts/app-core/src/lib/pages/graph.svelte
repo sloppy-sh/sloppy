@@ -128,9 +128,11 @@
 	import { onMount, untrack } from 'svelte';
 	import { afterNavigate, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import OpenHere from '../components/open-here.svelte';
 	import PersonSurface from '../components/person-surface.svelte';
 	import ReviewSheet from '../components/review-sheet.svelte';
 	import { api } from '../api.js';
+	import { graphHere } from '../graph-here.svelte.js';
 	import { runtime, type KnownFolder } from '../runtime.js';
 	import { deletionCost, timeToPutBack } from '../deletion.js';
 	import { noteEmoji, noteMedia, wallpaperMedia } from '../note-surface.js';
@@ -2688,7 +2690,12 @@
 			closeUndrawn();
 			void deleted.reload().catch(() => {});
 		}, 'That graph could not be closed.')}
+	alsoOffer={graphHere.offered ? openHere : undefined}
 />
+
+{#snippet openHere()}
+	<OpenHere heading={false} />
+{/snippet}
 
 <input
 	bind:this={chooser}
